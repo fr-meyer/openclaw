@@ -71,7 +71,9 @@ function createParams(sessionFile: string, workspaceDir: string): EmbeddedRunAtt
     modelId: "gpt-5.4-codex",
     model: createCodexTestModel(AUTH_PROFILE_RUNTIME_CONTRACT.codexHarnessProvider),
     thinkLevel: "medium",
-    disableTools: true,
+    disableTools: false,
+    toolsAllow: ["*"],
+    config: { tools: { web: { search: { enabled: false } } } },
     timeoutMs: 5_000,
     authStorage: {} as never,
     authProfileStore: { version: 1, profiles: {} },
@@ -278,6 +280,7 @@ describe("Auth profile runtime contract - Codex app-server adapter", () => {
     const harness = createCodexAuthProfileHarness({ startMethod: "thread/start" });
     const sessionFile = path.join(tmpDir, "session.jsonl");
     const params = createParams(sessionFile, tmpDir);
+    params.disableTools = true;
     params.authProfileId = AUTH_PROFILE_RUNTIME_CONTRACT.openAiCodexProfileId;
     params.agentDir = tmpDir;
 
@@ -302,7 +305,6 @@ describe("Auth profile runtime contract - Codex app-server adapter", () => {
       threadId: "thread-auth-contract",
       cwd: tmpDir,
       authProfileId: AUTH_PROFILE_RUNTIME_CONTRACT.openAiCodexProfileId,
-      dynamicToolsFingerprint: "[]",
     });
     // authProfileId is intentionally omitted to exercise the resume-bound profile path.
     const params = createParams(sessionFile, tmpDir);
@@ -327,7 +329,6 @@ describe("Auth profile runtime contract - Codex app-server adapter", () => {
       threadId: "thread-auth-contract",
       cwd: tmpDir,
       authProfileId: "openai:stale",
-      dynamicToolsFingerprint: "[]",
     });
     const params = createParams(sessionFile, tmpDir);
     params.authProfileId = AUTH_PROFILE_RUNTIME_CONTRACT.openAiCodexProfileId;
