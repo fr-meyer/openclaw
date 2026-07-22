@@ -1241,7 +1241,7 @@ export async function runPluginInstallCommand(params: {
         if (!isClawHubBlockedCliFailure(result)) {
           runtime.error(result.error);
         }
-        return runtime.exit(1);
+        return false;
       }
 
       await persistPluginInstall({
@@ -1263,11 +1263,15 @@ export async function runPluginInstallCommand(params: {
           version: result.clawhub.version,
         });
       }
+      return true;
     };
     if (params.clawManaged) {
-      return await installFromClawHub();
+      if (!(await installFromClawHub())) {
+        return runtime.exit(1);
+      }
+      return;
     }
-    return await withClawPackageLifecycleLease(
+    const installed = await withClawPackageLifecycleLease(
       { kind: "plugin", source: "clawhub", ref: clawhubSpec.name },
       async () => {
         const leasedSnapshot = await loadConfigForInstall(request).catch((error: unknown) => {
@@ -1275,7 +1279,7 @@ export async function runPluginInstallCommand(params: {
           return null;
         });
         if (!leasedSnapshot) {
-          return runtime.exit(1);
+          return false;
         }
         return await installFromClawHub(
           leasedSnapshot,
@@ -1283,6 +1287,10 @@ export async function runPluginInstallCommand(params: {
         );
       },
     );
+    if (!installed) {
+      return runtime.exit(1);
+    }
+    return;
   }
 
   const trustedNpmInstall = resolveOpenClawTrustedNpmPackageInstall(raw);
