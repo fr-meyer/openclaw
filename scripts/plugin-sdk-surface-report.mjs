@@ -138,7 +138,8 @@ export function readPluginSdkSurfaceBudgets(env = process.env) {
     publicEntrypoints: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_ENTRYPOINTS",
       // +1: session-discussion binds one external discussion provider to sessions.
-      140,
+      // +1: number-runtime is shared by official external plugin packages.
+      141,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -149,7 +150,8 @@ export function readPluginSdkSurfaceBudgets(env = process.env) {
       // +1: channel-owned setup contract factory.
       // +18: generic schema primitives needed by plugin-owned channel config schemas.
       // +2: shared Teams reply-style and TTS schema leaves.
-      4698,
+      // +33: public numeric coercion, timer bound, and timestamp helpers.
+      4731,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -160,7 +162,8 @@ export function readPluginSdkSurfaceBudgets(env = process.env) {
       // +1: channel-owned setup contract factory.
       // +4: generic channel schema shape builders.
       // +1: plugin-owned sensitive-schema registration.
-      2847,
+      // +29: public numeric coercion, timer bound, and timestamp helpers.
+      2876,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
