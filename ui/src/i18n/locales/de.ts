@@ -682,6 +682,8 @@ export const de: TranslationMap = {
     openWorkboardCard: "Workboard-Karte öffnen",
     dashboardAvailable: "Dashboard verfügbar",
     approvalNeeded: "Freigabe erforderlich",
+    queuedMessage: "{count} Nachricht zum Senden in der Warteschlange",
+    queuedMessages: "{count} Nachrichten zum Senden in der Warteschlange",
     noSessions: "Keine Sitzungen gefunden.",
     noActiveSessions: "Keine aktiven Threads.",
     noArchivedSessions: "Keine archivierten Sitzungen.",
@@ -3069,6 +3071,7 @@ export const de: TranslationMap = {
     eventStale: "Veraltete Sitzung",
   },
   connection: {
+    queuedCount: "{count} in Warteschlange",
     reconnecting: "Verbindung wird wiederhergestellt…",
     retryNow: "Jetzt erneut versuchen",
     access: {
@@ -3744,6 +3747,16 @@ export const de: TranslationMap = {
   },
   login: {
     subtitle: "Gateway-Dashboard",
+    deviceAuthMigration: {
+      banner: "Dieser Browser benötigt nach dem Update noch eine einmalige Gerätefreigabe.",
+      action: "Diesen Browser absichern",
+      secureContextRequired:
+        "Dieser veraltete Browser bleibt vorübergehend verfügbar. Öffnen Sie ihn erneut über HTTPS oder localhost, um ihn mit einer Geräteidentität abzusichern.",
+      pendingUnavailable:
+        "Die Browser-Kopplungsanfrage ist noch nicht verfügbar. Versuchen Sie es gleich erneut.",
+      loadFailed: "Die Kopplungsanfrage dieses Browsers konnte nicht geladen werden: {error}",
+      approvalFailed: "Dieser Browser konnte nicht abgesichert werden: {error}",
+    },
     passwordPlaceholder: "optional",
     showToken: "Token anzeigen",
     hideToken: "Token ausblenden",
@@ -4259,6 +4272,8 @@ export const de: TranslationMap = {
       placeholderDisconnected: "Connect to the gateway to start chatting...",
       offlineHint:
         "Offline – Nachrichten werden in die Warteschlange gestellt und gesendet, sobald die Verbindung wiederhergestellt ist.",
+      offlineQueuedHint:
+        "Offline – {count} in der Warteschlange; Nachrichten werden gesendet, sobald die Verbindung zurückkehrt.",
       preparingModel: "Modell wird vorbereitet...",
       responding: "{name} antwortet...",
       sendingMessage: "Nachricht wird gesendet...",

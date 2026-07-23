@@ -675,6 +675,8 @@ export const vi: TranslationMap = {
     openWorkboardCard: "Mở thẻ Workboard",
     dashboardAvailable: "Bảng điều khiển khả dụng",
     approvalNeeded: "Cần phê duyệt",
+    queuedMessage: "{count} tin nhắn đang chờ gửi",
+    queuedMessages: "{count} tin nhắn đang chờ gửi",
     noSessions: "Không tìm thấy phiên nào.",
     noActiveSessions: "Không có luồng đang hoạt động.",
     noArchivedSessions: "Không có phiên đã lưu trữ.",
@@ -3034,6 +3036,7 @@ export const vi: TranslationMap = {
     eventStale: "Phiên đã cũ",
   },
   connection: {
+    queuedCount: "{count} đang chờ",
     reconnecting: "Đang kết nối lại…",
     retryNow: "Thử lại ngay",
     access: {
@@ -3702,6 +3705,15 @@ export const vi: TranslationMap = {
   },
   login: {
     subtitle: "Bảng điều khiển Gateway",
+    deviceAuthMigration: {
+      banner: "Trình duyệt này vẫn cần phê duyệt thiết bị một lần sau khi cập nhật.",
+      action: "Bảo mật trình duyệt này",
+      secureContextRequired:
+        "Trình duyệt cũ này tạm thời vẫn khả dụng. Hãy mở lại qua HTTPS hoặc localhost để bảo mật nó bằng danh tính thiết bị.",
+      pendingUnavailable: "Yêu cầu ghép nối trình duyệt chưa khả dụng. Hãy thử lại trong giây lát.",
+      loadFailed: "Không thể tải yêu cầu ghép nối của trình duyệt này: {error}",
+      approvalFailed: "Không thể bảo mật trình duyệt này: {error}",
+    },
     passwordPlaceholder: "tùy chọn",
     showToken: "Hiển thị token",
     hideToken: "Ẩn token",
@@ -4206,6 +4218,7 @@ export const vi: TranslationMap = {
       placeholderWithAttachments: "Add a message or paste more images...",
       placeholderDisconnected: "Connect to the gateway to start chatting...",
       offlineHint: "Ngoại tuyến — tin nhắn sẽ được xếp hàng và gửi khi kết nối trở lại.",
+      offlineQueuedHint: "Ngoại tuyến — {count} đang chờ; tin nhắn sẽ gửi khi kết nối trở lại.",
       preparingModel: "Đang chuẩn bị mô hình...",
       responding: "{name} đang phản hồi...",
       sendingMessage: "Đang gửi tin nhắn...",

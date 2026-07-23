@@ -678,6 +678,8 @@ export const uk: TranslationMap = {
     openWorkboardCard: "Відкрити картку Workboard",
     dashboardAvailable: "Панель доступна",
     approvalNeeded: "Потрібне схвалення",
+    queuedMessage: "{count} повідомлення в черзі на надсилання",
+    queuedMessages: "{count} повідомлень у черзі на надсилання",
     noSessions: "Сеансів не знайдено.",
     noActiveSessions: "Немає активних тем.",
     noArchivedSessions: "Немає заархівованих сесій.",
@@ -3043,6 +3045,7 @@ export const uk: TranslationMap = {
     eventStale: "Застарілий сеанс",
   },
   connection: {
+    queuedCount: "{count} у черзі",
     reconnecting: "Повторне підключення…",
     retryNow: "Повторити зараз",
     access: {
@@ -3710,6 +3713,15 @@ export const uk: TranslationMap = {
   },
   login: {
     subtitle: "Панель Gateway",
+    deviceAuthMigration: {
+      banner: "Цей браузер потребує одноразового схвалення пристрою після оновлення.",
+      action: "Захистити цей браузер",
+      secureContextRequired:
+        "Цей застарілий браузер тимчасово залишається доступним. Відкрийте його знову через HTTPS або localhost, щоб захистити ідентичністю пристрою.",
+      pendingUnavailable: "Запит на пару браузера ще недоступний. Повторіть спробу за мить.",
+      loadFailed: "Не вдалося завантажити запит на пару цього браузера: {error}",
+      approvalFailed: "Не вдалося захистити цей браузер: {error}",
+    },
     passwordPlaceholder: "необов’язково",
     showToken: "Показати токен",
     hideToken: "Приховати токен",
@@ -4220,6 +4232,8 @@ export const uk: TranslationMap = {
       placeholderDisconnected: "Connect to the gateway to start chatting...",
       offlineHint:
         "Офлайн — повідомлення буде поставлено в чергу й надіслано після відновлення з'єднання.",
+      offlineQueuedHint:
+        "Офлайн — {count} у черзі; повідомлення надішлються, коли зʼявиться зʼєднання.",
       preparingModel: "Підготовка моделі...",
       responding: "{name} відповідає...",
       sendingMessage: "Надсилання повідомлення...",
