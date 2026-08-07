@@ -112,6 +112,7 @@ export type { AgentHarnessQuestionGatewayCall } from "../agents/harness/gateway-
 export type EmbeddedRunAttemptParams = Omit<CoreEmbeddedRunAttemptParams, "trajectoryRecorder">;
 export type { EmbeddedRunAttemptResult };
 export type {
+  CompactionFailure,
   ContextEngine as HarnessContextEngine,
   ContextEngineHostCapability,
   ContextEngineOperation,
