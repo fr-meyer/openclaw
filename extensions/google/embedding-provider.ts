@@ -42,6 +42,7 @@ export const DEFAULT_GEMINI_EMBEDDING_MODEL = "gemini-embedding-001";
 const DEFAULT_GOOGLE_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const GEMINI_MAX_INPUT_TOKENS: Record<string, number> = {
   "gemini-embedding-001": 2048,
+  "gemini-embedding-2": 8192,
   "gemini-embedding-2-preview": 8192,
 };
 
@@ -49,10 +50,7 @@ type GeminiTaskType = NonNullable<MemoryEmbeddingProviderCreateOptions["taskType
 
 // --- gemini-embedding-2-preview support ---
 
-const GEMINI_EMBEDDING_2_MODELS = new Set([
-  "gemini-embedding-2-preview",
-  // Add the GA model name here once released.
-]);
+const GEMINI_EMBEDDING_2_MODELS = new Set(["gemini-embedding-2", "gemini-embedding-2-preview"]);
 
 const GEMINI_EMBEDDING_2_DEFAULT_DIMENSIONS = 3072;
 const GEMINI_EMBEDDING_2_VALID_DIMENSIONS = [768, 1536, 3072] as const;
@@ -180,6 +178,27 @@ function resolveGeminiOutputDimensionality(model: string, requested?: number): n
   }
   return requested;
 }
+
+export function normalizeGeminiEmbedding(
+  values: number[],
+  outputDimensionality?: number,
+): number[] {
+  if (outputDimensionality !== undefined && values.length < outputDimensionality) {
+    throw new Error(
+      `gemini embedding returned ${values.length} dimensions, fewer than configured ${outputDimensionality}`,
+    );
+  }
+  const selected =
+    outputDimensionality === undefined ? values : values.slice(0, outputDimensionality);
+  const normalized = sanitizeAndNormalizeEmbedding(selected);
+  if (outputDimensionality !== undefined && normalized.length !== outputDimensionality) {
+    throw new Error(
+      `gemini embedding returned ${normalized.length} dimensions after truncation, expected ${outputDimensionality}`,
+    );
+  }
+  return normalized;
+}
+
 function resolveRemoteApiKey(remoteApiKey: unknown): string | undefined {
   const trimmed = resolveMemorySecretInputString({
     value: remoteApiKey,
@@ -306,7 +325,7 @@ export async function createGeminiEmbeddingProvider(
       }),
       signal: callOptions?.signal,
     });
-    return sanitizeAndNormalizeEmbedding(readGeminiSingleEmbedding(payload));
+    return normalizeGeminiEmbedding(readGeminiSingleEmbedding(payload), outputDimensionality);
   };
 
   const embedBatchInputs = async (
@@ -332,7 +351,7 @@ export async function createGeminiEmbeddingProvider(
       signal: callOptions?.signal,
     });
     const embeddings = readGeminiBatchEmbeddings(payload, inputs.length);
-    return embeddings.map((values) => sanitizeAndNormalizeEmbedding(values));
+    return embeddings.map((values) => normalizeGeminiEmbedding(values, outputDimensionality));
   };
 
   const embedBatch = async (
