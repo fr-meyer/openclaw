@@ -22,7 +22,7 @@ function supportsGeminiMultimodalEmbeddings(model: string): boolean {
     .trim()
     .replace(/^models\//, "")
     .replace(/^(gemini|google)\//, "");
-  return normalized === "gemini-embedding-2-preview";
+  return normalized === "gemini-embedding-2" || normalized === "gemini-embedding-2-preview";
 }
 
 export const geminiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapter = {
