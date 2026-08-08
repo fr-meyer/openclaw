@@ -137,6 +137,10 @@ export function createWhatsAppIngressMonitor(params: {
       failedMaxEntries: 450,
     },
     drain: {
+      // WhatsApp defers only after its in-memory debounce/reply scheduler has
+      // accepted the lifecycle. That scheduler owns adoption or abandonment;
+      // retaining the ingress timer here would dead-letter healthy queue waits.
+      deferredStallPolicy: "scheduler-owned",
       resolveNonRetryableFailure: resolveWhatsAppIngressNonRetryableFailure,
       deriveLaneKey: (record) => {
         try {
