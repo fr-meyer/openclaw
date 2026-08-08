@@ -51,6 +51,49 @@ function payload(id: string, remoteJid = REMOTE_JID): WhatsAppDurableInboundPayl
 }
 
 describe("createWhatsAppIngressMonitor", () => {
+  it("keeps a legitimately scheduled claim alive beyond the core watchdog window", async () => {
+    vi.useFakeTimers();
+    try {
+      await withTempState(async (stateDir) => {
+        const queue = createChannelIngressQueueForTests<WhatsAppDurableInboundPayload>({
+          channelId: "whatsapp",
+          accountId: "acct",
+          stateDir,
+        });
+        const id = eventId("msg-scheduled");
+        await queue.enqueue(id, payload("msg-scheduled"), { laneKey: REMOTE_JID });
+        let adopt: (() => void | Promise<void>) | undefined;
+
+        const monitor = createWhatsAppIngressMonitor({
+          queue,
+          pollIntervalMs: 10 * 60_000,
+          dispatch: async (_admission, lifecycle) => {
+            adopt = lifecycle.onAdopted;
+            lifecycle.onDeferred();
+            return { kind: "deferred" };
+          },
+        });
+
+        monitor.start();
+        await vi.waitFor(() => expect(adopt).toBeDefined());
+        await vi.advanceTimersByTimeAsync(6 * 60_000);
+
+        expect(await queue.listFailed?.()).toEqual([]);
+        expect(await queue.listClaims()).toHaveLength(1);
+
+        if (!adopt) {
+          throw new Error("expected WhatsApp adoption callback");
+        }
+        await adopt();
+        await monitor.waitForIdle();
+        expect((await queue.enqueue(id, payload("msg-scheduled"))).kind).toBe("completed");
+        await monitor.stop();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("releases claims when dispatch throws before adoption", async () => {
     await withTempState(async (stateDir) => {
       const queue = createChannelIngressQueueForTests<WhatsAppDurableInboundPayload>({
