@@ -77,6 +77,7 @@ type ChannelIngressDispatchLifecycle = {
 };
 
 type DeferredLaneOccupancy = "hold" | "release";
+type DeferredStallPolicy = "watch" | "scheduler-owned";
 
 export type CreateChannelIngressDrainOptions<
   TPayload,
@@ -109,6 +110,13 @@ export type CreateChannelIngressDrainOptions<
    * dispatch hands ownership to deferred work. Default "hold" (current behavior).
    */
   deferredLaneOccupancy?: DeferredLaneOccupancy;
+  /**
+   * Who owns stall detection after dispatch has handed a claim to a scheduler.
+   * Default "watch" preserves the bounded deferred watchdog. Use
+   * "scheduler-owned" only when the downstream queue guarantees adoption or
+   * abandonment and owns its own liveness diagnostics.
+   */
+  deferredStallPolicy?: DeferredStallPolicy;
   retryPolicy?: IngressRetryPolicyConfig;
   now?: () => number;
   formatError?: (err: unknown) => string;
@@ -176,6 +184,7 @@ export function createChannelIngressDrain<
   const scanLimit = options.scanLimit ?? 100;
   const startLimit = options.startLimit ?? 32;
   const deferredLaneOccupancy = options.deferredLaneOccupancy ?? "hold";
+  const deferredStallPolicy = options.deferredStallPolicy ?? "watch";
   const activeByClaim = new Map<string, ActiveHandlerState<TPayload, TMetadata>>();
   const laneOwnerByKey = new Map<string, ActiveHandlerState<TPayload, TMetadata>>();
   let disposed = false;
@@ -491,8 +500,13 @@ export function createChannelIngressDrain<
         if (state.phase !== "dispatching") {
           return;
         }
-        // Deferred holds the claim; watchdog remains armed until adoption or abandon.
+        // Deferred always holds the durable claim. A scheduler-owned handoff
+        // transfers liveness responsibility to the downstream queue, which
+        // must eventually adopt or abandon the lifecycle.
         state.phase = "deferred";
+        if (deferredStallPolicy === "scheduler-owned") {
+          clearStallTimer(state);
+        }
         if (deferredLaneOccupancy === "release") {
           if (laneOwnerByKey.get(state.laneKey) === state) {
             laneOwnerByKey.delete(state.laneKey);
