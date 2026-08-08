@@ -320,6 +320,43 @@ describe("Google embedding-batch bounded JSON reads", () => {
     });
   });
 
+  it("truncates oversized Gemini 2 batch outputs to the configured dimensions", async () => {
+    const values = [3, 4, ...Array<number>(3070).fill(0)];
+    stubBatchFetch((stage) =>
+      stage === "download"
+        ? new Response(JSON.stringify({ key: "r0", response: { embedding: { values } } }))
+        : undefined,
+    );
+
+    const result = await runBatch(singleRequest(), {
+      ...makeGeminiClient(),
+      model: "gemini-embedding-2-preview",
+      modelPath: "models/gemini-embedding-2-preview",
+      outputDimensionality: 768,
+    });
+
+    expect(result.get("r0")).toHaveLength(768);
+    expect(result.get("r0")?.slice(0, 3)).toEqual([0.6, 0.8, 0]);
+  });
+
+  it("rejects Gemini 2 batch outputs shorter than the configured dimensions", async () => {
+    const values = Array<number>(767).fill(1);
+    stubBatchFetch((stage) =>
+      stage === "download"
+        ? new Response(JSON.stringify({ key: "r0", response: { embedding: { values } } }))
+        : undefined,
+    );
+
+    await expect(
+      runBatch(singleRequest(), {
+        ...makeGeminiClient(),
+        model: "gemini-embedding-2-preview",
+        modelPath: "models/gemini-embedding-2-preview",
+        outputDimensionality: 768,
+      }),
+    ).rejects.toThrow("gemini embedding returned 767 dimensions, fewer than configured 768");
+  });
+
   it("preserves a configured gateway prefix for output downloads", async () => {
     const fetchMock = stubBatchFetch();
 
