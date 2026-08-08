@@ -41,6 +41,33 @@ type ExistingAgentSchemaMeta = {
   schemaVersion: number | null;
 };
 
+const SESSION_ENTRY_VALIDITY_TRIGGER_DEFINITIONS = [
+  {
+    name: "session_nodes_entry_valid_after_insert",
+    sql: `CREATE TRIGGER IF NOT EXISTS session_nodes_entry_valid_after_insert
+AFTER INSERT ON session_nodes
+BEGIN
+  UPDATE session_nodes SET entry_valid = 0 WHERE session_key = NEW.session_key;
+END`,
+  },
+  {
+    name: "session_nodes_entry_valid_after_entry_update",
+    sql: `CREATE TRIGGER IF NOT EXISTS session_nodes_entry_valid_after_entry_update
+AFTER UPDATE OF entry_json ON session_nodes
+BEGIN
+  UPDATE session_nodes SET entry_valid = 0 WHERE session_key = NEW.session_key;
+END`,
+  },
+  {
+    name: "session_nodes_entry_valid_after_identity_update",
+    sql: `CREATE TRIGGER IF NOT EXISTS session_nodes_entry_valid_after_identity_update
+AFTER UPDATE OF current_session_id, updated_at ON session_nodes
+BEGIN
+  UPDATE session_nodes SET entry_valid = 0 WHERE session_key = NEW.session_key;
+END`,
+  },
+] as const;
+
 const AGENT_SCHEMA_COMPATIBILITY = {
   allowedMissingTables: [
     MEMORY_INDEX_CHUNK_PROVENANCE_TABLE,
@@ -50,6 +77,11 @@ const AGENT_SCHEMA_COMPATIBILITY = {
     ...STANDING_INTENTS_FTS_SHADOW_TABLES,
   ],
   allowedMissingColumns: ["standing_intents.creator_sender"],
+  allowedAdditionalColumnDefinitions: {
+    "session_nodes.entry_valid": [
+      "entry_valid INTEGER NOT NULL DEFAULT 0 CHECK (entry_valid IN (-1, 0, 1))",
+    ],
+  },
   allowedColumnDefinitions: {
     "conversations.delivery_target": ["delivery_target TEXT NOT NULL DEFAULT ''"],
   },
@@ -57,6 +89,10 @@ const AGENT_SCHEMA_COMPATIBILITY = {
     {
       tableName: MEMORY_INDEX_SOURCES_TABLE,
       triggers: MEMORY_PATH_FTS_TRIGGER_DEFINITIONS,
+    },
+    {
+      tableName: "session_nodes",
+      triggers: SESSION_ENTRY_VALIDITY_TRIGGER_DEFINITIONS,
     },
   ],
 } satisfies SqliteSchemaCompatibility;
