@@ -13,6 +13,10 @@ import {
   DEFAULT_GEMINI_EMBEDDING_MODEL,
 } from "./embedding-provider.js";
 
+// Tier 2 has a shared 5M enqueued-token ceiling. Keep Gemini provider groups
+// strictly sequential so JSONL headroom is preserved across the whole project.
+const GEMINI_NATIVE_BATCH_CONCURRENCY = 1;
+
 function supportsGeminiMultimodalEmbeddings(model: string): boolean {
   const normalized = model
     .trim()
@@ -40,6 +44,10 @@ export const geminiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
       provider,
       runtime: {
         id: "gemini",
+        sourceWideBatchEmbed: true,
+        // Native batch creation is not idempotent. Stop on failure so a migration
+        // cannot silently switch pricing paths or resubmit after an uncertain result.
+        batchFailureMode: "error",
         cacheKeyData: {
           provider: "gemini",
           baseUrl: client.baseUrl,
@@ -71,7 +79,7 @@ export const geminiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
               }),
             })),
             wait: batch.wait,
-            concurrency: batch.concurrency,
+            concurrency: GEMINI_NATIVE_BATCH_CONCURRENCY,
             pollIntervalMs: batch.pollIntervalMs,
             timeoutMs: batch.timeoutMs,
             debug: batch.debug,
