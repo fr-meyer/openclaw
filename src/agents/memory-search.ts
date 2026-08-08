@@ -427,9 +427,11 @@ function resolveSyncConfig(
   _overrides: MemorySearchConfig | undefined,
 ): ResolvedMemorySearchSyncConfig {
   return {
-    onSessionStart: true,
-    onSearch: true,
-    watch: true,
+    // VPS cost guard: keep existing recall available, but require an explicit
+    // maintenance command before source changes may generate paid embeddings.
+    onSessionStart: false,
+    onSearch: false,
+    watch: false,
     watchDebounceMs: DEFAULT_WATCH_DEBOUNCE_MS,
     intervalMinutes: 0,
     embeddingBatchTimeoutSeconds: undefined,
