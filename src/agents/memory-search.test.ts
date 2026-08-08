@@ -504,9 +504,9 @@ describe("memory search config", () => {
     });
 
     expect(resolveMemorySearchSyncConfig(cfg, "main")).toEqual({
-      onSessionStart: true,
-      onSearch: true,
-      watch: true,
+      onSessionStart: false,
+      onSearch: false,
+      watch: false,
       watchDebounceMs: 1500,
       intervalMinutes: 0,
       embeddingBatchTimeoutSeconds: undefined,
