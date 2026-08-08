@@ -169,6 +169,7 @@ vi.mock("./embeddings.js", () => {
         options.provider === "fallback-provider" ||
         options.provider === "batch-test" ||
         options.provider === "batch-wide-test" ||
+        options.provider === "batch-closed-test" ||
         options.provider === identityAliasFixture.provider ||
         options.provider === "ollama"
           ? options.provider
@@ -249,11 +250,18 @@ vi.mock("./embeddings.js", () => {
                 ],
               },
             }
-          : providerId === "batch-test" || providerId === "batch-wide-test"
+          : providerId === "batch-test" ||
+              providerId === "batch-wide-test" ||
+              providerId === "batch-closed-test"
             ? {
                 runtime: {
                   id: providerId,
-                  ...(providerId === "batch-wide-test" ? { sourceWideBatchEmbed: true } : {}),
+                  ...(providerId === "batch-wide-test" || providerId === "batch-closed-test"
+                    ? { sourceWideBatchEmbed: true }
+                    : {}),
+                  ...(providerId === "batch-closed-test"
+                    ? { batchFailureMode: "error" as const }
+                    : {}),
                   batchEmbed: async (batch: { chunks: Array<{ text: string }> }) => {
                     providerRuntimeActiveBatchCalls += 1;
                     providerRuntimeMaxActiveBatchCalls = Math.max(
@@ -1144,6 +1152,28 @@ describe("memory index", () => {
 
       expect(providerRuntimeBatchCalls).toHaveLength(1);
       expect(embedBatchCalls).toBe(1);
+      expect(manager.status().batch).toMatchObject({
+        enabled: true,
+        failures: 1,
+        lastError: "provider runtime batch failed",
+      });
+    } finally {
+      await manager.close?.();
+    }
+  });
+
+  it("fails closed without synchronous embeddings when the provider requires native batch", async () => {
+    providerRuntimeBatchErrors = [new Error("provider runtime batch failed")];
+    const manager = await getFreshManager(
+      createCfg({ provider: "batch-closed-test", batchEnabled: true }),
+    );
+    try {
+      await expect(manager.sync({ reason: "test" })).rejects.toThrow(
+        "provider runtime batch failed",
+      );
+
+      expect(providerRuntimeBatchCalls).toHaveLength(1);
+      expect(embedBatchCalls).toBe(0);
       expect(manager.status().batch).toMatchObject({
         enabled: true,
         failures: 1,
