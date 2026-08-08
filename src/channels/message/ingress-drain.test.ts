@@ -471,36 +471,38 @@ describe("channel ingress drain", () => {
     });
   });
 
-  it("watchdog guillotines deferred phase (timer not cleared by deferral)", async () => {
-    await withTempState(async (stateDir) => {
-      let clock = 30_000;
-      const queue = createTestIngressQueue(stateDir, { now: () => clock });
-      await queue.enqueue("evt-def-stall", { text: "x" }, { laneKey: "l1" });
+  it("applies the selected deferred stall ownership policy", async () => {
+    for (const policy of ["watch", "scheduler-owned"] as const) {
+      await withTempState(async (stateDir) => {
+        const queue = createTestIngressQueue(stateDir);
+        const eventId = `evt-def-${policy}`;
+        await queue.enqueue(eventId, { text: "x" }, { laneKey: "l1" });
+        let lifecycleRef: ChannelIngressDispatchLifecycle | undefined;
+        const drain = createChannelIngressDrain<Payload>({
+          queue,
+          adoptionStallTimeoutMs: 5_000,
+          deferredStallPolicy: policy,
+          dispatchClaimedEvent: async (_event, lifecycle) => {
+            lifecycleRef = lifecycle;
+            lifecycle.onDeferred();
+            return { kind: "deferred" };
+          },
+        });
 
-      const drain = createChannelIngressDrain<Payload>({
-        queue,
-        now: () => clock,
-        adoptionStallTimeoutMs: 5_000,
-        dispatchClaimedEvent: async (_event, lifecycle) => {
-          lifecycle.onDeferred();
-          // Stay deferred without adoption — watchdog must still fire.
-          await new Promise(() => {});
-        },
+        await drain.drainOnce();
+        await vi.advanceTimersByTimeAsync(60_000);
+        const status = await queue.enqueue(eventId, { text: "x" });
+        if (policy === "watch") {
+          expect(status).toMatchObject({ kind: "failed", record: { reason: "handler-timeout" } });
+        } else {
+          expect(await queue.listClaims()).toHaveLength(1);
+          const lifecycle = expectDefined(lifecycleRef, "scheduler-owned deferred lifecycle");
+          await Promise.all([lifecycle.onAdopted(), lifecycle.onAdopted()]);
+          expect((await queue.enqueue(eventId, { text: "x" })).kind).toBe("completed");
+        }
+        drain.dispose();
       });
-
-      await drain.drainOnce();
-      expect(await queue.listClaims()).toHaveLength(1);
-      clock += 5_000;
-      await vi.advanceTimersByTimeAsync(5_000);
-      await drain.waitForIdle();
-
-      const reenqueue = await queue.enqueue("evt-def-stall", { text: "x" });
-      expect(reenqueue.kind).toBe("failed");
-      if (reenqueue.kind === "failed") {
-        expect(reenqueue.record.reason).toBe("handler-timeout");
-      }
-      drain.dispose();
-    });
+    }
   });
 
   it("watchdog does not kill healthy long turns after adoption", async () => {
