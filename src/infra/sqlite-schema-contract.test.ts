@@ -145,6 +145,35 @@ describe("assertSqliteSchemaContains", () => {
     }
   });
 
+  it("accepts only an allowlisted forward-additive column definition", () => {
+    const migratedSchema = CANONICAL_SCHEMA.replace(
+      "value TEXT NOT NULL CHECK (length(value) > 0)",
+      "value TEXT NOT NULL CHECK (length(value) > 0), future_state INTEGER NOT NULL DEFAULT 0",
+    );
+    const database = createDatabase(migratedSchema);
+    try {
+      expect(() => assertSqliteSchemaContains(database, "test database", CANONICAL_SCHEMA)).toThrow(
+        "column definitions differ for parents",
+      );
+      expect(() =>
+        assertSqliteSchemaContains(database, "test database", CANONICAL_SCHEMA, {
+          allowedAdditionalColumnDefinitions: {
+            "parents.future_state": ["future_state INTEGER NOT NULL DEFAULT 0"],
+          },
+        }),
+      ).not.toThrow();
+      expect(() =>
+        assertSqliteSchemaContains(database, "test database", CANONICAL_SCHEMA, {
+          allowedAdditionalColumnDefinitions: {
+            "parents.future_state": ["future_state INTEGER NOT NULL DEFAULT 1"],
+          },
+        }),
+      ).toThrow("column definitions differ for parents");
+    } finally {
+      database.close();
+    }
+  });
+
   it("accepts only allowlisted missing lazy-additive tables", () => {
     const migratedSchema = CANONICAL_SCHEMA.replace(
       / {2}CREATE TABLE events \([\s\S]*?\n {2}\);\n/u,
