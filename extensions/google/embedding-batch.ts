@@ -10,7 +10,6 @@ import {
   formatBatchErrorDetail,
   normalizeBatchBaseUrl,
   readEmbeddingBatchJsonl,
-  sanitizeAndNormalizeEmbedding,
   withRemoteHttpResponse,
   type EmbeddingBatchExecutionParams,
 } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
@@ -22,7 +21,11 @@ import {
   resolveProviderOperationTimeoutMs,
   waitProviderOperationPollInterval,
 } from "openclaw/plugin-sdk/provider-http";
-import type { GeminiEmbeddingClient, GeminiTextEmbeddingRequest } from "./embedding-provider.js";
+import {
+  normalizeGeminiEmbedding,
+  type GeminiEmbeddingClient,
+  type GeminiTextEmbeddingRequest,
+} from "./embedding-provider.js";
 import { parseGeminiAuth } from "./gemini-auth.js";
 
 type GeminiBatchRequest = {
@@ -350,6 +353,7 @@ function applyGeminiBatchOutputLine(params: {
   remaining: Set<string>;
   errors: string[];
   byCustomId: Map<string, number[]>;
+  outputDimensionality?: number;
 }): void {
   const customId = params.line.key ?? params.line.custom_id ?? params.line.request_id;
   // Only the first response for a submitted id may mutate results.
@@ -361,9 +365,14 @@ function applyGeminiBatchOutputLine(params: {
     params.errors.push(`${customId}: ${error}`);
     return;
   }
-  const embedding = sanitizeAndNormalizeEmbedding(
-    params.line.embedding?.values ?? params.line.response?.embedding?.values ?? [],
-  );
+  const values = params.line.embedding?.values ?? params.line.response?.embedding?.values ?? [];
+  let embedding: number[];
+  try {
+    embedding = normalizeGeminiEmbedding(values, params.outputDimensionality);
+  } catch (dimensionError) {
+    params.errors.push(`${customId}: ${formatGeminiBatchError(dimensionError)}`);
+    return;
+  }
   if (embedding.length === 0) {
     params.errors.push(`${customId}: empty embedding`);
     return;
@@ -401,6 +410,7 @@ async function fetchGeminiBatchOutput(params: {
             remaining: params.remaining,
             errors: params.errors,
             byCustomId: params.byCustomId,
+            outputDimensionality: params.gemini.outputDimensionality,
           });
           return params.errors.length === 0 && params.remaining.size > 0;
         },
