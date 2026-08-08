@@ -1,5 +1,6 @@
 // Google plugin module implements embedding batch behavior.
 import crypto from "node:crypto";
+import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import {
   buildEmbeddingBatchGroupOptions,
   runEmbeddingBatchGroups,
@@ -58,6 +59,14 @@ type GeminiBatchOutputLine = {
 };
 
 const GEMINI_BATCH_MAX_REQUESTS = 50000;
+// Tier 2 permits 5M enqueued embedding tokens across active jobs. A 10 MiB JSONL
+// ceiling targets roughly 2.5M text tokens at four characters per token, leaving
+// substantial headroom for tokenizer variance and JSON overhead. Quota rejections
+// still split recursively below as a final fail-safe.
+const GEMINI_BATCH_TIER2_ENQUEUED_TOKEN_LIMIT = 5_000_000;
+const GEMINI_BATCH_MAX_JSONL_BYTES = 10 * 1024 * 1024;
+const GEMINI_BATCH_OUTPUT_DOWNLOAD_MAX_ATTEMPTS = 2;
+const log = createSubsystemLogger("memory/embeddings/gemini-batch");
 
 function bindGeminiBatchAuth(client: GeminiEmbeddingClient): GeminiEmbeddingClient {
   const apiKey = client.apiKeys[0];
@@ -77,6 +86,57 @@ function bindGeminiBatchAuth(client: GeminiEmbeddingClient): GeminiEmbeddingClie
 
 function hashText(text: string): string {
   return crypto.createHash("sha256").update(text).digest("hex");
+}
+
+function formatGeminiBatchError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+class GeminiBatchOutputIncompleteError extends Error {}
+
+function isRetryableGeminiBatchOutputError(error: unknown): boolean {
+  if (error instanceof GeminiBatchOutputIncompleteError) {
+    return true;
+  }
+  const message = formatGeminiBatchError(error);
+  if (/gemini\.batch-file-content\s*\((?:408|409|425|429|500|502|503|504)\)/i.test(message)) {
+    return true;
+  }
+  return /malformed JSONL record|fetch failed|network|socket|stream|terminated|premature|unexpected end/i.test(
+    message,
+  );
+}
+
+function hasProviderHttpStatus(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const candidate = error as { status?: unknown; statusCode?: unknown };
+  return typeof candidate.status === "number" || typeof candidate.statusCode === "number";
+}
+
+type GeminiBatchSplitReason = "upload-too-large" | "batch-token-quota";
+
+function classifyGeminiBatchSplitError(error: unknown): GeminiBatchSplitReason | null {
+  const message = formatGeminiBatchError(error);
+  if (
+    /gemini\.batch-file-upload/i.test(message) &&
+    (/\b413\b/.test(message) ||
+      /payload too large/i.test(message) ||
+      /request body too large/i.test(message) ||
+      /file too large/i.test(message) ||
+      /maximum allowed/i.test(message) ||
+      /max(?:imum)? (?:body|payload|file) (?:size )?(?:exceeded|limit)/i.test(message))
+  ) {
+    return "upload-too-large";
+  }
+  if (
+    /gemini\.batch-create\s*\(429\)/i.test(message) &&
+    /quota|resource[_ -]?exhausted|enqueued tokens?/i.test(message)
+  ) {
+    return "batch-token-quota";
+  }
+  return null;
 }
 
 function getGeminiVersionedRouteBase(baseUrl: string, route: "upload" | "download"): string | null {
@@ -314,6 +374,7 @@ function applyGeminiBatchOutputLine(params: {
 async function fetchGeminiBatchOutput(params: {
   gemini: GeminiEmbeddingClient;
   fileId: string;
+  expectedRecords: number;
   remaining: Set<string>;
   errors: string[];
   byCustomId: Map<string, number[]>;
@@ -331,7 +392,9 @@ async function fetchGeminiBatchOutput(params: {
       await assertOkOrThrowProviderError(res, "gemini.batch-file-content");
       await readEmbeddingBatchJsonl<GeminiBatchOutputLine>(res, {
         label: "gemini.batch-file-content",
-        maxRecords: params.remaining.size,
+        // Retries reread the same immutable output from the beginning. Count the
+        // original group size so already-consumed records do not exhaust the cap.
+        maxRecords: params.expectedRecords,
         onRecord: (line) => {
           applyGeminiBatchOutputLine({
             line,
@@ -344,6 +407,107 @@ async function fetchGeminiBatchOutput(params: {
       });
     },
   });
+}
+
+async function downloadGeminiBatchOutputWithRetry(params: {
+  gemini: GeminiEmbeddingClient;
+  batchName: string;
+  fileId: string;
+  group: number;
+  groups: number;
+  requests: number;
+  remaining: Set<string>;
+  errors: string[];
+  byCustomId: Map<string, number[]>;
+  debug?: (message: string, data?: Record<string, unknown>) => void;
+}): Promise<void> {
+  const context = {
+    batchName: params.batchName,
+    outputFileId: params.fileId,
+    group: params.group,
+    groups: params.groups,
+    requests: params.requests,
+  };
+  for (let attempt = 1; attempt <= GEMINI_BATCH_OUTPUT_DOWNLOAD_MAX_ATTEMPTS; attempt += 1) {
+    log.info("memory embeddings: gemini batch output download started", {
+      ...context,
+      attempt,
+      maxAttempts: GEMINI_BATCH_OUTPUT_DOWNLOAD_MAX_ATTEMPTS,
+      remaining: params.remaining.size,
+    });
+    params.debug?.("memory embeddings: gemini batch output download started", {
+      ...context,
+      attempt,
+      maxAttempts: GEMINI_BATCH_OUTPUT_DOWNLOAD_MAX_ATTEMPTS,
+      remaining: params.remaining.size,
+    });
+    try {
+      await fetchGeminiBatchOutput({
+        gemini: params.gemini,
+        fileId: params.fileId,
+        expectedRecords: params.requests,
+        remaining: params.remaining,
+        errors: params.errors,
+        byCustomId: params.byCustomId,
+      });
+      if (params.errors.length > 0) {
+        log.warn("memory embeddings: gemini batch output contained a provider error", {
+          ...context,
+          attempt,
+          error: formatBatchErrorDetail(params.errors[0]) ?? "unknown error",
+        });
+        return;
+      }
+      if (params.remaining.size > 0) {
+        throw new GeminiBatchOutputIncompleteError(
+          `gemini batch output incomplete: missing ${params.remaining.size} of ${params.requests} responses`,
+        );
+      }
+      log.info("memory embeddings: gemini batch output download completed", {
+        ...context,
+        attempt,
+      });
+      params.debug?.("memory embeddings: gemini batch output download completed", {
+        ...context,
+        attempt,
+      });
+      return;
+    } catch (error) {
+      const retryable = isRetryableGeminiBatchOutputError(error);
+      const errorMessage = formatBatchErrorDetail(formatGeminiBatchError(error)) ?? "unknown error";
+      log.warn("memory embeddings: gemini batch output download failed", {
+        ...context,
+        attempt,
+        maxAttempts: GEMINI_BATCH_OUTPUT_DOWNLOAD_MAX_ATTEMPTS,
+        remaining: params.remaining.size,
+        retryable,
+        error: errorMessage,
+      });
+      params.debug?.("memory embeddings: gemini batch output download failed", {
+        ...context,
+        attempt,
+        maxAttempts: GEMINI_BATCH_OUTPUT_DOWNLOAD_MAX_ATTEMPTS,
+        remaining: params.remaining.size,
+        retryable,
+        error: errorMessage,
+      });
+      if (!retryable || attempt === GEMINI_BATCH_OUTPUT_DOWNLOAD_MAX_ATTEMPTS) {
+        // Preserve structured ProviderHttpError fields for callers and existing
+        // retry/status classification. The preceding durable log carries context.
+        if (hasProviderHttpStatus(error)) {
+          throw error;
+        }
+        throw new Error(
+          `gemini batch ${params.batchName} output download failed after ${attempt} attempt${attempt === 1 ? "" : "s"}: ${errorMessage}`,
+          { cause: error },
+        );
+      }
+      log.warn("memory embeddings: retrying existing Gemini batch output file", {
+        ...context,
+        nextAttempt: attempt + 1,
+      });
+    }
+  }
 }
 
 async function waitForGeminiBatch(params: {
@@ -410,14 +574,27 @@ export async function runGeminiEmbeddingBatches(
     gemini: GeminiEmbeddingClient;
     agentId: string;
     requests: GeminiBatchRequest[];
+    maxJsonlBytes?: number;
   } & EmbeddingBatchExecutionParams,
 ): Promise<Map<string, number[]>> {
   const gemini = bindGeminiBatchAuth(params.gemini);
   return await runEmbeddingBatchGroups({
     ...buildEmbeddingBatchGroupOptions(params, {
       maxRequests: GEMINI_BATCH_MAX_REQUESTS,
+      maxJsonlBytes: params.maxJsonlBytes ?? GEMINI_BATCH_MAX_JSONL_BYTES,
       debugLabel: "memory embeddings: gemini batch submit",
     }),
+    shouldSplitGroupOnError: (error) => classifyGeminiBatchSplitError(error) !== null,
+    onSplitGroup: ({ error, group, parts, depth }) => {
+      params.debug?.("memory embeddings: gemini batch rejected; splitting group", {
+        requests: group.length,
+        parts: parts.map((part) => part.length),
+        depth,
+        reason: classifyGeminiBatchSplitError(error) ?? "unknown",
+        tier2EnqueuedTokenLimit: GEMINI_BATCH_TIER2_ENQUEUED_TOKEN_LIMIT,
+        error: formatBatchErrorDetail(formatGeminiBatchError(error)) ?? "unknown error",
+      });
+    },
     runGroup: async ({ group, groupIndex, groups, byCustomId, pollIntervalMs, timeoutMs }) => {
       const batchInfo = await submitGeminiBatch({
         gemini,
@@ -436,6 +613,13 @@ export async function runGeminiEmbeddingBatches(
         groups,
         requests: group.length,
       });
+      log.info("memory embeddings: gemini batch created", {
+        batchName,
+        state: getGeminiBatchState(batchInfo),
+        group: groupIndex + 1,
+        groups,
+        requests: group.length,
+      });
 
       const completed = await waitForGeminiBatch({
         gemini,
@@ -446,15 +630,27 @@ export async function runGeminiEmbeddingBatches(
         debug: params.debug,
         initial: batchInfo,
       });
+      log.info("memory embeddings: gemini batch output ready", {
+        batchName,
+        outputFileId: completed.outputFileId,
+        group: groupIndex + 1,
+        groups,
+        requests: group.length,
+      });
 
       const errors: string[] = [];
       const remaining = new Set(group.map((request) => request.custom_id));
-      await fetchGeminiBatchOutput({
+      await downloadGeminiBatchOutputWithRetry({
         gemini,
+        batchName,
         fileId: completed.outputFileId,
+        group: groupIndex + 1,
+        groups,
+        requests: group.length,
         remaining,
         errors,
         byCustomId,
+        debug: params.debug,
       });
 
       if (errors.length > 0) {
