@@ -542,6 +542,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerSyncOps {
     const missingChunks = missing.map((item) => item.chunk);
     const batchResult = await this.runBatchWithFallback({
       provider: provider.id,
+      failureMode: generation.runtime?.batchFailureMode ?? "fallback",
       run: async () =>
         await batchEmbed({
           agentId: this.agentId,
@@ -884,6 +885,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerSyncOps {
 
   private async runBatchWithFallback<T>(params: {
     provider: string;
+    failureMode: "fallback" | "error";
     run: () => Promise<T>;
     fallback: () => Promise<number[][]>;
   }): Promise<T | number[][]> {
@@ -908,6 +910,12 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerSyncOps {
       forceDisable,
     });
     const suffix = failure.disabled ? "disabling batch" : "keeping batch enabled";
+    if (params.failureMode === "error") {
+      log.warn(
+        `memory embeddings: ${params.provider} batch failed (${failure.count}/${MEMORY_BATCH_FAILURE_LIMIT}); ${suffix}; non-batch fallback prohibited: ${message}`,
+      );
+      throw result.error;
+    }
     log.warn(
       `memory embeddings: ${params.provider} batch failed (${failure.count}/${MEMORY_BATCH_FAILURE_LIMIT}); ${suffix}; falling back to non-batch embeddings: ${message}`,
     );
