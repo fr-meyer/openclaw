@@ -76,6 +76,11 @@ export type SqliteSchemaCompatibility = {
   /** Additive columns that may be absent until their owning feature lazily ensures them. */
   allowedMissingColumns?: readonly string[];
   /**
+   * Exact additive column definitions written by a forward-compatible runtime.
+   * Columns not listed here remain a hard schema mismatch.
+   */
+  allowedAdditionalColumnDefinitions?: Readonly<Record<string, readonly string[]>>;
+  /**
    * Exact definitions produced by supported additive migrations when SQLite
    * requires a temporary default that the clean schema does not retain.
    */
@@ -445,11 +450,21 @@ function compareTableDefinitions(
     ([columnName]) =>
       !actual.columns.has(columnName) && allowedMissingColumns.has(`${tableName}.${columnName}`),
   ).length;
-  if (actual.columns.size + allowedMissingCount !== expected.columns.size) {
+  const additionalColumns = [...actual.columns].filter(
+    ([columnName]) => !expected.columns.has(columnName),
+  );
+  if (
+    actual.columns.size - additionalColumns.length + allowedMissingCount !==
+    expected.columns.size
+  ) {
     return "column definitions";
   }
-  if ([...actual.columns].some(([columnName]) => !expected.columns.has(columnName))) {
-    return "column definitions";
+  for (const [columnName, actualDefinition] of additionalColumns) {
+    const allowed =
+      compatibility.allowedAdditionalColumnDefinitions?.[`${tableName}.${columnName}`] ?? [];
+    if (!allowed.some((definition) => normalizeSqlWhitespace(definition) === actualDefinition)) {
+      return "column definitions";
+    }
   }
   for (const [columnName, expectedDefinition] of expected.columns) {
     const actualDefinition = actual.columns.get(columnName);
