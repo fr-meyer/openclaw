@@ -37,6 +37,8 @@ export type MemoryEmbeddingProviderRuntime = {
   inlineQueryTimeoutMs?: number;
   inlineBatchTimeoutMs?: number;
   sourceWideBatchEmbed?: boolean;
+  /** Whether a native-batch failure may fall back to synchronous embeddings. */
+  batchFailureMode?: "fallback" | "error";
   batchEmbed?: (options: MemoryEmbeddingBatchOptions) => Promise<number[][] | null>;
 };
 
