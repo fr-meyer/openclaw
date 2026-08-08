@@ -55,6 +55,34 @@ describe("Gemini memory embedding adapter", () => {
     mocks.runGeminiEmbeddingBatches.mockClear();
   });
 
+  it("uses source-wide native batches and fails closed on batch errors", async () => {
+    const result = await createAdapterWithHeaders({});
+
+    expect(result.runtime).toMatchObject({
+      id: "gemini",
+      sourceWideBatchEmbed: true,
+      batchFailureMode: "error",
+    });
+  });
+
+  it("forces Gemini native batch groups to run one at a time", async () => {
+    const result = await createAdapterWithHeaders({});
+
+    await result.runtime?.batchEmbed?.({
+      agentId: "franck",
+      chunks: [{ text: "hello", embeddingInput: { text: "hello" } }],
+      wait: true,
+      concurrency: 99,
+      pollIntervalMs: 1,
+      timeoutMs: 5_000,
+      debug: vi.fn(),
+    } as never);
+
+    expect(mocks.runGeminiEmbeddingBatches).toHaveBeenCalledWith(
+      expect.objectContaining({ concurrency: 1 }),
+    );
+  });
+
   it("keeps durable identity stable across generated client-version changes", async () => {
     const sharedHeaders = {
       "Content-Type": "application/json",
