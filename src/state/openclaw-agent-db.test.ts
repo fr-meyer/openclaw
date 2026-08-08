@@ -3152,6 +3152,52 @@ describe("openclaw agent database", () => {
     }
   });
 
+  it("accepts the exact same-version forward-additive session-key surfaces", () => {
+    const stateDir = createTempStateDir();
+    const env = { OPENCLAW_STATE_DIR: stateDir };
+    const databasePath = openOpenClawAgentDatabase({ agentId: "worker-1", env }).path;
+    closeOpenClawAgentDatabasesForTest();
+    closeOpenClawStateDatabaseForTest();
+
+    const { DatabaseSync } = requireNodeSqlite();
+    const forwardAdditive = new DatabaseSync(databasePath);
+    forwardAdditive.exec(`
+      ALTER TABLE session_nodes
+        ADD COLUMN entry_valid INTEGER NOT NULL DEFAULT 0 CHECK (entry_valid IN (-1, 0, 1));
+      CREATE INDEX idx_agent_session_nodes_entry_valid_pending
+        ON session_nodes(session_key)
+        WHERE entry_valid = 0;
+      CREATE TABLE session_key_contract (
+        id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+        main_key TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      ) STRICT;
+      INSERT INTO session_key_contract (id, main_key, updated_at) VALUES (1, 'main', 0);
+      CREATE TRIGGER session_nodes_entry_valid_after_insert
+      AFTER INSERT ON session_nodes
+      BEGIN
+        UPDATE session_nodes SET entry_valid = 0 WHERE session_key = NEW.session_key;
+      END;
+      CREATE TRIGGER session_nodes_entry_valid_after_entry_update
+      AFTER UPDATE OF entry_json ON session_nodes
+      BEGIN
+        UPDATE session_nodes SET entry_valid = 0 WHERE session_key = NEW.session_key;
+      END;
+      CREATE TRIGGER session_nodes_entry_valid_after_identity_update
+      AFTER UPDATE OF current_session_id, updated_at ON session_nodes
+      BEGIN
+        UPDATE session_nodes SET entry_valid = 0 WHERE session_key = NEW.session_key;
+      END;
+    `);
+    forwardAdditive.close();
+
+    const reopened = openOpenClawAgentDatabase({ agentId: "worker-1", env });
+    expect(reopened.db.prepare("PRAGMA quick_check").get()).toEqual({ quick_check: "ok" });
+    expect(
+      reopened.db.prepare("SELECT main_key FROM session_key_contract WHERE id = 1").get(),
+    ).toEqual({ main_key: "main" });
+  });
+
   it("rejects primary-key collation drift in a current-schema table", () => {
     const stateDir = createTempStateDir();
     const env = { OPENCLAW_STATE_DIR: stateDir };
