@@ -46,6 +46,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function requestBodyText(init?: RequestInit): string {
+  if (typeof init?.body !== "string") {
+    throw new Error("expected a string request body");
+  }
+  return init.body;
+}
+
 async function listenLoopbackServer(server: ReturnType<typeof createServer>): Promise<number> {
   return await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -499,5 +506,381 @@ describe("Google embedding-batch bounded JSON reads", () => {
     );
 
     await expect(runBatch()).rejects.toThrow("conflicting output files");
+  });
+
+  it("treats an intentional early output-stream cancellation as success", async () => {
+    let canceled = false;
+    const encoder = new TextEncoder();
+    const fetchMock = stubBatchFetch((stage) =>
+      stage === "download"
+        ? new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode(
+                    `${JSON.stringify({ key: "r0", response: { embedding: { values: [1, 0] } } })}\n`,
+                  ),
+                );
+              },
+              cancel() {
+                canceled = true;
+              },
+            }),
+          )
+        : undefined,
+    );
+
+    await expect(runBatch()).resolves.toEqual(new Map([["r0", [1, 0]]]));
+    expect(canceled).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input]) => batchStageForUrl(fetchInputUrl(input)) === "download",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("retries the same output file after malformed streamed JSONL without resubmitting", async () => {
+    const requests = [batchRequest("r0", "hello"), batchRequest("r1", "world")];
+    let downloadAttempt = 0;
+    const debug = vi.fn();
+    const fetchMock = stubBatchFetch((stage) => {
+      if (stage !== "download") {
+        return undefined;
+      }
+      downloadAttempt += 1;
+      if (downloadAttempt === 1) {
+        return new Response(
+          `${JSON.stringify({ key: "r0", response: { embedding: { values: [1, 0] } } })}\n{bad}\n`,
+        );
+      }
+      return new Response(
+        [
+          JSON.stringify({ key: "r0", response: { embedding: { values: [1, 0] } } }),
+          JSON.stringify({ key: "r1", response: { embedding: { values: [0, 1] } } }),
+        ].join("\n"),
+      );
+    });
+
+    await expect(
+      runGeminiEmbeddingBatches({
+        gemini: makeGeminiClient(),
+        agentId: "main",
+        requests,
+        wait: true,
+        concurrency: 1,
+        pollIntervalMs: 1,
+        timeoutMs: 5_000,
+        debug,
+      }),
+    ).resolves.toEqual(
+      new Map([
+        ["r0", [1, 0]],
+        ["r1", [0, 1]],
+      ]),
+    );
+    expect(
+      fetchMock.mock.calls.filter(([input]) => batchStageForUrl(fetchInputUrl(input)) === "create"),
+    ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input]) => batchStageForUrl(fetchInputUrl(input)) === "download",
+      ),
+    ).toHaveLength(2);
+    expect(debug).toHaveBeenCalledWith(
+      "memory embeddings: gemini batch output download failed",
+      expect.objectContaining({ attempt: 1, retryable: true, outputFileId: "files/out-0" }),
+    );
+  });
+
+  it("retries the same output file when a successful response is incomplete", async () => {
+    const requests = [batchRequest("r0", "hello"), batchRequest("r1", "world")];
+    let downloadAttempt = 0;
+    const fetchMock = stubBatchFetch((stage) => {
+      if (stage !== "download") {
+        return undefined;
+      }
+      downloadAttempt += 1;
+      const lines = [JSON.stringify({ key: "r0", response: { embedding: { values: [1, 0] } } })];
+      if (downloadAttempt > 1) {
+        lines.push(JSON.stringify({ key: "r1", response: { embedding: { values: [0, 1] } } }));
+      }
+      return new Response(lines.join("\n"));
+    });
+
+    await expect(runBatch(requests)).resolves.toEqual(
+      new Map([
+        ["r0", [1, 0]],
+        ["r1", [0, 1]],
+      ]),
+    );
+    expect(
+      fetchMock.mock.calls.filter(([input]) => batchStageForUrl(fetchInputUrl(input)) === "create"),
+    ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input]) => batchStageForUrl(fetchInputUrl(input)) === "download",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("does not retry a deterministic per-record provider error", async () => {
+    const fetchMock = stubBatchFetch((stage) =>
+      stage === "download"
+        ? new Response(
+            JSON.stringify({
+              key: "r0",
+              response: { error: { message: "invalid request content" } },
+            }),
+          )
+        : undefined,
+    );
+
+    await expect(runBatch()).rejects.toThrow("invalid request content");
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input]) => batchStageForUrl(fetchInputUrl(input)) === "download",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("fails with durable context after two malformed reads of the same output file", async () => {
+    const debug = vi.fn();
+    const fetchMock = stubBatchFetch((stage) =>
+      stage === "download" ? new Response("{bad}\n") : undefined,
+    );
+
+    await expect(
+      runGeminiEmbeddingBatches({
+        gemini: makeGeminiClient(),
+        agentId: "main",
+        requests: singleRequest(),
+        wait: true,
+        concurrency: 1,
+        pollIntervalMs: 1,
+        timeoutMs: 5_000,
+        debug,
+      }),
+    ).rejects.toThrow(
+      "gemini batch batches/b-0 output download failed after 2 attempts: gemini.batch-file-content: malformed JSONL record",
+    );
+    expect(
+      fetchMock.mock.calls.filter(([input]) => batchStageForUrl(fetchInputUrl(input)) === "create"),
+    ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input]) => batchStageForUrl(fetchInputUrl(input)) === "download",
+      ),
+    ).toHaveLength(2);
+    expect(debug).toHaveBeenCalledWith(
+      "memory embeddings: gemini batch output download failed",
+      expect.objectContaining({
+        batchName: "batches/b-0",
+        outputFileId: "files/out-0",
+        attempt: 2,
+        maxAttempts: 2,
+        retryable: true,
+      }),
+    );
+  });
+
+  it("splits Gemini request files by the configured JSONL byte ceiling", async () => {
+    const requests = [batchRequest("r0", "hello"), batchRequest("r1", "world")];
+    let nextUpload = 0;
+    const fetchMock = stubBatchFetch((stage, url, init) => {
+      if (stage === "upload") {
+        const index = nextUpload++;
+        return jsonResponse({ file: { name: `files/f-${index}` } });
+      }
+      if (stage === "create") {
+        const fileName = (
+          JSON.parse(requestBodyText(init)) as {
+            batch: { inputConfig: { file_name: string } };
+          }
+        ).batch.inputConfig.file_name;
+        const index = Number(fileName.split("-").at(-1));
+        return jsonResponse({
+          name: `batches/b-${index}`,
+          done: true,
+          response: { responsesFile: `files/out-${index}` },
+        });
+      }
+      if (stage === "download") {
+        const index = Number(url.match(/out-(\d+)/)?.[1]);
+        return new Response(
+          JSON.stringify({
+            key: requests[index]?.custom_id,
+            response: { embedding: { values: [index + 1, 0, 0] } },
+          }),
+        );
+      }
+      return undefined;
+    });
+    const oneRequestBytes = new TextEncoder().encode(JSON.stringify(requests[0])).byteLength;
+
+    await expect(
+      runGeminiEmbeddingBatches({
+        gemini: makeGeminiClient(),
+        agentId: "main",
+        requests,
+        maxJsonlBytes: oneRequestBytes,
+        wait: true,
+        concurrency: 1,
+        pollIntervalMs: 1,
+        timeoutMs: 5_000,
+      }),
+    ).resolves.toEqual(
+      new Map([
+        ["r0", [1, 0, 0]],
+        ["r1", [1, 0, 0]],
+      ]),
+    );
+    expect(
+      fetchMock.mock.calls.filter(([input]) => batchStageForUrl(fetchInputUrl(input)) === "upload"),
+    ).toHaveLength(2);
+  });
+
+  it("recursively splits a Gemini group rejected as too large", async () => {
+    const requests = [batchRequest("r0", "hello"), batchRequest("r1", "world")];
+    let firstUpload = true;
+    let nextUpload = 0;
+    const debug = vi.fn();
+    stubBatchFetch((stage, url, init) => {
+      if (stage === "upload") {
+        if (firstUpload) {
+          firstUpload = false;
+          return jsonResponse({ error: { message: "payload too large" } }, 413);
+        }
+        const index = nextUpload++;
+        return jsonResponse({ file: { name: `files/f-${index}` } });
+      }
+      if (stage === "create") {
+        const fileName = (
+          JSON.parse(requestBodyText(init)) as {
+            batch: { inputConfig: { file_name: string } };
+          }
+        ).batch.inputConfig.file_name;
+        const index = Number(fileName.split("-").at(-1));
+        return jsonResponse({
+          name: `batches/b-${index}`,
+          done: true,
+          response: { responsesFile: `files/out-${index}` },
+        });
+      }
+      if (stage === "download") {
+        const index = Number(url.match(/out-(\d+)/)?.[1]);
+        return new Response(
+          JSON.stringify({
+            key: requests[index]?.custom_id,
+            response: { embedding: { values: [index + 1, 0, 0] } },
+          }),
+        );
+      }
+      return undefined;
+    });
+
+    await expect(
+      runGeminiEmbeddingBatches({
+        gemini: makeGeminiClient(),
+        agentId: "main",
+        requests,
+        wait: true,
+        concurrency: 1,
+        pollIntervalMs: 1,
+        timeoutMs: 5_000,
+        debug,
+      }),
+    ).resolves.toEqual(
+      new Map([
+        ["r0", [1, 0, 0]],
+        ["r1", [1, 0, 0]],
+      ]),
+    );
+    expect(debug).toHaveBeenCalledWith(
+      "memory embeddings: gemini batch rejected; splitting group",
+      expect.objectContaining({
+        requests: 2,
+        parts: [1, 1],
+        depth: 0,
+        reason: "upload-too-large",
+        tier2EnqueuedTokenLimit: 5_000_000,
+      }),
+    );
+  });
+
+  it("recursively splits a Gemini group rejected by the enqueued-token quota", async () => {
+    const requests = [batchRequest("r0", "hello"), batchRequest("r1", "world")];
+    let nextUpload = -1;
+    let rejectFirstCreate = true;
+    const debug = vi.fn();
+    stubBatchFetch((stage, url, init) => {
+      if (stage === "upload") {
+        const index = nextUpload++;
+        return jsonResponse({ file: { name: `files/f-${index}` } });
+      }
+      if (stage === "create") {
+        const fileName = (
+          JSON.parse(requestBodyText(init)) as {
+            batch: { inputConfig: { file_name: string } };
+          }
+        ).batch.inputConfig.file_name;
+        const index = Number(fileName.split("-").at(-1));
+        if (rejectFirstCreate) {
+          rejectFirstCreate = false;
+          return jsonResponse(
+            {
+              error: {
+                code: 429,
+                message: "You exceeded your current quota for batch enqueued tokens.",
+                status: "RESOURCE_EXHAUSTED",
+              },
+            },
+            429,
+          );
+        }
+        return jsonResponse({
+          name: `batches/b-${index}`,
+          done: true,
+          response: { responsesFile: `files/out-${index}` },
+        });
+      }
+      if (stage === "download") {
+        const index = Number(url.match(/out-(\d+)/)?.[1]);
+        return new Response(
+          JSON.stringify({
+            key: requests[index]?.custom_id,
+            response: { embedding: { values: [index + 1, 0, 0] } },
+          }),
+        );
+      }
+      return undefined;
+    });
+
+    await expect(
+      runGeminiEmbeddingBatches({
+        gemini: makeGeminiClient(),
+        agentId: "main",
+        requests,
+        wait: true,
+        concurrency: 1,
+        pollIntervalMs: 1,
+        timeoutMs: 5_000,
+        debug,
+      }),
+    ).resolves.toEqual(
+      new Map([
+        ["r0", [1, 0, 0]],
+        ["r1", [1, 0, 0]],
+      ]),
+    );
+    expect(debug).toHaveBeenCalledWith(
+      "memory embeddings: gemini batch rejected; splitting group",
+      expect.objectContaining({
+        requests: 2,
+        parts: [1, 1],
+        depth: 0,
+        reason: "batch-token-quota",
+        tier2EnqueuedTokenLimit: 5_000_000,
+      }),
+    );
   });
 });
