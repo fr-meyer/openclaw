@@ -266,6 +266,49 @@ describe("Google embedding-batch bounded JSON reads", () => {
     ).toHaveLength(0);
   });
 
+  it("releases a submission reservation when the deadline expires before create starts", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const fetchMock = stubBatchFetch((stage) =>
+      stage === "create"
+        ? jsonResponse({
+            name: "batches/b-0",
+            done: true,
+            metadata: { state: "BATCH_STATE_SUCCEEDED" },
+            response: { responsesFile: "files/out-0" },
+          })
+        : undefined,
+    );
+    const started = vi.fn(async () => {
+      vi.setSystemTime(1_000);
+    });
+    const accepted = vi.fn(async () => {});
+    const rejected = vi.fn(async () => {});
+
+    const result = runGeminiEmbeddingBatches({
+      gemini: makeGeminiClient(),
+      agentId: "main",
+      requests: singleRequest(),
+      wait: true,
+      concurrency: 1,
+      pollIntervalMs: 1,
+      timeoutMs: 1_000,
+      submissionLifecycle: { started, accepted, rejected },
+    } as unknown as Parameters<typeof runGeminiEmbeddingBatches>[0]);
+
+    await expect(result).rejects.toThrow();
+    expect(started).toHaveBeenCalledOnce();
+    expect(accepted).not.toHaveBeenCalled();
+    expect(rejected).toHaveBeenCalledWith(
+      expect.objectContaining({ submissionId: expect.any(String) }),
+    );
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        fetchInputUrl(input).includes(":asyncBatchEmbedContent"),
+      ),
+    ).toHaveLength(0);
+  });
+
   it.each([
     { stage: "upload", label: "gemini.batch-file-upload" },
     { stage: "create", label: "gemini.batch-create" },
