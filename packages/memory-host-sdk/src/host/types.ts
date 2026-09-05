@@ -194,6 +194,16 @@ export type MemoryProviderStatus = {
     timeoutMs: number;
     lastError?: string;
     lastProvider?: string;
+    submissionQuarantine?: {
+      malformed: boolean;
+      submissions: Array<{
+        provider: string;
+        submissionId: string;
+        batchName?: string;
+        startedAt: string;
+      }>;
+      recoveryAction: string;
+    };
   };
   custom?: Record<string, unknown>;
 };
@@ -349,6 +359,7 @@ export interface MemorySearchManager {
   readFile(params: { relPath: string; from?: number; lines?: number }): Promise<MemoryReadResult>;
   status(): MemoryProviderStatus;
   sync?(params?: MemorySyncParams): Promise<void>;
+  clearBatchSubmissionQuarantine?(): boolean;
   getCachedEmbeddingAvailability?(): MemoryEmbeddingProbeResult | null;
   probeEmbeddingAvailability(): Promise<MemoryEmbeddingProbeResult>;
   probeVectorStoreAvailability?(): Promise<boolean>;

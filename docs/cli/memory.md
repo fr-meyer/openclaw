@@ -76,7 +76,7 @@ the provider and verify the model and provider settings against the existing ind
 ## `memory index`
 
 ```bash
-openclaw memory index [--agent <id>] [--force] [--verbose]
+openclaw memory index [--agent <id>] [--force] [--clear-batch-quarantine] [--verbose]
 ```
 
 Same per-agent scoping as `status`. `--force` runs a full reindex instead of
@@ -92,6 +92,18 @@ original sessions are no longer active. Sessions previously selected by
 both groups without reindexing their retained transcripts. Ordinary retained,
 reset, and deleted user-session archives remain eligible until explicitly
 targeted.
+
+If status reports an active batch quarantine, a native provider create request
+may have been accepted without OpenClaw receiving a conclusive response. Reconcile
+or cancel every listed provider job before clearing the quarantine; automatically
+resubmitting could create a duplicate paid job. After reconciliation, clear the
+record and rebuild the derived index together:
+
+```bash
+openclaw memory index --agent <id> --force --clear-batch-quarantine
+```
+
+`--clear-batch-quarantine` requires `--force` and never cancels a provider job.
 
 If status reports an index identity warning after changing embedding settings,
 check the affected agent's provider, model, sources, and extra paths, then rebuild:
