@@ -2,6 +2,7 @@
 import type { AcpRuntime, AcpRuntimeCapabilities } from "@openclaw/acp-core/runtime/types";
 import { afterEach, beforeEach, expect, vi } from "vitest";
 import { resetAcpManagerTaskStateForTests } from "../../../test/helpers/acp-manager-task-state.js";
+import { createTestAdmittedRunContext } from "../../agents/admitted-run-context.test-support.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { AcpSessionRuntimeOptions, SessionAcpMeta } from "../../config/sessions/types.js";
 import { deleteTestEnvValue, setTestEnvValue } from "../../test-utils/env.js";
@@ -40,7 +41,19 @@ export const hoisted = hoistedMocks;
 
 // Shared ACP manager test harness with hoisted runtime/session-meta mocks.
 const managerModule = await import("./manager.js");
-export const AcpSessionManager = managerModule.AcpSessionManager;
+type AcpRunTurnInput = import("./manager.types.js").AcpRunTurnInput;
+type TestAcpRunTurnInput = Omit<AcpRunTurnInput, "admittedRunContext"> &
+  Partial<Pick<AcpRunTurnInput, "admittedRunContext">>;
+
+/** Keeps production ACP admission mandatory while centralizing legacy fixture setup. */
+export class AcpSessionManager extends managerModule.AcpSessionManager {
+  override async runTurn(input: TestAcpRunTurnInput): Promise<void> {
+    return await super.runTurn({
+      ...input,
+      admittedRunContext: input.admittedRunContext ?? createTestAdmittedRunContext(input.requestId),
+    });
+  }
+}
 export const resetAcpSessionManagerForTests = () =>
   managerModule.testing.resetAcpSessionManagerForTests();
 const managerLifecycleModule = await import("./manager.lifecycle.js");
@@ -330,5 +343,27 @@ export function installAcpSessionManagerTestLifecycle(): void {
       setTestEnvValue("OPENCLAW_STATE_DIR", ORIGINAL_STATE_DIR);
     }
     resetAcpManagerTaskStateForTests();
+  });
+}
+
+export function installMutableAcpSessionMetaUpsert(state: {
+  currentMeta: SessionAcpMeta | undefined;
+}): void {
+  hoisted.upsertAcpSessionMetaMock.mockImplementation(async (paramsUnknown: unknown) => {
+    const params = paramsUnknown as {
+      mutate: (
+        current: SessionAcpMeta | undefined,
+        entry: { acp?: SessionAcpMeta } | undefined,
+      ) => SessionAcpMeta | null | undefined;
+    };
+    const next = params.mutate(state.currentMeta, { acp: state.currentMeta });
+    if (next) {
+      state.currentMeta = next;
+    }
+    return {
+      sessionId: "session-1",
+      updatedAt: Date.now(),
+      acp: state.currentMeta,
+    };
   });
 }

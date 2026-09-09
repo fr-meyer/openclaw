@@ -1,4 +1,5 @@
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
+import { stripSelfProviderModelPrefix } from "@openclaw/model-catalog-core/provider-model-id-normalization";
 import { asOptionalRecord as readRecord } from "@openclaw/normalization-core/record-coerce";
 import type { ProviderRouteOverridePresence } from "../plugin-sdk/provider-model-types.js";
 import type { ModelDefinitionConfig, ModelProviderConfig } from "./types.models.js";
@@ -8,6 +9,145 @@ type MergedModelProviderEntry = {
   providerKey: string;
   providerConfig: ModelProviderConfig;
 };
+
+export function matchesProviderScopedModelId(params: {
+  candidateId?: string;
+  provider: string;
+  modelId: string;
+  normalizeModelId?: (modelId: string) => string;
+}): boolean {
+  const { candidateId, provider, modelId } = params;
+  if (candidateId === modelId) {
+    return true;
+  }
+  const slashIndex = candidateId?.indexOf("/") ?? -1;
+  if (!candidateId) {
+    return false;
+  }
+  if (
+    slashIndex > 0 &&
+    candidateId.slice(slashIndex + 1) === modelId &&
+    normalizeProviderId(candidateId.slice(0, slashIndex)) === normalizeProviderId(provider)
+  ) {
+    return true;
+  }
+  return params.normalizeModelId
+    ? params.normalizeModelId(stripSelfProviderModelPrefix(provider, candidateId)) ===
+        params.normalizeModelId(stripSelfProviderModelPrefix(provider, modelId))
+    : false;
+}
+
+/** Uses the same authored row for transport materialization and early auth selection. */
+export function findConfiguredProviderModel(
+  providerConfig: { models?: ModelDefinitionConfig[] } | undefined,
+  provider: string,
+  modelId: string,
+  canonicalizeModelId?: (modelId: string) => string,
+) {
+  const exact = providerConfig?.models?.find((candidate) =>
+    matchesProviderScopedModelId({ candidateId: candidate.id, provider, modelId }),
+  );
+  return (
+    exact ??
+    (canonicalizeModelId
+      ? providerConfig?.models?.find((candidate) =>
+          matchesProviderScopedModelId({
+            candidateId: candidate.id,
+            provider,
+            modelId,
+            normalizeModelId: canonicalizeModelId,
+          }),
+        )
+      : undefined)
+  );
+}
+
+const BUILT_IN_MODEL_PROVIDER_OVERLAY_IDS = new Set([
+  "amazon-bedrock",
+  "amazon-bedrock-mantle",
+  "anthropic",
+  "anthropic-vertex",
+  "arcee",
+  "azure-openai-responses",
+  "byteplus",
+  "byteplus-plan",
+  "cerebras",
+  "chutes",
+  "claude-cli",
+  "clawrouter",
+  "cloudflare-ai-gateway",
+  "codex",
+  "comfy",
+  "copilot-proxy",
+  "dashscope",
+  "deepinfra",
+  "deepseek",
+  "fal",
+  "fireworks",
+  "github-copilot",
+  "gmi",
+  "gmi-cloud",
+  "gmicloud",
+  "google",
+  "google-antigravity",
+  "google-gemini-cli",
+  "google-vertex",
+  "groq",
+  "huggingface",
+  "kilocode",
+  "kimi",
+  "kimi-coding",
+  "litellm",
+  "lmstudio",
+  "meta",
+  "microsoft-foundry",
+  "minimax",
+  "minimax-portal",
+  "mistral",
+  "modelstudio",
+  "moonshot",
+  "moonshot-ai",
+  "moonshotai",
+  "nvidia",
+  "novita",
+  "novita-ai",
+  "novitaai",
+  "ollama",
+  "ollama-cloud",
+  "openai",
+  "opencode",
+  "opencode-go",
+  "openrouter",
+  "qianfan",
+  "qwen",
+  "qwen-token-plan",
+  "qwencloud",
+  "sglang",
+  "stepfun",
+  "stepfun-plan",
+  "synthetic",
+  "tencent-tokenhub",
+  "tencent-tokenplan",
+  "together",
+  "venice",
+  "vercel-ai-gateway",
+  "vllm",
+  "volcengine",
+  "volcengine-plan",
+  "vydra",
+  "x-ai",
+  "xai",
+  "xiaomi",
+  "xiaomi-token-plan",
+  "z.ai",
+  "z-ai",
+  "zai",
+]);
+
+/** Identifies provider overlays already known to the bundled config contract. */
+export function isBuiltInModelProviderOverlayId(providerId: string): boolean {
+  return BUILT_IN_MODEL_PROVIDER_OVERLAY_IDS.has(normalizeProviderId(providerId));
+}
 
 /** Indexes configured model rows after caller-owned model-id normalization. */
 export function resolveMergedModelProviderModels(params: {
@@ -42,16 +182,37 @@ function hasNonEmptyRecord(value: unknown): boolean {
   return record !== undefined && Object.keys(record).length > 0;
 }
 
-/** Projects authored request behavior without exposing values or local commands. */
-export function resolveModelProviderRouteOverridePresence(params: {
+function hasRequestCompatOverrides(compat: ModelDefinitionConfig["compat"]): boolean {
+  return Object.entries(compat ?? {}).some(([key, value]) => {
+    // Native runtimes consume affirmative reasoning capabilities as turn controls.
+    // Disabling reasoning, custom labels, and payload shaping still require the authored adapter.
+    if (key === "supportsReasoningEffort") {
+      return value !== true;
+    }
+    if (key === "supportedReasoningEfforts") {
+      return !(
+        Array.isArray(value) &&
+        value.length > 0 &&
+        value.every(
+          (effort) =>
+            typeof effort === "string" &&
+            /^(minimal|low|medium|high|xhigh|max|ultra)$/u.test(effort),
+        )
+      );
+    }
+    return true;
+  });
+}
+
+/** Prepares row lookups within one stable authored config view. */
+export function createModelProviderRouteOverrideResolver(params: {
   provider: string;
-  modelId?: string;
-  config?: OpenClawConfig;
+  authoredConfig?: OpenClawConfig;
   canonicalizeModelId?: (modelId: string) => string;
-}): ProviderRouteOverridePresence {
-  const providerConfig = resolveMergedModelProviderConfig(params.config, params.provider);
+}): (modelId?: string) => ProviderRouteOverridePresence {
+  const providerConfig = resolveMergedModelProviderConfig(params.authoredConfig, params.provider);
   if (!providerConfig) {
-    return "none";
+    return () => "none";
   }
   if (
     readRecord(providerConfig.localService) !== undefined ||
@@ -61,27 +222,31 @@ export function resolveModelProviderRouteOverridePresence(params: {
     typeof providerConfig.authHeader === "boolean" ||
     typeof providerConfig.timeoutSeconds === "number"
   ) {
-    return "present";
-  }
-  if (!params.modelId) {
-    return "none";
+    return () => "present";
   }
   const canonicalize = (modelId: string) => {
     const normalized = normalizeModelId(params.provider, modelId);
     const canonical = params.canonicalizeModelId?.(normalized).trim();
     return canonical || normalized;
   };
-  const modelId = canonicalize(params.modelId);
-  const configuredModel = resolveMergedModelProviderModels({
-    models: providerConfig.models,
-    normalizeModelId: canonicalize,
-  }).get(modelId);
-  return configuredModel &&
-    (hasNonEmptyRecord(configuredModel.headers) ||
-      hasNonEmptyRecord(configuredModel.params) ||
-      hasNonEmptyRecord(configuredModel.compat))
-    ? "present"
-    : "none";
+  let configuredModels: ReadonlyMap<string, ModelDefinitionConfig> | undefined;
+  return (modelId) => {
+    if (!modelId) {
+      return "none";
+    }
+    // Keep provider-only queries lazy and normalize the query before the first row pass.
+    const canonicalModelId = canonicalize(modelId);
+    const configuredModel = (configuredModels ??= resolveMergedModelProviderModels({
+      models: providerConfig.models,
+      normalizeModelId: canonicalize,
+    })).get(canonicalModelId);
+    return configuredModel &&
+      (hasNonEmptyRecord(configuredModel.headers) ||
+        hasNonEmptyRecord(configuredModel.params) ||
+        hasRequestCompatOverrides(configuredModel.compat))
+      ? "present"
+      : "none";
+  };
 }
 
 /** Resolves the provider entry produced by models-config key normalization. */
@@ -129,4 +294,31 @@ export function resolveMergedModelProviderConfig(
   provider: string,
 ): ModelProviderConfig | undefined {
   return resolveMergedModelProviderEntry(config, provider)?.providerConfig;
+}
+
+/** Projects a resolved request onto one transient canonical provider entry. */
+export function projectModelProviderConfig(
+  config: OpenClawConfig | undefined,
+  providerId: string,
+  overrides: Pick<ModelProviderConfig, "baseUrl"> &
+    Partial<Pick<ModelProviderConfig, "api" | "auth">>,
+): OpenClawConfig {
+  const provider = normalizeProviderId(providerId);
+  const entry = resolveMergedModelProviderEntry(config, provider);
+  const providerKey = entry?.providerKey ?? provider;
+  const providers = Object.fromEntries(
+    Object.entries(config?.models?.providers ?? {}).filter(
+      ([candidate]) => normalizeProviderId(candidate) !== provider || candidate === providerKey,
+    ),
+  );
+  return {
+    ...config,
+    models: {
+      ...config?.models,
+      providers: {
+        ...providers,
+        [providerKey]: { ...(entry?.providerConfig ?? { models: [] }), ...overrides },
+      },
+    },
+  };
 }
