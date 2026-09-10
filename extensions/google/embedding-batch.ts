@@ -1,5 +1,5 @@
 // Google plugin module implements embedding batch behavior.
-import crypto from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   buildEmbeddingBatchGroupOptions,
   runEmbeddingBatchGroups,
@@ -11,6 +11,7 @@ import {
   resolveEmbeddingEndpointUrl,
   withRemoteHttpResponse,
   type EmbeddingBatchExecutionParams,
+  type MemoryEmbeddingBatchSubmissionLifecycle,
 } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
 import {
   assertOkOrThrowProviderError,
@@ -18,8 +19,9 @@ import {
   createProviderHttpError,
   readProviderJsonObjectResponse,
   resolveProviderOperationTimeoutMs,
-  waitProviderOperationPollInterval,
+  type ProviderOperationDeadline,
 } from "openclaw/plugin-sdk/provider-http";
+import { sleepWithAbort } from "openclaw/plugin-sdk/runtime-env";
 import {
   sanitizeGeminiEmbedding,
   type GeminiEmbeddingClient,
@@ -62,6 +64,24 @@ type GeminiBatchOutputLine = {
 
 const GEMINI_BATCH_MAX_REQUESTS = 50000;
 
+function readGeminiBatchErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+  // SAFETY: the object guard above makes optional status-field reads safe.
+  const candidate = error as { status?: unknown; statusCode?: unknown };
+  const value = candidate.status ?? candidate.statusCode;
+  return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+}
+
+function isDefinitiveGeminiBatchCreateRejection(error: unknown): boolean {
+  if (error instanceof EmbeddingBatchUnavailableError) {
+    return true;
+  }
+  const status = readGeminiBatchErrorStatus(error);
+  return status !== undefined && status >= 400 && status < 500 && status !== 408;
+}
+
 function bindGeminiBatchAuth(client: GeminiEmbeddingClient): GeminiEmbeddingClient {
   const apiKey = client.apiKeys[0];
   if (!apiKey) {
@@ -78,8 +98,18 @@ function bindGeminiBatchAuth(client: GeminiEmbeddingClient): GeminiEmbeddingClie
   };
 }
 
-function hashText(text: string): string {
-  return crypto.createHash("sha256").update(text).digest("hex");
+function createGeminiBatchStageSignal(params: {
+  deadline: ProviderOperationDeadline;
+  timeoutMs: number;
+  signal?: AbortSignal;
+}): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(
+    resolveProviderOperationTimeoutMs({
+      deadline: params.deadline,
+      defaultTimeoutMs: params.timeoutMs,
+    }),
+  );
+  return params.signal ? AbortSignal.any([params.signal, timeoutSignal]) : timeoutSignal;
 }
 
 function getGeminiBatchFileUrl(
@@ -156,7 +186,7 @@ function buildGeminiUploadBody(params: { jsonl: string; displayName: string }): 
   body: Blob;
   contentType: string;
 } {
-  const boundary = `openclaw-${hashText(params.displayName)}`;
+  const boundary = `openclaw-${randomUUID()}`;
   const jsonPart = JSON.stringify({
     file: {
       displayName: params.displayName,
@@ -180,7 +210,10 @@ function buildGeminiUploadBody(params: { jsonl: string; displayName: string }): 
 async function submitGeminiBatch(params: {
   gemini: GeminiEmbeddingClient;
   requests: GeminiBatchRequest[];
-  agentId: string;
+  deadline: ProviderOperationDeadline;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  submissionLifecycle?: MemoryEmbeddingBatchSubmissionLifecycle;
 }): Promise<GeminiBatchOperation> {
   const baseUrl = params.gemini.baseUrl;
   const jsonl = params.requests
@@ -191,7 +224,10 @@ async function submitGeminiBatch(params: {
       }),
     )
     .join("\n");
-  const displayName = `memory-embeddings-${hashText(String(Date.now()))}`;
+  // Google exposes no create idempotency key. Keep a provider-safe,
+  // content-independent id for durable operator correlation.
+  const submissionId = `openclaw-memory-${randomUUID()}`;
+  const displayName = submissionId;
   const uploadPayload = buildGeminiUploadBody({ jsonl, displayName });
 
   const uploadUrl = getGeminiBatchFileUrl(baseUrl, "upload", "files");
@@ -200,9 +236,11 @@ async function submitGeminiBatch(params: {
     baseUrl,
     requests: params.requests.length,
   });
+  const uploadSignal = createGeminiBatchStageSignal(params);
   const filePayload = await withRemoteHttpResponse({
     url: uploadUrl,
     ssrfPolicy: params.gemini.ssrfPolicy,
+    signal: uploadSignal,
     init: {
       method: "POST",
       headers: {
@@ -225,7 +263,7 @@ async function submitGeminiBatch(params: {
 
   const batchBody = {
     batch: {
-      displayName: `memory-embeddings-${params.agentId}`,
+      displayName,
       inputConfig: {
         file_name: fileId,
       },
@@ -240,29 +278,50 @@ async function submitGeminiBatch(params: {
     batchEndpoint,
     fileId,
   });
-  return await withRemoteHttpResponse({
-    url: batchEndpoint,
-    ssrfPolicy: params.gemini.ssrfPolicy,
-    init: {
-      method: "POST",
-      headers: buildBatchHeaders(params.gemini, { json: true }),
-      body: JSON.stringify(batchBody),
-    },
-    onResponse: async (batchRes) => {
-      if (batchRes.status === 404) {
-        const cause = await createProviderHttpError(batchRes, "gemini.batch-create");
-        throw new EmbeddingBatchUnavailableError(
-          "gemini asyncBatchEmbedContent not available for this request",
-          { cause },
-        );
-      }
-      await assertOkOrThrowProviderError(batchRes, "gemini.batch-create");
-      return (await readProviderJsonObjectResponse(
-        batchRes,
-        "gemini.batch-create",
-      )) as GeminiBatchOperation;
-    },
-  });
+  await params.submissionLifecycle?.started({ submissionId });
+  let createOperationStarted = false;
+  try {
+    // Signal creation can itself throw after the durable reservation. Keep it
+    // inside the cleanup boundary so a request that never starts is released.
+    const createSignal = createGeminiBatchStageSignal(params);
+    createSignal.throwIfAborted();
+    createOperationStarted = true;
+    const operation = await withRemoteHttpResponse({
+      url: batchEndpoint,
+      ssrfPolicy: params.gemini.ssrfPolicy,
+      signal: createSignal,
+      init: {
+        method: "POST",
+        headers: buildBatchHeaders(params.gemini, { json: true }),
+        body: JSON.stringify(batchBody),
+      },
+      onResponse: async (batchRes) => {
+        if (batchRes.status === 404) {
+          const cause = await createProviderHttpError(batchRes, "gemini.batch-create");
+          throw new EmbeddingBatchUnavailableError(
+            "gemini asyncBatchEmbedContent not available for this request",
+            { cause },
+          );
+        }
+        await assertOkOrThrowProviderError(batchRes, "gemini.batch-create");
+        return (await readProviderJsonObjectResponse(
+          batchRes,
+          "gemini.batch-create",
+        )) as GeminiBatchOperation;
+      },
+    });
+    const batchName = operation.name;
+    if (!batchName) {
+      throw new Error("gemini batch create failed: missing batch name");
+    }
+    await params.submissionLifecycle?.accepted({ submissionId, batchName });
+    return operation;
+  } catch (error) {
+    if (!createOperationStarted || isDefinitiveGeminiBatchCreateRejection(error)) {
+      await params.submissionLifecycle?.rejected({ submissionId });
+    }
+    throw error;
+  }
 }
 
 async function fetchGeminiBatchStatus(params: {
@@ -326,12 +385,14 @@ async function fetchGeminiBatchOutput(params: {
   remaining: Set<string>;
   errors: string[];
   byCustomId: Map<string, number[]>;
+  signal?: AbortSignal;
 }): Promise<void> {
   const downloadUrl = getGeminiBatchFileUrl(params.gemini.baseUrl, "download", params.fileId);
   debugEmbeddingsLog("memory embeddings: gemini batch download", { downloadUrl });
   await withRemoteHttpResponse({
     url: downloadUrl,
     ssrfPolicy: params.gemini.ssrfPolicy,
+    signal: params.signal,
     init: {
       headers: buildBatchHeaders(params.gemini, { json: true }),
     },
@@ -361,13 +422,11 @@ async function waitForGeminiBatch(params: {
   wait: boolean;
   pollIntervalMs: number;
   timeoutMs: number;
+  deadline: ProviderOperationDeadline;
+  signal?: AbortSignal;
   debug?: (message: string, data?: Record<string, unknown>) => void;
   initial?: GeminiBatchOperation;
 }): Promise<{ outputFileId: string }> {
-  const deadline = createProviderOperationDeadline({
-    label: `gemini batch ${params.batchName}`,
-    timeoutMs: params.timeoutMs,
-  });
   let current: GeminiBatchOperation | undefined = params.initial;
   while (true) {
     const operation = current
@@ -375,12 +434,7 @@ async function waitForGeminiBatch(params: {
       : await fetchGeminiBatchStatus({
           gemini: params.gemini,
           batchName: params.batchName,
-          signal: AbortSignal.timeout(
-            resolveProviderOperationTimeoutMs({
-              deadline,
-              defaultTimeoutMs: params.timeoutMs,
-            }),
-          ),
+          signal: createGeminiBatchStageSignal(params),
         });
     const state = getGeminiBatchState(operation);
     if (state === "succeeded") {
@@ -406,10 +460,11 @@ async function waitForGeminiBatch(params: {
     params.debug?.(
       `gemini batch ${params.batchName} ${state}; waiting up to ${params.pollIntervalMs}ms`,
     );
-    await waitProviderOperationPollInterval({
-      deadline,
-      pollIntervalMs: params.pollIntervalMs,
+    const waitMs = resolveProviderOperationTimeoutMs({
+      deadline: params.deadline,
+      defaultTimeoutMs: params.pollIntervalMs,
     });
+    await sleepWithAbort(waitMs, params.signal);
     current = undefined;
   }
 }
@@ -419,24 +474,46 @@ export async function runGeminiEmbeddingBatches(
     gemini: GeminiEmbeddingClient;
     agentId: string;
     requests: GeminiBatchRequest[];
+    submissionLifecycle?: MemoryEmbeddingBatchSubmissionLifecycle;
   } & EmbeddingBatchExecutionParams,
 ): Promise<Map<string, number[]>> {
+  if (!params.wait) {
+    throw new Error(
+      "gemini native embedding batches require remote.batch.wait=true to avoid orphaned jobs",
+    );
+  }
   const gemini = bindGeminiBatchAuth(params.gemini);
   return await runEmbeddingBatchGroups({
     ...buildEmbeddingBatchGroupOptions(params, {
       maxRequests: GEMINI_BATCH_MAX_REQUESTS,
       debugLabel: "memory embeddings: gemini batch submit",
     }),
-    runGroup: async ({ group, groupIndex, groups, byCustomId, pollIntervalMs, timeoutMs }) => {
+    runGroup: async ({
+      group,
+      groupIndex,
+      groups,
+      byCustomId,
+      pollIntervalMs,
+      timeoutMs,
+      signal,
+    }) => {
+      const deadline = createProviderOperationDeadline({
+        label: "gemini embedding batch",
+        timeoutMs,
+      });
       const batchInfo = await submitGeminiBatch({
         gemini,
         requests: group,
-        agentId: params.agentId,
+        deadline,
+        timeoutMs,
+        ...(signal ? { signal } : {}),
+        ...(params.submissionLifecycle ? { submissionLifecycle: params.submissionLifecycle } : {}),
       });
       const batchName = batchInfo.name ?? "";
       if (!batchName) {
         throw new Error("gemini batch create failed: missing batch name");
       }
+      deadline.label = `gemini batch ${batchName}`;
 
       params.debug?.("memory embeddings: gemini batch created", {
         batchName,
@@ -452,18 +529,26 @@ export async function runGeminiEmbeddingBatches(
         wait: params.wait,
         pollIntervalMs,
         timeoutMs,
+        deadline,
+        ...(signal ? { signal } : {}),
         debug: params.debug,
         initial: batchInfo,
       });
 
       const errors: string[] = [];
       const remaining = new Set(group.map((request) => request.custom_id));
+      const downloadSignal = createGeminiBatchStageSignal({
+        deadline,
+        timeoutMs,
+        ...(signal ? { signal } : {}),
+      });
       await fetchGeminiBatchOutput({
         gemini,
         fileId: completed.outputFileId,
         remaining,
         errors,
         byCustomId,
+        signal: downloadSignal,
       });
 
       if (errors.length > 0) {

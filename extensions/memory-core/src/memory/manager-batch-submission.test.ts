@@ -1,0 +1,111 @@
+// Memory Core tests cover durable native-batch submission ownership.
+import {
+  ensureMemoryIndexSchema,
+  requireNodeSqlite,
+} from "openclaw/plugin-sdk/memory-core-host-engine-storage";
+import { describe, expect, it } from "vitest";
+import { MemoryBatchSubmissionOwner } from "./manager-batch-submission.js";
+
+describe("memory batch submission owner", () => {
+  const { DatabaseSync } = requireNodeSqlite();
+
+  function createDb() {
+    const db = new DatabaseSync(":memory:");
+    ensureMemoryIndexSchema({
+      db,
+      cacheEnabled: true,
+      ftsEnabled: false,
+      ftsTokenizer: "unicode61",
+    });
+    return db;
+  }
+
+  it("quarantines an accepted provider job across owner restart", async () => {
+    const db = createDb();
+    try {
+      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const lifecycle = owner.createLifecycle("gemini");
+      await lifecycle.started({ submissionId: "submission-1" });
+      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+
+      const restarted = new MemoryBatchSubmissionOwner(() => db);
+      expect(restarted.readStatus()).toMatchObject({
+        malformed: false,
+        submissions: [
+          {
+            provider: "gemini",
+            submissionId: "submission-1",
+            batchName: "batches/job-1",
+          },
+        ],
+      });
+      expect(() => restarted.assertReady()).toThrow("require reconciliation");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("removes a reservation after a definitive pre-submit rejection", async () => {
+    const db = createDb();
+    try {
+      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const lifecycle = owner.createLifecycle("gemini");
+      await lifecycle.started({ submissionId: "submission-1" });
+      await lifecycle.rejected({ submissionId: "submission-1" });
+
+      expect(owner.readStatus()).toBeUndefined();
+      expect(() => owner.assertReady()).not.toThrow();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("clears only this sync's reservations after local publication commits", async () => {
+    const db = createDb();
+    try {
+      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const lifecycle = owner.createLifecycle("gemini");
+      await lifecycle.started({ submissionId: "submission-1" });
+      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+
+      owner.commit();
+
+      expect(owner.readStatus()).toBeUndefined();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("serializes reservations across independent owners", async () => {
+    const db = createDb();
+    try {
+      const first = new MemoryBatchSubmissionOwner(() => db);
+      const second = new MemoryBatchSubmissionOwner(() => db);
+      await first.createLifecycle("gemini").started({ submissionId: "submission-1" });
+
+      await expect(
+        second.createLifecycle("gemini").started({ submissionId: "submission-2" }),
+      ).rejects.toThrow("already reserved by another sync");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("fails closed on malformed durable state until explicitly cleared", () => {
+    const db = createDb();
+    try {
+      db.prepare(`INSERT INTO memory_index_meta (key, value) VALUES (?, ?)`).run(
+        "memory_batch_submission_quarantine_v1",
+        "not json",
+      );
+      const owner = new MemoryBatchSubmissionOwner(() => db);
+
+      expect(owner.readStatus()).toMatchObject({ malformed: true, submissions: [] });
+      expect(() => owner.assertReady()).toThrow("record is malformed");
+      expect(owner.clear()).toBe(true);
+      expect(owner.readStatus()).toBeUndefined();
+    } finally {
+      db.close();
+    }
+  });
+});

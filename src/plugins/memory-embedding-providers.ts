@@ -1,6 +1,7 @@
 export type {
   MemoryEmbeddingBatchChunk,
   MemoryEmbeddingBatchOptions,
+  MemoryEmbeddingBatchSubmissionLifecycle,
   MemoryEmbeddingProvider,
   MemoryEmbeddingProviderAdapter,
   MemoryEmbeddingProviderCallOptions,

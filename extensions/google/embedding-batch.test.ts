@@ -95,6 +95,9 @@ function makeGeminiEmbedding2Client(
 }
 
 type GeminiBatchRequest = Parameters<typeof runGeminiEmbeddingBatches>[0]["requests"][number];
+type SubmissionLifecycle = NonNullable<
+  Parameters<typeof runGeminiEmbeddingBatches>[0]["submissionLifecycle"]
+>;
 
 function batchRequest(customId: string, text: string): GeminiBatchRequest {
   return {
@@ -170,6 +173,7 @@ function stubBatchFetch(
 function runBatch(
   requests = singleRequest(),
   gemini = makeGeminiClient(),
+  submissionLifecycle?: SubmissionLifecycle,
 ): Promise<Map<string, number[]>> {
   return runGeminiEmbeddingBatches({
     gemini,
@@ -179,7 +183,16 @@ function runBatch(
     concurrency: 1,
     pollIntervalMs: 1,
     timeoutMs: 5_000,
+    ...(submissionLifecycle ? { submissionLifecycle } : {}),
   });
+}
+
+function createSubmissionLifecycle() {
+  return {
+    started: vi.fn<SubmissionLifecycle["started"]>(),
+    accepted: vi.fn<SubmissionLifecycle["accepted"]>(),
+    rejected: vi.fn<SubmissionLifecycle["rejected"]>(),
+  } satisfies SubmissionLifecycle;
 }
 
 async function captureRejection(promise: Promise<unknown>): Promise<unknown> {
@@ -264,6 +277,129 @@ describe("Google embedding-batch bounded JSON reads", () => {
     expect(
       fetchMock.mock.calls.filter(([input]) => fetchInputUrl(input).includes("/batches/")),
     ).toHaveLength(0);
+  });
+
+  it("releases a submission reservation when the deadline expires before create starts", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const fetchMock = stubBatchFetch((stage) =>
+      stage === "create"
+        ? jsonResponse({
+            name: "batches/b-0",
+            done: true,
+            metadata: { state: "BATCH_STATE_SUCCEEDED" },
+            response: { responsesFile: "files/out-0" },
+          })
+        : undefined,
+    );
+    const started = vi.fn(async () => {
+      vi.setSystemTime(1_000);
+    });
+    const accepted = vi.fn(async () => {});
+    const rejected = vi.fn(async () => {});
+
+    const result = runGeminiEmbeddingBatches({
+      gemini: makeGeminiClient(),
+      agentId: "main",
+      requests: singleRequest(),
+      wait: true,
+      concurrency: 1,
+      pollIntervalMs: 1,
+      timeoutMs: 1_000,
+      submissionLifecycle: { started, accepted, rejected },
+    } as unknown as Parameters<typeof runGeminiEmbeddingBatches>[0]);
+
+    await expect(result).rejects.toThrow();
+    expect(started).toHaveBeenCalledOnce();
+    expect(accepted).not.toHaveBeenCalled();
+    expect(rejected).toHaveBeenCalledWith(
+      expect.objectContaining({ submissionId: expect.any(String) }),
+    );
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        fetchInputUrl(input).includes(":asyncBatchEmbedContent"),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("does not retry or release ownership after an ambiguous batch-create failure", async () => {
+    const lifecycle = createSubmissionLifecycle();
+    const fetchMock = stubBatchFetch((stage) =>
+      stage === "create"
+        ? jsonResponse({ error: { message: "temporary upstream failure" } }, 503)
+        : undefined,
+    );
+
+    await expect(
+      runBatch([batchRequest("r0", "a"), batchRequest("r1", "b")], makeGeminiClient(), lifecycle),
+    ).rejects.toThrow("gemini.batch-create");
+
+    const stages = fetchMock.mock.calls.map(([input]) => batchStageForUrl(fetchInputUrl(input)));
+    expect(stages.filter((stage) => stage === "upload")).toHaveLength(1);
+    expect(stages.filter((stage) => stage === "create")).toHaveLength(1);
+    expect(lifecycle.started).toHaveBeenCalledOnce();
+    expect(lifecycle.accepted).not.toHaveBeenCalled();
+    expect(lifecycle.rejected).not.toHaveBeenCalled();
+  });
+
+  it("releases ownership after a definitive batch-create rejection", async () => {
+    const lifecycle = createSubmissionLifecycle();
+    const fetchMock = stubBatchFetch((stage) =>
+      stage === "create" ? jsonResponse({ error: { message: "invalid request" } }, 400) : undefined,
+    );
+
+    await expect(runBatch(singleRequest(), makeGeminiClient(), lifecycle)).rejects.toThrow(
+      "gemini.batch-create",
+    );
+
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        fetchInputUrl(input).includes(":asyncBatchEmbedContent"),
+      ),
+    ).toHaveLength(1);
+    expect(lifecycle.started).toHaveBeenCalledOnce();
+    expect(lifecycle.accepted).not.toHaveBeenCalled();
+    expect(lifecycle.rejected).toHaveBeenCalledWith({
+      submissionId: lifecycle.started.mock.calls[0]?.[0].submissionId,
+    });
+  });
+
+  it("persists ownership before create and records the acknowledged provider job", async () => {
+    const lifecycle = createSubmissionLifecycle();
+    stubBatchFetch((stage) => {
+      if (stage === "create") {
+        expect(lifecycle.started).toHaveBeenCalledOnce();
+        expect(lifecycle.accepted).not.toHaveBeenCalled();
+      }
+      return undefined;
+    });
+
+    await expect(runBatch(singleRequest(), makeGeminiClient(), lifecycle)).resolves.toEqual(
+      new Map([["r0", [1, 0, 0]]]),
+    );
+    const submissionId = lifecycle.started.mock.calls[0]?.[0].submissionId;
+    expect(lifecycle.accepted).toHaveBeenCalledWith({
+      submissionId,
+      batchName: "batches/b-0",
+    });
+    expect(lifecycle.rejected).not.toHaveBeenCalled();
+  });
+
+  it("rejects disabled waiting before any remote side effect", async () => {
+    const fetchMock = stubBatchFetch();
+
+    await expect(
+      runGeminiEmbeddingBatches({
+        gemini: makeGeminiClient(),
+        agentId: "main",
+        requests: singleRequest(),
+        wait: false,
+        concurrency: 1,
+        pollIntervalMs: 1,
+        timeoutMs: 5_000,
+      }),
+    ).rejects.toThrow("remote.batch.wait=true");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it.each([

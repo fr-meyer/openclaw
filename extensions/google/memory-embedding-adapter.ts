@@ -47,6 +47,7 @@ export const geminiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
             "x-goog-api-client",
           ]),
         },
+        batchFailureMode: "error",
         batchEmbed: async (batch) => {
           if (batch.chunks.some((chunk) => hasNonTextEmbeddingParts(chunk.embeddingInput))) {
             return null;
@@ -70,6 +71,10 @@ export const geminiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
             pollIntervalMs: batch.pollIntervalMs,
             timeoutMs: batch.timeoutMs,
             debug: batch.debug,
+            ...(batch.signal ? { signal: batch.signal } : {}),
+            ...(batch.submissionLifecycle
+              ? { submissionLifecycle: batch.submissionLifecycle }
+              : {}),
           });
           return mapBatchEmbeddingsByIndex(byCustomId, batch.chunks.length);
         },
