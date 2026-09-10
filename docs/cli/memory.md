@@ -112,7 +112,7 @@ If status instead tells you to reconcile or cancel provider jobs, a native creat
 request may have been accepted without OpenClaw receiving a conclusive response.
 Reconcile or cancel every listed provider job before clearing the quarantine;
 automatically resubmitting could create a duplicate paid job. After reconciliation,
- clear the record and rebuild the derived index together:
+clear the record and rebuild the derived index together:
 
 ```bash
 openclaw memory index --agent <id> --force --clear-batch-quarantine

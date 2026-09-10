@@ -502,7 +502,10 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerSyncOps {
           pollIntervalMs: this.batch.pollIntervalMs,
           timeoutMs: this.batch.timeoutMs,
           signal: this.batchAbortController.signal,
-          submissionLifecycle: this.batchSubmissionOwner.createLifecycle(provider.id),
+          submissionLifecycle: this.batchSubmissionOwner.createLifecycle({
+            provider: { id: provider.id, model: provider.model },
+            providerKey: generation.providerKey,
+          }),
           debug: this.buildBatchDebug(source, chunks, debugContext),
         }),
       fallback: async () => await this.embedChunksInBatches(missingChunks, generation),

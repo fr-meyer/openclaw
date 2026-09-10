@@ -2,7 +2,6 @@
 import {
   hasNonTextEmbeddingParts,
   isMissingEmbeddingApiKeyError,
-  mapBatchEmbeddingsByIndex,
   sanitizeEmbeddingCacheHeaders,
   type MemoryEmbeddingProviderAdapter,
 } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
@@ -52,11 +51,16 @@ export const geminiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
           if (batch.chunks.some((chunk) => hasNonTextEmbeddingParts(chunk.embeddingInput))) {
             return null;
           }
+          if (batch.chunks.some((chunk) => !chunk.hash)) {
+            throw new Error("gemini native batch requires stable memory chunk hashes");
+          }
+          const uniqueChunks = new Map(batch.chunks.map((chunk) => [chunk.hash as string, chunk]));
           const byCustomId = await runGeminiEmbeddingBatches({
             gemini: client,
             agentId: batch.agentId,
-            requests: batch.chunks.map((chunk, index) => ({
-              custom_id: String(index),
+            requests: [...uniqueChunks].map(([chunkHash, chunk]) => ({
+              custom_id: chunkHash,
+              chunkHash,
               request: buildGeminiEmbeddingRequest({
                 input: chunk.embeddingInput ?? { text: chunk.text },
                 model: client.model,
@@ -76,7 +80,7 @@ export const geminiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
               ? { submissionLifecycle: batch.submissionLifecycle }
               : {}),
           });
-          return mapBatchEmbeddingsByIndex(byCustomId, batch.chunks.length);
+          return batch.chunks.map((chunk) => byCustomId.get(chunk.hash as string) ?? []);
         },
       },
     };

@@ -117,6 +117,7 @@ type SubmissionLifecycle = NonNullable<
 function batchRequest(customId: string, text: string): GeminiBatchRequest {
   return {
     custom_id: customId,
+    chunkHash: customId,
     request: {
       model: "models/gemini-embedding-001",
       content: { parts: [{ text }] },
@@ -397,6 +398,7 @@ describe("Google embedding-batch bounded JSON reads", () => {
     expect(lifecycle.started).toHaveBeenCalledWith({
       submissionId,
       requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      manifest: [{ customId: "r0", chunkHash: "r0" }],
     });
     expect(lifecycle.accepted).toHaveBeenCalledWith({
       submissionId,
@@ -425,6 +427,84 @@ describe("Google embedding-batch bounded JSON reads", () => {
     expect(lifecycle.rejected).not.toHaveBeenCalled();
     const stages = fetchMock.mock.calls.map(([input]) => batchStageForUrl(fetchInputUrl(input)));
     expect(stages).toEqual(["status", "download"]);
+  });
+
+  it("publishes restart-safe output across source drift and submits only new chunk hashes", async () => {
+    const lifecycle = createSubmissionLifecycle();
+    const listAccepted = vi.fn(async () => [
+      {
+        submissionId: "submission-existing",
+        batchName: "batches/b-old",
+        requestFingerprint: "fingerprint-old",
+        manifest: [
+          { customId: "r0", chunkHash: "r0" },
+          { customId: "r1", chunkHash: "r1" },
+        ],
+      },
+    ]);
+    const publishRecovered = vi.fn(async () => [
+      { chunkHash: "r0", embedding: [1, 0] },
+      { chunkHash: "r1", embedding: [0, 1] },
+    ]);
+    const recoveryLifecycle = { ...lifecycle, listAccepted, publishRecovered };
+    let uploaded: Blob | undefined;
+    const fetchMock = stubBatchFetch((stage, url, init) => {
+      if (stage === "status" && url.includes("b-old")) {
+        return jsonResponse({
+          name: "batches/b-old",
+          done: true,
+          metadata: { state: "BATCH_STATE_SUCCEEDED" },
+          response: { responsesFile: "files/out-old" },
+        });
+      }
+      if (stage === "download" && url.includes("out-old")) {
+        return new Response(
+          [
+            JSON.stringify({ key: "r0", response: { embedding: { values: [1, 0] } } }),
+            JSON.stringify({ key: "r1", response: { embedding: { values: [0, 1] } } }),
+          ].join("\n"),
+        );
+      }
+      if (stage === "upload") {
+        uploaded = init?.body instanceof Blob ? init.body : undefined;
+      }
+      if (stage === "download") {
+        return new Response(
+          JSON.stringify({ key: "r2", response: { embedding: { values: [0.5, 0.5] } } }),
+        );
+      }
+      return undefined;
+    });
+
+    await expect(
+      runBatch(
+        [batchRequest("r0", "old current"), batchRequest("r2", "new current")],
+        makeGeminiClient(),
+        recoveryLifecycle,
+      ),
+    ).resolves.toEqual(
+      new Map([
+        ["r0", [1, 0]],
+        ["r2", [0.7071067811865475, 0.7071067811865475]],
+      ]),
+    );
+
+    expect(listAccepted).toHaveBeenCalledOnce();
+    expect(publishRecovered).toHaveBeenCalledWith({
+      submissionId: "submission-existing",
+      entries: [
+        { customId: "r0", embedding: [1, 0] },
+        { customId: "r1", embedding: [0, 1] },
+      ],
+    });
+    const uploadedText = await uploaded?.text();
+    expect(uploadedText).toContain('"key":"r2"');
+    expect(uploadedText).not.toContain('"key":"r0"');
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        fetchInputUrl(input).includes(":asyncBatchEmbedContent"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("rejects disabled waiting before any remote side effect", async () => {
@@ -829,7 +909,7 @@ describe("Google embedding-batch bounded JSON reads", () => {
           ) {
             response.writeHead(200, { "content-type": "application/jsonl" });
             const line = JSON.stringify({
-              key: "0",
+              key: "hash-hello",
               response: { embedding: { values: [1, 0, 0] } },
             });
             response.write(line.slice(0, 17));
@@ -863,7 +943,7 @@ describe("Google embedding-batch bounded JSON reads", () => {
         ]);
         const result = await adapter.runtime?.batchEmbed?.({
           agentId: "main",
-          chunks: [{ text: "hello" }],
+          chunks: [{ text: "hello", hash: "hash-hello" }],
           wait: true,
           concurrency: 1,
           pollIntervalMs: 1,
@@ -874,7 +954,7 @@ describe("Google embedding-batch bounded JSON reads", () => {
         expect(result).toEqual([[1, 0, 0]]);
         const uploadedRequest = uploadBody.split("\r\n\r\n")[2]?.split("\r\n")[0];
         expect(JSON.parse(uploadedRequest ?? "null")).toEqual({
-          key: "0",
+          key: "hash-hello",
           request: {
             content: { parts: [{ text: "hello" }] },
             taskType: "RETRIEVAL_DOCUMENT",

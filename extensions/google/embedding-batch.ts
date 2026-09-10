@@ -39,6 +39,8 @@ import { parseGeminiAuth } from "./gemini-auth.js";
 
 type GeminiBatchRequest = {
   custom_id: string;
+  /** Stable memory-cache identity; never sent to Google. */
+  chunkHash: string;
   request: GeminiTextEmbeddingRequest;
 };
 
@@ -267,6 +269,10 @@ async function submitGeminiBatch(params: {
   await params.submissionLifecycle?.started({
     submissionId,
     requestFingerprint: params.requestFingerprint,
+    manifest: params.requests.map((request) => ({
+      customId: request.custom_id,
+      chunkHash: request.chunkHash,
+    })),
   });
   let createOperationStarted = false;
   try {
@@ -471,6 +477,96 @@ async function waitForGeminiBatch(params: {
   }
 }
 
+async function recoverAcceptedGeminiBatches(params: {
+  gemini: GeminiEmbeddingClient;
+  submissionLifecycle?: MemoryEmbeddingBatchSubmissionLifecycle;
+  wait: boolean;
+  pollIntervalMs: number;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  debug?: (message: string, data?: Record<string, unknown>) => void;
+}): Promise<Map<string, number[]>> {
+  const accepted = await params.submissionLifecycle?.listAccepted?.();
+  const publishRecovered = params.submissionLifecycle?.publishRecovered;
+  if (!accepted || accepted.length === 0 || !publishRecovered) {
+    return new Map();
+  }
+
+  const recoveredByHash = new Map<string, number[]>();
+  for (const submission of accepted) {
+    const deadline = createProviderOperationDeadline({
+      label: `gemini batch ${submission.batchName} recovery`,
+      timeoutMs: params.timeoutMs,
+    });
+    const initial = await fetchGeminiBatchStatus({
+      gemini: params.gemini,
+      batchName: submission.batchName,
+      signal: createGeminiBatchStageSignal({
+        deadline,
+        timeoutMs: params.timeoutMs,
+        ...(params.signal ? { signal: params.signal } : {}),
+      }),
+    });
+    const lifecycle: GeminiBatchLifecycleContext = {
+      batchName: submission.batchName,
+      group: 1,
+      groups: 1,
+      submittedRequests: submission.manifest.length,
+      startedAtMs: Date.now(),
+    };
+    const completed = await waitForGeminiBatch({
+      gemini: params.gemini,
+      batchName: submission.batchName,
+      lifecycle,
+      wait: params.wait,
+      pollIntervalMs: params.pollIntervalMs,
+      timeoutMs: params.timeoutMs,
+      deadline,
+      ...(params.signal ? { signal: params.signal } : {}),
+      debug: params.debug,
+      initial,
+    });
+    const remaining = new Set(submission.manifest.map((entry) => entry.customId));
+    const errors: string[] = [];
+    const byCustomId = new Map<string, number[]>();
+    await fetchGeminiBatchOutput({
+      gemini: params.gemini,
+      fileId: completed.outputFileId,
+      remaining,
+      errors,
+      byCustomId,
+      signal: createGeminiBatchStageSignal({
+        deadline,
+        timeoutMs: params.timeoutMs,
+        ...(params.signal ? { signal: params.signal } : {}),
+      }),
+    });
+    if (errors.length > 0) {
+      throw new Error(
+        `gemini batch ${submission.batchName} recovery failed: ${formatBatchErrorDetail(errors[0]) ?? "unknown error"}`,
+      );
+    }
+    if (remaining.size > 0) {
+      throw new Error(
+        `gemini batch ${submission.batchName} recovery is missing ${remaining.size} embedding responses`,
+      );
+    }
+    const recovered = await publishRecovered({
+      submissionId: submission.submissionId,
+      entries: [...byCustomId].map(([customId, embedding]) => ({ customId, embedding })),
+    });
+    for (const entry of recovered) {
+      recoveredByHash.set(entry.chunkHash, entry.embedding);
+    }
+    params.debug?.("memory embeddings: gemini durable batch output recovered", {
+      batchName: submission.batchName,
+      requests: submission.manifest.length,
+      recovered: recovered.length,
+    });
+  }
+  return recoveredByHash;
+}
+
 export async function runGeminiEmbeddingBatches(
   params: {
     gemini: GeminiEmbeddingClient;
@@ -485,11 +581,36 @@ export async function runGeminiEmbeddingBatches(
     );
   }
   const gemini = bindGeminiBatchAuth(params.gemini);
-  return await runEmbeddingBatchGroups({
-    ...buildEmbeddingBatchGroupOptions(params, {
-      maxRequests: GEMINI_BATCH_MAX_REQUESTS,
-      debugLabel: "memory embeddings: gemini batch submit",
-    }),
+  const recoveredByHash = await recoverAcceptedGeminiBatches({
+    gemini,
+    wait: params.wait,
+    pollIntervalMs: params.pollIntervalMs,
+    timeoutMs: params.timeoutMs,
+    ...(params.signal ? { signal: params.signal } : {}),
+    ...(params.debug ? { debug: params.debug } : {}),
+    ...(params.submissionLifecycle ? { submissionLifecycle: params.submissionLifecycle } : {}),
+  });
+  const byCustomId = new Map<string, number[]>();
+  const pendingRequests: GeminiBatchRequest[] = [];
+  for (const request of params.requests) {
+    const recovered = recoveredByHash.get(request.chunkHash);
+    if (recovered) {
+      byCustomId.set(request.custom_id, recovered);
+    } else {
+      pendingRequests.push(request);
+    }
+  }
+  if (pendingRequests.length === 0) {
+    return byCustomId;
+  }
+  const completed = await runEmbeddingBatchGroups({
+    ...buildEmbeddingBatchGroupOptions(
+      { ...params, requests: pendingRequests },
+      {
+        maxRequests: GEMINI_BATCH_MAX_REQUESTS,
+        debugLabel: "memory embeddings: gemini batch submit",
+      },
+    ),
     runGroup: async ({
       group,
       groupIndex,
@@ -628,4 +749,8 @@ export async function runGeminiEmbeddingBatches(
       }
     },
   });
+  for (const [customId, embedding] of completed) {
+    byCustomId.set(customId, embedding);
+  }
+  return byCustomId;
 }

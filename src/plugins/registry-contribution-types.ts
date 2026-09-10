@@ -61,6 +61,25 @@ export type RegisteredCompactionProvider = {
 export type MemoryEmbeddingBatchChunk = {
   text: string;
   embeddingInput?: EmbeddingInput;
+  /** Stable content identity used to recover paid provider output after a restart. */
+  hash?: string;
+};
+
+export type MemoryEmbeddingBatchManifestEntry = {
+  customId: string;
+  chunkHash: string;
+};
+
+export type MemoryEmbeddingBatchRecoveredEntry = {
+  customId: string;
+  embedding: number[];
+};
+
+export type MemoryEmbeddingBatchAcceptedSubmission = {
+  submissionId: string;
+  batchName: string;
+  requestFingerprint: string;
+  manifest: MemoryEmbeddingBatchManifestEntry[];
 };
 
 export type MemoryEmbeddingBatchSubmissionLifecycle = {
@@ -69,8 +88,22 @@ export type MemoryEmbeddingBatchSubmissionLifecycle = {
     submissionId: string;
     batchName: string;
   } | null>;
-  /** Persist a provider-safe correlation id before sending a non-idempotent create request. */
-  started: (params: { submissionId: string; requestFingerprint?: string }) => Promise<void>;
+  /** List restart-safe provider jobs so completed output can be recovered across source drift. */
+  listAccepted?: () => Promise<MemoryEmbeddingBatchAcceptedSubmission[]>;
+  /**
+   * Durably publish recovered output into the embedding cache, then release its reservation.
+   * Returns the recovered chunk identities so the caller can avoid resubmitting them this run.
+   */
+  publishRecovered?: (params: {
+    submissionId: string;
+    entries: MemoryEmbeddingBatchRecoveredEntry[];
+  }) => Promise<Array<{ chunkHash: string; embedding: number[] }>>;
+  /** Persist identity and the full recovery manifest before a non-idempotent provider create. */
+  started: (params: {
+    submissionId: string;
+    requestFingerprint?: string;
+    manifest?: MemoryEmbeddingBatchManifestEntry[];
+  }) => Promise<void>;
   /** Attach the provider resource name after a successful create response. */
   accepted: (params: { submissionId: string; batchName: string }) => Promise<void>;
   /** Remove a pre-submit record after a definitive create rejection. */

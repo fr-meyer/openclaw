@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createGeminiEmbeddingProvider: vi.fn(),
-  runGeminiEmbeddingBatches: vi.fn(async () => new Map([["0", [1, 0]]])),
+  runGeminiEmbeddingBatches: vi.fn(async () => new Map([["hash-1", [1, 0]]])),
 }));
 
 vi.mock("./embedding-provider.js", async (importOriginal) => {
@@ -82,7 +82,7 @@ describe("Gemini memory embedding adapter", () => {
 
     await result.runtime?.batchEmbed?.({
       agentId: "main",
-      chunks: [{ text: "remember this" }],
+      chunks: [{ text: "remember this", hash: "hash-1" }],
       wait: true,
       concurrency: 1,
       pollIntervalMs: 1000,
@@ -94,7 +94,8 @@ describe("Gemini memory embedding adapter", () => {
       expect.objectContaining({
         requests: [
           {
-            custom_id: "0",
+            custom_id: "hash-1",
+            chunkHash: "hash-1",
             request: {
               content: { parts: [{ text: "title: none | text: remember this" }] },
               model: "models/gemini-embedding-2",
@@ -159,7 +160,7 @@ describe("Gemini memory embedding adapter", () => {
     expect(result.runtime?.batchFailureMode).toBe("error");
     await result.runtime?.batchEmbed?.({
       agentId: "main",
-      chunks: [{ text: "alpha" }],
+      chunks: [{ text: "alpha", hash: "hash-1" }],
       wait: true,
       concurrency: 1,
       pollIntervalMs: 1_000,
