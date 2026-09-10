@@ -54,6 +54,7 @@ export const geminiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
           if (batch.chunks.some((chunk) => !chunk.hash)) {
             throw new Error("gemini native batch requires stable memory chunk hashes");
           }
+          // SAFETY: the preceding guard proves every chunk in this batch has a non-empty hash.
           const uniqueChunks = new Map(batch.chunks.map((chunk) => [chunk.hash as string, chunk]));
           const byCustomId = await runGeminiEmbeddingBatches({
             gemini: client,
@@ -80,6 +81,7 @@ export const geminiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
               ? { submissionLifecycle: batch.submissionLifecycle }
               : {}),
           });
+          // SAFETY: the same all-chunk hash guard remains valid for this unchanged batch array.
           return batch.chunks.map((chunk) => byCustomId.get(chunk.hash as string) ?? []);
         },
       },

@@ -64,6 +64,7 @@ function parseBatchManifest(
     if (!entry || typeof entry !== "object") {
       return null;
     }
+    // SAFETY: the object guard above permits unknown manifest property inspection.
     const candidate = entry as Record<string, unknown>;
     if (
       !isNonEmptyBoundedString(candidate.customId, 200) ||
@@ -274,6 +275,7 @@ export class MemoryBatchSubmissionOwner {
         const rowValue = db
           .prepare(`SELECT value FROM memory_index_meta WHERE key = ?`)
           .get(BATCH_SUBMISSION_QUARANTINE_META_KEY);
+        // SAFETY: this query selects exactly one SQLite value column.
         const row = rowValue as { value?: unknown } | undefined;
         if (!row || typeof row.value !== "string") {
           throw new Error(
@@ -329,9 +331,11 @@ export class MemoryBatchSubmissionOwner {
         }
 
         runSqliteImmediateTransactionSync(db, () => {
-          const currentValue = db
+          const currentValueRaw = db
             .prepare(`SELECT value FROM memory_index_meta WHERE key = ?`)
-            .get(BATCH_SUBMISSION_QUARANTINE_META_KEY) as { value?: unknown } | undefined;
+            .get(BATCH_SUBMISSION_QUARANTINE_META_KEY);
+          // SAFETY: this query selects exactly one SQLite value column.
+          const currentValue = currentValueRaw as { value?: unknown } | undefined;
           if (!currentValue || typeof currentValue.value !== "string") {
             throw new Error(
               `memory embedding batch submission ownership changed during recovery: ${submissionId}`,

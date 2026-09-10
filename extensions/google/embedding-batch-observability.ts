@@ -114,6 +114,7 @@ function getGeminiBatchTimingFields(
 
 export function getGeminiBatchOutputFailureFields(error: unknown): Record<string, unknown> {
   if (error && typeof error === "object") {
+    // SAFETY: the object guard above permits bounded inspection of optional error fields.
     const candidate = error as { status?: unknown; statusCode?: unknown; name?: unknown };
     const status = candidate.status ?? candidate.statusCode;
     if (typeof status === "number" && Number.isInteger(status)) {
