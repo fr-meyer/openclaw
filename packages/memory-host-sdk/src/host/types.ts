@@ -201,6 +201,7 @@ export type MemoryProviderStatus = {
         provider: string;
         submissionId: string;
         batchName?: string;
+        requestFingerprint?: string;
         startedAt: string;
       }>;
       recoveryAction: string;

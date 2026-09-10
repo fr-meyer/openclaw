@@ -45,6 +45,58 @@ describe("memory batch submission owner", () => {
     }
   });
 
+  it("resumes an acknowledged provider job across owner restart by exact fingerprint", async () => {
+    const db = createDb();
+    try {
+      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const lifecycle = owner.createLifecycle("gemini");
+      await lifecycle.started({
+        submissionId: "submission-1",
+        requestFingerprint: "fingerprint-1",
+      });
+      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+
+      const restarted = new MemoryBatchSubmissionOwner(() => db);
+      expect(() => restarted.assertReady()).not.toThrow();
+      const resumed = await restarted
+        .createLifecycle("gemini")
+        .resumeAccepted?.({ requestFingerprint: "fingerprint-1" });
+      expect(resumed).toEqual({ submissionId: "submission-1", batchName: "batches/job-1" });
+
+      restarted.commit();
+      expect(restarted.readStatus()).toBeUndefined();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("does not adopt or submit past an acknowledged job with a different fingerprint", async () => {
+    const db = createDb();
+    try {
+      const owner = new MemoryBatchSubmissionOwner(() => db);
+      const lifecycle = owner.createLifecycle("gemini");
+      await lifecycle.started({
+        submissionId: "submission-1",
+        requestFingerprint: "fingerprint-1",
+      });
+      await lifecycle.accepted({ submissionId: "submission-1", batchName: "batches/job-1" });
+
+      const restarted = new MemoryBatchSubmissionOwner(() => db);
+      const restartedLifecycle = restarted.createLifecycle("gemini");
+      await expect(
+        restartedLifecycle.resumeAccepted?.({ requestFingerprint: "fingerprint-2" }),
+      ).resolves.toBeNull();
+      await expect(
+        restartedLifecycle.started({
+          submissionId: "submission-2",
+          requestFingerprint: "fingerprint-2",
+        }),
+      ).rejects.toThrow("already reserved by another sync");
+    } finally {
+      db.close();
+    }
+  });
+
   it("removes a reservation after a definitive pre-submit rejection", async () => {
     const db = createDb();
     try {

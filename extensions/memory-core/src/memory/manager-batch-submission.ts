@@ -8,10 +8,14 @@ const BATCH_SUBMISSION_QUARANTINE_META_KEY = "memory_batch_submission_quarantine
 const MEMORY_BATCH_SUBMISSION_RECOVERY_ACTION =
   "Reconcile or cancel the listed provider jobs, then run openclaw memory index --force --clear-batch-quarantine.";
 
+const MEMORY_BATCH_SUBMISSION_RESUME_ACTION =
+  "Retry memory indexing; OpenClaw will resume acknowledged provider jobs only when their exact request fingerprints match.";
+
 export type MemoryBatchSubmissionRecord = {
   provider: string;
   submissionId: string;
   batchName?: string;
+  requestFingerprint?: string;
   startedAt: string;
 };
 
@@ -34,6 +38,10 @@ function isNonEmptyBoundedString(value: unknown, maxLength: number): value is st
   return typeof value === "string" && value.length > 0 && value.length <= maxLength;
 }
 
+function isResumableSubmission(entry: MemoryBatchSubmissionRecord): boolean {
+  return Boolean(entry.batchName && entry.requestFingerprint);
+}
+
 function parseBatchSubmissionQuarantine(value: string): MemoryBatchSubmissionQuarantine | null {
   try {
     // SAFETY: parsed fields stay unknown and are validated below before use.
@@ -52,7 +60,9 @@ function parseBatchSubmissionQuarantine(value: string): MemoryBatchSubmissionQua
         !isNonEmptyBoundedString(candidate.provider, 100) ||
         !isNonEmptyBoundedString(candidate.submissionId, 200) ||
         !isNonEmptyBoundedString(candidate.startedAt, 100) ||
-        (candidate.batchName !== undefined && !isNonEmptyBoundedString(candidate.batchName, 500))
+        (candidate.batchName !== undefined && !isNonEmptyBoundedString(candidate.batchName, 500)) ||
+        (candidate.requestFingerprint !== undefined &&
+          !isNonEmptyBoundedString(candidate.requestFingerprint, 100))
       ) {
         return null;
       }
@@ -61,6 +71,9 @@ function parseBatchSubmissionQuarantine(value: string): MemoryBatchSubmissionQua
         submissionId: candidate.submissionId,
         startedAt: candidate.startedAt,
         ...(candidate.batchName ? { batchName: candidate.batchName } : {}),
+        ...(candidate.requestFingerprint
+          ? { requestFingerprint: candidate.requestFingerprint }
+          : {}),
       });
     }
     return { version: 1, submissions };
@@ -93,13 +106,18 @@ export class MemoryBatchSubmissionOwner {
     return {
       malformed: false,
       submissions: parsed.submissions,
-      recoveryAction: MEMORY_BATCH_SUBMISSION_RECOVERY_ACTION,
+      recoveryAction: parsed.submissions.every(isResumableSubmission)
+        ? MEMORY_BATCH_SUBMISSION_RESUME_ACTION
+        : MEMORY_BATCH_SUBMISSION_RECOVERY_ACTION,
     };
   }
 
   assertReady(): void {
     const quarantine = this.readStatus();
     if (!quarantine) {
+      return;
+    }
+    if (!quarantine.malformed && quarantine.submissions.every(isResumableSubmission)) {
       return;
     }
     const detail = quarantine.malformed
@@ -128,9 +146,41 @@ export class MemoryBatchSubmissionOwner {
       this.keysPendingCommit.delete(buildBatchSubmissionKey(provider, submissionId));
     };
     return {
-      started: async ({ submissionId }) => {
+      resumeAccepted: async ({ requestFingerprint }) => {
+        if (!isNonEmptyBoundedString(requestFingerprint, 100)) {
+          throw new Error("memory embedding provider supplied an invalid request fingerprint");
+        }
+        let resumed: { submissionId: string; batchName: string } | null = null;
+        let resumedKey: string | null = null;
+        this.update((current) => {
+          const matches = current.filter(
+            (entry) =>
+              entry.provider === provider &&
+              entry.requestFingerprint === requestFingerprint &&
+              entry.batchName,
+          );
+          if (matches.length > 1) {
+            throw new Error("memory embedding batch quarantine has duplicate request fingerprints");
+          }
+          const match = matches[0];
+          if (!match?.batchName) {
+            return current;
+          }
+          resumed = { submissionId: match.submissionId, batchName: match.batchName };
+          resumedKey = buildBatchSubmissionKey(provider, match.submissionId);
+          return current;
+        });
+        if (resumedKey) {
+          this.keysPendingCommit.add(resumedKey);
+        }
+        return resumed;
+      },
+      started: async ({ submissionId, requestFingerprint }) => {
         if (!isNonEmptyBoundedString(submissionId, 200)) {
           throw new Error("memory embedding provider supplied an invalid batch submission id");
+        }
+        if (requestFingerprint !== undefined && !isNonEmptyBoundedString(requestFingerprint, 100)) {
+          throw new Error("memory embedding provider supplied an invalid request fingerprint");
         }
         this.update((current) => {
           const foreignReservation = current.find(
@@ -151,7 +201,15 @@ export class MemoryBatchSubmissionOwner {
           ) {
             throw new Error(`memory embedding batch submission id already exists: ${submissionId}`);
           }
-          return [...current, { provider, submissionId, startedAt: new Date().toISOString() }];
+          return [
+            ...current,
+            {
+              provider,
+              submissionId,
+              startedAt: new Date().toISOString(),
+              ...(requestFingerprint ? { requestFingerprint } : {}),
+            },
+          ];
         });
         this.keysPendingCommit.add(buildBatchSubmissionKey(provider, submissionId));
       },

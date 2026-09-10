@@ -1,5 +1,5 @@
 // Google plugin module implements embedding batch behavior.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   buildEmbeddingBatchGroupOptions,
   runEmbeddingBatchGroups,
@@ -33,6 +33,27 @@ type GeminiBatchRequest = {
   custom_id: string;
   request: GeminiTextEmbeddingRequest;
 };
+
+function buildGeminiBatchRequestFingerprint(params: {
+  gemini: GeminiEmbeddingClient;
+  requests: GeminiBatchRequest[];
+  groupIndex: number;
+  groups: number;
+}): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        version: 1,
+        baseUrl: params.gemini.baseUrl,
+        modelPath: params.gemini.modelPath,
+        outputDimensionality: params.gemini.outputDimensionality,
+        groupIndex: params.groupIndex,
+        groups: params.groups,
+        requests: params.requests,
+      }),
+    )
+    .digest("hex");
+}
 
 type GeminiBatchOperation = {
   name?: string;
@@ -210,11 +231,12 @@ function buildGeminiUploadBody(params: { jsonl: string; displayName: string }): 
 async function submitGeminiBatch(params: {
   gemini: GeminiEmbeddingClient;
   requests: GeminiBatchRequest[];
+  requestFingerprint: string;
   deadline: ProviderOperationDeadline;
   timeoutMs: number;
   signal?: AbortSignal;
   submissionLifecycle?: MemoryEmbeddingBatchSubmissionLifecycle;
-}): Promise<GeminiBatchOperation> {
+}): Promise<{ operation: GeminiBatchOperation; submissionId: string }> {
   const baseUrl = params.gemini.baseUrl;
   const jsonl = params.requests
     .map((request) =>
@@ -278,7 +300,10 @@ async function submitGeminiBatch(params: {
     batchEndpoint,
     fileId,
   });
-  await params.submissionLifecycle?.started({ submissionId });
+  await params.submissionLifecycle?.started({
+    submissionId,
+    requestFingerprint: params.requestFingerprint,
+  });
   let createOperationStarted = false;
   try {
     // Signal creation can itself throw after the durable reservation. Keep it
@@ -315,7 +340,7 @@ async function submitGeminiBatch(params: {
       throw new Error("gemini batch create failed: missing batch name");
     }
     await params.submissionLifecycle?.accepted({ submissionId, batchName });
-    return operation;
+    return { operation, submissionId };
   } catch (error) {
     if (!createOperationStarted || isDefinitiveGeminiBatchCreateRejection(error)) {
       await params.submissionLifecycle?.rejected({ submissionId });
@@ -501,21 +526,54 @@ export async function runGeminiEmbeddingBatches(
         label: "gemini embedding batch",
         timeoutMs,
       });
-      const batchInfo = await submitGeminiBatch({
+      const requestFingerprint = buildGeminiBatchRequestFingerprint({
         gemini,
         requests: group,
-        deadline,
-        timeoutMs,
-        ...(signal ? { signal } : {}),
-        ...(params.submissionLifecycle ? { submissionLifecycle: params.submissionLifecycle } : {}),
+        groupIndex,
+        groups,
       });
-      const batchName = batchInfo.name ?? "";
-      if (!batchName) {
-        throw new Error("gemini batch create failed: missing batch name");
+      const resumed = await params.submissionLifecycle?.resumeAccepted?.({ requestFingerprint });
+      let batchInfo: GeminiBatchOperation;
+      let batchName: string;
+      if (resumed) {
+        batchName = resumed.batchName;
+        batchInfo = await fetchGeminiBatchStatus({
+          gemini,
+          batchName,
+          signal: createGeminiBatchStageSignal({
+            deadline,
+            timeoutMs,
+            ...(signal ? { signal } : {}),
+          }),
+        });
+        params.debug?.("memory embeddings: gemini batch resumed", {
+          batchName,
+          submissionId: resumed.submissionId,
+          group: groupIndex + 1,
+          groups,
+          requests: group.length,
+        });
+      } else {
+        const submitted = await submitGeminiBatch({
+          gemini,
+          requests: group,
+          requestFingerprint,
+          deadline,
+          timeoutMs,
+          ...(signal ? { signal } : {}),
+          ...(params.submissionLifecycle
+            ? { submissionLifecycle: params.submissionLifecycle }
+            : {}),
+        });
+        batchInfo = submitted.operation;
+        batchName = batchInfo.name ?? "";
+        if (!batchName) {
+          throw new Error("gemini batch create failed: missing batch name");
+        }
       }
       deadline.label = `gemini batch ${batchName}`;
 
-      params.debug?.("memory embeddings: gemini batch created", {
+      params.debug?.(`memory embeddings: gemini batch ${resumed ? "adopted" : "created"}`, {
         batchName,
         state: getGeminiBatchState(batchInfo),
         group: groupIndex + 1,

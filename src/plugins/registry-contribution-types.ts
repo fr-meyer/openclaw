@@ -64,8 +64,13 @@ export type MemoryEmbeddingBatchChunk = {
 };
 
 export type MemoryEmbeddingBatchSubmissionLifecycle = {
+  /** Adopt an acknowledged provider job only when its exact request fingerprint matches. */
+  resumeAccepted?: (params: { requestFingerprint: string }) => Promise<{
+    submissionId: string;
+    batchName: string;
+  } | null>;
   /** Persist a provider-safe correlation id before sending a non-idempotent create request. */
-  started: (params: { submissionId: string }) => Promise<void>;
+  started: (params: { submissionId: string; requestFingerprint?: string }) => Promise<void>;
   /** Attach the provider resource name after a successful create response. */
   accepted: (params: { submissionId: string; batchName: string }) => Promise<void>;
   /** Remove a pre-submit record after a definitive create rejection. */

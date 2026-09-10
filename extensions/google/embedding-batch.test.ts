@@ -189,6 +189,7 @@ function runBatch(
 
 function createSubmissionLifecycle() {
   return {
+    resumeAccepted: vi.fn<NonNullable<SubmissionLifecycle["resumeAccepted"]>>(async () => null),
     started: vi.fn<SubmissionLifecycle["started"]>(),
     accepted: vi.fn<SubmissionLifecycle["accepted"]>(),
     rejected: vi.fn<SubmissionLifecycle["rejected"]>(),
@@ -378,11 +379,37 @@ describe("Google embedding-batch bounded JSON reads", () => {
       new Map([["r0", [1, 0, 0]]]),
     );
     const submissionId = lifecycle.started.mock.calls[0]?.[0].submissionId;
+    expect(lifecycle.started).toHaveBeenCalledWith({
+      submissionId,
+      requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
     expect(lifecycle.accepted).toHaveBeenCalledWith({
       submissionId,
       batchName: "batches/b-0",
     });
     expect(lifecycle.rejected).not.toHaveBeenCalled();
+  });
+
+  it("resumes an exact acknowledged batch without uploading or creating another job", async () => {
+    const lifecycle = createSubmissionLifecycle();
+    lifecycle.resumeAccepted.mockResolvedValue({
+      submissionId: "submission-existing",
+      batchName: "batches/b-0",
+    });
+    const fetchMock = stubBatchFetch();
+
+    await expect(runBatch(singleRequest(), makeGeminiClient(), lifecycle)).resolves.toEqual(
+      new Map([["r0", [1, 0, 0]]]),
+    );
+
+    expect(lifecycle.resumeAccepted).toHaveBeenCalledWith({
+      requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(lifecycle.started).not.toHaveBeenCalled();
+    expect(lifecycle.accepted).not.toHaveBeenCalled();
+    expect(lifecycle.rejected).not.toHaveBeenCalled();
+    const stages = fetchMock.mock.calls.map(([input]) => batchStageForUrl(fetchInputUrl(input)));
+    expect(stages).toEqual(["status", "download"]);
   });
 
   it("rejects disabled waiting before any remote side effect", async () => {
