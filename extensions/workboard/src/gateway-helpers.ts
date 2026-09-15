@@ -170,10 +170,26 @@ export function createWorkboardDispatchHandler(params: {
 }) {
   return async (
     { params: requestParams, respond, client, context }: GatewayMethodContext,
-    options: { supportsMaxStarts: boolean; directCard?: boolean },
+    options: { supportsMaxStarts: boolean; supportsCardId?: boolean; directCard?: boolean },
   ) => {
     try {
-      const cardId = options.directCard ? readId(requestParams) : undefined;
+      const rawCardId = options.directCard
+        ? requestParams.id
+        : requestParams && typeof requestParams === "object" && "cardId" in requestParams
+          ? requestParams.cardId
+          : undefined;
+      if (!options.directCard && !options.supportsCardId && rawCardId !== undefined) {
+        throw new Error("cardId requires workboard.cards.dispatchWithOptions.");
+      }
+      let cardId: string | undefined;
+      if (options.directCard) {
+        cardId = readId({ id: rawCardId });
+      } else if (rawCardId !== undefined) {
+        if (typeof rawCardId !== "string" || !rawCardId.trim()) {
+          throw new Error("cardId must be a non-empty string.");
+        }
+        cardId = rawCardId.trim();
+      }
       const boardId =
         requestParams && typeof requestParams === "object" && "boardId" in requestParams
           ? requestParams.boardId
@@ -188,6 +204,9 @@ export function createWorkboardDispatchHandler(params: {
       const maxStarts = options.supportsMaxStarts
         ? readOptionalPositiveInteger(rawMaxStarts, "maxStarts")
         : undefined;
+      if (cardId && maxStarts !== undefined && maxStarts !== 1) {
+        throw new Error("maxStarts must be 1 when cardId is provided.");
+      }
       const provider =
         options.directCard &&
         typeof requestParams.provider === "string" &&
@@ -202,19 +221,22 @@ export function createWorkboardDispatchHandler(params: {
         store: params.store,
         subagent: params.api.runtime.subagent,
         worktrees: params.api.runtime.worktrees,
-        options: gatewayDispatchOptions({
-          api: params.api,
-          request: { context, client },
-          input: {
-            ...(cardId ? { cardId, maxStarts: 1 } : {}),
-            boardId: typeof boardId === "string" ? boardId : undefined,
-            ...(maxStarts !== undefined ? { maxStarts } : {}),
-            ...(provider ? { provider } : {}),
-            ...(model ? { model } : {}),
-          },
-        }),
+        options: {
+          ...gatewayDispatchOptions({
+            api: params.api,
+            request: { context, client },
+            input: {
+              ...(cardId ? { cardId, maxStarts: 1 } : {}),
+              boardId: typeof boardId === "string" ? boardId : undefined,
+              ...(maxStarts !== undefined ? { maxStarts } : {}),
+              ...(provider ? { provider } : {}),
+              ...(model ? { model } : {}),
+            },
+          }),
+          ...(cardId ? { targetMode: options.directCard ? "start" : "dispatch" } : {}),
+        },
       });
-      if (cardId) {
+      if (options.directCard) {
         const started = result.started[0];
         if (!started?.card) {
           throw new Error(result.startFailures[0]?.error ?? "Workboard card did not start.");

@@ -17,6 +17,7 @@ import {
   buildWorkerContext,
   assertCanMutateClaimedCard,
   cardBoardId,
+  cardParentIds,
   cardRunId,
   cardSessionKey,
   closeRunningAttempts,
@@ -444,13 +445,32 @@ export class WorkboardStore extends WorkboardNotificationStore {
   ): Promise<WorkboardDispatchResult> {
     const now = typeof input === "number" ? input : normalizeTimestamp(input.now, Date.now());
     const boardId = typeof input === "number" ? undefined : normalizeBoardId(input.boardId);
+    const rawCardId = typeof input === "number" ? undefined : input.cardId;
+    const cardId = typeof rawCardId === "string" ? rawCardId.trim() : undefined;
+    if (rawCardId !== undefined && !cardId) {
+      throw new Error("cardId must be a non-empty string.");
+    }
     return await this.enqueueMutation(async () => {
       const promoted: WorkboardCard[] = [];
       const reclaimed: WorkboardCard[] = [];
       const blocked: WorkboardCard[] = [];
       const orchestrated: WorkboardCard[] = [];
       const orchestratedByBoard = new Map<string, number>();
-      for (const card of await this.list({ boardId })) {
+      let cards: WorkboardCard[];
+      if (cardId) {
+        const card = await this.get(cardId);
+        if (!card) {
+          throw new Error(`card not found: ${cardId}`);
+        }
+        const actualBoardId = cardBoardId(card);
+        if (boardId && actualBoardId !== boardId) {
+          throw new Error(`card ${cardId} belongs to board ${actualBoardId}, not ${boardId}.`);
+        }
+        cards = [card];
+      } else {
+        cards = await this.list({ boardId });
+      }
+      for (const card of cards) {
         // Archived cards remain readable and restorable, but must never re-enter automation.
         if (card.metadata?.archivedAt) {
           continue;
@@ -639,10 +659,16 @@ export class WorkboardStore extends WorkboardNotificationStore {
     });
   }
 
-  async buildWorkerContext(id: string): Promise<string> {
+  async buildWorkerContext(id: string, options: { relatedOnly?: boolean } = {}): Promise<string> {
     const card = await this.get(id);
     if (!card) {
       throw new Error(`card not found: ${id}`);
+    }
+    if (options.relatedOnly) {
+      const related = (
+        await Promise.all(cardParentIds(card).map(async (parentId) => await this.get(parentId)))
+      ).filter((entry): entry is WorkboardCard => entry !== undefined);
+      return buildWorkerContext(card, related);
     }
     return buildWorkerContext(card, await this.list());
   }
