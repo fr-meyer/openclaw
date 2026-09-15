@@ -128,6 +128,8 @@ Selection is conservative. One dispatch starts at most three workers by default.
 
 If worker start fails after a card is claimed, Workboard blocks that card and clears the claim. It records the failure in card execution and worker-log metadata. Failed starts stay visible instead of returning the card to the queue silently.
 
+When an accepted worker run reports an exact terminal run id, Workboard releases that run's claim in the same fenced lifecycle update that moves the card to `review` or `blocked`. Restart recovery uses the session's exact last run id for the same reconciliation. Missing, mismatched, or nonterminal run evidence leaves the claim intact for ordinary expiry or explicit operator recovery instead of risking another live worker's lease.
+
 The CLI falls back to data-only dispatch against local Workboard state when all of these are true:
 
 - You give no explicit Gateway target.
