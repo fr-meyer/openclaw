@@ -1,4 +1,5 @@
 // Workboard tests cover gateway plugin behavior.
+import fs from "node:fs";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
 import { describe, expect, it, vi } from "vitest";
 import type { OpenClawPluginApi } from "../api.js";
@@ -27,6 +28,32 @@ function createGatewayMethodCapture() {
 }
 
 describe("workboard gateway methods", () => {
+  it("exposes exact-card targeting through the existing dashboard dispatch action", () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
+    ) as {
+      dashboard?: {
+        actionVerbs?: Array<{
+          id?: string;
+          method?: string;
+          paramShape?: { properties?: Record<string, unknown> };
+        }>;
+      };
+    };
+    const dispatch = manifest.dashboard?.actionVerbs?.find((entry) => entry.id === "dispatch");
+
+    expect(dispatch).toMatchObject({
+      method: "workboard.cards.dispatchWithOptions",
+      paramShape: {
+        properties: {
+          boardId: expect.any(Object),
+          cardId: expect.objectContaining({ type: "string", minLength: 1 }),
+          maxStarts: expect.objectContaining({ type: "integer", minimum: 1 }),
+        },
+      },
+    });
+  });
+
   it.each(["move", "archive", "delete"] as const)(
     "returns a redacted conflict for stale %s requests",
     async (action) => {
@@ -496,6 +523,86 @@ describe("workboard gateway methods", () => {
     );
   });
 
+  it("dispatches one exact RPC card without enumerating or mutating unrelated cards", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000_000);
+      type RegisteredMethod = {
+        handler: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[1];
+        opts: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[2];
+      };
+      const methods = new Map<string, RegisteredMethod>();
+      const run = vi.fn().mockResolvedValue({ runId: "run-target" });
+      const api = {
+        runtime: {
+          state: { openKeyedStore: vi.fn() },
+          subagent: { run },
+        },
+        registerGatewayMethod: vi.fn(
+          (
+            method: string,
+            handler: RegisteredMethod["handler"],
+            opts: RegisteredMethod["opts"],
+          ) => {
+            methods.set(method, { handler, opts });
+          },
+        ),
+      } as unknown as OpenClawPluginApi;
+      const store = createWorkboardSqliteTestStore();
+      const stale = await store.create({
+        title: "Unrelated expired worker",
+        status: "ready",
+        boardId: "ops",
+        agentId: "expired-owner",
+      });
+      await store.claim(stale.id, {
+        ownerId: "expired-owner",
+        token: "expired-token",
+        ttlSeconds: 1,
+      });
+      const sibling = await store.create({
+        title: "Unrelated urgent card",
+        status: "ready",
+        priority: "urgent",
+        boardId: "ops",
+        agentId: "urgent-owner",
+        workspaceAccess: { unrestricted: true },
+      });
+      const target = await store.create({
+        title: "Exact RPC target",
+        status: "ready",
+        priority: "low",
+        boardId: "ops",
+        agentId: "target-owner",
+        workspaceAccess: { unrestricted: true },
+      });
+      vi.setSystemTime(1_000_000 + 10 * 60 * 1000);
+      const staleBefore = await store.get(stale.id);
+      const siblingBefore = await store.get(sibling.id);
+      const list = vi.spyOn(store, "list");
+      registerWorkboardGatewayMethods({ api, store });
+      const respond = vi.fn();
+
+      await methods.get("workboard.cards.dispatchWithOptions")?.handler({
+        params: { boardId: "ops", cardId: target.id },
+        context: { getRuntimeConfig: () => ({}) },
+        respond,
+      } as never);
+
+      expect(list).not.toHaveBeenCalled();
+      expect(run).toHaveBeenCalledOnce();
+      expect(respond.mock.calls[0]?.[0]).toBe(true);
+      expect(respond.mock.calls[0]?.[1]).toMatchObject({
+        started: [expect.objectContaining({ cardId: target.id, runId: "run-target" })],
+      });
+      expect(respond.mock.calls[0]?.[1]?.started[0]).not.toHaveProperty("card");
+      await expect(store.get(stale.id)).resolves.toEqual(staleBefore);
+      await expect(store.get(sibling.id)).resolves.toEqual(siblingBefore);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("threads maxStarts while the legacy method keeps its default cap", async () => {
     type RegisteredMethod = {
       handler: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[1];
@@ -580,6 +687,34 @@ describe("workboard gateway methods", () => {
     expect(legacyRespond.mock.calls[0]?.[0]).toBe(false);
     expect(legacyRespond.mock.calls[0]?.[2]?.message).toBe(
       "maxStarts requires workboard.cards.dispatchWithOptions.",
+    );
+
+    const legacyCardRespond = vi.fn();
+    await methods
+      .get("workboard.cards.dispatch")
+      ?.handler({ params: { cardId: "card-1" }, respond: legacyCardRespond } as never);
+    expect(legacyCardRespond.mock.calls[0]?.[0]).toBe(false);
+    expect(legacyCardRespond.mock.calls[0]?.[2]?.message).toBe(
+      "cardId requires workboard.cards.dispatchWithOptions.",
+    );
+
+    for (const value of ["", "   ", 42]) {
+      const invalidCardRespond = vi.fn();
+      await handler?.({ params: { cardId: value }, respond: invalidCardRespond } as never);
+      expect(invalidCardRespond.mock.calls[0]?.[0]).toBe(false);
+      expect(invalidCardRespond.mock.calls[0]?.[2]?.message).toBe(
+        "cardId must be a non-empty string.",
+      );
+    }
+
+    const exactCapRespond = vi.fn();
+    await handler?.({
+      params: { cardId: "card-1", maxStarts: 2 },
+      respond: exactCapRespond,
+    } as never);
+    expect(exactCapRespond.mock.calls[0]?.[0]).toBe(false);
+    expect(exactCapRespond.mock.calls[0]?.[2]?.message).toBe(
+      "maxStarts must be 1 when cardId is provided.",
     );
 
     for (const value of [0, -1, 1.5, "2"]) {

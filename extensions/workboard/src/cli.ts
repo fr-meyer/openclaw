@@ -28,6 +28,7 @@ type GatewayOptions = JsonOptions & {
 };
 
 type DispatchOptions = GatewayOptions & {
+  card?: string;
   maxStarts?: number;
 };
 
@@ -262,6 +263,7 @@ export function registerWorkboardCli(params: { program: Command; store: Workboar
       .command("dispatch")
       .description("Promote ready cards and start worker runs through the Gateway")
       .option("--board <id>", "Dispatch a single board")
+      .option("--card <id>", "Dispatch one exact card id without scanning other queued cards")
       .option(
         "--max-starts <count>",
         "Maximum new worker runs to start in this pass (default 3)",
@@ -270,13 +272,21 @@ export function registerWorkboardCli(params: { program: Command; store: Workboar
       .option("--admin", "Request full-host workspace access", false)
       .option("--json", "Print JSON", false),
   ).action(async (options: DispatchOptions) => {
+    const cardId = options.card?.trim();
+    if (options.card !== undefined && !cardId) {
+      throw invalidCliArgument("--card must be a non-empty string.");
+    }
+    if (cardId && options.maxStarts !== undefined && options.maxStarts !== 1) {
+      throw invalidCliArgument("--max-starts must be 1 when --card is provided.");
+    }
     try {
       const method =
-        options.maxStarts === undefined
+        options.maxStarts === undefined && !cardId
           ? "workboard.cards.dispatch"
           : "workboard.cards.dispatchWithOptions";
       const result = await callWorkboardGateway(method, options, {
         boardId: options.board,
+        ...(cardId ? { cardId } : {}),
         ...(options.maxStarts !== undefined ? { maxStarts: options.maxStarts } : {}),
       });
       if (options.json) {
@@ -289,6 +299,7 @@ export function registerWorkboardCli(params: { program: Command; store: Workboar
       }
     } catch (error) {
       if (
+        cardId ||
         !isGatewayUnavailableError(error) ||
         hasExplicitGatewayTarget(options) ||
         hasConfiguredRemoteGatewayTarget()
