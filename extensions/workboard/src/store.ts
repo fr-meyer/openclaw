@@ -4,6 +4,7 @@ import type {
   WorkboardAttachment,
   WorkboardBoardMetadata,
   WorkboardCard,
+  WorkboardClaim,
   WorkboardDiagnostic,
   WorkboardExecution,
   WorkboardExecutionStatus,
@@ -187,6 +188,39 @@ function lifecycleExecution(params: {
     startedAt: existing?.startedAt ?? params.card.startedAt ?? params.card.updatedAt,
     updatedAt: params.now,
   };
+}
+
+function hasExactTerminalClaimAssociation(
+  card: WorkboardCard,
+  claim: WorkboardClaim | undefined,
+  launch: WorkboardLaunchState | undefined,
+  input: {
+    targetStatus: WorkboardStatus | undefined;
+    executionStatus: WorkboardExecutionStatus | undefined;
+    association?: WorkboardLifecycleAssociation;
+  },
+): boolean {
+  const association = input.association;
+  const sessionKey = cardSessionKey(card);
+  const runId = cardRunId(card);
+  const terminalStatusMatches =
+    (input.targetStatus === "review" && input.executionStatus === "review") ||
+    (input.targetStatus === "blocked" && input.executionStatus === "blocked");
+  return Boolean(
+    terminalStatusMatches &&
+    association?.runId &&
+    claim &&
+    launch?.phase === "accepted" &&
+    launch.acceptedSessionKey === association.sessionKey &&
+    launch.acceptedRunId === association.runId &&
+    // prepareExecutionLaunch records the claimed card's monotonic updatedAt.
+    // A later replacement claim therefore has a newer generation timestamp.
+    claim.claimedAt <= launch.preparedAt &&
+    sessionKey &&
+    runId &&
+    association.expectedSessionKey === sessionKey &&
+    association.expectedRunId === runId,
+  );
 }
 
 // Capability layers split review boundaries only; the core still owns persistence and mutation order.
@@ -408,6 +442,17 @@ export class WorkboardStore extends WorkboardNotificationStore {
             }
           } else if (associationIsCurrent && card.metadata?.stale) {
             metadata = { ...metadata, stale: null };
+          }
+          if (
+            associationIsCurrent &&
+            hasExactTerminalClaimAssociation(
+              card,
+              card.metadata?.claim,
+              acceptedLaunch ?? launch,
+              input,
+            )
+          ) {
+            metadata = { ...metadata, claim: undefined };
           }
           if (metadata) {
             patch.metadata = metadata;

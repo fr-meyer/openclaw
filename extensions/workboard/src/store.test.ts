@@ -3915,8 +3915,10 @@ describe("WorkboardStore", () => {
         updatedAt: 100,
       },
     });
+    await store.claim(running.id, { ownerId: "main" });
     const stopped = await store.reclaim(running.id, { reason: "replace worker" }, null);
     expect(stopped.execution).toBeUndefined();
+    expect(stopped.metadata?.claim).toBeUndefined();
     expect(stopped.metadata?.attempts).toEqual([expect.objectContaining({ status: "stopped" })]);
     expect(stopped.metadata?.failureCount).toBeUndefined();
   });
