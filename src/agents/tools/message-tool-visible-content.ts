@@ -336,6 +336,7 @@ export function sanitizeMessageToolVisiblePayload(
   parseJsonMessageParam(params, "presentation");
   parseInteractiveParam(params);
   if (params.clawhub && typeof params.clawhub === "object" && !Array.isArray(params.clawhub)) {
+    // SAFETY: The guard establishes a non-null, non-array record before cloning.
     const clawHubRequest = { ...(params.clawhub as Record<string, unknown>) };
     params.clawhub = clawHubRequest;
     suppressedVisiblePayloadReason ??= sanitizeStringParam(

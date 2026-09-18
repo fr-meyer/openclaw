@@ -77,11 +77,10 @@ export function validateClawHubRecommendationSend(
   const request = requestSchema.parse(params.clawhub);
   const conflictingKeys = Object.entries(params)
     .filter(
-      ([key, value]) =>
-        !recommendationControlParamKeys.has(key) && hasActiveParamValue(value),
+      ([key, value]) => !recommendationControlParamKeys.has(key) && hasActiveParamValue(value),
     )
     .map(([key]) => key)
-    .sort();
+    .toSorted();
   if (conflictingKeys.length > 0) {
     throw new Error(
       `ClawHub recommendations cannot include ordinary send fields (${conflictingKeys.join(", ")}). Use clawhub.intro for optional introductory text.`,

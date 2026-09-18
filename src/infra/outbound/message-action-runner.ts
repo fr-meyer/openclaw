@@ -328,9 +328,7 @@ async function handleInternalSourceReplySendAction(
     });
     throwIfAborted(input.abortSignal);
     params.message =
-      recommendations.cards.length > 0 && request.intro
-        ? request.intro
-        : recommendations.text;
+      recommendations.cards.length > 0 && request.intro ? request.intro : recommendations.text;
   }
   const mediaAccess =
     input.mediaAccess ??

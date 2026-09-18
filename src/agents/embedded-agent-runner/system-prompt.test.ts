@@ -92,9 +92,7 @@ describe("buildEmbeddedSystemPrompt", () => {
         surface === "available",
       );
       expect(
-        prompt.includes(
-          'message(action="send", clawhub={intent:"recommend",query:"capability"})',
-        ),
+        prompt.includes('message(action="send", clawhub={intent:"recommend",query:"capability"})'),
       ).toBe(surface === "available");
     },
   );

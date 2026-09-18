@@ -175,13 +175,7 @@ describe("ClawHub message recommendations", () => {
       async (state) => {
         const sessionKey = "agent:main:webchat:dm:clawhub-proof";
         const sessionId = "clawhub-mixed-guard-session";
-        const storePath = path.join(
-          state.stateDir,
-          "agents",
-          "main",
-          "sessions",
-          "sessions.json",
-        );
+        const storePath = path.join(state.stateDir, "agents", "main", "sessions", "sessions.json");
         const scope = { agentId: "main", sessionKey, sessionId, storePath };
         await replaceSessionEntry(scope, { sessionId, updatedAt: 1 });
         const config = {
@@ -268,16 +262,17 @@ describe("ClawHub message recommendations", () => {
   );
 
   it("limits explicit recommendations to three official cards without installing", async () => {
+    const extraRemotePlugins: (typeof remotePlugin)[] = [];
+    for (const runtimeId of ["signal", "telegram", "matrix"]) {
+      extraRemotePlugins.push({
+        ...remotePlugin,
+        packageName: `@openclaw/${runtimeId}`,
+        displayName: runtimeId[0]?.toUpperCase() + runtimeId.slice(1),
+        runtimeId,
+      });
+    }
     registry.plugins.mockResolvedValue({
-      items: [
-        remotePlugin,
-        ...["signal", "telegram", "matrix"].map((runtimeId) => ({
-          ...remotePlugin,
-          packageName: `@openclaw/${runtimeId}`,
-          displayName: runtimeId[0]?.toUpperCase() + runtimeId.slice(1),
-          runtimeId,
-        })),
-      ],
+      items: [remotePlugin, ...extraRemotePlugins],
     });
 
     const result = await messageTool().execute("explicit-three-card-limit", {
