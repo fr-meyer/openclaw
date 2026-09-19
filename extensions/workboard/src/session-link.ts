@@ -39,7 +39,11 @@ export function workboardCardMatchesLifecycleLink(
   if (linkedRunId && source.runId) {
     if (source.runId !== linkedRunId) {
       const launch = card.metadata?.automation?.launch;
+      const sourceBelongsToPriorAttempt = card.metadata?.attempts?.some(
+        (attempt) => attempt.runId === source.runId && attempt.runId !== linkedRunId,
+      );
       const mayBackfillProvisionalRun =
+        !sourceBelongsToPriorAttempt &&
         launch?.provisionalRunId === linkedRunId &&
         (launch.phase === "prepared" ||
           (launch.phase === "accepted" && launch.acceptedRunId === undefined));

@@ -190,6 +190,13 @@ function lifecycleExecution(params: {
   };
 }
 
+function claimPostdatesLaunch(
+  claim: WorkboardClaim | undefined,
+  launch: WorkboardLaunchState | undefined,
+): boolean {
+  return Boolean(claim && launch && claim.claimedAt > launch.preparedAt);
+}
+
 function hasExactTerminalClaimAssociation(
   card: WorkboardCard,
   claim: WorkboardClaim | undefined,
@@ -368,8 +375,9 @@ export class WorkboardStore extends WorkboardNotificationStore {
           const launch = card.metadata?.automation?.launch;
           const associationIsCurrent =
             !input.association ||
-            ((input.sourceUpdatedAt === undefined ||
-              !shouldSkipPersistedLifecycleStatusUpdate(card, input.sourceUpdatedAt)) &&
+            (!claimPostdatesLaunch(card.metadata?.claim, launch) &&
+              (input.sourceUpdatedAt === undefined ||
+                !shouldSkipPersistedLifecycleStatusUpdate(card, input.sourceUpdatedAt)) &&
               (launch?.phase !== "prepared" ||
                 (input.association.acceptedAt !== undefined &&
                   input.association.acceptedAt >= launch.preparedAt)) &&
@@ -713,7 +721,7 @@ export class WorkboardStore extends WorkboardNotificationStore {
       const related = (
         await Promise.all(cardParentIds(card).map(async (parentId) => await this.get(parentId)))
       ).filter((entry): entry is WorkboardCard => entry !== undefined);
-      return buildWorkerContext(card, related);
+      return buildWorkerContext(card, related, { includeRecentAgentWork: false });
     }
     return buildWorkerContext(card, await this.list());
   }

@@ -190,10 +190,17 @@ export function createWorkboardDispatchHandler(params: {
         }
         cardId = rawCardId.trim();
       }
-      const boardId =
+      const rawBoardId =
         requestParams && typeof requestParams === "object" && "boardId" in requestParams
           ? requestParams.boardId
           : undefined;
+      let boardId: string | undefined;
+      if (rawBoardId !== undefined) {
+        if (typeof rawBoardId !== "string" || !rawBoardId.trim()) {
+          throw new Error("boardId must be a non-empty string.");
+        }
+        boardId = rawBoardId.trim();
+      }
       const rawMaxStarts =
         requestParams && typeof requestParams === "object" && "maxStarts" in requestParams
           ? requestParams.maxStarts
@@ -227,7 +234,7 @@ export function createWorkboardDispatchHandler(params: {
             request: { context, client },
             input: {
               ...(cardId ? { cardId, maxStarts: 1 } : {}),
-              boardId: typeof boardId === "string" ? boardId : undefined,
+              boardId,
               ...(maxStarts !== undefined ? { maxStarts } : {}),
               ...(provider ? { provider } : {}),
               ...(model ? { model } : {}),

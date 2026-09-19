@@ -707,6 +707,15 @@ describe("workboard gateway methods", () => {
       );
     }
 
+    for (const value of ["", "   ", 42]) {
+      const invalidBoardRespond = vi.fn();
+      await handler?.({ params: { boardId: value }, respond: invalidBoardRespond } as never);
+      expect(invalidBoardRespond.mock.calls[0]?.[0]).toBe(false);
+      expect(invalidBoardRespond.mock.calls[0]?.[2]?.message).toBe(
+        "boardId must be a non-empty string.",
+      );
+    }
+
     const exactCapRespond = vi.fn();
     await handler?.({
       params: { cardId: "card-1", maxStarts: 2 },
