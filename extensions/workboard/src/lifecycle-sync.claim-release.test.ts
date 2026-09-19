@@ -125,7 +125,7 @@ describe("Workboard terminal claim lifecycle", () => {
     expect((await store.get(accepted.card.id))?.metadata?.claim).toBeUndefined();
   });
 
-  it("retains a newer replacement claim from another owner slot", async () => {
+  it("ignores a prior launch's terminal event after a newer replacement claim", async () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(1_000);
@@ -146,6 +146,7 @@ describe("Workboard terminal claim lifecycle", () => {
         ownerId: "agent:other:main",
         ttlSeconds: 60,
       });
+      expect(replacement.card.execution).toBeUndefined();
 
       await syncWorkboardSubagentEnded({
         store,
@@ -157,10 +158,12 @@ describe("Workboard terminal claim lifecycle", () => {
         },
       });
 
-      await expect(store.get(accepted.card.id)).resolves.toMatchObject({
-        status: "review",
+      const current = await store.get(accepted.card.id);
+      expect(current).toMatchObject({
+        status: "running",
         metadata: { claim: { ownerId: "agent:other:main" } },
       });
+      expect(current?.execution).toBeUndefined();
       vi.setSystemTime(31_000);
       const heartbeat = await store.heartbeat(accepted.card.id, { ownerId: "agent:other:main" });
       expect(heartbeat.metadata?.claim?.expiresAt).toBe(91_000);
@@ -279,6 +282,156 @@ describe("Workboard terminal claim lifecycle", () => {
       execution: { status: "review", sessionKey, runId },
     });
     expect((await store.get(accepted.card.id))?.metadata?.claim).toBeUndefined();
+  });
+
+  it("ignores a prior terminal session during restart recovery after a replacement claim", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      const store = createWorkboardSqliteTestStore();
+      const sessionKey = "agent:worker:subagent:workboard-openclaw-restart-replaced";
+      const runId = "run-restart-replaced";
+      const accepted = await createAcceptedClaimedCard(store, {
+        ownerId: sessionKey,
+        sessionKey,
+        runId,
+      });
+      await store.reclaim(
+        accepted.card.id,
+        { status: "todo", reason: "replace the accepted worker" },
+        null,
+      );
+      const replacement = await store.claim(accepted.card.id, {
+        ownerId: "agent:other:main",
+        ttlSeconds: 60,
+      });
+
+      await runSessionSweep({
+        store,
+        sessions: [
+          {
+            key: sessionKey,
+            status: "done",
+            hasActiveRun: false,
+            lastRunId: runId,
+            updatedAt: replacement.card.updatedAt + 1,
+          },
+        ],
+      });
+
+      const current = await store.get(accepted.card.id);
+      expect(current).toMatchObject({
+        status: "running",
+        metadata: { claim: { ownerId: "agent:other:main" } },
+      });
+      expect(current?.execution).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores a prior terminal hook while a replacement launch is prepared", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      const store = createWorkboardSqliteTestStore();
+      const sessionKey = "agent:worker:subagent:workboard-openclaw-prepared-replacement";
+      const priorRunId = "run-prepared-replacement-prior";
+      const accepted = await createAcceptedClaimedCard(store, {
+        ownerId: sessionKey,
+        sessionKey,
+        runId: priorRunId,
+      });
+      await store.reclaim(
+        accepted.card.id,
+        { status: "todo", reason: "replace the accepted worker" },
+        null,
+      );
+      const replacement = await store.claim(accepted.card.id, {
+        ownerId: "agent:other:main",
+        ttlSeconds: 60,
+      });
+      const prepared = await store.prepareExecutionLaunch(accepted.card.id, {
+        requestedSessionKey: sessionKey,
+        now: replacement.card.updatedAt + 1,
+        scope: { ownerId: "agent:other:main", token: replacement.token },
+      });
+
+      const updated = await syncWorkboardSubagentEnded({
+        store,
+        event: {
+          targetSessionKey: sessionKey,
+          runId: priorRunId,
+          endedAt: prepared.card.updatedAt + 1,
+          outcome: "ok",
+        },
+      });
+
+      expect(updated).toBe(0);
+      await expect(store.get(accepted.card.id)).resolves.toMatchObject({
+        status: "running",
+        execution: { status: "running", runId: prepared.launch.provisionalRunId },
+        metadata: {
+          claim: { ownerId: "agent:other:main" },
+          automation: { launch: { phase: "prepared" } },
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores a prior terminal session while a replacement launch is prepared", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      const store = createWorkboardSqliteTestStore();
+      const sessionKey = "agent:worker:subagent:workboard-openclaw-restart-prepared-replacement";
+      const priorRunId = "run-restart-prepared-replacement-prior";
+      const accepted = await createAcceptedClaimedCard(store, {
+        ownerId: sessionKey,
+        sessionKey,
+        runId: priorRunId,
+      });
+      await store.reclaim(
+        accepted.card.id,
+        { status: "todo", reason: "replace the accepted worker" },
+        null,
+      );
+      const replacement = await store.claim(accepted.card.id, {
+        ownerId: "agent:other:main",
+        ttlSeconds: 60,
+      });
+      const prepared = await store.prepareExecutionLaunch(accepted.card.id, {
+        requestedSessionKey: sessionKey,
+        now: replacement.card.updatedAt + 1,
+        scope: { ownerId: "agent:other:main", token: replacement.token },
+      });
+
+      await runSessionSweep({
+        store,
+        sessions: [
+          {
+            key: sessionKey,
+            status: "done",
+            hasActiveRun: false,
+            lastRunId: priorRunId,
+            updatedAt: prepared.card.updatedAt + 1,
+          },
+        ],
+      });
+
+      await expect(store.get(accepted.card.id)).resolves.toMatchObject({
+        status: "running",
+        execution: { status: "running", runId: prepared.launch.provisionalRunId },
+        metadata: {
+          claim: { ownerId: "agent:other:main" },
+          automation: { launch: { phase: "prepared" } },
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("ignores an older terminal run during restart recovery", async () => {

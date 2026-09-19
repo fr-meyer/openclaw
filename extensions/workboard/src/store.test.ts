@@ -3961,6 +3961,33 @@ describe("WorkboardStore", () => {
     );
   });
 
+  it("limits exact-card worker context to explicit parent results", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const parent = await store.create({
+      title: "Exact parent",
+      status: "done",
+      agentId: "agent-a",
+      metadata: { automation: { summary: "Required parent result." } },
+    });
+    await store.create({
+      title: "Unrelated assignee history",
+      status: "done",
+      agentId: "agent-a",
+      metadata: { automation: { summary: "Unrelated private history." } },
+    });
+    const child = await store.create({
+      title: "Exact child",
+      agentId: "agent-a",
+      parents: [parent.id],
+    });
+
+    const context = await store.buildWorkerContext(child.id, { relatedOnly: true });
+
+    expect(context).toContain("Required parent result.");
+    expect(context).not.toContain("Unrelated private history.");
+    expect(context).not.toContain("## Recent done work by agent-a");
+  });
+
   it("persists board metadata and notification subscriptions in separate SQLite tables", async () => {
     const {
       store,
