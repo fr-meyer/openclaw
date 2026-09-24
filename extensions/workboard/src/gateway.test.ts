@@ -1,4 +1,5 @@
 // Workboard tests cover gateway plugin behavior.
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
 import { describe, expect, it, vi } from "vitest";
@@ -582,15 +583,22 @@ describe("workboard gateway methods", () => {
       const list = vi.spyOn(store, "list");
       registerWorkboardGatewayMethods({ api, store });
       const respond = vi.fn();
+      const intentRunId = `wb-${"a".repeat(40)}`;
 
       await methods.get("workboard.cards.dispatchWithOptions")?.handler({
-        params: { boardId: "ops", cardId: target.id },
+        params: { boardId: "ops", cardId: target.id, intentRunId },
         context: { getRuntimeConfig: () => ({}) },
         respond,
       } as never);
 
       expect(list).not.toHaveBeenCalled();
       expect(run).toHaveBeenCalledOnce();
+      const expectedKey = `workboard:intent:${createHash("sha256")
+        .update(target.id)
+        .update("\0")
+        .update(intentRunId)
+        .digest("hex")}`;
+      expect(run.mock.calls[0]?.[0]).toMatchObject({ idempotencyKey: expectedKey });
       expect(respond.mock.calls[0]?.[0]).toBe(true);
       expect(respond.mock.calls[0]?.[1]).toMatchObject({
         started: [expect.objectContaining({ cardId: target.id, runId: "run-target" })],
@@ -599,7 +607,11 @@ describe("workboard gateway methods", () => {
       await expect(store.get(target.id)).resolves.toMatchObject({
         status: "running",
         metadata: {
-          automation: { dispatchCount: 1, lastDispatchAt: Date.now() },
+          automation: {
+            dispatchCount: 1,
+            lastDispatchAt: Date.now(),
+            launch: { provisionalRunId: expectedKey, acceptedRunId: "run-target" },
+          },
           claim: { ownerId: "target-owner" },
         },
       });
@@ -722,6 +734,26 @@ describe("workboard gateway methods", () => {
         "boardId must be a non-empty string.",
       );
     }
+
+    const unscopedIntent = vi.fn();
+    await handler?.({
+      params: { intentRunId: `wb-${"b".repeat(40)}` },
+      respond: unscopedIntent,
+    } as never);
+    expect(unscopedIntent.mock.calls[0]?.[2]?.message).toBe(
+      "intentRunId requires one exact card through dispatchWithOptions.",
+    );
+    for (const value of ["bad", 42, `wb-${"A".repeat(40)}`]) {
+      const invalidIntent = vi.fn();
+      await handler?.({
+        params: { cardId: "card-1", intentRunId: value },
+        respond: invalidIntent,
+      } as never);
+      expect(invalidIntent.mock.calls[0]?.[2]?.message).toBe(
+        "intentRunId must be a wb-<40 lowercase hex> dispatch intent id.",
+      );
+    }
+    expect(run).toHaveBeenCalledTimes(7);
 
     const exactCapRespond = vi.fn();
     await handler?.({

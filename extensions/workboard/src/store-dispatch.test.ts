@@ -176,4 +176,20 @@ describe("WorkboardStore dispatch and recovery", () => {
     );
     await expect(store.get(target.id)).resolves.toEqual(target);
   });
+
+  it("rejects an invalid external intent before preparing a claimed launch", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const target = await store.create({ title: "Intent-bound launch", status: "ready" });
+    const claimed = await store.claim(target.id, { ownerId: "worker" });
+
+    await expect(
+      store.prepareExecutionLaunch(target.id, {
+        requestedSessionKey: "subagent:workboard-intent-bound",
+        now: 100,
+        scope: { ownerId: "worker", token: claimed.token },
+        intentRunId: "not-a-receipt",
+      }),
+    ).rejects.toThrow("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+    await expect(store.get(target.id)).resolves.toEqual(claimed.card);
+  });
 });
