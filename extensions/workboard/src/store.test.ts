@@ -4734,6 +4734,16 @@ describe("WorkboardStore", () => {
         status: "ready",
         metadata: { automation: { dispatchCount: 1, lastDispatchAt: Date.now() } },
       });
+
+      const nextDispatchAt = Date.now() + 1;
+      await expect(
+        store.dispatch({ now: nextDispatchAt, boardId: "ops", cardId: target.id }),
+      ).resolves.toEqual(dispatch);
+      await expect(store.get(target.id)).resolves.toMatchObject({
+        status: "ready",
+        metadata: { automation: { dispatchCount: 2, lastDispatchAt: nextDispatchAt } },
+      });
+      expect(list).not.toHaveBeenCalled();
       await expect(store.get(stale.id)).resolves.toEqual(staleBefore);
       await expect(store.get(sibling.id)).resolves.toEqual(siblingBefore);
     } finally {

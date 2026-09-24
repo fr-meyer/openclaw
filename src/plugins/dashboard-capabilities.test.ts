@@ -227,12 +227,16 @@ describe("plugin dashboard declarations", () => {
       actionVerbs: [
         {
           id: "dispatch",
-          method: "workboard.cards.dispatch",
-          description: "Dispatch ready Workboard cards.",
+          method: "workboard.cards.dispatchWithOptions",
+          description: "Dispatch ready Workboard cards, optionally targeting one exact card.",
           paramShape: {
             type: "object",
             additionalProperties: false,
-            properties: { boardId: { type: "string", minLength: 1 } },
+            properties: {
+              boardId: { type: "string", minLength: 1 },
+              cardId: { type: "string", minLength: 1 },
+              maxStarts: { type: "integer", minimum: 1 },
+            },
           },
         },
       ],

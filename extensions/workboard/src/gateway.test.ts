@@ -596,6 +596,13 @@ describe("workboard gateway methods", () => {
         started: [expect.objectContaining({ cardId: target.id, runId: "run-target" })],
       });
       expect(respond.mock.calls[0]?.[1]?.started[0]).not.toHaveProperty("card");
+      await expect(store.get(target.id)).resolves.toMatchObject({
+        status: "running",
+        metadata: {
+          automation: { dispatchCount: 1, lastDispatchAt: Date.now() },
+          claim: { ownerId: "target-owner" },
+        },
+      });
       await expect(store.get(stale.id)).resolves.toEqual(staleBefore);
       await expect(store.get(sibling.id)).resolves.toEqual(siblingBefore);
     } finally {
