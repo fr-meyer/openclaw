@@ -15,6 +15,7 @@ import { createWorkboardSqliteStores } from "./sqlite-store.js";
 import {
   buildWorkerContext,
   assertCanMutateClaimedCard,
+  cardBoardId,
   cardParentIds,
   cardRunId,
   cardSessionKey,

@@ -72,102 +72,102 @@ export class WorkboardDispatchStore extends WorkboardNotificationStore {
         }
         await this.withMutationAuthority(async () => {
           let latest = await this.promoteDependencyReady(card.id, now);
-        const wasPromoted = latest.status !== card.status;
-        const claim = latest.metadata?.claim;
-        const latestAttempt = latestRunningAttempt(latest);
-        const maxRuntimeSeconds = latest.metadata?.automation?.maxRuntimeSeconds;
-        const runtimeStartedAt = latestAttempt?.startedAt ?? claim?.claimedAt ?? latest.startedAt;
-        const timedOut =
-          Boolean(maxRuntimeSeconds && runtimeStartedAt) &&
-          now - runtimeStartedAt! > secondsToDurationMs(maxRuntimeSeconds!);
-        const claimExpired = isWorkboardClaimReclaimable(claim, now);
-        const retriesExhausted = retryBudgetExhausted(latest);
-        if (latest.status === "running" && (timedOut || claimExpired)) {
-          const reason = timedOut
-            ? "Run exceeded the card max runtime."
-            : "Claim expired without a recent heartbeat.";
-          const execution =
-            latest.execution?.status === "running"
-              ? { ...latest.execution, status: "blocked" as const, updatedAt: now }
-              : latest.execution;
-          latest = await this.updateCard(latest.id, {
-            status: "blocked",
-            ...(execution ? { execution } : {}),
-            metadata: {
-              ...latest.metadata,
-              claim: undefined,
-              attempts: closeRunningAttempts(latest.metadata?.attempts, now, "blocked", reason),
-              failureCount: (latest.metadata?.failureCount ?? 0) + 1,
-              notifications: [
-                ...(latest.metadata?.notifications ?? []),
-                {
-                  id: randomUUID(),
-                  kind: "failed" as const,
-                  createdAt: now,
-                  sequence: this.nextNotificationSequence(now),
-                  message: reason,
-                },
-              ].slice(-MAX_CARD_NOTIFICATIONS),
-            },
-          });
-          blocked.push(latest);
-        } else if (claimExpired) {
-          latest = await this.updateCard(latest.id, {
-            metadata: { ...latest.metadata, claim: undefined },
-          });
-          reclaimed.push(latest);
-        }
-        if (
-          !latest.metadata?.claim &&
-          retriesExhausted &&
-          isDependencyPromotableStatus(latest.status)
-        ) {
-          latest = await this.updateCard(latest.id, {
-            status: "blocked",
-            metadata: {
-              ...latest.metadata,
-              notifications: [
-                ...(latest.metadata?.notifications ?? []),
-                {
-                  id: randomUUID(),
-                  kind: "failed" as const,
-                  createdAt: now,
-                  sequence: this.nextNotificationSequence(now),
-                  message: "Card exhausted its retry budget.",
-                },
-              ].slice(-MAX_CARD_NOTIFICATIONS),
-            },
-          });
-          blocked.push(latest);
-        }
-        const orchestrationBoard = await this.getAutoOrchestrationBoard(latest);
-        if (orchestrationBoard) {
-          const latestBoardId = cardBoardId(latest);
-          const cap = orchestrationBoard.orchestration?.autoDecomposePerDispatch ?? 3;
-          const boardCount = orchestratedByBoard.get(latestBoardId) ?? 0;
-          if (boardCount < cap) {
-            latest = await this.recordOrchestrationCandidate(latest, now);
-            orchestrated.push(latest);
-            orchestratedByBoard.set(latestBoardId, boardCount + 1);
-          }
-        }
-        if (wasPromoted && latest.status !== "blocked") {
-          promoted.push(latest);
-        }
-        if (cardId) {
-          // Account the explicit request before worker admission. A later Gateway launch
-          // failure is still an attempted dispatch, while broad idle sweeps stay read-only.
-          await this.updateCard(latest.id, {
-            metadata: {
-              ...latest.metadata,
-              automation: {
-                ...latest.metadata?.automation,
-                dispatchCount: (latest.metadata?.automation?.dispatchCount ?? 0) + 1,
-                lastDispatchAt: now,
+          const wasPromoted = latest.status !== card.status;
+          const claim = latest.metadata?.claim;
+          const latestAttempt = latestRunningAttempt(latest);
+          const maxRuntimeSeconds = latest.metadata?.automation?.maxRuntimeSeconds;
+          const runtimeStartedAt = latestAttempt?.startedAt ?? claim?.claimedAt ?? latest.startedAt;
+          const timedOut =
+            Boolean(maxRuntimeSeconds && runtimeStartedAt) &&
+            now - runtimeStartedAt! > secondsToDurationMs(maxRuntimeSeconds!);
+          const claimExpired = isWorkboardClaimReclaimable(claim, now);
+          const retriesExhausted = retryBudgetExhausted(latest);
+          if (latest.status === "running" && (timedOut || claimExpired)) {
+            const reason = timedOut
+              ? "Run exceeded the card max runtime."
+              : "Claim expired without a recent heartbeat.";
+            const execution =
+              latest.execution?.status === "running"
+                ? { ...latest.execution, status: "blocked" as const, updatedAt: now }
+                : latest.execution;
+            latest = await this.updateCard(latest.id, {
+              status: "blocked",
+              ...(execution ? { execution } : {}),
+              metadata: {
+                ...latest.metadata,
+                claim: undefined,
+                attempts: closeRunningAttempts(latest.metadata?.attempts, now, "blocked", reason),
+                failureCount: (latest.metadata?.failureCount ?? 0) + 1,
+                notifications: [
+                  ...(latest.metadata?.notifications ?? []),
+                  {
+                    id: randomUUID(),
+                    kind: "failed" as const,
+                    createdAt: now,
+                    sequence: this.nextNotificationSequence(now),
+                    message: reason,
+                  },
+                ].slice(-MAX_CARD_NOTIFICATIONS),
               },
-            },
-          });
-        }
+            });
+            blocked.push(latest);
+          } else if (claimExpired) {
+            latest = await this.updateCard(latest.id, {
+              metadata: { ...latest.metadata, claim: undefined },
+            });
+            reclaimed.push(latest);
+          }
+          if (
+            !latest.metadata?.claim &&
+            retriesExhausted &&
+            isDependencyPromotableStatus(latest.status)
+          ) {
+            latest = await this.updateCard(latest.id, {
+              status: "blocked",
+              metadata: {
+                ...latest.metadata,
+                notifications: [
+                  ...(latest.metadata?.notifications ?? []),
+                  {
+                    id: randomUUID(),
+                    kind: "failed" as const,
+                    createdAt: now,
+                    sequence: this.nextNotificationSequence(now),
+                    message: "Card exhausted its retry budget.",
+                  },
+                ].slice(-MAX_CARD_NOTIFICATIONS),
+              },
+            });
+            blocked.push(latest);
+          }
+          const orchestrationBoard = await this.getAutoOrchestrationBoard(latest);
+          if (orchestrationBoard) {
+            const latestBoardId = cardBoardId(latest);
+            const cap = orchestrationBoard.orchestration?.autoDecomposePerDispatch ?? 3;
+            const boardCount = orchestratedByBoard.get(latestBoardId) ?? 0;
+            if (boardCount < cap) {
+              latest = await this.recordOrchestrationCandidate(latest, now);
+              orchestrated.push(latest);
+              orchestratedByBoard.set(latestBoardId, boardCount + 1);
+            }
+          }
+          if (wasPromoted && latest.status !== "blocked") {
+            promoted.push(latest);
+          }
+          if (cardId) {
+            // Account the explicit request before worker admission. A later Gateway launch
+            // failure is still an attempted dispatch, while broad idle sweeps stay read-only.
+            await this.updateCard(latest.id, {
+              metadata: {
+                ...latest.metadata,
+                automation: {
+                  ...latest.metadata?.automation,
+                  dispatchCount: (latest.metadata?.automation?.dispatchCount ?? 0) + 1,
+                  lastDispatchAt: now,
+                },
+              },
+            });
+          }
         }, assertOwnerCurrent);
       }
       return {
