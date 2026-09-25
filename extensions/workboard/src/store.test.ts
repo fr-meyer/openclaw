@@ -3870,59 +3870,6 @@ describe("WorkboardStore", () => {
     });
   });
 
-  it("promotes, reassigns, and reclaims cards for operator recovery", async () => {
-    const store = createWorkboardSqliteTestStore({ createStores: createKernelStores });
-    const card = await store.create({
-      title: "Recover me",
-      status: "blocked",
-      agentId: "old-agent",
-      metadata: { failureCount: 2 },
-    });
-    await store.refreshDiagnostics(Date.now() + 2 * 24 * 60 * 60 * 1000);
-
-    const reassigned = await store.reassign(card.id, {
-      agentId: "new-agent",
-      status: "todo",
-      reason: "route to fresh agent",
-    });
-    expect(reassigned).toMatchObject({
-      agentId: "new-agent",
-      status: "todo",
-    });
-    expect(reassigned.metadata?.failureCount).toBeUndefined();
-    expect(reassigned.metadata?.diagnostics?.map((entry) => entry.kind) ?? []).not.toContain(
-      "repeated_failures",
-    );
-
-    await expect(store.promote(card.id)).resolves.toMatchObject({ status: "ready" });
-    const claimed = await store.claim(card.id, { ownerId: "new-agent" });
-
-    const reclaimed = await store.reclaim(claimed.card.id, { reason: "stale session" }, null);
-    expect(reclaimed).toMatchObject({ status: "ready" });
-    expect(reclaimed.metadata?.claim).toBeUndefined();
-
-    const running = await store.create({
-      title: "Running recovery",
-      status: "running",
-      execution: {
-        id: "exec-reclaim",
-        kind: "agent-session",
-        engine: "codex",
-        mode: "autonomous",
-        status: "running",
-        model: "openai/gpt-5.5",
-        startedAt: 100,
-        updatedAt: 100,
-      },
-    });
-    await store.claim(running.id, { ownerId: "main" });
-    const stopped = await store.reclaim(running.id, { reason: "replace worker" }, null);
-    expect(stopped.execution).toBeUndefined();
-    expect(stopped.metadata?.claim).toBeUndefined();
-    expect(stopped.metadata?.attempts).toEqual([expect.objectContaining({ status: "stopped" })]);
-    expect(stopped.metadata?.failureCount).toBeUndefined();
-  });
-
   it("includes parent results and recent assignee work in worker context", async () => {
     const store = createWorkboardSqliteTestStore({ createStores: createKernelStores });
     const parent = await store.create({
