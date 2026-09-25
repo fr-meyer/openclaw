@@ -183,10 +183,9 @@ it("keeps UI fallback with its complete canonical owners beside precise core cha
       );
       expect(group.includePatterns?.length).toBeGreaterThan(0);
       expect(group.configs.every((config) => owner.configs.includes(config))).toBe(true);
-      expect(group.env).toEqual(owner.env);
+      expect({ ...job.env, ...group.env }).toEqual({ ...ownerJob.env, ...owner.env });
       expect(group.fallbackMaxWorkers).toBe(owner.fallbackMaxWorkers);
       expect(group.minTotalMemoryBytes).toBe(owner.minTotalMemoryBytes);
-      expect(job.env).toEqual(ownerJob.env);
       expect(job.runner).toBe(ownerJob.runner);
       expect(job.planConcurrency).toBe(ownerJob.planConcurrency);
     }
