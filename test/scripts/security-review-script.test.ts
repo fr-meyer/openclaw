@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { loadSecurityReviewPolicy } from "../../scripts/github/security-review-policy.mjs";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -1410,23 +1411,28 @@ describe("combined security review entry point", () => {
     },
   };
 
-  it("grandfathers an old branch without issuing reusable standalone successes or notices", () => {
-    const result = evaluate(exemptRoutes);
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.combined).toEqual(["pending", "success"]);
-    expect(result.reviews).toEqual([]);
-    expect(result.requests.some((entry) => entry.path.includes("/issues/"))).toBe(false);
-    expect(result.requests.some((entry) => entry.path.endsWith("/files"))).toBe(false);
-  });
+  const rolloutOnly = it.skipIf(loadSecurityReviewPolicy().rolloutPullRequest === undefined);
 
-  it("still requires real CI for a grandfathered PR", () => {
+  rolloutOnly(
+    "grandfathers an old branch without issuing reusable standalone successes or notices",
+    () => {
+      const result = evaluate(exemptRoutes);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.combined).toEqual(["pending", "success"]);
+      expect(result.reviews).toEqual([]);
+      expect(result.requests.some((entry) => entry.path.includes("/issues/"))).toBe(false);
+      expect(result.requests.some((entry) => entry.path.endsWith("/files"))).toBe(false);
+    },
+  );
+
+  rolloutOnly("still requires real CI for a grandfathered PR", () => {
     const result = evaluate({ ...exemptRoutes, [runsPath]: { total_count: 0, workflow_runs: [] } });
     expect(result.status, result.stderr).toBe(0);
     expect(result.combined).toEqual(["pending", "pending"]);
     expect(result.reviews).toEqual([]);
   });
 
-  it("does not autoscrub a grandfathered PR", () => {
+  rolloutOnly("does not autoscrub a grandfathered PR", () => {
     const result = evaluate(exemptRoutes, "autoscrub");
     expect(result.status, result.stderr).toBe(0);
     expect(
@@ -1451,7 +1457,7 @@ describe("combined security review entry point", () => {
     expect(result.combined).not.toContain("success");
   });
 
-  it("leaves the combined gate failed when rollout metadata cannot be read", () => {
+  rolloutOnly("leaves the combined gate failed when rollout metadata cannot be read", () => {
     const result = evaluate({ "GET /repos/openclaw/openclaw/pulls/152415": { httpError: 403 } });
     expect(result.status).toBe(1);
     expect(result.combined).toEqual(["pending", "failure"]);
