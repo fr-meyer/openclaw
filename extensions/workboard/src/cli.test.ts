@@ -222,6 +222,53 @@ describe("registerWorkboardCli", () => {
     );
   });
 
+  it("forwards a receipt id only with an exact card", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const program = createProgram(store);
+    const intentRunId = `wb-${"a".repeat(40)}`;
+    gatewayRuntime.callGatewayFromCli.mockResolvedValueOnce({ started: [], startFailures: [] });
+
+    await program.parseAsync(
+      ["workboard", "dispatch", "--card", "card-exact-1", "--intent-run-id", intentRunId],
+      { from: "user" },
+    );
+
+    expect(gatewayRuntime.callGatewayFromCli).toHaveBeenCalledWith(
+      "workboard.cards.dispatchWithOptions",
+      expect.anything(),
+      { boardId: undefined, cardId: "card-exact-1", intentRunId },
+      expect.anything(),
+    );
+  });
+
+  it("rejects a receipt id without an exact card before contacting the Gateway", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const program = createProgram(store);
+
+    await expect(
+      program.parseAsync(["workboard", "dispatch", "--intent-run-id", `wb-${"a".repeat(40)}`], {
+        from: "user",
+      }),
+    ).rejects.toThrow("--intent-run-id requires --card.");
+    expect(gatewayRuntime.callGatewayFromCli).not.toHaveBeenCalled();
+  });
+
+  it.each(["bad", `wb-${"A".repeat(40)}`, `wb-${"a".repeat(39)}`])(
+    "rejects invalid receipt id %s before contacting the Gateway",
+    async (intentRunId) => {
+      const store = createWorkboardSqliteTestStore();
+      const program = createProgram(store);
+
+      await expect(
+        program.parseAsync(
+          ["workboard", "dispatch", "--card", "card-exact-1", "--intent-run-id", intentRunId],
+          { from: "user" },
+        ),
+      ).rejects.toThrow("--intent-run-id must be a wb-<40 lowercase hex> dispatch intent id.");
+      expect(gatewayRuntime.callGatewayFromCli).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects a blank exact card before contacting the Gateway", async () => {
     const store = createWorkboardSqliteTestStore();
     const program = createProgram(store);

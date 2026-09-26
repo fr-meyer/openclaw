@@ -23,7 +23,7 @@ openclaw workboard list [--board <id>] [--status <status>] [--include-archived] 
 openclaw workboard create <title...> [--notes <text>] [--status <status>] [--priority <priority>] [--agent <id>] [--board <id>] [--labels <items>] [--json]
 openclaw workboard show <id> [--json]
 openclaw workboard move <id> --status <status> [--json]
-openclaw workboard dispatch [--board <id>] [--card <id>] [--max-starts <count>] [--admin] [--url <url>] [--token <token>] [--timeout <ms>] [--json]
+openclaw workboard dispatch [--board <id>] [--card <id>] [--intent-run-id <id>] [--max-starts <count>] [--admin] [--url <url>] [--token <token>] [--timeout <ms>] [--json]
 ```
 
 The command reads and writes the same plugin-owned SQLite database used by the dashboard and Workboard agent tools. Card ids are UUIDs. Commands that accept a card id also accept an unambiguous id prefix. The compact text output shows the first 8 characters.
@@ -110,6 +110,8 @@ openclaw workboard dispatch --url http://127.0.0.1:18789 --token "$OPENCLAW_GATE
 `dispatch` first calls the running Gateway RPC method `workboard.cards.dispatch`. That method uses the same subagent runtime as the dashboard dispatch action. Ready cards therefore become task-tracked worker runs with linked session keys. `--max-starts` and `--card` use the additive `workboard.cards.dispatchWithOptions` method, so an older Gateway rejects either option before starting any workers. Restart the Gateway after upgrading, before you use these flags. Cards with an assigned agent use agent-scoped subagent session keys. Unassigned cards keep an unscoped subagent key, so the Gateway's configured default agent is preserved.
 
 Pass `--card <id>` with the full persisted card id to dispatch only that card. The Gateway performs dependency and schedule promotion for the target, applies stale-claim and retry handling only to the target, and still enforces its workspace, permission, claim, and global owner-slot gates. It does not enumerate or mutate unrelated queued or stale cards. When `--board` is also present, the target must belong to that board. `--max-starts` may be omitted or set to `1`; larger values are rejected. Exact-card dispatch never falls back to local data-only dispatch when the Gateway is unavailable.
+
+For a previously written Speculoos dispatch receipt, pass `--intent-run-id wb-<40 lowercase hex>` together with the full `--card` id. The CLI validates the receipt-id shape and forwards it only through `workboard.cards.dispatchWithOptions`; the Gateway binds it to the prepared launch key. A receipt id is correlation evidence, not proof that a worker started or that Speculoos admitted its output. Read back the card run, session, and claim before taking a later step.
 
 The dispatch loop:
 
