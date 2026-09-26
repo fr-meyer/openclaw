@@ -259,6 +259,10 @@ type WorkboardLaunchIdentity = {
   requestedSessionKey: string;
   provisionalRunId: string;
   preparedAt: number;
+  /** Store-owned claim snapshot; both fields are absent on legacy or unclaimed launches. */
+  claimOwnerId?: string;
+  /** The claim's immutable claimedAt generation, not a worker-stop or fencing proof. */
+  claimGeneration?: number;
 };
 
 export type WorkboardLaunchState =
