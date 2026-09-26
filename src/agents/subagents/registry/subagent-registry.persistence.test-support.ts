@@ -358,7 +358,7 @@ export function registerSubagentRegistrationCompletionTest({
     const mod = getRegistry();
     const settleRootWork = observeRootWork();
     try {
-      const announced = createDeferred<void>();
+      const announced = createDeferred();
       mocks.runSubagentAnnounceFlow.mockImplementationOnce(async () => {
         announced.resolve();
         return "delivered";
