@@ -27,11 +27,15 @@ import { findTaskByRunIdForStatus } from "../../../tasks/task-status-access.js";
 import { withEnvAsync } from "../../../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../../../test-utils/session-state-cleanup.js";
 import {
+  createSessionEntry,
   createSubagentRunRecord,
+  expectRecordFields,
+  mockCallArg as getMockCallArg,
   type SubagentRunRecordOverrides,
   type SubagentRegistryHarness,
 } from "../../subagent-test-fixtures.test-helpers.js";
 import type { maybeWakeRequesterAfterAllChildrenSettled } from "../announce/subagent-announce.requester-settle-wake.js";
+import { observeRootWork } from "./subagent-registry.browser-cleanup.test-support.js";
 import type { createSubagentRegistryMockState } from "./subagent-registry.mock-state.test-support.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
@@ -333,6 +337,93 @@ export function createOrphanedRequiredDelivery(
         terminalReply,
       },
     },
+  });
+}
+
+export function registerSubagentRegistrationCompletionTest({
+  getRegistry,
+  mocks,
+}: {
+  getRegistry: () => SubagentRegistryHarness;
+  mocks: Pick<
+    ReturnType<typeof createSubagentRegistryMockState>,
+    | "runSubagentAnnounceFlow"
+    | "entries"
+    | "emitSessionLifecycleEvent"
+    | "persistSubagentRunsToDisk"
+    | "persistSubagentRunsToDiskOrThrow"
+  >;
+}) {
+  it("completes a registered run across timing persistence, lifecycle status, and announce cleanup", async () => {
+    const mod = getRegistry();
+    const settleRootWork = observeRootWork();
+    try {
+      const announced = createDeferred<void>();
+      mocks.runSubagentAnnounceFlow.mockImplementationOnce(async () => {
+        announced.resolve();
+        return "delivered";
+      });
+      mocks.entries["agent:main:subagent:child"] = createSessionEntry({
+        lifecycleRevision: "revision-child",
+        lastRunError: "previous failure",
+        abortedLastRun: true,
+      });
+      await mod.registerSubagentRun({
+        runId: "run-1",
+        requesterOrigin: { channel: " quietchat ", accountId: " acct-1 " },
+        task: "finish the task",
+        cleanup: "delete",
+      });
+
+      await announced.promise;
+      expect(mocks.runSubagentAnnounceFlow).toHaveBeenCalledTimes(1);
+
+      expect(mocks.emitSessionLifecycleEvent).toHaveBeenCalledWith({
+        sessionKey: "agent:main:subagent:child",
+        reason: "subagent-status",
+        parentSessionKey: "agent:main:main",
+        label: undefined,
+      });
+
+      expectRecordFields(
+        getMockCallArg(mocks.runSubagentAnnounceFlow, 0, 0, "completion announce"),
+        {
+          childSessionKey: "agent:main:subagent:child",
+          childRunId: "run-1",
+          requesterSessionKey: "agent:main:main",
+          requesterOrigin: { channel: "quietchat", accountId: "acct-1" },
+          task: "finish the task",
+          cleanup: "delete",
+          roundOneReply: "final completion reply",
+          outcome: {
+            status: "ok",
+            startedAt: 111,
+            endedAt: 222,
+            elapsedMs: 111,
+          },
+        },
+        "completion announce params",
+      );
+
+      expectRecordFields(
+        mocks.entries["agent:main:subagent:child"],
+        {
+          sessionId: "sess-child",
+          startedAt: Date.parse("2026-03-24T12:00:00Z"),
+          endedAt: 222,
+          runtimeMs: 111,
+          status: "done",
+        },
+        "persisted child session entry",
+      );
+      expect(mocks.entries["agent:main:subagent:child"]).not.toHaveProperty("lastRunError");
+      expect(mocks.entries["agent:main:subagent:child"]).not.toHaveProperty("abortedLastRun");
+
+      expect(mocks.persistSubagentRunsToDisk).toHaveBeenCalled();
+      expect(mocks.persistSubagentRunsToDiskOrThrow).toHaveBeenCalled();
+    } finally {
+      await settleRootWork();
+    }
   });
 }
 
