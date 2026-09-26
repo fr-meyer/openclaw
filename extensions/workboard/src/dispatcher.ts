@@ -20,6 +20,7 @@ import {
   resolveDispatchWorkspaceAccess,
   type ResolveAgentWorkspaceRuntime,
 } from "./dispatcher-workspace.js";
+import type { WorkboardLiveExecutionTracker } from "./live-execution.js";
 import { workboardSessionKeyForCard } from "./session-link.js";
 import { cardBoardId } from "./store-card-helpers.js";
 import { workboardCardConsumesOwnerSlot, workboardCardSlotOwner } from "./store-constants.js";
@@ -75,6 +76,7 @@ type WorkboardDispatchAndStartResult = WorkboardDispatchResult & {
 type WorkboardPreparedLaunch = Extract<WorkboardLaunchState, { phase: "prepared" }>;
 
 type WorkboardDispatchStartParams = {
+  liveExecutions?: WorkboardLiveExecutionTracker;
   store: WorkboardStore;
   subagent: WorkboardSubagentRuntime;
   worktrees?: WorkboardWorktreeRuntime;
@@ -546,18 +548,21 @@ async function runWorkboardDispatch(
         runId: run.runId,
         execution: acceptedExecution,
       };
-      const updated =
-        (await params.store
-          .acceptExecutionLaunch(card.id, {
-            expectedLaunch: prepared.launch,
-            acceptedAt: Math.max(Date.now(), prepared.launch.preparedAt),
-            expectedSessionKey: sessionKey,
-            expectedRunId: runId,
-            sessionKey: acceptedSessionKey,
-            runId: run.runId,
-            execution: acceptedExecution,
-          })
-          .catch(() => undefined)) ?? acceptedCard;
+      const persistedAccepted = await params.store
+        .acceptExecutionLaunch(card.id, {
+          expectedLaunch: prepared.launch,
+          acceptedAt: Math.max(Date.now(), prepared.launch.preparedAt),
+          expectedSessionKey: sessionKey,
+          expectedRunId: runId,
+          sessionKey: acceptedSessionKey,
+          runId: run.runId,
+          execution: acceptedExecution,
+        })
+        .catch(() => undefined);
+      const updated = persistedAccepted ?? acceptedCard;
+      if (persistedAccepted && run.execution) {
+        params.liveExecutions?.bind(persistedAccepted, run.execution);
+      }
       acceptedStarts += 1;
       startedOwners.add(ownerId);
       started.push({

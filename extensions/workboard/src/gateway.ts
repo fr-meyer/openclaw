@@ -18,6 +18,10 @@ import {
   registerWorkboardWorkspaceCardMethods,
   registerWorkboardWorkspaceWorkflowMethods,
 } from "./gateway-workspace-methods.js";
+import {
+  createWorkboardLiveExecutionTracker,
+  type WorkboardLiveExecutionTracker,
+} from "./live-execution.js";
 import { resolveWorkboardSqliteWorkerModuleUrl } from "./sqlite-store-paths.js";
 import { registerWorkboardStoreLifecycle } from "./store-lifecycle.js";
 import { WorkboardStore } from "./store.js";
@@ -51,6 +55,7 @@ function cardMutation(
 }
 
 export function registerWorkboardGatewayMethods(params: {
+  liveExecutions?: WorkboardLiveExecutionTracker;
   api: OpenClawPluginApi;
   store?: WorkboardStore;
 }) {
@@ -58,8 +63,9 @@ export function registerWorkboardGatewayMethods(params: {
   const store =
     params.store ??
     WorkboardStore.openSqlite(resolveWorkboardSqliteWorkerModuleUrl(hostApi.runtimeSource));
+  const liveExecutions = params.liveExecutions ?? createWorkboardLiveExecutionTracker();
   if (!params.store) {
-    registerWorkboardStoreLifecycle(hostApi, store);
+    registerWorkboardStoreLifecycle(hostApi, store, liveExecutions.stop);
   }
   const api: OpenClawPluginApi = {
     ...hostApi,
@@ -77,6 +83,7 @@ export function registerWorkboardGatewayMethods(params: {
       ),
   };
   const dispatchCards = createWorkboardDispatchHandler({
+    liveExecutions,
     api,
     store,
     redactCard: redactClaimToken,
@@ -88,6 +95,20 @@ export function registerWorkboardGatewayMethods(params: {
       READ_SCOPE,
       async ({ params: requestParams }) =>
         await listWorkboardCards(store, requestParams.boardId, redactClaimToken),
+    ],
+  ]);
+
+  registerWorkboardResultMethods(api, [
+    [
+      "workboard.cards.executionSettlement",
+      READ_SCOPE,
+      async ({ params: requestParams }) => {
+        const card = await store.get(readId(requestParams));
+        if (!card) {
+          throw new Error("Workboard card not found.");
+        }
+        return liveExecutions.observe(card);
+      },
     ],
   ]);
 

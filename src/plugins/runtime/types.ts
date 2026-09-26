@@ -51,7 +51,14 @@ type PluginManagedWorktree = {
   branch: string;
 };
 
+export type SubagentExecution = {
+  /** Live producer settlement, including host cleanup; never resource fencing evidence. */
+  observeSettlement: () => "pending" | "settled" | "unknown";
+};
+
 type SubagentRunResult = {
+  /** Optional host-owned live observation. Custom runtimes and cached runs may omit it. */
+  execution?: SubagentExecution;
   runId: string;
   /** Canonical accepted session identity. Optional for explicit/custom runtimes. */
   sessionKey?: string;
