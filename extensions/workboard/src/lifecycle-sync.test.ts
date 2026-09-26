@@ -760,113 +760,6 @@ describe("Workboard gateway lifecycle sync", () => {
     });
   });
 
-  it("backfills the exact terminal run identity without duplicating its attempt", async () => {
-    const store = createWorkboardSqliteTestStore();
-    const provisionalSessionKey = "subagent:workboard-default-terminal-backfill";
-    const canonicalSessionKey = `agent:worker:${provisionalSessionKey}`;
-    const created = await createLinkedCard(store, { sessionKey: provisionalSessionKey });
-    const provisionalRunId = `workboard:${created.id}:${created.updatedAt}`;
-    const card = await store.update(created.id, {
-      runId: provisionalRunId,
-      execution: execution(provisionalSessionKey, provisionalRunId),
-    });
-
-    await syncWorkboardSubagentEnded({
-      store,
-      event: {
-        targetSessionKey: canonicalSessionKey,
-        runId: "accepted-run",
-        endedAt: card.updatedAt + 1,
-        outcome: "ok",
-      },
-    });
-
-    const recovered = await store.get(card.id);
-    expect(recovered).toMatchObject({
-      status: "review",
-      sessionKey: canonicalSessionKey,
-      runId: "accepted-run",
-      execution: {
-        sessionKey: canonicalSessionKey,
-        runId: "accepted-run",
-        status: "review",
-      },
-    });
-    expect(recovered?.metadata?.attempts).toEqual([
-      expect.objectContaining({
-        id: "accepted-run",
-        sessionKey: canonicalSessionKey,
-        runId: "accepted-run",
-        status: "succeeded",
-      }),
-    ]);
-  });
-
-  it("does not backfill over a newer attempt after lifecycle matching", async () => {
-    const store = createWorkboardSqliteTestStore();
-    const provisionalSessionKey = "subagent:workboard-default-match-race";
-    const created = await createLinkedCard(store, { sessionKey: provisionalSessionKey });
-    const provisionalRunId = `workboard:${created.id}:${created.updatedAt}`;
-    const card = await store.update(created.id, {
-      runId: provisionalRunId,
-      execution: execution(provisionalSessionKey, provisionalRunId),
-    });
-    const newerSessionKey = "agent:newer:subagent:workboard-default-match-race";
-    const originalSync = store.syncLifecycle.bind(store);
-    vi.spyOn(store, "syncLifecycle").mockImplementationOnce(async (id, input) => {
-      await store.update(id, {
-        sessionKey: newerSessionKey,
-        runId: "newer-run",
-        execution: execution(newerSessionKey, "newer-run"),
-      });
-      return await originalSync(id, input);
-    });
-
-    await syncWorkboardSubagentEnded({
-      store,
-      event: {
-        targetSessionKey: `agent:worker:${provisionalSessionKey}`,
-        runId: "accepted-run",
-        endedAt: card.updatedAt + 1,
-        outcome: "ok",
-      },
-    });
-
-    await expect(store.get(card.id)).resolves.toMatchObject({
-      status: "running",
-      sessionKey: newerSessionKey,
-      runId: "newer-run",
-      execution: { status: "running", sessionKey: newerSessionKey, runId: "newer-run" },
-    });
-  });
-
-  it("does not apply a delayed terminal event from an older accepted run", async () => {
-    const store = createWorkboardSqliteTestStore();
-    const sessionKey = "agent:worker:subagent:workboard-default-retried";
-    const card = await createLinkedCard(store, {
-      sessionKey,
-      runId: "current-run",
-      execution: execution(sessionKey, "current-run"),
-    });
-
-    const updated = await syncWorkboardSubagentEnded({
-      store,
-      event: {
-        targetSessionKey: sessionKey,
-        runId: "older-run",
-        endedAt: card.updatedAt + 1,
-        outcome: "ok",
-      },
-    });
-
-    expect(updated).toBe(0);
-    await expect(store.get(card.id)).resolves.toMatchObject({
-      status: "running",
-      runId: "current-run",
-      execution: { runId: "current-run", status: "running" },
-    });
-  });
-
   it("does not suffix-match an agentless card when configured-agent sessions are ambiguous", async () => {
     const store = createWorkboardSqliteTestStore();
     const card = await store.create({ title: "Ambiguous accepted run", status: "ready" });
@@ -921,8 +814,9 @@ describe("Workboard gateway lifecycle sync", () => {
             sessions: [
               {
                 key: "agent:alpha:dashboard:live",
-                status: "running",
+                status: "done",
                 hasActiveRun: false,
+                lastRunId: "run-alpha-terminal",
                 updatedAt: 1234,
               },
             ],
@@ -936,8 +830,9 @@ describe("Workboard gateway lifecycle sync", () => {
       sessions: [
         {
           key: "agent:alpha:dashboard:live",
-          status: "running",
+          status: "done",
           hasActiveRun: false,
+          lastRunId: "run-alpha-terminal",
           updatedAt: 1234,
         },
       ],

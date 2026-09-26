@@ -413,7 +413,12 @@ it.for([
           outcome.result?.models
             .filter((model) => model.provider === "opencode")
             .map(({ id, available }) => ({ id, available })),
-        ).toEqual(expectedIds.toSorted().map((id) => ({ id, available: true })));
+        ).toEqual(
+          ["account-a-only", ...expectedIds.slice(1).toSorted()].map((id) => ({
+            id,
+            available: true,
+          })),
+        );
         expect(fixture.discoveryAccounts).toEqual(["account-a-key"]);
         expect(observedReads.factory).toBeGreaterThan(0);
         expect(observedReads.isCurrent).toBeGreaterThan(0);

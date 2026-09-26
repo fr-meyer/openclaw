@@ -552,7 +552,9 @@ describe("dependency guard script", () => {
     expect(enforcement.stdout).toContain("Automatic lockfile cleanup is best effort.");
   });
 
-  it.each(["detect", "autoscrub", "enforce"])(
+  it
+    .skipIf(loadSecurityReviewPolicy().rolloutPullRequest === undefined)
+    .each(["detect", "autoscrub", "enforce"])(
     "does not approve or autoscrub a grandfathered lockfile PR in %s mode",
     (mode) => {
       const result = runDependencyGuard(

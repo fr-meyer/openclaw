@@ -181,7 +181,8 @@ export function registerWorkboardGatewayMethods(params: {
 
   api.registerGatewayMethod(
     "workboard.cards.dispatchWithOptions",
-    async (context) => await dispatchCards(context, { supportsMaxStarts: true }),
+    async (context) =>
+      await dispatchCards(context, { supportsMaxStarts: true, supportsCardId: true }),
     { scope: WRITE_SCOPE },
   );
 

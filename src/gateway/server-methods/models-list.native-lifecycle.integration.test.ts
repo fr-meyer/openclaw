@@ -330,9 +330,10 @@ it.for([false, true])(
             });
           const unavailable = await refresh();
           expect(unavailable.refreshFailed).toBe(true);
+          // Explicit provider models remain authoritative when live discovery fails.
           expect
             .soft(unavailable.models)
-            .toContainEqual(expect.objectContaining({ provider, id: "unconfigured-starter" }));
+            .toContainEqual(expect.objectContaining({ provider, id: "configured-native" }));
           expect(unavailable.models).toContainEqual(
             expect.objectContaining({ provider, id: nativeModelId }),
           );

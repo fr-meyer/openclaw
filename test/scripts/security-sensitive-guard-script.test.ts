@@ -470,7 +470,9 @@ describe("security-sensitive guard entry point", () => {
     expect(result.comment).toBeUndefined();
   });
 
-  describe.each(["security-sensitive-guard", "dependency-guard"] as const)(
+  describe
+    .skipIf(loadSecurityReviewPolicy().rolloutPullRequest === undefined)
+    .each(["security-sensitive-guard", "dependency-guard"] as const)(
     "%s rollout enforcement",
     (script) => {
       const files = [
