@@ -122,6 +122,20 @@ Start agent work in the background: hook-dispatched turns for external content, 
     `waitForRun(...)` returns the canonical Gateway wait result. `status` is `"ok"`, `"error"`, `"timeout"`, or `"pending"`; pending is a normal nonterminal observation, not an exception. Optional `error`, `startedAt`, `endedAt`, `stopReason`, `livenessState`, `yielded`, `pendingError`, `timeoutPhase`, `providerStarted`, and `terminalReply` metadata is preserved so callers can distinguish observation timeouts from terminal outcomes. `timeoutMs` bounds the wait call; it does not cancel the run.
 
     <Warning>
+    A fresh host-owned `run(...)` may also return an optional `execution` capability.
+    `execution.observeSettlement()` synchronously returns `"pending"`, `"settled"`,
+    or `"unknown"` for that exact admitted producer. `"settled"` means its host
+    execution promise and cleanup have completed; it does not prove a successful
+    task outcome, durable receipt, stopped background processes, or fenced resources.
+    Registration removal and lifecycle completion do not settle this observation.
+    Cleanup rejection remains `"unknown"`.
+
+    The capability belongs to the plugin service and captured Gateway lifetime.
+    Retained methods reject after plugin retirement, Gateway retirement, lifecycle
+    rotation, or while a different same-run-ID registration is active. Cached replay and custom runtimes
+    may omit it; absence is unknown. It cannot be serialized or reconstructed
+    from run/session IDs, and does not cancel a run or authorize resource release.
+
     Outside an authorized Gateway request, model overrides require operator opt-in via `plugins.entries.<id>.subagent.allowModelOverride: true` in config. Plugins without that opt-in can use the configured model, but override requests are rejected.
     </Warning>
 

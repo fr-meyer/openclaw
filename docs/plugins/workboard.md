@@ -556,3 +556,19 @@ owner.
 - [Manage plugins](/plugins/manage-plugins)
 - [Sessions](/concepts/session)
 - [Managed worktrees](/concepts/managed-worktrees)
+
+## Live execution settlement
+
+`workboard.cards.executionSettlement({ id })` requires `operator.read` and
+reports live host producer completion for a card's exact accepted launch.
+The service binds the optional runtime observation only after acceptance is
+persisted, retaining the launch's claim owner/generation and accepted run/session.
+
+`producerState` is `pending`, `settled`, or `unknown`. Failed acceptance,
+replacement identity, unavailable runtime observation, retirement, and restart
+remain unknown. Retained observations are bounded by the 2,000-card service limit;
+oldest bindings are evicted and read back as unknown. Removing the mutable claim
+after acceptance keeps the saved launch identity readable. Even a settled producer returns `resourceFencing: "unknown"` and
+`releaseAuthorized: false`: lifecycle completion and this live readback cannot
+authorize releasing reservations or claim that arbitrary background processes
+have stopped. It does not persist evidence or change card/claim state.

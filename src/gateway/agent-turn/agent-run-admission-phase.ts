@@ -67,6 +67,10 @@ import {
   releasePreparedAgentRunUserTurnAfterFailure,
   type PreparedAgentRunUserTurn,
 } from "./agent-run-user-turn.js";
+import {
+  createAgentTurnExecutionSettlement,
+  type AgentTurnExecutionSettlement,
+} from "./execution-settlement.js";
 
 export async function prepareAgentRunDispatch(
   params: PrepareAgentRunDispatchParams,
@@ -161,6 +165,7 @@ export async function prepareAgentRunDispatch(
       }).storePath
     : `agent:${params.activeSessionAgentId}`;
   let operationalRunInstance: OperationalRunInstanceRef | undefined;
+  let executionSettlement: AgentTurnExecutionSettlement | undefined;
   try {
     await params.acquireGatewayWorkAdmission(lifecycleStorePath);
     params.assertGatewayWorkAdmissionAllowed();
@@ -612,6 +617,16 @@ export async function prepareAgentRunDispatch(
         return rejectPreaccept(errorShapeFromError(ErrorCodes.UNAVAILABLE, failure));
       }
     }
+    if (params.io.emitExecutionOwner && params.resolvedSessionKey && activeRunAbort.entry) {
+      executionSettlement = createAgentTurnExecutionSettlement({
+        runId: params.runId,
+        sessionKey: params.resolvedSessionKey,
+        entry: activeRunAbort.entry,
+        lifecycleGeneration: params.lifecycleGeneration,
+        context: params.context,
+      });
+      params.io.emitExecutionOwner(executionSettlement.owner);
+    }
     params.markAgentRunAccepted(true);
     setGatewayDedupeEntries({
       dedupe: params.context.dedupe,
@@ -654,6 +669,7 @@ export async function prepareAgentRunDispatch(
     return {
       activeGatewayWorkAdmission,
       activeRunAbort,
+      ...(executionSettlement ? { executionSettlement } : {}),
       ...(cronCreatorAuthority ? { cronCreatorAuthority } : {}),
       releaseCallerAuthority: capturedOperator.release,
       ...(capturedOperator.authority ? { operatorAuthority: capturedOperator.authority } : {}),
@@ -675,6 +691,7 @@ export async function prepareAgentRunDispatch(
       restoreAdmittedRestartRecoveryInterrupted,
     };
   } catch (error) {
+    executionSettlement?.markUnknown();
     const failure = releasePreparedAgentRunUserTurnAfterFailure(userTurn, error, "interrupted");
     try {
       await cleanupPreaccept();

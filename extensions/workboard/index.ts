@@ -10,6 +10,7 @@ import {
   syncWorkboardAgentEnded,
   syncWorkboardSubagentEnded,
 } from "./src/lifecycle-sync.js";
+import { createWorkboardLiveExecutionTracker } from "./src/live-execution.js";
 import { resolveWorkboardSqliteWorkerModuleUrl } from "./src/sqlite-store-paths.js";
 import { registerWorkboardStoreLifecycle } from "./src/store-lifecycle.js";
 import { WorkboardStore } from "./src/store.js";
@@ -31,6 +32,8 @@ export default definePluginEntry({
     registerWorkboardStoreLifecycle(api, store, async () => {
       await Promise.all(resourceServices.map(async (service) => await service.stop()));
     });
+    const liveExecutions = createWorkboardLiveExecutionTracker();
+    resourceServices.push(liveExecutions);
     const changeEvents = createWorkboardChangeEventService(store);
     resourceServices.push(changeEvents);
     const automationNudge = createWorkboardAutomationNudgeService({
@@ -71,8 +74,8 @@ export default definePluginEntry({
       label: "Workboard summary",
       requiredScopes: ["operator.read"],
     });
-    registerWorkboardGatewayMethods({ api, store });
-    registerWorkboardCommand({ api, store });
+    registerWorkboardGatewayMethods({ api, store, liveExecutions });
+    registerWorkboardCommand({ api, store, liveExecutions });
     api.registerService(changeEvents);
     api.registerService(automationNudge);
     api.registerService(lifecycleSync);

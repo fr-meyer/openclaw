@@ -17,6 +17,7 @@ import { resolvePluginSubagentCompletionRequester } from "../plugins/runtime/sub
 import type { PluginRuntime } from "../plugins/runtime/types.js";
 import type { PluginOrigin } from "../plugins/types.js";
 import { createBackgroundWorkOwner } from "../process/background-work.js";
+import type { AgentTurnExecutionOwner } from "./agent-turn/execution-settlement.js";
 import { ADMIN_SCOPE } from "./operator-scopes.js";
 import type { GatewayContextResolver, GatewayRequestOptions } from "./server-methods/types.js";
 import {
@@ -410,6 +411,7 @@ export function createGatewaySubagentRuntime(
         // The command owns parsing. Replacing its input with this result would
         // apply non-idempotent provider aliases again; retain the authorized syntax.
       }
+      let executionOwner: AgentTurnExecutionOwner | undefined;
       const payload = await dispatchGatewayMethodInProcess<{
         runId?: string;
         sessionKey?: string;
@@ -434,6 +436,9 @@ export function createGatewaySubagentRuntime(
           allowSyntheticModelOverride,
           sessionMutationCommitGuard,
           agentRunTracking: "plugin_subagent",
+          onExecutionOwner: (owner) => {
+            executionOwner = owner;
+          },
           ...(!scope?.client ? { operatorRoleActor: { kind: "system" as const } } : {}),
           ...(pluginId ? { pluginRuntimeOwnerId: pluginId } : {}),
           ...(pluginSubagentRequester ? { pluginSubagentRequester } : {}),
@@ -448,7 +453,22 @@ export function createGatewaySubagentRuntime(
       }
       const sessionKey = payload?.sessionKey?.trim() || params.sessionKey;
       const runtime = normalizePluginSubagentRunRuntime(payload?.runtime);
-      return { runId, sessionKey, ...(runtime ? { runtime } : {}) };
+      const acceptedOwner = executionOwner;
+      const execution =
+        acceptedOwner?.runId === runId && acceptedOwner.sessionKey === sessionKey
+          ? {
+              observeSettlement: () => {
+                runtimeLifetime?.throwIfAborted();
+                return acceptedOwner.observeSettlement();
+              },
+            }
+          : undefined;
+      return {
+        runId,
+        sessionKey,
+        ...(runtime ? { runtime } : {}),
+        ...(execution ? { execution } : {}),
+      };
     },
     async waitForRun(params) {
       const payload = await dispatchGatewayMethodInProcess<
