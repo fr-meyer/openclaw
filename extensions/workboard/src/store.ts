@@ -1,4 +1,5 @@
 // Workboard plugin module implements store behavior.
+import { createHash } from "node:crypto";
 import type {
   WorkboardAttachment,
   WorkboardCard,
@@ -55,6 +56,14 @@ type WorkboardExecutionAssociationPatch = WorkboardCardPatch & {
   metadata?: WorkboardMetadata;
 };
 type WorkboardPreparedLaunch = Extract<WorkboardLaunchState, { phase: "prepared" }>;
+
+function intentProvisionalRunId(cardId: string, intentRunId: string): string {
+  if (!/^wb-[0-9a-f]{40}$/.test(intentRunId)) {
+    throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+  }
+  const digest = createHash("sha256").update(cardId).update("\0").update(intentRunId).digest("hex");
+  return `workboard:intent:${digest}`;
+}
 
 function preparedLaunchMatchesCard(
   card: WorkboardCard,
@@ -227,14 +236,17 @@ export class WorkboardStore extends WorkboardDispatchStore {
       now: number;
       scope: WorkboardMutationScope;
       assertOwnerCurrent?: () => void;
+      intentRunId?: string;
     },
   ): Promise<{ card: WorkboardCard; launch: WorkboardPreparedLaunch }> {
+    const intentKey =
+      input.intentRunId === undefined ? undefined : intentProvisionalRunId(id, input.intentRunId);
     return await this.enqueueMutation(async () => {
       const result = await this.updateLatestCard(
         id,
         (card) => {
           assertCanMutateClaimedCard(card, input.scope);
-          const provisionalRunId = `workboard:${card.id}:${card.updatedAt}`;
+          const provisionalRunId = intentKey ?? `workboard:${card.id}:${card.updatedAt}`;
           const launch: WorkboardPreparedLaunch = {
             phase: "prepared",
             requestedSessionKey: input.requestedSessionKey,
