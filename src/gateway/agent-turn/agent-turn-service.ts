@@ -34,6 +34,7 @@ import { prepareAgentRequestRouting } from "./agent-request-routing.js";
 import { prepareAgentRunDispatch } from "./agent-run-admission-phase.js";
 import { startAgentRunExecution } from "./agent-run-execution-phase.js";
 import { persistAgentSessionPhase } from "./agent-session-persist.js";
+import { trackAgentTurnExecutionSettlement } from "./execution-settlement.js";
 import type { RequesterSettleWakeReplay } from "./internal-facade.types.js";
 import type { AgentTurnIo, AgentTurnPrincipal } from "./types.js";
 
@@ -560,8 +561,8 @@ export function createAgentTurnService(
       preparedOffloadedRefs = [];
       gatewayAdmissionTransferred = true;
       // Retain the original command and cleanup after the caller receives acceptance.
-      void context
-        .trackExecution(() =>
+      void trackAgentTurnExecutionSettlement(preparedDispatch.executionSettlement, () =>
+        context.trackExecution(() =>
           startAgentRunExecution({
             assertContextCurrent,
             prepared: preparedDispatch,
@@ -604,11 +605,11 @@ export function createAgentTurnService(
             io,
             releaseCronContinuationClaimWithRecovery: cronContinuation.releaseWithRecovery,
           }),
-        )
-        .catch((error: unknown) => {
-          preparedDispatch.releaseCallerAuthority?.();
-          context.logGateway.warn(`agent execution cleanup failed: ${String(error)}`);
-        });
+        ),
+      ).catch((error: unknown) => {
+        preparedDispatch.releaseCallerAuthority?.();
+        context.logGateway.warn(`agent execution cleanup failed: ${String(error)}`);
+      });
       mainRestartRecoveryOwnerLease = undefined;
     } finally {
       try {

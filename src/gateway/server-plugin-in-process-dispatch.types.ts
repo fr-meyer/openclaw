@@ -2,6 +2,7 @@ import type { AdmittedRunOperatorAuthority } from "../agents/admitted-run-contex
 import type { SubagentCompletionToolHandoffRegistration } from "../agents/subagents/announce/subagent-announce-handoff.js";
 import type { PluginSubagentRequesterContext } from "../plugins/runtime/subagent-requester-context.js";
 import type { RuntimePluginToolGrant } from "../plugins/runtime/tool-grant.js";
+import type { AgentTurnExecutionOwner } from "./agent-turn/execution-settlement.js";
 import type { RequesterSettleWakeReplay } from "./agent-turn/internal-facade.types.js";
 import type { TrustedSessionCreation } from "./server-methods/session-creation-provenance.js";
 import type { GatewayOperatorRoleActor } from "./server-methods/shared-types.js";
@@ -38,6 +39,7 @@ export type DispatchGatewayMethodInProcessOptions = {
   onAccepted?: (payload: unknown) => void;
   onExecution?: (execution: Promise<void>) => void;
   onExecutionStarted?: () => void;
+  onExecutionOwner?: (owner: AgentTurnExecutionOwner) => void;
   onSignalAbort?: () => Promise<void> | void;
   operatorRoleActor?: GatewayOperatorRoleActor;
   pluginRuntimeOwnerId?: string;

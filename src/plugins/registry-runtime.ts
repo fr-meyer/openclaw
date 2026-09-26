@@ -646,7 +646,17 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
                 action: "run",
                 sessionKeys: [params.sessionKey],
               });
-              return await subagent.run(params);
+              const result = await subagent.run(params);
+              const execution = result.execution;
+              return execution
+                ? {
+                    ...result,
+                    execution: {
+                      observeSettlement: () =>
+                        runWithPluginScope(() => execution.observeSettlement()),
+                    },
+                  }
+                : result;
             });
           },
           waitForRun: (params) => runWithPluginScope(() => subagent.waitForRun(params)),

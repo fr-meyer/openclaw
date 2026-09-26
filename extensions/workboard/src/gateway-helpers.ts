@@ -8,6 +8,7 @@ import {
   dispatchAndStartWorkboardCards,
   type WorkboardDispatchStartOptions,
 } from "./dispatcher.js";
+import type { WorkboardLiveExecutionTracker } from "./live-execution.js";
 import { WorkboardCardConflictError, type WorkboardStore } from "./store.js";
 import {
   resolveAgentWorkboardWorkspaceRuntime,
@@ -164,6 +165,7 @@ function gatewayDispatchOptions(params: {
 }
 
 export function createWorkboardDispatchHandler(params: {
+  liveExecutions?: WorkboardLiveExecutionTracker;
   api: OpenClawPluginApi;
   store: WorkboardStore;
   redactCard: (card: WorkboardCard) => WorkboardCard;
@@ -241,6 +243,7 @@ export function createWorkboardDispatchHandler(params: {
       const result = await dispatchAndStartWorkboardCards({
         store: params.store,
         subagent: params.api.runtime.subagent,
+        liveExecutions: params.liveExecutions,
         worktrees: params.api.runtime.worktrees,
         options: {
           ...gatewayDispatchOptions({
