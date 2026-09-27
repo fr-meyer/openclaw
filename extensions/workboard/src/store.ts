@@ -32,7 +32,7 @@ import type {
   WorkboardDiagnosticsResult,
   WorkboardMutationScope,
 } from "./store-inputs.js";
-import { capText } from "./store-normalizers.js";
+import { capText, normalizeLaunchClaimGeneration } from "./store-normalizers.js";
 import { readCards } from "./store-read.js";
 
 export type { WorkboardDispatchResult } from "./store-inputs.js";
@@ -75,6 +75,9 @@ function preparedLaunchMatchesCard(
     launch.requestedSessionKey === expected.requestedSessionKey &&
     launch.provisionalRunId === expected.provisionalRunId &&
     launch.preparedAt === expected.preparedAt &&
+    launch.claimOwnerId === expected.claimOwnerId &&
+    launch.claimGeneration === expected.claimGeneration &&
+    (launch.claimGeneration === undefined || claimMatchesLaunch(card.metadata?.claim, launch)) &&
     card.sessionKey === expected.requestedSessionKey &&
     card.runId === expected.provisionalRunId &&
     card.execution?.sessionKey === expected.requestedSessionKey &&
@@ -187,11 +190,25 @@ function lifecycleExecution(params: {
   };
 }
 
-function claimPostdatesLaunch(
+function claimMatchesLaunch(
   claim: WorkboardClaim | undefined,
   launch: WorkboardLaunchState | undefined,
 ): boolean {
-  return Boolean(claim && launch && claim.claimedAt > launch.preparedAt);
+  if (!claim || !launch) {
+    return false;
+  }
+  if (launch.claimGeneration !== undefined) {
+    return claim.ownerId === launch.claimOwnerId && claim.claimedAt === launch.claimGeneration;
+  }
+  // Preserve lifecycle behavior for launches written before the claim snapshot existed.
+  return claim.claimedAt <= launch.preparedAt;
+}
+
+function claimConflictsWithLaunch(
+  claim: WorkboardClaim | undefined,
+  launch: WorkboardLaunchState | undefined,
+): boolean {
+  return Boolean(claim && launch && !claimMatchesLaunch(claim, launch));
 }
 
 function hasExactTerminalClaimAssociation(
@@ -217,9 +234,7 @@ function hasExactTerminalClaimAssociation(
     launch?.phase === "accepted" &&
     launch.acceptedSessionKey === association.sessionKey &&
     launch.acceptedRunId === association.runId &&
-    // prepareExecutionLaunch records the claimed card's monotonic updatedAt.
-    // A later replacement claim therefore has a newer generation timestamp.
-    claim.claimedAt <= launch.preparedAt &&
+    claimMatchesLaunch(claim, launch) &&
     sessionKey &&
     runId &&
     association.expectedSessionKey === sessionKey &&
@@ -247,11 +262,19 @@ export class WorkboardStore extends WorkboardDispatchStore {
         (card) => {
           assertCanMutateClaimedCard(card, input.scope);
           const provisionalRunId = intentKey ?? `workboard:${card.id}:${card.updatedAt}`;
+          const claim = card.metadata?.claim;
+          const claimGeneration = normalizeLaunchClaimGeneration(claim?.claimedAt);
+          if (claim && claimGeneration === undefined) {
+            throw new Error("Workboard launch requires a positive safe-integer claim generation.");
+          }
           const launch: WorkboardPreparedLaunch = {
             phase: "prepared",
             requestedSessionKey: input.requestedSessionKey,
             provisionalRunId,
             preparedAt: card.updatedAt,
+            ...(claim && claimGeneration !== undefined
+              ? { claimOwnerId: claim.ownerId, claimGeneration }
+              : {}),
           };
           return {
             sessionKey: input.requestedSessionKey,
@@ -376,7 +399,7 @@ export class WorkboardStore extends WorkboardDispatchStore {
           const launch = card.metadata?.automation?.launch;
           const associationIsCurrent =
             !input.association ||
-            (!claimPostdatesLaunch(card.metadata?.claim, launch) &&
+            (!claimConflictsWithLaunch(card.metadata?.claim, launch) &&
               (input.sourceUpdatedAt === undefined ||
                 !shouldSkipPersistedLifecycleStatusUpdate(card, input.sourceUpdatedAt)) &&
               (launch?.phase !== "prepared" ||

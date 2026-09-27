@@ -516,6 +516,10 @@ function normalizeLaunchString(value: unknown, maxLength: number): string | unde
   return normalized && normalized.length <= maxLength ? normalized : undefined;
 }
 
+export function normalizeLaunchClaimGeneration(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
 function normalizeLaunchState(value: unknown): WorkboardLaunchState | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -526,7 +530,20 @@ function normalizeLaunchState(value: unknown): WorkboardLaunchState | undefined 
   if (!requestedSessionKey || !provisionalRunId || preparedAt === undefined) {
     return undefined;
   }
-  const identity = { requestedSessionKey, provisionalRunId, preparedAt };
+  const claimOwnerId = normalizeLaunchString(value.claimOwnerId, 120);
+  const claimGeneration = normalizeLaunchClaimGeneration(value.claimGeneration);
+  if (
+    (Object.hasOwn(value, "claimOwnerId") || Object.hasOwn(value, "claimGeneration")) &&
+    (!claimOwnerId || claimGeneration === undefined)
+  ) {
+    return undefined;
+  }
+  const identity = {
+    requestedSessionKey,
+    provisionalRunId,
+    preparedAt,
+    ...(claimOwnerId && claimGeneration !== undefined ? { claimOwnerId, claimGeneration } : {}),
+  };
   if (value.phase === "prepared") {
     return { phase: "prepared", ...identity };
   }
