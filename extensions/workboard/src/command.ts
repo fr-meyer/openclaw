@@ -11,6 +11,7 @@ import {
   type WorkboardSubagentRuntime,
   type WorkboardWorktreeRuntime,
 } from "./dispatcher.js";
+import type { WorkboardLiveExecutionTracker } from "./live-execution.js";
 import type { WorkboardStore } from "./store.js";
 import {
   canonicalizeWorkboardWorkspaceAccess,
@@ -100,6 +101,7 @@ function requireWriteAccess(params: {
 }
 
 async function handleWorkboardCommand(params: {
+  liveExecutions?: WorkboardLiveExecutionTracker;
   api: WorkboardCommandApi;
   store: WorkboardStore;
   args?: string;
@@ -203,6 +205,7 @@ async function handleWorkboardCommand(params: {
     const result = await dispatchAndStartWorkboardCards({
       store: params.store,
       subagent: params.api.runtime.subagent,
+      liveExecutions: params.liveExecutions,
       worktrees: params.api.runtime.worktrees,
       options: {
         materializeWorktree: true,
@@ -226,6 +229,7 @@ async function handleWorkboardCommand(params: {
 }
 
 export function registerWorkboardCommand(params: {
+  liveExecutions?: WorkboardLiveExecutionTracker;
   api: OpenClawPluginApi;
   store: WorkboardStore;
 }): void {
@@ -238,6 +242,7 @@ export function registerWorkboardCommand(params: {
       await handleWorkboardCommand({
         api: params.api,
         store: params.store,
+        liveExecutions: params.liveExecutions,
         args: ctx.args,
         senderIsOwner: ctx.senderIsOwner,
         assertOwnerCurrent: ctx.gatewayClientScopes ? undefined : ctx.assertOwnerCurrent,

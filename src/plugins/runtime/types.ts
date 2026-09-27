@@ -5,9 +5,11 @@ import type { NodePluginToolDescriptor } from "../../../packages/gateway-protoco
 import type { AgentWaitResult } from "../../agents/run-wait.types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { OperatorScope } from "../../gateway/operator-scopes.js";
+import type { SubagentExecution } from "./subagent-execution.types.js";
 import type { PluginRuntimeCore, RuntimeLogger } from "./types-core.js";
 
 export type { RuntimeLogger };
+export type { SubagentExecution } from "./subagent-execution.types.js";
 
 type PluginRuntimeChannel = import("./types-channel.js").PluginRuntimeChannel;
 
@@ -52,6 +54,8 @@ type PluginManagedWorktree = {
 };
 
 type SubagentRunResult = {
+  /** Optional host-owned live observation. Custom runtimes and cached runs may omit it. */
+  execution?: SubagentExecution;
   runId: string;
   /** Canonical accepted session identity. Optional for explicit/custom runtimes. */
   sessionKey?: string;

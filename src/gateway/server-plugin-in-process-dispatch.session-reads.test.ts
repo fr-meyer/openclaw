@@ -26,6 +26,7 @@ async function withSyntheticReader(
     ownerEmail: string;
     dispatch: (method: ReadMethod) => ReturnType<typeof dispatchGatewayMethodInProcessRaw>;
     blockCatalog: () => { entered: Promise<void>; release: () => void };
+    blockListReadiness: () => { entered: Promise<void>; release: () => void };
   }) => Promise<void>,
   visibility: "shared" | "draft" = "shared",
 ) {
@@ -62,6 +63,8 @@ async function withSyntheticReader(
     });
     let catalogGate: ReturnType<typeof createDeferred<void>> | undefined;
     let catalogEntered: ReturnType<typeof createDeferred<void>> | undefined;
+    let readinessGate: ReturnType<typeof createDeferred<void>> | undefined;
+    let restoreReadiness: (() => void) | undefined;
     const projection = await createSessionRowProjection({
       cfg: config,
       context,
@@ -100,6 +103,21 @@ async function withSyntheticReader(
                 },
               ),
           ),
+        blockListReadiness: () => {
+          readinessGate = createDeferred();
+          const entered = createDeferred();
+          const released = readinessGate;
+          const ensureMaterialized = projection.ensureMaterialized.bind(projection);
+          const readiness = vi
+            .spyOn(projection, "ensureMaterialized")
+            .mockImplementationOnce(async () => {
+              await ensureMaterialized();
+              entered.resolve();
+              await released.promise;
+            });
+          restoreReadiness = () => readiness.mockRestore();
+          return { entered: entered.promise, release: () => released.resolve() };
+        },
         blockCatalog: () => {
           catalogGate = createDeferred();
           catalogEntered = createDeferred();
@@ -109,6 +127,8 @@ async function withSyntheticReader(
       });
     } finally {
       catalogGate?.resolve();
+      readinessGate?.resolve();
+      restoreReadiness?.();
       await projection.ensureMaterialized();
       projection.dispose();
     }
@@ -165,26 +185,36 @@ describe("synthetic plugin session reads", () => {
   });
 
   it.each(methods)("honors role revocation during projection readiness on %s", async (method) => {
-    await withSyntheticReader(async ({ readerId, dispatch, blockCatalog }) => {
-      const gate = blockCatalog();
+    await withSyntheticReader(async ({ readerId, dispatch, blockCatalog, blockListReadiness }) => {
+      const gate = method === "sessions.list" ? blockListReadiness() : blockCatalog();
       const pending = method === "sessions.list" ? dispatch(method) : undefined;
       try {
-        await gate.entered;
+        if (pending) {
+          expect(
+            await Promise.race([gate.entered.then(() => "ready"), pending.then(() => "responded")]),
+          ).toBe("ready");
+        } else {
+          await gate.entered;
+        }
         setUserProfileRole(readerId, "blocked");
         if (pending) {
           gate.release();
-        }
-        const result = await (pending ?? dispatch(method));
-        if (method === "sessions.list") {
-          expect(result).toMatchObject({ ok: true, payload: { sessions: [] } });
+          await expect(pending).rejects.toMatchObject({
+            message: "Your operator role changed; reconnect before continuing.",
+          });
+          expect(await dispatch(method)).toMatchObject({
+            ok: true,
+            payload: { sessions: [] },
+          });
         } else {
-          expect(result).toMatchObject({
+          expect(await dispatch(method)).toMatchObject({
             ok: false,
             error: { message: `Session "${sessionKey}" was not found.` },
           });
         }
       } finally {
         gate.release();
+        await pending?.catch(() => {});
       }
     });
   });
