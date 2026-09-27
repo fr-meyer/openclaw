@@ -16,6 +16,8 @@ type CallGatewayFromCliRuntimeExtra = {
   mode?: Parameters<typeof callGateway>[0]["mode"];
   deviceIdentity?: Parameters<typeof callGateway>[0]["deviceIdentity"];
   signal?: Parameters<typeof callGateway>[0]["signal"];
+  onHelloOk?: Parameters<typeof callGateway>[0]["onHelloOk"];
+  assertDispatchCurrent?: Parameters<typeof callGateway>[0]["assertDispatchCurrent"];
   expectFinal?: boolean;
   progress?: boolean;
   scopes?: Parameters<typeof callGateway>[0]["scopes"];
@@ -92,6 +94,8 @@ export async function callGatewayFromCliRuntime<T = Record<string, unknown>>(
         allowLocalBackendAuthNone: extra?.clientName === undefined && extra?.mode === undefined,
         sharedStateMode: extra?.sharedStateMode,
         signal: extra?.signal,
+        onHelloOk: extra?.onHelloOk,
+        assertDispatchCurrent: extra?.assertDispatchCurrent,
         timeoutMs,
         localPortOverride,
         clientName: extra?.clientName ?? GATEWAY_CLIENT_NAMES.CLI,

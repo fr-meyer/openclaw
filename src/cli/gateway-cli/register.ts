@@ -27,6 +27,12 @@ import {
 import { formatHelpExamples } from "../help-format.js";
 import { parseTimeoutMsWithFallback } from "../parse-timeout.js";
 import { setCommandJsonMode } from "../program/json-mode.js";
+import {
+  callGatewayReadOnlyCli,
+  callGatewayVerifiedRead,
+  DEFAULT_GATEWAY_RPC_TIMEOUT_MS,
+  parseGatewayCallParams,
+} from "./call.js";
 import type { GatewayDiscoverOpts } from "./discover.js";
 import { isGatewayMachineOutput } from "./output-mode.js";
 import { addGatewayRestartHandoffCommands } from "./register-restart-handoff.js";
@@ -58,7 +64,6 @@ const loadDaemonStatusGatherModule = createLazyPromise(
   () => import("../daemon-cli/status.gather.js"),
 );
 
-const DEFAULT_GATEWAY_RPC_TIMEOUT_MS = 10_000;
 const SETUP_INFERENCE_DETECT_RPC_TIMEOUT_MS = 40_000;
 type GatewayCliDependencies = {
   loadGatewayHealthModule?: typeof loadGatewayHealthModule;
@@ -71,21 +76,6 @@ function gatewayCallOpts(cmd: Command, defaultTimeoutMs = DEFAULT_GATEWAY_RPC_TI
     "Output JSON",
     false,
   );
-}
-
-async function callGatewayReadOnlyCli(method: string, opts: GatewayRpcOpts, params?: unknown) {
-  return await callGatewayFromCliWithTransport(method, opts, params, {
-    defaultTimeoutMs: DEFAULT_GATEWAY_RPC_TIMEOUT_MS,
-    sharedStateMode: "read-only",
-  });
-}
-
-function parseGatewayCallParams(value = "{}"): unknown {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    throw new Error("--params must be valid JSON.");
-  }
 }
 
 async function runGatewayCommand(
@@ -472,6 +462,10 @@ export function registerGatewayCli(program: Command, deps: GatewayCliDependencie
         "Fail if the resolved Gateway URL differs; preserves configured authentication",
       )
       .option("--params <json>", "JSON object string for params", "{}")
+      .option(
+        "--verified-read <boot-id>",
+        "Require an authenticated read-only connection to this Gateway boot (requires --expect-url)",
+      )
       .action(async (method, opts, command) => {
         await runGatewayCommand(
           async () => {
@@ -484,7 +478,10 @@ export function registerGatewayCli(program: Command, deps: GatewayCliDependencie
                 : opts;
             const rpcOpts = resolveGatewayRpcOptionsWithLocalPort(callOpts, command);
             const params = parseGatewayCallParams(String(opts.params ?? "{}"));
-            const result = await callGatewayReadOnlyCli(method, rpcOpts, params);
+            const result =
+              rpcOpts.verifiedRead !== undefined
+                ? await callGatewayVerifiedRead(method, rpcOpts, params, rpcOpts.verifiedRead)
+                : await callGatewayReadOnlyCli(method, rpcOpts, params);
             if (rpcOpts.json) {
               defaultRuntime.writeJson(result);
               return;
