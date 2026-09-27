@@ -138,7 +138,7 @@ function gatewayDispatchOptions(params: {
   request: Pick<GatewayMethodContext, "client" | "context">;
   input: Pick<
     WorkboardDispatchStartOptions,
-    "boardId" | "cardId" | "maxStarts" | "provider" | "model"
+    "boardId" | "cardId" | "maxStarts" | "provider" | "model" | "intentRunId"
   >;
 }): WorkboardDispatchStartOptions {
   const { context, client } = params.request;
@@ -214,6 +214,20 @@ export function createWorkboardDispatchHandler(params: {
       if (cardId && maxStarts !== undefined && maxStarts !== 1) {
         throw new Error("maxStarts must be 1 when cardId is provided.");
       }
+      const rawIntentRunId =
+        requestParams && typeof requestParams === "object" && "intentRunId" in requestParams
+          ? requestParams.intentRunId
+          : undefined;
+      if (rawIntentRunId !== undefined && (!options.supportsCardId || !cardId)) {
+        throw new Error("intentRunId requires one exact card through dispatchWithOptions.");
+      }
+      if (
+        rawIntentRunId !== undefined &&
+        (typeof rawIntentRunId !== "string" || !/^wb-[0-9a-f]{40}$/.test(rawIntentRunId))
+      ) {
+        throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+      }
+      const intentRunId = typeof rawIntentRunId === "string" ? rawIntentRunId : undefined;
       const provider =
         options.directCard &&
         typeof requestParams.provider === "string" &&
@@ -238,6 +252,7 @@ export function createWorkboardDispatchHandler(params: {
               ...(maxStarts !== undefined ? { maxStarts } : {}),
               ...(provider ? { provider } : {}),
               ...(model ? { model } : {}),
+              ...(intentRunId ? { intentRunId } : {}),
             },
           }),
           ...(cardId ? { targetMode: options.directCard ? "start" : "dispatch" } : {}),

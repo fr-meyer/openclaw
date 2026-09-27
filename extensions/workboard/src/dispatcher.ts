@@ -38,6 +38,7 @@ export type WorkboardWorktreeRuntime = PluginRuntime["worktrees"];
 
 export type WorkboardDispatchStartOptions = {
   cardId?: string;
+  intentRunId?: string;
   targetMode?: "start" | "dispatch";
   maxStarts?: number;
   model?: string;
@@ -321,6 +322,15 @@ async function runWorkboardDispatch(
   const directCardId = params.options?.cardId;
   const assertOwnerCurrent = params.options?.assertOwnerCurrent;
   const targetMode = directCardId ? (params.options?.targetMode ?? "start") : undefined;
+  const intentRunId = params.options?.intentRunId;
+  if (intentRunId !== undefined) {
+    if (targetMode !== "dispatch") {
+      throw new Error("intentRunId requires exact-card dispatch.");
+    }
+    if (!/^wb-[0-9a-f]{40}$/.test(intentRunId)) {
+      throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+    }
+  }
   let directCard: WorkboardCard | undefined;
   let dispatch: WorkboardDispatchResult;
   if (directCardId && targetMode === "start") {
@@ -497,6 +507,7 @@ async function runWorkboardDispatch(
         now,
         scope: { ownerId, token: claimValue },
         assertOwnerCurrent,
+        ...(intentRunId ? { intentRunId } : {}),
       });
       const launched = prepared.card;
       preparedLaunch = prepared.launch;
