@@ -70,7 +70,8 @@ const verifier = resolve(
 );
 
 function git(cwd: string, args: string[], extraEnv: Record<string, string> = {}): string {
-  return execFileSync("git", args, {
+  // Fixture commits must not launch detached maintenance across read-only assertions.
+  return execFileSync("git", ["-c", "maintenance.auto=false", "-c", "gc.auto=0", ...args], {
     cwd,
     encoding: "utf8",
     env: {

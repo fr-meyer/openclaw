@@ -225,6 +225,23 @@ attempt, and execution history.
 Workers get bounded card context plus the claim token needed to heartbeat,
 complete, or block the card through the Workboard tools.
 
+For claimed launches, Workboard snapshots the claim's owner and immutable
+`claimedAt` generation as `metadata.automation.launch.claimOwnerId` and
+`claimGeneration`. Both stay with the launch through acceptance, failure, and
+terminal claim release. Store-owned launch transitions set these fields;
+ordinary card metadata edits cannot replace them. Acceptance and terminal
+lifecycle updates must match the snapshot's current claim owner and generation,
+so a late event cannot clear a replacement worker's claim.
+
+This snapshot identifies the claim that prepared a launch. It does not prove
+that a worker has stopped, authenticate a runtime owner, or authorize release
+of an external reservation. No claim token is copied into it. Older or unclaimed
+launches lack both fields and retain their existing lifecycle behavior; they
+are not retroactively assigned a claim identity. The optional fields use the
+existing launch JSON storage without a database migration. An older writer
+may omit them when rewriting a card, so consumers requiring a claim identity
+must treat a missing snapshot as insufficient evidence.
+
 Workspace paths follow the caller's existing filesystem authority:
 
 - Gateway clients with `operator.write` can use configured agent workspaces.
@@ -539,3 +556,19 @@ owner.
 - [Manage plugins](/plugins/manage-plugins)
 - [Sessions](/concepts/session)
 - [Managed worktrees](/concepts/managed-worktrees)
+
+## Live execution settlement
+
+`workboard.cards.executionSettlement({ id })` requires `operator.read` and
+reports live host producer completion for a card's exact accepted launch.
+The service binds the optional runtime observation only after acceptance is
+persisted, retaining the launch's claim owner/generation and accepted run/session.
+
+`producerState` is `pending`, `settled`, or `unknown`. Failed acceptance,
+replacement identity, unavailable runtime observation, retirement, and restart
+remain unknown. Retained observations are bounded by the 2,000-card service limit;
+oldest bindings are evicted and read back as unknown. Removing the mutable claim
+after acceptance keeps the saved launch identity readable. Even a settled producer returns `resourceFencing: "unknown"` and
+`releaseAuthorized: false`: lifecycle completion and this live readback cannot
+authorize releasing reservations or claim that arbitrary background processes
+have stopped. It does not persist evidence or change card/claim state.
