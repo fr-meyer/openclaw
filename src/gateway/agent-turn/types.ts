@@ -8,7 +8,7 @@ import type {
   GatewayRequestContext,
   RespondFn,
 } from "../server-methods/shared-types.js";
-import type { AgentTurnExecutionOwner } from "./execution-settlement.js";
+import type { AgentTurnExecutionOwner } from "./execution-settlement.types.js";
 
 export type AgentTurnFrame = readonly [
   ok: Parameters<RespondFn>[0],

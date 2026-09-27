@@ -11,7 +11,7 @@ import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { prepareAgentRequestPreflight } from "../agent-turn/agent-request-preflight.js";
 import { createAgentTurnService } from "../agent-turn/agent-turn-service.js";
-import type { AgentTurnExecutionOwner } from "../agent-turn/execution-settlement.js";
+import type { AgentTurnExecutionOwner } from "../agent-turn/execution-settlement.types.js";
 import { createInternalAgentTurnFacade } from "../agent-turn/internal-facade.js";
 import type { AgentTurnIo } from "../agent-turn/types.js";
 import { captureGatewayOperatorRunAuthority } from "../operator-run-authority.js";

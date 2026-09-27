@@ -1,18 +1,10 @@
 import { assertAgentRunLifecycleGenerationCurrent } from "../../infra/agent-events.js";
-import type { SubagentExecution } from "../../plugins/runtime/types.js";
-import type { ChatAbortControllerEntry } from "../chat-abort.js";
+import type { ChatAbortControllerEntry } from "../chat-abort.types.js";
+import type {
+  AgentTurnExecutionOwner,
+  AgentTurnExecutionSettlement,
+} from "./execution-settlement.types.js";
 import type { AgentTurnContext } from "./types.js";
-
-export type AgentTurnExecutionOwner = SubagentExecution & {
-  readonly runId: string;
-  readonly sessionKey: string;
-};
-
-export type AgentTurnExecutionSettlement = {
-  owner: AgentTurnExecutionOwner;
-  track: (execution: Promise<void>) => void;
-  markUnknown: () => void;
-};
 
 /** Admission captures the producer owner before exposing acceptance. No replay lookup. */
 export function createAgentTurnExecutionSettlement(params: {
@@ -22,7 +14,7 @@ export function createAgentTurnExecutionSettlement(params: {
   lifecycleGeneration: string;
   context: AgentTurnContext;
 }): AgentTurnExecutionSettlement {
-  let state: ReturnType<SubagentExecution["observeSettlement"]> = "pending";
+  let state: ReturnType<AgentTurnExecutionOwner["observeSettlement"]> = "pending";
   let tracked = false;
   const operationalRunInstance = params.entry.operationalRunInstance;
   const lifetimeSignal = params.context.requestEntryLifetime?.signal;

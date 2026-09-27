@@ -14,10 +14,10 @@ import {
   getPluginRuntimeGatewayRequestScope,
 } from "../plugins/runtime/gateway-request-scope.js";
 import { resolvePluginSubagentCompletionRequester } from "../plugins/runtime/subagent-requester-context.js";
-import type { PluginRuntime } from "../plugins/runtime/types.js";
+import type { PluginRuntime, SubagentExecution } from "../plugins/runtime/types.js";
 import type { PluginOrigin } from "../plugins/types.js";
 import { createBackgroundWorkOwner } from "../process/background-work.js";
-import type { AgentTurnExecutionOwner } from "./agent-turn/execution-settlement.js";
+import type { AgentTurnExecutionOwner } from "./agent-turn/execution-settlement.types.js";
 import { ADMIN_SCOPE } from "./operator-scopes.js";
 import type { GatewayContextResolver, GatewayRequestOptions } from "./server-methods/types.js";
 import {
@@ -454,7 +454,7 @@ export function createGatewaySubagentRuntime(
       const sessionKey = payload?.sessionKey?.trim() || params.sessionKey;
       const runtime = normalizePluginSubagentRunRuntime(payload?.runtime);
       const acceptedOwner = executionOwner;
-      const execution =
+      const execution: SubagentExecution | undefined =
         acceptedOwner?.runId === runId && acceptedOwner.sessionKey === sessionKey
           ? {
               observeSettlement: () => {

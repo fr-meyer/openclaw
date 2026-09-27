@@ -3,7 +3,7 @@ import type { ConnectParams } from "../../../packages/gateway-protocol/src/schem
 import type { GatewayMethodDispatchResponse } from "../server-in-process-dispatch.types.js";
 import type { AgentRunRequest } from "../server-methods/agent-request-types.js";
 import type { GatewayClient } from "../server-methods/client-types.js";
-import type { AgentTurnExecutionOwner } from "./execution-settlement.js";
+import type { AgentTurnExecutionOwner } from "./execution-settlement.types.js";
 
 export type InternalAgentTurnPrincipalOptions = {
   // Authorization can await; the lifecycle owner must still be current before dispatch.

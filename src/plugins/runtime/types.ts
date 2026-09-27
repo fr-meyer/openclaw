@@ -5,9 +5,11 @@ import type { NodePluginToolDescriptor } from "../../../packages/gateway-protoco
 import type { AgentWaitResult } from "../../agents/run-wait.types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { OperatorScope } from "../../gateway/operator-scopes.js";
+import type { SubagentExecution } from "./subagent-execution.types.js";
 import type { PluginRuntimeCore, RuntimeLogger } from "./types-core.js";
 
 export type { RuntimeLogger };
+export type { SubagentExecution } from "./subagent-execution.types.js";
 
 type PluginRuntimeChannel = import("./types-channel.js").PluginRuntimeChannel;
 
@@ -49,11 +51,6 @@ type PluginManagedWorktree = {
   id: string;
   path: string;
   branch: string;
-};
-
-export type SubagentExecution = {
-  /** Live producer settlement, including host cleanup; never resource fencing evidence. */
-  observeSettlement: () => "pending" | "settled" | "unknown";
 };
 
 type SubagentRunResult = {

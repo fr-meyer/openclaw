@@ -67,10 +67,8 @@ import {
   releasePreparedAgentRunUserTurnAfterFailure,
   type PreparedAgentRunUserTurn,
 } from "./agent-run-user-turn.js";
-import {
-  createAgentTurnExecutionSettlement,
-  type AgentTurnExecutionSettlement,
-} from "./execution-settlement.js";
+import { createAgentTurnExecutionSettlement } from "./execution-settlement.js";
+import type { AgentTurnExecutionSettlement } from "./execution-settlement.types.js";
 
 export async function prepareAgentRunDispatch(
   params: PrepareAgentRunDispatchParams,
