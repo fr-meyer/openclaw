@@ -105,7 +105,7 @@ async function withSyntheticReader(
           ),
         blockListReadiness: () => {
           readinessGate = createDeferred();
-          const entered = createDeferred<void>();
+          const entered = createDeferred();
           const released = readinessGate;
           const ensureMaterialized = projection.ensureMaterialized.bind(projection);
           const readiness = vi
