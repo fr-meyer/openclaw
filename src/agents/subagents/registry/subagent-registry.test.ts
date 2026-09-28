@@ -66,6 +66,7 @@ import {
   observeRootWork,
   registerBrowserCleanupBoundaryTests,
 } from "./subagent-registry.browser-cleanup.test-support.js";
+import { registerSubagentForcedCollectorYieldCompletionTests } from "./subagent-registry.collector-yield.test-support.js";
 import { findRecordCallArg } from "./subagent-registry.mock-call.test-support.js";
 import {
   registerSubagentRegistrationCompletionTest,
@@ -3357,68 +3358,13 @@ describe("subagent registry seam flow", () => {
     },
   );
 
-  it.each([
-    { observation: "lifecycle", schema: false, captured: false },
-    { observation: "wait", schema: false, captured: false },
-    { observation: "lifecycle", schema: true, captured: false },
-    { observation: "wait", schema: true, captured: false },
-    { observation: "lifecycle", schema: true, captured: true },
-    { observation: "wait", schema: true, captured: true },
-  ])(
-    "settles forced collector yield through $observation (schema=$schema, captured=$captured)",
-    async ({ observation, schema, captured }) => {
-      const runId = "forced-collector-yield";
-      const childSessionKey = "agent:main:subagent:forced-collector-yield";
-      const terminal = {
-        status: "ok",
-        startedAt: 111,
-        endedAt: 222,
-        yielded: true,
-        livenessState: "paused",
-      };
-      const waitResult = createDeferred<Record<string, unknown>>();
-      if (observation === "wait") {
-        mocks.callGateway.mockImplementation(async () => waitResult.promise);
-      } else {
-        mockPendingAgentWait();
-      }
-      mocks.entries = {
-        [childSessionKey]: createSessionEntry({ lifecycleRevision: "forced-yield" }),
-      };
-      await mod.registerSubagentRun({
-        runId,
-        childSessionKey,
-        task: "force the terminal boundary",
-        collect: true,
-        expectsCompletionMessage: false,
-        swarmRequesterSessionKey: "agent:main:main",
-        ...(schema ? { outputSchema: { type: "object" } } : {}),
-      });
-      if (captured) {
-        mod.recordSwarmStructuredOutput(
-          { runId, childSessionKey },
-          { invalidAttempts: 0, structured: { answer: 42 } },
-        );
-      }
-      if (observation === "wait") {
-        waitResult.resolve(terminal);
-      } else {
-        getLifecycleHandler()({ runId, stream: "lifecycle", data: { phase: "end", ...terminal } });
-      }
-      await waitForFast(() => {
-        const entry = findRequesterRun(runId);
-        expect(entry?.execution.status).toBe("terminal");
-        expect(entry?.collectorCompletion?.status).toBe(schema && !captured ? "failed" : "done");
-        expect(entry?.pauseReason).toBeUndefined();
-        if (captured) {
-          expect(entry?.collectorCompletion?.structured).toEqual({ answer: 42 });
-        } else if (schema) {
-          expect(entry?.collectorCompletion?.schemaError).toBe("structured_output was not called");
-        }
-      });
-      expect(mocks.runSubagentAnnounceFlow).not.toHaveBeenCalled();
-    },
-  );
+  registerSubagentForcedCollectorYieldCompletionTests({
+    getRegistry: () => mod,
+    mocks,
+    mockPendingAgentWait,
+    findRequesterRun,
+    getLifecycleHandler,
+  });
 
   it.each(
     ["lifecycle", "wait"].flatMap((observation) =>
