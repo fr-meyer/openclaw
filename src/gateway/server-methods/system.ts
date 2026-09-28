@@ -1,6 +1,7 @@
 // System gateway methods expose device and host identity, heartbeat controls,
 // presence snapshots, and normalized system events.
 import os from "node:os";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
@@ -43,8 +44,17 @@ import { broadcastPresenceSnapshot } from "../server/presence-events.js";
 import { readGatewayProcessVitals } from "../server/process-vitals.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
 import { loadGatewaySessionEntryReadOnly } from "../session-utils.js";
+import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
+
+const AUTHENTICATED_WORKER_NAMESPACE_METHODS = new Set([
+  "token",
+  "password",
+  "device-token",
+  "tailscale",
+  "trusted-proxy",
+]);
 
 let advertisedLanHostPromise: Promise<string | null> | null = null;
 let stateDiskSnapshot:
@@ -141,6 +151,44 @@ async function collectSystemInfo(context: GatewayRequestContext): Promise<System
 
 /** Gateway handlers for identity, host information, heartbeat toggles, and presence events. */
 export const systemHandlers: GatewayRequestHandlers = {
+  "gateway.workerNamespace.get": (options) => {
+    const { params, client, context, respond } = options;
+    if (!isRecord(params) || Object.keys(params).length !== 0) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "gateway.workerNamespace.get requires empty params"),
+      );
+      return;
+    }
+    if (
+      client?.connect.role !== "operator" ||
+      !client.authenticationMethod ||
+      !AUTHENTICATED_WORKER_NAMESPACE_METHODS.has(client.authenticationMethod)
+    ) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.FORBIDDEN, "Authenticated operator required"),
+      );
+      return;
+    }
+    try {
+      readGatewayRequestMutationAuthority(options).assertCurrent();
+      client.connectionSignal?.throwIfAborted();
+      const identity = context.readWorkerRuntimeIdentity?.();
+      if (!identity) {
+        throw new Error("Gateway worker runtime identity is unavailable");
+      }
+      respond(true, { bootId: identity.bootId, namespace: identity.namespace }, undefined);
+    } catch {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, "Gateway worker runtime identity is unavailable"),
+      );
+    }
+  },
   "gateway.identity.get": async ({ respond }) => {
     const identity = await loadOrCreateProcessDeviceIdentityAsync();
     respond(

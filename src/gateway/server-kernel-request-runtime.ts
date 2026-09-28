@@ -58,6 +58,22 @@ export async function prepareGatewayKernelRequestRuntime(params: {
       logHealth,
     });
   });
+  const { bootId, nodeWorkerGatewayNamespace, requestEntryLifetime, resolvePluginGatewayContext } =
+    runtime;
+  if (nodeWorkerGatewayNamespace) {
+    const identity = Object.freeze({ bootId, namespace: nodeWorkerGatewayNamespace });
+    const lifetimeSignal = requestEntryLifetime.signal;
+    gatewayRequestContext.readWorkerRuntimeIdentity = () => {
+      if (
+        lifetimeSignal.aborted ||
+        lifecycle.closePreludeStarted ||
+        resolvePluginGatewayContext() !== gatewayRequestContext
+      ) {
+        throw new Error("Gateway worker runtime identity is unavailable");
+      }
+      return identity;
+    };
+  }
   const projectionReady = runtime.opts.updateCanary
     ? Promise.resolve(undefined)
     : startupTrace.measure("sessions.projection", async () => {
