@@ -534,6 +534,7 @@ export async function prepareGatewayKernelState(params: {
     pluginRuntime,
     workerEnvironmentService,
     workerLiveEvents,
+    nodeWorkerGatewayNamespace,
     bindDeviceNodeControl: bindDeviceNodeRuntime,
     bindWorkerNodeDesktopControl,
     workerDispatchAuthority,

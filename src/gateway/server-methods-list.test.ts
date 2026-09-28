@@ -245,6 +245,7 @@ describe("listGatewayMethods", () => {
       "portal.session.list",
       "portal.session.open",
       "portal.session.close",
+      "gateway.workerNamespace.get",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -310,6 +311,7 @@ describe("listGatewayMethods", () => {
       "portal.session.list",
       "portal.session.open",
       "portal.session.close",
+      "gateway.workerNamespace.get",
     ]);
   });
 
@@ -504,6 +506,7 @@ describe("listGatewayMethods", () => {
       "portal.session.list",
       "portal.session.open",
       "portal.session.close",
+      "gateway.workerNamespace.get",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

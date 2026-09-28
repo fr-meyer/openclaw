@@ -1,4 +1,7 @@
-import type { ConnectParams } from "../../../packages/gateway-protocol/src/schema/frames.js";
+import type {
+  ConnectParams,
+  HelloOk,
+} from "../../../packages/gateway-protocol/src/schema/frames.js";
 import type { AdmittedRunOperatorAuthority } from "../../agents/admitted-run-context.js";
 import type { RuntimeContextFragment } from "../../agents/internal-runtime-context.js";
 import type { TranscriptSenderIdentity } from "../../chat/sender-identity.js";
@@ -39,6 +42,8 @@ export type GatewayNodeInvokeStream = {
 /** Per-connection client metadata captured after the gateway handshake. */
 export type GatewayClient = {
   connect: ConnectParams;
+  /** Actual authentication result retained by WS admission; never copied from request params. */
+  readonly authenticationMethod?: HelloOk["auth"]["method"];
   /** Transport-owned revocation marker; retained callers have no authority after invalidation. */
   invalidated?: boolean;
   /** Host-owned transport retirement notification; does not cancel ordinary admitted RPCs. */

@@ -437,6 +437,32 @@ bounded AI-access scan. An explicit `--timeout` still takes precedence.
 `--params` must be valid JSON, and each method validates its own param shape (extra/misnamed fields are rejected). Use `--port` for a custom-port local Gateway; explicit `--url` targets still require explicit credentials.
 </Note>
 
+#### Worker namespace association
+
+`gateway.workerNamespace.get` accepts empty params and returns only
+`{ "bootId": "...", "namespace": "gateway-..." }`. It requires an admitted
+operator connection with read permission and token, password, device-token,
+Tailscale, or trusted-proxy authentication. Unauthenticated, bootstrap, and
+unrecognized authentication methods are refused.
+
+```bash
+openclaw gateway call gateway.workerNamespace.get --json
+```
+
+The namespace is the existing worker-runtime namespace prepared at Gateway
+startup. The read does not create a namespace or read the process device identity
+again, and it does not expose the raw device ID. When the worker runtime is
+unavailable, or the original Gateway lifecycle has closed or been replaced, the
+method returns an unavailable error.
+
+`bootId` identifies this Gateway service incarnation; `namespace` persists across
+boots only while the underlying process device identity remains the same.
+Consumers using a verified connection must compare the response `bootId` with
+that connection's admitted server boot. An arbitrary successful JSON response
+does not establish authenticated provenance. This association does not prove
+physical worker ownership, environment settlement, resource fencing, or authority
+to release a reservation.
+
 ### `gateway suspend`
 
 Prepare an idle Gateway for a cooperative host freeze or snapshot. Without

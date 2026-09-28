@@ -395,6 +395,7 @@ export async function attachAuthenticatedGatewayConnect(
   const nextClient: GatewayWsClient = {
     socket,
     connect: connectParams,
+    authenticationMethod: authMethod,
     connId,
     connectionKind: "gateway",
     ...(!usesLegacyNodeProtocol && pluginSurfaceBaseUrl ? { pluginSurfaceBaseUrl } : {}),

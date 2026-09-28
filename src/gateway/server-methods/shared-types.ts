@@ -448,6 +448,8 @@ export type GatewayRequestContext = GatewayKernelContext &
     trackExecution: typeof import("../../shared/async-work-scope.js").trackAsyncWork;
     /** Local commands can dispatch methods without owning a Gateway server. */
     localEmbedded?: true;
+    /** Startup-prepared worker namespace paired with this exact live kernel boot. */
+    readWorkerRuntimeIdentity?: () => Readonly<{ bootId: string; namespace: string }>;
     /** Live instance routing only; never authorization or wire state. */
     resolveGatewayContext?: GatewayContextResolver;
     hostLifecycle?: import("../server-public.js").GatewayHostLifecycle;
