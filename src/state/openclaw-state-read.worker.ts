@@ -79,6 +79,10 @@ import { tableExists } from "./openclaw-state-db-schema-helpers.js";
 import { assertOpenClawStateWriteAllowed } from "./openclaw-state-ownership.js";
 import { readStateDiagnosticCommand } from "./openclaw-state-read-diagnostics.js";
 import { readStateRegistryCommand } from "./openclaw-state-read-registry.js";
+import {
+  loadNodeWorkerTurnSnapshotReaderIfNeeded,
+  readNodeWorkerTurnSnapshotReply,
+} from "./openclaw-state-read-snapshot-loader.js";
 import type { OpenClawStateReadReply } from "./openclaw-state-read.types.js";
 import { isReadRequest } from "./openclaw-state-read.validation.js";
 import { encodeOpenClawStateWorkerError } from "./openclaw-state-worker-error.js";
@@ -101,19 +105,17 @@ import {
 } from "./user-profiles-internal.js";
 
 serveOwnedWorkerTasks(
-  async (input): Promise<OpenClawStateReadReply> => {
+  function readState(input: unknown): OpenClawStateReadReply | Promise<OpenClawStateReadReply> {
+    const pending = loadNodeWorkerTurnSnapshotReaderIfNeeded(input, () => readState(input));
+    if (pending) {
+      return pending;
+    }
     let sourceAdmitted: true | undefined;
     let nativeCleanupFailure: OpenClawStateReadReply["nativeCleanupFailure"];
     try {
       if (!isReadRequest(input)) {
         throw new Error("Shared-state reader requires a captured state location and read command");
       }
-      // Keep the node-worker journal out of unrelated shared-state read tasks.
-      const snapshotReader =
-        input.command.type === "nodeWorker.turnJournalSnapshot"
-          ? (await import("../node-host/node-worker-turn-store.kernel.js"))
-              .readNodeWorkerTurnJournalSnapshotInDatabase
-          : undefined;
       const reply = runWithSqliteWorkerStateContext(input.context, () =>
         withStateDatabaseCoordinatorRuntimeDirectory(
           input.context.coordinatorRuntime,
@@ -412,15 +414,7 @@ serveOwnedWorkerTasks(
                   };
                 }
                 if (command.type === "nodeWorker.turnJournalSnapshot") {
-                  if (!snapshotReader) {
-                    throw new Error("Node worker snapshot reader was not loaded");
-                  }
-                  return {
-                    ok: true,
-                    type: command.type,
-                    sourceAdmitted,
-                    snapshot: snapshotReader(db, command),
-                  };
+                  return readNodeWorkerTurnSnapshotReply(db, command);
                 }
                 if (command.type === "workerEnvironments.pruneCandidates") {
                   return {
