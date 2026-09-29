@@ -53,7 +53,6 @@ import {
   readUpdateRuns,
 } from "../infra/update-run-read.kernel.js";
 import { serveOwnedWorkerTasks } from "../infra/worker-task-server.js";
-import { readNodeWorkerTurnJournalSnapshotInDatabase } from "../node-host/node-worker-turn-store.kernel.js";
 import {
   pluginBlobLookupInDatabase,
   pluginBlobEntriesInDatabase,
@@ -102,13 +101,19 @@ import {
 } from "./user-profiles-internal.js";
 
 serveOwnedWorkerTasks(
-  (input): OpenClawStateReadReply => {
+  async (input): Promise<OpenClawStateReadReply> => {
     let sourceAdmitted: true | undefined;
     let nativeCleanupFailure: OpenClawStateReadReply["nativeCleanupFailure"];
     try {
       if (!isReadRequest(input)) {
         throw new Error("Shared-state reader requires a captured state location and read command");
       }
+      // Keep the node-worker journal out of unrelated shared-state read tasks.
+      const snapshotReader =
+        input.command.type === "nodeWorker.turnJournalSnapshot"
+          ? (await import("../node-host/node-worker-turn-store.kernel.js"))
+              .readNodeWorkerTurnJournalSnapshotInDatabase
+          : undefined;
       const reply = runWithSqliteWorkerStateContext(input.context, () =>
         withStateDatabaseCoordinatorRuntimeDirectory(
           input.context.coordinatorRuntime,
@@ -407,11 +412,14 @@ serveOwnedWorkerTasks(
                   };
                 }
                 if (command.type === "nodeWorker.turnJournalSnapshot") {
+                  if (!snapshotReader) {
+                    throw new Error("Node worker snapshot reader was not loaded");
+                  }
                   return {
                     ok: true,
                     type: command.type,
                     sourceAdmitted,
-                    snapshot: readNodeWorkerTurnJournalSnapshotInDatabase(db, command),
+                    snapshot: snapshotReader(db, command),
                   };
                 }
                 if (command.type === "workerEnvironments.pruneCandidates") {
