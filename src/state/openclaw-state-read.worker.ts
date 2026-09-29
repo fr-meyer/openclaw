@@ -53,6 +53,7 @@ import {
   readUpdateRuns,
 } from "../infra/update-run-read.kernel.js";
 import { serveOwnedWorkerTasks } from "../infra/worker-task-server.js";
+import { readNodeWorkerTurnJournalSnapshotInDatabase } from "../node-host/node-worker-turn-store.kernel.js";
 import {
   pluginBlobLookupInDatabase,
   pluginBlobEntriesInDatabase,
@@ -403,6 +404,14 @@ serveOwnedWorkerTasks(
                     facts: runSqliteDeferredTransactionSync(db, () =>
                       readWorkerEnvironmentFacts(db, command.ids),
                     ),
+                  };
+                }
+                if (command.type === "nodeWorker.turnJournalSnapshot") {
+                  return {
+                    ok: true,
+                    type: command.type,
+                    sourceAdmitted,
+                    snapshot: readNodeWorkerTurnJournalSnapshotInDatabase(db, command),
                   };
                 }
                 if (command.type === "workerEnvironments.pruneCandidates") {

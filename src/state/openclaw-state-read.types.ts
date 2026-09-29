@@ -59,6 +59,10 @@ import type {
   UpdateRunListInput,
 } from "../infra/update-run-read.kernel.js";
 import type {
+  NodeWorkerTurnJournalSnapshot,
+  NodeWorkerTurnJournalSnapshotQuery,
+} from "../node-host/node-worker-turn-snapshot.types.js";
+import type {
   PluginBlobReadCommand,
   PluginBlobReadReply,
 } from "../plugin-state/plugin-blob-worker-contract.js";
@@ -140,6 +144,7 @@ export type OpenClawStateReadCommand =
     }[keyof SkillLibraryReadOnlyOperations]
   | { type: "agentDatabaseRegistry.read" }
   | { type: "workerEnvironments.snapshot"; ids?: readonly string[] }
+  | ({ type: "nodeWorker.turnJournalSnapshot" } & NodeWorkerTurnJournalSnapshotQuery)
   | { type: "workerEnvironments.pruneCandidates"; input: WorkerEnvironmentPruneReadInput }
   | {
       type: "tasks.mutationSnapshot";
@@ -346,6 +351,12 @@ export type OpenClawStateReadReply = (
       type: "workerEnvironments.snapshot";
       sourceAdmitted: true;
       facts: WorkerEnvironmentFacts;
+    }
+  | {
+      ok: true;
+      type: "nodeWorker.turnJournalSnapshot";
+      sourceAdmitted: true;
+      snapshot: NodeWorkerTurnJournalSnapshot | undefined;
     }
   | {
       ok: true;
