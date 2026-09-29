@@ -1,11 +1,13 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Selectable } from "kysely";
+import { hasErrnoCode } from "../infra/errno.js";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
   getNodeSqliteKysely,
 } from "../infra/kysely-sync.js";
 import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
+import { runSqliteDeferredTransactionSync } from "../infra/sqlite-transaction.js";
 import { requestSqliteWorkerOperationAdmission } from "../infra/sqlite-worker-operation-admission.js";
 import type { DB as OpenClawStateDatabase } from "../state/openclaw-state-db.generated.js";
 import {
@@ -29,6 +31,10 @@ import {
   settleNodeWorkerActiveTurns,
 } from "./node-worker-launch-store.kernel.js";
 import type { NodeWorkerProcessIdentity } from "./node-worker-process-identity.js";
+import type {
+  NodeWorkerTurnJournalSnapshot,
+  NodeWorkerTurnJournalSnapshotQuery,
+} from "./node-worker-turn-snapshot.types.js";
 
 type TurnDatabase = Pick<OpenClawStateDatabase, "node_worker_turns">;
 type TurnRow = Selectable<TurnDatabase["node_worker_turns"]>;
@@ -56,6 +62,58 @@ function readRow(database: DatabaseSync, turnId: string): TurnRow | undefined {
     database,
     query(database).selectFrom("node_worker_turns").selectAll().where("turn_id", "=", turnId),
   );
+}
+
+/** Observe a turn and its physical owner from one caller-held journal snapshot. */
+export function readNodeWorkerTurnJournalSnapshotInDatabase(
+  database: DatabaseSync,
+  { turnId, ownerLaunchId }: NodeWorkerTurnJournalSnapshotQuery,
+): NodeWorkerTurnJournalSnapshot | undefined {
+  return runSqliteDeferredTransactionSync(database, () => {
+    let turn: TurnRow | undefined;
+    try {
+      turn = readRow(database, turnId);
+    } catch (error) {
+      // A physical launch may precede the first turn, whose table is installed on first write.
+      if (
+        !(error instanceof Error) ||
+        !hasErrnoCode(error, "ERR_SQLITE_ERROR") ||
+        error.message !== "no such table: node_worker_turns"
+      ) {
+        throw error;
+      }
+    }
+    if (turn && turn.owner_launch_id !== ownerLaunchId) {
+      throw new Error("node worker turn belongs to a different physical owner");
+    }
+    const owner = readNodeWorkerLaunchReceipt(database, ownerLaunchId);
+    if (!owner) {
+      if (turn) {
+        throw new Error("node worker turn has no physical owner");
+      }
+      return undefined;
+    }
+    let snapshotTurn: NodeWorkerTurnJournalSnapshot["turn"];
+    if (turn) {
+      const state = turn.state;
+      if (state !== "running" && !isNodeWorkerTerminalState(state)) {
+        throw new Error("invalid node worker turn state");
+      }
+      snapshotTurn = {
+        turnId: turn.turn_id,
+        ownerLaunchId: turn.owner_launch_id,
+        planHash: turn.plan_hash,
+        runId: turn.run_id,
+        state,
+        resultJson: turn.result_json,
+        errorText: turn.error_text,
+        completedAtMs: turn.completed_at_ms,
+        createdAtMs: turn.created_at_ms,
+        updatedAtMs: turn.updated_at_ms,
+      };
+    }
+    return { turn: snapshotTurn, owner };
+  });
 }
 
 function readReceipt(database: DatabaseSync, turnId: string): NodeWorkerTurnReceipt | undefined {

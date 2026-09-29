@@ -125,6 +125,17 @@ export function isReadRequest(input: unknown): input is OpenClawStateReadRequest
       input.command.type === "agentDatabaseRegistry.read" ||
       input.command.type === "sessionGroups.snapshot" ||
       (input.command.type === "sessionGroups.members" && isRecord(input.command.cfg)) ||
+      (input.command.type === "nodeWorker.turnJournalSnapshot" &&
+        typeof input.command.turnId === "string" &&
+        input.command.turnId.length > 0 &&
+        input.command.turnId.length <= 256 &&
+        input.command.turnId.trim() === input.command.turnId &&
+        !input.command.turnId.includes("\0") &&
+        typeof input.command.ownerLaunchId === "string" &&
+        input.command.ownerLaunchId.length > 0 &&
+        input.command.ownerLaunchId.length <= 256 &&
+        input.command.ownerLaunchId.trim() === input.command.ownerLaunchId &&
+        !input.command.ownerLaunchId.includes("\0")) ||
       (input.command.type === "workerEnvironments.snapshot" &&
         (input.command.ids === undefined ||
           (Array.isArray(input.command.ids) &&

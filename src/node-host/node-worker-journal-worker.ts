@@ -9,6 +9,10 @@ import type { OpenClawStateWorkerOperations } from "../state/openclaw-state-work
 import { runOpenClawStateWorkerOperation } from "../state/openclaw-state-worker-store.js";
 import type { NodeWorkerJournalAuthority } from "./node-worker-journal.types.js";
 import type { NodeWorkerJournalWorkerOperations } from "./node-worker-journal.worker-contract.js";
+import type {
+  NodeWorkerTurnJournalSnapshot,
+  NodeWorkerTurnJournalSnapshotQuery,
+} from "./node-worker-turn-snapshot.types.js";
 
 type JournalScope = {
   execute<Key extends keyof NodeWorkerJournalWorkerOperations>(command: {
@@ -42,6 +46,45 @@ export class NodeWorkerJournalWorker {
       return this.runAdmitted((scope) => scope.execute(prepared), authority);
     }
     return this.run((scope) => scope.execute(prepared), authority);
+  }
+
+  readSnapshot(
+    query: NodeWorkerTurnJournalSnapshotQuery,
+  ): Promise<NodeWorkerTurnJournalSnapshot | undefined> {
+    if (this.uncertain) {
+      return Promise.reject(this.uncertain);
+    }
+    const captured = { turnId: query.turnId, ownerLaunchId: query.ownerLaunchId };
+    const result = (async () => {
+      const { executeExistingOpenClawStateRead } =
+        await import("../state/openclaw-state-db-readonly.js");
+      const uncertainBeforeRead: SqliteWorkerError | undefined = this.uncertain;
+      if (uncertainBeforeRead) {
+        throw uncertainBeforeRead;
+      }
+      const reply = await executeExistingOpenClawStateRead(
+        this.options,
+        { ...captured, type: "nodeWorker.turnJournalSnapshot" },
+        { current: true },
+      );
+      const uncertainAfterRead: SqliteWorkerError | undefined = this.uncertain;
+      if (uncertainAfterRead) {
+        throw uncertainAfterRead;
+      }
+      if (!reply) {
+        return undefined;
+      }
+      if (!reply.ok || reply.type !== "nodeWorker.turnJournalSnapshot") {
+        throw new Error("Node worker journal snapshot could not be read");
+      }
+      return reply.snapshot;
+    })();
+    this.pending.add(result);
+    void result.then(
+      () => this.pending.delete(result),
+      () => this.pending.delete(result),
+    );
+    return result;
   }
 
   run<T>(

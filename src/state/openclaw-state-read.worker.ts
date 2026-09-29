@@ -79,6 +79,10 @@ import { tableExists } from "./openclaw-state-db-schema-helpers.js";
 import { assertOpenClawStateWriteAllowed } from "./openclaw-state-ownership.js";
 import { readStateDiagnosticCommand } from "./openclaw-state-read-diagnostics.js";
 import { readStateRegistryCommand } from "./openclaw-state-read-registry.js";
+import {
+  loadNodeWorkerTurnSnapshotReaderIfNeeded,
+  readNodeWorkerTurnSnapshotReply,
+} from "./openclaw-state-read-snapshot-loader.js";
 import type { OpenClawStateReadReply } from "./openclaw-state-read.types.js";
 import { isReadRequest } from "./openclaw-state-read.validation.js";
 import { encodeOpenClawStateWorkerError } from "./openclaw-state-worker-error.js";
@@ -101,7 +105,11 @@ import {
 } from "./user-profiles-internal.js";
 
 serveOwnedWorkerTasks(
-  (input): OpenClawStateReadReply => {
+  function readState(input: unknown): OpenClawStateReadReply | Promise<OpenClawStateReadReply> {
+    const pending = loadNodeWorkerTurnSnapshotReaderIfNeeded(input, () => readState(input));
+    if (pending) {
+      return pending;
+    }
     let sourceAdmitted: true | undefined;
     let nativeCleanupFailure: OpenClawStateReadReply["nativeCleanupFailure"];
     try {
@@ -404,6 +412,9 @@ serveOwnedWorkerTasks(
                       readWorkerEnvironmentFacts(db, command.ids),
                     ),
                   };
+                }
+                if (command.type === "nodeWorker.turnJournalSnapshot") {
+                  return readNodeWorkerTurnSnapshotReply(db, command);
                 }
                 if (command.type === "workerEnvironments.pruneCandidates") {
                   return {

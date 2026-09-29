@@ -441,6 +441,13 @@ function commandBytes(command: OpenClawStateReadRequest["command"]): number {
       bytes + (command.ids?.reduce((total, id) => total + Buffer.byteLength(id, "utf8"), 0) ?? 0)
     );
   }
+  if (command.type === "nodeWorker.turnJournalSnapshot") {
+    return (
+      bytes +
+      Buffer.byteLength(command.turnId, "utf8") +
+      Buffer.byteLength(command.ownerLaunchId, "utf8")
+    );
+  }
   return bytes;
 }
 

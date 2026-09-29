@@ -30,7 +30,10 @@ import {
 import * as processIdentity from "./node-worker-process-identity.js";
 import { createNodeWorkerSupervisor } from "./node-worker-supervisor.js";
 import { NodeWorkerTurnStore } from "./node-worker-turn-store.js";
-import { NodeWorkerTurnKernel } from "./node-worker-turn-store.kernel.js";
+import {
+  readNodeWorkerTurnJournalSnapshotInDatabase,
+  NodeWorkerTurnKernel,
+} from "./node-worker-turn-store.kernel.js";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const NOW_MS = 10 * DAY_MS;
@@ -139,6 +142,109 @@ describe("node worker turn journal", () => {
     );
     expect(finished).toMatchObject({ state: "completed", completedAtMs: NOW_MS + 2 });
     expect(finished).toEqual(await f.turns.get(f.next.launchId));
+  });
+
+  it("reads a physical owner before any turn table exists", async () => {
+    const f = await fixture({ pid: 17, startTime: 23 });
+    const pathname = openOpenClawStateDatabase({ env: f.env }).path;
+    const reader = new DatabaseSync(pathname, { readOnly: true });
+    const query = { turnId: f.first.launchId, ownerLaunchId: f.first.launchId };
+    try {
+      expect(
+        reader.prepare("SELECT name FROM sqlite_schema WHERE name = 'node_worker_turns'").get(),
+      ).toBeUndefined();
+      const snapshot = readNodeWorkerTurnJournalSnapshotInDatabase(reader, query);
+      expect(snapshot?.turn).toBeUndefined();
+      expect(snapshot?.owner).toMatchObject({ launchId: f.first.launchId, state: "pending" });
+      expect(await f.turns.snapshot(query)).toEqual(snapshot);
+    } finally {
+      reader.close();
+    }
+  });
+
+  it("reads logical turn and physical owner separately from a read-only connection", async () => {
+    const f = await fixture({ pid: 17, startTime: 23 });
+    await f.start();
+    await f.finish();
+    await f.turns.claim({ claim: f.next, ...f.owner, nowMs: NOW_MS + 1 });
+    const pathname = openOpenClawStateDatabase({ env: f.env }).path;
+    const reader = new DatabaseSync(pathname, { readOnly: true });
+    try {
+      const snapshot = readNodeWorkerTurnJournalSnapshotInDatabase(reader, {
+        turnId: f.next.launchId,
+        ownerLaunchId: f.first.launchId,
+      });
+      expect(snapshot?.turn).toMatchObject({
+        turnId: f.next.launchId,
+        ownerLaunchId: f.first.launchId,
+        planHash: f.next.planHash,
+        runId: f.next.runId,
+        state: "running",
+      });
+      expect(snapshot?.owner).toMatchObject({
+        launchId: f.first.launchId,
+        gatewayNamespace: f.first.gatewayNamespace,
+        environmentId: f.first.environmentId,
+        sessionId: f.first.sessionId,
+        ownerEpoch: f.first.ownerEpoch,
+        placementGeneration: f.first.placementGeneration,
+        state: "running",
+        supervisor: f.supervisor,
+        worker: f.supervisor,
+        workerCleanupMode: "process-group",
+        workerLineageSettled: false,
+      });
+      expect(snapshot?.turn).not.toHaveProperty("supervisor");
+      expect(snapshot?.owner).not.toHaveProperty("ownerLaunchId");
+      const mutableQuery = { turnId: f.next.launchId, ownerLaunchId: f.first.launchId };
+      const pendingSnapshot = f.turns.snapshot(mutableQuery);
+      mutableQuery.turnId = "absent-turn";
+      expect(await pendingSnapshot).toEqual(snapshot);
+      expect(
+        readNodeWorkerTurnJournalSnapshotInDatabase(reader, {
+          turnId: "absent-turn",
+          ownerLaunchId: "absent-owner",
+        }),
+      ).toBeUndefined();
+      expect(() =>
+        readNodeWorkerTurnJournalSnapshotInDatabase(reader, {
+          turnId: f.next.launchId,
+          ownerLaunchId: "stale-owner",
+        }),
+      ).toThrow("different physical owner");
+    } finally {
+      reader.close();
+    }
+  });
+
+  it("leaves an unfinished logical turn unchanged when its physical owner is terminal", async () => {
+    const f = await fixture({ pid: 17, startTime: 23 });
+    await f.start();
+    const opened = openOpenClawStateDatabase({ env: f.env });
+    opened.db
+      .prepare(
+        "UPDATE node_worker_launches SET state = 'interrupted', error_text = 'physical owner exited', completed_at_ms = ?, updated_at_ms = ? WHERE launch_id = ?",
+      )
+      .run(NOW_MS + 1, NOW_MS + 1, f.first.launchId);
+    const reader = new DatabaseSync(opened.path, { readOnly: true });
+    try {
+      const snapshot = readNodeWorkerTurnJournalSnapshotInDatabase(reader, {
+        turnId: f.first.launchId,
+        ownerLaunchId: f.first.launchId,
+      });
+      expect(snapshot?.turn?.state).toBe("running");
+      expect(snapshot?.owner.state).toBe("interrupted");
+      expect(
+        await f.turns.snapshot({ turnId: f.first.launchId, ownerLaunchId: f.first.launchId }),
+      ).toEqual(snapshot);
+      expect(
+        reader
+          .prepare("SELECT state FROM node_worker_turns WHERE turn_id = ?")
+          .get(f.first.launchId),
+      ).toEqual({ state: "running" });
+    } finally {
+      reader.close();
+    }
   });
 
   it("reads and replays durable receipts after supervisor shutdown without restarting recovery", async () => {
@@ -429,6 +535,15 @@ describe("node worker turn journal", () => {
       { turn_id: f.next.launchId },
     ]);
     expect((await f.launches.get(f.first.launchId))?.state).toBe("running");
+    const prunedSnapshot = await f.turns.snapshot({
+      turnId: f.first.launchId,
+      ownerLaunchId: f.first.launchId,
+    });
+    expect(prunedSnapshot?.turn).toBeUndefined();
+    expect(prunedSnapshot?.owner).toMatchObject({
+      launchId: f.first.launchId,
+      state: "running",
+    });
     expect(await f.launches.nonterminalCount()).toBe(1);
     await f.finish(f.next);
     await expect(
