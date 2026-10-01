@@ -1,0 +1,60 @@
+name: Task20 Pinned Native Migration 26
+
+on: create
+
+permissions:
+  contents: read
+
+concurrency:
+  group: task20-native-migration-26
+  cancel-in-progress: false
+
+jobs:
+  migration-component:
+    if: github.repository == 'fr-meyer/openclaw' && github.actor == 'fr-meyer' && github.event.ref_type == 'branch' && github.event.ref == 'task20/native-migration-26-c074-05'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # verified v7.0.1 commit
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          sparse-checkout: |
+            /ci/task20-native-migration-26/
+            /.github/workflows/task20-native-migration-26.yml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Verify source-only overlay parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = c074824a27c96d3983043f9eeb33823cd1772d8c
+          git diff --name-only HEAD^ HEAD > "${RUNNER_TEMP}/task20-overlay-paths.txt"
+          python3 ci/task20-native-migration-26/verify-overlay.py "${RUNNER_TEMP}/task20-overlay-paths.txt"
+      - name: Materialize the exact source and lock-pinned isolated closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 330s env -i PATH=/usr/bin:/bin LANG=C.UTF-8 \
+            python3 -I ci/task20-native-migration-26/materialize.py \
+            --work "${RUNNER_TEMP}/task20-native-migration-26-inputs" \
+            --receipt "${RUNNER_TEMP}/task20-native-migration-26-preparation.json"
+      - name: Admit and run once with Node 24.19, no network, synthetic databases only
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --kill-after=35s 300s env -i PATH=/usr/bin:/bin LANG=C.UTF-8 \
+            python3 -I ci/task20-native-migration-26/run.py \
+            --work "${RUNNER_TEMP}/task20-native-migration-26-inputs" \
+            --output "${RUNNER_TEMP}/task20-native-migration-26-result" \
+            --run-id "${GITHUB_RUN_ID}"
+      - name: Preserve scoped component evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # verified v7 commit
+        with:
+          name: task20-native-migration-26-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/task20-native-migration-26-result/
+            ${{ runner.temp }}/task20-native-migration-26-preparation.json
+          if-no-files-found: warn
+          retention-days: 14
