@@ -1,0 +1,154 @@
+# Publish only this payload on a NEW validation/pr114287-a5b288 branch in fr-meyer/openclaw.
+# No other workflow files should be present on that branch. No PR source ref is updated.
+name: PR114287 pinned validation
+
+"on":
+  push:
+    branches: [validation/pr114287-a5b288]
+    paths:
+      - .github/workflows/pr114287-pinned-validation.yml
+      - .validation/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr114287-pinned-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: pinned-${{ matrix.lane }}
+    # A skipped job is no validation evidence. Do not use a private or upstream repository.
+    if: github.repository == 'fr-meyer/openclaw' && github.event.repository.fork == true && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        lane: [baseline, candidate]
+    env:
+      CI: "true"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      NODE_VERSION: "24.19.0"
+      OPENCLAW_TSGO_TIMEOUT_MS: "600000"
+      OPENCLAW_VITEST_MAX_WORKERS: "1"
+      OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS: "300000"
+      GIT_NO_LAZY_FETCH: "1"
+      PNPM_HOME: ${{ runner.temp }}/pr114287-pnpm-home
+      COREPACK_HOME: ${{ runner.temp }}/pr114287-corepack-home
+    steps:
+      - name: Check out the complete pinned upstream working tree
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, pinned in upstream CI
+        with:
+          repository: openclaw/openclaw
+          ref: 57034eb5e70b33bcf1e11ba782693d0d0889bb83
+          fetch-depth: 1
+          filter: ""
+          persist-credentials: false
+          lfs: false
+          submodules: false
+
+      - name: Load the checksum-bound validation payload and prepare the lane
+        timeout-minutes: 5
+        env:
+          VALIDATION_LANE: ${{ matrix.lane }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pr114287-proof" "$PNPM_HOME" "$COREPACK_HOME"
+          script="$RUNNER_TEMP/run-pr114287-validation.py"
+          curl --fail --location --silent --show-error --connect-timeout 10 --max-time 120 --retry 2 \
+            "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/.validation/run-pr114287-validation.py" \
+            --output "$script"
+          printf '%s  %s\n' '06d8f510d9e84db282f0c16eec0430319cf5bbbf4492423b0de6aee37529fa3a' "$script" | sha256sum --check --strict
+          python3 "$script" prepare "$VALIDATION_LANE"
+          df -h "$GITHUB_WORKSPACE"
+          nproc
+          free -h
+
+      - name: Require an unprivileged isolated test network before installing dependencies
+        timeout-minutes: 1
+        env:
+          VALIDATION_LANE: ${{ matrix.lane }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export VALIDATION_EXPECT_UID="$(id -u)"
+          export VALIDATION_EXPECT_GID="$(id -g)"
+          export VALIDATION_HOST_NET_NS="$(readlink /proc/self/ns/net)"
+          unshare --user --map-current-user --net -- \
+            python3 "$RUNNER_TEMP/run-pr114287-validation.py" probe "$VALIDATION_LANE"
+
+      - name: Bootstrap the pinned Node and pnpm toolchains through their CI owner
+        timeout-minutes: 5
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24.19.0"
+          install-bun: "false"
+          install-deps: "false"
+          frozen-lockfile: "true"
+          cache-mode: "off"
+          dependency-cache: "false"
+
+      - name: Install the complete selected-workspace graph with lifecycle scripts disabled
+        timeout-minutes: 20
+        env:
+          VALIDATION_LANE: ${{ matrix.lane }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/run-pr114287-validation.py" install "$VALIDATION_LANE"
+
+      - name: Run both complete type owners and the selected repository tests
+        timeout-minutes: 25
+        env:
+          VALIDATION_LANE: ${{ matrix.lane }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          pnpm --version
+          df -h "$GITHUB_WORKSPACE"
+          export VALIDATION_EXPECT_UID="$(id -u)"
+          export VALIDATION_EXPECT_GID="$(id -g)"
+          export VALIDATION_HOST_NET_NS="$(readlink /proc/self/ns/net)"
+          unshare --user --map-current-user --net -- \
+            python3 "$RUNNER_TEMP/run-pr114287-validation.py" run "$VALIDATION_LANE"
+
+      - name: Retain checksum-bound proof in job logs without artifact storage
+        if: always()
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYPROOF'
+          import base64, gzip, hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "pr114287-proof"
+          assert root.is_dir() and not root.is_symlink(), "proof directory unavailable"
+          allowed = {
+              "pr114287-current-main.patch", "inputs.json", "network-isolation.json",
+              "disk-reserve.json", "workspace-selection.json", "workspace-selection-stderr.txt",
+              "install-policy.json", "install.txt", "install-result.json", "results.json",
+              "scripts-types.txt", "test-root-types.txt", "scripts-membership.txt",
+              "test-root-membership.txt", "targeted-tests.txt", "vitest.json",
+              "manifest.json", "proof-error.json",
+          }
+          files = sorted(root.iterdir())
+          assert files, "no proof files"
+          assert all(p.name in allowed and p.is_file() and not p.is_symlink() for p in files), "unexpected proof entry"
+          assert sum(p.stat().st_size for p in files) <= 32 * 1024**2, "proof exceeds 32 MiB raw limit"
+          records = []
+          for p in files:
+              data = p.read_bytes()
+              encoded = base64.b64encode(gzip.compress(data, compresslevel=9, mtime=0)).decode("ascii")
+              records.append((p.name, data, encoded))
+          assert sum(len(encoded) for _, _, encoded in records) <= 8 * 1024**2, "proof exceeds 8 MiB encoded limit"
+          for name, data, encoded in records:
+              print("PR114287_PROOF_BEGIN " + json.dumps({"name": name, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "encoding": "gzip+base64"}, sort_keys=True), flush=True)
+              for start in range(0, len(encoded), 4096):
+                  print("PR114287_PROOF_DATA " + encoded[start:start+4096], flush=True)
+              print("PR114287_PROOF_END " + name, flush=True)
+          PYPROOF

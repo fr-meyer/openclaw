@@ -1,0 +1,2030 @@
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+index 7af867e21ded324c63d8b9d2bf22278c2225c0c5..46200bfd2c7148331ba069e7c9f0d7fbe84ebeaa 100644
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -141,6 +141,85 @@ files. Unchanged historical files and deletions are not scanned. Submodule conte
+ and symlink targets are not searched. This is a local safeguard, not CI or server
+ enforcement: bypassing or disabling hooks also bypasses this check.
+ 
++## Publication security preflight
++
++The repository includes an **opt-in local** `pre-push` review hook. It is not a
++publication security boundary: local hooks can be bypassed, so remote branch
++protection and CI remain authoritative. To enable the convenience gate for one
++source checkout, run this command from the repo root:
++
++```bash
++node scripts/prepare-git-hooks.mjs --install
++```
++
++For non-interactive source-checkout setup, the exact-value environment opt-in is
++equivalent:
++
++```bash
++OPENCLAW_INSTALL_GIT_HOOKS=1 node scripts/prepare-git-hooks.mjs
++```
++
++Prefer the explicit `--install` flag for manual setup. Values other than `1` do
++not enable the optional publication preflight. Setup preserves existing hook
++selections, including an explicitly empty value. If another hook path is selected,
++choose this checkout's `git-hooks` explicitly before opting in; setup reports a
++warning and leaves the existing selection unchanged.
++
++Verify the installation with `git config --get core.hooksPath`; it must print
++`git-hooks` or the absolute path to this checkout's `git-hooks`. Also verify `test -f "$(git rev-parse --git-path
++publication-preflight.enabled)"` succeeds. Package preparation initializes an unset hook path under the local
++commit-hook rules above; it does not replace another owner's selection. The opt-in marker and publication manifest are worktree-local, so
++enabling one worktree does not change push behavior in another. Before pushing a
++PR branch, prepare a per-worktree publication manifest from the exact staged file
++allowlist:
++
++```bash
++node scripts/publication-preflight.mjs prepare \
++  --path path/to/changed-file
++```
++
++Use the exact repository-relative spelling for each path. Whitespace and literal
++backslashes in filenames remain part of their identity.
++
++By default, `prepare` uses your authenticated `gh` session to collect the full
++open-PR inventory and every changed path. This can take time in a repository
++with many open PRs. The optional `--inventory-file` flag is only for trusted
++tooling that has already produced a complete snapshot in the script's canonical
++array shape (`number`, `repository`, `author`, `branch`, `title`, `url`, and
++`paths` for every open PR); do not pass a placeholder or a partial hand-written
++file.
++
++Collection fails closed when any open PR reaches GitHub's 3,000-file response
++ceiling, including a PR with exactly 3,000 files. Use `--inventory-file` only if
++trusted tooling independently establishes a complete inventory beyond that limit.
++
++The manifest records the target repository, remote, base/upstream, feature branch,
++allowed paths, approved GitHub no-reply identity, and open-PR overlap strategy. Run
++the normal validation and review, then approve only the exact reviewed commit:
++
++```bash
++node scripts/publication-preflight.mjs check
++node scripts/publication-preflight.mjs approve
++git push origin HEAD
++```
++
++The local hook rechecks the remote, branch ancestry, merge-free history, staged and
++committed diff, identity, secret/privacy scan, changed-path allowlist, open-PR
++overlap strategy, whitespace, and exact approved `HEAD`. It blocks the local push
++when the manifest is missing, stale, incomplete, or not explicitly approved. It
++never publishes or edits unrelated working-tree files.
++
++The committed-path allowlist covers every outgoing commit, including rename
++source paths and paths later reverted or deleted. Privacy scans inspect each
++commit's raw patch, so removing sensitive content before `HEAD` does not make
++that outgoing history safe to publish.
++
++If the local hook blocks a push, read the first
++finding, correct or explicitly review the affected change, rerun `check`, and then
++run `approve` again because approval is bound to the exact `HEAD`. False positives
++should be reduced by using placeholders and the approved GitHub no-reply identity;
++do not add private values to an allowlist merely to silence a finding.
++
+ ## Review Conversations Are Author-Owned
+ 
+ After your PR receives Barnacle, ClawSweeper, or maintainer feedback, read the [pull request review flow](https://docs.openclaw.ai/reference/pull-request-review-flow) for how to interpret rank-up moves, proof guidance, re-review requests, and review conversation follow-up.
+diff --git a/git-hooks/pre-push b/git-hooks/pre-push
+new file mode 100755
+index 0000000000000000000000000000000000000000..f50c4e4eecebfadf9bb89d1429850aa0282275e7
+--- /dev/null
++++ b/git-hooks/pre-push
+@@ -0,0 +1,34 @@
++#!/usr/bin/env bash
++
++# This is an opt-in local review gate. Remote branch protection and CI remain
++# the authoritative publication controls; local hooks can be bypassed.
++
++set -euo pipefail
++
++# Setup preserves existing hook ownership. When this checkout selects the
++# maintained hooks, publication validation stays opt-in per worktree.
++PREFLIGHT_OPT_IN="$(git rev-parse --git-path publication-preflight.enabled 2>/dev/null || true)"
++if [[ -z "$PREFLIGHT_OPT_IN" || ! -f "$PREFLIGHT_OPT_IN" ]]; then
++  exit 0
++fi
++
++ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || true)"
++if [[ -z "$ROOT_DIR" ]]; then
++  echo "[publication-preflight] cannot resolve repository root" >&2
++  exit 1
++fi
++
++PREFLIGHT="$ROOT_DIR/scripts/publication-preflight.mjs"
++if [[ ! -f "$PREFLIGHT" ]]; then
++  echo "[publication-preflight] missing helper: $PREFLIGHT" >&2
++  exit 1
++fi
++
++REMOTE_NAME="${1:-}"
++REMOTE_URL="${2:-}"
++if [[ -z "$REMOTE_NAME" || -z "$REMOTE_URL" ]]; then
++  echo "[publication-preflight] pre-push did not provide a remote name and URL" >&2
++  exit 1
++fi
++
++exec node "$PREFLIGHT" hook --remote-name "$REMOTE_NAME" --remote-url "$REMOTE_URL"
+diff --git a/scripts/prepare-git-hooks.mjs b/scripts/prepare-git-hooks.mjs
+index 29ac558176116439e19d1ca5dd1122671d4c4cf2..3b585785ada140a0a95b4636fb18d60ec250584e 100644
+--- a/scripts/prepare-git-hooks.mjs
++++ b/scripts/prepare-git-hooks.mjs
+@@ -1,17 +1,19 @@
+ // Initializes this checkout's Git hooks path without replacing an existing selection.
+ import { spawnSync } from "node:child_process";
+-import { existsSync } from "node:fs";
+-import { dirname, join } from "node:path";
++import { existsSync, writeFileSync } from "node:fs";
++import { dirname, join, resolve } from "node:path";
+ import { fileURLToPath, pathToFileURL } from "node:url";
+ 
+ const scriptDir = dirname(fileURLToPath(import.meta.url));
+ const DEFAULT_PACKAGE_ROOT = join(scriptDir, "..");
++const PUBLICATION_PREFLIGHT_MARKER = "publication-preflight.enabled";
+ 
+ /**
+  * Initializes an unset hooks path and returns a structured reason if skipped.
+  */
+ export function configurePrepareGitHooks(params = {}) {
+   const cwd = params.cwd ?? DEFAULT_PACKAGE_ROOT;
++  const install = params.install === true;
+   const exists = params.existsSync ?? existsSync;
+   const gitBin = params.gitBin ?? "git";
+   const spawn = params.spawnSync ?? spawnSync;
+@@ -33,26 +35,61 @@ export function configurePrepareGitHooks(params = {}) {
+ 
+   // Inherited and explicitly empty selections already have an owner.
+   const existing = runGit(["config", "--get", "core.hooksPath"]);
++  let result;
+   if (existing.status === 0) {
+-    return { configured: false, reason: "already-configured" };
+-  }
+-  // Git refuses a shared write when multiple checkouts lack private worktree config.
+-  const configured =
+-    existing.status === 1
+-      ? runGit(["config", "--worktree", "core.hooksPath", "git-hooks"])
+-      : existing;
+-  if (configured.error?.code === "ENOENT") {
+-    return { configured: false, reason: "missing-git" };
+-  }
+-  if (configured.status !== 0) {
+-    const stderr = String(configured.stderr ?? "").trim();
+-    warn(`[prepare] could not configure git hooks${stderr ? `: ${stderr}` : ""}`);
+-    return { configured: false, reason: "config-failed" };
++    result = { configured: false, reason: "already-configured" };
++    if (!install) {
++      return result;
++    }
++    const hooksPath = String(existing.stdout ?? "").replace(/\r?\n$/u, "");
++    if (resolve(cwd, hooksPath) !== resolve(cwd, "git-hooks")) {
++      warn(
++        "[prepare] cannot enable publication preflight: select this checkout's git-hooks explicitly before opting in",
++      );
++      return { configured: false, reason: "preflight-enable-failed" };
++    }
++  } else {
++    // Git refuses a shared write when multiple checkouts lack private worktree config.
++    const configured =
++      existing.status === 1
++        ? runGit(["config", "--worktree", "core.hooksPath", "git-hooks"])
++        : existing;
++    if (configured.error?.code === "ENOENT") {
++      return { configured: false, reason: "missing-git" };
++    }
++    if (configured.status !== 0) {
++      const stderr = String(configured.stderr ?? "").trim();
++      warn(`[prepare] could not configure git hooks${stderr ? `: ${stderr}` : ""}`);
++      return { configured: false, reason: "config-failed" };
++    }
++    result = { configured: true, reason: "configured" };
+   }
+ 
+-  return { configured: true, reason: "configured" };
++  if (install) {
++    const marker = runGit(["rev-parse", "--git-path", PUBLICATION_PREFLIGHT_MARKER]);
++    if (marker.error?.code === "ENOENT") {
++      return { configured: result.configured, reason: "missing-git" };
++    }
++    const markerPath = String(marker.stdout ?? "").trim();
++    if (marker.status !== 0 || !markerPath) {
++      const stderr = String(marker.stderr ?? "").trim();
++      warn(`[prepare] could not enable publication preflight${stderr ? `: ${stderr}` : ""}`);
++      return { configured: result.configured, reason: "preflight-enable-failed" };
++    }
++    try {
++      writeFileSync(resolve(cwd, markerPath), "enabled\n", { encoding: "utf8", mode: 0o600 });
++    } catch (error) {
++      warn(
++        `[prepare] could not enable publication preflight: ${error instanceof Error ? error.message : String(error)}`,
++      );
++      return { configured: result.configured, reason: "preflight-enable-failed" };
++    }
++  }
++  return result;
+ }
+ 
+ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+-  configurePrepareGitHooks();
++  configurePrepareGitHooks({
++    install: process.argv.includes("--install") || process.env.OPENCLAW_INSTALL_GIT_HOOKS === "1",
++  });
+ }
+diff --git a/scripts/publication-preflight.d.mts b/scripts/publication-preflight.d.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..003fe94a586dce30866eee1c8bc433fa8d5dbee7
+--- /dev/null
++++ b/scripts/publication-preflight.d.mts
+@@ -0,0 +1,58 @@
++export const DEFAULT_REPOSITORY: "openclaw/openclaw";
++export const DEFAULT_REMOTE: "origin";
++export const DEFAULT_BASE: "main";
++export const MANIFEST_VERSION: 1;
++
++export class PublicationPreflightError extends Error {}
++
++export function parseArgs(argv?: string[]): {
++  command: "prepare" | "check" | "approve" | "hook" | "help";
++  manifest: string | null;
++  repository: string;
++  remote: string;
++  remoteName: string | null;
++  remoteUrl: string | null;
++  base: string;
++  upstream: string | null;
++  paths: string[];
++  privateNames: string[];
++  approvedEmails: string[];
++  strategy: "new_independent" | "update_existing" | "supersede_existing";
++  existingPr: number | null;
++  supersedesPr: number | null;
++  supersedesReason: string | null;
++  disposition: string | null;
++  inventoryFile: string | null;
++  inventoryJson: string | null;
++  quiet: boolean;
++};
++
++export function isApprovedNoReplyEmail(email: string): boolean;
++export function collectOpenPrInventory(
++  repository: string,
++  options?: {
++    execFileSync?: (
++      file: string,
++      args: string[],
++      options: {
++        encoding: "utf8";
++        stdio: ["ignore", "pipe", "pipe"];
++        maxBuffer: number;
++      },
++    ) => string;
++  },
++): Array<{
++  number: number;
++  repository: string;
++  author: string;
++  branch: string;
++  title: string;
++  url: string | null;
++  paths: string[];
++}>;
++export function scanSecurityText(
++  text: string,
++  options?: { privateNames?: string[] },
++): Array<{ kind: string; line: number }>;
++export function validateInventory(manifest: Record<string, unknown>, changedPaths: string[]): void;
++export function main(argv?: string[], options?: { cwd?: string; stdin?: string }): void;
+diff --git a/scripts/publication-preflight.mjs b/scripts/publication-preflight.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..4324edb79e68e103e7c88bcbca4e7bd939f4dbb4
+--- /dev/null
++++ b/scripts/publication-preflight.mjs
+@@ -0,0 +1,858 @@
++#!/usr/bin/env node
++// Opt-in local publication review gates for branch, diff, identity, privacy, and PR overlap.
++// Remote branch protection and CI remain the authoritative publication controls.
++import { execFileSync } from "node:child_process";
++import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
++import path from "node:path";
++
++export const DEFAULT_REPOSITORY = "openclaw/openclaw";
++export const DEFAULT_REMOTE = "origin";
++export const DEFAULT_BASE = "main";
++export const MANIFEST_VERSION = 1;
++
++const PROTECTED_BRANCHES = new Set(["main", "master", "dev"]);
++const STRATEGIES = new Set(["new_independent", "update_existing", "supersede_existing"]);
++const NO_REPLY_EMAIL = /^[0-9]+\+[A-Za-z0-9._-]+@users\.noreply\.github\.com$/iu;
++const PUBLIC_EMAIL_DOMAINS = new Set([
++  "example.com",
++  "example.net",
++  "example.org",
++  "invalid",
++  "users.noreply.github.com",
++]);
++const SECRET_ASSIGNMENT =
++  /\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|secret|token|private[_-]?key)\b\s*[:=]\s*["']([^"'\n]{8,})/iu;
++const PRIVATE_KEY_BLOCK = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/u;
++const PROVIDER_TOKEN =
++  /\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{16,}|AIza[0-9A-Za-z_-]{20,}|AKIA[0-9A-Z]{16})\b/u;
++const EMAIL = /\b[A-Za-z0-9.!#$%&'*+/=?^_{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/gu;
++const PRIVATE_URL = new RegExp(
++  String.raw`\bhttps?:\/\/(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\]|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|[^/\s]+\.(?:local|internal))(?:[/:\s]|$)`,
++  "iu",
++);
++const OPENCLAW_PATH_SEGMENT = "\\.openclaw";
++const PRIVATE_PATH = new RegExp(
++  [
++    "(?:^|[\"'\\s(])/(?:home|Users|private/var)/",
++    "(?:^|[\"'\\s(])[A-Za-z]:\\\\Users\\\\",
++    `(?:^|["'\\s(/])${OPENCLAW_PATH_SEGMENT}(?:/|\\\\)`,
++    "(?:^|[\"'\\s])(?:MEMORY|USER|SOUL)\\.md(?:$|[\"'\\s])",
++  ].join("|"),
++  "iu",
++);
++
++export class PublicationPreflightError extends Error {
++  constructor(message) {
++    super(message);
++    this.name = "PublicationPreflightError";
++  }
++}
++
++function fail(message) {
++  throw new PublicationPreflightError(message);
++}
++
++function valueAfter(argv, index, option) {
++  const value = argv[index + 1];
++  if (value === undefined || value === "" || value.startsWith("-")) {
++    fail(`Expected ${option} <value>.`);
++  }
++  return value;
++}
++
++function requirePath(value) {
++  if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
++    fail("publication paths must be non-empty strings without NUL characters");
++  }
++  // Git and GitHub already use repository-relative paths; spelling is identity.
++  return value;
++}
++
++function parseInteger(value, option) {
++  if (!/^[1-9][0-9]*$/u.test(value)) {
++    fail(`${option} must be a positive integer.`);
++  }
++  return Number(value);
++}
++
++export function parseArgs(argv = []) {
++  const args = {
++    command: "check",
++    manifest: null,
++    repository: DEFAULT_REPOSITORY,
++    remote: DEFAULT_REMOTE,
++    remoteName: null,
++    remoteUrl: null,
++    base: DEFAULT_BASE,
++    upstream: null,
++    paths: [],
++    privateNames: [],
++    approvedEmails: [],
++    strategy: "new_independent",
++    existingPr: null,
++    supersedesPr: null,
++    supersedesReason: null,
++    disposition: null,
++    inventoryFile: null,
++    inventoryJson: null,
++    quiet: false,
++  };
++  let index = 0;
++  if (argv[0] && !argv[0].startsWith("-")) {
++    args.command = argv[0];
++    index = 1;
++  }
++  for (; index < argv.length; index += 1) {
++    const arg = argv[index];
++    if (arg === "--manifest") {
++      args.manifest = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--repository") {
++      args.repository = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--remote") {
++      args.remote = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--remote-name") {
++      args.remoteName = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--remote-url") {
++      args.remoteUrl = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--base") {
++      args.base = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--upstream") {
++      args.upstream = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--path") {
++      args.paths.push(requirePath(valueAfter(argv, index, arg)));
++      index += 1;
++    } else if (arg === "--private-name") {
++      args.privateNames.push(valueAfter(argv, index, arg));
++      index += 1;
++    } else if (arg === "--approved-email") {
++      args.approvedEmails.push(valueAfter(argv, index, arg).toLowerCase());
++      index += 1;
++    } else if (arg === "--strategy") {
++      args.strategy = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--existing-pr") {
++      args.existingPr = parseInteger(valueAfter(argv, index, arg), arg);
++      index += 1;
++    } else if (arg === "--supersedes-pr") {
++      args.supersedesPr = parseInteger(valueAfter(argv, index, arg), arg);
++      index += 1;
++    } else if (arg === "--supersedes-reason") {
++      args.supersedesReason = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--disposition") {
++      args.disposition = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--inventory-file") {
++      args.inventoryFile = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--inventory-json") {
++      args.inventoryJson = valueAfter(argv, index, arg);
++      index += 1;
++    } else if (arg === "--quiet") {
++      args.quiet = true;
++    } else if (arg === "--help" || arg === "-h") {
++      args.command = "help";
++    } else {
++      fail(`Unknown option: ${arg}`);
++    }
++  }
++  if (!new Set(["prepare", "check", "approve", "hook", "help"]).has(args.command)) {
++    fail(`Unknown command: ${args.command}`);
++  }
++  if (!STRATEGIES.has(args.strategy)) {
++    fail(`Unknown publication strategy: ${args.strategy}`);
++  }
++  return args;
++}
++
++function runGit(cwd, gitArgs, input) {
++  try {
++    return execFileSync("git", gitArgs, {
++      cwd,
++      encoding: "utf8",
++      input,
++      maxBuffer: 32 * 1024 * 1024,
++      stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
++    });
++  } catch (error) {
++    const stderr = String(error?.stderr ?? "").trim();
++    const detail = stderr ? `: ${stderr}` : "";
++    return fail(`git ${gitArgs.join(" ")} failed${detail}`);
++  }
++}
++
++function gitText(cwd, gitArgs) {
++  return runGit(cwd, gitArgs).trim();
++}
++
++function repoRoot(cwd) {
++  const root = gitText(cwd, ["rev-parse", "--show-toplevel"]);
++  try {
++    return realpathSync(root);
++  } catch {
++    return fail("repository root cannot be resolved safely");
++  }
++}
++
++function assertRepoRoot(cwd) {
++  const expected = realpathSync(path.resolve(cwd));
++  const actual = repoRoot(cwd);
++  if (expected !== actual) {
++    fail("run the publication preflight from the repository root");
++  }
++  return actual;
++}
++
++function canonicalRemoteUrl(raw) {
++  const value = String(raw ?? "").trim();
++  if (!value) {
++    return "";
++  }
++  if (/^[^/@\s]+@[^:/\s]+:[^\s]+$/u.test(value)) {
++    const [, host, remotePath] = value.match(/^[^/@\s]+@([^:/\s]+):(.+)$/u);
++    return `https://${host}/${remotePath}`
++      .replace(/\.git$/u, "")
++      .replace(/\/$/u, "")
++      .toLowerCase();
++  }
++  try {
++    const url = new URL(value);
++    return `https://${url.hostname}${url.pathname}`
++      .replace(/\.git$/u, "")
++      .replace(/\/$/u, "")
++      .toLowerCase();
++  } catch {
++    return value
++      .replace(/\.git$/u, "")
++      .replace(/\/$/u, "")
++      .toLowerCase();
++  }
++}
++
++function remoteUrl(cwd, remote, push = true) {
++  const args = ["remote", "get-url"];
++  if (push) {
++    args.push("--push");
++  }
++  args.push(remote);
++  return gitText(cwd, args);
++}
++
++function currentBranch(cwd) {
++  const branch = gitText(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
++  if (!branch || PROTECTED_BRANCHES.has(branch)) {
++    fail("publication requires a named feature branch, not a detached or protected branch");
++  }
++  if (branch.includes("/") && branch.split("/").some((part) => part === "..")) {
++    fail("feature branch name is unsafe");
++  }
++  return branch;
++}
++
++function verifyBase(cwd, base, upstream, branch) {
++  if (!base || !upstream || !upstream.endsWith(`/${base}`)) {
++    fail("manifest must name an explicit base branch and matching upstream ref");
++  }
++  if (upstream === branch || base === branch) {
++    fail("feature branch must differ from the publication base");
++  }
++  runGit(cwd, ["rev-parse", "--verify", `${upstream}^{commit}`]);
++  if (runGit(cwd, ["merge-base", "--is-ancestor", upstream, "HEAD"], undefined) === undefined) {
++    // runGit throws on a non-zero status; this branch is for type clarity only.
++    fail("publication branch does not contain the declared upstream base");
++  }
++  const mergeCount = gitText(cwd, ["rev-list", "--count", "--merges", `${upstream}..HEAD`]);
++  if (mergeCount !== "0") {
++    fail("publication branch contains merge commits; rebase onto the declared upstream base");
++  }
++}
++
++function stagedPaths(cwd) {
++  return listPaths(runGit(cwd, ["diff", "--cached", "--name-only", "--no-renames", "-z"]));
++}
++
++function rangePaths(cwd, upstream) {
++  return listPaths(
++    runGit(cwd, ["log", "--format=", "--name-only", "--no-renames", "-z", `${upstream}..HEAD`]),
++  );
++}
++
++function listPaths(raw) {
++  return [...new Set(String(raw).split("\0").filter(Boolean).map(requirePath))].toSorted(
++    (left, right) => left.localeCompare(right),
++  );
++}
++
++function exactPathSet(actual, expected, label) {
++  const actualSet = new Set(actual);
++  const expectedSet = new Set(expected);
++  const unexpected = actual.filter((value) => !expectedSet.has(value));
++  const missing = expected.filter((value) => !actualSet.has(value));
++  if (unexpected.length || missing.length) {
++    const details = [];
++    if (unexpected.length) {
++      details.push(`unexpected: ${unexpected.join(", ")}`);
++    }
++    if (missing.length) {
++      details.push(`missing: ${missing.join(", ")}`);
++    }
++    fail(`${label} does not match the explicit manifest allowlist (${details.join("; ")})`);
++  }
++}
++
++function manifestPath(cwd, requested) {
++  if (requested) {
++    return path.resolve(cwd, requested);
++  }
++  return path.resolve(
++    cwd,
++    gitText(cwd, ["rev-parse", "--git-path", "publication-security-manifest.json"]),
++  );
++}
++
++function readJson(filePath) {
++  if (!existsSync(filePath)) {
++    fail(`publication manifest is missing: ${filePath}`);
++  }
++  try {
++    return JSON.parse(readFileSync(filePath, "utf8"));
++  } catch {
++    return fail("publication manifest is not valid JSON");
++  }
++}
++
++function writeJson(filePath, value) {
++  mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
++  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
++}
++
++function requireString(value, label) {
++  if (typeof value !== "string" || value.trim() === "") {
++    fail(`${label} is required`);
++  }
++  return value.trim();
++}
++
++function requirePositiveInteger(value, label) {
++  if (!Number.isInteger(value) || value <= 0) {
++    fail(`${label} must be a positive integer`);
++  }
++  return value;
++}
++
++function validateManifestShape(manifest) {
++  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
++    fail("publication manifest must be a JSON object");
++  }
++  if (manifest.version !== MANIFEST_VERSION) {
++    fail(`publication manifest version must be ${MANIFEST_VERSION}`);
++  }
++  if (manifest.repository !== DEFAULT_REPOSITORY) {
++    fail(`publication target must be ${DEFAULT_REPOSITORY}`);
++  }
++  requireString(manifest.base, "manifest.base");
++  requireString(manifest.upstream, "manifest.upstream");
++  requireString(manifest.head, "manifest.head");
++  if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
++    fail("manifest.files must be a non-empty explicit allowlist");
++  }
++  const files = manifest.files.map(requirePath);
++  if (
++    files.some(
++      (file) => !file || file.startsWith("/") || file.startsWith("../") || file.includes("/../"),
++    )
++  ) {
++    fail("manifest.files contains an unsafe path");
++  }
++  if (new Set(files).size !== files.length) {
++    fail("manifest.files contains duplicate paths");
++  }
++  if (!Array.isArray(manifest.privateNames)) {
++    fail("manifest.privateNames must be present, even when empty");
++  }
++  if (!Array.isArray(manifest.approvedEmails) || manifest.approvedEmails.length === 0) {
++    fail("manifest.approvedEmails must contain an approved GitHub no-reply identity");
++  }
++  for (const email of manifest.approvedEmails) {
++    if (!isApprovedNoReplyEmail(email)) {
++      fail("manifest.approvedEmails contains an unapproved identity");
++    }
++  }
++  if (!manifest.remote || typeof manifest.remote !== "object") {
++    fail("manifest.remote is required");
++  }
++  requireString(manifest.remote.name, "manifest.remote.name");
++  requireString(manifest.remote.url, "manifest.remote.url");
++  if (!STRATEGIES.has(manifest.strategy)) {
++    fail(`manifest.strategy must be one of ${[...STRATEGIES].join(", ")}`);
++  }
++  if (!Array.isArray(manifest.openPrInventory)) {
++    fail("manifest.openPrInventory is required; record the open-PR inventory before publishing");
++  }
++  if (manifest.strategy === "update_existing") {
++    requirePositiveInteger(manifest.existingPr, "manifest.existingPr");
++  }
++  if (manifest.strategy === "supersede_existing") {
++    requirePositiveInteger(manifest.supersedesPr, "manifest.supersedesPr");
++    requireString(manifest.supersedesReason, "manifest.supersedesReason");
++    requireString(manifest.disposition, "manifest.disposition");
++  }
++  if (!manifest.approval || typeof manifest.approval !== "object") {
++    fail("manifest.approval is required; publication is never implicit");
++  }
++  return { ...manifest, files };
++}
++
++export function isApprovedNoReplyEmail(email) {
++  return NO_REPLY_EMAIL.test(String(email ?? "").trim());
++}
++
++function emailIsPublicPlaceholder(email) {
++  const [, domain = ""] = String(email).toLowerCase().split("@", 2);
++  return PUBLIC_EMAIL_DOMAINS.has(domain);
++}
++
++export function scanSecurityText(text, { privateNames = [] } = {}) {
++  const findings = [];
++  const lines = String(text ?? "").split("\n");
++  for (let index = 0; index < lines.length; index += 1) {
++    const line = lines[index];
++    const lineNumber = index + 1;
++    if (PRIVATE_KEY_BLOCK.test(line)) {
++      findings.push({ kind: "private-key", line: lineNumber });
++    }
++    if (SECRET_ASSIGNMENT.test(line)) {
++      findings.push({ kind: "credential-assignment", line: lineNumber });
++    }
++    if (PROVIDER_TOKEN.test(line)) {
++      findings.push({ kind: "provider-token", line: lineNumber });
++    }
++    if (PRIVATE_URL.test(line)) {
++      findings.push({ kind: "internal-url", line: lineNumber });
++    }
++    if (PRIVATE_PATH.test(line)) {
++      findings.push({ kind: "private-path", line: lineNumber });
++    }
++    for (const email of line.matchAll(EMAIL)) {
++      if (!emailIsPublicPlaceholder(email[0]) && !isApprovedNoReplyEmail(email[0])) {
++        findings.push({ kind: "personal-email", line: lineNumber });
++      }
++    }
++    for (const privateName of privateNames) {
++      if (
++        privateName &&
++        line.toLocaleLowerCase().includes(String(privateName).toLocaleLowerCase())
++      ) {
++        findings.push({ kind: "private-name", line: lineNumber });
++      }
++    }
++  }
++  return findings;
++}
++
++function scanDiff(cwd, diffArgs, label, privateNames) {
++  const diff = runGit(cwd, diffArgs);
++  const findings = scanSecurityText(diff, { privateNames });
++  if (findings.length > 0) {
++    const summary = [...new Set(findings.map((finding) => `${finding.kind}@${finding.line}`))].join(
++      ", ",
++    );
++    fail(`${label} contains blocked security/privacy findings (${summary})`);
++  }
++}
++
++function validateChangedFilePaths(paths) {
++  const findings = paths.filter(
++    (file) => PRIVATE_PATH.test(file) || /(?:^|\/)(?:\.env|.*\.(?:pem|key|p12))$/iu.test(file),
++  );
++  if (findings.length > 0) {
++    fail(`changed paths include private or credential material (${findings.join(", ")})`);
++  }
++}
++
++function validateIdentity(cwd, upstream, approvedEmails) {
++  const allowed = new Set(approvedEmails.map((email) => email.toLowerCase()));
++  const log = runGit(cwd, ["log", "--format=%H%x00%ae%x00%ce%x00", `${upstream}..HEAD`]);
++  const fields = log.split("\0").filter(Boolean);
++  for (let index = 0; index + 2 < fields.length; index += 3) {
++    const [sha, author, committer] = fields.slice(index, index + 3);
++    if (!isApprovedNoReplyEmail(author) || !allowed.has(author.toLowerCase())) {
++      fail(`commit ${sha.slice(0, 12)} has an unapproved author identity`);
++    }
++    if (!isApprovedNoReplyEmail(committer) || !allowed.has(committer.toLowerCase())) {
++      fail(`commit ${sha.slice(0, 12)} has an unapproved committer identity`);
++    }
++  }
++  const configured = gitText(cwd, ["config", "--get", "user.email"]);
++  if (!isApprovedNoReplyEmail(configured) || !allowed.has(configured.toLowerCase())) {
++    fail("configured git user.email is not an approved GitHub no-reply identity");
++  }
++}
++
++export function validateInventory(manifest, changedPaths) {
++  const overlaps = [];
++  for (const entry of manifest.openPrInventory) {
++    if (!entry || typeof entry !== "object") {
++      fail("manifest.openPrInventory contains an invalid entry");
++    }
++    requirePositiveInteger(entry.number, "open PR number");
++    requireString(entry.repository, "open PR repository");
++    requireString(entry.author, "open PR author");
++    requireString(entry.branch, "open PR branch");
++    requireString(entry.title, "open PR title");
++    if (!Array.isArray(entry.paths)) {
++      fail(`open PR #${entry.number} is missing its changed-path inventory`);
++    }
++    const entryPaths = new Set(entry.paths.map(requirePath));
++    const shared = changedPaths.filter((file) => entryPaths.has(file));
++    const sameBranch = entry.repository === manifest.repository && entry.branch === manifest.head;
++    if (shared.length || sameBranch) {
++      overlaps.push({ number: entry.number, paths: shared, sameBranch });
++    }
++  }
++  if (manifest.strategy === "new_independent" && overlaps.length > 0) {
++    fail(
++      `open PR overlap requires update_existing or supersede_existing (PRs: ${overlaps.map((item) => item.number).join(", ")})`,
++    );
++  }
++  if (manifest.strategy === "update_existing") {
++    const selected = overlaps.find((item) => item.number === manifest.existingPr);
++    if (!selected) {
++      fail(
++        `manifest.existingPr #${manifest.existingPr} is not present in the overlapping open-PR inventory`,
++      );
++    }
++    if (!selected.sameBranch) {
++      fail(`manifest.existingPr #${manifest.existingPr} does not use the current feature branch`);
++    }
++    const undeclared = overlaps.filter((item) => item.number !== manifest.existingPr);
++    if (undeclared.length > 0) {
++      fail(
++        `update_existing leaves undeclared overlapping PRs (${undeclared.map((item) => item.number).join(", ")})`,
++      );
++    }
++  }
++  if (manifest.strategy === "supersede_existing") {
++    if (!overlaps.some((item) => item.number === manifest.supersedesPr)) {
++      fail(
++        `manifest.supersedesPr #${manifest.supersedesPr} is not present in the overlapping open-PR inventory`,
++      );
++    }
++    const undeclared = overlaps.filter((item) => item.number !== manifest.supersedesPr);
++    if (undeclared.length > 0) {
++      fail(
++        `supersede_existing leaves undeclared overlapping PRs (${undeclared.map((item) => item.number).join(", ")})`,
++      );
++    }
++  }
++}
++
++function verifyRemote(cwd, manifest, hookArgs = {}) {
++  const configuredName = hookArgs.remoteName ?? manifest.remote.name;
++  if (configuredName !== manifest.remote.name) {
++    fail(`push remote ${configuredName} does not match manifest remote ${manifest.remote.name}`);
++  }
++  const actualPushUrl = canonicalRemoteUrl(remoteUrl(cwd, configuredName, true));
++  const expectedUrl = canonicalRemoteUrl(manifest.remote.url);
++  if (!actualPushUrl || actualPushUrl !== expectedUrl) {
++    fail("push remote URL does not match the publication manifest");
++  }
++  if (hookArgs.remoteUrl && canonicalRemoteUrl(hookArgs.remoteUrl) !== expectedUrl) {
++    fail("pre-push remote URL does not match the publication manifest");
++  }
++}
++
++function verifyPushRefs(cwd, branch, input) {
++  if (input === undefined) {
++    return;
++  }
++  if (input.trim() === "") {
++    fail("pre-push input did not contain an update for the current feature branch");
++  }
++  const headSha = gitText(cwd, ["rev-parse", "HEAD"]);
++  const lines = input.trim().split("\n").filter(Boolean);
++  if (lines.length !== 1) {
++    fail("pre-push must contain exactly one update for the current feature branch");
++  }
++  const [localRef, localSha, remoteRef] = lines[0].split(/\s+/u);
++  const localRefMatches = localRef === "HEAD" || localRef === `refs/heads/${branch}`;
++  if (!localRefMatches || localSha !== headSha || remoteRef !== `refs/heads/${branch}`) {
++    fail("pre-push update is not the exact reviewed HEAD");
++  }
++}
++
++function validateApproval(manifest, headSha) {
++  if (manifest.approval.granted !== true) {
++    fail(
++      "external publication approval is required; run the explicit approve command after review",
++    );
++  }
++  if (manifest.approval.head !== headSha) {
++    fail("publication approval is not bound to the current HEAD");
++  }
++}
++
++function validateCommon(cwd, manifest, options = {}) {
++  assertRepoRoot(cwd);
++  const branch = currentBranch(cwd);
++  if (manifest.head !== branch) {
++    fail(`manifest.head ${manifest.head} does not match the current branch ${branch}`);
++  }
++  verifyRemote(cwd, manifest, options);
++  verifyBase(cwd, manifest.base, manifest.upstream, branch);
++  verifyPushRefs(cwd, branch, options.pushInput);
++  validateChangedFilePaths(manifest.files);
++  validateInventory(manifest, manifest.files);
++  validateIdentity(cwd, manifest.upstream, manifest.approvedEmails);
++  runGit(cwd, ["diff", "--check", `${manifest.upstream}..HEAD`]);
++  runGit(cwd, ["diff", "--cached", "--check"]);
++  scanDiff(
++    cwd,
++    [
++      "log",
++      "--format=",
++      "--patch",
++      "--no-ext-diff",
++      "--no-textconv",
++      "--no-renames",
++      "--text",
++      `${manifest.upstream}..HEAD`,
++    ],
++    "commit range",
++    manifest.privateNames,
++  );
++  scanDiff(
++    cwd,
++    ["diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-renames", "--text"],
++    "staged diff",
++    manifest.privateNames,
++  );
++  exactPathSet(rangePaths(cwd, manifest.upstream), manifest.files, "commit range");
++  const staged = stagedPaths(cwd);
++  if (staged.length > 0) {
++    exactPathSet(staged, manifest.files, "staged files");
++  }
++  const headSha = gitText(cwd, ["rev-parse", "HEAD"]);
++  if (options.requireApproval) {
++    validateApproval(manifest, headSha);
++  }
++  return { branch, headSha, staged };
++}
++
++function readInventory(args) {
++  if (args.inventoryJson) {
++    return JSON.parse(args.inventoryJson);
++  }
++  if (args.inventoryFile) {
++    return JSON.parse(readFileSync(args.inventoryFile, "utf8"));
++  }
++  return null;
++}
++
++function readGhPaginatedArray(exec, args, failureMessage) {
++  let raw;
++  try {
++    raw = exec("gh", args, {
++      encoding: "utf8",
++      stdio: ["ignore", "pipe", "pipe"],
++      maxBuffer: 32 * 1024 * 1024,
++    });
++  } catch {
++    fail(failureMessage);
++  }
++  let pages;
++  try {
++    pages = JSON.parse(raw);
++  } catch {
++    fail(failureMessage);
++  }
++  if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
++    fail(failureMessage);
++  }
++  return pages.flat();
++}
++
++export function collectOpenPrInventory(repository, { execFileSync: exec = execFileSync } = {}) {
++  const pulls = readGhPaginatedArray(
++    exec,
++    ["api", "--paginate", "--slurp", `repos/${repository}/pulls?state=open&per_page=100`],
++    "open-PR inventory failed closed; authenticate gh or provide --inventory-file",
++  );
++  return pulls.map((pull) => {
++    if (!Number.isInteger(pull?.number) || pull.number <= 0) {
++      fail("open-PR inventory failed closed because GitHub returned an invalid pull request");
++    }
++    const files = readGhPaginatedArray(
++      exec,
++      [
++        "api",
++        "--paginate",
++        "--slurp",
++        `repos/${repository}/pulls/${pull.number}/files?per_page=100`,
++      ],
++      `open-PR inventory failed closed while reading PR #${pull.number}`,
++    );
++    if (
++      files.some(
++        (file) =>
++          typeof file?.filename !== "string" ||
++          file.filename.length === 0 ||
++          (file.previous_filename !== undefined &&
++            (typeof file.previous_filename !== "string" || file.previous_filename.length === 0)),
++      )
++    ) {
++      fail(`open-PR inventory failed closed while reading PR #${pull.number}`);
++    }
++    // Pagination cannot prove completeness at GitHub's maximum of 3000 files.
++    if (files.length >= 3000) {
++      fail(`open-PR inventory failed closed at the 3000-file limit for PR #${pull.number}`);
++    }
++    return {
++      number: pull.number,
++      repository,
++      author: pull.user?.login ?? "unknown",
++      branch: pull.head?.ref,
++      title: pull.title,
++      url: pull.html_url ?? null,
++      paths: files.flatMap((file) =>
++        [file.filename, file.previous_filename].filter(Boolean).map(requirePath),
++      ),
++    };
++  });
++}
++
++function prepare(cwd, args) {
++  assertRepoRoot(cwd);
++  const branch = currentBranch(cwd);
++  const upstream = args.upstream ?? `${args.remote}/${args.base}`;
++  const remotePushUrl = remoteUrl(cwd, args.remote, true);
++  if (!remotePushUrl) {
++    fail("publication remote URL is missing");
++  }
++  if (!args.paths.length) {
++    fail("prepare requires one or more explicit --path allowlist entries");
++  }
++  const files = [...new Set(args.paths)].toSorted((left, right) => left.localeCompare(right));
++  validateChangedFilePaths(files);
++  verifyBase(cwd, args.base, upstream, branch);
++  const staged = stagedPaths(cwd);
++  exactPathSet(staged, files, "staged files");
++  runGit(cwd, ["diff", "--cached", "--check"]);
++  scanDiff(
++    cwd,
++    ["diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-renames", "--text"],
++    "staged diff",
++    args.privateNames,
++  );
++  const configuredEmail = gitText(cwd, ["config", "--get", "user.email"]);
++  const approvedEmails = [
++    ...new Set(
++      (args.approvedEmails.length ? args.approvedEmails : [configuredEmail]).map((email) =>
++        email.toLowerCase(),
++      ),
++    ),
++  ];
++  for (const email of approvedEmails) {
++    if (!isApprovedNoReplyEmail(email)) {
++      fail("prepare requires an approved GitHub no-reply author/committer identity");
++    }
++  }
++  const suppliedInventory = readInventory(args);
++  const openPrInventory =
++    suppliedInventory?.pullRequests ?? suppliedInventory ?? collectOpenPrInventory(args.repository);
++  const manifest = {
++    version: MANIFEST_VERSION,
++    repository: args.repository,
++    remote: { name: args.remote, url: remotePushUrl },
++    base: args.base,
++    upstream,
++    head: branch,
++    files,
++    privateNames: [...new Set(args.privateNames)],
++    approvedEmails,
++    strategy: args.strategy,
++    existingPr: args.existingPr,
++    supersedesPr: args.supersedesPr,
++    supersedesReason: args.supersedesReason,
++    disposition: args.disposition,
++    openPrInventory,
++    approval: { granted: false, head: null, approvedAt: null },
++  };
++  validateManifestShape(manifest);
++  validateInventory(manifest, files);
++  writeJson(manifestPath(cwd, args.manifest), manifest);
++  return `prepared ${files.length} allowlisted file(s); approval remains required`;
++}
++
++function approve(cwd, args) {
++  const filePath = manifestPath(cwd, args.manifest);
++  const manifest = validateManifestShape(readJson(filePath));
++  const result = validateCommon(cwd, manifest, { requireApproval: false });
++  manifest.approval = {
++    granted: true,
++    head: result.headSha,
++    approvedAt: new Date().toISOString(),
++  };
++  writeJson(filePath, manifest);
++  return `approved exact HEAD ${result.headSha}`;
++}
++
++function check(cwd, args, options = {}) {
++  const manifest = validateManifestShape(readJson(manifestPath(cwd, args.manifest)));
++  const result = validateCommon(cwd, manifest, options);
++  return `ok ${result.branch} @ ${result.headSha}`;
++}
++
++function help() {
++  return [
++    "Usage:",
++    "  node scripts/publication-preflight.mjs prepare --path <file>... [options]",
++    "  node scripts/publication-preflight.mjs check [options]",
++    "  node scripts/publication-preflight.mjs approve [options]",
++    "  node scripts/publication-preflight.mjs hook --remote-name <name> --remote-url <url> [options]",
++    "",
++    "prepare records an explicit staged-file allowlist and open-PR inventory in a per-worktree Git manifest.",
++    "approve is a separate human action; hook requires approval bound to the exact HEAD being pushed.",
++    "This helper is a local review gate only; it cannot enforce remote publication security.",
++  ].join("\n");
++}
++
++export function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdin } = {}) {
++  const args = parseArgs(argv);
++  if (args.command === "help") {
++    console.log(help());
++    return;
++  }
++  const message =
++    args.command === "prepare"
++      ? prepare(cwd, args)
++      : args.command === "approve"
++        ? approve(cwd, args)
++        : check(cwd, args, {
++            requireApproval: args.command === "hook",
++            remoteName: args.remoteName,
++            remoteUrl: args.remoteUrl,
++            pushInput: args.command === "hook" ? (stdin ?? readFileSync(0, "utf8")) : undefined,
++          });
++  if (!args.quiet) {
++    console.error(`[publication-preflight] ${message}`);
++  }
++}
++
++if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {
++  try {
++    main();
++  } catch (error) {
++    console.error(
++      `[publication-preflight] blocked: ${error instanceof Error ? error.message : String(error)}`,
++    );
++    process.exitCode = 1;
++  }
++}
+diff --git a/test/scripts/prepare-git-hooks.test.ts b/test/scripts/prepare-git-hooks.test.ts
+index 5b9cd7609177796da08fe900992eec13d33ec458..4b98af6aac3d98816922b5d36adb4f03a8f0f80b 100644
+--- a/test/scripts/prepare-git-hooks.test.ts
++++ b/test/scripts/prepare-git-hooks.test.ts
+@@ -1,5 +1,5 @@
+ import { execFileSync, spawnSync as spawnGit, type SpawnSyncOptions } from "node:child_process";
+-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
++import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+ import { basename, join, resolve } from "node:path";
+ import { afterEach, describe, expect, it, vi } from "vitest";
+ import { configurePrepareGitHooks } from "../../scripts/prepare-git-hooks.mjs";
+@@ -112,6 +112,27 @@ describe("configurePrepareGitHooks", () => {
+     expect(spawnSync).not.toHaveBeenCalled();
+   });
+ 
++  it("reports an unresolved publication marker without changing hook ownership", () => {
++    const warn = vi.fn();
++    const spawnSync = createSpawn([
++      { status: 0, stdout: "true\n" },
++      { status: 0, stdout: "git-hooks\n" },
++      { status: 128, stderr: "permission denied" },
++    ]);
++    expect(
++      configurePrepareGitHooks({
++        cwd: "/repo",
++        install: true,
++        existsSync: () => true,
++        spawnSync,
++        warn,
++      }),
++    ).toEqual({ configured: false, reason: "preflight-enable-failed" });
++    expect(warn).toHaveBeenCalledWith(
++      "[prepare] could not enable publication preflight: permission denied",
++    );
++  });
++
+   type OwnershipCase = {
+     name: string;
+     linked?: boolean;
+@@ -119,6 +140,9 @@ describe("configurePrepareGitHooks", () => {
+     local?: string;
+     global?: string;
+     overrides?: boolean;
++    maintained?: boolean;
++    absolute?: boolean;
++    markerDirectory?: boolean;
+     reason: "configured" | "already-configured" | "config-failed";
+     expected: string | null;
+   };
+@@ -166,9 +190,44 @@ describe("configurePrepareGitHooks", () => {
+       reason: "already-configured",
+       expected: "linked-hooks",
+     },
++    {
++      name: "maintained relative owner",
++      local: "git-hooks",
++      maintained: true,
++      reason: "already-configured",
++      expected: "git-hooks",
++    },
++    {
++      name: "maintained absolute owner",
++      absolute: true,
++      maintained: true,
++      reason: "already-configured",
++      expected: null,
++    },
++    {
++      name: "linked maintained owner",
++      linked: true,
++      worktreeConfig: true,
++      local: "git-hooks",
++      maintained: true,
++      reason: "already-configured",
++      expected: "git-hooks",
++    },
++    {
++      name: "unwritable opt-in marker",
++      local: "git-hooks",
++      maintained: true,
++      markerDirectory: true,
++      reason: "already-configured",
++      expected: "git-hooks",
++    },
+   ];
+ 
+-  it.each(ownershipCases)("preserves Git configuration ownership: $name", (scenario) => {
++  it.each(
++    ownershipCases.flatMap((scenario) =>
++      [false, true].map((install) => Object.assign({}, scenario, { install })),
++    ),
++  )("preserves Git configuration ownership: $name; opt-in=$install", (scenario) => {
+     const root = tempDirs.make("prepare-hook-ownership-");
+     const primary = join(root, "primary");
+     const globalConfig = join(root, "global.config");
+@@ -214,6 +273,9 @@ describe("configurePrepareGitHooks", () => {
+     if (scenario.local !== undefined) {
+       git(primary, ["config", "--local", "core.hooksPath", scenario.local]);
+     }
++    if (scenario.absolute) {
++      git(primary, ["config", "--local", "core.hooksPath", join(target, "git-hooks")]);
++    }
+     if (scenario.global !== undefined) {
+       git(primary, ["config", "--file", globalConfig, "core.hooksPath", scenario.global]);
+     }
+@@ -247,9 +309,23 @@ describe("configurePrepareGitHooks", () => {
+     ];
+     const contents = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : null);
+     const contentsBefore = unchangedFiles.map(contents);
++    const targetMarker = resolve(
++      target,
++      git(target, ["rev-parse", "--git-path", "publication-preflight.enabled"]),
++    );
++    const markers = checkouts.map((checkout) =>
++      resolve(
++        checkout,
++        git(checkout, ["rev-parse", "--git-path", "publication-preflight.enabled"]),
++      ),
++    );
++    if (scenario.markerDirectory) {
++      mkdirSync(targetMarker);
++    }
+     const warn = vi.fn();
+     const result = configurePrepareGitHooks({
+       cwd: target,
++      install: scenario.install,
+       spawnSync: (bin: string, args: string[], options: SpawnSyncOptions) => {
+         expect(bin).toBe("git");
+         expect(options.cwd).toBe(target);
+@@ -259,19 +335,47 @@ describe("configurePrepareGitHooks", () => {
+     });
+     // Private overrides can mask a shared write, so compare config bytes as well as effective values.
+     expect(unchangedFiles.map(contents)).toEqual(contentsBefore);
++    const reason =
++      scenario.install &&
++      ((scenario.reason === "already-configured" && !scenario.maintained) ||
++        scenario.markerDirectory)
++        ? "preflight-enable-failed"
++        : scenario.reason;
+     expect(result).toEqual({
+       configured: scenario.reason === "configured",
+-      reason: scenario.reason,
++      reason,
+     });
+     expect(checkouts.map(hookPath)).toEqual(
+       checkouts.map((checkout, index) =>
+-        checkout === target ? scenario.expected : effectiveBefore[index],
++        checkout === target
++          ? scenario.absolute
++            ? join(target, "git-hooks")
++            : scenario.expected
++          : effectiveBefore[index],
+       ),
+     );
+-    if (scenario.reason === "config-failed") {
++    const enabled =
++      scenario.install &&
++      !scenario.markerDirectory &&
++      (scenario.reason === "configured" || scenario.maintained);
++    expect(markers.map((marker) => existsSync(marker) && statSync(marker).isFile())).toEqual(
++      checkouts.map((checkout) => checkout === target && Boolean(enabled)),
++    );
++    if (enabled) {
++      expect(readFileSync(targetMarker, "utf8")).toBe("enabled\n");
++    }
++    if (reason === "config-failed") {
+       expect(warn).toHaveBeenCalledWith(
+         expect.stringContaining("[prepare] could not configure git hooks"),
+       );
++    } else if (reason === "preflight-enable-failed" && scenario.markerDirectory) {
++      expect(warn).toHaveBeenCalledWith(
++        expect.stringContaining("[prepare] could not enable publication preflight"),
++      );
++    } else if (reason === "preflight-enable-failed") {
++      expect(warn).toHaveBeenCalledWith(
++        expect.stringContaining("[prepare] cannot enable publication preflight"),
++      );
+     } else {
+       expect(warn).not.toHaveBeenCalled();
+     }
+diff --git a/test/scripts/publication-preflight.test.ts b/test/scripts/publication-preflight.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2c3e0c168d41d46ab258a74e88eeba28e0ada6a0
+--- /dev/null
++++ b/test/scripts/publication-preflight.test.ts
+@@ -0,0 +1,682 @@
++import { execFileSync, spawn } from "node:child_process";
++import {
++  chmodSync,
++  existsSync,
++  mkdtempSync,
++  mkdirSync,
++  readFileSync,
++  rmSync,
++  writeFileSync,
++} from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { afterEach, describe, expect, it, vi } from "vitest";
++import {
++  collectOpenPrInventory,
++  isApprovedNoReplyEmail,
++  parseArgs,
++  scanSecurityText,
++  validateInventory,
++} from "../../scripts/publication-preflight.mjs";
++
++const SCRIPT = path.resolve("scripts/publication-preflight.mjs");
++const HOOK = path.resolve("git-hooks/pre-push");
++const PREPARE_HOOKS = path.resolve("scripts/prepare-git-hooks.mjs");
++const GITHUB_REMOTE = "https://github.com/openclaw/openclaw.git";
++const tempDirs: string[] = [];
++const gitEnv = {
++  ...process.env,
++  GIT_CONFIG_NOSYSTEM: "1",
++  GIT_TERMINAL_PROMPT: "0",
++};
++
++function run(cwd: string, command: string, args: string[] = [], input?: string): string {
++  return execFileSync(command, args, {
++    cwd,
++    env: gitEnv,
++    input,
++    encoding: "utf8",
++    stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
++  }).trim();
++}
++
++function runFailure(cwd: string, command: string, args: string[] = [], input?: string): string {
++  try {
++    run(cwd, command, args, input);
++  } catch (error) {
++    const failure = error as Error & { stderr?: string };
++    return failure.stderr ?? failure.message;
++  }
++  throw new Error("expected command to fail");
++}
++
++function runWithOpenStdin(cwd: string, args: string[]): Promise<void> {
++  return new Promise((resolve, reject) => {
++    const child = spawn(process.execPath, [SCRIPT, ...args], {
++      cwd,
++      env: gitEnv,
++      stdio: ["pipe", "pipe", "pipe"],
++    });
++    let stderr = "";
++    child.stderr.on("data", (chunk) => {
++      stderr += String(chunk);
++    });
++    child.stdout.resume();
++    const timer = setTimeout(() => child.kill("SIGKILL"), 1500);
++    child.once("error", reject);
++    child.once("close", (code, signal) => {
++      clearTimeout(timer);
++      child.stdin.destroy();
++      if (signal || code !== 0) {
++        reject(new Error(`${args[0]} failed with open stdin (${signal ?? code}): ${stderr}`));
++      } else {
++        resolve();
++      }
++    });
++  });
++}
++
++function makeRepository(options: { remoteUrl?: string } = {}): {
++  dir: string;
++  manifest: string;
++  branch: string;
++} {
++  const dir = mkdtempSync(path.join(os.tmpdir(), "openclaw-publication-preflight-"));
++  tempDirs.push(dir);
++  run(dir, "git", ["init", "-q", "--initial-branch=main"]);
++  run(dir, "git", ["config", "user.name", "OpenClaw Test"]);
++  run(dir, "git", ["config", "user.email", "123+openclaw-test@users.noreply.github.com"]);
++  run(dir, "git", ["remote", "add", "origin", options.remoteUrl ?? GITHUB_REMOTE]);
++  writeFileSync(path.join(dir, "README.md"), "baseline\n", "utf8");
++  run(dir, "git", ["add", "--", "README.md"]);
++  run(dir, "git", ["commit", "-q", "-m", "baseline"]);
++  run(dir, "git", ["update-ref", "refs/remotes/origin/main", "HEAD"]);
++  const branch = "feat/publication-security-preflight-test";
++  run(dir, "git", ["switch", "-q", "-c", branch]);
++  mkdirSync(path.join(dir, "scripts"), { recursive: true });
++  mkdirSync(path.join(dir, "git-hooks"), { recursive: true });
++  writeFileSync(
++    path.join(dir, "scripts", "publication-preflight.mjs"),
++    readFileSync(SCRIPT, "utf8"),
++    "utf8",
++  );
++  writeFileSync(
++    path.join(dir, "scripts", "prepare-git-hooks.mjs"),
++    readFileSync(PREPARE_HOOKS, "utf8"),
++    "utf8",
++  );
++  writeFileSync(path.join(dir, "git-hooks", "pre-push"), readFileSync(HOOK, "utf8"), "utf8");
++  chmodSync(path.join(dir, "git-hooks", "pre-push"), 0o755);
++  writeFileSync(path.join(dir, "safe.txt"), "safe publication content\n", "utf8");
++  run(dir, "git", ["add", "--", "safe.txt"]);
++  return {
++    dir,
++    branch,
++    manifest: path.join(dir, ".git", "publication-security-manifest.json"),
++  };
++}
++
++afterEach(() => {
++  for (const dir of tempDirs.splice(0)) {
++    rmSync(dir, { recursive: true, force: true });
++  }
++});
++
++describe("publication preflight pure gates", () => {
++  it("parses an explicit staged allowlist and PR strategy", () => {
++    expect(
++      parseArgs([
++        "prepare",
++        "--path",
++        "scripts/publication-preflight.mjs",
++        "--path",
++        "test/scripts/publication-preflight.test.ts",
++        "--path",
++        "scripts\\literal-file.mjs",
++        "--strategy",
++        "supersede_existing",
++        "--supersedes-pr",
++        "123",
++      ]),
++    ).toMatchObject({
++      command: "prepare",
++      paths: [
++        "scripts/publication-preflight.mjs",
++        "test/scripts/publication-preflight.test.ts",
++        "scripts\\literal-file.mjs",
++      ],
++      strategy: "supersede_existing",
++      supersedesPr: 123,
++    });
++  });
++
++  it("requires the GitHub no-reply identity", () => {
++    expect(isApprovedNoReplyEmail("123+openclaw@users.noreply.github.com")).toBe(true);
++    expect(isApprovedNoReplyEmail("person@example.com")).toBe(false);
++  });
++
++  it("reports credentials, private paths, internal URLs, personal emails, and private names", () => {
++    const credentialFixture = ["token", "not-a-placeholder-secret-value"].join(' = "') + '"';
++    const personalEmail = ["person", "@private.test"].join("");
++    const internalUrl = ["http://", "localhost:40141/status"].join("");
++    const privatePath = ["/", "home/person/", ".", "openclaw/private.json"].join("");
++    const findings = scanSecurityText(
++      [
++        credentialFixture,
++        `contact: ${personalEmail}`,
++        internalUrl,
++        privatePath,
++        "Franck private note",
++      ].join("\n"),
++      { privateNames: ["Franck"] },
++    );
++    expect(new Set(findings.map((finding) => finding.kind))).toEqual(
++      new Set([
++        "credential-assignment",
++        "personal-email",
++        "internal-url",
++        "private-path",
++        "private-name",
++      ]),
++    );
++  });
++
++  it("blocks a new independent PR when the inventory overlaps changed paths", () => {
++    expect(() =>
++      validateInventory(
++        {
++          repository: "openclaw/openclaw",
++          strategy: "new_independent",
++          head: "feat/publication-security-preflight",
++          openPrInventory: [
++            {
++              number: 42,
++              repository: "openclaw/openclaw",
++              author: "contributor",
++              branch: "other-branch",
++              title: "Existing work",
++              paths: ["safe.txt"],
++            },
++          ],
++        },
++        ["safe.txt"],
++      ),
++    ).toThrow(/overlap/u);
++  });
++
++  it("binds update_existing to the current branch and rejects undeclared overlaps", () => {
++    const manifest = {
++      repository: "openclaw/openclaw",
++      strategy: "update_existing",
++      existingPr: 42,
++      head: "feat/publication-security-preflight",
++      openPrInventory: [
++        {
++          number: 42,
++          repository: "openclaw/openclaw",
++          author: "contributor",
++          branch: "feat/publication-security-preflight",
++          title: "Current publication",
++          paths: ["safe.txt"],
++        },
++        {
++          number: 43,
++          repository: "openclaw/openclaw",
++          author: "other-contributor",
++          branch: "other-branch",
++          title: "Other overlapping work",
++          paths: ["safe.txt"],
++        },
++      ],
++    };
++
++    expect(() =>
++      validateInventory({ ...manifest, openPrInventory: [manifest.openPrInventory[0]] }, [
++        "safe.txt",
++      ]),
++    ).not.toThrow();
++    expect(() => validateInventory(manifest, ["safe.txt"])).toThrow(/undeclared overlapping PRs/u);
++    expect(() =>
++      validateInventory(
++        {
++          ...manifest,
++          openPrInventory: [{ ...manifest.openPrInventory[0], branch: "other-branch" }],
++        },
++        ["safe.txt"],
++      ),
++    ).toThrow(/current feature branch/u);
++  });
++
++  it("rejects undeclared overlaps when superseding an existing PR", () => {
++    expect(() =>
++      validateInventory(
++        {
++          repository: "openclaw/openclaw",
++          strategy: "supersede_existing",
++          supersedesPr: 42,
++          head: "feat/publication-security-preflight",
++          openPrInventory: [
++            {
++              number: 42,
++              repository: "openclaw/openclaw",
++              author: "contributor",
++              branch: "old-branch",
++              title: "Superseded work",
++              paths: ["safe.txt"],
++            },
++            {
++              number: 43,
++              repository: "openclaw/openclaw",
++              author: "other-contributor",
++              branch: "other-branch",
++              title: "Other overlapping work",
++              paths: ["safe.txt"],
++            },
++          ],
++        },
++        ["safe.txt"],
++      ),
++    ).toThrow(/undeclared overlapping PRs/u);
++  });
++
++  it("collects every open PR and changed file across paginated GitHub responses", () => {
++    const exec = vi
++      .fn()
++      .mockReturnValueOnce(
++        JSON.stringify([
++          [
++            {
++              number: 41,
++              user: { login: "first-author" },
++              head: { ref: "first-branch" },
++              title: "First PR",
++              html_url: "https://github.com/openclaw/openclaw/pull/41",
++            },
++          ],
++          [
++            {
++              number: 142,
++              user: { login: "second-author" },
++              head: { ref: "second-branch" },
++              title: "Second PR",
++              html_url: "https://github.com/openclaw/openclaw/pull/142",
++            },
++          ],
++        ]),
++      )
++      .mockReturnValueOnce(
++        JSON.stringify([
++          [{ filename: "first.txt " }],
++          [{ filename: "next\\literal.txt", previous_filename: " old.txt" }],
++        ]),
++      )
++      .mockReturnValueOnce(JSON.stringify([[]]));
++
++    expect(collectOpenPrInventory("openclaw/openclaw", { execFileSync: exec })).toEqual([
++      {
++        number: 41,
++        repository: "openclaw/openclaw",
++        author: "first-author",
++        branch: "first-branch",
++        title: "First PR",
++        url: "https://github.com/openclaw/openclaw/pull/41",
++        paths: ["first.txt ", "next\\literal.txt", " old.txt"],
++      },
++      {
++        number: 142,
++        repository: "openclaw/openclaw",
++        author: "second-author",
++        branch: "second-branch",
++        title: "Second PR",
++        url: "https://github.com/openclaw/openclaw/pull/142",
++        paths: [],
++      },
++    ]);
++    for (const call of exec.mock.calls) {
++      expect(call[0]).toBe("gh");
++      expect(call[1]).toEqual(expect.arrayContaining(["api", "--paginate", "--slurp"]));
++    }
++  });
++
++  it("fails closed when GitHub pagination is malformed or file data is incomplete", () => {
++    expect(() =>
++      collectOpenPrInventory("openclaw/openclaw", {
++        execFileSync: vi.fn().mockReturnValue(JSON.stringify([{ number: 41 }])),
++      }),
++    ).toThrow(/failed closed/u);
++
++    const exec = vi
++      .fn()
++      .mockReturnValueOnce(JSON.stringify([[{ number: 41, head: { ref: "branch" } }]]))
++      .mockReturnValueOnce(JSON.stringify([[{}]]));
++    expect(() => collectOpenPrInventory("openclaw/openclaw", { execFileSync: exec })).toThrow(
++      /reading PR #41/u,
++    );
++  });
++
++  it("fails closed at GitHub's file ceiling but accepts a smaller complete inventory", () => {
++    const files = Array.from({ length: 3000 }, (_, index) => ({ filename: `file-${index}.txt` }));
++    for (const count of [2999, 3000]) {
++      const selected = files.slice(0, count);
++      const pages = Array.from({ length: Math.ceil(count / 100) }, (_, page) =>
++        selected.slice(page * 100, (page + 1) * 100),
++      );
++      const exec = vi
++        .fn()
++        .mockReturnValueOnce(JSON.stringify([[{ number: 41, head: { ref: "branch" } }]]))
++        .mockReturnValueOnce(JSON.stringify(pages));
++      const collect = () => collectOpenPrInventory("openclaw/openclaw", { execFileSync: exec });
++      if (count === 3000) {
++        expect(collect).toThrow(/failed closed.*3000/u);
++      } else {
++        expect(collect().flatMap((pull) => pull.paths)).toHaveLength(count);
++      }
++    }
++  });
++});
++
++describe("publication preflight real hook behavior", () => {
++  it("keeps automatic maintained-hook setup transparent until explicit opt-in", () => {
++    const bareRemote = mkdtempSync(
++      path.join(os.tmpdir(), "openclaw-publication-preflight-unopted-remote-"),
++    );
++    tempDirs.push(bareRemote);
++    run(bareRemote, "git", ["init", "-q", "--bare"]);
++
++    const { dir } = makeRepository({ remoteUrl: `file://${bareRemote}` });
++    run(dir, "node", [path.join(dir, "scripts", "prepare-git-hooks.mjs")]);
++
++    expect(run(dir, "git", ["config", "--get", "core.hooksPath"])).toBe("git-hooks");
++    const optInPath = path.resolve(
++      dir,
++      run(dir, "git", ["rev-parse", "--git-path", "publication-preflight.enabled"]),
++    );
++    expect(existsSync(optInPath)).toBe(false);
++    run(dir, "git", ["push", "origin", "HEAD"]);
++  });
++
++  it("invokes the configured hook for an allowed push and rejects an unallowlisted commit", () => {
++    const bareRemote = mkdtempSync(
++      path.join(os.tmpdir(), "openclaw-publication-preflight-remote-"),
++    );
++    tempDirs.push(bareRemote);
++    run(bareRemote, "git", ["init", "-q", "--bare"]);
++
++    const { dir, manifest } = makeRepository({ remoteUrl: `file://${bareRemote}` });
++    run(dir, "node", [path.join(dir, "scripts", "prepare-git-hooks.mjs"), "--install"]);
++    expect(run(dir, "git", ["config", "--get", "core.hooksPath"])).toBe("git-hooks");
++    const optInPath = path.resolve(
++      dir,
++      run(dir, "git", ["rev-parse", "--git-path", "publication-preflight.enabled"]),
++    );
++    expect(existsSync(optInPath)).toBe(true);
++
++    run(dir, "node", [
++      SCRIPT,
++      "prepare",
++      "--manifest",
++      manifest,
++      "--path",
++      "safe.txt",
++      "--inventory-json",
++      "[]",
++    ]);
++    run(dir, "git", ["commit", "-q", "-m", "publication preflight fixture"]);
++    run(dir, "node", [SCRIPT, "check", "--manifest", manifest]);
++    run(dir, "node", [SCRIPT, "approve", "--manifest", manifest]);
++
++    run(dir, "git", ["push", "origin", "HEAD"]);
++
++    writeFileSync(path.join(dir, "unallowlisted.txt"), "this path was not reviewed\n", "utf8");
++    run(dir, "git", ["add", "--", "unallowlisted.txt"]);
++    run(dir, "git", ["commit", "-q", "-m", "unallowlisted publication fixture"]);
++    expect(run(dir, "git", ["diff", "--name-only", "origin/main..HEAD"])).toBe(
++      "safe.txt\nunallowlisted.txt",
++    );
++    expect(run(dir, "git", ["config", "--get", "core.hooksPath"])).toBe("git-hooks");
++    const failure = runFailure(dir, "git", ["push", "origin", "HEAD"]);
++    expect(failure).toContain("commit range does not match the explicit manifest allowlist");
++  });
++
++  it("rejects an unallowlisted tracked-file deletion through the real hook", () => {
++    const bareRemote = mkdtempSync(
++      path.join(os.tmpdir(), "openclaw-publication-preflight-deletion-remote-"),
++    );
++    tempDirs.push(bareRemote);
++    run(bareRemote, "git", ["init", "-q", "--bare"]);
++
++    const { dir, manifest } = makeRepository({ remoteUrl: `file://${bareRemote}` });
++    run(dir, "node", [path.join(dir, "scripts", "prepare-git-hooks.mjs"), "--install"]);
++    run(dir, "node", [
++      SCRIPT,
++      "prepare",
++      "--manifest",
++      manifest,
++      "--path",
++      "safe.txt",
++      "--inventory-json",
++      "[]",
++    ]);
++    run(dir, "git", ["commit", "-q", "-m", "publication preflight fixture"]);
++    run(dir, "node", [SCRIPT, "check", "--manifest", manifest]);
++    run(dir, "node", [SCRIPT, "approve", "--manifest", manifest]);
++    run(dir, "git", ["push", "origin", "HEAD"]);
++
++    run(dir, "git", ["rm", "-q", "--", "README.md"]);
++    run(dir, "git", ["commit", "-q", "-m", "unallowlisted deletion fixture"]);
++    expect(run(dir, "git", ["diff", "--name-status", "origin/main..HEAD"])).toContain(
++      "D\tREADME.md",
++    );
++    const failure = runFailure(dir, "git", ["push", "origin", "HEAD"]);
++    expect(failure).toContain("commit range does not match the explicit manifest allowlist");
++    expect(failure).toContain("README.md");
++  });
++});
++
++describe("publication preflight repository integration", () => {
++  it.each([" safe.txt", "safe.txt "])("preserves the exact path spelling %j", (actualPath) => {
++    const { dir, manifest } = makeRepository();
++    run(dir, "git", ["reset", "--", "safe.txt"]);
++    const blob = run(dir, "git", ["hash-object", "-w", "--stdin"], "path identity fixture\n");
++    run(dir, "git", ["update-index", "--add", "--cacheinfo", "100644", blob, actualPath]);
++    expect(
++      runFailure(dir, "node", [SCRIPT, "prepare", "--path", "safe.txt", "--inventory-json", "[]"]),
++    ).toContain("staged files does not match the explicit manifest allowlist");
++    run(dir, "node", [SCRIPT, "prepare", "--path", actualPath, "--inventory-json", "[]"]);
++    const prepared = JSON.parse(readFileSync(manifest, "utf8"));
++    expect(prepared.files).toEqual([actualPath]);
++    run(dir, "git", ["commit", "-q", "-m", "path identity fixture"]);
++    prepared.files = ["safe.txt"];
++    writeFileSync(manifest, JSON.stringify(prepared), "utf8");
++    expect(runFailure(dir, "node", [SCRIPT, "check"])).toContain(
++      "commit range does not match the explicit manifest allowlist",
++    );
++    prepared.files = [actualPath];
++    writeFileSync(manifest, JSON.stringify(prepared), "utf8");
++    run(dir, "node", [SCRIPT, "approve"]);
++  });
++
++  it("scans raw staged content despite configured text conversion", () => {
++    const { dir } = makeRepository();
++    run(dir, "git", ["reset", "--", "safe.txt"]);
++    writeFileSync(path.join(dir, ".gitattributes"), "*.txt diff=fixture\n", "utf8");
++    run(dir, "git", ["add", ".gitattributes"]);
++    run(dir, "git", ["commit", "-q", "-m", "attribute baseline"]);
++    run(dir, "git", ["update-ref", "refs/remotes/origin/main", "HEAD"]);
++    writeFileSync(
++      path.join(dir, "scripts/convert-fixture.mjs"),
++      'console.log("sanitized");\n',
++      "utf8",
++    );
++    run(dir, "git", ["config", "diff.fixture.textconv", "node scripts/convert-fixture.mjs"]);
++    const credential = ["token", "synthetic-fixture-value"].join(' = "') + '"\n';
++    writeFileSync(path.join(dir, "safe.txt"), credential, "utf8");
++    run(dir, "git", ["add", "safe.txt"]);
++    const message = runFailure(dir, "node", [
++      SCRIPT,
++      "prepare",
++      "--path",
++      "safe.txt",
++      "--inventory-json",
++      "[]",
++    ]);
++    expect(message).toContain("staged diff contains blocked security/privacy findings");
++  });
++
++  it("runs help, prepare, check, and approve without requiring stdin EOF", async () => {
++    const { dir } = makeRepository();
++    await runWithOpenStdin(dir, ["--help"]);
++    await runWithOpenStdin(dir, ["prepare", "--path", "safe.txt", "--inventory-json", "[]"]);
++    run(dir, "git", ["commit", "-q", "-m", "publication fixture"]);
++    await runWithOpenStdin(dir, ["check"]);
++    await runWithOpenStdin(dir, ["approve"]);
++  });
++
++  it.each(["staged", "committed"])(
++    "accounts for %s file-type changes in the allowlist",
++    (phase) => {
++      const { dir, manifest } = makeRepository();
++      run(dir, "node", [SCRIPT, "prepare", "--path", "safe.txt", "--inventory-json", "[]"]);
++      const blob = run(dir, "git", ["hash-object", "-w", "--stdin"], "safe.txt\n");
++      run(dir, "git", ["update-index", "--cacheinfo", "120000", blob, "README.md"]);
++      expect(run(dir, "git", ["diff", "--cached", "--name-status"])).toContain("T\tREADME.md");
++      if (phase === "committed") {
++        run(dir, "git", ["commit", "-q", "-m", "type change fixture"]);
++        expect(runFailure(dir, "node", [SCRIPT, "check"])).toContain("unexpected: README.md");
++        const prepared = JSON.parse(readFileSync(manifest, "utf8"));
++        prepared.files.push("README.md");
++        writeFileSync(manifest, JSON.stringify(prepared), "utf8");
++      } else {
++        expect(
++          runFailure(dir, "node", [
++            SCRIPT,
++            "prepare",
++            "--path",
++            "safe.txt",
++            "--inventory-json",
++            "[]",
++          ]),
++        ).toContain("unexpected: README.md");
++        run(dir, "node", [
++          SCRIPT,
++          "prepare",
++          "--path",
++          "safe.txt",
++          "--path",
++          "README.md",
++          "--inventory-json",
++          "[]",
++        ]);
++        run(dir, "git", ["commit", "-q", "-m", "type change fixture"]);
++      }
++      run(dir, "node", [SCRIPT, "check"]);
++    },
++  );
++
++  it.each(["credential", "path"])("rejects reverted outgoing %s changes", (kind) => {
++    const { dir } = makeRepository();
++    run(dir, "node", [SCRIPT, "prepare", "--path", "safe.txt", "--inventory-json", "[]"]);
++    if (kind === "credential") {
++      const credential = ["token", "synthetic-fixture-value"].join(' = "') + '"\n';
++      writeFileSync(path.join(dir, "safe.txt"), credential, "utf8");
++      run(dir, "git", ["add", "safe.txt"]);
++    } else {
++      writeFileSync(path.join(dir, "unreviewed.txt"), "unreviewed content\n", "utf8");
++      run(dir, "git", ["add", "unreviewed.txt"]);
++    }
++    run(dir, "git", ["commit", "-q", "-m", "intermediate fixture"]);
++    if (kind === "credential") {
++      writeFileSync(path.join(dir, "safe.txt"), "safe publication content\n", "utf8");
++      run(dir, "git", ["add", "safe.txt"]);
++    } else {
++      run(dir, "git", ["rm", "-q", "unreviewed.txt"]);
++    }
++    run(dir, "git", ["commit", "-q", "-m", "revert intermediate fixture"]);
++    expect(run(dir, "git", ["diff", "--name-only", "origin/main..HEAD"])).toBe("safe.txt");
++    const message = runFailure(dir, "node", [SCRIPT, "check"]);
++    expect(message).toContain(
++      kind === "credential"
++        ? "commit range contains blocked security/privacy findings"
++        : "unexpected: unreviewed.txt",
++    );
++  });
++
++  it("prepares, checks, approves, and accepts the exact pre-push update", () => {
++    const { dir, manifest, branch } = makeRepository();
++    const bareRemote = path.join(dir, ".git", "integration-remote.git");
++    run(dir, "git", ["init", "-q", "--bare", bareRemote]);
++    const remoteUrl = `file://${bareRemote}`;
++    run(dir, "git", ["remote", "set-url", "origin", remoteUrl]);
++    run(dir, "node", [path.join(dir, "scripts", "prepare-git-hooks.mjs"), "--install"]);
++    run(dir, "node", [
++      SCRIPT,
++      "prepare",
++      "--manifest",
++      manifest,
++      "--path",
++      "safe.txt",
++      "--inventory-json",
++      "[]",
++    ]);
++    const prepared = JSON.parse(readFileSync(manifest, "utf8"));
++    expect(prepared.approval.granted).toBe(false);
++
++    run(dir, "git", ["commit", "-q", "-m", "publication preflight fixture"]);
++    run(dir, "node", [SCRIPT, "check", "--manifest", manifest]);
++    run(dir, "node", [SCRIPT, "approve", "--manifest", manifest]);
++    run(dir, "git", ["push", "origin", "HEAD"]);
++    const head = run(dir, "git", ["rev-parse", "HEAD"]);
++    const input = `HEAD ${head} refs/heads/${branch} 0000000000000000000000000000000000000000\n`;
++
++    const extraRefFailure = runFailure(
++      dir,
++      "node",
++      [
++        SCRIPT,
++        "hook",
++        "--manifest",
++        manifest,
++        "--remote-name",
++        "origin",
++        "--remote-url",
++        remoteUrl,
++      ],
++      `${input}refs/heads/unreviewed ${head} refs/heads/unreviewed 0000000000000000000000000000000000000000\n`,
++    );
++    expect(extraRefFailure).toContain(
++      "pre-push must contain exactly one update for the current feature branch",
++    );
++  });
++
++  it("fails closed before approval", () => {
++    const { dir, manifest } = makeRepository();
++    run(dir, "node", [
++      SCRIPT,
++      "prepare",
++      "--manifest",
++      manifest,
++      "--path",
++      "safe.txt",
++      "--inventory-json",
++      "[]",
++    ]);
++    run(dir, "git", ["commit", "-q", "-m", "publication preflight fixture"]);
++    const head = run(dir, "git", ["rev-parse", "HEAD"]);
++    const message = runFailure(
++      dir,
++      "node",
++      [
++        SCRIPT,
++        "hook",
++        "--manifest",
++        manifest,
++        "--remote-name",
++        "origin",
++        "--remote-url",
++        "https://github.com/openclaw/openclaw.git",
++      ],
++      `refs/heads/feat/publication-security-preflight-test ${head} refs/heads/feat/publication-security-preflight-test 0000000000000000000000000000000000000000\n`,
++    );
++    expect(message).toContain("external publication approval is required");
++  });
++});
