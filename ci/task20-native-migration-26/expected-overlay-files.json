@@ -1,0 +1,65 @@
+{
+  "nativeParent": "c074824a27c96d3983043f9eeb33823cd1772d8c",
+  "files": [
+    {
+      "path": ".github/workflows/task20-native-migration-26.yml",
+      "bytes": 2603,
+      "sha256": "ddc8037ecf42f2ccbbdbedc72a1502d92b381e383844326284954c4058279625"
+    },
+    {
+      "path": "ci/task20-native-migration-26/entry.mjs",
+      "bytes": 5386,
+      "sha256": "877d1ab96f0df4783860ece8a4abade9c170e028039545ef5c5266f48d9ce56d"
+    },
+    {
+      "path": "ci/task20-native-migration-26/fixture-source/compiled/migration-fixture-module.ts",
+      "bytes": 6297,
+      "sha256": "3933c91433ed1d62c319c910f1ca20ad6a756f9bf87cec1b55dffe247d46feb6"
+    },
+    {
+      "path": "ci/task20-native-migration-26/fixture-source/compiled/openclaw-state-schema.mjs",
+      "bytes": 156,
+      "sha256": "104178b73e2769a7680a08ccf879137b04676d773d15bae2ea7ae150ba3c50bc"
+    },
+    {
+      "path": "ci/task20-native-migration-26/fixture-source/compiled/openclaw-state-schema.sql",
+      "bytes": 100439,
+      "sha256": "7a79b0b0dc3b1263264a9e954fe76372535025ef37f65571249877d4daa5caa8"
+    },
+    {
+      "path": "ci/task20-native-migration-26/fixture-source/package.json",
+      "bytes": 42,
+      "sha256": "f69ed17eea98f49ee075f676bae79df9cb779e54d5887b94d94313d34511170c"
+    },
+    {
+      "path": "ci/task20-native-migration-26/fixture-source/synthetic-migration-fixture.mjs",
+      "bytes": 13159,
+      "sha256": "1dc4cc7b6c11b26f7f3688d577cd4cc8d648c7b804921db2068d24f9fe623625"
+    },
+    {
+      "path": "ci/task20-native-migration-26/manifest.json",
+      "bytes": 213757,
+      "sha256": "39f912abf30ac994ccf1c1ee879a28ef37d6ea7883f67f867427bb4af320bd24"
+    },
+    {
+      "path": "ci/task20-native-migration-26/materialize.py",
+      "bytes": 11900,
+      "sha256": "faafd27c5c30210c47919c612f68ade3032a047d5863d50fbe70b2f68fadd73a"
+    },
+    {
+      "path": "ci/task20-native-migration-26/run.py",
+      "bytes": 18444,
+      "sha256": "e5854ac66ba48d4d370718d1cd255718381131e5fb5b5339a52e8a056d4593b5"
+    },
+    {
+      "path": "ci/task20-native-migration-26/verify-overlay.py",
+      "bytes": 969,
+      "sha256": "7622481497105b4a92d61e91f62ab8209dfa2ab74f6a7b7678c97ac9f2b3aaed"
+    },
+    {
+      "path": "ci/task20-native-migration-26/watchdog.mjs",
+      "bytes": 1456,
+      "sha256": "d7964fcf66dcd085927ebeaa144eec363ceafe35a1df5aa44ea5fe701336fb0b"
+    }
+  ]
+}
