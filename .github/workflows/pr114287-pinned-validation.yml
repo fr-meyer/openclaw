@@ -36,8 +36,6 @@ jobs:
       OPENCLAW_VITEST_MAX_WORKERS: "1"
       OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS: "300000"
       GIT_NO_LAZY_FETCH: "1"
-      PNPM_HOME: ${{ runner.temp }}/pr114287-pnpm-home
-      COREPACK_HOME: ${{ runner.temp }}/pr114287-corepack-home
     steps:
       - name: Check out the complete pinned upstream working tree
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, pinned in upstream CI
@@ -57,6 +55,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export PNPM_HOME="$RUNNER_TEMP/pr114287-pnpm-home"
+          export COREPACK_HOME="$RUNNER_TEMP/pr114287-corepack-home"
+          printf 'PNPM_HOME=%s\nCOREPACK_HOME=%s\n' "$PNPM_HOME" "$COREPACK_HOME" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/pr114287-proof" "$PNPM_HOME" "$COREPACK_HOME"
           script="$RUNNER_TEMP/run-pr114287-validation.py"
           curl --fail --location --silent --show-error --connect-timeout 10 --max-time 120 --retry 2 \
