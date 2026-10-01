@@ -1,0 +1,330 @@
+{
+  "nativeParent": "c074824a27c96d3983043f9eeb33823cd1772d8c",
+  "files": [
+    {
+      "path": ".github/workflows/task20-native-owner57.yml",
+      "bytes": 2542,
+      "sha256": "701bcb21cd66eae018f8da1446e98d81640f3994565a6daaa15e45fd383d2d51"
+    },
+    {
+      "path": "ci/task20-native-owner57/entry.mjs",
+      "bytes": 13172,
+      "sha256": "a38298deec9546d205eff4d26f9a3d8c073e24515c83aca86f99e8bba3f0cbe3"
+    },
+    {
+      "path": "ci/task20-native-owner57/fixture-source/native-owned-receipt-fixture.mjs",
+      "bytes": 8612,
+      "sha256": "22cf064d296069020311f1ae8e680c4bcecf627f5dbb927e915b9dc480313886"
+    },
+    {
+      "path": "ci/task20-native-owner57/manifest.json",
+      "bytes": 789757,
+      "sha256": "ed5a4724911a934798ce5518086975d2f93094f7caac395a6c20bf541d87dc6c"
+    },
+    {
+      "path": "ci/task20-native-owner57/materialize.py",
+      "bytes": 15014,
+      "sha256": "2d983ef0db0ea862fc276766aab976c6f8a25c71b7db1dee86bb661318ee7b80"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/packages/ai/src/transports/openai-responses-client.ts",
+      "bytes": 30262,
+      "sha256": "de23a5721d806775b2bb968124d691636492b911f755418639d4bef5dd02cdb0"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/packages/ai/src/transports/openai-responses-request-fetch.ts",
+      "bytes": 2291,
+      "sha256": "09adc9af2d23b135e96ced34d85404dfb38ba015c52bf021447499e2bdc7b912"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/packages/ai/src/transports/openai-responses-request-lifecycle.ts",
+      "bytes": 2170,
+      "sha256": "b3cee716cf85c0a8890a205c5cd5ec07ffe69d608478d869cf9c8e3b4b69c237"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/scripts/check-codex-app-server-protocol.ts",
+      "bytes": 27299,
+      "sha256": "bb4e7646ae616884de7a7a2124b75bf471582a9f7d038f7798cf22a5621bed4c"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/agent-command-execution-identity.ts",
+      "bytes": 9659,
+      "sha256": "fcf2dc79b20a2c434cf01cf0b7a66dd5a7b4d63372f82d5c8fdb6776d3131430"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/embedded-agent-runner/run/attempt-stream-settle.ts",
+      "bytes": 26469,
+      "sha256": "5b6f5d4de7d65f91e2b78d1fa6be87494c22eb8a0696469e8cfd49f6b88f9aa5"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/subagents/registry/subagent-registry-lifecycle-completion.ts",
+      "bytes": 28168,
+      "sha256": "d66e24463b4e281f8a97e9129a0c7aa869ce1cb7bea3e7c2fd376d5c66627745"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/subagents/registry/subagent-registry-run-launch.ts",
+      "bytes": 19671,
+      "sha256": "3ccf581af17fdde14a17d0252f615587b89b4d85b66294e2e516d916482a53ea"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/worktrees/gc-limits.ts",
+      "bytes": 4649,
+      "sha256": "19e4b9d899e6ab5e7e9f71479b19e6a390baf6ebf2f4920b7b5650e11dfb5da1"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/worktrees/gc-protection.ts",
+      "bytes": 2013,
+      "sha256": "486c7bff98b58234e70444a068f4cab32f4e0ca96f9157ae708060e83aeafc91"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/worktrees/gc-removal.ts",
+      "bytes": 5959,
+      "sha256": "8800e2b96601def27435c1a46363e52195521e1379cca1ed8a295a34ee7302d8"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/worktrees/registry-read.kernel.ts",
+      "bytes": 7444,
+      "sha256": "9606fca909f7c17857e27cf5a40c32a00859c451885b07c4cae06ff94e2a1ec4"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/worktrees/registry-retirement.worker.ts",
+      "bytes": 4714,
+      "sha256": "75e92e6042b6019a27b4e5d81697bd212d47b3cb1045dd944edc4a9a7d522f0e"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/worktrees/registry.ts",
+      "bytes": 20349,
+      "sha256": "0688add5bd35f4c25a28a0378b57dc9d7596d0aec1bae62eede3dc1fde31441e"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/worktrees/service.ts",
+      "bytes": 58632,
+      "sha256": "ad738a284e6f3c0539529e7ec184fb60e5f66ac7bb73c94e225d17cc57b3a8c9"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/worktrees/snapshot-host.ts",
+      "bytes": 18886,
+      "sha256": "dbac98a41b8fc480b6b691c85711b6bad20082240876c4bee0cb42f250251583"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/agents/worktrees/types.ts",
+      "bytes": 4766,
+      "sha256": "dc636f22da17ac1bf12d178cc62a96cdfbb84439344216bacb14f4590edd5a86"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/audit/agent-event-audit.ts",
+      "bytes": 15767,
+      "sha256": "ea06db9f9975bf786deb6b43c0a1234e0aa803798483ab8a5ec6f69be1cbdf46"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/audit/audit-event-writer.ts",
+      "bytes": 22982,
+      "sha256": "31830b33d36b19f691bcfa2dd3a2f2c01c73236ef26c500a0a2fafadd054c379"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/audit/audit-event-writer.types.ts",
+      "bytes": 1368,
+      "sha256": "34f084fd722d5dda76229efd3c96a1f864a7bc0b5694b2be0629930d70e02c24"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/audit/audit-event-writer.worker.ts",
+      "bytes": 3889,
+      "sha256": "d52d2a9eac82a5e8d63be366c8dbebd3a37dba3b7ba28ccfb87c3cc7cbaad258"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/audit/audit-events.test.ts",
+      "bytes": 30170,
+      "sha256": "31ba93786a6d2481d5d6fe5100bfb44b6b6d1e865f26123175344998ad44bc67"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/audit/audit-recorder.test.ts",
+      "bytes": 3634,
+      "sha256": "6466ee2d8ff15f8cb55af8a208d8a5fcced135b7219af86a1b53759a562248f4"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/audit/audit-recorder.ts",
+      "bytes": 3321,
+      "sha256": "511746ca42241157004005c35fa82e13f4382179998fcaf97702ad6e4421adc6"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/commands/agent-local-audit.ts",
+      "bytes": 2679,
+      "sha256": "8ede43a95934143fd23c3bb2da510caeb909d832679bf1ca3515bf4ecd431b07"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/gateway/agent-turn/agent-run-dispatch.ts",
+      "bytes": 18054,
+      "sha256": "e6f004a83fa68d6f1fa19f9ac6b9bf72710a6e771850ffb5921c9049becf2ebc"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/gateway/agent-turn/agent-run-execution-phase.ts",
+      "bytes": 33711,
+      "sha256": "0cb065f36a437e801de349039b57be39b3e0235cbeb1f9b38a803b3e56fc5a0a"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/gateway/agent-turn/agent-turn-service.ts",
+      "bytes": 28133,
+      "sha256": "e18b8a9d7cc159416b62f6b907104c1ed8e4001a5b922df9e177cb33743f7ed3"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/gateway/private-taskflow-host-adapter.ts",
+      "bytes": 7282,
+      "sha256": "a947796070e85448cb49dc439ea2cc1dcdbb679ec8662b40b17a0dd329e67b4e"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/gateway/private-taskflow-lifecycle.ts",
+      "bytes": 21038,
+      "sha256": "dbd96e81fc01893981489e33f974d514247dc44dbac17ab2c1abfa519a113ba7"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/gateway/server-methods/agent-subagent-registration.ts",
+      "bytes": 4997,
+      "sha256": "264d8a0a61c3feabf43695be5619289e3e3db8d37a2c66586891642239add241"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/gateway/server-plugin-subagent-runtime.ts",
+      "bytes": 21957,
+      "sha256": "fa8018b91f9dea0fcedf85a235713c23e1873734e5e48f5ba4c5aa882faaad41"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/gateway/server-runtime-subscriptions.ts",
+      "bytes": 29237,
+      "sha256": "f559d6c914e1b4c2488285a089b11fa83b779eaf952bcd099fcdceea3bcd6e60"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/gateway/worker-environments/local-workspace-archive.ts",
+      "bytes": 7885,
+      "sha256": "6d89f28a90dc786d3268590a716c3caad8283d26af2ee629d0e3b6e9cb664c2e"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/gateway/worker-environments/local-workspace-projection.ts",
+      "bytes": 24537,
+      "sha256": "00843defca994d20d1914b095c22391da0b274ba421b9b7ef5a9b14f0e99941a"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/infra/sqlite-schema-facts.ts",
+      "bytes": 16963,
+      "sha256": "29108f07d868962d5043e8c087ec31e888bd3d65021012bdb30ac254fda09ff2"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/process/supervisor/service-child-cleanup.test.ts",
+      "bytes": 5143,
+      "sha256": "2bd2ce4289ee33e505987ecbc38f205e5e8d0fd76f0c9d4cfc716a369da12b22"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/process/supervisor/service-child-relay-host.test.ts",
+      "bytes": 35717,
+      "sha256": "7075fce4c60164b137995d42a332aede3144da6f308dde1d50e391053f0f7c36"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/process/supervisor/service-child-relay-host.ts",
+      "bytes": 26606,
+      "sha256": "4f1442883bf7c642a4dd533db9ea387c3c86303ebeb7e5f1a9522213172a4318"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/openclaw-state-db-cache.ts",
+      "bytes": 28809,
+      "sha256": "42bf72b7fb5372e88221a8d328ec2e3eab23f34f4f5a6e6bd2f0efdd45d04fb9"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/openclaw-state-db-repair.ts",
+      "bytes": 15597,
+      "sha256": "d9fadd62f056a13c8ab1394f968653161d3daf09e452d2f93b9d0620ebadea0a"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/openclaw-state-db-worktree-owner-migration.ts",
+      "bytes": 6212,
+      "sha256": "2af016c8336bb3e0cb449dc8714cbd2946a8273bcdb82e2d123b758cca76ab5c"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/openclaw-state-schema.sql",
+      "bytes": 100439,
+      "sha256": "7a79b0b0dc3b1263264a9e954fe76372535025ef37f65571249877d4daa5caa8"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/openclaw-state-worker-contract.ts",
+      "bytes": 18329,
+      "sha256": "ecef70be2f12cdfde79356e3df9df0ea106e266b6bd8cf94acb5cd8298bc4e67"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/openclaw-state-worker-runtime.ts",
+      "bytes": 28432,
+      "sha256": "6334bf8e00370995565b3c44b95d6fb5bcf1f8e3c4ba62e053ae059191e1f784"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/private-readers.ts",
+      "bytes": 2687,
+      "sha256": "69e26f44b6359f16968b8c192f385d29dcc4b96b8c17b23d1d6fb6642899c7ef"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/private-schema.test.ts",
+      "bytes": 11110,
+      "sha256": "d1f54d51f0acc183c6ccdc993763153d5ffe08973e33de184a3a462e0a4e5846"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/private-schema.ts",
+      "bytes": 6455,
+      "sha256": "da2702c49a258847bd42fc6ed2a9c25c11f96fe842345c393aba492d4d1056e7"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/private-worker-contract.ts",
+      "bytes": 1347,
+      "sha256": "ff57aa6d771a0a41482e99e1f491df550db1b8ddb28d54b5b5f4b2d571ae968c"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/private-worker.ts",
+      "bytes": 6668,
+      "sha256": "fe54243af8c61fe82055e58cb3785eafd9965d26614ae1d53e09b8f9a90df1d5"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/task-flow-registry.types.ts",
+      "bytes": 2812,
+      "sha256": "a8022498320aba3086fa8d2b8e7bd6a8da3961bfe7a33cc8bd2fec25bc11e85b"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/task-flow-worker-lease-task.kernel.ts",
+      "bytes": 10298,
+      "sha256": "23ad078e72d0eb5f2cf75a075ee1f4b080c4857e44cd05992ac2916c674b6cf7"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/task-flow-worker-lease.store.kernel.ts",
+      "bytes": 24840,
+      "sha256": "06ea7d8c088b3eccbfa9cab9bf23da165adb9ebd6f84f617bfd78829bf347a60"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/task-flow-worker-lease.store.shared.ts",
+      "bytes": 23074,
+      "sha256": "511bbf21e2612f9b4fde7505374b35c6e90d0a4502769c594b407723f18bd44e"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/task-flow-worker-lease.types.ts",
+      "bytes": 8385,
+      "sha256": "d3e3f33fb1b6f0b7950c73f4c953380adc04be52f9529c81f7f11b5d19743135"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/task-flow-worker-lease.validation.kernel.ts",
+      "bytes": 3394,
+      "sha256": "c0c3d8f361e8aa220e67db9cab09642f8b39d5e14e0a3c8408c6b2e603a1bb77"
+    },
+    {
+      "path": "ci/task20-native-owner57/owner-source/src/state/private-taskflow/task-registry.types.ts",
+      "bytes": 5889,
+      "sha256": "2712d0beac080b06518bb5f6f7c4434242d13e19c94f6b9068a2b9c775961804"
+    },
+    {
+      "path": "ci/task20-native-owner57/run.py",
+      "bytes": 23021,
+      "sha256": "eb9facef49c20e85f2db17747f3f4d3f8d3fe3e11f6a56c774dc429ccf04508f"
+    },
+    {
+      "path": "ci/task20-native-owner57/verify-overlay.py",
+      "bytes": 964,
+      "sha256": "6872f20286bee3f9c7078d8bc915ed271ed64aa413ec191d289ccc63e143e57c"
+    },
+    {
+      "path": "ci/task20-native-owner57/watchdog.mjs",
+      "bytes": 1456,
+      "sha256": "d7964fcf66dcd085927ebeaa144eec363ceafe35a1df5aa44ea5fe701336fb0b"
+    }
+  ]
+}
