@@ -188,15 +188,6 @@ export const systemHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "worker namespace unavailable"));
       return;
     }
-    if (
-      client.connectionSignal?.aborted !== false ||
-      client.invalidated === true ||
-      signal?.aborted === true ||
-      hasCurrentClientAuthority?.() !== true
-    ) {
-      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "verified read unavailable"));
-      return;
-    }
     const result: GatewayWorkerNamespaceGetResult = {
       bootId: client.gatewayBootId,
       namespace,
