@@ -1,24 +1,30 @@
 # v2026.9.8 local parity image contract
 
 The tracked `custom-patches/manifest.json` enumerates the complete 14-commit
-source composition through the qualified `1e197fa2` checkpoint. This successor
-changes packaging only. It needs its own exact-source build and runtime gates.
+source composition through the qualified `1e197fa2` checkpoint. This composed
+successor adds inert publisher pin-transition source, its canonical config
+writer/SDK capability, and image packaging. It needs its own exact-source build
+and runtime gates.
 
 The Dockerfile stages the private publisher package from
 `scripts/docker/runtime-plugins/mergeguez-pr-lifecycle` at
 `/app/runtime-plugins/mergeguez-pr-lifecycle`. It places the source commit,
-package version, and SHA-256 of each of the seven shipped files in
+package version, and SHA-256 of each of the eight shipped files in
 `/app/runtime-plugins/publisher-source.json`. The final image runs
 `/app/runtime-plugins/verify-package.mjs` after the copy and fails the build if
-any shipped file differs. This verifier proves the seven packaged file bytes
+any shipped file differs. This verifier proves the eight packaged file bytes
 against the local manifest; the full-SHA Git context and final image digest
 provide source and image identity. A direct build with an arbitrary `GIT_COMMIT`
 can mislabel source metadata and is not a qualified parity build. If
 `GIT_COMMIT` is empty, the manifest records a null source commit.
 
-The staged package is inert. The publisher pin-transition owner should use the
-manifest and verifier when installing it at the configured plugin path, then
-bind the actual loaded runtime source to the approved pin. The image recipe does
+The staged package is inert. It includes the local release/Doctor pin applier
+`src/runtime-pin-transition.mjs`, which is not registered at plugin startup.
+The release owner must bind the evaluated applier and config-mutation SDK/writer
+to the reviewed source and image, independently of these staged file hashes.
+The publisher pin-transition owner should use the manifest and verifier when
+installing it at the configured plugin path, then bind the actual loaded runtime
+source to the approved pin. The image recipe does
 not edit Gateway settings, plugin config, installed data, or the rollback copy.
 The package remains a separate plugin; `OPENCLAW_EXTENSIONS=workboard` selects
 the Workboard bundled extension.

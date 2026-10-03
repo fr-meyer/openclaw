@@ -16,6 +16,7 @@ const PACKAGE_FILES = [
   "package.json",
   "src/controller.mjs",
   "src/http.mjs",
+  "src/runtime-pin-transition.mjs",
   "src/runtime.mjs",
 ];
 const MANIFEST_NAME = "publisher-source.json";

@@ -23,7 +23,17 @@ test("staged publisher binds exact source, then rejects changed image bytes", as
     const manifest = JSON.parse(await readFile(join(out, "publisher-source.json"), "utf8"));
     assert.equal(manifest.sourceCommit, commit);
     assert.equal(manifest.packageVersion, "0.1.1");
-    assert.equal(Object.keys(manifest.files).length, 7);
+    assert.equal(Object.keys(manifest.files).length, 8);
+    assert.match(manifest.files["src/runtime-pin-transition.mjs"], /^[a-f0-9]{64}$/);
+    assert.equal(run("--verify", out).status, 0);
+
+    const applier = join(out, "mergeguez-pr-lifecycle", "src", "runtime-pin-transition.mjs");
+    const originalApplier = await readFile(applier, "utf8");
+    await writeFile(applier, `${originalApplier}\n// changed after staging\n`);
+    const changedApplier = run("--verify", out);
+    assert.notEqual(changedApplier.status, 0);
+    assert.match(changedApplier.stderr, /SHA-256 mismatch: src\/runtime-pin-transition\.mjs/);
+    await writeFile(applier, originalApplier);
     assert.equal(run("--verify", out).status, 0);
 
     const file = join(out, "mergeguez-pr-lifecycle", "src", "runtime.mjs");

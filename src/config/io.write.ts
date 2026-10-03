@@ -514,6 +514,8 @@ export async function writeConfigFileFromContext(
       configPath,
       content: json,
       previousRaw: snapshot.raw,
+      requireBackup: options.requireBackup,
+      durable: options.requireBackup === true ? true : undefined,
       fsModule: writeGuard.fileSystem,
       assertCurrent: writeGuard.assertCurrent,
       assertBeforeMutation: writeGuard.assertBeforeMutation,

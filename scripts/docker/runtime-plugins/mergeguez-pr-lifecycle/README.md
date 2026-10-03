@@ -34,3 +34,58 @@ adds no schema and does not copy, migrate, restore, publish or enable live data.
 
 `npm test` uses synthetic asynchronous owner ports. Those tests do not execute a
 Gateway, native SQLite worker, model, broker, Git transport, or scheduler.
+
+## Local release pin transition
+
+`src/runtime-pin-transition.mjs` supplies `createInstalledPublisherPinTransition`
+for the release/Doctor owner. It is not registered at plugin startup and never
+automatically changes configuration. The default adapter uses the public
+`openclaw/plugin-sdk/config-mutation` owner for locking, whole-config revision
+checks, validation, required durable backup and publication. It requests
+`afterWrite.mode: "none"`; it does not restart or activate a runtime.
+The evaluated SDK must expose `CONFIG_MUTATION_CAPABILITIES.requireDurableBackup: 1`
+from the paired patched config writer. An older SDK is refused before config IO.
+This feature indicator does not attest executable identity: the release manifest
+must also bind the evaluated SDK, canonical writer/backup implementation and
+retained applier to the same qualified image/source.
+
+The release owner supplies its original synchronous `assertCurrent` callback.
+Reverse transitions also require the original synchronous `assertRollbackSafe`
+callback, which must establish the separately admitted rollback conditions.
+Neither a source hash nor a configured session string grants those conditions.
+The operator supplies the exact config path, config snapshot hash and unchanged
+absolute installed `src/runtime.mjs` path in each request. A stale full config,
+unrelated pin, unverified package, retired owner or included config is refused.
+Root-file-only coverage is deliberate: include graphs need complete backup
+admission before extending this component.
+
+Forward application verifies the paired 0.1.1 runtime, entrypoint, controller,
+HTTP parser, package metadata and plugin manifest. Reverse application verifies
+the exact predecessor 0.1.0 package instead. The applier must execute from retained
+release/image custody while the installed target is staged; replacing target
+files cannot establish the identity of already evaluated applier code. Keep the
+applier's source identity bound in the release manifest separately from its
+target package. Do not alter the runtime source guard or loader admission.
+
+Call the returned operation with `{ direction: "forward" | "reverse",
+expectedConfigPath, expectedConfigHash, expectedRuntimePath }`. An already-target
+pin with the supplied current config revision returns `already-target` without
+writing or rotating backups. Replaying an old input revision refuses; use an
+owner reread to reconcile first. The plugin draft edits only `expectedRuntimeSha256`.
+The canonical writer retains its normal metadata stamping, projection and
+serialization; review the actual persisted delta on the isolated restored copy
+before cutover. The reverse draft changes the pin only and does not restore
+databases or undo external effects.
+
+Any mutation attempt or post-commit failure returns an `unknown` error receipt
+for reconciliation, retaining a known committed revision and the canonical
+owner's publication/rollback status when present. It never automatically retries
+or compensates. Receipt fields contain bounded status/digest metadata; internal
+error causes retain original diagnostics and must remain in private operator
+handling. The returned digest records an observation, not continuing authority.
+Required backup failures prevent publication. Ordinary config writes retain
+their existing best-effort backup behavior.
+
+Focused tests use the real component and canonical backup function with inert
+config/byte IO. Native configuration publication and fsync proof require the
+separately admitted runner and isolated restore/release checks.
