@@ -48,6 +48,10 @@
     {
       "cut": "b03-redundant-authority-check-removal",
       "commit": "450320a0763f029cc09c46f170ee93cbaff7ee8c"
+    },
+    {
+      "cut": "b03-cli-test-formatting",
+      "commit": "93672ff20f41c1a3dad7302d6677d7346f21c471"
     }
   ],
   "dependencyLock": {
