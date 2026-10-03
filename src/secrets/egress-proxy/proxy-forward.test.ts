@@ -361,4 +361,64 @@ describe("secret egress forwarded response heads", () => {
     expect(result.status).toBeUndefined();
     expect(result.clientError?.code).toBe("ECONNRESET");
   });
+
+  it("closes both sockets when Node rejects a 101 head mid-write", async () => {
+    const clientSocket = new Socket();
+    const request = new IncomingMessage(clientSocket);
+    request.method = "GET";
+    request.headers = { upgrade: "websocket" };
+    const response = new ServerResponse(request);
+    response.assignSocket(clientSocket);
+    const upstream = new PassThrough();
+    const upstreamSocket = new PassThrough();
+    const upstreamResponse = new IncomingMessage(new Socket());
+    upstreamResponse.statusCode = 101;
+    upstreamResponse.headers = { upgrade: "websocket", trailer: "Expires" };
+    const bufferedClientFrames = new PassThrough();
+    const agent = new Agent();
+    const audit = vi.fn();
+    vi.mocked(httpsRequest).mockReturnValueOnce(upstream as unknown as ClientRequest);
+    try {
+      forwardSecretEgressRequest({
+        request,
+        response,
+        upgrade: { stream: bufferedClientFrames, stopBuffering() {} },
+        host: "localhost",
+        upstreamTlsAgent: agent,
+        prepareRequest: () => ({
+          target: new URL("https://localhost:1/"),
+          headers: {},
+          substituted: false,
+        }),
+        acquireBody: createSecretEgressBodyBudget(),
+        isActive: () => true,
+        ownResource: (resource) => resource,
+        releaseResponse() {},
+        resolveSentinel() {
+          return undefined;
+        },
+        audit,
+      });
+      upstream.emit("upgrade", upstreamResponse, upstreamSocket, Buffer.alloc(0));
+
+      expect(response.statusCode).toBe(101);
+      expect(response.destroyed).toBe(true);
+      expect(clientSocket.destroyed).toBe(true);
+      expect(upstreamSocket.destroyed).toBe(true);
+      expect(audit).toHaveBeenCalledWith({
+        kind: "refused",
+        host: "localhost",
+        substituted: false,
+        reason: "upstream-error",
+      });
+    } finally {
+      bufferedClientFrames.destroy();
+      upstreamResponse.destroy();
+      upstreamSocket.destroy();
+      upstream.destroy();
+      response.destroy();
+      request.destroy();
+      agent.destroy();
+    }
+  });
 });

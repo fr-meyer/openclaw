@@ -64,7 +64,7 @@ export function sanitizeSecretEgressResponseHeaders(
           validateHeaderValue(name, item);
         }
       } else {
-        validateHeaderValue(name, value);
+        validateHeaderValue(name, String(value));
       }
       sanitized[name] = value;
     } catch {
@@ -310,7 +310,9 @@ function sendSecretEgressRequest(
       forward.audit({ kind: "refused", host, substituted, reason: "upstream-error" });
       upstreamSocket.destroy();
       bodyTransform.destroy();
-      sendHttpRefusal(forward.response, 502, UPSTREAM_RESPONSE_ERROR_BODY);
+      // A failed 101 write can leave the response bodyless or partly committed.
+      // Closing it also releases the buffered upgrade through its close owner.
+      forward.response.destroy();
       return;
     }
     forward.response.off("close", onResponseClose);
