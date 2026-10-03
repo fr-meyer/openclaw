@@ -20,6 +20,7 @@ import * as registryRead from "./registry-read.js";
 import {
   claimWorktreeRemovalRow,
   getRegistryWorktree,
+  insertRegistryWorktree,
   releaseWorktreeRunLeaseRow,
 } from "./registry.js";
 import { releaseWorktreeRunLeaseRowAsync } from "./run-lease-store.js";
@@ -134,6 +135,57 @@ describe("worktree run lease", () => {
     } finally {
       await Promise.all([parent?.release(), child?.release()]);
     }
+  });
+
+  it("binds optional admission to the exact current owner and repository", async () => {
+    const created = await createSessionWorktree();
+    const record = getRegistryWorktree(env, created.id)!;
+    const expectedAuthority = {
+      ownerKind: "session" as const,
+      ownerId: "agent:main:run-lease",
+      repoFingerprint: record.repoFingerprint,
+      path: record.path,
+    };
+
+    const lease = await acquireWorktreeRunLease(created.id, { env, expectedAuthority });
+    await lease.release();
+
+    await expect(
+      acquireWorktreeRunLease(created.id, {
+        env,
+        expectedAuthority: { ...expectedAuthority, ownerId: "another-owner" },
+      }),
+    ).rejects.toThrow("no longer authoritative");
+    await expect(
+      acquireWorktreeRunLease(created.id, {
+        env,
+        expectedAuthority: { ...expectedAuthority, repoFingerprint: "another-repo" },
+      }),
+    ).rejects.toThrow("no longer authoritative");
+    await expect(
+      acquireWorktreeRunLease(created.id, {
+        env,
+        expectedAuthority: { ...expectedAuthority, path: `${created.path}-replacement` },
+      }),
+    ).rejects.toThrow("no longer authoritative");
+
+    // Equal creation times are ambiguous and cannot transfer authority to either row.
+    insertRegistryWorktree(env, { ...record, id: "tied-owner-row" });
+    await expect(
+      acquireWorktreeRunLease(created.id, { env, expectedAuthority }),
+    ).rejects.toThrow("no longer authoritative");
+
+    // A newer replacement with the same checkout path cannot inherit the old row's lease authority.
+    insertRegistryWorktree(env, {
+      ...record,
+      id: "newer-owner-row",
+      createdAt: record.createdAt + 1,
+      lastActiveAt: record.lastActiveAt + 1,
+    });
+    await expect(
+      acquireWorktreeRunLease(created.id, { env, expectedAuthority }),
+    ).rejects.toThrow("no longer authoritative");
+    expect(hasLiveWorktreeRunLease(env, created.id)).toBe(false);
   });
 
   it("rejects admission when the linked Git admin directory is missing", async () => {

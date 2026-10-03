@@ -21,6 +21,7 @@ import {
   admitWorktreeRunLeaseRowAsync,
   releaseWorktreeRunLeaseRowAsync,
 } from "./run-lease-store.js";
+import type { WorktreeRunLeaseExpectedAuthority } from "./run-lease-store.kernel.js";
 import type { ManagedWorktreeRecord } from "./types.js";
 
 export {
@@ -246,7 +247,11 @@ function ensureExitCleanupRegistered(): void {
 
 export async function acquireWorktreeRunLease(
   id: string,
-  opts: { env?: NodeJS.ProcessEnv; exclusive?: true } = {},
+  opts: {
+    env?: NodeJS.ProcessEnv;
+    exclusive?: true;
+    expectedAuthority?: WorktreeRunLeaseExpectedAuthority;
+  } = {},
 ): Promise<WorktreeRunLease> {
   const env = opts.env ?? process.env;
   ensureExitCleanupRegistered();
@@ -278,6 +283,7 @@ export async function acquireWorktreeRunLease(
         startTime,
         now: Date.now(),
         ...(opts.exclusive ? { exclusive: true } : {}),
+        ...(opts.expectedAuthority ? { expectedAuthority: opts.expectedAuthority } : {}),
       },
       (kind) => {
         cleanup.admissionSettled = kind !== "unknown";
