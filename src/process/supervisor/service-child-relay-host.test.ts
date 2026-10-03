@@ -415,6 +415,17 @@ it("drains output after losing cleanup authority without erasing the observed ro
   await expect(root).resolves.toEqual({ code: 23, signal: null });
 });
 
+it("preserves cleanup identity loss when an error observer throws", async () => {
+  const { adapter, close } = await createRelay("linux");
+  adapter.onError(() => {
+    throw new Error("synthetic observer failure");
+  });
+  const extinction = adapter.waitForExtinction();
+  close();
+  await expect(extinction).rejects.toThrow("service child cleanup identity lost");
+  await expect(adapter.wait()).rejects.toThrow("service child cleanup identity lost");
+});
+
 it("keeps extinction pending after group retirement until lineage EOF", async () => {
   const { adapter, completeRoot, emit, close, lineage } = await createRelay("linux", true);
   completeRoot();
