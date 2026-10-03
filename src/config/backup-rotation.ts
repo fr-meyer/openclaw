@@ -182,6 +182,9 @@ export async function prepareConfigFileWrite(
                 authorityFailure = { error: authorityError };
               }
               if (authorityFailure) {
+                if (authorityFailure.error === error) {
+                  throw error;
+                }
                 throw new AggregateError(
                   [error, authorityFailure.error],
                   "Config backup mutation and authority check failed",
