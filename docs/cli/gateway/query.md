@@ -333,6 +333,22 @@ openclaw gateway call health --port 18999
 openclaw gateway call logs.tail --params '{"limit": 200}'
 ```
 
+For the Gateway-owned worker namespace, supply an observed boot ID and the exact
+expected endpoint. The CLI verifies the authenticated `operator.read` connection
+before dispatch and returns the connection and namespace in a
+`gateway-verified-read` result. The call fails if the endpoint or boot changes;
+ordinary `gateway call` cannot return this namespace without verified-read mode.
+
+```bash
+openclaw gateway call gateway.workerNamespace.get \
+  --expect-url ws://127.0.0.1:18789 \
+  --verified-read observed-boot-id \
+  --json
+```
+
+This method accepts only empty params (`{}`). Use an authenticated Gateway
+connection; unauthenticated local connections are not eligible.
+
 To add an existing checkout to the Control UI's Place picker, use the
 [project registration and listing examples](/web/control-ui/sessions-and-sidebar#register-an-existing-repository).
 
@@ -357,6 +373,12 @@ Ordinary operator terminals and non-message Gateway diagnostics are unchanged.
 
 <ParamField path="--params <json>" type="string" default="{}">
   JSON object string for params.
+</ParamField>
+<ParamField path="--expect-url <url>" type="string">
+  Refuse if the resolved Gateway URL differs from this exact endpoint. Required for `--verified-read`.
+</ParamField>
+<ParamField path="--verified-read <boot-id>" type="string">
+  Require this Gateway boot ID and a verified read-scoped connection for `gateway.workerNamespace.get`.
 </ParamField>
 <ParamField path="--url <url>" type="string">
   Gateway WebSocket URL.

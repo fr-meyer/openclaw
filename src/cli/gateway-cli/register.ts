@@ -21,6 +21,7 @@ import { formatCliJsonFailure, rethrowExpectedCliError } from "../failure-output
 import {
   addGatewayClientOptions,
   callGatewayFromCliWithTransport,
+  callGatewayVerifiedReadFromCli,
   resolveGatewayRpcOptions,
   resolveGatewayRpcOptionsWithLocalPort,
 } from "../gateway-rpc.js";
@@ -470,6 +471,10 @@ export function registerGatewayCli(program: Command, deps: GatewayCliDependencie
         "--expect-url <url>",
         "Fail if the resolved Gateway URL differs; preserves configured authentication",
       )
+      .option(
+        "--verified-read <boot-id>",
+        "Require this Gateway boot ID for an authenticated worker namespace read",
+      )
       .option("--params <json>", "JSON object string for params", "{}")
       .action(
         gatewayAction(async (method, opts, command) => {
@@ -482,14 +487,45 @@ export function registerGatewayCli(program: Command, deps: GatewayCliDependencie
               : opts;
           const rpcOpts = resolveGatewayRpcOptionsWithLocalPort(callOpts, command);
           const params = parseGatewayCallParams(String(opts.params ?? "{}"));
-          const result = await callGatewayReadOnlyCli(method, rpcOpts, params);
+          const verifiedReadBootId = opts.verifiedRead as string | undefined;
+          if (method === "gateway.workerNamespace.get" && verifiedReadBootId === undefined) {
+            throw new Error(
+              "gateway.workerNamespace.get requires --verified-read <boot-id> and --expect-url <url>.",
+            );
+          }
+          if (verifiedReadBootId !== undefined && method !== "gateway.workerNamespace.get") {
+            throw new Error("--verified-read is only available for gateway.workerNamespace.get.");
+          }
+          let result;
+          if (verifiedReadBootId === undefined) {
+            result = await callGatewayReadOnlyCli(method, rpcOpts, params);
+          } else {
+            const expectUrl = rpcOpts.expectUrl;
+            if (!expectUrl) {
+              throw new Error("--verified-read requires --expect-url <url>.");
+            }
+            if (
+              typeof params !== "object" ||
+              params === null ||
+              Array.isArray(params) ||
+              Object.keys(params).length !== 0
+            ) {
+              throw new Error("gateway.workerNamespace.get accepts only empty params ({}).");
+            }
+            result = await callGatewayVerifiedReadFromCli({
+              ...rpcOpts,
+              expectedBootId: verifiedReadBootId,
+              expectUrl,
+            });
+          }
           if (rpcOpts.json) {
             defaultRuntime.writeJson(result);
             return;
           }
           const rich = isRich();
+          const label = verifiedReadBootId ? "Gateway verified read" : "Gateway call";
           defaultRuntime.log(
-            `${colorize(rich, theme.heading, "Gateway call")}: ${colorize(rich, theme.muted, String(method))}`,
+            `${colorize(rich, theme.heading, label)}: ${colorize(rich, theme.muted, String(method))}`,
           );
           defaultRuntime.writeJson(result);
         }, "Gateway call failed"),
