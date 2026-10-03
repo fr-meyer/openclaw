@@ -195,7 +195,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_EXPORTS",
-      4591,
+      // +1: the publisher's durable config-backup capability contract.
+      4592,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(

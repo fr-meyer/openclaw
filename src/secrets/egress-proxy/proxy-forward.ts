@@ -1,15 +1,10 @@
-import {
-  ServerResponse,
-  type ClientRequest,
-  type IncomingHttpHeaders,
-  type IncomingMessage,
-  type OutgoingHttpHeaders,
-  validateHeaderName,
-  validateHeaderValue,
-} from "node:http";
+import { ServerResponse, type ClientRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest, type Agent as HttpsAgent } from "node:https";
 import { PassThrough, Writable, type Readable } from "node:stream";
-import { toForwardableResponseHeaders } from "./response-headers.js";
+import {
+  sanitizeSecretEgressResponseHeaders,
+  toForwardableResponseHeaders,
+} from "./response-headers.js";
 import {
   createSecretEgressBodyTransform,
   SecretEgressSubstitutionError,
@@ -46,33 +41,6 @@ export function sendHttpRefusal(res: ServerResponse, status = 502, body = REFUSA
     "Content-Type": "text/plain; charset=utf-8",
   });
   res.end(body);
-}
-
-/** Omit upstream metadata that Node cannot safely write while retaining native filename encoding. */
-export function sanitizeSecretEgressResponseHeaders(
-  headers: IncomingHttpHeaders,
-): OutgoingHttpHeaders {
-  // SAFETY: A null-prototype object is a mutable own-key header record without prototype setters.
-  const sanitized: OutgoingHttpHeaders = Object.create(null) as OutgoingHttpHeaders;
-  for (const [name, value] of Object.entries(toForwardableResponseHeaders(headers))) {
-    if (value === undefined) {
-      continue;
-    }
-    try {
-      validateHeaderName(name);
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          validateHeaderValue(name, item);
-        }
-      } else {
-        validateHeaderValue(name, String(value));
-      }
-      sanitized[name] = value;
-    } catch {
-      // The upstream response is untrusted; omit only metadata Node cannot encode.
-    }
-  }
-  return sanitized;
 }
 
 export function handleUpgradeRequest(
@@ -199,7 +167,9 @@ function sendSecretEgressRequest(
         try {
           forward.response.writeHead(
             statusCode,
-            sanitizeSecretEgressResponseHeaders(upstreamResponse.headers),
+            sanitizeSecretEgressResponseHeaders(
+              toForwardableResponseHeaders(upstreamResponse.headers),
+            ),
           );
         } catch {
           // This callback runs outside any caller's try block; a throw here
@@ -305,7 +275,10 @@ function sendSecretEgressRequest(
     // The handshake is an HTTP request; subsequent bytes are WebSocket frames,
     // not HTTP bodies. Forward them opaquely, including both parsers' head buffers.
     try {
-      forward.response.writeHead(101, sanitizeSecretEgressResponseHeaders(response.headers));
+      forward.response.writeHead(
+        101,
+        sanitizeSecretEgressResponseHeaders(toForwardableResponseHeaders(response.headers)),
+      );
     } catch {
       refused = true;
       forward.audit({ kind: "refused", host, substituted, reason: "upstream-error" });

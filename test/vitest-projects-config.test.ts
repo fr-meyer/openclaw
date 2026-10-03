@@ -1,4 +1,5 @@
 // Vitest project config tests validate aggregate Vitest project wiring.
+import { spawnSync } from "node:child_process";
 import { globSync } from "node:fs";
 import path from "node:path";
 import { afterEach, assert, describe, expect, it } from "vitest";
@@ -15,6 +16,7 @@ import { normalizeConfigPath, normalizeConfigPaths } from "./helpers/vitest-conf
 import {
   auditFullSuiteTestFileOwnership,
   listVitestConfigTestFiles,
+  standalonePublisherNodeTestFiles,
 } from "./vitest-projects-config.test-support.js";
 import { createAgentsCoreVitestConfig } from "./vitest/vitest.agents-core.config.ts";
 import { createAgentsEmbeddedIncompleteTurnVitestConfig } from "./vitest/vitest.agents-embedded-agent-incomplete-turn.config.ts";
@@ -418,6 +420,15 @@ describe("projects vitest config", () => {
       });
     }
   });
+
+  it("executes the standalone publisher Node test suites", () => {
+    const result = spawnSync(
+      process.execPath,
+      ["--test", "--test-concurrency=1", ...standalonePublisherNodeTestFiles],
+      { cwd: path.resolve("."), encoding: "utf8", timeout: 60_000 },
+    );
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+  }, 60_000);
 
   it("focuses a discovered test from each leaf through its actual execution config", async () => {
     const configs = new Set(fullSuiteVitestShards.flatMap((shard) => shard.projects));

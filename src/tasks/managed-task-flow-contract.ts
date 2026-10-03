@@ -18,8 +18,8 @@ export const managedTaskFlowStatuses = [
   "cancelled",
   "lost",
 ] as const;
-export type ManagedTaskFlowStatus = (typeof managedTaskFlowStatuses)[number];
-export type ManagedTaskNotifyPolicy = "done_only" | "state_changes" | "silent";
+type ManagedTaskFlowStatus = (typeof managedTaskFlowStatuses)[number];
+type ManagedTaskNotifyPolicy = "done_only" | "state_changes" | "silent";
 
 /** A recorded flow is an observation; neither its ID nor revision grants authority. */
 export type ManagedTaskFlowRecord = {
@@ -73,7 +73,7 @@ export type ManagedTaskFlowMutation = {
 export type ManagedTaskFlowResume = ManagedTaskFlowMutation & {
   status?: "queued" | "running";
 };
-export type ManagedTaskFlowMutationResult =
+type ManagedTaskFlowMutationResult =
   | { applied: true; flow: ManagedTaskFlowRecord }
   | {
       applied: false;

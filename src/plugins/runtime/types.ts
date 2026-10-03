@@ -16,7 +16,7 @@ export type { RuntimeLogger };
 type PluginRuntimeChannel = import("./types-channel.js").PluginRuntimeChannel;
 
 /** Narrow released-controller compatibility, not the removed canonical Tasks/TaskFlow API. */
-export type PluginManagedTaskFlowRuntime = {
+type PluginManagedTaskFlowRuntime = {
   readonly authorityVersion: 1;
   readonly availability: Readonly<{
     managedFlows: boolean;

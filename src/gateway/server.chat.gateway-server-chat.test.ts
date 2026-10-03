@@ -1657,6 +1657,7 @@ describe("gateway server chat", () => {
   test("chat.send does not persist verboseLevel for operator.write callers", async () => {
     await withMainSessionStore(async () => {
       let scopedWs: WebSocket | undefined;
+      const runId = "idem-write-scope-verbose-no-persist";
 
       try {
         scopedWs = new WebSocket(`ws://127.0.0.1:${port}`);
@@ -1671,13 +1672,14 @@ describe("gateway server chat", () => {
         const sendRes = await rpcReq(scopedWs, "chat.send", {
           sessionKey: "main",
           message: "/verbose full",
-          idempotencyKey: "idem-write-scope-verbose-no-persist",
+          idempotencyKey: runId,
         });
         expect(sendRes.ok).toBe(true);
 
+        await requestExecution.waitForCompletion(runId);
         const waitRes = await rpcReq(scopedWs, "agent.wait", {
-          runId: "idem-write-scope-verbose-no-persist",
-          timeoutMs: 1_000,
+          runId,
+          timeoutMs: 0,
         });
         expect(waitRes.ok).toBe(true);
         expect(waitRes.payload?.status).toBe("ok");

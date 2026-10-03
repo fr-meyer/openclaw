@@ -659,5 +659,3 @@ export function executeManagedTaskFlowWriteCommand(
     { operationLabel: command.type },
   );
 }
-
-export type { ManagedTaskFlowWorkerOperations };
