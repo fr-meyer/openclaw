@@ -13,11 +13,48 @@ import { PassThrough, Writable, type Readable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
 import { resolveSecretSentinel, sealSecretSentinel } from "../sentinel.js";
-import { createSecretEgressBodyBudget, forwardSecretEgressRequest } from "./proxy-forward.js";
+import {
+  createSecretEgressBodyBudget,
+  forwardSecretEgressRequest,
+  sanitizeSecretEgressResponseHeaders,
+} from "./proxy-forward.js";
 
 vi.mock("node:https", { spy: true });
 
 describe("secret egress forwarding resource ownership", () => {
+  it("keeps native attachment encoding and omits malformed upstream headers", () => {
+    const received = Buffer.from("附件_2026-09-21.log", "utf8").toString("latin1");
+    const headers = sanitizeSecretEgressResponseHeaders({
+      "content-length": "1",
+      "content-disposition": `attachment; filename="${received}"`,
+      "x-safe": ["one", "two"],
+      "x-unsafe": ["safe", "unsafe\rvalue"],
+      "bad name": "value",
+    });
+
+    expect(headers).toEqual({
+      "content-length": "1",
+      "content-disposition":
+        "attachment; filename=\"___2026-09-21.log\"; filename*=UTF-8''%E9%99%84%E4%BB%B6_2026-09-21.log",
+      "x-safe": ["one", "two"],
+    });
+
+    const prototypeHeader = sanitizeSecretEgressResponseHeaders(
+      Object.fromEntries([["__proto__", ["safe"]]]) as IncomingHttpHeaders,
+    );
+    expect(Object.getPrototypeOf(prototypeHeader)).toBeNull();
+    expect(Object.hasOwn(prototypeHeader, "__proto__")).toBe(true);
+
+    const request = new IncomingMessage(new Socket());
+    const response = new ServerResponse(request);
+    try {
+      expect(() => response.writeHead(200, headers)).not.toThrow();
+    } finally {
+      request.destroy();
+      response.destroy();
+    }
+  });
+
   it.each([undefined, 0])(
     "releases body streams when upstream construction fails (length: %s)",
     async (length) => {

@@ -3,6 +3,9 @@ import {
   type ClientRequest,
   type IncomingHttpHeaders,
   type IncomingMessage,
+  type OutgoingHttpHeaders,
+  validateHeaderName,
+  validateHeaderValue,
 } from "node:http";
 import { request as httpsRequest, type Agent as HttpsAgent } from "node:https";
 import { PassThrough, Writable, type Readable } from "node:stream";
@@ -43,6 +46,32 @@ export function sendHttpRefusal(res: ServerResponse, status = 502, body = REFUSA
     "Content-Type": "text/plain; charset=utf-8",
   });
   res.end(body);
+}
+
+/** Omit upstream metadata that Node cannot safely write while retaining native filename encoding. */
+export function sanitizeSecretEgressResponseHeaders(
+  headers: IncomingHttpHeaders,
+): OutgoingHttpHeaders {
+  const sanitized: OutgoingHttpHeaders = Object.create(null) as OutgoingHttpHeaders;
+  for (const [name, value] of Object.entries(toForwardableResponseHeaders(headers))) {
+    if (value === undefined) {
+      continue;
+    }
+    try {
+      validateHeaderName(name);
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          validateHeaderValue(name, item);
+        }
+      } else {
+        validateHeaderValue(name, value);
+      }
+      sanitized[name] = value;
+    } catch {
+      // The upstream response is untrusted; omit only metadata Node cannot encode.
+    }
+  }
+  return sanitized;
 }
 
 export function handleUpgradeRequest(
@@ -169,12 +198,13 @@ function sendSecretEgressRequest(
         try {
           forward.response.writeHead(
             statusCode,
-            toForwardableResponseHeaders(upstreamResponse.headers),
+            sanitizeSecretEgressResponseHeaders(upstreamResponse.headers),
           );
         } catch {
           // This callback runs outside any caller's try block; a throw here
           // would exit the Gateway. Keep the failure on this one request.
           refused = true;
+          forward.audit({ kind: "refused", host, substituted, reason: "upstream-error" });
           upstreamResponse.destroy();
           // Node may already have marked 1xx/204/304 heads bodyless, so a
           // refusal body cannot be framed reliably; close those instead.
@@ -273,9 +303,18 @@ function sendSecretEgressRequest(
     const clientSocket = forward.ownResource(forward.request.socket);
     // The handshake is an HTTP request; subsequent bytes are WebSocket frames,
     // not HTTP bodies. Forward them opaquely, including both parsers' head buffers.
+    try {
+      forward.response.writeHead(101, sanitizeSecretEgressResponseHeaders(response.headers));
+    } catch {
+      refused = true;
+      forward.audit({ kind: "refused", host, substituted, reason: "upstream-error" });
+      upstreamSocket.destroy();
+      bodyTransform.destroy();
+      sendHttpRefusal(forward.response, 502, UPSTREAM_RESPONSE_ERROR_BODY);
+      return;
+    }
     forward.response.off("close", onResponseClose);
     upgraded = true;
-    forward.response.writeHead(101, toForwardableResponseHeaders(response.headers));
     forward.response.end();
     forward.response.detachSocket(clientSocket);
     forward.releaseResponse();
