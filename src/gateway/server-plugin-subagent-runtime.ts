@@ -341,6 +341,12 @@ export function createGatewaySubagentRuntime(
     },
     async run(request) {
       const params = { ...request };
+      if (
+        params.runTimeoutSeconds !== undefined &&
+        (!Number.isSafeInteger(params.runTimeoutSeconds) || params.runTimeoutSeconds < 0)
+      ) {
+        throw new Error("Plugin subagent timeout must be a nonnegative safe integer in seconds");
+      }
       const assertCurrent = params.assertCurrent;
       assertCurrent?.();
       if (params.disableTools === true && (params.toolsAlsoAllow?.length ?? 0) > 0) {
@@ -426,6 +432,7 @@ export function createGatewaySubagentRuntime(
           ...(params.promptMode === "minimal" && { promptMode: params.promptMode }),
           ...(params.lane && { lane: params.lane }),
           ...(params.cwd && { cwd: params.cwd }),
+          ...(params.runTimeoutSeconds !== undefined && { timeout: params.runTimeoutSeconds }),
           ...(params.lightContext === true && { bootstrapContextMode: "lightweight" }),
           // The Gateway agent schema requires a nonempty idempotency key.
           idempotencyKey: params.idempotencyKey || randomUUID(),

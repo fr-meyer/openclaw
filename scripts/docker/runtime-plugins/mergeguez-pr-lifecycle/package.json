@@ -1,0 +1,23 @@
+{
+  "name": "@fr-meyer/openclaw-mergeguez-pr-lifecycle",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Installed publisher compatibility through worker-owned flow state and native subagent execution.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test ./test/*.test.mjs",
+    "check": "node --check ./index.mjs && node --check ./src/controller.mjs && node --check ./src/http.mjs && node --check ./src/runtime.mjs"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.9.8"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.mjs"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.9.8",
+      "minGatewayVersion": "2026.9.8"
+    }
+  }
+}

@@ -4,6 +4,7 @@ import { SKILL_LIBRARY_MAX_SELECTIONS } from "../../packages/gateway-protocol/sr
 import { UserChannelIdentitySchema } from "../../packages/gateway-protocol/src/schema/users.js";
 import { isChannelIngressReadCommand } from "../channels/message/ingress-queue-read-contract.js";
 import { isPluginBlobReadCommand } from "../plugin-state/plugin-blob-worker-contract.js";
+import { isManagedTaskFlowReadCommand } from "../tasks/managed-task-flow-contract.js";
 import { isTuiLastSessionReadCommand } from "../tui/tui-last-session.contract.js";
 import type { OpenClawStateReadRequest } from "./openclaw-state-read.types.js";
 
@@ -12,6 +13,7 @@ export function isReadRequest(input: unknown): input is OpenClawStateReadRequest
     return false;
   }
   const { environment } = input.context;
+  const command = input.command;
   return (
     typeof input.databasePath === "string" &&
     typeof input.location === "string" &&
@@ -24,9 +26,13 @@ export function isReadRequest(input: unknown): input is OpenClawStateReadRequest
     typeof environment.OPENCLAW_STATE_DIR === "string" &&
     (environment.OPENCLAW_SUPERVISOR_MODE === undefined ||
       environment.OPENCLAW_SUPERVISOR_MODE === "external") &&
-    ((input.command.type === "deliveryQueue.outbound" &&
-      (input.command.id === undefined || typeof input.command.id === "string") &&
-      (input.command.mode === "pending" || input.command.mode === "unfinished")) ||
+    ((isManagedTaskFlowReadCommand(command) &&
+      isRecord(input.command.input) &&
+      typeof input.command.input.ownerKey === "string" &&
+      typeof input.command.input.controllerId === "string") ||
+      (input.command.type === "deliveryQueue.outbound" &&
+        (input.command.id === undefined || typeof input.command.id === "string") &&
+        (input.command.mode === "pending" || input.command.mode === "unfinished")) ||
       input.command.type === "acpSessions.list" ||
       (input.command.type === "acpSessions.metadata" &&
         Array.isArray(input.command.entries) &&

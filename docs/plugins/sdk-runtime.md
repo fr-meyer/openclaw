@@ -377,4 +377,31 @@ for provider selection, lifecycle, failure handling, limits, and diagnostics.
 
 <a id="api-runtime-tasks" />
 
-The former Tasks runtime is no longer available. See [removed Tasks and TaskFlow APIs](/plugins/sdk-migration/removed-surfaces#tasks-and-taskflow-apis-removed) for native-owner alternatives.
+The canonical Tasks registry and TaskFlow orchestration APIs remain removed. This
+release retains an optional asynchronous compatibility surface for installed 9.4
+controllers: `api.runtime.tasks.managedFlows` and `api.runtime.tasks.runs`. See
+[removed surfaces](/plugins/sdk-migration/removed-surfaces#tasks-and-taskflow-apis-removed)
+for the upgrade exception and native alternatives.
+
+The bridge reports `authorityVersion: 1` and `availability.controllerParity`.
+Availability describes the composed implementation; a configured session key,
+flow ID, task ID, or revision grants no authority. Each binding retains its
+original live plugin and Gateway owner and exposes `close()`; callers close it
+after accepted work settles. Authenticated calls retain their admitted session
+authority. Background controller calls can access only their controller namespace
+and proven plugin or controller task lineage.
+
+Flow operations return promises. `capacitySnapshot({ ownerSessionKeys })` reads a
+complete bounded controller selection; `reserve({ flowId, expectedRevision,
+stateJson, capacitySnapshot })` compares that selection inside the existing state
+worker transaction before applying the reservation. A changed revision or new
+flow rejects reservation. `createManaged` can deduplicate bounded primitive state
+identity fields in the same transaction and returns `deduplicated: true` when it
+observed an existing flow without replacing its state.
+
+Run observations combine proven retained task history with the normal subagent
+owner. Interrupted, missing, ambiguous, or unknown outcomes remain uncertain.
+Cancellation requires the original native run, session, generation, and owner;
+an ID or a descendant cancellation count cannot prove success. This bridge does
+not create canonical task rows or enable private TaskFlow worker launch. Launch
+continues through `api.runtime.subagent.run` and its existing admission policy.

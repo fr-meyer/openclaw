@@ -130,6 +130,24 @@ function createUnavailableNodesRuntime(): PluginRuntime["nodes"] {
   };
 }
 
+function createUnavailableTaskFlowRuntime(): NonNullable<PluginRuntime["tasks"]> {
+  const unavailable = () => {
+    throw new Error("Controller state requires an original Gateway/plugin owner");
+  };
+  return {
+    authorityVersion: 1,
+    availability: {
+      managedFlows: false,
+      taskRuns: false,
+      controllerParity: false,
+      canonicalTaskCreate: false,
+      workerLaunch: false,
+    },
+    managedFlows: { bindSession: unavailable },
+    runs: { bindSession: unavailable },
+  };
+}
+
 function createRuntimeWorktrees(): PluginRuntime["worktrees"] {
   const loadService = () => import("../../agents/worktrees/service.js");
   return {
@@ -216,6 +234,7 @@ export const createPluginRuntime: PluginRuntimeFactory = (
     },
     subagent: _options.subagent ?? createUnavailableSubagentRuntime(),
     nodes: _options.nodes ?? createUnavailableNodesRuntime(),
+    tasks: _options.tasks ?? createUnavailableTaskFlowRuntime(),
     sandbox: createRuntimeSandbox(agent),
     worktrees: createRuntimeWorktrees(),
     system: base.system,

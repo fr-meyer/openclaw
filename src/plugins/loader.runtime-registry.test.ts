@@ -690,7 +690,7 @@ describe("resolvePluginLoadCacheContext", () => {
     expect(resolvePluginLoadCacheContext({ config: {} }).channelPluginLoadIntent).toBe("full");
   });
 
-  it.each(["modelAuth", "modelConfig", "nodes", "subagent"] as const)(
+  it.each(["modelAuth", "modelConfig", "nodes", "subagent", "tasks"] as const)(
     "keys concrete %s bindings independently by identity",
     (binding) => {
       const firstOptions = {
@@ -701,6 +701,7 @@ describe("resolvePluginLoadCacheContext", () => {
           modelConfig: resolveNativePluginModelConfig(),
           nodes: {} as PluginRuntime["nodes"],
           subagent: {} as PluginRuntime["subagent"],
+          tasks: {} as PluginRuntime["tasks"],
         },
       };
       const firstKey = resolvePluginLoadCacheContext(firstOptions).cacheKey;

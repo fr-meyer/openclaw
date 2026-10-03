@@ -75,6 +75,7 @@ import type {
 } from "../plugin-state/plugin-blob-worker-contract.js";
 import type { AsyncWorkScope } from "../shared/async-work-scope.js";
 import type { SkillLibraryReadOnlyOperations } from "../skills/library/selection-read.kernel.js";
+import type { ManagedTaskFlowReadOperations } from "../tasks/managed-task-flow-contract.js";
 import type { TuiLastSessionReadCommand } from "../tui/tui-last-session.contract.js";
 import type {
   AgentDatabaseDeletionSnapshot,
@@ -124,6 +125,12 @@ export type OpenClawStateReadAuthority = {
 };
 
 export type OpenClawStateReadCommand =
+  | {
+      [Kind in keyof ManagedTaskFlowReadOperations]: {
+        type: Kind;
+        input: ManagedTaskFlowReadOperations[Kind]["input"];
+      };
+    }[keyof ManagedTaskFlowReadOperations]
   | TuiLastSessionReadCommand
   | ChannelIngressReadCommand
   | { type: "capture.readOnlyEvents"; sessionId: string; limit?: number }
@@ -232,6 +239,12 @@ export type OpenClawStateReadRequest = {
 type ReadResult<Reply> = Reply extends { ok: true } ? Omit<Reply, "ok" | "sourceAdmitted"> : never;
 
 export type OpenClawStateReadResult =
+  | {
+      [Kind in keyof ManagedTaskFlowReadOperations]: {
+        type: Kind;
+        value: ManagedTaskFlowReadOperations[Kind]["output"];
+      };
+    }[keyof ManagedTaskFlowReadOperations]
   | {
       type: "tui.lastSession.read";
       row: Pick<Selectable<ConfigMachineState>, "value_json" | "updated_at_ms"> | undefined;

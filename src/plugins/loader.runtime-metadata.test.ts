@@ -17,6 +17,7 @@ it("keeps version and injected instance surfaces independent of the broad runtim
   };
   const nodes = {} as PluginRuntime["nodes"];
   const subagent = {} as PluginRuntime["subagent"];
+  const tasks = {} as PluginRuntime["tasks"];
   const resolveGatewayContext = () => undefined;
   bindGatewayContextResolver(subagent, resolveGatewayContext);
   const resolveRuntimeModule = vi
@@ -25,7 +26,7 @@ it("keeps version and injected instance surfaces independent of the broad runtim
       throw new Error("broad runtime should stay lazy");
     });
   const runtime = createLazyPluginRuntime({
-    runtimeOptions: { gateway, hooks, nodes, subagent },
+    runtimeOptions: { gateway, hooks, nodes, subagent, tasks },
   });
   expect(getGatewayContextResolver(runtime)).toBe(resolveGatewayContext);
 
@@ -58,6 +59,7 @@ it("keeps version and injected instance surfaces independent of the broad runtim
     "worktrees",
     "webSearch",
     "modelConfig",
+    "tasks",
   ]);
   expect(Reflect.ownKeys(runtime)).toEqual(Reflect.ownKeys(descriptors));
   for (const key of Object.keys(descriptors)) {
@@ -69,6 +71,7 @@ it("keeps version and injected instance surfaces independent of the broad runtim
     ["hooks", hooks],
     ["nodes", nodes],
     ["subagent", subagent],
+    ["tasks", tasks],
   ] as const) {
     expect(runtime[key]).toBe(instance);
     expect(descriptors[key]?.get?.()).toBe(instance);

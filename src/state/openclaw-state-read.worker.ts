@@ -70,6 +70,8 @@ import {
   selectSkillLibraryRevisionMetadataBatch,
   selectSkillLibraryRevisionManifestsBatch,
 } from "../skills/library/selection-read.kernel.js";
+import { isManagedTaskFlowReadCommand } from "../tasks/managed-task-flow-contract.js";
+import { executeManagedTaskFlowReadCommand } from "../tasks/managed-task-flow.worker.js";
 import { isTuiLastSessionReadCommand } from "../tui/tui-last-session.contract.js";
 import { readTuiLastSessionCommand } from "../tui/tui-last-session.kernel.js";
 import {
@@ -195,6 +197,51 @@ serveOwnedWorkerTasks(
         const result = withOpenClawStateReadOnlyLocation(
           ({ db }): OpenClawStateReadResult => {
             sourceAdmitted = true;
+            if (isManagedTaskFlowReadCommand(command)) {
+              // Retain discriminated operation/output types at the native reply boundary.
+              switch (command.type) {
+                case "tasks.managedFlows.get":
+                  return {
+                    type: command.type,
+                    value: executeManagedTaskFlowReadCommand(
+                      { db, path: input.databasePath },
+                      command,
+                    ),
+                  };
+                case "tasks.managedFlows.list":
+                  return {
+                    type: command.type,
+                    value: executeManagedTaskFlowReadCommand(
+                      { db, path: input.databasePath },
+                      command,
+                    ),
+                  };
+                case "tasks.managedFlows.capacitySnapshot":
+                  return {
+                    type: command.type,
+                    value: executeManagedTaskFlowReadCommand(
+                      { db, path: input.databasePath },
+                      command,
+                    ),
+                  };
+                case "tasks.runs.get":
+                  return {
+                    type: command.type,
+                    value: executeManagedTaskFlowReadCommand(
+                      { db, path: input.databasePath },
+                      command,
+                    ),
+                  };
+                case "tasks.runs.list":
+                  return {
+                    type: command.type,
+                    value: executeManagedTaskFlowReadCommand(
+                      { db, path: input.databasePath },
+                      command,
+                    ),
+                  };
+              }
+            }
             if (command.type === "agentDatabaseDeletion.snapshot") {
               return {
                 type: command.type,
