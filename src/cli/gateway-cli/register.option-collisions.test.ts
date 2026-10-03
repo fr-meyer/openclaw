@@ -421,7 +421,14 @@ describe("gateway register option collisions", () => {
     },
     {
       name: "a verified read without a pinned endpoint",
-      args: ["gateway", "call", "gateway.workerNamespace.get", "--verified-read", "boot-1", "--json"],
+      args: [
+        "gateway",
+        "call",
+        "gateway.workerNamespace.get",
+        "--verified-read",
+        "boot-1",
+        "--json",
+      ],
       error: "requires --expect-url",
     },
     {
