@@ -1,0 +1,59 @@
+{
+  "schema": "openclaw-v98-local-cut-manifest-v1",
+  "status": "local-candidate-unqualified",
+  "upstream": {
+    "tag": "v2026.9.8",
+    "commit": "fc23bc864e4553c2d215e479eeec47b67a0bf943",
+    "tree": "92e461befd359758be6e2abde8ba80df2544653e"
+  },
+  "orderedCommits": [
+    {
+      "cut": "b03-verified-worker-namespace-read",
+      "commit": "e81edc7e01efb87b7d21cff5f69caca4cbc386e8",
+      "sourcePatchSha256": "aad6d3b5534acab74967370e5e88e583c453d06e6b20134399d451484f88dd57"
+    },
+    {
+      "cut": "b34-egress-response-header-forwarding",
+      "commit": "8acbea95e69f97cd3fcee91453281a6b0b856d5c",
+      "sourcePatchSha256": "cc5ccce0d5ff16fdc93b7bbaacb151d519abcf9761d10a0ac869ba5834c0a50c"
+    },
+    {
+      "cut": "service-child-cleanup-identity",
+      "commit": "f818cd58ba99f3e271099f83ed4768727a2b8070",
+      "sourcePatchSha256": "b26753a9cabe5a8ff1804881b13032eb83484165e98108d7f1c507752f48ba3c"
+    },
+    {
+      "cut": "codex-protocol-project-config",
+      "commit": "5b6c0be93a595ffab2a9f2054e42812c685da420",
+      "sourcePatchSha256": "53dce0d41427d19ce4acece77c67ed460f9ec2ec1b08b0ad038ec4f1fb7eebf8"
+    },
+    {
+      "cut": "b30-worktree-run-lease-placement",
+      "commit": "9fdf09e869e39519308027fcabfd8302ff451b57",
+      "sourcePatchSha256": "15ac8990aa8bcea5683ab81c7d34a4a055858030f0bec00a9dab422cb6cd8ea0"
+    },
+    {
+      "cut": "memory-session-search-visibility",
+      "commit": "e6c4d37bda33ae151c2103daafadc9c177e02a33",
+      "sourcePatchSha256": "a26e34149cd1bceb91a4e485f484d48e4eb50d0c4b5047bc22fb7789034ac3f6"
+    },
+    {
+      "cut": "b34-rejected-upgrade-head",
+      "commit": "7957e0fbb1e31228d99c579acd78df93d7e8c927"
+    },
+    {
+      "cut": "b03-verified-gateway-cli-caller",
+      "commit": "d4cc673721890d1938bab5a04a8b81cbdfbf35b6"
+    },
+    {
+      "cut": "b03-redundant-authority-check-removal",
+      "commit": "450320a0763f029cc09c46f170ee93cbaff7ee8c"
+    }
+  ],
+  "dependencyLock": {
+    "path": "pnpm-lock.yaml",
+    "gitBlob": "48d758506f8ea95846f3c6680770ac3ee51fde52",
+    "sha256": "c717cc8ed7331b2b4787ed4cbe80d46d3d733de69e3dc9dd7f1d49e6b4942802"
+  },
+  "qualification": "See the separate local qualification receipt; this manifest is source provenance, not release acceptance."
+}
