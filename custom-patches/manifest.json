@@ -1,6 +1,6 @@
 {
-  "schema": "openclaw-v98-local-cut-manifest-v1",
-  "status": "local-candidate-unqualified",
+  "schema": "openclaw-v98-local-cut-manifest-v2",
+  "status": "source-qualified-checkpoint-runtime-unqualified",
   "upstream": {
     "tag": "v2026.9.8",
     "commit": "fc23bc864e4553c2d215e479eeec47b67a0bf943",
@@ -50,14 +50,37 @@
       "commit": "450320a0763f029cc09c46f170ee93cbaff7ee8c"
     },
     {
+      "cut": "record-local-patch-order",
+      "commit": "e5774b21d7e3efeb7dd667f5d1f08cf64bf9e5f0"
+    },
+    {
       "cut": "b03-cli-test-formatting",
       "commit": "93672ff20f41c1a3dad7302d6677d7346f21c471"
+    },
+    {
+      "cut": "record-cli-formatting-in-patch-order",
+      "commit": "d060b8640448501bb7fc5a1f502908259debf384"
+    },
+    {
+      "cut": "b03-static-gate-correction",
+      "commit": "66d1213569b5bcfcdf2b3008300c144db96b091b"
+    },
+    {
+      "cut": "publisher-current-parity-and-loader-correction",
+      "commit": "1e197fa258704d70e17a9efd831b2e3ecbc6e6f4"
     }
   ],
+  "qualifiedSourceCheckpoint": {
+    "commit": "1e197fa258704d70e17a9efd831b2e3ecbc6e6f4",
+    "tree": "6b88287f0e8e5c795e0efdfef99ce951dbbcaee7",
+    "publisherPackagePath": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle",
+    "publisherPackageVersion": "0.1.1",
+    "publisherRuntimeSha256": "d9ae3b77db061d30e10657133a376b3da99234367bdfb95ab1266ca9ed558569"
+  },
   "dependencyLock": {
     "path": "pnpm-lock.yaml",
     "gitBlob": "48d758506f8ea95846f3c6680770ac3ee51fde52",
     "sha256": "c717cc8ed7331b2b4787ed4cbe80d46d3d733de69e3dc9dd7f1d49e6b4942802"
   },
-  "qualification": "See the separate local qualification receipt; this manifest is source provenance, not release acceptance."
+  "qualification": "The ordered list covers the complete 14-commit source composition through the qualified checkpoint. This packaging successor and any future image or runtime require separate exact-source qualification; this manifest is source provenance, not release acceptance."
 }
