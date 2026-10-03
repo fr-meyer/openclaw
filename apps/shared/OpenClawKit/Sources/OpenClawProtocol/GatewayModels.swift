@@ -8387,6 +8387,26 @@ public struct GatewaySuspension: Codable, Sendable {
     }
 }
 
+public struct GatewayWorkerNamespaceGetParams: Codable, Sendable {}
+
+public struct GatewayWorkerNamespaceGetResult: Codable, Sendable {
+    public let bootid: String
+    public let namespace: String
+
+    public init(
+        bootid: String,
+        namespace: String)
+    {
+        self.bootid = bootid
+        self.namespace = namespace
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case bootid = "bootId"
+        case namespace
+    }
+}
+
 public struct GitHubAuthor: Codable, Sendable {
     public let name: String?
     public let email: String?
