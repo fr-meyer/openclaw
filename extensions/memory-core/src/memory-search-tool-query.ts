@@ -102,6 +102,7 @@ export async function executeMemorySearchToolQuery(params: {
     visibility,
     searchSources,
     startedAt,
+    signal,
   };
 
   const searchOnce = async () => {
@@ -201,8 +202,11 @@ async function finalizeMemorySearchToolQuery(params: {
   runtimeDebug: MemorySearchRuntimeDebug[];
   startedAt: number;
   effectiveMode?: string;
+  signal: AbortSignal;
 }) {
-  const { active, searched, query, visibility, searchSources, runtimeDebug, startedAt } = params;
+  const { active, searched, query, visibility, searchSources, runtimeDebug, startedAt, signal } =
+    params;
+  signal.throwIfAborted();
   const status = params.status ?? active.manager.status();
   const pausedIndexIdentity = resolveMemoryIndexIdentityDiagnostic(status);
   // A pending chunking upgrade on an otherwise matching index degrades to
@@ -235,7 +239,9 @@ async function finalizeMemorySearchToolQuery(params: {
     sandboxed: visibility.sandboxed,
     hits: searched.candidates,
     conversationRecall: query.conversationRecall,
+    signal,
   });
+  signal.throwIfAborted();
   if (searchSources) {
     const allowedSources = new Set(searchSources);
     filtered = filtered.filter((hit) => allowedSources.has(hit.source));
