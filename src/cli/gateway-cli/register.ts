@@ -21,7 +21,6 @@ import { formatCliJsonFailure, rethrowExpectedCliError } from "../failure-output
 import {
   addGatewayClientOptions,
   callGatewayFromCliWithTransport,
-  callGatewayVerifiedReadFromCli,
   resolveGatewayRpcOptions,
   resolveGatewayRpcOptionsWithLocalPort,
 } from "../gateway-rpc.js";
@@ -29,6 +28,7 @@ import { formatHelpExamples } from "../help-format.js";
 import { parseTimeoutMsWithFallback } from "../parse-timeout.js";
 import { setCommandJsonMode } from "../program/json-mode.js";
 import type { GatewayDiscoverOpts } from "./discover.js";
+import { runGatewayCallCommand } from "./gateway-call.js";
 import { isGatewayMachineOutput } from "./output-mode.js";
 import { addGatewayRestartHandoffCommands } from "./register-restart-handoff.js";
 import { addGatewayRunCommand } from "./run-command.js";
@@ -60,7 +60,6 @@ const loadDaemonStatusGatherModule = createLazyPromise(
 );
 
 const DEFAULT_GATEWAY_RPC_TIMEOUT_MS = 10_000;
-const SETUP_INFERENCE_DETECT_RPC_TIMEOUT_MS = 40_000;
 type GatewayCliDependencies = {
   loadGatewayHealthModule?: typeof loadGatewayHealthModule;
   loadHealthStyleModule?: typeof loadHealthStyleModule;
@@ -79,14 +78,6 @@ async function callGatewayReadOnlyCli(method: string, opts: GatewayRpcOpts, para
     defaultTimeoutMs: DEFAULT_GATEWAY_RPC_TIMEOUT_MS,
     sharedStateMode: "read-only",
   });
-}
-
-function parseGatewayCallParams(value = "{}"): unknown {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    throw new Error("--params must be valid JSON.");
-  }
 }
 
 function gatewayAction(action: Parameters<Command["action"]>[0], label?: string) {
@@ -478,52 +469,18 @@ export function registerGatewayCli(program: Command, deps: GatewayCliDependencie
       .option("--params <json>", "JSON object string for params", "{}")
       .action(
         gatewayAction(async (method, opts, command) => {
-          // Setup detection owns a 30s worker deadline; its transport must
-          // leave enough grace for the Gateway to return the typed outcome.
-          const callOpts =
-            method === "openclaw.setup.detect" &&
-            command.getOptionValueSource("timeout") === "default"
-              ? { ...opts, timeout: String(SETUP_INFERENCE_DETECT_RPC_TIMEOUT_MS) }
-              : opts;
-          const rpcOpts = resolveGatewayRpcOptionsWithLocalPort(callOpts, command);
-          const params = parseGatewayCallParams(String(opts.params ?? "{}"));
-          const verifiedReadBootId = opts.verifiedRead as string | undefined;
-          if (method === "gateway.workerNamespace.get" && verifiedReadBootId === undefined) {
-            throw new Error(
-              "gateway.workerNamespace.get requires --verified-read <boot-id> and --expect-url <url>.",
-            );
-          }
-          if (verifiedReadBootId !== undefined && method !== "gateway.workerNamespace.get") {
-            throw new Error("--verified-read is only available for gateway.workerNamespace.get.");
-          }
-          let result;
-          if (verifiedReadBootId === undefined) {
-            result = await callGatewayReadOnlyCli(method, rpcOpts, params);
-          } else {
-            const expectUrl = rpcOpts.expectUrl;
-            if (!expectUrl) {
-              throw new Error("--verified-read requires --expect-url <url>.");
-            }
-            if (
-              typeof params !== "object" ||
-              params === null ||
-              Array.isArray(params) ||
-              Object.keys(params).length !== 0
-            ) {
-              throw new Error("gateway.workerNamespace.get accepts only empty params ({}).");
-            }
-            result = await callGatewayVerifiedReadFromCli({
-              ...rpcOpts,
-              expectedBootId: verifiedReadBootId,
-              expectUrl,
-            });
-          }
-          if (rpcOpts.json) {
+          const { result, verifiedRead, json } = await runGatewayCallCommand({
+            method,
+            opts,
+            command,
+            callReadOnly: callGatewayReadOnlyCli,
+          });
+          if (json) {
             defaultRuntime.writeJson(result);
             return;
           }
           const rich = isRich();
-          const label = verifiedReadBootId ? "Gateway verified read" : "Gateway call";
+          const label = verifiedRead ? "Gateway verified read" : "Gateway call";
           defaultRuntime.log(
             `${colorize(rich, theme.heading, label)}: ${colorize(rich, theme.muted, String(method))}`,
           );

@@ -2,8 +2,8 @@
 import type { WebSocket } from "ws";
 import type { ConnectParams } from "../../../packages/gateway-protocol/src/schema/frames.js";
 import type { AgentRuntimeIdentity } from "../agent-runtime-identity-token.js";
-import type { GatewayAuthResult } from "../auth.js";
 import type { GatewayAuthPolicy } from "../auth-policy.types.js";
+import type { GatewayAuthResult } from "../auth.js";
 import type { AuthenticatedGitHubIdentitySync } from "../github-user-identity.types.js";
 import type { GatewayOperatorAccessAuthority } from "../operator-access-policy.types.js";
 import type { GatewayOperatorRoleActor } from "../operator-role-actor.js";

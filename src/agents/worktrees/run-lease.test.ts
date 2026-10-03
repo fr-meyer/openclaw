@@ -171,9 +171,9 @@ describe("worktree run lease", () => {
 
     // Equal creation times are ambiguous and cannot transfer authority to either row.
     insertRegistryWorktree(env, { ...record, id: "tied-owner-row" });
-    await expect(
-      acquireWorktreeRunLease(created.id, { env, expectedAuthority }),
-    ).rejects.toThrow("no longer authoritative");
+    await expect(acquireWorktreeRunLease(created.id, { env, expectedAuthority })).rejects.toThrow(
+      "no longer authoritative",
+    );
 
     // A newer replacement with the same checkout path cannot inherit the old row's lease authority.
     insertRegistryWorktree(env, {
@@ -182,9 +182,9 @@ describe("worktree run lease", () => {
       createdAt: record.createdAt + 1,
       lastActiveAt: record.lastActiveAt + 1,
     });
-    await expect(
-      acquireWorktreeRunLease(created.id, { env, expectedAuthority }),
-    ).rejects.toThrow("no longer authoritative");
+    await expect(acquireWorktreeRunLease(created.id, { env, expectedAuthority })).rejects.toThrow(
+      "no longer authoritative",
+    );
     expect(hasLiveWorktreeRunLease(env, created.id)).toBe(false);
   });
 

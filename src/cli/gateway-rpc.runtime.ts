@@ -43,12 +43,7 @@ type GatewayCliTransportRpcOpts = Omit<GatewayRpcOpts, "timeout"> & {
 
 const DEFAULT_GATEWAY_RPC_TIMEOUT_MS = 30_000;
 
-type VerifiedReadAuthMethod =
-  | "token"
-  | "password"
-  | "device-token"
-  | "tailscale"
-  | "trusted-proxy";
+type VerifiedReadAuthMethod = "token" | "password" | "device-token" | "tailscale" | "trusted-proxy";
 
 export type GatewayVerifiedReadConnection = Readonly<{
   bootId: string;

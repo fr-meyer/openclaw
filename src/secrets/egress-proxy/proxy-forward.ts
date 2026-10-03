@@ -52,6 +52,7 @@ export function sendHttpRefusal(res: ServerResponse, status = 502, body = REFUSA
 export function sanitizeSecretEgressResponseHeaders(
   headers: IncomingHttpHeaders,
 ): OutgoingHttpHeaders {
+  // SAFETY: A null-prototype object is a mutable own-key header record without prototype setters.
   const sanitized: OutgoingHttpHeaders = Object.create(null) as OutgoingHttpHeaders;
   for (const [name, value] of Object.entries(toForwardableResponseHeaders(headers))) {
     if (value === undefined) {

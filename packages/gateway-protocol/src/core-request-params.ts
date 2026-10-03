@@ -14,8 +14,8 @@ import type * as HumanMentionsSchema from "./schema/human-mentions.js";
 import type { LogsTailParams } from "./schema/logs-chat.js";
 import type * as PortalSchema from "./schema/portals.js";
 import type { PresenceActivityParams, PresenceQueryParams } from "./schema/presence.js";
-import type { GatewayWorkerNamespaceGetParams } from "./schema/system-info.js";
 import type * as GitHubSchema from "./schema/session-github-publication.js";
+import type { GatewayWorkerNamespaceGetParams } from "./schema/system-info.js";
 import type {
   ThemesListParams,
   ThemesGetParams,
