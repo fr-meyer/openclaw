@@ -391,6 +391,8 @@ type GatewayResidentBridgeContext = {
   }) => Promise<HealthSummary>;
   /** Durable cloud-worker lifecycle; absent from lightweight in-process contexts. */
   workerEnvironmentService?: WorkerEnvironmentServiceContract;
+  /** Exact namespace prepared for this Gateway's native worker runtime. */
+  nodeWorkerGatewayNamespace?: string;
   /** Gateway-host desktop acquisition and observation; present only after enabled startup. */
   hostDesktopService?: import("../desktop/host-source.js").HostDesktopService;
   /** Local computer provider shared with the node host, owned by this Gateway lifetime. */

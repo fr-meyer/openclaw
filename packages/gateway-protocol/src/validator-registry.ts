@@ -216,6 +216,12 @@ export const validateDesktopReleaseParams = compile(S.DesktopReleaseParamsSchema
 export const validateDesktopReleaseResult = compile(S.DesktopReleaseResultSchema);
 export const validateSystemInfoParams = compile(S.SystemInfoParamsSchema);
 export const validateSystemInfoResult = compile(S.SystemInfoResultSchema);
+export const validateGatewayWorkerNamespaceGetParams = compile(
+  S.GatewayWorkerNamespaceGetParamsSchema,
+);
+export const validateGatewayWorkerNamespaceGetResult = compile(
+  S.GatewayWorkerNamespaceGetResultSchema,
+);
 export const validatePresenceQueryParams = compile(S.PresenceQueryParamsSchema);
 export const validatePresenceQueryResult = compile(S.PresenceQueryResultSchema);
 export const validateNodePendingAckParams = compile(S.NodePendingAckParamsSchema);

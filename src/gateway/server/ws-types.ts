@@ -2,6 +2,7 @@
 import type { WebSocket } from "ws";
 import type { ConnectParams } from "../../../packages/gateway-protocol/src/schema/frames.js";
 import type { AgentRuntimeIdentity } from "../agent-runtime-identity-token.js";
+import type { GatewayAuthResult } from "../auth.js";
 import type { GatewayAuthPolicy } from "../auth-policy.types.js";
 import type { AuthenticatedGitHubIdentitySync } from "../github-user-identity.types.js";
 import type { GatewayOperatorAccessAuthority } from "../operator-access-policy.types.js";
@@ -30,6 +31,9 @@ export type GatewayIngressWebSocket = WebSocket & {
  */
 export type GatewayWsClient = PluginNodeCapabilityClient & {
   socket: GatewayConnectionTransport;
+  /** Captured only after the authenticated handshake. */
+  authenticatedMethod?: GatewayAuthResult["method"];
+  gatewayBootId?: string;
   /** Physical WS liveness capability; absent on transports without ping/pong. */
   webSocket?: Pick<WebSocket, "ping" | "once" | "off">;
   connect: ConnectParams;
