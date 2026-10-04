@@ -18,14 +18,14 @@
     "network": "Hosted build downloads only, including pinned base images and canonical Dockerfile package/tool/apt downloads",
     "secrets": "No secrets or credentials forwarded to Docker builds; checkout uses ephemeral contents-read token without persistence",
     "compiledArtifact": "Canonical Dockerfile build with parity publisher package, Workboard and declarations; docker-save archive with SHA-256 and image config ID",
-    "closureManifest": "Every flattened-image regular file, directory, symlink and hardlink pinned without starting a container; Doctor entry, build-info, runtime Node and publisher bytes separately joined",
+    "closureManifest": "Every flattened-image regular file, directory, symlink and hardlink pinned in bounded compressed JSON without starting a container; exact named Doctor facade, build-info, runtime Node and publisher bytes separately joined",
     "limits": "Artifact content is preparation evidence. No claim of byte-reproducible apt/npm latest inputs or a minimal reviewed import graph; actual produced image/file hashes must be reviewed before execution",
     "fixtureExecution": false,
     "publication": "Actions artifact only; no package, registry, release, tag, Gateway or production publication",
     "evidenceLimitBytes": 33554432,
     "evidenceFileLimitBytes": 8388608,
     "retentionReceiptLimitBytes": 65536,
-    "retention": "Upload only a successfully sealed image <=2GiB plus <=32MiB evidence and <=64KiB retention receipt; each evidence file <=8MiB. Never upload filesystem.tar or unsealed images. Record omitted full sizes/hashes and bounded build-log tails without claiming omitted bytes retained",
+    "retention": "Upload only a successfully sealed image <=2GiB with required identity/layout evidence retained, plus <=32MiB evidence and <=64KiB retention receipt; each evidence file <=8MiB. Never upload filesystem.tar or unsealed images. Preserve bounded non-admitted gzip inventory and selector diagnostics on seal failure. Record omitted full sizes/hashes and bounded build-log tails without claiming omitted bytes retained",
     "requiredCompiledEntries": {
       "authorityPins": {
         "src/infra/runtime-process-entrypoints.ts": "268c60b7f71e9c794a2603d20859a36e92dd8696be9749086ee1a6cff0582227",
@@ -116,7 +116,16 @@
       ],
       "claim": "File presence and hashes only. No import, Worker launch, prepared authority readiness or complete bootstrap/migration/boot closure claim"
     },
-    "buildTargetRelationship": "Broker named pnpm build:ci-artifacts and pnpm tsgo:core as preparation targets. Existing exact-source CI build-artifacts and check-lint jobs passed. This preparation uses the maintained canonical Dockerfile pnpm build:docker route and its package-dist-import checks; do not replace the Dockerfile or reroute a denied local build"
+    "buildTargetRelationship": "Broker named pnpm build:ci-artifacts and pnpm tsgo:core as preparation targets. Existing exact-source CI build-artifacts and check-lint jobs passed. This preparation uses the maintained canonical Dockerfile pnpm build:docker route and its package-dist-import checks; do not replace the Dockerfile or reroute a denied local build",
+    "layoutMetadata": {
+      "doctorSelection": "Exactly one root openclaw-state-db-*.mjs terminal named export table exports prepareOpenClawStateDatabaseSchema; parse uncertainty refuses sealing. No fixed hash length, substring selection or import execution.",
+      "maximumDoctorFamilyEntries": 64,
+      "capturedModuleLimitBytes": 16777216,
+      "maximumInventoryEntries": 200000,
+      "expandedManifestLimitBytes": 67108864,
+      "manifestEncoding": "gzip-json, deterministic mtime=0; compressed <=8MiB evidence limit",
+      "failureEvidence": "Write layout-assessment.json and complete compressed filesystem inventory before image validation. All 79 required path outcomes and Doctor zero/multiple/error details remain non-admitted metadata. Retain sealed image only if receipt, inventory, layout, preflight, iid and inspect evidence all retained."
+    }
   },
   "frozenFixture": {
     "sha256": "777936fa311d3b6fb141dff1fc67f46e2cfddf0651bf75b30ae62f74368f674e",

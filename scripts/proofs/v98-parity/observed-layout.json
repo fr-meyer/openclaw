@@ -1,0 +1,28 @@
+{
+  "provenance": {
+    "buildInfo": {
+      "version": "2026.9.8",
+      "commit": "1e197fa258704d70e17a9efd831b2e3ecbc6e6f4",
+      "builtAt": "2026-10-03T12:01:44.251Z",
+      "buildId": "2026.9.8-1e197fa25870-2026-10-03T12-01-44.251Z"
+    },
+    "finalSourceQualificationClaimed": false,
+    "purpose": "Read-only preserved v9.8 compile layout regression; relevant source/build contracts unchanged from 1e197fa2 to bc8b82b2. This is not the failed hosted image layout."
+  },
+  "chunks": [
+    {
+      "name": "openclaw-state-db-DM-mSY0m.mjs",
+      "sha256": "87570ac0e6a0c5937ec6316fec04cf3f697f613b776547d3c433fd5cffed3c2f",
+      "bytes": 74853,
+      "exportTable": "export { listSqliteTargetCandidatePathsInDirectory as C, listSqliteTargetCandidatePathsForSessionStorePath as S, verifyAndRepairCanonicalSqliteIndexes as _, reconcileOpenClawStateSchemaPublication as a, isConfiguredSessionStoreAgentId as b, repairOpenClawStateDatabaseSchema as c, withOpenClawStateStartupMigrationCheckpointDatabase as d, recoverOrphanTaskDeliveryRows as f, verifyAndRepairCanonicalSqliteIndexSteps as g, repairCanonicalSqliteIndexes as h, prepareOpenClawStateDatabaseSchema as i, runOpenClawStateWriteTransaction as l, repairDoctorSqliteIndexCorruption as m, openExistingOpenClawStateDatabaseReadOnly as n, repairOpenClawStateDatabaseIndexesForDoctor as o, hasPreJournalStateSchema as p, openOpenClawStateDatabase as r, repairOpenClawStateDatabaseReadabilityForDoctor as s, initializeNativeOpenClawStateDatabase as t, runWithOpenClawStateBusyTimeout as u, ensureOpenClawStatePermissions as v, resolveUnsuffixedSqliteTargetFromSessionStorePath as w, listConfiguredSessionStoreAgentIds as x, prepareStateDatabaseInitialization as y };"
+    },
+    {
+      "name": "openclaw-state-db-CgJKJRub.mjs",
+      "sha256": "adfe8f5551b6904d46ce157c20defff6e8f991a2ea67a6c1d32ddd66b93e6c13",
+      "bytes": 2345,
+      "exportTable": "export { OPENCLAW_DATABASE_SCHEMA_DOCS_URL, OPENCLAW_SQLITE_BUSY_TIMEOUT_MS, assertOpenClawStateDatabaseForMaintenance, clearOpenClawStateDatabaseOpenFailure, closeOpenClawStateDatabase, closeOpenClawStateDatabaseAsync, closeOpenClawStateDatabaseByPathAsync, closeOpenClawStateDatabaseForTest, confirmOpenClawStateDatabaseIntegrity, detectOpenClawStateDatabaseSchemaMigrations, ensureOpenClawStatePermissions, initializeNativeOpenClawStateDatabase, isOpenClawStateDatabaseOpen, openExistingOpenClawStateDatabaseReadOnly, openOpenClawStateDatabase, prepareOpenClawStateDatabaseSchema, reconcileOpenClawStateSchemaPublication, recordOpenClawStateDatabaseOpenFailure, registerOpenClawStateDatabaseLifecycleListener, repairOpenClawStateDatabaseIndexesForDoctor, repairOpenClawStateDatabaseReadabilityForDoctor, repairOpenClawStateDatabaseSchema, runOpenClawStateWriteTransaction, runWithOpenClawStateBusyTimeout, withOpenClawStateStartupMigrationCheckpointDatabase };"
+    }
+  ],
+  "required79OldBuildPresent": 79,
+  "missingRequiredEntries": []
+}

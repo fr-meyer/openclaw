@@ -9,6 +9,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+import sys
 from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location("collector", Path(__file__).with_name("collect-artifacts.py"))
@@ -71,11 +72,14 @@ class ArtifactBoundaryTests(unittest.TestCase):
             entries["app/runtime-plugins/mergeguez-pr-lifecycle/" + name] = {
                 "type": "file", "sha256": hashlib.sha256(name.encode()).hexdigest()}
         entry = "app/dist/openclaw-state-db-12345678.mjs"
-        entries[entry] = {"type": "file", "sha256": "doctor"}
         special = {entry: b"export { prepareOpenClawStateDatabaseSchema }",
                    "app/dist/build-info.json": json.dumps({
                        "commit": COLLECTOR.CONTRACT["sourceCommit"], "version": "2026.9.8",
                        "buildId": "2026.9.8-bc8b82b2cbbb-2026-10-04"}).encode()}
+        entries[entry] = {"path": "/" + entry, "type": "file", "bytes": len(special[entry]),
+                          "sha256": hashlib.sha256(special[entry]).hexdigest()}
+        for name, row in entries.items():
+            row.setdefault("path", "/" + name)
         inspect = [{"Id": "sha256:" + "a" * 64, "Os": "linux", "Architecture": "amd64",
                     "Config": {"Labels": {"org.opencontainers.image.revision": COLLECTOR.CONTRACT["sourceCommit"]}}}]
         return source, entries, special, inspect
@@ -87,6 +91,22 @@ class ArtifactBoundaryTests(unittest.TestCase):
             self.assertFalse(result["doctorExportLoadedOrExecuted"])
             self.assertEqual(len(result["publisherFiles"]), 8)
             self.assertFalse(result["compiledEntriesLoadedOrExecuted"])
+
+    def test_observed_implementation_and_facade_select_exact_named_export(self):
+        observed = json.loads(Path(__file__).with_name("observed-layout.json").read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            source, entries, special, inspect = self.sample_image(directory)
+            entries.pop("app/dist/openclaw-state-db-12345678.mjs")
+            special.pop("app/dist/openclaw-state-db-12345678.mjs")
+            for chunk in observed["chunks"]:
+                name = "app/dist/" + chunk["name"]
+                value = (chunk["exportTable"] + "\n").encode()
+                entries[name] = {"path": "/" + name, "type": "file",
+                                 "bytes": len(value), "sha256": hashlib.sha256(value).hexdigest()}
+                special[name] = value
+            result = COLLECTOR.validate_image(inspect, entries, special, source)
+            self.assertEqual(result["doctorEntryCandidate"]["path"],
+                             "/app/dist/openclaw-state-db-CgJKJRub.mjs")
 
     def test_missing_registered_sqlite_worker_refuses_image_admission(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -111,10 +131,7 @@ class ArtifactBoundaryTests(unittest.TestCase):
                 payload = b"image"
                 (out / "image.tar.gz").write_bytes(payload)
                 (out / "filesystem.tar").write_bytes(b"redundant")
-                receipt = {"source": {"commit": COLLECTOR.CONTRACT["sourceCommit"], "tree": COLLECTOR.CONTRACT["sourceTree"]},
-                           "imageArchiveSha256": hashlib.sha256(payload).hexdigest(),
-                           "imageArchiveBytes": len(payload), "fixturePhases": "NEVER_RUN"}
-                (out / "artifact-receipt.json").write_text(json.dumps(receipt))
+                self.sealed_retention_outputs(out, payload)
                 if failed:
                     (out / "collector-failure.json").write_text('{"error":"refused"}')
                 COLLECTOR.stage_retention(out, stage, image_limit=4 if oversized else 8)
@@ -153,12 +170,188 @@ class ArtifactBoundaryTests(unittest.TestCase):
             out.mkdir()
             payload = b"image"
             (out / "image.tar.gz").write_bytes(payload)
-            receipt = {"source": {"commit": COLLECTOR.CONTRACT["sourceCommit"], "tree": COLLECTOR.CONTRACT["sourceTree"]},
-                       "imageArchiveSha256": hashlib.sha256(payload).hexdigest(),
-                       "imageArchiveBytes": len(payload), "fixturePhases": "NEVER_RUN"}
-            (out / "artifact-receipt.json").write_text(json.dumps(receipt))
+            self.sealed_retention_outputs(out, payload)
             COLLECTOR.stage_retention(out, stage, image_limit=len(payload))
             self.assertEqual((stage / "image.tar.gz").read_bytes(), payload)
+
+    def sealed_retention_outputs(self, out, payload):
+        for name in ("preflight.json", "image-id.txt", "image-inspect.json", COLLECTOR.LAYOUT_NAME):
+            (out / name).write_bytes(b"{}")
+        (out / COLLECTOR.MANIFEST_NAME).write_bytes(gzip.compress(b"{}", mtime=0))
+        receipt = {"source": {"commit": COLLECTOR.CONTRACT["sourceCommit"], "tree": COLLECTOR.CONTRACT["sourceTree"]},
+                   "imageArchiveSha256": hashlib.sha256(payload).hexdigest(),
+                   "imageArchiveBytes": len(payload), "fixturePhases": "NEVER_RUN",
+                   "filesystemManifestPath": COLLECTOR.MANIFEST_NAME,
+                   "filesystemManifestEncoding": "gzip-json",
+                   "filesystemManifestSha256": COLLECTOR.digest_file(out / COLLECTOR.MANIFEST_NAME),
+                   "layoutAssessmentSha256": COLLECTOR.digest_file(out / COLLECTOR.LAYOUT_NAME)}
+        (out / "artifact-receipt.json").write_text(json.dumps(receipt))
+        return receipt
+
+    def replace_doctor(self, entries, special, values):
+        for name in list(special):
+            if name != "app/dist/build-info.json":
+                entries.pop(name)
+                special.pop(name)
+        for suffix, value in values.items():
+            name = "app/dist/openclaw-state-db-" + suffix + ".mjs"
+            entries[name] = {"path": "/" + name, "type": "file", "bytes": len(value),
+                             "sha256": hashlib.sha256(value).hexdigest()}
+            special[name] = value
+
+    def test_zero_multiple_and_unsupported_exports_refuse_with_diagnostics(self):
+        cases = (
+            ({"implementation": b"export { prepareOpenClawStateDatabaseSchema as i };"}, 0, 0),
+            ({"facade": b"export { prepareOpenClawStateDatabaseSchema };",
+              "second": b"export { i as prepareOpenClawStateDatabaseSchema };"}, 2, 0),
+            ({"unsupported": b"export * from './other.mjs';"}, 0, 1),
+            ({"unsupported": b"export { prepareOpenClawStateDatabaseSchema, prepareOpenClawStateDatabaseSchema };"}, 0, 1),
+            ({"unsupported": b"export { a,,b, };"}, 0, 1),
+            ({"unsupported": b"export { a as 'prepareOpenClawStateDatabaseSchema' };"}, 0, 1),
+        )
+        for values, count, errors in cases:
+            with self.subTest(values=values), tempfile.TemporaryDirectory() as directory:
+                source, entries, special, inspect = self.sample_image(directory)
+                self.replace_doctor(entries, special, values)
+                layout = COLLECTOR.assess_layout(entries, special)
+                self.assertEqual(layout["doctor"]["candidateCount"], count)
+                self.assertEqual(layout["doctor"]["parseErrorCount"], errors)
+                self.assertEqual(len(layout["doctor"]["familyEntries"]), len(values))
+                with self.assertRaisesRegex(ValueError, "exact named Doctor export"):
+                    COLLECTOR.validate_image(inspect, entries, special, source)
+
+    def test_export_alias_selects_public_name_and_ignores_nonexported_literal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, entries, special, inspect = self.sample_image(directory)
+            self.replace_doctor(entries, special, {
+                "longerHashSuffix": b"export { i as prepareOpenClawStateDatabaseSchema };",
+                "impl": b"const text = 'prepareOpenClawStateDatabaseSchema';\nexport { prepareOpenClawStateDatabaseSchema as i };",
+            })
+            result = COLLECTOR.validate_image(inspect, entries, special, source)
+            self.assertEqual(result["doctorEntryCandidate"]["path"],
+                             "/app/dist/openclaw-state-db-longerHashSuffix.mjs")
+
+    def test_changed_or_uncaptured_doctor_family_bytes_refuse_admission(self):
+        for change in ("hash", "capture", "type"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                source, entries, special, inspect = self.sample_image(directory)
+                name = "app/dist/openclaw-state-db-12345678.mjs"
+                if change == "hash":
+                    entries[name]["sha256"] = "changed"
+                elif change == "capture":
+                    special.pop(name)
+                else:
+                    entries[name]["type"] = "symlink"
+                with self.assertRaisesRegex(ValueError, "parseErrors=1"):
+                    COLLECTOR.validate_image(inspect, entries, special, source)
+
+    def test_each_required_selector_and_all_failures_are_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, entries, special, inspect = self.sample_image(directory)
+            paths = COLLECTOR.CONTRACT["artifactPreparation"]["requiredCompiledEntries"]["paths"]
+            for name in paths:
+                with self.subTest(name=name):
+                    invalid = {key: row for key, row in entries.items() if key != name}
+                    layout = COLLECTOR.assess_layout(invalid, special)["requiredCompiledEntries"]
+                    self.assertEqual(layout["presentCount"], 78)
+                    failed = [row["requestedPath"] for row in layout["entries"] if row["status"] != "PRESENT"]
+                    self.assertEqual(failed, [name])
+                    with self.assertRaisesRegex(ValueError, "required compiled entry checks failed: 1"):
+                        COLLECTOR.validate_image(inspect, invalid, special, source)
+            for name in paths:
+                entries.pop(name)
+            self.replace_doctor(entries, special, {"impl": b"export { prepareOpenClawStateDatabaseSchema as i };"})
+            layout = COLLECTOR.assess_layout(entries, special)
+            self.assertEqual(layout["doctor"]["candidateCount"], 0)
+            self.assertEqual(layout["requiredCompiledEntries"]["failureCount"], 79)
+            self.assertEqual(layout["requiredCompiledEntries"]["registeredCoreEntryCount"], 53)
+            self.assertEqual(layout["requiredCompiledEntries"]["normalizationExportCount"], 26)
+
+    def test_seal_failure_retains_complete_nonadmitted_layout_without_image(self):
+        for values, count in (({"impl": b"export { prepareOpenClawStateDatabaseSchema as i };"}, 0),
+                              ({"one": b"export { prepareOpenClawStateDatabaseSchema };",
+                                "two": b"export { prepareOpenClawStateDatabaseSchema };"}, 2)):
+            with self.subTest(count=count), tempfile.TemporaryDirectory() as directory:
+                source, entries, special, inspect = self.sample_image(directory)
+                self.replace_doctor(entries, special, values)
+                out, stage = Path(directory) / "out", Path(directory) / "stage"
+                out.mkdir()
+                with tarfile.open(out / "filesystem.tar", "w") as archive:
+                    for name in entries:
+                        value = special.get(name, name.encode())
+                        member = tarfile.TarInfo(name)
+                        member.size = len(value)
+                        archive.addfile(member, io.BytesIO(value))
+                    value = special["app/dist/build-info.json"]
+                    member = tarfile.TarInfo("app/dist/build-info.json")
+                    member.size = len(value)
+                    archive.addfile(member, io.BytesIO(value))
+                (out / "image.tar.gz").write_bytes(b"unsealed")
+                (out / "image-inspect.json").write_text(json.dumps(inspect))
+                with mock.patch.object(COLLECTOR, "verify_source", return_value={"commit": COLLECTOR.CONTRACT["sourceCommit"]}), \
+                        mock.patch.object(sys, "argv", ["collect-artifacts.py", "seal", str(source), str(out)]):
+                    with self.assertRaisesRegex(ValueError, "exact named Doctor export"):
+                        COLLECTOR.main()
+                COLLECTOR.stage_retention(out, stage)
+                self.assertFalse((stage / "image.tar.gz").exists())
+                self.assertFalse((stage / "filesystem.tar").exists())
+                self.assertFalse((out / "artifact-receipt.json").exists())
+                layout = json.loads((stage / COLLECTOR.LAYOUT_NAME).read_text())
+                self.assertEqual(layout["doctor"]["candidateCount"], count)
+                self.assertEqual(layout["requiredCompiledEntries"]["presentCount"], 79)
+                manifest = json.loads(gzip.decompress((stage / COLLECTOR.MANIFEST_NAME).read_bytes()))
+                self.assertEqual(len(manifest["entries"]), len(entries) + 1)
+                self.assertFalse(manifest["fixtureExecuted"])
+                self.assertEqual(manifest["admission"], "NOT_ADMITTED; inventory only")
+
+    def test_required_layout_evidence_missing_changed_or_over_budget_omits_sealed_image(self):
+        for change in ("missing", "changed", "file-budget", "aggregate-budget"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                out, stage = Path(directory) / "out", Path(directory) / "stage"
+                out.mkdir()
+                payload = b"image"
+                (out / "image.tar.gz").write_bytes(payload)
+                self.sealed_retention_outputs(out, payload)
+                kwargs = {}
+                if change == "missing":
+                    (out / COLLECTOR.MANIFEST_NAME).unlink()
+                elif change == "changed":
+                    (out / COLLECTOR.LAYOUT_NAME).write_bytes(b"changed")
+                elif change == "file-budget":
+                    (out / COLLECTOR.MANIFEST_NAME).write_bytes(b"x" * 4096)
+                    kwargs["file_limit"] = 2048
+                else:
+                    kwargs["evidence_limit"] = sum(p.stat().st_size for p in out.iterdir() if p.name != "image.tar.gz") - 1
+                COLLECTOR.stage_retention(out, stage, **kwargs)
+                self.assertFalse((stage / "image.tar.gz").exists())
+
+    def test_inventory_capture_is_bounded_and_ignores_nested_doctor_family(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "filesystem.tar"
+            with tarfile.open(path, "w") as archive:
+                for name in ("app/dist/openclaw-state-db-LongerHash.mjs", "app/dist/native-hook-relay/openclaw-state-db-12345678.mjs"):
+                    value = b"export { prepareOpenClawStateDatabaseSchema };"
+                    member = tarfile.TarInfo(name)
+                    member.size = len(value)
+                    archive.addfile(member, io.BytesIO(value))
+            entries, special, _ = COLLECTOR.inventory_filesystem(path)
+            self.assertEqual(list(special), ["app/dist/openclaw-state-db-LongerHash.mjs"])
+            self.assertEqual(len(entries), 2)
+            with mock.patch.dict(COLLECTOR.LAYOUT_LIMITS, {"maximumDoctorFamilyEntries": 0}):
+                with self.assertRaisesRegex(ValueError, "family count budget"):
+                    COLLECTOR.inventory_filesystem(path)
+            with mock.patch.dict(COLLECTOR.LAYOUT_LIMITS, {"capturedModuleLimitBytes": 1}):
+                with self.assertRaisesRegex(ValueError, "metadata budget"):
+                    COLLECTOR.inventory_filesystem(path)
+
+    def test_over_budget_inventory_never_retains_a_partial_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, entries, special, _ = self.sample_image(directory)
+            with mock.patch.dict(COLLECTOR.LAYOUT_LIMITS, {"expandedManifestLimitBytes": 1}):
+                with self.assertRaisesRegex(ValueError, "inventory metadata budget"):
+                    COLLECTOR.write_layout_evidence(source, entries, special, 0)
+            self.assertFalse((source / COLLECTOR.MANIFEST_NAME).exists())
+            self.assertTrue((source / COLLECTOR.LAYOUT_NAME).is_file())
 
     def test_missing_output_still_records_no_fixture_execution(self):
         with tempfile.TemporaryDirectory() as directory:

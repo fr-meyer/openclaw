@@ -18,6 +18,11 @@ PUBLISHER_FILES = (
     "README.md", "index.mjs", "openclaw.plugin.json", "package.json",
     "src/controller.mjs", "src/http.mjs", "src/runtime-pin-transition.mjs", "src/runtime.mjs",
 )
+DOCTOR_FAMILY = re.compile(r"app/dist/openclaw-state-db-[A-Za-z0-9_-]+\.mjs")
+DOCTOR_API = "prepareOpenClawStateDatabaseSchema"
+MANIFEST_NAME = "image-filesystem-manifest.json.gz"
+LAYOUT_NAME = "layout-assessment.json"
+LAYOUT_LIMITS = CONTRACT["artifactPreparation"]["layoutMetadata"]
 
 
 def digest_file(path):
@@ -65,21 +70,31 @@ def inventory_filesystem(archive):
     entries = {}
     special_bytes = {}
     total = 0
+    captured_total = 0
+    doctor_count = 0
     with tarfile.open(archive, "r:") as stream:
         for member in stream:
             name = clean_name(member.name)
+            if len(name.encode()) > 4096 or len(entries) >= LAYOUT_LIMITS["maximumInventoryEntries"]:
+                raise ValueError("image inventory path/count budget exceeded")
             if name in entries:
                 raise ValueError("duplicate image filesystem path: " + name)
             row = {"path": "/" + name, "mode": oct(member.mode & 0o7777)}
+            doctor = bool(DOCTOR_FAMILY.fullmatch(name))
+            if doctor:
+                doctor_count += 1
+                if doctor_count > LAYOUT_LIMITS["maximumDoctorFamilyEntries"]:
+                    raise ValueError("Doctor family count budget exceeded: " + str(doctor_count))
             if member.isfile():
                 total += member.size
                 if total > 8 * 1024 ** 3:
                     raise ValueError("image expanded-file budget exceeded")
                 digest = hashlib.sha256()
-                keep = (
-                    name == "app/dist/build-info.json"
-                    or re.fullmatch(r"app/dist/openclaw-state-db-[A-Za-z0-9_-]{8}\.mjs", name)
-                )
+                keep = name == "app/dist/build-info.json" or doctor
+                if keep:
+                    captured_total += member.size
+                    if member.size > 8 * 1024 ** 2 or captured_total > LAYOUT_LIMITS["capturedModuleLimitBytes"]:
+                        raise ValueError("compiled entry metadata budget exceeded: " + name)
                 captured = bytearray()
                 with stream.extractfile(member) as contents:
                     for block in iter(lambda: contents.read(1024 * 1024), b""):
@@ -102,6 +117,116 @@ def inventory_filesystem(archive):
                 row.update(type="special", tarType=member.type.decode("ascii", errors="replace"))
             entries[name] = row
     return entries, special_bytes, total
+
+
+def terminal_named_exports(value):
+    """Read Rolldown's terminal named export table, without importing JavaScript.
+
+    The pinned non-minified build emits one final `export { local as public }`
+    table. Other syntax is unsupported and fails closed; this is not a JS parser
+    or an assertion that a module can be loaded with its transitive dependencies.
+    """
+    text = value.decode("utf-8")
+    table = re.search(r"(?:^|\n)export\s*\{([^{}]*)\}\s*;?\s*\Z", text)
+    if not table or re.search(r"(?m)^export\b", text[:table.start()]):
+        raise ValueError("unsupported compiled terminal export table")
+    exports = []
+    items = table.group(1).split(",")
+    for index, item in enumerate(items):
+        item = item.strip()
+        if not item:
+            if index == len(items) - 1:
+                continue
+            raise ValueError("empty compiled export specifier")
+        specifier = re.fullmatch(r"([A-Za-z_$][A-Za-z0-9_$]{0,255})(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]{0,255}))?", item)
+        if not specifier:
+            raise ValueError("unsupported compiled export specifier")
+        name = specifier.group(2) or specifier.group(1)
+        if name in exports:
+            raise ValueError("duplicate compiled exported name")
+        exports.append(name)
+        if len(exports) > 256:
+            raise ValueError("compiled exported-name budget exceeded")
+    return exports
+
+
+def assess_layout(entries, special):
+    """Keep every selector outcome, even when Doctor selection prevents sealing."""
+    family = []
+    candidates = []
+    for name in sorted(name for name in entries if DOCTOR_FAMILY.fullmatch(name)):
+        row = entries[name]
+        observed = {"path": "/" + name, "type": row["type"],
+                    "sha256": row.get("sha256"), "bytes": row.get("bytes"),
+                    "exportsRequiredApi": False}
+        try:
+            if row["type"] != "file" or name not in special:
+                raise ValueError("Doctor family entry is not a captured regular file")
+            if hashlib.sha256(special[name]).hexdigest() != row["sha256"]:
+                raise ValueError("captured Doctor bytes do not match inventory")
+            exported = terminal_named_exports(special[name])
+            observed["exportedNames"] = exported
+            observed["exportsRequiredApi"] = DOCTOR_API in exported
+            if observed["exportsRequiredApi"]:
+                candidates.append(name)
+        except (ValueError, UnicodeError) as error:
+            observed["error"] = str(error)
+        family.append(observed)
+    required = CONTRACT["artifactPreparation"]["requiredCompiledEntries"]
+    compiled = []
+    for name in required["paths"]:
+        item = {"requestedPath": name}
+        try:
+            item.update(status="PRESENT", resolvedFile=resolve_file(entries, name))
+        except ValueError as error:
+            item.update(status="MISSING_OR_INVALID", error=str(error))
+        compiled.append(item)
+    failures = [row for row in compiled if row["status"] != "PRESENT"]
+    return {
+        "schema": "openclaw-v98-image-layout-assessment/v1",
+        "sourceCommitExpected": CONTRACT["sourceCommit"],
+        "admission": "NOT_ADMITTED; selector metadata only",
+        "fixtureExecuted": False, "compiledEntriesLoadedOrExecuted": False,
+        "minimalImportClosureClaimed": False,
+        "doctor": {"requiredExport": DOCTOR_API, "selection": "exact terminal exported name",
+                   "familyEntries": family, "candidateCount": len(candidates),
+                   "candidatePaths": candidates,
+                   "selectedPath": candidates[0] if len(candidates) == 1 else None,
+                   "parseErrorCount": sum("error" in row for row in family)},
+        "requiredCompiledEntries": {"expectedCount": len(compiled),
+                                    "registeredCoreEntryCount": required["registeredCoreEntryCount"],
+                                    "normalizationExportCount": required["normalizationExportCount"],
+                                    "presentCount": len(compiled) - len(failures),
+                                    "failureCount": len(failures), "entries": compiled},
+    }
+
+
+def write_layout_evidence(out, entries, special, total):
+    assessment = assess_layout(entries, special)
+    write_json(out / LAYOUT_NAME, assessment)
+    manifest = {"schema": "openclaw-image-filesystem-inventory/v1",
+                "entries": sorted(entries.values(), key=lambda row: row["path"]),
+                "regularFileBytes": total, "minimalImportClosureClaimed": False,
+                "admission": "NOT_ADMITTED; inventory only", "fixtureExecuted": False}
+    path = out / MANIFEST_NAME
+    raw = path.open("xb")
+    try:
+        expanded = 0
+        with raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
+            for chunk in json.JSONEncoder(separators=(",", ":")).iterencode(manifest):
+                value = chunk.encode()
+                expanded += len(value)
+                if expanded > LAYOUT_LIMITS["expandedManifestLimitBytes"]:
+                    raise ValueError("expanded inventory metadata budget exceeded")
+                compressed.write(value)
+        if path.stat().st_size > CONTRACT["artifactPreparation"]["evidenceFileLimitBytes"]:
+            raise ValueError("compressed inventory evidence budget exceeded")
+    except Exception:
+        # Never upload a partial or over-budget inventory as complete evidence.
+        if path.exists():
+            path.unlink()
+        raise
+    return assessment
 
 
 def resolve_file(entries, name):
@@ -188,10 +313,16 @@ def validate_image(inspect, entries, special_bytes, source):
         raise ValueError("compiled build-info source mismatch")
     if not build.get("buildId", "").startswith(CONTRACT["version"] + "-" + CONTRACT["sourceCommit"][:12] + "-"):
         raise ValueError("compiled build ID mismatch")
-    doctor = [name for name, value in special_bytes.items()
-              if name != "app/dist/build-info.json" and b"prepareOpenClawStateDatabaseSchema" in value]
-    if len(doctor) != 1:
-        raise ValueError("expected one compiled Doctor entry candidate")
+    layout = assess_layout(entries, special_bytes)
+    doctor = layout["doctor"]
+    if doctor["parseErrorCount"] or doctor["candidateCount"] != 1:
+        raise ValueError("expected one exact named Doctor export: candidates="
+                         + str(doctor["candidateCount"]) + ", parseErrors="
+                         + str(doctor["parseErrorCount"]) + "; see " + LAYOUT_NAME)
+    missing = [row for row in layout["requiredCompiledEntries"]["entries"] if row["status"] != "PRESENT"]
+    if missing:
+        raise ValueError("required compiled entry checks failed: " + str(len(missing))
+                         + "; " + missing[0]["error"] + "; see " + LAYOUT_NAME)
     publisher = {}
     for name in PUBLISHER_FILES:
         expected = digest_file(source / "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle" / name)
@@ -203,7 +334,8 @@ def validate_image(inspect, entries, special_bytes, source):
     compiled = {name: resolve_file(entries, name) for name in required["paths"]}
     return {
         "imageConfigId": image["Id"], "platform": CONTRACT["platform"],
-        "buildInfo": build, "doctorEntryCandidate": entries[doctor[0]],
+        "buildInfo": build, "doctorEntryCandidate": entries[doctor["selectedPath"]],
+        "doctorRequiredExport": DOCTOR_API,
         "doctorExportLoadedOrExecuted": False,
         "nodeExecutable": resolve_file(entries, "usr/local/bin/node"),
         "publisherFiles": publisher,
@@ -221,9 +353,11 @@ def stage_retention(out, stage, *, image_limit=None, evidence_limit=None, file_l
     stage.mkdir(mode=0o700)
     allowed = {
         "preflight.json", "docker-version.txt", "build.log", "image-id.txt",
-        "image-inspect.json", "image-filesystem-manifest.json",
+        "image-inspect.json", MANIFEST_NAME, LAYOUT_NAME,
         "artifact-receipt.json", "collector-failure.json",
     }
+    required_evidence = {"preflight.json", "image-id.txt", "image-inspect.json",
+                         "artifact-receipt.json", MANIFEST_NAME, LAYOUT_NAME}
     receipt = None
     receipt_path = out / "artifact-receipt.json"
     if receipt_path.is_file() and not receipt_path.is_symlink() and receipt_path.stat().st_size <= file_limit:
@@ -234,7 +368,12 @@ def stage_retention(out, stage, *, image_limit=None, evidence_limit=None, file_l
     rows = []
     evidence_bytes = 0
     image_bytes = 0
-    outputs = sorted(out.iterdir()) if out.is_dir() else []
+    retained_hashes = {}
+    # Core identity/layout evidence gets its budget before logs. Admit image last
+    # so an omitted required manifest can never accompany a retained image.
+    outputs = sorted(out.iterdir(), key=lambda path: (
+        2 if path.name == "image.tar.gz" else 0 if path.name in required_evidence else 1,
+        path.name)) if out.is_dir() else []
     if len(outputs) > 32:
         raise ValueError("unexpected output count exceeds retention evidence budget")
     for path in outputs:
@@ -254,6 +393,11 @@ def stage_retention(out, stage, *, image_limit=None, evidence_limit=None, file_l
                 and receipt.get("imageArchiveSha256") == digest
                 and receipt.get("imageArchiveBytes") == size
                 and receipt.get("fixturePhases") == "NEVER_RUN"
+                and required_evidence <= retained_hashes.keys()
+                and receipt.get("filesystemManifestPath") == MANIFEST_NAME
+                and receipt.get("filesystemManifestEncoding") == "gzip-json"
+                and receipt.get("filesystemManifestSha256") == retained_hashes.get(MANIFEST_NAME)
+                and receipt.get("layoutAssessmentSha256") == retained_hashes.get(LAYOUT_NAME)
                 and not (out / "collector-failure.json").exists()
             )
             admitted = size <= image_limit and sealed
@@ -286,21 +430,27 @@ def stage_retention(out, stage, *, image_limit=None, evidence_limit=None, file_l
                     destination.unlink()
                 raise
             row["retained"] = True
+            retained_hashes[path.name] = digest
             if path.name == "image.tar.gz":
                 image_bytes += size
             else:
                 evidence_bytes += size
         rows.append(row)
-    write_json(stage / "retention-receipt.json", {
-        "schema": "openclaw-v98-artifact-retention/v1", "sourceCommit": CONTRACT["sourceCommit"],
-        "outputDirectoryPresent": out.is_dir(), "imageLimitBytes": image_limit,
-        "evidenceLimitBytes": evidence_limit, "evidenceFileLimitBytes": file_limit,
-        "retainedImageBytes": image_bytes, "retainedEvidenceBytes": evidence_bytes,
-        "retentionReceiptBudgetBytes": 65536,
-        "omittedPayloadCustodyClaimed": False, "fixtureExecuted": False, "files": rows,
-    })
-    if (stage / "retention-receipt.json").stat().st_size > 65536:
-        raise ValueError("retention receipt budget exceeded")
+    try:
+        write_json(stage / "retention-receipt.json", {
+            "schema": "openclaw-v98-artifact-retention/v1", "sourceCommit": CONTRACT["sourceCommit"],
+            "outputDirectoryPresent": out.is_dir(), "imageLimitBytes": image_limit,
+            "evidenceLimitBytes": evidence_limit, "evidenceFileLimitBytes": file_limit,
+            "retainedImageBytes": image_bytes, "retainedEvidenceBytes": evidence_bytes,
+            "retentionReceiptBudgetBytes": 65536,
+            "omittedPayloadCustodyClaimed": False, "fixtureExecuted": False, "files": rows,
+        })
+        if (stage / "retention-receipt.json").stat().st_size > 65536:
+            raise ValueError("retention receipt budget exceeded")
+    except Exception:
+        if (stage / "image.tar.gz").exists():
+            (stage / "image.tar.gz").unlink()
+        raise
 
 
 def main():
@@ -325,21 +475,22 @@ def main():
     if image_archive.stat().st_size > CONTRACT["artifactPreparation"]["imageArchiveLimitBytes"]:
         raise ValueError("image artifact archive budget exceeded")
     entries, special, total = inventory_filesystem(out / "filesystem.tar")
+    # Write non-executable layout evidence before any image/selector admission.
+    # A Doctor failure must preserve both candidates and all 79 path outcomes.
+    write_layout_evidence(out, entries, special, total)
     image = validate_image(json.loads((out / "image-inspect.json").read_text()), entries, special, source)
     if (out / "image-id.txt").read_text().strip() != image["imageConfigId"]:
         raise ValueError("build output image identity mismatch")
     layers = validate_saved_image(image_archive, image["imageConfigId"])
-    write_json(out / "image-filesystem-manifest.json", {
-        "schema": "openclaw-image-filesystem-inventory/v1", "entries": sorted(entries.values(), key=lambda row: row["path"]),
-        "regularFileBytes": total, "minimalImportClosureClaimed": False,
-    })
     write_json(out / "artifact-receipt.json", {
         "schema": "openclaw-v98-prepared-image/v1", "recordedAtUtc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "source": source_identity, "toolingSha": os.environ.get("GITHUB_SHA"),
         "runId": os.environ.get("GITHUB_RUN_ID"), "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
         "image": image, "savedImageLayers": layers, "imageArchiveSha256": digest_file(image_archive),
         "imageArchiveBytes": image_archive.stat().st_size,
-        "filesystemManifestSha256": digest_file(out / "image-filesystem-manifest.json"),
+        "filesystemManifestPath": MANIFEST_NAME, "filesystemManifestEncoding": "gzip-json",
+        "filesystemManifestSha256": digest_file(out / MANIFEST_NAME),
+        "layoutAssessmentSha256": digest_file(out / LAYOUT_NAME),
         "flattenedFilesystemTarSha256": digest_file(out / "filesystem.tar"),
         "publication": "Actions artifact only", "defaultEntrypointStarted": False,
         "fixturePhases": "NEVER_RUN", "runtimeAdmission": "BLOCKED pending exact closure and kernel policy review",
