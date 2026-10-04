@@ -9,6 +9,7 @@ import { inflateRawSync } from "node:zlib";
 import {
   createInstalledPublisherPinTransition,
   INSTALLED_PUBLISHER_PIN_PAIR,
+  PublisherPinTransitionError,
   readPublisherArtifactBytes,
 } from "../src/runtime-pin-transition.mjs";
 
@@ -321,6 +322,7 @@ for (const field of ["direction", "expectedConfigHash"]) {
     await assert.rejects(
       f.run(f.request({ [field]: { privatePayload: "x".repeat(2048) } })),
       (error) => {
+        assert.ok(error instanceof PublisherPinTransitionError);
         assert.equal(error.receipt[field === "direction" ? "direction" : "configHash"], null);
         assert.equal(JSON.stringify(error.receipt).includes("privatePayload"), false);
         assert.equal(error.receipt.status, "refused");

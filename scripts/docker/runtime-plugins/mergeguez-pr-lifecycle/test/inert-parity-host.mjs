@@ -8,7 +8,7 @@ export const OWNER = "agent:franck:main";
 export const REPO = "fr-meyer/speculoos";
 export const SHA_A = "a".repeat(40);
 export const SHA_B = "b".repeat(40);
-export const RUNTIME_PATH = fileURLToPath(new URL("../src/runtime.mjs", import.meta.url));
+const RUNTIME_PATH = fileURLToPath(new URL("../src/runtime.mjs", import.meta.url));
 const copy = (value) => (value === undefined ? undefined : structuredClone(value));
 export function prEvent(overrides = {}) {
   return {
@@ -54,7 +54,7 @@ export function pluginConfig(overrides = {}) {
 // Explicit inert canonical transaction port: no database, native worker, timer,
 // broker or Gateway. Each body below is one synchronous in-memory transaction
 // entered through an awaited async host operation, preserving real consumer ABI.
-export class InertCanonicalKernel {
+class InertCanonicalKernel {
   flows = new Map();
   observations = new Map();
   nextFlow = 1;

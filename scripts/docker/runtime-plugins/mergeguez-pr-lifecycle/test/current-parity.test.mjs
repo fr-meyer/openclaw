@@ -2,7 +2,21 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { Readable } from "node:stream";
 import test from "node:test";
-import { PHASE } from "../src/controller.mjs";
+import {
+  PHASE,
+  STATE_SCHEMA_VERSION,
+  MAX_INFRASTRUCTURE_RETRIES,
+  PRIMARY_FIXER_MODEL,
+  FALLBACK_FIXER_MODEL,
+  REVIEW_ACTOR,
+  AUTHOR_ACTOR,
+  applyWorkerFailure,
+  findingsAreActionable,
+  isSha,
+  isRepo,
+  sanitizeFindings,
+} from "../src/controller.mjs";
+import { BODY_TIMEOUT_MS, MAX_BODY_BYTES, readJsonBody } from "../src/http.mjs";
 import * as runtime from "../src/runtime.mjs";
 const { __testing, proposeInstalledPublisherRuntimePinMigration, registerMergeguezPrLifecycle } =
   runtime;
@@ -21,6 +35,88 @@ const get = (f, id) => f.kernel.get(OWNER, id);
 const details = (value) => value.details;
 const continueFlow = (f, id, extra = {}) =>
   f.tool().execute("call", { action: "continue", flowId: id, ...extra });
+
+test("retained publisher policy exports govern persisted defaults and retry exhaustion", () => {
+  const state = fixture().seed().stateJson;
+  assert.equal(STATE_SCHEMA_VERSION, 1);
+  assert.equal(state.schemaVersion, STATE_SCHEMA_VERSION);
+  assert.equal(state.reviewActor, REVIEW_ACTOR);
+  assert.equal(state.authorActor, AUTHOR_ACTOR);
+  assert.equal(state.fixerModel, PRIMARY_FIXER_MODEL);
+  assert.equal(state.fixerFallbackModel, FALLBACK_FIXER_MODEL);
+  assert.equal(MAX_INFRASTRUCTURE_RETRIES, 8);
+  const sessionKey = "agent:reviewer:subagent:policy-contract";
+  const failure = (count) =>
+    applyWorkerFailure(
+      {
+        ...state,
+        activeWorker: { kind: "review", sessionKey },
+        infrastructureRetryCount: count,
+      },
+      sessionKey,
+      "worker_session_missing",
+      state.startedAt,
+    );
+  const lastRetry = failure(MAX_INFRASTRUCTURE_RETRIES - 1);
+  assert.equal(lastRetry.effect, "wait");
+  assert.equal(lastRetry.state.infrastructureRetryCount, MAX_INFRASTRUCTURE_RETRIES);
+  const exhausted = failure(MAX_INFRASTRUCTURE_RETRIES);
+  assert.equal(exhausted.state.phase, PHASE.BLOCKED);
+  assert.equal(exhausted.state.blocker, "infrastructure_retry_exhausted:worker_session_missing");
+});
+
+test("retained review input exports normalize findings and require actionable scope", () => {
+  assert.equal(isSha(SHA_A), true);
+  assert.equal(isSha("a".repeat(39)), false);
+  assert.equal(isRepo(REPO), true);
+  assert.equal(isRepo("owner/repo/extra"), false);
+  const findings = sanitizeFindings([
+    { id: " issue ", severity: " HIGH ", summary: " Fix it ", path: " src/main.ts " },
+    { id: "context", severity: "info", summary: "Additional context" },
+  ]);
+  assert.deepEqual(findings[0], {
+    id: "issue",
+    severity: "high",
+    summary: "Fix it",
+    path: "src/main.ts",
+  });
+  assert.equal(findingsAreActionable(findings), true);
+  assert.equal(findingsAreActionable([{ ...findings[0], path: " " }]), false);
+  assert.throws(
+    () => sanitizeFindings([{ ...findings[0], unexpected: true }]),
+    /unexpected is not allowed/,
+  );
+});
+
+test("retained HTTP body reader enforces its default size limit", async () => {
+  assert.equal(MAX_BODY_BYTES, 256 * 1024);
+  const overhead = Buffer.byteLength(JSON.stringify({ value: "" }));
+  const atLimit = Buffer.from(JSON.stringify({ value: "x".repeat(MAX_BODY_BYTES - overhead) }));
+  assert.equal(atLimit.length, MAX_BODY_BYTES);
+  const tooLarge = Buffer.concat([atLimit, Buffer.from(" ")]);
+  await assert.rejects(readJsonBody(Readable.from([tooLarge])), /request_body_too_large/);
+  const accepted = await readJsonBody(Readable.from([atLimit]));
+  assert.equal(accepted.json.value.length, MAX_BODY_BYTES - overhead);
+});
+
+test("retained HTTP body reader expires an incomplete body at its default deadline", async (t) => {
+  assert.equal(BODY_TIMEOUT_MS, 15_000);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const request = new Readable({ read() {} });
+  let settled = false;
+  const pending = readJsonBody(request).finally(() => {
+    settled = true;
+  });
+  const rejected = assert.rejects(pending, /request_body_timeout/);
+  t.mock.timers.tick(BODY_TIMEOUT_MS - 1);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(settled, false);
+  t.mock.timers.tick(1);
+  await rejected;
+  assert.equal(settled, true);
+  request.destroy();
+});
 
 test("async PR ingress awaits creation and preserves state, workflow and owner", async () => {
   const f = fixture();
