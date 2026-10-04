@@ -110,7 +110,7 @@ function useCanonicalMutationBody(f) {
   return actual.mutateConfigFile;
 }
 
-test("actual canonical mutation body joins component source/CAS/backup intent", async () => {
+void test("actual canonical mutation body joins component source/CAS/backup intent", async () => {
   const f = fixture();
   const run = createInstalledPublisherPinTransition({
     authority: f.authority,
@@ -122,7 +122,7 @@ test("actual canonical mutation body joins component source/CAS/backup intent", 
   assert.equal(f.get().plugins.entries[ID].config.expectedRuntimeSha256, H1);
 });
 
-test("actual canonical CAS rejects drift before plugin mutation or commit", async () => {
+void test("actual canonical CAS rejects drift before plugin mutation or commit", async () => {
   const f = fixture();
   const actual = useCanonicalMutationBody(f);
   const run = createInstalledPublisherPinTransition({
@@ -279,7 +279,7 @@ function fixture() {
     },
     include: () => {
       snapshotHashOverride = undefined;
-      const original = sdk.readConfigFileSnapshotForWrite;
+      const original = sdk.readConfigFileSnapshotForWrite.bind(sdk);
       sdk.readConfigFileSnapshotForWrite = async () => {
         const result = await original();
         result.snapshot.includeProvenance = [{}];
@@ -289,7 +289,7 @@ function fixture() {
   };
 }
 
-test("release entrypoint applies only the exact pin via canonical source mutation with required backup", async () => {
+void test("release entrypoint applies only the exact pin via canonical source mutation with required backup", async () => {
   const f = fixture();
   const before = f.get();
   const receipt = await f.run(f.request());
@@ -305,7 +305,7 @@ test("release entrypoint applies only the exact pin via canonical source mutatio
   assert.equal(receipt.databaseRollback, false);
 });
 
-test("idempotent current-revision rerun performs no write or backup", async () => {
+void test("idempotent current-revision rerun performs no write or backup", async () => {
   const f = fixture();
   const oldRequest = f.request();
   await f.run(oldRequest);
@@ -317,7 +317,7 @@ test("idempotent current-revision rerun performs no write or backup", async () =
 });
 
 for (const field of ["direction", "expectedConfigHash"]) {
-  test(`malformed ${field} never leaks payload into refusal receipt`, async () => {
+  void test(`malformed ${field} never leaks payload into refusal receipt`, async () => {
     const f = fixture();
     await assert.rejects(
       f.run(f.request({ [field]: { privatePayload: "x".repeat(2048) } })),
@@ -334,20 +334,28 @@ for (const field of ["direction", "expectedConfigHash"]) {
   });
 }
 
-for (const [label, setup, expected] of [
-  ["stale full config", (f) => f.edit(), "PIN_STALE_CONFIG"],
-  ["unrelated pin", (f) => f.setHash("f".repeat(64)), "PIN_HASH_PREIMAGE_MISMATCH"],
-  ["included config", (f) => f.include(), "PIN_INCLUDED_CONFIG_UNSUPPORTED"],
-  [
-    "corrupt package",
-    (f) => {
+for (const { label, setup, expected } of [
+  { label: "stale full config", setup: (f) => f.edit(), expected: "PIN_STALE_CONFIG" },
+  {
+    label: "unrelated pin",
+    setup: (f) => f.setHash("f".repeat(64)),
+    expected: "PIN_HASH_PREIMAGE_MISMATCH",
+  },
+  {
+    label: "included config",
+    setup: (f) => f.include(),
+    expected: "PIN_INCLUDED_CONFIG_UNSUPPORTED",
+  },
+  {
+    label: "corrupt package",
+    setup: (f) => {
       f.hooks.artifactRead = () => Buffer.from("corrupt");
     },
-    "PIN_TARGET_PACKAGE_MISMATCH",
-  ],
-  ["retired owner", (f) => f.retire(), "PIN_PREFLIGHT_FAILED"],
+    expected: "PIN_TARGET_PACKAGE_MISMATCH",
+  },
+  { label: "retired owner", setup: (f) => f.retire(), expected: "PIN_PREFLIGHT_FAILED" },
 ]) {
-  test(`${label} refuses without config write`, async () => {
+  void test(`${label} refuses without config write`, async () => {
     const f = fixture();
     const originalRequest = f.request();
     setup(f);
@@ -360,35 +368,35 @@ for (const [label, setup, expected] of [
   });
 }
 
-for (const [label, setup] of [
-  [
-    "config changes during lock acquisition",
-    (f) => {
+for (const { label, setup } of [
+  {
+    label: "config changes during lock acquisition",
+    setup: (f) => {
       f.hooks.beforeMutate = () => f.edit();
     },
-  ],
-  [
-    "required backup failure",
-    (f) => {
+  },
+  {
+    label: "required backup failure",
+    setup: (f) => {
       f.hooks.backupFailure = true;
     },
-  ],
-  [
-    "package replacement before commit",
-    (f) => {
+  },
+  {
+    label: "package replacement before commit",
+    setup: (f) => {
       f.hooks.beforeCommit = () => {
         f.hooks.artifactRead = () => Buffer.from("changed");
       };
     },
-  ],
-  [
-    "owner retirement before commit",
-    (f) => {
+  },
+  {
+    label: "owner retirement before commit",
+    setup: (f) => {
       f.hooks.beforeCommit = () => f.retire();
     },
-  ],
+  },
 ]) {
-  test(`${label} never silently retries or publishes`, async () => {
+  void test(`${label} never silently retries or publishes`, async () => {
     const f = fixture();
     setup(f);
     await assert.rejects(f.run(f.request()), (error) => error.receipt.status === "unknown");
@@ -398,7 +406,7 @@ for (const [label, setup] of [
 }
 
 for (const status of ["restored", "not-restored", "unknown"]) {
-  test(`post-commit ${status} receipt stays unknown and retains owner outcome`, async () => {
+  void test(`post-commit ${status} receipt stays unknown and retains owner outcome`, async () => {
     const f = fixture();
     f.hooks.postCommitFailure = { rollbackStatus: status, publication: "complete" };
     await assert.rejects(f.run(f.request()), (error) => {
@@ -413,14 +421,14 @@ for (const status of ["restored", "not-restored", "unknown"]) {
   });
 }
 
-test("missing committed hash fails closed after one write", async () => {
+void test("missing committed hash fails closed after one write", async () => {
   const f = fixture();
   f.hooks.missingCommitHash = true;
   await assert.rejects(f.run(f.request()), (error) => error.receipt.status === "unknown");
   assert.equal(f.calls.writes, 1);
 });
 
-test("reverse needs original live rollback admission before target/config access", async () => {
+void test("reverse needs original live rollback admission before target/config access", async () => {
   const f = fixture();
   f.unsafeRollback();
   await assert.rejects(
@@ -431,7 +439,7 @@ test("reverse needs original live rollback admission before target/config access
   assert.equal(f.calls.reads, 0);
 });
 
-test("reverse verifies predecessor package and changes only the pin", async () => {
+void test("reverse verifies predecessor package and changes only the pin", async () => {
   const f = fixture();
   f.setHash(H1);
   f.edit();
@@ -448,7 +456,7 @@ test("reverse verifies predecessor package and changes only the pin", async () =
   assert.equal(f.calls.writes, 1);
 });
 
-test("replacing rollback callback across await cannot replace original live guard", async () => {
+void test("replacing rollback callback across await cannot replace original live guard", async () => {
   const f = fixture();
   f.setHash(H1);
   let first = true;
@@ -469,7 +477,7 @@ test("replacing rollback callback across await cannot replace original live guar
 });
 
 for (const field of ["assertCurrent", "assertRollbackSafe"]) {
-  test(`async ${field} refuses before artifact/config access`, async () => {
+  void test(`async ${field} refuses before artifact/config access`, async () => {
     const f = fixture();
     f.authority[field] = async () => {};
     const run = createInstalledPublisherPinTransition({
@@ -487,7 +495,7 @@ for (const field of ["assertCurrent", "assertRollbackSafe"]) {
 }
 
 for (const change of ["target", "owner"]) {
-  test(`post-commit ${change} loss retains unknown outcome without reverse write`, async () => {
+  void test(`post-commit ${change} loss retains unknown outcome without reverse write`, async () => {
     const f = fixture();
     const request = f.request();
     f.hooks.afterCommit = () => {
@@ -510,7 +518,7 @@ for (const change of ["target", "owner"]) {
   });
 }
 
-test("read-only default artifact reader binds the actual candidate runtime bytes", async () => {
+void test("read-only default artifact reader binds the actual candidate runtime bytes", async () => {
   const runtime = path.join(packageRoot, "src/runtime.mjs");
   assert.equal(sha(await readPublisherArtifactBytes(runtime)), H1);
 });
@@ -632,7 +640,7 @@ function backupFixture(fail = {}) {
   return { files, fds, events, prepare, io };
 }
 
-test("required canonical backup is retained and directory-synced before publication", async () => {
+void test("required canonical backup is retained and directory-synced before publication", async () => {
   const f = backupFixture();
   const prepared = await f.prepare({
     configPath: C,
@@ -652,7 +660,7 @@ test("required canonical backup is retained and directory-synced before publicat
 });
 
 for (const step of ["prepare", "fileSync", "open", "rename", "directorySync", "close"]) {
-  test(`required backup ${step} failure prevents publication`, async () => {
+  void test(`required backup ${step} failure prevents publication`, async () => {
     const f = backupFixture({ [step]: new Error("synthetic_" + step) });
     let prepared;
     try {
@@ -675,7 +683,7 @@ for (const step of ["prepare", "fileSync", "open", "rename", "directorySync", "c
   });
 }
 
-test("required missing config refuses before backup IO", async () => {
+void test("required missing config refuses before backup IO", async () => {
   const f = backupFixture();
   await assert.rejects(
     f.prepare({
@@ -690,7 +698,7 @@ test("required missing config refuses before backup IO", async () => {
   assert.equal(f.files.size, 0);
 });
 
-test("default best-effort preparation behavior is preserved", async () => {
+void test("default best-effort preparation behavior is preserved", async () => {
   const f = backupFixture({ prepare: new Error("synthetic_failure") });
   const prepared = await f.prepare({
     configPath: C,
@@ -707,7 +715,7 @@ for (const [step, cleanup] of [
   ["directorySync", "close"],
   ["prepare", "cleanup"],
 ]) {
-  test(`combined ${step}/${cleanup} retains primary and secondary errors`, async () => {
+  void test(`combined ${step}/${cleanup} retains primary and secondary errors`, async () => {
     const primary = new Error("synthetic_primary");
     const secondary = new Error("synthetic_secondary");
     const f = backupFixture({ [step]: primary, [cleanup]: secondary });
@@ -745,7 +753,7 @@ for (const capability of [
   { requireDurableBackup: 0 },
   { requireDurableBackup: true },
 ]) {
-  test(`legacy/unsupported SDK backup capability refuses before config IO (${JSON.stringify(capability)})`, async () => {
+  void test(`legacy/unsupported SDK backup capability refuses before config IO (${JSON.stringify(capability)})`, async () => {
     const f = fixture();
     f.sdk.CONFIG_MUTATION_CAPABILITIES = capability;
     await assert.rejects(
@@ -759,7 +767,7 @@ for (const capability of [
   });
 }
 
-test("public SDK advertises the exact required-backup contract", () => {
+void test("public SDK advertises the exact required-backup contract", () => {
   const source = stripTypeScriptTypes(
     fs.readFileSync(
       new URL("../../../../../src/plugin-sdk/config-mutation.ts", import.meta.url),

@@ -18,8 +18,6 @@ import {
 } from "../src/controller.mjs";
 import { BODY_TIMEOUT_MS, MAX_BODY_BYTES, readJsonBody } from "../src/http.mjs";
 import * as runtime from "../src/runtime.mjs";
-const { __testing, proposeInstalledPublisherRuntimePinMigration, registerMergeguezPrLifecycle } =
-  runtime;
 import {
   OWNER,
   REPO,
@@ -31,12 +29,15 @@ import {
   assertAllClosed,
 } from "./inert-parity-host.mjs";
 
+const { __testing, proposeInstalledPublisherRuntimePinMigration, registerMergeguezPrLifecycle } =
+  runtime;
+
 const get = (f, id) => f.kernel.get(OWNER, id);
 const details = (value) => value.details;
 const continueFlow = (f, id, extra = {}) =>
   f.tool().execute("call", { action: "continue", flowId: id, ...extra });
 
-test("retained publisher policy exports govern persisted defaults and retry exhaustion", () => {
+void test("retained publisher policy exports govern persisted defaults and retry exhaustion", () => {
   const state = fixture().seed().stateJson;
   assert.equal(STATE_SCHEMA_VERSION, 1);
   assert.equal(state.schemaVersion, STATE_SCHEMA_VERSION);
@@ -65,7 +66,7 @@ test("retained publisher policy exports govern persisted defaults and retry exha
   assert.equal(exhausted.state.blocker, "infrastructure_retry_exhausted:worker_session_missing");
 });
 
-test("retained review input exports normalize findings and require actionable scope", () => {
+void test("retained review input exports normalize findings and require actionable scope", () => {
   assert.equal(isSha(SHA_A), true);
   assert.equal(isSha("a".repeat(39)), false);
   assert.equal(isRepo(REPO), true);
@@ -88,7 +89,7 @@ test("retained review input exports normalize findings and require actionable sc
   );
 });
 
-test("retained HTTP body reader enforces its default size limit", async () => {
+void test("retained HTTP body reader enforces its default size limit", async () => {
   assert.equal(MAX_BODY_BYTES, 256 * 1024);
   const overhead = Buffer.byteLength(JSON.stringify({ value: "" }));
   const atLimit = Buffer.from(JSON.stringify({ value: "x".repeat(MAX_BODY_BYTES - overhead) }));
@@ -99,7 +100,7 @@ test("retained HTTP body reader enforces its default size limit", async () => {
   assert.equal(accepted.json.value.length, MAX_BODY_BYTES - overhead);
 });
 
-test("retained HTTP body reader expires an incomplete body at its default deadline", async (t) => {
+void test("retained HTTP body reader expires an incomplete body at its default deadline", async (t) => {
   assert.equal(BODY_TIMEOUT_MS, 15_000);
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const request = new Readable({ read() {} });
@@ -118,7 +119,7 @@ test("retained HTTP body reader expires an incomplete body at its default deadli
   request.destroy();
 });
 
-test("async PR ingress awaits creation and preserves state, workflow and owner", async () => {
+void test("async PR ingress awaits creation and preserves state, workflow and owner", async () => {
   const f = fixture();
   const outcome = await __testing.ingestPullRequest(f.api, f.config, prEvent());
   assert.equal(outcome.created, true);
@@ -130,7 +131,7 @@ test("async PR ingress awaits creation and preserves state, workflow and owner",
   assertAllClosed(assert, f.calls);
 });
 
-test("concurrent Promise ingress converges in the inert native transaction without state overwrite", async () => {
+void test("concurrent Promise ingress converges in the inert native transaction without state overwrite", async () => {
   const f = fixture();
   // Both lookups suspend before their empty result, reproducing the original create race.
   const outcomes = await Promise.all([
@@ -150,7 +151,7 @@ test("concurrent Promise ingress converges in the inert native transaction witho
   assertAllClosed(assert, f.calls);
 });
 
-test("terminal rows retain original reopen semantics and are not deduplicated", async () => {
+void test("terminal rows retain original reopen semantics and are not deduplicated", async () => {
   const f = fixture();
   f.seed({ phase: PHASE.MERGE_READY }, { status: "succeeded" });
   const outcome = await __testing.ingestPullRequest(
@@ -163,7 +164,7 @@ test("terminal rows retain original reopen semantics and are not deduplicated", 
   assertAllClosed(assert, f.calls);
 });
 
-test("owner status and stale wake entrypoints await lookups and close the selected binding", async () => {
+void test("owner status and stale wake entrypoints await lookups and close the selected binding", async () => {
   const f = fixture();
   const flow = f.seed();
   const tool = f.tool();
@@ -178,7 +179,7 @@ test("owner status and stale wake entrypoints await lookups and close the select
   assertAllClosed(assert, f.calls);
 });
 
-test("normal launch keeps original timeout spelling, tool allowance and held guard until acknowledgement", async () => {
+void test("normal launch keeps original timeout spelling, tool allowance and held guard until acknowledgement", async () => {
   const f = fixture();
   const flow = f.seed();
   const outcome = details(await continueFlow(f, flow.flowId));
@@ -197,7 +198,7 @@ test("normal launch keeps original timeout spelling, tool allowance and held gua
   assertAllClosed(assert, f.calls);
 });
 
-test("selected binding remains live until accepted async launch work has settled", async () => {
+void test("selected binding remains live until accepted async launch work has settled", async () => {
   const f = fixture();
   const flow = f.seed();
   let acknowledge;
@@ -227,7 +228,7 @@ test("selected binding remains live until accepted async launch work has settled
   assertAllClosed(assert, f.calls);
 });
 
-test("capacity is refreshed after preflight and an inserted occupant prevents launch", async () => {
+void test("capacity is refreshed after preflight and an inserted occupant prevents launch", async () => {
   const f = fixture();
   const flow = f.seed();
   let snapshots = 0;
@@ -247,11 +248,13 @@ test("capacity is refreshed after preflight and an inserted occupant prevents la
   assertAllClosed(assert, f.calls);
 });
 
-test("worker transaction rejects capacity snapshot changed after selection without launching", async () => {
+void test("worker transaction rejects capacity snapshot changed after selection without launching", async () => {
   const f = fixture();
   const flow = f.seed();
   f.hooks.operation = (_binding, name) => {
-    if (name === "reserve") f.seed({ prNumber: 321 });
+    if (name === "reserve") {
+      f.seed({ prNumber: 321 });
+    }
   };
   await continueFlow(f, flow.flowId);
   assert.equal(f.calls.reservations.length, 1);
@@ -260,7 +263,7 @@ test("worker transaction rejects capacity snapshot changed after selection witho
   assertAllClosed(assert, f.calls);
 });
 
-test("snapshot fence fields and flow values are detached before async reserve", () => {
+void test("snapshot fence fields and flow values are detached before async reserve", () => {
   const original = {
     ownerSessionKeys: [OWNER],
     snapshot: [{ flowId: "flow", ownerKey: OWNER, revision: 1 }],
@@ -279,7 +282,7 @@ test("snapshot fence fields and flow values are detached before async reserve", 
   assert.throws(() => captured.ownerSessionKeys.push("evil"), TypeError);
 });
 
-test("invocation throw is unknown launch, retains reservation, and startup never relaunches it", async () => {
+void test("invocation throw is unknown launch, retains reservation, and startup never relaunches it", async () => {
   const f = fixture();
   const flow = f.seed();
   f.hooks.launch = async () => {
@@ -300,7 +303,7 @@ test("invocation throw is unknown launch, retains reservation, and startup never
   assertAllClosed(assert, f.calls);
 });
 
-test("mismatched session acknowledgement is held with exact observed session evidence", async () => {
+void test("mismatched session acknowledgement is held with exact observed session evidence", async () => {
   const f = fixture();
   const flow = f.seed();
   f.hooks.launch = async () => ({
@@ -315,7 +318,7 @@ test("mismatched session acknowledgement is held with exact observed session evi
   assertAllClosed(assert, f.calls);
 });
 
-test("terminal event awaits enumeration and native unknown overrides bare end plus absent session", async () => {
+void test("terminal event awaits enumeration and native unknown overrides bare end plus absent session", async () => {
   const f = fixture();
   const flow = f.seed();
   await continueFlow(f, flow.flowId);
@@ -334,13 +337,15 @@ test("terminal event awaits enumeration and native unknown overrides bare end pl
   assertAllClosed(assert, f.calls);
 });
 
-test("bare terminal event with missing or still-running observation cannot credit success or retry work", async () => {
+void test("bare terminal event with missing or still-running observation cannot credit success or retry work", async () => {
   for (const status of ["missing", "running"]) {
     const f = fixture();
     const flow = f.seed();
     await continueFlow(f, flow.flowId);
     const state = get(f, flow.flowId).stateJson;
-    if (status === "missing") f.kernel.observations.clear();
+    if (status === "missing") {
+      f.kernel.observations.clear();
+    }
     const before = get(f, flow.flowId).revision;
     const result = await __testing.reconcileTerminalWorkerEvent(f.api, f.config, {
       stream: "lifecycle",
@@ -355,7 +360,7 @@ test("bare terminal event with missing or still-running observation cannot credi
   }
 });
 
-test("unknown retained legacy observation stays held through startup, recover and terminal event", async () => {
+void test("unknown retained legacy observation stays held through startup, recover and terminal event", async () => {
   const f = fixture();
   const flow = f.seed();
   await continueFlow(f, flow.flowId);
@@ -381,7 +386,7 @@ test("unknown retained legacy observation stays held through startup, recover an
   assertAllClosed(assert, f.calls);
 });
 
-test("known terminal observation drives original structured-report recovery without assuming lifecycle end success", async () => {
+void test("known terminal observation drives original structured-report recovery without assuming lifecycle end success", async () => {
   const f = fixture();
   const flow = f.seed();
   await continueFlow(f, flow.flowId);
@@ -402,7 +407,7 @@ test("known terminal observation drives original structured-report recovery with
   assertAllClosed(assert, f.calls);
 });
 
-test("startup leaves historical infrastructure block unchanged and removes its wake", async () => {
+void test("startup leaves historical infrastructure block unchanged and removes its wake", async () => {
   const f = fixture();
   const flow = f.seed(
     { phase: PHASE.BLOCKED, blocker: "worker_start_failed:rate_limit" },
@@ -416,7 +421,7 @@ test("startup leaves historical infrastructure block unchanged and removes its w
   assertAllClosed(assert, f.calls);
 });
 
-test("legacy exact task observation remains read-only and does not create or adopt a lease", async () => {
+void test("legacy exact task observation remains read-only and does not create or adopt a lease", async () => {
   const f = fixture();
   const worker = {
     sessionKey: "agent:reviewer:subagent:legacy",
@@ -440,7 +445,7 @@ test("legacy exact task observation remains read-only and does not create or ado
   assertAllClosed(assert, f.calls);
 });
 
-test("one denied ledger does not hide an exact observation from the admitted owner", async () => {
+void test("one denied ledger does not hide an exact observation from the admitted owner", async () => {
   const f = fixture();
   const worker = {
     sessionKey: "agent:reviewer:subagent:legacy",
@@ -448,7 +453,9 @@ test("one denied ledger does not hide an exact observation from the admitted own
     taskId: "old-id",
   };
   f.hooks.bindRuns = (session) => {
-    if (session !== OWNER) throw new Error("fixture_denied");
+    if (session !== OWNER) {
+      throw new Error("fixture_denied");
+    }
   };
   f.kernel.observations.set("old-id", {
     id: "old-id",
@@ -466,7 +473,7 @@ test("one denied ledger does not hide an exact observation from the admitted own
   assertAllClosed(assert, f.calls);
 });
 
-test("native unknown orphan remains held even when session is absent", async () => {
+void test("native unknown orphan remains held even when session is absent", async () => {
   const f = fixture();
   const worker = {
     sessionKey: "agent:reviewer:subagent:unknown",
@@ -490,7 +497,7 @@ test("native unknown orphan remains held even when session is absent", async () 
   assertAllClosed(assert, f.calls);
 });
 
-test("native orphan cancellation awaits the existing owner and closes ephemeral ledgers", async () => {
+void test("native orphan cancellation awaits the existing owner and closes ephemeral ledgers", async () => {
   const f = fixture();
   const worker = {
     sessionKey: "agent:reviewer:subagent:orphan",
@@ -514,7 +521,7 @@ test("native orphan cancellation awaits the existing owner and closes ephemeral 
   assertAllClosed(assert, f.calls);
 });
 
-test("native cancellation error, nonacknowledgement and throw remain held despite absent session", async () => {
+void test("native cancellation error, nonacknowledgement and throw remain held despite absent session", async () => {
   for (const outcome of [
     { cancelled: false },
     { cancelled: true, error: "cleanup incomplete" },
@@ -538,7 +545,9 @@ test("native cancellation error, nonacknowledgement and throw remain held despit
       status: "running",
     });
     f.hooks.cancel = () => {
-      if (outcome === "throw") throw new Error("unknown cancellation transport");
+      if (outcome === "throw") {
+        throw new Error("unknown cancellation transport");
+      }
       return outcome;
     };
     const result = await __testing.reconcileOrphanedWorker(f.api, OWNER, worker);
@@ -549,7 +558,7 @@ test("native cancellation error, nonacknowledgement and throw remain held despit
   }
 });
 
-test("legacy active orphan cannot be adopted or declared cancelled from absent liveness", async () => {
+void test("legacy active orphan cannot be adopted or declared cancelled from absent liveness", async () => {
   const f = fixture();
   const worker = {
     sessionKey: "agent:reviewer:subagent:legacy",
@@ -572,7 +581,7 @@ test("legacy active orphan cannot be adopted or declared cancelled from absent l
   assertAllClosed(assert, f.calls);
 });
 
-test("async review ingestion retains merge-ready terminal semantics and explicit merge authorization", async () => {
+void test("async review ingestion retains merge-ready terminal semantics and explicit merge authorization", async () => {
   const f = fixture(pluginConfig({ notificationSessionKey: OWNER }));
   const flow = f.seed();
   await continueFlow(f, flow.flowId);
@@ -597,7 +606,7 @@ test("async review ingestion retains merge-ready terminal semantics and explicit
   assertAllClosed(assert, f.calls);
 });
 
-test("worker report entrypoint awaits CAS and retains worker caller identity", async () => {
+void test("worker report entrypoint awaits CAS and retains worker caller identity", async () => {
   const f = fixture();
   const flow = f.seed();
   await continueFlow(f, flow.flowId);
@@ -621,7 +630,7 @@ test("worker report entrypoint awaits CAS and retains worker caller identity", a
   assertAllClosed(assert, f.calls);
 });
 
-test("startup queued observation and owner recovery use async bindings without running work at startup", async () => {
+void test("startup queued observation and owner recovery use async bindings without running work at startup", async () => {
   const f = fixture();
   const flow = f.seed();
   await __testing.reconcileAtStartup(f.api, f.config);
@@ -635,11 +644,14 @@ test("startup queued observation and owner recovery use async bindings without r
   assertAllClosed(assert, f.calls);
 });
 
-test("primary native observation error survives cleanup errors and every allocated binding closes", async () => {
+void test("primary native observation error survives cleanup errors and every allocated binding closes", async () => {
   const f = fixture();
-  const primary = Object.freeze(new Error("native observation unavailable"));
+  const primary = new Error("native observation unavailable");
+  Object.freeze(primary);
   f.hooks.operation = (_binding, name) => {
-    if (name === "runs.list") throw primary;
+    if (name === "runs.list") {
+      throw primary;
+    }
   };
   f.hooks.close = (binding) => {
     binding.closed = true;
@@ -659,8 +671,9 @@ test("primary native observation error survives cleanup errors and every allocat
   assertAllClosed(assert, f.calls);
 });
 
-test("binding cleanup preserves frozen primary, attempts all owners and exposes only bounded codes", async () => {
-  const primary = Object.freeze(new Error("primary-private-payload"));
+void test("binding cleanup preserves frozen primary, attempts all owners and exposes only bounded codes", async () => {
+  const primary = new Error("primary-private-payload");
+  Object.freeze(primary);
   const attempted = [];
   const f = fixture();
   const owners = Array.from({ length: 11 }, (_, index) => ({
@@ -683,7 +696,7 @@ test("binding cleanup preserves frozen primary, attempts all owners and exposes 
   assert.ok(!JSON.stringify(f.calls.logs).includes("private failure payload"));
 });
 
-test("successful operation with failed binding closure fails closed", async () => {
+void test("successful operation with failed binding closure fails closed", async () => {
   const f = fixture();
   let secondClosed = false;
   await assert.rejects(
@@ -710,13 +723,15 @@ test("successful operation with failed binding closure fails closed", async () =
   assert.equal(secondClosed, true);
 });
 
-test("advertised parity validates run port and closes already allocated owners on incompatibility", async () => {
+void test("advertised parity validates run port and closes already allocated owners on incompatibility", async () => {
   const f = fixture();
   const original = f.api.runtime.tasks.runs.bindSession;
   let calls = 0;
   f.api.runtime.tasks.runs.bindSession = async (input) => {
     const bound = await original(input);
-    if (++calls === 2) delete bound.cancel;
+    if (++calls === 2) {
+      delete bound.cancel;
+    }
     return bound;
   };
   await assert.rejects(
@@ -728,22 +743,25 @@ test("advertised parity validates run port and closes already allocated owners o
   assertAllClosed(assert, f.calls);
 });
 
-test("compatibility guard permits parity with canonical creation and private launch disabled", () => {
+void test("compatibility guard permits parity with canonical creation and private launch disabled", () => {
   const f = fixture();
   registerMergeguezPrLifecycle(f.api);
   assert.equal(f.calls.services.length, 1);
   assert.equal(f.calls.events.length, 1);
   for (const unavailable of ["version", "parity"]) {
     const other = fixture();
-    if (unavailable === "version") other.api.runtime.tasks.authorityVersion = 0;
-    else other.api.runtime.tasks.availability.controllerParity = false;
+    if (unavailable === "version") {
+      other.api.runtime.tasks.authorityVersion = 0;
+    } else {
+      other.api.runtime.tasks.availability.controllerParity = false;
+    }
     registerMergeguezPrLifecycle(other.api);
     assert.equal(other.calls.services.length, 0);
     assert.equal(other.calls.events.length, 0);
   }
 });
 
-test("old installed source pin remains fail-closed on changed runtime despite enabled config", () => {
+void test("old installed source pin remains fail-closed on changed runtime despite enabled config", () => {
   const f = fixture(
     pluginConfig({
       expectedRuntimeSha256: "7e6cbe8ab75213049fc21f85dc5df4b2c740ac9cfd35edd1d4aadc4a92167e74",
@@ -754,7 +772,7 @@ test("old installed source pin remains fail-closed on changed runtime despite en
   assert.ok(f.calls.logs.some((log) => log.message.includes("source integrity failed")));
 });
 
-test("pure pin migration requires exact installed preimage and same path, emits no authority or config writes", () => {
+void test("pure pin migration requires exact installed preimage and same path, emits no authority or config writes", () => {
   const path = "/installed/mergeguez/runtime.mjs";
   const old = "7e6cbe8ab75213049fc21f85dc5df4b2c740ac9cfd35edd1d4aadc4a92167e74";
   const config = {
@@ -792,7 +810,7 @@ test("pure pin migration requires exact installed preimage and same path, emits 
   );
 });
 
-test("signed HTTP webhook retains async ingestion and authentication with no external side effects", async () => {
+void test("signed HTTP webhook retains async ingestion and authentication with no external side effects", async () => {
   const f = fixture();
   const secret = "synthetic-only";
   const body = Buffer.from(

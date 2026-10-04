@@ -59,10 +59,14 @@ async function closeTaskBindings(api, bindings, primary) {
     try {
       await binding.close();
     } catch (error) {
-      if (failures.length < 8) failures.push(cleanupFailureCode(error));
+      if (failures.length < 8) {
+        failures.push(cleanupFailureCode(error));
+      }
     }
   }
-  if (!failures.length) return;
+  if (!failures.length) {
+    return;
+  }
   const evidence = Object.freeze(failures);
   if (primary) {
     if (
@@ -676,7 +680,9 @@ async function bindFlowsForSession(api, sessionKey) {
   ];
   if (required.some((name) => typeof bound?.[name] !== "function")) {
     const primary = { error: new Error("publisher_flow_parity_port_unavailable") };
-    if (typeof bound?.close === "function") await closeTaskBindings(api, [bound], primary);
+    if (typeof bound?.close === "function") {
+      await closeTaskBindings(api, [bound], primary);
+    }
     throw primary.error;
   }
   return bound;
@@ -719,7 +725,9 @@ async function collectLifecycleFlows(api, config) {
     const boundFlows = await bindFlowsForSession(api, sessionKey);
     await withTaskBindingClosure(api, [boundFlows], async () => {
       for (const flow of await boundFlows.list()) {
-        if (seen.has(flow.flowId) || flow.controllerId !== CONTROLLER_ID) continue;
+        if (seen.has(flow.flowId) || flow.controllerId !== CONTROLLER_ID) {
+          continue;
+        }
         seen.add(flow.flowId);
         flows.push(flow);
       }
@@ -1139,7 +1147,7 @@ function readySince(state) {
 function olderReadyWaiter(boundFlows, flow, state, policies) {
   return lifecycleFlows(boundFlows)
     .filter((other) => other.flowId !== flow.flowId)
-    .filter((other) => {
+    .find((other) => {
       const otherState = stateOf(other);
       if (!otherState || occupyingWorkerKind(otherState)) {
         return false;
@@ -1159,7 +1167,7 @@ function olderReadyWaiter(boundFlows, flow, state, policies) {
       const otherReady = readySince(otherState);
       const selfReady = readySince(state);
       return otherReady < selfReady || (otherReady === selfReady && other.flowId < flow.flowId);
-    })[0];
+    });
 }
 
 function resolveMaxParallelPrs(config, repo) {
@@ -2335,8 +2343,11 @@ async function reconcileOrphanedWorker(api, ownerSessionKey, orphanedWorker) {
           // Preserve the predecessor fallback only for its untagged historical projection.
         }
       }
+      return undefined;
     });
-    if (cancelledTask) return cancelledTask;
+    if (cancelledTask) {
+      return cancelledTask;
+    }
   }
   if (alive === false) {
     return { safe: true, reason: task ? "orphan_session_dead_task_stale" : "orphan_session_dead" };
@@ -2471,7 +2482,9 @@ function createControllerTool(api, config, ctx) {
           requireOwnerContext(ctx, ownerSessionKeyForRepo(config, event.repo));
           const ingested = await ingestPullRequest(api, config, event);
           const match = await findMatchingFlow(api, config, event.repo, event.prNumber);
-          if (match) bindings.push(match.boundFlows);
+          if (match) {
+            bindings.push(match.boundFlows);
+          }
           return result({
             ok: true,
             admit: ingested,

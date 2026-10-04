@@ -70,7 +70,9 @@ class InertCanonicalKernel {
             (field) => flow.stateJson?.[field] === input.stateJson?.[field],
           ),
       );
-      if (old) return { ...copy(old), deduplicated: true };
+      if (old) {
+        return { ...copy(old), deduplicated: true };
+      }
     }
     const flow = {
       flowId: `flow-${this.nextFlow++}`,
@@ -113,9 +115,12 @@ class InertCanonicalKernel {
   }
   mutate(ownerKey, input, status) {
     const current = this.flows.get(input.flowId);
-    if (!current || current.ownerKey !== ownerKey) return { applied: false, code: "not_found" };
-    if (current.revision !== input.expectedRevision)
+    if (!current || current.ownerKey !== ownerKey) {
+      return { applied: false, code: "not_found" };
+    }
+    if (current.revision !== input.expectedRevision) {
       return { applied: false, code: "revision_conflict", current: copy(current) };
+    }
     const next = {
       ...current,
       status,
@@ -168,17 +173,23 @@ export function fixture(configInput = pluginConfig()) {
     return binding;
   };
   const assertBinding = (binding) => {
-    if (binding.closed) throw new Error("fixture_binding_closed");
+    if (binding.closed) {
+      throw new Error("fixture_binding_closed");
+    }
   };
   const close = async (binding) => {
     calls.closes.push(binding.id);
-    if (hooks.close) await hooks.close(binding);
+    if (hooks.close) {
+      await hooks.close(binding);
+    }
     binding.closed = true;
   };
   const operation = async (binding, name, input, body) => {
     assertBinding(binding);
     await Promise.resolve(); // Exercise the consumer's first suspension, not a synchronous stand-in.
-    if (hooks.operation) await hooks.operation(binding, name, input);
+    if (hooks.operation) {
+      await hooks.operation(binding, name, input);
+    }
     assertBinding(binding);
     return body();
   };
@@ -217,7 +228,9 @@ export function fixture(configInput = pluginConfig()) {
   };
   const bindRuns = async ({ sessionKey }) => {
     await Promise.resolve();
-    if (hooks.bindRuns) await hooks.bindRuns(sessionKey);
+    if (hooks.bindRuns) {
+      await hooks.bindRuns(sessionKey);
+    }
     const binding = createBinding("runs", sessionKey);
     const visible = (task) =>
       task.childSessionKey === sessionKey ||
@@ -238,10 +251,15 @@ export function fixture(configInput = pluginConfig()) {
         operation(binding, "cancel", input, () => {
           calls.cancels.push(input);
           const task = kernel.observations.get(input.taskId);
-          if (hooks.cancel) return hooks.cancel(input, copy(task));
-          if (!task || !visible(task)) return { found: false, cancelled: false };
-          if (task.observationSource !== "native-subagent")
+          if (hooks.cancel) {
+            return hooks.cancel(input, copy(task));
+          }
+          if (!task || !visible(task)) {
+            return { found: false, cancelled: false };
+          }
+          if (task.observationSource !== "native-subagent") {
             return { found: true, cancelled: false, task: copy(task) };
+          }
           task.status = "cancelled";
           return { found: true, cancelled: true, task: copy(task) };
         }),
@@ -272,7 +290,9 @@ export function fixture(configInput = pluginConfig()) {
         run: async (request) => {
           request.assertCurrent();
           calls.launches.push(request);
-          if (hooks.launch) return await hooks.launch(request);
+          if (hooks.launch) {
+            return await hooks.launch(request);
+          }
           const runId = `native-${calls.launches.length}`;
           const id = `observed-${runId}`;
           kernel.observations.set(id, {

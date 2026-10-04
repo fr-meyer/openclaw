@@ -14,7 +14,7 @@ function run(...args) {
   return spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
 }
 
-test("staged publisher binds exact source, then rejects changed image bytes", async () => {
+void test("staged publisher binds exact source, then rejects changed image bytes", async () => {
   const root = await mkdtemp(join(tmpdir(), "openclaw-publisher-package-"));
   const out = join(root, "staged");
   try {
@@ -46,7 +46,7 @@ test("staged publisher binds exact source, then rejects changed image bytes", as
   }
 });
 
-test("invalid source revision fails before producing a package", async () => {
+void test("invalid source revision fails before producing a package", async () => {
   const root = await mkdtemp(join(tmpdir(), "openclaw-publisher-commit-"));
   const out = join(root, "staged");
   try {
