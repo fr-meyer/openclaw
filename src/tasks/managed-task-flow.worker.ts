@@ -25,7 +25,6 @@ import {
   type ManagedTaskFlowRecord,
   type ManagedTaskFlowReadOperations,
   type ManagedTaskFlowWriteOperations,
-  type ManagedTaskFlowWorkerOperations,
   type ManagedTaskJson,
   type ManagedTaskRunRecord,
 } from "./managed-task-flow-contract.js";
