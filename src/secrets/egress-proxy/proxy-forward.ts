@@ -1,4 +1,9 @@
-import { ServerResponse, type ClientRequest, type IncomingMessage } from "node:http";
+import {
+  ServerResponse,
+  type ClientRequest,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+} from "node:http";
 import { request as httpsRequest, type Agent as HttpsAgent } from "node:https";
 import { PassThrough, Writable, type Readable } from "node:stream";
 import {
