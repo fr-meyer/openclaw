@@ -235,6 +235,11 @@ def resolve_file(entries, name):
         if name in seen:
             raise ValueError("cyclic image link")
         seen.add(name)
+        parts = name.split("/")
+        for count in range(1, len(parts)):
+            parent = entries.get("/".join(parts[:count]))
+            if parent and parent["type"] != "directory":
+                raise ValueError("required image file has unsupported parent: " + name)
         row = entries.get(name)
         if not row:
             raise ValueError("required image file missing: " + name)
@@ -244,7 +249,27 @@ def resolve_file(entries, name):
             raise ValueError("required image path is not a file: " + name)
         target = row["target"]
         joined = target if row["type"] == "hardlink" else posixpath.join(posixpath.dirname(name), target)
-        name = posixpath.normpath("/" + joined).lstrip("/") if not target.startswith("/") else posixpath.normpath(target).lstrip("/")
+        # Validate traversal before collapsing dot components. A lexical
+        # normalization can hide traversal through a regular or missing parent.
+        resolved = []
+        for component in joined.split("/"):
+            if not component:
+                continue
+            if resolved:
+                prefix = "/".join(resolved)
+                parent = entries.get(prefix)
+                if parent and parent["type"] != "directory":
+                    raise ValueError("required image file has unsupported parent: " + prefix)
+                if not parent and not any(path.startswith(prefix + "/") for path in entries):
+                    raise ValueError("required image file has missing parent: " + prefix)
+            if component == ".":
+                continue
+            if component == "..":
+                if resolved:
+                    resolved.pop()
+            else:
+                resolved.append(component)
+        name = "/".join(resolved)
     raise ValueError("image link depth exceeded")
 
 
