@@ -1,0 +1,184 @@
+{
+  "schema": "openclaw-v98-frozen-runtime-qualification-packet/v1",
+  "status": "BLOCKED_UNCHANGED_DOCTOR_REQUIRES_DENIED_CHILD_PROCESS",
+  "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
+  "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
+  "producerCommit": "711da57d4e7576fb911f917cd83ead95dfd17602",
+  "artifact": {
+    "repository": "fr-meyer/openclaw",
+    "runId": 37192724704,
+    "attempt": 1,
+    "artifactId": 11299504641,
+    "zipSha256": "73662d185f6e308c29ae365af540f451a0e4672644bcb861f692424d5fbb46c3",
+    "imageSha256": "0a3418e393313dbe7e20f4ef140fea81e3a7e6d8a24f9ee1bf5e0bd87d86ffcf",
+    "configId": "sha256:1b2669dcea79d48e6c9f1e86a81495746e62f6d4b9a7837eaccca5ce0a266c39",
+    "nodeSha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+    "retentionExpiresUtc": "2026-10-11T10:03:43Z"
+  },
+  "inputs": {
+    "/proof/inputs/predecessor-state.sql": "32a9ec60e38f1511e6f5fcd532f4c631d680d537a8325601f5bdf8221cf20fa3",
+    "/proof/inputs/fixture.mjs": "777936fa311d3b6fb141dff1fc67f46e2cfddf0651bf75b30ae62f74368f674e",
+    "/proof/inputs/predecessor-publisher-controller.mjs": "c3d63b3c567541f72fb33c6982b41d4d5e4efa7fdd2d43ba5d7d14e624ebdbfc",
+    "/proof/inputs/predecessor-workboard.ts": "aa15bf48dbe292993a47c7286d5f7e12fe2ffbd74442c92b37ad98018bd2e810"
+  },
+  "doctor": {
+    "path": "/app/dist/openclaw-state-db-CgJKJRub.mjs",
+    "sha256": "adfe8f5551b6904d46ce157c20defff6e8f991a2ea67a6c1d32ddd66b93e6c13",
+    "export": "prepareOpenClawStateDatabaseSchema",
+    "mode": "doctor"
+  },
+  "phases": [
+    {
+      "number": 1,
+      "argv": [
+        "prepare",
+        "/scratch/synthetic-parity-fixture",
+        "/proof/inputs/predecessor-state.sql",
+        "/proof/inputs/predecessor-workboard.ts",
+        "/proof/inputs/predecessor-publisher-controller.mjs"
+      ],
+      "execution": "NEVER_RUN"
+    },
+    {
+      "number": 2,
+      "argv": [
+        "assert",
+        "/scratch/synthetic-parity-fixture",
+        "predecessor"
+      ],
+      "execution": "NEVER_RUN"
+    },
+    {
+      "number": 3,
+      "argv": [
+        "migrate",
+        "/scratch/synthetic-parity-fixture",
+        "/app/dist/openclaw-state-db-CgJKJRub.mjs",
+        "adfe8f5551b6904d46ce157c20defff6e8f991a2ea67a6c1d32ddd66b93e6c13"
+      ],
+      "execution": "NEVER_RUN"
+    },
+    {
+      "number": 4,
+      "argv": [
+        "assert",
+        "/scratch/synthetic-parity-fixture",
+        "candidate"
+      ],
+      "execution": "NEVER_RUN"
+    },
+    {
+      "number": 5,
+      "argv": [
+        "restore",
+        "/scratch/synthetic-parity-fixture"
+      ],
+      "execution": "NEVER_RUN"
+    },
+    {
+      "number": 6,
+      "argv": [
+        "assert",
+        "/scratch/synthetic-parity-fixture",
+        "rollback"
+      ],
+      "execution": "NEVER_RUN"
+    }
+  ],
+  "criticalChain": [
+    {
+      "sourcePath": "src/state/openclaw-state-db.ts",
+      "sourceSha256": "8f4f7a1a7cecb4d4e4ab9b762e85785ed1476d66bc195ef8f157efdc7871704c",
+      "sourceLine": 140,
+      "criticalSourceLine": 155,
+      "imagePath": "/app/dist/openclaw-state-db-DM-mSY0m.mjs",
+      "imageSha256": "87570ac0e6a0c5937ec6316fec04cf3f697f613b776547d3c433fd5cffed3c2f",
+      "imageLine": 1175,
+      "criticalImageLine": 1184
+    },
+    {
+      "sourcePath": "src/state/openclaw-state-ownership.ts",
+      "sourceSha256": "7954f543f6100568a5e07822ebcb72f0d3247d4a5c09669c1b041e246fde2208",
+      "sourceLine": 180,
+      "criticalSourceLine": 200,
+      "imagePath": "/app/dist/openclaw-state-ownership-1l-TMJat.mjs",
+      "imageSha256": "47c8fc92932269a86c90a4a245e20a4bff404ef6c862164e2ece19268c1d7b9a",
+      "imageLine": 117,
+      "criticalImageLine": 125
+    },
+    {
+      "sourcePath": "src/infra/sqlite-snapshot-source.ts",
+      "sourceSha256": "d9594eef384469e0a9142c8a1a59a0f2285e5f34684900bdc6abe0ed40d3d5a9",
+      "sourceLine": 27,
+      "criticalSourceLine": 88,
+      "imagePath": "/app/dist/sqlite-snapshot-source-DgqadUes.mjs",
+      "imageSha256": "69a7ad052365b618f85e75767547248280cd07f43edaa9468336e2b46a5ad2cc",
+      "imageLine": 8,
+      "criticalImageLine": 35
+    },
+    {
+      "sourcePath": "src/infra/sqlite-readonly-worker.ts",
+      "sourceSha256": "e88c4252c4f47aaf2a5664fd1bb98bca466d533c4654ae8130a731891a49dec8",
+      "sourceLine": 420,
+      "criticalSourceLine": 439,
+      "imagePath": "/app/dist/sqlite-readonly-worker-cuICqy4r.mjs",
+      "imageSha256": "9add1173edbfeba024a0dc50194eb33be193de1a3d3caaaebe0a41c703b34077",
+      "imageLine": 572,
+      "criticalImageLine": 584
+    },
+    {
+      "sourcePath": "src/infra/sqlite-private-directory.ts",
+      "sourceSha256": "acc8e76c6644765a538957491febaed8646109e825f52a412095c773d75f13af",
+      "sourceLine": 20,
+      "criticalSourceLine": 32,
+      "imagePath": "/app/dist/sqlite-snapshot-staging-C3ICAs3m.mjs",
+      "imageSha256": "482c36d4d999b199df927b9bbd1c906ba9a94c9aeb324e20beddc38490930b60",
+      "imageLine": 111,
+      "criticalImageLine": 119
+    }
+  ],
+  "blockedRequirement": {
+    "childCreation": "DENIED",
+    "childExecution": "DENIED",
+    "workers": "Native threads allowed; product snapshot entry is a separate Node process",
+    "supportedNoChildAlternativeFound": false,
+    "sourceChangesAuthorized": false,
+    "fixtureChangesAuthorized": false,
+    "runtimeApprovalRequested": false
+  },
+  "otherAdmissionGates": {
+    "completeStaticImportWorkerClosure": "NOT_VERIFIED; unresolved selectors and dynamic facts retained",
+    "nativeKernelPolicy": "NOT_ADMITTED; unmeasured",
+    "fsyncUnderEquallyConfinedRunner": "NOT_PROVEN",
+    "frozenFixture": "NEVER_RUN"
+  },
+  "scratchOnlyStagingRequirement": {
+    "globalEnvRequired": "XDG_CACHE_HOME=/scratch/cache",
+    "doctorOptionsEnvDoesNotBindStaging": true,
+    "status": "PREPARATION_ONLY; not permission to change live settings"
+  },
+  "limits": {
+    "scratchBytes": 16777216,
+    "wallSeconds": 60,
+    "aggregateCpuSeconds": 30,
+    "cpuCores": 1,
+    "memoryBytes": 1073741824,
+    "swapBytes": 0,
+    "pidsAndThreads": 128,
+    "parentOldSpaceMiB": 128,
+    "workerOldGenerationMiB": 512
+  },
+  "noNewExecutionWorkflow": true,
+  "confinementDrafts": "Quarantined outside packet; never executed or admitted",
+  "releaseScope": "Synthetic preservation only; production WAL, restore, runtime and one-writer rollback remain unqualified",
+  "commandContext": {
+    "nodePath": "/usr/local/bin/node",
+    "fixtureScriptPath": "/proof/inputs/fixture.mjs",
+    "argvMeaning": "arguments after node and fixture script; not an admitted execution command",
+    "requiredGlobalEnvironment": {
+      "PARITY_FIXTURE_SCRATCH_ROOT": "/scratch",
+      "XDG_CACHE_HOME": "/scratch/cache"
+    },
+    "execution": "NEVER_RUN"
+  }
+}
