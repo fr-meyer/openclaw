@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C source rev-parse HEAD)" = "$TARGET_SHA"
-          test "$(git -C source rev-parse HEAD^{tree})" = "$TARGET_TREE"
+          test "$(git -C source rev-parse 'HEAD^{tree}')" = "$TARGET_TREE"
           test -z "$(git -C source status --porcelain=v1)"
           python3 -m unittest discover -s tooling/scripts/proofs/v98-parity -p 'test_*.py'
           # Use the repository's reviewed actionlint pin; no local acquisition.
@@ -68,7 +68,8 @@ jobs:
           mkdir -m 700 "$out"
           image_tag="openclaw-v98-proof:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           export V98_IMAGE_TAG="$image_tag"
-          export V98_BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          V98_BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export V98_BUILD_TIMESTAMP
           printf '%s\n' "V98_IMAGE_TAG=$image_tag" >> "$GITHUB_ENV"
           python3 tooling/scripts/proofs/v98-parity/collect-artifacts.py preflight source "$out"
           docker version > "$out/docker-version.txt"
