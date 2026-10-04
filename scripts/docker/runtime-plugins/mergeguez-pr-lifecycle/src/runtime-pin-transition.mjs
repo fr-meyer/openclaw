@@ -12,6 +12,16 @@ const COMMON = Object.freeze({
   "src/controller.mjs": "c3d63b3c567541f72fb33c6982b41d4d5e4efa7fdd2d43ba5d7d14e624ebdbfc",
   "src/http.mjs": "7b4e7922ae90a412ff675c1091d8e97ece1160db215ce7fec052166633c82ee1",
 });
+const SOURCE_QUALIFIED_CANDIDATE = Object.freeze({
+  version: "0.1.1",
+  sourceCommit: "1e197fa258704d70e17a9efd831b2e3ecbc6e6f4",
+  files: Object.freeze({
+    ...COMMON,
+    "src/runtime.mjs": "d9ae3b77db061d30e10657133a376b3da99234367bdfb95ab1266ca9ed558569",
+    "package.json": "25dd78b7559c6e32cc94658eea299c2db16999bb10991da86ac88c5ec520a97c",
+    "openclaw.plugin.json": "7e59281147e003e735b63f2bc35aacfda065ccd27b37a62b6dcb46bb99a9f3b1",
+  }),
+});
 export const INSTALLED_PUBLISHER_PIN_PAIR = Object.freeze({
   predecessor: Object.freeze({
     version: "0.1.0",
@@ -22,14 +32,13 @@ export const INSTALLED_PUBLISHER_PIN_PAIR = Object.freeze({
       "openclaw.plugin.json": "d34efddbd8f10288226295d6aabfbd0e7e5562332007dcc66bf2b1c70d25e3e7",
     }),
   }),
+  sourceQualifiedCandidate: SOURCE_QUALIFIED_CANDIDATE,
   candidate: Object.freeze({
-    version: "0.1.1",
-    sourceCommit: "1e197fa258704d70e17a9efd831b2e3ecbc6e6f4",
+    version: SOURCE_QUALIFIED_CANDIDATE.version,
+    sourceCommit: "14a2507d86423f1881d4aad79af634623aacda60",
     files: Object.freeze({
-      ...COMMON,
-      "src/runtime.mjs": "d9ae3b77db061d30e10657133a376b3da99234367bdfb95ab1266ca9ed558569",
-      "package.json": "25dd78b7559c6e32cc94658eea299c2db16999bb10991da86ac88c5ec520a97c",
-      "openclaw.plugin.json": "7e59281147e003e735b63f2bc35aacfda065ccd27b37a62b6dcb46bb99a9f3b1",
+      ...SOURCE_QUALIFIED_CANDIDATE.files,
+      "src/runtime.mjs": "d6d4d3859ff676de0bbd2b94b0e84d4a4d07977171e1754040d12fb0c9082b0b",
     }),
   }),
 });

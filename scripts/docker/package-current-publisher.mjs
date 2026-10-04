@@ -149,14 +149,43 @@ async function planImage() {
     throw new Error("Tracked source composition differs from the 14-commit qualified checkpoint");
   }
   git("merge-base", "--is-ancestor", checkpoint.commit, head);
+  const successor = cut.publisherSourceSuccessor;
+  if (successor) {
+    assertCommit(successor.sourceCommit);
+    if (
+      successor.baseCheckpoint !== checkpoint.commit ||
+      successor.publisherPackagePath !== SOURCE_PATH ||
+      successor.status !== "reviewed-source-runtime-unqualified" ||
+      git("rev-parse", `${successor.sourceCommit}^{tree}`) !== successor.tree
+    ) {
+      throw new Error("Publisher successor source binding differs from its recorded checkpoint");
+    }
+    git("merge-base", "--is-ancestor", checkpoint.commit, successor.sourceCommit);
+    git("merge-base", "--is-ancestor", successor.sourceCommit, head);
+  }
+  const publisherBinding = successor ?? { ...checkpoint, sourceCommit: checkpoint.commit };
   const source = resolve(SOURCE_PATH);
   const packageJson = JSON.parse(await regularBytes(join(source, "package.json")));
-  if (packageJson.version !== checkpoint.publisherPackageVersion) {
-    throw new Error("Publisher version differs from the qualified checkpoint");
+  if (packageJson.version !== publisherBinding.publisherPackageVersion) {
+    throw new Error("Publisher version differs from its source binding");
   }
   const files = await packageHashes(source);
-  if (files["src/runtime.mjs"] !== checkpoint.publisherRuntimeSha256) {
-    throw new Error("Publisher runtime differs from the qualified checkpoint");
+  if (files["src/runtime.mjs"] !== publisherBinding.publisherRuntimeSha256) {
+    throw new Error("Publisher runtime differs from its source binding");
+  }
+  // The six installed targets come from this commit. Packaging docs and the
+  // inert applier are separately bound to the complete successor HEAD.
+  for (const file of PACKAGE_FILES) {
+    if (file === "README.md" || file === "src/runtime-pin-transition.mjs") {
+      continue;
+    }
+    const committedBytes = execFileSync("git", [
+      "show",
+      `${publisherBinding.sourceCommit}:${SOURCE_PATH}/${file}`,
+    ]);
+    if (sha256(committedBytes) !== files[file]) {
+      throw new Error(`Publisher source commit does not contain current target bytes: ${file}`);
+    }
   }
   const command = [
     "docker",
@@ -191,6 +220,7 @@ async function planImage() {
         schema: "openclaw-v98-parity-image-plan-v1",
         sourceCommit: head,
         qualifiedCheckpoint: checkpoint.commit,
+        publisherSourceCommit: publisherBinding.sourceCommit,
         publisherPath: SOURCE_PATH,
         publisherVersion: packageJson.version,
         publisherFiles: files,

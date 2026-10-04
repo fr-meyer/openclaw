@@ -67,6 +67,12 @@ files cannot establish the identity of already evaluated applier code. Keep the
 applier's source identity bound in the release manifest separately from its
 target package. Do not alter the runtime source guard or loader admission.
 
+The unpublished 0.1.1 target now binds the reviewed lint correction at
+`14a2507d`; the historical `1e197fa2` candidate remains recorded separately as
+`sourceQualifiedCandidate`. Its runtime hash is not rewritten. The installed
+0.1.0 predecessor and the controller, HTTP parser and entrypoint bytes remain
+unchanged. This successor binding does not authorize pin application.
+
 Call the returned operation with `{ direction: "forward" | "reverse",
 expectedConfigPath, expectedConfigHash, expectedRuntimePath }`. An already-target
 pin with the supplied current config revision returns `already-target` without

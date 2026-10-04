@@ -77,6 +77,15 @@
     "publisherPackageVersion": "0.1.1",
     "publisherRuntimeSha256": "d9ae3b77db061d30e10657133a376b3da99234367bdfb95ab1266ca9ed558569"
   },
+  "publisherSourceSuccessor": {
+    "status": "reviewed-source-runtime-unqualified",
+    "baseCheckpoint": "1e197fa258704d70e17a9efd831b2e3ecbc6e6f4",
+    "sourceCommit": "14a2507d86423f1881d4aad79af634623aacda60",
+    "tree": "c8ba718a52aecae8ce683ae373d6fe4fedddf018",
+    "publisherPackagePath": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle",
+    "publisherPackageVersion": "0.1.1",
+    "publisherRuntimeSha256": "d6d4d3859ff676de0bbd2b94b0e84d4a4d07977171e1754040d12fb0c9082b0b"
+  },
   "dependencyLock": {
     "path": "pnpm-lock.yaml",
     "gitBlob": "48d758506f8ea95846f3c6680770ac3ee51fde52",

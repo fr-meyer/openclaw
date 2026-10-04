@@ -39,6 +39,14 @@ The command uses the fork Git context at the exact full successor SHA, so the
 candidate commit must be available there after separately approved publication.
 The command is a plan; the script never invokes Docker or publishes source.
 
+The historical checkpoint and its runtime hash remain unchanged. The separate
+`publisherSourceSuccessor` record binds the reviewed lint correction to
+`14a2507d`, its tree, and the new runtime hash. Planning verifies the full ancestry
+and compares each of the six installed target files to the raw Git blob at that
+source commit. The staged eight-file package uses the final successor HEAD,
+which also contains the updated inert pin applier and this provenance record.
+The source successor remains runtime-unqualified.
+
 The Node and Bun base images are digest-pinned, and pnpm installation uses the
 frozen lockfile. The existing Dockerfile still performs mutable Debian
 `apt-get update`/`dist-upgrade` and installs `npm@latest`; the build timestamp
