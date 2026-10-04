@@ -1,0 +1,186 @@
+{
+  "files": [
+    {
+      "bytes": 5422,
+      "mode": "0o644",
+      "path": ".github/workflows/v98-confined-runtime.yml",
+      "sha256": "9ae72bf87d6ecab4dfdabbfa925c119e3a79ea85dac416e60a23d0c22e0dd4ff"
+    },
+    {
+      "bytes": 8327,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/README.md",
+      "sha256": "96677ddffaa896cc7693554a26be6728f1ec6e61d7f46cf3271426b3a5d92950"
+    },
+    {
+      "bytes": 5452,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/capability-probe.mjs",
+      "sha256": "a13080af03243a0e8bc3a62cf10a6acf56f9a1e906b5883c5282a8a4aaa14f0d"
+    },
+    {
+      "bytes": 22805,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/derive_read_policy.py",
+      "sha256": "1df6fd10ae0c3e91e128f94c2b93ab38816d8c080aabdd5836bbc87b2edd43f1"
+    },
+    {
+      "bytes": 52380,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/host-runtime.py",
+      "sha256": "7a7a7b0c9f113a51dd26b00e432c224fa373a9d3a8592a379be62121cb595021"
+    },
+    {
+      "bytes": 21520,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/inputs/fixture.mjs",
+      "sha256": "777936fa311d3b6fb141dff1fc67f46e2cfddf0651bf75b30ae62f74368f674e"
+    },
+    {
+      "bytes": 43645,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/inputs/predecessor-publisher-controller.mjs",
+      "sha256": "c3d63b3c567541f72fb33c6982b41d4d5e4efa7fdd2d43ba5d7d14e624ebdbfc"
+    },
+    {
+      "bytes": 101780,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/inputs/predecessor-state.sql",
+      "sha256": "32a9ec60e38f1511e6f5fcd532f4c631d680d537a8325601f5bdf8221cf20fa3"
+    },
+    {
+      "bytes": 60504,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/inputs/predecessor-workboard.ts",
+      "sha256": "aa15bf48dbe292993a47c7286d5f7e12fe2ffbd74442c92b37ad98018bd2e810"
+    },
+    {
+      "bytes": 5727,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/native-boundary.h",
+      "sha256": "eb54e1898b9c4c40dfce2192cd12d6c8135b51b85f40e06d7f408f27aa6b0f33"
+    },
+    {
+      "bytes": 1459,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/native-filter.h",
+      "sha256": "568e0f5c09ce5a0460833b5becb80049cd20854d57c692c26a17a26ca7cf5e59"
+    },
+    {
+      "bytes": 12642,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/native-policy-test.c",
+      "sha256": "fe32ac30f75c59d0f67d299c6267914b8d5fb002493699a2d1d0ab9fb6f2985e"
+    },
+    {
+      "bytes": 5863,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/native-policy.c",
+      "sha256": "c6bb422fd4238b53d1cb5490d13f3a431a6fb358a9c73070bbf6aea833afca48"
+    },
+    {
+      "bytes": 2919,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/native-policy.h",
+      "sha256": "26545e986957740b6d455dd43a4dab19cf8b4e00ae8381c6553e153e0b820dba"
+    },
+    {
+      "bytes": 2896,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/native-sha256.h",
+      "sha256": "ef248d050ede519c535b1370e574f3007775bf241ddb81b08b96826a48c12bb6"
+    },
+    {
+      "bytes": 5900,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/packet.json",
+      "sha256": "610242b1977be96284b99f5e57780e1c433d390c852b82c3fa0c20115750e2b6"
+    },
+    {
+      "bytes": 128237,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/read-policy/helper-read-paths.txt",
+      "sha256": "0df305867ff2cbf6675198f0545a8dc18d8dbe53e99849e732abac02313c8f03"
+    },
+    {
+      "bytes": 128237,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/read-policy/parent-read-paths.txt",
+      "sha256": "0df305867ff2cbf6675198f0545a8dc18d8dbe53e99849e732abac02313c8f03"
+    },
+    {
+      "bytes": 584834,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/read-policy/runtime-read-binding.json",
+      "sha256": "f4697e6eb2868dc1d44e5074eadb385e1963d23d54e8ed12c81c2dbf82b00667"
+    },
+    {
+      "bytes": 18799,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/test_host_runtime.py",
+      "sha256": "b4c00cda2a12609e8ff75adbc293d6034242af8c52cf06cd7bb88548bbe9e69e"
+    },
+    {
+      "bytes": 10816,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/test_read_policy.py",
+      "sha256": "ce2423a000bbcc5eb52deef3e4efb32889ab11f0393e77b200ac4c610ee2d83d"
+    },
+    {
+      "bytes": 2245,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/v98-confine.c",
+      "sha256": "071255a5b34c11e138aaf154baf3ac60b6122598c5102eca35234779b604bdb4"
+    },
+    {
+      "bytes": 28415,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/v98-supervisor.c",
+      "sha256": "3f4a60f3d2b2ea9d3ce25da79a29c9bc23800140de48e5e6aee76828dd0258a7"
+    },
+    {
+      "bytes": 4364,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-parity/README.md",
+      "sha256": "374b38b9032e51831cc6fc5c15908caa742a2268ca17097fbc6950be79dc219b"
+    },
+    {
+      "bytes": 27218,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-parity/collect-artifacts.py",
+      "sha256": "03b9a4627af452e6ad16361f3bcd9dbc3e55327661a11d500bc2c387089572d7"
+    },
+    {
+      "bytes": 14996,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-parity/contract.json",
+      "sha256": "56f06026d785dadda5bd42854dc80b8afe9780dcbaf0f41762f5e2c30ec3fb6d"
+    },
+    {
+      "bytes": 2959,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-parity/observed-layout.json",
+      "sha256": "e21f1ceb5b22ce3020d475b6710fbf4b2fa926bfa60b166a92fdaa815a540853"
+    },
+    {
+      "bytes": 26529,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-parity/test_collector.py",
+      "sha256": "0e6ca4ae83e3a5a77264e86009922fd65b5f6618c85de4bc304edc94ee4d2214"
+    },
+    {
+      "bytes": 38924,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-parity/test_validator.py",
+      "sha256": "5e2d477e54926b2d987bb6a1fdf6db72ae0752362a170a0d5242b7e1060f0816"
+    },
+    {
+      "bytes": 32917,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-parity/verify-artifact.py",
+      "sha256": "fcf6f055213ad478ca42bb2689b2f248894932fdf65dd4478912ea9b01e16912"
+    }
+  ],
+  "schema": "openclaw-v98-confined-source-manifest/v1",
+  "selfBinding": "Exact final Git commit/tree and external approval packet bind this manifest; no self-referential hash"
+}

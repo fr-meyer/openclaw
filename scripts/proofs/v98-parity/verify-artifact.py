@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Consume one exact Actions artifact using stdlib; never start/import its runtime."""
 import argparse
+import bisect
 import datetime
 import gzip
 import hashlib
@@ -275,6 +276,9 @@ def saved_identity_files(archive, image_id, collector):
                     if (not opaque and name == target) or name.startswith(prefix):
                         entries.pop(name)
                         special.pop(name, None)
+            # This bounded snapshot includes every possible live path in this
+            # layer. Removed paths can cause extra scans, never skipped children.
+            possible_names = sorted(entries.keys() | changes.keys())
             for name, row in changes.items():
                 if row["type"] == "whiteout":
                     continue
@@ -289,9 +293,12 @@ def saved_identity_files(archive, image_id, collector):
                     row = {**target, "path": "/" + name, "mode": row["mode"]}
                 # Replacing a directory by a file/link removes lower children.
                 if row["type"] != "directory":
-                    for old in [key for key in entries if key.startswith(name + "/")]:
-                        entries.pop(old)
-                        special.pop(old, None)
+                    prefix = name + "/"
+                    first = bisect.bisect_left(possible_names, prefix)
+                    if first < len(possible_names) and possible_names[first].startswith(prefix):
+                        for old in [key for key in entries if key.startswith(prefix)]:
+                            entries.pop(old)
+                            special.pop(old, None)
                 entries[name] = row
                 special.pop(name, None)
                 if name in captured:
@@ -340,7 +347,43 @@ def verify_retention(out, measured, limits):
     return retention
 
 
-def verify(archive, metadata_path, run_path, source, out, *, run_id, attempt, tooling, artifact_id):
+def verify_read_binding(binding, entries, saved, image_sha, image_id):
+    """Join exact read rules to the saved layers, without extracting or executing."""
+    collector = load_collector()
+    require(binding.get("schema") == "openclaw-v98-exact-runtime-read-binding/v1"
+            and binding.get("sourceCommit") == SOURCE and binding.get("sourceTree") == TREE
+            and binding.get("imageSha256") == image_sha and binding.get("imageConfigId") == image_id
+            and binding.get("completeImportClosureClaimed") is False
+            and binding.get("runtimeExecuted") is False, "read binding source/image mismatch")
+    seen = set()
+    for row in binding["imageEntries"]:
+        path = row.get("path", "")
+        require(isinstance(path, str) and path.startswith("/"), "invalid selected read path")
+        name = collector.clean_name(path[1:])
+        require(path == "/" + name and path not in seen, "duplicate/noncanonical read rule")
+        seen.add(path)
+        expected = {key: row[key] for key in ("path", "type", "mode", "bytes", "sha256")}
+        require(type(expected["bytes"]) is int and expected["bytes"] >= 0
+                and isinstance(expected["sha256"], str) and re.fullmatch(r"[a-f0-9]{64}", expected["sha256"])
+                and isinstance(expected["mode"], str) and re.fullmatch(r"0o[0-7]{1,4}", expected["mode"]),
+                "invalid selected regular file fields")
+        require(expected["type"] == "file" and expected == entries.get(name)
+                and expected == saved.get(name), "selected regular read identity differs from saved layers")
+    require(0 < len(seen) <= 4096, "selected read count budget")
+    namespace = set()
+    for row in binding["namespaceEntries"]:
+        path = row.get("path", "")
+        require(isinstance(path, str) and path.startswith("/"), "invalid selected namespace path")
+        name = collector.clean_name(path[1:])
+        require(path == "/" + name and path not in namespace
+                and row.get("type") in ("symlink", "directory"), "invalid selected namespace rule")
+        namespace.add(path)
+        require(row == entries.get(name) and row == saved.get(name), "selected namespace differs from saved layers")
+    require(len(namespace) <= 4096, "selected namespace count budget")
+    return len(seen)
+
+
+def verify(archive, metadata_path, run_path, source, out, *, run_id, attempt, tooling, artifact_id, read_binding=None):
     require(re.fullmatch(r"[a-f0-9]{40}", tooling), "expected tooling commit must be exact")
     collector = load_collector()
     limits = collector.CONTRACT["artifactPreparation"]
@@ -452,6 +495,9 @@ def verify(archive, metadata_path, run_path, source, out, *, run_id, attempt, to
         recorded = collector.resolve_file(entries, name)
         actual = collector.resolve_file(saved, name)
         require((recorded["sha256"], recorded["bytes"]) == (actual["sha256"], actual["bytes"]), "saved identity file differs from inventory")
+    if read_binding is not None:
+        result["selectedReadFilesVerifiedAgainstSavedLayers"] = verify_read_binding(
+            read_binding, entries, saved, measured["image.tar.gz"][1], image["imageConfigId"])
     actual_image = collector.validate_image(inspect, entries, special, source)
     require(same_json(actual_image, image), "recomputed compiled image identity differs from receipt")
     require(same_json(collector.assess_layout(entries, special), read_json(out / collector.LAYOUT_NAME)), "recomputed layout differs from retained assessment")
@@ -471,9 +517,11 @@ def main():
     for flag in ("run-id", "run-attempt", "artifact-id"):
         parser.add_argument("--" + flag, required=True, type=positive)
     parser.add_argument("--tooling-commit", required=True)
+    parser.add_argument("--read-binding", type=Path)
     args = parser.parse_args()
     result = verify(args.archive, args.metadata, args.run_metadata, args.source, args.output,
-                    run_id=args.run_id, attempt=args.run_attempt, tooling=args.tooling_commit, artifact_id=args.artifact_id)
+                    run_id=args.run_id, attempt=args.run_attempt, tooling=args.tooling_commit, artifact_id=args.artifact_id,
+                    read_binding=read_json(args.read_binding) if args.read_binding else None)
     with (args.output / "validation.json").open("x") as target:
         json.dump(result, target, indent=2)
         target.write("\n")

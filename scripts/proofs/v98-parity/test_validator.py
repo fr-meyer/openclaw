@@ -146,6 +146,64 @@ class ArtifactClientTests(unittest.TestCase):
                 self.assertFalse(result["runtimeExecuted"])
                 self.assertEqual(result["source"], COLLECTOR.verify_source(self.source))
 
+    def test_selected_read_binding_joins_the_final_saved_layer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            manifest = json.loads(gzip.decompress((fixture["stage"] / COLLECTOR.MANIFEST_NAME).read_bytes()))
+            row = next(r for r in manifest["entries"] if r["path"] == "/usr/local/bin/node")
+            image = json.loads((fixture["stage"] / "artifact-receipt.json").read_text())["image"]
+            binding = {"schema": "openclaw-v98-exact-runtime-read-binding/v1", "sourceCommit": VALIDATOR.SOURCE,
+                       "sourceTree": VALIDATOR.TREE, "imageSha256": VALIDATOR.digest(fixture["stage"] / "image.tar.gz"),
+                       "imageConfigId": image["imageConfigId"], "runtimeExecuted": False,
+                       "completeImportClosureClaimed": False, "imageEntries": [row], "namespaceEntries": []}
+            result = VALIDATOR.verify(fixture["archive"], fixture["metadata"], fixture["run"], self.source,
+                                      fixture["root"] / "client", run_id=RUN, attempt=1, tooling=TOOLING,
+                                      artifact_id=ARTIFACT, read_binding=binding)
+            self.assertEqual(result["selectedReadFilesVerifiedAgainstSavedLayers"], 1)
+            saved, _, _ = VALIDATOR.saved_identity_files(fixture["stage"] / "image.tar.gz", image["imageConfigId"], COLLECTOR)
+            entries = {r["path"][1:]: r for r in manifest["entries"]}
+            for changed in ("sha256", "mode", "bytes", "path", "type"):
+                with self.subTest(changed=changed):
+                    bad = json.loads(json.dumps(binding))
+                    bad["imageEntries"][0][changed] = {"sha256": "0" * 64, "mode": "0o755", "bytes": row["bytes"] + 1,
+                                                       "path": "/usr/local/bin/../node", "type": "symlink"}[changed]
+                    with self.assertRaises(ValueError):
+                        VALIDATOR.verify_read_binding(bad, entries, saved, binding["imageSha256"], image["imageConfigId"])
+            bad = json.loads(json.dumps(binding))
+            bad["imageEntries"].append(row)
+            with self.assertRaises(ValueError):
+                VALIDATOR.verify_read_binding(bad, entries, saved, binding["imageSha256"], image["imageConfigId"])
+
+    def test_selected_namespace_requires_saved_alias_target_and_directory_mode(self):
+        encoded, image_id = pack_saved([tar_bytes({"app/exact": b"inert"})])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "saved.gz"
+            path.write_bytes(encoded)
+            saved, _, _ = VALIDATOR.saved_identity_files(path, image_id, COLLECTOR)
+            node = saved["app/exact"]
+            binding = {"schema": "openclaw-v98-exact-runtime-read-binding/v1", "sourceCommit": VALIDATOR.SOURCE,
+                       "sourceTree": VALIDATOR.TREE, "imageSha256": VALIDATOR.digest(path), "imageConfigId": image_id,
+                       "runtimeExecuted": False, "completeImportClosureClaimed": False,
+                       "imageEntries": [node], "namespaceEntries": [{"path": "/app/alias", "mode": "0o777", "type": "symlink", "target": "exact"}]}
+            entries = dict(saved)
+            entries["app/alias"] = binding["namespaceEntries"][0]
+            with self.assertRaises(ValueError):
+                VALIDATOR.verify_read_binding(binding, entries, saved, binding["imageSha256"], image_id)
+
+    def test_selected_byte_count_cannot_use_boolean_integer_equality(self):
+        encoded, image_id = pack_saved([tar_bytes({"app/one": b"x"})])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "saved.gz"
+            path.write_bytes(encoded)
+            saved, _, _ = VALIDATOR.saved_identity_files(path, image_id, COLLECTOR)
+            row = dict(saved["app/one"], bytes=True)
+            binding = {"schema": "openclaw-v98-exact-runtime-read-binding/v1", "sourceCommit": VALIDATOR.SOURCE,
+                       "sourceTree": VALIDATOR.TREE, "imageSha256": VALIDATOR.digest(path), "imageConfigId": image_id,
+                       "runtimeExecuted": False, "completeImportClosureClaimed": False,
+                       "imageEntries": [row], "namespaceEntries": []}
+            with self.assertRaises(ValueError):
+                VALIDATOR.verify_read_binding(binding, saved, saved, binding["imageSha256"], image_id)
+
     def test_cli_is_ready_and_checks_cannot_be_disabled_by_python_optimization(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory, compressed=True)
@@ -482,6 +540,55 @@ class ArtifactClientTests(unittest.TestCase):
                 path.write_bytes(saved)
                 with self.assertRaisesRegex(ValueError, "hardlink target.*removed"):
                     VALIDATOR.saved_identity_files(path, image_id, COLLECTOR)
+
+    def test_many_leaf_files_keep_namespace_work_bounded(self):
+        # Count namespace prefix comparisons, rather than relying on host speed.
+        # All bytes still pass the real saved config/layer digest reader.
+        count = 2048
+        comparisons = 0
+        class CountedName(str):
+            def startswith(self, *args, **kwargs):
+                nonlocal comparisons
+                comparisons += 1
+                return super().startswith(*args, **kwargs)
+        clean = COLLECTOR.clean_name
+        with tempfile.TemporaryDirectory() as directory:
+            layer = tar_bytes({f"app/leaves/file-{index:04d}": b"x" for index in range(count)})
+            saved, image_id = pack_saved([layer], compressed=True)
+            path = Path(directory) / "saved.tar.gz"
+            path.write_bytes(saved)
+            with mock.patch.object(COLLECTOR, "clean_name", side_effect=lambda value: CountedName(clean(value))):
+                entries, _, _ = VALIDATOR.saved_identity_files(path, image_id, COLLECTOR)
+            self.assertEqual(len(entries), count)
+            self.assertEqual(entries["app/leaves/file-2047"]["sha256"], hashlib.sha256(b"x").hexdigest())
+            self.assertLessEqual(comparisons, 32 * count)
+
+    def test_replacement_preserves_implicit_and_same_layer_descendant_semantics(self):
+        cases = (
+            ({"app/dir/deeper/old": b"lower"}, {"app/dir": b"replacement"}, set(), False),
+            ({"app/dir/old": b"lower"}, {"app/dir": b"replacement"}, set(), True),
+            ({}, {"app/dir/child": b"earlier", "app/dir": b"replacement"}, set(), False),
+            ({"app/dir/old": b"lower"}, {"app/dir": b"replacement", "app/dir/child": b"later"}, {"app/dir/child"}, False),
+        )
+        for lower, upper, children, explicit_dir in cases:
+            with self.subTest(upper=list(upper), explicit_dir=explicit_dir), tempfile.TemporaryDirectory() as directory:
+                lower_bytes = tar_bytes(lower)
+                if explicit_dir:
+                    stream = io.BytesIO(lower_bytes)
+                    with tarfile.open(fileobj=stream, mode="a") as layer:
+                        row = tarfile.TarInfo("app/dir")
+                        row.type = tarfile.DIRTYPE
+                        layer.addfile(row)
+                    lower_bytes = stream.getvalue()
+                saved, image_id = pack_saved([lower_bytes, tar_bytes(upper)], compressed=True)
+                path = Path(directory) / "saved.tar.gz"
+                path.write_bytes(saved)
+                entries, _, _ = VALIDATOR.saved_identity_files(path, image_id, COLLECTOR)
+                self.assertEqual({name for name in entries if name.startswith("app/dir/")}, children)
+                self.assertEqual(entries["app/dir"]["sha256"], hashlib.sha256(b"replacement").hexdigest())
+                if children:
+                    with self.assertRaisesRegex(ValueError, "unsupported parent"):
+                        COLLECTOR.resolve_file(entries, "app/dir/child")
 
 
 if __name__ == "__main__":

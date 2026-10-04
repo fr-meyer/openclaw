@@ -1,0 +1,131 @@
+name: V98 Confined Runtime Admission
+run-name: V98 confined runtime candidate ${{ github.sha }}
+
+# A separately approved exact commit may be pushed once to this distinct branch.
+# Run number and attempt gates reject later pushes and reruns of this workflow.
+on:
+  push:
+    branches: [candidate/v2026.9.8-runtime-admission]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v98-confined-runtime-first-run
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  V98_SOURCE: bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
+  V98_TREE: ba825f670dc5ba943f7893cb267225d1f68d3110
+
+jobs:
+  admission:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'fr-meyer/openclaw' &&
+      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-admission' &&
+      github.run_number == 1 && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact qualified product source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact candidate tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          sparse-checkout: |
+            .github/workflows/v98-confined-runtime.yml
+            scripts/proofs/v98-confined
+            scripts/proofs/v98-runtime
+            scripts/proofs/v98-parity
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check exact source and local pure tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$V98_SOURCE"
+          test "$(git -C source rev-parse 'HEAD^{tree}')" = "$V98_TREE"
+          test "$(git -C tooling rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git -C source status --porcelain=v1)"
+          test -z "$(git -C tooling status --porcelain=v1)"
+          python3 -B -m unittest discover -s tooling/scripts/proofs/v98-confined -p 'test_*.py'
+
+      - name: Acquire one retained artifact through GitHub API
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/v98-confined-acquisition"
+          mkdir -m 700 "$out"
+          gh api -H 'Accept: application/vnd.github+json' \
+            repos/fr-meyer/openclaw/actions/runs/37192724704 > "$out/run.json"
+          gh api -H 'Accept: application/vnd.github+json' \
+            repos/fr-meyer/openclaw/actions/runs/37192724704/artifacts > "$out/artifacts.json"
+          gh api -H 'Accept: application/octet-stream' \
+            repos/fr-meyer/openclaw/actions/artifacts/11299504641/zip > "$out/artifact.zip"
+
+      - name: Verify selected saved image and all 1547 read files
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/v98-confined-selected"
+          python3 -B tooling/scripts/proofs/v98-parity/verify-artifact.py \
+            --archive "$RUNNER_TEMP/v98-confined-acquisition/artifact.zip" \
+            --metadata "$RUNNER_TEMP/v98-confined-acquisition/artifacts.json" \
+            --run-metadata "$RUNNER_TEMP/v98-confined-acquisition/run.json" \
+            --source source --output "$out" \
+            --run-id 37192724704 --run-attempt 1 --artifact-id 11299504641 \
+            --tooling-commit 711da57d4e7576fb911f917cd83ead95dfd17602 \
+            --read-binding tooling/scripts/proofs/v98-confined/read-policy/runtime-read-binding.json
+
+      - name: Run one confined synthetic admission
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo env \
+            GITHUB_REPOSITORY="$GITHUB_REPOSITORY" \
+            GITHUB_REF="$GITHUB_REF" \
+            GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" \
+            GITHUB_RUN_NUMBER="$GITHUB_RUN_NUMBER" \
+            GITHUB_RUN_ID="$GITHUB_RUN_ID" \
+            python3 -B tooling/scripts/proofs/v98-confined/host-runtime.py \
+              --tooling tooling --tooling-commit "$GITHUB_SHA" \
+              --source source \
+              --validation "$RUNNER_TEMP/v98-confined-selected/validation.json" \
+              --image "$RUNNER_TEMP/v98-confined-selected/image.tar.gz" \
+              --output "$RUNNER_TEMP/v98-confined-host"
+
+      - name: Retain bounded receipts and failed scratch
+        id: retain
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo python3 -B tooling/scripts/proofs/v98-confined/host-runtime.py \
+            --retain-evidence \
+            --validation "$RUNNER_TEMP/v98-confined-selected/validation.json" \
+            --host-output "$RUNNER_TEMP/v98-confined-host" \
+            --destination "$RUNNER_TEMP/v98-confined-upload"
+
+      - name: Upload seven-day exact-attempt evidence
+        if: always() && steps.retain.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: v98-confined-runtime-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/v98-confined-upload/
+          if-no-files-found: error
+          retention-days: 7
