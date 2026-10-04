@@ -46,6 +46,24 @@ class HostContractTests(unittest.TestCase):
         self.assertNotIn("--privileged", argv)
         self.assertNotIn("--pid", argv)
 
+    def test_container_logging_can_start_within_single_megabyte_budget(self):
+        # Docker's local driver defaults to compression and rejects it with one
+        # file. Exercise the actual command for each mode without launching Docker.
+        for mode in HOST.MODE_LIMITS:
+            with self.subTest(mode=mode):
+                argv = HOST.create_command("owned", HOST.IMAGE_ID, "/proof-host",
+                                           "/scratch-host", mode)
+                driver = argv[argv.index("--log-driver") + 1]
+                options = dict(argv[i + 1].split("=", 1)
+                               for i, arg in enumerate(argv[:-1]) if arg == "--log-opt")
+                count = int(options.get("max-file", "5"))
+                compressed = options.get("compress", "true") == "true"
+                self.assertEqual(driver, "local")
+                self.assertFalse(count == 1 and compressed,
+                                 "compression cannot be enabled when max file count is 1")
+                self.assertEqual(options.get("max-size"), "1m")
+                self.assertLessEqual(count * 1024 * 1024, 1024 * 1024)
+
     def test_actual_container_settings_fail_closed(self):
         row = inspect_row()
         self.assertEqual(HOST.inspect_container(row, "a" * 64, HOST.IMAGE_ID,

@@ -452,6 +452,7 @@ def create_command(name, image, proof, scratch, mode):
             "--shm-size", "1m", "--cgroupns", "private", "--ipc", "private",
             "--no-healthcheck", "--ulimit", "core=0:0", "--log-driver", "local",
             "--log-opt", "max-size=1m", "--log-opt", "max-file=1",
+            "--log-opt", "compress=false",
             "--mount", f"type=bind,src={proof},dst=/proof,readonly",
             "--mount", f"type=bind,src={scratch},dst=/scratch",
             "--entrypoint", "/proof/runner/v98-supervisor", image, mode]

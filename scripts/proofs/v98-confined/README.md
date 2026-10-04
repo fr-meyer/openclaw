@@ -121,6 +121,11 @@ product helper cannot be created; missing required behavior fails qualification.
 
 ## Evidence limits
 
+Container logging retains one 1 MiB file with Docker's `local` driver and
+explicit `compress=false`. Compression is enabled by default and conflicts with
+`max-file=1`, preventing the container from starting. This setting preserves the
+single-file budget; see the [Docker local logging options](https://docs.docker.com/engine/logging/drivers/local/#options).
+
 Portable C decision/BPF/SHA tests, Python adversarial archive/descriptor/host
 tests and syntax checks are offline evidence. They do not prove Linux syscall
 translation, ptrace support under default Docker protections, Landlock
