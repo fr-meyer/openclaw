@@ -1,11 +1,11 @@
-name: V98 Confined Runtime Admission
+name: V98 Confined Runtime Admission 2
 run-name: V98 confined runtime candidate ${{ github.sha }}
 
 # A separately approved exact commit may be pushed once to this distinct branch.
 # Run number and attempt gates reject later pushes and reruns of this workflow.
 on:
   push:
-    branches: [candidate/v2026.9.8-runtime-admission]
+    branches: [candidate/v2026.9.8-runtime-admission-2]
 
 permissions:
   contents: read
@@ -25,7 +25,7 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       github.repository == 'fr-meyer/openclaw' &&
-      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-admission' &&
+      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-admission-2' &&
       github.run_number == 1 && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -44,7 +44,7 @@ jobs:
           ref: ${{ github.sha }}
           path: tooling
           sparse-checkout: |
-            .github/workflows/v98-confined-runtime.yml
+            .github/workflows/v98-confined-runtime-2.yml
             scripts/proofs/v98-confined
             scripts/proofs/v98-runtime
             scripts/proofs/v98-parity
@@ -75,7 +75,7 @@ jobs:
             repos/fr-meyer/openclaw/actions/runs/37192724704 > "$out/run.json"
           gh api -H 'Accept: application/vnd.github+json' \
             repos/fr-meyer/openclaw/actions/runs/37192724704/artifacts > "$out/artifacts.json"
-          gh api -H 'Accept: application/octet-stream' \
+          gh api -H 'Accept: application/json' \
             repos/fr-meyer/openclaw/actions/artifacts/11299504641/zip > "$out/artifact.zip"
 
       - name: Verify selected saved image and all 1547 read files

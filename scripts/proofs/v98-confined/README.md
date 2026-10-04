@@ -9,7 +9,7 @@ start the image's Gateway entrypoint. No fixture phase has run locally.
 Publication and hosted execution require approval of the final local commit,
 workflow and packet. Earlier approvals of artifact builds or source CI do not
 authorize this native runtime attempt. The proposed destination is
-`fr-meyer/openclaw`, branch `candidate/v2026.9.8-runtime-admission`, using one
+`fr-meyer/openclaw`, branch `candidate/v2026.9.8-runtime-admission-2`, using one
 15-minute Ubuntu 24.04 Actions job and seven-day evidence retention. No main
 merge, force push, production access, provider data, new VM, registry
 publication or production deployment is included.
@@ -21,6 +21,18 @@ denied local execution, or modify a platform sandbox. The previously retained
 `ERR_ACCESS_DENIED` fsync failure remains valid failure evidence. Any host
 kernel, Docker, ptrace, seccomp, Landlock or platform refusal in the hosted
 attempt stops the attempt; no broader-profile fallback is permitted.
+
+The first approved attempt, run `37209287864` at commit `83079b31`, stopped
+before image verification or runtime: GitHub rejected the artifact request's
+`Accept: application/octet-stream` header with HTTP 415. Its logs and receipts
+remain failure evidence; all six phases stayed `NEVER_RUN`. This correction uses
+`Accept: application/json` with the same `gh api` download path that successfully
+retrieved the failed attempt's evidence. The CLI follows GitHub's temporary
+download redirect and strips authorization on the cross-host artifact-storage redirect; no token or
+signed URL is supplied manually or written to evidence. The new workflow
+`v98-confined-runtime-2.yml` and branch identify a separately approved attempt,
+with run-number/attempt guards still fixed at one. The retained artifact, native
+profile, input bytes, resource limits and retention are unchanged.
 
 ## Execution contract
 

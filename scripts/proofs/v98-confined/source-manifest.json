@@ -3,14 +3,14 @@
     {
       "bytes": 5422,
       "mode": "0o644",
-      "path": ".github/workflows/v98-confined-runtime.yml",
-      "sha256": "9ae72bf87d6ecab4dfdabbfa925c119e3a79ea85dac416e60a23d0c22e0dd4ff"
+      "path": ".github/workflows/v98-confined-runtime-2.yml",
+      "sha256": "6d32836f50c8031c9307d1fa07f9346541f17bab63191f8425c89cb5bb1eece6"
     },
     {
-      "bytes": 8327,
+      "bytes": 9202,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/README.md",
-      "sha256": "96677ddffaa896cc7693554a26be6728f1ec6e61d7f46cf3271426b3a5d92950"
+      "sha256": "2c3915b512dd3f75c39d963174a3356fd9fa768b0e940f292d59eec43c3e54d6"
     },
     {
       "bytes": 5452,
@@ -25,10 +25,10 @@
       "sha256": "1df6fd10ae0c3e91e128f94c2b93ab38816d8c080aabdd5836bbc87b2edd43f1"
     },
     {
-      "bytes": 52380,
+      "bytes": 52384,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/host-runtime.py",
-      "sha256": "7a7a7b0c9f113a51dd26b00e432c224fa373a9d3a8592a379be62121cb595021"
+      "sha256": "20006d4b98cca1292ea964f6a452791de0ddfb7b1d0ff66ebee28262ebfb9255"
     },
     {
       "bytes": 21520,
@@ -91,10 +91,10 @@
       "sha256": "ef248d050ede519c535b1370e574f3007775bf241ddb81b08b96826a48c12bb6"
     },
     {
-      "bytes": 5900,
+      "bytes": 5904,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/packet.json",
-      "sha256": "610242b1977be96284b99f5e57780e1c433d390c852b82c3fa0c20115750e2b6"
+      "sha256": "599e8e525e95f0ee7ea9861056e0dbcec1c410f75f7f7d46f0625afcdafc2fae"
     },
     {
       "bytes": 128237,
@@ -113,6 +113,12 @@
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/read-policy/runtime-read-binding.json",
       "sha256": "f4697e6eb2868dc1d44e5074eadb385e1963d23d54e8ed12c81c2dbf82b00667"
+    },
+    {
+      "bytes": 8535,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/test_acquisition.py",
+      "sha256": "d8fc258144273b877c096403fd8c5468194e690af77febda48e7b997d919c8da"
     },
     {
       "bytes": 18799,

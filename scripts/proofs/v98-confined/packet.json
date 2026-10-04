@@ -6,8 +6,8 @@
   "sourceManifestPath": "scripts/proofs/v98-confined/source-manifest.json",
   "publication": {
     "repository": "fr-meyer/openclaw",
-    "branch": "candidate/v2026.9.8-runtime-admission",
-    "workflow": ".github/workflows/v98-confined-runtime.yml",
+    "branch": "candidate/v2026.9.8-runtime-admission-2",
+    "workflow": ".github/workflows/v98-confined-runtime-2.yml",
     "onePush": true,
     "forcePush": false,
     "mainMerge": false,

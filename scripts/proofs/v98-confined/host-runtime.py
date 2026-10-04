@@ -136,7 +136,7 @@ def verify_source_manifest(tooling, expected_commit):
          "read-policy/runtime-read-binding.json", "read-policy/parent-read-paths.txt",
          "read-policy/helper-read-paths.txt")
     } | {"scripts/proofs/v98-confined/inputs/" + name for name in PROOF_INPUTS} | {
-        ".github/workflows/v98-confined-runtime.yml",
+        ".github/workflows/v98-confined-runtime-2.yml",
         "scripts/proofs/v98-parity/verify-artifact.py",
         "scripts/proofs/v98-parity/collect-artifacts.py",
         "scripts/proofs/v98-parity/contract.json",
@@ -954,7 +954,7 @@ def execute(args):
     require(os.geteuid() == 0 and platform.system() == "Linux" and platform.machine() == "x86_64",
             "hosted root Linux x86-64 runner required")
     require(os.environ.get("GITHUB_REPOSITORY") == "fr-meyer/openclaw"
-            and os.environ.get("GITHUB_REF") == "refs/heads/candidate/v2026.9.8-runtime-admission"
+            and os.environ.get("GITHUB_REF") == "refs/heads/candidate/v2026.9.8-runtime-admission-2"
             and os.environ.get("GITHUB_RUN_ATTEMPT") == "1"
             and os.environ.get("GITHUB_RUN_NUMBER") == "1", "wrong hosted workflow identity")
     tooling = Path(args.tooling).resolve()
