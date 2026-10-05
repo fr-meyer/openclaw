@@ -1,6 +1,6 @@
-tree 100321a6785c23ef09643fa9e47a8a7bc5bb6414
+tree d979e9b8a1a22f77bf918bea15ab6f98e716d7dd
 parent bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
-author Codex qualification <codex@localhost> 1791196322 +0000
-committer Codex qualification <codex@localhost> 1791196322 +0000
+author Codex qualification <codex@localhost> 1791200583 +0000
+committer Codex qualification <codex@localhost> 1791200583 +0000
 
-fix(runtime): correct explicit assertion and descriptor contracts
+fix(build): guard missing compiled inventory entry

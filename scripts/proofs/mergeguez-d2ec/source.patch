@@ -1057,7 +1057,7 @@ index 88073f97..6b2740bc 100644
  
    push(event: T): void {
 diff --git a/scripts/write-build-info.ts b/scripts/write-build-info.ts
-index bd1203df..35b1e646 100644
+index bd1203df..e40e9f66 100644
 --- a/scripts/write-build-info.ts
 +++ b/scripts/write-build-info.ts
 @@ -1,5 +1,6 @@
@@ -1077,7 +1077,7 @@ index bd1203df..35b1e646 100644
  };
  
  type ResolveBuildInfoOptions = {
-@@ -89,6 +93,72 @@ function resolveGitCommit(rootDir: string, execFileSyncImpl: ExecFileSync): stri
+@@ -89,6 +93,75 @@ function resolveGitCommit(rootDir: string, execFileSyncImpl: ExecFileSync): stri
    return normalizeBuildCommit(raw, "git rev-parse HEAD");
  }
  
@@ -1137,7 +1137,10 @@ index bd1203df..35b1e646 100644
 +    // or partial manifest becomes source evidence. build-info is excluded from
 +    // this JavaScript-only scope, so writing it never hashes its own digest.
 +    const after = inventory();
-+    if (after.length !== files.length || files.some((file, index) => !same(file, after[index])))
++    if (after.length !== files.length || files.some((file, index) => {
++      const afterFile = after[index];
++      return !afterFile || !same(file, afterFile);
++    }))
 +      return null;
 +    return hash.digest("hex");
 +  } catch {
@@ -1150,7 +1153,7 @@ index bd1203df..35b1e646 100644
  export function resolveBuildInfo(options: ResolveBuildInfoOptions = {}): BuildInfo {
    const rootDir = options.rootDir ?? defaultRootDir;
    const env = options.env ?? process.env;
-@@ -121,11 +191,15 @@ export function resolveBuildInfo(options: ResolveBuildInfoOptions = {}): BuildIn
+@@ -121,11 +194,15 @@ export function resolveBuildInfo(options: ResolveBuildInfoOptions = {}): BuildIn
      buildId: env.OPENCLAW_CONTROL_UI_BUILD_ID,
    }).buildId;
  
