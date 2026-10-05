@@ -54,6 +54,11 @@ def daemon_facts():
              "Plugins": {"Log": ["local"]}, "DefaultRuntime": "runc", "Runtimes": {"runc": {}}})
 
 
+def fake_scratch_mount(path):
+    path.mkdir()
+    return path.stat()
+
+
 class HostContractTests(unittest.TestCase):
     def setUp(self):
         # Inert parent double: absent final proof retains all owned resources.
@@ -67,6 +72,10 @@ class HostContractTests(unittest.TestCase):
             "parent cpu.stat read", OSError(errno.ENODEV, "unavailable parent"))
         owner = patch.object(HOST, "SliceOwner", return_value=self.parent)
         owner.start(); self.addCleanup(owner.stop)
+        self.scratch_usage = MagicMock()
+        self.scratch_usage.seal.return_value = {"path": "scratch-usage.json", "exactPeakClaimed": False}
+        usage = patch.object(HOST, "ScratchUsage", return_value=self.scratch_usage)
+        usage.start(); self.addCleanup(usage.stop)
 
     def test_container_command_scope_and_mounts(self):
         argv = HOST.create_command("owned", HOST.IMAGE_ID, "/proof-host", "/scratch-host",
@@ -83,6 +92,35 @@ class HostContractTests(unittest.TestCase):
         self.assertNotIn("--privileged", argv)
         self.assertNotIn("--pid", argv)
         self.assertIn(["--pull", "never"], [argv[i:i + 2] for i in range(len(argv) - 1)])
+
+    def test_scratch_allocation_refusal_precedes_any_container_create(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.scratch_usage.observe.side_effect = HOST.Refusal("synthetic allocation refusal")
+            with patch.object(HOST, "mount_scratch", side_effect=fake_scratch_mount), \
+                 patch.object(HOST, "command") as commands:
+                with self.assertRaisesRegex(HOST.Refusal, "synthetic allocation refusal"):
+                    HOST.run_mode(HOST.IMAGE_ID, root, root / "attempt", "owned", "--capability-probe")
+            commands.assert_not_called()
+            failure = json.loads((root / "attempt/failure.json").read_text())
+            self.assertFalse(failure["containerCreationAttempted"])
+            self.assertEqual(failure["creationOutcome"], "NOT_ATTEMPTED")
+            self.assertEqual(failure["hostFailure"]["operation"], "scratch allocation observation")
+
+    def test_consumed_ref_or_second_run_attempt_refuses_before_source_or_host_actions(self):
+        allowed = {"GITHUB_REPOSITORY": "fr-meyer/openclaw",
+                   "GITHUB_REF": "refs/heads/candidate/v2026.9.8-runtime-admission-5",
+                   "GITHUB_RUN_ATTEMPT": "1", "GITHUB_RUN_NUMBER": "1"}
+        for key, value in [("GITHUB_REF", "refs/heads/candidate/v2026.9.8-runtime-admission-4"),
+                           ("GITHUB_RUN_NUMBER", "2"), ("GITHUB_RUN_ATTEMPT", "2")]:
+            with self.subTest(key=key), patch.object(HOST.os, "geteuid", return_value=0), \
+                 patch.object(HOST.platform, "system", return_value="Linux"), \
+                 patch.object(HOST.platform, "machine", return_value="x86_64"), \
+                 patch.dict(HOST.os.environ, {**allowed, key: value}, clear=True), \
+                 patch.object(HOST, "verify_source_manifest") as verified, patch.object(HOST, "command") as invoked:
+                with self.assertRaisesRegex(HOST.Refusal, "wrong hosted workflow identity"):
+                    HOST.execute(SimpleNamespace())
+                verified.assert_not_called(); invoked.assert_not_called()
 
     def test_preflight_refuses_incompatible_daemon_and_resource_prerequisites(self):
         version, info = daemon_facts()
@@ -298,7 +336,7 @@ class HostContractTests(unittest.TestCase):
                 inspections[0] += 1
                 return result
             try:
-                with patch.object(HOST, "mount_scratch", side_effect=lambda path: path.mkdir()), \
+                with patch.object(HOST, "mount_scratch", side_effect=fake_scratch_mount), \
                      patch.object(HOST, "command", side_effect=(
                          [b"a" * 64, HOST.Refusal("owned kill failed")] if kill_failure
                          else [b"a" * 64])) as commands, \
@@ -342,7 +380,7 @@ class HostContractTests(unittest.TestCase):
     def test_failed_create_records_unknown_custody_and_no_start(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            with patch.object(HOST, "mount_scratch", side_effect=lambda path: path.mkdir()), \
+            with patch.object(HOST, "mount_scratch", side_effect=fake_scratch_mount), \
                  patch.object(HOST, "command", side_effect=HOST.Refusal("create timeout")), \
                  patch.object(HOST.subprocess, "Popen") as started, \
                  patch.object(HOST.os.path, "ismount", return_value=True):
@@ -361,7 +399,7 @@ class HostContractTests(unittest.TestCase):
             row["Mounts"][0]["Source"] = str(root)
             row["Mounts"][1]["Source"] = str(root / "attempt/scratch-tmpfs")
             row["HostConfig"]["LogConfig"]["Config"]["compress"] = "true"
-            with patch.object(HOST, "mount_scratch", side_effect=lambda path: path.mkdir()), \
+            with patch.object(HOST, "mount_scratch", side_effect=fake_scratch_mount), \
                  patch.object(HOST, "command", return_value=b"a" * 64), \
                  patch.object(HOST, "docker_inspect", return_value=row), \
                  patch.object(HOST.subprocess, "Popen") as started, \
@@ -454,6 +492,22 @@ class HostContractTests(unittest.TestCase):
         self.assertIn("complete native lifetime exceeded wall budget", failure["reason"])
         self.assertTrue(failure["finalCpuVerified"])
 
+    def test_scratch_usage_retention_failure_keeps_positive_parent_proof_but_retains_resources(self):
+        failure, events = self.check_parent_flow(usage_error=True)
+        self.assertTrue(failure["finalCpuVerified"])
+        self.assertTrue(failure["extinctionObserved"])
+        self.assertTrue(failure["stoppedContainerState"]["stoppedVerified"])
+        self.assertIsNone(failure["parentAccountingCheckpoint"])
+        self.assertIsNone(failure["parentAccountingRelease"])
+        self.assertIsNone(failure["scratchUsage"])
+        self.assertEqual(failure["scratchUsageFailure"]["errno"], errno.ENOSPC)
+        self.assertEqual(failure["scratchUsageFailure"]["operation"], "scratch allocation observation/retention")
+        self.assertTrue(failure["scratchMounted"])
+        self.assertTrue(any("scratch usage retention" in e for e in failure["cleanupErrors"]))
+        for action in ("archive", "rm", "umount", "release"):
+            self.assertNotIn(action, events)
+        self.parent.release.assert_not_called()
+
     def test_exact_parent_mismatch_refuses_created_container_before_start(self):
         row = created_row(); row["HostConfig"]["CgroupParent"] = "foreign.slice"
         with self.assertRaisesRegex(HOST.Refusal, "accounting parent changed"):
@@ -463,7 +517,7 @@ class HostContractTests(unittest.TestCase):
     def check_parent_flow(self, native_exit=0, final_error=False, live_error=False,
                           checkpoint_error=False, release_error=False, removal_owner_error=False,
                           gate_error=False, live_cpu=40000, mode="--capability-probe", late_deadline=False,
-                          late_tail=False):
+                          late_tail=False, usage_error=False):
         events = []; clock = [0.0]
         class Attached:
             def __init__(self, stdout, stderr):
@@ -495,6 +549,7 @@ class HostContractTests(unittest.TestCase):
         self.parent.cpu_delta.return_value = live_cpu
         self.parent.create.side_effect = lambda: events.append("create-parent")
         self.parent.kill.return_value = 3.0 if late_deadline else 0.0
+        self.scratch_usage.seal.side_effect = OSError(errno.ENOSPC, "scratch usage receipt full") if usage_error else None
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); out = root / "attempt"; scratch = out / "scratch-tmpfs"
             checkpoint = out / "parent-accounting-checkpoint.json"
@@ -538,7 +593,7 @@ class HostContractTests(unittest.TestCase):
                 events.append("gate")
                 if late_deadline: clock[0] = 3.0
             try:
-                with patch.object(HOST, "mount_scratch", side_effect=lambda path: path.mkdir()), \
+                with patch.object(HOST, "mount_scratch", side_effect=fake_scratch_mount), \
                      patch.object(HOST, "command", side_effect=invoke), \
                      patch.object(HOST.subprocess, "Popen", side_effect=lambda *_args, **_kwargs: (events.append("start") or Attached(stdout, stderr))), \
                      patch.object(HOST, "docker_inspect", side_effect=inspect), \
@@ -551,7 +606,7 @@ class HostContractTests(unittest.TestCase):
                      patch.object(HOST.time, "monotonic", side_effect=lambda: clock[0]), \
                      patch.object(HOST, "seal_parent_checkpoint", side_effect=OSError(errno.ENOSPC, "receipt full") if checkpoint_error else HOST.seal_parent_checkpoint):
                     failed = any((native_exit, final_error, live_error, checkpoint_error, release_error,
-                                  removal_owner_error, gate_error, live_cpu > HOST.MODE_LIMITS[mode][1], late_deadline, late_tail))
+                                  removal_owner_error, gate_error, live_cpu > HOST.MODE_LIMITS[mode][1], late_deadline, late_tail, usage_error))
                     if failed:
                         with self.assertRaises(HOST.Refusal): HOST.run_mode(HOST.IMAGE_ID, root, out, "owned", mode)
                         self.assertFalse((out / "receipt.json").exists())
@@ -721,7 +776,7 @@ class HostContractTests(unittest.TestCase):
                  patch.object(HOST.platform, "system", return_value="Linux"), \
                  patch.object(HOST.platform, "machine", return_value="x86_64"), \
                  patch.dict(HOST.os.environ, {"GITHUB_REPOSITORY": "fr-meyer/openclaw",
-                     "GITHUB_REF": "refs/heads/candidate/v2026.9.8-runtime-admission-4",
+                     "GITHUB_REF": "refs/heads/candidate/v2026.9.8-runtime-admission-5",
                      "GITHUB_RUN_ATTEMPT": "1", "GITHUB_RUN_NUMBER": "1"}, clear=True), \
                  patch.object(HOST, "verify_source_manifest"), \
                  patch.object(HOST, "git", side_effect=[HOST.SOURCE, HOST.TREE, ""]), \

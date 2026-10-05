@@ -1,24 +1,26 @@
 {
   "schema": "openclaw-v98-confined-execution-packet/v1",
-  "status": "LOCAL_FIXTURE_STORAGE_CORRECTION_PREPARED; FULL_SIX_PHASE_RUNTIME_UNQUALIFIED",
+  "status": "LOCAL_REVIEWED_FIXTURE_SUCCESSOR_PROPOSAL; NO_PUBLICATION_OR_EXECUTION_APPROVAL",
   "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
   "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
   "sourceManifestPath": "scripts/proofs/v98-confined/source-manifest.json",
   "publication": {
     "repository": "fr-meyer/openclaw",
-    "branch": "candidate/v2026.9.8-runtime-admission-4",
-    "workflow": ".github/workflows/v98-confined-runtime-4.yml",
+    "branch": "candidate/v2026.9.8-runtime-admission-5",
+    "workflow": ".github/workflows/v98-confined-runtime-5.yml",
     "onePush": true,
     "forcePush": false,
     "mainMerge": false,
     "newApprovalRequired": true,
-    "status": "BRANCH_AND_WORKFLOW4_CONSUMED; FRESH_EXECUTION_IDENTITY_AND_APPROVAL_REQUIRED",
-    "newExecutionIdentityRequired": true
+    "status": "UNUSED_BRANCH5_AND_WORKFLOW5_VERIFIED_2026-10-05T03:47:29Z; EXPLICIT_APPROVAL_AND_IMMEDIATE_RECHECK_REQUIRED",
+    "newExecutionIdentityRequired": false,
+    "reviewedFreshExecutionIdentityPrepared": true,
+    "remoteIdentityReceiptSha256": "e9d4c71b7301db53f00e264b0f0844b3757b427a91acd1da5201910f73b49def"
   },
   "hostedAttempt": {
     "runner": "ubuntu-24.04",
     "jobTimeoutMinutes": 15,
-    "attempts": 1,
+    "attempts": 0,
     "requiredWorkflowRunNumber": 1,
     "requiredWorkflowRunAttempt": 1,
     "artifactRetentionDays": 7,
@@ -34,9 +36,10 @@
     "consumedRunId": 37256338785,
     "consumedCommit": "d890e9ff289c657c8bb759a98511008e9772148d",
     "consumedConclusion": "FAILURE; CAPABILITY_AND_DEADLINE_PASSED; PHASE1_SQLITE_FULL; PHASES2_TO6_NEVER_RUN",
-    "startupPrerequisiteReceipt": "Static required Node/GNU/OpenSSL file and metadata identities joined against frozen policies before compiler, Docker image load or start; current missing config refuses without granting a permission",
+    "startupPrerequisiteReceipt": "Static original Node/GNU/OpenSSL file and metadata joins against unchanged1548reads/360namespace identities before compiler/image load/start; attempt4 proved original config startup.",
     "scope": "One capability probe, then one forced-deadline probe, then one frozen six-phase fixture; any refusal stops later modes. No rerun or replacement image.",
-    "hostOwnedAccounting": "Exactly one task slice per mode, active until complete final proof is sealed; StartTransientUnit creates a PID1-managed ephemeral /run/systemd/transient/<exact-unit>.slice fragment, no manual/persistent unit/drop-in/settings edits."
+    "hostOwnedAccounting": "Exactly one task slice per mode, active until complete final proof is sealed; StartTransientUnit creates a PID1-managed ephemeral /run/systemd/transient/<exact-unit>.slice fragment, no manual/persistent unit/drop-in/settings edits.",
+    "artifactAvailabilityObservedAtUtc": "2026-10-05T03:47:29Z"
   },
   "artifact": {
     "runId": 37192724704,
@@ -145,13 +148,14 @@
     "Scratch file and directory fsync, SQLite WAL/backup/checkpoint/native close, joined real Worker and effective heap observations",
     "Main and Worker outside-scratch controls on writable sentinel, IPv4/IPv6/DNS denial plus native syscall denial witnesses, arbitrary child denial",
     "Forced deadline with live owned thread, host kill and positive bound-cgroup extinction before fixture",
-    "Six frozen phases with one source-bound helper, native process-close/staging-tightening/termination observations and final zero tracees/cgroup population"
+    "Six frozen phases with one source-bound helper, native process-close/staging-tightening/termination observations and final zero tracees/cgroup population",
+    "Host-only exact scratch-inode fstatvfs observations: verified16MiB capacity, sampled allocated bytes/free inode floor before/during/after modes and received native phase boundaries. Bounded32KiB receipt; samples are lower bounds and phase event receipt may lag actual execution. Full six-phase success under hard cap required; no sample grants cleanup authority."
   ],
   "runtimeQualification": "ATTEMPT4_CAPABILITY_AND_DEADLINE_PASS; PHASE1_FAILED_SQLITE_FULL; PHASES2_TO6_NEVER_RUN; SUCCESSOR_ALL_PHASES_NEVER_RUN",
   "mergeguezOverlay": "SEPARATE_SOURCE_ONLY; NOT_INCLUDED; NO_ACTIVATION",
   "compiledBinaryHashes": "Recorded only by the approved hosted compile gate, before policy activation",
   "remainingAdmissionLimitations": [
-    "Workflow4/branch4 run1/attempt1 was consumed by run37256338785. The reviewed local fixture correction does not authorize publication or another hosted run; a fresh reviewed execution identity, exact new tooling commit/tree and explicit one-attempt approval are required. Recheck retained artifact expiry and unused identity immediately before any approved publication.",
+    "Workflow4/branch4 run1/attempt1 was consumed by run37256338785. This exact local successor proposes distinct branch/workflow5, run1/attempt1, one15-minute hosted attempt only after explicit approval. Live remote absence, workflow counters and retained artifact expiry must be rechecked immediately before publication; no implicit push/retry/rerun.",
     "Exact OpenSSL original-image read and two metadata joins were approved and attempt4 startup/capability passed. All1548 image and360 namespace identities remain source-bound. No new read/config/environment/policy expansion accompanies this fixture correction.",
     "Attempt4 proved persistent-parent lifetime accounting, actual Linux/systemd255/Docker retention, raw hierarchical CPU through supervisor tail, forced deadline, final empty parent and exact normal failure release in all three modes. Corrected fixture execution remains NEVER_RUN; each future attempt must rejoin these identities and observations.",
     "Attempt4 startup, own-child tracing, Landlock/seccomp/default Docker controls and capability witnesses passed. Dynamic Doctor import/helper/phase3 transport and complete migration/restore/rollback remain unexecuted gates.",
@@ -209,7 +213,10 @@
       "Doctor state growth and WAL/temp",
       "snapshot owner retirement",
       "restore allocated peak"
-    ]
+    ],
+    "sourceCorrectionCommit": "7df2254b6d60ef59cdd5c97b7a0baa32c020367c",
+    "allocatedUsageObservation": "Host-only exact scratch descriptor fstatvfs at nominal50ms polls and received native phase boundaries; bounded32KiB receipt per mode within existing20MiB upload limit. Includes allocation of live-unlinked temp files; sampled peak and event-correlated phase windows explicitly incomplete.",
+    "fullSixPhasePreflight": "Source ledger covers raw WAL/live backups/close checkpoint overlap; predecessor/candidate pairs; Doctor snapshot payload/two token controls/reopened state growth/WAL/temp; independent restore pair. Known raw capped phase1 term9455680bytes plus unknown journals/SHM/metadata/temp; no complete16MiB fit claimed before actual flow."
   },
   "retainedAttempt4": {
     "runId": 37256338785,

@@ -13,10 +13,16 @@
       "sha256": "880f06c037b9b3fbcab71c1d7312ee13acdf95892cf2bdc0ad2adc6eb650089d"
     },
     {
-      "bytes": 20956,
+      "bytes": 5629,
+      "mode": "0o644",
+      "path": ".github/workflows/v98-confined-runtime-5.yml",
+      "sha256": "7e9d0337d0c6272af0e2e72c5e8e668617649f7a2d8e6227561a49227959899a"
+    },
+    {
+      "bytes": 22609,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/README.md",
-      "sha256": "0f6b773c896ebc47597ab7b0db303bd345a9b0b6b43572e663e9ca24ff245ed0"
+      "sha256": "c202dd0c16e0cd0037adb29e285a5c8e1270db2c1160b03ff3a869b54f76b385"
     },
     {
       "bytes": 21278,
@@ -37,10 +43,10 @@
       "sha256": "62e6d5dad87f745e527528e5a38fdb5548f5a30bd25db49a22da14d8634e9927"
     },
     {
-      "bytes": 75964,
+      "bytes": 82672,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/host-runtime.py",
-      "sha256": "c5859f4938ca35ac34f9d50705691119294c7b9a392026da49bd398d1ee762c9"
+      "sha256": "127338056b581201121115540bab88bb0a77f93b5d7ce5c6daf2def22a75b50f"
     },
     {
       "bytes": 24602,
@@ -103,10 +109,10 @@
       "sha256": "ef248d050ede519c535b1370e574f3007775bf241ddb81b08b96826a48c12bb6"
     },
     {
-      "bytes": 14868,
+      "bytes": 16214,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/packet.json",
-      "sha256": "1ee5d6c047f93b3c1b39329962e6d9c0c72b3ee6af3bd11d2ace62a9c997808d"
+      "sha256": "076541f3a312a307834e698d4797a334d20938543fd5e4d25de281fb2fb58028"
     },
     {
       "bytes": 12332,
@@ -160,13 +166,13 @@
       "bytes": 8535,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/test_acquisition.py",
-      "sha256": "c57f5f40607a444155192be1a39e015f74e40aefd1627fe83173733ffbeba5e5"
+      "sha256": "d8d16e2b7ab6b4c6cd123518ea94b04ac2bbc23bc7410acd1d9d742a296da099"
     },
     {
-      "bytes": 48337,
+      "bytes": 51978,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/test_host_runtime.py",
-      "sha256": "ca5e92710cec13c7205f60510ccd212e7aa63c7c8356dde86be9cd861f2ebdd6"
+      "sha256": "d8a1305c4c6fb63d95a2ac83409d1ad89b76774108b8c76f5100236a6759bb78"
     },
     {
       "bytes": 11887,
@@ -179,6 +185,12 @@
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/test_read_policy.py",
       "sha256": "ce2423a000bbcc5eb52deef3e4efb32889ab11f0393e77b200ac4c610ee2d83d"
+    },
+    {
+      "bytes": 5466,
+      "mode": "0o644",
+      "path": "scripts/proofs/v98-confined/test_scratch_usage.py",
+      "sha256": "ae920e5b862c41a96d4c0fabf355c42a0704912d60348eedd6d2029432d2c66b"
     },
     {
       "bytes": 2245,

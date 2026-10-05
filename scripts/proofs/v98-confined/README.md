@@ -303,6 +303,31 @@ runtime proof remains pending. This local correction authorizes no publication,
 hosted retry or resource increase. A future attempt needs a reviewed fresh
 execution identity and explicit approval; workflow4 cannot be rerun.
 
+The exact local successor proposes distinct branch
+`candidate/v2026.9.8-runtime-admission-5` and workflow
+`.github/workflows/v98-confined-runtime-5.yml`: one push, run1/attempt1,
+Ubuntu 24.04, a 15-minute job and seven-day evidence under the existing 20 MiB
+upload cap. The host refuses any other ref or counters. Live branch/workflow
+absence and retained artifact availability are checked read-only in the
+external proposal receipt and must be rechecked immediately before publication.
+No push or hosted test is authorized by this source.
+
+Host observations use a nofollow descriptor for the exact mounted scratch
+inode and `fstatvfs`, verifying the unchanged 16 MiB capacity. Allocation and inode
+availability are sampled at nominal 50 ms polls and on received native phase
+events, then sealed in at most 32 KiB per-mode `scratch-usage.json` within the
+existing evidence budget. This includes allocated live-unlinked files, which
+named-file sums miss. Samples can miss brief peaks; received phase labels may
+lag execution. Only complete six-phase success under the hard cap proves that
+flow fits. No sampled value grants process extinction or cleanup authority.
+
+The six-phase preflight accounts for raw/main/WAL live-backup and close-checkpoint
+overlap, retained predecessor/candidate pairs, Doctor's private state snapshot
+and token controls, reopened migration main/WAL/temp growth, and an independent
+rollback pair. Guarded raw terms imply a conditional phase1 term of 9,455,680 bytes
+plus unknown backup journals/SHM/temp/metadata. Full Workboard and migration
+peaks remain unmeasured; all records/assertions and the 16 MiB limit remain intact.
+
 [SQLite WAL](https://www.sqlite.org/wal.html) and
 [SQLite PRAGMAs](https://www.sqlite.org/pragma.html) describe the transaction,
 checkpoint and cache-spill behavior underlying this source correction. These

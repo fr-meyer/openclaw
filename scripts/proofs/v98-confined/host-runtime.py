@@ -160,7 +160,7 @@ def verify_source_manifest(tooling, expected_commit):
         ("v98-supervisor.c", "v98-confine.c", "native-policy.c", "native-policy.h",
          "native-filter.h", "native-boundary.h", "native-sha256.h", "capability-probe.mjs",
          "host-runtime.py", "test_host_runtime.py", "derive_read_policy.py", "packet.json",
-         "startup-prerequisites.json", "accounting_owner.py", "test_accounting_owner.py",
+         "startup-prerequisites.json", "accounting_owner.py", "test_accounting_owner.py", "test_scratch_usage.py",
          "proposal/openssl-read-proposal.json", "proposal/image-openssl.cnf",
          "proposal/render_delta.py", "test_openssl_proposal.py",
          "read-policy/runtime-read-binding.json", "read-policy/parent-read-paths.txt",
@@ -168,6 +168,7 @@ def verify_source_manifest(tooling, expected_commit):
     } | {"scripts/proofs/v98-confined/inputs/" + name for name in PROOF_INPUTS} | {
         ".github/workflows/v98-confined-runtime-3.yml",
         ".github/workflows/v98-confined-runtime-4.yml",
+        ".github/workflows/v98-confined-runtime-5.yml",
         "scripts/proofs/v98-parity/verify-artifact.py",
         "scripts/proofs/v98-parity/collect-artifacts.py",
         "scripts/proofs/v98-parity/contract.json",
@@ -878,6 +879,102 @@ def retain_scratch(scratch, target):
     return total
 
 
+def observe_scratch_usage(path, identity):
+    """Host-only allocation counters from the exact mounted scratch inode."""
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        require((info.st_dev, info.st_ino) == identity and stat.S_ISDIR(info.st_mode)
+                and stat.S_IMODE(info.st_mode) == 0o700 and info.st_uid == 1000 and info.st_gid == 1000,
+                "scratch usage mount identity changed")
+        usage = os.fstatvfs(fd)
+        unit = usage.f_frsize or usage.f_bsize
+        require(unit > 0 and usage.f_blocks * unit == MAX_SCRATCH
+                and 0 <= usage.f_bavail <= usage.f_bfree <= usage.f_blocks
+                and 0 <= usage.f_ffree <= usage.f_files, "scratch allocation counters invalid or cap changed")
+        return {"capacityBytes": usage.f_blocks * unit,
+                "allocatedBytes": (usage.f_blocks - usage.f_bfree) * unit,
+                "availableBytes": usage.f_bavail * unit,
+                "usedInodes": usage.f_files - usage.f_ffree,
+                "freeInodes": usage.f_ffree}
+    finally:
+        os.close(fd)
+
+
+class ScratchUsage:
+    """Bounded sampled allocation evidence; never a cleanup authority."""
+    def __init__(self, path, identity):
+        self.path, self.identity = path, identity
+        self.started = time.monotonic()
+        self.last = None
+        self.offset = 0
+        self.phase = None
+        self.samples = 0
+        self.max_allocated = 0
+        self.max_gap = 0.0
+        self.minimum_available = MAX_SCRATCH
+        self.minimum_free_inodes = None
+        self.windows = {}
+        self.boundaries = []
+
+    def sample(self, reason, force=False):
+        now = time.monotonic()
+        if not force and self.last is not None and now - self.last < 0.05:
+            return
+        counters = observe_scratch_usage(self.path, self.identity)
+        row = {"elapsedSeconds": round(now - self.started, 6), "lastNativePhaseSeen": self.phase, **counters}
+        self.samples += 1
+        if self.last is not None:
+            self.max_gap = max(self.max_gap, now - self.last)
+        self.last = now
+        self.max_allocated = max(self.max_allocated, counters["allocatedBytes"])
+        self.minimum_available = min(self.minimum_available, counters["availableBytes"])
+        free = counters["freeInodes"]
+        self.minimum_free_inodes = free if self.minimum_free_inodes is None else min(self.minimum_free_inodes, free)
+        key = str(self.phase) if self.phase is not None else "before-phase"
+        window = self.windows.setdefault(key, {"samples": 0, "maximumSampledAllocatedBytes": 0})
+        window["samples"] += 1
+        window["maximumSampledAllocatedBytes"] = max(window["maximumSampledAllocatedBytes"], counters["allocatedBytes"])
+        if reason != "periodic":
+            require(len(self.boundaries) < 20, "scratch usage boundary budget exceeded")
+            self.boundaries.append({"reason": reason, **row})
+
+    def observe(self, stdout, force=False):
+        # Native output is already bounded by its existing stream owner. Read
+        # only complete new lines; receipt times may lag actual phase changes.
+        while True:
+            end = stdout.find(b"\n", self.offset)
+            if end < 0:
+                break
+            native, _ = parse_events(bytes(stdout[self.offset:end + 1]), b"")
+            self.offset = end + 1
+            for row in native:
+                if row["event"] in ("phase_started", "phase_joined"):
+                    phase = row.get("phase")
+                    require(type(phase) is int and 0 <= phase <= 6, "scratch usage native phase invalid")
+                    self.phase = phase
+                    self.sample(row["event"], force=True)
+        self.sample("periodic", force=force)
+
+    def seal(self, target):
+        require(self.samples > 0, "scratch allocation never observed")
+        summary = {"schema": "openclaw-v98-scratch-allocation-observations/v1",
+            "status": "OBSERVED_SAMPLED_LOWER_BOUND; EXACT_PEAK_NOT_CLAIMED",
+            "mountDevInode": self.identity, "hardScratchCapacityBytes": MAX_SCRATCH,
+            "samples": self.samples, "nominalPollSeconds": 0.05,
+            "maximumObservedGapSeconds": round(self.max_gap, 6),
+            "maximumSampledAllocatedBytes": self.max_allocated,
+            "minimumSampledAvailableBytes": self.minimum_available,
+            "minimumSampledFreeInodes": self.minimum_free_inodes,
+            "nativeEventCorrelatedWindows": self.windows, "nativeEventReceiptObservations": self.boundaries,
+            "limitations": "Samples can miss brief peaks; phase labels use received native events and may lag execution. fstatvfs includes allocated live-unlinked files but does not identify their names. Only actual full-six success under the verified hard cap proves that flow fits; no storage sample grants extinction or cleanup."}
+        encoded = (json.dumps(summary, indent=2) + "\n").encode()
+        require(len(encoded) <= 32 * 1024, "scratch usage receipt exceeds budget")
+        Path(target).write_bytes(encoded)
+        return {"path": "scratch-usage.json", "bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest(),
+                "maximumSampledAllocatedBytes": self.max_allocated, "exactPeakClaimed": False}
+
+
 def run_mode(image_id, proof, out, name, mode):
     out = Path(out)
     out.mkdir(mode=0o755)
@@ -890,6 +987,9 @@ def run_mode(image_id, proof, out, name, mode):
     accounting_release = None
     accounting_settlement_failure = None
     checkpoint = None
+    scratch_usage = None
+    scratch_usage_receipt = None
+    scratch_usage_failure = None
     extinct = False
     stdout = bytearray()
     stderr = bytearray()
@@ -920,7 +1020,10 @@ def run_mode(image_id, proof, out, name, mode):
         accounting.create()
         group_fd, cgroup, identity = accounting.directory_fd, accounting.path, accounting.identity
         cpu = 0
-        mount_scratch(scratch)
+        scratch_identity = mount_scratch(scratch)
+        scratch_usage = ScratchUsage(scratch, (scratch_identity.st_dev, scratch_identity.st_ino))
+        operation = "scratch allocation observation"
+        scratch_usage.observe(stdout, force=True)
         creation_attempted = True
         operation = "container create"
         container_id = command(create_command(name, image_id, proof, scratch, mode)).decode().strip()
@@ -973,6 +1076,8 @@ def run_mode(image_id, proof, out, name, mode):
                         "native wall deadline exceeded before gate")
                 gate_seen = True
                 release_gate(scratch)
+            operation = "scratch allocation observation"
+            scratch_usage.observe(stdout)
             if not gate_seen and time.monotonic() - mode_started > 5:
                 raise Refusal("trusted host gate not observed within five seconds")
             if attach.poll() is not None and not sel.get_map():
@@ -1013,6 +1118,9 @@ def run_mode(image_id, proof, out, name, mode):
         exit_code = inspected["State"]["ExitCode"]
         require(gate_seen and group_fd is not None, "host gate was never admitted")
         native, product = parse_events(bytes(stdout), bytes(stderr))
+        operation = "scratch allocation observation"
+        scratch_usage.observe(stdout, force=True)
+        operation = "exact container exit and native outcome"
         assess_native(mode, native, product, exit_code, deadline_killed)
         operation = "final aggregate CPU accounting"
         final_cpu_status = "ATTEMPTED_UNVERIFIED"
@@ -1097,6 +1205,15 @@ def run_mode(image_id, proof, out, name, mode):
         if attach is not None:
             attach.stdout.close()
             attach.stderr.close()
+        if scratch_usage is not None:
+            try:
+                scratch_usage.observe(stdout, force=True)
+                scratch_usage_receipt = scratch_usage.seal(out / "scratch-usage.json")
+                if receipt is not None:
+                    receipt["scratchUsage"] = scratch_usage_receipt
+            except Exception as usage_error:
+                scratch_usage_failure = failure_detail(usage_error, "scratch allocation observation/retention")
+                cleanup_errors.append("scratch usage retention: " + str(usage_error)[:300])
         try:
             (out / "native-stdout.jsonl").write_bytes(bytes(stdout))
             (out / "product-stderr.log").write_bytes(bytes(stderr))
@@ -1199,6 +1316,8 @@ def run_mode(image_id, proof, out, name, mode):
             "parentAccountingFinal": accounting_final,
             "parentAccountingRelease": accounting_release,
             "parentAccountingCheckpoint": checkpoint,
+            "scratchUsage": scratch_usage_receipt,
+            "scratchUsageFailure": scratch_usage_failure,
             "accountingSettlementFailure": accounting_settlement_failure,
             "stoppedWithoutCgroupProof": stopped_without_group,
             "stoppedContainerState": stopped_container_state,
@@ -1235,6 +1354,7 @@ def collect_evidence(validation, host_output, destination):
         attempt = host_output / f"attempt-{number}"
         for name, cap in (("failure.json", 32 * 1024), ("receipt.json", 2 * 1024 * 1024),
                           ("parent-accounting-checkpoint.json", 32 * 1024),
+                          ("scratch-usage.json", 32 * 1024),
                           ("native-stdout.jsonl", MAX_STDOUT),
                           ("product-stderr.log", MAX_STDERR)):
             files.append((attempt / name, Path(f"attempt-{number}") / name, cap))
@@ -1312,7 +1432,7 @@ def execute(args):
     require(os.geteuid() == 0 and platform.system() == "Linux" and platform.machine() == "x86_64",
             "hosted root Linux x86-64 runner required")
     require(os.environ.get("GITHUB_REPOSITORY") == "fr-meyer/openclaw"
-            and os.environ.get("GITHUB_REF") == "refs/heads/candidate/v2026.9.8-runtime-admission-4"
+            and os.environ.get("GITHUB_REF") == "refs/heads/candidate/v2026.9.8-runtime-admission-5"
             and os.environ.get("GITHUB_RUN_ATTEMPT") == "1"
             and os.environ.get("GITHUB_RUN_NUMBER") == "1", "wrong hosted workflow identity")
     tooling = Path(args.tooling).resolve()
