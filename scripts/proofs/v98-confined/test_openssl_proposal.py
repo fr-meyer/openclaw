@@ -43,8 +43,21 @@ IMAGE_REBOUND_DERIVE_INVERSE = (
 )
 
 
+LAZY_SUBAGENT_DERIVE_SHA = "692433db84c7b7bbda05927b4e6d451d60b11868cc80e2226a17d72c723a2549"
+LAZY_SUBAGENT_FIXTURE_SHA = "25eedca246b608355018e5c43fb0e0ff86d3c5473e445121b5cf4346124a9b0f"
+
+
 def baseline_source(raw):
     """Test fixture only: invert exact pinned revisions to the historical baseline."""
+    if RENDER.digest(raw) == LAZY_SUBAGENT_DERIVE_SHA:
+        pin = '"/proof/inputs/fixture.mjs": "'
+        text = raw.decode("utf-8")
+        if text.count(pin + LAZY_SUBAGENT_FIXTURE_SHA) != 1:
+            raise ValueError("first-use fixture pin inverse anchor changed")
+        raw = text.replace(pin + LAZY_SUBAGENT_FIXTURE_SHA,
+                           pin + FIXTURE_SIZING_SHA, 1).encode("utf-8")
+        if RENDER.digest(raw) != IMAGE_REBOUND_DERIVE_SHA:
+            raise ValueError("first-use fixture inverse did not restore exact image source")
     if RENDER.digest(raw) == IMAGE_REBOUND_DERIVE_SHA:
         text = raw.decode("utf-8")
         for new, old in IMAGE_REBOUND_DERIVE_INVERSE:
@@ -178,7 +191,7 @@ class OpenSSLProposalTests(unittest.TestCase):
 
     def test_hosted_tests_accept_only_exact_future_source_without_regranting(self):
         current = (BASE / "derive_read_policy.py").read_bytes()
-        if RENDER.digest(current) == IMAGE_REBOUND_DERIVE_SHA:
+        if RENDER.digest(current) in (IMAGE_REBOUND_DERIVE_SHA, LAZY_SUBAGENT_DERIVE_SHA):
             self.assertEqual(baseline_source(current), self.source)
             with self.assertRaisesRegex(ValueError, "neither exact"):
                 baseline_source(current + b"\n")

@@ -605,9 +605,23 @@ function assertPhase(root, phase, beforeAssertions) {
       throw new Error("PUBLISHER_BLOCKED_FLOW_CHANGED");
     }
     if (phase === "candidate") {
-      const extraColumns = columns(stateDb, "subagent_runs");
-      if (!extraColumns.includes("controller_store_path") || !extraColumns.includes("requester_store_path")) {
-        throw new Error("CANDIDATE_SUBAGENT_SCHEMA_MISSING");
+      // Registry writers own these first-use columns; Doctor and reads may
+      // leave them absent. Doctor owns canonical DDL validation. Any present
+      // projections must retain nullable TEXT metadata and unknown historical
+      // authority; this fixture never performs a registry feature write.
+      const extraColumns = stateDb.prepare("PRAGMA table_info(subagent_runs)").all();
+      const present = [];
+      for (const name of ["controller_store_path", "requester_store_path"]) {
+        const column = extraColumns.find((entry) => entry.name === name);
+        if (!column) continue;
+        if (column.type !== "TEXT" || column.notnull !== 0 || column.dflt_value !== null || column.pk !== 0) {
+          throw new Error(`CANDIDATE_SUBAGENT_SCHEMA_INVALID:${name}`);
+        }
+        present.push(name);
+      }
+      if (present.length > 0 && stateDb.prepare(`SELECT 1 AS bound_parent_store FROM subagent_runs WHERE
+        ${present.map((name) => `${name} IS NOT NULL`).join(" OR ")} LIMIT 1`).get()) {
+        throw new Error("CANDIDATE_SUBAGENT_PROVENANCE_BACKFILLED");
       }
     }
     for (const [name, expected] of Object.entries(manifest.files)) {

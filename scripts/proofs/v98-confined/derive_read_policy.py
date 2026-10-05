@@ -46,7 +46,7 @@ SYSTEM_FILES = (
 APP_METADATA = ("/app/package.json", "/app/dist/build-info.json",
                 "/app/dist/.buildstamp", "/app/dist/.runtime-postbuildstamp")
 FROZEN_INPUTS = {
-    "/proof/inputs/fixture.mjs": "0c3b33ee321e88dea9f47b13d0eaec84dc11b60a8fbaeb2a72df7ca96890577d",
+    "/proof/inputs/fixture.mjs": "25eedca246b608355018e5c43fb0e0ff86d3c5473e445121b5cf4346124a9b0f",
     "/proof/inputs/predecessor-state.sql": "6b53fb7f426678a3962f7746bd26feea2f3d840cc896d51a8a740a9e0dbada3e",
     "/proof/inputs/predecessor-workboard.ts": "aa15bf48dbe292993a47c7286d5f7e12fe2ffbd74442c92b37ad98018bd2e810",
     "/proof/inputs/predecessor-publisher-controller.mjs": "c3d63b3c567541f72fb33c6982b41d4d5e4efa7fdd2d43ba5d7d14e624ebdbfc",

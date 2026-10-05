@@ -19,12 +19,38 @@ lists reproduce their prior exact bytes; the binding records current source,
 image and evidence identities. Unknown reads and the musl fallback remain
 denied. Static identity checks do not establish complete import/Worker closure.
 
-The corrected released predecessor SQL and current fixture remain unexecuted
-against this source and image: all six phases are `NEVER_RUN`. Runtime run
-`37319483630`, number 7, skipped admission because the consumed runtime latch
-still selects commit `5780d940` and run 5. This local successor needs independent
-review and separate exact publication/runtime approval. It proposes run 8 only
-after a fresh counter check. No runtime permit was changed by preparation.
+Runtime `37331043526`, number 8/attempt 1 at
+`0413245b7abaa27661ea638f8dc9af464ee2de64`, passed all 111 pure tests,
+image validation, capability and deadline probes, preparation and predecessor
+preservation. Doctor returned no warnings and one v18 publication-receipt change;
+candidate version 19 and predecessor version 17 were captured. Migration then
+failed at the fixture's `CANDIDATE_SUBAGENT_SCHEMA_MISSING` assertion. Candidate
+validation, restore and rollback phases 4–6 were `NEVER_RUN`.
+
+The storage contract creates `subagent_runs.requester_store_path` and
+`controller_store_path` only on a registry feature write. Doctor and read-only
+assertions may leave either absent. This local proof correction accepts that
+absence, checks nullable TEXT/no-default/no-primary-key metadata when present,
+and refuses non-NULL invented authority on the historical synthetic rows.
+Doctor retains ownership of complete canonical DDL validation; the fixture's
+metadata check does not independently exclude every SQL constraint suffix.
+All original version, ownership metadata, row, file, Workboard schema and
+restore checks remain. No feature writer, DDL repair or read permission is added.
+
+The retained failed artifact is `11354118570`, ZIP SHA-256
+`0e5527986b0ae78677af38764aa10dfc7777ecca28330e97f21a45c21be19e28`,
+23 files with no evidence omissions, expiring `2026-10-12T15:20:12Z`.
+All three modes joined stopped containers, positive parent extinction and stable
+final CPU before accounting release; frozen-mode cleanup retained no errors and
+unmounted scratch. The loaded image is intentionally retained on failure.
+Frozen scratch reached a sampled 6,574,080 bytes within the hard 16 MiB cap;
+an exact peak or complete six-phase fit is not established.
+
+The corrected fixture is unexecuted: its six phases are `NEVER_RUN`. Run 8's
+approval is consumed. A separately reviewed exact publication/runtime approval
+and fresh head/counter/artifact checks are required; the observed next counter
+is 9. No runtime permit was changed by this preparation, and no new image or
+automatic retry is included. Earlier run 7 skipped admission on the old latch.
 
 The following execution history concerns the earlier `bc8b82b2` source/image.
 Run `37290863839`, number 5/attempt 1 at
@@ -57,10 +83,10 @@ SHA-256 `6b53fb7f426678a3962f7746bd26feea2f3d840cc896d51a8a740a9e0dbada3e`.
 The retained tag signature has not been independently verified. This producer
 supports schema17. Its worktrees table has14 columns and the three-kind CHECK;
 `gc_protection_json TEXT` is a permitted lazy addition in the candidate.
-The fixture seed, original assertions and all1,081 cards remain. The predecessor
+The fixture seed, data-preservation assertions and all1,081 cards remain. The predecessor
 column inventory now comes from that complete released source. This defines
-a synthetic released9.4 upgrade fixture; its execution, production data shape
-and loaded-source join remain open.
+a synthetic released9.4 upgrade fixture; complete six-phase execution,
+production data shape and loaded-source join remain open.
 
 The fixture retains bounded Doctor warning/change output, actual version records
 and primary-failure precedence from run5. Every original integrity, foreign-key,
@@ -68,12 +94,14 @@ and primary-failure precedence from run5. Every original integrity, foreign-key,
 The native fixture digest, canonical derivation, generated read binding and
 43-row source manifest bind the corrected inputs. This binding update preserves
 all 93 product paths from source C, read lists, syscalls,
-child/Worker/environment/heap budgets and resources. The producer5 collector,
-validator and `v98-parity/contract.json` bind the current source and corrected
-fixture identities; the image build did not execute that fixture.
+child/Worker/environment/heap budgets and resources. The immutable producer5 collector, validator and `v98-parity/contract.json`
+retain the build-time fixture `0c3b33ee321e88dea9f47b13d0eaec84dc11b60a8fbaeb2a72df7ca96890577d`.
+This local runtime fixture and canonical binding use
+`25eedca246b608355018e5c43fb0e0ff86d3c5473e445121b5cf4346124a9b0f`.
+Product and image bytes are unchanged; the image build executed neither fixture.
 
-Run5's direct runtime publication and15-minute approval is consumed. The current
-source and artifact are published and source-qualified. This local image-binding
+Run8's direct runtime publication and15-minute approval is consumed. The current
+source and artifact are published and source-qualified. This local fixture
 successor requires separate exact publication and15-minute runtime approval,
 with immediate fresh head/counter/artifact checks. Seven-day evidence retention
 and all original caps remain. No automatic rerun or new image is included.

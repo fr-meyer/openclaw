@@ -205,6 +205,7 @@ check("all phases report the actual version before preserving strict version and
           if (sql === "PRAGMA user_version") return { get: () => ({ user_version: actualVersion }) };
           if (sql.startsWith("SELECT role,schema_version")) return { get: () => ({ role: "global", schema_version: expectedVersion + metadataDelta, agent_id: null }) };
           if (sql.startsWith("SELECT controller_id,status")) return { get: () => ({ controller_id: "mergeguez-pr-lifecycle/v1", status: "blocked" }) };
+          if (sql === "PRAGMA table_info(subagent_runs)") return { all: () => [] };
           throw new Error("unexpected query: " + sql);
         }
         close() { events.push("close"); }
@@ -229,6 +230,9 @@ check("all phases report the actual version before preserving strict version and
 function failureModel(options = {}) {
   const records = [], events = [];
   let queries = 0, opens = 0, closes = 0;
+  const parentColumns = options.parentColumns ?? ["requester_store_path", "controller_store_path"].map(
+    (name) => ({ name, type: "TEXT", notnull: 0, dflt_value: null, pk: 0 }),
+  );
   class ReadonlyDatabase {
     constructor(_name, settings) { assert.equal(settings.readOnly, true); opens += 1; }
     prepare(sql) {
@@ -239,6 +243,10 @@ function failureModel(options = {}) {
       } };
       if (sql.startsWith("SELECT role,schema_version")) return { get: () => ({ role: "global", schema_version: 19, agent_id: null }) };
       if (sql.startsWith("SELECT controller_id,status")) return { get: () => ({ controller_id: "mergeguez-pr-lifecycle/v1", status: "blocked" }) };
+      if (sql === "PRAGMA table_info(subagent_runs)") return { all: () => parentColumns };
+      if (sql.startsWith("SELECT 1 AS bound_parent_store FROM subagent_runs WHERE")) return {
+        get: () => options.boundParentStore ? { bound_parent_store: 1 } : undefined,
+      };
       throw new Error(sql);
     }
     close() { closes += 1; events.push("close"); }
@@ -249,11 +257,35 @@ function failureModel(options = {}) {
     DatabaseSync: ReadonlyDatabase, sqlitePath: (_root, phase, which) => `${phase}/${which}`,
     requireConsolidated() {}, captureReadBoundary() {}, settleReadBoundary() { events.push("settle"); },
     assertIntegrity() { events.push("integrity"); if (options.integrityError) throw options.integrityError; },
-    schemaDigest: () => "schema", WORKBOARD_TABLES: [], columns: () => ["controller_store_path", "requester_store_path"],
+    schemaDigest: () => "schema", WORKBOARD_TABLES: [], columns: () => parentColumns.map((column) => column.name),
     process: { stdout: { write: raw => records.push(JSON.parse(raw)) }, stderr: { write(raw) { records.push(JSON.parse(raw)); events.push("diagnostic"); } } }, AggregateError });
   vm.runInContext(["closeDatabases", "captureStateVersion", "captureFixtureFailure", "assertPhase"].map(extract).join("\n"), context);
   return { context, records, events, get queries() { return queries; }, get opens() { return opens; }, get closes() { return closes; } };
 }
+check("candidate assertion accepts first-use parent-store columns absent or nullable and unbound", () => {
+  for (const names of [[], ["requester_store_path"], ["controller_store_path"],
+    ["requester_store_path", "controller_store_path"]]) {
+    const m = failureModel({ parentColumns: names.map((name) =>
+      ({ name, type: "TEXT", notnull: 0, dflt_value: null, pk: 0 })) });
+    m.context.assertPhase(root, "candidate");
+    assert.equal(m.records[0].actualVersion, 19);
+    assert.equal(m.records.at(-1).rowsPreserved, true);
+    assert.equal(m.opens, 2); assert.equal(m.closes, 2); assert(m.events.includes("settle"));
+  }
+});
+check("candidate assertion rejects malformed parent-store columns and invented historical bindings", () => {
+  for (const name of ["requester_store_path", "controller_store_path"]) {
+    const column = { name, type: "TEXT", notnull: 0, dflt_value: null, pk: 0 };
+    for (const delta of [{ type: "INTEGER" }, { notnull: 1 }, { dflt_value: "'invented'" }, { pk: 1 }]) {
+      const m = failureModel({ parentColumns: [{ ...column, ...delta }] });
+      assert.throws(() => m.context.assertPhase(root, "candidate"), /CANDIDATE_SUBAGENT_SCHEMA_INVALID/u);
+      assert.equal(m.closes, 2); assert(!m.events.includes("settle"));
+    }
+    const m = failureModel({ parentColumns: [column], boundParentStore: true });
+    assert.throws(() => m.context.assertPhase(root, "candidate"), /CANDIDATE_SUBAGENT_PROVENANCE_BACKFILLED/u);
+    assert.equal(m.closes, 2); assert(!m.events.includes("settle"));
+  }
+});
 check("candidate version is retained before either existing migration guard fails", () => {
   for (const message of ["PREDECESSOR_BYTES_CHANGED:state", "WORKBOARD_BYTES_CHANGED_BY_STATE_MIGRATION"]) {
     const primary = new Error(message), m = failureModel({ version: 17 });

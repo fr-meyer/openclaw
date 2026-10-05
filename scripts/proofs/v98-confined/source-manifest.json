@@ -19,10 +19,10 @@
       "sha256": "b35ed51c09581ca6aabdb285ba3a7618b04cf89fbd1b582f581fa974c17d1731"
     },
     {
-      "bytes": 31966,
+      "bytes": 33873,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/README.md",
-      "sha256": "8fbc6171013b53655f0725b710d413630bf7811a949c56f858f846a33947af24"
+      "sha256": "35b5ed82a38be1aa2c42c01ac760e34704d67624579621757b19cea4b036599f"
     },
     {
       "bytes": 21278,
@@ -40,7 +40,7 @@
       "bytes": 22835,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/derive_read_policy.py",
-      "sha256": "1f2118ad51f35969afb16163c4aa840075fba590cf0addacde287b370510638d"
+      "sha256": "692433db84c7b7bbda05927b4e6d451d60b11868cc80e2226a17d72c723a2549"
     },
     {
       "bytes": 83388,
@@ -49,10 +49,10 @@
       "sha256": "4bdc706603515bfb3c8c70ffb8cc1428d841ed2ae8d0c1212732d9b245db13a7"
     },
     {
-      "bytes": 33004,
+      "bytes": 33862,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/inputs/fixture.mjs",
-      "sha256": "0c3b33ee321e88dea9f47b13d0eaec84dc11b60a8fbaeb2a72df7ca96890577d"
+      "sha256": "25eedca246b608355018e5c43fb0e0ff86d3c5473e445121b5cf4346124a9b0f"
     },
     {
       "bytes": 43645,
@@ -109,10 +109,10 @@
       "sha256": "ef248d050ede519c535b1370e574f3007775bf241ddb81b08b96826a48c12bb6"
     },
     {
-      "bytes": 27858,
+      "bytes": 30658,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/packet.json",
-      "sha256": "27e9029423e4ba4b5a09cd657a8aaff00a6d4d407d40c5e1d88ebddb5ed9324e"
+      "sha256": "c1a8fb014f05b4dca35bc1393ed47a56c0caa5921463e5869707624df69b6955"
     },
     {
       "bytes": 12332,
@@ -148,7 +148,7 @@
       "bytes": 585337,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/read-policy/runtime-read-binding.json",
-      "sha256": "17b098aff9454b2ea15b67b4c0dafe519273ad10e1c8948c08d9892b0ac43232"
+      "sha256": "6b59ee5679b8d7a1d51e2a763a6543485c17811a053eb6a18eebf32be6d73cb6"
     },
     {
       "bytes": 13279,
@@ -169,10 +169,10 @@
       "sha256": "ab1ea8e919e095b3cd967c0bf799e03ca171b842910e0f880569a5487fdc08cf"
     },
     {
-      "bytes": 23668,
+      "bytes": 25745,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/test_fixture_read_boundary.mjs",
-      "sha256": "8c01098acbdc8fa794c18333a11025f178ec191105f2b05e54b17c1b6c7a8ea0"
+      "sha256": "0d58698d1f261b602d94f05d3dd9fc76a20faf31686798fe2eec4c9d90f08caf"
     },
     {
       "bytes": 52303,
@@ -187,10 +187,10 @@
       "sha256": "49f74dd6266b84af381a1486c9cff198ebf7a555380bffc9faf7e931231c527a"
     },
     {
-      "bytes": 15821,
+      "bytes": 16599,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/test_openssl_proposal.py",
-      "sha256": "0d9d9a9d94a52b4d75dc2765ea1a4f1d5f568579381c261468124e6ee275ebfe"
+      "sha256": "bc6845e3117ba0605f0e36fcbee39091e0108af0200e9923b859055f1e0085bf"
     },
     {
       "bytes": 10816,
@@ -214,7 +214,7 @@
       "bytes": 33520,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/v98-supervisor.c",
-      "sha256": "57a44746a67eaba684fdcb1f67a0a0f2ba44db83d750a46a1ddf2bd5332219e4"
+      "sha256": "150d731b4108506d2e5f4bada9954ec6a5c87306420045299a7ece445cbb4a43"
     },
     {
       "bytes": 4364,
