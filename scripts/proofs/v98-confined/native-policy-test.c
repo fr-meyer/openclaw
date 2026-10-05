@@ -80,7 +80,7 @@ int main(void) {
   check(filter_result(0x40000003,59)==0x80000000,"i386 ABI cannot enter x64 syscall policy");
   check(filter_result(0xc000003e,0x40000000|59)==0x80000000,"x32 syscall namespace denied");
   check(filter_result(0xc000003e,435)==0x00050026,"clone3 exact ENOSYS fallback");
-  const unsigned forbidden[]={42,43,44,45,46,47,49,50,51,52,58,101,165,166,272,308,310,311,322,323,424,425,426,427,438};
+  const unsigned forbidden[]={42,43,44,45,46,47,49,50,52,58,101,165,166,272,308,310,311,322,323,424,425,426,427,438};
   for(size_t i=0;i<sizeof(forbidden)/sizeof(forbidden[0]);i++)
     check(filter_result(0xc000003e,forbidden[i])==0x00050001,"network/SCM/process_vm/namespace/async/execveat paths kernel denied");
   for(unsigned i=0;i<sizeof(v98_admitted_syscalls)/sizeof(v98_admitted_syscalls[0]);i++)
@@ -143,6 +143,35 @@ int main(void) {
   check(!v98_socket_option(&f,4,1,9,4,65536),"other socket option denied");
   check(!v98_socket_option(&f,4,2,7,4,65536),"other level denied");
   check(!v98_socket_option(&f,4,1,7,8,65536),"other option length denied");
+  struct v98_fds stdio={.created=3,.owner_tgid=21};
+  for(unsigned fd=0;fd<3;fd++) {
+    stdio.pairs[fd]=(struct v98_pair){.a=-1,.b=-1,.a_device=11,.a_inode=100+fd,.b_device=11,.b_inode=200+fd};
+    check(v98_stdio_query_request(&stdio,fd,51,0,0,128,11,200+fd),"owned child stdio name query accepted after numeric FD retirement");
+    check(v98_stdio_query_request(&stdio,fd,55,1,3,4,11,200+fd),"owned child stdio type query accepted");
+    check(!v98_stdio_query_request(&stdio,fd,51,0,0,128,11,100+fd),"parent endpoint inode denied");
+    check(!v98_stdio_query_request(&stdio,fd,51,0,0,128,11,200+(fd+1)%3),"cross-stdio endpoint substitution denied");
+    check(!v98_stdio_query_request(&stdio,fd,51,0,0,128,12,200+fd),"socket device substitution denied");
+    check(!v98_stdio_query_request(&stdio,fd,55,1,3,4,11,0),"missing socket inode denied");
+  }
+  check(!v98_stdio_query_request(&stdio,3,51,0,0,128,11,200),"nonstdio descriptor denied");
+  check(!v98_stdio_query_request(&stdio,UINT64_C(0x100000001),51,0,0,128,11,201),"highword FD alias denied before truncation");
+  check(!v98_stdio_query_request(&stdio,1,51,0,0,127,11,201),"wrong name buffer size denied");
+  check(!v98_stdio_query_request(&stdio,1,55,2,3,4,11,201),"other option level denied");
+  check(!v98_stdio_query_request(&stdio,1,55,1,7,4,11,201),"send-buffer query denied");
+  check(!v98_stdio_query_request(&stdio,1,55,1,3,8,11,201),"wrong type result buffer size denied");
+  check(!v98_stdio_query_request(&stdio,1,52,1,3,4,11,201),"peer query denied");
+  stdio.created=2;
+  check(!v98_stdio_query_request(&stdio,1,51,0,0,128,11,201),"partial stdio allocation denied");
+  check(!v98_stdio_query_request(NULL,1,51,0,0,128,11,201),"absent owner table denied");
+  check(v98_stdio_query_result(51,0,2,1),"unnamed AF_UNIX result accepted");
+  check(v98_stdio_query_result(55,0,4,1),"SOCK_STREAM result accepted");
+  check(!v98_stdio_query_result(51,-1,2,1),"failed metadata query stops instead of silently creating UNKNOWN stdout");
+  check(!v98_stdio_query_result(51,0,2,2),"INET name result denied");
+  check(!v98_stdio_query_result(51,0,110,1),"named UNIX socket result denied");
+  check(!v98_stdio_query_result(55,0,4,2),"datagram type denied");
+  check(!v98_stdio_query_result(55,0,2,1),"truncated type result denied");
+  check(filter_result(0xc000003e,51)==0x7ff00000,"stdio name queries enter supervisor guard");
+  check(filter_result(0xc000003e,55)==0x7ff00000,"stdio type queries enter supervisor guard");
   struct v98_fds copied=f;v98_fd_close(&f,4);
   check(!v98_fd_tracked(&f,4)&&v98_fd_tracked(&copied,4),"fork copies independent FD tables");
   check(!v98_fd_tracked(&f,-1),"retired negative FD never tracked");

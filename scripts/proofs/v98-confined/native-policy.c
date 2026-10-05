@@ -93,6 +93,24 @@ int v98_socket_option(const struct v98_fds *fds, int fd, uint64_t level,
          length == sizeof(int) && value == 65536;
 }
 
+int v98_stdio_query_request(const struct v98_fds *fds, uint64_t fd, long nr,
+                            uint64_t level, uint64_t option, uint32_t length,
+                            uint64_t device, uint64_t inode) {
+  if (!fds || fds->created != V98_MAX_PAIRS || fd > 2 || !inode) return 0;
+  /* libuv creates pipes in stdio order and dup2s each pipes[fd][1] into fd.
+   * Numeric endpoint descriptors retire at exec; their inode bindings remain. */
+  const struct v98_pair *p = &fds->pairs[fd];
+  if (device != p->b_device || inode != p->b_inode) return 0;
+  if (nr == 51) return length == 128;
+  return nr == 55 && level == 1 && option == 3 && length == 4;
+}
+
+int v98_stdio_query_result(long nr, long result, uint32_t length, int value) {
+  if (result != 0) return 0;
+  return (nr == 51 && length == 2 && value == 1) ||
+         (nr == 55 && length == 4 && value == 1);
+}
+
 int v98_signal_target(int source_tgid, int target_tgid, int signal_number,
                       int owned_helper_tgid) {
   if (target_tgid <= 1 || source_tgid <= 1) return 0;

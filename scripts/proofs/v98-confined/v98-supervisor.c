@@ -293,7 +293,7 @@ static int pending_syscall(long nr) {
 }
 static int guarded(long nr) {
   switch(nr) {
-    case 3:case 32:case 33:case 53:case 54:case 56:case 57:case 59:case 62:
+    case 3:case 32:case 33:case 51:case 53:case 54:case 55:case 56:case 57:case 59:case 62:
     case 72:case 200:case 234:case 292:case 436:case 444:case 445:case 446:return 1;
     default:return 0;
   }
@@ -359,6 +359,14 @@ static int syscall_allowed(struct task *t,struct user_regs_struct *r) {
   }
   if(nr==57)return v98_grant_fork(&entitlement,t->role);
   if(nr==53)return v98_pair_request(entitlement.phase,t->role,a,b,c)&&fd_table(t)->created<V98_MAX_PAIRS;
+  if(nr==51||nr==55) {
+    uint32_t length;struct stat st;
+    unsigned long length_pointer=nr==51?c:e;
+    if(t->role!=V98_HELPER||!t->confined||entitlement.phase!=3||t->tgid!=helper_pid||
+       !memory_read(t->tid,length_pointer,&length,sizeof(length))||
+       !proc_fd_stat(t->tid,(int)a,&st)||!S_ISSOCK(st.st_mode))return 0;
+    return v98_stdio_query_request(&helper_fds,a,nr,b,c,length,st.st_dev,st.st_ino);
+  }
   if(nr==54) {
     int value;
     struct stat st;
@@ -385,6 +393,20 @@ static int syscall_allowed(struct task *t,struct user_regs_struct *r) {
 static int finish_syscall(struct task *t,struct user_regs_struct *r) {
   long result=(long)r->rax,nr=t->syscall_number;
   if(nr==3&&result<0&&(result!=-EBADF||v98_fd_tracked(fd_table(t),(int)t->arguments[0])))return 0;
+  if(nr==51||nr==55) {
+    uint32_t length;int value=0;
+    unsigned long length_pointer=t->arguments[nr==51?2:4];
+    unsigned long value_pointer=t->arguments[nr==51?1:3];
+    uint16_t family;
+    if(!memory_read(t->tid,length_pointer,&length,sizeof(length)))return 0;
+    if(nr==51) {
+      if(!memory_read(t->tid,value_pointer,&family,sizeof(family)))return 0;
+      value=family;
+    } else if(!memory_read(t->tid,value_pointer,&value,sizeof(value)))return 0;
+    if(!v98_stdio_query_result(nr,result,length,value))return 0;
+    report(nr==51?"helper_stdio_name_verified":"helper_stdio_type_verified",
+           entitlement.phase,(long)t->arguments[0]);
+  }
   if(nr==445&&t->role==V98_HELPER&&!t->confined)v98_stage_add_result(&stage_guard,result);
   /* Restart/pseudo-results are refused while borrowed memory or FD tables are
    * locked. A fresh attempt must never reuse an earlier argument decision. */

@@ -38,6 +38,11 @@ void v98_fd_close(struct v98_fds *fds, int fd);
 int v98_fd_duplicate(struct v98_fds *fds, int oldfd, int newfd);
 int v98_socket_option(const struct v98_fds *fds, int fd, uint64_t level,
                       uint64_t option, uint64_t length, int value);
+/* Linux x64 libuv's two read-only stdio classification queries. */
+int v98_stdio_query_request(const struct v98_fds *fds, uint64_t fd, long nr,
+                            uint64_t level, uint64_t option, uint32_t length,
+                            uint64_t device, uint64_t inode);
+int v98_stdio_query_result(long nr, long result, uint32_t length, int value);
 int v98_signal_target(int source_tgid, int target_tgid, int signal_number,
                       int owned_helper_tgid);
 int v98_namespace_mutator(long syscall_number);

@@ -1,6 +1,6 @@
 {
   "schema": "openclaw-v98-confined-execution-packet/v1",
-  "status": "LOCAL_APPROVED_PRIVATE_IPC_SUCCESSOR; PUBLICATION_AND_HOSTED_EXECUTION_NOT_APPROVED",
+  "status": "UNAPPLIED_STDIO_QUERY_PROPOSAL; APPLICATION_PUBLICATION_AND_RUN4_REQUIRE_COMBINED_APPROVAL",
   "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
   "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
   "sourceManifestPath": "scripts/proofs/v98-confined/source-manifest.json",
@@ -12,28 +12,28 @@
     "forcePush": false,
     "mainMerge": false,
     "newApprovalRequired": true,
-    "status": "EXISTING_BRANCH5_WORKFLOW5; NEXT_EXACT_COMMIT_RUN_LATCH_REQUIRES_NEW_EXPLICIT_APPROVAL",
+    "status": "SAME_BRANCH5_WORKFLOW5; EXACT_BASE_PATCH_PROJECTED_TREE_AND_RUN4_REQUIRE_COMBINED_APPROVAL",
     "newExecutionIdentityRequired": false,
     "reviewedFreshExecutionIdentityPrepared": false,
     "approvalLatch": {
       "commitVariable": "V98_RUNTIME_APPROVED_COMMIT",
       "runNumberVariable": "V98_RUNTIME_APPROVED_RUN_NUMBER",
-      "valuesStatus": "NOT_SET_FOR_LOCAL_SUCCESSOR",
+      "valuesStatus": "RETAINED_RUN3_CONSUMED; PROPOSAL_VALUES_NOT_SET",
       "twoVariableWritesRequireExplicitApproval": true,
-      "commitValue": "EXACT_LOCAL_HEAD_TO_BE_SEALED_AFTER_REVIEW",
-      "runNumberProposal": 3,
+      "commitValue": "EXACT_RESULTING_COMMIT_AT_REVIEWED_PROJECTED_TREE_AFTER_APPROVED_APPLICATION",
+      "runNumberProposal": 4,
       "runAttempt": 1,
       "counterMustBeRecheckedImmediatelyBeforeWritesAndPush": true,
       "noAutomaticCounterAdvancement": true,
       "missingOrMismatchedLatch": "NO_ADMISSION_JOB"
     },
-    "expectedOldHead": "a2618d67778b27180722acc8a3bd3250a3ee510b"
+    "expectedOldHead": "181ebd94c0834ddddb9e7878aff41e303ecfb825"
   },
   "hostedAttempt": {
     "runner": "ubuntu-24.04",
     "jobTimeoutMinutes": 15,
     "attempts": 0,
-    "requiredWorkflowRunNumber": 3,
+    "requiredWorkflowRunNumber": 4,
     "requiredWorkflowRunAttempt": 1,
     "artifactRetentionDays": 7,
     "retainedEvidenceLimitBytes": 20971520,
@@ -45,13 +45,13 @@
     "providerState": false,
     "hostPrerequisiteReceipt": "Bounded static host observations before image load; no execution admission",
     "implicitImagePull": false,
-    "consumedRunId": 37266552381,
-    "consumedCommit": "a2618d67778b27180722acc8a3bd3250a3ee510b",
-    "consumedConclusion": "FAILURE; PREPARE_AND1081_CARD_PREDECESSOR_PASS; PHASE3_PREEXEC_NATIVE_REFUSAL; PHASES4_TO6_NEVER_RUN",
+    "consumedRunId": 37271633454,
+    "consumedCommit": "181ebd94c0834ddddb9e7878aff41e303ecfb825",
+    "consumedConclusion": "FAILURE; PREPARE_PREDECESSOR_HELPER_EXEC_TIGHTENING_AND_EXIT0_PASS; PHASE3_JOINED_EXIT1_EMPTY_JSON; PHASES4_TO6_NEVER_RUN",
     "startupPrerequisiteReceipt": "Static original Node/GNU/OpenSSL file and metadata joins against unchanged1548reads/360namespace identities before compiler/image load/start; attempt4 proved original config startup.",
     "scope": "One explicitly approved exact commit/run on reusablebranch5, attempt1 only; capability, deadline, frozen6phase fixture. No automatic retry or latch advancement.",
     "hostOwnedAccounting": "Exactly one task slice per mode, active until complete final proof is sealed; StartTransientUnit creates a PID1-managed ephemeral /run/systemd/transient/<exact-unit>.slice fragment, no manual/persistent unit/drop-in/settings edits.",
-    "artifactAvailabilityHistoricalObservedAtUtc": "2026-10-05T03:47:29Z"
+    "artifactAvailabilityHistoricalObservedAtUtc": "2026-10-05T07:12:14.175451+00:00"
   },
   "artifact": {
     "runId": 37192724704,
@@ -102,7 +102,7 @@
     "failureCustody": "Independent exact-ID Docker stop/final observation even when parent proof fails. No missing child/path, Docker PID0, cached unit CPU or last sample grants complete proof. Failed checkpoint/ownership/resource observation retains the task parent, image, container metadata and scratch.",
     "pendingHelperPrivatePipe": {
       "localScopeChangeApproved": true,
-      "publicationOrExecutionApproval": false,
+      "publicationOrExecutionApproval": "CONSUMED_IN_RETAINED_RUN3; DOES_NOT_AUTHORIZE_SUCCESSOR",
       "phase": 3,
       "createdPairsMaximum": 1,
       "flags": "O_CLOEXEC_ONLY; blocking",
@@ -111,6 +111,19 @@
       "aliasesOrFlagMutation": "DENIED",
       "readOrSignalAuthorityAdded": false,
       "exec": "Existing exact executable/argv/env/stage and onlystdio census retained; private pipe seed must commit before exec admission"
+    },
+    "helperStdioQueryProposal": {
+      "status": "UNAPPLIED; NO_NEW_APPLICATION_OR_RUNTIME_APPROVAL",
+      "syscalls": [
+        51,
+        55
+      ],
+      "scope": "phase3 V98_HELPER, confined, exact helper tgid/FD owner, fd0..2 socket inode matches recorded ordered child endpoint",
+      "getsockname": "input socklen128; successful result0, output socklen2, AF_UNIX1",
+      "getsockopt": "SOL_SOCKET1 SO_TYPE3, input/output socklen4; successful result0 SOCK_STREAM1",
+      "locking": "Existing quiesced entry/exit FD and borrowed-memory guard",
+      "cause": "STRONG_STATIC_INFERENCE; baseline dynamic queries were not retained",
+      "fixedRetainedNodeRegression": "NEVER_RUN; local Darwinarm64 cannot execute retained Linuxamd64 ELF within an authorized equivalent boundary"
     }
   },
   "modes": [
@@ -164,7 +177,7 @@
   ],
   "requiredHostedGates": [
     "Previously approved exact OpenSSL file/two-metadata delta remains unchanged; repeat static startup joins against ten required identities before any separately authorized successor. No complete import closure claim.",
-    "Retained run2 proved transient active-slice retention, lifetime hierarchical CPU, positive empty parent/stable final counters, durable checkpoints and exact normal failure release. A separately approved privateIPC successor must repeat these gates; its compile/runtime remain NEVER_RUN.",
+    "Retained run3 proved private helper startup pipe/seed, exact exec, Landlock tightening, exit0 and settled lifetime accounting. A separately approved stdio query successor must repeat all existing gates and prove actual JSON output plus the complete six-phase flow; fixed runtime NEVER_RUN.",
     "Exact authenticated artifact/source/tooling/source-manifest/read-binding/saved-layer joins",
     "Installed compiler identity and flags; Linux amd64 static supervisor and dependency-free preload; record actual compiled binary digests before start",
     "Default Docker/Yama own-child tracing, cgroup-v2 resource controls and immutable pre-tracee host admission",
@@ -175,14 +188,14 @@
     "Six frozen phases with one source-bound helper, native process-close/staging-tightening/termination observations and final zero tracees/cgroup population",
     "Host-only exact scratch-inode fstatvfs observations: verified16MiB capacity, sampled allocated bytes/free inode floor before/during/after modes and received native phase boundaries. Bounded32KiB receipt; samples are lower bounds and phase event receipt may lag actual execution. Full six-phase success under hard cap required; no sample grants cleanup authority."
   ],
-  "runtimeQualification": "RETAINED_RUN2_CAPABILITY_DEADLINE_PREPARE_PREDECESSOR_AND_SETTLED_ACCOUNTING_PASS; PHASE3_PREEXEC_NATIVE_REFUSAL; PHASES4_TO6_NEVER_RUN; PRIVATE_IPC_SUCCESSOR_COMPILE_AND_RUNTIME_NEVER_RUN",
+  "runtimeQualification": "RETAINED_RUN3_CAPABILITY_DEADLINE_PREPARE_PREDECESSOR_HELPER_EXEC_TIGHTENING_EXIT0_AND_SETTLED_ACCOUNTING_PASS; PHASE3_JOINED_EXIT1_EMPTY_JSON; PHASES4_TO6_NEVER_RUN; STDIO_SUCCESSOR_UNAPPLIED_AND_FIXED_RUNTIME_NEVER_RUN",
   "mergeguezOverlay": "SEPARATE_SOURCE_ONLY; NOT_INCLUDED; NO_ACTIVATION",
   "compiledBinaryHashes": "Recorded only by the approved hosted compile gate, before policy activation",
   "remainingAdmissionLimitations": [
-    "Reuse existing branch5/workflow5. Priorrun37266552381 number2/attempt1 at a2618d67 is consumed. Fresh explicit approval must name exact commit and next workflow counter, include two public scoped Actions variable updates, and authorize one fast-forward push/test. Any intervening push/counter drift must be reconciled, never automatically advanced.",
-    "The original OpenSSL read/two-metadata delta and all1548image/360namespace identities remain unchanged. The newly approved local privateIPC correction permits only the sole pending helper private O_CLOEXEC pair plus exact one-byte42 seed; no read/config/environment/network/filesystem or resource expansion accompanies it.",
-    "Retained run2 proved persistent-parent lifetime accounting, actual Linux/systemd255/Docker retention, raw hierarchical CPU through supervisor tail, forced deadline, final empty parent and exact normal failure release in all three modes. Preparation and predecessor validation passed; privateIPC successor compile/runtime remain NEVER_RUN and each future attempt must rejoin these identities and observations.",
-    "Retained run2 startup, own-child tracing, Landlock/seccomp/default Docker controls and capability witnesses passed. Doctor import reached an owned helper fork before native pre-exec refusal; actual helper exec/tightening, completed migration and phases4-6 preservation/restore/rollback remain unqualified.",
+    "Reuse branch5/workflow5 at base181ebd94. Run3/attempt1 consumed; next proposed counter4. One combined explicit base+patch+projectedtree approval must authorize application/source checks/local commit, both public scoped Actions latch updates, one normal FF push and one15minute/sevenday test. Recheck remote/counter/artifact; any drift stops without auto-advancement.",
+    "Unapplied delta admits only guarded read-only stdio metadata queries51/55 for exact confined helper child endpoints. Product88paths, retained image/read identities, environment, heap, child budget, resources and all other gates unchanged.",
+    "Run3 proved startup, capability, forced deadline, full1081card predecessor, helper IPC/exec/tightening/exit0, lifetime CPU/extinction/checkpoints/normal release. Migration joinedexit1 with emptyJSON. Dynamic cause remains a strong static inference; fixed retainedNode proof NEVER_RUN locally.",
+    "Completed migration, candidate preservation, restore, rollback and fullsixphase capfit remain unqualified. Phase3 had fsync activity; failure does not prove unchanged synthetic data or any installed real data preservation.",
     "Image and selected-file verification do not prove complete dynamic import closure, workers, helper behavior or real data migration/restore/rollback.",
     "Attempt4 normal exception failure cleanup is backed by actual durable parent checkpoints, empty cgroups, stopped Docker identities and resource release. Abrupt runner loss, signals/job cancellation and final runner teardown remain outside the proved lifecycle.",
     "A timed-out Docker create with no returned exact ID has UNKNOWN creation outcome; no broad name-based or forced cleanup is authorized.",
@@ -302,5 +315,27 @@
     "evidenceSha256": "e66fdefbc8879e4795953389b7508c00bb4d5dd6b3ac2eaf31fe623e149ae5d3",
     "normalFailureCpuExtinctionAndRelease": "PASS",
     "successorNativeCompileOrRuntime": "NEVER_RUN"
+  },
+  "retainedReusableRun3": {
+    "runId": 37271633454,
+    "runNumber": 3,
+    "runAttempt": 1,
+    "toolingCommit": "181ebd94c0834ddddb9e7878aff41e303ecfb825",
+    "toolingTree": "939b5ce5b2f356cd76633b4659a14554bf2e1796",
+    "terminalConclusion": "failure",
+    "elapsedSeconds": 429,
+    "hostedPureChecks": 111,
+    "capability": "PASS",
+    "forcedDeadline": "PASS",
+    "phase1Prepare": "PASS",
+    "phase2Predecessor": "PASS;1081cards/17tables",
+    "helperPrivateStartupPipeExecTighteningExit0": "PASS",
+    "phase3Migration": "JOINED_EXIT1; READONLY_HELPER_RETURNED_NO_JSON",
+    "phases4Through6": "NEVER_RUN",
+    "sampledAllocatedBytes": 6770688,
+    "exactPeakClaimed": false,
+    "artifactId": 11328429858,
+    "evidenceSha256": "72574faa44143189238fa8a9d176abefd07aa6502f2375ad4671d97d76b18f05",
+    "normalFailureCpuExtinctionAndRelease": "PASS"
   }
 }

@@ -6,28 +6,35 @@ This proof tooling preserves product commit
 Linux amd64 image; it does not rebuild, patch, install dependencies into, or
 start the image's Gateway entrypoint. No fixture phase has run locally.
 
-Run `37266552381`, number 2/attempt 1 at
-`a2618d67778b27180722acc8a3bd3250a3ee510b`, passed startup, capability,
+Run `37271633454`, number 3/attempt 1 at
+`181ebd94c0834ddddb9e7878aff41e303ecfb825`, passed startup, capability,
 forced deadline, preparation, all 1,081-card predecessor assertions and settled
-lifetime-accounting/cleanup. Migration reached an owned helper fork, then
-refused syscall 293, syscall 234 twice and an unexpected signal before verified
-helper exec. Migration remains incomplete and phases 4–6 were never run.
-The earlier empty read-only WAL/SHM failure at `0cd0ac77` remains historical
-failure evidence; the reader correction passed in run 2.
+lifetime-accounting/cleanup. The sole helper's private startup pipe, exact exec,
+Landlock tightening and exit 0 were verified. Migration joined with exit 1:
+the original async `execFile` owner received no JSON stdout. Phases 4–6 were
+never run. The earlier failures remain retained historical evidence.
 
-The approved local correction addresses the two identified libuv at-fork startup
-operations together: one new private blocking `O_CLOEXEC` pipe and its exact one-byte
-42 initialization token. Its endpoints are inode/flag checked, cannot acquire
-aliases or lose CLOEXEC, and must disappear at the existing only-stdio exec
-census. Other helper exec, signal, network, filesystem and resource gates remain
-unchanged. Existing failure events now retain task/argument and signal context.
-This corrected native source has not been compiled or executed. The original
-trace does not certify the precise failing task or full dynamic causal chain.
-Local application and source qualification are approved; publication, variable
-writes and another hosted test require a fresh exact commit/run approval.
-The existing branch/workflow and retained product image are reused. No main
-merge, force push, production access, provider data, new VM, registry
-publication or production deployment is included.
+The unapplied successor proposes just two guarded read-only socket queries.
+In the retained Node 24.21 binary, `uv_guess_handle` needs `getsockname` and
+`getsockopt(SOL_SOCKET, SO_TYPE)` for socketpair stdout. Current BPF denies both;
+either failure selects UNKNOWN and Node's dummy Writable discards bytes.
+This strongly explains the observed empty JSON; no retained syscall trace
+proves that full dynamic chain. The fixed retained-Node regression is NEVER_RUN.
+The proposal is restricted to the confined phase-3 helper's fd 0–2, each matched
+to its recorded ordered child socketpair endpoint device/inode. Name queries
+require input socklen 128 and successful output length 2/AF_UNIX; type queries
+require level 1, option 3, input/output length 4 and SOCK_STREAM. Other roles,
+fds and queries are denied. Entry/exit remain quiesced and successful results
+are observed through the existing event channel. No socket creation, peer
+query, descriptor transfer, read path, environment, child or resource grant is
+added. Local source checks do not activate the proposed security policy.
+
+Application, publication, two public latch updates and one run-4/attempt-1
+15-minute test require one combined explicit approval bound to the published
+base, exact patch and projected tree. The existing branch/workflow and retained
+product image are reused, with seven-day evidence retention. No main merge,
+force push, production access, provider data, new VM, registry publication or
+production deployment is included.
 
 The old no-child test profile was agent-defined. This executor proposes a
 separate test profile that permits exactly one source-bound snapshot helper in
@@ -349,7 +356,7 @@ contracts and inert tests do not replace actual confined runtime measurements.
 ## Reusable branch successor (local proposal)
 
 Reuse `candidate/v2026.9.8-runtime-admission-5` and its existing workflow file.
-Run 37266552381, number 2/attempt 1, is the latest consumed failed attempt;
+Run 37271633454, number 3/attempt 1, is the latest consumed failed attempt;
 run 37262067025, number 1/attempt 1, remains historical failure evidence. A new
 explicit approval must identify the exact reviewed commit and next workflow run
 number and authorize setting the public, nonsecret Actions variables
@@ -372,6 +379,26 @@ unchanged main identities/hashes must all pass. It never unlinks a sidecar, and
 the same owner covers every nested predecessor/candidate/rollback read.
 Run 2 proved this reader correction in prepare and predecessor validation.
 Its post-migration and restore transitions, and all-six cap fit, remain unproved.
-The private IPC successor's compile/runtime remain unexecuted. The existing
+Run 3 proved private IPC startup, helper exec/tightening and exit 0, then joined
+migration exit 1 with empty JSON. The stdio query successor is unapplied; its
+Linux compile and fixed retained-Node runtime remain NEVER_RUN. The existing
 16 MiB scratch, 20 MiB evidence, 15-minute job, seven-day retention and other
 confinement gates stay fixed.
+
+## Stdio classification and setup sequence
+
+The retained Node path calls `uv_guess_handle` first from bootstrap and again
+from `net.Socket` creation after PIPE classification. On Linux x64, each call
+uses `isatty`/ioctl(TCGETS), fstat, getsockname(fd, sockaddr_storage, len=128),
+then getsockopt(fd, SOL_SOCKET=1, SO_TYPE=3, len=4). TCGETS can fail on a socket;
+fstat and both socket queries must succeed. AF_UNIX/SOCK_STREAM yields PIPE.
+Pipe opening then uses fcntl(F_GETFL=3) and ioctl(FIONBIO=0x5421, int=1);
+these operations are already admitted. Linux `uv__stream_open` adds no socket
+query or option setting for PIPE. Writes use write/writev, with normal epoll
+readiness if blocked; the parent reads the existing socketpair. No peer query,
+shutdown, sendmsg/recvmsg or ancillary FD transfer is required for this path.
+Parent libuv opens existing handles directly, without guessing their raw fd.
+This is a source/binary inventory, not an observed syscall transcript. Local
+retained Node execution is unavailable on Darwin arm64; no replacement runner
+or policy bypass is permitted. Existing run 3 is the retained failing baseline;
+the unchanged six-phase flow in an approved run 4 is the required fixed proof.
