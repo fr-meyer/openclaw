@@ -1,8 +1,6 @@
-tree cb96b1a27255fb614a886a9f0ae0b0df1f77bfde
+tree 39f43660bf8625f8be2bc6b2626d47d7b5007c80
 parent bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
-author Codex qualification <codex@localhost> 1791160784 +0000
-committer Codex qualification <codex@localhost> 1791160784 +0000
+author Codex qualification <codex@localhost> 1791192609 +0000
+committer Codex qualification <codex@localhost> 1791192609 +0000
 
-Qualification input: exact independently accepted native review source
-
-Task-owned unsigned source identity only. No release/native authority grant.
+fix(runtime): preserve native custody contracts in compiler input

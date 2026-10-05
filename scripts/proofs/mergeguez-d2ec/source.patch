@@ -402,7 +402,7 @@ index 1e93601a..6819d03f 100644
    };
  }
 diff --git a/packages/ai/src/transports/openai-responses-request-lifecycle.ts b/packages/ai/src/transports/openai-responses-request-lifecycle.ts
-index 4e715e75..767c2b33 100644
+index 4e715e75..7a90bead 100644
 --- a/packages/ai/src/transports/openai-responses-request-lifecycle.ts
 +++ b/packages/ai/src/transports/openai-responses-request-lifecycle.ts
 @@ -1,4 +1,11 @@
@@ -417,7 +417,7 @@ index 4e715e75..767c2b33 100644
  
  /** Host-owned authority for a single explicitly acknowledged Responses request. */
  export type ResponsesRequestLifecycle = {
-@@ -52,3 +59,424 @@ export function withResponsesRequestAcceptance<T>(
+@@ -52,3 +59,427 @@ export function withResponsesRequestAcceptance<T>(
      },
    };
  }
@@ -598,12 +598,14 @@ index 4e715e75..767c2b33 100644
 +export function readSelectedNativeCodexSseProviderTerminalOutput(
 +  receipt: unknown, binding: SelectedNativeCodexSseReviewBinding,
 +): SelectedNativeCodexSseTerminalOutput {
++  assertSelectedNativeCodexSseProviderReceipt(receipt, binding);
 +  assertSelectedNativeCodexSseProviderWireCustody(receipt, binding);
 +  const attempts = receipt.assertTerminal();
-+  if (attempts.length !== 1 || attempts[0].outcome !== "completed")
++  const attempt = attempts[0];
++  if (attempts.length !== 1 || !attempt || attempt.outcome !== "completed")
 +    throw new Error("Selected review needs one genuine successful terminal model response");
 +  const output = selectedReceipts.get(receipt)!.readTerminalOutput();
-+  if (output.ordinal !== attempts[0].ordinal || output.responseId !== attempts[0].responseId)
++  if (output.ordinal !== attempt.ordinal || output.responseId !== attempt.responseId)
 +    throw new Error("Selected terminal output differs from its original request");
 +  binding.assertReceiptCurrent();
 +  return output;
@@ -631,16 +633,16 @@ index 4e715e75..767c2b33 100644
 +  let producerSettled = false;
 +  let producerFailure: unknown;
 +  let producerRejected = false;
-+  const attempts: SelectedNativeCodexSseAttempt[] = [];
 +  const wires = new Map<number, { custody: SelectedNativeCodexSseWireCustody; assertCurrent(): void }>();
 +  const originalCredential = selectedNativeCodexSseReview.getCredential(options);
 +  let preparedWire: { credential: object; assertCurrent(): void } | undefined;
-+  let active: number | undefined;
++  // Admission permits one issued request per owner; its snapshot retains that exact attempt.
++  let active: SelectedNativeCodexSseAttempt | undefined;
 +  let completedOutput: SelectedNativeCodexSseTerminalOutput | undefined;
 +  let abortSignal: AbortSignal | undefined;
 +  const unknown = () => {
-+    if (active === undefined || attempts[active].outcome !== "pending") return;
-+    attempts[active] = Object.freeze({ ...attempts[active], outcome: "unknown" });
++    if (active === undefined || active.outcome !== "pending") return;
++    active = Object.freeze({ ...active, outcome: "unknown" });
 +    selectedState(binding).failure ??= new Error("Selected native request has an unknown remote outcome");
 +  };
 +  const invalidate = (failure: Error): never => {
@@ -648,11 +650,11 @@ index 4e715e75..767c2b33 100644
 +    // even when the active attempt and producer had already completed.
 +    completedOutput = undefined;
 +    if (active !== undefined)
-+      attempts[active] = Object.freeze({ ...attempts[active], outcome: "unknown" });
++      active = Object.freeze({ ...active, outcome: "unknown" });
 +    selectedState(binding).failure ??= failure;
 +    throw selectedState(binding).failure;
 +  };
-+  const snapshot = () => Object.freeze([...attempts]);
++  const snapshot = () => Object.freeze(active ? [active] : []);
 +  const receipt: SelectedNativeCodexSseProviderReceipt = Object.freeze({
 +    model: admittedModel,
 +    get attempts() { return snapshot(); },
@@ -668,7 +670,7 @@ index 4e715e75..767c2b33 100644
 +    assertTerminal() {
 +      assertSelectedNativeCodexSseProviderReceipt(receipt, binding);
 +      if (!sealed || !producerSettled || producerRejected || selectedState(binding).failure ||
-+          attempts.some((attempt) => attempt.outcome === "pending" || attempt.outcome === "unknown")) {
++          (active?.outcome === "pending" || active?.outcome === "unknown")) {
 +        throw new Error("Original selected provider execution is not terminal", { cause: producerFailure });
 +      }
 +      return snapshot();
@@ -733,9 +735,8 @@ index 4e715e75..767c2b33 100644
 +      }
 +      if (!preparedWire) throw new Error("Original selected provider issue lacks retained final wire custody");
 +      preparedWire.assertCurrent();
-+      active = attempts.length;
-+      attempts.push(Object.freeze({ ordinal: selectedState(binding).nextOrdinal++, dispatch: "issued", wireModel: admittedModel.id, outcome: "pending" }));
-+      const ordinal = attempts[active].ordinal;
++      active = Object.freeze({ ordinal: selectedState(binding).nextOrdinal++, dispatch: "issued", wireModel: admittedModel.id, outcome: "pending" });
++      const ordinal = active.ordinal;
 +      wires.set(ordinal, { custody: Object.freeze({ ordinal, credential: preparedWire.credential }), assertCurrent: preparedWire.assertCurrent });
 +      preparedWire = undefined;
 +      // Close successor admission at abort, before fetch/iterator finally can run.
@@ -743,7 +744,7 @@ index 4e715e75..767c2b33 100644
 +      abortSignal?.addEventListener("abort", unknown, { once: true });
 +    },
 +    observeHttp(response: Response) {
-+      if (active !== undefined) attempts[active] = Object.freeze({ ...attempts[active], httpStatus: response.status });
++      if (active !== undefined) active = Object.freeze({ ...active, httpStatus: response.status });
 +      // An HTTP error reply alone does not prove whether server execution started.
 +      if (!response.ok) unknown();
 +    },
@@ -760,21 +761,22 @@ index 4e715e75..767c2b33 100644
 +            if (active !== undefined && (type === "response.created" || response?.id !== undefined)) {
 +              const id = typeof response?.id === "string" && response.id.trim() === response.id && response.id.length > 0
 +                ? response.id : undefined;
-+              const previousId = attempts[active].responseId;
++              const previousId = active.responseId;
 +              if (!id || (previousId && previousId !== id))
 +                invalidate(new Error("Selected native response identity changed or is unavailable"));
 +            }
 +            const toolItem = (item: unknown) => !isRecord(item) || typeof item.type !== "string" ||
 +              item.type === "function_call" || isResponsesProviderTool({ type: item.type });
++            const eventFamily = typeof type === "string" ? type.split(".")[1] : undefined;
 +            const reportedTool =
 +              ((type === "response.output_item.added" || type === "response.output_item.done") && toolItem(event.item)) ||
 +              (typeof type === "string" && type.startsWith("response.") &&
-+                selectedToolEventFamilies.has(type.split(".")[1])) ||
++                typeof eventFamily === "string" && selectedToolEventFamilies.has(eventFamily)) ||
 +              (Array.isArray(response?.output) && response.output.some(toolItem));
 +            if (active !== undefined && (reportedTool || (terminal && !Array.isArray(response?.output)))) {
 +              // This original protocol can refute the declared no-tools route.
 +              // Silence does not prove the absence of unreported provider work.
-+              attempts[active] = Object.freeze({ ...attempts[active], outcome: "unknown" });
++              active = Object.freeze({ ...active, outcome: "unknown" });
 +              selectedState(binding).failure ??= new Error("Selected native no-tools response contains tool or unavailable output evidence");
 +              throw selectedState(binding).failure;
 +            }
@@ -782,17 +784,17 @@ index 4e715e75..767c2b33 100644
 +                ((response.model !== undefined && response.model !== admittedModel.id) ||
 +                  (terminal && response.model !== admittedModel.id))) {
 +              // A later contradictory model cannot repair or borrow a prior terminal.
-+              attempts[active] = Object.freeze({ ...attempts[active], outcome: "unknown" });
++              active = Object.freeze({ ...active, outcome: "unknown" });
 +              selectedState(binding).failure ??= new Error("Selected native response changed its original approved model");
 +              throw selectedState(binding).failure;
 +            }
-+            if (active !== undefined && attempts[active].outcome === "pending") {
++            if (active !== undefined && active.outcome === "pending") {
 +              const id = typeof response?.id === "string" && response.id.trim() === response.id && response.id.length > 0
 +                ? response.id : undefined;
-+              const previousId = attempts[active].responseId;
++              const previousId = active.responseId;
 +              if (event.type === "response.created") {
 +                if (!id || (previousId && previousId !== id)) unknown();
-+                else attempts[active] = Object.freeze({ ...attempts[active], responseId: id,
++                else active = Object.freeze({ ...active, responseId: id,
 +                  ...(response?.model === admittedModel.id ? { responseModel: admittedModel.id } : {}),
 +                });
 +              }
@@ -804,12 +806,13 @@ index 4e715e75..767c2b33 100644
 +                  (type === "response.failed" && (status === "failed" || status === "cancelled")) ||
 +                  (type === "response.done" && (status === "completed" || status === "incomplete" ||
 +                    status === "failed" || status === "cancelled"));
-+                if (!id || (previousId && previousId !== id) || !coherent) unknown();
++                if (!id || (previousId && previousId !== id) || !coherent ||
++                    (status !== "completed" && status !== "incomplete" && status !== "failed" && status !== "cancelled")) unknown();
 +                else {
 +                  const details = isRecord(response?.incomplete_details) ? response.incomplete_details : undefined;
-+                  attempts[active] = Object.freeze({
-+                    ...attempts[active], outcome: status as "completed" | "incomplete" | "failed" | "cancelled",
-+                    responseId: id, responseModel: admittedModel.id, eventType: type, status: status as string,
++                  active = Object.freeze({
++                    ...active, outcome: status,
++                    responseId: id, responseModel: admittedModel.id, eventType: type, status,
 +                    ...(typeof details?.reason === "string" ? { incompleteReason: details.reason } : {}),
 +                  });
 +                }
@@ -817,15 +820,15 @@ index 4e715e75..767c2b33 100644
 +            }
 +            if (active !== undefined && terminal) {
 +              try {
-+                if (!response || response.status !== "completed" || attempts[active].outcome !== "completed" ||
-+                    response.id !== attempts[active].responseId)
++                if (!response || response.status !== "completed" || active.outcome !== "completed" ||
++                    typeof response.id !== "string" || response.id !== active.responseId)
 +                  throw new Error("Selected terminal output is unsuccessful or contradictory");
-+                const next = Object.freeze({ ordinal: attempts[active].ordinal, responseId: response.id as string, text: terminalText(response) });
++                const next = Object.freeze({ ordinal: active.ordinal, responseId: response.id, text: terminalText(response) });
 +                if (completedOutput && (next.ordinal !== completedOutput.ordinal || next.responseId !== completedOutput.responseId || next.text !== completedOutput.text))
 +                  throw new Error("Original selected terminal text changed after completion");
 +                completedOutput ??= next;
 +              } catch (error) {
-+                attempts[active] = Object.freeze({ ...attempts[active], outcome: "unknown" });
++                active = Object.freeze({ ...active, outcome: "unknown" });
 +                selectedState(binding).failure ??= error instanceof Error ? error : new Error("Selected terminal output is unknown");
 +                throw selectedState(binding).failure;
 +              }
@@ -1878,7 +1881,7 @@ index 8a09ae8b..8ebffbe3 100644
                  resolvedHost ??
                  (() => {
 diff --git a/src/agents/embedded-agent-runner/run-loop.ts b/src/agents/embedded-agent-runner/run-loop.ts
-index 0b686080..cd0711a7 100644
+index 0b686080..8c2bd921 100644
 --- a/src/agents/embedded-agent-runner/run-loop.ts
 +++ b/src/agents/embedded-agent-runner/run-loop.ts
 @@ -5,6 +5,11 @@ import {
@@ -1910,7 +1913,7 @@ index 0b686080..cd0711a7 100644
 +    params.preparedRunAdmission,
 +  );
 +  selectedRequirement?.assertCurrent();
-+  const hookRunner = selectedRequirement ? undefined : ordinaryHookRunner;
++  const hookRunner = selectedRequirement ? null : ordinaryHookRunner;
    const { notifyExecutionPhase } = input.progressController;
    let startupStagesEmitted = false;
    const preparedRuntime = await measureEmbeddedAgentPreparation(
@@ -1968,7 +1971,7 @@ index 0b686080..cd0711a7 100644
    notifyExecutionPhase("context_engine", { provider, model: modelId });
    try {
 diff --git a/src/agents/embedded-agent-runner/run-orchestrator.ts b/src/agents/embedded-agent-runner/run-orchestrator.ts
-index 91b88e66..fc16cb22 100644
+index 91b88e66..682b3b91 100644
 --- a/src/agents/embedded-agent-runner/run-orchestrator.ts
 +++ b/src/agents/embedded-agent-runner/run-orchestrator.ts
 @@ -51,9 +51,11 @@ import {
@@ -2120,7 +2123,7 @@ index 91b88e66..fc16cb22 100644
                const resolvedSessionKey = normalizedSessionKey ?? runSessionTarget.sessionKey;
 -              const hookRunner = getGlobalHookRunner();
 +              assertSelectedRequirement();
-+              const hookRunner = selectedRequirement ? undefined : getGlobalHookRunner();
++              const hookRunner = selectedRequirement ? null : getGlobalHookRunner();
                const hookCtx = {
                  runId: params.runId,
                  jobId: params.jobId,
@@ -2383,7 +2386,7 @@ index f667c662..d5398567 100644
  
  type PromptCacheRetention = Parameters<typeof buildLoopPromptCacheInfo>[0]["retention"];
 diff --git a/src/agents/embedded-agent-runner/run/attempt-stream-settle.ts b/src/agents/embedded-agent-runner/run/attempt-stream-settle.ts
-index da6237da..5caf0908 100644
+index da6237da..18c7a25f 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-stream-settle.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-stream-settle.ts
 @@ -11,6 +11,7 @@ import type { ProviderRuntimePluginHandle } from "../../../plugins/provider-hook
@@ -2411,7 +2414,7 @@ index da6237da..5caf0908 100644
  } from "../stream-resolution.js";
  import type { ProviderThinkLevel } from "../utils.js";
  import { joinWithRunLivenessDeadline, RUN_LIVENESS_JOIN_TIMEOUT_MS } from "./abortable.js";
-@@ -423,15 +427,16 @@ export async function prepareEmbeddedAttemptTransport(input: {
+@@ -423,15 +427,21 @@ export async function prepareEmbeddedAttemptTransport(input: {
  }) {
    const attempt = input.attempt;
    const session = input.session;
@@ -2425,13 +2428,18 @@ index da6237da..5caf0908 100644
 -  const defaultSessionStreamFn = resolveEmbeddedAgentBaseStreamFn({
 -    session,
 -  });
-+  const defaultSessionStreamFn = selectedReviewBinding
-+    ? await resolveSelectedNativeCodexSseStreamOwner(attempt.model, selectedReviewBinding)
-+    : resolveEmbeddedAgentBaseStreamFn({ session });
++  const streamOwner = selectedReviewBinding
++    ? {
++        selectedReviewBinding,
++        selectedNativeStreamOwner: await resolveSelectedNativeCodexSseStreamOwner(
++          attempt.model, selectedReviewBinding,
++        ),
++      }
++    : { currentStreamFn: resolveEmbeddedAgentBaseStreamFn({ session }) };
    const resolvedTransport = resolveExplicitSettingsTransport({
      settingsManager: input.settingsManager,
      sessionTransport: session.agent.transport,
-@@ -444,7 +449,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
+@@ -444,7 +454,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
    const auth = selectedAuth?.selectedAuthMode
      ? { mode: selectedAuth.selectedAuthMode, authFlow: selectedAuth.selectedAuthFlow }
      : undefined;
@@ -2440,7 +2448,7 @@ index da6237da..5caf0908 100644
      extraParamsOverride: streamExtraParamsOverride,
      thinkingLevel: input.providerThinkingLevel,
      agentId: input.sessionAgentId,
-@@ -452,8 +457,13 @@ export async function prepareEmbeddedAttemptTransport(input: {
+@@ -452,8 +462,13 @@ export async function prepareEmbeddedAttemptTransport(input: {
      model: attempt.model,
      resolvedTransport,
    });
@@ -2456,7 +2464,7 @@ index da6237da..5caf0908 100644
      resolvePreparedExtraParams({
        cfg: attempt.config,
        provider: attempt.provider,
-@@ -468,7 +478,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
+@@ -468,7 +483,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
        resolvedTransport,
        auth,
      });
@@ -2465,15 +2473,16 @@ index da6237da..5caf0908 100644
      model: attempt.model,
      cfg: attempt.config,
      agentDir: input.agentDir,
-@@ -522,6 +532,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
-     authProfileId: attempt.runtimePlan?.auth.forwardedAuthProfileId,
-     authStorage: attempt.authStorage,
-     assertCurrent: assertRunCurrent,
-+    selectedReviewBinding,
-   });
-   session.agent.streamFn = streamFn;
-   // Install inside provider/config wrappers so their full onPayload chain runs
-@@ -539,7 +550,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
+@@ -511,7 +526,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
+     strategy: streamStrategy,
+     wrapApiKey,
+   } = selectEmbeddedAgentStream({
+-    currentStreamFn: defaultSessionStreamFn,
++    ...streamOwner,
+     providerStreamFn: directProviderStreamFn,
+     sessionId: attempt.sessionId,
+     promptCacheKey: attempt.promptCacheKey,
+@@ -539,7 +554,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
        assertRunCurrent?.();
      },
    });
@@ -2482,7 +2491,7 @@ index da6237da..5caf0908 100644
      provider: attempt.provider,
      config: attempt.config,
      workspaceDir: input.workspaceDir,
-@@ -575,7 +586,9 @@ export async function prepareEmbeddedAttemptTransport(input: {
+@@ -575,7 +590,9 @@ export async function prepareEmbeddedAttemptTransport(input: {
      senderE164: attempt.senderE164,
    };
  
@@ -2493,7 +2502,7 @@ index da6237da..5caf0908 100644
      session.agent,
      attempt.config,
      attempt.provider,
-@@ -593,7 +606,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
+@@ -593,7 +610,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
        nativeWebSearchPolicyContext,
      },
    );
@@ -2502,7 +2511,7 @@ index da6237da..5caf0908 100644
      session.agent.streamFn = createCodexNativeWebSearchWrapper(session.agent.streamFn, {
        config: attempt.config,
        agentDir: input.agentDir,
-@@ -613,7 +626,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
+@@ -613,7 +630,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
      settingsManager: input.settingsManager,
      effectiveExtraParams,
    });
@@ -2511,7 +2520,7 @@ index da6237da..5caf0908 100644
    if (agentTransportOverride && session.agent.transport !== agentTransportOverride) {
      const previousTransport = session.agent.transport;
      log.debug(
-@@ -637,6 +650,13 @@ export async function prepareEmbeddedAttemptTransport(input: {
+@@ -637,6 +654,13 @@ export async function prepareEmbeddedAttemptTransport(input: {
    }
    // Agent turns carry no credential, and provider wrappers classify auth from
    // options.apiKey (for example Anthropic OAuth identity), so attach it outermost.
@@ -3092,7 +3101,7 @@ index e0bbd20b..e0045e69 100644
        // native reply. Keep its generation and genuine abort listener live until
        // that work settles, without joining the independently owned payload.
 diff --git a/src/agents/embedded-agent-runner/run/auth-controller.ts b/src/agents/embedded-agent-runner/run/auth-controller.ts
-index 73fe9e40..406e2f23 100644
+index 73fe9e40..7c5edc27 100644
 --- a/src/agents/embedded-agent-runner/run/auth-controller.ts
 +++ b/src/agents/embedded-agent-runner/run/auth-controller.ts
 @@ -2,7 +2,13 @@ import type { ThinkLevel } from "../../../auto-reply/thinking.js";
@@ -3110,7 +3119,7 @@ index 73fe9e40..406e2f23 100644
  import { SecretSurfaceUnavailableError } from "../../../secrets/runtime-degraded-state.js";
  import {
    type AuthProfileStore,
-@@ -21,7 +27,34 @@ import { FailoverError, resolveFailoverStatus } from "../../failover-error.js";
+@@ -21,7 +27,33 @@ import { FailoverError, resolveFailoverStatus } from "../../failover-error.js";
  import { shouldUseTransientCooldownProbeSlot } from "../../failover-policy.js";
  import { getFailoverErrorCode } from "../../failover/error.js";
  import { renderAuthProfileFailoverCopy } from "../../failover/user-copy.js";
@@ -3123,7 +3132,6 @@ index 73fe9e40..406e2f23 100644
 +} from "../../model-auth-policy.js";
 +import {
 +  assertModelAuthCredentialCustody, readModelAuthCredentialCustody,
-+  type ModelAuthCredentialCustody,
 +} from "../../model-auth-model.js";
 +import {
 +  captureBuiltInOpenClawHarnessCustody, assertBuiltInOpenClawHarnessCustody,
@@ -3146,7 +3154,7 @@ index 73fe9e40..406e2f23 100644
  import {
    getApiKeyForModelCore,
    MissingProviderAuthError,
-@@ -36,6 +69,10 @@ import {
+@@ -36,6 +68,10 @@ import {
  import { protectPreparedProviderRuntimeAuth } from "../../provider-runtime-auth-protection.js";
  import { unwrapSecretSentinelsForProviderEgress } from "../../provider-secret-egress.js";
  import { clampRuntimeAuthRefreshDelayMs } from "../../runtime-auth-refresh.js";
@@ -3157,7 +3165,7 @@ index 73fe9e40..406e2f23 100644
  import { resolveAuthProfileFailureReason } from "./auth-profile-failure-policy.js";
  import type { AuthProfileFailurePolicy } from "./auth-profile-failure-policy.types.js";
  import {
-@@ -70,6 +107,108 @@ type LogLike = {
+@@ -70,6 +106,108 @@ type LogLike = {
    warn(message: string): void;
  };
  
@@ -3266,7 +3274,7 @@ index 73fe9e40..406e2f23 100644
  /** Decides whether one automatic profile may bypass its current cooldown. */
  export function resolveEmbeddedAuthCooldownProbePolicy(params: {
    authStore: AuthProfileStore;
-@@ -119,6 +258,10 @@ export function resolveEmbeddedAuthCooldownProbePolicy(params: {
+@@ -119,6 +257,10 @@ export function resolveEmbeddedAuthCooldownProbePolicy(params: {
   * share this state so profile rotation cannot leave either with stale credentials.
   */
  export function createEmbeddedRunAuthController(params: {
@@ -3277,7 +3285,7 @@ index 73fe9e40..406e2f23 100644
    config: RunEmbeddedAgentParams["config"];
    agentDir: string;
    workspaceDir: string;
-@@ -148,6 +291,31 @@ export function createEmbeddedRunAuthController(params: {
+@@ -148,6 +290,31 @@ export function createEmbeddedRunAuthController(params: {
    log: LogLike;
  }) {
    const { state } = params;
@@ -3309,7 +3317,7 @@ index 73fe9e40..406e2f23 100644
    // Runtime auth overlays are profile-scoped. Keep the pre-auth model so a
    // later profile cannot inherit an earlier profile's endpoint or headers.
    const baseRuntimeModel = state.models.runtime;
-@@ -195,7 +363,7 @@ export function createEmbeddedRunAuthController(params: {
+@@ -195,7 +362,7 @@ export function createEmbeddedRunAuthController(params: {
      authMode: string;
      profileId?: string;
    }) => {
@@ -3318,7 +3326,7 @@ index 73fe9e40..406e2f23 100644
        provider: prepareParams.runtimeModel.provider,
        config: params.config,
        workspaceDir: params.workspaceDir,
-@@ -216,9 +384,10 @@ export function createEmbeddedRunAuthController(params: {
+@@ -216,9 +383,10 @@ export function createEmbeddedRunAuthController(params: {
          profileId: prepareParams.profileId,
        },
      });
@@ -3330,7 +3338,7 @@ index 73fe9e40..406e2f23 100644
      });
    };
  
-@@ -248,6 +417,49 @@ export function createEmbeddedRunAuthController(params: {
+@@ -248,6 +416,49 @@ export function createEmbeddedRunAuthController(params: {
        await runtimeAuthState.refreshInFlight;
        return;
      }
@@ -3380,7 +3388,7 @@ index 73fe9e40..406e2f23 100644
      // Generation/profile/source checks below discard refreshes that complete
      // after another profile or credential has already become active.
      const refreshGeneration = runtimeAuthState.generation;
-@@ -266,6 +478,9 @@ export function createEmbeddedRunAuthController(params: {
+@@ -266,6 +477,9 @@ export function createEmbeddedRunAuthController(params: {
          authMode: currentRuntimeAuthState?.authMode ?? "unknown",
          profileId: currentRuntimeAuthState?.profileId,
        });
@@ -3390,7 +3398,7 @@ index 73fe9e40..406e2f23 100644
        if (!preparedAuth?.apiKey) {
          throw new Error(
            `Provider "${runtimeModel.provider}" does not support runtime auth refresh.`,
-@@ -283,12 +498,25 @@ export function createEmbeddedRunAuthController(params: {
+@@ -283,12 +497,25 @@ export function createEmbeddedRunAuthController(params: {
          );
          return;
        }
@@ -3416,7 +3424,7 @@ index 73fe9e40..406e2f23 100644
        if (preparedAuth.expiresAt) {
          const remaining = preparedAuth.expiresAt - Date.now();
          params.log.debug(
-@@ -313,6 +541,7 @@ export function createEmbeddedRunAuthController(params: {
+@@ -313,6 +540,7 @@ export function createEmbeddedRunAuthController(params: {
            activeState.refreshInFlight = undefined;
          }
        });
@@ -3424,7 +3432,7 @@ index 73fe9e40..406e2f23 100644
      runtimeAuthState.refreshInFlight = refreshPromise;
      await refreshPromise;
    };
-@@ -332,6 +561,7 @@ export function createEmbeddedRunAuthController(params: {
+@@ -332,6 +560,7 @@ export function createEmbeddedRunAuthController(params: {
      if (!runtimeAuthState.expiresAt) {
        return;
      }
@@ -3432,7 +3440,7 @@ index 73fe9e40..406e2f23 100644
      clearRuntimeAuthRefreshTimer();
      const now = Date.now();
      const refreshAt = runtimeAuthState.expiresAt - RUNTIME_AUTH_REFRESH_MARGIN_MS;
-@@ -340,6 +570,7 @@ export function createEmbeddedRunAuthController(params: {
+@@ -340,6 +569,7 @@ export function createEmbeddedRunAuthController(params: {
        now,
        minDelayMs: RUNTIME_AUTH_REFRESH_MIN_DELAY_MS,
      });
@@ -3440,7 +3448,7 @@ index 73fe9e40..406e2f23 100644
      const timer = setTimeout(() => {
        if (state.runtimeAuthRefreshCancelled) {
          return;
-@@ -347,6 +578,7 @@ export function createEmbeddedRunAuthController(params: {
+@@ -347,6 +577,7 @@ export function createEmbeddedRunAuthController(params: {
        refreshRuntimeAuth("scheduled")
          .then(() => scheduleRuntimeAuthRefresh())
          .catch(() => {
@@ -3448,7 +3456,7 @@ index 73fe9e40..406e2f23 100644
            if (state.runtimeAuthRefreshCancelled) {
              return;
            }
-@@ -368,6 +600,7 @@ export function createEmbeddedRunAuthController(params: {
+@@ -368,6 +599,7 @@ export function createEmbeddedRunAuthController(params: {
            }
          });
      }, delayMs);
@@ -3456,7 +3464,7 @@ index 73fe9e40..406e2f23 100644
      runtimeAuthState.refreshTimer = timer;
      if (state.runtimeAuthRefreshCancelled) {
        clearTimeout(timer);
-@@ -504,9 +737,55 @@ export function createEmbeddedRunAuthController(params: {
+@@ -504,9 +736,55 @@ export function createEmbeddedRunAuthController(params: {
    };
  
    const applyApiKeyInfo = async (candidate?: string, attemptIndex?: number): Promise<void> => {
@@ -3513,7 +3521,7 @@ index 73fe9e40..406e2f23 100644
        cfg: params.config,
        profileId: candidate,
        store: params.authStore,
-@@ -516,6 +795,18 @@ export function createEmbeddedRunAuthController(params: {
+@@ -516,6 +794,18 @@ export function createEmbeddedRunAuthController(params: {
        allowAuthProfileFallback: preparedModel?.allowAuthProfileFallback,
        secretSentinels: true,
      });
@@ -3532,7 +3540,7 @@ index 73fe9e40..406e2f23 100644
      if (
        preparedModel?.authRequirement &&
        !providerModelRouteAcceptsAuthMode({
-@@ -534,6 +825,7 @@ export function createEmbeddedRunAuthController(params: {
+@@ -534,6 +824,7 @@ export function createEmbeddedRunAuthController(params: {
          `Resolved ${apiKeyInfo.mode ?? "unknown"} credentials are incompatible with the selected ${preparedModel.authRequirement} route for ${preparedModel.runtimeModel.provider}.`,
        );
      }
@@ -3540,7 +3548,7 @@ index 73fe9e40..406e2f23 100644
      // Preserve the checked source even when resolution fails before route commit.
      state.apiKeyInfo = apiKeyInfo;
      const usesAwsSdkChain = !apiKeyInfo.apiKey && apiKeyInfo.mode === "aws-sdk";
-@@ -543,18 +835,29 @@ export function createEmbeddedRunAuthController(params: {
+@@ -543,18 +834,29 @@ export function createEmbeddedRunAuthController(params: {
      }
      commitPreparedModel(preparedModel);
      const runtimeModel = state.models.runtime;
@@ -3570,7 +3578,7 @@ index 73fe9e40..406e2f23 100644
        applyPreparedRuntimeRequestOverrides({ runtimeModel, preparedAuth: preparedAuth ?? {} });
        if (preparedAuth?.apiKey) {
          clearRuntimeAuthRefreshTimer();
-@@ -572,7 +875,7 @@ export function createEmbeddedRunAuthController(params: {
+@@ -572,7 +874,7 @@ export function createEmbeddedRunAuthController(params: {
          runtimeAuthHandled = true;
        }
      } catch (error) {
@@ -3579,7 +3587,7 @@ index 73fe9e40..406e2f23 100644
          throw error;
        }
        params.log.warn(
-@@ -580,11 +883,66 @@ export function createEmbeddedRunAuthController(params: {
+@@ -580,11 +882,66 @@ export function createEmbeddedRunAuthController(params: {
        );
      }
      if (!runtimeAuthHandled) {
@@ -3646,7 +3654,7 @@ index 73fe9e40..406e2f23 100644
    };
  
    const advanceAuthProfile = async (): Promise<boolean> => {
-@@ -654,6 +1012,7 @@ export function createEmbeddedRunAuthController(params: {
+@@ -654,6 +1011,7 @@ export function createEmbeddedRunAuthController(params: {
          throwAuthProfileFailover({ allInCooldown: true });
        }
      } catch (err) {
@@ -3654,7 +3662,7 @@ index 73fe9e40..406e2f23 100644
        if (err instanceof FailoverError || err instanceof SecretSurfaceUnavailableError) {
          throw err;
        }
-@@ -682,12 +1041,18 @@ export function createEmbeddedRunAuthController(params: {
+@@ -682,12 +1040,18 @@ export function createEmbeddedRunAuthController(params: {
        await refreshRuntimeAuth("auth-error");
        scheduleRuntimeAuthRefresh();
        return true;
@@ -4214,7 +4222,7 @@ index 80f38c7c..a09df5cb 100644
 -  };
  }
 diff --git a/src/agents/embedded-agent-runner/run/session-bootstrap.ts b/src/agents/embedded-agent-runner/run/session-bootstrap.ts
-index 90d53825..7c9cebb3 100644
+index 90d53825..32392b91 100644
 --- a/src/agents/embedded-agent-runner/run/session-bootstrap.ts
 +++ b/src/agents/embedded-agent-runner/run/session-bootstrap.ts
 @@ -1,6 +1,8 @@
@@ -4226,15 +4234,18 @@ index 90d53825..7c9cebb3 100644
  import {
    resolveSessionStorePathCore,
    SESSION_TOTAL_TOKENS_VERSION,
-@@ -14,6 +16,7 @@ import {
-   updateSessionEntry,
+@@ -11,9 +13,9 @@ import {
+   loadSessionEntry,
+   loadSessionEntryReadOnly,
+   patchSessionEntryCore,
+-  updateSessionEntry,
    type SessionTranscriptRuntimeTarget,
  } from "../../../config/sessions/session-accessor.js";
 +import { resolveUnsuffixedSqliteTargetFromSessionStorePath } from "../../../config/sessions/session-sqlite-target-paths.js";
  import { resolvePersistedSessionStoreOwnerForTarget } from "../../../config/sessions/session-store-owner.js";
  import { prepareSessionEntryPresenceRead } from "../../../config/sessions/session-transcript-worker-runtime.js";
  import {
-@@ -22,20 +25,36 @@ import {
+@@ -22,20 +24,36 @@ import {
    type SessionTranscriptWriterFence,
  } from "../../../config/sessions/transcript-write-context.js";
  import type { InternalSessionEntry } from "../../../config/sessions/types.js";
@@ -4272,7 +4283,7 @@ index 90d53825..7c9cebb3 100644
  import {
    AGENT_RUN_SUPERSEDED_ERROR,
    AGENT_RUN_SUPERSEDED_STOP_REASON,
-@@ -347,9 +366,78 @@ type AgentSessionWriterAdmissionSnapshot = {
+@@ -347,9 +365,78 @@ type AgentSessionWriterAdmissionSnapshot = {
    storePath: string;
  };
  
@@ -4353,7 +4364,7 @@ index 90d53825..7c9cebb3 100644
    if (params.sessionPersistence === "detached") {
      return undefined;
    }
-@@ -380,6 +468,14 @@ export function assertAgentHarnessRunAdmission(
+@@ -380,6 +467,14 @@ export function assertAgentHarnessRunAdmission(
    const storePath =
      targetStorePath ??
      resolveSessionStorePathCore(params.config?.session?.store, { agentId: admissionAgentId });
@@ -4368,7 +4379,7 @@ index 90d53825..7c9cebb3 100644
    const durableEntry = loadSessionEntry({
      ...(admissionAgentId ? { agentId: admissionAgentId } : {}),
      readConsistency: "latest",
-@@ -406,6 +502,13 @@ export function assertAgentHarnessRunAdmission(
+@@ -406,6 +501,13 @@ export function assertAgentHarnessRunAdmission(
      : undefined;
  }
  
@@ -4382,7 +4393,7 @@ index 90d53825..7c9cebb3 100644
  export async function claimAgentSessionWriter(params: RunEmbeddedAgentParams): Promise<
    | {
        expectedLifecycleRevision: string | undefined;
-@@ -413,77 +516,216 @@ export async function claimAgentSessionWriter(params: RunEmbeddedAgentParams): P
+@@ -413,77 +515,216 @@ export async function claimAgentSessionWriter(params: RunEmbeddedAgentParams): P
      }
    | undefined
  > {
@@ -4566,7 +4577,7 @@ index 90d53825..7c9cebb3 100644
 +      if (previousWriterRunId) assertAgentWriterPredecessorNotUnknown(previousWriterRunId);
 +    };
 +    assertWritersNotHeld();
-+    const claimed = await updateSessionEntry(
++    const claimed = await patchSessionEntryCore(
 +      {
 +        ...(snapshot.agentId ? { agentId: snapshot.agentId } : {}),
 +        sessionKey: snapshot.sessionKey,
@@ -4665,13 +4676,15 @@ index 90d53825..7c9cebb3 100644
 -  };
  }
 diff --git a/src/agents/embedded-agent-runner/stream-resolution.ts b/src/agents/embedded-agent-runner/stream-resolution.ts
-index 7e057865..70558226 100644
+index 7e057865..49ff0d12 100644
 --- a/src/agents/embedded-agent-runner/stream-resolution.ts
 +++ b/src/agents/embedded-agent-runner/stream-resolution.ts
-@@ -2,13 +2,24 @@
+@@ -1,14 +1,25 @@
+ /**
   * Resolves provider stream functions and API keys for embedded agents.
   */
- import type { LlmRuntime } from "@openclaw/ai";
+-import type { LlmRuntime } from "@openclaw/ai";
++import type { LlmRuntime, Model } from "@openclaw/ai";
 +import {
 +  selectedNativeCodexSseReview,
 +  assertSelectedNativeCodexSseStreamOwner,
@@ -4693,15 +4706,29 @@ index 7e057865..70558226 100644
  import type { StreamFn } from "../runtime/index.js";
  import type { EmbeddedRunAttemptParams } from "./run/types.js";
  
-@@ -89,6 +100,21 @@ function resolveOpenClawNativeCodexResponsesStreamFn(params: {
+@@ -66,7 +77,9 @@ function isDefaultOpenClawStreamFnForModel(
+   return streamFn === provider?.streamSimple || streamFn === provider?.stream;
+ }
+ 
+-function isOpenAICodexResponsesModel(model: EmbeddedRunAttemptParams["model"]): boolean {
++function isOpenAICodexResponsesModel(
++  model: EmbeddedRunAttemptParams["model"],
++): model is Model<"openai-chatgpt-responses"> {
+   return model.provider === "openai" && model.api === "openai-chatgpt-responses";
+ }
+ 
+@@ -89,6 +102,24 @@ function resolveOpenClawNativeCodexResponsesStreamFn(params: {
    return params.currentStreamFn ?? params.llmRuntime.streamSimple;
  }
  
++type SelectedNativeCodexSseStreamOwner =
++  typeof import("@openclaw/ai/internal/openai").streamSimpleOpenAICodexResponses;
++
 +/** Selected admission chooses the original factory without invoking session/plugin wrappers. */
 +export async function resolveSelectedNativeCodexSseStreamOwner(
 +  model: EmbeddedRunAttemptParams["model"],
 +  binding: SelectedNativeCodexSseReviewBinding,
-+): Promise<StreamFn> {
++): Promise<SelectedNativeCodexSseStreamOwner> {
 +  binding.assertCurrent();
 +  if (!isOpenAICodexResponsesModel(model)) {
 +    throw new Error("Selected native review requires the approved built-in Codex model route");
@@ -4715,27 +4742,46 @@ index 7e057865..70558226 100644
  export async function resolveEmbeddedAgentApiKey(params: {
    provider: string;
    resolvedApiKey?: string;
-@@ -112,6 +138,7 @@ type EmbeddedAgentStreamParams = EmbeddedStreamRuntimeOwner & {
-   authProfileId?: string;
-   authStorage?: { getApiKey(provider: string): Promise<string | undefined> };
-   assertCurrent?: () => void;
-+  selectedReviewBinding?: SelectedNativeCodexSseReviewBinding;
- };
+@@ -101,7 +132,18 @@ export async function resolveEmbeddedAgentApiKey(params: {
+   return params.authStorage ? await params.authStorage.getApiKey(params.provider) : undefined;
+ }
  
- export function resolveEmbeddedAgentStream(params: EmbeddedAgentStreamParams): {
-@@ -134,6 +161,44 @@ export function selectEmbeddedAgentStream(params: EmbeddedAgentStreamParams): {
+-type EmbeddedAgentStreamParams = EmbeddedStreamRuntimeOwner & {
++type EmbeddedAgentStreamParams = (
++  | (EmbeddedStreamRuntimeOwner & {
++      selectedReviewBinding?: never;
++      selectedNativeStreamOwner?: never;
++    })
++  | {
++      currentStreamFn?: never;
++      llmRuntime?: never;
++      selectedReviewBinding: SelectedNativeCodexSseReviewBinding;
++      selectedNativeStreamOwner: SelectedNativeCodexSseStreamOwner;
++    }
++) & {
+   providerStreamFn?: StreamFn;
+   sessionId: string;
+   promptCacheKey?: string;
+@@ -133,6 +175,51 @@ export function selectEmbeddedAgentStream(params: EmbeddedAgentStreamParams): {
+   /** Attaches the run credential when the selected transport sends it. */
    wrapApiKey: (streamFn: StreamFn) => StreamFn;
  } {
-   const llmRuntime = resolveEmbeddedStreamRuntime(params);
 +  if (params.selectedReviewBinding) {
 +    const selected = params.selectedReviewBinding;
-+    const native = params.currentStreamFn ?? llmRuntime.streamSimple;
++    const native = params.selectedNativeStreamOwner;
 +    selected.assertCurrent();
 +    if (!isOpenAICodexResponsesModel(params.model) || params.providerStreamFn) {
 +      throw new Error("Selected native review does not support a plugin, custom, or managed provider stream");
 +    }
 +    assertSelectedNativeCodexSseStreamOwner(native, selected);
-+    const original = wrapEmbeddedAgentStreamFn(native, {
++    const checkedNative: StreamFn = (model, context, options) => {
++      assertSelectedNativeCodexSseStreamOwner(native, selected);
++      if (!isOpenAICodexResponsesModel(model) || options?.transport !== "sse") {
++        throw new Error("Selected native review requires explicit SSE on every attempt");
++      }
++      return native(model, context, options);
++    };
++    const original = wrapEmbeddedAgentStreamFn(checkedNative, {
 +      runSignal: params.signal,
 +      authProfileId: params.authProfileId,
 +      sessionId: params.sessionId,
@@ -4765,10 +4811,10 @@ index 7e057865..70558226 100644
 +      }),
 +    };
 +  }
+   const llmRuntime = resolveEmbeddedStreamRuntime(params);
    const wrapOptions = {
      runSignal: params.signal,
-     authProfileId: params.authProfileId,
-@@ -284,7 +349,9 @@ function wrapEmbeddedAgentStreamFn(
+@@ -284,7 +371,9 @@ function wrapEmbeddedAgentStreamFn(
    };
    return (m, context, options) => {
      params.assertCurrent?.();
@@ -4779,7 +4825,7 @@ index 7e057865..70558226 100644
    };
  }
  
-@@ -296,19 +363,47 @@ function wrapEmbeddedAgentStreamApiKey(
+@@ -296,19 +385,47 @@ function wrapEmbeddedAgentStreamApiKey(
      resolvedApiKey?: string;
      authStorage?: { getApiKey(provider: string): Promise<string | undefined> };
      assertCurrent?: () => void;
@@ -6564,10 +6610,10 @@ index b7c0469f..c9822dac 100644
          meta: {
 diff --git a/src/agents/required-run-closure.ts b/src/agents/required-run-closure.ts
 new file mode 100644
-index 00000000..16b145b2
+index 00000000..fc3294f5
 --- /dev/null
 +++ b/src/agents/required-run-closure.ts
-@@ -0,0 +1,812 @@
+@@ -0,0 +1,819 @@
 +/** Optional required closure belongs to the original authenticated run, never an agent name. */
 +import { randomUUID } from "node:crypto";
 +import { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
@@ -7019,7 +7065,10 @@ index 00000000..16b145b2
 +    assertReceiptCurrent: () => assertOriginalSource(state),
 +    bindProvider(receipt: SelectedNativeCodexSseProviderReceipt) {
 +      assertExecuting(state);
-+      state.assertProviderReceipt!(receipt, providerBinding);
++      const assertProviderReceipt: SelectionState["assertProviderReceipt"] = state.assertProviderReceipt;
++      if (!assertProviderReceipt)
++        throw new Error("Original selected native provider receipt validation is unavailable");
++      assertProviderReceipt(receipt, providerBinding);
 +      if (
 +        receipt.model.provider !== state.provider ||
 +        receipt.model.id !== state.model ||
@@ -7069,8 +7118,9 @@ index 00000000..16b145b2
 +        !state.cleanupBinding
 +      )
 +        throw new Error("Required original provider, cleanup or audit owner is missing");
++      const assertProviderReceipt: SelectionState["assertProviderReceipt"] = state.assertProviderReceipt;
 +      for (const receipt of state.providers) {
-+        state.assertProviderReceipt!(receipt, state.providerBinding);
++        assertProviderReceipt(receipt, state.providerBinding);
 +        await receipt.sealAndWait();
 +        assertOriginalSource(state);
 +        receipt.assertTerminal();
@@ -7142,8 +7192,9 @@ index 00000000..16b145b2
 +  assertOriginalSource(state);
 +  assertAdmittedRunTerminalAuthorityClosed(context);
 +  state.audit.assertReceipt(state.auditReceipt);
++  const assertProviderReceipt: SelectionState["assertProviderReceipt"] = state.assertProviderReceipt;
 +  for (const receipt of state.providers) {
-+    state.assertProviderReceipt!(receipt, state.providerBinding);
++    assertProviderReceipt(receipt, state.providerBinding);
 +    receipt.assertTerminal();
 +    assertRetainedProviderWireCustody(state, receipt);
 +  }
@@ -7318,6 +7369,7 @@ index 00000000..16b145b2
 +  const owner = await import("../state/native-review-publication-intents.js");
 +  readOriginalRequiredRunReviewIntentCustody(proof, context, gatewayOwner);
 +  if (state.reviewIntent) throw new Error("Original review dispatch intent bound during acquisition");
++  assertOriginalRequiredRunClosureProof(proof, context);
 +  const held = owner.assertOriginalRequiredRunReviewDispatchReceipt(receipt, proof, context, gatewayOwner);
 +  if (held.requestDigest !== original.request.requestDigest || held.intentDigest !== original.request.intentDigest ||
 +      held.status !== "dispatch_unknown_held")
@@ -7332,6 +7384,7 @@ index 00000000..16b145b2
 +  const original = readOriginalRequiredRunReviewIntentCustody(proof, context, gatewayOwner);
 +  const state = proofs.get(proof as object)!;
 +  if (!state.reviewIntent) throw new Error("Original committed once-held publication intent unavailable");
++  assertOriginalRequiredRunClosureProof(proof, context);
 +  const held = state.reviewIntent.assertCurrent(state.reviewIntent.receipt, proof, context, gatewayOwner);
 +  if (held.requestDigest !== original.request.requestDigest || held.intentDigest !== original.request.intentDigest ||
 +      held.status !== "dispatch_unknown_held")
@@ -8914,13 +8967,14 @@ index aff37ba3..fbec8523 100644
    const snapshot = publicationConfigSnapshot();
 diff --git a/src/gateway/github-required-review-publication.ts b/src/gateway/github-required-review-publication.ts
 new file mode 100644
-index 00000000..2c48f0d9
+index 00000000..d34315a3
 --- /dev/null
 +++ b/src/gateway/github-required-review-publication.ts
-@@ -0,0 +1,624 @@
+@@ -0,0 +1,627 @@
 +import { createHash } from "node:crypto";
 +import type { AdmittedRunContext } from "../agents/admitted-run-context.js";
 +import {
++  assertOriginalRequiredRunClosureProof,
 +  bindOriginalRequiredRunReviewPublicationIntent,
 +  readOriginalRequiredRunReviewIntentCustody,
 +  readOriginalRequiredRunReviewPublication,
@@ -9049,8 +9103,9 @@ index 00000000..2c48f0d9
 +}
 +function marker(body: string, label: string): string | undefined {
 +  const lines = body.split(/\r?\n/u).filter((line) => line.startsWith(label + ": "));
-+  if (lines.length !== 1) return undefined;
-+  return lines[0]
++  const [line] = lines;
++  if (lines.length !== 1 || line === undefined) return undefined;
++  return line
 +    .slice(label.length + 2)
 +    .split(String.fromCharCode(96))
 +    .join("")
@@ -9295,6 +9350,7 @@ index 00000000..2c48f0d9
 +  // Retain original object identities once; a caller-owned envelope cannot
 +  // redirect an in-flight source check after an await.
 +  const { proof, context, gatewayOwner } = input;
++  assertOriginalRequiredRunClosureProof(proof, context);
 +  const sourceInput = Object.freeze({ proof, context, gatewayOwner });
 +  const readIntent = () => readOriginalRequiredRunReviewIntentCustody(proof, context, gatewayOwner);
 +  const readSource = () => readOriginalRequiredRunReviewPublication(proof, context, gatewayOwner);
@@ -10605,7 +10661,7 @@ index f8f06ad1..62566aa0 100644
    }
    const nativeHooks = typeof Module.registerHooks === "function";
 diff --git a/src/plugins/plugin-instance-value-views.ts b/src/plugins/plugin-instance-value-views.ts
-index 483a7904..02968dbb 100644
+index 483a7904..da40b190 100644
 --- a/src/plugins/plugin-instance-value-views.ts
 +++ b/src/plugins/plugin-instance-value-views.ts
 @@ -12,6 +12,62 @@ import type { PluginInstanceCallLease, PluginIteratorAdmission } from "./plugin-
@@ -10663,7 +10719,7 @@ index 483a7904..02968dbb 100644
 +  return current !== undefined && current.source === snapshot.source && current.prototype === snapshot.prototype &&
 +    current.properties.length === snapshot.properties.length && current.properties.every((entry, index) => {
 +      const previous = snapshot.properties[index];
-+      return entry.key === previous.key && entry.descriptor.value === previous.descriptor.value &&
++      return previous !== undefined && entry.key === previous.key && entry.descriptor.value === previous.descriptor.value &&
 +        entry.descriptor.writable === previous.descriptor.writable && entry.descriptor.enumerable === previous.descriptor.enumerable &&
 +        entry.descriptor.configurable === previous.descriptor.configurable;
 +    });
@@ -13059,7 +13115,7 @@ index 00000000..0aff1ff7
 +}
 diff --git a/src/state/native-review-publication-intents.ts b/src/state/native-review-publication-intents.ts
 new file mode 100644
-index 00000000..e0a65e2d
+index 00000000..55d45474
 --- /dev/null
 +++ b/src/state/native-review-publication-intents.ts
 @@ -0,0 +1,149 @@
@@ -13086,7 +13142,7 @@ index 00000000..e0a65e2d
 +function originalInput(input: OriginalNativeReviewInput): OriginalNativeReviewInput {
 +  if (!input || typeof input !== "object" || isProxy(input)) throw new Error("Original review binding requires ordinary source references");
 +  const descriptors = Object.getOwnPropertyDescriptors(input);
-+  const get = (key: "proof" | "context" | "gatewayOwner") => {
++  const get = <Key extends keyof OriginalNativeReviewInput>(key: Key): OriginalNativeReviewInput[Key] => {
 +    const descriptor = descriptors[key];
 +    if (!descriptor || !("value" in descriptor) || !descriptor.value || typeof descriptor.value !== "object") throw new Error("Original review binding changed to an accessor or invalid source");
 +    return descriptor.value;
@@ -14310,7 +14366,7 @@ index f4871900..68659a9a 100644
 +BEGIN SELECT RAISE(ABORT,'Review intent holds cannot be evicted'); END;
 +-- END NATIVE REVIEW PUBLICATION INTENT SCHEMA
 diff --git a/src/state/openclaw-agent-worker-store.ts b/src/state/openclaw-agent-worker-store.ts
-index 989da99c..13530ac4 100644
+index 989da99c..f71d44ad 100644
 --- a/src/state/openclaw-agent-worker-store.ts
 +++ b/src/state/openclaw-agent-worker-store.ts
 @@ -1,7 +1,15 @@
@@ -14525,7 +14581,7 @@ index 989da99c..13530ac4 100644
          // Keep the accepted publication sequence on one native lease until its store closes.
          const previous = drainExecution;
          drainExecution = execution;
-@@ -281,6 +365,145 @@ export async function openOpenClawAgentSqliteWorkerStore<Operations extends Sqli
+@@ -281,6 +365,146 @@ export async function openOpenClawAgentSqliteWorkerStore<Operations extends Sqli
      return result;
    };
    return {
@@ -14571,7 +14627,8 @@ index 989da99c..13530ac4 100644
 +              const committed = admission.committed;
 +              return committed && isDeepStrictEqual(committed.facts, result);
 +            });
-+            if (actual.length !== 1 || actual[0].settlement?.kind !== "completed")
++            const [acknowledgment] = actual;
++            if (actual.length !== 1 || !acknowledgment || acknowledgment.settlement?.kind !== "completed")
 +              throw new Error("Original review native COMMIT ACK/settlement is absent or differs from result");
 +            // Accessor servicing native messages can observe revocation; rejoin last.
 +            assertOriginalNativeReviewSourceExecution(source, physical); assertCurrent();
@@ -14671,7 +14728,7 @@ index 989da99c..13530ac4 100644
      async execute(command, assertCurrent, commandOptions) {
        commandOptions?.signal?.throwIfAborted();
        if (typeof command.type !== "string") {
-@@ -446,3 +669,63 @@ export async function openOpenClawAgentSqliteWorkerStore<Operations extends Sqli
+@@ -446,3 +670,63 @@ export async function openOpenClawAgentSqliteWorkerStore<Operations extends Sqli
      close,
    };
  }
