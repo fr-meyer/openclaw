@@ -3007,10 +3007,9 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
       compacted: false,
     });
     expect(result.failure).toEqual({
+      disposition: "retryable",
       reason: "rate_limit",
       status: 429,
-      code: "rate_limit_exceeded",
-      rawError: "primary compaction rate limited",
     });
   });
 
@@ -3907,6 +3906,7 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
       ok: false,
       compacted: false,
       reason: "compaction aborted",
+      failure: { disposition: "terminal", reason: "aborted" },
     });
     expect(resolveModelAsyncMock).not.toHaveBeenCalled();
     expect(selectAgentHarnessForPreparedModelProvidersMock).not.toHaveBeenCalled();
@@ -5192,6 +5192,7 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
         ok: false,
         compacted: false,
         reason: "compaction aborted",
+        failure: { disposition: "terminal", reason: "aborted" },
       });
       expect(nativeSignal.aborted).toBe(true);
       expect(resolveContextEngineMock).not.toHaveBeenCalled();

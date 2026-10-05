@@ -26,7 +26,7 @@ import {
 } from "../agent-scope.js";
 import { resolveCliBackendConfig } from "../cli-backends.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
-import { coerceToFailoverError } from "../failover-error.js";
+import { describeFailoverError } from "../failover-error.js";
 import { ensureSelectedAgentHarnessPlugin } from "../harness/runtime-plugin.js";
 import { isFallbackSummaryError } from "../model-fallback-attempt.js";
 import { resolveModelCandidateChain } from "../model-fallback-candidates.js";
@@ -47,6 +47,11 @@ import {
   containsRealConversationMessages,
   resolveCompactionProviderStream,
 } from "./compaction-diagnostics.js";
+import {
+  classifyCompactionResultForModelFallback,
+  compactionFailureFromFailoverReason,
+  terminalCompactionFailure,
+} from "./compaction-failure.js";
 import {
   buildBeforeCompactionHookMetrics,
   estimateTokensAfterCompaction,
@@ -79,7 +84,7 @@ function lockedHarnessCompactionFailure(runtime: string): EmbeddedAgentCompactRe
     ok: false,
     compacted: false,
     reason: `Model selection is locked to native agent harness "${runtime}"; generic compaction is unavailable.`,
-    failure: { reason: "model_selection_locked" },
+    failure: terminalCompactionFailure("model_selection_locked"),
   };
 }
 
@@ -218,32 +223,14 @@ function hasCompactionModelFallbackCandidates(params: CompactEmbeddedAgentSessio
   return (fallbacksOverride ?? defaultFallbacks).length > 0;
 }
 
-function classifyCompactionFallbackResult(
-  result: EmbeddedAgentCompactResult,
-  provider: string,
-  model: string,
-) {
-  if (result.ok) {
-    return null;
-  }
-  const reason = result.reason?.trim();
-  if (!reason) {
-    return null;
-  }
-  const failureError = Object.assign(new Error(result.failure?.rawError ?? reason), {
-    status: result.failure?.status,
-    code: result.failure?.code,
-  });
-  const failoverError = coerceToFailoverError(failureError, { provider, model });
-  return failoverError ? { error: failoverError } : null;
-}
-
 function fallbackFailureToCompactionResult(err: unknown): EmbeddedAgentCompactResult {
   const reason = isFallbackSummaryError(err) ? err.message : formatErrorMessage(err);
+  const described = describeFailoverError(err);
   return {
     ok: false,
     compacted: false,
     reason,
+    failure: compactionFailureFromFailoverReason(described.reason, described.status),
   };
 }
 
@@ -531,8 +518,7 @@ export async function compactEmbeddedAgentSessionDirect(
             });
           },
           fallbacksOverride,
-          classifyResult: ({ result, provider, model }) =>
-            classifyCompactionFallbackResult(result, provider, model),
+          classifyResult: ({ result }) => classifyCompactionResultForModelFallback(result),
           run: async (provider, model) => {
             const isPrimaryCandidate =
               provider === resolvedPrimaryCandidate?.provider &&

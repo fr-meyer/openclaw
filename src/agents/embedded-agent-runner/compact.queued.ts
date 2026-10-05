@@ -91,7 +91,7 @@ function lockedCompactionRuntimeFailure(runtime?: string): EmbeddedAgentCompactR
     reason: runtime
       ? `Model selection is locked to native agent harness "${runtime}", but native compaction is unavailable.`
       : "Model selection is locked but the persisted agent harness is unavailable.",
-    failure: { reason: "model_selection_locked" },
+    failure: { disposition: "terminal", reason: "model_selection_locked" },
   };
 }
 
@@ -169,7 +169,7 @@ async function deferOwningContextEngineBudgetCompaction(params: {
       ok: false,
       compacted: false,
       reason: DEFERRED_CONTEXT_ENGINE_COMPACTION_SCHEDULE_FAILURE_REASON,
-      failure: { reason: "deferred_compaction_not_scheduled" },
+      failure: { disposition: "terminal", reason: "deferred_compaction_not_scheduled" },
     };
   }
 
@@ -249,7 +249,7 @@ export async function compactEmbeddedAgentSession(
         ok: false,
         compacted: false,
         reason: MANUAL_COMPACTION_ACTIVE_RUN_REASON,
-        failure: { reason: "active_run" },
+        failure: { disposition: "terminal", reason: "active_run" },
       };
     }
 

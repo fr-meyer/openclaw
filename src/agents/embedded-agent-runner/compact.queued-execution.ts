@@ -29,12 +29,17 @@ import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.
 import { enqueueCommandInLane } from "../../process/command-queue.js";
 import { normalizeOptionalAgentRuntimeId } from "../agent-runtime-id.js";
 import { resolveSessionAgentIds } from "../agent-scope.js";
+import { describeFailoverError } from "../failover-error.js";
 import { maybeCompactAgentHarnessSession } from "../harness/compaction.js";
 import type { PreparedModelRuntimeSnapshot } from "../prepared-model-runtime.js";
 import type { CompactionRequestConstraints } from "../sessions/compaction/request-budget.js";
 import { SessionManager } from "../sessions/index.js";
 import type { CompactEmbeddedAgentSessionParams } from "./compact.types.js";
 import { compactionCheckpointStore, persistCompactionCheckpoint } from "./compaction-checkpoint.js";
+import {
+  compactionFailureFromFailoverReason,
+  isStructuredCompactionFailure,
+} from "./compaction-failure.js";
 import { asCompactionHookRunner, runPostCompactionSideEffects } from "./compaction-hooks.js";
 import {
   compactContextEngineWithSafetyTimeout,
@@ -72,7 +77,12 @@ export type QueuedCompactionHostOptions = CompactionRequestConstraints & {
 };
 
 export function createQueuedCompactionAbortedResult(): EmbeddedAgentCompactResult {
-  return { ok: false, compacted: false, reason: "compaction aborted" };
+  return {
+    ok: false,
+    compacted: false,
+    reason: "compaction aborted",
+    failure: { disposition: "terminal", reason: "aborted" },
+  };
 }
 
 export async function withQueuedCompactionCancellationResult(
@@ -383,6 +393,7 @@ export async function executeQueuedContextEngineCompaction(input: {
           params.abortSignal,
         );
       } catch (compactErr) {
+        const describedFailure = describeFailoverError(compactErr);
         log.warn("context-engine compaction failed", {
           errorMessage: formatErrorMessage(compactErr),
         });
@@ -390,6 +401,10 @@ export async function executeQueuedContextEngineCompaction(input: {
           ok: false,
           compacted: false,
           reason: formatErrorMessage(compactErr),
+          failure: compactionFailureFromFailoverReason(
+            describedFailure.reason,
+            describedFailure.status,
+          ),
         };
       }
       let successor: Pick<
@@ -628,6 +643,7 @@ export async function executeQueuedContextEngineCompaction(input: {
         compacted: result.compacted,
         compactionKind,
         reason: result.reason,
+        ...(isStructuredCompactionFailure(result.failure) ? { failure: result.failure } : {}),
         result: result.result
           ? {
               ...(compactionKind === "server-endpoint"

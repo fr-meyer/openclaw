@@ -301,6 +301,17 @@ identity, `result.sessionTarget` (a typed `ContextEngineSessionTarget` carrying
 the session identity and store scope) identifies the successor session that the
 next retry or turn must use; `result.sessionId` mirrors the successor id.
 
+Failed compaction may include `result.failure`, a closed, host-consumed failure
+envelope. Use `disposition: "retryable"` only for transient provider failures
+(`empty_response`, `overloaded`, `rate_limit`, `server_error`, or `timeout`). Use
+`disposition: "fallback"` only for `missing_thread_binding` or
+`stale_thread_binding`, which authorize the host's synchronous context-engine
+owner fallback. All other failures are terminal. The envelope accepts only
+enumerable own data properties `disposition`, `reason`, and an optional integer
+HTTP `status`; do not include provider response text, error codes, accessors, or
+extra fields. The host rejects malformed typed envelopes and does not infer
+retry or fallback authority from their prose.
+
 Optional members:
 
 | Member                         | Kind   | Purpose                                                                                                                                      |

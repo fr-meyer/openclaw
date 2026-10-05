@@ -14,7 +14,7 @@ import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.
 import { prepareProviderRuntimeAuth } from "../../plugins/provider-runtime.js";
 import { resolveUserPath } from "../../utils.js";
 import { resolveAgentDir, resolveSessionAgentIds } from "../agent-scope.js";
-import { describeFailoverError } from "../failover-error.js";
+import { coerceToFailoverError, describeFailoverError } from "../failover-error.js";
 import { ensureSelectedAgentHarnessPlugin } from "../harness/runtime-plugin.js";
 import { MissingProviderAuthError } from "../model-auth.js";
 import { projectModelThinkingCompat } from "../model-catalog-lookup.js";
@@ -36,6 +36,10 @@ import {
 } from "./compact-reasons.js";
 import type { CompactEmbeddedAgentSessionRuntimeParams } from "./compact.types.js";
 import { createDirectCompactionDiagId } from "./compaction-diagnostics.js";
+import {
+  compactionFailureFromFailoverReason,
+  terminalCompactionFailure,
+} from "./compaction-failure.js";
 import { resolveEmbeddedCompactionThinkingLevel } from "./compaction-runtime-context.js";
 import {
   prepareCompactionHarnessAuth,
@@ -115,7 +119,11 @@ export async function prepareDirectCompactionAttempt(
   const attemptedThinking = new Set<ThinkLevel>();
   const fail = (reason: string, err?: unknown): EmbeddedAgentCompactResult => {
     const failureReason = classifyCompactionReason(reason);
-    const failure = err ? describeFailoverError(err) : undefined;
+    const normalizedFailure = err
+      ? (coerceToFailoverError(err, { provider, model: modelId }) ??
+        coerceToFailoverError(new Error(reason), { provider, model: modelId }))
+      : null;
+    const describedFailure = err ? describeFailoverError(normalizedFailure ?? err) : undefined;
     const detail =
       failureReason === "unknown" ? formatUnknownCompactionReasonDetail(reason) : undefined;
     const detailSuffix = detail ? ` detail=${detail}` : "";
@@ -125,18 +133,19 @@ export async function prepareDirectCompactionAttempt(
         `attempt=${attempt} maxAttempts=${maxAttempts} outcome=failed reason=${failureReason}${detailSuffix} ` +
         `durationMs=${Date.now() - startedAt}`,
     );
+    const providerFailure = describedFailure?.reason
+      ? compactionFailureFromFailoverReason(describedFailure.reason, describedFailure.status)
+      : undefined;
     return {
       ok: false,
       compacted: false,
       reason,
-      failure: failure
-        ? {
-            reason: failure.reason,
-            status: failure.status,
-            code: failure.code,
-            rawError: failure.rawError ?? failure.message,
-          }
-        : undefined,
+      failure:
+        failureReason === "transcript_persistence_failed"
+          ? terminalCompactionFailure("transcript_persistence_failed")
+          : failureReason === "summary_failed" || failureReason === "guard_blocked"
+            ? (providerFailure ?? terminalCompactionFailure("summary_rejected"))
+            : (providerFailure ?? terminalCompactionFailure("unknown")),
     };
   };
   const preparedModelRuntime = params.preparedModelRuntime;
