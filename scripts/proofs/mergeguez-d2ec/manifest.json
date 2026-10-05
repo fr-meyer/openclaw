@@ -1,9 +1,9 @@
 {
   "files": [
     {
-      "bytes": 2265,
+      "bytes": 2029,
       "path": "contract.json",
-      "sha256": "018c506772e34de675ec339a73555015df74cea70c856eeba2c9b61eaadba7b6"
+      "sha256": "e986dd916123d8ef7d614a0eecf20b017d9d948c5bd0e4c12052fb534557b77d"
     },
     {
       "bytes": 41595,
@@ -31,9 +31,9 @@
       "sha256": "12320f787902102cd79fd674cb9de25e6c3f928ea4ad6ce540a2f81dc10ee880"
     },
     {
-      "bytes": 7030,
+      "bytes": 7908,
       "path": "test_runtime.mjs",
-      "sha256": "5cc2fe118515f3b0c2e39c88250ce80bb8b4cb1f8eb29d70ceea17d9b458cb39"
+      "sha256": "017d77c36e58d9b38656051adba7e94959e941760bb239e42877285f7ba8ff43"
     }
   ],
   "schema": "mergeguez.sealed-qualification-tooling/v1",

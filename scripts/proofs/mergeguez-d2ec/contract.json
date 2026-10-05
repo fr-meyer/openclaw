@@ -26,11 +26,7 @@
   "evidence_cap_bytes": 33554432,
   "fetch_argv": [
     "fetch",
-    "--frozen-lockfile",
-    "--store-dir=/qualification/pnpm-store",
-    "--config.supportedArchitectures.os=linux",
-    "--config.supportedArchitectures.cpu=x64",
-    "--config.supportedArchitectures.libc=glibc"
+    "--store-dir=/qualification/pnpm-store"
   ],
   "filesystem_bytes": 10737418240,
   "free_after_images_min_bytes": 11811160064,
@@ -38,10 +34,11 @@
     "install",
     "--offline",
     "--frozen-lockfile",
+    "--ignore-scripts",
     "--store-dir=/qualification/pnpm-store",
-    "--config.supportedArchitectures.os=linux",
-    "--config.supportedArchitectures.cpu=x64",
-    "--config.supportedArchitectures.libc=glibc"
+    "--os=linux",
+    "--cpu=x64",
+    "--libc=glibc"
   ],
   "lock_sha256": "c717cc8ed7331b2b4787ed4cbe80d46d3d733de69e3dc9dd7f1d49e6b4942802",
   "log_cap_bytes": 16777216,

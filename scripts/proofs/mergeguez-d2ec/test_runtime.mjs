@@ -70,10 +70,17 @@ async function fixture(phase, options = {}) {
   return { commands, receipt: JSON.parse(writes['/qualification/reports/' + phase + '-receipt.json']), exit: proc.exitCode, timers: timers.size };
 }
 let checks = 0;
+// These literal argv contracts come from pnpm v12.5.1's pinned Clap
+// declarations. Comparing commands with the contract alone missed the
+// unsupported fetch flag in the hosted run.
+assert.deepEqual(contract.fetch_argv, ['fetch', '--store-dir=/qualification/pnpm-store']); checks++;
+assert.deepEqual(contract.install_argv, ['install', '--offline', '--frozen-lockfile', '--ignore-scripts', '--store-dir=/qualification/pnpm-store', '--os=linux', '--cpu=x64', '--libc=glibc']); checks++;
+assert.deepEqual(contract.compile_argv, [['pnpm', 'tsgo:prod'], ['pnpm', 'tsgo:scripts'], ['pnpm', 'build']]); checks++;
 for (const options of [{ unlimited: true }, { swap: true }, { wrongGate: true }, { wrongHead: true }, { wrongLock: true }, { credential: true }, { configError: true }, { dirty: true }]) {
   const r = await fixture('offline-compile', options); assert.equal(r.receipt.complete, false); assert.equal(r.commands.length, 0); checks++;
 }
 const warm = await fixture('warm-fetch'); assert.equal(warm.receipt.complete, true); assert.deepEqual(warm.commands.at(-1).argv, ['corepack', contract.packageManager, ...contract.fetch_argv]); assert.ok(warm.commands.every(x => x.env.COREPACK_ENABLE_NETWORK === '1')); checks++;
+assert.deepEqual(warm.commands.slice(0, 3).map(x => x.argv), [['corepack', 'enable', '--install-directory', '/qualification/toolchain/bin'], ['corepack', 'prepare', contract.packageManager, '--activate'], ['corepack', contract.packageManager, '--version']]); checks++;
 const offline = await fixture('offline-compile'); assert.equal(offline.receipt.complete, true); assert.deepEqual(offline.commands.map(x => x.argv), [['corepack', contract.packageManager, ...contract.install_argv], ...contract.compile_argv]); assert.ok(offline.commands.every(x => x.env.COREPACK_ENABLE_NETWORK === '0' && !('GITHUB_TOKEN' in x.env))); checks++;
 const failed = await fixture('offline-compile', { failType: true }); assert.equal(failed.receipt.complete, false); assert.equal(failed.commands.length, 2); assert.equal(failed.receipt.commands.at(-1).code, 1); checks++;
 const missing = await fixture('offline-compile', { noSdk: true }); assert.equal(missing.receipt.complete, false); assert.equal(missing.receipt.commands.length, 4); checks++;
