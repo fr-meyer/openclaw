@@ -1,11 +1,32 @@
 # Confined current-behavior qualification executor
 
 This proof tooling preserves product commit
-`bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf` and tree
-`ba825f670dc5ba943f7893cb267225d1f68d3110`. It consumes the existing retained
+`fe1b334f74f1e43efc22f91c1c3738e59c52519c` and tree
+`5da503ec4fdd8242a5caf71ae8bfc1621c8996f3`. It consumes the retained
 Linux amd64 image; it does not rebuild, patch, install dependencies into, or
 start the image's Gateway entrypoint. No fixture phase has run locally.
 
+Producer `37319483433`, number 5/attempt 1 at
+`f656dd5b26346761a8a2425645a4bc3969b6faeb`, passed both source and canonical
+artifact jobs. The ZIP digest is
+`882970f92bf4c62636c165794495418de41ac1eacd1a3aca0a9cdc43b406d2e2`,
+artifact `11350768147` expires on `2026-10-12T14:13:25Z`, and the image config is
+`sha256:ac50e2b36804c5d0db9586d6fe545f90a00140cdfb498abe3c55da1564733a19`.
+The unchanged validator verified 79 compiled entries, eight publisher files
+and 113 identity targets against all saved layers. Fresh conservative AST/ELF
+analysis derives 1,548 regular files and 360 namespace identities. Both read
+lists reproduce their prior exact bytes; the binding records current source,
+image and evidence identities. Unknown reads and the musl fallback remain
+denied. Static identity checks do not establish complete import/Worker closure.
+
+The corrected released predecessor SQL and current fixture remain unexecuted
+against this source and image: all six phases are `NEVER_RUN`. Runtime run
+`37319483630`, number 7, skipped admission because the consumed runtime latch
+still selects commit `5780d940` and run 5. This local successor needs independent
+review and separate exact publication/runtime approval. It proposes run 8 only
+after a fresh counter check. No runtime permit was changed by preparation.
+
+The following execution history concerns the earlier `bc8b82b2` source/image.
 Run `37290863839`, number 5/attempt 1 at
 `5780d940cba571e18eb318f0202ade6b26215a33`, passed 111 hosted pure checks,
 capability/deadline admission, preparation, all 1,081-card predecessor assertions,
@@ -20,11 +41,14 @@ The original shared-state seed was copied exactly from a custom aggregate.
 It includes five extra tables, three nullable `task_runs` execution-owner columns,
 four private indexes and a widened `worktrees.owner_kind` CHECK admitting
 `task-flow`. That clean source proves origin, but does not establish a deployed
-or released9.4 storage contract. The retained production receipt has no
-`worktrees` DDL or column metadata. No product permissiveness correction is
-justified by this synthetic mismatch.
+or released9.4 storage contract. A later authorized metadata-only production
+query found the released three-kind `worktrees` CHECK and compatible `task_runs`
+token columns, with documented lazy tables and profile extras. That read did
+not establish business data integrity, deployed source identity or all-family
+backup/restore acceptance. The fixture now uses exact released 9.4 SQL;
+the product schema guards remain unchanged.
 
-This unapplied correction replaces the complete shared-state DDL with the locally
+The included correction replaces the complete shared-state DDL with the locally
 retained released `v2026.9.4` schema: tag object
 `8bec206f3c1f787e1e9c45cfd34d3de2a78c7b8e`, peeled commit
 `3a9d69db306cd7f081e06254cb89c4bcc14a7107`, Git blob
@@ -34,25 +58,25 @@ The retained tag signature has not been independently verified. This producer
 supports schema17. Its worktrees table has14 columns and the three-kind CHECK;
 `gc_protection_json TEXT` is a permitted lazy addition in the candidate.
 The fixture seed, original assertions and all1,081 cards remain. The predecessor
-column inventory now comes from that complete released source. This qualifies
-only a synthetic released9.4 upgrade; production's custom shape and loaded-source
-join remain open.
+column inventory now comes from that complete released source. This defines
+a synthetic released9.4 upgrade fixture; its execution, production data shape
+and loaded-source join remain open.
 
 The fixture retains bounded Doctor warning/change output, actual version records
 and primary-failure precedence from run5. Every original integrity, foreign-key,
 17/19 version, owner metadata, row/file/catalog and restore condition remains.
 The native fixture digest, canonical derivation, generated read binding and
-43-row source manifest bind the corrected inputs. Product88paths, image,
-read lists, syscalls, child/Worker/environment/heap budgets and resources remain.
-The artifact collector/validator and `v98-parity/contract.json` retain exact
-historical image-build identities; their frozenFixture describes the old,
-unexecuted build-era input. This execution packet supplies current fixture pins.
+43-row source manifest bind the corrected inputs. This binding update preserves
+all 93 product paths from source C, read lists, syscalls,
+child/Worker/environment/heap budgets and resources. The producer5 collector,
+validator and `v98-parity/contract.json` bind the current source and corrected
+fixture identities; the image build did not execute that fixture.
 
-Run5's direct publication and15-minute approval is consumed. This new correction
-has not been applied, committed, published or executed. Its exact base, patch,
-projected tree, existing public latches and one15-minute same-branch test require
-new approval and immediate fresh head/counter/artifact checks. Seven-day evidence
-retention and all original caps remain. No automatic rerun or new image is included.
+Run5's direct runtime publication and15-minute approval is consumed. The current
+source and artifact are published and source-qualified. This local image-binding
+successor requires separate exact publication and15-minute runtime approval,
+with immediate fresh head/counter/artifact checks. Seven-day evidence retention
+and all original caps remain. No automatic rerun or new image is included.
 
 The old no-child test profile was agent-defined. This executor proposes a
 separate test profile that permits exactly one source-bound snapshot helper in
@@ -243,8 +267,9 @@ restore or rollback. Historical run `37256338785` supplies actual startup,
 capability, deadline and normal failure accounting/shutdown evidence. Its fixture
 prepare failed, and phases 2–6 were `NEVER_RUN`. Later reusable run 4
 `37278851164` passed prepare/predecessor but failed during migration; its phases
-4–6 remain `NEVER_RUN`. The diagnostic successor remains unexecuted. Retained
-failed receipts are never converted to passes.
+4–6 remain `NEVER_RUN`. Run5 executed the diagnostic successor and retained its
+warning and version observations. The newly bound current-image attempt remains
+unexecuted. Retained failed receipts are never converted to passes.
 
 `source-manifest.json` binds executable tooling, policies and frozen inputs.
 The final external approval packet binds that manifest, exact Git commit/tree,
@@ -376,8 +401,9 @@ contracts and inert tests do not replace actual confined runtime measurements.
 ## Reusable branch and diagnostic proposal
 
 Reuse `candidate/v2026.9.8-runtime-admission-5` and its existing workflow file.
-Run 37278851164, number 4/attempt 1, is the latest consumed failed attempt;
-run 37262067025, number 1/attempt 1, remains historical failure evidence. A new
+Run 37290863839, number 5/attempt 1, is the latest executed runtime failure;
+numbers 6 and 7 skipped admission. Earlier run 37278851164, number 4/attempt 1,
+and run 37262067025, number 1/attempt 1, remain historical failure evidence. A new
 explicit approval must identify the exact reviewed commit and next workflow run
 number and authorize setting the public, nonsecret Actions variables
 `V98_RUNTIME_APPROVED_COMMIT` and `V98_RUNTIME_APPROVED_RUN_NUMBER`, followed by
@@ -403,8 +429,10 @@ Run 3 proved private IPC startup, helper exec/tightening and exit 0, then joined
 migration exit 1 with empty JSON. Run 4 compiled the stdio correction and proved
 22 guarded helper queries, helper exit 0 and the original Doctor await returning.
 Migration then joined exit 1 at the candidate version assertion. Its Doctor
-warning/result was not retained. The diagnostic successor remains unapplied and
-unexecuted; candidate validation, restore, rollback and full cap fit are open.
+warning/result was not retained in run4. Run5 executed the diagnostic successor
+and captured the worktrees schema warning and both version17 observations.
+The corrected predecessor and current image remain unexecuted; candidate
+validation, restore, rollback and full cap fit are open.
 The existing
 16 MiB scratch, 20 MiB evidence, 15-minute job, seven-day retention and other
 confinement gates stay fixed.
@@ -428,9 +456,10 @@ The original Doctor await returned and the prior empty-JSON error was absent,
 then candidate validation failed with STATE_VERSION_MISMATCH. Baseline run 3
 did not record those individual calls; no byte-identical two-policy dynamic A/B
 is claimed. Local retained Node execution is unavailable on Darwin arm64; no
-replacement runner or policy bypass is permitted. A separately approved
-diagnostic successor must capture the warning/version and retain every original
-six-phase gate; no complete migration, restore or rollback is qualified yet.
+replacement runner or policy bypass is permitted. Run5 captured the warning and
+versions through the diagnostic successor. Any separately approved current-image
+attempt retains that capture and every original six-phase gate; no complete
+migration, restore or rollback is qualified yet.
 
 The bundled diagnostics send bounded Doctor warnings/changes and observed
 schema versions to stderr. The existing candidate read owner opens earlier to

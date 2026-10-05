@@ -18,8 +18,42 @@ FIXTURE_SIZING_SHA = "0c3b33ee321e88dea9f47b13d0eaec84dc11b60a8fbaeb2a72df7ca968
 FIXTURE_SIZING_STATE_SHA = "6b53fb7f426678a3962f7746bd26feea2f3d840cc896d51a8a740a9e0dbada3e"
 
 
+# Test-only recovery of the exact image-pin cutover. The proposal renderer
+# retains its historical BC8 capture and refuses every repinned source.
+IMAGE_REBOUND_DERIVE_SHA = "1f2118ad51f35969afb16163c4aa840075fba590cf0addacde287b370510638d"
+IMAGE_REBOUND_DERIVE_INVERSE = (
+    ("SOURCE_COMMIT = \"fe1b334f74f1e43efc22f91c1c3738e59c52519c\"",
+     "SOURCE_COMMIT = \"bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf\""),
+    ("SOURCE_TREE = \"5da503ec4fdd8242a5caf71ae8bfc1621c8996f3\"",
+     "SOURCE_TREE = \"ba825f670dc5ba943f7893cb267225d1f68d3110\""),
+    ("IMAGE_SHA256 = \"4efe7e2ab51c0bd4052b1fb4b50edd84df02720a320aa988ce97cad55f4bfa00\"",
+     "IMAGE_SHA256 = \"0a3418e393313dbe7e20f4ef140fea81e3a7e6d8a24f9ee1bf5e0bd87d86ffcf\""),
+    ("IMAGE_CONFIG = \"sha256:ac50e2b36804c5d0db9586d6fe545f90a00140cdfb498abe3c55da1564733a19\"",
+     "IMAGE_CONFIG = \"sha256:1b2669dcea79d48e6c9f1e86a81495746e62f6d4b9a7837eaccca5ce0a266c39\""),
+    ("    \"graph\": (\"runtime-binding/analysis/graph.json\", \"7eaaa86bab0597f69d9208bc77140fff605a9dfb922a283738d5a0cd847b9589\"),",
+     "    \"graph\": (\"openclaw-v98-doctor-worker-import-graph-final-20261004.json\", \"7eaaa86bab0597f69d9208bc77140fff605a9dfb922a283738d5a0cd847b9589\"),"),
+    ("    \"inventory\": (\"validated-initial/image-filesystem-manifest.json.gz\", \"127796387c90a0ce5887f8978990823c14f983506e7cea1ac1c5b91926c5078d\"),",
+     "    \"inventory\": (\"openclaw-v98-artifact-build-37192724704-validated-scalable/image-filesystem-manifest.json.gz\", \"e7c50cfcb33072e780dbae849147d3fbc33b2bcb41b7067ae9f13a05d9116719\"),"),
+    ("    \"catalog\": (\"runtime-binding/analysis/catalog.json\", \"38193b2c93f0ee1f72d68f07cf7198fd96c4a3554081ed1eab0ff0687a37e7e0\"),",
+     "    \"catalog\": (\"openclaw-v98-independent-final-catalog-join-20261004.json\", \"61fdb2ab3746f01126f518bc4d57e86311501ce9b29a6e1dc8bba2a41bb52328\"),"),
+    ("    \"classification\": (\"runtime-binding/analysis/classification.json\", \"6ef653754a3730cb6fcaa6071fab9b3150aa84f902d3c05a5e2e564bbe5b9557\"),",
+     "    \"classification\": (\"openclaw-v98-independent-final-catalog-classification-20261004.json\", \"0a051c803837686a67627abf6e417dbcc5c7893c62c76882abf9fe6417c8f290\"),"),
+    ("    \"elf\": (\"runtime-binding/analysis/elf.json\", \"f322753bb2d60fff94305b6187e0fbac6686d56a1ed56207bce847701fb7f108\"),",
+     "    \"elf\": (\"openclaw-v98-elf-dependency-analysis-20261004.json\", \"1de4df7cfd908935ee5703df95ebd75d1a39ed04e96867969e7e1c2e9a0e1555\"),"),
+)
+
+
 def baseline_source(raw):
-    """Test fixture only: accept exactly the original or exact projected source."""
+    """Test fixture only: invert exact pinned revisions to the historical baseline."""
+    if RENDER.digest(raw) == IMAGE_REBOUND_DERIVE_SHA:
+        text = raw.decode("utf-8")
+        for new, old in IMAGE_REBOUND_DERIVE_INVERSE:
+            if text.count(new) != 1:
+                raise ValueError("image pin inverse anchor changed")
+            text = text.replace(new, old, 1)
+        raw = text.encode("utf-8")
+        if RENDER.digest(raw) != FIXTURE_SIZING_DERIVE_SHA:
+            raise ValueError("image pin inverse did not restore exact fixture source")
     if RENDER.digest(raw) == FIXTURE_SIZING_DERIVE_SHA:
         pin = '"/proof/inputs/fixture.mjs": "'
         text = raw.decode("utf-8")
@@ -143,6 +177,13 @@ class OpenSSLProposalTests(unittest.TestCase):
             RENDER._validate_capture(b"{}", b"", {}, {})
 
     def test_hosted_tests_accept_only_exact_future_source_without_regranting(self):
+        current = (BASE / "derive_read_policy.py").read_bytes()
+        if RENDER.digest(current) == IMAGE_REBOUND_DERIVE_SHA:
+            self.assertEqual(baseline_source(current), self.source)
+            with self.assertRaisesRegex(ValueError, "neither exact"):
+                baseline_source(current + b"\n")
+            with self.assertRaisesRegex(ValueError, "source pin"):
+                RENDER.proposed_derive_bytes(current)
         future = RENDER.proposed_derive_bytes(self.source)
         self.assertEqual(RENDER.digest(future), PROPOSED_DERIVE_SHA)
         self.assertEqual(baseline_source(future), self.source)

@@ -28,14 +28,14 @@ _accounting = importlib.util.module_from_spec(_accounting_spec)
 _accounting_spec.loader.exec_module(_accounting)
 SliceOwner = _accounting.SliceOwner
 
-SOURCE = "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf"
-TREE = "ba825f670dc5ba943f7893cb267225d1f68d3110"
-IMAGE_SHA = "0a3418e393313dbe7e20f4ef140fea81e3a7e6d8a24f9ee1bf5e0bd87d86ffcf"
-IMAGE_ID = "sha256:1b2669dcea79d48e6c9f1e86a81495746e62f6d4b9a7837eaccca5ce0a266c39"
-ARTIFACT_ID = 11299504641
-ARTIFACT_RUN = 37192724704
+SOURCE = "fe1b334f74f1e43efc22f91c1c3738e59c52519c"
+TREE = "5da503ec4fdd8242a5caf71ae8bfc1621c8996f3"
+IMAGE_SHA = "4efe7e2ab51c0bd4052b1fb4b50edd84df02720a320aa988ce97cad55f4bfa00"
+IMAGE_ID = "sha256:ac50e2b36804c5d0db9586d6fe545f90a00140cdfb498abe3c55da1564733a19"
+ARTIFACT_ID = 11350768147
+ARTIFACT_RUN = 37319483433
 ARTIFACT_ATTEMPT = 1
-ZIP_SHA = "73662d185f6e308c29ae365af540f451a0e4672644bcb861f692424d5fbb46c3"
+ZIP_SHA = "882970f92bf4c62636c165794495418de41ac1eacd1a3aca0a9cdc43b406d2e2"
 GATE = b"V98_HOST_ADMITTED\n"
 MAX_STDOUT = 128 * 1024
 MAX_STDERR = 256 * 1024
@@ -1460,7 +1460,7 @@ def execute(args):
     base = tooling / "scripts/proofs/v98-confined"
     validation, binding = verify_prepared(args.validation, base / "read-policy/runtime-read-binding.json",
                                           base / "packet.json", args.image)
-    require(validation.get("toolingCommit") == "711da57d4e7576fb911f917cd83ead95dfd17602",
+    require(validation.get("toolingCommit") == "f656dd5b26346761a8a2425645a4bc3969b6faeb",
             "retained artifact producer changed")
     out = Path(args.output).resolve()
     out.mkdir(mode=0o755)

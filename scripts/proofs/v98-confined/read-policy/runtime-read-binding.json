@@ -6,7 +6,7 @@
     "/proof/inputs/predecessor-state.sql": "6b53fb7f426678a3962f7746bd26feea2f3d840cc896d51a8a740a9e0dbada3e",
     "/proof/inputs/predecessor-workboard.ts": "aa15bf48dbe292993a47c7286d5f7e12fe2ffbd74442c92b37ad98018bd2e810"
   },
-  "imageConfigId": "sha256:1b2669dcea79d48e6c9f1e86a81495746e62f6d4b9a7837eaccca5ce0a266c39",
+  "imageConfigId": "sha256:ac50e2b36804c5d0db9586d6fe545f90a00140cdfb498abe3c55da1564733a19",
   "imageEntries": [
     {
       "bytes": 57,
@@ -15,7 +15,7 @@
       "reasons": [
         "compiled-version-and-build-identity"
       ],
-      "sha256": "686675f73c9d86ee195a54d89a20376a46316c9c6b4e6893cad6f0858469a7bc",
+      "sha256": "ce246bdb9b3b54a2f6ee4952ae678fa2bf9873c69a5bc5e2c574effae827e2da",
       "type": "file"
     },
     {
@@ -25,7 +25,7 @@
       "reasons": [
         "compiled-version-and-build-identity"
       ],
-      "sha256": "c4878c10f74fb07f1f0fd8d962ac871827e216a187ba6b299be269232e3fb34c",
+      "sha256": "e999ec16c12fe52d63e1e70a317275c716bcc61cdc86f795bfbc890ecafafa5e",
       "type": "file"
     },
     {
@@ -155,7 +155,7 @@
       "reasons": [
         "compiled-version-and-build-identity"
       ],
-      "sha256": "0e7ea0d14fb05bf7f0ea88e9d306b02f2b07a643ec93ab3688be2f6ac5405b22",
+      "sha256": "39092eed54ec92014bc8caee9309960263116a8cbd271d792720ffb9bee5fbe0",
       "type": "file"
     },
     {
@@ -15522,22 +15522,22 @@
       "type": "file"
     }
   ],
-  "imageSha256": "0a3418e393313dbe7e20f4ef140fea81e3a7e6d8a24f9ee1bf5e0bd87d86ffcf",
+  "imageSha256": "4efe7e2ab51c0bd4052b1fb4b50edd84df02720a320aa988ce97cad55f4bfa00",
   "inputs": {
     "catalog": {
-      "sha256": "61fdb2ab3746f01126f518bc4d57e86311501ce9b29a6e1dc8bba2a41bb52328"
+      "sha256": "38193b2c93f0ee1f72d68f07cf7198fd96c4a3554081ed1eab0ff0687a37e7e0"
     },
     "classification": {
-      "sha256": "0a051c803837686a67627abf6e417dbcc5c7893c62c76882abf9fe6417c8f290"
+      "sha256": "6ef653754a3730cb6fcaa6071fab9b3150aa84f902d3c05a5e2e564bbe5b9557"
     },
     "elf": {
-      "sha256": "1de4df7cfd908935ee5703df95ebd75d1a39ed04e96867969e7e1c2e9a0e1555"
+      "sha256": "f322753bb2d60fff94305b6187e0fbac6686d56a1ed56207bce847701fb7f108"
     },
     "graph": {
       "sha256": "7eaaa86bab0597f69d9208bc77140fff605a9dfb922a283738d5a0cd847b9589"
     },
     "inventory": {
-      "sha256": "e7c50cfcb33072e780dbae849147d3fbc33b2bcb41b7067ae9f13a05d9116719"
+      "sha256": "127796387c90a0ce5887f8978990823c14f983506e7cea1ac1c5b91926c5078d"
     }
   },
   "limitations": "Conservative image graph plus named GNU dependencies and scope metadata; actual import, Worker, loader-cache, fsync and six-phase behavior require the separately approved native confined attempt.",
@@ -17466,8 +17466,8 @@
   },
   "runtimeExecuted": false,
   "schema": "openclaw-v98-exact-runtime-read-binding/v1",
-  "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
-  "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
+  "sourceCommit": "fe1b334f74f1e43efc22f91c1c3738e59c52519c",
+  "sourceTree": "5da503ec4fdd8242a5caf71ae8bfc1621c8996f3",
   "status": "STATIC_READ_POLICY_PREPARED; RUNTIME_NOT_ADMITTED",
   "unresolvedSelectors": [
     {

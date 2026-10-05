@@ -784,7 +784,7 @@ class HostContractTests(unittest.TestCase):
                  patch.object(HOST, "verify_source_manifest"), \
                  patch.object(HOST, "git", side_effect=[HOST.SOURCE, HOST.TREE, ""]), \
                  patch.object(HOST, "verify_prepared", return_value=(
-                     {"toolingCommit": "711da57d4e7576fb911f917cd83ead95dfd17602"}, binding)), \
+                     {"toolingCommit": "f656dd5b26346761a8a2425645a4bc3969b6faeb"}, binding)), \
                  patch.object(HOST, "prepare_proof") as prepared, \
                  patch.object(HOST, "compile_native", side_effect=HOST.Refusal("pure compile boundary")) as compiled, \
                  patch.object(HOST, "command") as commands, \

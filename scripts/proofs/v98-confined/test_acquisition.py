@@ -24,8 +24,8 @@ ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = Path(os.environ.get("V98_ACQUISITION_WORKFLOW",
                                ROOT / ".github/workflows/v98-confined-runtime-5.yml"))
 TOKEN = "synthetic-v98-transport-test-token"
-RUN_PATH = "/repos/fr-meyer/openclaw/actions/runs/37192724704"
-ZIP_PATH = "/repos/fr-meyer/openclaw/actions/artifacts/11299504641/zip"
+RUN_PATH = "/repos/fr-meyer/openclaw/actions/runs/37319483433"
+ZIP_PATH = "/repos/fr-meyer/openclaw/actions/artifacts/11350768147/zip"
 
 
 def acquisition_bash():

@@ -1,10 +1,10 @@
 {
   "schema": "openclaw-v98-node-startup-prerequisites/v1",
   "status": "STATIC_PREREQUISITES_ONLY; NOT_EXECUTION_ADMISSION",
-  "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
-  "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
-  "imageSha256": "0a3418e393313dbe7e20f4ef140fea81e3a7e6d8a24f9ee1bf5e0bd87d86ffcf",
-  "imageConfigId": "sha256:1b2669dcea79d48e6c9f1e86a81495746e62f6d4b9a7837eaccca5ce0a266c39",
+  "sourceCommit": "fe1b334f74f1e43efc22f91c1c3738e59c52519c",
+  "sourceTree": "5da503ec4fdd8242a5caf71ae8bfc1621c8996f3",
+  "imageSha256": "4efe7e2ab51c0bd4052b1fb4b50edd84df02720a320aa988ce97cad55f4bfa00",
+  "imageConfigId": "sha256:ac50e2b36804c5d0db9586d6fe545f90a00140cdfb498abe3c55da1564733a19",
   "requiredCanonicalRegularFiles": [
     {
       "path": "/etc/ld.so.cache",
@@ -291,5 +291,16 @@
       "url": "https://github.com/nodejs/node/blob/v24.21.0/src/node.cc#L936-L978",
       "supports": "External ICU data needs a selected CLI/env/build path; actual ICU initialization/Intl behavior still need runtime evidence."
     }
-  ]
+  ],
+  "freshSavedLayerCustody": {
+    "producerRunId": 37319483433,
+    "producerCommit": "f656dd5b26346761a8a2425645a4bc3969b6faeb",
+    "artifactId": 11350768147,
+    "validationSha256": "8f654f0620660aa4da1f88f6fccdc1abbce27116a30723196042e6ccf7fa9adc",
+    "inventorySha256": "127796387c90a0ce5887f8978990823c14f983506e7cea1ac1c5b91926c5078d",
+    "nodeAndConfigPayloadsByteIdenticalToPriorAssessment": true,
+    "allTenFilesAndFourteenNamespaceRowsByteIdentical": true,
+    "assessmentReuse": "Historical source diagnosis applies to byte-identical Node/config payloads freshly joined from this saved image. Conditional runtime branches remain unqualified.",
+    "runtimeExecuted": false
+  }
 }

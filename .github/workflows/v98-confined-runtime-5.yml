@@ -14,8 +14,8 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  V98_SOURCE: bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
-  V98_TREE: ba825f670dc5ba943f7893cb267225d1f68d3110
+  V98_SOURCE: fe1b334f74f1e43efc22f91c1c3738e59c52519c
+  V98_TREE: 5da503ec4fdd8242a5caf71ae8bfc1621c8996f3
   V98_ACQUISITION_WORKFLOW: tooling/.github/workflows/v98-confined-runtime-5.yml
   V98_APPROVED_COMMIT: ${{ vars.V98_RUNTIME_APPROVED_COMMIT }}
   V98_APPROVED_RUN_NUMBER: ${{ vars.V98_RUNTIME_APPROVED_RUN_NUMBER }}
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout exact qualified product source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
+          ref: fe1b334f74f1e43efc22f91c1c3738e59c52519c
           path: source
           fetch-depth: 1
           persist-credentials: false
@@ -84,11 +84,11 @@ jobs:
           out="$RUNNER_TEMP/v98-confined-acquisition"
           mkdir -m 700 "$out"
           gh api -H 'Accept: application/vnd.github+json' \
-            repos/fr-meyer/openclaw/actions/runs/37192724704 > "$out/run.json"
+            repos/fr-meyer/openclaw/actions/runs/37319483433 > "$out/run.json"
           gh api -H 'Accept: application/vnd.github+json' \
-            repos/fr-meyer/openclaw/actions/runs/37192724704/artifacts > "$out/artifacts.json"
+            repos/fr-meyer/openclaw/actions/runs/37319483433/artifacts > "$out/artifacts.json"
           gh api -H 'Accept: application/json' \
-            repos/fr-meyer/openclaw/actions/artifacts/11299504641/zip > "$out/artifact.zip"
+            repos/fr-meyer/openclaw/actions/artifacts/11350768147/zip > "$out/artifact.zip"
 
       - name: Verify selected saved image and exact approved read identities
         shell: bash
@@ -100,8 +100,8 @@ jobs:
             --metadata "$RUNNER_TEMP/v98-confined-acquisition/artifacts.json" \
             --run-metadata "$RUNNER_TEMP/v98-confined-acquisition/run.json" \
             --source source --output "$out" \
-            --run-id 37192724704 --run-attempt 1 --artifact-id 11299504641 \
-            --tooling-commit 711da57d4e7576fb911f917cd83ead95dfd17602 \
+            --run-id 37319483433 --run-attempt 1 --artifact-id 11350768147 \
+            --tooling-commit f656dd5b26346761a8a2425645a4bc3969b6faeb \
             --read-binding tooling/scripts/proofs/v98-confined/read-policy/runtime-read-binding.json
 
       - name: Run one confined synthetic admission

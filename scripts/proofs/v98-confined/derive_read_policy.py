@@ -17,16 +17,16 @@ import re
 import stat
 from pathlib import Path, PurePosixPath
 
-SOURCE_COMMIT = "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf"
-SOURCE_TREE = "ba825f670dc5ba943f7893cb267225d1f68d3110"
-IMAGE_SHA256 = "0a3418e393313dbe7e20f4ef140fea81e3a7e6d8a24f9ee1bf5e0bd87d86ffcf"
-IMAGE_CONFIG = "sha256:1b2669dcea79d48e6c9f1e86a81495746e62f6d4b9a7837eaccca5ce0a266c39"
+SOURCE_COMMIT = "fe1b334f74f1e43efc22f91c1c3738e59c52519c"
+SOURCE_TREE = "5da503ec4fdd8242a5caf71ae8bfc1621c8996f3"
+IMAGE_SHA256 = "4efe7e2ab51c0bd4052b1fb4b50edd84df02720a320aa988ce97cad55f4bfa00"
+IMAGE_CONFIG = "sha256:ac50e2b36804c5d0db9586d6fe545f90a00140cdfb498abe3c55da1564733a19"
 PINNED_INPUTS = {
-    "graph": ("openclaw-v98-doctor-worker-import-graph-final-20261004.json", "7eaaa86bab0597f69d9208bc77140fff605a9dfb922a283738d5a0cd847b9589"),
-    "inventory": ("openclaw-v98-artifact-build-37192724704-validated-scalable/image-filesystem-manifest.json.gz", "e7c50cfcb33072e780dbae849147d3fbc33b2bcb41b7067ae9f13a05d9116719"),
-    "catalog": ("openclaw-v98-independent-final-catalog-join-20261004.json", "61fdb2ab3746f01126f518bc4d57e86311501ce9b29a6e1dc8bba2a41bb52328"),
-    "classification": ("openclaw-v98-independent-final-catalog-classification-20261004.json", "0a051c803837686a67627abf6e417dbcc5c7893c62c76882abf9fe6417c8f290"),
-    "elf": ("openclaw-v98-elf-dependency-analysis-20261004.json", "1de4df7cfd908935ee5703df95ebd75d1a39ed04e96867969e7e1c2e9a0e1555"),
+    "graph": ("runtime-binding/analysis/graph.json", "7eaaa86bab0597f69d9208bc77140fff605a9dfb922a283738d5a0cd847b9589"),
+    "inventory": ("validated-initial/image-filesystem-manifest.json.gz", "127796387c90a0ce5887f8978990823c14f983506e7cea1ac1c5b91926c5078d"),
+    "catalog": ("runtime-binding/analysis/catalog.json", "38193b2c93f0ee1f72d68f07cf7198fd96c4a3554081ed1eab0ff0687a37e7e0"),
+    "classification": ("runtime-binding/analysis/classification.json", "6ef653754a3730cb6fcaa6071fab9b3150aa84f902d3c05a5e2e564bbe5b9557"),
+    "elf": ("runtime-binding/analysis/elf.json", "f322753bb2d60fff94305b6187e0fbac6686d56a1ed56207bce847701fb7f108"),
 }
 GNU_FS_SAFE = "/app/node_modules/.pnpm/@openclaw+fs-safe-linux-x64-gnu@0.21.1/node_modules/@openclaw/fs-safe-linux-x64-gnu/fs-safe-native.node"
 GNU_KOFFI = "/app/node_modules/.pnpm/@koromix+koffi-linux-x64@3.3.1/node_modules/@koromix/koffi-linux-x64/linux_x64/koffi.node"
