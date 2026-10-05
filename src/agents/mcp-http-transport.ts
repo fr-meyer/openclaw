@@ -11,6 +11,7 @@ import {
 import { STDIO_DEFAULT_MAX_BUFFER_SIZE } from "@modelcontextprotocol/sdk/shared/stdio.js";
 import type { FetchLike, Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+import { McpHttpToolSchemaCompatibility } from "./mcp-http-tool-schema-compatibility.js";
 
 const STREAM_RETRY_EXHAUSTED_RE = /^Maximum reconnection attempts \(\d+\) exceeded\.$/;
 const SESSION_TERMINATION_TIMEOUT_MS = 5_000;
@@ -201,6 +202,10 @@ abstract class OpenClawMcpHttpTransport implements Transport {
   protected closed = false;
   private closeEmitted = false;
 
+  protected emitMessage(message: JSONRPCMessage): void {
+    this.onmessage?.(message);
+  }
+
   protected emitClose(): void {
     if (this.closeEmitted) {
       return;
@@ -221,7 +226,7 @@ abstract class OpenClawMcpHttpTransport implements Transport {
   async start(): Promise<void> {
     // The SDK transport exposes callback properties rather than EventTarget listeners.
     // oxlint-disable-next-line unicorn/prefer-add-event-listener
-    this.transport.onmessage = (message) => this.onmessage?.(message);
+    this.transport.onmessage = (message) => this.emitMessage(message);
     // oxlint-disable-next-line unicorn/prefer-add-event-listener
     this.transport.onclose = () => this.emitClose();
     // oxlint-disable-next-line unicorn/prefer-add-event-listener
@@ -308,6 +313,7 @@ type OpenClawStreamableHttpOptions = StreamableHTTPClientTransportOptions & {
 /** Owns Streamable HTTP notification recovery and stateful cleanup around SDK 1.30.0. */
 export class OpenClawStreamableHTTPClientTransport extends OpenClawMcpHttpTransport {
   protected readonly transport: StreamableHTTPClientTransport;
+  private readonly toolSchemaCompatibility: McpHttpToolSchemaCompatibility;
   private readonly url: URL;
   private readonly cleanupFetch: FetchLike;
   private readonly requestInit?: RequestInit;
@@ -317,6 +323,7 @@ export class OpenClawStreamableHTTPClientTransport extends OpenClawMcpHttpTransp
   constructor(url: URL, options: OpenClawStreamableHttpOptions = {}) {
     super();
     this.url = url;
+    this.toolSchemaCompatibility = new McpHttpToolSchemaCompatibility(url);
     this.cleanupFetch = options.fetch ?? fetch;
     this.requestInit = options.requestInit;
     const runtimeFetch: FetchLike = async (input, init) => {
@@ -367,8 +374,28 @@ export class OpenClawStreamableHTTPClientTransport extends OpenClawMcpHttpTransp
     }
   }
 
+  protected override emitMessage(message: JSONRPCMessage): void {
+    super.emitMessage(this.toolSchemaCompatibility.normalizeResponse(message));
+  }
+
+  protected override emitClose(): void {
+    this.toolSchemaCompatibility.clear();
+    super.emitClose();
+  }
+
+  override async close(): Promise<void> {
+    this.toolSchemaCompatibility.clear();
+    await super.close();
+  }
+
   async send(message: JSONRPCMessage, options?: Parameters<Transport["send"]>[1]): Promise<void> {
-    await this.transport.send(message, options);
+    this.toolSchemaCompatibility.recordRequest(message);
+    try {
+      await this.transport.send(message, options);
+    } catch (error) {
+      this.toolSchemaCompatibility.forgetRequest(message);
+      throw error;
+    }
   }
 
   /** Uses a fresh request signal because failed initialization makes the SDK's signal unusable. */

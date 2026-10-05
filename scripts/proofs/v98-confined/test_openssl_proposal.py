@@ -13,8 +13,9 @@ SPEC = importlib.util.spec_from_file_location("v98_inert_openssl_proposal",
 RENDER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RENDER)
 PROPOSED_DERIVE_SHA = "bce4fb6fd9150e02a553df09042859e7654ed2f6278880ac48fc0ccbfb953b09"
-FIXTURE_SIZING_DERIVE_SHA = "bb6070545fbd046aecab1ed8ddb1037dd1da5c6d6aa07ea517eeaae1c1ae40b3"
-FIXTURE_SIZING_SHA = "29da5d15bcf2372771b283f4a838b3734113e6ca60f077a140d6b4edca642155"
+FIXTURE_SIZING_DERIVE_SHA = "407010cefebfbb9a05fc48bc9c70da9f8d44e5f81f7e32e52cf98a2899f5977c"
+FIXTURE_SIZING_SHA = "0c3b33ee321e88dea9f47b13d0eaec84dc11b60a8fbaeb2a72df7ca96890577d"
+FIXTURE_SIZING_STATE_SHA = "6b53fb7f426678a3962f7746bd26feea2f3d840cc896d51a8a740a9e0dbada3e"
 
 
 def baseline_source(raw):
@@ -25,6 +26,12 @@ def baseline_source(raw):
         if text.count(pin + FIXTURE_SIZING_SHA) != 1:
             raise ValueError("fixture pin inverse anchor changed")
         raw = text.replace(pin + FIXTURE_SIZING_SHA, pin + "777936fa311d3b6fb141dff1fc67f46e2cfddf0651bf75b30ae62f74368f674e").encode("utf-8")
+        state_pin = '"/proof/inputs/predecessor-state.sql": "'
+        text = raw.decode("utf-8")
+        if text.count(state_pin + FIXTURE_SIZING_STATE_SHA) != 1:
+            raise ValueError("predecessor pin inverse anchor changed")
+        raw = text.replace(state_pin + FIXTURE_SIZING_STATE_SHA,
+                           state_pin + "32a9ec60e38f1511e6f5fcd532f4c631d680d537a8325601f5bdf8221cf20fa3").encode("utf-8")
         if RENDER.digest(raw) != PROPOSED_DERIVE_SHA:
             raise ValueError("fixture pin inverse did not restore exact projection")
     if RENDER.digest(raw) == RENDER.DERIVE_SHA:

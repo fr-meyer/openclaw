@@ -91,7 +91,7 @@
     "imageDirectoryReads": false,
     "metadataLookups": "stat/access/readlink are permitted in the private image/PID/mount scopes; Landlock file-content rules do not mediate them; not identical Node Permission Model metadata restrictions",
     "namespaceBindings": 360,
-    "readBindingSha256": "9c1a49923f590870e15558bf7384b3610e80118235ea07b75143a0332afa021b",
+    "readBindingSha256": "91b313406484f313d23aac3399c36983df210e74329c44b0af64e4c367b11d7a",
     "completeImportClosureClaimed": false,
     "unexpectedReadSyscallOrChild": "DENY; REQUIRED_FLOW_OR_NATIVE_OWNER_FAILURE_STOPS_ATTEMPT; RETAIN; NO_RETRY_OR_BROADENING; CAUGHT_ERRNO_IS_NOT_AUTOMATIC_ATTEMPT_ABORT",
     "stdioSocketPairs": "At most three tracked anonymous AF_UNIX SOCK_STREAM|SOCK_CLOEXEC protocol-zero pairs in phase 3",
@@ -187,7 +187,7 @@
     "Six frozen phases with one source-bound helper, native process-close/staging-tightening/termination observations and final zero tracees/cgroup population",
     "Host-only exact scratch-inode fstatvfs observations: verified16MiB capacity, sampled allocated bytes/free inode floor before/during/after modes and received native phase boundaries. Bounded32KiB receipt; samples are lower bounds and phase event receipt may lag actual execution. Full six-phase success under hard cap required; no sample grants cleanup authority."
   ],
-  "runtimeQualification": "RETAINED_RUN4_CAPABILITY_DEADLINE_PREPARE_PREDECESSOR_HELPER_STDIO_QUERIES_EXIT0_AND_ACCOUNTING_PASS; POST_DOCTOR_STATE_VERSION_MISMATCH; PHASES4_TO6_NEVER_RUN; DIAGNOSTICS_SUCCESSOR_UNAPPLIED",
+  "runtimeQualification": "RETAINED_RUN5_CAPABILITY_DEADLINE_PREPARE_PREDECESSOR_HELPER_AND_NORMAL_FAILURE_ACCOUNTING_PASS; ACTUAL_WORKTREES_CHECK_DRIFT_FROM_CUSTOM_SEED; PHASES4_TO6_NEVER_RUN; RELEASED_PREDECESSOR_CORRECTION_UNAPPLIED",
   "mergeguezOverlay": "SEPARATE_SOURCE_ONLY; NOT_INCLUDED; NO_ACTIVATION",
   "compiledBinaryHashes": "Recorded only by the approved hosted compile gate, before policy activation",
   "remainingAdmissionLimitations": [
@@ -227,7 +227,7 @@
   "opensslReadProposal": "scripts/proofs/v98-confined/proposal/openssl-read-proposal.json",
   "fixtureStorageProposal": {
     "status": "RETAINED_RUN2_PREPARE_AND_PREDECESSOR_PASS; FULL_ALLOCATED_HIGH_WATER_AND_DOCTOR_TEMP_UNPROVED",
-    "fixtureSha256": "29da5d15bcf2372771b283f4a838b3734113e6ca60f077a140d6b4edca642155",
+    "fixtureSha256": "0c3b33ee321e88dea9f47b13d0eaec84dc11b60a8fbaeb2a72df7ca96890577d",
     "cards": 1081,
     "workboardTables": 17,
     "rawSeedPageSize": 4096,
@@ -381,5 +381,26 @@
     "normalFailureCpuExtinctionAndRelease": "PASS",
     "artifactId": 11330744801,
     "evidenceSha256": "604a8bccc0b0c25236b59acf7231313a584b5eac0712c54916ae34183b200a62"
+  },
+  "predecessorSchemaCorrection": {
+    "status": "SOURCE_REVIEW_PROPOSAL; NEW_RUNTIME_NEVER_RUN",
+    "previousStateSqlSha256": "32a9ec60e38f1511e6f5fcd532f4c631d680d537a8325601f5bdf8221cf20fa3",
+    "releasedStateSqlSha256": "6b53fb7f426678a3962f7746bd26feea2f3d840cc896d51a8a740a9e0dbada3e",
+    "releasedStateSqlBytes": 96962,
+    "release": "v2026.9.4",
+    "tagObject": "8bec206f3c1f787e1e9c45cfd34d3de2a78c7b8e",
+    "commit": "3a9d69db306cd7f081e06254cb89c4bcc14a7107",
+    "sourcePath": "src/state/openclaw-state-schema.sql",
+    "gitBlob": "53995b2aa562f2f64d456b375ae4ca8d7a9547f5",
+    "declaredSchemaVersion": 17,
+    "tagSignatureVerification": "NOT_INDEPENDENTLY_VERIFIED; local retained tag/blob identity only",
+    "reason": "Original seed used a later custom aggregate, not released9.4. Aggregate adds five tables, three nullable task_runs execution-owner columns, four private indexes and widens worktrees.owner_kind with task-flow. Replace the complete SQL with the exact released source, not a hand-normalized CHECK.",
+    "preservation": "1081cards, Workboard/publisher sources and data, six phase order, all assertion conditions, 17/19versions, integrity/foreign keys, metadata and row/file/catalog hashes unchanged. Row column inventories are freshly derived from the actual released predecessor schema.",
+    "imageBuildContract": "Retained artifact collector/validator and v98-parity/contract.json stay historical exact build identities; their frozenFixture describes unexecuted build-era inputs. This packet/read binding select the corrected current runtime fixture.",
+    "productionSchema": "UNKNOWN_NOT_CAPTURED; numeric17 and source origin do not establish live worktreesDDL or old loaded code. No production qualification claimed.",
+    "productOrCanonicalGuardChanged": false,
+    "permissionDelta": false,
+    "resourceExpansion": false,
+    "artifactReplacementBuildRequired": false
   }
 }

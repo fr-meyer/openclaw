@@ -318,4 +318,19 @@ check("Doctor returning is distinguished from formatter or sink failure", () => 
     assert.notEqual(records.at(-1).doctorResult, "THREW_BEFORE_RETURN; WARNINGS_UNAVAILABLE");
   }
 });
+check("seed binds the complete released schema17 predecessor", () => {
+  const sql = fs.readFileSync(path.join(path.dirname(process.argv[2]), "predecessor-state.sql"));
+  const expected = "6b53fb7f426678a3962f7746bd26feea2f3d840cc896d51a8a740a9e0dbada3e";
+  assert.equal(digest(sql), expected);
+  assert(text.includes(`stateSql: "${expected}"`));
+  assert(text.includes("const CARD_COUNT = 1081;"));
+  const context = vm.createContext({ fs: { readFileSync: () => sql }, sha256: digest });
+  vm.runInContext(extract("requirePinnedSource"), context);
+  assert.equal(context.requirePinnedSource("inert", expected), sql.toString("utf8"));
+  assert.throws(() => context.requirePinnedSource("inert",
+    "32a9ec60e38f1511e6f5fcd532f4c631d680d537a8325601f5bdf8221cf20fa3"), /SOURCE_PIN_MISMATCH/u);
+  const ddl = sql.toString("utf8").match(/CREATE TABLE IF NOT EXISTS worktrees \([\s\S]*?\) STRICT;/u)?.[0];
+  assert(ddl?.includes("owner_kind IN ('manual', 'workboard', 'session')"));
+  assert(!ddl.includes("'task-flow'") && !ddl.includes("gc_protection_json"));
+});
 process.stdout.write(JSON.stringify({ passed, sqliteExecution: false, entryPointExecution: false, permissionModelChanged: false }) + "\n");

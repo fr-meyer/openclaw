@@ -1494,12 +1494,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_cron_run_receipts_active_job
 CREATE INDEX IF NOT EXISTS idx_cron_run_receipts_job_history
   ON cron_run_receipts(store_key, job_id, started_at_ms DESC, receipt_id DESC);
 
--- Retirement follows the receipt's retention without changing its released shape.
-CREATE TABLE IF NOT EXISTS cron_run_trigger_state_retirements (
-  receipt_id TEXT PRIMARY KEY
-    REFERENCES cron_run_receipts(receipt_id) ON DELETE CASCADE
-) STRICT;
-
 -- Runtime-private authority is independent of job_json so downgraded writers
 -- can rewrite recognized job config without erasing or silently widening it.
 CREATE TABLE IF NOT EXISTS cron_job_runtime_authorities (
@@ -1587,9 +1581,6 @@ CREATE TABLE IF NOT EXISTS task_runs (
   agent_id TEXT,
   requester_agent_id TEXT,
   run_id TEXT,
-  execution_owner_host TEXT,
-  execution_owner_pid INTEGER,
-  execution_owner_start_identity INTEGER,
   label TEXT,
   task TEXT NOT NULL,
   status TEXT NOT NULL,
@@ -1709,102 +1700,6 @@ CREATE INDEX IF NOT EXISTS idx_flow_runs_status ON flow_runs(status);
 CREATE INDEX IF NOT EXISTS idx_flow_runs_owner_key ON flow_runs(owner_key);
 CREATE INDEX IF NOT EXISTS idx_flow_runs_updated_at ON flow_runs(updated_at);
 
--- Managed-flow worker admission is feature-local and installed on first use.
--- Its lease rows remain independent of flow display status so an unresolved
--- worker continues to occupy capacity until authoritative liveness evidence
--- releases it.
-CREATE TABLE IF NOT EXISTS task_flow_worker_lease_namespaces (
-  namespace TEXT NOT NULL PRIMARY KEY,
-  next_fencing_token INTEGER NOT NULL DEFAULT 0 CHECK (next_fencing_token >= 0),
-  store_version INTEGER NOT NULL DEFAULT 0 CHECK (store_version >= 0),
-  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS task_flow_worker_leases (
-  lease_id TEXT NOT NULL PRIMARY KEY,
-  namespace TEXT NOT NULL CHECK (length(namespace) > 0),
-  controller_id TEXT NOT NULL CHECK (length(controller_id) > 0),
-  owner_key TEXT NOT NULL CHECK (length(owner_key) > 0),
-  flow_id TEXT NOT NULL CHECK (length(flow_id) > 0),
-  flow_revision INTEGER NOT NULL CHECK (flow_revision >= 0),
-  attempt_key TEXT NOT NULL CHECK (
-    length(attempt_key) = 64 AND attempt_key NOT GLOB '*[^0-9a-f]*'
-  ),
-  kind TEXT NOT NULL CHECK (length(kind) > 0),
-  repository_key TEXT NOT NULL CHECK (length(repository_key) > 0),
-  workspace_key TEXT NOT NULL CHECK (length(workspace_key) > 0),
-  holder_id TEXT NOT NULL CHECK (length(holder_id) > 0),
-  owner_generation TEXT NOT NULL CHECK (length(owner_generation) > 0),
-  canonical_task_identity TEXT CHECK (
-    canonical_task_identity IS NULL OR length(canonical_task_identity) > 0
-  ),
-  liveness TEXT NOT NULL CHECK (liveness IN ('unknown', 'live', 'terminal', 'cancelled', 'dead')),
-  state TEXT NOT NULL CHECK (state IN ('active', 'reconciliation_required', 'released')),
-  fencing_token INTEGER NOT NULL CHECK (fencing_token > 0),
-  acquired_at_ms INTEGER NOT NULL CHECK (acquired_at_ms >= 0),
-  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
-  expires_at_ms INTEGER NOT NULL CHECK (expires_at_ms >= 0),
-  released_at_ms INTEGER CHECK (
-    released_at_ms IS NULL OR released_at_ms >= acquired_at_ms
-  ),
-  terminal_evidence_digest TEXT CHECK (
-    terminal_evidence_digest IS NULL OR (
-      length(terminal_evidence_digest) = 71
-      AND terminal_evidence_digest GLOB 'sha256:*'
-      AND substr(terminal_evidence_digest, 8) NOT GLOB '*[^0-9a-f]*'
-    )
-  ),
-  CHECK (
-    (
-      state = 'released'
-      AND liveness IN ('terminal', 'cancelled', 'dead')
-      AND released_at_ms IS NOT NULL
-      AND terminal_evidence_digest IS NOT NULL
-    ) OR (
-      state <> 'released'
-      AND liveness IN ('unknown', 'live')
-      AND released_at_ms IS NULL
-      AND terminal_evidence_digest IS NULL
-    )
-  ),
-  UNIQUE (attempt_key)
-) STRICT;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_task_flow_worker_leases_active_repository
-  ON task_flow_worker_leases(namespace, repository_key)
-  WHERE released_at_ms IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_task_flow_worker_leases_active_workspace
-  ON task_flow_worker_leases(namespace, workspace_key)
-  WHERE released_at_ms IS NULL;
-CREATE INDEX IF NOT EXISTS idx_task_flow_worker_leases_active_capacity
-  ON task_flow_worker_leases(namespace, released_at_ms, fencing_token);
-
-CREATE TABLE IF NOT EXISTS task_flow_worker_lease_events (
-  event_id INTEGER PRIMARY KEY,
-  namespace TEXT NOT NULL,
-  lease_id TEXT,
-  flow_id TEXT NOT NULL,
-  attempt_key TEXT NOT NULL CHECK (
-    length(attempt_key) = 64 AND attempt_key NOT GLOB '*[^0-9a-f]*'
-  ),
-  event_kind TEXT NOT NULL,
-  result TEXT NOT NULL,
-  fencing_token INTEGER,
-  store_version INTEGER NOT NULL CHECK (store_version > 0),
-  evidence_digest TEXT CHECK (
-    evidence_digest IS NULL OR (
-      length(evidence_digest) = 71
-      AND evidence_digest GLOB 'sha256:*'
-      AND substr(evidence_digest, 8) NOT GLOB '*[^0-9a-f]*'
-    )
-  ),
-  detail_json TEXT,
-  occurred_at_ms INTEGER NOT NULL CHECK (occurred_at_ms >= 0)
-) STRICT;
-
-CREATE INDEX IF NOT EXISTS idx_task_flow_worker_lease_events_namespace_version
-  ON task_flow_worker_lease_events(namespace, store_version, event_id);
-
 -- Durable meeting-capture sessions are gateway-global rather than agent-session
 -- transcripts. JSON/JSONL files are doctor import inputs or explicit CLI exports.
 CREATE TABLE IF NOT EXISTS meeting_transcript_sessions (
@@ -1921,7 +1816,7 @@ CREATE TABLE IF NOT EXISTS worktrees (
   path TEXT NOT NULL,
   branch TEXT NOT NULL,
   base_ref TEXT NOT NULL,
-  owner_kind TEXT NOT NULL CHECK (owner_kind IN ('manual', 'workboard', 'session', 'task-flow')),
+  owner_kind TEXT NOT NULL CHECK (owner_kind IN ('manual', 'workboard', 'session')),
   owner_id TEXT,
   snapshot_ref TEXT,
   provisioned_paths_json TEXT,
@@ -1943,21 +1838,6 @@ CREATE TABLE IF NOT EXISTS worktree_provisioned_file_chunks (
   chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
   data BLOB NOT NULL,
   PRIMARY KEY (worktree_id, path, chunk_index)
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS worktree_templates (
-  cache_key TEXT NOT NULL PRIMARY KEY,
-  id TEXT NOT NULL UNIQUE,
-  repo_root TEXT NOT NULL,
-  common_dir TEXT NOT NULL,
-  worktree_root TEXT NOT NULL,
-  path TEXT NOT NULL,
-  backend TEXT NOT NULL,
-  source_commit TEXT NOT NULL,
-  content_key TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('preparing', 'ready')),
-  created_at INTEGER NOT NULL,
-  last_used_at INTEGER NOT NULL
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS projects (

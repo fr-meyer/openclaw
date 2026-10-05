@@ -624,7 +624,7 @@ int main(int argc,char **argv) {
   setvbuf(stdout,NULL,_IOLBF,0);
   if(!verify_file(V98_NODE,"7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",&node_identity)||
      !verify_file(V98_WORKER,"83d25dd680526c5aeab26b0646e655cd9683df38cb7ee7f2ee9d11a6ef6fe5da",NULL)||
-     !verify_file(V98_FIXTURE,"29da5d15bcf2372771b283f4a838b3734113e6ca60f077a140d6b4edca642155",NULL))return 125;
+     !verify_file(V98_FIXTURE,"0c3b33ee321e88dea9f47b13d0eaec84dc11b60a8fbaeb2a72df7ca96890577d",NULL))return 125;
   if(!host_gate(argv[1]))return 125;
   deadline=now_seconds()+(fixture?60:hang?5:15);
   static const char *const p1[]={V98_NODE,"--max-old-space-size=128",V98_FIXTURE,"prepare","/scratch/synthetic-parity-fixture","/proof/inputs/predecessor-state.sql","/proof/inputs/predecessor-workboard.ts","/proof/inputs/predecessor-publisher-controller.mjs",NULL};

@@ -12,7 +12,7 @@ const TIMESTAMP = 1_790_000_000_000;
 const CARD_COUNT = 1081;
 const SEED_PAGE_LIMITS = Object.freeze({ state: 512, workboard: 256 });
 const PINS = Object.freeze({
-  stateSql: "32a9ec60e38f1511e6f5fcd532f4c631d680d537a8325601f5bdf8221cf20fa3",
+  stateSql: "6b53fb7f426678a3962f7746bd26feea2f3d840cc896d51a8a740a9e0dbada3e",
   workboardSource: "aa15bf48dbe292993a47c7286d5f7e12fe2ffbd74442c92b37ad98018bd2e810",
   controllerSource: "c3d63b3c567541f72fb33c6982b41d4d5e4efa7fdd2d43ba5d7d14e624ebdbfc",
 });
