@@ -1,6 +1,6 @@
 {
   "schema": "openclaw-v98-confined-execution-packet/v1",
-  "status": "REVIEWED_EXACT_APPROVAL_DELTA_PREPARED; REAL_HOST_UNQUALIFIED",
+  "status": "LOCAL_FIXTURE_STORAGE_CORRECTION_PREPARED; FULL_SIX_PHASE_RUNTIME_UNQUALIFIED",
   "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
   "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
   "sourceManifestPath": "scripts/proofs/v98-confined/source-manifest.json",
@@ -12,13 +12,13 @@
     "forcePush": false,
     "mainMerge": false,
     "newApprovalRequired": true,
-    "status": "DRAFT_FRESH_IDENTITY; REMOTE_ABSENCE_AND_UNUSED_RUN_COUNTERS_UNVERIFIED",
+    "status": "BRANCH_AND_WORKFLOW4_CONSUMED; FRESH_EXECUTION_IDENTITY_AND_APPROVAL_REQUIRED",
     "newExecutionIdentityRequired": true
   },
   "hostedAttempt": {
     "runner": "ubuntu-24.04",
     "jobTimeoutMinutes": 15,
-    "attempts": 0,
+    "attempts": 1,
     "requiredWorkflowRunNumber": 1,
     "requiredWorkflowRunAttempt": 1,
     "artifactRetentionDays": 7,
@@ -31,9 +31,9 @@
     "providerState": false,
     "hostPrerequisiteReceipt": "Bounded static host observations before image load; no execution admission",
     "implicitImagePull": false,
-    "consumedRunId": 37247688900,
-    "consumedCommit": "d7a0b7624f1802d97c2672301fe4c90315063030",
-    "consumedConclusion": "FAILURE; NODE_STARTUP_EXIT_13; CPU_AND_WHOLE_CGROUP_CLEANUP_UNPROVED",
+    "consumedRunId": 37256338785,
+    "consumedCommit": "d890e9ff289c657c8bb759a98511008e9772148d",
+    "consumedConclusion": "FAILURE; CAPABILITY_AND_DEADLINE_PASSED; PHASE1_SQLITE_FULL; PHASES2_TO6_NEVER_RUN",
     "startupPrerequisiteReceipt": "Static required Node/GNU/OpenSSL file and metadata identities joined against frozen policies before compiler, Docker image load or start; current missing config refuses without granting a permission",
     "scope": "One capability probe, then one forced-deadline probe, then one frozen six-phase fixture; any refusal stops later modes. No rerun or replacement image.",
     "hostOwnedAccounting": "Exactly one task slice per mode, active until complete final proof is sealed; StartTransientUnit creates a PID1-managed ephemeral /run/systemd/transient/<exact-unit>.slice fragment, no manual/persistent unit/drop-in/settings edits."
@@ -77,7 +77,7 @@
     "imageDirectoryReads": false,
     "metadataLookups": "stat/access/readlink are permitted in the private image/PID/mount scopes; Landlock file-content rules do not mediate them; not identical Node Permission Model metadata restrictions",
     "namespaceBindings": 360,
-    "readBindingSha256": "55c73448511958e494b25e2437fed2642f41fe4bde8a8598228e61e546b3489e",
+    "readBindingSha256": "4bec72ce028987c862fc2cef16a7906bad8295695de89565f7fde6542943fdec",
     "completeImportClosureClaimed": false,
     "unexpectedReadSyscallOrChild": "DENY; REQUIRED_FLOW_OR_NATIVE_OWNER_FAILURE_STOPS_ATTEMPT; RETAIN; NO_RETRY_OR_BROADENING; CAUGHT_ERRNO_IS_NOT_AUTOMATIC_ATTEMPT_ABORT",
     "stdioSocketPairs": "At most three tracked anonymous AF_UNIX SOCK_STREAM|SOCK_CLOEXEC protocol-zero pairs in phase 3",
@@ -136,8 +136,8 @@
     }
   ],
   "requiredHostedGates": [
-    "Exact separately approved one-file OpenSSL READ_FILE delta and two metadata joins; static startup preflight must now join all ten required identities before compile/image load/start. No complete closure claim.",
-    "Observe actual systemd255 transient active-slice retention after Docker child auto-removal, exact invocation/root/parent/child dev-inode ownership, zero pre-start baseline, raw hierarchical CPU through supervisor tail, positive empty parent before/after stable final counters, bounded durable checkpoint and exact owned release. Source implementation and pure tests are local; actual host behavior NEVER_RUN.",
+    "Previously approved exact OpenSSL file/two-metadata delta remains unchanged; repeat static startup joins against ten required identities before any separately authorized successor. No complete import closure claim.",
+    "Attempt4 proved transient active-slice retention, lifetime hierarchical CPU, positive empty parent/stable final counters, durable checkpoints and exact normal failure release. A separately approved successor must repeat these gates; current corrected fixture has never run.",
     "Exact authenticated artifact/source/tooling/source-manifest/read-binding/saved-layer joins",
     "Installed compiler identity and flags; Linux amd64 static supervisor and dependency-free preload; record actual compiled binary digests before start",
     "Default Docker/Yama own-child tracing, cgroup-v2 resource controls and immutable pre-tracee host admission",
@@ -147,16 +147,16 @@
     "Forced deadline with live owned thread, host kill and positive bound-cgroup extinction before fixture",
     "Six frozen phases with one source-bound helper, native process-close/staging-tightening/termination observations and final zero tracees/cgroup population"
   ],
-  "runtimeQualification": "CAPABILITY_ATTEMPT_FAILED; DEADLINE_AND_SIX_PHASES_NEVER_RUN",
+  "runtimeQualification": "ATTEMPT4_CAPABILITY_AND_DEADLINE_PASS; PHASE1_FAILED_SQLITE_FULL; PHASES2_TO6_NEVER_RUN; SUCCESSOR_ALL_PHASES_NEVER_RUN",
   "mergeguezOverlay": "SEPARATE_SOURCE_ONLY; NOT_INCLUDED; NO_ACTIVATION",
   "compiledBinaryHashes": "Recorded only by the approved hosted compile gate, before policy activation",
   "remainingAdmissionLimitations": [
-    "New read-policy addition, ephemeral accounting unit/control scope, exact new tooling commit/tree, branch/workflow4 publication and one15-minute hosted run all require bundled explicit approval. Remote branch/workflow absence, unused counters and retained artifact expiry must be rechecked immediately before publication.",
-    "Exact /etc/ssl/openssl.cnf image READ_FILE addition applied under explicit bundled approval; two metadata joins and all1548/360 joins are source-bound. No config/environment suppression or other policy expansion. Actual Node startup/loader behavior remains host-only.",
-    "Persistent-parent lifetime accounting/extinction source is implemented and locally tested. Real Linux/systemd255/Docker retention, raw kernel hierarchical charge after child removal and exact kill/release behavior remain NEVER_RUN; missing/changed parent/counters refuse with no cached/fallback proof.",
-    "Own-child ptrace/Yama, Landlock ABI, seccomp/AppArmor syscall/loader behavior, cgroup controls, default OCI runtime and actual PID1 remain runtime gates.",
+    "Workflow4/branch4 run1/attempt1 was consumed by run37256338785. The reviewed local fixture correction does not authorize publication or another hosted run; a fresh reviewed execution identity, exact new tooling commit/tree and explicit one-attempt approval are required. Recheck retained artifact expiry and unused identity immediately before any approved publication.",
+    "Exact OpenSSL original-image read and two metadata joins were approved and attempt4 startup/capability passed. All1548 image and360 namespace identities remain source-bound. No new read/config/environment/policy expansion accompanies this fixture correction.",
+    "Attempt4 proved persistent-parent lifetime accounting, actual Linux/systemd255/Docker retention, raw hierarchical CPU through supervisor tail, forced deadline, final empty parent and exact normal failure release in all three modes. Corrected fixture execution remains NEVER_RUN; each future attempt must rejoin these identities and observations.",
+    "Attempt4 startup, own-child tracing, Landlock/seccomp/default Docker controls and capability witnesses passed. Dynamic Doctor import/helper/phase3 transport and complete migration/restore/rollback remain unexecuted gates.",
     "Image and selected-file verification do not prove complete dynamic import closure, workers, helper behavior or real data migration/restore/rollback.",
-    "Normal Exception failure cleanup is covered by pure sequences; abrupt runner loss, SIGTERM/SIGINT/job cancellation and final runner teardown do not carry proven stop/extinction/retention guarantees.",
+    "Attempt4 normal exception failure cleanup is backed by actual durable parent checkpoints, empty cgroups, stopped Docker identities and resource release. Abrupt runner loss, signals/job cancellation and final runner teardown remain outside the proved lifecycle.",
     "A timed-out Docker create with no returned exact ID has UNKNOWN creation outcome; no broad name-based or forced cleanup is authorized.",
     "Failed attempts retain stopped container metadata, loaded image and unknown-cgroup mounted scratch; exact-ID non-running state is not whole-cgroup extinction.",
     "Configured local logger rotation is one 1MiB file; record/metadata overhead and a single Docker logging record can exceed that nominal threshold. Host stdout/stderr and upload caps remain strict.",
@@ -166,7 +166,7 @@
   "startupPrerequisitesSha256": "3f2f1e1984b22b97684ead8a15e312026a8f758fb691bf916b61f92a8ab701df",
   "lifetimeAccounting": {
     "owner": "scripts/proofs/v98-confined/accounting_owner.py",
-    "sourceStatus": "IMPLEMENTED_LOCAL_PURE_TESTED; REAL_HOST_NEVER_RUN",
+    "sourceStatus": "IMPLEMENTED_PURE_TESTED; ATTEMPT4_REAL_HOST_NORMAL_FAILURE_ACCOUNTING_PASSED; SUCCESSOR_NEVER_RUN",
     "unitName": "v98proof<decimal64bit_sha256_container_name>m[123].slice",
     "creation": "Absent nofollow parent path and exclusive StartTransientUnit fail mode; exact transient Description/InvocationID/ControlGroup/noDropIn/retention/resource joins; no keeper process. Race/foreign mutation refuses observed mismatches.",
     "baseline": "Raw hierarchical cpu.stat usage_usec must be0 while new parent is empty, before Docker create/start; no reset at native gate.",
@@ -184,5 +184,45 @@
       "Checkpoint custody then exact child/container/scratch/unit release"
     ]
   },
-  "opensslReadProposal": "scripts/proofs/v98-confined/proposal/openssl-read-proposal.json"
+  "opensslReadProposal": "scripts/proofs/v98-confined/proposal/openssl-read-proposal.json",
+  "fixtureStorageProposal": {
+    "status": "LOCAL_SOURCE_CORRECTION_ONLY; ALLOCATED_HIGH_WATER_AND_DOCTOR_TEMP_UNPROVED",
+    "fixtureSha256": "e2175143f99b35fd3cbcbac86a07951f76a0ff5f8d27744a31b39b5f63db2522",
+    "cards": 1081,
+    "workboardTables": 17,
+    "rawSeedPageSize": 4096,
+    "rawStateMaxPages": 512,
+    "rawWorkboardMaxPages": 256,
+    "batchedSynchronousSeed": true,
+    "rawCacheSpill": false,
+    "rawWalAutoCheckpoint": 0,
+    "bothRawWritersHeldThroughLiveBackups": true,
+    "rawReclaimedOnlyAfterClosedValidatedIndependentCopies": true,
+    "resourceExpansion": false,
+    "scratchTmpfsBytes": 16777216,
+    "completeFixtureStorageRequirementKnown": false,
+    "minimumExpandedCapCertified": false,
+    "newHostedRunOrPublicationAuthorized": false,
+    "remainingSizing": [
+      "full1081-card Workboard",
+      "backup/checkpoint allocated overlap",
+      "Doctor state growth and WAL/temp",
+      "snapshot owner retirement",
+      "restore allocated peak"
+    ]
+  },
+  "retainedAttempt4": {
+    "runId": 37256338785,
+    "toolingCommit": "d890e9ff289c657c8bb759a98511008e9772148d",
+    "toolingTree": "631b67e51519f5d8977550b4e2c5de43090b9451",
+    "terminalConclusion": "failure",
+    "elapsedSeconds": 344,
+    "capability": "PASS",
+    "forcedDeadline": "PASS",
+    "phase1Prepare": "FAILED_SQLITE_FULL",
+    "phases2Through6": "NEVER_RUN",
+    "normalFailureCpuExtinctionAndRelease": "PASS",
+    "imageRetainedAfterFailure": true,
+    "successorFixtureExecution": "NEVER_RUN"
+  }
 }

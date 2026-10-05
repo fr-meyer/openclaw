@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 const SCHEMA = "openclaw-parity-synthetic-fixture/v1";
 const TIMESTAMP = 1_790_000_000_000;
 const CARD_COUNT = 1081;
+const SEED_PAGE_LIMITS = Object.freeze({ state: 512, workboard: 256 });
 const PINS = Object.freeze({
   stateSql: "32a9ec60e38f1511e6f5fcd532f4c631d680d537a8325601f5bdf8221cf20fa3",
   workboardSource: "aa15bf48dbe292993a47c7286d5f7e12fe2ffbd74442c92b37ad98018bd2e810",
@@ -154,8 +155,47 @@ function closeDatabases(databases) {
   }
 }
 
+function seedDatabase(database, which, seed) {
+  // Keep committed seed pages in WAL for the original backup path, while
+  // avoiding one fsync/WAL rewrite per row. These limits apply only to the
+  // invented raw seed; the candidate Doctor and its connection are unchanged.
+  const pageLimit = SEED_PAGE_LIMITS[which];
+  if (!pageLimit || database.isTransaction !== false) {
+    throw new Error("INVALID_SEED_DATABASE");
+  }
+  database.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; PRAGMA cache_spill=OFF;");
+  if (database.prepare("PRAGMA foreign_keys").get()?.foreign_keys !== 1 ||
+      database.prepare("PRAGMA journal_mode").get()?.journal_mode !== "wal" ||
+      database.prepare("PRAGMA wal_autocheckpoint").get()?.wal_autocheckpoint !== 0 ||
+      database.prepare("PRAGMA cache_spill").get()?.cache_spill !== 0 ||
+      database.prepare("PRAGMA page_size").get()?.page_size !== 4096 ||
+      database.prepare(`PRAGMA max_page_count=${pageLimit}`).get()?.max_page_count !== pageLimit) {
+    throw new Error("SEED_STORAGE_PREREQUISITE_CHANGED");
+  }
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    seed();
+    database.exec("COMMIT");
+    const pageCount = database.prepare("PRAGMA page_count").get()?.page_count;
+    if (!Number.isSafeInteger(pageCount) || pageCount < 1 || pageCount > pageLimit) {
+      throw new Error("SEED_PAGE_COUNT_OUTSIDE_LIMIT");
+    }
+    return { pageSize: 4096, pageCount, pageLimit };
+  } catch (error) {
+    // SQLITE_FULL may already have rolled back the transaction. Preserve that
+    // primary failure instead of replacing it with "no transaction is active".
+    if (database.isTransaction) {
+      try {
+        database.exec("ROLLBACK");
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], "SEED_ROLLBACK_FAILED");
+      }
+    }
+    throw error;
+  }
+}
+
 function seedState(database, stateJson) {
-  database.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;");
   database.exec(stateJson.sql);
   database.prepare(`INSERT INTO schema_meta
     (meta_key,role,schema_version,agent_id,app_version,created_at,updated_at)
@@ -194,7 +234,6 @@ function seedState(database, stateJson) {
 }
 
 function seedWorkboard(database, sql) {
-  database.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;");
   database.exec(sql);
   database.prepare("INSERT INTO workboard_schema_migrations VALUES ('schema-3',?)").run(TIMESTAMP);
   database.prepare(`INSERT INTO workboard_boards
@@ -265,10 +304,21 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   }
   const stateDb = new DatabaseSync(sqlitePath(root, "raw", "state"));
   let workboardDb;
+  const seedStorage = {};
   try {
     workboardDb = new DatabaseSync(sqlitePath(root, "raw", "workboard"));
-    seedState(stateDb, { sql: stateSql, blocked });
-    seedWorkboard(workboardDb, workboardSqlFromSource(workboardSource));
+    seedStorage.state = seedDatabase(stateDb, "state", () => seedState(stateDb, { sql: stateSql, blocked }));
+    seedStorage.workboard = seedDatabase(workboardDb, "workboard", () => seedWorkboard(workboardDb, workboardSqlFromSource(workboardSource)));
+    for (const which of ["state", "workboard"]) {
+      const storage = seedStorage[which];
+      const wal = fs.statSync(sqlitePath(root, "raw", which) + "-wal");
+      const frameSize = storage.pageSize + 24;
+      if (!wal.isFile() || wal.nlink !== 1 || wal.size < 32 + frameSize ||
+          wal.size > 32 + storage.pageLimit * frameSize || (wal.size - 32) % frameSize !== 0) {
+        throw new Error(`SEED_WAL_OUTSIDE_LIMIT:${which}`);
+      }
+      storage.walBytesBeforeBackup = wal.size;
+    }
     await backup(stateDb, sqlitePath(root, "predecessor", "state"));
     await backup(workboardDb, sqlitePath(root, "predecessor", "workboard"));
   } finally {
@@ -289,11 +339,12 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   requireConsolidated(root, "candidate");
   const stateRead = new DatabaseSync(sqlitePath(root, "predecessor", "state"), { readOnly: true });
   let workboardRead;
+  let manifest;
   try {
     workboardRead = new DatabaseSync(sqlitePath(root, "predecessor", "workboard"), { readOnly: true });
     assertIntegrity(stateRead);
     assertIntegrity(workboardRead);
-    const manifest = { schema: SCHEMA, syntheticOnly: true, sourcePins: PINS,
+    manifest = { schema: SCHEMA, syntheticOnly: true, sourcePins: PINS, seedStorage,
       predecessorStateVersion: 17, candidateStateVersion: 19,
       state: captureTables(stateRead, STATE_TABLES),
       workboard: captureTables(workboardRead, WORKBOARD_TABLES),
@@ -309,6 +360,19 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   } finally {
     closeDatabases([workboardRead, stateRead]);
   }
+  requireConsolidated(root, "predecessor");
+  requireConsolidated(root, "candidate");
+  for (const which of ["state", "workboard"]) {
+    for (const phase of ["predecessor", "candidate"]) {
+      if (sha256(fs.readFileSync(sqlitePath(root, phase, which))) !== manifest.predecessorDbHashes[which]) {
+        throw new Error(`PREPARED_DATABASE_COPY_CHANGED:${phase}:${which}`);
+      }
+    }
+  }
+  // No assertion, migration or restore reads raw. Preserve it on every earlier
+  // failure; successful preparation keeps the byte-pinned predecessor and the
+  // independent candidate as the complete asserted inputs.
+  fs.rmSync(raw, { recursive: true });
   process.stdout.write(JSON.stringify({ prepared: true, syntheticOnly: true, cards: CARD_COUNT }) + "\n");
 }
 

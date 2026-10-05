@@ -13,10 +13,20 @@ SPEC = importlib.util.spec_from_file_location("v98_inert_openssl_proposal",
 RENDER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RENDER)
 PROPOSED_DERIVE_SHA = "bce4fb6fd9150e02a553df09042859e7654ed2f6278880ac48fc0ccbfb953b09"
+FIXTURE_SIZING_DERIVE_SHA = "62e6d5dad87f745e527528e5a38fdb5548f5a30bd25db49a22da14d8634e9927"
+FIXTURE_SIZING_SHA = "e2175143f99b35fd3cbcbac86a07951f76a0ff5f8d27744a31b39b5f63db2522"
 
 
 def baseline_source(raw):
     """Test fixture only: accept exactly the original or exact projected source."""
+    if RENDER.digest(raw) == FIXTURE_SIZING_DERIVE_SHA:
+        pin = '"/proof/inputs/fixture.mjs": "'
+        text = raw.decode("utf-8")
+        if text.count(pin + FIXTURE_SIZING_SHA) != 1:
+            raise ValueError("fixture pin inverse anchor changed")
+        raw = text.replace(pin + FIXTURE_SIZING_SHA, pin + "777936fa311d3b6fb141dff1fc67f46e2cfddf0651bf75b30ae62f74368f674e").encode("utf-8")
+        if RENDER.digest(raw) != PROPOSED_DERIVE_SHA:
+            raise ValueError("fixture pin inverse did not restore exact projection")
     if RENDER.digest(raw) == RENDER.DERIVE_SHA:
         return raw
     if RENDER.digest(raw) != PROPOSED_DERIVE_SHA:

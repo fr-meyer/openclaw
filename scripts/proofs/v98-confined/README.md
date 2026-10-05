@@ -6,13 +6,14 @@ This proof tooling preserves product commit
 Linux amd64 image; it does not rebuild, patch, install dependencies into, or
 start the image's Gateway entrypoint. No fixture phase has run locally.
 
-This unpublished successor implements complete lifetime-accounting and cleanup
-source ownership. The exact startup-policy delta remains unapplied, and real
-host evidence remains unqualified. No new publication or hosted run is
-authorized. Branch `candidate/v2026.9.8-runtime-admission-3` and its workflow
-already consumed the approved one-run/one-attempt allowance at commit
-`d7a0b7624f1802d97c2672301fe4c90315063030`. They are retained historical identities,
-not a destination for this successor. Any future execution needs its own
+Attempt4 at `d890e9ff289c657c8bb759a98511008e9772148d` proved startup,
+capability, forced deadline and normal failure lifetime-accounting/cleanup.
+Fixture prepare failed with `SQLITE_FULL`; phases 2–6 were never run. This local
+successor corrects raw fixture storage without changing the product or resource
+profile; all successor phases remain unexecuted. No new publication or hosted
+run is authorized. Branch `candidate/v2026.9.8-runtime-admission-4` and its
+workflow consumed their one-run/one-attempt allowance. Prior failed receipts
+remain historical evidence. Any future execution needs its own
 reviewed identity and explicit approval after the blocking gates close. No main
 merge, force push, production access, provider data, new VM, registry
 publication or production deployment is included.
@@ -58,14 +59,13 @@ described below; no failed receipt is reclassified.
 `startup-prerequisites.json` inventories ten canonical Node/GNU/OpenSSL regular
 file identities and their required alias/directory metadata. The static check
 compares these against both frozen read lists and the reviewed binding before
-compilation, image load or container start. The current policy intentionally
-refuses: it lacks `/etc/ssl/openssl.cnf` and two metadata joins. No permission
-was added. The minimal proposed approval is `READ_FILE` for this exact 12,332-byte
+compilation, image load or container start. Attempt4 applied the explicitly
+approved `READ_FILE` for this exact 12,332-byte
 regular file (SHA-256
 `7ae8cae2e64856b34c80276deb1dcf60f76da27bc1e00382201ba7bb7dc33311`)
 in parent and fresh Node helper scopes, with `/etc/ssl` and the
 `/usr/lib/ssl/openssl.cnf` alias bound as metadata. No directory read, write,
-executable, syscall, socket, child or environment change is proposed.
+executable, syscall, socket, child or environment change accompanied that delta.
 The exact configuration has no active includes or config-driven provider/engine
 loads. Conditional CA, NSS, locale/ICU, timezone, entropy and introspection reads
 are inventoried; no complete dynamic runtime closure is claimed. `node --version`
@@ -203,9 +203,10 @@ Portable C decision/BPF/SHA tests, Python adversarial archive/descriptor/host
 tests and syntax checks are offline evidence. They do not prove Linux syscall
 translation, ptrace support under default Docker protections, Landlock
 inheritance, native loader compatibility, Worker/fsync fidelity, migration,
-restore or rollback. Full capability remains unqualified; deadline and all six
-fixture phases remain `NEVER_RUN`. Retained failed receipts are never converted
-to passes.
+restore or rollback. Attempt4 supplies actual startup, capability, deadline and
+normal failure accounting/shutdown evidence. Its fixture prepare failed, and
+phases 2–6 were `NEVER_RUN`. All corrected successor phases remain `NEVER_RUN`.
+Retained failed receipts are never converted to passes.
 
 `source-manifest.json` binds executable tooling, policies and frozen inputs.
 The final external approval packet binds that manifest, exact Git commit/tree,
@@ -216,18 +217,20 @@ It must not silently fetch a replacement artifact
 or retry with a wider profile. Binary digests are recorded after the approved
 host compilation, before any container execution, rather than invented locally.
 
-## Unpublished accounting successor and exact approval scope
+## Persistent accounting owner and consumed attempt4 scope
 
 The reviewed 50-check local successor `a61c1c386464de0db9379809b4cf8ba8e755b586`
-remains unchanged. This isolated successor implements the previously missing host
-lifetime accounting owner in `accounting_owner.py`; real host evidence remains
-`NEVER_RUN`. It removes the old child-scope-only CPU/extinction/kill owner.
+remains preserved. The persistent lifetime accounting owner in
+`accounting_owner.py` replaced the old child-scope-only CPU/extinction/kill
+owner, and its real host normal-failure behavior passed in attempt4. The current
+fixture correction does not alter that owner; new fixture execution remains
+`NEVER_RUN`.
 
 For each mode, installed systemd 255 creates one fresh active transient slice
 `v98proof<decimal64bit-token>m[123].slice`. A nofollow parent-path absence check
 precedes exclusive `StartTransientUnit` in fail mode. PID1 manages the ephemeral
-`/run/systemd/transient/<exact-unit>.slice` fragment. This new host control scope
-requires explicit approval: there is no manual/persistent unit, drop-in or
+`/run/systemd/transient/<exact-unit>.slice` fragment. This host control scope
+was explicitly approved for attempt4: there is no manual/persistent unit, drop-in or
 settings change and no keeper process. Exact description, InvocationID,
 ControlGroup, root/parent/child dev/inode, retention properties and resource
 controls remain bound. The parent and child each enforce one CPU, 1 GiB,
@@ -263,27 +266,44 @@ These source contracts do not prove the runner's vendor kernel or systemd build;
 actual retention, hierarchical charges, deadline signal and cleanup must pass
 inside the proposed hosted attempt under default protections.
 
-The pending startup delta is **unapplied**. Exact image config ID
+The approved startup delta was published at `d890e9ff289c657c8bb759a98511008e9772148d`.
+Exact image config ID
 `sha256:1b2669dcea79d48e6c9f1e86a81495746e62f6d4b9a7837eaccca5ce0a266c39`
 contains original `/etc/ssl/openssl.cnf`, mode 0644, 12,332 bytes, SHA256
 `7ae8cae2e64856b34c80276deb1dcf60f76da27bc1e00382201ba7bb7dc33311`.
 Its retained exact bytes are `proposal/image-openssl.cnf`; that copy is neither
-installed nor included in the runtime read bundle. The proposed original-image
+installed nor included in the runtime read bundle. The original-image
 READ_FILE grant covers parent and the fresh Node snapshot helper only, with
 metadata joins for `/etc/ssl` and `/usr/lib/ssl/openssl.cnf`, which aliases the
-same inode. No directory-content grant is proposed. Frozen Node initializes
+same inode. No directory-content grant was added. Frozen Node initializes
 this config before JavaScript; the retained exit13/EACCES proves it is needed.
-No config suppression or argv/environment change is proposed.
+No config suppression or argv/environment change was added.
 
-After approval, exactly one canonical read is added (1547→1548 files) and two
-metadata joins (358→360); all other read identities and all write/network/exec/
-syscall/native/product/fixture scopes remain unchanged. The external bundled
-packet binds the unpublished commit/tree, exact unapplied patch, projected
-source manifest, local checks and independent review. It proposes branch
-`candidate/v2026.9.8-runtime-admission-4` and workflow
-`.github/workflows/v98-confined-runtime-4.yml`, once, run1/attempt1, Ubuntu24.04,
-15-minute job, seven-day at-most-20MiB evidence. It reuses the same authenticated
-retained image without dependency installation, build or registry publication.
-Capability precedes forced deadline; both must pass before the six synthetic
-phases. Remote absence/counters and artifact expiry need a read-only immediate
-recheck. No current publication or hosted execution is authorized.
+Exactly one canonical read was added (1547→1548 files) and two metadata joins
+(358→360). Hosted run `37256338785` consumed the one-use branch/workflow4 identity
+and ended with failure after 344 seconds. Startup, capability, forced deadline,
+hierarchical CPU accounting and normal failure shutdown passed. Fixture prepare
+then failed with `SQLITE_FULL` while inserting Workboard cards; phases 2–6 were
+`NEVER_RUN`. The sealed attempt4 receipts remain immutable historical evidence.
+
+The local storage correction batches each raw seed in one synchronous
+transaction with verified WAL/checkpoint/cache-spill settings and fail-closed
+4096-byte page limits: 512 state pages and 256 Workboard pages. It checks committed
+page counts and complete bounded WAL lengths before the original live backups.
+Both writers remain open through both backups. After successful backup, close,
+integrity/schema/row/file checks and post-close independent copy hash checks,
+only the unused raw seed subtree is reclaimed. All 1,081 cards, 17 Workboard tables,
+publisher data and predecessor/candidate/rollback assertions remain intact.
+
+These raw limits do not bound the reopened Doctor's migrated state, WAL,
+statement/index temporaries, helper controls or allocated tmpfs high-water.
+The scratch cap remains 16 MiB; all other resource/security/product limits and
+the authenticated built image are unchanged. Complete six-phase storage and
+runtime proof remains pending. This local correction authorizes no publication,
+hosted retry or resource increase. A future attempt needs a reviewed fresh
+execution identity and explicit approval; workflow4 cannot be rerun.
+
+[SQLite WAL](https://www.sqlite.org/wal.html) and
+[SQLite PRAGMAs](https://www.sqlite.org/pragma.html) describe the transaction,
+checkpoint and cache-spill behavior underlying this source correction. These
+contracts and inert tests do not replace actual confined runtime measurements.

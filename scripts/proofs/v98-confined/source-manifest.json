@@ -13,10 +13,10 @@
       "sha256": "880f06c037b9b3fbcab71c1d7312ee13acdf95892cf2bdc0ad2adc6eb650089d"
     },
     {
-      "bytes": 19733,
+      "bytes": 20956,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/README.md",
-      "sha256": "97795134fec99e8e4f36407496a138b82b23029427ff4ebbef62d6cc54bca180"
+      "sha256": "0f6b773c896ebc47597ab7b0db303bd345a9b0b6b43572e663e9ca24ff245ed0"
     },
     {
       "bytes": 21278,
@@ -34,7 +34,7 @@
       "bytes": 22960,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/derive_read_policy.py",
-      "sha256": "bce4fb6fd9150e02a553df09042859e7654ed2f6278880ac48fc0ccbfb953b09"
+      "sha256": "62e6d5dad87f745e527528e5a38fdb5548f5a30bd25db49a22da14d8634e9927"
     },
     {
       "bytes": 75964,
@@ -43,10 +43,10 @@
       "sha256": "c5859f4938ca35ac34f9d50705691119294c7b9a392026da49bd398d1ee762c9"
     },
     {
-      "bytes": 21520,
+      "bytes": 24602,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/inputs/fixture.mjs",
-      "sha256": "777936fa311d3b6fb141dff1fc67f46e2cfddf0651bf75b30ae62f74368f674e"
+      "sha256": "e2175143f99b35fd3cbcbac86a07951f76a0ff5f8d27744a31b39b5f63db2522"
     },
     {
       "bytes": 43645,
@@ -103,10 +103,10 @@
       "sha256": "ef248d050ede519c535b1370e574f3007775bf241ddb81b08b96826a48c12bb6"
     },
     {
-      "bytes": 13130,
+      "bytes": 14868,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/packet.json",
-      "sha256": "d03fde4e89ff28fb9b61dc644a398a585c14020c5c4152e00f1f7e5b497d6eb6"
+      "sha256": "1ee5d6c047f93b3c1b39329962e6d9c0c72b3ee6af3bd11d2ace62a9c997808d"
     },
     {
       "bytes": 12332,
@@ -142,7 +142,7 @@
       "bytes": 585337,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/read-policy/runtime-read-binding.json",
-      "sha256": "55c73448511958e494b25e2437fed2642f41fe4bde8a8598228e61e546b3489e"
+      "sha256": "4bec72ce028987c862fc2cef16a7906bad8295695de89565f7fde6542943fdec"
     },
     {
       "bytes": 12586,
@@ -169,10 +169,10 @@
       "sha256": "ca5e92710cec13c7205f60510ccd212e7aa63c7c8356dde86be9cd861f2ebdd6"
     },
     {
-      "bytes": 11163,
+      "bytes": 11887,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/test_openssl_proposal.py",
-      "sha256": "18b730654cd7de7b934b1716d996b121eeaf579c4cce630d521a89f17f8084f4"
+      "sha256": "5a8f6b34771d7cc0e066686d92e79f79efaa076c05b21046f0f7e26518fe4091"
     },
     {
       "bytes": 10816,
@@ -190,7 +190,7 @@
       "bytes": 28415,
       "mode": "0o644",
       "path": "scripts/proofs/v98-confined/v98-supervisor.c",
-      "sha256": "3f4a60f3d2b2ea9d3ce25da79a29c9bc23800140de48e5e6aee76828dd0258a7"
+      "sha256": "383a90665947deb80171ff7c128f0e5cfdd2422652842e07504327cfd3be10c5"
     },
     {
       "bytes": 4364,
