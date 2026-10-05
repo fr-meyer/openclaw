@@ -1,0 +1,6 @@
+tree d979e9b8a1a22f77bf918bea15ab6f98e716d7dd
+parent bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
+author Codex qualification <codex@localhost> 1791200583 +0000
+committer Codex qualification <codex@localhost> 1791200583 +0000
+
+fix(build): guard missing compiled inventory entry

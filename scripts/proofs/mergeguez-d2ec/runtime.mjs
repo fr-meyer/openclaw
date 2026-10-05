@@ -1,8 +1,9 @@
-// Qualification tooling only. Never imports OpenClaw, starts a Gateway or calls a provider.
+// Task qualification orchestration. Original compiled native owners run only in the isolated native phase; no provider route.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
+import { inventory, validateBuildReceipt } from './materialize.mjs';
 
 const contract = JSON.parse(fs.readFileSync('/proof/contract.json', 'utf8'));
 const phase = process.argv[2];
@@ -10,7 +11,7 @@ const job = process.env.QUALIFICATION_JOB;
 const nonce = process.env.QUALIFICATION_NONCE;
 const deadline = Number(process.env.QUALIFICATION_UPTIME_DEADLINE);
 const source = '/qualification/source';
-const reports = '/qualification/reports';
+const reports = phase === 'offline-native' ? '/qualification/native-output' : '/qualification/reports';
 const receipt = { schema: 'mergeguez.container-qualification/v1', phase, job, complete: false, commands: [] };
 const uptime = () => Number(fs.readFileSync('/proc/uptime', 'utf8').split(' ')[0]);
 function requireThat(ok, message) { if (!ok) throw new Error(message); }
@@ -19,8 +20,8 @@ function sha(file) { return crypto.createHash('sha256').update(fs.readFileSync(f
 function git(args) { return execFileSync('git', ['-C', source, ...args], { encoding: 'utf8', env: childEnv(false), timeout: Math.min(10000, remaining() * 1000) }).trim(); }
 function childEnv(network) {
   return {
-    PATH: '/qualification/toolchain/bin:/qualification/toolchain:/usr/local/bin:/usr/bin:/bin',
-    HOME: '/qualification/home', TMPDIR: '/qualification/tmp', LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8',
+    PATH: phase === 'offline-native' ? '/usr/local/bin:/usr/bin:/bin' : '/qualification/toolchain/bin:/qualification/toolchain:/usr/local/bin:/usr/bin:/bin',
+    HOME: phase === 'offline-native' ? '/qualification/native-output/home' : '/qualification/home', TMPDIR: '/tmp', LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8',
     COREPACK_HOME: '/qualification/toolchain/corepack', COREPACK_ENABLE_NETWORK: network ? '1' : '0',
     PNPM_HOME: '/qualification/toolchain/bin', CI: 'true', GITHUB_ACTIONS: 'true',
     GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null',
@@ -57,10 +58,10 @@ function inspectTree(root, allowToolLinks = false) {
   }
   return count;
 }
-async function run(argv, network = false) {
+async function run(argv, network = false, cwd = source, environment = {}) {
   remaining(); const started = uptime();
   console.log(JSON.stringify({ event: 'command-start', argv, phase }));
-  const child = spawn(argv[0], argv.slice(1), { cwd: source, env: childEnv(network), stdio: ['ignore', 'inherit', 'inherit'] });
+  const child = spawn(argv[0], argv.slice(1), { cwd, env: { ...childEnv(network), ...environment }, stdio: ['ignore', 'inherit', 'inherit'] });
   const timer = setTimeout(() => { child.kill('SIGTERM'); }, remaining() * 1000);
   let result;
   try {
@@ -131,7 +132,7 @@ function qualifySdkOutputs() {
 }
 
 async function main() {
-  requireThat(['warm-fetch', 'offline-compile'].includes(phase), 'unsupported phase');
+  requireThat(['warm-fetch', 'offline-compile', 'offline-native'].includes(phase), 'unsupported phase');
   requireThat(/^[0-9]+-1$/.test(job) && /^[0-9a-f]{64}$/.test(nonce), 'missing host issuance identity');
   remaining();
   const limits = {};
@@ -146,9 +147,22 @@ async function main() {
   while (!fs.existsSync('/control/gate.json')) { requireThat(uptime() < waitUntil, 'host admission gate absent'); await new Promise(r => setTimeout(r, 100)); }
   const gate = JSON.parse(fs.readFileSync('/control/gate.json', 'utf8'));
   requireThat(gate.job === job && gate.phase === phase && gate.nonce === nonce && gate.admitted === true, 'wrong host admission gate');
-  attestSource();
+  if (phase !== 'offline-native') attestSource();
   requireThat(/^24\.(?:1[6-9]|[2-9][0-9])\./.test(process.versions.node), 'pinned Node does not satisfy original source engine');
-  if (phase === 'warm-fetch') {
+  if (phase === 'offline-native') {
+    requireThat(process.getuid() === contract.compiler_uid && process.getgid() === contract.compiler_gid, 'native UID/GID mismatch');
+    const provenance = JSON.parse(fs.readFileSync('/artifact/qualification-provenance.json', 'utf8'));
+    validateBuildReceipt(provenance.build, contract, job);
+    requireThat(provenance.job === job && provenance.source_commit === contract.source_commit && provenance.source_tree === contract.source_tree && provenance.admissionOrReleaseAcceptance === false, 'runnable source/job join differs');
+    const actual = inventory('/artifact', contract.portable_runnable_unpacked_cap_bytes, Date.now() + remaining() * 1000);
+    const packedGraph = actual.entries.filter(entry => entry.path !== 'qualification-provenance.json');
+    requireThat(crypto.createHash('sha256').update(JSON.stringify(packedGraph)).digest('hex') === provenance.runnable.sha256, 'immutable runnable graph differs from same-build provenance');
+    fs.mkdirSync('/qualification/native-output/home', { recursive: true });
+    await run(contract.native_argv, false, '/artifact');
+    const observations = JSON.parse(fs.readFileSync('/qualification/native-output/native-observations.json', 'utf8'));
+    requireThat(observations.completed === true && observations.admissionOrReleaseAcceptance === false && observations.priorArtifactParity === 'unproved' && observations.ownership.some(owner => owner.status === 'held-for-reconciliation'), 'original native proof failed or lost durable unknown ownership');
+    receipt.native = { report_sha256: sha('/qualification/native-output/native-observations.json'), artifact_inventory_sha256: actual.sha256, source_commit: contract.source_commit, source_tree: contract.source_tree, admissionOrReleaseAcceptance: false, unknown_ownership: 'retained; no release or approval' };
+  } else if (phase === 'warm-fetch') {
     await run(['corepack', 'enable', '--install-directory', '/qualification/toolchain/bin'], true);
     await run(['corepack', 'prepare', contract.packageManager, '--activate'], true);
     await run(['corepack', contract.packageManager, '--version'], true);
@@ -167,13 +181,27 @@ async function main() {
       attestSource();
       // The original source wrappers perform their own physical compiler and
       // declaration ownership/heap admission. They are never substituted.
-      await run(argv);
+      await run(argv, false, source, contract.compile_environment);
     }
     receipt.sdk = qualifySdkOutputs();
     receipt.packages = qualifyPackageOutputs();
+    attestSource();
+    const build = { complete: true, job, source_commit: contract.source_commit, source_tree: contract.source_tree, compile_argv: contract.compile_argv, environment: contract.compile_environment, commands: receipt.commands.slice(), sdk: receipt.sdk, packages: receipt.packages };
+    fs.writeFileSync(reports + '/offline-compile-build.json', JSON.stringify(build) + '\n', { flag: 'wx', mode: 0o600 });
+    requireThat(JSON.parse(fs.readFileSync(source + '/node_modules/npm/package.json', 'utf8')).version === contract.npm_version, 'locked local npm package absent');
+    const npm = execFileSync('pnpm', ['exec', 'npm', '--version'], { encoding: 'utf8', env: childEnv(false), cwd: source, timeout: Math.min(10000, remaining() * 1000) }).trim();
+    requireThat(npm === contract.npm_version, 'locked local npm version mismatch');
+    receipt.versions = { npm };
+    await run(contract.package_argv);
+    attestSource();
+    await run(contract.deploy_argv);
+    await run(contract.materialize_argv, false, source, { QUALIFICATION_JOB: job });
+    receipt.runnable = JSON.parse(fs.readFileSync(reports + '/runnable-materialization.json', 'utf8'));
   }
-  attestSource();
-  requireThat(sha(source + '/pnpm-lock.yaml') === contract.lock_sha256, 'lock changed during qualification');
+  if (phase !== 'offline-native') {
+    attestSource();
+    requireThat(sha(source + '/pnpm-lock.yaml') === contract.lock_sha256, 'lock changed during qualification');
+  }
   receipt.complete = true;
 }
 try { await main(); } catch (error) { receipt.error = String(error.message); process.exitCode = 1; }

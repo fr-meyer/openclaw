@@ -1,42 +1,62 @@
 {
+  "schema": "mergeguez.sealed-runnable-qualification-tooling/v2",
+  "source_commit": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
+  "source_tree": "7b39f2755c80152d5f7299153e344ec6f3182f99",
   "files": [
     {
       "path": "contract.json",
-      "bytes": 76987,
-      "sha256": "574ba141026878419fa373a7da7cf92648c4c4a751b22eddc2c9c21518082181"
+      "bytes": 80806,
+      "sha256": "e9505f5713d0f6d779a649a90eb271f275acef937dd0352b6ea73091a1b02f78"
     },
     {
       "path": "driver.py",
-      "bytes": 43066,
-      "sha256": "28354de5a957bf9e1fd56313d21c2edf049596c8ef9b3451f7e6499a540204f6"
+      "bytes": 49583,
+      "sha256": "6d8b0550584f958a2f36dde5a91072ac4b23cce19b705e29db8b0431658ea78f"
     },
     {
-      "path": "runtime.mjs",
-      "bytes": 13217,
-      "sha256": "565f2ad13cef04493ac8a1857a1d2132a76cbeef1204e281250f5a308ebda9b6"
+      "path": "materialize.mjs",
+      "bytes": 12358,
+      "sha256": "a1682612b4a4926a318bf899dcb0ed99073f9409702e74cb7d7d945530857a2d"
     },
     {
-      "path": "source.commit",
+      "path": "parent-source.commit",
       "bytes": 273,
       "sha256": "55dbf17dcbd3350b6d4445ad08c015565cf481335b39a2facfb31951eb98eee3"
     },
     {
-      "path": "source.patch",
+      "path": "parent-source.patch",
       "bytes": 761943,
       "sha256": "d4713bd05132d7c4f29edcc56a9f987ce6feac1dff5ee290ff9d2688fba47f29"
     },
     {
+      "path": "runtime.mjs",
+      "bytes": 16707,
+      "sha256": "a707b8cd9502b0b72c1c9a5f5b3a36da3e73d0e35932030a2194facfb8e4a9a4"
+    },
+    {
+      "path": "source.commit",
+      "bytes": 291,
+      "sha256": "8c4e4f1d50dff938e4acf74d0854d9a77d38815ae9f1f205a1b47d111af5a6c6"
+    },
+    {
+      "path": "source.patch",
+      "bytes": 122744,
+      "sha256": "eda4d7977329d43e123e0636ecf8d36ea2d29285262c2b2f0af23663bfbc5a3c"
+    },
+    {
       "path": "test_driver.py",
-      "bytes": 49755,
-      "sha256": "dff7eca511920dca7cef7570f9caf26bed82490dddb75b0299a72742f03d171e"
+      "bytes": 56479,
+      "sha256": "ec1df4b95832364ad7f1764d8a80093c9ba6a1e65d384ea70d58696a0e4f34f6"
+    },
+    {
+      "path": "test_materialize.mjs",
+      "bytes": 5162,
+      "sha256": "a94d0d175d16e7891ec8c32e03cadd033fbb6df0a2c5ad3f19942938b5eceb53"
     },
     {
       "path": "test_runtime.mjs",
-      "bytes": 10300,
-      "sha256": "0b3b7bfb4d2e6aea600cd557edd20673b06980c9ac95ff7f6e60eea81bfb81d2"
+      "bytes": 12830,
+      "sha256": "46419ec728fd21c677d644e40ce3eba43d5f01bffc746ad5836f7a021f3e03d7"
     }
-  ],
-  "schema": "mergeguez.sealed-qualification-tooling/v1",
-  "source_commit": "e6903a41049ace9a4ae22e467f244af747157b0d",
-  "source_tree": "d979e9b8a1a22f77bf918bea15ab6f98e716d7dd"
+  ]
 }

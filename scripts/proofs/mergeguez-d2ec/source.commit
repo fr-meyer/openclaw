@@ -1,6 +1,6 @@
-tree d979e9b8a1a22f77bf918bea15ab6f98e716d7dd
-parent bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
-author Codex qualification <codex@localhost> 1791200583 +0000
-committer Codex qualification <codex@localhost> 1791200583 +0000
+tree 7b39f2755c80152d5f7299153e344ec6f3182f99
+parent e6903a41049ace9a4ae22e467f244af747157b0d
+author Franck MEYER <meyerfranckpro@gmail.com> 1791229801 +0000
+committer Franck MEYER <meyerfranckpro@gmail.com> 1791229801 +0000
 
-fix(build): guard missing compiled inventory entry
+Fix original run ownership and qualify native recovery lifecycle

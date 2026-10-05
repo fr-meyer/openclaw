@@ -156,7 +156,7 @@ class Settlement(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name).resolve()
         self.clock = patch.object(d, 'uptime', return_value=10); self.clock.start()
-        self.driver = object.__new__(d.Driver); self.driver.c = C; self.driver.control = self.root; self.driver.mount = self.root / 'mount'; self.driver.backing = self.root / 'backing'; self.driver.state = {'job': '1-1', 'phase': 'compiled', 'containers': [], 'complete': False, 'device': 1}; self.driver.state_path = self.root / 'state.json'; self.driver.cleanup_deadline = 1000; self.driver.save = lambda: d.atomic(self.root / 'state.json', self.driver.state)
+        self.driver = object.__new__(d.Driver); self.driver.c = C; self.driver.control = self.root; self.driver.mount = self.root / 'mount'; self.driver.backing = self.root / 'backing'; self.driver.state = {'job': '1-1', 'phase': 'qualified', 'compiled_complete': True, 'containers': [], 'complete': False, 'device': 1}; self.driver.state_path = self.root / 'state.json'; self.driver.cleanup_deadline = 1000; self.driver.save = lambda: d.atomic(self.root / 'state.json', self.driver.state)
         self.calls = []; self.driver.docker = lambda *args, **kwargs: self.calls.append(args) or ''
         # These existing tests isolate container settlement/result publication.
         # Native storage observation is exercised separately below.
@@ -188,13 +188,13 @@ class Settlement(unittest.TestCase):
         self.assertFalse(self.driver.state['complete']); self.assertTrue(self.driver.state['cleanup_issues'])
     def test_umount_failure_never_publishes_success(self):
         self.driver.state['loop'] = '/dev/loop9'; self.driver.state['device'] = 1
-        (self.root / 'compiled.tar.gz').write_bytes(b'candidate')
+        (self.root / 'runnable.tar.gz').write_bytes(b'candidate')
         def command(argv, **kwargs):
             if 'umount' in argv: raise d.Refusal('mount ownership unknown')
             return ''
         self.driver.command = command
         with self.assertRaises(d.Refusal): self.driver.cleanup()
-        state = json.loads((self.root / 'upload/state.json').read_text()); self.assertFalse(state['complete']); self.assertFalse((self.root / 'upload/compiled.tar.gz').exists())
+        state = json.loads((self.root / 'upload/state.json').read_text()); self.assertFalse(state['complete']); self.assertTrue((self.root / 'upload/runnable.tar.gz').exists())
     def test_archive_failure_never_publishes_success(self):
         self.driver.command = lambda *a, **k: (_ for _ in ()).throw(d.Refusal('compiled cap exceeded'))
         with self.assertRaises(d.Refusal): self.driver.cleanup()
@@ -204,7 +204,7 @@ class Settlement(unittest.TestCase):
         with self.assertRaises(d.Refusal): self.driver.cleanup()
         self.assertFalse(json.loads((self.root / 'upload/state.json').read_text())['complete'])
     def test_archive_rename_failure_retains_false_receipt_and_original(self):
-        archive = self.root / 'compiled.tar.gz'; archive.write_bytes(b'candidate')
+        archive = self.root / 'runnable.tar.gz'; archive.write_bytes(b'candidate')
         self.driver.command = lambda *a, **k: ''
         rename = d.os.rename
         def fail_archive(source, target):
@@ -215,7 +215,7 @@ class Settlement(unittest.TestCase):
         self.assertFalse(json.loads((self.root / 'upload/state.json').read_text())['complete'])
         self.assertEqual(archive.read_bytes(), b'candidate')
     def test_stage_publication_failure_never_exposes_success(self):
-        (self.root / 'compiled.tar.gz').write_bytes(b'candidate')
+        (self.root / 'runnable.tar.gz').write_bytes(b'candidate')
         self.driver.command = lambda *a, **k: ''
         rename = d.os.rename
         def fail_stage(source, target):
@@ -225,9 +225,9 @@ class Settlement(unittest.TestCase):
             with self.assertRaises(OSError): self.driver.cleanup()
         self.assertFalse(json.loads((self.root / 'upload/state.json').read_text())['complete'])
         self.assertFalse(json.loads((self.root / 'upload.stage/state.json').read_text())['complete'])
-        self.assertEqual((self.root / 'upload.stage/compiled.tar.gz').read_bytes(), b'candidate')
+        self.assertEqual((self.root / 'upload.stage/runnable.tar.gz').read_bytes(), b'candidate')
     def test_retention_copy_failure_never_exposes_success(self):
-        (self.root / 'compiled.tar.gz').write_bytes(b'candidate'); (self.root / 'host.log').write_bytes(b'captured')
+        (self.root / 'runnable.tar.gz').write_bytes(b'candidate'); (self.root / 'host.log').write_bytes(b'captured')
         self.driver.command = lambda *a, **k: ''
         write = Path.write_bytes
         def fail_copy(path, body):
@@ -238,12 +238,12 @@ class Settlement(unittest.TestCase):
         self.assertFalse(json.loads((self.root / 'upload/state.json').read_text())['complete'])
         self.assertEqual((self.root / 'host.log').read_bytes(), b'captured')
     def test_success_is_last_atomic_receipt_after_complete_publication(self):
-        (self.root / 'compiled.tar.gz').write_bytes(b'candidate')
+        (self.root / 'runnable.tar.gz').write_bytes(b'candidate')
         self.driver.command = lambda *a, **k: ''
         writes = []; atomic = d.atomic
         def observe(path, value, mode=0o600):
             if value.get('complete'):
-                self.assertEqual((self.root / 'upload/compiled.tar.gz').read_bytes(), b'candidate')
+                self.assertEqual((self.root / 'upload/runnable.tar.gz').read_bytes(), b'candidate')
                 self.assertFalse((self.root / 'upload.stage').exists())
             writes.append((path, value['complete'])); atomic(path, value, mode)
         with patch.object(d, 'atomic', side_effect=observe): self.driver.cleanup()
@@ -461,7 +461,7 @@ class ExecutionGuards(unittest.TestCase):
         calls = []; self.driver.docker = lambda *args, **kwargs: calls.append(args) or 'a' * 64
         class StopBeforeAnyStart(Exception): pass
         self.driver.verify_owned = lambda *a, **k: (_ for _ in ()).throw(StopBeforeAnyStart())
-        with patch.object(d, 'memory_available', return_value=15 * d.GIB):
+        with patch.object(d, 'memory_available', return_value=15 * d.GIB), patch.object(d, 'uptime', return_value=10):
             with self.assertRaises(StopBeforeAnyStart): self.driver.phase('offline-compile')
         argv = calls[0]
         mount = 'type=bind,src=' + str(self.driver.mount / 'toolchain') + ',dst=/qualification/toolchain,readonly'
@@ -712,3 +712,74 @@ class CompiledRetention(unittest.TestCase):
         self.assertFalse((control/'compiled.tar.gz').exists())
 
 if __name__ == '__main__': unittest.main()
+
+class RunnableContinuation(unittest.TestCase):
+    def test_native_mounts_are_readonly_artifact_and_have_no_rw_ancestor_or_source_store(self):
+        mounts = d.phase_mounts(Path('/owned/volume'), Path('/owned/proof'), Path('/owned/gates'), 'offline-native')
+        self.assertEqual(mounts['/artifact'], ('/owned/volume/runnable', False))
+        self.assertNotIn('/qualification', mounts); self.assertNotIn('/proof', mounts)
+        self.assertFalse(any('source' in origin or 'pnpm-store' in origin for origin, _ in mounts.values()))
+        for destination, (_, writable) in mounts.items():
+            if writable: self.assertFalse(Path(destination) in Path('/artifact').parents)
+        self.assertEqual(set(destination for destination, (_, writable) in mounts.items() if writable), {'/qualification/native-state', '/qualification/native-output', '/tmp'})
+    def test_chain_keeps_real_parent_before_final_commit(self):
+        chain = C['source_chain']; self.assertEqual(len(chain), 2)
+        self.assertEqual(chain[0]['parent'], C['baseline']); self.assertEqual(chain[1]['parent'], chain[0]['commit'])
+        self.assertEqual(chain[-1]['commit'], C['source_commit']); self.assertEqual(chain[-1]['tree'], C['source_tree'])
+        for step in chain:
+            self.assertEqual(d.digest(P / step['patch']), step['patch_sha256'])
+            self.assertEqual(d.digest(P / step['raw_commit']), step['raw_commit_sha256'])
+            self.assertTrue((P / step['raw_commit']).read_text().startswith('tree ' + step['tree'] + '\nparent ' + step['parent'] + '\n'))
+    def test_original_packager_skip_requires_fresh_build_profile(self):
+        self.assertEqual(C['package_argv'][:4], ['pnpm', 'exec', 'node', 'scripts/package-openclaw-for-docker.mjs'])
+        self.assertIn('--skip-build', C['package_argv']); self.assertNotIn('--allow-unreleased', C['package_argv'])
+        code = (P / 'runtime.mjs').read_text()
+        self.assertLess(code.index('for (const argv of contract.compile_argv)'), code.index('await run(contract.package_argv)'))
+        self.assertLess(code.index("'/offline-compile-build.json'"), code.index('await run(contract.package_argv)'))
+        self.assertEqual(C['compile_environment'], {'OPENCLAW_BUILD_NATIVE_IPC_GATEWAY_QUALIFICATION': '1'})
+    def test_compressed_stream_cap_refuses_before_overflow(self):
+        import io
+        output = io.BytesIO(); writer = d.CappedArchiveWriter(output, 4, 1000)
+        with patch.object(d, 'uptime', return_value=10):
+            writer.write(b'1234')
+            with self.assertRaisesRegex(d.Refusal, 'compressed'): writer.write(b'5')
+        self.assertEqual(output.getvalue(), b'1234')
+    def test_native_retention_failure_holds_storage_and_unknown(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); driver = object.__new__(d.Driver)
+            driver.c = C; driver.control = root; driver.mount = root / 'mount'; driver.state_path = root / 'state.json'; driver.cleanup_deadline = 1000
+            driver.state = {'job': '1-1', 'phase': 'compiled', 'compiled_complete': True, 'native_started': True, 'containers': [], 'device': 1, 'complete': False}
+            driver.save = lambda: d.atomic(driver.state_path, driver.state); driver.reconcile_storage = lambda: True
+            retired = []; driver.retire_storage = lambda mounted: retired.append(mounted)
+            driver.command = lambda *args, **kwargs: (_ for _ in ()).throw(d.Refusal('native backup preservation refused'))
+            with self.assertRaises(d.Refusal): driver.cleanup()
+            self.assertEqual(retired, []); self.assertFalse(driver.state['complete']); self.assertFalse(driver.state.get('storage_retired', False))
+            self.assertIn('hold task storage', driver.state['cleanup_issues'][0])
+
+class RunnableRetentionFixture(unittest.TestCase):
+    def test_small_original_package_unknown_and_backup_bytes_survive_streamed_retention(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve(); mount = root / 'mount'; control = root / 'control'; proof = root / 'proof'
+            mount.mkdir(); control.mkdir(); proof.mkdir(); contract = copy.deepcopy(C)
+            contract['compiled_cap_bytes'] = 65536; contract['retention_cap_bytes'] = 65536; contract['portable_runnable_unpacked_cap_bytes'] = 65536; contract['native_state_cap_bytes'] = 65536
+            (proof / 'contract.json').write_text(json.dumps(contract))
+            for name in C['compiled_roots']:
+                directory = mount / 'source' / name; directory.mkdir(parents=True); (directory / 'index.js').write_bytes(b'original compiled fixture')
+            for name in C['retention_roots']: (mount / name).mkdir()
+            (mount / 'package/openclaw-current.tgz').write_bytes(b'original checked tar bytes')
+            (mount / 'runnable/qualification-provenance.json').write_bytes(b'same-build provenance fixture')
+            (mount / 'native-state/unknown.db').write_bytes(b'held unknown outcome bytes')
+            (mount / 'native-state/pre-migration.backup').write_bytes(b'original offline backup bytes')
+            (mount / 'native-output/native-observations.json').write_bytes(b'unknown is not approval')
+            reports = mount / 'reports'; reports.mkdir()
+            commands = [['corepack', C['packageManager'], *C['install_argv']], *C['compile_argv']]
+            (reports / 'offline-compile-build.json').write_text(json.dumps({'complete':True,'job':'1-1','source_commit':C['source_commit'],'source_tree':C['source_tree'],'compile_argv':C['compile_argv'],'environment':C['compile_environment'],'commands':[{'argv':argv,'code':0,'signal':None} for argv in commands]}))
+            args = [str(mount),str(control),str(mount.stat().st_dev),str(os.getuid()),str(os.getgid()),'1000','1-1','1']
+            with patch.object(d, 'PROOF', proof), patch.object(d, 'uptime', return_value=10), patch.object(Path, 'is_mount', return_value=True): d.retain(args)
+            with d.tarfile.open(control / 'runnable.tar.gz') as archive:
+                for name in ['package/openclaw-current.tgz','native-state/unknown.db','native-state/pre-migration.backup']:
+                    self.assertEqual(archive.extractfile(name).read(), (mount / name).read_bytes())
+            self.assertEqual((mount / 'native-state/unknown.db').read_bytes(), b'held unknown outcome bytes')
+            args[-2] = '2-1'
+            with patch.object(d, 'PROOF', proof), patch.object(d, 'uptime', return_value=10), patch.object(Path, 'is_mount', return_value=True):
+                with self.assertRaisesRegex(d.Refusal, 'job mismatch'): d.retain(args)

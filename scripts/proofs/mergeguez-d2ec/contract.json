@@ -1,5 +1,7 @@
 {
   "actor": "fr-meyer",
+  "archive_max_seconds": 120,
+  "archive_size_measurement": "Unmeasured. Compiled emits hardcap512MiB; portable runnable unpacked hardcap2GiB; combined retained package+runnable+native compressed archive hardcap512MiB. Task volume10GiB unchanged; overflow fails closed without resize or retry.",
   "available_memory_min_bytes": 13958643712,
   "baseline": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
   "baseline_tree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
@@ -19,6 +21,9 @@
       "build"
     ]
   ],
+  "compile_environment": {
+    "OPENCLAW_BUILD_NATIVE_IPC_GATEWAY_QUALIFICATION": "1"
+  },
   "compiled_cap_bytes": 536870912,
   "compiled_roots": [
     "dist",
@@ -43,6 +48,17 @@
   "compiler_gid": 1000,
   "compiler_uid": 1000,
   "cpus": 4,
+  "deploy_argv": [
+    "pnpm",
+    "--filter",
+    "openclaw",
+    "deploy",
+    "--prod",
+    "--offline",
+    "--ignore-scripts",
+    "--store-dir=/qualification/pnpm-store",
+    "/qualification/deployed"
+  ],
   "evidence_cap_bytes": 33554432,
   "fetch_argv": [
     "fetch",
@@ -62,10 +78,44 @@
   ],
   "lock_sha256": "c717cc8ed7331b2b4787ed4cbe80d46d3d733de69e3dc9dd7f1d49e6b4942802",
   "log_cap_bytes": 16777216,
+  "materialize_argv": [
+    "node",
+    "/proof/materialize.mjs",
+    "/qualification/source",
+    "/qualification/package/openclaw-current.tgz",
+    "/qualification/deployed",
+    "/qualification/runnable",
+    "/qualification/reports/offline-compile-build.json",
+    "/proof/contract.json"
+  ],
   "memory_bytes": 12884901888,
+  "native_argv": [
+    "node",
+    "/artifact/dist/proofs/native-ipc-gateway-driver.js",
+    "--artifact-root",
+    "/artifact",
+    "--state-root",
+    "/qualification/native-state/store",
+    "--report",
+    "/qualification/native-output/native-observations.json",
+    "--port",
+    "18941"
+  ],
+  "native_state_cap_bytes": 33554432,
   "node_image": "docker.io/library/node:24-bookworm@sha256:64af3819f9275802414d7cdc38c27e9d82bd564dec4d4da87d008255d36c63b4",
   "outside_free_reserve_bytes": 1073741824,
   "packageManager": "pnpm@12.5.1+sha512.e3f305bc784a2bc89f5ad3b6138889470fae8d2af5f36b61216ec91c2c3d64089775f9de38aac331044ea40f245cb0d5666392dfdf65824e1907ef6a2c62de5f",
+  "package_argv": [
+    "pnpm",
+    "exec",
+    "node",
+    "scripts/package-openclaw-for-docker.mjs",
+    "--skip-build",
+    "--output-dir",
+    "/qualification/package",
+    "--output-name",
+    "openclaw-current.tgz"
+  ],
   "package_exports": {
     "acp-core": {
       ".": {
@@ -887,18 +937,36 @@
       }
     }
   },
-  "patch_sha256": "d4713bd05132d7c4f29edcc56a9f987ce6feac1dff5ee290ff9d2688fba47f29",
+  "patch_sha256": "eda4d7977329d43e123e0636ecf8d36ea2d29285262c2b2f0af23663bfbc5a3c",
+  "phase_max_seconds": {
+    "offline-compile": 1800,
+    "offline-native": 300,
+    "prepare": 300,
+    "source": 180,
+    "warm-fetch": 420
+  },
   "pids": 512,
-  "raw_commit_sha256": "55dbf17dcbd3350b6d4445ad08c015565cf481335b39a2facfb31951eb98eee3",
+  "raw_commit_sha256": "8c4e4f1d50dff938e4acf74d0854d9a77d38815ae9f1f205a1b47d111af5a6c6",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
+  "retention_cap_bytes": 536870912,
   "retention_days": 1,
+  "retention_roots": [
+    "package",
+    "runnable",
+    "native-state",
+    "native-output"
+  ],
   "root_outputs": [
     "./dist/index.js",
     "./dist/build-info.json",
-    "./dist/cli-startup-metadata.json"
+    "./dist/cli-startup-metadata.json",
+    "./dist/proofs/native-ipc-gateway-driver.js",
+    "./dist/proofs/native-ipc-gateway-api.js",
+    "./dist/proofs/native-ipc-gateway-fixture.js"
   ],
-  "schema": "mergeguez.exact-hosted-qualification/v1",
+  "runnable_profile": "original-full-production-build-plus-task-internal-entries",
+  "schema": "mergeguez.exact-runnable-native-qualification/v2",
   "sdk_exports": [
     [
       "./plugin-sdk/access-groups",
@@ -2661,8 +2729,33 @@
       null
     ]
   ],
-  "source_commit": "e6903a41049ace9a4ae22e467f244af747157b0d",
-  "source_tree": "d979e9b8a1a22f77bf918bea15ab6f98e716d7dd",
+  "source_chain": [
+    {
+      "commit": "e6903a41049ace9a4ae22e467f244af747157b0d",
+      "parent": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
+      "patch": "parent-source.patch",
+      "patch_sha256": "d4713bd05132d7c4f29edcc56a9f987ce6feac1dff5ee290ff9d2688fba47f29",
+      "raw_commit": "parent-source.commit",
+      "raw_commit_sha256": "55dbf17dcbd3350b6d4445ad08c015565cf481335b39a2facfb31951eb98eee3",
+      "tree": "d979e9b8a1a22f77bf918bea15ab6f98e716d7dd"
+    },
+    {
+      "commit": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
+      "parent": "e6903a41049ace9a4ae22e467f244af747157b0d",
+      "patch": "source.patch",
+      "patch_sha256": "eda4d7977329d43e123e0636ecf8d36ea2d29285262c2b2f0af23663bfbc5a3c",
+      "raw_commit": "source.commit",
+      "raw_commit_sha256": "8c4e4f1d50dff938e4acf74d0854d9a77d38815ae9f1f205a1b47d111af5a6c6",
+      "tree": "7b39f2755c80152d5f7299153e344ec6f3182f99"
+    }
+  ],
+  "source_commit": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
+  "source_tree": "7b39f2755c80152d5f7299153e344ec6f3182f99",
   "total_seconds": 2700,
-  "work_seconds": 2400
+  "work_seconds": 2400,
+  "portable_runnable_unpacked_cap_bytes": 2147483648,
+  "npm_version": "11.20.0",
+  "size_measurement": "Unmeasured: compiled emits <=512MiB; portable runnable unpacked <=2GiB; combined retained package+runnable+native archive <=512MiB, native state <=32MiB; task volume10GiB unchanged. Overflow fails closed, no resize or rerun.",
+  "phase_budget_meaning": "Each phase ceiling is intersected with the single unchanged2400s work deadline. Per-phase ceilings do not create extra time authority; total2700s includes cleanup and upload. Selected new packaging/materialization/native sizes and timings remain unmeasured.",
+  "qualification_scope": "Same coherent source, one full optional production profile, original checked package plus contained offline locked dependency graph, compiled native IPC and natural Gateway startup/shutdown observations. No broker task-purpose binding or admission/release acceptance."
 }

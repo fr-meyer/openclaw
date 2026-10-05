@@ -96,6 +96,15 @@ def contained_walk(root, expected_device=None):
             need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1, 'special or hard-linked task input')
         yield p, st
 
+def phase_mounts(mount, proof, gates, phase):
+    mount, proof, gates = Path(mount), Path(proof), Path(gates)
+    if phase == 'offline-native':
+        # No overlapping RW ancestor, source checkout, store, or source patch mount.
+        return {'/artifact': (str(mount / 'runnable'), False), '/qualification/native-state': (str(mount / 'native-state'), True), '/qualification/native-output': (str(mount / 'native-output'), True), '/tmp': (str(mount / 'native-tmp'), True), '/control': (str(gates), False), **{'/proof/' + name: (str(proof / name), False) for name in ['runtime.mjs', 'materialize.mjs', 'contract.json']}}
+    result = {'/qualification': (str(mount), True), '/proof': (str(proof), False), '/control': (str(gates), False), '/tmp': (str(mount / 'tmp'), True)}
+    if phase == 'offline-compile': result['/qualification/toolchain'] = (str(mount / 'toolchain'), False)
+    return result
+
 def cgroup_values(path):
     path = Path(path)
     return {n: (path / n).read_text().strip() for n in ['memory.max', 'memory.swap.max', 'pids.max', 'cpu.max']}
@@ -212,13 +221,13 @@ class Driver:
 
     def budget(self, cleanup=False):
         need(self.state.get('admission') == self.admission, 'job admission identity changed')
-        need(uptime() < (self.cleanup_deadline if cleanup else self.work_deadline), 'shared deadline exhausted')
+        need(uptime() < (self.cleanup_deadline if cleanup else min(self.work_deadline, getattr(self, 'active_deadline', self.work_deadline))), 'shared deadline exhausted')
         if not cleanup:
             need(os.statvfs(self.workspace).f_bavail * os.statvfs(self.workspace).f_frsize >= self.c['outside_free_reserve_bytes'], 'outside disk reserve exhausted')
 
     def command(self, argv, name='host', cleanup=False, maximum=120, retain_log=True):
         self.budget(cleanup)
-        limit = min(maximum, (self.cleanup_deadline if cleanup else self.work_deadline) - uptime())
+        limit = min(maximum, (self.cleanup_deadline if cleanup else min(self.work_deadline, getattr(self, 'active_deadline', self.work_deadline))) - uptime())
         p = subprocess.Popen(argv, env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
         selector = selectors.DefaultSelector(); selector.register(p.stdout, selectors.EVENT_READ)
         out = bytearray(); deadline = uptime() + limit
@@ -290,6 +299,7 @@ class Driver:
         self.save()
 
     def prepare(self):
+        self.active_deadline = min(self.work_deadline, uptime() + self.c['phase_max_seconds']['prepare'])
         need(self.state['phase'] == 'init', 'preparation already attempted')
         self.state['phase'] = 'preparing'; self.save()
         need(sys.platform == 'linux' and Path('/sys/fs/cgroup/cgroup.controllers').is_file(), 'wrong host/cgroup backend')
@@ -387,6 +397,7 @@ class Driver:
         self.state['storage_retired'] = True; self.save()
 
     def source(self):
+        self.active_deadline = min(self.work_deadline, uptime() + self.c['phase_max_seconds']['source'])
         need(self.state['phase'] == 'prepared', 'source reconstruction not admitted')
         self.check_mount(); source = self.mount / 'source'
         need(source.resolve().parent == self.mount and source.stat().st_dev == self.state['device'], 'checkout outside bound')
@@ -394,14 +405,19 @@ class Driver:
         need(git('rev-parse', 'HEAD') == self.c['baseline'] and git('rev-parse', 'HEAD^{tree}') == self.c['baseline_tree'], 'wrong baseline')
         need(git('status', '--porcelain=v1') == '', 'dirty baseline')
         need(git('remote', 'get-url', 'origin') in ['https://github.com/fr-meyer/openclaw', 'https://github.com/fr-meyer/openclaw.git'], 'wrong public origin')
-        patch = PROOF / 'source.patch'; raw = PROOF / 'source.commit'
-        need(digest(patch) == self.c['patch_sha256'] and digest(raw) == self.c['raw_commit_sha256'], 'source delta mismatch')
-        git('apply', '--check', '--index', str(patch)); git('apply', '--index', str(patch))
-        need(git('write-tree') == self.c['source_tree'], 'source result tree mismatch')
-        need(git('hash-object', '-t', 'commit', '-w', str(raw)) == self.c['source_commit'], 'source raw identity mismatch')
-        git('-c', 'core.hooksPath=/dev/null', 'checkout', '--detach', self.c['source_commit'])
-        need(git('status', '--porcelain=v1') == '', 'reconstructed source dirty')
-        for name in ['toolchain', 'toolchain/bin', 'home', 'tmp', 'reports', 'pnpm-store']:
+        for step in self.c['source_chain']:
+            need(git('rev-parse', 'HEAD') == step['parent'], 'source chain parent absent')
+            patch, raw = PROOF / step['patch'], PROOF / step['raw_commit']
+            need(digest(patch) == step['patch_sha256'] and digest(raw) == step['raw_commit_sha256'], 'source delta mismatch')
+            raw_text = raw.read_text()
+            need(raw_text.startswith('tree ' + step['tree'] + '\nparent ' + step['parent'] + '\n'), 'raw source ancestry mismatch')
+            git('apply', '--check', '--index', str(patch)); git('apply', '--index', str(patch))
+            need(git('write-tree') == step['tree'], 'source result tree mismatch')
+            need(git('hash-object', '-t', 'commit', '-w', str(raw)) == step['commit'], 'source raw identity mismatch')
+            git('-c', 'core.hooksPath=/dev/null', 'checkout', '--detach', step['commit'])
+            need(git('status', '--porcelain=v1') == '', 'reconstructed source dirty')
+        need(git('rev-parse', 'HEAD') == self.c['source_commit'] and git('rev-parse', 'HEAD^{tree}') == self.c['source_tree'], 'final coherent source mismatch')
+        for name in ['toolchain', 'toolchain/bin', 'home', 'tmp', 'reports', 'pnpm-store', 'native-state', 'native-output', 'native-tmp']:
             (self.mount / name).mkdir(mode=0o700, exist_ok=True)
         export = {'name': 'mergeguez-bun-' + self.state['job'], 'kind': 'export', 'started': False}
         self.state['containers'].append(export); self.save()
@@ -414,19 +430,21 @@ class Driver:
         self.state['phase'] = 'source-owned'; self.save()
 
     def phase(self, phase):
+        self.active_deadline = min(self.work_deadline, uptime() + self.c['phase_max_seconds'][phase])
         self.budget(); need(memory_available() >= self.c['available_memory_min_bytes'], 'fresh phase memory admission failed')
         gate = self.gates / 'gate.json'; gate.unlink(missing_ok=True)
         nonce = secrets.token_hex(32)
         record = {'name': 'mergeguez-' + phase + '-' + self.state['job'], 'kind': 'worker', 'phase': phase, 'started': False}
         self.state['containers'].append(record); self.save()
-        argv = ['create', '--name', record['name'], '--platform', 'linux/amd64', '--user', '1000:1000', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--cgroupns', 'private', '--ipc', 'private', '--network', 'bridge' if phase == 'warm-fetch' else 'none', '--memory', str(self.c['memory_bytes']), '--memory-swap', str(self.c['memory_bytes']), '--cpus', '4', '--pids-limit', '512', '--log-driver', 'none', '--label', 'mergeguez.qualification.job=' + self.state['job'], '--label', 'mergeguez.qualification.driver=' + LOADED_HASH, '--mount', 'type=bind,src=' + str(self.mount) + ',dst=/qualification', '--mount', 'type=bind,src=' + str(PROOF) + ',dst=/proof,readonly', '--mount', 'type=bind,src=' + str(self.gates) + ',dst=/control,readonly', '--mount', 'type=bind,src=' + str(self.mount / 'tmp') + ',dst=/tmp', '--workdir', '/qualification/source', '--env', 'QUALIFICATION_JOB=' + self.state['job'], '--env', 'QUALIFICATION_NONCE=' + nonce, '--env', 'QUALIFICATION_UPTIME_DEADLINE=' + str(self.work_deadline), '--entrypoint', 'node', self.state['images'][self.c['node_image']], '/proof/runtime.mjs', phase]
-        if phase == 'offline-compile':
-            argv[-5:-5] = ['--mount', 'type=bind,src=' + str(self.mount / 'toolchain') + ',dst=/qualification/toolchain,readonly']
+        mounts = phase_mounts(self.mount, PROOF, self.gates, phase)
+        argv = ['create', '--name', record['name'], '--platform', 'linux/amd64', '--user', '1000:1000', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--cgroupns', 'private', '--ipc', 'private', '--network', 'bridge' if phase == 'warm-fetch' else 'none', '--memory', str(self.c['memory_bytes']), '--memory-swap', str(self.c['memory_bytes']), '--cpus', '4', '--pids-limit', '512', '--log-driver', 'none', '--label', 'mergeguez.qualification.job=' + self.state['job'], '--label', 'mergeguez.qualification.driver=' + LOADED_HASH]
+        for destination, (origin, writable) in mounts.items():
+            argv += ['--mount', 'type=bind,src=' + origin + ',dst=' + destination + ('' if writable else ',readonly')]
+        argv += ['--workdir', '/artifact' if phase == 'offline-native' else '/qualification/source', '--env', 'QUALIFICATION_JOB=' + self.state['job'], '--env', 'QUALIFICATION_NONCE=' + nonce, '--env', 'QUALIFICATION_UPTIME_DEADLINE=' + str(self.active_deadline), '--entrypoint', 'node', self.state['images'][self.c['node_image']], '/proof/runtime.mjs', phase]
         record['id'] = self.docker(*argv).strip(); self.save()
         spec = self.verify_owned(record); hc = spec['HostConfig']
         need(hc['Memory'] == self.c['memory_bytes'] and hc['MemorySwap'] == self.c['memory_bytes'] and hc['ReadonlyRootfs'] and not hc['Privileged'] and hc['NetworkMode'] == ('bridge' if phase == 'warm-fetch' else 'none'), 'Docker containment spec mismatch')
-        expected = {'/qualification': (str(self.mount), True), '/proof': (str(PROOF), False), '/control': (str(self.gates), False), '/tmp': (str(self.mount / 'tmp'), True)}
-        if phase == 'offline-compile': expected['/qualification/toolchain'] = (str(self.mount / 'toolchain'), False)
+        expected = mounts
         observed = {x['Destination']: (x['Source'], x['RW']) for x in spec['Mounts']}
         need(observed == expected and all(x['Type'] == 'bind' for x in spec['Mounts']), 'unexpected or writable control mount')
         need(hc['LogConfig']['Type'] == 'none' and spec['Config']['User'] == '1000:1000', 'unbounded daemon log or wrong compiler UID')
@@ -474,7 +492,7 @@ class Driver:
                 time.sleep(0.02); result = peek_exit(attach)
             need(result.si_code == os.CLD_EXITED and result.si_status == 0, 'attach CLI failed')
             self.settle(record)
-            receipt = json.loads(self.command(['sudo', '-n', 'cat', str(self.mount / 'reports' / (phase + '-receipt.json'))], name='receipts'))
+            receipt = json.loads(self.command(['sudo', '-n', 'cat', str(self.mount / ('native-output' if phase == 'offline-native' else 'reports') / (phase + '-receipt.json'))], name='receipts'))
             need(receipt['phase'] == phase and receipt['job'] == self.state['job'] and receipt['complete'] is True, 'incomplete worker result')
             self.state.setdefault('receipts', {})[phase] = receipt; self.save()
         finally:
@@ -508,8 +526,13 @@ class Driver:
         record['settled'] = True; self.save()
 
     def execute(self):
-        self.source(); self.phase('warm-fetch'); self.phase('offline-compile')
-        self.state['phase'] = 'compiled'; self.save()
+        self.source(); self.phase('warm-fetch')
+        self.state['compilation_attempted'] = True; self.save()
+        self.phase('offline-compile')
+        self.state['phase'] = 'compiled'; self.state['compiled_complete'] = True; self.save()
+        self.state['native_started'] = True; self.save()
+        self.phase('offline-native')
+        self.state['phase'] = 'qualified'; self.save()
 
     def cleanup(self):
         issues = []
@@ -523,21 +546,18 @@ class Driver:
         if not issues:
             try: mounted = self.reconcile_storage()
             except Exception as e: issues.append(str(e))
-        if not issues and self.state['phase'] == 'compiled':
+        if not issues and mounted and (self.state.get('compiled_complete') or self.state.get('native_started') or self.state.get('compilation_attempted')):
             try:
-                need(mounted, 'compiled storage mount unavailable')
-                self.command(['sudo', '-n', sys.executable, str(PROOF / 'driver.py'), '_archive', str(self.mount), str(self.control), str(self.state['device']), str(self.c['compiled_cap_bytes']), str(os.getuid()), str(os.getgid()), str(self.cleanup_deadline)], cleanup=True, maximum=180, name='archive')
-                self.state['compiled_archive_sha256'] = digest(self.control / 'compiled.tar.gz')
-            except Exception as e: issues.append(str(e))
+                self.command(['sudo', '-n', sys.executable, str(PROOF / 'driver.py'), '_retain', str(self.mount), str(self.control), str(self.state['device']), str(os.getuid()), str(os.getgid()), str(self.cleanup_deadline), self.state['job'], '1' if self.state.get('native_started') else '0'], cleanup=True, maximum=self.c['archive_max_seconds'], name='retain-runnable-native')
+                if (self.control / 'runnable.tar.gz').exists():
+                    self.state['runnable_archive_sha256'] = digest(self.control / 'runnable.tar.gz')
+                    self.state['native_state_retained'] = True
+            except Exception as e: issues.append('retention unresolved; hold task storage: ' + str(e))
         if not issues and mounted:
             try:
-                # Copy terminal and failed receipts BEFORE retiring task data.
                 self.command(['sudo', '-n', sys.executable, str(PROOF / 'driver.py'), '_reports', str(self.mount), str(self.control), str(self.state['device']), str(os.getuid()), str(os.getgid())], cleanup=True, name='reports')
             except Exception as e: issues.append(str(e))
-        if not issues:
-            try: self.retire_storage(mounted)
-            except Exception as e: issues.append(str(e))
-        candidate = self.state['phase'] == 'compiled' and not issues and self.state.get('storage_retired') is True
+        candidate = self.state['phase'] == 'qualified' and not issues and self.state.get('native_state_retained') is True
         self.state['cleanup_issues'] = issues; self.state['complete'] = False
         self.save()
         upload = self.control / 'upload'; stage = self.control / 'upload.stage'
@@ -545,17 +565,22 @@ class Driver:
         stage.mkdir(mode=0o700)
         try:
             total = self.state_path.stat().st_size
-            for p in [*self.control.glob('*.log'), *self.control.glob('*-receipt.json')]:
+            for p in [*self.control.glob('*.log'), *(p for p in self.control.glob('*.json') if p != self.state_path)]:
                 total += p.stat().st_size
                 need(total <= self.c['evidence_cap_bytes'], 'evidence retention exceeded')
                 (stage / p.name).write_bytes(p.read_bytes())
             atomic(stage / 'state.json', self.state)
-            if candidate:
-                os.rename(self.control / 'compiled.tar.gz', stage / 'compiled.tar.gz')
+            if self.state.get('native_state_retained'):
+                os.rename(self.control / 'runnable.tar.gz', stage / 'runnable.tar.gz')
             # Publish a false receipt first. Success is the final atomic write,
             # after all archive, copy and directory publication steps succeed.
             os.rename(stage, upload)
-            self.state['complete'] = candidate; self.save()
+            # Durable archive/evidence publication precedes task storage retirement.
+            if not issues:
+                try: self.retire_storage(mounted)
+                except Exception as error: issues.append(str(error))
+            self.state['cleanup_issues'] = issues
+            self.state['complete'] = candidate and not issues and self.state.get('storage_retired') is True; self.save()
             atomic(upload / 'state.json', self.state)
         except Exception as error:
             self.state['complete'] = False
@@ -624,12 +649,69 @@ def archive(args):
             need(uptime() < float(deadline), 'retention deadline exhausted'); dst.write(block)
     os.chown(output, int(uid), int(gid)); output.chmod(0o600)
 
+class CappedArchiveWriter:
+    def __init__(self, stream, cap, deadline): self.stream, self.cap, self.deadline, self.bytes = stream, cap, deadline, 0
+    def write(self, data):
+        need(uptime() < self.deadline, 'retention deadline exhausted')
+        need(self.bytes + len(data) <= self.cap, 'combined compressed retention cap exceeded')
+        written = self.stream.write(data); self.bytes += written; return written
+    def flush(self): self.stream.flush()
+
+
+def retain(args):
+    mount, control, device, uid, gid, deadline, job, native_required = args
+    need(native_required in ['0', '1'] and re.fullmatch('[0-9]+-1', job), 'retention execution identity absent')
+    mount, control, device, deadline = Path(mount), Path(control), int(device), float(deadline)
+    need(mount.is_mount() and control.resolve() == control and control.lstat().st_uid == int(uid), 'retention custody changed')
+    contract = json.loads((PROOF / 'contract.json').read_text())
+    build_file = mount / 'reports/offline-compile-build.json'
+    if not build_file.exists():
+        need(native_required == '0', 'native state has no successful build owner receipt'); return
+    st = build_file.lstat(); need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and st.st_dev == device and st.st_size <= 65536, 'unsafe successful build receipt')
+    build = json.loads(build_file.read_text())
+    need(build.get('complete') is True and build.get('job') == job and build.get('source_commit') == contract['source_commit'] and build.get('source_tree') == contract['source_tree'] and build.get('compile_argv') == contract['compile_argv'] and build.get('environment') == contract['compile_environment'], 'retention build/source/job mismatch')
+    commands = build.get('commands', [])
+    need([command.get('argv') for command in commands] == [['corepack', contract['packageManager'], *contract['install_argv']], *contract['compile_argv']] and all(command.get('code') == 0 and command.get('signal') is None for command in commands), 'retention original compile receipts absent')
+    # The original compiled-emits 512MiB cap remains separate from portable dependencies.
+    compiled = 0
+    for p, st in compiled_walk(mount / 'source', contract['compiled_roots'], device):
+        need(uptime() < deadline, 'compiled bound deadline exhausted')
+        if stat.S_ISREG(st.st_mode): compiled += st.st_size
+        need(compiled <= contract['compiled_cap_bytes'], 'compiled output cap exceeded')
+    files = []
+    caps = {'package': contract['retention_cap_bytes'], 'runnable': contract['portable_runnable_unpacked_cap_bytes'], 'native-state': contract['native_state_cap_bytes'], 'native-output': contract['native_state_cap_bytes']}
+    for name in contract['retention_roots']:
+        root = mount / name
+        if not root.exists():
+            need(native_required == '0', 'required native retention root absent'); continue
+        need(root.is_dir() and root.resolve() == root, 'required retention root absent')
+        total = 0
+        for p, st in contained_walk(root, device):
+            need(uptime() < deadline, 'retention inventory deadline exhausted')
+            if stat.S_ISREG(st.st_mode): total += st.st_size
+            need(total <= caps[name], 'retention root cap exceeded: ' + name)
+            files.append(p)
+    output = control / 'runnable.tar.gz'; need(not output.exists(), 'retention target pre-exists')
+    try:
+        with open(output, 'xb') as raw:
+            os.fchmod(raw.fileno(), 0o600); os.fchown(raw.fileno(), int(uid), int(gid))
+            stream = CappedArchiveWriter(raw, contract['retention_cap_bytes'], deadline)
+            with tarfile.open(fileobj=stream, mode='w|gz') as tar:
+                for p in files:
+                    need(uptime() < deadline, 'retention archive deadline exhausted')
+                    tar.add(p, arcname=str(p.relative_to(mount)), recursive=False)
+            raw.flush(); os.fsync(raw.fileno())
+    except Exception:
+        # Partial retained bytes confer no approval; source/native state remains on held volume.
+        raise
+
+
 def reports(args):
     mount, control, device, uid, gid = args
     mount, control = Path(mount), Path(control)
     need(mount.is_mount() and control.resolve() == control and control.lstat().st_uid == int(uid), 'report custody changed')
-    for phase in ['warm-fetch', 'offline-compile']:
-        source = mount / 'reports' / (phase + '-receipt.json')
+    for name, directory in [('warm-fetch-receipt.json', 'reports'), ('offline-compile-receipt.json', 'reports'), ('offline-native-receipt.json', 'native-output'), ('offline-compile-build.json', 'reports'), ('runnable-materialization.json', 'reports')]:
+        source = mount / directory / name
         if not source.exists(): continue
         st = source.lstat()
         need(stat.S_ISREG(st.st_mode) and st.st_dev == int(device) and st.st_size <= 65536 and st.st_nlink == 1, 'unsafe receipt input')
@@ -640,9 +722,9 @@ def reports(args):
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == '_namespaces':
         print(json.dumps(namespace_observer(sys.argv[2:]), sort_keys=True)); return
-    if len(sys.argv) > 1 and sys.argv[1] in ['_handoff', '_archive', '_reports']:
+    if len(sys.argv) > 1 and sys.argv[1] in ['_handoff', '_archive', '_reports', '_retain']:
         need(os.geteuid() == 0, 'privileged helper requires ephemeral operator')
-        {'_handoff': handoff, '_archive': archive, '_reports': reports}[sys.argv[1]](sys.argv[2:]); return
+        {'_handoff': handoff, '_archive': archive, '_reports': reports, '_retain': retain}[sys.argv[1]](sys.argv[2:]); return
     driver = Driver()
     try:
         {'prepare': driver.prepare, 'execute': driver.execute, 'cleanup': driver.cleanup}[sys.argv[1]]()

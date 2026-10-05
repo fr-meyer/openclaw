@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import vm from 'node:vm';
 import { EventEmitter } from 'node:events';
 import assert from 'node:assert/strict';
+import { validateBuildReceipt } from './materialize.mjs';
 const root = path.dirname(new URL(import.meta.url).pathname);
 const contract = JSON.parse(fs.readFileSync(root + '/contract.json', 'utf8'));
 const code = fs.readFileSync(root + '/runtime.mjs', 'utf8');
@@ -15,6 +16,14 @@ async function fixture(phase, options = {}) {
   const fakeFs = {
     readFileSync(p) {
       if (p === '/proof/contract.json') return JSON.stringify(contract);
+      if (Object.hasOwn(writes, p)) return writes[p];
+      if (p === '/qualification/reports/runnable-materialization.json') return JSON.stringify({ totalBytes: 42, inventory_sha256: 'a'.repeat(64), admissionOrReleaseAcceptance: false });
+      if (p === '/qualification/source/node_modules/npm/package.json') return JSON.stringify({version: options.wrongNpm ? '0.0.0' : contract.npm_version});
+      if (p === '/artifact/qualification-provenance.json') {
+        const build = {complete:true,job:options.oldBuildJob?'2-1':'1-1',source_commit:contract.source_commit,source_tree:contract.source_tree,compile_argv:contract.compile_argv,environment:contract.compile_environment,commands:[['corepack',contract.packageManager,...contract.install_argv],...contract.compile_argv].map(argv=>({argv,code:0,signal:null}))};
+        return JSON.stringify({build,job:build.job,source_commit:contract.source_commit,source_tree:contract.source_tree,admissionOrReleaseAcceptance:false,runnable:{sha256:crypto.createHash('sha256').update('[]').digest('hex')}});
+      }
+      if (p === '/qualification/native-output/native-observations.json') return JSON.stringify({completed:!options.nativeFailed,admissionOrReleaseAcceptance:false,priorArtifactParity:'unproved',ownership:options.lostUnknown?[]:[{status:'held-for-reconciliation'}]});
       if (p === '/proc/uptime') return '10 0';
       if (p.endsWith('memory.max')) return options.unlimited ? 'max' : String(contract.memory_bytes);
       if (p.endsWith('memory.swap.max')) return options.swap ? '1' : '0';
@@ -63,6 +72,7 @@ async function fixture(phase, options = {}) {
           const e = new Error('absent config'); e.status = options.configError ? 2 : 1; e.stdout = ''; e.stderr = ''; throw e;
         }
       }
+      if (bin === 'pnpm') return options.wrongNpm ? '0.0.0' : contract.npm_version;
       if (bin === 'corepack') return '12.5.1';
       if (bin.endsWith('/bun')) return '1.4.2';
       throw new Error('unexpected executable ' + bin);
@@ -76,13 +86,13 @@ async function fixture(phase, options = {}) {
   };
   const context = vm.createContext({ process: proc, console: { log() {} }, setTimeout(fn, ms) { const id = {}; timers.add(id); return id; }, clearTimeout(id) { timers.delete(id); }, Buffer });
   const module = new vm.SourceTextModule(code, { context });
-  const deps = { 'node:fs': fakeFs, 'node:path': path, 'node:crypto': fakeCrypto, 'node:child_process': fakeChild };
+  const deps = { 'node:fs': fakeFs, 'node:path': path, 'node:crypto': fakeCrypto, 'node:child_process': fakeChild, './materialize.mjs': {inventory() { return {entries:[],sha256:'a'.repeat(64)}; }, validateBuildReceipt} };
   await module.link(async name => {
     const dep = deps[name]; assert.ok(dep, 'unexpected native import');
     return new vm.SyntheticModule(['default', ...Object.keys(dep)], function () { this.setExport('default', dep); for (const k of Object.keys(dep)) this.setExport(k, dep[k]); }, { context });
   });
   await module.evaluate();
-  return { commands, receipt: JSON.parse(writes['/qualification/reports/' + phase + '-receipt.json']), exit: proc.exitCode, timers: timers.size };
+  return { commands, receipt: JSON.parse(writes[(phase === 'offline-native' ? '/qualification/native-output/' : '/qualification/reports/') + phase + '-receipt.json']), exit: proc.exitCode, timers: timers.size };
 }
 let checks = 0;
 // These literal argv contracts come from pnpm v12.5.1's pinned Clap
@@ -96,7 +106,7 @@ for (const options of [{ unlimited: true }, { swap: true }, { wrongGate: true },
 }
 const warm = await fixture('warm-fetch'); assert.equal(warm.receipt.complete, true); assert.deepEqual(warm.commands.at(-1).argv, ['corepack', contract.packageManager, ...contract.fetch_argv]); assert.ok(warm.commands.every(x => x.env.COREPACK_ENABLE_NETWORK === '1')); checks++;
 assert.deepEqual(warm.commands.slice(0, 3).map(x => x.argv), [['corepack', 'enable', '--install-directory', '/qualification/toolchain/bin'], ['corepack', 'prepare', contract.packageManager, '--activate'], ['corepack', contract.packageManager, '--version']]); checks++;
-const offline = await fixture('offline-compile'); assert.equal(offline.receipt.complete, true); assert.deepEqual(offline.commands.map(x => x.argv), [['corepack', contract.packageManager, ...contract.install_argv], ...contract.compile_argv]); assert.ok(offline.commands.every(x => x.env.COREPACK_ENABLE_NETWORK === '0' && !('GITHUB_TOKEN' in x.env))); checks++;
+const offline = await fixture('offline-compile'); assert.equal(offline.receipt.complete, true); assert.deepEqual(offline.commands.map(x => x.argv), [['corepack', contract.packageManager, ...contract.install_argv], ...contract.compile_argv, contract.package_argv, contract.deploy_argv, contract.materialize_argv]); assert.ok(offline.commands.every(x => x.env.COREPACK_ENABLE_NETWORK === '0' && !('GITHUB_TOKEN' in x.env))); checks++;
 const failed = await fixture('offline-compile', { failType: true }); assert.equal(failed.receipt.complete, false); assert.equal(failed.commands.length, 2); assert.equal(failed.receipt.commands.at(-1).code, 1); checks++;
 const missing = await fixture('offline-compile', { noSdk: true }); assert.equal(missing.receipt.complete, false); assert.equal(missing.receipt.commands.length, 4); checks++;
 const spawnFailure = await fixture('offline-compile', { spawnError: true }); assert.equal(spawnFailure.receipt.complete, false); assert.equal(spawnFailure.timers, 0); assert.equal(spawnFailure.receipt.commands.length, 1); assert.match(spawnFailure.receipt.commands[0].error, /ENOENT/); checks++;
@@ -107,6 +117,10 @@ assert.equal(offline.receipt.sdk.export_count, 352); assert.equal(offline.receip
 for (const options of [{missingRuntime:true},{missingDeclaration:true},{changedExport:true},{escapedExport:true},{malformedExport:true},{outputLink:true},{crossDevice:true},{hardlink:true}]) {
   const r=await fixture('offline-compile',options); assert.equal(r.receipt.complete,false); assert.equal(r.commands.length,4); checks++;
 }
-assert.equal(offline.receipt.packages.packages,16); assert.equal(offline.receipt.packages.exports,160); assert.equal(offline.receipt.packages.artifacts,323); checks++;
+assert.equal(offline.receipt.packages.packages,16); assert.equal(offline.receipt.packages.exports,160); assert.equal(offline.receipt.packages.artifacts,326); checks++;
 for(const options of [{changedPackage:true},{missingPackage:true},{missingRoot:true}]) { const r=await fixture('offline-compile',options); assert.equal(r.receipt.complete,false); assert.equal(r.commands.length,4); checks++; }
+const native = await fixture('offline-native'); assert.equal(native.receipt.complete,true); assert.deepEqual(native.commands.map(x=>x.argv),[contract.native_argv]); assert.equal(native.commands[0].cwd,'/artifact'); assert.equal(native.receipt.native.admissionOrReleaseAcceptance,false); checks++;
+for (const options of [{oldBuildJob:true},{nativeFailed:true},{lostUnknown:true}]) { const r=await fixture('offline-native',options); assert.equal(r.receipt.complete,false); assert.equal(r.commands.length,options.oldBuildJob?0:1); checks++; }
+const wrongNpm=await fixture('offline-compile',{wrongNpm:true}); assert.equal(wrongNpm.receipt.complete,false); assert.equal(wrongNpm.commands.length,4); checks++;
+assert.ok(offline.commands.slice(1,4).every(x=>x.env.OPENCLAW_BUILD_NATIVE_IPC_GATEWAY_QUALIFICATION==='1')); checks++;
 console.log(JSON.stringify({ checks, passed: checks, native_commands_or_network: 0, scope: 'exact-runtime-source-under-mocked-owners' }));
