@@ -136,7 +136,7 @@ def verify_source_manifest(tooling, expected_commit):
          "read-policy/runtime-read-binding.json", "read-policy/parent-read-paths.txt",
          "read-policy/helper-read-paths.txt")
     } | {"scripts/proofs/v98-confined/inputs/" + name for name in PROOF_INPUTS} | {
-        ".github/workflows/v98-confined-runtime-2.yml",
+        ".github/workflows/v98-confined-runtime-3.yml",
         "scripts/proofs/v98-parity/verify-artifact.py",
         "scripts/proofs/v98-parity/collect-artifacts.py",
         "scripts/proofs/v98-parity/contract.json",
@@ -286,7 +286,7 @@ def read_cgroup_cpu_fd(fd):
     return cgroup_cpu(data.decode("ascii"))
 
 
-def inspect_container(inspect, container_id, image_id, proof, scratch):
+def inspect_container_configuration(inspect, container_id, image_id, proof, scratch):
     require(isinstance(inspect, dict) and inspect.get("Id") == container_id
             and inspect.get("Image") == image_id, "container identity changed")
     host = inspect.get("HostConfig", {})
@@ -305,8 +305,14 @@ def inspect_container(inspect, container_id, image_id, proof, scratch):
     security = host.get("SecurityOpt") or []
     require(security in (["no-new-privileges:true"], ["no-new-privileges"]),
             "default seccomp/AppArmor or no-new-privileges changed")
-    require(inspect.get("AppArmorProfile") == "docker-default",
-            "Docker default AppArmor is not enforced")
+    require(host.get("LogConfig") == {"Type": "local", "Config": {
+                "max-size": "1m", "max-file": "1", "compress": "false"}}
+            and host.get("Ulimits") == [{"Name": "core", "Soft": 0, "Hard": 0}],
+            "container log budget or core dump limit changed")
+    # Moby assigns its default profile during start, not create. A created
+    # container may have no stored profile yet; running admission is strict.
+    require(inspect.get("AppArmorProfile") in ("", "docker-default"),
+            "created container AppArmor configuration changed")
     mounts = {row.get("Destination"): row for row in inspect.get("Mounts", [])}
     require(set(mounts) == {"/proof", "/scratch"}
             and mounts["/proof"].get("Type") == "bind" and mounts["/proof"].get("RW") is False
@@ -314,6 +320,12 @@ def inspect_container(inspect, container_id, image_id, proof, scratch):
             and Path(mounts["/proof"].get("Source", "")).resolve() == Path(proof).resolve()
             and Path(mounts["/scratch"].get("Source", "")).resolve() == Path(scratch).resolve(),
             "container mount scope changed")
+
+
+def inspect_container(inspect, container_id, image_id, proof, scratch):
+    inspect_container_configuration(inspect, container_id, image_id, proof, scratch)
+    require(inspect.get("AppArmorProfile") == "docker-default",
+            "Docker default AppArmor is not enforced")
     pid = inspect.get("State", {}).get("Pid")
     require(type(pid) is int and pid > 1 and inspect["State"].get("Running") is True,
             "container has no running host PID")
@@ -446,7 +458,7 @@ def docker_inspect(container):
 
 
 def create_command(name, image, proof, scratch, mode):
-    return ["docker", "create", "--name", name, "--user", "1000:1000", "--read-only",
+    return ["docker", "create", "--pull", "never", "--name", name, "--user", "1000:1000", "--read-only",
             "--network", "none", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
             "--pids-limit", "128", "--memory", "1g", "--memory-swap", "1g", "--cpus", "1",
             "--shm-size", "1m", "--cgroupns", "private", "--ipc", "private",
@@ -456,6 +468,92 @@ def create_command(name, image, proof, scratch, mode):
             "--mount", f"type=bind,src={proof},dst=/proof,readonly",
             "--mount", f"type=bind,src={scratch},dst=/scratch",
             "--entrypoint", "/proof/runner/v98-supervisor", image, mode]
+
+
+def validate_docker_prerequisites(version, info, endpoint, controllers, yama):
+    """Pure checks of supported host requirements, never execution admission."""
+    server = version.get("Server") or {}
+    api = server.get("ApiVersion", "").split(".")
+    require(len(api) == 2 and all(part.isdecimal() for part in api)
+            and tuple(map(int, api)) >= (1, 41), "Docker API lacks private cgroup namespace support")
+    require(endpoint == "unix:///var/run/docker.sock"
+            and server.get("Os") == "linux" and server.get("Arch") == "amd64"
+            and info.get("OSType") == "linux" and info.get("Architecture") in ("amd64", "x86_64"),
+            "Docker must use the local Linux amd64 daemon")
+    security = info.get("SecurityOptions") or []
+    require("name=apparmor" in security and "name=seccomp,profile=builtin" in security
+            and not any(item in security for item in ("name=rootless", "name=userns")),
+            "rootful Docker default AppArmor/seccomp without user remapping required")
+    require(info.get("CgroupVersion") == "2" and {"cpu", "memory", "pids"} <= set(controllers)
+            and info.get("MemoryLimit") is True and info.get("SwapLimit") is True
+            and info.get("CpuCfsQuota") is True and info.get("PidsLimit") is True,
+            "Docker cgroup v2 resource controllers unavailable")
+    require("local" in (info.get("Plugins") or {}).get("Log", []), "Docker local logger unavailable")
+    require(info.get("DefaultRuntime") == "runc" and "runc" in (info.get("Runtimes") or {}),
+            "reviewed Docker default runc runtime absent")
+    require(yama in ("0", "1"), "Yama disallows unprivileged own-child tracing")
+
+
+def proof_mount_options(path, mountinfo):
+    """Find the effective existing proof mount without mounting or executing."""
+    def decode(value):
+        return re.sub(r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), value)
+    candidates = []
+    for row in mountinfo.splitlines():
+        fields = row.split()
+        require(len(fields) >= 10 and "-" in fields, "invalid host mountinfo")
+        mount = Path(decode(fields[4]))
+        if Path(path).is_relative_to(mount):
+            candidates.append((len(mount.parts), set(fields[5].split(","))))
+    require(candidates, "proof mount was not observed")
+    return max(candidates, key=lambda row: row[0])[1]
+
+
+def host_preflight(proof, output):
+    """Record bounded host facts and refuse predictable startup incompatibilities."""
+    observations = {"status": "HOST_PREREQUISITES_UNPROVED", "executionAdmission": False}
+    try:
+        require(not any(os.environ.get(key) for key in
+                ("DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")),
+                "Docker endpoint environment override is forbidden")
+        paths = {name: shutil.which(name) for name in ("git", "docker", "cc", "readelf", "mount", "umount")}
+        observations["installedTools"] = paths
+        require(all(paths.values()) and hasattr(os, "pidfd_open"), "required installed host tooling absent")
+        endpoint = json.loads(command(["docker", "context", "inspect", "--format", "{{json .Endpoints.docker.Host}}"], timeout=5))
+        version = json.loads(command(["docker", "version", "--format", "{{json .}}"], timeout=5))
+        info = json.loads(command(["docker", "info", "--format", "{{json .}}"], timeout=5))
+        controllers = Path("/sys/fs/cgroup/cgroup.controllers").read_text().split()
+        yama = Path("/proc/sys/kernel/yama/ptrace_scope").read_text().strip()
+        mountinfo = Path("/proc/self/mountinfo").read_text()
+        require(len(mountinfo.encode()) <= 1024 * 1024, "host mountinfo exceeds budget")
+        mount_options = proof_mount_options(proof, mountinfo)
+        observations.update({"daemonEndpoint": endpoint, "server": version.get("Server"),
+            "docker": {key: info.get(key) for key in ("OSType", "Architecture", "CgroupVersion",
+                "CgroupDriver", "MemoryLimit", "SwapLimit", "CpuCfsQuota", "PidsLimit",
+                "DefaultRuntime", "SecurityOptions")}, "controllers": controllers, "yama": yama,
+            "proofMountOptions": sorted(mount_options),
+            "runnerFreeBytes": shutil.disk_usage(output).free,
+            "dockerRootFreeBytes": shutil.disk_usage(info["DockerRootDir"]).free})
+        validate_docker_prerequisites(version, info, endpoint, controllers, yama)
+        require("noexec" not in mount_options, "proof supervisor mount disallows execution")
+        for directory in (Path(proof), *(Path(proof) / name for name in ("inputs", "runner", "policy"))):
+            inode = directory.lstat()
+            require(stat.S_ISDIR(inode.st_mode) and inode.st_uid == 0 and inode.st_gid == 0
+                    and stat.S_IMODE(inode.st_mode) == 0o755, "proof directory search permissions changed")
+        supervisor = Path(proof) / "runner/v98-supervisor"
+        inode = supervisor.lstat()
+        require(stat.S_ISREG(inode.st_mode) and inode.st_uid == 0 and inode.st_gid == 0
+                and stat.S_IMODE(inode.st_mode) == 0o555 and inode.st_nlink == 1,
+                "proof supervisor executable identity changed")
+        observations["status"] = "HOST_PREREQUISITES_OBSERVED; RUNTIME_NOT_ADMITTED"
+    except Exception as issue:
+        observations["reason"] = str(issue)[:2000]
+        raise
+    finally:
+        encoded = (json.dumps(observations, indent=2) + "\n").encode()
+        require(len(encoded) <= 32 * 1024, "host preflight receipt exceeds budget")
+        (Path(output) / "host-preflight.json").write_bytes(encoded)
+    return observations
 
 
 def mount_scratch(path):
@@ -591,8 +689,13 @@ def kill_created_without_group(container_id, name, image_id, proof, scratch, mod
     inspect_owned_container(inspected, container_id, name, image_id, proof, scratch, mode)
     if inspected.get("State", {}).get("Running") is True:
         command(["docker", "kill", "--signal=KILL", container_id], timeout=5)
-    require(docker_inspect(container_id).get("State", {}).get("Running") is False,
+    final = docker_inspect(container_id)
+    inspect_owned_container(final, container_id, name, image_id, proof, scratch, mode)
+    state = final.get("State") or {}
+    require(state.get("Running") is False and type(state.get("Pid")) is int and state["Pid"] == 0,
             "exact created container remains running")
+    return {"Status": str(state.get("Status", ""))[:64], "Running": False, "Pid": 0,
+            "ExitCode": state.get("ExitCode"), "Error": str(state.get("Error", ""))[:2000]}
 
 
 def scratch_bytes(scratch):
@@ -694,10 +797,18 @@ def run_mode(image_id, proof, out, name, mode):
     error = None
     cleanup_errors = []
     stopped_without_group = False
+    stopped_container_state = None
+    creation_attempted = False
     try:
         mount_scratch(scratch)
+        creation_attempted = True
         container_id = command(create_command(name, image_id, proof, scratch, mode)).decode().strip()
         require(HEX64.fullmatch(container_id), "Docker did not create an exact owned container")
+        created = docker_inspect(container_id)
+        inspect_owned_container(created, container_id, name, image_id, proof, scratch, mode)
+        inspect_container_configuration(created, container_id, image_id, proof, scratch)
+        require(created.get("State", {}).get("Running") is False
+                and created["State"].get("Pid") == 0, "created container already has a live PID")
         attach = subprocess.Popen(["docker", "start", "--attach", container_id],
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
         sel = selectors.DefaultSelector()
@@ -713,8 +824,10 @@ def run_mode(image_id, proof, out, name, mode):
                     sel.unregister(key.fileobj)
                     continue
                 target = stdout if key.data == "stdout" else stderr
-                target.extend(data)
-                require(len(target) <= (MAX_STDOUT if key.data == "stdout" else MAX_STDERR),
+                limit = MAX_STDOUT if key.data == "stdout" else MAX_STDERR
+                overflow = len(target) + len(data) > limit
+                target.extend(data[:max(0, limit - len(target))])
+                require(not overflow,
                         "native/product log budget exceeded")
             if not gate_seen and b"\n" in stdout:
                 first = bytes(stdout).split(b"\n", 1)[0] + b"\n"
@@ -791,7 +904,7 @@ def run_mode(image_id, proof, out, name, mode):
                 cleanup_errors.append("owned cgroup kill: " + str(kill_error)[:300])
         elif container_id and group_fd is None:
             try:
-                kill_created_without_group(container_id, name, image_id, proof, scratch, mode)
+                stopped_container_state = kill_created_without_group(container_id, name, image_id, proof, scratch, mode)
                 stopped_without_group = True
             except Exception as kill_error:
                 cleanup_errors.append("exact ID kill: " + str(kill_error)[:300])
@@ -858,6 +971,11 @@ def run_mode(image_id, proof, out, name, mode):
             "reason": str(error)[:2000], "containerId": container_id,
             "cgroupDevInode": identity, "extinctionObserved": extinct,
             "stoppedWithoutCgroupProof": stopped_without_group,
+            "stoppedContainerState": stopped_container_state,
+            "containerCreationAttempted": creation_attempted,
+            "creationOutcome": "EXACT_ID_OBSERVED" if container_id else (
+                "UNKNOWN" if creation_attempted else "NOT_ATTEMPTED"),
+            "attachReturnCode": attach.poll() if attach is not None else None,
             "cleanupErrors": cleanup_errors, "scratchMounted": os.path.ismount(scratch),
             "deadlineKilled": deadline_killed,
             "deadlineKillRequestedWallSeconds": deadline_kill_requested_wall,
@@ -873,6 +991,7 @@ def collect_evidence(validation, host_output, destination):
     destination.mkdir(mode=0o755)
     host_output = Path(host_output)
     files = [(Path(validation), Path("validation.json"), 1024 * 1024),
+             (host_output / "host-preflight.json", Path("host-preflight.json"), 32 * 1024),
              (host_output / "preparation.json", Path("preparation.json"), 1024 * 1024),
              (host_output / "qualification.json", Path("qualification.json"), 2 * 1024 * 1024)]
     for number in (1, 2, 3):
@@ -955,7 +1074,7 @@ def execute(args):
     require(os.geteuid() == 0 and platform.system() == "Linux" and platform.machine() == "x86_64",
             "hosted root Linux x86-64 runner required")
     require(os.environ.get("GITHUB_REPOSITORY") == "fr-meyer/openclaw"
-            and os.environ.get("GITHUB_REF") == "refs/heads/candidate/v2026.9.8-runtime-admission-2"
+            and os.environ.get("GITHUB_REF") == "refs/heads/candidate/v2026.9.8-runtime-admission-3"
             and os.environ.get("GITHUB_RUN_ATTEMPT") == "1"
             and os.environ.get("GITHUB_RUN_NUMBER") == "1", "wrong hosted workflow identity")
     tooling = Path(args.tooling).resolve()
@@ -979,6 +1098,7 @@ def execute(args):
     (out / "preparation.json").write_text(json.dumps({"toolingCommit": commit,
         "retainedImageSha256": IMAGE_SHA, "imageConfigId": IMAGE_ID,
         "proofFiles": proof_files, "compiler": compiler, "runtimeExecuted": False}, indent=2) + "\n")
+    host_preflight(proof, out)
     # Source verification precedes all Docker operations. The saved image is
     # loaded only once, after exact archive and selected read joins pass.
     prior = subprocess.run(["docker", "image", "inspect", IMAGE_ID], stdout=subprocess.DEVNULL,

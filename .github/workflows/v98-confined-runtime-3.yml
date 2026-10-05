@@ -1,11 +1,11 @@
-name: V98 Confined Runtime Admission 2
+name: V98 Confined Runtime Admission 3
 run-name: V98 confined runtime candidate ${{ github.sha }}
 
 # A separately approved exact commit may be pushed once to this distinct branch.
 # Run number and attempt gates reject later pushes and reruns of this workflow.
 on:
   push:
-    branches: [candidate/v2026.9.8-runtime-admission-2]
+    branches: [candidate/v2026.9.8-runtime-admission-3]
 
 permissions:
   contents: read
@@ -25,7 +25,7 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       github.repository == 'fr-meyer/openclaw' &&
-      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-admission-2' &&
+      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-admission-3' &&
       github.run_number == 1 && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -44,7 +44,7 @@ jobs:
           ref: ${{ github.sha }}
           path: tooling
           sparse-checkout: |
-            .github/workflows/v98-confined-runtime-2.yml
+            .github/workflows/v98-confined-runtime-3.yml
             scripts/proofs/v98-confined
             scripts/proofs/v98-runtime
             scripts/proofs/v98-parity

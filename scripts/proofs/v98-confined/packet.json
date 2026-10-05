@@ -6,8 +6,8 @@
   "sourceManifestPath": "scripts/proofs/v98-confined/source-manifest.json",
   "publication": {
     "repository": "fr-meyer/openclaw",
-    "branch": "candidate/v2026.9.8-runtime-admission-2",
-    "workflow": ".github/workflows/v98-confined-runtime-2.yml",
+    "branch": "candidate/v2026.9.8-runtime-admission-3",
+    "workflow": ".github/workflows/v98-confined-runtime-3.yml",
     "onePush": true,
     "forcePush": false,
     "mainMerge": false,
@@ -26,7 +26,9 @@
     "registryPublication": false,
     "defaultImageEntrypoint": false,
     "productionAccess": false,
-    "providerState": false
+    "providerState": false,
+    "hostPrerequisiteReceipt": "Bounded static host observations before image load; no execution admission",
+    "implicitImagePull": false
   },
   "artifact": {
     "runId": 37192724704,
@@ -59,7 +61,10 @@
     "scratchTmpfsBytes": 16777216,
     "retainedProbeScratchLimitBytesEach": 1048576,
     "privateShmBytes": 1048576,
-    "mounts": ["reviewed proof bundle -> /proof READ_ONLY", "task-owned tmpfs -> /scratch READ_WRITE"],
+    "mounts": [
+      "reviewed proof bundle -> /proof READ_ONLY",
+      "task-owned tmpfs -> /scratch READ_WRITE"
+    ],
     "imageRegularReadFiles": 1547,
     "imageDirectoryReads": false,
     "metadataLookups": "stat/access/readlink are permitted in the private image/PID/mount scopes; Landlock file-content rules do not mediate them; not identical Node Permission Model metadata restrictions",
@@ -70,22 +75,57 @@
     "stdioSocketPairs": "At most three tracked anonymous AF_UNIX SOCK_STREAM|SOCK_CLOEXEC protocol-zero pairs in phase 3",
     "helper": "Exactly one original Node snapshot sync helper in internal migration phase 3; committed executable/argv/env, nofollow bound stage inode and single-link source-owner token family, writers stopped through verified restriction, parent namespace changes denied until helper join; read-only candidate SQLite family and owned staging writes; no grandchildren or re-exec",
     "hostGate": "Before any tracee; host-observed Docker PID1/cgroup/limits; root-owned UID0 GID1000 mode0440 regular nlink1 exact18-byte one-use marker",
-    "cleanup": "Joined native tracees plus bound whole-cgroup extinction; preserve uncertain/failed receipts and scratch"
+    "cleanup": "Joined native tracees plus bound whole-cgroup extinction; preserve uncertain/failed receipts and scratch",
+    "failureCustody": "On unbound failure, record final exact-owned Running=false/Pid=0 separately; preserve stopped metadata, loaded image and uncertain-cgroup scratch; no extinction grant"
   },
   "modes": [
-    {"argument": "--capability-probe", "wallSeconds": 15, "aggregateCpuSeconds": 5, "helperAllowance": 0},
-    {"argument": "--deadline-probe", "wallSeconds": 2, "aggregateCpuSeconds": 1, "helperAllowance": 0, "expectedHostKill": true},
-    {"argument": "--run-frozen-six-phases", "wallSeconds": 60, "aggregateCpuSeconds": 30, "helperAllowance": 1}
+    {
+      "argument": "--capability-probe",
+      "wallSeconds": 15,
+      "aggregateCpuSeconds": 5,
+      "helperAllowance": 0
+    },
+    {
+      "argument": "--deadline-probe",
+      "wallSeconds": 2,
+      "aggregateCpuSeconds": 1,
+      "helperAllowance": 0,
+      "expectedHostKill": true
+    },
+    {
+      "argument": "--run-frozen-six-phases",
+      "wallSeconds": 60,
+      "aggregateCpuSeconds": 30,
+      "helperAllowance": 1
+    }
   ],
   "deadlineMonitorSamplingToleranceSeconds": 0.1,
   "deadlineKillRequestAndSignalLimitSeconds": 2.1,
   "phases": [
-    {"name": "prepare", "status": "NEVER_RUN"},
-    {"name": "assert-predecessor", "status": "NEVER_RUN"},
-    {"name": "migrate", "status": "NEVER_RUN"},
-    {"name": "assert-candidate", "status": "NEVER_RUN"},
-    {"name": "restore", "status": "NEVER_RUN"},
-    {"name": "assert-rollback", "status": "NEVER_RUN"}
+    {
+      "name": "prepare",
+      "status": "NEVER_RUN"
+    },
+    {
+      "name": "assert-predecessor",
+      "status": "NEVER_RUN"
+    },
+    {
+      "name": "migrate",
+      "status": "NEVER_RUN"
+    },
+    {
+      "name": "assert-candidate",
+      "status": "NEVER_RUN"
+    },
+    {
+      "name": "restore",
+      "status": "NEVER_RUN"
+    },
+    {
+      "name": "assert-rollback",
+      "status": "NEVER_RUN"
+    }
   ],
   "requiredHostedGates": [
     "Exact authenticated artifact/source/tooling/source-manifest/read-binding/saved-layer joins",
@@ -99,5 +139,15 @@
   ],
   "runtimeQualification": "UNPROVED; NEVER_RUN",
   "mergeguezOverlay": "SEPARATE_SOURCE_ONLY; NOT_INCLUDED; NO_ACTIVATION",
-  "compiledBinaryHashes": "Recorded only by the approved hosted compile gate, before policy activation"
+  "compiledBinaryHashes": "Recorded only by the approved hosted compile gate, before policy activation",
+  "remainingAdmissionLimitations": [
+    "Own-child ptrace/Yama, Landlock ABI, seccomp/AppArmor syscall/loader behavior, cgroup controls, default OCI runtime and actual PID1 remain runtime gates.",
+    "Image and selected-file verification do not prove complete dynamic import closure, workers, helper behavior or real data migration/restore/rollback.",
+    "Normal Exception failure cleanup is covered by pure sequences; abrupt runner loss, SIGTERM/SIGINT/job cancellation and final runner teardown do not carry proven stop/extinction/retention guarantees.",
+    "A timed-out Docker create with no returned exact ID has UNKNOWN creation outcome; no broad name-based or forced cleanup is authorized.",
+    "Failed attempts retain stopped container metadata, loaded image and unknown-cgroup mounted scratch; exact-ID non-running state is not whole-cgroup extinction.",
+    "Configured local logger rotation is one 1MiB file; record/metadata overhead and a single Docker logging record can exceed that nominal threshold. Host stdout/stderr and upload caps remain strict.",
+    "Runner disk free bytes are observed, not a bound on Docker extracted storage; artifact expiry and unused new branch/workflow identity must be verified immediately before any publication.",
+    "The built baseline excludes the Mergeguez source-only overlay and does not qualify production or installed real data preservation."
+  ]
 }

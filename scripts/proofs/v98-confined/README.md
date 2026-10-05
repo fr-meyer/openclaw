@@ -9,7 +9,7 @@ start the image's Gateway entrypoint. No fixture phase has run locally.
 Publication and hosted execution require approval of the final local commit,
 workflow and packet. Earlier approvals of artifact builds or source CI do not
 authorize this native runtime attempt. The proposed destination is
-`fr-meyer/openclaw`, branch `candidate/v2026.9.8-runtime-admission-2`, using one
+`fr-meyer/openclaw`, branch `candidate/v2026.9.8-runtime-admission-3`, using one
 15-minute Ubuntu 24.04 Actions job and seven-day evidence retention. No main
 merge, force push, production access, provider data, new VM, registry
 publication or production deployment is included.
@@ -29,10 +29,20 @@ remain failure evidence; all six phases stayed `NEVER_RUN`. This correction uses
 `Accept: application/json` with the same `gh api` download path that successfully
 retrieved the failed attempt's evidence. The CLI follows GitHub's temporary
 download redirect and strips authorization on the cross-host artifact-storage redirect; no token or
-signed URL is supplied manually or written to evidence. The new workflow
-`v98-confined-runtime-2.yml` and branch identify a separately approved attempt,
-with run-number/attempt guards still fixed at one. The retained artifact, native
-profile, input bytes, resource limits and retention are unchanged.
+signed URL is supplied manually or written to evidence.
+
+The second approved attempt, run `37243845981` at commit `9d118e87`, passed
+acquisition and image/selected-file verification. Docker then rejected log
+compression with `max-file=1` before task/PID1 startup. That failed receipt
+reports the exact created container non-running, a retained scratch mount, and
+unproved cgroup extinction; all six phases remain `NEVER_RUN`.
+
+This successor combines the reviewed `compress=false` correction with static
+host prerequisites, pre-start configuration inspection, explicit no-pull policy,
+bounded overflow retention and distinct stopped-container cleanup observations.
+The new workflow `v98-confined-runtime-3.yml` and branch identify a separately
+approved attempt, with run-number/attempt guards still fixed at one. The retained
+artifact, native profile, input bytes, resource limits and retention are unchanged.
 
 ## Execution contract
 
@@ -121,10 +131,35 @@ product helper cannot be created; missing required behavior fails qualification.
 
 ## Evidence limits
 
-Container logging retains one 1 MiB file with Docker's `local` driver and
+Container logging configures one 1 MiB file with Docker's `local` driver and
 explicit `compress=false`. Compression is enabled by default and conflicts with
 `max-file=1`, preventing the container from starting. This setting preserves the
-single-file budget; see the [Docker local logging options](https://docs.docker.com/engine/logging/drivers/local/#options).
+single-file rotation budget; see the [Docker local logging options](https://docs.docker.com/engine/logging/drivers/local/#options).
+Docker record and metadata overhead can exceed the nominal rotation threshold.
+Host-retained stdout/stderr prefixes remain strictly bounded even on overflow;
+overflow refuses the attempt, and the total evidence upload stays at 20 MiB.
+
+Before loading the image, a bounded `host-preflight.json` records the local rootful
+Linux amd64 Docker API, default runc, seccomp/AppArmor, cgroup v2 controllers,
+Yama own-child prerequisites, executable proof mount/permissions and free disk.
+Missing prerequisites refuse; this observation does not admit execution.
+After create, configuration/ownership and the stopped PID are inspected before
+start. `--pull never` forbids implicit image acquisition. These are supported
+[Docker create options](https://docs.docker.com/reference/cli/docker/container/create/).
+The created AppArmor field may be empty because Moby assigns the default profile
+[during start](https://github.com/moby/moby/blob/v28.0.4/daemon/start.go#L160-L162).
+After start, the inspected profile and actual PID1 `/proc` profile must both
+prove `docker-default` enforcement; the native gate remains closed until then.
+
+On an unbound failed start, the exact ownership-validated final Docker state and
+attach return code are retained separately from whole-cgroup extinction. A
+non-running Docker container with PID 0 does not grant cgroup proof. Stopped
+container metadata, loaded image and uncertain-cgroup scratch remain in runner
+custody; no force removal or unmount is attempted under uncertain ownership.
+Docker-create timeout without a returned ID remains UNKNOWN. Abrupt runner loss,
+SIGINT/SIGTERM, job cancellation and teardown have no proved cleanup/retention
+guarantee. Static checks do not prove disk capacity for unpacked image storage,
+native tracing, Landlock, loaders, dynamic imports or the six fixture phases.
 
 Portable C decision/BPF/SHA tests, Python adversarial archive/descriptor/host
 tests and syntax checks are offline evidence. They do not prove Linux syscall

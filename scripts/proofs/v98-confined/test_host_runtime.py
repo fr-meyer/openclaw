@@ -23,11 +23,33 @@ def inspect_row(container_id="a" * 64):
                        "CapDrop": ["ALL"], "CgroupnsMode": "private", "PidMode": "",
                        "IpcMode": "private", "Memory": 1024 ** 3, "MemorySwap": 1024 ** 3,
                        "NanoCpus": 10 ** 9, "PidsLimit": 128, "ShmSize": 1024 ** 2,
-                       "SecurityOpt": ["no-new-privileges:true"]},
+                       "SecurityOpt": ["no-new-privileges:true"],
+                       "Ulimits": [{"Name": "core", "Soft": 0, "Hard": 0}],
+                       "LogConfig": {"Type": "local", "Config": {
+                           "max-size": "1m", "max-file": "1", "compress": "false"}}},
         "Mounts": [{"Destination": "/proof", "Source": "/proof-host", "Type": "bind", "RW": False},
                    {"Destination": "/scratch", "Source": "/scratch-host", "Type": "bind", "RW": True}],
         "Name": "/owned", "State": {"Pid": 12345, "Running": True},
     }
+
+
+def created_row(proof="/proof-host", scratch="/scratch-host", mode="--capability-probe"):
+    row = inspect_row()
+    row["AppArmorProfile"] = ""
+    row["Mounts"][0]["Source"] = proof
+    row["Mounts"][1]["Source"] = scratch
+    row["Config"]["Cmd"] = [mode]
+    row["State"] = {"Status": "created", "Pid": 0, "Running": False, "ExitCode": 0,
+                    "Error": "logger refused"}
+    return row
+
+
+def daemon_facts():
+    return ({"Server": {"ApiVersion": "1.48", "Os": "linux", "Arch": "amd64"}},
+            {"OSType": "linux", "Architecture": "x86_64", "CgroupVersion": "2",
+             "MemoryLimit": True, "SwapLimit": True, "CpuCfsQuota": True, "PidsLimit": True,
+             "SecurityOptions": ["name=apparmor", "name=seccomp,profile=builtin"],
+             "Plugins": {"Log": ["local"]}, "DefaultRuntime": "runc", "Runtimes": {"runc": {}}})
 
 
 class HostContractTests(unittest.TestCase):
@@ -45,6 +67,52 @@ class HostContractTests(unittest.TestCase):
                           "type=bind,src=/scratch-host,dst=/scratch"])
         self.assertNotIn("--privileged", argv)
         self.assertNotIn("--pid", argv)
+        self.assertIn(["--pull", "never"], [argv[i:i + 2] for i in range(len(argv) - 1)])
+
+    def test_preflight_refuses_incompatible_daemon_and_resource_prerequisites(self):
+        version, info = daemon_facts()
+        args = [version, info, "unix:///var/run/docker.sock", ["cpu", "memory", "pids"], "1"]
+        HOST.validate_docker_prerequisites(*args)
+        for location, key, value in (
+            (0, "Server", {"ApiVersion": "1.40", "Os": "linux", "Arch": "amd64"}),
+            (1, "Architecture", "aarch64"), (1, "CgroupVersion", "1"),
+            (1, "SecurityOptions", ["name=apparmor", "name=seccomp,profile=custom"]),
+            (1, "SecurityOptions", ["name=rootless", "name=apparmor", "name=seccomp,profile=builtin"]),
+            (1, "SecurityOptions", ["name=userns", "name=apparmor", "name=seccomp,profile=builtin"]),
+            (1, "SwapLimit", False), (1, "PidsLimit", False),
+            (1, "Plugins", {"Log": ["json-file"]}), (1, "Runtimes", {}),
+            (1, "DefaultRuntime", "io.containerd.runsc.v1"),
+        ):
+            changed = json.loads(json.dumps(args))
+            changed[location][key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(HOST.Refusal):
+                HOST.validate_docker_prerequisites(*changed)
+        for index, value in ((2, "tcp://remote:2375"), (3, ["cpu", "memory"]), (4, "2"), (4, "3")):
+            changed = list(args); changed[index] = value
+            with self.subTest(index=index), self.assertRaises(HOST.Refusal):
+                HOST.validate_docker_prerequisites(*changed)
+
+    def test_proof_mount_uses_most_specific_mount_and_decodes_paths(self):
+        mounts = ("1 0 1:1 / / rw - ext4 /dev/root rw\n"
+                  "2 1 1:2 / /runner\\040temp rw,noexec - tmpfs tmpfs rw\n")
+        self.assertEqual(HOST.proof_mount_options("/runner temp/proof", mounts), {"rw", "noexec"})
+        self.assertEqual(HOST.proof_mount_options("/runner temporary/proof", mounts), {"rw"})
+        with self.assertRaises(HOST.Refusal):
+            HOST.proof_mount_options("/proof", "invalid")
+
+    def test_preflight_refusal_is_retained_before_any_docker_command(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.dict(HOST.os.environ, {"DOCKER_HOST": "tcp://remote:2375"}, clear=True), \
+                 patch.object(HOST, "command") as commands, self.assertRaises(HOST.Refusal):
+                HOST.host_preflight(Path(temp) / "proof", temp)
+            commands.assert_not_called()
+            receipt = json.loads((Path(temp) / "host-preflight.json").read_text())
+            self.assertEqual(receipt["status"], "HOST_PREREQUISITES_UNPROVED")
+            self.assertFalse(receipt["executionAdmission"])
+            self.assertIn("endpoint environment override", receipt["reason"])
+            validation = Path(temp) / "validation.json"; validation.write_text("{}\n")
+            custody = HOST.collect_evidence(validation, temp, Path(temp) / "upload")
+            self.assertIn("host-preflight.json", [row["path"] for row in custody["copied"]])
 
     def test_container_logging_can_start_within_single_megabyte_budget(self):
         # Docker's local driver defaults to compression and rejects it with one
@@ -75,12 +143,25 @@ class HostContractTests(unittest.TestCase):
             lambda x: x.update(AppArmorProfile=""),
             lambda x: x["Mounts"][1].update(Source="/other"),
             lambda x: x["State"].update(Running=False),
+            lambda x: x["HostConfig"]["LogConfig"]["Config"].update(compress="true"),
+            lambda x: x["HostConfig"]["Ulimits"][0].update(Hard=1),
         ):
             changed = json.loads(json.dumps(row))
             mutation(changed)
             with self.subTest(changed=changed), self.assertRaises(HOST.Refusal):
                 HOST.inspect_container(changed, "a" * 64, HOST.IMAGE_ID,
                                        "/proof-host", "/scratch-host")
+
+    def test_default_apparmor_assignment_is_deferred_until_start(self):
+        row = created_row()
+        HOST.inspect_container_configuration(row, "a" * 64, HOST.IMAGE_ID,
+                                              "/proof-host", "/scratch-host")
+        row["State"].update(Running=True, Pid=12345)
+        with self.assertRaisesRegex(HOST.Refusal, "AppArmor is not enforced"):
+            HOST.inspect_container(row, "a" * 64, HOST.IMAGE_ID, "/proof-host", "/scratch-host")
+        row["AppArmorProfile"] = "docker-default"
+        self.assertEqual(HOST.inspect_container(row, "a" * 64, HOST.IMAGE_ID,
+                                                "/proof-host", "/scratch-host"), 12345)
 
     def test_cleanup_ownership_is_distinct_from_policy_admission(self):
         row = inspect_row()
@@ -108,9 +189,128 @@ class HostContractTests(unittest.TestCase):
         with patch.object(HOST, "docker_inspect", side_effect=[row, {
                 **row, "State": {"Pid": 0, "Running": False}}]), \
                 patch.object(HOST, "command", return_value=b"") as invoked:
-            self.assertIsNone(HOST.kill_created_without_group("a" * 64, "owned", HOST.IMAGE_ID,
-                              "/proof-host", "/scratch-host", "--capability-probe"))
+            state = HOST.kill_created_without_group("a" * 64, "owned", HOST.IMAGE_ID,
+                          "/proof-host", "/scratch-host", "--capability-probe")
+            self.assertFalse(state["Running"])
+            self.assertEqual(state["Pid"], 0)
             invoked.assert_called_once_with(["docker", "kill", "--signal=KILL", "a" * 64], timeout=5)
+
+    def test_fallback_refuses_final_pid_or_ownership_change(self):
+        for change in (lambda row: row["State"].update(Pid=12345),
+                       lambda row: row.update(Name="/other")):
+            final = created_row(); change(final)
+            with patch.object(HOST, "docker_inspect", side_effect=[created_row(), final]), \
+                    patch.object(HOST, "command") as invoked, self.assertRaises(HOST.Refusal):
+                HOST.kill_created_without_group("a" * 64, "owned", HOST.IMAGE_ID,
+                    "/proof-host", "/scratch-host", "--capability-probe")
+            invoked.assert_not_called()
+
+    def test_failed_start_retains_stopped_state_without_claiming_extinction(self):
+        self.check_failed_start(b"logger refused\n", False)
+
+    def test_oversized_stream_retains_only_bounded_prefix(self):
+        self.check_failed_start(b"0123456789abcdef", True)
+
+    def test_failed_exact_id_kill_keeps_live_resource_cleanup_unproved(self):
+        self.check_failed_start(b"start request failed\n", False, kill_failure=True)
+
+    def check_failed_start(self, message, overflow, kill_failure=False):
+        class Attached:
+            def __init__(self, stdout, stderr):
+                self.stdout, self.stderr = stdout, stderr
+            def poll(self): return 125
+            def wait(self, timeout): return 125
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            stdout_r, stdout_w = os.pipe(); stderr_r, stderr_w = os.pipe()
+            os.close(stdout_w); os.write(stderr_w, message); os.close(stderr_w)
+            stdout = os.fdopen(stdout_r, "rb", buffering=0)
+            stderr = os.fdopen(stderr_r, "rb", buffering=0)
+            row = created_row()
+            row["Mounts"][0]["Source"] = str(root)
+            row["Mounts"][1]["Source"] = str(root / "attempt/scratch-tmpfs")
+            def inspect():
+                result = json.loads(json.dumps(row))
+                if kill_failure and commands.call_count:
+                    result["State"].update(Running=True, Pid=12345)
+                return result
+            # The first inspect observes a stopped created container; later
+            # daemon observations can report a live task despite attach failure.
+            inspections = [0]
+            def observe(*_):
+                result = inspect()
+                if inspections[0] == 0:
+                    result["State"].update(Running=False, Pid=0)
+                inspections[0] += 1
+                return result
+            try:
+                with patch.object(HOST, "mount_scratch", side_effect=lambda path: path.mkdir()), \
+                     patch.object(HOST, "command", side_effect=(
+                         [b"a" * 64, HOST.Refusal("owned kill failed")] if kill_failure
+                         else [b"a" * 64])) as commands, \
+                     patch.object(HOST.subprocess, "Popen", return_value=Attached(stdout, stderr)), \
+                     patch.object(HOST, "docker_inspect", side_effect=observe), \
+                     patch.object(HOST, "observe_owned_process", side_effect=HOST.Refusal("no live PID")), \
+                     patch.object(HOST.os.path, "ismount", return_value=True), \
+                     patch.object(HOST, "MAX_STDERR", 8 if overflow else HOST.MAX_STDERR), \
+                     patch.object(HOST, "release_gate") as admitted, \
+                     patch.object(HOST, "retain_scratch") as archived:
+                    with self.assertRaisesRegex(HOST.Refusal,
+                            "log budget exceeded" if overflow else "host gate was never admitted"):
+                        HOST.run_mode(HOST.IMAGE_ID, root, root / "attempt", "owned", "--capability-probe")
+                    self.assertEqual(commands.call_count, 2 if kill_failure else 1)
+                    admitted.assert_not_called(); archived.assert_not_called()
+                failure = json.loads((root / "attempt/failure.json").read_text())
+                self.assertEqual((root / "attempt/product-stderr.log").read_bytes(), message[:8] if overflow else message)
+                self.assertFalse(failure["extinctionObserved"])
+                self.assertIsNone(failure["cgroupDevInode"])
+                self.assertEqual(failure["stoppedWithoutCgroupProof"], not kill_failure)
+                if kill_failure:
+                    self.assertIsNone(failure["stoppedContainerState"])
+                    self.assertIn("exact ID kill: owned kill failed", failure["cleanupErrors"])
+                else:
+                    self.assertEqual(failure["stoppedContainerState"]["Pid"], 0)
+                    self.assertFalse(failure["stoppedContainerState"]["Running"])
+                self.assertTrue(failure["scratchMounted"])
+                self.assertEqual(failure["attachReturnCode"], 125)
+                self.assertEqual(failure["creationOutcome"], "EXACT_ID_OBSERVED")
+            finally:
+                stdout.close(); stderr.close()
+
+    def test_failed_create_records_unknown_custody_and_no_start(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with patch.object(HOST, "mount_scratch", side_effect=lambda path: path.mkdir()), \
+                 patch.object(HOST, "command", side_effect=HOST.Refusal("create timeout")), \
+                 patch.object(HOST.subprocess, "Popen") as started, \
+                 patch.object(HOST.os.path, "ismount", return_value=True):
+                with self.assertRaisesRegex(HOST.Refusal, "create timeout"):
+                    HOST.run_mode(HOST.IMAGE_ID, root, root / "attempt", "owned", "--capability-probe")
+                started.assert_not_called()
+            failure = json.loads((root / "attempt/failure.json").read_text())
+            self.assertEqual(failure["creationOutcome"], "UNKNOWN")
+            self.assertIsNone(failure["containerId"])
+            self.assertFalse(failure["extinctionObserved"])
+            self.assertTrue(failure["scratchMounted"])
+
+    def test_bad_created_log_configuration_refuses_before_start(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); row = created_row()
+            row["Mounts"][0]["Source"] = str(root)
+            row["Mounts"][1]["Source"] = str(root / "attempt/scratch-tmpfs")
+            row["HostConfig"]["LogConfig"]["Config"]["compress"] = "true"
+            with patch.object(HOST, "mount_scratch", side_effect=lambda path: path.mkdir()), \
+                 patch.object(HOST, "command", return_value=b"a" * 64), \
+                 patch.object(HOST, "docker_inspect", return_value=row), \
+                 patch.object(HOST.subprocess, "Popen") as started, \
+                 patch.object(HOST.os.path, "ismount", return_value=True):
+                with self.assertRaisesRegex(HOST.Refusal, "log budget"):
+                    HOST.run_mode(HOST.IMAGE_ID, root, root / "attempt", "owned", "--capability-probe")
+                started.assert_not_called()
+            failure = json.loads((root / "attempt/failure.json").read_text())
+            self.assertFalse(failure["extinctionObserved"])
+            self.assertTrue(failure["stoppedWithoutCgroupProof"])
 
     def test_policy_refusal_kills_bound_group_and_writes_post_cleanup_failure(self):
         class Attached:
@@ -136,6 +336,8 @@ class HostContractTests(unittest.TestCase):
                 with patch.object(HOST, "mount_scratch", side_effect=lambda path: path.mkdir()), \
                      patch.object(HOST, "command", side_effect=[b"a" * 64, b"", b""]), \
                      patch.object(HOST.subprocess, "Popen", return_value=Attached(stdout, stderr)), \
+                     patch.object(HOST, "docker_inspect", return_value=created_row(
+                         str(root), str(root / "attempt/scratch-tmpfs"))), \
                      patch.object(HOST, "observe_owned_process", return_value=owned), \
                      patch.object(HOST, "host_pid_gate", side_effect=HOST.Refusal("seccomp refused")), \
                      patch.object(HOST, "kill_owned") as killed, \
@@ -187,7 +389,9 @@ class HostContractTests(unittest.TestCase):
                      patch.object(HOST.subprocess, "Popen", return_value=Attached(stdout, stderr)), \
                      patch.object(HOST, "observe_owned_process", return_value=owned), \
                      patch.object(HOST, "host_pid_gate", return_value=(0, cpu_fd)), \
-                     patch.object(HOST, "docker_inspect", return_value={"State": {"Pid": 12345}}), \
+                     patch.object(HOST, "docker_inspect", side_effect=[created_row(
+                         str(root), str(root / "attempt/scratch-tmpfs"), "--deadline-probe"),
+                         {"State": {"Pid": 12345}}]), \
                      patch.object(HOST, "proc_starttime", return_value=123), \
                      patch.object(HOST, "release_gate", side_effect=lambda _: clock.__setitem__(0, 3.0)), \
                      patch.object(HOST, "read_cgroup_cpu_fd", return_value=0), \
