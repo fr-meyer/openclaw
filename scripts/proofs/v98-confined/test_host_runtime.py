@@ -1,11 +1,13 @@
 """Pure contract checks for the proposed host supervisor; no native execution."""
 import importlib.util
 import io
+import errno
 import json
 import os
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -189,21 +191,53 @@ class HostContractTests(unittest.TestCase):
         with patch.object(HOST, "docker_inspect", side_effect=[row, {
                 **row, "State": {"Pid": 0, "Running": False}}]), \
                 patch.object(HOST, "command", return_value=b"") as invoked:
-            state = HOST.kill_created_without_group("a" * 64, "owned", HOST.IMAGE_ID,
+            state = HOST.settle_created_container("a" * 64, "owned", HOST.IMAGE_ID,
                           "/proof-host", "/scratch-host", "--capability-probe")
             self.assertFalse(state["Running"])
             self.assertEqual(state["Pid"], 0)
             invoked.assert_called_once_with(["docker", "kill", "--signal=KILL", "a" * 64], timeout=5)
 
-    def test_fallback_refuses_final_pid_or_ownership_change(self):
-        for change in (lambda row: row["State"].update(Pid=12345),
-                       lambda row: row.update(Name="/other")):
-            final = created_row(); change(final)
-            with patch.object(HOST, "docker_inspect", side_effect=[created_row(), final]), \
-                    patch.object(HOST, "command") as invoked, self.assertRaises(HOST.Refusal):
-                HOST.kill_created_without_group("a" * 64, "owned", HOST.IMAGE_ID,
+    def test_settlement_retains_nonzero_final_pid_without_stopped_grant(self):
+        final = created_row(); final["State"]["Pid"] = 12345
+        with patch.object(HOST, "docker_inspect", side_effect=[created_row(), final]), \
+                patch.object(HOST, "command") as invoked:
+            state = HOST.settle_created_container("a" * 64, "owned", HOST.IMAGE_ID,
+                "/proof-host", "/scratch-host", "--capability-probe")
+        self.assertFalse(state["stoppedVerified"])
+        self.assertEqual(state["Pid"], 12345)
+        invoked.assert_not_called()
+
+    def test_settlement_refuses_final_ownership_change(self):
+        final = created_row(); final["Name"] = "/other"
+        with patch.object(HOST, "docker_inspect", side_effect=[created_row(), final]), \
+                patch.object(HOST, "command") as invoked, self.assertRaises(HOST.Refusal):
+            HOST.settle_created_container("a" * 64, "owned", HOST.IMAGE_ID,
+                "/proof-host", "/scratch-host", "--capability-probe")
+        invoked.assert_not_called()
+
+    def test_failed_stop_still_observes_stopped_final_state(self):
+        for final in (created_row(), inspect_row()):
+            with self.subTest(running=final["State"]["Running"]), \
+                    patch.object(HOST, "docker_inspect", side_effect=[inspect_row(), final]) as inspected, \
+                    patch.object(HOST, "command", side_effect=HOST.Refusal("stop timed out")):
+                state = HOST.settle_created_container("a" * 64, "owned", HOST.IMAGE_ID,
                     "/proof-host", "/scratch-host", "--capability-probe")
-            invoked.assert_not_called()
+            self.assertEqual(inspected.call_count, 2)
+            self.assertEqual(state["stoppedVerified"], final["State"]["Pid"] == 0)
+            self.assertFalse(state["stopCommandSucceeded"])
+            self.assertEqual(state["stopFailure"]["reason"], "stop timed out")
+
+    def test_failed_stop_and_failed_final_inspect_retain_both_errors(self):
+        with patch.object(HOST, "docker_inspect", side_effect=[
+                inspect_row(), OSError(errno.ENODEV, "final inspect " + "x" * 4000)]), \
+                patch.object(HOST, "command", side_effect=HOST.Refusal("stop timed out")), \
+                self.assertRaises(HOST.SettlementFailure) as caught:
+            HOST.settle_created_container("a" * 64, "owned", HOST.IMAGE_ID,
+                "/proof-host", "/scratch-host", "--capability-probe")
+        details = caught.exception.details
+        self.assertEqual(details["stopFailure"]["reason"], "stop timed out")
+        self.assertEqual(details["finalObservationFailure"]["errno"], errno.ENODEV)
+        self.assertLessEqual(len(details["finalObservationFailure"]["reason"].encode()), 2000)
 
     def test_failed_start_retains_stopped_state_without_claiming_extinction(self):
         self.check_failed_start(b"logger refused\n", False)
@@ -214,7 +248,11 @@ class HostContractTests(unittest.TestCase):
     def test_failed_exact_id_kill_keeps_live_resource_cleanup_unproved(self):
         self.check_failed_start(b"start request failed\n", False, kill_failure=True)
 
-    def check_failed_start(self, message, overflow, kill_failure=False):
+    def test_run_mode_retains_stop_and_final_inspection_failures(self):
+        self.check_failed_start(b"start request failed\n", False, kill_failure=True,
+                                final_inspect_failure=True)
+
+    def check_failed_start(self, message, overflow, kill_failure=False, final_inspect_failure=False):
         class Attached:
             def __init__(self, stdout, stderr):
                 self.stdout, self.stderr = stdout, stderr
@@ -239,6 +277,8 @@ class HostContractTests(unittest.TestCase):
             # daemon observations can report a live task despite attach failure.
             inspections = [0]
             def observe(*_):
+                if final_inspect_failure and inspections[0] == 3:
+                    raise OSError(errno.ENODEV, "final state unavailable " + "x" * 4000)
                 result = inspect()
                 if inspections[0] == 0:
                     result["State"].update(Running=False, Pid=0)
@@ -267,8 +307,15 @@ class HostContractTests(unittest.TestCase):
                 self.assertIsNone(failure["cgroupDevInode"])
                 self.assertEqual(failure["stoppedWithoutCgroupProof"], not kill_failure)
                 if kill_failure:
-                    self.assertIsNone(failure["stoppedContainerState"])
-                    self.assertIn("exact ID kill: owned kill failed", failure["cleanupErrors"])
+                    if final_inspect_failure:
+                        self.assertIsNone(failure["stoppedContainerState"])
+                        details = failure["containerSettlementFailure"]
+                        self.assertEqual(details["stopFailure"]["reason"], "owned kill failed")
+                        self.assertEqual(details["finalObservationFailure"]["errno"], errno.ENODEV)
+                    else:
+                        self.assertFalse(failure["stoppedContainerState"]["stoppedVerified"])
+                        self.assertTrue(failure["stoppedContainerState"]["Running"])
+                        self.assertIn("exact ID kill: owned kill failed", failure["cleanupErrors"])
                 else:
                     self.assertEqual(failure["stoppedContainerState"]["Pid"], 0)
                     self.assertFalse(failure["stoppedContainerState"]["Running"])
@@ -484,6 +531,147 @@ class HostContractTests(unittest.TestCase):
             self.assertEqual(HOST.read_cgroup_cpu_fd(stats.fileno()), 120)
             self.assertEqual(HOST.read_cgroup_cpu_fd(stats.fileno()), 120)
 
+    def test_cpu_errors_identify_actual_seek_or_read_operation(self):
+        for method, operation in (("lseek", "cpu.stat seek"), ("read", "cpu.stat read")):
+            with self.subTest(method=method), tempfile.TemporaryFile() as counter, \
+                    patch.object(HOST.os, method, side_effect=OSError(errno.ENODEV, "inactive")):
+                with self.assertRaises(HOST.ObservationFailure) as caught:
+                    HOST.read_cgroup_cpu_fd(counter.fileno())
+            detail = HOST.failure_detail(caught.exception, "generic")
+            self.assertEqual(detail["operation"], operation)
+            self.assertEqual(detail["errno"], errno.ENODEV)
+        for text in ("usage_usec 1\nusage_usec 2\n", "usage_usec -1\n", "bad row extra\n"):
+            with self.subTest(text=text), self.assertRaises(HOST.Refusal):
+                HOST.cgroup_cpu(text)
+
+    def test_cgroup_extinction_requires_original_bounded_population(self):
+        with tempfile.TemporaryDirectory() as temp:
+            group = Path(temp) / "group"; group.mkdir()
+            events = group / "cgroup.events"; events.write_text("populated 0\nfrozen 0\n")
+            fd = os.open(group, os.O_RDONLY); info = os.fstat(fd)
+            identity = (info.st_dev, info.st_ino)
+            try:
+                self.assertTrue(HOST.extinction(group, identity, fd))
+                for contents in ("populated 1\n", "populated 0\npopulated 1\n", "x" * 4096):
+                    events.write_text(contents)
+                    if contents == "populated 1\n":
+                        self.assertFalse(HOST.extinction(group, identity, fd))
+                    else:
+                        with self.assertRaises(HOST.Refusal):
+                            HOST.extinction(group, identity, fd)
+                events.unlink(); group.rmdir()
+                self.assertFalse(HOST.extinction(group, identity, fd))
+                group.mkdir(); events.write_text("populated 0\n")
+                with self.assertRaisesRegex(HOST.Refusal, "reused"):
+                    HOST.extinction(group, identity, fd)
+            finally:
+                os.close(fd)
+
+    def test_cgroup_kill_cannot_follow_path_replacement(self):
+        with tempfile.TemporaryDirectory() as temp:
+            group = Path(temp) / "group"; group.mkdir()
+            (group / "cgroup.events").write_text("populated 1\n")
+            (group / "cgroup.kill").write_text("0\n")
+            fd = os.open(group, os.O_RDONLY); info = os.fstat(fd)
+            identity = (info.st_dev, info.st_ino)
+            real_open = os.open
+            held = group.with_name("original")
+            def raced_open(path, flags, **kwargs):
+                if path == "cgroup.kill":
+                    self.assertEqual(kwargs["dir_fd"], fd)
+                    self.assertTrue(flags & os.O_NOFOLLOW)
+                    group.rename(held); group.mkdir()
+                    (group / "cgroup.kill").write_text("0\n")
+                return real_open(path, flags, **kwargs)
+            try:
+                with patch.object(HOST.os, "open", side_effect=raced_open), \
+                        patch.object(HOST, "wait_extinction", return_value=True):
+                    HOST.kill_owned("a" * 64, group, identity, fd)
+                self.assertEqual((held / "cgroup.kill").read_text(), "1\n")
+                self.assertEqual((group / "cgroup.kill").read_text(), "0\n")
+            finally:
+                os.close(fd)
+
+    def test_native_exit_and_host_enodev_keep_independent_cleanup(self):
+        self.check_bound_cpu_failure(native_exit=13, live_failure=True)
+
+    def test_native_success_cannot_replace_missing_final_cpu(self):
+        self.check_bound_cpu_failure(native_exit=0, live_failure=False)
+
+    def test_terminal_native_refusal_marks_final_cpu_not_attempted(self):
+        self.check_bound_cpu_failure(native_exit=13, live_failure=False)
+
+    def check_bound_cpu_failure(self, native_exit, live_failure):
+        class Attached:
+            def __init__(self, stdout, stderr): self.stdout, self.stderr = stdout, stderr
+            def poll(self): return 125 if native_exit else 0
+            def wait(self, timeout): return self.poll()
+
+        controls = {key: True for key in ("fsync", "sqliteWalBackupClose", "deniedOutsideScratch", "deniedSockets")}
+        native = [{"event": "host_gate_ready", "mode": "--capability-probe"},
+                  {"event": "base_boundary_installed", "phase": 0},
+                  {"event": "thread_owned", "phase": 0}, {"event": "thread_reaped", "phase": 0},
+                  *[{"event": "syscall_denied", "value": 41}] * 4,
+                  {"event": "syscall_denied", "value": 56},
+                  *[{"event": "fsync_completed", "phase": 0}] * 4,
+                  {"event": "phase_joined", "phase": 0, "value": native_exit},
+                  {"event": "native_attempt_joined", "phase": 0, "value": 0}]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            stdout_r, stdout_w = os.pipe(); stderr_r, stderr_w = os.pipe()
+            os.write(stdout_w, b"".join((json.dumps(row) + "\n").encode() for row in native))
+            product = {"event": "capability_controls_joined", "main": controls, "worker": controls}
+            os.write(stderr_w, (json.dumps(product) + "\n").encode())
+            os.close(stdout_w); os.close(stderr_w)
+            stdout = os.fdopen(stdout_r, "rb", buffering=0); stderr = os.fdopen(stderr_r, "rb", buffering=0)
+            pidfd = os.open(os.devnull, os.O_RDONLY); cpu_fd = os.open(os.devnull, os.O_RDONLY)
+            group_fd = os.open(root, os.O_RDONLY); info = os.fstat(group_fd)
+            owned = (12345, 123, pidfd, group_fd, root, (info.st_dev, info.st_ino))
+            created = created_row(str(root), str(root / "attempt/scratch-tmpfs"))
+            running = json.loads(json.dumps(created)); running["State"].update(Pid=12345, Running=True)
+            stopped = json.loads(json.dumps(created)); stopped["State"].update(ExitCode=125 if native_exit else 0)
+            observations = [created, running] + ([] if live_failure else [stopped]) + [stopped, stopped]
+            issue = HOST.ObservationFailure("cpu.stat read", OSError(errno.ENODEV, "inactive counter"))
+            try:
+                with patch.object(HOST, "mount_scratch", side_effect=lambda path: path.mkdir()), \
+                     patch.object(HOST, "command", return_value=b"a" * 64) as commands, \
+                     patch.object(HOST.subprocess, "Popen", return_value=Attached(stdout, stderr)), \
+                     patch.object(HOST, "observe_owned_process", return_value=owned), \
+                     patch.object(HOST, "host_pid_gate", return_value=(100, cpu_fd)), \
+                     patch.object(HOST, "docker_inspect", side_effect=observations) as inspected, \
+                     patch.object(HOST, "proc_starttime", return_value=123), \
+                     patch.object(HOST, "release_gate"), \
+                     patch.object(HOST, "extinction", return_value=not live_failure), \
+                     patch.object(HOST, "read_cgroup_cpu_fd", side_effect=issue) as counters, \
+                     patch.object(HOST, "kill_owned", side_effect=FileNotFoundError("scope absent")), \
+                     patch.object(HOST.os.path, "ismount", return_value=True), \
+                     patch.object(HOST, "retain_scratch") as archived:
+                    with self.assertRaises(HOST.Refusal):
+                        HOST.run_mode(HOST.IMAGE_ID, root, root / "attempt", "owned", "--capability-probe")
+                    self.assertEqual(inspected.call_count, len(observations))
+                    self.assertEqual(commands.call_count, 1)  # create only, no rm/unmount
+                    archived.assert_not_called()
+                    if native_exit and not live_failure:
+                        counters.assert_not_called()
+                failure = json.loads((root / "attempt/failure.json").read_text())
+                if native_exit and not live_failure:
+                    self.assertIsNone(failure["hostFailure"]["errno"])
+                    self.assertEqual(failure["hostFailure"]["operation"], "exact container exit and native outcome")
+                else:
+                    self.assertEqual(failure["hostFailure"]["errno"], errno.ENODEV)
+                    self.assertEqual(failure["hostFailure"]["operation"], "cpu.stat read")
+                self.assertEqual(failure["primaryFailure"]["authority"],
+                                 "TRUSTED_NATIVE_PHASE_EXIT" if native_exit else "HOST_OPERATION")
+                self.assertFalse(failure["finalCpuVerified"])
+                self.assertEqual(failure["finalCpuStatus"], "NOT_ATTEMPTED" if live_failure or native_exit else "ATTEMPTED_UNVERIFIED")
+                self.assertFalse(failure["extinctionObserved"])
+                self.assertTrue(failure["stoppedContainerState"]["stoppedVerified"])
+                self.assertTrue(failure["stoppedWithoutCgroupProof"])
+                self.assertTrue(failure["scratchMounted"])
+                self.assertFalse((root / "attempt/receipt.json").exists())
+            finally:
+                stdout.close(); stderr.close()
+
     def test_prepared_artifact_join_rejects_tamper(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -517,6 +705,75 @@ class HostContractTests(unittest.TestCase):
             with patch.object(HOST, "sha256", side_effect=lambda p: HOST.IMAGE_SHA if p == paths[3]
                       else HOST.sha256_original(p)), self.assertRaises(HOST.Refusal):
                 HOST.verify_prepared(*paths)
+
+    def test_current_startup_policy_refuses_and_retains_exact_gap(self):
+        base = Path(__file__).parent
+        binding = HOST.read_json(base / "read-policy/runtime-read-binding.json")
+        with tempfile.TemporaryDirectory() as temp:
+            with self.assertRaisesRegex(HOST.Refusal, "static startup prerequisites"):
+                HOST.startup_preflight(base, binding, temp)
+            receipt = HOST.read_json(Path(temp) / "startup-preflight.json")
+            self.assertEqual(receipt["missingFileReads"],
+                             [{"path": "/etc/ssl/openssl.cnf", "scopes": ["parent", "helper"]}])
+            self.assertEqual(receipt["missingNamespaceMetadata"],
+                             ["/etc/ssl", "/usr/lib/ssl/openssl.cnf"])
+            self.assertFalse(receipt["executionAdmission"])
+            validation = Path(temp) / "validation.json"; validation.write_text("{}\n")
+            custody = HOST.collect_evidence(validation, temp, Path(temp) / "upload")
+            self.assertIn("startup-preflight.json", [row["path"] for row in custody["copied"]])
+
+    def test_startup_prerequisites_join_file_alias_and_packet_identities(self):
+        # Synthetic binding data only: no grant is written to the real policy.
+        asset = HOST.read_json(Path(__file__).with_name("startup-prerequisites.json"))
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp); (base / "read-policy").mkdir()
+            asset_path = base / "startup-prerequisites.json"
+            asset_path.write_text(json.dumps(asset))
+            (base / "packet.json").write_text(json.dumps({"startupPrerequisitesSha256": HOST.sha256(asset_path)}))
+            binding = {"imageEntries": asset["requiredCanonicalRegularFiles"],
+                       "namespaceEntries": asset["requiredNamespaceMetadata"]}
+            reads = "".join(row["path"] + "\n" for row in binding["imageEntries"])
+            for scope in ("parent", "helper"):
+                (base / "read-policy" / (scope + "-read-paths.txt")).write_text(reads)
+            observed = HOST.startup_preflight(base, binding, base)
+            self.assertEqual(observed["status"], "STATIC_STARTUP_PREREQUISITES_JOINED; RUNTIME_NOT_ADMITTED")
+            self.assertFalse(observed["executionAdmission"])
+            for section, index, key, value in (
+                    ("imageEntries", 1, "sha256", "0" * 64),
+                    ("namespaceEntries", 7, "target", "/other")):
+                changed = json.loads(json.dumps(binding)); changed[section][index][key] = value
+                with self.subTest(section=section), self.assertRaises(HOST.Refusal):
+                    HOST.startup_preflight(base, changed, base)
+            (base / "packet.json").write_text('{}\n')
+            with self.assertRaisesRegex(HOST.Refusal, "differs from packet"):
+                HOST.startup_preflight(base, binding, base)
+
+    def test_actual_execute_preflights_known_startup_gap_before_compile_or_docker(self):
+        tooling = Path(__file__).resolve().parents[3]
+        binding = HOST.read_json(Path(__file__).with_name("read-policy") / "runtime-read-binding.json")
+        with tempfile.TemporaryDirectory() as temp:
+            args = SimpleNamespace(tooling=tooling, source=tooling, tooling_commit="d7" * 20,
+                                   validation=Path(temp) / "unused.json", image=Path(temp) / "unused-image",
+                                   output=Path(temp) / "host")
+            with patch.object(HOST.os, "geteuid", return_value=0), \
+                 patch.object(HOST.platform, "system", return_value="Linux"), \
+                 patch.object(HOST.platform, "machine", return_value="x86_64"), \
+                 patch.dict(HOST.os.environ, {"GITHUB_REPOSITORY": "fr-meyer/openclaw",
+                     "GITHUB_REF": "refs/heads/candidate/v2026.9.8-runtime-admission-3",
+                     "GITHUB_RUN_ATTEMPT": "1", "GITHUB_RUN_NUMBER": "1"}, clear=True), \
+                 patch.object(HOST, "verify_source_manifest"), \
+                 patch.object(HOST, "git", side_effect=[HOST.SOURCE, HOST.TREE, ""]), \
+                 patch.object(HOST, "verify_prepared", return_value=(
+                     {"toolingCommit": "711da57d4e7576fb911f917cd83ead95dfd17602"}, binding)), \
+                 patch.object(HOST, "prepare_proof") as prepared, \
+                 patch.object(HOST, "compile_native") as compiled, \
+                 patch.object(HOST, "command") as commands, \
+                 patch.object(HOST.subprocess, "run") as invoked:
+                with self.assertRaisesRegex(HOST.Refusal, "static startup prerequisites"):
+                    HOST.execute(args)
+                prepared.assert_not_called(); compiled.assert_not_called()
+                commands.assert_not_called(); invoked.assert_not_called()
+            self.assertTrue((args.output / "startup-preflight.json").is_file())
 
     def test_native_observations_join_product_not_only_claims(self):
         native = [{"event": "host_gate_ready", "mode": "--capability-probe"},

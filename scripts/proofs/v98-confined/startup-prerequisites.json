@@ -1,0 +1,295 @@
+{
+  "schema": "openclaw-v98-node-startup-prerequisites/v1",
+  "status": "STATIC_PREREQUISITES_ONLY; NOT_EXECUTION_ADMISSION",
+  "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
+  "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
+  "imageSha256": "0a3418e393313dbe7e20f4ef140fea81e3a7e6d8a24f9ee1bf5e0bd87d86ffcf",
+  "imageConfigId": "sha256:1b2669dcea79d48e6c9f1e86a81495746e62f6d4b9a7837eaccca5ce0a266c39",
+  "requiredCanonicalRegularFiles": [
+    {
+      "path": "/etc/ld.so.cache",
+      "mode": "0o644",
+      "type": "file",
+      "bytes": 6919,
+      "sha256": "a5a430edc01f7c689279b0e4328c1dbd808b08eee84c36979cad0221e91c367c",
+      "category": "Existing named Node/GNU ELF or loader cache"
+    },
+    {
+      "path": "/etc/ssl/openssl.cnf",
+      "mode": "0o644",
+      "type": "file",
+      "bytes": 12332,
+      "sha256": "7ae8cae2e64856b34c80276deb1dcf60f76da27bc1e00382201ba7bb7dc33311",
+      "category": "Node OpenSSL initialization before JavaScript"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+      "mode": "0o755",
+      "type": "file",
+      "bytes": 215000,
+      "sha256": "02bcda52c1a5dfc236f94d9e5255b4a0e26347d8a372a5223b650e31f291ce3c",
+      "category": "Existing named Node/GNU ELF or loader cache"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+      "mode": "0o755",
+      "type": "file",
+      "bytes": 1926232,
+      "sha256": "6b4a45352fd0c540a9c7c718f35ce8c8e46a4e482f9d3885a910c32d1a0e1421",
+      "category": "Existing named Node/GNU ELF or loader cache"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+      "mode": "0o644",
+      "type": "file",
+      "bytes": 14480,
+      "sha256": "95d521b2c39fd0333271b6fdcdddff878ae82001a304313a837b8e728ebe3cb1",
+      "category": "Existing named Node/GNU ELF or loader cache"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+      "mode": "0o644",
+      "type": "file",
+      "bytes": 125312,
+      "sha256": "2bd1552c47799ef67e701e81d4383061fd76059868e446e63560f0dd0d5ec14e",
+      "category": "Existing named Node/GNU ELF or loader cache"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libm.so.6",
+      "mode": "0o644",
+      "type": "file",
+      "bytes": 911904,
+      "sha256": "7f2ca87f652f56b094462474b076749e90e689d0ecb9cb63c7679820b271b4e7",
+      "category": "Existing named Node/GNU ELF or loader cache"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+      "mode": "0o644",
+      "type": "file",
+      "bytes": 14480,
+      "sha256": "b93a680da8a05b939b235c1533572e7a2f6d3d8808bf70209997edc64ea5fedc",
+      "category": "Existing named Node/GNU ELF or loader cache"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.30",
+      "mode": "0o644",
+      "type": "file",
+      "bytes": 2190440,
+      "sha256": "e7848e32af4932840ba775169041759a2a8dd5a008af360e5c55bce506eebcf4",
+      "category": "Existing named Node/GNU ELF or loader cache"
+    },
+    {
+      "path": "/usr/local/bin/node",
+      "mode": "0o755",
+      "type": "file",
+      "bytes": 126595440,
+      "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+      "category": "Existing named Node/GNU ELF or loader cache"
+    }
+  ],
+  "requiredNamespaceMetadata": [
+    {
+      "path": "/etc",
+      "mode": "0o755",
+      "type": "directory",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/etc/ssl",
+      "mode": "0o755",
+      "type": "directory",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/lib",
+      "mode": "0o777",
+      "type": "symlink",
+      "target": "usr/lib",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/lib64",
+      "mode": "0o777",
+      "type": "symlink",
+      "target": "usr/lib64",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr",
+      "mode": "0o755",
+      "type": "directory",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr/bin/ld.so",
+      "mode": "0o777",
+      "type": "symlink",
+      "target": "/lib64/ld-linux-x86-64.so.2",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr/lib",
+      "mode": "0o755",
+      "type": "directory",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr/lib/ssl/openssl.cnf",
+      "mode": "0o777",
+      "type": "symlink",
+      "target": "/etc/ssl/openssl.cnf",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu",
+      "mode": "0o755",
+      "type": "directory",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
+      "mode": "0o777",
+      "type": "symlink",
+      "target": "libstdc++.so.6.0.30",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr/lib64/ld-linux-x86-64.so.2",
+      "mode": "0o777",
+      "type": "symlink",
+      "target": "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr/local",
+      "mode": "0o755",
+      "type": "directory",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr/local/bin",
+      "mode": "0o755",
+      "type": "directory",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr/local/bin/nodejs",
+      "mode": "0o777",
+      "type": "symlink",
+      "target": "/usr/local/bin/node",
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    }
+  ],
+  "namespaceScope": "Exact directory/symlink identity joins only; no directory-content grant. /usr/lib/ssl/openssl.cnf is an alias of the same regular file and not a second read capability.",
+  "noCompleteDynamicClosureClaim": true,
+  "nodeVersion": "24.21.0",
+  "configuration": {
+    "defaultNodeAppname": "nodejs_conf",
+    "activeIncludeDirectives": [],
+    "nodejsConfSelectorPresent": false,
+    "configDrivenProviderEngineDsoDependencies": [],
+    "OpenSSLConfEnvironmentOverride": false,
+    "sharedConfigFlagInFrozenArgv": false
+  },
+  "conditionalBranches": [
+    {
+      "category": "OpenSSL providers and engines",
+      "status": "NOT_REQUIRED_BY_FROZEN_STARTUP",
+      "assessment": "No active includes or nodejs_conf module selector. Node links bundled OpenSSL3.5.8 without DT_NEEDED libssl/libcrypto; default/base providers have builtin initializers. Legacy/FIPS/custom-engine choices require explicit flags/API/config and can require DSOs. Debian legacy.so belongs to a separate installed library and is not automatically a valid Node provider. No broad provider/engine grant is justified."
+    },
+    {
+      "category": "Certificates/TLS",
+      "status": "OPTIONAL_FUNCTIONALITY; NO_MINIMAL_STARTUP_DELTA",
+      "assessment": "Node root-cert store is lazy; external system/OpenSSL CA and extra-cert reads depend on build/flags/API/env. Frozen options/environment request none of use-system-ca, use-openssl-ca, NODE_USE_SYSTEM_CA, NODE_EXTRA_CA_CERTS, SSL_CERT_FILE or SSL_CERT_DIR. Bundled roots reside in Node. This diagnosis does not certify all later TLS APIs or add certificate-directory grants."
+    },
+    {
+      "category": "GNU ELF/cache and native addons",
+      "status": "EXISTING_SELECTED_READS; NO_DELTA",
+      "assessment": "Named GNU Node interpreter, six SONAME families, ld.so.cache and GNU fs-safe/Koffi addon targets are already regular-file-bound with aliases. Node sqlite is statically bundled. Existing static SONAME closure excludes runtime dlopen/constructors/unseen addons; musl fallback remains denied."
+    },
+    {
+      "category": "NSS/user/host lookups",
+      "status": "CONDITIONAL; NO_STARTUP_GRANT_ESTABLISHED",
+      "assessment": "Image nsswitch selects files for passwd/group and files dns for hosts. libuv homedir uses supplied HOME before passwd fallback. Explicit userInfo/getpwuid/group APIs can need nsswitch/passwd/group; DNS/NSS/c-ares may try resolver/hosts paths with error/fallback handling. Docker supplies different live hosts/resolv content, so saved-image empty hashes cannot justify those live reads. Exact frozen IP/DNS denial controls do not authorize any resolver/NSS directory or network permission."
+    },
+    {
+      "category": "Locale/ICU/timezone",
+      "status": "CONDITIONAL; NO_MINIMAL_STARTUP_DELTA",
+      "assessment": "LANG=C and LC_ALL=C select glibc builtin C locale. Exact ELF has full ICU78 data/build settings and no external ICU env/CLI override. TZ=UTC can make libc timezone APIs try /usr/share/zoneinfo/UTC (alias Etc/UTC); missing/denied timezone files can fall back. Date/Intl and external ICU data paths remain behavior gates; no locale/zoneinfo directory grant is justified."
+    },
+    {
+      "category": "Entropy/cgroup/process metadata",
+      "status": "CONDITIONAL_KERNEL_OR_INTROSPECTION; NO_FILE_DELTA",
+      "assessment": "getrandom syscall318 is already in frozen admitted BPF. Modern Linux entropy success avoids device-file fallback; /dev/urandom fallback is not pre-authorized. Node/libuv cgroup/OS introspection can try proc/sys files and use unavailable-control fallbacks; no generic proc/sys read grant follows from this OpenSSL config failure."
+    }
+  ],
+  "preflightCaveat": "Node --version exits before OpenSSL initialization (node.cc lines1067-1088), so a version-only executable check would not cover the observed failure. Current plan uses static exact prerequisites and no execution.",
+  "sources": [
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/src/node.cc#L1088-L1157",
+      "supports": "Startup selects OpenSSL config and nodejs_conf, sets IGNORE_MISSING_FILE and returns the OpenSSL error reason before V8/JavaScript."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/src/node.cc#L1067-L1088",
+      "supports": "--version early return precedes OpenSSL initialization; it does not exercise config access."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/deps/openssl/openssl/crypto/conf/conf_mod.c#L117-L175",
+      "supports": "No appname selector means no config module load unless DEFAULT_SECTION fallback was requested."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/deps/openssl/openssl/crypto/conf/conf_mod.c#L176-L223",
+      "supports": "IGNORE_MISSING_FILE accepts NO_SUCH_FILE only; EACCES persists."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/deps/openssl/openssl/crypto/conf/conf_def.c#L410-L489",
+      "supports": "Only active .include directives expand file/directory includes; commented directives do not."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/deps/openssl/openssl/crypto/provider_predefined.c#L17-L29",
+      "supports": "Default/base/null providers use built-in initializer functions; legacy builtin depends on STATIC_LEGACY."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/deps/openssl/openssl/crypto/provider_core.c#L836-L963",
+      "supports": "Only providers lacking an initializer use DSO module search/load."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/src/crypto/crypto_context.cc#L120-L126",
+      "supports": "Root certificate store is lazily created when needed."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/src/crypto/crypto_context.cc#L943-L1035",
+      "supports": "Build/flags choose bundled versus system/OpenSSL CA and extra-cert reads."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/doc/api/cli.md#L1906-L1943",
+      "supports": "Config override precedence, shared-config appname and legacy-provider flag semantics."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/doc/api/cli.md#L2954-L3022",
+      "supports": "Bundled, OpenSSL and system CA choices are separate; system CA requires selection."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/deps/uv/src/unix/core.c#L1192-L1224",
+      "supports": "Provided HOME bypasses passwd fallback for homedir."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/src/node.cc#L936-L978",
+      "supports": "External ICU data needs a selected CLI/env/build path; actual ICU initialization/Intl behavior still need runtime evidence."
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "schema": "openclaw-v98-confined-execution-packet/v1",
-  "status": "LOCAL_IMPLEMENTATION; HOSTED_EXECUTION_REQUIRES_EXACT_COMMIT_APPROVAL",
+  "status": "LOCAL_CORRECTION; STARTUP_POLICY_AND_LIFETIME_ACCOUNTING_BLOCKED; NO_FUTURE_RUN_AUTHORIZED",
   "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
   "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
   "sourceManifestPath": "scripts/proofs/v98-confined/source-manifest.json",
@@ -11,12 +11,14 @@
     "onePush": true,
     "forcePush": false,
     "mainMerge": false,
-    "newApprovalRequired": true
+    "newApprovalRequired": true,
+    "status": "CONSUMED_IDENTITY; DO_NOT_PUBLISH_THIS_SUCCESSOR_HERE",
+    "newExecutionIdentityRequired": true
   },
   "hostedAttempt": {
     "runner": "ubuntu-24.04",
     "jobTimeoutMinutes": 15,
-    "attempts": 1,
+    "attempts": 0,
     "requiredWorkflowRunNumber": 1,
     "requiredWorkflowRunAttempt": 1,
     "artifactRetentionDays": 7,
@@ -28,7 +30,11 @@
     "productionAccess": false,
     "providerState": false,
     "hostPrerequisiteReceipt": "Bounded static host observations before image load; no execution admission",
-    "implicitImagePull": false
+    "implicitImagePull": false,
+    "consumedRunId": 37247688900,
+    "consumedCommit": "d7a0b7624f1802d97c2672301fe4c90315063030",
+    "consumedConclusion": "FAILURE; NODE_STARTUP_EXIT_13; CPU_AND_WHOLE_CGROUP_CLEANUP_UNPROVED",
+    "startupPrerequisiteReceipt": "Static required Node/GNU/OpenSSL file and metadata identities joined against frozen policies before compiler, Docker image load or start; current missing config refuses without granting a permission"
   },
   "artifact": {
     "runId": 37192724704,
@@ -76,7 +82,7 @@
     "helper": "Exactly one original Node snapshot sync helper in internal migration phase 3; committed executable/argv/env, nofollow bound stage inode and single-link source-owner token family, writers stopped through verified restriction, parent namespace changes denied until helper join; read-only candidate SQLite family and owned staging writes; no grandchildren or re-exec",
     "hostGate": "Before any tracee; host-observed Docker PID1/cgroup/limits; root-owned UID0 GID1000 mode0440 regular nlink1 exact18-byte one-use marker",
     "cleanup": "Joined native tracees plus bound whole-cgroup extinction; preserve uncertain/failed receipts and scratch",
-    "failureCustody": "On unbound failure, record final exact-owned Running=false/Pid=0 separately; preserve stopped metadata, loaded image and uncertain-cgroup scratch; no extinction grant"
+    "failureCustody": "Always independently settle the exact ownership-validated Docker ID after normal failure, including after bound cgroup failures; Running=false/Pid=0 remains separate from extinction. Preserve uncertain-cgroup scratch, image and container metadata."
   },
   "modes": [
     {
@@ -128,6 +134,8 @@
     }
   ],
   "requiredHostedGates": [
+    "Separately approved one-file OpenSSL READ_FILE policy addition with exact identity/metadata joins; current unchanged policy fails static startup preflight",
+    "Separately reviewed whole-lifetime final aggregate CPU and original-cgroup positive extinction mechanism; disappeared counters, last samples and Docker PID0 cannot grant proof",
     "Exact authenticated artifact/source/tooling/source-manifest/read-binding/saved-layer joins",
     "Installed compiler identity and flags; Linux amd64 static supervisor and dependency-free preload; record actual compiled binary digests before start",
     "Default Docker/Yama own-child tracing, cgroup-v2 resource controls and immutable pre-tracee host admission",
@@ -137,10 +145,13 @@
     "Forced deadline with live owned thread, host kill and positive bound-cgroup extinction before fixture",
     "Six frozen phases with one source-bound helper, native process-close/staging-tightening/termination observations and final zero tracees/cgroup population"
   ],
-  "runtimeQualification": "UNPROVED; NEVER_RUN",
+  "runtimeQualification": "CAPABILITY_ATTEMPT_FAILED; DEADLINE_AND_SIX_PHASES_NEVER_RUN",
   "mergeguezOverlay": "SEPARATE_SOURCE_ONLY; NOT_INCLUDED; NO_ACTIVATION",
   "compiledBinaryHashes": "Recorded only by the approved hosted compile gate, before policy activation",
   "remainingAdmissionLimitations": [
+    "No new publication or hosted run is authorized. Branch/workflow3 already consumed its run1/attempt1 allowance. A fresh identity and explicit authorization are necessary after unresolved policy and accounting design gates close.",
+    "The exact config /etc/ssl/openssl.cnf is currently denied in parent/helper read scopes. Proposed READ_FILE-only addition is NOT implemented; no config/environment suppression is allowed by this local fix.",
+    "Removed/inactive cpu.stat or cgroup.events remain proof failures. Diagnostics and independent Docker settlement do not solve complete lifetime accounting or whole-cgroup extinction on a host that removes the scope before final observations.",
     "Own-child ptrace/Yama, Landlock ABI, seccomp/AppArmor syscall/loader behavior, cgroup controls, default OCI runtime and actual PID1 remain runtime gates.",
     "Image and selected-file verification do not prove complete dynamic import closure, workers, helper behavior or real data migration/restore/rollback.",
     "Normal Exception failure cleanup is covered by pure sequences; abrupt runner loss, SIGTERM/SIGINT/job cancellation and final runner teardown do not carry proven stop/extinction/retention guarantees.",
@@ -149,5 +160,6 @@
     "Configured local logger rotation is one 1MiB file; record/metadata overhead and a single Docker logging record can exceed that nominal threshold. Host stdout/stderr and upload caps remain strict.",
     "Runner disk free bytes are observed, not a bound on Docker extracted storage; artifact expiry and unused new branch/workflow identity must be verified immediately before any publication.",
     "The built baseline excludes the Mergeguez source-only overlay and does not qualify production or installed real data preservation."
-  ]
+  ],
+  "startupPrerequisitesSha256": "3f2f1e1984b22b97684ead8a15e312026a8f758fb691bf916b61f92a8ab701df"
 }

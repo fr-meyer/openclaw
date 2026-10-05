@@ -6,11 +6,13 @@ This proof tooling preserves product commit
 Linux amd64 image; it does not rebuild, patch, install dependencies into, or
 start the image's Gateway entrypoint. No fixture phase has run locally.
 
-Publication and hosted execution require approval of the final local commit,
-workflow and packet. Earlier approvals of artifact builds or source CI do not
-authorize this native runtime attempt. The proposed destination is
-`fr-meyer/openclaw`, branch `candidate/v2026.9.8-runtime-admission-3`, using one
-15-minute Ubuntu 24.04 Actions job and seven-day evidence retention. No main
+This successor is a local correction with unresolved startup-policy and
+complete lifetime-accounting gates. No new publication or hosted run is
+authorized. Branch `candidate/v2026.9.8-runtime-admission-3` and its workflow
+already consumed the approved one-run/one-attempt allowance at commit
+`d7a0b7624f1802d97c2672301fe4c90315063030`. They are retained historical identities,
+not a destination for this successor. Any future execution needs its own
+reviewed identity and explicit approval after the blocking gates close. No main
 merge, force push, production access, provider data, new VM, registry
 publication or production deployment is included.
 
@@ -37,12 +39,51 @@ compression with `max-file=1` before task/PID1 startup. That failed receipt
 reports the exact created container non-running, a retained scratch mount, and
 unproved cgroup extinction; all six phases remain `NEVER_RUN`.
 
-This successor combines the reviewed `compress=false` correction with static
-host prerequisites, pre-start configuration inspection, explicit no-pull policy,
-bounded overflow retention and distinct stopped-container cleanup observations.
-The new workflow `v98-confined-runtime-3.yml` and branch identify a separately
-approved attempt, with run-number/attempt guards still fixed at one. The retained
-artifact, native profile, input bytes, resource limits and retention are unchanged.
+The third approved attempt, run `37247688900` at commit `d7a0b762`, passed
+40 hosted pure tests, acquisition, all saved-layer/selected-file joins and native
+compilation. Its capability Node process reached initial exec and the bootstrap
+boundary, then exited 13 before probe JavaScript. Retained stderr reports denied
+OpenSSL access to `/etc/ssl/openssl.cnf`. The host reported errno 19 without an
+operation label; cleanup found the Docker scope absent. Final CPU, whole-cgroup
+extinction and exact final Docker state were unproved. The historical errno's
+exact call site remains unknown. Deadline and all six phases remain `NEVER_RUN`.
+
+This local correction tags CPU seek/read failures, prioritizes source-bound
+native nonzero exits, and always attempts independent exact-owned Docker
+settlement after a bound-group failure. Cgroup reads and kills use the captured
+directory descriptor; pathname absence or link count cannot grant extinction.
+Only a successful identity-bound `populated=0` observation grants that proof.
+Last observed CPU/time are diagnostics, never replacement final accounting.
+These changes improve diagnosis and settlement, but do not establish a passing
+complete lifetime-accounting mechanism when Docker removes its scope before
+the final counters and population can be observed.
+
+`startup-prerequisites.json` inventories ten canonical Node/GNU/OpenSSL regular
+file identities and their required alias/directory metadata. The static check
+compares these against both frozen read lists and the reviewed binding before
+compilation, image load or container start. The current policy intentionally
+refuses: it lacks `/etc/ssl/openssl.cnf` and two metadata joins. No permission
+was added. The minimal proposed approval is `READ_FILE` for this exact 12,332-byte
+regular file (SHA-256
+`7ae8cae2e64856b34c80276deb1dcf60f76da27bc1e00382201ba7bb7dc33311`)
+in parent and fresh Node helper scopes, with `/etc/ssl` and the
+`/usr/lib/ssl/openssl.cnf` alias bound as metadata. No directory read, write,
+executable, syscall, socket, child or environment change is proposed.
+The exact configuration has no active includes or config-driven provider/engine
+loads. Conditional CA, NSS, locale/ICU, timezone, entropy and introspection reads
+are inventoried; no complete dynamic runtime closure is claimed. `node --version`
+returns before OpenSSL initialization and would not cover this startup failure.
+
+Before another attempt could qualify, a separately reviewed mechanism must
+retain authoritative CPU accounting for the complete lifetime and a positive
+original-cgroup population observation through termination. A native hold/ack
+protocol or different cgroup owner would require its own design and review;
+last samples, Docker PID0, pidfd exit and pathname deletion are insufficient.
+Future proof must cover native success and refusal, CPU-read ENODEV, removed
+scope, deadline kill, descendant join and final cleanup independently. Any
+permission/host-control expansion needs explicit approval. Abrupt runner loss
+and final runner teardown remain unproved. The retained artifact, native profile,
+input bytes, resource limits and retention are unchanged.
 
 ## Execution contract
 
@@ -50,7 +91,9 @@ artifact, native profile, input bytes, resource limits and retention are unchang
    verify its ZIP digest, clean product source, config, all saved layer digests,
    required compiled identities, exact selected read files and namespace
    bindings without importing or executing image code.
-2. Verify the source manifest and exact tooling checkout. Compile the reviewed
+2. Verify the source manifest and exact tooling checkout. Join the static startup
+   prerequisites; the current policy blocks here without runtime preparation.
+   After separately approved corrections close that gate, compile the reviewed
    native supervisor and constructor with the existing hosted compiler; bind
    compiler identity, flags and resulting binary hashes. ELF checks require a
    static x86-64 supervisor and a preload with no external imports or libraries.
@@ -151,7 +194,7 @@ The created AppArmor field may be empty because Moby assigns the default profile
 After start, the inspected profile and actual PID1 `/proc` profile must both
 prove `docker-default` enforcement; the native gate remains closed until then.
 
-On an unbound failed start, the exact ownership-validated final Docker state and
+On any normal failure, including a bound-group failure, the exact ownership-validated final Docker state and
 attach return code are retained separately from whole-cgroup extinction. A
 non-running Docker container with PID 0 does not grant cgroup proof. Stopped
 container metadata, loaded image and uncertain-cgroup scratch remain in runner
@@ -165,8 +208,9 @@ Portable C decision/BPF/SHA tests, Python adversarial archive/descriptor/host
 tests and syntax checks are offline evidence. They do not prove Linux syscall
 translation, ptrace support under default Docker protections, Landlock
 inheritance, native loader compatibility, Worker/fsync fidelity, migration,
-restore or rollback. Those gates remain `NEVER_RUN` until the separately
-approved hosted attempt. Retained failed receipts are never converted to passes.
+restore or rollback. Full capability remains unqualified; deadline and all six
+fixture phases remain `NEVER_RUN`. Retained failed receipts are never converted
+to passes.
 
 `source-manifest.json` binds executable tooling, policies and frozen inputs.
 The final external approval packet binds that manifest, exact Git commit/tree,

@@ -6,6 +6,7 @@ until the reviewed source manifest, retained image validator, Docker container,
 actual PID 1 and host cgroup all agree. Unit tests import only its pure checks.
 """
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -57,6 +58,30 @@ HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 
 class Refusal(ValueError):
     pass
+
+
+class ObservationFailure(Refusal):
+    def __init__(self, operation, cause):
+        self.operation, self.cause = operation, cause
+        super().__init__(operation + ": " + str(cause))
+
+
+class SettlementFailure(Refusal):
+    def __init__(self, stop_failure, final_error):
+        self.details = {"stopFailure": stop_failure,
+                        "finalObservationFailure": failure_detail(final_error, "exact Docker final inspection")}
+        super().__init__("exact Docker final inspection: " + self.details["finalObservationFailure"]["reason"])
+
+
+def failure_detail(error, operation):
+    cause = error.cause if isinstance(error, ObservationFailure) else error
+    return {"operation": error.operation if isinstance(error, ObservationFailure) else operation,
+            "type": type(cause).__name__, "errno": getattr(cause, "errno", None),
+            "reason": bounded_text(cause, 2000)}
+
+
+def bounded_text(value, limit):
+    return str(value).encode("utf-8", "replace")[:limit].decode("utf-8", "replace")
 
 
 def require(ok, reason):
@@ -133,6 +158,7 @@ def verify_source_manifest(tooling, expected_commit):
         ("v98-supervisor.c", "v98-confine.c", "native-policy.c", "native-policy.h",
          "native-filter.h", "native-boundary.h", "native-sha256.h", "capability-probe.mjs",
          "host-runtime.py", "test_host_runtime.py", "derive_read_policy.py", "packet.json",
+         "startup-prerequisites.json",
          "read-policy/runtime-read-binding.json", "read-policy/parent-read-paths.txt",
          "read-policy/helper-read-paths.txt")
     } | {"scripts/proofs/v98-confined/inputs/" + name for name in PROOF_INPUTS} | {
@@ -184,6 +210,64 @@ def validate_read_list(path, binding):
     require(lines == expected and text.endswith("\n") and len(text.encode()) < 1024 * 1024,
             "source read list differs from selected image binding")
     return text
+
+
+def startup_preflight(base, binding, output):
+    """Static requirements only: never grant a read or invoke image code."""
+    base, output = Path(base), Path(output)
+    asset = base / "startup-prerequisites.json"
+    receipt = {"status": "STARTUP_PREREQUISITES_UNPROVED", "executionAdmission": False,
+               "imageConfigId": IMAGE_ID, "missingFileReads": [], "identityMismatches": [],
+               "missingNamespaceMetadata": [], "completeRuntimeClosure": False}
+    try:
+        required = read_json(asset, 64 * 1024)
+        packet = read_json(base / "packet.json")
+        require(packet.get("startupPrerequisitesSha256") == sha256(asset),
+                "startup prerequisite asset differs from packet")
+        require(required.get("schema") == "openclaw-v98-node-startup-prerequisites/v1"
+                and required.get("sourceCommit") == SOURCE and required.get("sourceTree") == TREE
+                and required.get("imageSha256") == IMAGE_SHA
+                and required.get("imageConfigId") == IMAGE_ID,
+                "startup prerequisite source/image identity changed")
+        files = required.get("requiredCanonicalRegularFiles")
+        namespace = required.get("requiredNamespaceMetadata")
+        require(isinstance(files, list) and len(files) == 10 and isinstance(namespace, list)
+                and 1 <= len(namespace) <= 32, "startup prerequisite inventory invalid")
+        for rows in (files, namespace):
+            names = [row.get("path") for row in rows]
+            require(all(isinstance(name, str) and name.startswith("/") for name in names)
+                    and len(set(names)) == len(names), "startup prerequisite paths invalid")
+        reads = {scope: set(validate_read_list(base / "read-policy" / (scope + "-read-paths.txt"),
+                                              binding).splitlines()) for scope in ("parent", "helper")}
+        selected = {row["path"]: row for row in binding["imageEntries"]}
+        selected_namespace = {row["path"]: row for row in binding["namespaceEntries"]}
+        for row in files:
+            path = row["path"]
+            scopes = [scope for scope in reads if path not in reads[scope]]
+            if scopes:
+                receipt["missingFileReads"].append({"path": path, "scopes": scopes})
+            elif any(selected[path].get(key) != row.get(key)
+                     for key in ("path", "type", "mode", "bytes", "sha256")):
+                receipt["identityMismatches"].append(path)
+        for row in namespace:
+            path = row["path"]
+            if path not in selected_namespace:
+                receipt["missingNamespaceMetadata"].append(path)
+            elif any(selected_namespace[path].get(key) != row.get(key)
+                     for key in ("path", "type", "mode", "target")):
+                receipt["identityMismatches"].append(path)
+        require(not receipt["missingFileReads"] and not receipt["identityMismatches"]
+                and not receipt["missingNamespaceMetadata"],
+                "static startup prerequisites are absent from the reviewed read binding; permission approval remains required")
+        receipt["status"] = "STATIC_STARTUP_PREREQUISITES_JOINED; RUNTIME_NOT_ADMITTED"
+    except Exception as issue:
+        receipt["reason"] = bounded_text(issue, 2000)
+        raise
+    finally:
+        encoded = (json.dumps(receipt, indent=2) + "\n").encode()
+        require(len(encoded) <= 32 * 1024, "startup preflight receipt exceeds budget")
+        (output / "startup-preflight.json").write_bytes(encoded)
+    return receipt
 
 
 def prepare_proof(tooling, binding, destination):
@@ -273,15 +357,24 @@ def validate_cgroup_values(values):
 
 
 def cgroup_cpu(stats):
-    rows = dict(line.split() for line in stats.splitlines())
+    values = [line.split() for line in stats.splitlines()]
+    require(all(len(row) == 2 for row in values)
+            and len({row[0] for row in values}) == len(values), "invalid aggregate CPU counter")
+    rows = dict(values)
     value = rows.get("usage_usec", "")
     require(value.isdecimal(), "missing aggregate cgroup CPU usage")
     return int(value)
 
 
 def read_cgroup_cpu_fd(fd):
-    os.lseek(fd, 0, os.SEEK_SET)
-    data = os.read(fd, 4096)
+    try:
+        os.lseek(fd, 0, os.SEEK_SET)
+    except OSError as issue:
+        raise ObservationFailure("cpu.stat seek", issue) from issue
+    try:
+        data = os.read(fd, 4096)
+    except OSError as issue:
+        raise ObservationFailure("cpu.stat read", issue) from issue
     require(len(data) < 4096, "aggregate cgroup CPU counter is unbounded")
     return cgroup_cpu(data.decode("ascii"))
 
@@ -649,12 +742,32 @@ def release_gate(scratch):
 
 
 def extinction(cgroup, identity, fd):
+    held = os.fstat(fd)
+    require(stat.S_ISDIR(held.st_mode) and (held.st_dev, held.st_ino) == identity,
+            "bound cgroup descriptor changed")
     try:
-        current = os.stat(cgroup)
+        current = os.stat(cgroup, follow_symlinks=False)
     except FileNotFoundError:
-        return os.fstat(fd).st_nlink == 0
+        # kernfs directory getattr reports subdirs + 2, not POSIX unlink nlink0.
+        # A missing name never substitutes for a positive populated=0 witness.
+        return False
     require((current.st_dev, current.st_ino) == identity, "owned cgroup path was reused")
-    rows = dict(line.split() for line in (cgroup / "cgroup.events").read_text().splitlines())
+    try:
+        events = os.open("cgroup.events", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
+        try:
+            data = os.read(events, 4096)
+        finally:
+            os.close(events)
+    except OSError as issue:
+        if issue.errno in (errno.ENOENT, errno.ENODEV):
+            return False
+        raise
+    require(len(data) < 4096, "cgroup events exceed observation budget")
+    values = [line.split() for line in data.decode("ascii").splitlines()]
+    require(all(len(row) == 2 for row in values)
+            and len({row[0] for row in values}) == len(values), "invalid cgroup events")
+    rows = dict(values)
+    require(rows.get("populated") in ("0", "1"), "cgroup population observation absent")
     return rows.get("populated") == "0"
 
 
@@ -670,32 +783,54 @@ def wait_extinction(cgroup, identity, fd, seconds=5):
 def kill_owned(container_id, cgroup, identity, fd):
     if extinction(cgroup, identity, fd):
         return None
-    require((os.stat(cgroup).st_dev, os.stat(cgroup).st_ino) == identity,
+    current = os.stat(cgroup, follow_symlinks=False)
+    require((current.st_dev, current.st_ino) == identity,
             "refusing to kill reused cgroup path")
     try:
-        with open(cgroup / "cgroup.kill", "w") as stream:
-            stream.write("1\n")
-        signalled_at = time.monotonic()
-    except OSError:
-        command(["docker", "kill", "--signal=KILL", container_id], timeout=5)
-        signalled_at = time.monotonic()
+        kill_fd = os.open("cgroup.kill", os.O_WRONLY | os.O_NOFOLLOW, dir_fd=fd)
+    except OSError as issue:
+        raise ObservationFailure("cgroup.kill open", issue) from issue
+    try:
+        try:
+            require(os.write(kill_fd, b"1\n") == 2, "short owned cgroup kill write")
+        except OSError as issue:
+            raise ObservationFailure("cgroup.kill write", issue) from issue
+    finally:
+        os.close(kill_fd)
+    signalled_at = time.monotonic()
     require(wait_extinction(cgroup, identity, fd), "owned cgroup extinction not observed")
     return signalled_at
 
 
-def kill_created_without_group(container_id, name, image_id, proof, scratch, mode):
-    """Stop the exact created ID if cgroup binding failed; do not claim extinction."""
+def settle_created_container(container_id, name, image_id, proof, scratch, mode):
+    """Settle the exact created ID independently of cgroup proof availability."""
     inspected = docker_inspect(container_id)
     inspect_owned_container(inspected, container_id, name, image_id, proof, scratch, mode)
-    if inspected.get("State", {}).get("Running") is True:
-        command(["docker", "kill", "--signal=KILL", container_id], timeout=5)
-    final = docker_inspect(container_id)
-    inspect_owned_container(final, container_id, name, image_id, proof, scratch, mode)
-    state = final.get("State") or {}
-    require(state.get("Running") is False and type(state.get("Pid")) is int and state["Pid"] == 0,
-            "exact created container remains running")
-    return {"Status": str(state.get("Status", ""))[:64], "Running": False, "Pid": 0,
-            "ExitCode": state.get("ExitCode"), "Error": str(state.get("Error", ""))[:2000]}
+    stop_requested = inspected.get("State", {}).get("Running") is True
+    stop_failure = None
+    if stop_requested:
+        try:
+            command(["docker", "kill", "--signal=KILL", container_id], timeout=5)
+        except Exception as issue:
+            stop_failure = failure_detail(issue, "exact Docker stop")
+    # A daemon timeout/error can race with exit. Observe final ownership/state
+    # independently; a failed command never erases an available stopped witness.
+    try:
+        final = docker_inspect(container_id)
+        inspect_owned_container(final, container_id, name, image_id, proof, scratch, mode)
+        state = final.get("State") or {}
+        require(type(state.get("Running")) is bool and type(state.get("Pid")) is int
+                and state["Pid"] >= 0 and (state.get("ExitCode") is None
+                or type(state["ExitCode"]) is int), "exact container final state malformed")
+    except Exception as issue:
+        raise SettlementFailure(stop_failure, issue) from issue
+    return {"Status": bounded_text(state.get("Status", ""), 64),
+            "Running": state["Running"], "Pid": state["Pid"],
+            "ExitCode": state.get("ExitCode"), "Error": bounded_text(state.get("Error", ""), 2000),
+            "stoppedVerified": state["Running"] is False and state["Pid"] == 0,
+            "stopRequested": stop_requested,
+            "stopCommandSucceeded": stop_requested and stop_failure is None,
+            "stopFailure": stop_failure}
 
 
 def scratch_bytes(scratch):
@@ -791,6 +926,11 @@ def run_mode(image_id, proof, out, name, mode):
     attach = None
     sel = None
     cpu = None
+    cpu_observed_wall = None
+    final_cpu_verified = False
+    final_cpu_status = "NOT_ATTEMPTED"
+    exit_code = None
+    operation = "scratch preparation"
     started = time.monotonic()
     owned = None
     receipt = None
@@ -798,10 +938,12 @@ def run_mode(image_id, proof, out, name, mode):
     cleanup_errors = []
     stopped_without_group = False
     stopped_container_state = None
+    settlement_failure = None
     creation_attempted = False
     try:
         mount_scratch(scratch)
         creation_attempted = True
+        operation = "container create"
         container_id = command(create_command(name, image_id, proof, scratch, mode)).decode().strip()
         require(HEX64.fullmatch(container_id), "Docker did not create an exact owned container")
         created = docker_inspect(container_id)
@@ -809,6 +951,7 @@ def run_mode(image_id, proof, out, name, mode):
         inspect_container_configuration(created, container_id, image_id, proof, scratch)
         require(created.get("State", {}).get("Running") is False
                 and created["State"].get("Pid") == 0, "created container already has a live PID")
+        operation = "container start and bounded streams"
         attach = subprocess.Popen(["docker", "start", "--attach", container_id],
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
         sel = selectors.DefaultSelector()
@@ -834,6 +977,7 @@ def run_mode(image_id, proof, out, name, mode):
                 native, _ = parse_events(first, b"")
                 require(native and native[0] == {"event": "host_gate_ready", "mode": mode},
                         "first trusted stdout was not host gate")
+                operation = "actual PID1 and cgroup admission"
                 owned = observe_owned_process(container_id, name, image_id, proof, scratch, mode)
                 _, starttime, pidfd, group_fd, cgroup, identity = owned
                 baseline, cpu_fd = host_pid_gate(container_id, image_id, proof, scratch, owned)
@@ -842,11 +986,18 @@ def run_mode(image_id, proof, out, name, mode):
                 gate_seen = True
                 mode_started = time.monotonic()
                 cpu = 0
+                cpu_observed_wall = 0.0
                 release_gate(scratch)
             if not gate_seen and time.monotonic() - started > 5:
                 raise Refusal("trusted host gate not observed within five seconds")
+            if attach.poll() is not None and not sel.get_map():
+                break
+            operation = "live cgroup observation"
             if gate_seen and not extinction(cgroup, identity, group_fd):
-                cpu = read_cgroup_cpu_fd(cpu_fd) - baseline
+                observed = read_cgroup_cpu_fd(cpu_fd) - baseline
+                require(observed >= cpu, "aggregate CPU counter decreased")
+                cpu = observed
+                cpu_observed_wall = time.monotonic() - mode_started
                 wall_limit, cpu_limit = MODE_LIMITS[mode]
                 require(cpu >= 0, "aggregate CPU counter decreased")
                 if cpu > cpu_limit:
@@ -863,24 +1014,35 @@ def run_mode(image_id, proof, out, name, mode):
                             and deadline_signal_completed_wall is not None
                             and deadline_signal_completed_wall <= wall_limit + 0.1,
                             "deadline control was requested or signalled too late")
-            if attach.poll() is not None and not sel.get_map():
-                break
+        operation = "exact container exit and native outcome"
         attach.wait(timeout=2)
         inspected = docker_inspect(container_id)
+        inspect_owned_container(inspected, container_id, name, image_id, proof, scratch, mode)
         exit_code = inspected["State"]["ExitCode"]
         require(gate_seen and group_fd is not None, "host gate was never admitted")
-        cpu = read_cgroup_cpu_fd(cpu_fd) - baseline
+        native, product = parse_events(bytes(stdout), bytes(stderr))
+        assess_native(mode, native, product, exit_code, deadline_killed)
+        operation = "final aggregate CPU accounting"
+        final_cpu_status = "ATTEMPTED_UNVERIFIED"
+        observed = read_cgroup_cpu_fd(cpu_fd) - baseline
+        require(observed >= cpu, "final aggregate CPU counter decreased")
+        cpu = observed
+        cpu_observed_wall = time.monotonic() - mode_started
         require(0 <= cpu <= MODE_LIMITS[mode][1],
                 "final whole-cgroup aggregate CPU budget was not verified")
+        final_cpu_verified = True
+        final_cpu_status = "VERIFIED"
+        operation = "final whole-cgroup extinction"
         extinct = wait_extinction(cgroup, identity, group_fd)
         require(extinct, "whole cgroup still populated after native exit")
         if mode != "--run-frozen-six-phases":
             require(scratch_bytes(scratch) <= MAX_PROBE_SCRATCH,
                     "probe scratch exceeds retained evidence budget")
-        native, product = parse_events(bytes(stdout), bytes(stderr))
-        assess_native(mode, native, product, exit_code, deadline_killed)
         receipt = {"mode": mode, "containerId": container_id, "imageConfigId": image_id,
                    "cgroupDevInode": identity, "aggregateCpuUsecLastObserved": cpu,
+                   "aggregateCpuObservedWallSeconds": cpu_observed_wall,
+                   "finalCpuVerified": final_cpu_verified,
+                   "finalCpuStatus": final_cpu_status,
                    "wallSeconds": time.monotonic() - mode_started,
                    "exitCode": exit_code, "deadlineKilled": deadline_killed,
                    "deadlineKillRequestedWallSeconds": deadline_kill_requested_wall,
@@ -902,11 +1064,19 @@ def run_mode(image_id, proof, out, name, mode):
                 extinct = extinction(cgroup, identity, group_fd)
             except Exception as kill_error:
                 cleanup_errors.append("owned cgroup kill: " + str(kill_error)[:300])
-        elif container_id and group_fd is None:
+        # Exact-ID settlement and its stopped-state witness are independent of
+        # cgroup accounting/extinction. A vanished scope must not skip them.
+        if container_id:
             try:
-                stopped_container_state = kill_created_without_group(container_id, name, image_id, proof, scratch, mode)
-                stopped_without_group = True
+                stopped_container_state = settle_created_container(container_id, name, image_id, proof, scratch, mode)
+                stopped_without_group = stopped_container_state["stoppedVerified"] and not extinct
+                if stopped_container_state["stopFailure"] is not None:
+                    cleanup_errors.append("exact ID kill: " + stopped_container_state["stopFailure"]["reason"])
+                if not stopped_container_state["stoppedVerified"]:
+                    cleanup_errors.append("exact container stop was not verified by final Running=false/Pid=0")
             except Exception as kill_error:
+                if isinstance(kill_error, SettlementFailure):
+                    settlement_failure = kill_error.details
                 cleanup_errors.append("exact ID kill: " + str(kill_error)[:300])
     finally:
         if attach is not None and attach.poll() is None:
@@ -966,12 +1136,39 @@ def run_mode(image_id, proof, out, name, mode):
     if error is None and cleanup_errors:
         error = Refusal("cleanup or evidence retention incomplete")
     if error is not None:
-        (out / "failure.json").write_text(json.dumps({
+        host_failure = failure_detail(error, operation)
+        native_exits = []
+        try:
+            native, _ = parse_events(bytes(stdout), bytes(stderr))
+            phases = range(1, 7) if mode == "--run-frozen-six-phases" else (0,)
+            native_exits = [{"phase": row["phase"], "exitCode": row["value"]} for row in native
+                            if row.get("event") == "phase_joined" and type(row.get("phase")) is int
+                            and row["phase"] in phases
+                            and type(row.get("value")) is int and 0 <= row["value"] <= 255]
+            require(len(native_exits) <= len(phases)
+                    and len({row["phase"] for row in native_exits}) == len(native_exits),
+                    "native exit observations are duplicated or unbounded")
+        except Exception as parse_error:
+            native_exits = []
+            cleanup_errors.append("native failure observation: " + str(parse_error)[:300])
+        failed_phase = next((row for row in native_exits if row["exitCode"]), None)
+        primary_failure = ({"authority": "TRUSTED_NATIVE_PHASE_EXIT",
+                            "reason": "native phase " + str(failed_phase["phase"]) +
+                                      " exited " + str(failed_phase["exitCode"])}
+                           if failed_phase else {"authority": "HOST_OPERATION", **host_failure})
+        encoded = (json.dumps({
             "status": "FAILED; NO_RUNTIME_QUALIFICATION", "mode": mode,
-            "reason": str(error)[:2000], "containerId": container_id,
+            "reason": primary_failure["reason"], "primaryFailure": primary_failure,
+            "hostFailure": host_failure, "nativePhaseExits": native_exits,
+            "containerExitCode": exit_code, "containerId": container_id,
             "cgroupDevInode": identity, "extinctionObserved": extinct,
+            "aggregateCpuUsecLastObserved": cpu,
+            "aggregateCpuObservedWallSeconds": cpu_observed_wall,
+            "finalCpuVerified": final_cpu_verified,
+            "finalCpuStatus": final_cpu_status,
             "stoppedWithoutCgroupProof": stopped_without_group,
             "stoppedContainerState": stopped_container_state,
+            "containerSettlementFailure": settlement_failure,
             "containerCreationAttempted": creation_attempted,
             "creationOutcome": "EXACT_ID_OBSERVED" if container_id else (
                 "UNKNOWN" if creation_attempted else "NOT_ATTEMPTED"),
@@ -979,7 +1176,12 @@ def run_mode(image_id, proof, out, name, mode):
             "cleanupErrors": cleanup_errors, "scratchMounted": os.path.ismount(scratch),
             "deadlineKilled": deadline_killed,
             "deadlineKillRequestedWallSeconds": deadline_kill_requested_wall,
-            "deadlineSignalCompletedWallSeconds": deadline_signal_completed_wall}, indent=2) + "\n")
+            "deadlineSignalCompletedWallSeconds": deadline_signal_completed_wall}, indent=2,
+            ensure_ascii=False) + "\n").encode("utf-8")
+        require(len(encoded) <= 32 * 1024, "failure receipt exceeds evidence budget")
+        (out / "failure.json").write_bytes(encoded)
+        if failed_phase:
+            raise Refusal(primary_failure["reason"]) from error
         raise error
     (out / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     return receipt
@@ -992,6 +1194,7 @@ def collect_evidence(validation, host_output, destination):
     host_output = Path(host_output)
     files = [(Path(validation), Path("validation.json"), 1024 * 1024),
              (host_output / "host-preflight.json", Path("host-preflight.json"), 32 * 1024),
+             (host_output / "startup-preflight.json", Path("startup-preflight.json"), 32 * 1024),
              (host_output / "preparation.json", Path("preparation.json"), 1024 * 1024),
              (host_output / "qualification.json", Path("qualification.json"), 2 * 1024 * 1024)]
     for number in (1, 2, 3):
@@ -1092,6 +1295,7 @@ def execute(args):
             "retained artifact producer changed")
     out = Path(args.output).resolve()
     out.mkdir(mode=0o755)
+    startup_preflight(base, binding, out)
     proof = out / "proof"
     proof_files = prepare_proof(tooling, binding, proof)
     compiler = compile_native(tooling, proof)
