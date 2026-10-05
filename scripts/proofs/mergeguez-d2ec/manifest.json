@@ -10,8 +10,8 @@
     },
     {
       "path": "driver.py",
-      "bytes": 49583,
-      "sha256": "6d8b0550584f958a2f36dde5a91072ac4b23cce19b705e29db8b0431658ea78f"
+      "bytes": 51455,
+      "sha256": "66a8e521a716bedeb848f6722b5b0803c20d150144fbf3dbe9a2b4a8e2ea5fdb"
     },
     {
       "path": "materialize.mjs",
@@ -30,8 +30,8 @@
     },
     {
       "path": "runtime.mjs",
-      "bytes": 16707,
-      "sha256": "a707b8cd9502b0b72c1c9a5f5b3a36da3e73d0e35932030a2194facfb8e4a9a4"
+      "bytes": 18264,
+      "sha256": "c6c1e2db54436b9aa993248663afd29df56c254b2543c55df10a83fedc253c47"
     },
     {
       "path": "source.commit",
@@ -45,8 +45,8 @@
     },
     {
       "path": "test_driver.py",
-      "bytes": 56479,
-      "sha256": "ec1df4b95832364ad7f1764d8a80093c9ba6a1e65d384ea70d58696a0e4f34f6"
+      "bytes": 61922,
+      "sha256": "345ab0a7e353006433f2ad14e53151a133449afe7263343a62863bbe63176e0c"
     },
     {
       "path": "test_materialize.mjs",
@@ -55,8 +55,8 @@
     },
     {
       "path": "test_runtime.mjs",
-      "bytes": 12830,
-      "sha256": "46419ec728fd21c677d644e40ce3eba43d5f01bffc746ad5836f7a021f3e03d7"
+      "bytes": 22488,
+      "sha256": "6e957d5ed7f78865522ae5cedc27c93b43d5d3c1ad707901a71b660b601494db"
     }
   ]
 }

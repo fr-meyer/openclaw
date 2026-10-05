@@ -76,6 +76,30 @@ async function run(argv, network = false, cwd = source, environment = {}) {
 }
 
 
+export function qualifyCompiledEmits() {
+  const device = fs.lstatSync(source).dev;
+  let total = 0, files = 0, sourceLinks = 0;
+  for (const name of contract.compiled_roots) {
+    requireThat(/^(dist|dist-runtime|packages\/[a-z-]+\/dist)$/.test(name), 'unsafe source emits root');
+    const root = path.join(source, name), rootStat = fs.lstatSync(root);
+    requireThat(rootStat.isDirectory() && !rootStat.isSymbolicLink(), 'source emits root missing or aliased');
+    const stack = [root]; let emitted = 0;
+    while (stack.length) {
+      remaining(); const file = stack.pop(), st = fs.lstatSync(file);
+      requireThat(st.dev === device && st.uid === contract.compiler_uid && st.gid === contract.compiler_gid, 'source emits device/owner changed');
+      if (st.isSymbolicLink()) { sourceLinks++; continue; } // Source plugin links are not portable artifact ownership.
+      if (st.isDirectory()) { for (const member of fs.readdirSync(file)) stack.push(path.join(file, member)); }
+      else {
+        requireThat(st.isFile() && Number.isSafeInteger(st.size) && st.size >= 0, 'special source emit');
+        total += st.size; files++; emitted++;
+        requireThat(total <= contract.compiled_cap_bytes, 'compiled output cap exceeded');
+      }
+    }
+    requireThat(emitted > 0, 'empty source emits root');
+  }
+  return { regular_emitted_bytes: total, regular_files: files, source_links_not_followed: sourceLinks, cap_bytes: contract.compiled_cap_bytes };
+}
+
 function qualifyOutput(relative) {
   remaining();
   requireThat(typeof relative === 'string' && /^\.\/(?:dist\/|packages\/[a-z-]+\/dist\/)[a-zA-Z0-9._/-]+$/.test(relative) && relative.slice(2).split('/').every(x => x && x !== '.' && x !== '..'), 'unsafe compiled artifact path');
@@ -185,8 +209,9 @@ async function main() {
     }
     receipt.sdk = qualifySdkOutputs();
     receipt.packages = qualifyPackageOutputs();
+    receipt.compiled_emits = qualifyCompiledEmits();
     attestSource();
-    const build = { complete: true, job, source_commit: contract.source_commit, source_tree: contract.source_tree, compile_argv: contract.compile_argv, environment: contract.compile_environment, commands: receipt.commands.slice(), sdk: receipt.sdk, packages: receipt.packages };
+    const build = { complete: true, job, source_commit: contract.source_commit, source_tree: contract.source_tree, compile_argv: contract.compile_argv, environment: contract.compile_environment, commands: receipt.commands.slice(), sdk: receipt.sdk, packages: receipt.packages, compiled_emits: receipt.compiled_emits };
     fs.writeFileSync(reports + '/offline-compile-build.json', JSON.stringify(build) + '\n', { flag: 'wx', mode: 0o600 });
     requireThat(JSON.parse(fs.readFileSync(source + '/node_modules/npm/package.json', 'utf8')).version === contract.npm_version, 'locked local npm package absent');
     const npm = execFileSync('pnpm', ['exec', 'npm', '--version'], { encoding: 'utf8', env: childEnv(false), cwd: source, timeout: Math.min(10000, remaining() * 1000) }).trim();

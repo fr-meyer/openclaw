@@ -21,6 +21,10 @@ GIB = 1024 ** 3
 class Refusal(RuntimeError):
     pass
 
+class UnsettledCommand(Refusal):
+    """The original issued host process group may still access task storage."""
+    pass
+
 def need(ok, message):
     if not ok:
         raise Refusal(message)
@@ -228,10 +232,11 @@ class Driver:
     def command(self, argv, name='host', cleanup=False, maximum=120, retain_log=True):
         self.budget(cleanup)
         limit = min(maximum, (self.cleanup_deadline if cleanup else min(self.work_deadline, getattr(self, 'active_deadline', self.work_deadline))) - uptime())
-        p = subprocess.Popen(argv, env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
-        selector = selectors.DefaultSelector(); selector.register(p.stdout, selectors.EVENT_READ)
-        out = bytearray(); deadline = uptime() + limit
+        p = None; selector = None
         try:
+            p = subprocess.Popen(argv, env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+            selector = selectors.DefaultSelector(); selector.register(p.stdout, selectors.EVENT_READ)
+            out = bytearray(); deadline = uptime() + limit
             while selector.get_map():
                 self.budget(cleanup)
                 need(uptime() < deadline, 'host command timeout')
@@ -251,8 +256,25 @@ class Driver:
             need(result.si_code == os.CLD_EXITED and result.si_status == 0, 'host command failed: ' + argv[0] + ' (' + str(result.si_status) + ')')
             return bytes(out).decode('utf8')
         finally:
-            try: close_owned_group(p)
-            finally: selector.close(); p.stdout.close()
+            try:
+                if p is not None: self.join_host_group(p, name)
+            finally:
+                try:
+                    if selector is not None: selector.close()
+                finally:
+                    if p is not None: p.stdout.close()
+
+    def join_host_group(self, process, purpose):
+        # The original unreaped Popen handle owns signalling and joins. This
+        # persisted diagnostic never grants authority to act on a later PID.
+        operation_error = sys.exc_info()[1]
+        try: close_owned_group(process)
+        except Exception as error:
+            self.state['host_command_custody_unknown'] = True
+            self.state.setdefault('unknown_host_group_custody', []).append({'purpose': purpose, 'issued_pid': process.pid, 'start_new_session': True, 'operation_error': None if operation_error is None else (type(operation_error).__name__ + ': ' + str(operation_error))[:2048], 'join_error': (type(error).__name__ + ': ' + str(error))[:2048], 'identity_policy': 'original unreaped Popen owner only; no persisted PID release authority'})
+            self.state['host_command_custody_error'] = (type(error).__name__ + ': ' + str(error))[:2048]
+            try: self.save()
+            finally: raise UnsettledCommand('owned host command group not settled') from error
 
     def docker(self, *args, **kwargs):
         return self.command(['docker', *args], **kwargs)
@@ -368,6 +390,7 @@ class Driver:
         return True
 
     def reconcile_storage(self):
+        need(not self.state.get('host_command_custody_unknown'), 'unresolved host command ownership; hold task storage')
         if not self.state.get('storage_intent'):
             need(not self.state.get('mount_intent') and not self.state.get('loop') and not self.backing.exists() and not self.backing.is_symlink() and not self.mount.is_mount(), 'storage creation custody missing')
             self.state['storage_retired'] = True; self.save(); return False
@@ -378,6 +401,7 @@ class Driver:
         return self.check_mount(cleanup=True, allow_absent=True)
 
     def retire_storage(self, mounted):
+        need(not self.state.get('host_command_custody_unknown'), 'unresolved host command ownership; hold task storage')
         if self.state.get('storage_retired'): return
         self.check_backing()
         if mounted:
@@ -393,6 +417,7 @@ class Driver:
             if not rows: break
             need(uptime() < until, 'loop backing still attached'); time.sleep(0.1)
         need(not self.check_mount(cleanup=True, allow_absent=True), 'task mount still present')
+        need(not self.state.get('host_command_custody_unknown'), 'unresolved host command ownership; hold backing')
         self.check_backing(); self.backing.unlink()
         self.state['storage_retired'] = True; self.save()
 
@@ -451,10 +476,11 @@ class Driver:
         need({x.split('=', 1)[0] for x in spec['Config']['Env']}.issubset({'PATH', 'NODE_VERSION', 'YARN_VERSION', 'QUALIFICATION_JOB', 'QUALIFICATION_NONCE', 'QUALIFICATION_UPTIME_DEADLINE'}), 'compiler environment override')
         record['admitted_docker_spec'] = {'host_config': hc, 'mounts': spec['Mounts'], 'image': spec['Image'], 'user': spec['Config']['User'], 'environment_names': [x.split('=', 1)[0] for x in spec['Config']['Env']]}; self.save()
         record['started'] = True; self.save()
-        attach = subprocess.Popen(['docker', 'start', '--attach', record['id']], env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
-        sel = selectors.DefaultSelector(); sel.register(attach.stdout, selectors.EVENT_READ)
-        admitted = False; start = uptime(); eof = False
+        attach = None; sel = None
         try:
+            attach = subprocess.Popen(['docker', 'start', '--attach', record['id']], env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+            sel = selectors.DefaultSelector(); sel.register(attach.stdout, selectors.EVENT_READ)
+            admitted = False; start = uptime(); eof = False
             while True:
                 self.budget()
                 for key, _ in sel.select(0.1):
@@ -496,9 +522,15 @@ class Driver:
             need(receipt['phase'] == phase and receipt['job'] == self.state['job'] and receipt['complete'] is True, 'incomplete worker result')
             self.state.setdefault('receipts', {})[phase] = receipt; self.save()
         finally:
-            gate.unlink(missing_ok=True)
-            try: close_owned_group(attach)
-            finally: sel.close(); attach.stdout.close()
+            try: gate.unlink(missing_ok=True)
+            finally:
+                try:
+                    if attach is not None: self.join_host_group(attach, 'docker-attach-' + phase)
+                finally:
+                    try:
+                        if sel is not None: sel.close()
+                    finally:
+                        if attach is not None: attach.stdout.close()
 
     def settle(self, record):
         if record.get('settled'): return
@@ -536,6 +568,7 @@ class Driver:
 
     def cleanup(self):
         issues = []
+        if self.state.get('host_command_custody_unknown'): issues.append('unresolved host command ownership; hold task storage')
         for record in self.state['containers']:
             if not record.get('id'):
                 # An uncertain create cannot be inferred absent from a failed CLI.
@@ -672,12 +705,7 @@ def retain(args):
     need(build.get('complete') is True and build.get('job') == job and build.get('source_commit') == contract['source_commit'] and build.get('source_tree') == contract['source_tree'] and build.get('compile_argv') == contract['compile_argv'] and build.get('environment') == contract['compile_environment'], 'retention build/source/job mismatch')
     commands = build.get('commands', [])
     need([command.get('argv') for command in commands] == [['corepack', contract['packageManager'], *contract['install_argv']], *contract['compile_argv']] and all(command.get('code') == 0 and command.get('signal') is None for command in commands), 'retention original compile receipts absent')
-    # The original compiled-emits 512MiB cap remains separate from portable dependencies.
-    compiled = 0
-    for p, st in compiled_walk(mount / 'source', contract['compiled_roots'], device):
-        need(uptime() < deadline, 'compiled bound deadline exhausted')
-        if stat.S_ISREG(st.st_mode): compiled += st.st_size
-        need(compiled <= contract['compiled_cap_bytes'], 'compiled output cap exceeded')
+    # Source emissions are bounded by the compiler phase; retention owns only the actual portable/native roots.
     files = []
     caps = {'package': contract['retention_cap_bytes'], 'runnable': contract['portable_runnable_unpacked_cap_bytes'], 'native-state': contract['native_state_cap_bytes'], 'native-output': contract['native_state_cap_bytes']}
     for name in contract['retention_roots']:

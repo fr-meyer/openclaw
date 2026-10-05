@@ -771,6 +771,9 @@ class RunnableRetentionFixture(unittest.TestCase):
             (mount / 'native-state/unknown.db').write_bytes(b'held unknown outcome bytes')
             (mount / 'native-state/pre-migration.backup').write_bytes(b'original offline backup bytes')
             (mount / 'native-output/native-observations.json').write_bytes(b'unknown is not approval')
+            dependency=mount / 'source/node_modules/.pnpm/example@1/node_modules/example'; dependency.mkdir(parents=True); (dependency/'index.js').write_bytes(b'source installed dependency')
+            link=mount / 'source/dist/extensions/example/node_modules/example'; link.parent.mkdir(parents=True); link.symlink_to(os.path.relpath(dependency, link.parent))
+            with self.assertRaisesRegex(d.Refusal,'escaping compiled link'): list(d.compiled_walk(mount/'source', C['compiled_roots'], mount.stat().st_dev))
             reports = mount / 'reports'; reports.mkdir()
             commands = [['corepack', C['packageManager'], *C['install_argv']], *C['compile_argv']]
             (reports / 'offline-compile-build.json').write_text(json.dumps({'complete':True,'job':'1-1','source_commit':C['source_commit'],'source_tree':C['source_tree'],'compile_argv':C['compile_argv'],'environment':C['compile_environment'],'commands':[{'argv':argv,'code':0,'signal':None} for argv in commands]}))
@@ -783,3 +786,55 @@ class RunnableRetentionFixture(unittest.TestCase):
             args[-2] = '2-1'
             with patch.object(d, 'PROOF', proof), patch.object(d, 'uptime', return_value=10), patch.object(Path, 'is_mount', return_value=True):
                 with self.assertRaisesRegex(d.Refusal, 'job mismatch'): d.retain(args)
+
+class IssuedReaderCustody(unittest.TestCase):
+    def check_acquisition(self, phase, stage, join_fails=False, selector_close_fails=False):
+        import io
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve(); driver = object.__new__(d.Driver)
+            driver.c = C; driver.control = root; driver.mount = root/'volume'; driver.mount.mkdir(); driver.gates = root/'gates'; driver.gates.mkdir(); driver.state_path = root/'state.json'
+            driver.work_deadline = 300; driver.cleanup_deadline = 360; driver.log_bytes = 0; driver.env = {}; driver.budget = lambda *a,**k:None
+            driver.state = {'job':'1-1','phase':'prepared','containers':[],'complete':False,'images':{C['node_image']:'sha256:'+'b'*64}}
+            class Process:
+                pid = 8675309; returncode = None
+                def __init__(self): self.stdout = io.BytesIO(b''); self.waits = 0
+                def wait(self, timeout=None): self.waits += 1; self.returncode = 0
+            process = Process(); joined = []
+            class Selector:
+                closed = False
+                def register(self, *a): raise OSError('reader register failure')
+                def close(self):
+                    self.closed = True
+                    if selector_close_fails: raise OSError('reader close failure')
+            selector = Selector()
+            def join(p):
+                self.assertIs(p, process); joined.append(p)
+                if join_fails: raise d.Refusal('owned host process group extinction unresolved')
+                p.wait()
+            if phase == 'attach':
+                driver.docker = lambda *a,**k:'a'*64
+                driver.verify_owned = lambda record: {'HostConfig':{'Memory':C['memory_bytes'],'MemorySwap':C['memory_bytes'],'ReadonlyRootfs':True,'Privileged':False,'NetworkMode':'none','LogConfig':{'Type':'none'}},'Mounts':[{'Destination':dest,'Source':origin,'RW':rw,'Type':'bind'} for dest,(origin,rw) in d.phase_mounts(driver.mount,d.PROOF,driver.gates,'offline-native').items()],'Config':{'User':'1000:1000','Env':['PATH=/usr/bin']},'Image':'sha256:'+'b'*64}
+            constructor = patch.object(d.selectors,'DefaultSelector',side_effect=OSError('reader create failure')) if stage=='create' else patch.object(d.selectors,'DefaultSelector',return_value=selector)
+            with patch.object(d,'uptime',return_value=0), patch.object(d,'memory_available',return_value=100*d.GIB), patch.object(d.subprocess,'Popen',return_value=process), constructor, patch.object(d,'close_owned_group',side_effect=join):
+                with self.assertRaises((OSError,d.UnsettledCommand)):
+                    if phase=='command': driver.command(['inert-helper'], cleanup=True)
+                    else: driver.phase('offline-native')
+            self.assertEqual(joined,[process]); self.assertTrue(process.stdout.closed)
+            if stage=='register': self.assertTrue(selector.closed)
+            if join_fails:
+                receipt=json.loads(driver.state_path.read_text()); self.assertTrue(receipt['host_command_custody_unknown']); self.assertEqual(receipt['unknown_host_group_custody'][0]['issued_pid'],process.pid); self.assertIn('reader register failure',receipt['unknown_host_group_custody'][0]['operation_error']); self.assertIn('group extinction unresolved',receipt['unknown_host_group_custody'][0]['join_error'])
+                backing=root/'backing'; backing.write_bytes(b'held exact backing'); driver.backing=backing
+                with self.assertRaisesRegex(d.Refusal,'unresolved host command'): driver.reconcile_storage()
+                with self.assertRaisesRegex(d.Refusal,'unresolved host command'): driver.retire_storage(False)
+                driver.state['phase']='preparing'; driver.state['containers']=[]
+                with self.assertRaises(d.Refusal): driver.cleanup()
+                self.assertEqual(backing.read_bytes(),b'held exact backing'); self.assertFalse(driver.state.get('storage_retired',False))
+            else:
+                self.assertEqual(process.waits,1); self.assertFalse(driver.state.get('host_command_custody_unknown',False))
+    def test_command_selector_creation_joins_and_closes(self): self.check_acquisition('command','create')
+    def test_command_selector_registration_joins_and_closes(self): self.check_acquisition('command','register')
+    def test_attach_selector_creation_joins_and_closes(self): self.check_acquisition('attach','create')
+    def test_attach_selector_registration_joins_and_closes(self): self.check_acquisition('attach','register')
+    def test_command_unknown_join_holds_actual_backing(self): self.check_acquisition('command','register',True)
+    def test_attach_unknown_join_holds_actual_backing(self): self.check_acquisition('attach','register',True)
+    def test_partial_selector_close_failure_still_closes_stdout(self): self.check_acquisition('command','register',False,True)
