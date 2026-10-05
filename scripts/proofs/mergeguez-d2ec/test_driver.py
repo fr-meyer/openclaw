@@ -470,4 +470,177 @@ class ExecutionGuards(unittest.TestCase):
         self.assertEqual(argv[-4:], ('node', 'sha256:' + 'a' * 64, '/proof/runtime.mjs', 'offline-compile'))
         self.assertFalse(any('TOKEN' in x or 'SECRET' in x for x in argv))
 
+class NativeCustody(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name).resolve()
+        self.proc = self.root / 'proc'; self.cg = self.root / 'cgroup'; self.pid = 123; self.cid = 'a' * 64
+        process = self.proc / str(self.pid); process.mkdir(parents=True)
+        self.path = self.cg / 'system.slice' / ('docker-' + self.cid + '.scope'); self.path.mkdir(parents=True)
+        (process / 'cgroup').write_text('0::/system.slice/docker-' + self.cid + '.scope\n')
+        self.stat = process / 'stat'; self.write_stat('100')
+        for name, value in {'memory.max': str(C['memory_bytes']), 'memory.swap.max': '0', 'pids.max': str(C['pids']), 'cpu.max': '400000 100000', 'memory.events': 'oom 0\n'}.items():
+            (self.path / name).write_text(value)
+        self.custody = {'pid': self.pid, 'container_id': self.cid, 'start_ticks': '100', 'cgroup': str(self.path)}
+        self.driver = object.__new__(d.Driver); self.driver.c = C; self.driver.work_deadline = 1000
+        self.driver.state = {'containers': []}; self.driver.state_path = self.root / 'state.json'
+        self.driver.save = lambda: d.atomic(self.driver.state_path, self.driver.state)
+        self.record = {'id': self.cid, 'name': 'worker', 'started': True, 'kind': 'worker'}
+        self.driver.state['containers'].append(self.record)
+        self.spec = {'State': {'Running': True, 'Pid': self.pid}}
+        self.driver.verify_owned = lambda *a, **k: self.spec
+        self.native = d.native_custody
+        self.port = patch.object(d, 'native_custody', side_effect=lambda pid, cid: self.native(pid, cid, self.proc, self.cg)); self.port.start()
+        self.clock = patch.object(d, 'uptime', return_value=10); self.clock.start()
+        self.readlink = os.readlink; self.namespace_reads = []
+    def tearDown(self): self.port.stop(); self.clock.stop(); self.temp.cleanup()
+    def write_stat(self, start): self.stat.write_text(str(self.pid) + ' (name with ) spaces) S ' + ' '.join(['0'] * 18 + [start]) + '\n')
+    def args(self): return [str(self.pid), self.cid, '100', str(self.path), '1000']
+    def links(self, p):
+        path = str(p); name = Path(p).name
+        if not path.startswith('/proc/'): return self.readlink(p)
+        self.namespace_reads.append(path)
+        return name + (':[1]' if path.startswith('/proc/self/') else ':[2]')
+    def denied_links(self, p):
+        if not str(p).startswith('/proc/'): return self.readlink(p)
+        self.namespace_reads.append(str(p)); raise PermissionError(13, 'denied')
+    def shared_links(self, p):
+        if not str(p).startswith('/proc/'): return self.readlink(p)
+        self.namespace_reads.append(str(p)); return Path(p).name + ':[1]'
+    def observer(self):
+        with patch.object(d.os, 'geteuid', return_value=0), patch.object(d.os, 'readlink', side_effect=self.links):
+            return d.namespace_observer(self.args())
+    def test_cgroup_capture_has_no_namespace_permission_dependency(self):
+        with patch.object(d.os, 'readlink', side_effect=self.denied_links):
+            self.assertEqual(d.native_custody(self.pid, self.cid), self.custody)
+        self.assertEqual(self.namespace_reads, [])
+    def test_native_stat_start_field_with_spaces_and_parentheses(self):
+        self.assertEqual(d.native_custody(self.pid, self.cid)['start_ticks'], '100')
+    def test_process_reuse_during_cgroup_observation_refuses(self):
+        original = d.host_cgroup
+        def replacing(*args):
+            result = original(*args); self.write_stat('200'); return result
+        with patch.object(d, 'host_cgroup', side_effect=replacing):
+            with self.assertRaisesRegex(d.Refusal, 'process changed'): d.native_custody(self.pid, self.cid)
+    def test_unrelated_cgroup_and_substring_alias_refuse(self):
+        for value in ['b' * 64, 'prefix' + self.cid]:
+            (self.proc / str(self.pid) / 'cgroup').write_text('0::/' + value)
+            with self.subTest(value=value), self.assertRaisesRegex(d.Refusal, 'exact container'):
+                d.native_custody(self.pid, self.cid)
+    def test_read_only_privileged_observer_returns_all_private_namespaces(self):
+        result = self.observer(); self.assertEqual(result['custody'], self.custody)
+        self.assertEqual(result['observer_euid'], 0); self.assertEqual(len(result['namespaces']), 5)
+    def test_observer_requires_root_before_proc_read(self):
+        with patch.object(d.os, 'geteuid', return_value=501), patch.object(d, 'native_custody') as read:
+            with self.assertRaisesRegex(d.Refusal, 'host root'): d.namespace_observer(self.args())
+        read.assert_not_called()
+    def test_observer_denied_read_is_single_attempt(self):
+        with patch.object(d.os, 'geteuid', return_value=0), patch.object(d.os, 'readlink', side_effect=self.denied_links):
+            with self.assertRaises(PermissionError): d.namespace_observer(self.args())
+        self.assertEqual(self.namespace_reads, ['/proc/123/ns/pid'])
+    def test_observer_shared_namespace_refuses(self):
+        with patch.object(d.os, 'geteuid', return_value=0), patch.object(d.os, 'readlink', side_effect=self.shared_links):
+            with self.assertRaisesRegex(d.Refusal, 'shared pid'): d.namespace_observer(self.args())
+    def test_observer_rechecks_process_after_namespace_reads(self):
+        def changed(p):
+            if str(p) == '/proc/self/ns/cgroup': self.write_stat('200')
+            return self.links(p)
+        with patch.object(d.os, 'geteuid', return_value=0), patch.object(d.os, 'readlink', side_effect=changed):
+            with self.assertRaisesRegex(d.Refusal, 'custody changed during'): d.namespace_observer(self.args())
+    def test_custody_is_saved_before_denied_helper_and_not_admitted(self):
+        calls = []
+        def denied(argv, **kwargs):
+            saved = json.loads(self.driver.state_path.read_text())['containers'][0]
+            self.assertEqual(saved['native_custody'], self.custody); self.assertEqual(saved['cgroup'], str(self.path))
+            self.assertNotIn('namespace_observation', saved); calls.append(argv)
+            raise PermissionError(13, 'denied namespace helper')
+        self.driver.command = denied
+        with self.assertRaises(PermissionError): self.driver.admit_worker(self.record, self.spec)
+        self.assertEqual(len(calls), 1); self.assertEqual(calls[0][:2], ['sudo', '-n'])
+        self.assertEqual(calls[0][4], '_namespaces')
+        self.assertNotIn('namespace_observation', self.record)
+    def test_custody_survives_limit_refusal(self):
+        result = self.observer(); self.driver.command = lambda *a, **k: json.dumps(result)
+        (self.path / 'memory.max').write_text('max')
+        with self.assertRaisesRegex(d.Refusal, 'memory/swap'): self.driver.admit_worker(self.record, self.spec)
+        self.assertEqual(self.record['native_custody'], self.custody); self.assertNotIn('namespace_observation', self.record)
+    def test_helper_result_cannot_change_custody(self):
+        result = self.observer(); result['custody']['start_ticks'] = '200'
+        self.driver.command = lambda *a, **k: json.dumps(result)
+        with self.assertRaisesRegex(d.Refusal, 'observer custody mismatch'): self.driver.admit_worker(self.record, self.spec)
+    def test_docker_pid_change_after_helper_blocks_admission(self):
+        result = self.observer(); self.driver.command = lambda *a, **k: json.dumps(result)
+        self.driver.verify_owned = lambda *a, **k: {'State': {'Running': True, 'Pid': 456}}
+        with self.assertRaisesRegex(d.Refusal, 'Docker worker changed'): self.driver.admit_worker(self.record, self.spec)
+    def test_process_reuse_after_helper_blocks_admission(self):
+        result = self.observer()
+        def response(*a, **k): self.write_stat('200'); return json.dumps(result)
+        self.driver.command = response
+        with self.assertRaisesRegex(d.Refusal, 'native worker changed'): self.driver.admit_worker(self.record, self.spec)
+    def test_native_custody_cannot_be_overwritten(self):
+        self.driver.capture_native_custody(self.record, self.spec); self.write_stat('200')
+        with self.assertRaisesRegex(d.Refusal, 'issued native custody changed'): self.driver.capture_native_custody(self.record, self.spec)
+        self.assertEqual(self.record['native_custody'], self.custody)
+    def test_matching_observer_and_limits_complete_admission_only(self):
+        result = self.observer(); self.driver.command = lambda *a, **k: json.dumps(result)
+        self.driver.admit_worker(self.record, self.spec)
+        self.assertEqual(self.record['namespace_observation'], result)
+        self.assertFalse((self.root / 'gate.json').exists()); self.assertNotIn('complete', self.record)
+    def test_cleanup_captures_running_worker_before_stop_without_privileged_observation(self):
+        calls = []; stopped = {'State': {'Running': False, 'Pid': 0}}
+        self.driver.cleanup_deadline = 1000
+        def verify(*a, **k): return stopped if calls else self.spec
+        def docker(*args, **kwargs):
+            saved = json.loads(self.driver.state_path.read_text())['containers'][0]
+            self.assertEqual(saved['native_custody'], self.custody); calls.append(args)
+            if args[0] == 'stop': self.path.rmdir() if not any(self.path.iterdir()) else None
+            return ''
+        for p in self.path.iterdir(): p.unlink()
+        self.driver.verify_owned = verify; self.driver.docker = docker
+        self.driver.settle(self.record)
+        self.assertTrue(self.record['settled']); self.assertEqual([x[0] for x in calls], ['stop', 'rm'])
+    def test_terminal_without_ever_observed_custody_stays_unknown(self):
+        self.driver.verify_owned = lambda *a, **k: {'State': {'Running': False, 'Pid': 0}}
+        self.driver.docker = lambda *a, **k: self.fail('must not remove unknown worker')
+        with self.assertRaisesRegex(d.Refusal, 'never observed'): self.driver.settle(self.record)
+
+    def test_actual_phase_denial_keeps_checkpoint_and_never_publishes_gate(self):
+        driver = self.driver; driver.budget = lambda *a, **k: None
+        driver.mount = self.root / 'mount'; driver.gates = self.root / 'gates'; driver.gates.mkdir()
+        driver.env = {}; driver.log_bytes = 0; driver.control = self.root
+        driver.state = {'job': '1-1', 'containers': [], 'images': {C['node_image']: 'sha256:' + self.cid}}
+        driver.docker = lambda *a, **k: self.cid
+        spec = {'State': {'Running': True, 'Pid': self.pid},
+                'HostConfig': {'Memory': C['memory_bytes'], 'MemorySwap': C['memory_bytes'], 'ReadonlyRootfs': True, 'Privileged': False, 'NetworkMode': 'bridge', 'LogConfig': {'Type': 'none'}},
+                'Config': {'User': '1000:1000', 'Env': ['PATH=/usr/bin']}, 'Image': 'sha256:' + self.cid,
+                'Mounts': [{'Destination': dest, 'Source': str(source), 'RW': rw, 'Type': 'bind'} for dest, source, rw in [('/qualification', driver.mount, True), ('/proof', d.PROOF, False), ('/control', driver.gates, False), ('/tmp', driver.mount / 'tmp', True)]]}
+        driver.verify_owned = lambda *a, **k: spec
+        calls = []
+        def denied(argv, **kwargs):
+            saved = json.loads(driver.state_path.read_text())['containers'][0]
+            self.assertEqual(saved['native_custody'], self.custody); self.assertTrue(saved['started'])
+            calls.append(argv); raise PermissionError(13, 'namespace read denied')
+        driver.command = denied
+        class Stream:
+            def close(self): pass
+        class Attach:
+            stdout = Stream()
+        class Select:
+            def register(self, *a): pass
+            def select(self, *a): return []
+            def close(self): pass
+        with patch.object(d, 'memory_available', return_value=15*d.GIB), patch.object(d.subprocess, 'Popen', return_value=Attach()), patch.object(d.selectors, 'DefaultSelector', return_value=Select()), patch.object(d, 'close_owned_group') as close:
+            with self.assertRaises(PermissionError): driver.phase('warm-fetch')
+        self.assertEqual(len(calls), 1); self.assertFalse((driver.gates / 'gate.json').exists())
+        self.assertEqual(driver.state['containers'][0]['cgroup'], str(self.path)); close.assert_called_once()
+        self.assertNotIn('receipts', driver.state)
+
+    def test_failed_cleanup_custody_capture_still_stops_exact_owned_worker(self):
+        calls = []; stopped = {'State': {'Running': False, 'Pid': 0}}
+        self.driver.verify_owned = lambda *a, **k: stopped if calls else self.spec
+        self.driver.docker = lambda *a, **k: calls.append(a) or ''
+        with patch.object(d, 'native_custody', side_effect=PermissionError(13, 'native metadata denied')):
+            with self.assertRaisesRegex(d.Refusal, 'never observed'): self.driver.settle(self.record)
+        self.assertEqual([x[0] for x in calls], ['stop']); self.assertIn('custody_error', self.record)
+        self.assertNotIn('settled', self.record); self.assertNotIn('cgroup', self.record)
+
 if __name__ == '__main__': unittest.main()

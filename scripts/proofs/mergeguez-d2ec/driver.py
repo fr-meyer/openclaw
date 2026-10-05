@@ -107,14 +107,48 @@ def validate_cgroup(values, c):
     need(q == period * c['cpus'], 'CPU containment mismatch')
 
 def host_cgroup(pid, container_id, proc=Path('/proc'), cgroup=Path('/sys/fs/cgroup')):
+    need(type(pid) is int and pid > 0 and re.fullmatch('[0-9a-f]{64}', container_id) is not None, 'invalid native worker identity')
     line = (proc / str(pid) / 'cgroup').read_text().strip()
     need(line.startswith('0::/') and '\n' not in line, 'not unified native cgroup')
     relative = line[3:].lstrip('/')
     p = cgroup / relative
-    need(container_id in p.name and p.resolve() == p, 'cgroup not bound to exact container')
-    for namespace in ['pid', 'mnt', 'net', 'ipc', 'cgroup']:
-        need(os.readlink(proc / str(pid) / 'ns' / namespace) != os.readlink(proc / 'self' / 'ns' / namespace), 'shared ' + namespace + ' namespace')
+    need(p.name in [container_id, 'docker-' + container_id + '.scope'] and p.resolve() == p, 'cgroup not bound to exact container')
     return p
+
+def native_custody(pid, container_id, proc=Path('/proc'), cgroup=Path('/sys/fs/cgroup')):
+    need(type(pid) is int and pid > 0 and re.fullmatch('[0-9a-f]{64}', container_id) is not None, 'invalid native worker identity')
+    def started():
+        text = (proc / str(pid) / 'stat').read_text()
+        prefix, sep, rest = text.rpartition(')')
+        need(sep and prefix.split(' ', 1)[0] == str(pid), 'invalid native process stat')
+        fields = rest.split()
+        need(len(fields) >= 20 and fields[19].isdigit() and int(fields[19]) > 0, 'missing native process start identity')
+        return fields[19]
+    before = started()
+    path = host_cgroup(pid, container_id, proc, cgroup)
+    need(started() == before, 'native process changed during custody observation')
+    return {'pid': pid, 'container_id': container_id, 'start_ticks': before, 'cgroup': str(path)}
+
+def namespace_observer(args):
+    # Read-only, fixed /proc and cgroup roots. Never attach, setns, signal,
+    # change a credential/policy, read an environment or launch a worker.
+    need(os.geteuid() == 0, 'namespace observer requires ephemeral host root')
+    need(len(args) == 5, 'wrong namespace observer arguments')
+    pid, container_id, start_ticks, path, deadline = args
+    need(pid.isdigit() and str(int(pid)) == pid and start_ticks.isdigit(), 'invalid namespace observer identity')
+    need(uptime() < float(deadline), 'namespace observation deadline exhausted')
+    expected = {'pid': int(pid), 'container_id': container_id, 'start_ticks': start_ticks, 'cgroup': path}
+    need(native_custody(int(pid), container_id) == expected, 'native custody changed before namespace observation')
+    observed = {}
+    for name in ['pid', 'mnt', 'net', 'ipc', 'cgroup']:
+        need(uptime() < float(deadline), 'namespace observation deadline exhausted')
+        worker = os.readlink(Path('/proc') / pid / 'ns' / name)
+        host = os.readlink(Path('/proc/self/ns') / name)
+        need(re.fullmatch(name + r':\[[0-9]+\]', worker) is not None and re.fullmatch(name + r':\[[0-9]+\]', host) is not None, 'invalid ' + name + ' namespace observation')
+        need(worker != host, 'shared ' + name + ' namespace')
+        observed[name] = {'worker': worker, 'host': host}
+    need(native_custody(int(pid), container_id) == expected, 'native custody changed during namespace observation')
+    return {'custody': expected, 'observer_euid': 0, 'namespaces': observed}
 
 def peek_exit(process):
     # Do not poll()/wait() here: retaining the unreaped leader reserves its PID
@@ -224,6 +258,36 @@ class Driver:
         need(value['Name'] == '/' + record['name'], 'container name changed')
         if record.get('id'): need(value['Id'] == record['id'], 'container identity changed')
         return value
+
+    def capture_native_custody(self, record, spec):
+        need(spec['State']['Running'], 'native worker is not running')
+        custody = native_custody(spec['State']['Pid'], record['id'])
+        if record.get('native_custody') is not None:
+            need(record['native_custody'] == custody, 'issued native custody changed')
+        else:
+            # Custody is not admission. Save before namespace/limit guards can
+            # fail, so cleanup retains the exact issued native cgroup.
+            record['native_custody'] = custody
+            record['cgroup'] = custody['cgroup']
+            self.save()
+        return custody
+
+    def admit_worker(self, record, spec):
+        custody = self.capture_native_custody(record, spec)
+        result = json.loads(self.command(['sudo', '-n', sys.executable, str(PROOF / 'driver.py'), '_namespaces', str(custody['pid']), record['id'], custody['start_ticks'], custody['cgroup'], str(self.work_deadline)], name='namespace-observation', maximum=10, retain_log=False))
+        need(result.get('custody') == custody and result.get('observer_euid') == 0, 'namespace observer custody mismatch')
+        spaces = result.get('namespaces', {})
+        need(set(spaces) == {'pid', 'mnt', 'net', 'ipc', 'cgroup'}, 'incomplete namespace observation')
+        for name, values in spaces.items():
+            need(all(type(values.get(k)) is str and re.fullmatch(name + r':\[[0-9]+\]', values[k]) is not None for k in ['worker', 'host']) and values['worker'] != values['host'], 'invalid or shared ' + name + ' namespace')
+        current = self.verify_owned(record)
+        need(current['State']['Running'] and current['State']['Pid'] == custody['pid'], 'Docker worker changed during namespace observation')
+        need(native_custody(custody['pid'], record['id']) == custody, 'native worker changed during namespace observation')
+        path = Path(custody['cgroup'])
+        validate_cgroup(cgroup_values(path), self.c)
+        record['namespace_observation'] = result
+        record['initial_memory_events'] = (path / 'memory.events').read_text()
+        self.save()
 
     def prepare(self):
         need(self.state['phase'] == 'init', 'preparation already attempted')
@@ -383,9 +447,7 @@ class Driver:
                     with open(self.control / (phase + '.log'), 'ab') as log: log.write(block)
                 spec = self.verify_owned(record)
                 if spec['State']['Running'] and not admitted:
-                    path = host_cgroup(spec['State']['Pid'], record['id'])
-                    validate_cgroup(cgroup_values(path), self.c)
-                    record['cgroup'] = str(path); record['initial_memory_events'] = (path / 'memory.events').read_text(); self.save()
+                    self.admit_worker(record, spec)
                     atomic(gate, {'job': self.state['job'], 'phase': phase, 'nonce': nonce, 'admitted': True}, mode=0o644)
                     admitted = True
                 if admitted and spec['State']['Running']:
@@ -423,6 +485,12 @@ class Driver:
     def settle(self, record):
         if record.get('settled'): return
         spec = self.verify_owned(record, cleanup=True)
+        if record['started'] and not record.get('cgroup') and spec['State']['Running']:
+            # Also reconcile a launch/attach failure before the first admission
+            # observation. Never invent custody for an already terminal worker.
+            try: self.capture_native_custody(record, spec)
+            except Exception as error:
+                record['custody_error'] = str(error); self.save()
         if spec['State']['Running']:
             try: self.docker('stop', '--time', '10', record['id'], cleanup=True, maximum=20)
             except Exception as e: record['stop_error'] = str(e); self.save()
@@ -545,6 +613,8 @@ def reports(args):
         target.write_bytes(source.read_bytes()); os.chown(target, int(uid), int(gid)); target.chmod(0o600)
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == '_namespaces':
+        print(json.dumps(namespace_observer(sys.argv[2:]), sort_keys=True)); return
     if len(sys.argv) > 1 and sys.argv[1] in ['_handoff', '_archive', '_reports']:
         need(os.geteuid() == 0, 'privileged helper requires ephemeral operator')
         {'_handoff': handoff, '_archive': archive, '_reports': reports}[sys.argv[1]](sys.argv[2:]); return
