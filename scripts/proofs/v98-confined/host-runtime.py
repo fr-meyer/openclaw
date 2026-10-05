@@ -8,6 +8,7 @@ actual PID 1 and host cgroup all agree. Unit tests import only its pure checks.
 import argparse
 import errno
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,12 @@ import subprocess
 import sys
 import tarfile
 import time
+
+_accounting_spec = importlib.util.spec_from_file_location(
+    "v98_accounting_owner", Path(__file__).with_name("accounting_owner.py"))
+_accounting = importlib.util.module_from_spec(_accounting_spec)
+_accounting_spec.loader.exec_module(_accounting)
+SliceOwner = _accounting.SliceOwner
 
 SOURCE = "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf"
 TREE = "ba825f670dc5ba943f7893cb267225d1f68d3110"
@@ -56,14 +63,8 @@ HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 
 
-class Refusal(ValueError):
-    pass
-
-
-class ObservationFailure(Refusal):
-    def __init__(self, operation, cause):
-        self.operation, self.cause = operation, cause
-        super().__init__(operation + ": " + str(cause))
+Refusal = _accounting.Refusal
+ObservationFailure = _accounting.ObservationFailure
 
 
 class SettlementFailure(Refusal):
@@ -74,8 +75,9 @@ class SettlementFailure(Refusal):
 
 
 def failure_detail(error, operation):
-    cause = error.cause if isinstance(error, ObservationFailure) else error
-    return {"operation": error.operation if isinstance(error, ObservationFailure) else operation,
+    observed = isinstance(error, ObservationFailure)
+    cause = error.cause if observed else error
+    return {"operation": error.operation if observed else operation,
             "type": type(cause).__name__, "errno": getattr(cause, "errno", None),
             "reason": bounded_text(cause, 2000)}
 
@@ -158,11 +160,14 @@ def verify_source_manifest(tooling, expected_commit):
         ("v98-supervisor.c", "v98-confine.c", "native-policy.c", "native-policy.h",
          "native-filter.h", "native-boundary.h", "native-sha256.h", "capability-probe.mjs",
          "host-runtime.py", "test_host_runtime.py", "derive_read_policy.py", "packet.json",
-         "startup-prerequisites.json",
+         "startup-prerequisites.json", "accounting_owner.py", "test_accounting_owner.py",
+         "proposal/openssl-read-proposal.json", "proposal/image-openssl.cnf",
+         "proposal/render_delta.py", "test_openssl_proposal.py",
          "read-policy/runtime-read-binding.json", "read-policy/parent-read-paths.txt",
          "read-policy/helper-read-paths.txt")
     } | {"scripts/proofs/v98-confined/inputs/" + name for name in PROOF_INPUTS} | {
         ".github/workflows/v98-confined-runtime-3.yml",
+        ".github/workflows/v98-confined-runtime-4.yml",
         "scripts/proofs/v98-parity/verify-artifact.py",
         "scripts/proofs/v98-parity/collect-artifacts.py",
         "scripts/proofs/v98-parity/contract.json",
@@ -356,29 +361,6 @@ def validate_cgroup_values(values):
             and values.get("pids.max") == "128", "cgroup memory/swap/pid limits changed")
 
 
-def cgroup_cpu(stats):
-    values = [line.split() for line in stats.splitlines()]
-    require(all(len(row) == 2 for row in values)
-            and len({row[0] for row in values}) == len(values), "invalid aggregate CPU counter")
-    rows = dict(values)
-    value = rows.get("usage_usec", "")
-    require(value.isdecimal(), "missing aggregate cgroup CPU usage")
-    return int(value)
-
-
-def read_cgroup_cpu_fd(fd):
-    try:
-        os.lseek(fd, 0, os.SEEK_SET)
-    except OSError as issue:
-        raise ObservationFailure("cpu.stat seek", issue) from issue
-    try:
-        data = os.read(fd, 4096)
-    except OSError as issue:
-        raise ObservationFailure("cpu.stat read", issue) from issue
-    require(len(data) < 4096, "aggregate cgroup CPU counter is unbounded")
-    return cgroup_cpu(data.decode("ascii"))
-
-
 def inspect_container_configuration(inspect, container_id, image_id, proof, scratch):
     require(isinstance(inspect, dict) and inspect.get("Id") == container_id
             and inspect.get("Image") == image_id, "container identity changed")
@@ -432,6 +414,8 @@ def inspect_owned_container(inspect, container_id, name, image_id, proof, scratc
     config = inspect.get("Config") or {}
     require(config.get("Entrypoint") == ["/proof/runner/v98-supervisor"]
             and config.get("Cmd") == [mode], "created container command changed")
+    require(inspect.get("HostConfig", {}).get("CgroupParent") == accounting_name(name),
+            "created container accounting parent changed")
     mounts = {row.get("Destination"): row for row in inspect.get("Mounts", [])}
     require(set(mounts) == {"/proof", "/scratch"}
             and mounts["/proof"].get("Type") == "bind"
@@ -550,11 +534,20 @@ def docker_inspect(container):
     return rows[0]
 
 
+def accounting_name(name):
+    require(isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", name),
+            "invalid task container name")
+    # Deterministic, flat slice name; StartTransientUnit refuses an existing unit.
+    token = int(hashlib.sha256(name.encode()).hexdigest()[:16], 16)
+    mode_index = name.rsplit("-", 1)[-1]
+    return "v98proof" + str(token) + "m" + (mode_index if mode_index in ("1", "2", "3") else "1") + ".slice"
+
+
 def create_command(name, image, proof, scratch, mode):
     return ["docker", "create", "--pull", "never", "--name", name, "--user", "1000:1000", "--read-only",
             "--network", "none", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
             "--pids-limit", "128", "--memory", "1g", "--memory-swap", "1g", "--cpus", "1",
-            "--shm-size", "1m", "--cgroupns", "private", "--ipc", "private",
+            "--shm-size", "1m", "--cgroupns", "private", "--cgroup-parent", accounting_name(name), "--ipc", "private",
             "--no-healthcheck", "--ulimit", "core=0:0", "--log-driver", "local",
             "--log-opt", "max-size=1m", "--log-opt", "max-file=1",
             "--log-opt", "compress=false",
@@ -577,7 +570,8 @@ def validate_docker_prerequisites(version, info, endpoint, controllers, yama):
     require("name=apparmor" in security and "name=seccomp,profile=builtin" in security
             and not any(item in security for item in ("name=rootless", "name=userns")),
             "rootful Docker default AppArmor/seccomp without user remapping required")
-    require(info.get("CgroupVersion") == "2" and {"cpu", "memory", "pids"} <= set(controllers)
+    require(info.get("CgroupVersion") == "2" and info.get("CgroupDriver") == "systemd"
+            and {"cpu", "memory", "pids"} <= set(controllers)
             and info.get("MemoryLimit") is True and info.get("SwapLimit") is True
             and info.get("CpuCfsQuota") is True and info.get("PidsLimit") is True,
             "Docker cgroup v2 resource controllers unavailable")
@@ -609,7 +603,7 @@ def host_preflight(proof, output):
         require(not any(os.environ.get(key) for key in
                 ("DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")),
                 "Docker endpoint environment override is forbidden")
-        paths = {name: shutil.which(name) for name in ("git", "docker", "cc", "readelf", "mount", "umount")}
+        paths = {name: shutil.which(name) for name in ("git", "docker", "cc", "readelf", "mount", "umount", "systemctl", "busctl")}
         observations["installedTools"] = paths
         require(all(paths.values()) and hasattr(os, "pidfd_open"), "required installed host tooling absent")
         endpoint = json.loads(command(["docker", "context", "inspect", "--format", "{{json .Endpoints.docker.Host}}"], timeout=5))
@@ -710,13 +704,9 @@ def host_pid_gate(container_id, image_id, proof, scratch, owned):
             "container scratch is not the task-owned tmpfs")
     require(proc_starttime(pid) == first_starttime and docker_inspect(container_id)["State"]["Pid"] == pid,
             "Docker PID1 changed during host admission")
-    cpu_fd = os.open("cpu.stat", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=group_fd)
-    try:
-        baseline = read_cgroup_cpu_fd(cpu_fd)
-    except Exception:
-        os.close(cpu_fd)
-        raise
-    return baseline, cpu_fd
+    # CPU accounting belongs to the persistent parent before Docker starts;
+    # the native host gate must never reset its lifetime baseline.
+    return None
 
 
 def release_gate(scratch):
@@ -741,67 +731,6 @@ def release_gate(scratch):
         os.close(fd)
 
 
-def extinction(cgroup, identity, fd):
-    held = os.fstat(fd)
-    require(stat.S_ISDIR(held.st_mode) and (held.st_dev, held.st_ino) == identity,
-            "bound cgroup descriptor changed")
-    try:
-        current = os.stat(cgroup, follow_symlinks=False)
-    except FileNotFoundError:
-        # kernfs directory getattr reports subdirs + 2, not POSIX unlink nlink0.
-        # A missing name never substitutes for a positive populated=0 witness.
-        return False
-    require((current.st_dev, current.st_ino) == identity, "owned cgroup path was reused")
-    try:
-        events = os.open("cgroup.events", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
-        try:
-            data = os.read(events, 4096)
-        finally:
-            os.close(events)
-    except OSError as issue:
-        if issue.errno in (errno.ENOENT, errno.ENODEV):
-            return False
-        raise
-    require(len(data) < 4096, "cgroup events exceed observation budget")
-    values = [line.split() for line in data.decode("ascii").splitlines()]
-    require(all(len(row) == 2 for row in values)
-            and len({row[0] for row in values}) == len(values), "invalid cgroup events")
-    rows = dict(values)
-    require(rows.get("populated") in ("0", "1"), "cgroup population observation absent")
-    return rows.get("populated") == "0"
-
-
-def wait_extinction(cgroup, identity, fd, seconds=5):
-    until = time.monotonic() + seconds
-    while time.monotonic() < until:
-        if extinction(cgroup, identity, fd):
-            return True
-        time.sleep(0.05)
-    return False
-
-
-def kill_owned(container_id, cgroup, identity, fd):
-    if extinction(cgroup, identity, fd):
-        return None
-    current = os.stat(cgroup, follow_symlinks=False)
-    require((current.st_dev, current.st_ino) == identity,
-            "refusing to kill reused cgroup path")
-    try:
-        kill_fd = os.open("cgroup.kill", os.O_WRONLY | os.O_NOFOLLOW, dir_fd=fd)
-    except OSError as issue:
-        raise ObservationFailure("cgroup.kill open", issue) from issue
-    try:
-        try:
-            require(os.write(kill_fd, b"1\n") == 2, "short owned cgroup kill write")
-        except OSError as issue:
-            raise ObservationFailure("cgroup.kill write", issue) from issue
-    finally:
-        os.close(kill_fd)
-    signalled_at = time.monotonic()
-    require(wait_extinction(cgroup, identity, fd), "owned cgroup extinction not observed")
-    return signalled_at
-
-
 def settle_created_container(container_id, name, image_id, proof, scratch, mode):
     """Settle the exact created ID independently of cgroup proof availability."""
     inspected = docker_inspect(container_id)
@@ -824,6 +753,13 @@ def settle_created_container(container_id, name, image_id, proof, scratch, mode)
                 or type(state["ExitCode"]) is int), "exact container final state malformed")
     except Exception as issue:
         raise SettlementFailure(stop_failure, issue) from issue
+    return stopped_state(state, stop_requested, stop_failure)
+
+
+def stopped_state(state, stop_requested=False, stop_failure=None):
+    require(type(state.get("Running")) is bool and type(state.get("Pid")) is int
+            and state["Pid"] >= 0 and (state.get("ExitCode") is None
+            or type(state["ExitCode"]) is int), "exact container final state malformed")
     return {"Status": bounded_text(state.get("Status", ""), 64),
             "Running": state["Running"], "Pid": state["Pid"],
             "ExitCode": state.get("ExitCode"), "Error": bounded_text(state.get("Error", ""), 2000),
@@ -831,6 +767,38 @@ def settle_created_container(container_id, name, image_id, proof, scratch, mode)
             "stopRequested": stop_requested,
             "stopCommandSucceeded": stop_requested and stop_failure is None,
             "stopFailure": stop_failure}
+
+
+def seal_parent_checkpoint(target, container_id, name, image_id, proof, scratch,
+                           mode, final, state, observed_wall):
+    """Save final proof while its parent is still active, before cleanup."""
+    require(state and state.get("stoppedVerified") is True
+            and state.get("Running") is False and state.get("Pid") == 0
+            and final and final.get("extinctionObserved") is True
+            and final.get("populated") is False and final.get("finalCpuVerified") is True,
+            "checkpoint requires complete parent proof and exact stopped Docker state")
+    row = {"schema": "openclaw-v98-parent-accounting-checkpoint/v1",
+           "containerId": container_id, "containerName": name, "imageConfigId": image_id,
+           "mode": mode, "cgroupParent": accounting_name(name),
+           "proofMount": str(proof), "scratchMount": str(scratch),
+           "sourceCommit": SOURCE, "sourceTree": TREE,
+           "parentAccountingFinal": final, "stoppedContainerState": state,
+           "aggregateCpuObservedWallSeconds": observed_wall}
+    data = (json.dumps(row, indent=2) + "\n").encode()
+    require(len(data) <= 32 * 1024, "parent checkpoint exceeds evidence budget")
+    target = Path(target)
+    partial = target.with_name("." + target.name + ".partial")
+    with partial.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    partial.replace(target)
+    directory = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+    return {"path": target.name, "bytes": len(data), "sha256": sha256(target)}
 
 
 def scratch_bytes(scratch):
@@ -915,8 +883,13 @@ def run_mode(image_id, proof, out, name, mode):
     out.mkdir(mode=0o755)
     scratch = out / "scratch-tmpfs"
     container_id = None
-    group_fd = pidfd = cpu_fd = None
-    cgroup = identity = baseline = None
+    group_fd = pidfd = child_group_fd = None
+    cgroup = identity = None
+    accounting = None
+    accounting_final = None
+    accounting_release = None
+    accounting_settlement_failure = None
+    checkpoint = None
     extinct = False
     stdout = bytearray()
     stderr = bytearray()
@@ -927,11 +900,12 @@ def run_mode(image_id, proof, out, name, mode):
     sel = None
     cpu = None
     cpu_observed_wall = None
+    lifetime_end_observed_wall = None
     final_cpu_verified = False
     final_cpu_status = "NOT_ATTEMPTED"
     exit_code = None
     operation = "scratch preparation"
-    started = time.monotonic()
+    mode_started = None
     owned = None
     receipt = None
     error = None
@@ -941,17 +915,24 @@ def run_mode(image_id, proof, out, name, mode):
     settlement_failure = None
     creation_attempted = False
     try:
+        operation = "persistent accounting parent creation"
+        accounting = SliceOwner(command, accounting_name(name))
+        accounting.create()
+        group_fd, cgroup, identity = accounting.directory_fd, accounting.path, accounting.identity
+        cpu = 0
         mount_scratch(scratch)
         creation_attempted = True
         operation = "container create"
         container_id = command(create_command(name, image_id, proof, scratch, mode)).decode().strip()
         require(HEX64.fullmatch(container_id), "Docker did not create an exact owned container")
+        accounting.expect_container(container_id)
         created = docker_inspect(container_id)
         inspect_owned_container(created, container_id, name, image_id, proof, scratch, mode)
         inspect_container_configuration(created, container_id, image_id, proof, scratch)
         require(created.get("State", {}).get("Running") is False
                 and created["State"].get("Pid") == 0, "created container already has a live PID")
         operation = "container start and bounded streams"
+        mode_started = time.monotonic()
         attach = subprocess.Popen(["docker", "start", "--attach", container_id],
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
         sel = selectors.DefaultSelector()
@@ -959,7 +940,6 @@ def run_mode(image_id, proof, out, name, mode):
             os.set_blocking(stream.fileno(), False)
             sel.register(stream, selectors.EVENT_READ, label)
         gate_seen = False
-        mode_started = None
         while sel.get_map() or attach.poll() is None:
             for key, _ in sel.select(0.05):
                 data = os.read(key.fileobj.fileno(), 65536)
@@ -979,22 +959,27 @@ def run_mode(image_id, proof, out, name, mode):
                         "first trusted stdout was not host gate")
                 operation = "actual PID1 and cgroup admission"
                 owned = observe_owned_process(container_id, name, image_id, proof, scratch, mode)
-                _, starttime, pidfd, group_fd, cgroup, identity = owned
-                baseline, cpu_fd = host_pid_gate(container_id, image_id, proof, scratch, owned)
+                owned_pid, starttime, pidfd, child_group_fd, child_cgroup, child_identity = owned
+                accounting.bind_child(child_cgroup, child_identity, pid=owned_pid)
+                host_pid_gate(container_id, image_id, proof, scratch, owned)
                 require(proc_starttime(docker_inspect(container_id)["State"]["Pid"]) == starttime,
                         "Docker PID1 changed before host gate")
+                accounting.bind_child(child_cgroup, child_identity, pid=owned_pid)
+                cpu = accounting.cpu_delta()
+                cpu_observed_wall = time.monotonic() - mode_started
+                require(0 <= cpu <= MODE_LIMITS[mode][1],
+                        "whole-cgroup aggregate CPU budget exceeded before gate")
+                require(cpu_observed_wall < MODE_LIMITS[mode][0],
+                        "native wall deadline exceeded before gate")
                 gate_seen = True
-                mode_started = time.monotonic()
-                cpu = 0
-                cpu_observed_wall = 0.0
                 release_gate(scratch)
-            if not gate_seen and time.monotonic() - started > 5:
+            if not gate_seen and time.monotonic() - mode_started > 5:
                 raise Refusal("trusted host gate not observed within five seconds")
             if attach.poll() is not None and not sel.get_map():
                 break
             operation = "live cgroup observation"
-            if gate_seen and not extinction(cgroup, identity, group_fd):
-                observed = read_cgroup_cpu_fd(cpu_fd) - baseline
+            if accounting.populated():
+                observed = accounting.cpu_delta()
                 require(observed >= cpu, "aggregate CPU counter decreased")
                 cpu = observed
                 cpu_observed_wall = time.monotonic() - mode_started
@@ -1004,7 +989,7 @@ def run_mode(image_id, proof, out, name, mode):
                     raise Refusal("whole-cgroup aggregate CPU budget exceeded")
                 if time.monotonic() - mode_started >= wall_limit and attach.poll() is None:
                     deadline_kill_requested_wall = time.monotonic() - mode_started
-                    signalled_at = kill_owned(container_id, cgroup, identity, group_fd)
+                    signalled_at = accounting.kill()
                     deadline_killed = True
                     deadline_signal_completed_wall = (signalled_at - mode_started
                                                       if signalled_at is not None else None)
@@ -1016,15 +1001,24 @@ def run_mode(image_id, proof, out, name, mode):
                             "deadline control was requested or signalled too late")
         operation = "exact container exit and native outcome"
         attach.wait(timeout=2)
+        lifetime_end_observed_wall = time.monotonic() - mode_started
+        if mode != "--deadline-probe":
+            require(lifetime_end_observed_wall <= MODE_LIMITS[mode][0] + 0.1,
+                    "complete native lifetime exceeded wall budget")
         inspected = docker_inspect(container_id)
         inspect_owned_container(inspected, container_id, name, image_id, proof, scratch, mode)
+        require(inspected.get("State", {}).get("Running") is False
+                and inspected["State"].get("Pid") == 0, "exact container final stop was not observed")
+        stopped_container_state = stopped_state(inspected["State"])
         exit_code = inspected["State"]["ExitCode"]
         require(gate_seen and group_fd is not None, "host gate was never admitted")
         native, product = parse_events(bytes(stdout), bytes(stderr))
         assess_native(mode, native, product, exit_code, deadline_killed)
         operation = "final aggregate CPU accounting"
         final_cpu_status = "ATTEMPTED_UNVERIFIED"
-        observed = read_cgroup_cpu_fd(cpu_fd) - baseline
+        accounting_final = accounting.final_observation(cpu)
+        extinct = accounting_final["extinctionObserved"]
+        observed = accounting_final["aggregateCpuUsec"]
         require(observed >= cpu, "final aggregate CPU counter decreased")
         cpu = observed
         cpu_observed_wall = time.monotonic() - mode_started
@@ -1032,9 +1026,7 @@ def run_mode(image_id, proof, out, name, mode):
                 "final whole-cgroup aggregate CPU budget was not verified")
         final_cpu_verified = True
         final_cpu_status = "VERIFIED"
-        operation = "final whole-cgroup extinction"
-        extinct = wait_extinction(cgroup, identity, group_fd)
-        require(extinct, "whole cgroup still populated after native exit")
+        require(extinct, "whole task parent still populated after native exit")
         if mode != "--run-frozen-six-phases":
             require(scratch_bytes(scratch) <= MAX_PROBE_SCRATCH,
                     "probe scratch exceeds retained evidence budget")
@@ -1043,6 +1035,8 @@ def run_mode(image_id, proof, out, name, mode):
                    "aggregateCpuObservedWallSeconds": cpu_observed_wall,
                    "finalCpuVerified": final_cpu_verified,
                    "finalCpuStatus": final_cpu_status,
+                   "parentAccountingFinal": accounting_final,
+                   "lifetimeEndObservedWallSeconds": lifetime_end_observed_wall,
                    "wallSeconds": time.monotonic() - mode_started,
                    "exitCode": exit_code, "deadlineKilled": deadline_killed,
                    "deadlineKillRequestedWallSeconds": deadline_kill_requested_wall,
@@ -1052,18 +1046,11 @@ def run_mode(image_id, proof, out, name, mode):
         error = caught
         # A policy refusal must still settle the container. Cleanup authority
         # has narrower checks and never admits the tracee or releases the gate.
-        if container_id and group_fd is None and attach is not None:
-            try:
-                owned = observe_owned_process(container_id, name, image_id, proof, scratch, mode)
-                _, _, pidfd, group_fd, cgroup, identity = owned
-            except Exception as binding_error:
-                cleanup_errors.append("cleanup binding: " + str(binding_error)[:300])
         if container_id and group_fd is not None and not extinct:
             try:
-                kill_owned(container_id, cgroup, identity, group_fd)
-                extinct = extinction(cgroup, identity, group_fd)
+                accounting.kill()
             except Exception as kill_error:
-                cleanup_errors.append("owned cgroup kill: " + str(kill_error)[:300])
+                cleanup_errors.append("owned parent kill: " + str(kill_error)[:300])
         # Exact-ID settlement and its stopped-state witness are independent of
         # cgroup accounting/extinction. A vanished scope must not skip them.
         if container_id:
@@ -1078,6 +1065,20 @@ def run_mode(image_id, proof, out, name, mode):
                 if isinstance(kill_error, SettlementFailure):
                     settlement_failure = kill_error.details
                 cleanup_errors.append("exact ID kill: " + str(kill_error)[:300])
+        if accounting is not None and group_fd is not None:
+            try:
+                final_cpu_status = "ATTEMPTED_UNVERIFIED"
+                accounting_final = accounting.final_observation(cpu or 0)
+                extinct = accounting_final["extinctionObserved"]
+                cpu = accounting_final["aggregateCpuUsec"]
+                cpu_observed_wall = time.monotonic() - mode_started if mode_started is not None else None
+                final_cpu_verified = 0 <= cpu <= MODE_LIMITS[mode][1]
+                final_cpu_status = "VERIFIED" if final_cpu_verified else "OBSERVED_OVER_BUDGET"
+                stopped_without_group = bool(stopped_container_state and
+                                              stopped_container_state["stoppedVerified"] and not extinct)
+            except Exception as accounting_error:
+                accounting_settlement_failure = failure_detail(accounting_error, "final parent accounting/extinction")
+                cleanup_errors.append("final parent proof: " + str(accounting_error)[:300])
     finally:
         if attach is not None and attach.poll() is None:
             try:
@@ -1101,13 +1102,30 @@ def run_mode(image_id, proof, out, name, mode):
             (out / "product-stderr.log").write_bytes(bytes(stderr))
         except Exception as log_error:
             cleanup_errors.append("bounded log retention: " + str(log_error)[:300])
-        if extinct:
+        if extinct and accounting_final is not None and stopped_container_state and not cleanup_errors:
+            try:
+                checkpoint = seal_parent_checkpoint(out / "parent-accounting-checkpoint.json",
+                    container_id, name, image_id, proof, scratch, mode, accounting_final,
+                    stopped_container_state, cpu_observed_wall)
+                if receipt is not None:
+                    receipt["parentAccountingCheckpoint"] = checkpoint
+            except Exception as checkpoint_error:
+                cleanup_errors.append("parent proof checkpoint: " + str(checkpoint_error)[:300])
+        if checkpoint is not None and not cleanup_errors:
             try:
                 retain_scratch(scratch, out / "scratch.tar.gz")
             except Exception as archive_error:
                 cleanup_errors.append("scratch retention: " + str(archive_error)[:300])
-            if container_id:
+            if container_id and not cleanup_errors:
                 try:
+                    # Archive work may take time. Rejoin exact stopped ownership
+                    # and unchanged complete parent proof immediately before rm.
+                    final_container = docker_inspect(container_id)
+                    inspect_owned_container(final_container, container_id, name, image_id, proof, scratch, mode)
+                    require(stopped_state(final_container["State"])["stoppedVerified"],
+                            "container changed before removal")
+                    refreshed = accounting.final_observation(cpu)
+                    require(refreshed == accounting_final, "parent proof changed before removal")
                     command(["docker", "rm", container_id], timeout=5)
                 except Exception as remove_error:
                     cleanup_errors.append("owned container removal: " + str(remove_error)[:300])
@@ -1121,16 +1139,26 @@ def run_mode(image_id, proof, out, name, mode):
                 os.close(pidfd)
             except OSError as close_error:
                 cleanup_errors.append("PID handle close: " + str(close_error)[:300])
-        if cpu_fd is not None:
+        if child_group_fd is not None:
             try:
-                os.close(cpu_fd)
+                os.close(child_group_fd)
             except OSError as close_error:
-                cleanup_errors.append("CPU handle close: " + str(close_error)[:300])
-        if group_fd is not None:
+                cleanup_errors.append("child cgroup handle close: " + str(close_error)[:300])
+        if accounting is not None:
             try:
-                os.close(group_fd)
+                if checkpoint is not None and not cleanup_errors:
+                    accounting_release = accounting.release()
+                    if receipt is not None:
+                        receipt["parentAccountingRelease"] = accounting_release
             except OSError as close_error:
-                cleanup_errors.append("cgroup handle close: " + str(close_error)[:300])
+                cleanup_errors.append("accounting handle close: " + str(close_error)[:300])
+            except Exception as release_error:
+                cleanup_errors.append("owned parent release: " + str(release_error)[:300])
+            finally:
+                try:
+                    accounting.close()
+                except Exception as close_error:
+                    cleanup_errors.append("accounting handle close: " + str(close_error)[:300])
         if not extinct and os.path.ismount(scratch):
             cleanup_errors.append("task scratch retained because cgroup extinction was not proved")
     if error is None and cleanup_errors:
@@ -1164,8 +1192,14 @@ def run_mode(image_id, proof, out, name, mode):
             "cgroupDevInode": identity, "extinctionObserved": extinct,
             "aggregateCpuUsecLastObserved": cpu,
             "aggregateCpuObservedWallSeconds": cpu_observed_wall,
+            "lifetimeEndObservedWallSeconds": lifetime_end_observed_wall,
             "finalCpuVerified": final_cpu_verified,
             "finalCpuStatus": final_cpu_status,
+            "parentAccounting": accounting.receipt() if accounting is not None else None,
+            "parentAccountingFinal": accounting_final,
+            "parentAccountingRelease": accounting_release,
+            "parentAccountingCheckpoint": checkpoint,
+            "accountingSettlementFailure": accounting_settlement_failure,
             "stoppedWithoutCgroupProof": stopped_without_group,
             "stoppedContainerState": stopped_container_state,
             "containerSettlementFailure": settlement_failure,
@@ -1200,6 +1234,7 @@ def collect_evidence(validation, host_output, destination):
     for number in (1, 2, 3):
         attempt = host_output / f"attempt-{number}"
         for name, cap in (("failure.json", 32 * 1024), ("receipt.json", 2 * 1024 * 1024),
+                          ("parent-accounting-checkpoint.json", 32 * 1024),
                           ("native-stdout.jsonl", MAX_STDOUT),
                           ("product-stderr.log", MAX_STDERR)):
             files.append((attempt / name, Path(f"attempt-{number}") / name, cap))
@@ -1277,7 +1312,7 @@ def execute(args):
     require(os.geteuid() == 0 and platform.system() == "Linux" and platform.machine() == "x86_64",
             "hosted root Linux x86-64 runner required")
     require(os.environ.get("GITHUB_REPOSITORY") == "fr-meyer/openclaw"
-            and os.environ.get("GITHUB_REF") == "refs/heads/candidate/v2026.9.8-runtime-admission-3"
+            and os.environ.get("GITHUB_REF") == "refs/heads/candidate/v2026.9.8-runtime-admission-4"
             and os.environ.get("GITHUB_RUN_ATTEMPT") == "1"
             and os.environ.get("GITHUB_RUN_NUMBER") == "1", "wrong hosted workflow identity")
     tooling = Path(args.tooling).resolve()

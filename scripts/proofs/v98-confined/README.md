@@ -6,8 +6,9 @@ This proof tooling preserves product commit
 Linux amd64 image; it does not rebuild, patch, install dependencies into, or
 start the image's Gateway entrypoint. No fixture phase has run locally.
 
-This successor is a local correction with unresolved startup-policy and
-complete lifetime-accounting gates. No new publication or hosted run is
+This unpublished successor implements complete lifetime-accounting and cleanup
+source ownership. The exact startup-policy delta remains unapplied, and real
+host evidence remains unqualified. No new publication or hosted run is
 authorized. Branch `candidate/v2026.9.8-runtime-admission-3` and its workflow
 already consumed the approved one-run/one-attempt allowance at commit
 `d7a0b7624f1802d97c2672301fe4c90315063030`. They are retained historical identities,
@@ -48,15 +49,11 @@ operation label; cleanup found the Docker scope absent. Final CPU, whole-cgroup
 extinction and exact final Docker state were unproved. The historical errno's
 exact call site remains unknown. Deadline and all six phases remain `NEVER_RUN`.
 
-This local correction tags CPU seek/read failures, prioritizes source-bound
-native nonzero exits, and always attempts independent exact-owned Docker
-settlement after a bound-group failure. Cgroup reads and kills use the captured
-directory descriptor; pathname absence or link count cannot grant extinction.
-Only a successful identity-bound `populated=0` observation grants that proof.
-Last observed CPU/time are diagnostics, never replacement final accounting.
-These changes improve diagnosis and settlement, but do not establish a passing
-complete lifetime-accounting mechanism when Docker removes its scope before
-the final counters and population can be observed.
+The preserved local successor `a61c1c386464de0db9379809b4cf8ba8e755b586`
+provided operation-labelled failure diagnostics, independent exact-owned Docker
+settlement, static startup prerequisites and 50 passing pure checks. This isolated
+successor adds the persistent active-parent owner and durable resource checkpoint
+described below; no failed receipt is reclassified.
 
 `startup-prerequisites.json` inventories ten canonical Node/GNU/OpenSSL regular
 file identities and their required alias/directory metadata. The static check
@@ -74,16 +71,12 @@ loads. Conditional CA, NSS, locale/ICU, timezone, entropy and introspection read
 are inventoried; no complete dynamic runtime closure is claimed. `node --version`
 returns before OpenSSL initialization and would not cover this startup failure.
 
-Before another attempt could qualify, a separately reviewed mechanism must
-retain authoritative CPU accounting for the complete lifetime and a positive
-original-cgroup population observation through termination. A native hold/ack
-protocol or different cgroup owner would require its own design and review;
-last samples, Docker PID0, pidfd exit and pathname deletion are insufficient.
-Future proof must cover native success and refusal, CPU-read ENODEV, removed
-scope, deadline kill, descendant join and final cleanup independently. Any
-permission/host-control expansion needs explicit approval. Abrupt runner loss
-and final runner teardown remain unproved. The retained artifact, native profile,
-input bytes, resource limits and retention are unchanged.
+The persistent parent mechanism is implemented and locally tested below; real
+systemd/kernel retention, final CPU, deadline and release proofs require the
+separately approved hosted attempt. Last samples, Docker PID0, pidfd exit and
+pathname deletion never substitute for positive parent observations. Permission
+and ephemeral host-control changes require the bundled explicit approval. Abrupt
+runner loss and final runner teardown remain unproved.
 
 ## Execution contract
 
@@ -99,15 +92,17 @@ input bytes, resource limits and retention are unchanged.
    static x86-64 supervisor and a preload with no external imports or libraries.
    No compiler/package acquisition or `ldd` execution is allowed.
 3. Run separate capability, forced-deadline and six-phase containers, once each,
-   under the same reviewed profile. A failed prerequisite prevents the fixture.
-   The supervisor emits the host gate before any Node tracee exists. The host
+   under the same reviewed profile and one fresh persistent parent per mode.
+   Parent baseline must be zero before Docker create/start; the complete native
+   startup/gate/supervisor lifetime contributes to CPU and wall budgets.
+   A failed prerequisite prevents the fixture. The supervisor emits the host gate before any Node tracee exists. The host
    binds the actual inspected container PID1 to its host-observed cgroup, checks
    all resource limits, then writes the root-owned one-use admission marker.
 4. Join capability results with native denial, thread, fsync and exit
    observations. Exercise scratch file/directory fsync, SQLite WAL/backup/close,
    a real Worker requesting the product's 512 MiB old-generation option, network denial and
    filesystem denial against a private writable sentinel outside scratch.
-   Force the deadline container to stop, and prove extinction of its bound
+   Force the deadline container to stop, and prove extinction of its original parent
    cgroup before allowing the fixture.
 5. The supervisor owns six immutable Node invocations: prepare; predecessor
    assertion; migrate through the original Doctor; candidate assertion;
@@ -220,3 +215,75 @@ workflow runs or UI reruns, using GitHub's [run counters](https://docs.github.co
 It must not silently fetch a replacement artifact
 or retry with a wider profile. Binary digests are recorded after the approved
 host compilation, before any container execution, rather than invented locally.
+
+## Unpublished accounting successor and exact approval scope
+
+The reviewed 50-check local successor `a61c1c386464de0db9379809b4cf8ba8e755b586`
+remains unchanged. This isolated successor implements the previously missing host
+lifetime accounting owner in `accounting_owner.py`; real host evidence remains
+`NEVER_RUN`. It removes the old child-scope-only CPU/extinction/kill owner.
+
+For each mode, installed systemd 255 creates one fresh active transient slice
+`v98proof<decimal64bit-token>m[123].slice`. A nofollow parent-path absence check
+precedes exclusive `StartTransientUnit` in fail mode. PID1 manages the ephemeral
+`/run/systemd/transient/<exact-unit>.slice` fragment. This new host control scope
+requires explicit approval: there is no manual/persistent unit, drop-in or
+settings change and no keeper process. Exact description, InvocationID,
+ControlGroup, root/parent/child dev/inode, retention properties and resource
+controls remain bound. The parent and child each enforce one CPU, 1 GiB,
+zero swap and 128 tasks. An unexpected process, directory or reused identity
+refuses the owner; populated unbound kills are refused while independent exact
+Docker settlement still runs.
+
+The new parent must be empty with raw hierarchical CPU baseline zero **before**
+Docker create/start. Docker is assigned that exact `--cgroup-parent`; its direct
+`docker-<CID64>.scope` and actual PID are bound before native gate release.
+Wall time begins before Docker starts; gate admission checks startup CPU/wall
+budgets. CPU has no gate reset. Final proof requires the original active parent
+empty before and after stable raw CPU reads and an unchanged invocation/inode.
+The Docker child may auto-remove; a missing parent/counter never grants proof.
+
+Before archive, container removal, scratch unmount or unit release, the caller
+saves an at-most-32KiB `parent-accounting-checkpoint.json`: exclusive temporary
+file, file fsync, atomic rename and directory fsync. It binds the exact Docker
+source/image/name/id/mode/mounts and validated stopped state to the final parent
+CPU/population/identity observations. Retention failure keeps all owned resources.
+After archive, exact stopped Docker ownership and unchanged parent proof are
+rejoined before removal. Unit release requires the original empty parent and
+retained final counter, followed by exact StopUnit and typed manager listing;
+command errors never count as absence. Abrupt cancellation/runner loss remains
+outside the proved normal-exception lifecycle.
+
+The semantics are supported by [systemd v255 slice lifecycle](https://github.com/systemd/systemd/blob/v255/src/core/slice.c),
+[systemd v255 active-unit and transient-unit ownership](https://github.com/systemd/systemd/blob/v255/src/core/unit.c),
+[systemd v255 cgroup lifecycle](https://github.com/systemd/systemd/blob/v255/src/core/cgroup.c),
+[Moby v28.0.4 systemd cgroup-parent handling](https://github.com/moby/moby/blob/v28.0.4/daemon/oci_linux.go),
+and [Linux hierarchical accounting](https://github.com/torvalds/linux/blob/v6.17/kernel/cgroup/rstat.c).
+These source contracts do not prove the runner's vendor kernel or systemd build;
+actual retention, hierarchical charges, deadline signal and cleanup must pass
+inside the proposed hosted attempt under default protections.
+
+The pending startup delta is **unapplied**. Exact image config ID
+`sha256:1b2669dcea79d48e6c9f1e86a81495746e62f6d4b9a7837eaccca5ce0a266c39`
+contains original `/etc/ssl/openssl.cnf`, mode 0644, 12,332 bytes, SHA256
+`7ae8cae2e64856b34c80276deb1dcf60f76da27bc1e00382201ba7bb7dc33311`.
+Its retained exact bytes are `proposal/image-openssl.cnf`; that copy is neither
+installed nor included in the runtime read bundle. The proposed original-image
+READ_FILE grant covers parent and the fresh Node snapshot helper only, with
+metadata joins for `/etc/ssl` and `/usr/lib/ssl/openssl.cnf`, which aliases the
+same inode. No directory-content grant is proposed. Frozen Node initializes
+this config before JavaScript; the retained exit13/EACCES proves it is needed.
+No config suppression or argv/environment change is proposed.
+
+After approval, exactly one canonical read is added (1547→1548 files) and two
+metadata joins (358→360); all other read identities and all write/network/exec/
+syscall/native/product/fixture scopes remain unchanged. The external bundled
+packet binds the unpublished commit/tree, exact unapplied patch, projected
+source manifest, local checks and independent review. It proposes branch
+`candidate/v2026.9.8-runtime-admission-4` and workflow
+`.github/workflows/v98-confined-runtime-4.yml`, once, run1/attempt1, Ubuntu24.04,
+15-minute job, seven-day at-most-20MiB evidence. It reuses the same authenticated
+retained image without dependency installation, build or registry publication.
+Capability precedes forced deadline; both must pass before the six synthetic
+phases. Remote absence/counters and artifact expiry need a read-only immediate
+recheck. No current publication or hosted execution is authorized.

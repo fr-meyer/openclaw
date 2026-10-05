@@ -1,0 +1,94 @@
+{
+  "schema": "openclaw-v98-unapplied-openssl-read-proposal/v1",
+  "status": "UNAPPLIED; EXPLICIT_PERMISSION_APPROVAL_REQUIRED",
+  "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
+  "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
+  "imageSha256": "0a3418e393313dbe7e20f4ef140fea81e3a7e6d8a24f9ee1bf5e0bd87d86ffcf",
+  "imageConfigId": "sha256:1b2669dcea79d48e6c9f1e86a81495746e62f6d4b9a7837eaccca5ce0a266c39",
+  "nodeIdentity": {
+    "path": "/usr/local/bin/node",
+    "mode": "0o755",
+    "type": "file",
+    "bytes": 126595440,
+    "sha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+  },
+  "canonicalRead": {
+    "path": "/etc/ssl/openssl.cnf",
+    "mode": "0o644",
+    "type": "file",
+    "bytes": 12332,
+    "sha256": "7ae8cae2e64856b34c80276deb1dcf60f76da27bc1e00382201ba7bb7dc33311"
+  },
+  "savedLayerCustody": {
+    "layerArchivePath": "blobs/sha256/7cceb600eafaa47b3ccccf5a66c0034e9113f827a092d85a9a535317dd79ee7a",
+    "layerDiffId": "sha256:7cceb600eafaa47b3ccccf5a66c0034e9113f827a092d85a9a535317dd79ee7a",
+    "selectedPayloadBytesJoined": true
+  },
+  "proposalPayloadPath": "scripts/proofs/v98-confined/proposal/image-openssl.cnf",
+  "payloadIsNotCopiedIntoRuntimeProof": true,
+  "permission": "READ_FILE",
+  "scopes": [
+    "parent",
+    "fresh Node helper"
+  ],
+  "namespaceMetadataOnly": [
+    {
+      "path": "/etc/ssl",
+      "mode": "0o755",
+      "type": "directory",
+      "alreadyInReviewedBinding": false,
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    },
+    {
+      "path": "/usr/lib/ssl/openssl.cnf",
+      "mode": "0o777",
+      "type": "symlink",
+      "target": "/etc/ssl/openssl.cnf",
+      "alreadyInReviewedBinding": false,
+      "metadataOnly": true,
+      "directoryReadGrant": false
+    }
+  ],
+  "countsAfterApproval": {
+    "regularReadFiles": 1548,
+    "namespaceMetadata": 360
+  },
+  "currentReadBindingSha256": "f4697e6eb2868dc1d44e5074eadb385e1963d23d54e8ed12c81c2dbf82b00667",
+  "currentParentAndHelperListSha256": "0df305867ff2cbf6675198f0545a8dc18d8dbe53e99849e732abac02313c8f03",
+  "necessity": "Frozen Node v24.21.0 initializes default OpenSSL configuration before JS. Retained capability reached initial exec then reported EACCES for the exact original config and trusted exit13. --version would skip this dependency.",
+  "unchanged": [
+    "All other regular-file read permissions and all write/scratch/staging permissions",
+    "Network/socket/process/exec/syscall policy",
+    "Native C supervisor/constructor/filter and all original product/fixture inputs",
+    "Frozen Node argv/environment/default config path and semantics",
+    "Image/archive/compiler acquisition policy and dependencies"
+  ],
+  "noDirectoryReadGrant": true,
+  "activeConfigIncludes": [],
+  "configDrivenProviderEngineDsos": [],
+  "completeDynamicClosureClaimed": false,
+  "sourceAssessmentSha256": "35f83029500191d238f68505b781836adab51bcdd3ad02bf95c0d7ff6fa72015",
+  "sources": [
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/src/node.cc#L1088-L1157",
+      "supports": "Startup selects OpenSSL config and nodejs_conf, sets IGNORE_MISSING_FILE and returns the OpenSSL error reason before V8/JavaScript."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/src/node.cc#L1067-L1088",
+      "supports": "--version early return precedes OpenSSL initialization; it does not exercise config access."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/deps/openssl/openssl/crypto/conf/conf_mod.c#L117-L175",
+      "supports": "No appname selector means no config module load unless DEFAULT_SECTION fallback was requested."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/deps/openssl/openssl/crypto/conf/conf_mod.c#L176-L223",
+      "supports": "IGNORE_MISSING_FILE accepts NO_SUCH_FILE only; EACCES persists."
+    },
+    {
+      "url": "https://github.com/nodejs/node/blob/v24.21.0/deps/openssl/openssl/crypto/conf/conf_def.c#L410-L489",
+      "supports": "Only active .include directives expand file/directory includes; commented directives do not."
+    }
+  ]
+}

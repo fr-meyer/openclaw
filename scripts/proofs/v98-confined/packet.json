@@ -1,18 +1,18 @@
 {
   "schema": "openclaw-v98-confined-execution-packet/v1",
-  "status": "LOCAL_CORRECTION; STARTUP_POLICY_AND_LIFETIME_ACCOUNTING_BLOCKED; NO_FUTURE_RUN_AUTHORIZED",
+  "status": "LOCAL_ACCOUNTING_SOURCE_READY; OPENSSL_DELTA_UNAPPLIED; NO_FUTURE_RUN_AUTHORIZED",
   "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
   "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
   "sourceManifestPath": "scripts/proofs/v98-confined/source-manifest.json",
   "publication": {
     "repository": "fr-meyer/openclaw",
-    "branch": "candidate/v2026.9.8-runtime-admission-3",
-    "workflow": ".github/workflows/v98-confined-runtime-3.yml",
+    "branch": "candidate/v2026.9.8-runtime-admission-4",
+    "workflow": ".github/workflows/v98-confined-runtime-4.yml",
     "onePush": true,
     "forcePush": false,
     "mainMerge": false,
     "newApprovalRequired": true,
-    "status": "CONSUMED_IDENTITY; DO_NOT_PUBLISH_THIS_SUCCESSOR_HERE",
+    "status": "DRAFT_FRESH_IDENTITY; REMOTE_ABSENCE_AND_UNUSED_RUN_COUNTERS_UNVERIFIED",
     "newExecutionIdentityRequired": true
   },
   "hostedAttempt": {
@@ -34,7 +34,9 @@
     "consumedRunId": 37247688900,
     "consumedCommit": "d7a0b7624f1802d97c2672301fe4c90315063030",
     "consumedConclusion": "FAILURE; NODE_STARTUP_EXIT_13; CPU_AND_WHOLE_CGROUP_CLEANUP_UNPROVED",
-    "startupPrerequisiteReceipt": "Static required Node/GNU/OpenSSL file and metadata identities joined against frozen policies before compiler, Docker image load or start; current missing config refuses without granting a permission"
+    "startupPrerequisiteReceipt": "Static required Node/GNU/OpenSSL file and metadata identities joined against frozen policies before compiler, Docker image load or start; current missing config refuses without granting a permission",
+    "scope": "One capability probe, then one forced-deadline probe, then one frozen six-phase fixture; any refusal stops later modes. No rerun or replacement image.",
+    "hostOwnedAccounting": "Exactly one task slice per mode, active until complete final proof is sealed; StartTransientUnit creates a PID1-managed ephemeral /run/systemd/transient/<exact-unit>.slice fragment, no manual/persistent unit/drop-in/settings edits."
   },
   "artifact": {
     "runId": 37192724704,
@@ -81,8 +83,8 @@
     "stdioSocketPairs": "At most three tracked anonymous AF_UNIX SOCK_STREAM|SOCK_CLOEXEC protocol-zero pairs in phase 3",
     "helper": "Exactly one original Node snapshot sync helper in internal migration phase 3; committed executable/argv/env, nofollow bound stage inode and single-link source-owner token family, writers stopped through verified restriction, parent namespace changes denied until helper join; read-only candidate SQLite family and owned staging writes; no grandchildren or re-exec",
     "hostGate": "Before any tracee; host-observed Docker PID1/cgroup/limits; root-owned UID0 GID1000 mode0440 regular nlink1 exact18-byte one-use marker",
-    "cleanup": "Joined native tracees plus bound whole-cgroup extinction; preserve uncertain/failed receipts and scratch",
-    "failureCustody": "Always independently settle the exact ownership-validated Docker ID after normal failure, including after bound cgroup failures; Running=false/Pid=0 remains separate from extinction. Preserve uncertain-cgroup scratch, image and container metadata."
+    "cleanup": "Native joined tracees plus original persistent parent positive populated=0 before/after stable final hierarchical CPU; exact stopped Docker identity and durable bounded checkpoint before archive/rm/unmount/StopUnit; unknown observations retain resources.",
+    "failureCustody": "Independent exact-ID Docker stop/final observation even when parent proof fails. No missing child/path, Docker PID0, cached unit CPU or last sample grants complete proof. Failed checkpoint/ownership/resource observation retains the task parent, image, container metadata and scratch."
   },
   "modes": [
     {
@@ -135,7 +137,7 @@
   ],
   "requiredHostedGates": [
     "Separately approved one-file OpenSSL READ_FILE policy addition with exact identity/metadata joins; current unchanged policy fails static startup preflight",
-    "Separately reviewed whole-lifetime final aggregate CPU and original-cgroup positive extinction mechanism; disappeared counters, last samples and Docker PID0 cannot grant proof",
+    "Observe actual systemd255 transient active-slice retention after Docker child auto-removal, exact invocation/root/parent/child dev-inode ownership, zero pre-start baseline, raw hierarchical CPU through supervisor tail, positive empty parent before/after stable final counters, bounded durable checkpoint and exact owned release. Source implementation and pure tests are local; actual host behavior NEVER_RUN.",
     "Exact authenticated artifact/source/tooling/source-manifest/read-binding/saved-layer joins",
     "Installed compiler identity and flags; Linux amd64 static supervisor and dependency-free preload; record actual compiled binary digests before start",
     "Default Docker/Yama own-child tracing, cgroup-v2 resource controls and immutable pre-tracee host admission",
@@ -149,9 +151,9 @@
   "mergeguezOverlay": "SEPARATE_SOURCE_ONLY; NOT_INCLUDED; NO_ACTIVATION",
   "compiledBinaryHashes": "Recorded only by the approved hosted compile gate, before policy activation",
   "remainingAdmissionLimitations": [
-    "No new publication or hosted run is authorized. Branch/workflow3 already consumed its run1/attempt1 allowance. A fresh identity and explicit authorization are necessary after unresolved policy and accounting design gates close.",
+    "New read-policy addition, ephemeral accounting unit/control scope, exact new tooling commit/tree, branch/workflow4 publication and one15-minute hosted run all require bundled explicit approval. Remote branch/workflow absence, unused counters and retained artifact expiry must be rechecked immediately before publication.",
     "The exact config /etc/ssl/openssl.cnf is currently denied in parent/helper read scopes. Proposed READ_FILE-only addition is NOT implemented; no config/environment suppression is allowed by this local fix.",
-    "Removed/inactive cpu.stat or cgroup.events remain proof failures. Diagnostics and independent Docker settlement do not solve complete lifetime accounting or whole-cgroup extinction on a host that removes the scope before final observations.",
+    "Persistent-parent lifetime accounting/extinction source is implemented and locally tested. Real Linux/systemd255/Docker retention, raw kernel hierarchical charge after child removal and exact kill/release behavior remain NEVER_RUN; missing/changed parent/counters refuse with no cached/fallback proof.",
     "Own-child ptrace/Yama, Landlock ABI, seccomp/AppArmor syscall/loader behavior, cgroup controls, default OCI runtime and actual PID1 remain runtime gates.",
     "Image and selected-file verification do not prove complete dynamic import closure, workers, helper behavior or real data migration/restore/rollback.",
     "Normal Exception failure cleanup is covered by pure sequences; abrupt runner loss, SIGTERM/SIGINT/job cancellation and final runner teardown do not carry proven stop/extinction/retention guarantees.",
@@ -161,5 +163,26 @@
     "Runner disk free bytes are observed, not a bound on Docker extracted storage; artifact expiry and unused new branch/workflow identity must be verified immediately before any publication.",
     "The built baseline excludes the Mergeguez source-only overlay and does not qualify production or installed real data preservation."
   ],
-  "startupPrerequisitesSha256": "3f2f1e1984b22b97684ead8a15e312026a8f758fb691bf916b61f92a8ab701df"
+  "startupPrerequisitesSha256": "3f2f1e1984b22b97684ead8a15e312026a8f758fb691bf916b61f92a8ab701df",
+  "lifetimeAccounting": {
+    "owner": "scripts/proofs/v98-confined/accounting_owner.py",
+    "sourceStatus": "IMPLEMENTED_LOCAL_PURE_TESTED; REAL_HOST_NEVER_RUN",
+    "unitName": "v98proof<decimal64bit_sha256_container_name>m[123].slice",
+    "creation": "Absent nofollow parent path and exclusive StartTransientUnit fail mode; exact transient Description/InvocationID/ControlGroup/noDropIn/retention/resource joins; no keeper process. Race/foreign mutation refuses observed mismatches.",
+    "baseline": "Raw hierarchical cpu.stat usage_usec must be0 while new parent is empty, before Docker create/start; no reset at native gate.",
+    "binding": "docker --cgroup-parent=<exact-unit>; direct docker-<CID64>.scope dev/inode and actual PID bound twice before gate; parent/root FDs retained; replacement and unbound populated kill refuse.",
+    "budget": "Parent+child oneCPU,1GiB,zeroSwap,128tasks;15/2/60wall seconds start before Docker start;5/1/30aggregateCPU seconds include native startup/gate and supervisor tail.",
+    "final": "Same active invocation and root/parent dev-inode, allowed namespace only, positive populated0 before and after raw stable CPU read/re-read. Child scope can disappear; retained parent cannot.",
+    "checkpoint": "parent-accounting-checkpoint.json at most32KiB; exclusive partial, file fsync, atomic rename, directory fsync; binds Docker source/image/name/id/mode/mounts/stopped state and parent final identity/counters before destructive cleanup.",
+    "release": "Only after checkpoint and evidence retention, fresh exact Docker stopped ownership+unchanged parent final proof, rm and unmount; exact original empty unit StopUnit then typed manager unit listing and original path removal. No unknown-unit stop.",
+    "hostOnlyProofs": [
+      "Actual systemd version255 and rootful Docker systemd driver",
+      "Active slice retained after Docker child removal",
+      "Vendor kernel raw hierarchical CPU accounting/flush through complete process lifetime",
+      "Default ptrace/Landlock/seccomp/AppArmor and PID1/child admission",
+      "Deadline<=2.1seconds request+signal, empty parent and final counters",
+      "Checkpoint custody then exact child/container/scratch/unit release"
+    ]
+  },
+  "opensslReadProposal": "scripts/proofs/v98-confined/proposal/openssl-read-proposal.json"
 }
