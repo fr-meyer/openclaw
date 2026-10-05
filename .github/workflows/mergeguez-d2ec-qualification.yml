@@ -1,0 +1,94 @@
+name: Mergeguez d2ec build qualification
+run-name: Mergeguez d2ec build qualification ${{ github.run_id }}
+
+on:
+  push:
+    branches: [candidate/mergeguez-d2ec-build-qualification]
+    paths:
+      - .github/workflows/mergeguez-d2ec-qualification.yml
+      - scripts/proofs/mergeguez-d2ec/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mergeguez-d2ec-build-qualification
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  QUALIFICATION_MANIFEST_SHA256: d6f98e8e7e837084b69aa2a4bd45efdcb8e7e3926a70ff8c20efe1c0b07fb475
+
+jobs:
+  qualify:
+    if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/candidate/mergeguez-d2ec-build-qualification' && github.event.forced == false && github.event.deleted == false && github.run_attempt == 1 && github.actor == 'fr-meyer'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Establish the single shared time budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, time
+          job = os.environ['GITHUB_RUN_ID'] + '-1'
+          control = pathlib.Path(os.environ['RUNNER_TEMP']) / ('mergeguez-control-' + job)
+          control.mkdir(mode=0o700)
+          (control / 'state.json').write_text(json.dumps({'job': job, 'start_uptime': float(pathlib.Path('/proc/uptime').read_text().split()[0]), 'phase': 'init', 'containers': [], 'complete': False}) + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write('QUALIFICATION_CONTROL=' + str(control) + '\n')
+          PY
+
+      - name: Checkout exact qualification tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          fetch-depth: 1
+          persist-credentials: false
+          set-safe-directory: false
+          sparse-checkout: |
+            .github/workflows/mergeguez-d2ec-qualification.yml
+            scripts/proofs/mergeguez-d2ec
+          sparse-checkout-cone-mode: false
+
+      - name: Check offline tooling regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C tooling rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git -C tooling status --porcelain=v1)"
+          python3 -m unittest discover -s tooling/scripts/proofs/mergeguez-d2ec -p 'test_*.py'
+          node --experimental-vm-modules tooling/scripts/proofs/mergeguez-d2ec/test_runtime.mjs
+
+      - name: Prepare pinned images and mount bounded storage
+        shell: bash
+        run: python3 tooling/scripts/proofs/mergeguez-d2ec/driver.py prepare
+
+      - name: Checkout exact baseline inside the mounted filesystem
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
+          path: qualification/source
+          fetch-depth: 1
+          persist-credentials: false
+          set-safe-directory: false
+
+      - name: Qualify exact source with original types and full SDK build
+        shell: bash
+        run: python3 tooling/scripts/proofs/mergeguez-d2ec/driver.py execute
+
+      - name: Reconcile owned workers and retain bounded results
+        if: always()
+        shell: bash
+        run: python3 tooling/scripts/proofs/mergeguez-d2ec/driver.py cleanup
+
+      - name: Retain admitted results and failure evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        timeout-minutes: 1
+        with:
+          name: mergeguez-d2ec-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.QUALIFICATION_CONTROL }}/upload/
+          if-no-files-found: error
+          retention-days: 1

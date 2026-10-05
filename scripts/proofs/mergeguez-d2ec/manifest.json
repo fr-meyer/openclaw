@@ -1,0 +1,42 @@
+{
+  "files": [
+    {
+      "bytes": 2265,
+      "path": "contract.json",
+      "sha256": "018c506772e34de675ec339a73555015df74cea70c856eeba2c9b61eaadba7b6"
+    },
+    {
+      "bytes": 32842,
+      "path": "driver.py",
+      "sha256": "4413f13829bc46d1ec81d696a270a2eb380b0122eb1aec3f6fabb381cc4c9e86"
+    },
+    {
+      "bytes": 8684,
+      "path": "runtime.mjs",
+      "sha256": "a1c92f500d7c35ff048882c02a6caf9e6861568cdb1f28e8268a7c7c6638ca27"
+    },
+    {
+      "bytes": 371,
+      "path": "source.commit",
+      "sha256": "8b30ad25e2e2a30bab3e80290542330852ea69ba9dc13f1bc02db1667ca64846"
+    },
+    {
+      "bytes": 759148,
+      "path": "source.patch",
+      "sha256": "5153590062151d44942136d0144f6f23f8257da21860b4559ba64183334b8b31"
+    },
+    {
+      "bytes": 22003,
+      "path": "test_driver.py",
+      "sha256": "54cf5e316eaa268b082fb15cfa5fc1462e0f604803fdc655430469370539ac55"
+    },
+    {
+      "bytes": 7030,
+      "path": "test_runtime.mjs",
+      "sha256": "5cc2fe118515f3b0c2e39c88250ce80bb8b4cb1f8eb29d70ceea17d9b458cb39"
+    }
+  ],
+  "schema": "mergeguez.sealed-qualification-tooling/v1",
+  "source_commit": "d2ec923f3e3329f9c2792876c4cca3020c615917",
+  "source_tree": "cb96b1a27255fb614a886a9f0ae0b0df1f77bfde"
+}

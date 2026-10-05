@@ -1,0 +1,63 @@
+{
+  "actor": "fr-meyer",
+  "available_memory_min_bytes": 13958643712,
+  "baseline": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
+  "baseline_tree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
+  "branch": "refs/heads/candidate/mergeguez-d2ec-build-qualification",
+  "bun_image": "docker.io/oven/bun:1.4.2@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895",
+  "compile_argv": [
+    [
+      "pnpm",
+      "tsgo:prod"
+    ],
+    [
+      "pnpm",
+      "tsgo:scripts"
+    ],
+    [
+      "pnpm",
+      "build"
+    ]
+  ],
+  "compiled_cap_bytes": 536870912,
+  "compiler_gid": 1000,
+  "compiler_uid": 1000,
+  "cpus": 4,
+  "evidence_cap_bytes": 33554432,
+  "fetch_argv": [
+    "fetch",
+    "--frozen-lockfile",
+    "--store-dir=/qualification/pnpm-store",
+    "--config.supportedArchitectures.os=linux",
+    "--config.supportedArchitectures.cpu=x64",
+    "--config.supportedArchitectures.libc=glibc"
+  ],
+  "filesystem_bytes": 10737418240,
+  "free_after_images_min_bytes": 11811160064,
+  "install_argv": [
+    "install",
+    "--offline",
+    "--frozen-lockfile",
+    "--store-dir=/qualification/pnpm-store",
+    "--config.supportedArchitectures.os=linux",
+    "--config.supportedArchitectures.cpu=x64",
+    "--config.supportedArchitectures.libc=glibc"
+  ],
+  "lock_sha256": "c717cc8ed7331b2b4787ed4cbe80d46d3d733de69e3dc9dd7f1d49e6b4942802",
+  "log_cap_bytes": 16777216,
+  "memory_bytes": 12884901888,
+  "node_image": "docker.io/library/node:24-bookworm@sha256:64af3819f9275802414d7cdc38c27e9d82bd564dec4d4da87d008255d36c63b4",
+  "outside_free_reserve_bytes": 1073741824,
+  "packageManager": "pnpm@12.5.1+sha512.e3f305bc784a2bc89f5ad3b6138889470fae8d2af5f36b61216ec91c2c3d64089775f9de38aac331044ea40f245cb0d5666392dfdf65824e1907ef6a2c62de5f",
+  "patch_sha256": "5153590062151d44942136d0144f6f23f8257da21860b4559ba64183334b8b31",
+  "pids": 512,
+  "raw_commit_sha256": "8b30ad25e2e2a30bab3e80290542330852ea69ba9dc13f1bc02db1667ca64846",
+  "repository": "fr-meyer/openclaw",
+  "repository_id": 1309456040,
+  "retention_days": 1,
+  "schema": "mergeguez.exact-hosted-qualification/v1",
+  "source_commit": "d2ec923f3e3329f9c2792876c4cca3020c615917",
+  "source_tree": "cb96b1a27255fb614a886a9f0ae0b0df1f77bfde",
+  "total_seconds": 2700,
+  "work_seconds": 2400
+}
