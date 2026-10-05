@@ -9,6 +9,7 @@ on:
     paths:
       - .github/workflows/v98-parity-artifact-prepare.yml
       - scripts/proofs/v98-parity/contract.json
+      - scripts/proofs/v98-parity/nowistay-focused-tsconfig.json
 
 permissions:
   contents: read
