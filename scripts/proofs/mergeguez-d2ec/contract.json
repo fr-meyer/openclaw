@@ -20,6 +20,26 @@
     ]
   ],
   "compiled_cap_bytes": 536870912,
+  "compiled_roots": [
+    "dist",
+    "dist-runtime",
+    "packages/agent-core/dist",
+    "packages/ai/dist",
+    "packages/gateway-client/dist",
+    "packages/gateway-protocol/dist",
+    "packages/llm-core/dist",
+    "packages/markdown-core/dist",
+    "packages/media-core/dist",
+    "packages/media-generation-core/dist",
+    "packages/media-understanding-common/dist",
+    "packages/model-catalog-core/dist",
+    "packages/net-policy/dist",
+    "packages/normalization-core/dist",
+    "packages/retry/dist",
+    "packages/sdk/dist",
+    "packages/terminal-core/dist",
+    "packages/acp-core/dist"
+  ],
   "compiler_gid": 1000,
   "compiler_uid": 1000,
   "cpus": 4,
@@ -46,13 +66,2601 @@
   "node_image": "docker.io/library/node:24-bookworm@sha256:64af3819f9275802414d7cdc38c27e9d82bd564dec4d4da87d008255d36c63b4",
   "outside_free_reserve_bytes": 1073741824,
   "packageManager": "pnpm@12.5.1+sha512.e3f305bc784a2bc89f5ad3b6138889470fae8d2af5f36b61216ec91c2c3d64089775f9de38aac331044ea40f245cb0d5666392dfdf65824e1907ef6a2c62de5f",
+  "package_exports": {
+    "acp-core": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./meta": {
+        "default": "./dist/meta.mjs",
+        "import": "./dist/meta.mjs",
+        "types": "./dist/meta.d.mts"
+      },
+      "./runtime/error-text": {
+        "default": "./dist/runtime/error-text.mjs",
+        "import": "./dist/runtime/error-text.mjs",
+        "types": "./dist/runtime/error-text.d.mts"
+      },
+      "./runtime/errors": {
+        "default": "./dist/runtime/errors.mjs",
+        "import": "./dist/runtime/errors.mjs",
+        "types": "./dist/runtime/errors.d.mts"
+      },
+      "./runtime/session-identifiers": {
+        "default": "./dist/runtime/session-identifiers.mjs",
+        "import": "./dist/runtime/session-identifiers.mjs",
+        "types": "./dist/runtime/session-identifiers.d.mts"
+      },
+      "./runtime/session-identity": {
+        "default": "./dist/runtime/session-identity.mjs",
+        "import": "./dist/runtime/session-identity.mjs",
+        "types": "./dist/runtime/session-identity.d.mts"
+      },
+      "./runtime/types": {
+        "default": "./dist/runtime/types.mjs",
+        "import": "./dist/runtime/types.mjs",
+        "types": "./dist/runtime/types.d.mts"
+      },
+      "./session": {
+        "default": "./dist/session.mjs",
+        "import": "./dist/session.mjs",
+        "types": "./dist/session.d.mts"
+      },
+      "./session-interaction-mode": {
+        "default": "./dist/session-interaction-mode.mjs",
+        "import": "./dist/session-interaction-mode.mjs",
+        "types": "./dist/session-interaction-mode.d.mts"
+      },
+      "./session-lineage-meta": {
+        "default": "./dist/session-lineage-meta.mjs",
+        "import": "./dist/session-lineage-meta.mjs",
+        "types": "./dist/session-lineage-meta.d.mts"
+      },
+      "./types": {
+        "default": "./dist/types.mjs",
+        "import": "./dist/types.mjs",
+        "types": "./dist/types.d.mts"
+      }
+    },
+    "agent-core": {
+      ".": {
+        "default": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./agent": {
+        "default": "./dist/agent.js",
+        "types": "./dist/agent.d.ts"
+      },
+      "./agent-loop": {
+        "default": "./dist/agent-loop.js",
+        "types": "./dist/agent-loop.d.ts"
+      },
+      "./harness/branch-summarization": {
+        "default": "./dist/harness/branch-summarization.js",
+        "types": "./dist/harness/branch-summarization.d.ts"
+      },
+      "./harness/compaction": {
+        "default": "./dist/harness/compaction.js",
+        "types": "./dist/harness/compaction.d.ts"
+      },
+      "./harness/env/kill-tree": {
+        "default": "./dist/harness/env/kill-tree.js",
+        "types": "./dist/harness/env/kill-tree.d.ts"
+      },
+      "./harness/messages": {
+        "default": "./dist/harness/messages.js",
+        "types": "./dist/harness/messages.d.ts"
+      },
+      "./harness/prompt-template-arguments": {
+        "default": "./dist/harness/prompt-template-arguments.js",
+        "types": "./dist/harness/prompt-template-arguments.d.ts"
+      },
+      "./harness/utils/truncate": {
+        "default": "./dist/harness/utils/truncate.js",
+        "types": "./dist/harness/utils/truncate.d.ts"
+      },
+      "./llm": {
+        "default": "./dist/llm.js",
+        "types": "./dist/llm.d.ts"
+      },
+      "./runtime-deps": {
+        "default": "./dist/runtime-deps.js",
+        "types": "./dist/runtime-deps.d.ts"
+      },
+      "./types": {
+        "default": "./dist/types.js",
+        "types": "./dist/types.d.ts"
+      },
+      "./validation": {
+        "default": "./dist/validation.js",
+        "types": "./dist/validation.d.ts"
+      }
+    },
+    "ai": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./diagnostics": {
+        "default": "./dist/diagnostics.mjs",
+        "import": "./dist/diagnostics.mjs",
+        "types": "./dist/diagnostics.d.mts"
+      },
+      "./event-stream": {
+        "default": "./dist/event-stream.mjs",
+        "import": "./dist/event-stream.mjs",
+        "types": "./dist/event-stream.d.mts"
+      },
+      "./internal/anthropic": {
+        "default": "./dist/internal/anthropic.mjs",
+        "import": "./dist/internal/anthropic.mjs",
+        "types": "./dist/internal/anthropic.d.mts"
+      },
+      "./internal/google-model-family": {
+        "default": "./dist/internal/google-model-family.mjs",
+        "import": "./dist/internal/google-model-family.mjs",
+        "types": "./dist/internal/google-model-family.d.mts"
+      },
+      "./internal/openai": {
+        "default": "./dist/internal/openai.mjs",
+        "import": "./dist/internal/openai.mjs",
+        "types": "./dist/internal/openai.d.mts"
+      },
+      "./internal/openai-completions-compat": {
+        "default": "./dist/internal/openai-completions-compat.mjs",
+        "import": "./dist/internal/openai-completions-compat.mjs",
+        "types": "./dist/internal/openai-completions-compat.d.mts"
+      },
+      "./internal/openai-responses-payload-policy": {
+        "default": "./dist/internal/openai-responses-payload-policy.mjs",
+        "import": "./dist/internal/openai-responses-payload-policy.mjs",
+        "types": "./dist/internal/openai-responses-payload-policy.d.mts"
+      },
+      "./internal/retry-after": {
+        "default": "./dist/internal/retry-after.mjs",
+        "import": "./dist/internal/retry-after.mjs",
+        "types": "./dist/internal/retry-after.d.mts"
+      },
+      "./internal/runtime": {
+        "default": "./dist/internal/runtime.mjs",
+        "import": "./dist/internal/runtime.mjs",
+        "types": "./dist/internal/runtime.d.mts"
+      },
+      "./internal/shared": {
+        "default": "./dist/internal/shared.mjs",
+        "import": "./dist/internal/shared.mjs",
+        "types": "./dist/internal/shared.d.mts"
+      },
+      "./internal/tool-schema": {
+        "default": "./dist/internal/tool-schema.mjs",
+        "import": "./dist/internal/tool-schema.mjs",
+        "types": "./dist/internal/tool-schema.d.mts"
+      },
+      "./provider-types": {
+        "default": "./dist/provider-types.mjs",
+        "import": "./dist/provider-types.mjs",
+        "types": "./dist/provider-types.d.mts"
+      },
+      "./providers": {
+        "default": "./dist/providers.mjs",
+        "import": "./dist/providers.mjs",
+        "types": "./dist/providers.d.mts"
+      },
+      "./transports": {
+        "default": "./dist/transports.mjs",
+        "import": "./dist/transports.mjs",
+        "types": "./dist/transports.d.mts"
+      },
+      "./types": {
+        "default": "./dist/types.mjs",
+        "import": "./dist/types.mjs",
+        "types": "./dist/types.d.mts"
+      },
+      "./validation": {
+        "default": "./dist/validation.mjs",
+        "import": "./dist/validation.mjs",
+        "types": "./dist/validation.d.mts"
+      }
+    },
+    "gateway-client": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./browser": {
+        "default": "./dist/browser.mjs",
+        "import": "./dist/browser.mjs",
+        "types": "./dist/browser.d.mts"
+      },
+      "./readiness": {
+        "default": "./dist/readiness.mjs",
+        "import": "./dist/readiness.mjs",
+        "types": "./dist/readiness.d.mts"
+      },
+      "./scope-upgrade": {
+        "default": "./dist/scope-upgrade.mjs",
+        "import": "./dist/scope-upgrade.mjs",
+        "types": "./dist/scope-upgrade.d.mts"
+      },
+      "./timeouts": {
+        "default": "./dist/timeouts.mjs",
+        "import": "./dist/timeouts.mjs",
+        "types": "./dist/timeouts.d.mts"
+      },
+      "./websocket-data": {
+        "default": "./dist/websocket-data.mjs",
+        "import": "./dist/websocket-data.mjs",
+        "types": "./dist/websocket-data.d.mts"
+      }
+    },
+    "gateway-protocol": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./client-info": {
+        "default": "./dist/client-info.mjs",
+        "import": "./dist/client-info.mjs",
+        "types": "./dist/client-info.d.mts"
+      },
+      "./connect-error-details": {
+        "default": "./dist/connect-error-details.mjs",
+        "import": "./dist/connect-error-details.mjs",
+        "types": "./dist/connect-error-details.d.mts"
+      },
+      "./frame-guards": {
+        "default": "./dist/frame-guards.mjs",
+        "import": "./dist/frame-guards.mjs",
+        "types": "./dist/frame-guards.d.mts"
+      },
+      "./gateway-error-details": {
+        "default": "./dist/gateway-error-details.mjs",
+        "import": "./dist/gateway-error-details.mjs",
+        "types": "./dist/gateway-error-details.d.mts"
+      },
+      "./restart-unavailable": {
+        "default": "./dist/restart-unavailable.mjs",
+        "import": "./dist/restart-unavailable.mjs",
+        "types": "./dist/restart-unavailable.d.mts"
+      },
+      "./schema": {
+        "default": "./dist/schema.mjs",
+        "import": "./dist/schema.mjs",
+        "types": "./dist/schema.d.mts"
+      },
+      "./startup-unavailable": {
+        "default": "./dist/startup-unavailable.mjs",
+        "import": "./dist/startup-unavailable.mjs",
+        "types": "./dist/startup-unavailable.d.mts"
+      },
+      "./system-agent-context": {
+        "default": "./dist/system-agent-context.mjs",
+        "import": "./dist/system-agent-context.mjs",
+        "types": "./dist/system-agent-context.d.mts"
+      },
+      "./theme": {
+        "default": "./dist/theme.mjs",
+        "import": "./dist/theme.mjs",
+        "types": "./dist/theme.d.mts"
+      },
+      "./version": {
+        "default": "./dist/version.mjs",
+        "import": "./dist/version.mjs",
+        "types": "./dist/version.d.mts"
+      }
+    },
+    "llm-core": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./diagnostics": {
+        "default": "./dist/utils/diagnostics.mjs",
+        "import": "./dist/utils/diagnostics.mjs",
+        "types": "./dist/utils/diagnostics.d.mts"
+      },
+      "./event-stream": {
+        "default": "./dist/utils/event-stream.mjs",
+        "import": "./dist/utils/event-stream.mjs",
+        "types": "./dist/utils/event-stream.d.mts"
+      },
+      "./model-contracts/anthropic": {
+        "default": "./dist/model-contracts/anthropic.mjs",
+        "import": "./dist/model-contracts/anthropic.mjs",
+        "types": "./dist/model-contracts/anthropic.d.mts"
+      },
+      "./types": {
+        "default": "./dist/types.mjs",
+        "import": "./dist/types.mjs",
+        "types": "./dist/types.d.mts"
+      },
+      "./validation": {
+        "default": "./dist/validation.mjs",
+        "import": "./dist/validation.mjs",
+        "types": "./dist/validation.d.mts"
+      }
+    },
+    "markdown-core": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./code-spans": {
+        "default": "./dist/code-spans.mjs",
+        "import": "./dist/code-spans.mjs",
+        "types": "./dist/code-spans.d.mts"
+      },
+      "./fences": {
+        "default": "./dist/fences.mjs",
+        "import": "./dist/fences.mjs",
+        "types": "./dist/fences.d.mts"
+      },
+      "./frontmatter": {
+        "default": "./dist/frontmatter.mjs",
+        "import": "./dist/frontmatter.mjs",
+        "types": "./dist/frontmatter.d.mts"
+      },
+      "./ir": {
+        "default": "./dist/ir.mjs",
+        "import": "./dist/ir.mjs",
+        "types": "./dist/ir.d.mts"
+      },
+      "./render": {
+        "default": "./dist/render.mjs",
+        "import": "./dist/render.mjs",
+        "types": "./dist/render.d.mts"
+      },
+      "./render-aware-chunking": {
+        "default": "./dist/render-aware-chunking.mjs",
+        "import": "./dist/render-aware-chunking.mjs",
+        "types": "./dist/render-aware-chunking.d.mts"
+      },
+      "./tables": {
+        "default": "./dist/tables.mjs",
+        "import": "./dist/tables.mjs",
+        "types": "./dist/tables.d.mts"
+      },
+      "./types": {
+        "default": "./dist/types.mjs",
+        "import": "./dist/types.mjs",
+        "types": "./dist/types.d.mts"
+      }
+    },
+    "media-core": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./attachment-classify": {
+        "default": "./dist/attachment-classify.mjs",
+        "import": "./dist/attachment-classify.mjs",
+        "types": "./dist/attachment-classify.d.mts"
+      },
+      "./base64": {
+        "default": "./dist/base64.mjs",
+        "import": "./dist/base64.mjs",
+        "types": "./dist/base64.d.mts"
+      },
+      "./constants": {
+        "default": "./dist/constants.mjs",
+        "import": "./dist/constants.mjs",
+        "types": "./dist/constants.d.mts"
+      },
+      "./content-length": {
+        "default": "./dist/content-length.mjs",
+        "import": "./dist/content-length.mjs",
+        "types": "./dist/content-length.d.mts"
+      },
+      "./file-name": {
+        "default": "./dist/file-name.mjs",
+        "import": "./dist/file-name.mjs",
+        "types": "./dist/file-name.d.mts"
+      },
+      "./inbound-path-policy": {
+        "default": "./dist/inbound-path-policy.mjs",
+        "import": "./dist/inbound-path-policy.mjs",
+        "types": "./dist/inbound-path-policy.d.mts"
+      },
+      "./inline-image-data-url": {
+        "default": "./dist/inline-image-data-url.mjs",
+        "import": "./dist/inline-image-data-url.mjs",
+        "types": "./dist/inline-image-data-url.d.mts"
+      },
+      "./media-source-url": {
+        "default": "./dist/media-source-url.mjs",
+        "import": "./dist/media-source-url.mjs",
+        "types": "./dist/media-source-url.d.mts"
+      },
+      "./mime": {
+        "default": "./dist/mime.mjs",
+        "import": "./dist/mime.mjs",
+        "types": "./dist/mime.d.mts"
+      },
+      "./read-byte-stream-with-limit": {
+        "default": "./dist/read-byte-stream-with-limit.mjs",
+        "import": "./dist/read-byte-stream-with-limit.mjs",
+        "types": "./dist/read-byte-stream-with-limit.d.mts"
+      }
+    },
+    "media-generation-core": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./capability-model-ref": {
+        "default": "./dist/capability-model-ref.mjs",
+        "import": "./dist/capability-model-ref.mjs",
+        "types": "./dist/capability-model-ref.d.mts"
+      },
+      "./catalog": {
+        "default": "./dist/catalog.mjs",
+        "import": "./dist/catalog.mjs",
+        "types": "./dist/catalog.d.mts"
+      },
+      "./model-ref": {
+        "default": "./dist/model-ref.mjs",
+        "import": "./dist/model-ref.mjs",
+        "types": "./dist/model-ref.d.mts"
+      },
+      "./normalization": {
+        "default": "./dist/normalization.mjs",
+        "import": "./dist/normalization.mjs",
+        "types": "./dist/normalization.d.mts"
+      }
+    },
+    "media-understanding-common": {
+      "./active-model": {
+        "default": "./dist/active-model.mjs",
+        "import": "./dist/active-model.mjs",
+        "types": "./dist/active-model.d.mts"
+      },
+      "./defaults": {
+        "default": "./dist/defaults.mjs",
+        "import": "./dist/defaults.mjs",
+        "types": "./dist/defaults.d.mts"
+      },
+      "./errors": {
+        "default": "./dist/errors.mjs",
+        "import": "./dist/errors.mjs",
+        "types": "./dist/errors.d.mts"
+      },
+      "./format": {
+        "default": "./dist/format.mjs",
+        "import": "./dist/format.mjs",
+        "types": "./dist/format.d.mts"
+      },
+      "./openai-compatible-video": {
+        "default": "./dist/openai-compatible-video.mjs",
+        "import": "./dist/openai-compatible-video.mjs",
+        "types": "./dist/openai-compatible-video.d.mts"
+      },
+      "./output-extract": {
+        "default": "./dist/output-extract.mjs",
+        "import": "./dist/output-extract.mjs",
+        "types": "./dist/output-extract.d.mts"
+      },
+      "./provider-id": {
+        "default": "./dist/provider-id.mjs",
+        "import": "./dist/provider-id.mjs",
+        "types": "./dist/provider-id.d.mts"
+      },
+      "./provider-supports": {
+        "default": "./dist/provider-supports.mjs",
+        "import": "./dist/provider-supports.mjs",
+        "types": "./dist/provider-supports.d.mts"
+      },
+      "./types": {
+        "default": "./dist/types.mjs",
+        "import": "./dist/types.mjs",
+        "types": "./dist/types.d.mts"
+      },
+      "./video": {
+        "default": "./dist/video.mjs",
+        "import": "./dist/video.mjs",
+        "types": "./dist/video.d.mts"
+      }
+    },
+    "model-catalog-core": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./configured-model-refs": {
+        "default": "./dist/configured-model-refs.mjs",
+        "import": "./dist/configured-model-refs.mjs",
+        "types": "./dist/configured-model-refs.d.mts"
+      },
+      "./model-catalog-normalize": {
+        "default": "./dist/model-catalog-normalize.mjs",
+        "import": "./dist/model-catalog-normalize.mjs",
+        "types": "./dist/model-catalog-normalize.d.mts"
+      },
+      "./model-catalog-pricing": {
+        "default": "./dist/model-catalog-pricing.mjs",
+        "import": "./dist/model-catalog-pricing.mjs",
+        "types": "./dist/model-catalog-pricing.d.mts"
+      },
+      "./model-catalog-refs": {
+        "default": "./dist/model-catalog-refs.mjs",
+        "import": "./dist/model-catalog-refs.mjs",
+        "types": "./dist/model-catalog-refs.d.mts"
+      },
+      "./model-catalog-types": {
+        "default": "./dist/model-catalog-types.mjs",
+        "import": "./dist/model-catalog-types.mjs",
+        "types": "./dist/model-catalog-types.d.mts"
+      },
+      "./provider-id": {
+        "default": "./dist/provider-id.mjs",
+        "import": "./dist/provider-id.mjs",
+        "types": "./dist/provider-id.d.mts"
+      },
+      "./provider-model-id-normalization": {
+        "default": "./dist/provider-model-id-normalization.mjs",
+        "import": "./dist/provider-model-id-normalization.mjs",
+        "types": "./dist/provider-model-id-normalization.d.mts"
+      },
+      "./provider-model-id-normalize": {
+        "default": "./dist/provider-model-id-normalize.mjs",
+        "import": "./dist/provider-model-id-normalize.mjs",
+        "types": "./dist/provider-model-id-normalize.d.mts"
+      }
+    },
+    "net-policy": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./ip": {
+        "default": "./dist/ip.mjs",
+        "import": "./dist/ip.mjs",
+        "types": "./dist/ip.d.mts"
+      },
+      "./ipv4": {
+        "default": "./dist/ipv4.mjs",
+        "import": "./dist/ipv4.mjs",
+        "types": "./dist/ipv4.d.mts"
+      },
+      "./redact-sensitive-url": {
+        "default": "./dist/redact-sensitive-url.mjs",
+        "import": "./dist/redact-sensitive-url.mjs",
+        "types": "./dist/redact-sensitive-url.d.mts"
+      },
+      "./url-protocol": {
+        "default": "./dist/url-protocol.mjs",
+        "import": "./dist/url-protocol.mjs",
+        "types": "./dist/url-protocol.d.mts"
+      },
+      "./url-userinfo": {
+        "default": "./dist/url-userinfo.mjs",
+        "import": "./dist/url-userinfo.mjs",
+        "types": "./dist/url-userinfo.d.mts"
+      }
+    },
+    "normalization-core": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./agent-id": {
+        "default": "./dist/agent-id.mjs",
+        "import": "./dist/agent-id.mjs",
+        "types": "./dist/agent-id.d.mts"
+      },
+      "./agent-run-terminal-outcome": {
+        "default": "./dist/agent-run-terminal-outcome.mjs",
+        "import": "./dist/agent-run-terminal-outcome.mjs",
+        "types": "./dist/agent-run-terminal-outcome.d.mts"
+      },
+      "./boolean-coercion": {
+        "default": "./dist/boolean-coercion.mjs",
+        "import": "./dist/boolean-coercion.mjs",
+        "types": "./dist/boolean-coercion.d.mts"
+      },
+      "./cjk-chars": {
+        "default": "./dist/cjk-chars.mjs",
+        "import": "./dist/cjk-chars.mjs",
+        "types": "./dist/cjk-chars.d.mts"
+      },
+      "./code-points": {
+        "default": "./dist/code-points.mjs",
+        "import": "./dist/code-points.mjs",
+        "types": "./dist/code-points.d.mts"
+      },
+      "./error-coercion": {
+        "default": "./dist/error-coercion.mjs",
+        "import": "./dist/error-coercion.mjs",
+        "types": "./dist/error-coercion.d.mts"
+      },
+      "./expect": {
+        "default": "./dist/expect.mjs",
+        "import": "./dist/expect.mjs",
+        "types": "./dist/expect.d.mts"
+      },
+      "./grapheme": {
+        "default": "./dist/grapheme.mjs",
+        "import": "./dist/grapheme.mjs",
+        "types": "./dist/grapheme.d.mts"
+      },
+      "./home-dir": {
+        "default": "./dist/home-dir.mjs",
+        "import": "./dist/home-dir.mjs",
+        "types": "./dist/home-dir.d.mts"
+      },
+      "./json-coercion": {
+        "default": "./dist/json-coercion.mjs",
+        "import": "./dist/json-coercion.mjs",
+        "types": "./dist/json-coercion.d.mts"
+      },
+      "./json-schema": {
+        "default": "./dist/json-schema.mjs",
+        "import": "./dist/json-schema.mjs",
+        "types": "./dist/json-schema.d.mts"
+      },
+      "./markdown-plain-text": {
+        "default": "./dist/markdown-plain-text.mjs",
+        "import": "./dist/markdown-plain-text.mjs",
+        "types": "./dist/markdown-plain-text.d.mts"
+      },
+      "./mountinfo-path": {
+        "default": "./dist/mountinfo-path.mjs",
+        "import": "./dist/mountinfo-path.mjs",
+        "types": "./dist/mountinfo-path.d.mts"
+      },
+      "./node-crypto": {
+        "default": "./dist/node-crypto.mjs",
+        "import": "./dist/node-crypto.mjs",
+        "types": "./dist/node-crypto.d.mts"
+      },
+      "./number-coercion": {
+        "default": "./dist/number-coercion.mjs",
+        "import": "./dist/number-coercion.mjs",
+        "types": "./dist/number-coercion.d.mts"
+      },
+      "./phone-presentation": {
+        "default": "./dist/phone-presentation.mjs",
+        "import": "./dist/phone-presentation.mjs",
+        "types": "./dist/phone-presentation.d.mts"
+      },
+      "./promise-like": {
+        "default": "./dist/promise-like.mjs",
+        "import": "./dist/promise-like.mjs",
+        "types": "./dist/promise-like.d.mts"
+      },
+      "./record-coerce": {
+        "default": "./dist/record-coerce.mjs",
+        "import": "./dist/record-coerce.mjs",
+        "types": "./dist/record-coerce.d.mts"
+      },
+      "./result": {
+        "default": "./dist/result.mjs",
+        "import": "./dist/result.mjs",
+        "types": "./dist/result.d.mts"
+      },
+      "./stable-node-path": {
+        "default": "./dist/stable-node-path.mjs",
+        "import": "./dist/stable-node-path.mjs",
+        "types": "./dist/stable-node-path.d.mts"
+      },
+      "./stable-stringify": {
+        "default": "./dist/stable-stringify.mjs",
+        "import": "./dist/stable-stringify.mjs",
+        "types": "./dist/stable-stringify.d.mts"
+      },
+      "./string-coerce": {
+        "default": "./dist/string-coerce.mjs",
+        "import": "./dist/string-coerce.mjs",
+        "types": "./dist/string-coerce.d.mts"
+      },
+      "./string-normalization": {
+        "default": "./dist/string-normalization.mjs",
+        "import": "./dist/string-normalization.mjs",
+        "types": "./dist/string-normalization.d.mts"
+      },
+      "./utf16-slice": {
+        "default": "./dist/utf16-slice.mjs",
+        "import": "./dist/utf16-slice.mjs",
+        "types": "./dist/utf16-slice.d.mts"
+      },
+      "./uuid": {
+        "default": "./dist/uuid.mjs",
+        "import": "./dist/uuid.mjs",
+        "types": "./dist/uuid.d.mts"
+      }
+    },
+    "retry": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      }
+    },
+    "sdk": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      }
+    },
+    "terminal-core": {
+      ".": {
+        "default": "./dist/index.mjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.mts"
+      },
+      "./ansi": {
+        "default": "./dist/ansi.mjs",
+        "import": "./dist/ansi.mjs",
+        "types": "./dist/ansi.d.mts"
+      },
+      "./decorative-emoji": {
+        "default": "./dist/decorative-emoji.mjs",
+        "import": "./dist/decorative-emoji.mjs",
+        "types": "./dist/decorative-emoji.d.mts"
+      },
+      "./health-style": {
+        "default": "./dist/health-style.mjs",
+        "import": "./dist/health-style.mjs",
+        "types": "./dist/health-style.d.mts"
+      },
+      "./links": {
+        "default": "./dist/links.mjs",
+        "import": "./dist/links.mjs",
+        "types": "./dist/links.d.mts"
+      },
+      "./note": {
+        "default": "./dist/note.mjs",
+        "import": "./dist/note.mjs",
+        "types": "./dist/note.d.mts"
+      },
+      "./osc-progress": {
+        "default": "./dist/osc-progress.mjs",
+        "import": "./dist/osc-progress.mjs",
+        "types": "./dist/osc-progress.d.mts"
+      },
+      "./palette": {
+        "default": "./dist/palette.mjs",
+        "import": "./dist/palette.mjs",
+        "types": "./dist/palette.d.mts"
+      },
+      "./progress-line": {
+        "default": "./dist/progress-line.mjs",
+        "import": "./dist/progress-line.mjs",
+        "types": "./dist/progress-line.d.mts"
+      },
+      "./prompt-select-styled": {
+        "default": "./dist/prompt-select-styled.mjs",
+        "import": "./dist/prompt-select-styled.mjs",
+        "types": "./dist/prompt-select-styled.d.mts"
+      },
+      "./prompt-select-styled-params": {
+        "default": "./dist/prompt-select-styled-params.mjs",
+        "import": "./dist/prompt-select-styled-params.mjs",
+        "types": "./dist/prompt-select-styled-params.d.mts"
+      },
+      "./prompt-style": {
+        "default": "./dist/prompt-style.mjs",
+        "import": "./dist/prompt-style.mjs",
+        "types": "./dist/prompt-style.d.mts"
+      },
+      "./restore": {
+        "default": "./dist/restore.mjs",
+        "import": "./dist/restore.mjs",
+        "types": "./dist/restore.d.mts"
+      },
+      "./safe-text": {
+        "default": "./dist/safe-text.mjs",
+        "import": "./dist/safe-text.mjs",
+        "types": "./dist/safe-text.d.mts"
+      },
+      "./stream-writer": {
+        "default": "./dist/stream-writer.mjs",
+        "import": "./dist/stream-writer.mjs",
+        "types": "./dist/stream-writer.d.mts"
+      },
+      "./table": {
+        "default": "./dist/table.mjs",
+        "import": "./dist/table.mjs",
+        "types": "./dist/table.d.mts"
+      },
+      "./terminal-link": {
+        "default": "./dist/terminal-link.mjs",
+        "import": "./dist/terminal-link.mjs",
+        "types": "./dist/terminal-link.d.mts"
+      },
+      "./theme": {
+        "default": "./dist/theme.mjs",
+        "import": "./dist/theme.mjs",
+        "types": "./dist/theme.d.mts"
+      }
+    }
+  },
   "patch_sha256": "d4713bd05132d7c4f29edcc56a9f987ce6feac1dff5ee290ff9d2688fba47f29",
   "pids": 512,
   "raw_commit_sha256": "55dbf17dcbd3350b6d4445ad08c015565cf481335b39a2facfb31951eb98eee3",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
   "retention_days": 1,
+  "root_outputs": [
+    "./dist/index.js",
+    "./dist/build-info.json",
+    "./dist/cli-startup-metadata.json"
+  ],
   "schema": "mergeguez.exact-hosted-qualification/v1",
+  "sdk_exports": [
+    [
+      "./plugin-sdk/access-groups",
+      "./dist/plugin-sdk/access-groups.js",
+      null
+    ],
+    [
+      "./plugin-sdk/account-core",
+      "./dist/plugin-sdk/account-core.js",
+      "./dist/plugin-sdk/account-core.d.ts"
+    ],
+    [
+      "./plugin-sdk/account-helpers",
+      "./dist/plugin-sdk/account-helpers.js",
+      "./dist/plugin-sdk/account-helpers.d.ts"
+    ],
+    [
+      "./plugin-sdk/account-id",
+      "./dist/plugin-sdk/account-id.js",
+      "./dist/plugin-sdk/account-id.d.ts"
+    ],
+    [
+      "./plugin-sdk/account-resolution",
+      "./dist/plugin-sdk/account-resolution.js",
+      "./dist/plugin-sdk/account-resolution.d.ts"
+    ],
+    [
+      "./plugin-sdk/account-resolution-runtime",
+      "./dist/plugin-sdk/account-resolution-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/acp-binding-resolve-runtime",
+      "./dist/plugin-sdk/acp-binding-resolve-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/acp-binding-runtime",
+      "./dist/plugin-sdk/acp-binding-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/acp-runtime",
+      "./dist/plugin-sdk/acp-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/acp-runtime-backend",
+      "./dist/plugin-sdk/acp-runtime-backend.js",
+      null
+    ],
+    [
+      "./plugin-sdk/agent-core",
+      "./dist/plugin-sdk/agent-core.js",
+      null
+    ],
+    [
+      "./plugin-sdk/agent-harness",
+      "./dist/plugin-sdk/agent-harness.js",
+      "./dist/plugin-sdk/agent-harness.d.ts"
+    ],
+    [
+      "./plugin-sdk/agent-harness-attempt-runtime",
+      "./dist/plugin-sdk/agent-harness-attempt-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/agent-harness-completion",
+      "./dist/plugin-sdk/agent-harness-completion.js",
+      null
+    ],
+    [
+      "./plugin-sdk/agent-harness-exec-review-runtime",
+      "./dist/plugin-sdk/agent-harness-exec-review-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/agent-harness-registration",
+      "./dist/plugin-sdk/agent-harness-registration.js",
+      null
+    ],
+    [
+      "./plugin-sdk/agent-harness-runtime",
+      "./dist/plugin-sdk/agent-harness-runtime.js",
+      "./dist/plugin-sdk/agent-harness-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/agent-harness-session-runtime",
+      "./dist/plugin-sdk/agent-harness-session-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/agent-harness-tool-runtime",
+      "./dist/plugin-sdk/agent-harness-tool-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/agent-media-payload",
+      "./dist/plugin-sdk/agent-media-payload.js",
+      "./dist/plugin-sdk/agent-media-payload.d.ts"
+    ],
+    [
+      "./plugin-sdk/agent-runtime",
+      "./dist/plugin-sdk/agent-runtime.js",
+      "./dist/plugin-sdk/agent-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/agent-scope-runtime",
+      "./dist/plugin-sdk/agent-scope-runtime.js",
+      "./dist/plugin-sdk/agent-scope-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/agent-sessions",
+      "./dist/plugin-sdk/agent-sessions.js",
+      null
+    ],
+    [
+      "./plugin-sdk/agent-workspace-runtime",
+      "./dist/plugin-sdk/agent-workspace-runtime.js",
+      "./dist/plugin-sdk/agent-workspace-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/allow-from",
+      "./dist/plugin-sdk/allow-from.js",
+      "./dist/plugin-sdk/allow-from.d.ts"
+    ],
+    [
+      "./plugin-sdk/allowlist-config-edit",
+      "./dist/plugin-sdk/allowlist-config-edit.js",
+      "./dist/plugin-sdk/allowlist-config-edit.d.ts"
+    ],
+    [
+      "./plugin-sdk/approval-auth-runtime",
+      "./dist/plugin-sdk/approval-auth-runtime.js",
+      "./dist/plugin-sdk/approval-auth-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/approval-client-runtime",
+      "./dist/plugin-sdk/approval-client-runtime.js",
+      "./dist/plugin-sdk/approval-client-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/approval-delivery-runtime",
+      "./dist/plugin-sdk/approval-delivery-runtime.js",
+      "./dist/plugin-sdk/approval-delivery-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/approval-gateway-runtime",
+      "./dist/plugin-sdk/approval-gateway-runtime.js",
+      "./dist/plugin-sdk/approval-gateway-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/approval-handler-adapter-runtime",
+      "./dist/plugin-sdk/approval-handler-adapter-runtime.js",
+      "./dist/plugin-sdk/approval-handler-adapter-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/approval-handler-runtime",
+      "./dist/plugin-sdk/approval-handler-runtime.js",
+      "./dist/plugin-sdk/approval-handler-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/approval-native-runtime",
+      "./dist/plugin-sdk/approval-native-runtime.js",
+      "./dist/plugin-sdk/approval-native-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/approval-reaction-runtime",
+      "./dist/plugin-sdk/approval-reaction-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/approval-reference-runtime",
+      "./dist/plugin-sdk/approval-reference-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/approval-reply-runtime",
+      "./dist/plugin-sdk/approval-reply-runtime.js",
+      "./dist/plugin-sdk/approval-reply-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/approval-runtime",
+      "./dist/plugin-sdk/approval-runtime.js",
+      "./dist/plugin-sdk/approval-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/archive",
+      "./dist/plugin-sdk/archive.js",
+      "./dist/plugin-sdk/archive.d.ts"
+    ],
+    [
+      "./plugin-sdk/async-lock-runtime",
+      "./dist/plugin-sdk/async-lock-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/blob-runtime",
+      "./dist/plugin-sdk/blob-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/boolean-param",
+      "./dist/plugin-sdk/boolean-param.js",
+      "./dist/plugin-sdk/boolean-param.d.ts"
+    ],
+    [
+      "./plugin-sdk/browser-cdp",
+      "./dist/plugin-sdk/browser-cdp.js",
+      null
+    ],
+    [
+      "./plugin-sdk/browser-config",
+      "./dist/plugin-sdk/browser-config.js",
+      null
+    ],
+    [
+      "./plugin-sdk/bundled-channel-config-schema",
+      "./dist/plugin-sdk/bundled-channel-config-schema.js",
+      null
+    ],
+    [
+      "./plugin-sdk/channel-actions",
+      "./dist/plugin-sdk/channel-actions.js",
+      "./dist/plugin-sdk/channel-actions.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-activity-runtime",
+      "./dist/plugin-sdk/channel-activity-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/channel-config-helpers",
+      "./dist/plugin-sdk/channel-config-helpers.js",
+      "./dist/plugin-sdk/channel-config-helpers.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-config-primitives",
+      "./dist/plugin-sdk/channel-config-primitives.js",
+      "./dist/plugin-sdk/channel-config-primitives.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-config-schema",
+      "./dist/plugin-sdk/channel-config-schema.js",
+      "./dist/plugin-sdk/channel-config-schema.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-config-ui-hints",
+      "./dist/plugin-sdk/channel-config-ui-hints.js",
+      null
+    ],
+    [
+      "./plugin-sdk/channel-config-writes",
+      "./dist/plugin-sdk/channel-config-writes.js",
+      null
+    ],
+    [
+      "./plugin-sdk/channel-contract",
+      "./dist/plugin-sdk/channel-contract.js",
+      "./dist/plugin-sdk/channel-contract.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-core",
+      "./dist/plugin-sdk/channel-core.js",
+      "./dist/plugin-sdk/channel-core.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-dm-policy",
+      "./dist/plugin-sdk/channel-dm-policy.js",
+      "./dist/plugin-sdk/channel-dm-policy.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-entry-contract",
+      "./dist/plugin-sdk/channel-entry-contract.js",
+      "./dist/plugin-sdk/channel-entry-contract.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-feedback",
+      "./dist/plugin-sdk/channel-feedback.js",
+      "./dist/plugin-sdk/channel-feedback.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-inbound",
+      "./dist/plugin-sdk/channel-inbound.js",
+      "./dist/plugin-sdk/channel-inbound.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-inbound-debounce",
+      "./dist/plugin-sdk/channel-inbound-debounce.js",
+      "./dist/plugin-sdk/channel-inbound-debounce.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-ingress-runtime",
+      "./dist/plugin-sdk/channel-ingress-runtime.js",
+      "./dist/plugin-sdk/channel-ingress-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-join-intro-runtime",
+      "./dist/plugin-sdk/channel-join-intro-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/channel-lifecycle",
+      "./dist/plugin-sdk/channel-lifecycle.js",
+      "./dist/plugin-sdk/channel-lifecycle.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-mention-gating",
+      "./dist/plugin-sdk/channel-mention-gating.js",
+      null
+    ],
+    [
+      "./plugin-sdk/channel-message",
+      "./dist/plugin-sdk/channel-message.js",
+      "./dist/plugin-sdk/channel-message.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-outbound",
+      "./dist/plugin-sdk/channel-outbound.js",
+      "./dist/plugin-sdk/channel-outbound.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-pairing",
+      "./dist/plugin-sdk/channel-pairing.js",
+      "./dist/plugin-sdk/channel-pairing.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-plugin-common",
+      "./dist/plugin-sdk/channel-plugin-common.js",
+      "./dist/plugin-sdk/channel-plugin-common.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-policy",
+      "./dist/plugin-sdk/channel-policy.js",
+      "./dist/plugin-sdk/channel-policy.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-reply-pipeline",
+      "./dist/plugin-sdk/channel-reply-pipeline.js",
+      "./dist/plugin-sdk/channel-reply-pipeline.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-route",
+      "./dist/plugin-sdk/channel-route.js",
+      null
+    ],
+    [
+      "./plugin-sdk/channel-runtime-context",
+      "./dist/plugin-sdk/channel-runtime-context.js",
+      "./dist/plugin-sdk/channel-runtime-context.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-secret-basic-runtime",
+      "./dist/plugin-sdk/channel-secret-basic-runtime.js",
+      "./dist/plugin-sdk/channel-secret-basic-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-secret-owner-runtime",
+      "./dist/plugin-sdk/channel-secret-owner-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/channel-secret-tts-runtime",
+      "./dist/plugin-sdk/channel-secret-tts-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/channel-send-result",
+      "./dist/plugin-sdk/channel-send-result.js",
+      "./dist/plugin-sdk/channel-send-result.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-setup",
+      "./dist/plugin-sdk/channel-setup.js",
+      "./dist/plugin-sdk/channel-setup.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-status",
+      "./dist/plugin-sdk/channel-status.js",
+      "./dist/plugin-sdk/channel-status.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-streaming-config",
+      "./dist/plugin-sdk/channel-streaming-config.js",
+      "./dist/plugin-sdk/channel-streaming-config.d.ts"
+    ],
+    [
+      "./plugin-sdk/channel-targets",
+      "./dist/plugin-sdk/channel-targets.js",
+      null
+    ],
+    [
+      "./plugin-sdk/chat-channel-ids",
+      "./dist/plugin-sdk/chat-channel-ids.js",
+      null
+    ],
+    [
+      "./plugin-sdk/claude-model-runtime",
+      "./dist/plugin-sdk/claude-model-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/cli-argv",
+      "./dist/plugin-sdk/cli-argv.js",
+      "./dist/plugin-sdk/cli-argv.d.ts"
+    ],
+    [
+      "./plugin-sdk/cli-backend",
+      "./dist/plugin-sdk/cli-backend.js",
+      null
+    ],
+    [
+      "./plugin-sdk/cli-runtime",
+      "./dist/plugin-sdk/cli-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/code-mode-executor-runtime",
+      "./dist/plugin-sdk/code-mode-executor-runtime.js",
+      "./dist/plugin-sdk/code-mode-executor-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/codex-mcp-projection",
+      "./dist/plugin-sdk/codex-mcp-projection.js",
+      null
+    ],
+    [
+      "./plugin-sdk/codex-session-transcript-runtime",
+      "./dist/plugin-sdk/codex-session-transcript-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/collection-runtime",
+      "./dist/plugin-sdk/collection-runtime.js",
+      "./dist/plugin-sdk/collection-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/command-auth",
+      "./dist/plugin-sdk/command-auth.js",
+      "./dist/plugin-sdk/command-auth.d.ts"
+    ],
+    [
+      "./plugin-sdk/command-auth-native",
+      "./dist/plugin-sdk/command-auth-native.js",
+      "./dist/plugin-sdk/command-auth-native.d.ts"
+    ],
+    [
+      "./plugin-sdk/command-detection",
+      "./dist/plugin-sdk/command-detection.js",
+      "./dist/plugin-sdk/command-detection.d.ts"
+    ],
+    [
+      "./plugin-sdk/command-primitives-runtime",
+      "./dist/plugin-sdk/command-primitives-runtime.js",
+      "./dist/plugin-sdk/command-primitives-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/command-status",
+      "./dist/plugin-sdk/command-status.js",
+      "./dist/plugin-sdk/command-status.d.ts"
+    ],
+    [
+      "./plugin-sdk/command-status-runtime",
+      "./dist/plugin-sdk/command-status-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/command-surface",
+      "./dist/plugin-sdk/command-surface.js",
+      null
+    ],
+    [
+      "./plugin-sdk/computer-use",
+      "./dist/plugin-sdk/computer-use.js",
+      "./dist/plugin-sdk/computer-use.d.ts"
+    ],
+    [
+      "./plugin-sdk/concurrency-runtime",
+      "./dist/plugin-sdk/concurrency-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/config-contracts",
+      "./dist/plugin-sdk/config-contracts.js",
+      "./dist/plugin-sdk/config-contracts.d.ts"
+    ],
+    [
+      "./plugin-sdk/config-mutation",
+      "./dist/plugin-sdk/config-mutation.js",
+      "./dist/plugin-sdk/config-mutation.d.ts"
+    ],
+    [
+      "./plugin-sdk/config-runtime",
+      "./dist/plugin-sdk/config-runtime.js",
+      "./dist/plugin-sdk/config-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/context-visibility-runtime",
+      "./dist/plugin-sdk/context-visibility-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/control-ui",
+      "./dist/plugin-sdk/control-ui.js",
+      "./dist/plugin-sdk/control-ui.d.ts"
+    ],
+    [
+      "./plugin-sdk/control-ui-link-reader",
+      "./dist/plugin-sdk/control-ui-link-reader.js",
+      "./dist/plugin-sdk/control-ui-link-reader.d.ts"
+    ],
+    [
+      "./plugin-sdk/conversation-binding-inspection-runtime",
+      "./dist/plugin-sdk/conversation-binding-inspection-runtime.js",
+      "./dist/plugin-sdk/conversation-binding-inspection-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/conversation-binding-runtime",
+      "./dist/plugin-sdk/conversation-binding-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/conversation-runtime",
+      "./dist/plugin-sdk/conversation-runtime.js",
+      "./dist/plugin-sdk/conversation-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/core",
+      "./dist/plugin-sdk/core.js",
+      "./dist/plugin-sdk/core.d.ts"
+    ],
+    [
+      "./plugin-sdk/cron-store-runtime",
+      "./dist/plugin-sdk/cron-store-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/dangerous-name-runtime",
+      "./dist/plugin-sdk/dangerous-name-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/decisions",
+      "./dist/plugin-sdk/decisions.js",
+      "./dist/plugin-sdk/decisions.d.ts"
+    ],
+    [
+      "./plugin-sdk/dedupe-runtime",
+      "./dist/plugin-sdk/dedupe-runtime.js",
+      "./dist/plugin-sdk/dedupe-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/delivery-queue-runtime",
+      "./dist/plugin-sdk/delivery-queue-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/device-bootstrap",
+      "./dist/plugin-sdk/device-bootstrap.js",
+      "./dist/plugin-sdk/device-bootstrap.d.ts"
+    ],
+    [
+      "./plugin-sdk/diagnostic-flags",
+      "./dist/plugin-sdk/diagnostic-flags.js",
+      "./dist/plugin-sdk/diagnostic-flags.d.ts"
+    ],
+    [
+      "./plugin-sdk/diagnostic-runtime",
+      "./dist/plugin-sdk/diagnostic-runtime.js",
+      "./dist/plugin-sdk/diagnostic-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/direct-dm-guard-policy",
+      "./dist/plugin-sdk/direct-dm-guard-policy.js",
+      null
+    ],
+    [
+      "./plugin-sdk/directory-config-runtime",
+      "./dist/plugin-sdk/directory-config-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/directory-runtime",
+      "./dist/plugin-sdk/directory-runtime.js",
+      "./dist/plugin-sdk/directory-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/discord",
+      "./dist/plugin-sdk/discord.js",
+      "./dist/plugin-sdk/discord.d.ts"
+    ],
+    [
+      "./plugin-sdk/doctor-repair-runtime",
+      "./dist/plugin-sdk/doctor-repair-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/document-extractor",
+      "./dist/plugin-sdk/document-extractor.js",
+      null
+    ],
+    [
+      "./plugin-sdk/embedding-provider-adapter",
+      "./dist/plugin-sdk/embedding-provider-adapter.js",
+      null
+    ],
+    [
+      "./plugin-sdk/embedding-provider-runtime-contract",
+      "./dist/plugin-sdk/embedding-provider-runtime-contract.js",
+      "./dist/plugin-sdk/embedding-provider-runtime-contract.d.ts"
+    ],
+    [
+      "./plugin-sdk/embedding-providers",
+      "./dist/plugin-sdk/embedding-providers.js",
+      null
+    ],
+    [
+      "./plugin-sdk/error-runtime",
+      "./dist/plugin-sdk/error-runtime.js",
+      "./dist/plugin-sdk/error-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/exec-approvals-runtime",
+      "./dist/plugin-sdk/exec-approvals-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/expect-runtime",
+      "./dist/plugin-sdk/expect-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/extension-shared",
+      "./dist/plugin-sdk/extension-shared.js",
+      "./dist/plugin-sdk/extension-shared.d.ts"
+    ],
+    [
+      "./plugin-sdk/feature-contract",
+      "./dist/plugin-sdk/feature-contract.js",
+      "./dist/plugin-sdk/feature-contract.d.ts"
+    ],
+    [
+      "./plugin-sdk/feature-plugin",
+      "./dist/plugin-sdk/feature-plugin.js",
+      "./dist/plugin-sdk/feature-plugin.d.ts"
+    ],
+    [
+      "./plugin-sdk/fetch-runtime",
+      "./dist/plugin-sdk/fetch-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/file-access-runtime",
+      "./dist/plugin-sdk/file-access-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/file-lock",
+      "./dist/plugin-sdk/file-lock.js",
+      null
+    ],
+    [
+      "./plugin-sdk/gateway-config-runtime",
+      "./dist/plugin-sdk/gateway-config-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/gateway-method-runtime",
+      "./dist/plugin-sdk/gateway-method-runtime.js",
+      "./dist/plugin-sdk/gateway-method-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/gateway-runtime",
+      "./dist/plugin-sdk/gateway-runtime.js",
+      "./dist/plugin-sdk/gateway-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/global-singleton",
+      "./dist/plugin-sdk/global-singleton.js",
+      null
+    ],
+    [
+      "./plugin-sdk/group-activation",
+      "./dist/plugin-sdk/group-activation.js",
+      null
+    ],
+    [
+      "./plugin-sdk/health",
+      "./dist/plugin-sdk/health.js",
+      "./dist/plugin-sdk/health.d.ts"
+    ],
+    [
+      "./plugin-sdk/heartbeat-runtime",
+      "./dist/plugin-sdk/heartbeat-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/hook-runtime",
+      "./dist/plugin-sdk/hook-runtime.js",
+      "./dist/plugin-sdk/hook-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/host-runtime",
+      "./dist/plugin-sdk/host-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/html-entity-runtime",
+      "./dist/plugin-sdk/html-entity-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/image-generation",
+      "./dist/plugin-sdk/image-generation.js",
+      null
+    ],
+    [
+      "./plugin-sdk/image-generation-core",
+      "./dist/plugin-sdk/image-generation-core.js",
+      null
+    ],
+    [
+      "./plugin-sdk/image-generation-runtime",
+      "./dist/plugin-sdk/image-generation-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/inbound-envelope",
+      "./dist/plugin-sdk/inbound-envelope.js",
+      "./dist/plugin-sdk/inbound-envelope.d.ts"
+    ],
+    [
+      "./plugin-sdk/inbound-event-delivery",
+      "./dist/plugin-sdk/inbound-event-delivery.js",
+      "./dist/plugin-sdk/inbound-event-delivery.d.ts"
+    ],
+    [
+      "./plugin-sdk/inbound-reply-dispatch",
+      "./dist/plugin-sdk/inbound-reply-dispatch.js",
+      "./dist/plugin-sdk/inbound-reply-dispatch.d.ts"
+    ],
+    [
+      "./plugin-sdk/infra-runtime",
+      "./dist/plugin-sdk/infra-runtime.js",
+      "./dist/plugin-sdk/infra-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/ingress-effect-once",
+      "./dist/plugin-sdk/ingress-effect-once.js",
+      "./dist/plugin-sdk/ingress-effect-once.d.ts"
+    ],
+    [
+      "./plugin-sdk/inline-image-data-url-runtime",
+      "./dist/plugin-sdk/inline-image-data-url-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/interactive-runtime",
+      "./dist/plugin-sdk/interactive-runtime.js",
+      "./dist/plugin-sdk/interactive-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/json-schema-runtime",
+      "./dist/plugin-sdk/json-schema-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/json-store",
+      "./dist/plugin-sdk/json-store.js",
+      "./dist/plugin-sdk/json-store.d.ts"
+    ],
+    [
+      "./plugin-sdk/json-unsafe-integers",
+      "./dist/plugin-sdk/json-unsafe-integers.js",
+      null
+    ],
+    [
+      "./plugin-sdk/keyed-async-queue",
+      "./dist/plugin-sdk/keyed-async-queue.js",
+      null
+    ],
+    [
+      "./plugin-sdk/lazy-runtime",
+      "./dist/plugin-sdk/lazy-runtime.js",
+      "./dist/plugin-sdk/lazy-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/llm",
+      "./dist/plugin-sdk/llm.js",
+      null
+    ],
+    [
+      "./plugin-sdk/logging-core",
+      "./dist/plugin-sdk/logging-core.js",
+      "./dist/plugin-sdk/logging-core.d.ts"
+    ],
+    [
+      "./plugin-sdk/markdown-table-runtime",
+      "./dist/plugin-sdk/markdown-table-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/media-ffmpeg",
+      "./dist/plugin-sdk/media-ffmpeg.js",
+      null
+    ],
+    [
+      "./plugin-sdk/media-generation-runtime",
+      "./dist/plugin-sdk/media-generation-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/media-local-roots",
+      "./dist/plugin-sdk/media-local-roots.js",
+      "./dist/plugin-sdk/media-local-roots.d.ts"
+    ],
+    [
+      "./plugin-sdk/media-mime",
+      "./dist/plugin-sdk/media-mime.js",
+      "./dist/plugin-sdk/media-mime.d.ts"
+    ],
+    [
+      "./plugin-sdk/media-runtime",
+      "./dist/plugin-sdk/media-runtime.js",
+      "./dist/plugin-sdk/media-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/media-store",
+      "./dist/plugin-sdk/media-store.js",
+      "./dist/plugin-sdk/media-store.d.ts"
+    ],
+    [
+      "./plugin-sdk/media-understanding",
+      "./dist/plugin-sdk/media-understanding.js",
+      "./dist/plugin-sdk/media-understanding.d.ts"
+    ],
+    [
+      "./plugin-sdk/media-understanding-runtime",
+      "./dist/plugin-sdk/media-understanding-runtime.js",
+      "./dist/plugin-sdk/media-understanding-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/meeting-page-script-runtime",
+      "./dist/plugin-sdk/meeting-page-script-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/meeting-runtime",
+      "./dist/plugin-sdk/meeting-runtime.js",
+      "./dist/plugin-sdk/meeting-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/memory-core-host-embedding-registry",
+      "./dist/plugin-sdk/memory-core-host-embedding-registry.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-engine-curated",
+      "./dist/plugin-sdk/memory-core-host-engine-curated.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-engine-embeddings",
+      "./dist/plugin-sdk/memory-core-host-engine-embeddings.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-engine-foundation",
+      "./dist/plugin-sdk/memory-core-host-engine-foundation.js",
+      "./dist/plugin-sdk/memory-core-host-engine-foundation.d.ts"
+    ],
+    [
+      "./plugin-sdk/memory-core-host-engine-fs",
+      "./dist/plugin-sdk/memory-core-host-engine-fs.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-engine-indexing",
+      "./dist/plugin-sdk/memory-core-host-engine-indexing.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-engine-knn",
+      "./dist/plugin-sdk/memory-core-host-engine-knn.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-engine-schema",
+      "./dist/plugin-sdk/memory-core-host-engine-schema.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-engine-sessions",
+      "./dist/plugin-sdk/memory-core-host-engine-sessions.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-engine-storage",
+      "./dist/plugin-sdk/memory-core-host-engine-storage.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-runtime-cli",
+      "./dist/plugin-sdk/memory-core-host-runtime-cli.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-runtime-core",
+      "./dist/plugin-sdk/memory-core-host-runtime-core.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-runtime-files",
+      "./dist/plugin-sdk/memory-core-host-runtime-files.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-secret",
+      "./dist/plugin-sdk/memory-core-host-secret.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-core-host-status",
+      "./dist/plugin-sdk/memory-core-host-status.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-host-core",
+      "./dist/plugin-sdk/memory-host-core.js",
+      "./dist/plugin-sdk/memory-host-core.d.ts"
+    ],
+    [
+      "./plugin-sdk/memory-host-events",
+      "./dist/plugin-sdk/memory-host-events.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-host-markdown",
+      "./dist/plugin-sdk/memory-host-markdown.js",
+      null
+    ],
+    [
+      "./plugin-sdk/memory-host-search",
+      "./dist/plugin-sdk/memory-host-search.js",
+      null
+    ],
+    [
+      "./plugin-sdk/message-tool-delivery-hints",
+      "./dist/plugin-sdk/message-tool-delivery-hints.js",
+      null
+    ],
+    [
+      "./plugin-sdk/migration",
+      "./dist/plugin-sdk/migration.js",
+      null
+    ],
+    [
+      "./plugin-sdk/migration-runtime",
+      "./dist/plugin-sdk/migration-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/model-catalog-pricing",
+      "./dist/plugin-sdk/model-catalog-pricing.js",
+      null
+    ],
+    [
+      "./plugin-sdk/model-ref-parse",
+      "./dist/plugin-sdk/model-ref-parse.js",
+      null
+    ],
+    [
+      "./plugin-sdk/model-session-runtime",
+      "./dist/plugin-sdk/model-session-runtime.js",
+      "./dist/plugin-sdk/model-session-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/models-provider-runtime",
+      "./dist/plugin-sdk/models-provider-runtime.js",
+      "./dist/plugin-sdk/models-provider-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/music-generation",
+      "./dist/plugin-sdk/music-generation.js",
+      null
+    ],
+    [
+      "./plugin-sdk/native-command-config-runtime",
+      "./dist/plugin-sdk/native-command-config-runtime.js",
+      "./dist/plugin-sdk/native-command-config-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/native-command-registry",
+      "./dist/plugin-sdk/native-command-registry.js",
+      "./dist/plugin-sdk/native-command-registry.d.ts"
+    ],
+    [
+      "./plugin-sdk/native-hook-relay-runtime",
+      "./dist/plugin-sdk/native-hook-relay-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/node-cli-runtime",
+      "./dist/plugin-sdk/node-cli-runtime.js",
+      "./dist/plugin-sdk/node-cli-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/node-host",
+      "./dist/plugin-sdk/node-host.js",
+      null
+    ],
+    [
+      "./plugin-sdk/node-selection-runtime",
+      "./dist/plugin-sdk/node-selection-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/number-runtime",
+      "./dist/plugin-sdk/number-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/outbound-echo-runtime",
+      "./dist/plugin-sdk/outbound-echo-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/outbound-media",
+      "./dist/plugin-sdk/outbound-media.js",
+      null
+    ],
+    [
+      "./plugin-sdk/pair-loop-guard-runtime",
+      "./dist/plugin-sdk/pair-loop-guard-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/param-readers",
+      "./dist/plugin-sdk/param-readers.js",
+      "./dist/plugin-sdk/param-readers.d.ts"
+    ],
+    [
+      "./plugin-sdk/persistent-dedupe",
+      "./dist/plugin-sdk/persistent-dedupe.js",
+      "./dist/plugin-sdk/persistent-dedupe.d.ts"
+    ],
+    [
+      "./plugin-sdk/plugin-command-runtime",
+      "./dist/plugin-sdk/plugin-command-runtime.js",
+      "./dist/plugin-sdk/plugin-command-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/plugin-config-runtime",
+      "./dist/plugin-sdk/plugin-config-runtime.js",
+      "./dist/plugin-sdk/plugin-config-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/plugin-entry",
+      "./dist/plugin-sdk/plugin-entry.js",
+      "./dist/plugin-sdk/plugin-entry.d.ts"
+    ],
+    [
+      "./plugin-sdk/plugin-runtime",
+      "./dist/plugin-sdk/plugin-runtime.js",
+      "./dist/plugin-sdk/plugin-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/plugin-state-runtime",
+      "./dist/plugin-sdk/plugin-state-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/plugin-state-store-runtime",
+      "./dist/plugin-sdk/plugin-state-store-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/poll-runtime",
+      "./dist/plugin-sdk/poll-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/process-runtime",
+      "./dist/plugin-sdk/process-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-auth",
+      "./dist/plugin-sdk/provider-auth.js",
+      "./dist/plugin-sdk/provider-auth.d.ts"
+    ],
+    [
+      "./plugin-sdk/provider-auth-aliases",
+      "./dist/plugin-sdk/provider-auth-aliases.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-auth-api-key",
+      "./dist/plugin-sdk/provider-auth-api-key.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-auth-login-flow-runtime",
+      "./dist/plugin-sdk/provider-auth-login-flow-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-auth-result",
+      "./dist/plugin-sdk/provider-auth-result.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-auth-runtime",
+      "./dist/plugin-sdk/provider-auth-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-binary-stream",
+      "./dist/plugin-sdk/provider-binary-stream.js",
+      "./dist/plugin-sdk/provider-binary-stream.d.ts"
+    ],
+    [
+      "./plugin-sdk/provider-catalog-live-runtime",
+      "./dist/plugin-sdk/provider-catalog-live-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-catalog-runtime",
+      "./dist/plugin-sdk/provider-catalog-runtime.js",
+      "./dist/plugin-sdk/provider-catalog-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/provider-catalog-shared",
+      "./dist/plugin-sdk/provider-catalog-shared.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-entry",
+      "./dist/plugin-sdk/provider-entry.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-env-vars",
+      "./dist/plugin-sdk/provider-env-vars.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-http",
+      "./dist/plugin-sdk/provider-http.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-model-metadata",
+      "./dist/plugin-sdk/provider-model-metadata.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-model-shared",
+      "./dist/plugin-sdk/provider-model-shared.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-model-types",
+      "./dist/plugin-sdk/provider-model-types.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-oauth-runtime",
+      "./dist/plugin-sdk/provider-oauth-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-onboard",
+      "./dist/plugin-sdk/provider-onboard.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-selection-runtime",
+      "./dist/plugin-sdk/provider-selection-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-setup",
+      "./dist/plugin-sdk/provider-setup.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-stream",
+      "./dist/plugin-sdk/provider-stream.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-stream-family",
+      "./dist/plugin-sdk/provider-stream-family.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-stream-shared",
+      "./dist/plugin-sdk/provider-stream-shared.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-thinking-runtime",
+      "./dist/plugin-sdk/provider-thinking-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-tools",
+      "./dist/plugin-sdk/provider-tools.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-transport-runtime",
+      "./dist/plugin-sdk/provider-transport-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-usage",
+      "./dist/plugin-sdk/provider-usage.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-web-fetch",
+      "./dist/plugin-sdk/provider-web-fetch.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-web-fetch-contract",
+      "./dist/plugin-sdk/provider-web-fetch-contract.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-web-search",
+      "./dist/plugin-sdk/provider-web-search.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-web-search-config-contract",
+      "./dist/plugin-sdk/provider-web-search-config-contract.js",
+      null
+    ],
+    [
+      "./plugin-sdk/provider-web-search-contract",
+      "./dist/plugin-sdk/provider-web-search-contract.js",
+      null
+    ],
+    [
+      "./plugin-sdk/proxy-capture",
+      "./dist/plugin-sdk/proxy-capture.js",
+      "./dist/plugin-sdk/proxy-capture.d.ts"
+    ],
+    [
+      "./plugin-sdk/qa-runner-runtime",
+      "./dist/plugin-sdk/qa-runner-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/question-gateway-runtime",
+      "./dist/plugin-sdk/question-gateway-runtime.js",
+      "./dist/plugin-sdk/question-gateway-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/realtime-bootstrap-context",
+      "./dist/plugin-sdk/realtime-bootstrap-context.js",
+      null
+    ],
+    [
+      "./plugin-sdk/realtime-transcription",
+      "./dist/plugin-sdk/realtime-transcription.js",
+      null
+    ],
+    [
+      "./plugin-sdk/realtime-transcription-session",
+      "./dist/plugin-sdk/realtime-transcription-session.js",
+      null
+    ],
+    [
+      "./plugin-sdk/realtime-voice",
+      "./dist/plugin-sdk/realtime-voice.js",
+      null
+    ],
+    [
+      "./plugin-sdk/realtime-voice-activation",
+      "./dist/plugin-sdk/realtime-voice-activation.js",
+      null
+    ],
+    [
+      "./plugin-sdk/realtime-voice-audio-queue",
+      "./dist/plugin-sdk/realtime-voice-audio-queue.js",
+      null
+    ],
+    [
+      "./plugin-sdk/realtime-voice-playback",
+      "./dist/plugin-sdk/realtime-voice-playback.js",
+      null
+    ],
+    [
+      "./plugin-sdk/realtime-voice-provider",
+      "./dist/plugin-sdk/realtime-voice-provider.js",
+      null
+    ],
+    [
+      "./plugin-sdk/reply-chunking",
+      "./dist/plugin-sdk/reply-chunking.js",
+      "./dist/plugin-sdk/reply-chunking.d.ts"
+    ],
+    [
+      "./plugin-sdk/reply-dispatch-runtime",
+      "./dist/plugin-sdk/reply-dispatch-runtime.js",
+      "./dist/plugin-sdk/reply-dispatch-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/reply-history",
+      "./dist/plugin-sdk/reply-history.js",
+      "./dist/plugin-sdk/reply-history.d.ts"
+    ],
+    [
+      "./plugin-sdk/reply-payload",
+      "./dist/plugin-sdk/reply-payload.js",
+      "./dist/plugin-sdk/reply-payload.d.ts"
+    ],
+    [
+      "./plugin-sdk/reply-reference",
+      "./dist/plugin-sdk/reply-reference.js",
+      null
+    ],
+    [
+      "./plugin-sdk/reply-runtime",
+      "./dist/plugin-sdk/reply-runtime.js",
+      "./dist/plugin-sdk/reply-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/request-url",
+      "./dist/plugin-sdk/request-url.js",
+      null
+    ],
+    [
+      "./plugin-sdk/response-limit-runtime",
+      "./dist/plugin-sdk/response-limit-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/retry-runtime",
+      "./dist/plugin-sdk/retry-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/root-walk",
+      "./dist/plugin-sdk/root-walk.js",
+      "./dist/plugin-sdk/root-walk.d.ts"
+    ],
+    [
+      "./plugin-sdk/routing",
+      "./dist/plugin-sdk/routing.js",
+      "./dist/plugin-sdk/routing.d.ts"
+    ],
+    [
+      "./plugin-sdk/run-command",
+      "./dist/plugin-sdk/run-command.js",
+      "./dist/plugin-sdk/run-command.d.ts"
+    ],
+    [
+      "./plugin-sdk/runtime",
+      "./dist/plugin-sdk/runtime.js",
+      "./dist/plugin-sdk/runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/runtime-config-snapshot",
+      "./dist/plugin-sdk/runtime-config-snapshot.js",
+      "./dist/plugin-sdk/runtime-config-snapshot.d.ts"
+    ],
+    [
+      "./plugin-sdk/runtime-doctor",
+      "./dist/plugin-sdk/runtime-doctor.js",
+      null
+    ],
+    [
+      "./plugin-sdk/runtime-doctor-migrations",
+      "./dist/plugin-sdk/runtime-doctor-migrations.js",
+      null
+    ],
+    [
+      "./plugin-sdk/runtime-env",
+      "./dist/plugin-sdk/runtime-env.js",
+      "./dist/plugin-sdk/runtime-env.d.ts"
+    ],
+    [
+      "./plugin-sdk/runtime-fetch",
+      "./dist/plugin-sdk/runtime-fetch.js",
+      null
+    ],
+    [
+      "./plugin-sdk/runtime-group-policy",
+      "./dist/plugin-sdk/runtime-group-policy.js",
+      "./dist/plugin-sdk/runtime-group-policy.d.ts"
+    ],
+    [
+      "./plugin-sdk/runtime-store",
+      "./dist/plugin-sdk/runtime-store.js",
+      "./dist/plugin-sdk/runtime-store.d.ts"
+    ],
+    [
+      "./plugin-sdk/sandbox",
+      "./dist/plugin-sdk/sandbox.js",
+      null
+    ],
+    [
+      "./plugin-sdk/secret-egress-runtime",
+      "./dist/plugin-sdk/secret-egress-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/secret-file",
+      "./dist/plugin-sdk/secret-file.js",
+      "./dist/plugin-sdk/secret-file.d.ts"
+    ],
+    [
+      "./plugin-sdk/secret-file-runtime",
+      "./dist/plugin-sdk/secret-file-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/secret-input",
+      "./dist/plugin-sdk/secret-input.js",
+      "./dist/plugin-sdk/secret-input.d.ts"
+    ],
+    [
+      "./plugin-sdk/secret-input-runtime",
+      "./dist/plugin-sdk/secret-input-runtime.js",
+      "./dist/plugin-sdk/secret-input-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/secret-provider-alias",
+      "./dist/plugin-sdk/secret-provider-alias.js",
+      null
+    ],
+    [
+      "./plugin-sdk/secret-ref-readonly",
+      "./dist/plugin-sdk/secret-ref-readonly.js",
+      "./dist/plugin-sdk/secret-ref-readonly.d.ts"
+    ],
+    [
+      "./plugin-sdk/secret-ref-runtime",
+      "./dist/plugin-sdk/secret-ref-runtime.js",
+      "./dist/plugin-sdk/secret-ref-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/secure-random-runtime",
+      "./dist/plugin-sdk/secure-random-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/security-runtime",
+      "./dist/plugin-sdk/security-runtime.js",
+      "./dist/plugin-sdk/security-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/session-binding-runtime",
+      "./dist/plugin-sdk/session-binding-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/session-catalog",
+      "./dist/plugin-sdk/session-catalog.js",
+      "./dist/plugin-sdk/session-catalog.d.ts"
+    ],
+    [
+      "./plugin-sdk/session-catalog-paging",
+      "./dist/plugin-sdk/session-catalog-paging.js",
+      null
+    ],
+    [
+      "./plugin-sdk/session-catalog-runtime",
+      "./dist/plugin-sdk/session-catalog-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/session-discussion",
+      "./dist/plugin-sdk/session-discussion.js",
+      "./dist/plugin-sdk/session-discussion.d.ts"
+    ],
+    [
+      "./plugin-sdk/session-key-runtime",
+      "./dist/plugin-sdk/session-key-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/session-store-paths",
+      "./dist/plugin-sdk/session-store-paths.js",
+      null
+    ],
+    [
+      "./plugin-sdk/session-store-runtime",
+      "./dist/plugin-sdk/session-store-runtime.js",
+      "./dist/plugin-sdk/session-store-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/session-transcript-hit",
+      "./dist/plugin-sdk/session-transcript-hit.js",
+      null
+    ],
+    [
+      "./plugin-sdk/session-transcript-runtime",
+      "./dist/plugin-sdk/session-transcript-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/session-visibility",
+      "./dist/plugin-sdk/session-visibility.js",
+      null
+    ],
+    [
+      "./plugin-sdk/setup",
+      "./dist/plugin-sdk/setup.js",
+      "./dist/plugin-sdk/setup.d.ts"
+    ],
+    [
+      "./plugin-sdk/setup-runtime",
+      "./dist/plugin-sdk/setup-runtime.js",
+      "./dist/plugin-sdk/setup-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/setup-tools",
+      "./dist/plugin-sdk/setup-tools.js",
+      "./dist/plugin-sdk/setup-tools.d.ts"
+    ],
+    [
+      "./plugin-sdk/simple-completion-runtime",
+      "./dist/plugin-sdk/simple-completion-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/skill-commands-runtime",
+      "./dist/plugin-sdk/skill-commands-runtime.js",
+      "./dist/plugin-sdk/skill-commands-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/speech",
+      "./dist/plugin-sdk/speech.js",
+      null
+    ],
+    [
+      "./plugin-sdk/speech-core",
+      "./dist/plugin-sdk/speech-core.js",
+      null
+    ],
+    [
+      "./plugin-sdk/speech-provider",
+      "./dist/plugin-sdk/speech-provider.js",
+      null
+    ],
+    [
+      "./plugin-sdk/speech-settings",
+      "./dist/plugin-sdk/speech-settings.js",
+      "./dist/plugin-sdk/speech-settings.d.ts"
+    ],
+    [
+      "./plugin-sdk/sqlite-runtime",
+      "./dist/plugin-sdk/sqlite-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/sqlite-worker-runtime",
+      "./dist/plugin-sdk/sqlite-worker-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/ssrf-dispatcher",
+      "./dist/plugin-sdk/ssrf-dispatcher.js",
+      null
+    ],
+    [
+      "./plugin-sdk/ssrf-policy",
+      "./dist/plugin-sdk/ssrf-policy.js",
+      "./dist/plugin-sdk/ssrf-policy.d.ts"
+    ],
+    [
+      "./plugin-sdk/ssrf-runtime",
+      "./dist/plugin-sdk/ssrf-runtime.js",
+      "./dist/plugin-sdk/ssrf-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/ssrf-runtime-internal",
+      "./dist/plugin-sdk/ssrf-runtime-internal.js",
+      null
+    ],
+    [
+      "./plugin-sdk/state-paths",
+      "./dist/plugin-sdk/state-paths.js",
+      "./dist/plugin-sdk/state-paths.d.ts"
+    ],
+    [
+      "./plugin-sdk/status-helpers",
+      "./dist/plugin-sdk/status-helpers.js",
+      "./dist/plugin-sdk/status-helpers.d.ts"
+    ],
+    [
+      "./plugin-sdk/string-coerce-runtime",
+      "./dist/plugin-sdk/string-coerce-runtime.js",
+      "./dist/plugin-sdk/string-coerce-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/string-normalization-runtime",
+      "./dist/plugin-sdk/string-normalization-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/system-event-runtime",
+      "./dist/plugin-sdk/system-event-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/talk-config-runtime",
+      "./dist/plugin-sdk/talk-config-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/target-resolver-runtime",
+      "./dist/plugin-sdk/target-resolver-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/telegram-account",
+      "./dist/plugin-sdk/telegram-account.js",
+      "./dist/plugin-sdk/telegram-account.d.ts"
+    ],
+    [
+      "./plugin-sdk/temp-path",
+      "./dist/plugin-sdk/temp-path.js",
+      "./dist/plugin-sdk/temp-path.d.ts"
+    ],
+    [
+      "./plugin-sdk/text-autolink-runtime",
+      "./dist/plugin-sdk/text-autolink-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/text-chunking",
+      "./dist/plugin-sdk/text-chunking.js",
+      "./dist/plugin-sdk/text-chunking.d.ts"
+    ],
+    [
+      "./plugin-sdk/text-grapheme",
+      "./dist/plugin-sdk/text-grapheme.js",
+      null
+    ],
+    [
+      "./plugin-sdk/text-utility-runtime",
+      "./dist/plugin-sdk/text-utility-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/thread-bindings-runtime",
+      "./dist/plugin-sdk/thread-bindings-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/thread-bindings-session-runtime",
+      "./dist/plugin-sdk/thread-bindings-session-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/time-runtime",
+      "./dist/plugin-sdk/time-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/tool-payload",
+      "./dist/plugin-sdk/tool-payload.js",
+      null
+    ],
+    [
+      "./plugin-sdk/tool-plugin",
+      "./dist/plugin-sdk/tool-plugin.js",
+      "./dist/plugin-sdk/tool-plugin.d.ts"
+    ],
+    [
+      "./plugin-sdk/tool-results",
+      "./dist/plugin-sdk/tool-results.js",
+      "./dist/plugin-sdk/tool-results.d.ts"
+    ],
+    [
+      "./plugin-sdk/tool-send",
+      "./dist/plugin-sdk/tool-send.js",
+      "./dist/plugin-sdk/tool-send.d.ts"
+    ],
+    [
+      "./plugin-sdk/transcripts",
+      "./dist/plugin-sdk/transcripts.js",
+      null
+    ],
+    [
+      "./plugin-sdk/transport-ready-runtime",
+      "./dist/plugin-sdk/transport-ready-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/tts-runtime",
+      "./dist/plugin-sdk/tts-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/types",
+      "./dist/plugin-sdk/types.js",
+      null
+    ],
+    [
+      "./plugin-sdk/video-generation",
+      "./dist/plugin-sdk/video-generation.js",
+      null
+    ],
+    [
+      "./plugin-sdk/video-generation-runtime",
+      "./dist/plugin-sdk/video-generation-runtime.js",
+      null
+    ],
+    [
+      "./plugin-sdk/web-content-extractor",
+      "./dist/plugin-sdk/web-content-extractor.js",
+      null
+    ],
+    [
+      "./plugin-sdk/web-media",
+      "./dist/plugin-sdk/web-media.js",
+      "./dist/plugin-sdk/web-media.d.ts"
+    ],
+    [
+      "./plugin-sdk/webhook-ingress",
+      "./dist/plugin-sdk/webhook-ingress.js",
+      "./dist/plugin-sdk/webhook-ingress.d.ts"
+    ],
+    [
+      "./plugin-sdk/webhook-request-guards",
+      "./dist/plugin-sdk/webhook-request-guards.js",
+      "./dist/plugin-sdk/webhook-request-guards.d.ts"
+    ],
+    [
+      "./plugin-sdk/webhook-targets",
+      "./dist/plugin-sdk/webhook-targets.js",
+      null
+    ],
+    [
+      "./plugin-sdk/websocket-runtime",
+      "./dist/plugin-sdk/websocket-runtime.js",
+      "./dist/plugin-sdk/websocket-runtime.d.ts"
+    ],
+    [
+      "./plugin-sdk/widget-html",
+      "./dist/plugin-sdk/widget-html.js",
+      "./dist/plugin-sdk/widget-html.d.ts"
+    ],
+    [
+      "./plugin-sdk/windows-spawn",
+      "./dist/plugin-sdk/windows-spawn.js",
+      null
+    ],
+    [
+      "./plugin-sdk/worker-task-server",
+      "./dist/plugin-sdk/worker-task-server.js",
+      null
+    ]
+  ],
   "source_commit": "e6903a41049ace9a4ae22e467f244af747157b0d",
   "source_tree": "d979e9b8a1a22f77bf918bea15ab6f98e716d7dd",
   "total_seconds": 2700,

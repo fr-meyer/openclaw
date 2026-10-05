@@ -21,14 +21,29 @@ async function fixture(phase, options = {}) {
       if (p.endsWith('pids.max')) return '512';
       if (p.endsWith('cpu.max')) return '400000 100000';
       if (p === '/control/gate.json') return JSON.stringify({ job: '1-1', phase, nonce: options.wrongGate ? 'b'.repeat(64) : 'a'.repeat(64), admitted: true });
-      if (p.endsWith('/package.json')) return JSON.stringify({ packageManager: contract.packageManager, version: '2026.9.8' });
+      if (p.includes('/packages/') && p.endsWith('/package.json')) {
+        const name=p.split('/packages/')[1].split('/')[0]; const exports=JSON.parse(JSON.stringify(contract.package_exports[name]));
+        if(options.changedPackage) exports['.'].default='../escape.mjs';
+        return JSON.stringify({exports});
+      }
+      if (p.endsWith('/package.json')) {
+        const exports = Object.fromEntries(contract.sdk_exports.map(([key, runtime, types]) => [key, types === null ? { default: runtime } : { types, default: runtime }]));
+        if (options.changedExport) exports['./plugin-sdk/sqlite-runtime'].types = './dist/plugin-sdk/sqlite-runtime.d.ts';
+        if (options.escapedExport) exports['./plugin-sdk/core'].default = '../escape.js';
+        if (options.malformedExport) exports['./plugin-sdk/core'] = null;
+        return JSON.stringify({ packageManager: contract.packageManager, version: '2026.9.8', exports });
+      }
       if (p.endsWith('/pnpm-lock.yaml')) return 'LOCKBODY';
-      if (p.endsWith('sqlite-runtime.js')) return 'JS';
-      if (p.endsWith('sqlite-runtime.d.ts')) return 'DTS';
+      if (p.includes('/dist/')) return p.endsWith('.d.ts') || p.endsWith('.d.mts') ? 'DTS' : 'JS';
       throw new Error('unexpected fixture read ' + p);
     },
     realpathSync: p => p,
-    lstatSync: () => ({ dev: 1, uid: 1000, gid: 1000, isSymbolicLink: () => false, isDirectory: () => true, isFile: () => false }),
+    lstatSync(p) {
+      const output = p.includes('/dist/') && /\.(js|mjs|ts|mts|json)$/.test(p);
+      if(options.missingPackage && p.endsWith('/packages/ai/dist/index.mjs') || options.missingRoot && p.endsWith('/build-info.json')) throw new Error('ENOENT fixture');
+      if (options.missingRuntime && p.endsWith('/sqlite-runtime.js') || options.missingDeclaration && p.endsWith('/core.d.ts')) throw new Error('ENOENT fixture');
+      return { dev: options.crossDevice && output ? 2 : 1, uid: 1000, gid: 1000, nlink: options.hardlink && output ? 2 : 1, size: options.noSdk && output ? 0 : 3, isSymbolicLink: () => !!options.outputLink && (output || p.endsWith('/plugin-sdk')), isDirectory: () => !output, isFile: () => output };
+    },
     statSync: () => ({ size: options.noSdk ? 0 : 3, isFile: () => true }),
     readdirSync: () => [], existsSync: () => true, mkdirSync() {},
     writeFileSync(p, value) { writes[p] = value; },
@@ -88,4 +103,10 @@ const spawnFailure = await fixture('offline-compile', { spawnError: true }); ass
 const finalDirty = await fixture('offline-compile', { afterBuildDirty: true }); assert.equal(finalDirty.receipt.complete, false); assert.equal(finalDirty.commands.length, 4); assert.match(finalDirty.receipt.error, /source changed/); checks++;
 const fetchDirty = await fixture('warm-fetch', { afterFetchDirty: true }); assert.equal(fetchDirty.receipt.complete, false); assert.equal(fetchDirty.commands.length, 4); checks++;
 assert.equal(offline.timers, 0); assert.equal(warm.timers, 0); assert.equal(failed.timers, 0); checks++;
+assert.equal(offline.receipt.sdk.export_count, 352); assert.equal(offline.receipt.sdk.runtime_count, 352); assert.equal(offline.receipt.sdk.declaration_count, 158); assert.match(offline.receipt.sdk.sqlite_runtime.declaration_policy, /no types export/); checks++;
+for (const options of [{missingRuntime:true},{missingDeclaration:true},{changedExport:true},{escapedExport:true},{malformedExport:true},{outputLink:true},{crossDevice:true},{hardlink:true}]) {
+  const r=await fixture('offline-compile',options); assert.equal(r.receipt.complete,false); assert.equal(r.commands.length,4); checks++;
+}
+assert.equal(offline.receipt.packages.packages,16); assert.equal(offline.receipt.packages.exports,160); assert.equal(offline.receipt.packages.artifacts,323); checks++;
+for(const options of [{changedPackage:true},{missingPackage:true},{missingRoot:true}]) { const r=await fixture('offline-compile',options); assert.equal(r.receipt.complete,false); assert.equal(r.commands.length,4); checks++; }
 console.log(JSON.stringify({ checks, passed: checks, native_commands_or_network: 0, scope: 'exact-runtime-source-under-mocked-owners' }));

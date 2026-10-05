@@ -73,6 +73,63 @@ async function run(argv, network = false) {
   requireThat(result.code === 0 && result.signal === null, 'command failed: ' + argv.join(' '));
   remaining();
 }
+
+
+function qualifyOutput(relative) {
+  remaining();
+  requireThat(typeof relative === 'string' && /^\.\/(?:dist\/|packages\/[a-z-]+\/dist\/)[a-zA-Z0-9._/-]+$/.test(relative) && relative.slice(2).split('/').every(x => x && x !== '.' && x !== '..'), 'unsafe compiled artifact path');
+  const full = source + relative.slice(1);
+  for (let directory = path.dirname(full); directory !== source; directory = path.dirname(directory)) {
+    const st = fs.lstatSync(directory); requireThat(st.isDirectory() && !st.isSymbolicLink(), 'aliased compiled output directory');
+  }
+  const st = fs.lstatSync(full);
+  requireThat(st.isFile() && !st.isSymbolicLink() && st.size > 0 && st.size <= contract.compiled_cap_bytes && st.nlink === 1 && st.dev === fs.lstatSync(source).dev && st.uid === contract.compiler_uid && st.gid === contract.compiler_gid, 'compiled artifact missing, empty or unsafe');
+  return { path: relative, bytes: st.size, sha256: sha(full) };
+}
+function qualifyPackageOutputs() {
+  const manifest = []; let exports = 0;
+  for (const [name, expected] of Object.entries(contract.package_exports)) {
+    const pkg = JSON.parse(fs.readFileSync(source + '/packages/' + name + '/package.json', 'utf8'));
+    requireThat(JSON.stringify(Object.entries(pkg.exports).sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0).map(([key,value]) => [key,Object.entries(value).sort()])) === JSON.stringify(Object.entries(expected).sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0).map(([key,value]) => [key,Object.entries(value).sort()])), 'package export contract changed');
+    const paths = new Set();
+    for (const value of Object.values(expected)) {
+      requireThat(value && typeof value === 'object' && !Array.isArray(value) && typeof value.types === 'string' && typeof value.default === 'string' && Object.keys(value).every(k => ['types','import','default'].includes(k)), 'unsupported package export conditions');
+      for (const relative of Object.values(value)) {
+        requireThat(typeof relative === 'string' && relative.startsWith('./dist/'), 'unsafe package output');
+        paths.add('./packages/' + name + '/' + relative.slice(2));
+      }
+      exports++;
+    }
+    for (const relative of [...paths].sort()) manifest.push({ package: name, ...qualifyOutput(relative) });
+  }
+  for (const relative of contract.root_outputs) manifest.push({ package: 'openclaw', ...qualifyOutput(relative) });
+  return { packages: Object.keys(contract.package_exports).length, exports, artifacts: manifest.length, output_manifest_sha256: crypto.createHash('sha256').update(JSON.stringify(manifest)).digest('hex') };
+}
+
+function qualifySdkOutputs() {
+  const pkg = JSON.parse(fs.readFileSync(source + '/package.json', 'utf8'));
+  requireThat(pkg.exports && typeof pkg.exports === 'object' && !Array.isArray(pkg.exports), 'SDK exports absent');
+  const actual = Object.entries(pkg.exports).filter(([key]) => key.startsWith('./plugin-sdk/')).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) => {
+    requireThat(/^\.\/plugin-sdk\/[a-z0-9-]+$/.test(key) && value && typeof value === 'object' && !Array.isArray(value), 'unsupported SDK export');
+    requireThat(Object.keys(value).every(k => k === 'default' || k === 'types') && typeof value.default === 'string' && (!Object.hasOwn(value, 'types') || typeof value.types === 'string'), 'unsupported SDK export conditions');
+    return [key, value.default, value.types ?? null];
+  });
+  requireThat(actual.length > 0 && JSON.stringify(actual) === JSON.stringify(contract.sdk_exports), 'SDK export contract changed');
+  const manifest = [];
+  for (const [key, runtime, declaration] of actual) {
+    for (const [kind, relative] of [['runtime', runtime], ['declaration', declaration]]) {
+      if (relative === null) continue; // Exact pinned JS-only export, never inferred from a missing file.
+      const entry = key.slice('./plugin-sdk/'.length);
+      requireThat(relative === './dist/plugin-sdk/' + entry + (kind === 'runtime' ? '.js' : '.d.ts'), 'unsafe SDK artifact path');
+      manifest.push({ export: key, kind, ...qualifyOutput(relative) });
+    }
+  }
+  const hashJson = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const sqlite = manifest.find(x => x.export === './plugin-sdk/sqlite-runtime' && x.kind === 'runtime');
+  requireThat(sqlite && actual.find(x => x[0] === './plugin-sdk/sqlite-runtime')[2] === null, 'SQLite runtime-only contract missing');
+  return { source_version: pkg.version, export_count: actual.length, runtime_count: manifest.filter(x => x.kind === 'runtime').length, declaration_count: manifest.filter(x => x.kind === 'declaration').length, export_contract_sha256: hashJson(actual), output_manifest_sha256: hashJson(manifest), sqlite_runtime: { runtime_sha256: sqlite.sha256, declaration_policy: 'private-local-only-runtime; no types export in ordinary build' } };
+}
+
 async function main() {
   requireThat(['warm-fetch', 'offline-compile'].includes(phase), 'unsupported phase');
   requireThat(/^[0-9]+-1$/.test(job) && /^[0-9a-f]{64}$/.test(nonce), 'missing host issuance identity');
@@ -112,11 +169,8 @@ async function main() {
       // declaration ownership/heap admission. They are never substituted.
       await run(argv);
     }
-    for (const name of ['sqlite-runtime.js', 'sqlite-runtime.d.ts']) {
-      const p = source + '/dist/plugin-sdk/' + name;
-      requireThat(fs.statSync(p).isFile() && fs.statSync(p).size > 0, 'full SQLite SDK output missing');
-    }
-    receipt.sdk = { source_version: '2026.9.8', runtime_sha256: sha(source + '/dist/plugin-sdk/sqlite-runtime.js'), declaration_sha256: sha(source + '/dist/plugin-sdk/sqlite-runtime.d.ts') };
+    receipt.sdk = qualifySdkOutputs();
+    receipt.packages = qualifyPackageOutputs();
   }
   attestSource();
   requireThat(sha(source + '/pnpm-lock.yaml') === contract.lock_sha256, 'lock changed during qualification');

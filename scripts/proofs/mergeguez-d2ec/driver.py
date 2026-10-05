@@ -573,20 +573,45 @@ def handoff(args):
         need(uptime() < float(deadline), 'handoff deadline exhausted')
         os.chown(p, int(uid), int(gid), follow_symlinks=False)
 
+
+def compiled_walk(source, names, device):
+    # Retain original runtime symlinks as metadata, never follow or copy targets.
+    # Both lexical and physical targets must stay inside selected compiled roots.
+    source = Path(source)
+    need(source.resolve() == source and not source.is_symlink(), 'aliased compiled source')
+    need(isinstance(names, list) and names and len(names) == len(set(names)), 'invalid compiled roots')
+    need(all(isinstance(n, str) and re.fullmatch(r'(dist|dist-runtime|packages/[a-z-]+/dist)', n) for n in names), 'unsafe compiled root name')
+    roots = [source / n for n in names]
+    def retained(p): return any(p == r or r in p.parents for r in roots)
+    for root in roots:
+        need(root.is_dir() and root.resolve() == root and not root.is_symlink(), 'compiled root missing or aliased')
+        regular = 0; stack = [root]
+        while stack:
+            p = stack.pop(); st = p.lstat()
+            need(st.st_dev == device, 'compiled device crossing')
+            if stat.S_ISLNK(st.st_mode):
+                target = os.readlink(p)
+                need(not os.path.isabs(target), 'absolute compiled link')
+                lexical = Path(os.path.abspath(p.parent / target))
+                need(retained(lexical) and retained(p.resolve(strict=True)), 'escaping compiled link')
+            elif stat.S_ISDIR(st.st_mode): stack.extend(sorted(p.iterdir(), reverse=True))
+            else:
+                need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1, 'special or hard-linked compiled output')
+                regular += 1
+            yield p, st
+        need(regular > 0, 'empty compiled root')
+
 def archive(args):
     mount, control, device, cap, uid, gid, deadline = args
     mount, control = Path(mount), Path(control); need(mount.is_mount(), 'archive mount absent')
     need(control.resolve() == control and control.lstat().st_uid == int(uid), 'archive output custody changed')
+    contract = json.loads((PROOF / 'contract.json').read_text())
     files = []; total = 0
-    for name in ['dist', 'dist-runtime']:
-        root = mount / 'source' / name
-        need(root.is_dir() and not root.is_symlink(), 'compiled root missing')
-        for p, st in contained_walk(root, int(device)):
-            need(uptime() < float(deadline), 'archive deadline exhausted')
-            need(not stat.S_ISLNK(st.st_mode), 'compiled symlink cannot be retained safely')
-            if stat.S_ISREG(st.st_mode): total += st.st_size
-            need(total <= int(cap), 'compiled output cap exceeded')
-            files.append(p)
+    for p, st in compiled_walk(mount / 'source', contract['compiled_roots'], int(device)):
+        need(uptime() < float(deadline), 'archive deadline exhausted')
+        if stat.S_ISREG(st.st_mode): total += st.st_size
+        need(total <= int(cap), 'compiled output cap exceeded')
+        files.append(p)
     target = mount / 'compiled.tar.gz'; need(not target.exists(), 'archive target pre-exists')
     with tarfile.open(target, 'w:gz') as tar:
         for p in files:

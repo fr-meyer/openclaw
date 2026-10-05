@@ -643,4 +643,72 @@ class NativeCustody(unittest.TestCase):
         self.assertEqual([x[0] for x in calls], ['stop']); self.assertIn('custody_error', self.record)
         self.assertNotIn('settled', self.record); self.assertNotIn('cgroup', self.record)
 
+
+class CompiledRetention(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name).resolve(); self.source=self.root/'source';self.source.mkdir()
+        for name in C['compiled_roots']:
+            p=self.source/name;p.mkdir(parents=True);(p/'index.js').write_bytes(b'compiled')
+        self.device=self.source.stat().st_dev
+    def walk(self, names=None): return list(d.compiled_walk(self.source,names or C['compiled_roots'],self.device))
+    def test_all_eighteen_roots_retained(self):
+        rows=self.walk();self.assertEqual(len(rows),36)
+        self.assertTrue(all(any(p==self.source/n for p,_ in rows) for n in C['compiled_roots']))
+    def test_relative_runtime_link_to_dist_preserved_without_following(self):
+        link=self.source/'dist-runtime/alias.js';link.symlink_to('../dist/index.js')
+        rows=self.walk();self.assertIn(link,[p for p,_ in rows]);self.assertEqual(len(rows),37)
+    def test_absolute_link_refused(self):
+        (self.source/'dist-runtime/alias.js').symlink_to(self.source/'dist/index.js')
+        with self.assertRaisesRegex(d.Refusal,'absolute'):self.walk()
+    def test_link_to_unretained_dependency_refused(self):
+        n=self.source/'node_modules';n.mkdir();(n/'x.js').write_bytes(b'private dependency')
+        (self.source/'dist-runtime/x.js').symlink_to('../node_modules/x.js')
+        with self.assertRaisesRegex(d.Refusal,'escaping'):self.walk()
+    def test_link_outside_source_refused(self):
+        (self.root/'x.js').write_bytes(b'outside');(self.source/'dist-runtime/x.js').symlink_to('../../x.js')
+        with self.assertRaisesRegex(d.Refusal,'escaping'):self.walk()
+    def test_nested_link_escape_refused(self):
+        (self.root/'outside').mkdir();(self.root/'outside/x.js').write_bytes(b'x')
+        (self.source/'dist/hidden').symlink_to('../../outside')
+        (self.source/'dist-runtime/x.js').symlink_to('../dist/hidden/x.js')
+        with self.assertRaises(d.Refusal):self.walk()
+    def test_dangling_link_refused(self):
+        (self.source/'dist-runtime/x.js').symlink_to('../dist/missing.js')
+        with self.assertRaises(FileNotFoundError):self.walk()
+    def test_missing_package_root_refused(self):
+        p=self.source/C['compiled_roots'][-1];(p/'index.js').unlink();p.rmdir()
+        with self.assertRaisesRegex(d.Refusal,'root missing'):self.walk()
+    def test_empty_package_root_refused(self):
+        (self.source/C['compiled_roots'][-1]/'index.js').unlink()
+        with self.assertRaisesRegex(d.Refusal,'empty'):self.walk()
+    def test_root_alias_refused(self):
+        p=self.source/'dist-runtime';(p/'index.js').unlink();p.rmdir();p.symlink_to('dist')
+        with self.assertRaisesRegex(d.Refusal,'aliased'):self.walk()
+    def test_hardlink_refused(self):
+        os.link(self.source/'dist/index.js',self.source/'dist/x.js')
+        with self.assertRaisesRegex(d.Refusal,'hard-linked'):self.walk()
+    def test_special_file_refused(self):
+        os.mkfifo(self.source/'dist/fifo')
+        with self.assertRaisesRegex(d.Refusal,'special'):self.walk()
+    def test_device_crossing_refused(self):
+        with self.assertRaisesRegex(d.Refusal,'device'):list(d.compiled_walk(self.source,C['compiled_roots'],self.device+1))
+    def test_root_path_escape_and_duplicates_refused(self):
+        for names in [['../outside'],['dist','dist'],['packages/../dist'],['/dist']]:
+            with self.subTest(names=names), self.assertRaises(d.Refusal):self.walk(names)
+    def test_real_archive_keeps_safe_link_and_packages(self):
+        control=self.root/'control';control.mkdir();link=self.source/'dist-runtime/alias.js';link.symlink_to('../dist/index.js')
+        with patch.object(Path,'is_mount',return_value=True),patch.object(d,'uptime',return_value=1),patch.object(d.os,'chown'):
+            d.archive([str(self.root),str(control),str(self.device),'1048576',str(os.getuid()),str(os.getgid()),'1000'])
+        with d.tarfile.open(control/'compiled.tar.gz') as archive:
+            members=archive.getmembers();mapping={m.name:m for m in members}
+            self.assertEqual(mapping['dist-runtime/alias.js'].linkname,'../dist/index.js');self.assertTrue(mapping['dist-runtime/alias.js'].issym())
+            self.assertIn('packages/ai/dist/index.js',mapping);self.assertIn('packages/sdk/dist/index.js',mapping)
+            self.assertEqual(len(members),37)
+    def test_size_cap_failure_never_publishes_archive(self):
+        control=self.root/'control';control.mkdir()
+        with patch.object(Path,'is_mount',return_value=True),patch.object(d,'uptime',return_value=1),patch.object(d.os,'chown'):
+            with self.assertRaisesRegex(d.Refusal,'cap'):d.archive([str(self.root),str(control),str(self.device),'1',str(os.getuid()),str(os.getgid()),'1000'])
+        self.assertFalse((control/'compiled.tar.gz').exists())
+
 if __name__ == '__main__': unittest.main()
