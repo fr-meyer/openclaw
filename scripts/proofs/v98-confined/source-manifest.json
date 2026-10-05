@@ -1,249 +1,261 @@
 {
   "files": [
     {
+      "path": ".github/workflows/v98-confined-runtime-3.yml",
       "bytes": 5422,
       "mode": "0o644",
-      "path": ".github/workflows/v98-confined-runtime-3.yml",
       "sha256": "093b65a526f4f6e54ee87758403177acf99123fd5a86b8f9f9875a9530244279"
     },
     {
+      "path": ".github/workflows/v98-confined-runtime-4.yml",
       "bytes": 5585,
       "mode": "0o644",
-      "path": ".github/workflows/v98-confined-runtime-4.yml",
       "sha256": "880f06c037b9b3fbcab71c1d7312ee13acdf95892cf2bdc0ad2adc6eb650089d"
     },
     {
-      "bytes": 5629,
-      "mode": "0o644",
       "path": ".github/workflows/v98-confined-runtime-5.yml",
-      "sha256": "7e9d0337d0c6272af0e2e72c5e8e668617649f7a2d8e6227561a49227959899a"
-    },
-    {
-      "bytes": 22609,
+      "bytes": 6391,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/README.md",
-      "sha256": "c202dd0c16e0cd0037adb29e285a5c8e1270db2c1160b03ff3a869b54f76b385"
+      "sha256": "0bd57c1c95af48b07367a82862af090051f4093c9fb0e74d0a71de9939c74290"
     },
     {
+      "path": "scripts/proofs/v98-confined/README.md",
+      "bytes": 24646,
+      "mode": "0o644",
+      "sha256": "a82d7b278366a34e18b7ee43f65a6d7c3270732778d18db7aa50c25639c7efb2"
+    },
+    {
+      "path": "scripts/proofs/v98-confined/accounting_owner.py",
       "bytes": 21278,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/accounting_owner.py",
       "sha256": "e6a3137c23ecae415c644f4c31a89031774eea3d86773da4f1eb49fe80799350"
     },
     {
+      "path": "scripts/proofs/v98-confined/capability-probe.mjs",
       "bytes": 5452,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/capability-probe.mjs",
       "sha256": "a13080af03243a0e8bc3a62cf10a6acf56f9a1e906b5883c5282a8a4aaa14f0d"
     },
     {
+      "path": "scripts/proofs/v98-confined/derive_read_policy.py",
       "bytes": 22960,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/derive_read_policy.py",
-      "sha256": "62e6d5dad87f745e527528e5a38fdb5548f5a30bd25db49a22da14d8634e9927"
+      "sha256": "650c0ec725aa429df0f4426d804b9fa1dc1c97af9f935a2e1a0d6cb1d0b7f94a"
     },
     {
-      "bytes": 82672,
-      "mode": "0o644",
       "path": "scripts/proofs/v98-confined/host-runtime.py",
-      "sha256": "127338056b581201121115540bab88bb0a77f93b5d7ce5c6daf2def22a75b50f"
-    },
-    {
-      "bytes": 24602,
+      "bytes": 83388,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/inputs/fixture.mjs",
-      "sha256": "e2175143f99b35fd3cbcbac86a07951f76a0ff5f8d27744a31b39b5f63db2522"
+      "sha256": "d1a131cf9d285ccc9b879d9d0abaf90bd0fa231772d8179d419b882d360a455f"
     },
     {
+      "path": "scripts/proofs/v98-confined/inputs/fixture.mjs",
+      "bytes": 29487,
+      "mode": "0o644",
+      "sha256": "6ca0b85238594eb4294514ec08e0b60770953b37ed783f83e7f2920088144dd2"
+    },
+    {
+      "path": "scripts/proofs/v98-confined/inputs/predecessor-publisher-controller.mjs",
       "bytes": 43645,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/inputs/predecessor-publisher-controller.mjs",
       "sha256": "c3d63b3c567541f72fb33c6982b41d4d5e4efa7fdd2d43ba5d7d14e624ebdbfc"
     },
     {
+      "path": "scripts/proofs/v98-confined/inputs/predecessor-state.sql",
       "bytes": 101780,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/inputs/predecessor-state.sql",
       "sha256": "32a9ec60e38f1511e6f5fcd532f4c631d680d537a8325601f5bdf8221cf20fa3"
     },
     {
+      "path": "scripts/proofs/v98-confined/inputs/predecessor-workboard.ts",
       "bytes": 60504,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/inputs/predecessor-workboard.ts",
       "sha256": "aa15bf48dbe292993a47c7286d5f7e12fe2ffbd74442c92b37ad98018bd2e810"
     },
     {
+      "path": "scripts/proofs/v98-confined/native-boundary.h",
       "bytes": 5727,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/native-boundary.h",
       "sha256": "eb54e1898b9c4c40dfce2192cd12d6c8135b51b85f40e06d7f408f27aa6b0f33"
     },
     {
+      "path": "scripts/proofs/v98-confined/native-filter.h",
       "bytes": 1459,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/native-filter.h",
       "sha256": "568e0f5c09ce5a0460833b5becb80049cd20854d57c692c26a17a26ca7cf5e59"
     },
     {
+      "path": "scripts/proofs/v98-confined/native-policy-test.c",
       "bytes": 12642,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/native-policy-test.c",
       "sha256": "fe32ac30f75c59d0f67d299c6267914b8d5fb002493699a2d1d0ab9fb6f2985e"
     },
     {
+      "path": "scripts/proofs/v98-confined/native-policy.c",
       "bytes": 5863,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/native-policy.c",
       "sha256": "c6bb422fd4238b53d1cb5490d13f3a431a6fb358a9c73070bbf6aea833afca48"
     },
     {
+      "path": "scripts/proofs/v98-confined/native-policy.h",
       "bytes": 2919,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/native-policy.h",
       "sha256": "26545e986957740b6d455dd43a4dab19cf8b4e00ae8381c6553e153e0b820dba"
     },
     {
+      "path": "scripts/proofs/v98-confined/native-sha256.h",
       "bytes": 2896,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/native-sha256.h",
       "sha256": "ef248d050ede519c535b1370e574f3007775bf241ddb81b08b96826a48c12bb6"
     },
     {
-      "bytes": 16214,
-      "mode": "0o644",
       "path": "scripts/proofs/v98-confined/packet.json",
-      "sha256": "076541f3a312a307834e698d4797a334d20938543fd5e4d25de281fb2fb58028"
+      "bytes": 17956,
+      "mode": "0o644",
+      "sha256": "71affb22198458a989a57f58281d2f22be323852a4008815f7addd225a2155a2"
     },
     {
+      "path": "scripts/proofs/v98-confined/proposal/image-openssl.cnf",
       "bytes": 12332,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/proposal/image-openssl.cnf",
       "sha256": "7ae8cae2e64856b34c80276deb1dcf60f76da27bc1e00382201ba7bb7dc33311"
     },
     {
+      "path": "scripts/proofs/v98-confined/proposal/openssl-read-proposal.json",
       "bytes": 4129,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/proposal/openssl-read-proposal.json",
       "sha256": "0f93b86278cc0cac38d06284e54dade24e223bebff60d3e1147cd77b6cc06b59"
     },
     {
+      "path": "scripts/proofs/v98-confined/proposal/render_delta.py",
       "bytes": 15467,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/proposal/render_delta.py",
       "sha256": "652f3e7ae389962286e3532c0e7622d9c1f04c573b34c25b6c5aa48c3d03ef8c"
     },
     {
-      "bytes": 128258,
-      "mode": "0o644",
       "path": "scripts/proofs/v98-confined/read-policy/helper-read-paths.txt",
-      "sha256": "069bceb6c8ff30599167831821decee2e96ccfefc7cca66e1b3ddd33c0f3af5d"
-    },
-    {
       "bytes": 128258,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/read-policy/parent-read-paths.txt",
       "sha256": "069bceb6c8ff30599167831821decee2e96ccfefc7cca66e1b3ddd33c0f3af5d"
     },
     {
+      "path": "scripts/proofs/v98-confined/read-policy/parent-read-paths.txt",
+      "bytes": 128258,
+      "mode": "0o644",
+      "sha256": "069bceb6c8ff30599167831821decee2e96ccfefc7cca66e1b3ddd33c0f3af5d"
+    },
+    {
+      "path": "scripts/proofs/v98-confined/read-policy/runtime-read-binding.json",
       "bytes": 585337,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/read-policy/runtime-read-binding.json",
-      "sha256": "4bec72ce028987c862fc2cef16a7906bad8295695de89565f7fde6542943fdec"
+      "sha256": "94eed7f220bf6c0e56e58b518bad7eed632cbb507db5b87be4f023c5208adafa"
     },
     {
+      "path": "scripts/proofs/v98-confined/startup-prerequisites.json",
       "bytes": 12586,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/startup-prerequisites.json",
       "sha256": "3f2f1e1984b22b97684ead8a15e312026a8f758fb691bf916b61f92a8ab701df"
     },
     {
+      "path": "scripts/proofs/v98-confined/test_accounting_owner.py",
       "bytes": 24533,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/test_accounting_owner.py",
       "sha256": "ed500b211d1ca7dc397079b448b4016c1baeca31608eff200ce944fa74ec291f"
     },
     {
+      "path": "scripts/proofs/v98-confined/test_acquisition.py",
       "bytes": 8535,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/test_acquisition.py",
       "sha256": "d8d16e2b7ab6b4c6cd123518ea94b04ac2bbc23bc7410acd1d9d742a296da099"
     },
     {
-      "bytes": 51978,
+      "path": "scripts/proofs/v98-confined/test_fixture_read_boundary.mjs",
+      "bytes": 10158,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/test_host_runtime.py",
-      "sha256": "d8a1305c4c6fb63d95a2ac83409d1ad89b76774108b8c76f5100236a6759bb78"
+      "sha256": "2714ea60e6c3381e5ffa5ed9e5bd4e206d6b72c691fc33d5d9a58ee0d37670fa"
     },
     {
+      "path": "scripts/proofs/v98-confined/test_host_runtime.py",
+      "bytes": 52303,
+      "mode": "0o644",
+      "sha256": "0ccf091a85a768a2cd3e43bfb9082b4ee36371cc87fde62d373d31963ad58a3c"
+    },
+    {
+      "path": "scripts/proofs/v98-confined/test_hosted_admission.py",
+      "bytes": 3460,
+      "mode": "0o644",
+      "sha256": "49f74dd6266b84af381a1486c9cff198ebf7a555380bffc9faf7e931231c527a"
+    },
+    {
+      "path": "scripts/proofs/v98-confined/test_openssl_proposal.py",
       "bytes": 11887,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/test_openssl_proposal.py",
-      "sha256": "5a8f6b34771d7cc0e066686d92e79f79efaa076c05b21046f0f7e26518fe4091"
+      "sha256": "df3d805ad397180b9f2d423017053d82c0886a0f84299d146500a9d76af471b3"
     },
     {
+      "path": "scripts/proofs/v98-confined/test_read_policy.py",
       "bytes": 10816,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/test_read_policy.py",
       "sha256": "ce2423a000bbcc5eb52deef3e4efb32889ab11f0393e77b200ac4c610ee2d83d"
     },
     {
+      "path": "scripts/proofs/v98-confined/test_scratch_usage.py",
       "bytes": 5466,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/test_scratch_usage.py",
       "sha256": "ae920e5b862c41a96d4c0fabf355c42a0704912d60348eedd6d2029432d2c66b"
     },
     {
+      "path": "scripts/proofs/v98-confined/v98-confine.c",
       "bytes": 2245,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/v98-confine.c",
       "sha256": "071255a5b34c11e138aaf154baf3ac60b6122598c5102eca35234779b604bdb4"
     },
     {
+      "path": "scripts/proofs/v98-confined/v98-supervisor.c",
       "bytes": 28415,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-confined/v98-supervisor.c",
-      "sha256": "383a90665947deb80171ff7c128f0e5cfdd2422652842e07504327cfd3be10c5"
+      "sha256": "ca92038958255448e0f94aa753fe8b620843721fe7cff43c45ace910574626de"
     },
     {
+      "path": "scripts/proofs/v98-parity/README.md",
       "bytes": 4364,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-parity/README.md",
       "sha256": "374b38b9032e51831cc6fc5c15908caa742a2268ca17097fbc6950be79dc219b"
     },
     {
+      "path": "scripts/proofs/v98-parity/collect-artifacts.py",
       "bytes": 27218,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-parity/collect-artifacts.py",
       "sha256": "03b9a4627af452e6ad16361f3bcd9dbc3e55327661a11d500bc2c387089572d7"
     },
     {
+      "path": "scripts/proofs/v98-parity/contract.json",
       "bytes": 14996,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-parity/contract.json",
       "sha256": "56f06026d785dadda5bd42854dc80b8afe9780dcbaf0f41762f5e2c30ec3fb6d"
     },
     {
+      "path": "scripts/proofs/v98-parity/observed-layout.json",
       "bytes": 2959,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-parity/observed-layout.json",
       "sha256": "e21f1ceb5b22ce3020d475b6710fbf4b2fa926bfa60b166a92fdaa815a540853"
     },
     {
+      "path": "scripts/proofs/v98-parity/test_collector.py",
       "bytes": 26529,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-parity/test_collector.py",
       "sha256": "0e6ca4ae83e3a5a77264e86009922fd65b5f6618c85de4bc304edc94ee4d2214"
     },
     {
+      "path": "scripts/proofs/v98-parity/test_validator.py",
       "bytes": 38924,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-parity/test_validator.py",
       "sha256": "5e2d477e54926b2d987bb6a1fdf6db72ae0752362a170a0d5242b7e1060f0816"
     },
     {
+      "path": "scripts/proofs/v98-parity/verify-artifact.py",
       "bytes": 32917,
       "mode": "0o644",
-      "path": "scripts/proofs/v98-parity/verify-artifact.py",
       "sha256": "fcf6f055213ad478ca42bb2689b2f248894932fdf65dd4478912ea9b01e16912"
     }
   ],

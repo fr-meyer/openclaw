@@ -6,15 +6,15 @@ This proof tooling preserves product commit
 Linux amd64 image; it does not rebuild, patch, install dependencies into, or
 start the image's Gateway entrypoint. No fixture phase has run locally.
 
-Attempt4 at `d890e9ff289c657c8bb759a98511008e9772148d` proved startup,
-capability, forced deadline and normal failure lifetime-accounting/cleanup.
-Fixture prepare failed with `SQLITE_FULL`; phases 2–6 were never run. This local
-successor corrects raw fixture storage without changing the product or resource
-profile; all successor phases remain unexecuted. No new publication or hosted
-run is authorized. Branch `candidate/v2026.9.8-runtime-admission-4` and its
-workflow consumed their one-run/one-attempt allowance. Prior failed receipts
-remain historical evidence. Any future execution needs its own
-reviewed identity and explicit approval after the blocking gates close. No main
+Attempt5 at `0cd0ac7702c09f0c2a9a8b0471d14563dff64ab6` proved startup,
+capability, forced deadline and settled lifetime-accounting/cleanup. The 7df2254
+seed correction reached all 1,081 cards, but prepare then refused the empty
+WAL/SHM left by closed read-only manifest handles. Phases 2–6 were never run.
+This local successor corrects that reader lifecycle and reuses the existing
+branch/workflow through explicit commit/run approval. Its actual efficacy is
+unexecuted, and it authorizes no new publication, variable writes or hosted
+test. Prior failed receipts remain historical evidence. Future execution needs
+its exact reviewed source and selected run explicitly approved. No main
 merge, force push, production access, provider data, new VM, registry
 publication or production deployment is included.
 
@@ -211,8 +211,8 @@ Retained failed receipts are never converted to passes.
 `source-manifest.json` binds executable tooling, policies and frozen inputs.
 The final external approval packet binds that manifest, exact Git commit/tree,
 workflow, independent review and local test receipts. The workflow must run at
-that approved commit, once. The first-run and first-attempt guards refuse later
-workflow runs or UI reruns, using GitHub's [run counters](https://docs.github.com/en/actions/reference/workflows-and-actions/variables).
+that approved commit, once. The selected commit/run-number and first-attempt
+guards refuse other commits/runs and UI reruns, using GitHub's [run counters](https://docs.github.com/en/actions/reference/workflows-and-actions/variables).
 It must not silently fetch a replacement artifact
 or retry with a wider profile. Binary digests are recorded after the approved
 host compilation, before any container execution, rather than invented locally.
@@ -300,17 +300,18 @@ statement/index temporaries, helper controls or allocated tmpfs high-water.
 The scratch cap remains 16 MiB; all other resource/security/product limits and
 the authenticated built image are unchanged. Complete six-phase storage and
 runtime proof remains pending. This local correction authorizes no publication,
-hosted retry or resource increase. A future attempt needs a reviewed fresh
-execution identity and explicit approval; workflow4 cannot be rerun.
+hosted retry or resource increase. A future attempt needs a reviewed exact
+source/run admission and explicit approval; prior consumed runs cannot be rerun.
 
-The exact local successor proposes distinct branch
+The historical attempt5 proposal selected distinct branch
 `candidate/v2026.9.8-runtime-admission-5` and workflow
 `.github/workflows/v98-confined-runtime-5.yml`: one push, run1/attempt1,
 Ubuntu 24.04, a 15-minute job and seven-day evidence under the existing 20 MiB
 upload cap. The host refuses any other ref or counters. Live branch/workflow
 absence and retained artifact availability are checked read-only in the
 external proposal receipt and must be rechecked immediately before publication.
-No push or hosted test is authorized by this source.
+That proposal was approved and run as 37262067025. The reusable successor below
+replaces the branch-per-fix choice; it does not require another branch/workflow.
 
 Host observations use a nofollow descriptor for the exact mounted scratch
 inode and `fstatvfs`, verifying the unchanged 16 MiB capacity. Allocation and inode
@@ -325,10 +326,37 @@ The six-phase preflight accounts for raw/main/WAL live-backup and close-checkpoi
 overlap, retained predecessor/candidate pairs, Doctor's private state snapshot
 and token controls, reopened migration main/WAL/temp growth, and an independent
 rollback pair. Guarded raw terms imply a conditional phase1 term of 9,455,680 bytes
-plus unknown backup journals/SHM/temp/metadata. Full Workboard and migration
-peaks remain unmeasured; all records/assertions and the 16 MiB limit remain intact.
+plus unknown backup journals/SHM/temp/metadata. Attempt5 observed full seeded
+Workboard main100pages/409600bytes and a sampled phase1 allocation maximum of
+6770688bytes, not an exact peak. Migration/restore peaks remain unmeasured;
+all records/assertions and the 16 MiB limit remain intact.
 
 [SQLite WAL](https://www.sqlite.org/wal.html) and
 [SQLite PRAGMAs](https://www.sqlite.org/pragma.html) describe the transaction,
 checkpoint and cache-spill behavior underlying this source correction. These
 contracts and inert tests do not replace actual confined runtime measurements.
+## Reusable branch successor (local proposal)
+
+Reuse `candidate/v2026.9.8-runtime-admission-5` and its existing workflow file.
+Run 37262067025, number 1/attempt 1, remains a retained failed attempt. A new
+explicit approval must identify the exact reviewed commit and next workflow run
+number and authorize setting the public, nonsecret Actions variables
+`V98_RUNTIME_APPROVED_COMMIT` and `V98_RUNTIME_APPROVED_RUN_NUMBER`, followed by
+one normal fast-forward push. Missing or mismatched values skip the admission
+job. The host rechecks canonical SHA/counter syntax, exact commit, repository,
+ref, push event and attempt 1. Concurrency belongs to that guarded job, so a
+skipped push cannot replace its pending admission. Every push still advances
+the workflow counter: recheck immediately before variable writes/publication;
+reconcile drift and never advance the latch automatically. No variable write,
+publication or hosted execution is authorized by this local proposal.
+
+The 7df2254 seed correction and all 1,081 cards/17 Workboard tables remain.
+Attempt 5 reached the complete seed and manifest, then failed when read-only
+manifest handles left empty WAL/SHM files. The local correction keeps read-only
+assertions and strict consolidation. It pins both main identities/hashes before
+reading, and after successful assertions/close lets SQLite settle only an owned
+zero-length WAL plus paired 32 KiB SHM. Checkpoint, close, sidecar absence and
+unchanged main identities/hashes must all pass. It never unlinks a sidecar, and
+the same owner covers every nested predecessor/candidate/rollback read.
+Actual efficacy and all-six cap fit remain unproved. The existing 16 MiB scratch,
+20 MiB evidence, 15-minute job, seven-day retention and confinement stay fixed.

@@ -161,6 +161,7 @@ def verify_source_manifest(tooling, expected_commit):
          "native-filter.h", "native-boundary.h", "native-sha256.h", "capability-probe.mjs",
          "host-runtime.py", "test_host_runtime.py", "derive_read_policy.py", "packet.json",
          "startup-prerequisites.json", "accounting_owner.py", "test_accounting_owner.py", "test_scratch_usage.py",
+         "test_hosted_admission.py", "test_fixture_read_boundary.mjs",
          "proposal/openssl-read-proposal.json", "proposal/image-openssl.cnf",
          "proposal/render_delta.py", "test_openssl_proposal.py",
          "read-policy/runtime-read-binding.json", "read-policy/parent-read-paths.txt",
@@ -1428,13 +1429,26 @@ def collect_evidence(validation, host_output, destination):
     return manifest
 
 
+def verify_hosted_attempt(commit):
+    approved = os.environ.get("V98_APPROVED_COMMIT", "")
+    number = os.environ.get("V98_APPROVED_RUN_NUMBER", "")
+    require(isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)
+            and re.fullmatch(r"[0-9a-f]{40}", approved)
+            and re.fullmatch(r"[1-9][0-9]{0,19}", number)
+            and approved == commit == os.environ.get("GITHUB_SHA")
+            and os.environ.get("GITHUB_REPOSITORY") == "fr-meyer/openclaw"
+            and os.environ.get("GITHUB_REF") == "refs/heads/candidate/v2026.9.8-runtime-admission-5"
+            and os.environ.get("GITHUB_EVENT_NAME") == "push"
+            and os.environ.get("GITHUB_RUN_NUMBER") == number
+            and os.environ.get("GITHUB_RUN_ATTEMPT") == "1",
+            "wrong hosted workflow identity or explicit commit/run approval")
+    return {"commit": commit, "runNumber": int(number), "runAttempt": 1}
+
+
 def execute(args):
     require(os.geteuid() == 0 and platform.system() == "Linux" and platform.machine() == "x86_64",
             "hosted root Linux x86-64 runner required")
-    require(os.environ.get("GITHUB_REPOSITORY") == "fr-meyer/openclaw"
-            and os.environ.get("GITHUB_REF") == "refs/heads/candidate/v2026.9.8-runtime-admission-5"
-            and os.environ.get("GITHUB_RUN_ATTEMPT") == "1"
-            and os.environ.get("GITHUB_RUN_NUMBER") == "1", "wrong hosted workflow identity")
+    verify_hosted_attempt(args.tooling_commit)
     tooling = Path(args.tooling).resolve()
     source = Path(args.source).resolve()
     commit = args.tooling_commit

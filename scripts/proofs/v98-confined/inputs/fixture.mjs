@@ -79,10 +79,118 @@ function requireConsolidated(root, phase) {
   for (const which of ["state", "workboard"]) {
     const databasePath = sqlitePath(root, phase, which);
     for (const suffix of ["-wal", "-shm", "-journal"]) {
-      if (fs.existsSync(databasePath + suffix)) {
+      if (readSidecarStat(databasePath + suffix)) {
         throw new Error(`UNSETTLED_SQLITE_SIDECAR:${which}:${suffix}`);
       }
     }
+  }
+}
+
+function readSidecarStat(file) {
+  try {
+    return fs.lstatSync(file);
+  } catch (error) {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+function readMainPin(file) {
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let result;
+  let failure;
+  try {
+    const before = fs.fstatSync(fd);
+    if (!before.isFile() || before.nlink !== 1 || before.uid !== 1000 || before.gid !== 1000) {
+      throw new Error("READ_BOUNDARY_MAIN_IDENTITY_INVALID");
+    }
+    const digest = sha256(fs.readFileSync(fd));
+    const after = fs.fstatSync(fd);
+    for (const key of ["dev", "ino", "size", "uid", "gid", "nlink"]) {
+      if (before[key] !== after[key]) throw new Error("READ_BOUNDARY_MAIN_CHANGED");
+    }
+    result = { file, dev: before.dev, ino: before.ino, size: before.size,
+      uid: before.uid, gid: before.gid, nlink: before.nlink, sha256: digest };
+  } catch (error) {
+    failure = error;
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch (error) {
+      failure = failure ? new AggregateError([failure, error], "READ_BOUNDARY_FD_CLOSE_FAILED") : error;
+    }
+  }
+  if (failure) throw failure;
+  return result;
+}
+
+function captureReadBoundary(root, phase) {
+  requireConsolidated(root, phase);
+  const pins = ["state", "workboard"].map((which) => readMainPin(sqlitePath(root, phase, which)));
+  requireConsolidated(root, phase);
+  return pins;
+}
+
+function settleReadBoundary(root, phase, pins) {
+  // Read-only WAL connections can leave empty coordination files. Only the
+  // successfully closed, unchanged synthetic read scope may ask SQLite to
+  // settle them; file deletion is never a substitute for SQLite close.
+  if (pins.length !== 2 || pins.some((pin, index) =>
+    pin.file !== sqlitePath(root, phase, index === 0 ? "state" : "workboard"))) {
+    throw new Error("READ_BOUNDARY_PINS_INVALID");
+  }
+  const pending = [];
+  for (const pin of pins) {
+    if (JSON.stringify(readMainPin(pin.file)) !== JSON.stringify(pin)) {
+      throw new Error("READ_BOUNDARY_MAIN_CHANGED");
+    }
+    const journal = readSidecarStat(pin.file + "-journal");
+    const wal = readSidecarStat(pin.file + "-wal");
+    const shm = readSidecarStat(pin.file + "-shm");
+    if (journal || Boolean(wal) !== Boolean(shm)) throw new Error("READ_BOUNDARY_SIDECARS_UNEXPECTED");
+    if (!wal) continue;
+    for (const [sidecar, size] of [[wal, 0], [shm, 32768]]) {
+      if (!sidecar.isFile() || sidecar.nlink !== 1 || sidecar.size !== size ||
+          sidecar.dev !== pin.dev || sidecar.uid !== pin.uid || sidecar.gid !== pin.gid) {
+        throw new Error("READ_BOUNDARY_SIDECARS_UNEXPECTED");
+      }
+    }
+    pending.push({ pin, wal, shm });
+  }
+  for (const { pin, wal, shm } of pending) {
+    if (JSON.stringify(readMainPin(pin.file)) !== JSON.stringify(pin)) throw new Error("READ_BOUNDARY_MAIN_CHANGED");
+    for (const [suffix, expected] of [["-wal", wal], ["-shm", shm]]) {
+      const actual = readSidecarStat(pin.file + suffix);
+      if (!actual || !actual.isFile() || ["dev", "ino", "size", "uid", "gid", "nlink"].some((key) =>
+        actual[key] !== expected[key])) throw new Error("READ_BOUNDARY_SIDECAR_CHANGED");
+    }
+    if (readSidecarStat(pin.file + "-journal")) throw new Error("READ_BOUNDARY_SIDECARS_UNEXPECTED");
+    let owner;
+    let failure;
+    try {
+      owner = new DatabaseSync(pin.file);
+      const checkpoint = owner.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      if (checkpoint?.busy !== 0 || checkpoint.log !== 0 || checkpoint.checkpointed !== 0) {
+        throw new Error("READ_BOUNDARY_CHECKPOINT_UNSETTLED");
+      }
+    } catch (error) {
+      failure = error;
+    } finally {
+      try {
+        owner?.close();
+      } catch (error) {
+        failure = failure ? new AggregateError([failure, error], "READ_BOUNDARY_OWNER_CLOSE_FAILED") : error;
+      }
+    }
+    if (failure) throw failure;
+    for (const suffix of ["-wal", "-shm", "-journal"]) {
+      if (readSidecarStat(pin.file + suffix)) throw new Error("READ_BOUNDARY_OWNER_DID_NOT_SETTLE");
+    }
+    if (JSON.stringify(readMainPin(pin.file)) !== JSON.stringify(pin)) throw new Error("READ_BOUNDARY_MAIN_CHANGED");
+  }
+  requireConsolidated(root, phase);
+  for (const pin of pins) {
+    if (JSON.stringify(readMainPin(pin.file)) !== JSON.stringify(pin)) throw new Error("READ_BOUNDARY_MAIN_CHANGED");
   }
 }
 
@@ -138,7 +246,7 @@ function assertIntegrity(database) {
   }
 }
 
-function closeDatabases(databases) {
+function closeDatabases(databases, primaryFailure) {
   const failures = [];
   for (const database of databases) {
     if (!database) {
@@ -151,6 +259,7 @@ function closeDatabases(databases) {
     }
   }
   if (failures.length > 0) {
+    if (primaryFailure !== undefined) failures.unshift(primaryFailure);
     throw new AggregateError(failures, "SYNTHETIC_DATABASE_CLOSE_FAILED");
   }
 }
@@ -337,9 +446,11 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   }
   requireConsolidated(root, "predecessor");
   requireConsolidated(root, "candidate");
+  const readBoundary = captureReadBoundary(root, "predecessor");
   const stateRead = new DatabaseSync(sqlitePath(root, "predecessor", "state"), { readOnly: true });
   let workboardRead;
   let manifest;
+  let readFailure;
   try {
     workboardRead = new DatabaseSync(sqlitePath(root, "predecessor", "workboard"), { readOnly: true });
     assertIntegrity(stateRead);
@@ -357,9 +468,13 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
         .map((name) => [name, sha256(fs.readFileSync(path.join(predecessor, name)))])) };
     fs.writeFileSync(path.join(root, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n",
       { mode: 0o600 });
+  } catch (error) {
+    readFailure = error;
+    throw error;
   } finally {
-    closeDatabases([workboardRead, stateRead]);
+    closeDatabases([workboardRead, stateRead], readFailure);
   }
+  settleReadBoundary(root, "predecessor", readBoundary);
   requireConsolidated(root, "predecessor");
   requireConsolidated(root, "candidate");
   for (const which of ["state", "workboard"]) {
@@ -385,8 +500,10 @@ function assertPhase(root, phase) {
     throw new Error("FIXTURE_MANIFEST_INVALID");
   }
   requireConsolidated(root, phase);
+  const readBoundary = captureReadBoundary(root, phase);
   const stateDb = new DatabaseSync(sqlitePath(root, phase, "state"), { readOnly: true });
   let workboardDb;
+  let readFailure;
   try {
     workboardDb = new DatabaseSync(sqlitePath(root, phase, "workboard"), { readOnly: true });
     assertIntegrity(stateDb);
@@ -436,9 +553,13 @@ function assertPhase(root, phase) {
         throw new Error(`FILE_PRESERVATION_FAILED:${name}`);
       }
     }
+  } catch (error) {
+    readFailure = error;
+    throw error;
   } finally {
-    closeDatabases([workboardDb, stateDb]);
+    closeDatabases([workboardDb, stateDb], readFailure);
   }
+  settleReadBoundary(root, phase, readBoundary);
   process.stdout.write(JSON.stringify({ phase, rowsPreserved: true, syntheticOnly: true }) + "\n");
 }
 

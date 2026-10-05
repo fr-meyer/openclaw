@@ -110,16 +110,17 @@ class HostContractTests(unittest.TestCase):
     def test_consumed_ref_or_second_run_attempt_refuses_before_source_or_host_actions(self):
         allowed = {"GITHUB_REPOSITORY": "fr-meyer/openclaw",
                    "GITHUB_REF": "refs/heads/candidate/v2026.9.8-runtime-admission-5",
-                   "GITHUB_RUN_ATTEMPT": "1", "GITHUB_RUN_NUMBER": "1"}
+                   "GITHUB_RUN_ATTEMPT": "1", "GITHUB_RUN_NUMBER": "2", "GITHUB_EVENT_NAME": "push",
+                   "GITHUB_SHA": "d7" * 20, "V98_APPROVED_COMMIT": "d7" * 20, "V98_APPROVED_RUN_NUMBER": "2"}
         for key, value in [("GITHUB_REF", "refs/heads/candidate/v2026.9.8-runtime-admission-4"),
-                           ("GITHUB_RUN_NUMBER", "2"), ("GITHUB_RUN_ATTEMPT", "2")]:
+                           ("GITHUB_RUN_NUMBER", "1"), ("GITHUB_RUN_ATTEMPT", "2")]:
             with self.subTest(key=key), patch.object(HOST.os, "geteuid", return_value=0), \
                  patch.object(HOST.platform, "system", return_value="Linux"), \
                  patch.object(HOST.platform, "machine", return_value="x86_64"), \
                  patch.dict(HOST.os.environ, {**allowed, key: value}, clear=True), \
                  patch.object(HOST, "verify_source_manifest") as verified, patch.object(HOST, "command") as invoked:
                 with self.assertRaisesRegex(HOST.Refusal, "wrong hosted workflow identity"):
-                    HOST.execute(SimpleNamespace())
+                    HOST.execute(SimpleNamespace(tooling_commit="d7" * 20))
                 verified.assert_not_called(); invoked.assert_not_called()
 
     def test_preflight_refuses_incompatible_daemon_and_resource_prerequisites(self):
@@ -777,7 +778,9 @@ class HostContractTests(unittest.TestCase):
                  patch.object(HOST.platform, "machine", return_value="x86_64"), \
                  patch.dict(HOST.os.environ, {"GITHUB_REPOSITORY": "fr-meyer/openclaw",
                      "GITHUB_REF": "refs/heads/candidate/v2026.9.8-runtime-admission-5",
-                     "GITHUB_RUN_ATTEMPT": "1", "GITHUB_RUN_NUMBER": "1"}, clear=True), \
+                     "GITHUB_RUN_ATTEMPT": "1", "GITHUB_RUN_NUMBER": "2", "GITHUB_EVENT_NAME": "push",
+                     "GITHUB_SHA": "d7" * 20, "V98_APPROVED_COMMIT": "d7" * 20,
+                     "V98_APPROVED_RUN_NUMBER": "2"}, clear=True), \
                  patch.object(HOST, "verify_source_manifest"), \
                  patch.object(HOST, "git", side_effect=[HOST.SOURCE, HOST.TREE, ""]), \
                  patch.object(HOST, "verify_prepared", return_value=(
