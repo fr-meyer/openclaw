@@ -6,35 +6,55 @@ This proof tooling preserves product commit
 Linux amd64 image; it does not rebuild, patch, install dependencies into, or
 start the image's Gateway entrypoint. No fixture phase has run locally.
 
-Run `37271633454`, number 3/attempt 1 at
-`181ebd94c0834ddddb9e7878aff41e303ecfb825`, passed startup, capability,
-forced deadline, preparation, all 1,081-card predecessor assertions and settled
-lifetime-accounting/cleanup. The sole helper's private startup pipe, exact exec,
-Landlock tightening and exit 0 were verified. Migration joined with exit 1:
-the original async `execFile` owner received no JSON stdout. Phases 4–6 were
-never run. The earlier failures remain retained historical evidence.
+Run `37278851164`, number 4/attempt 1 at
+`7bce07f263caacf7c1c7247d77163ae90c120896`, passed 111 hosted pure checks,
+startup, capability, forced deadline, preparation, all 1,081-card predecessor
+assertions and normal lifetime-accounting/cleanup. The helper completed 22
+validated read-only stdio socket queries, exact exec, Landlock tightening and
+exit 0. Original Doctor returned; candidate validation then failed with
+`STATE_VERSION_MISMATCH`. Phases 4–6 were never run. Failed receipts remain.
 
-The unapplied successor proposes just two guarded read-only socket queries.
-In the retained Node 24.21 binary, `uv_guess_handle` needs `getsockname` and
-`getsockopt(SOL_SOCKET, SO_TYPE)` for socketpair stdout. Current BPF denies both;
-either failure selects UNKNOWN and Node's dummy Writable discards bytes.
-This strongly explains the observed empty JSON; no retained syscall trace
-proves that full dynamic chain. The fixed retained-Node regression is NEVER_RUN.
-The proposal is restricted to the confined phase-3 helper's fd 0–2, each matched
-to its recorded ordered child socketpair endpoint device/inode. Name queries
-require input socklen 128 and successful output length 2/AF_UNIX; type queries
-require level 1, option 3, input/output length 4 and SOCK_STREAM. Other roles,
-fds and queries are denied. Entry/exit remain quiesced and successful results
-are observed through the existing event channel. No socket creation, peer
-query, descriptor transfer, read path, environment, child or resource grant is
-added. Local source checks do not activate the proposed security policy.
+The retained candidate state main file is byte-identical to its predecessor,
+records header user_version 17 and has an empty WAL. Expected candidate version
+19 matches the exact product source. Doctor can return failed-repair warnings;
+its actual result was not logged before the assertion, so the exact warning is
+unknown. Static header inspection used no SQLite engine or database open and
+does not qualify data preservation or installed state.
 
-Application, publication, two public latch updates and one run-4/attempt-1
-15-minute test require one combined explicit approval bound to the published
-base, exact patch and projected tree. The existing branch/workflow and retained
-product image are reused, with seven-day evidence retention. No main merge,
-force push, production access, provider data, new VM, registry publication or
-production deployment is included.
+This unapplied proposal adds bounded diagnostic output to the existing fixture.
+Doctor warnings and changes are captured immediately after return, before any
+nested assertion: at most eight warnings of 512 code units and four changes of
+256 code units, with original counts, omissions and per-entry truncation flags.
+The serialized record stays below 32 KiB even with six-byte JSON escaping.
+Diagnostics use stderr, within the existing 256 KiB retained host cap. The
+existing candidate read-only assertion owner captures version before migration
+runs its predecessor and Workboard guards; those original guards still precede
+candidate integrity, metadata, row/file and schema assertions. No second candidate
+owner is opened. Each assertion records version before its later checks. A failed
+diagnostic query is labelled READ_FAILED and cannot mask the original integrity
+failure; if integrity passes, the original version query still runs and owns
+its failure. A catchable fixture-command failure emits a bounded error plus all
+observed versions and explicit unobserved-version/Doctor-result statuses before
+rethrowing the exact primary error. A failed open/admission is not bypassed to
+obtain diagnostics; unavailable values are never invented. Import/kernel/native
+failures before fixture entry remain covered by the existing host failure/log
+receipts. Predecessor/rollback still require 17; candidate
+still requires 19. Metadata, row/file hashes, Workboard and restore gates remain.
+The successful flow retains the same database-handle inventory. Candidate
+read-only observation starts earlier in migration so guard failures retain its
+version; it may overlap the separate predecessor read/settlement owner. No new
+write operation, product change or policy grant is added.
+The existing inert extracted-function tests exercise truncation, earlier guard
+failures, diagnostic-read failure precedence and every version/metadata branch
+without importing node:sqlite or running the fixture entry.
+
+Run 4's publication and 15-minute execution approval is consumed. This proposal
+has not been applied, committed, published or executed. Any successor application,
+publication, existing latch updates and one 15-minute test require approval of
+its exact base, patch and projected tree, with fresh remote/counter/image reads.
+The existing branch/workflow and product image are reused; seven-day retention,
+all resource caps and original assertions remain. No automatic rerun, new image,
+dependency installation, main merge, force push or deployment is included.
 
 The old no-child test profile was agent-defined. This executor proposes a
 separate test profile that permits exactly one source-bound snapshot helper in
@@ -221,10 +241,12 @@ Portable C decision/BPF/SHA tests, Python adversarial archive/descriptor/host
 tests and syntax checks are offline evidence. They do not prove Linux syscall
 translation, ptrace support under default Docker protections, Landlock
 inheritance, native loader compatibility, Worker/fsync fidelity, migration,
-restore or rollback. Attempt4 supplies actual startup, capability, deadline and
-normal failure accounting/shutdown evidence. Its fixture prepare failed, and
-phases 2–6 were `NEVER_RUN`. All corrected successor phases remain `NEVER_RUN`.
-Retained failed receipts are never converted to passes.
+restore or rollback. Historical run `37256338785` supplies actual startup,
+capability, deadline and normal failure accounting/shutdown evidence. Its fixture
+prepare failed, and phases 2–6 were `NEVER_RUN`. Later reusable run 4
+`37278851164` passed prepare/predecessor but failed during migration; its phases
+4–6 remain `NEVER_RUN`. The diagnostic successor remains unexecuted. Retained
+failed receipts are never converted to passes.
 
 `source-manifest.json` binds executable tooling, policies and frozen inputs.
 The final external approval packet binds that manifest, exact Git commit/tree,
@@ -353,10 +375,10 @@ all records/assertions and the 16 MiB limit remain intact.
 [SQLite PRAGMAs](https://www.sqlite.org/pragma.html) describe the transaction,
 checkpoint and cache-spill behavior underlying this source correction. These
 contracts and inert tests do not replace actual confined runtime measurements.
-## Reusable branch successor (local proposal)
+## Reusable branch and diagnostic proposal
 
 Reuse `candidate/v2026.9.8-runtime-admission-5` and its existing workflow file.
-Run 37271633454, number 3/attempt 1, is the latest consumed failed attempt;
+Run 37278851164, number 4/attempt 1, is the latest consumed failed attempt;
 run 37262067025, number 1/attempt 1, remains historical failure evidence. A new
 explicit approval must identify the exact reviewed commit and next workflow run
 number and authorize setting the public, nonsecret Actions variables
@@ -380,8 +402,12 @@ the same owner covers every nested predecessor/candidate/rollback read.
 Run 2 proved this reader correction in prepare and predecessor validation.
 Its post-migration and restore transitions, and all-six cap fit, remain unproved.
 Run 3 proved private IPC startup, helper exec/tightening and exit 0, then joined
-migration exit 1 with empty JSON. The stdio query successor is unapplied; its
-Linux compile and fixed retained-Node runtime remain NEVER_RUN. The existing
+migration exit 1 with empty JSON. Run 4 compiled the stdio correction and proved
+22 guarded helper queries, helper exit 0 and the original Doctor await returning.
+Migration then joined exit 1 at the candidate version assertion. Its Doctor
+warning/result was not retained. The diagnostic successor remains unapplied and
+unexecuted; candidate validation, restore, rollback and full cap fit are open.
+The existing
 16 MiB scratch, 20 MiB evidence, 15-minute job, seven-day retention and other
 confinement gates stay fixed.
 
@@ -398,7 +424,21 @@ query or option setting for PIPE. Writes use write/writev, with normal epoll
 readiness if blocked; the parent reads the existing socketpair. No peer query,
 shutdown, sendmsg/recvmsg or ancillary FD transfer is required for this path.
 Parent libuv opens existing handles directly, without guessing their raw fd.
-This is a source/binary inventory, not an observed syscall transcript. Local
-retained Node execution is unavailable on Darwin arm64; no replacement runner
-or policy bypass is permitted. Existing run 3 is the retained failing baseline;
-the unchanged six-phase flow in an approved run 4 is the required fixed proof.
+This inventory explains the source/binary path. Run 4 separately recorded 11
+validated name queries and 11 type queries across helper fd 0–2 and helper exit 0.
+The original Doctor await returned and the prior empty-JSON error was absent,
+then candidate validation failed with STATE_VERSION_MISMATCH. Baseline run 3
+did not record those individual calls; no byte-identical two-policy dynamic A/B
+is claimed. Local retained Node execution is unavailable on Darwin arm64; no
+replacement runner or policy bypass is permitted. A separately approved
+diagnostic successor must capture the warning/version and retain every original
+six-phase gate; no complete migration, restore or rollback is qualified yet.
+
+The bundled diagnostics send bounded Doctor warnings/changes and observed
+schema versions to stderr. The existing candidate read owner opens earlier to
+capture its version before predecessor and Workboard guards. Those guards still
+precede candidate integrity, metadata, schema, row and file checks; every strict
+assertion remains. A failed diagnostic read is recorded and the original query
+retains its assertion failure. The final failure record preserves the primary
+error and labels unobserved versions or unavailable Doctor warnings. Native and
+generated fixture bindings are reconciled to the same exact bytes.

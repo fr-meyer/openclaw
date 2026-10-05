@@ -20,9 +20,9 @@
     },
     {
       "path": "scripts/proofs/v98-confined/README.md",
-      "bytes": 27488,
+      "bytes": 30384,
       "mode": "0o644",
-      "sha256": "dbdfb8871bbb4c8c0199c97451dc883e9d237165af0cbfb1fd616d20caf845bc"
+      "sha256": "e2374364b6dc8c3f89159bedae072134bf8f73f51751409084e1e4029a1d8c15"
     },
     {
       "path": "scripts/proofs/v98-confined/accounting_owner.py",
@@ -40,7 +40,7 @@
       "path": "scripts/proofs/v98-confined/derive_read_policy.py",
       "bytes": 22960,
       "mode": "0o644",
-      "sha256": "650c0ec725aa429df0f4426d804b9fa1dc1c97af9f935a2e1a0d6cb1d0b7f94a"
+      "sha256": "bb6070545fbd046aecab1ed8ddb1037dd1da5c6d6aa07ea517eeaae1c1ae40b3"
     },
     {
       "path": "scripts/proofs/v98-confined/host-runtime.py",
@@ -50,9 +50,9 @@
     },
     {
       "path": "scripts/proofs/v98-confined/inputs/fixture.mjs",
-      "bytes": 29487,
+      "bytes": 33004,
       "mode": "0o644",
-      "sha256": "6ca0b85238594eb4294514ec08e0b60770953b37ed783f83e7f2920088144dd2"
+      "sha256": "29da5d15bcf2372771b283f4a838b3734113e6ca60f077a140d6b4edca642155"
     },
     {
       "path": "scripts/proofs/v98-confined/inputs/predecessor-publisher-controller.mjs",
@@ -110,9 +110,9 @@
     },
     {
       "path": "scripts/proofs/v98-confined/packet.json",
-      "bytes": 21536,
+      "bytes": 24320,
       "mode": "0o644",
-      "sha256": "7b895e3fa1b82b22de4a095baffa6b0c078bb669e07450bbe587e74268cb56fe"
+      "sha256": "beee7e3f3dd39f730f1fafd5ae52690a83d1d59b4b49a7367e67a32268e3f38e"
     },
     {
       "path": "scripts/proofs/v98-confined/proposal/image-openssl.cnf",
@@ -148,7 +148,7 @@
       "path": "scripts/proofs/v98-confined/read-policy/runtime-read-binding.json",
       "bytes": 585337,
       "mode": "0o644",
-      "sha256": "94eed7f220bf6c0e56e58b518bad7eed632cbb507db5b87be4f023c5208adafa"
+      "sha256": "9c1a49923f590870e15558bf7384b3610e80118235ea07b75143a0332afa021b"
     },
     {
       "path": "scripts/proofs/v98-confined/startup-prerequisites.json",
@@ -170,9 +170,9 @@
     },
     {
       "path": "scripts/proofs/v98-confined/test_fixture_read_boundary.mjs",
-      "bytes": 10158,
+      "bytes": 22607,
       "mode": "0o644",
-      "sha256": "2714ea60e6c3381e5ffa5ed9e5bd4e206d6b72c691fc33d5d9a58ee0d37670fa"
+      "sha256": "10eb984ba7eba669fc6d743c8c9cdd678cbac65b043181a82a8c9f33cff0c085"
     },
     {
       "path": "scripts/proofs/v98-confined/test_host_runtime.py",
@@ -190,7 +190,7 @@
       "path": "scripts/proofs/v98-confined/test_openssl_proposal.py",
       "bytes": 11887,
       "mode": "0o644",
-      "sha256": "df3d805ad397180b9f2d423017053d82c0886a0f84299d146500a9d76af471b3"
+      "sha256": "3acfa7790b02b7954edeebaf91dd65134158e19ab021ea95931d56ac0ff046b6"
     },
     {
       "path": "scripts/proofs/v98-confined/test_read_policy.py",
@@ -214,7 +214,7 @@
       "path": "scripts/proofs/v98-confined/v98-supervisor.c",
       "bytes": 33520,
       "mode": "0o644",
-      "sha256": "74e509b470ee252e6cefb6add3e33ac43760f620f7c91d8b9b424a3cf7c8822c"
+      "sha256": "35b312e58bce442c534bc92b1548194251ed740348888788a870ea940b2f109d"
     },
     {
       "path": "scripts/proofs/v98-parity/README.md",

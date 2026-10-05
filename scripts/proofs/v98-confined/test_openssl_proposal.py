@@ -13,8 +13,8 @@ SPEC = importlib.util.spec_from_file_location("v98_inert_openssl_proposal",
 RENDER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RENDER)
 PROPOSED_DERIVE_SHA = "bce4fb6fd9150e02a553df09042859e7654ed2f6278880ac48fc0ccbfb953b09"
-FIXTURE_SIZING_DERIVE_SHA = "650c0ec725aa429df0f4426d804b9fa1dc1c97af9f935a2e1a0d6cb1d0b7f94a"
-FIXTURE_SIZING_SHA = "6ca0b85238594eb4294514ec08e0b60770953b37ed783f83e7f2920088144dd2"
+FIXTURE_SIZING_DERIVE_SHA = "bb6070545fbd046aecab1ed8ddb1037dd1da5c6d6aa07ea517eeaae1c1ae40b3"
+FIXTURE_SIZING_SHA = "29da5d15bcf2372771b283f4a838b3734113e6ca60f077a140d6b4edca642155"
 
 
 def baseline_source(raw):

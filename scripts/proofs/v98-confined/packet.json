@@ -1,6 +1,6 @@
 {
   "schema": "openclaw-v98-confined-execution-packet/v1",
-  "status": "UNAPPLIED_STDIO_QUERY_PROPOSAL; APPLICATION_PUBLICATION_AND_RUN4_REQUIRE_COMBINED_APPROVAL",
+  "status": "UNAPPLIED_DIAGNOSTIC_BUNDLE; EXACT_APPLICATION_PUBLICATION_LATCHES_AND_RUN5_REQUIRE_APPROVAL",
   "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
   "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
   "sourceManifestPath": "scripts/proofs/v98-confined/source-manifest.json",
@@ -12,28 +12,28 @@
     "forcePush": false,
     "mainMerge": false,
     "newApprovalRequired": true,
-    "status": "SAME_BRANCH5_WORKFLOW5; EXACT_BASE_PATCH_PROJECTED_TREE_AND_RUN4_REQUIRE_COMBINED_APPROVAL",
+    "status": "SAME_BRANCH5_WORKFLOW5; RUN4_CONSUMED; DIAGNOSTIC_PROPOSAL_UNAPPLIED",
     "newExecutionIdentityRequired": false,
     "reviewedFreshExecutionIdentityPrepared": false,
     "approvalLatch": {
       "commitVariable": "V98_RUNTIME_APPROVED_COMMIT",
       "runNumberVariable": "V98_RUNTIME_APPROVED_RUN_NUMBER",
-      "valuesStatus": "RETAINED_RUN3_CONSUMED; PROPOSAL_VALUES_NOT_SET",
+      "valuesStatus": "RETAINED_RUN4_CONSUMED; NO_SUCCESSOR_VALUES_SET",
       "twoVariableWritesRequireExplicitApproval": true,
       "commitValue": "EXACT_RESULTING_COMMIT_AT_REVIEWED_PROJECTED_TREE_AFTER_APPROVED_APPLICATION",
-      "runNumberProposal": 4,
+      "runNumberProposal": 5,
       "runAttempt": 1,
       "counterMustBeRecheckedImmediatelyBeforeWritesAndPush": true,
       "noAutomaticCounterAdvancement": true,
       "missingOrMismatchedLatch": "NO_ADMISSION_JOB"
     },
-    "expectedOldHead": "181ebd94c0834ddddb9e7878aff41e303ecfb825"
+    "expectedOldHead": "7bce07f263caacf7c1c7247d77163ae90c120896"
   },
   "hostedAttempt": {
     "runner": "ubuntu-24.04",
     "jobTimeoutMinutes": 15,
     "attempts": 0,
-    "requiredWorkflowRunNumber": 4,
+    "requiredWorkflowRunNumber": 5,
     "requiredWorkflowRunAttempt": 1,
     "artifactRetentionDays": 7,
     "retainedEvidenceLimitBytes": 20971520,
@@ -45,13 +45,12 @@
     "providerState": false,
     "hostPrerequisiteReceipt": "Bounded static host observations before image load; no execution admission",
     "implicitImagePull": false,
-    "consumedRunId": 37271633454,
-    "consumedCommit": "181ebd94c0834ddddb9e7878aff41e303ecfb825",
-    "consumedConclusion": "FAILURE; PREPARE_PREDECESSOR_HELPER_EXEC_TIGHTENING_AND_EXIT0_PASS; PHASE3_JOINED_EXIT1_EMPTY_JSON; PHASES4_TO6_NEVER_RUN",
+    "consumedRunId": 37278851164,
+    "consumedCommit": "7bce07f263caacf7c1c7247d77163ae90c120896",
+    "consumedConclusion": "FAILURE; HELPER_STDIO_QUERY_AND_EXIT0_PASS; POST_DOCTOR_CANDIDATE_VERSION_MISMATCH; PHASES4_TO6_NEVER_RUN",
     "startupPrerequisiteReceipt": "Static original Node/GNU/OpenSSL file and metadata joins against unchanged1548reads/360namespace identities before compiler/image load/start; attempt4 proved original config startup.",
     "scope": "One explicitly approved exact commit/run on reusablebranch5, attempt1 only; capability, deadline, frozen6phase fixture. No automatic retry or latch advancement.",
-    "hostOwnedAccounting": "Exactly one task slice per mode, active until complete final proof is sealed; StartTransientUnit creates a PID1-managed ephemeral /run/systemd/transient/<exact-unit>.slice fragment, no manual/persistent unit/drop-in/settings edits.",
-    "artifactAvailabilityHistoricalObservedAtUtc": "2026-10-05T07:12:14.175451+00:00"
+    "hostOwnedAccounting": "Exactly one task slice per mode, active until complete final proof is sealed; StartTransientUnit creates a PID1-managed ephemeral /run/systemd/transient/<exact-unit>.slice fragment, no manual/persistent unit/drop-in/settings edits."
   },
   "artifact": {
     "runId": 37192724704,
@@ -92,7 +91,7 @@
     "imageDirectoryReads": false,
     "metadataLookups": "stat/access/readlink are permitted in the private image/PID/mount scopes; Landlock file-content rules do not mediate them; not identical Node Permission Model metadata restrictions",
     "namespaceBindings": 360,
-    "readBindingSha256": "94eed7f220bf6c0e56e58b518bad7eed632cbb507db5b87be4f023c5208adafa",
+    "readBindingSha256": "9c1a49923f590870e15558bf7384b3610e80118235ea07b75143a0332afa021b",
     "completeImportClosureClaimed": false,
     "unexpectedReadSyscallOrChild": "DENY; REQUIRED_FLOW_OR_NATIVE_OWNER_FAILURE_STOPS_ATTEMPT; RETAIN; NO_RETRY_OR_BROADENING; CAUGHT_ERRNO_IS_NOT_AUTOMATIC_ATTEMPT_ABORT",
     "stdioSocketPairs": "At most three tracked anonymous AF_UNIX SOCK_STREAM|SOCK_CLOEXEC protocol-zero pairs in phase 3",
@@ -113,7 +112,7 @@
       "exec": "Existing exact executable/argv/env/stage and onlystdio census retained; private pipe seed must commit before exec admission"
     },
     "helperStdioQueryProposal": {
-      "status": "UNAPPLIED; NO_NEW_APPLICATION_OR_RUNTIME_APPROVAL",
+      "status": "APPLIED_REVIEWED_SCOPE; RETAINED_RUN4_22_VALIDATED_QUERIES_AND_HELPER_EXIT0",
       "syscalls": [
         51,
         55
@@ -123,7 +122,7 @@
       "getsockopt": "SOL_SOCKET1 SO_TYPE3, input/output socklen4; successful result0 SOCK_STREAM1",
       "locking": "Existing quiesced entry/exit FD and borrowed-memory guard",
       "cause": "STRONG_STATIC_INFERENCE; baseline dynamic queries were not retained",
-      "fixedRetainedNodeRegression": "NEVER_RUN; local Darwinarm64 cannot execute retained Linuxamd64 ELF within an authorized equivalent boundary"
+      "fixedRetainedNodeRegression": "Run4 original Doctor/helper flow advanced past empty JSON. No byte-identical two-policy runtime A/B; baseline51/55 calls were not traced."
     }
   },
   "modes": [
@@ -177,7 +176,7 @@
   ],
   "requiredHostedGates": [
     "Previously approved exact OpenSSL file/two-metadata delta remains unchanged; repeat static startup joins against ten required identities before any separately authorized successor. No complete import closure claim.",
-    "Retained run3 proved private helper startup pipe/seed, exact exec, Landlock tightening, exit0 and settled lifetime accounting. A separately approved stdio query successor must repeat all existing gates and prove actual JSON output plus the complete six-phase flow; fixed runtime NEVER_RUN.",
+    "Retained run4 verified helper stdio queries and reached post-Doctor version mismatch. All original six-phase assertions remain required. Proposed diagnostics must expose Doctor result and actual version without relaxing gates.",
     "Exact authenticated artifact/source/tooling/source-manifest/read-binding/saved-layer joins",
     "Installed compiler identity and flags; Linux amd64 static supervisor and dependency-free preload; record actual compiled binary digests before start",
     "Default Docker/Yama own-child tracing, cgroup-v2 resource controls and immutable pre-tracee host admission",
@@ -188,13 +187,13 @@
     "Six frozen phases with one source-bound helper, native process-close/staging-tightening/termination observations and final zero tracees/cgroup population",
     "Host-only exact scratch-inode fstatvfs observations: verified16MiB capacity, sampled allocated bytes/free inode floor before/during/after modes and received native phase boundaries. Bounded32KiB receipt; samples are lower bounds and phase event receipt may lag actual execution. Full six-phase success under hard cap required; no sample grants cleanup authority."
   ],
-  "runtimeQualification": "RETAINED_RUN3_CAPABILITY_DEADLINE_PREPARE_PREDECESSOR_HELPER_EXEC_TIGHTENING_EXIT0_AND_SETTLED_ACCOUNTING_PASS; PHASE3_JOINED_EXIT1_EMPTY_JSON; PHASES4_TO6_NEVER_RUN; STDIO_SUCCESSOR_UNAPPLIED_AND_FIXED_RUNTIME_NEVER_RUN",
+  "runtimeQualification": "RETAINED_RUN4_CAPABILITY_DEADLINE_PREPARE_PREDECESSOR_HELPER_STDIO_QUERIES_EXIT0_AND_ACCOUNTING_PASS; POST_DOCTOR_STATE_VERSION_MISMATCH; PHASES4_TO6_NEVER_RUN; DIAGNOSTICS_SUCCESSOR_UNAPPLIED",
   "mergeguezOverlay": "SEPARATE_SOURCE_ONLY; NOT_INCLUDED; NO_ACTIVATION",
   "compiledBinaryHashes": "Recorded only by the approved hosted compile gate, before policy activation",
   "remainingAdmissionLimitations": [
-    "Reuse branch5/workflow5 at base181ebd94. Run3/attempt1 consumed; next proposed counter4. One combined explicit base+patch+projectedtree approval must authorize application/source checks/local commit, both public scoped Actions latch updates, one normal FF push and one15minute/sevenday test. Recheck remote/counter/artifact; any drift stops without auto-advancement.",
-    "Unapplied delta admits only guarded read-only stdio metadata queries51/55 for exact confined helper child endpoints. Product88paths, retained image/read identities, environment, heap, child budget, resources and all other gates unchanged.",
-    "Run3 proved startup, capability, forced deadline, full1081card predecessor, helper IPC/exec/tightening/exit0, lifetime CPU/extinction/checkpoints/normal release. Migration joinedexit1 with emptyJSON. Dynamic cause remains a strong static inference; fixed retainedNode proof NEVER_RUN locally.",
+    "Run4/attempt1 on branch5 is consumed. Diagnostic-only proposal remains unapplied; exact patch/projectedtree and any future publication/latch/run require explicit approval and fresh remote/counter/artifact reads. Counter5 is a proposal only; no automatic advancement.",
+    "Diagnostic delta changes fixture observations/failure output, inert checks and exact content bindings. Native fixture digest, canonical deriver and generated binding match; product88paths, image identities, read paths, syscall permissions, workflow, environment, heap, child budget, resources and all original assertion conditions remain unchanged.",
+    "Run4 passed helper22 guarded read-only stdio queries/exit0 and original Doctor await. Candidate version mismatch followed; archived state main header17 and emptyWAL, both main databases byte-identical to predecessor. Doctor warnings were not retained; exact warning unknown.",
     "Completed migration, candidate preservation, restore, rollback and fullsixphase capfit remain unqualified. Phase3 had fsync activity; failure does not prove unchanged synthetic data or any installed real data preservation.",
     "Image and selected-file verification do not prove complete dynamic import closure, workers, helper behavior or real data migration/restore/rollback.",
     "Attempt4 normal exception failure cleanup is backed by actual durable parent checkpoints, empty cgroups, stopped Docker identities and resource release. Abrupt runner loss, signals/job cancellation and final runner teardown remain outside the proved lifecycle.",
@@ -207,7 +206,7 @@
   "startupPrerequisitesSha256": "3f2f1e1984b22b97684ead8a15e312026a8f758fb691bf916b61f92a8ab701df",
   "lifetimeAccounting": {
     "owner": "scripts/proofs/v98-confined/accounting_owner.py",
-    "sourceStatus": "IMPLEMENTED_PURE_TESTED; RETAINED_RUN2_REAL_HOST_NORMAL_FAILURE_ACCOUNTING_PASSED; PRIVATE_IPC_SUCCESSOR_NEVER_RUN",
+    "sourceStatus": "IMPLEMENTED_PURE_TESTED; RETAINED_RUN4_NORMAL_FAILURE_LIFETIME_CPU_EXTINCTION_CHECKPOINT_AND_RELEASE_PASS; COMPLETE_MIGRATION_RESTORE_ROLLBACK_UNQUALIFIED",
     "unitName": "v98proof<decimal64bit_sha256_container_name>m[123].slice",
     "creation": "Absent nofollow parent path and exclusive StartTransientUnit fail mode; exact transient Description/InvocationID/ControlGroup/noDropIn/retention/resource joins; no keeper process. Race/foreign mutation refuses observed mismatches.",
     "baseline": "Raw hierarchical cpu.stat usage_usec must be0 while new parent is empty, before Docker create/start; no reset at native gate.",
@@ -228,7 +227,7 @@
   "opensslReadProposal": "scripts/proofs/v98-confined/proposal/openssl-read-proposal.json",
   "fixtureStorageProposal": {
     "status": "RETAINED_RUN2_PREPARE_AND_PREDECESSOR_PASS; FULL_ALLOCATED_HIGH_WATER_AND_DOCTOR_TEMP_UNPROVED",
-    "fixtureSha256": "6ca0b85238594eb4294514ec08e0b60770953b37ed783f83e7f2920088144dd2",
+    "fixtureSha256": "29da5d15bcf2372771b283f4a838b3734113e6ca60f077a140d6b4edca642155",
     "cards": 1081,
     "workboardTables": 17,
     "rawSeedPageSize": 4096,
@@ -337,5 +336,50 @@
     "artifactId": 11328429858,
     "evidenceSha256": "72574faa44143189238fa8a9d176abefd07aa6502f2375ad4671d97d76b18f05",
     "normalFailureCpuExtinctionAndRelease": "PASS"
+  },
+  "diagnosticProposal": {
+    "status": "UNAPPLIED; HOSTED_EXECUTION_NEVER_RUN",
+    "owner": "existing fixture.mjs and readonly assertion handle",
+    "doctorOutput": "8warnings512codeunits plus4changes256codeunits with original counts, omitted counts and perentry truncated flags; serializedDoctorrecord<32768bytes even worstcase escaping",
+    "versionOutput": "Existingreadonlycandidateowneropens/capturesbeforepredecessorWorkboardguards; allversionsobservedbeforelaterchecks; failedquerylabelledandoriginalintegrity/versionfailurepreserved.",
+    "expectedVersions": {
+      "predecessor": 17,
+      "candidate": 19,
+      "rollback": 17
+    },
+    "newDatabaseHandle": false,
+    "newWriteOrPermission": false,
+    "warningsCapturedBeforeNestedAssertions": true,
+    "assertionsWeakened": false,
+    "actualRetainedDoctorWarning": "UNKNOWN;NOT_LOGGED",
+    "headerInspection": "static100byteheaderonly; noSQLiteengine/databaseopen",
+    "productChange": false,
+    "failureOutput": "Boundedstderrfixturefailurebeforeexactprimaryrethrow; cachedversionsorunobservedlabels; DoctorthrowBEFORE_RETURN meanswarningsunavailable. Import/kernel/nativebeforeentryremainhostreceiptfailures.",
+    "stderrRecordLimitBytes": 32768,
+    "existingHostStderrLimitBytes": 262144,
+    "candidateReadOwnerTiming": "Movedearlier; sameinventoryonsuccess; overlapsseparatepredecessorread/settlementowner",
+    "noDiagnosticReadAfterDeniedAdmission": true,
+    "originalGuardOrder": "Predecessor/Workboardguardsstillprecedecandidateintegrity/schema/metadata/row/filechecks; candidateconsolidation/readonlyadmissionmovedearlierforobservations. Nochecksremoved.",
+    "queryFailurePrecedence": "diagnosticreadfailurenonfataltoexistingintegrityguard; originalversionqueryisstillrunatitsgateifneeded.",
+    "fixtureBindings": "Nativeexactfixturehash,canonicalderiver,generatedfrozeninputbinding,packet andhistoricalOpenSSLinversetestpinsupdatedtothesameexactapprovedfixturebytes; noreadpath/imageidentity/syscallpermissiondelta.",
+    "doctorCaptureFailure": "Doctor await success is marked RETURNED; CAPTURE_UNAVAILABLE before formatting/output, so formatter or sink failures cannot falsely claim Doctor threw."
+  },
+  "retainedReusableRun4": {
+    "runId": 37278851164,
+    "runNumber": 4,
+    "runAttempt": 1,
+    "toolingCommit": "7bce07f263caacf7c1c7247d77163ae90c120896",
+    "toolingTree": "57e7f98217d47d91c9af3d8e650846961272697d",
+    "terminalConclusion": "failure",
+    "elapsedSeconds": 466,
+    "hostedPureChecks": 111,
+    "phase1Prepare": "PASS",
+    "phase2Predecessor": "PASS;1081cards/17tables",
+    "helperStdioQueries": 22,
+    "phase3Migration": "JOINED_EXIT1;POST_DOCTOR_STATE_VERSION_MISMATCH",
+    "phases4Through6": "NEVER_RUN",
+    "normalFailureCpuExtinctionAndRelease": "PASS",
+    "artifactId": 11330744801,
+    "evidenceSha256": "604a8bccc0b0c25236b59acf7231313a584b5eac0712c54916ae34183b200a62"
   }
 }

@@ -30,6 +30,7 @@ const FILES = [
   "state/openclaw.sqlite", "plugins/workboard/workboard.sqlite",
   "config.synthetic.json", "workspace/synthetic-marker.txt",
 ];
+const diagnosticState = { doctorResult: "NOT_CALLED", versions: {} };
 process.umask(0o077);
 
 function sha256(bytes) {
@@ -491,7 +492,54 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   process.stdout.write(JSON.stringify({ prepared: true, syntheticOnly: true, cards: CARD_COUNT }) + "\n");
 }
 
-function assertPhase(root, phase) {
+function captureDoctorResult(result) {
+  const capture = (entries, maximumEntries, maximumChars) => ({
+    count: entries.length,
+    omittedEntries: Math.max(0, entries.length - maximumEntries),
+    entries: entries.slice(0, maximumEntries).map((entry) => ({
+      text: entry.slice(0, maximumChars),
+      truncated: entry.length > maximumChars,
+    })),
+  });
+  // At most 8 x 512 warning and 4 x 256 change code units. Even JSON's
+  // six-byte escaping stays below 32 KiB within the existing output cap.
+  process.stderr.write(JSON.stringify({ diagnostic: "native-doctor-result", syntheticOnly: true,
+    warnings: capture(result.warnings, 8, 512), changes: capture(result.changes, 4, 256) }) + "\n");
+  diagnosticState.doctorResult = "RETURNED_AND_CAPTURED";
+}
+
+function captureStateVersion(database, phase, expectedVersion) {
+  let observation;
+  let result;
+  try {
+    const actualVersion = database.prepare("PRAGMA user_version").get()?.user_version;
+    observation = { expectedVersion, actualVersion: actualVersion ?? null,
+      availability: actualVersion === undefined ? "MISSING_VALUE" : "CAPTURED" };
+    result = { queried: true, actualVersion };
+  } catch (error) {
+    observation = { expectedVersion, actualVersion: null, availability: "READ_FAILED",
+      error: String(error).slice(0, 512) };
+    result = { queried: false };
+  }
+  diagnosticState.versions[phase] = observation;
+  process.stderr.write(JSON.stringify({ diagnostic: "state-schema-version", phase,
+    ...observation, syntheticOnly: true }) + "\n");
+  return result;
+}
+
+function captureFixtureFailure(command, error) {
+  process.stderr.write(JSON.stringify({ diagnostic: "fixture-failure", syntheticOnly: true,
+    command: String(command).slice(0, 64), error: String(error).slice(0, 512),
+    doctorResult: diagnosticState.doctorResult === "AWAITING_RETURN"
+      ? "THREW_BEFORE_RETURN; WARNINGS_UNAVAILABLE" : diagnosticState.doctorResult,
+    versions: diagnosticState.versions,
+    unobservedVersions: ["predecessor", "candidate", "rollback"].filter(
+      (phase) => !Object.hasOwn(diagnosticState.versions, phase),
+    ),
+  }) + "\n");
+}
+
+function assertPhase(root, phase, beforeAssertions) {
   if (!new Set(["predecessor", "candidate", "rollback"]).has(phase)) {
     throw new Error("INVALID_PHASE");
   }
@@ -505,11 +553,25 @@ function assertPhase(root, phase) {
   let workboardDb;
   let readFailure;
   try {
+    const expectedVersion = phase === "candidate" ? 19 : 17;
+    const versionRead = captureStateVersion(stateDb, phase, expectedVersion);
+    // Migration's existing predecessor/Workboard guards run after this
+    // observation and before all original candidate assertions. No extra owner.
+    beforeAssertions?.();
     workboardDb = new DatabaseSync(sqlitePath(root, phase, "workboard"), { readOnly: true });
     assertIntegrity(stateDb);
     assertIntegrity(workboardDb);
-    const expectedVersion = phase === "candidate" ? 19 : 17;
-    if (stateDb.prepare("PRAGMA user_version").get()?.user_version !== expectedVersion) {
+    // A failed diagnostic read does not replace an original integrity failure.
+    // If integrity passes, the original version query still owns its failure.
+    const actualVersion = versionRead.queried ? versionRead.actualVersion
+      : stateDb.prepare("PRAGMA user_version").get()?.user_version;
+    if (!versionRead.queried) {
+      diagnosticState.versions[phase] = { expectedVersion, actualVersion: actualVersion ?? null,
+        availability: "CAPTURED_ON_ASSERTION", diagnosticReadError: diagnosticState.versions[phase].error };
+      process.stderr.write(JSON.stringify({ diagnostic: "state-schema-version", phase,
+        ...diagnosticState.versions[phase], syntheticOnly: true }) + "\n");
+    }
+    if (actualVersion !== expectedVersion) {
       throw new Error("STATE_VERSION_MISMATCH");
     }
     const metadata = stateDb.prepare(
@@ -584,16 +646,20 @@ async function migrateCandidate(root, sourceModulePath, sourceModuleSha256) {
     throw new Error("NATIVE_DOCTOR_MIGRATION_ENTRY_MISSING");
   }
   const candidateStatePath = sqlitePath(root, "candidate", "state");
+  diagnosticState.doctorResult = "AWAITING_RETURN";
   const result = await source.prepareOpenClawStateDatabaseSchema(
     { path: candidateStatePath, env: { OPENCLAW_STATE_DIR: path.dirname(candidateStatePath) } },
     "doctor",
   );
-  assertPhase(root, "predecessor");
-  if (sha256(fs.readFileSync(sqlitePath(root, "candidate", "workboard"))) !==
-      manifest.predecessorDbHashes.workboard) {
-    throw new Error("WORKBOARD_BYTES_CHANGED_BY_STATE_MIGRATION");
-  }
-  assertPhase(root, "candidate");
+  diagnosticState.doctorResult = "RETURNED; CAPTURE_UNAVAILABLE";
+  captureDoctorResult(result);
+  assertPhase(root, "candidate", () => {
+    assertPhase(root, "predecessor");
+    if (sha256(fs.readFileSync(sqlitePath(root, "candidate", "workboard"))) !==
+        manifest.predecessorDbHashes.workboard) {
+      throw new Error("WORKBOARD_BYTES_CHANGED_BY_STATE_MIGRATION");
+    }
+  });
   process.stdout.write(JSON.stringify({ migrated: true, syntheticOnly: true,
     nativeDoctorChanges: result.changes.length, nativeDoctorWarnings: result.warnings.length }) + "\n");
 }
@@ -618,18 +684,24 @@ function restore(root) {
 }
 
 const [command, untrustedRoot, ...args] = process.argv.slice(2);
-if (!command || !untrustedRoot) {
-  throw new Error("USAGE: fixture.mjs prepare|migrate|assert|restore <synthetic-parity-fixture-path> [source paths, source module/hash, or phase]");
-}
-const root = requireFixtureRoot(untrustedRoot);
-if (command === "prepare" && args.length === 3) {
-  await prepare(root, ...args);
-} else if (command === "migrate" && args.length === 2) {
-  await migrateCandidate(root, ...args);
-} else if (command === "assert" && args.length === 1) {
-  assertPhase(root, args[0]);
-} else if (command === "restore" && args.length === 0) {
-  restore(root);
-} else {
-  throw new Error("INVALID_FIXTURE_COMMAND");
+try {
+  if (!command || !untrustedRoot) {
+    throw new Error("USAGE: fixture.mjs prepare|migrate|assert|restore <synthetic-parity-fixture-path> [source paths, source module/hash, or phase]");
+  }
+  const root = requireFixtureRoot(untrustedRoot);
+  if (command === "prepare" && args.length === 3) {
+    await prepare(root, ...args);
+  } else if (command === "migrate" && args.length === 2) {
+    await migrateCandidate(root, ...args);
+  } else if (command === "assert" && args.length === 1) {
+    assertPhase(root, args[0]);
+  } else if (command === "restore" && args.length === 0) {
+    restore(root);
+  } else {
+    throw new Error("INVALID_FIXTURE_COMMAND");
+  }
+} catch (error) {
+  // Preserve the exact primary failure even if the diagnostic sink fails.
+  try { captureFixtureFailure(command, error); } catch {}
+  throw error;
 }
