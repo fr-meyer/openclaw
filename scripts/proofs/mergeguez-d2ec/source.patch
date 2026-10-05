@@ -6610,10 +6610,10 @@ index b7c0469f..c9822dac 100644
          meta: {
 diff --git a/src/agents/required-run-closure.ts b/src/agents/required-run-closure.ts
 new file mode 100644
-index 00000000..fc3294f5
+index 00000000..19d9fe23
 --- /dev/null
 +++ b/src/agents/required-run-closure.ts
-@@ -0,0 +1,819 @@
+@@ -0,0 +1,820 @@
 +/** Optional required closure belongs to the original authenticated run, never an agent name. */
 +import { randomUUID } from "node:crypto";
 +import { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
@@ -7065,9 +7065,10 @@ index 00000000..fc3294f5
 +    assertReceiptCurrent: () => assertOriginalSource(state),
 +    bindProvider(receipt: SelectedNativeCodexSseProviderReceipt) {
 +      assertExecuting(state);
-+      const assertProviderReceipt: SelectionState["assertProviderReceipt"] = state.assertProviderReceipt;
-+      if (!assertProviderReceipt)
++      const retainedProviderReceiptAssertion = state.assertProviderReceipt;
++      if (!retainedProviderReceiptAssertion)
 +        throw new Error("Original selected native provider receipt validation is unavailable");
++      const assertProviderReceipt: typeof import("@openclaw/ai/internal/openai").assertSelectedNativeCodexSseProviderReceipt = retainedProviderReceiptAssertion;
 +      assertProviderReceipt(receipt, providerBinding);
 +      if (
 +        receipt.model.provider !== state.provider ||
@@ -7118,7 +7119,7 @@ index 00000000..fc3294f5
 +        !state.cleanupBinding
 +      )
 +        throw new Error("Required original provider, cleanup or audit owner is missing");
-+      const assertProviderReceipt: SelectionState["assertProviderReceipt"] = state.assertProviderReceipt;
++      const assertProviderReceipt: typeof import("@openclaw/ai/internal/openai").assertSelectedNativeCodexSseProviderReceipt = state.assertProviderReceipt;
 +      for (const receipt of state.providers) {
 +        assertProviderReceipt(receipt, state.providerBinding);
 +        await receipt.sealAndWait();
@@ -7192,7 +7193,7 @@ index 00000000..fc3294f5
 +  assertOriginalSource(state);
 +  assertAdmittedRunTerminalAuthorityClosed(context);
 +  state.audit.assertReceipt(state.auditReceipt);
-+  const assertProviderReceipt: SelectionState["assertProviderReceipt"] = state.assertProviderReceipt;
++  const assertProviderReceipt: typeof import("@openclaw/ai/internal/openai").assertSelectedNativeCodexSseProviderReceipt = state.assertProviderReceipt;
 +  for (const receipt of state.providers) {
 +    assertProviderReceipt(receipt, state.providerBinding);
 +    receipt.assertTerminal();
@@ -13115,10 +13116,10 @@ index 00000000..0aff1ff7
 +}
 diff --git a/src/state/native-review-publication-intents.ts b/src/state/native-review-publication-intents.ts
 new file mode 100644
-index 00000000..55d45474
+index 00000000..75977f70
 --- /dev/null
 +++ b/src/state/native-review-publication-intents.ts
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,150 @@
 +import { isDeepStrictEqual } from "node:util";
 +import { isProxy } from "node:util/types";
 +import { assertOriginalRequiredRunReviewIntentPurpose, readOriginalRequiredRunReviewIntentCustody } from "../agents/required-run-closure.js";
@@ -13142,12 +13143,13 @@ index 00000000..55d45474
 +function originalInput(input: OriginalNativeReviewInput): OriginalNativeReviewInput {
 +  if (!input || typeof input !== "object" || isProxy(input)) throw new Error("Original review binding requires ordinary source references");
 +  const descriptors = Object.getOwnPropertyDescriptors(input);
-+  const get = <Key extends keyof OriginalNativeReviewInput>(key: Key): OriginalNativeReviewInput[Key] => {
-+    const descriptor = descriptors[key];
-+    if (!descriptor || !("value" in descriptor) || !descriptor.value || typeof descriptor.value !== "object") throw new Error("Original review binding changed to an accessor or invalid source");
-+    return descriptor.value;
-+  };
-+  return Object.freeze({ proof: get("proof"), context: get("context"), gatewayOwner: get("gatewayOwner") });
++  const { proof, context, gatewayOwner } = descriptors;
++  if (
++    !proof || !("value" in proof) || !proof.value || typeof proof.value !== "object" ||
++    !context || !("value" in context) || !context.value || typeof context.value !== "object" ||
++    !gatewayOwner || !("value" in gatewayOwner) || !gatewayOwner.value || typeof gatewayOwner.value !== "object"
++  ) throw new Error("Original review binding changed to an accessor or invalid source");
++  return Object.freeze({ proof: proof.value, context: context.value, gatewayOwner: gatewayOwner.value });
 +}
 +function same(owner: Owner, original: OriginalNativeReviewInput): void {
 +  if (owner.original.proof !== original.proof || owner.original.context !== original.context || owner.original.gatewayOwner !== original.gatewayOwner) throw new Error("Original review owner identity differs");

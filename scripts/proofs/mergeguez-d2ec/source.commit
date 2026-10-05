@@ -1,6 +1,6 @@
-tree 39f43660bf8625f8be2bc6b2626d47d7b5007c80
+tree 100321a6785c23ef09643fa9e47a8a7bc5bb6414
 parent bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
-author Codex qualification <codex@localhost> 1791192609 +0000
-committer Codex qualification <codex@localhost> 1791192609 +0000
+author Codex qualification <codex@localhost> 1791196322 +0000
+committer Codex qualification <codex@localhost> 1791196322 +0000
 
-fix(runtime): preserve native custody contracts in compiler input
+fix(runtime): correct explicit assertion and descriptor contracts
