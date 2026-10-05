@@ -4,7 +4,9 @@ import fs from "node:fs";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
 import { describe, expect, it, vi } from "vitest";
 import type { OpenClawPluginApi } from "../api.js";
+import { dispatchAndStartWorkboardCards } from "./dispatcher.js";
 import { registerWorkboardGatewayMethods } from "./gateway.js";
+import { createWorkboardLiveExecutionTracker } from "./live-execution.js";
 import { createWorkboardSqliteTestStore } from "./test/sqlite-store.js";
 
 function createGatewayMethodCapture() {
@@ -29,6 +31,75 @@ function createGatewayMethodCapture() {
 }
 
 describe("workboard gateway methods", () => {
+  it("reads exact live settlement without granting release or mutating the card", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const card = await store.create({
+      title: "Bound worker",
+      status: "ready",
+      workspaceAccess: { unrestricted: true },
+    });
+    const liveExecutions = createWorkboardLiveExecutionTracker();
+    await dispatchAndStartWorkboardCards({
+      store,
+      liveExecutions,
+      subagent: {
+        run: async () => ({
+          runId: "observed-run",
+          execution: { observeSettlement: () => "settled" },
+        }),
+      },
+      options: { cardId: card.id, maxStarts: 1, now: 10 },
+    });
+    const before = await store.get(card.id);
+    const { api, methods } = createGatewayMethodCapture();
+    registerWorkboardGatewayMethods({ api, store, liveExecutions });
+    const method = methods.get("workboard.cards.executionSettlement")!;
+    expect(method.opts).toEqual({ scope: "operator.read" });
+    const respond = vi.fn();
+    await method.handler({ params: { id: card.id }, respond } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        cardId: card.id,
+        runId: "observed-run",
+        producerState: "settled",
+        resourceFencing: "unknown",
+        releaseAuthorized: false,
+      }),
+    );
+    expect(await store.get(card.id)).toEqual(before);
+    const claim = before?.metadata?.claim;
+    expect(claim).toBeDefined();
+    const released = await store.releaseClaim(card.id, {
+      ownerId: claim!.ownerId,
+      token: claim!.token,
+      status: "review",
+    });
+    expect(released.metadata?.claim).toBeUndefined();
+    expect(released.metadata?.automation?.launch).toEqual(before?.metadata?.automation?.launch);
+    respond.mockClear();
+    await method.handler({ params: { id: card.id }, respond } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        runId: "observed-run",
+        claimOwnerId: claim!.ownerId,
+        claimGeneration: claim!.claimedAt,
+        producerState: "settled",
+        resourceFencing: "unknown",
+        releaseAuthorized: false,
+      }),
+    );
+    expect(await store.get(card.id)).toEqual(released);
+    liveExecutions.stop();
+    respond.mockClear();
+    await method.handler({ params: { id: card.id }, respond } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ producerState: "unknown" }),
+    );
+  });
+
   it("exposes exact-card targeting through the existing dashboard dispatch action", () => {
     const manifest = JSON.parse(
       fs.readFileSync(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
@@ -119,6 +190,7 @@ describe("workboard gateway methods", () => {
 
     expect([...methods.keys()]).toEqual([
       "workboard.cards.list",
+      "workboard.cards.executionSettlement",
       "workboard.cards.create",
       "workboard.cards.captureSession",
       "workboard.cards.update",
