@@ -240,24 +240,87 @@ class Driver:
             self.state.setdefault('images', {})[image] = info['Id']; self.save()
         free = os.statvfs(self.workspace).f_bavail * os.statvfs(self.workspace).f_frsize
         need(free >= self.c['free_after_images_min_bytes'] and memory_available() >= self.c['available_memory_min_bytes'], 'post-image headroom insufficient')
-        need(not self.mount.exists() and not self.mount.is_symlink() and not self.backing.exists(), 'pre-existing task storage')
+        need(not self.mount.exists() and not self.mount.is_symlink() and not self.backing.exists() and not self.backing.is_symlink(), 'pre-existing task storage')
+        # Journal before the first storage effect. Allocation/mkfs can fail
+        # before mount is issued; those files still need qualified retirement.
+        self.state['storage_intent'] = True; self.save()
         self.mount.mkdir(mode=0o700)
+        fd = os.open(self.backing, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            os.fchmod(fd, 0o600)
+            st = os.fstat(fd)
+            self.state['backing_identity'] = {'device': st.st_dev, 'inode': st.st_ino}
+            self.save()
+        finally: os.close(fd)
+        self.check_backing()
         self.command(['fallocate', '-l', str(self.c['filesystem_bytes']), str(self.backing)])
-        self.backing.chmod(0o600)
+        self.check_backing()
         self.command(['mkfs.ext4', '-q', '-F', '-m', '0', str(self.backing)])
+        self.check_backing()
         self.state['mount_intent'] = True; self.save()
         self.command(['sudo', '-n', 'mount', '-o', 'loop,nodev,nosuid', str(self.backing), str(self.mount)])
         self.check_mount()
         self.command(['sudo', '-n', 'chown', str(os.getuid()) + ':' + str(os.getgid()), str(self.mount)])
         self.state['phase'] = 'prepared'; self.save()
 
-    def check_mount(self):
-        info = json.loads(self.command(['findmnt', '-J', '-T', str(self.mount), '-o', 'TARGET,SOURCE,FSTYPE,OPTIONS']))['filesystems'][0]
+    def check_backing(self):
+        st = self.backing.lstat()
+        need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and st.st_uid == os.getuid() and stat.S_IMODE(st.st_mode) == 0o600, 'backing custody changed')
+        need(self.state.get('backing_identity') == {'device': st.st_dev, 'inode': st.st_ino}, 'backing identity unknown or changed')
+        return st
+
+    def loop_devices(self, selector, cleanup=False):
+        # --json applies to --list; a selected device alone prints classic text.
+        rows = json.loads(self.command(['sudo', '-n', 'losetup', '--list', '--json', '--output', 'NAME,BACK-FILE', *selector], cleanup=cleanup, maximum=10))['loopdevices']
+        need(isinstance(rows, list), 'invalid loop observation')
+        for row in rows:
+            need(re.fullmatch('/dev/loop[0-9]+', row.get('name', '')) is not None and Path(row['back-file']).resolve() == self.backing, 'loop association changed')
+        return rows
+
+    def check_mount(self, cleanup=False, allow_absent=False):
+        need(not self.mount.is_symlink(), 'mount path aliased')
+        rows = json.loads(self.command(['findmnt', '-J', '-T', str(self.mount), '-o', 'TARGET,SOURCE,FSTYPE,OPTIONS'], cleanup=cleanup, maximum=10))['filesystems']
+        need(len(rows) == 1, 'ambiguous mount observation')
+        info = rows[0]
+        if allow_absent and info['target'] != str(self.mount): return False
         need(info['target'] == str(self.mount) and info['fstype'] == 'ext4' and {'nodev', 'nosuid', 'rw'}.issubset(set(info['options'].split(','))), 'wrong mounted filesystem')
+        need(self.state.get('mount_intent') is True, 'mount was not issued by this job')
         loop = info['source']; need(loop.startswith('/dev/loop') and loop[9:].isdigit(), 'not owned loop filesystem')
-        value = json.loads(self.command(['sudo', '-n', 'losetup', '-J', loop]))['loopdevices'][0]
-        need(Path(value['back-file']).resolve() == self.backing and self.backing.stat().st_size == self.c['filesystem_bytes'], 'wrong loop backing')
-        self.state['loop'] = loop; self.state['device'] = self.mount.stat().st_dev; self.save()
+        values = self.loop_devices([loop], cleanup)
+        need(len(values) == 1 and values[0]['name'] == loop and self.check_backing().st_size == self.c['filesystem_bytes'], 'wrong loop backing')
+        device = self.mount.stat().st_dev
+        need(self.state.get('loop', loop) == loop and self.state.get('device', device) == device, 'mounted identity changed')
+        self.state['loop'] = loop; self.state['device'] = device; self.save()
+        return True
+
+    def reconcile_storage(self):
+        if not self.state.get('storage_intent'):
+            need(not self.state.get('mount_intent') and not self.state.get('loop') and not self.backing.exists() and not self.backing.is_symlink() and not self.mount.is_mount(), 'storage creation custody missing')
+            self.state['storage_retired'] = True; self.save(); return False
+        if not self.backing.exists() and not self.backing.is_symlink():
+            need(not self.state.get('backing_identity') and not self.state.get('mount_intent') and not self.state.get('loop') and not self.mount.is_mount(), 'intended backing disappeared')
+            self.state['storage_retired'] = True; self.save(); return False
+        self.check_backing()
+        return self.check_mount(cleanup=True, allow_absent=True)
+
+    def retire_storage(self, mounted):
+        if self.state.get('storage_retired'): return
+        self.check_backing()
+        if mounted:
+            self.check_mount(cleanup=True)
+            self.command(['sudo', '-n', 'umount', str(self.mount)], cleanup=True, maximum=20)
+            self.state['unmount_completed'] = True; self.save()
+        # mount -o loop uses autoclear. Observe its bounded retirement; never
+        # detach a global loop or repeatedly issue an uncertain unmount.
+        until = min(uptime() + 20, self.cleanup_deadline)
+        while True:
+            rows = self.loop_devices(['--associated', str(self.backing)], cleanup=True)
+            need(all(row['name'] == self.state.get('loop') for row in rows), 'unreconciled loop association')
+            if not rows: break
+            need(uptime() < until, 'loop backing still attached'); time.sleep(0.1)
+        need(not self.check_mount(cleanup=True, allow_absent=True), 'task mount still present')
+        self.check_backing(); self.backing.unlink()
+        self.state['storage_retired'] = True; self.save()
 
     def source(self):
         need(self.state['phase'] == 'prepared', 'source reconstruction not admitted')
@@ -388,24 +451,25 @@ class Driver:
                 issues.append('unreconciled container create: ' + record['name']); continue
             try: self.settle(record)
             except Exception as e: issues.append(str(e))
+        mounted = False
+        if not issues:
+            try: mounted = self.reconcile_storage()
+            except Exception as e: issues.append(str(e))
         if not issues and self.state['phase'] == 'compiled':
             try:
+                need(mounted, 'compiled storage mount unavailable')
                 self.command(['sudo', '-n', sys.executable, str(PROOF / 'driver.py'), '_archive', str(self.mount), str(self.control), str(self.state['device']), str(self.c['compiled_cap_bytes']), str(os.getuid()), str(os.getgid()), str(self.cleanup_deadline)], cleanup=True, maximum=180, name='archive')
                 self.state['compiled_archive_sha256'] = digest(self.control / 'compiled.tar.gz')
             except Exception as e: issues.append(str(e))
-        if not issues and self.state.get('loop'):
+        if not issues and mounted:
             try:
                 # Copy terminal and failed receipts BEFORE retiring task data.
                 self.command(['sudo', '-n', sys.executable, str(PROOF / 'driver.py'), '_reports', str(self.mount), str(self.control), str(self.state['device']), str(os.getuid()), str(os.getgid())], cleanup=True, name='reports')
             except Exception as e: issues.append(str(e))
-        if self.state.get('loop') and not issues:
-            try:
-                self.command(['sudo', '-n', 'umount', str(self.mount)], cleanup=True)
-                text = self.command(['sudo', '-n', 'losetup', '-j', str(self.backing)], cleanup=True)
-                need(text.strip() == '', 'loop backing still attached')
-                self.backing.unlink()
+        if not issues:
+            try: self.retire_storage(mounted)
             except Exception as e: issues.append(str(e))
-        candidate = self.state['phase'] == 'compiled' and not issues
+        candidate = self.state['phase'] == 'compiled' and not issues and self.state.get('storage_retired') is True
         self.state['cleanup_issues'] = issues; self.state['complete'] = False
         self.save()
         upload = self.control / 'upload'; stage = self.control / 'upload.stage'

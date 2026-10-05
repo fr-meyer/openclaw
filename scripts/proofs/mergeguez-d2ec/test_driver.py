@@ -158,6 +158,13 @@ class Settlement(unittest.TestCase):
         self.clock = patch.object(d, 'uptime', return_value=10); self.clock.start()
         self.driver = object.__new__(d.Driver); self.driver.c = C; self.driver.control = self.root; self.driver.mount = self.root / 'mount'; self.driver.backing = self.root / 'backing'; self.driver.state = {'job': '1-1', 'phase': 'compiled', 'containers': [], 'complete': False, 'device': 1}; self.driver.state_path = self.root / 'state.json'; self.driver.cleanup_deadline = 1000; self.driver.save = lambda: d.atomic(self.root / 'state.json', self.driver.state)
         self.calls = []; self.driver.docker = lambda *args, **kwargs: self.calls.append(args) or ''
+        # These existing tests isolate container settlement/result publication.
+        # Native storage observation is exercised separately below.
+        self.driver.reconcile_storage = lambda: True
+        def retire(mounted):
+            self.driver.command(['sudo', '-n', 'umount', str(self.driver.mount)], cleanup=True)
+            self.driver.state['storage_retired'] = True
+        self.driver.retire_storage = retire
     def tearDown(self): self.clock.stop(); self.temp.cleanup()
     def record(self): return {'name': 'worker', 'id': 'a' * 64, 'kind': 'worker', 'started': True, 'cgroup': str(self.root / 'extinct')}
     def terminal(self): return {'State': {'Running': False, 'Pid': 0, 'Status': 'exited'}}
@@ -249,6 +256,147 @@ class Settlement(unittest.TestCase):
             return ''
         self.driver.docker = docker; r = self.record(); self.driver.settle(r)
         self.assertTrue(r['settled']); self.assertEqual([x[0] for x in self.calls], ['stop', 'rm'])
+
+class StorageReconciliation(unittest.TestCase):
+    """Actual driver entry points, small private files and inert utility replies."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name).resolve()
+        self.driver = object.__new__(d.Driver); self.driver.c = copy.deepcopy(C)
+        self.driver.c['filesystem_bytes'] = 32
+        self.driver.workspace = self.root; self.driver.control = self.root / 'control'; self.driver.control.mkdir()
+        self.driver.mount = self.root / 'mount'; self.driver.backing = self.root / 'backing'
+        self.driver.state = {'job': '1-1', 'phase': 'preparing', 'containers': [], 'complete': False}
+        self.driver.state_path = self.driver.control / 'state.json'
+        self.driver.save = lambda: d.atomic(self.driver.state_path, self.driver.state)
+        self.driver.cleanup_deadline = 1000; self.driver.work_deadline = 1
+        self.calls = []; self.mounted = False; self.loop_rows = None
+        self.driver.command = self.command
+        self.clock = patch.object(d, 'uptime', return_value=10); self.clock.start()
+        self.driver.save()
+    def tearDown(self): self.clock.stop(); self.temp.cleanup()
+    def allocate(self, mounted=False, size=32):
+        self.driver.mount.mkdir(); self.driver.backing.write_bytes(b'x' * size); self.driver.backing.chmod(0o600)
+        st = self.driver.backing.stat()
+        self.driver.state.update(storage_intent=True, backing_identity={'device': st.st_dev, 'inode': st.st_ino})
+        self.mounted = mounted
+        if mounted: self.driver.state['mount_intent'] = True
+        self.driver.save()
+    def command(self, argv, **kwargs):
+        self.calls.append((argv, kwargs))
+        if argv[0] == 'findmnt':
+            return json.dumps({'filesystems': [{'target': str(self.driver.mount) if self.mounted else '/', 'source': '/dev/loop0' if self.mounted else '/dev/root', 'fstype': 'ext4', 'options': 'rw,nodev,nosuid'}]})
+        if 'losetup' in argv:
+            self.assertIn('--list', argv); self.assertIn('--json', argv)
+            self.assertEqual(argv[argv.index('--output') + 1], 'NAME,BACK-FILE')
+            rows = [{'name': '/dev/loop0', 'back-file': str(self.driver.backing)}] if self.mounted else []
+            return json.dumps({'loopdevices': rows if self.loop_rows is None else self.loop_rows})
+        if 'umount' in argv: self.mounted = False; return ''
+        if '_reports' in argv: return ''
+        raise AssertionError('Unexpected native effect: ' + repr(argv))
+    def failed_cleanup(self):
+        with self.assertRaisesRegex(d.Refusal, 'qualification failed/unknown'): self.driver.cleanup()
+        receipt = json.loads((self.driver.control / 'upload/state.json').read_text())
+        self.assertFalse(receipt['complete']); return receipt
+    def test_selected_loop_query_uses_list_json_and_exact_columns(self):
+        self.allocate(mounted=True)
+        self.assertTrue(self.driver.check_mount())
+        loop = next(argv for argv, _ in self.calls if 'losetup' in argv)
+        self.assertEqual(loop, ['sudo', '-n', 'losetup', '--list', '--json', '--output', 'NAME,BACK-FILE', '/dev/loop0'])
+    def test_mount_intent_without_saved_loop_is_reconciled_and_retired(self):
+        self.allocate(mounted=True)
+        self.assertNotIn('loop', self.driver.state)
+        receipt = self.failed_cleanup()
+        self.assertEqual(receipt['loop'], '/dev/loop0'); self.assertTrue(receipt['storage_retired'])
+        self.assertTrue(receipt['unmount_completed']); self.assertEqual(receipt['cleanup_issues'], [])
+        self.assertFalse(self.driver.backing.exists()); self.assertFalse(self.mounted)
+        self.assertEqual(sum('umount' in argv for argv, _ in self.calls), 1)
+        self.assertTrue(all(kw.get('cleanup') is True for _, kw in self.calls))
+    def test_partial_backing_before_mount_intent_is_retired(self):
+        self.allocate(size=7)
+        receipt = self.failed_cleanup()
+        self.assertTrue(receipt['storage_retired']); self.assertEqual(receipt['cleanup_issues'], [])
+        self.assertFalse(self.driver.backing.exists()); self.assertFalse(any('umount' in argv for argv, _ in self.calls))
+    def test_creation_intent_without_created_file_has_no_native_retirement_effect(self):
+        self.driver.state['storage_intent'] = True
+        receipt = self.failed_cleanup()
+        self.assertTrue(receipt['storage_retired']); self.assertEqual(self.calls, [])
+    def test_unjournaled_backing_is_retained_as_unknown(self):
+        self.allocate(); del self.driver.state['backing_identity']
+        receipt = self.failed_cleanup()
+        self.assertTrue(receipt['cleanup_issues']); self.assertTrue(self.driver.backing.exists())
+        self.assertEqual(self.calls, [])
+    def test_replaced_inode_is_retained(self):
+        self.allocate(); os.rename(self.driver.backing, self.root / 'original')
+        self.driver.backing.write_bytes(b'other'); self.driver.backing.chmod(0o600)
+        receipt = self.failed_cleanup()
+        self.assertTrue(receipt['cleanup_issues']); self.assertEqual(self.driver.backing.read_bytes(), b'other')
+    def test_alien_mount_or_loop_is_not_unmounted(self):
+        self.allocate(mounted=True)
+        self.loop_rows = [{'name': '/dev/loop0', 'back-file': str(self.root / 'someone-else')}]
+        receipt = self.failed_cleanup()
+        self.assertTrue(receipt['cleanup_issues']); self.assertTrue(self.mounted)
+        self.assertFalse(any('umount' in argv for argv, _ in self.calls))
+    def test_classic_loop_reply_is_not_synthesized_as_json(self):
+        self.allocate(mounted=True); command = self.driver.command
+        def classic(argv, **kw):
+            if 'losetup' in argv: return '/dev/loop0: [2049]:2422858 (' + str(self.driver.backing) + ')\n'
+            return command(argv, **kw)
+        self.driver.command = classic
+        receipt = self.failed_cleanup()
+        self.assertTrue(receipt['cleanup_issues']); self.assertTrue(self.driver.backing.exists())
+    def test_delayed_autoclear_is_observed_after_one_unmount(self):
+        self.allocate(mounted=True); command = self.driver.command; observations = []
+        def delayed(argv, **kw):
+            if '--associated' in argv:
+                observations.append(1)
+                if len(observations) == 1:
+                    return json.dumps({'loopdevices': [{'name': '/dev/loop0', 'back-file': str(self.driver.backing)}]})
+            return command(argv, **kw)
+        self.driver.command = delayed
+        with patch.object(d.time, 'sleep'): receipt = self.failed_cleanup()
+        self.assertTrue(receipt['storage_retired']); self.assertEqual(len(observations), 2)
+        self.assertEqual(sum('umount' in argv for argv, _ in self.calls), 1)
+    def test_persistent_association_retains_file_without_repeat_unmount(self):
+        self.allocate(mounted=True); command = self.driver.command
+        def attached(argv, **kw):
+            if '--associated' in argv:
+                return json.dumps({'loopdevices': [{'name': '/dev/loop0', 'back-file': str(self.driver.backing)}]})
+            return command(argv, **kw)
+        self.driver.command = attached
+        self.clock.stop()
+        with patch.object(d, 'uptime', side_effect=iter([10, 31])):
+            receipt = self.failed_cleanup()
+        self.assertTrue(receipt['cleanup_issues']); self.assertTrue(self.driver.backing.exists())
+        self.assertEqual(sum('umount' in argv for argv, _ in self.calls), 1)
+    def test_prepare_journals_file_identity_before_fallocate_failure(self):
+        self.driver.state['phase'] = 'init'; saves = []; original_save = self.driver.save
+        def save(): saves.append(copy.deepcopy(self.driver.state)); original_save()
+        self.driver.save = save
+        def docker(*argv, **kw):
+            if argv[0] == 'ps': return ''
+            if argv[0] == 'info': return json.dumps({'CgroupVersion': '2'})
+            if argv[0] == 'pull': return ''
+            if argv[:2] == ('image', 'inspect'):
+                return json.dumps([{'Os': 'linux', 'Architecture': 'amd64', 'RepoDigests': [argv[-1]], 'Id': 'sha256:' + 'a'*64}])
+            raise AssertionError(argv)
+        self.driver.docker = docker
+        def failed(argv, **kw):
+            if argv[0] == 'fallocate':
+                disk = json.loads(self.driver.state_path.read_text())
+                self.assertTrue(disk['storage_intent']); self.assertIn('backing_identity', disk)
+                raise d.Refusal('allocation failed')
+            return self.command(argv, **kw)
+        self.driver.command = failed
+        class Free: f_bavail = 20*d.GIB; f_frsize = 1
+        is_file = Path.is_file
+        def target_controllers(path):
+            return True if str(path) == '/sys/fs/cgroup/cgroup.controllers' else is_file(path)
+        with patch.object(d.sys, 'platform', 'linux'), patch.object(Path, 'is_file', target_controllers), patch.object(d, 'memory_available', return_value=15*d.GIB), patch.object(d.os, 'statvfs', return_value=Free()):
+            with self.assertRaisesRegex(d.Refusal, 'allocation failed'): self.driver.prepare()
+        self.assertTrue(any(s.get('storage_intent') and 'backing_identity' not in s for s in saves))
+        self.driver.command = self.command
+        receipt = self.failed_cleanup()
+        self.assertTrue(receipt['storage_retired']); self.assertFalse(self.driver.backing.exists())
 
 class ExecutionGuards(unittest.TestCase):
     def setUp(self):
