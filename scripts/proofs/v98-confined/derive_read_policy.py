@@ -41,6 +41,7 @@ SYSTEM_FILES = (
     "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
     "/usr/lib/x86_64-linux-gnu/libc.so.6",
     "/etc/ld.so.cache",
+    "/etc/ssl/openssl.cnf",
 )
 APP_METADATA = ("/app/package.json", "/app/dist/build-info.json",
                 "/app/dist/.buildstamp", "/app/dist/.runtime-postbuildstamp")
@@ -218,7 +219,9 @@ def derive_binding(graph, inventory, catalog, classification, elf):
     for path in SYSTEM_FILES:
         add(path, "named-node-and-gnu-loader-runtime")
     elf_rows = {row["path"]: row for row in elf["entries"]}
-    for path in (GNU_FS_SAFE, GNU_KOFFI) + SYSTEM_FILES[:-1]:
+    elf_files = tuple(path for path in SYSTEM_FILES
+                      if path not in ("/etc/ld.so.cache", "/etc/ssl/openssl.cnf"))
+    for path in (GNU_FS_SAFE, GNU_KOFFI) + elf_files:
         if path not in elf_rows or regular_identity(elf_rows[path]) != regular_identity(entries[path]):
             raise ValueError("ELF identity does not match final catalog")
     if elf_rows[NODE].get("interpreter") != "/lib64/ld-linux-x86-64.so.2":

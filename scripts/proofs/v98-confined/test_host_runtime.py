@@ -634,7 +634,7 @@ class HostContractTests(unittest.TestCase):
             root = Path(temp)
             paths = [root / name for name in ("validation.json", "binding.json", "packet.json", "image.tar.gz")]
             validation = {"status": "PREPARED_IMAGE_IDENTITY_VERIFIED; RUNTIME_UNQUALIFIED",
-                          "selectedReadFilesVerifiedAgainstSavedLayers": 1547,
+                          "selectedReadFilesVerifiedAgainstSavedLayers": 1548,
                           "source": {"commit": HOST.SOURCE, "tree": HOST.TREE, "dockerfileSha256": "extra"},
                           "imageArchiveSha256": HOST.IMAGE_SHA, "imageConfigId": HOST.IMAGE_ID,
                           "artifactId": HOST.ARTIFACT_ID, "runId": HOST.ARTIFACT_RUN,
@@ -643,7 +643,7 @@ class HostContractTests(unittest.TestCase):
             binding = {"sourceCommit": HOST.SOURCE, "sourceTree": HOST.TREE,
                        "imageSha256": HOST.IMAGE_SHA, "imageConfigId": HOST.IMAGE_ID,
                        "status": "STATIC_READ_POLICY_PREPARED; RUNTIME_NOT_ADMITTED",
-                       "imageEntries": [{}] * 1547, "namespaceEntries": [{}] * 358}
+                       "imageEntries": [{}] * 1548, "namespaceEntries": [{}] * 360}
             paths[0].write_text(json.dumps(validation))
             paths[1].write_text(json.dumps(binding))
             paths[3].write_bytes(b"synthetic image, never loaded")

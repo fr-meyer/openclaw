@@ -15432,6 +15432,16 @@
       "type": "file"
     },
     {
+      "bytes": 12332,
+      "mode": "0o644",
+      "path": "/etc/ssl/openssl.cnf",
+      "reasons": [
+        "named-node-and-gnu-loader-runtime"
+      ],
+      "sha256": "7ae8cae2e64856b34c80276deb1dcf60f76da27bc1e00382201ba7bb7dc33311",
+      "type": "file"
+    },
+    {
       "bytes": 215000,
       "mode": "0o755",
       "path": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
@@ -17367,6 +17377,11 @@
       "type": "directory"
     },
     {
+      "mode": "0o755",
+      "path": "/etc/ssl",
+      "type": "directory"
+    },
+    {
       "mode": "0o777",
       "path": "/lib",
       "target": "usr/lib",
@@ -17393,6 +17408,12 @@
       "mode": "0o755",
       "path": "/usr/lib",
       "type": "directory"
+    },
+    {
+      "mode": "0o777",
+      "path": "/usr/lib/ssl/openssl.cnf",
+      "target": "/etc/ssl/openssl.cnf",
+      "type": "symlink"
     },
     {
       "mode": "0o755",

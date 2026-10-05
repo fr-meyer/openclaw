@@ -1,6 +1,6 @@
 {
   "schema": "openclaw-v98-confined-execution-packet/v1",
-  "status": "LOCAL_ACCOUNTING_SOURCE_READY; OPENSSL_DELTA_UNAPPLIED; NO_FUTURE_RUN_AUTHORIZED",
+  "status": "REVIEWED_EXACT_APPROVAL_DELTA_PREPARED; REAL_HOST_UNQUALIFIED",
   "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
   "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
   "sourceManifestPath": "scripts/proofs/v98-confined/source-manifest.json",
@@ -73,11 +73,11 @@
       "reviewed proof bundle -> /proof READ_ONLY",
       "task-owned tmpfs -> /scratch READ_WRITE"
     ],
-    "imageRegularReadFiles": 1547,
+    "imageRegularReadFiles": 1548,
     "imageDirectoryReads": false,
     "metadataLookups": "stat/access/readlink are permitted in the private image/PID/mount scopes; Landlock file-content rules do not mediate them; not identical Node Permission Model metadata restrictions",
-    "namespaceBindings": 358,
-    "readBindingSha256": "f4697e6eb2868dc1d44e5074eadb385e1963d23d54e8ed12c81c2dbf82b00667",
+    "namespaceBindings": 360,
+    "readBindingSha256": "55c73448511958e494b25e2437fed2642f41fe4bde8a8598228e61e546b3489e",
     "completeImportClosureClaimed": false,
     "unexpectedReadSyscallOrChild": "DENY; REQUIRED_FLOW_OR_NATIVE_OWNER_FAILURE_STOPS_ATTEMPT; RETAIN; NO_RETRY_OR_BROADENING; CAUGHT_ERRNO_IS_NOT_AUTOMATIC_ATTEMPT_ABORT",
     "stdioSocketPairs": "At most three tracked anonymous AF_UNIX SOCK_STREAM|SOCK_CLOEXEC protocol-zero pairs in phase 3",
@@ -136,7 +136,7 @@
     }
   ],
   "requiredHostedGates": [
-    "Separately approved one-file OpenSSL READ_FILE policy addition with exact identity/metadata joins; current unchanged policy fails static startup preflight",
+    "Exact separately approved one-file OpenSSL READ_FILE delta and two metadata joins; static startup preflight must now join all ten required identities before compile/image load/start. No complete closure claim.",
     "Observe actual systemd255 transient active-slice retention after Docker child auto-removal, exact invocation/root/parent/child dev-inode ownership, zero pre-start baseline, raw hierarchical CPU through supervisor tail, positive empty parent before/after stable final counters, bounded durable checkpoint and exact owned release. Source implementation and pure tests are local; actual host behavior NEVER_RUN.",
     "Exact authenticated artifact/source/tooling/source-manifest/read-binding/saved-layer joins",
     "Installed compiler identity and flags; Linux amd64 static supervisor and dependency-free preload; record actual compiled binary digests before start",
@@ -152,7 +152,7 @@
   "compiledBinaryHashes": "Recorded only by the approved hosted compile gate, before policy activation",
   "remainingAdmissionLimitations": [
     "New read-policy addition, ephemeral accounting unit/control scope, exact new tooling commit/tree, branch/workflow4 publication and one15-minute hosted run all require bundled explicit approval. Remote branch/workflow absence, unused counters and retained artifact expiry must be rechecked immediately before publication.",
-    "The exact config /etc/ssl/openssl.cnf is currently denied in parent/helper read scopes. Proposed READ_FILE-only addition is NOT implemented; no config/environment suppression is allowed by this local fix.",
+    "Exact /etc/ssl/openssl.cnf image READ_FILE addition applied under explicit bundled approval; two metadata joins and all1548/360 joins are source-bound. No config/environment suppression or other policy expansion. Actual Node startup/loader behavior remains host-only.",
     "Persistent-parent lifetime accounting/extinction source is implemented and locally tested. Real Linux/systemd255/Docker retention, raw kernel hierarchical charge after child removal and exact kill/release behavior remain NEVER_RUN; missing/changed parent/counters refuse with no cached/fallback proof.",
     "Own-child ptrace/Yama, Landlock ABI, seccomp/AppArmor syscall/loader behavior, cgroup controls, default OCI runtime and actual PID1 remain runtime gates.",
     "Image and selected-file verification do not prove complete dynamic import closure, workers, helper behavior or real data migration/restore/rollback.",

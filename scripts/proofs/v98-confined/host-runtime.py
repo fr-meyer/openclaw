@@ -182,7 +182,7 @@ def verify_prepared(validation, binding, packet, image):
     p = read_json(packet)
     selected_source = v.get("source") or {}
     require(v.get("status") == "PREPARED_IMAGE_IDENTITY_VERIFIED; RUNTIME_UNQUALIFIED"
-            and v.get("selectedReadFilesVerifiedAgainstSavedLayers") == 1547
+            and v.get("selectedReadFilesVerifiedAgainstSavedLayers") == 1548
             and selected_source.get("commit") == SOURCE and selected_source.get("tree") == TREE
             and v.get("imageArchiveSha256") == IMAGE_SHA
             and v.get("imageConfigId") == IMAGE_ID
@@ -201,7 +201,7 @@ def verify_prepared(validation, binding, packet, image):
     require(b.get("sourceCommit") == SOURCE and b.get("sourceTree") == TREE
             and b.get("imageSha256") == IMAGE_SHA and b.get("imageConfigId") == IMAGE_ID
             and b.get("status") == "STATIC_READ_POLICY_PREPARED; RUNTIME_NOT_ADMITTED"
-            and len(b.get("imageEntries", [])) == 1547 and len(b.get("namespaceEntries", [])) == 358,
+            and len(b.get("imageEntries", [])) == 1548 and len(b.get("namespaceEntries", [])) == 360,
             "selected read binding changed")
     require(Path(image).is_file() and not Path(image).is_symlink() and sha256(image) == IMAGE_SHA,
             "retained image bytes changed after validation")

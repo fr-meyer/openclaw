@@ -1537,6 +1537,7 @@
 /app/node_modules/@openclaw/ai/package.json
 /app/package.json
 /etc/ld.so.cache
+/etc/ssl/openssl.cnf
 /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
 /usr/lib/x86_64-linux-gnu/libc.so.6
 /usr/lib/x86_64-linux-gnu/libdl.so.2
