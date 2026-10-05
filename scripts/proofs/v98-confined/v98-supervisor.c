@@ -33,6 +33,9 @@ struct task {
 };
 static struct task tasks[V98_MAX_TASKS];
 static struct v98_fds parent_fds,helper_fds;
+/* One private libuv signal-lock pipe is recreated by the sole forked child.
+ * This is separate from the three inherited stdio socketpairs. */
+static struct { int created,seeded,read_fd,write_fd; uint64_t device,inode; } atfork_pipe;
 static struct v98_entitlement entitlement;
 static pid_t initial_pid,helper_pid;
 static unsigned live;
@@ -178,7 +181,7 @@ static int exec_request(struct task *t,struct user_regs_struct *r) {
      !remote_vector(t->tid,r->rdx,e,ev,V98_MAX_ENV,&ec)||!v98_exact_environment(ec,ev))return 0;
   if(t->role==V98_BOOTSTRAP)return vector_equal(ac,av,initial_argc,initial_argv);
   return t->role==V98_PENDING_HELPER&&entitlement.phase==3&&!entitlement.helper_execs&&
-    v98_helper_argv(ac,av)&&bind_stage(av[5]);
+    atfork_pipe.created&&atfork_pipe.seeded&&v98_helper_argv(ac,av)&&bind_stage(av[5]);
 }
 static int proc_vector(pid_t pid,const char *name,char storage[][V98_STRING_BYTES],
                        const char **vector,size_t maximum,size_t *count) {
@@ -208,6 +211,33 @@ static int proc_fd_stat(pid_t pid,int descriptor,struct stat *st) {
   char path[128];snprintf(path,sizeof(path),"/proc/%ld/fd/%d",(long)pid,descriptor);
   int fd=open(path,O_PATH|O_CLOEXEC);if(fd<0)return 0;
   int okay=fstat(fd,st)==0;close(fd);return okay;
+}
+static int proc_fd_flags(pid_t pid,int descriptor,unsigned long *flags) {
+  char path[128],line[256];snprintf(path,sizeof(path),"/proc/%ld/fdinfo/%d",(long)pid,descriptor);
+  FILE *file=fopen(path,"r");if(!file)return 0;
+  int found=0;
+  while(fgets(line,sizeof(line),file))if(!strncmp(line,"flags:",6)) {
+    if(found||sscanf(line+6,"%lo",flags)!=1){fclose(file);return 0;}
+    found=1;
+  }
+  int okay=found&&!ferror(file);if(fclose(file))okay=0;return okay;
+}
+static int private_pipe_fd(int descriptor) {
+  return descriptor>=0&&atfork_pipe.created&&
+    (descriptor==atfork_pipe.read_fd||descriptor==atfork_pipe.write_fd);
+}
+static int record_private_pipe(struct task *t) {
+  int fds[2];struct stat a,b;unsigned long read_flags,write_flags;
+  if(atfork_pipe.created||!memory_read(t->tid,t->arguments[0],fds,sizeof(fds))||
+     fds[0]<3||fds[1]<3||fds[0]==fds[1]||
+     v98_fd_tracked(&helper_fds,fds[0])||v98_fd_tracked(&helper_fds,fds[1])||
+     !proc_fd_stat(t->tid,fds[0],&a)||!proc_fd_stat(t->tid,fds[1],&b)||
+     !S_ISFIFO(a.st_mode)||!S_ISFIFO(b.st_mode)||a.st_dev!=b.st_dev||a.st_ino!=b.st_ino||
+     !proc_fd_flags(t->tid,fds[0],&read_flags)||!proc_fd_flags(t->tid,fds[1],&write_flags)||
+     read_flags!=O_CLOEXEC||write_flags!=(O_CLOEXEC|O_WRONLY))return 0;
+  atfork_pipe.created=1;atfork_pipe.read_fd=fds[0];atfork_pipe.write_fd=fds[1];
+  atfork_pipe.device=a.st_dev;atfork_pipe.inode=a.st_ino;
+  report("helper_private_pipe_created",entitlement.phase,t->tid);return 1;
 }
 static int pair_inode(const struct v98_fds *fds,const struct stat *st) {
   if(!S_ISSOCK(st->st_mode))return 0;
@@ -245,6 +275,8 @@ static int committed_exec(struct task *t) {
   /* The committed exec FD census proved that every non-stdio endpoint was
    * closed by CLOEXEC. Retire the copied table before fd numbers can be reused. */
   for(unsigned i=0;i<helper_fds.created;i++){helper_fds.pairs[i].a=-1;helper_fds.pairs[i].b=-1;}
+  /* only_stdio already proves both private endpoints were closed by exec. */
+  atfork_pipe.read_fd=atfork_pipe.write_fd=-1;
   report("helper_exec_verified",entitlement.phase,t->tid);return 1;
 }
 static struct v98_fds *fd_table(struct task *t) {return t->tgid==initial_pid?&parent_fds:&helper_fds;}
@@ -255,7 +287,7 @@ static int scoped_helper_alive(void) {
 static int pending_syscall(long nr) {
   switch(nr) {
     case 1:case 3:case 13:case 14:case 32:case 33:case 39:case 59:case 60:
-    case 72:case 102:case 104:case 107:case 108:case 186:case 218:case 231:case 273:case 292:case 436:return 1;
+    case 72:case 102:case 104:case 107:case 108:case 186:case 218:case 231:case 273:case 292:case 293:case 436:return 1;
     default:return 0;
   }
 }
@@ -287,10 +319,23 @@ static int syscall_allowed(struct task *t,struct user_regs_struct *r) {
   if(t->role==V98_HELPER&&!t->confined&&nr==446)
     return v98_stage_restrict_request(&stage_guard,(int)a,b);
   if(t->role==V98_PENDING_HELPER&&!pending_syscall(nr))return 0;
+  if(t->role==V98_PENDING_HELPER&&nr==293)
+    return entitlement.phase==3&&!entitlement.helper_execs&&!atfork_pipe.created&&b==O_CLOEXEC;
+  if(t->role==V98_PENDING_HELPER&&private_pipe_fd((int)a)) {
+    if(nr==32||nr==33||nr==292)return 0; /* No aliases, including stdio. */
+    if(nr==72&&b!=1&&b!=3)return 0; /* Queries only; never clear CLOEXEC. */
+  }
+  if(t->role==V98_PENDING_HELPER&&(nr==33||nr==292)&&private_pipe_fd((int)b))return 0;
   if(t->role==V98_PENDING_HELPER&&nr==1) {
     struct stat st;
     if(!proc_fd_stat(t->tid,(int)a,&st)||!(S_ISFIFO(st.st_mode)||pair_inode(&helper_fds,&st)))return 0;
-    if(a>2&&c!=sizeof(int))return 0; /* libuv's anonymous exec-error pipe only. */
+    if(private_pipe_fd((int)a)) {
+      unsigned char token;
+      return (int)a==atfork_pipe.write_fd&&!atfork_pipe.seeded&&c==1&&
+        st.st_dev==atfork_pipe.device&&st.st_ino==atfork_pipe.inode&&
+        memory_read(t->tid,b,&token,sizeof(token))&&token==42;
+    }
+    if(a>2&&c!=sizeof(int))return 0; /* Existing inherited exec-error pipe rule. */
   }
   if(t->role==V98_HELPER&&!t->confined) {
     /* Loader/constructor can only read files and configure tighter Landlock;
@@ -344,7 +389,24 @@ static int finish_syscall(struct task *t,struct user_regs_struct *r) {
   /* Restart/pseudo-results are refused while borrowed memory or FD tables are
    * locked. A fresh attempt must never reuse an earlier argument decision. */
   if(result<=-512&&result>=-516)return 0;
+  if(nr==1&&t->role==V98_PENDING_HELPER&&(int)t->arguments[0]==atfork_pipe.write_fd) {
+    if(result!=1)return 0;
+    atfork_pipe.seeded=1;report("helper_private_pipe_seeded",entitlement.phase,t->tid);
+  }
+  if(nr==293&&t->role==V98_PENDING_HELPER&&result>=0)
+    if(result!=0||!record_private_pipe(t))return 0;
   if(result>=0) {
+    if(t->role==V98_PENDING_HELPER) {
+      if(nr==3) {
+        if((int)t->arguments[0]==atfork_pipe.read_fd)atfork_pipe.read_fd=-1;
+        if((int)t->arguments[0]==atfork_pipe.write_fd)atfork_pipe.write_fd=-1;
+      } else if(nr==436) {
+        if(atfork_pipe.read_fd>=0&&(unsigned)atfork_pipe.read_fd>=t->arguments[0]&&
+           (unsigned)atfork_pipe.read_fd<=t->arguments[1])atfork_pipe.read_fd=-1;
+        if(atfork_pipe.write_fd>=0&&(unsigned)atfork_pipe.write_fd>=t->arguments[0]&&
+           (unsigned)atfork_pipe.write_fd<=t->arguments[1])atfork_pipe.write_fd=-1;
+      }
+    }
     struct v98_fds *fds=fd_table(t);
     if(nr==53) {
       int pair[2];if(!memory_read(t->tid,t->arguments[3],pair,sizeof(pair))||!v98_pair_record(fds,pair[0],pair[1]))return 0;
@@ -372,13 +434,17 @@ static int finish_syscall(struct task *t,struct user_regs_struct *r) {
 static void syscall_stop(struct task *t) {
   struct user_regs_struct r;if(!trace(PTRACE_GETREGS,t->tid,0,&r))return;
   long nr=(long)r.orig_rax;
-  int lock=guarded(nr)||(nr==1&&t->role==V98_PENDING_HELPER);
+  int lock=guarded(nr)||((nr==1||nr==293)&&t->role==V98_PENDING_HELPER);
   if(lock&&!quiesce(t))return;
   if(!syscall_allowed(t,&r)) {
     r.orig_rax=(unsigned long)-1;r.rax=(unsigned long)-EPERM;
     if(!trace(PTRACE_SETREGS,t->tid,0,&r))return;
     /* A denied syscall is skipped; overwrite ENOSYS at its exit stop. */
-    t->syscall_number=-1;t->waiting_exit=1;report("syscall_denied",entitlement.phase,nr);
+    t->syscall_number=-1;t->waiting_exit=1;
+    /* Preserve the failing task and non-string arguments at this existing event. */
+    printf("{\"event\":\"syscall_denied\",\"phase\":%u,\"value\":%ld,\"tid\":%ld,\"tgid\":%ld,\"role\":%d,\"arg0\":%lu,\"arg1\":%lu,\"arg2\":%lu}\n",
+      entitlement.phase,nr,(long)t->tid,(long)t->tgid,t->role,(unsigned long)r.rdi,(unsigned long)r.rsi,(unsigned long)r.rdx);
+    if(fflush(stdout))failed=1;
     resume(t,1,0);return;
   }
   if(lock||nr==446||nr==74||nr==75) {
@@ -423,7 +489,7 @@ static void dispatch(struct task *t) {
   /* No external signal sender exists in the isolated namespace. Internal
    * SIGCHLD/SIGPIPE retain real Node behavior; other unexpected signals abort. */
   if(signal_number==SIGCHLD||signal_number==SIGPIPE)resume(t,t->waiting_exit,signal_number);
-  else refuse("unexpected_signal_refused");
+  else {report("unexpected_signal_refused",entitlement.phase,signal_number);failed=1;}
 }
 static int verify_file(const char *path,const char *wanted,struct stat *identity) {
   int fd=open(path,O_RDONLY|O_NOFOLLOW|O_CLOEXEC);if(fd<0)return 0;
@@ -474,6 +540,7 @@ static void kill_join(void) {
 static int run_phase(unsigned phase,const char *const *argv) {
   initial_argv=argv;for(initial_argc=0;argv[initial_argc];initial_argc++);
   entitlement.phase=phase;initial_result=-1;guard_owner=NULL;stage_guard=(struct v98_stage_guard){0};parent_fds=(struct v98_fds){0};helper_fds=(struct v98_fds){0};helper_pid=0;
+  memset(&atfork_pipe,0,sizeof(atfork_pipe));atfork_pipe.read_fd=atfork_pipe.write_fd=-1;
   int gate[2],ready[2];if(pipe2(gate,O_CLOEXEC)<0)return 0;
   if(pipe2(ready,O_CLOEXEC)<0){close(gate[0]);close(gate[1]);return 0;}
   pid_t child=fork();if(child<0){close(gate[0]);close(gate[1]);close(ready[0]);close(ready[1]);return 0;}

@@ -20,9 +20,9 @@
     },
     {
       "path": "scripts/proofs/v98-confined/README.md",
-      "bytes": 24646,
+      "bytes": 25648,
       "mode": "0o644",
-      "sha256": "a82d7b278366a34e18b7ee43f65a6d7c3270732778d18db7aa50c25639c7efb2"
+      "sha256": "2acd79ecfc8f1a41db5e4c4fcbf6659428a7b22469fffd586ad366c05f19b9f7"
     },
     {
       "path": "scripts/proofs/v98-confined/accounting_owner.py",
@@ -110,9 +110,9 @@
     },
     {
       "path": "scripts/proofs/v98-confined/packet.json",
-      "bytes": 17956,
+      "bytes": 19952,
       "mode": "0o644",
-      "sha256": "71affb22198458a989a57f58281d2f22be323852a4008815f7addd225a2155a2"
+      "sha256": "6195152a9b9a152459a6103cac61d350b58fe25ab51f706df17f82d190bc27af"
     },
     {
       "path": "scripts/proofs/v98-confined/proposal/image-openssl.cnf",
@@ -212,9 +212,9 @@
     },
     {
       "path": "scripts/proofs/v98-confined/v98-supervisor.c",
-      "bytes": 28415,
+      "bytes": 32421,
       "mode": "0o644",
-      "sha256": "ca92038958255448e0f94aa753fe8b620843721fe7cff43c45ace910574626de"
+      "sha256": "b3de30f3f78cdd5edd34e241fffec53cb2a11408587477d6fdfe6ee258cb3e92"
     },
     {
       "path": "scripts/proofs/v98-parity/README.md",

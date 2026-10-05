@@ -6,15 +6,26 @@ This proof tooling preserves product commit
 Linux amd64 image; it does not rebuild, patch, install dependencies into, or
 start the image's Gateway entrypoint. No fixture phase has run locally.
 
-Attempt5 at `0cd0ac7702c09f0c2a9a8b0471d14563dff64ab6` proved startup,
-capability, forced deadline and settled lifetime-accounting/cleanup. The 7df2254
-seed correction reached all 1,081 cards, but prepare then refused the empty
-WAL/SHM left by closed read-only manifest handles. Phases 2–6 were never run.
-This local successor corrects that reader lifecycle and reuses the existing
-branch/workflow through explicit commit/run approval. Its actual efficacy is
-unexecuted, and it authorizes no new publication, variable writes or hosted
-test. Prior failed receipts remain historical evidence. Future execution needs
-its exact reviewed source and selected run explicitly approved. No main
+Run `37266552381`, number 2/attempt 1 at
+`a2618d67778b27180722acc8a3bd3250a3ee510b`, passed startup, capability,
+forced deadline, preparation, all 1,081-card predecessor assertions and settled
+lifetime-accounting/cleanup. Migration reached an owned helper fork, then
+refused syscall 293, syscall 234 twice and an unexpected signal before verified
+helper exec. Migration remains incomplete and phases 4–6 were never run.
+The earlier empty read-only WAL/SHM failure at `0cd0ac77` remains historical
+failure evidence; the reader correction passed in run 2.
+
+The approved local correction addresses the two identified libuv at-fork startup
+operations together: one new private blocking `O_CLOEXEC` pipe and its exact one-byte
+42 initialization token. Its endpoints are inode/flag checked, cannot acquire
+aliases or lose CLOEXEC, and must disappear at the existing only-stdio exec
+census. Other helper exec, signal, network, filesystem and resource gates remain
+unchanged. Existing failure events now retain task/argument and signal context.
+This corrected native source has not been compiled or executed. The original
+trace does not certify the precise failing task or full dynamic causal chain.
+Local application and source qualification are approved; publication, variable
+writes and another hosted test require a fresh exact commit/run approval.
+The existing branch/workflow and retained product image are reused. No main
 merge, force push, production access, provider data, new VM, registry
 publication or production deployment is included.
 
@@ -85,9 +96,9 @@ runner loss and final runner teardown remain unproved.
    required compiled identities, exact selected read files and namespace
    bindings without importing or executing image code.
 2. Verify the source manifest and exact tooling checkout. Join the static startup
-   prerequisites; the current policy blocks here without runtime preparation.
-   After separately approved corrections close that gate, compile the reviewed
-   native supervisor and constructor with the existing hosted compiler; bind
+   prerequisites, including the unchanged approved OpenSSL read delta that
+   passed in retained runs. For a separately approved exact successor, compile
+   the reviewed native supervisor and constructor with the existing hosted compiler; bind
    compiler identity, flags and resulting binary hashes. ELF checks require a
    static x86-64 supervisor and a preload with no external imports or libraries.
    No compiler/package acquisition or `ldd` execution is allowed.
@@ -338,7 +349,8 @@ contracts and inert tests do not replace actual confined runtime measurements.
 ## Reusable branch successor (local proposal)
 
 Reuse `candidate/v2026.9.8-runtime-admission-5` and its existing workflow file.
-Run 37262067025, number 1/attempt 1, remains a retained failed attempt. A new
+Run 37266552381, number 2/attempt 1, is the latest consumed failed attempt;
+run 37262067025, number 1/attempt 1, remains historical failure evidence. A new
 explicit approval must identify the exact reviewed commit and next workflow run
 number and authorize setting the public, nonsecret Actions variables
 `V98_RUNTIME_APPROVED_COMMIT` and `V98_RUNTIME_APPROVED_RUN_NUMBER`, followed by
@@ -358,5 +370,8 @@ reading, and after successful assertions/close lets SQLite settle only an owned
 zero-length WAL plus paired 32 KiB SHM. Checkpoint, close, sidecar absence and
 unchanged main identities/hashes must all pass. It never unlinks a sidecar, and
 the same owner covers every nested predecessor/candidate/rollback read.
-Actual efficacy and all-six cap fit remain unproved. The existing 16 MiB scratch,
-20 MiB evidence, 15-minute job, seven-day retention and confinement stay fixed.
+Run 2 proved this reader correction in prepare and predecessor validation.
+Its post-migration and restore transitions, and all-six cap fit, remain unproved.
+The private IPC successor's compile/runtime remain unexecuted. The existing
+16 MiB scratch, 20 MiB evidence, 15-minute job, seven-day retention and other
+confinement gates stay fixed.
