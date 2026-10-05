@@ -702,9 +702,9 @@ def retain(args):
         need(native_required == '0', 'native state has no successful build owner receipt'); return
     st = build_file.lstat(); need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and st.st_dev == device and st.st_size <= 65536, 'unsafe successful build receipt')
     build = json.loads(build_file.read_text())
-    need(build.get('complete') is True and build.get('job') == job and build.get('source_commit') == contract['source_commit'] and build.get('source_tree') == contract['source_tree'] and build.get('compile_argv') == contract['compile_argv'] and build.get('environment') == contract['compile_environment'], 'retention build/source/job mismatch')
+    need(build.get('complete') is True and build.get('job') == job and build.get('source_commit') == contract['source_commit'] and build.get('source_tree') == contract['source_tree'] and build.get('targeted_test_argv') == contract['targeted_test_argv'] and build.get('compile_argv') == contract['compile_argv'] and build.get('environment') == contract['compile_environment'], 'retention build/source/job mismatch')
     commands = build.get('commands', [])
-    need([command.get('argv') for command in commands] == [['corepack', contract['packageManager'], *contract['install_argv']], *contract['compile_argv']] and all(command.get('code') == 0 and command.get('signal') is None for command in commands), 'retention original compile receipts absent')
+    need([command.get('argv') for command in commands] == [['corepack', contract['packageManager'], *contract['install_argv']], *contract['targeted_test_argv'], *contract['compile_argv']] and all(command.get('code') == 0 and command.get('signal') is None for command in commands), 'retention original compile receipts absent')
     # Source emissions are bounded by the compiler phase; retention owns only the actual portable/native roots.
     files = []
     caps = {'package': contract['retention_cap_bytes'], 'runnable': contract['portable_runnable_unpacked_cap_bytes'], 'native-state': contract['native_state_cap_bytes'], 'native-output': contract['native_state_cap_bytes']}

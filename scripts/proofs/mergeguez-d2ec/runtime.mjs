@@ -37,6 +37,17 @@ function attestSource() {
   requireThat(sha(source + '/pnpm-lock.yaml') === contract.lock_sha256, 'lock mismatch');
   const pkg = JSON.parse(fs.readFileSync(source + '/package.json', 'utf8'));
   requireThat(pkg.packageManager === contract.packageManager && pkg.version === '2026.9.8', 'source package/toolchain mismatch');
+  const sourceDevice = fs.lstatSync(source).dev;
+  for (const entry of contract.source_inputs) {
+    requireThat(/^[a-zA-Z0-9._/-]+$/.test(entry.path) && entry.path.split('/').every(part => part && part !== '.' && part !== '..') && entry.mode === '100644', 'unsafe named source input');
+    const full = path.join(source, entry.path);
+    for (let directory = path.dirname(full); directory !== source; directory = path.dirname(directory)) {
+      const parent = fs.lstatSync(directory); requireThat(parent.isDirectory() && !parent.isSymbolicLink(), 'aliased named source input directory');
+    }
+    const st = fs.lstatSync(full);
+    requireThat(st.isFile() && !st.isSymbolicLink() && st.nlink === 1 && st.size === entry.bytes && st.dev === sourceDevice && st.uid === contract.compiler_uid && st.gid === contract.compiler_gid && sha(full) === entry.sha256, 'named source input changed');
+  }
+  receipt.source_identity = { kind: 'finite source identity only; no loaded/build/native or provider authority', files: contract.source_inputs.length, manifest_sha256: crypto.createHash('sha256').update(JSON.stringify(contract.source_inputs)).digest('hex') };
   // No trust override. Git must accept ownership under this actual UID.
   try {
     const extra = execFileSync('git', ['-C', source, 'config', '--local', '--get-regexp', '^(http\\..*extraheader|credential\\.|core\\.hooksPath)'], { encoding: 'utf8', env: childEnv(false), timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -201,6 +212,12 @@ async function main() {
     attestSource();
     receipt.private_input_entries = inspectTree(source);
     inspectTree('/qualification/toolchain', true);
+    for (const argv of contract.targeted_test_argv) {
+      attestSource();
+      // Explicit files stay with the maintained project/prerequisite owner.
+      // These selected projects consume source and do not request a runtime build.
+      await run(argv);
+    }
     for (const argv of contract.compile_argv) {
       attestSource();
       // The original source wrappers perform their own physical compiler and
@@ -211,7 +228,7 @@ async function main() {
     receipt.packages = qualifyPackageOutputs();
     receipt.compiled_emits = qualifyCompiledEmits();
     attestSource();
-    const build = { complete: true, job, source_commit: contract.source_commit, source_tree: contract.source_tree, compile_argv: contract.compile_argv, environment: contract.compile_environment, commands: receipt.commands.slice(), sdk: receipt.sdk, packages: receipt.packages, compiled_emits: receipt.compiled_emits };
+    const build = { complete: true, job, source_commit: contract.source_commit, source_tree: contract.source_tree, targeted_test_argv: contract.targeted_test_argv, compile_argv: contract.compile_argv, environment: contract.compile_environment, commands: receipt.commands.slice(), sdk: receipt.sdk, packages: receipt.packages, compiled_emits: receipt.compiled_emits };
     fs.writeFileSync(reports + '/offline-compile-build.json', JSON.stringify(build) + '\n', { flag: 'wx', mode: 0o600 });
     requireThat(JSON.parse(fs.readFileSync(source + '/node_modules/npm/package.json', 'utf8')).version === contract.npm_version, 'locked local npm package absent');
     const npm = execFileSync('pnpm', ['exec', 'npm', '--version'], { encoding: 'utf8', env: childEnv(false), cwd: source, timeout: Math.min(10000, remaining() * 1000) }).trim();

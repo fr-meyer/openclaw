@@ -937,7 +937,7 @@
       }
     }
   },
-  "patch_sha256": "eda4d7977329d43e123e0636ecf8d36ea2d29285262c2b2f0af23663bfbc5a3c",
+  "patch_sha256": "1bc2661e35277a7268979072fa768ef6101ee321a93aac654bb4d2d83752535a",
   "phase_max_seconds": {
     "offline-compile": 1800,
     "offline-native": 300,
@@ -946,7 +946,7 @@
     "warm-fetch": 420
   },
   "pids": 512,
-  "raw_commit_sha256": "8c4e4f1d50dff938e4acf74d0854d9a77d38815ae9f1f205a1b47d111af5a6c6",
+  "raw_commit_sha256": "383bb895e3f14814317b3c1aac1ba8166ac9c614978f5314eed7420f98723ce3",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
   "retention_cap_bytes": 536870912,
@@ -966,7 +966,7 @@
     "./dist/proofs/native-ipc-gateway-fixture.js"
   ],
   "runnable_profile": "original-full-production-build-plus-task-internal-entries",
-  "schema": "mergeguez.exact-runnable-native-qualification/v2",
+  "schema": "mergeguez.exact-runnable-native-qualification/v3",
   "sdk_exports": [
     [
       "./plugin-sdk/access-groups",
@@ -2742,20 +2742,172 @@
     {
       "commit": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
       "parent": "e6903a41049ace9a4ae22e467f244af747157b0d",
-      "patch": "source.patch",
+      "patch": "intermediate-source.patch",
       "patch_sha256": "eda4d7977329d43e123e0636ecf8d36ea2d29285262c2b2f0af23663bfbc5a3c",
-      "raw_commit": "source.commit",
+      "raw_commit": "intermediate-source.commit",
       "raw_commit_sha256": "8c4e4f1d50dff938e4acf74d0854d9a77d38815ae9f1f205a1b47d111af5a6c6",
       "tree": "7b39f2755c80152d5f7299153e344ec6f3182f99"
+    },
+    {
+      "parent": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
+      "commit": "43719c923f28758caf0cf85f1c02d719772ea6f2",
+      "tree": "45a737e31f2c571a8219cb90aec45a1a517b2f30",
+      "patch": "source.patch",
+      "patch_sha256": "1bc2661e35277a7268979072fa768ef6101ee321a93aac654bb4d2d83752535a",
+      "raw_commit": "source.commit",
+      "raw_commit_sha256": "383bb895e3f14814317b3c1aac1ba8166ac9c614978f5314eed7420f98723ce3"
     }
   ],
-  "source_commit": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
-  "source_tree": "7b39f2755c80152d5f7299153e344ec6f3182f99",
+  "source_commit": "43719c923f28758caf0cf85f1c02d719772ea6f2",
+  "source_tree": "45a737e31f2c571a8219cb90aec45a1a517b2f30",
   "total_seconds": 2700,
   "work_seconds": 2400,
   "portable_runnable_unpacked_cap_bytes": 2147483648,
   "npm_version": "11.20.0",
   "size_measurement": "Unmeasured: compiled emits <=512MiB; portable runnable unpacked <=2GiB; combined retained package+runnable+native archive <=512MiB, native state <=32MiB; task volume10GiB unchanged. Overflow fails closed, no resize or rerun.",
   "phase_budget_meaning": "Each phase ceiling is intersected with the single unchanged2400s work deadline. Per-phase ceilings do not create extra time authority; total2700s includes cleanup and upload. Selected new packaging/materialization/native sizes and timings remain unmeasured.",
-  "qualification_scope": "Same coherent source, one full optional production profile, original checked package plus contained offline locked dependency graph, compiled native IPC and natural Gateway startup/shutdown observations. No broker task-purpose binding or admission/release acceptance."
+  "qualification_scope": "Same exact CLI/core successor source; maintained targeted CLI suites, production/scripts types, one full optional production profile, original checked package plus contained offline locked dependency graph, compiled native IPC and natural Gateway startup/shutdown observations. No broker task-purpose binding or admission/release acceptance.",
+  "targeted_test_argv": [
+    [
+      "node",
+      "scripts/run-vitest.mjs",
+      "run",
+      "src/cli/program/register.agent.test.ts",
+      "src/commands/agent-via-gateway.test.ts"
+    ]
+  ],
+  "source_inputs": [
+    {
+      "path": "docs/cli/agent.md",
+      "mode": "100644",
+      "bytes": 38169,
+      "sha256": "8a770827d8c4582621f6fcea001839729f8dcd75f242bccf1d1dc4495bfbfa07"
+    },
+    {
+      "path": "packages/ai/src/transports/openai-responses-request-lifecycle.ts",
+      "mode": "100644",
+      "bytes": 26120,
+      "sha256": "5813ff5fce18e091029f2952ac2a26f149cb9defbd79c1e1e758c26fa0b63506"
+    },
+    {
+      "path": "scripts/proofs/native-ipc-gateway/driver.mjs",
+      "mode": "100644",
+      "bytes": 15635,
+      "sha256": "ac8b727870f8d29819932ed9bd0055b1224866acfa94e6f0372eb4aee9ce5462"
+    },
+    {
+      "path": "scripts/proofs/native-ipc-gateway/legacy-agent-fixture.ts",
+      "mode": "100644",
+      "bytes": 40766,
+      "sha256": "e528d0d055b8807d9d7f84b7c0cef9bb8c6a15e93d9a11f443f493d4f70b4ffb"
+    },
+    {
+      "path": "scripts/proofs/native-ipc-gateway/native-api.ts",
+      "mode": "100644",
+      "bytes": 1582,
+      "sha256": "a4c44232b1fcd8559fbfba11a5580ed81b97b9d71da37b9ce0394c48eb6b6e58"
+    },
+    {
+      "path": "scripts/proofs/native-ipc-gateway/native-fixture.ts",
+      "mode": "100644",
+      "bytes": 3326,
+      "sha256": "708dd1ab62e42a651431b3350009e5164945a06fe6c007fb33225fbf5bd2d77e"
+    },
+    {
+      "path": "src/agents/agent-command-execution-identity.ts",
+      "mode": "100644",
+      "bytes": 12286,
+      "sha256": "93689f7eb0fc564e1ee6fc3f93c5f6a7b14d2de371bc9d71a305a6f5fdfc441b"
+    },
+    {
+      "path": "src/agents/command/types.ts",
+      "mode": "100644",
+      "bytes": 15626,
+      "sha256": "28846746eadf25bf5b603dd3d5be36b4c62899ba9c7833af7bf92cc641c0ff80"
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/auth-controller.ts",
+      "mode": "100644",
+      "bytes": 50146,
+      "sha256": "bee25e27d4f0015400aaeb23850b5ad1a81c0fe52dab07cf26d2c7e380d3081a"
+    },
+    {
+      "path": "src/agents/required-run-closure.ts",
+      "mode": "100644",
+      "bytes": 52584,
+      "sha256": "ed19b0d999774b276dd0790f76dcf2cb76d36d1dab4ecb4082f95b12f5d83de1"
+    },
+    {
+      "path": "src/cli/program/register.agent-turn.ts",
+      "mode": "100644",
+      "bytes": 9271,
+      "sha256": "4186571f871fb331f5a0d8354094b57c982ae9d110736bc0aced09f9ac3c276f"
+    },
+    {
+      "path": "src/cli/program/register.agent.test.ts",
+      "mode": "100644",
+      "bytes": 9407,
+      "sha256": "b1e552749d9b65889765c28431a6a1d062e53c1c077039943590d27d66b45329"
+    },
+    {
+      "path": "src/commands/agent-via-gateway.test.ts",
+      "mode": "100644",
+      "bytes": 104194,
+      "sha256": "a8e1268cb39c8a6cdc98eb493bb8608d1966270ae2895f176a8cc323356de338"
+    },
+    {
+      "path": "src/commands/agent-via-gateway.ts",
+      "mode": "100644",
+      "bytes": 46751,
+      "sha256": "9dffeb60227435356868b74490ac04a380d2cd50e9c5c9ebba5aa27871ec8517"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-run-dispatch.ts",
+      "mode": "100644",
+      "bytes": 18671,
+      "sha256": "c22cb5031031c559113acf146ab5d02e9e2acd817ba495020ab2d46d560d9265"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-run-execution-phase.ts",
+      "mode": "100644",
+      "bytes": 35318,
+      "sha256": "66b765d90114d56495490b9861bf0c15acc81baec2c545ddafb0520e5f9be3f6"
+    },
+    {
+      "path": "src/state/agent-run-quarantine-maintenance.ts",
+      "mode": "100644",
+      "bytes": 4507,
+      "sha256": "e5aafe907905bcb2d157c9c93e0f5805d81c56e9288d8c2d8abed5c742f6e260"
+    },
+    {
+      "path": "src/state/agent-run-quarantine.ts",
+      "mode": "100644",
+      "bytes": 4396,
+      "sha256": "4819195c553e1d491d8496b5130baad9570853e931ebe67b7e4e615743eac0a3"
+    },
+    {
+      "path": "src/state/agent-run-quarantine.types.ts",
+      "mode": "100644",
+      "bytes": 5792,
+      "sha256": "19ebc2dadfb07b68364243b373cb84974ac7fc1eb972f720a2a5d5cfe1d12ffc"
+    },
+    {
+      "path": "tsdown.config.ts",
+      "mode": "100644",
+      "bytes": 40082,
+      "sha256": "e322af18f12786424d1c0bb409cd177479918f4bfe4fb059dc428343bfa3abde"
+    }
+  ],
+  "source_inputs_origins": [
+    {
+      "source_commit": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
+      "receipt_sha256": "b8c842a4966d4344f3a37ff13623e099b33699f5e7af1d50911348813d63a6a4",
+      "selected_postimage_count": 15
+    },
+    {
+      "source_commit": "43719c923f28758caf0cf85f1c02d719772ea6f2",
+      "receipt_sha256": "d38374986bd55561c58392ce0dffc11ebc1094ad97cea58b33c80fe1e6d5e7b9",
+      "selected_postimage_count": 5
+    }
+  ]
 }

@@ -1,1416 +1,344 @@
-diff --git a/packages/ai/src/transports/openai-responses-request-lifecycle.ts b/packages/ai/src/transports/openai-responses-request-lifecycle.ts
-index 7a90beadfd3b58537d5cf82de94c3bd82284526d..47548e9fece0c6efdeae758ab7a41613c508f4d8 100644
---- a/packages/ai/src/transports/openai-responses-request-lifecycle.ts
-+++ b/packages/ai/src/transports/openai-responses-request-lifecycle.ts
-@@ -6,6 +6,7 @@ import {
- } from "@openclaw/llm-core/event-stream";
- import { isRecord } from "@openclaw/normalization-core/record-coerce";
- import { isResponsesProviderTool } from "./openai-responses-stream-errors.js";
-+import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
+diff --git a/docs/cli/agent.md b/docs/cli/agent.md
+index 73aad1083a0204d943bfc85a0dd1e6ccda81a6f8..6854571347bae9bdac2b34919cbcf9561995196d 100644
+--- a/docs/cli/agent.md
++++ b/docs/cli/agent.md
+@@ -326,6 +326,8 @@ These are observations, not statistical speed guarantees.
+ - `--session-id <id>`: explicit session id
+ - `--agent <id>`: agent id; overrides routing bindings
+ - `--model <id>`: model override for this run (`provider/model` or model id)
++- `--required-execution-closure <profile>`: require the `native-sse-no-tools` profile for a Gateway model run
++- `--run-id <id>`: supply the idempotency key retained across Gateway retries; blank values are rejected
+ - `--thinking <level>`: agent thinking level (`off`, `minimal`, `low`, `medium`, `high`, plus provider/runtime-supported levels such as `xhigh`, `adaptive`, `max`, or `ultra`)
+ - `--verbose <on|off>`: persist verbose level for the session
+ - `--channel <channel>`: delivery channel; omit to use the main session channel
+@@ -337,6 +339,16 @@ These are observations, not statistical speed guarantees.
+ - `--timeout <seconds>`: override this command's agent-turn deadline (default 600, or `agents.defaults.timeoutSeconds`); `0` disables the overall deadline. The 600-second fallback belongs to this CLI command, not ordinary Gateway turns, whose default is 48 hours.
+ - `--json`: output JSON
  
- /** Host-owned authority for a single explicitly acknowledged Responses request. */
- export type ResponsesRequestLifecycle = {
-@@ -65,6 +66,7 @@ export function withResponsesRequestAcceptance<T>(
- export type SelectedNativeCodexSseReviewBinding = Readonly<{
-   assertCurrent(): void;
-   assertReceiptCurrent(): void;
-+  assertIssuedModelInput(bodyJson: string): Readonly<{ inputSha256: string; inputBytes: number }>;
-   bindProvider(receipt: SelectedNativeCodexSseProviderReceipt): void;
- }>;
- 
-@@ -91,6 +93,9 @@ export type SelectedNativeCodexSseProviderReceipt = Readonly<{
- export type SelectedNativeCodexSseWireCustody = Readonly<{
-   ordinal: number;
-   credential: object;
-+  bodySha256: string;
-+  inputSha256: string;
-+  inputBytes: number;
- }>;
- 
- export type SelectedNativeCodexSseTerminalOutput = Readonly<{ ordinal: number; responseId: string; text: string }>;
-@@ -358,6 +363,8 @@ export function createSelectedNativeCodexSseRequestOwner(
-       }
-       // Validate the exact serialized bytes, including a payload's toJSON result,
-       // after every awaited hook and before reserving an actual issued request.
-+      if (typeof bodyJson !== "string" || Buffer.byteLength(bodyJson, "utf8") > 8 * 1024 * 1024)
-+        throw new Error("Selected native serialized input exceeds its complete envelope bound");
-       const wire = JSON.parse(bodyJson) as unknown;
-       if (!isRecord(wire) || wire.model !== admittedModel.id ||
-           finalModel.provider !== admittedModel.provider || finalModel.api !== admittedModel.api ||
-@@ -373,9 +380,25 @@ export function createSelectedNativeCodexSseRequestOwner(
-       }
-       if (!preparedWire) throw new Error("Original selected provider issue lacks retained final wire custody");
-       preparedWire.assertCurrent();
-+      // This is the exact serialized string the original sender passes to fetch,
-+      // after payload hooks/awaits. Prompt-observer diagnostics only examine the
-+      // system prompt and cannot prove that the complete user diff reached egress.
-+      if (typeof binding.assertIssuedModelInput !== "function")
-+        throw new Error("Selected native complete user input binding is unavailable");
-+      const input = binding.assertIssuedModelInput(bodyJson);
-+      const inputSha256 = input.inputSha256;
-+      const inputBytes = input.inputBytes;
-+      if (typeof inputSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(inputSha256) ||
-+          !Number.isSafeInteger(inputBytes) || inputBytes < 1 || inputBytes > 4 * 1024 * 1024)
-+        throw new Error("Selected native complete input snapshot is malformed");
-+      const bodySha256 = sha256Hex(bodyJson);
-+      binding.assertCurrent();
-+      preparedWire.assertCurrent();
-       active = Object.freeze({ ordinal: selectedState(binding).nextOrdinal++, dispatch: "issued", wireModel: admittedModel.id, outcome: "pending" });
-       const ordinal = active.ordinal;
--      wires.set(ordinal, { custody: Object.freeze({ ordinal, credential: preparedWire.credential }), assertCurrent: preparedWire.assertCurrent });
-+      wires.set(ordinal, { custody: Object.freeze({ ordinal, credential: preparedWire.credential,
-+        bodySha256, inputSha256, inputBytes }),
-+        assertCurrent: preparedWire.assertCurrent });
-       preparedWire = undefined;
-       // Close successor admission at abort, before fetch/iterator finally can run.
-       abortSignal = signal;
-diff --git a/scripts/proofs/native-ipc-gateway/driver.mjs b/scripts/proofs/native-ipc-gateway/driver.mjs
-new file mode 100644
-index 0000000000000000000000000000000000000000..00ae36a77ab6964e97e67fa172a8b0d3fc1012cf
---- /dev/null
-+++ b/scripts/proofs/native-ipc-gateway/driver.mjs
-@@ -0,0 +1,257 @@
-+import assert from "node:assert/strict";
-+import { createHash } from "node:crypto";
-+import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
-+import { networkInterfaces } from "node:os";
-+import path from "node:path";
-+import { pathToFileURL } from "node:url";
-+import { setTimeout as delay } from "node:timers/promises";
++Selecting `--required-execution-closure native-sse-no-tools` sends `modelRun: true`
++and `promptMode: "none"` with the profile and requests the existing `operator.admin`
++identity. The Gateway still checks the operator authority, selected model, provider,
++and fresh session. Other profile values, blank profiles, and `--local` are rejected
++before dispatch. Omitting the flag preserves the ordinary turn settings.
 +
-+export const ENTRY_PATHS = Object.freeze({
-+  driver: "dist/proofs/native-ipc-gateway-driver.js",
-+  api: "dist/proofs/native-ipc-gateway-api.js",
-+  fixture: "dist/proofs/native-ipc-gateway-fixture.js",
-+  sdk: "dist/plugin-sdk/sqlite-runtime.js",
-+  gateway: "openclaw.mjs",
-+});
++Both `--required-execution-closure` and `--run-id` are rejected with `agent exec`,
++which has no retained Gateway run identity. Reuse a `--run-id` only for retries of
++the same attempt.
 +
-+export function parseArguments(argv) {
-+  const allowed = new Set(["--artifact-root", "--state-root", "--report", "--port"]);
-+  const values = new Map();
-+  for (let index = 0; index < argv.length; index += 2) {
-+    const key = argv[index], value = argv[index + 1];
-+    if (!allowed.has(key) || values.has(key) || !value || value.startsWith("--"))
-+      throw new Error("Use --artifact-root PATH --state-root FRESH_PATH --report PATH --port NUMBER");
-+    values.set(key, value);
-+  }
-+  for (const key of allowed) if (!values.has(key)) throw new Error(`Missing ${key}`);
-+  const port = Number(values.get("--port"));
-+  if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) throw new Error("Invalid isolated Gateway port");
-+  return { artifactRoot: path.resolve(values.get("--artifact-root")), stateRoot: path.resolve(values.get("--state-root")), report: path.resolve(values.get("--report")), port };
-+}
-+
-+export function gatewayArgv(artifactRoot, port) {
-+  return [process.execPath, path.join(artifactRoot, ENTRY_PATHS.gateway), "gateway", "run", "--bind", "loopback", "--auth", "none", "--tailscale", "off", "--port", String(port)];
-+}
-+
-+function errorFacts(error) {
-+  return { name: error instanceof Error ? error.name : "unknown", message: error instanceof Error ? error.message : String(error), code: error?.code };
-+}
-+
-+function assertNoExternalInterface() {
-+  assert.equal(process.platform, "linux", "Native execution is restricted to the future isolated Linux job");
-+  for (const addresses of Object.values(networkInterfaces()))
-+    for (const address of addresses ?? []) assert.equal(address.internal, true, "Job network namespace must expose loopback only");
-+}
-+
-+async function loadEntries(artifactRoot) {
-+  const loaded = {};
-+  for (const [name, relative] of Object.entries(ENTRY_PATHS)) {
-+    const filename = path.join(artifactRoot, relative);
-+    const resolved = await realpath(filename);
-+    assert.equal(resolved.startsWith(`${artifactRoot}${path.sep}`), true, "Entry escaped the accepted artifact root");
-+    loaded[name] = { filename: resolved, sha256: createHash("sha256").update(await readFile(resolved)).digest("hex") };
-+  }
-+  const api = await import(pathToFileURL(loaded.api.filename).href);
-+  const sdk = await import(pathToFileURL(loaded.sdk.filename).href);
-+  // Actual loaded SDK correspondence, rather than a source declaration or copied receipt.
-+  assert.equal(api.openSqliteWorkerStore, sdk.openSqliteWorkerStore);
-+  assert.equal(api.runSqliteWorkerStoreOperation, sdk.runSqliteWorkerStoreOperation);
-+  assert.equal(await realpath(process.argv[1]), loaded.driver.filename, "Run only the SAME full-build compiled driver entry");
-+  return { api, loaded, fixtureUrl: pathToFileURL(loaded.fixture.filename) };
-+}
-+
-+async function nativeIpc(api, fixtureUrl, stateRoot, record) {
-+  const pathname = path.join(stateRoot, "ipc.sqlite");
-+  const store = await api.openSqliteWorkerStore({ moduleUrl: fixtureUrl, databasePath: pathname, input: undefined });
-+  assert.ok(store, "Original broker did not create its task fixture store");
-+  const physical = api.readDatabasePathIdentitySync(pathname);
-+  let active = true;
-+  const assertCurrent = () => {
-+    assert.ok(active, "Task fixture request revoked");
-+    assert.deepEqual(api.readDatabasePathIdentitySync(pathname), physical);
-+  };
-+  async function write(type, key, revokeAtCommit = false) {
-+    let admission, settlement;
-+    const stages = [];
-+    const result = await api.runSqliteWorkerStoreOperation(store, scope => scope.execute({ type, input: { key } }), undefined, assertCurrent,
-+      operation => {
-+        settlement = operation.settled;
-+        admission = api.createSqliteWorkerOperationAdmission((request, grant) => {
-+          stages.push(request.stage);
-+          assert.deepEqual(stages, request.stage === "transaction" ? ["transaction"] : ["transaction", "commit"]);
-+          if (revokeAtCommit && request.stage === "commit") active = false;
-+          assertCurrent();
-+          assert.equal(grant(), true);
-+        });
-+        return { admission, nativeLocations: [physical.canonicalPath] };
-+      });
-+    const settled = await settlement;
-+    assert.equal(settled.kind, "completed");
-+    assert.deepEqual(admission.committed?.facts, result);
-+    assert.equal(admission.settlement?.kind, "completed");
-+    record({ case: type, stages, result, nativeCommit: admission.committed, nativeSettlement: admission.settlement, brokerSettlement: settled });
-+    return result;
-+  }
-+  try {
-+    await write("reserve", "ack");
-+    await write("commit", "ack");
-+    await write("reserve", "revoked");
-+    await assert.rejects(write("commit", "revoked", true));
-+    const rows = (await store.execute({ type: "read", input: undefined })).map(row => ({ key: row.key, committed: row.committed }));
-+    assert.deepEqual(rows, [{ key: "ack", committed: 1 }, { key: "revoked", committed: 0 }]);
-+    record({ case: "revocation", rows, admissionRevoked: active === false });
-+  } finally { await store.close(); }
-+  // Isolate fault custody from the healthy actor; the original broker owns both generations.
-+  const lostPath = path.join(stateRoot, "lost-ack.sqlite");
-+  const lost = await api.openSqliteWorkerStore({ moduleUrl: fixtureUrl, databasePath: lostPath, input: undefined });
-+  assert.ok(lost);
-+  const lostPhysical = api.readDatabasePathIdentitySync(lostPath);
-+  let admission, settlement;
-+  const admissionFactory = operation => {
-+    settlement = operation.settled;
-+    admission = api.createSqliteWorkerOperationAdmission((_request, grant) => {
-+      assert.deepEqual(api.readDatabasePathIdentitySync(lostPath), lostPhysical);
-+      assert.equal(grant(), true);
-+    });
-+    return { admission, nativeLocations: [lostPhysical.canonicalPath] };
-+  };
-+  await api.runSqliteWorkerStoreOperation(lost, scope => scope.execute({ type: "reserve", input: { key: "lost" } }), undefined, undefined, admissionFactory);
-+  let failure;
-+  try {
-+    await api.runSqliteWorkerStoreOperation(lost, scope => scope.execute({ type: "lostAck", input: { key: "lost" } }), undefined, undefined, admissionFactory);
-+  } catch (error) { failure = error; }
-+  assert.ok(failure, "Lost ACK unexpectedly returned a native result");
-+  assert.equal(api.hasSqliteWorkerOutcomeUnknown(failure), true, "Original broker must retain unknown outcome");
-+  const settled = await settlement;
-+  assert.equal(settled.kind, "unknown");
-+  assert.equal(admission.committed, undefined, "Readback may not fabricate the lost native ACK");
-+  let closeFailure;
-+  try { await lost.close(); } catch (error) { closeFailure = errorFacts(error); }
-+  const database = api.openNodeSqliteDatabase(api.resolveExistingSqliteFileUri(lostPath), { readOnly: true });
-+  let rows;
-+  try { rows = database.prepare("SELECT key,committed FROM qualification_reservations").all().map(row => ({ key: row.key, committed: row.committed })); } finally { database.close(); }
-+  assert.deepEqual(rows, [{ key: "lost", committed: 1 }]);
-+  record({ case: "lost-ack", failure: errorFacts(failure), brokerSettlement: { kind: settled.kind }, nativeCommit: null, durableReadback: rows, closeFailure, ownership: "held-for-reconciliation", notAnAdmissionReceipt: true });
-+}
-+
-+async function maintenanceAndReopen(api, stateRoot, environment, record) {
-+  const agentId = "qualification";
-+  const pathname = path.join(stateRoot, "agents", agentId, "agent", "openclaw-agent.sqlite");
-+  await mkdir(path.dirname(pathname), { recursive: true, mode: 0o700 });
-+  const target = api.seedLegacyAgentFixture(pathname, agentId);
-+  const backupPath = path.join(stateRoot, "legacy-before-migration.sqlite");
-+  const result = await api.quarantineLegacyAgentRunsForMaintenance({ agentId, path: pathname, env: environment }, { requestId: "qualification-maintenance", targets: [target] }, backupPath);
-+  assert.equal(result.receipts.length, 1);
-+  assert.equal(result.receipts[0].notAnAdmissionReceipt, true);
-+  for (const key of ["executionDrain", "providerDrain", "localCleanup", "historicalRetirement"]) assert.equal(result.receipts[0][key], "unknown");
-+  const backup = api.openNodeSqliteDatabase(api.resolveExistingSqliteFileUri(backupPath), { readOnly: true });
-+  try {
-+    assert.equal(backup.prepare("PRAGMA user_version").get().user_version, 24);
-+    assert.equal(backup.prepare("SELECT count(*) AS count FROM session_nodes").get().count, 1);
-+  } finally { backup.close(); }
-+  // Lease is now fully released. This source owns ONLY this isolated task's recovery read.
-+  const execution = api.captureOpenClawAgentDatabaseExecution({ agentId, path: pathname, env: environment });
-+  let active = true;
-+  const source = {
-+    assertCurrent() { assert.ok(active); execution.assertCurrent(); },
-+    createAdmission(params) {
-+      return () => ({ nativeLocations: params.nativeLocations,
-+        admission: api.createSqliteWorkerOperationAdmission((request, grant) => {
-+          source.assertCurrent(); params.assertCurrent(); params.authorize(request);
-+          assert.equal(grant(), true);
-+        }, params.attachment) });
-+    },
-+  };
-+  try {
-+    const recovery = await api.restoreAgentRunQuarantines(execution, source);
-+    assert.equal(recovery.complete, true);
-+    assert.equal(recovery.notAnAdmissionReceipt, true);
-+    assert.ok(recovery.records.some(row => row.runId === target.runId));
-+    for (const key of ["executionDrain", "providerDrain", "localCleanup"]) assert.equal(recovery[key], "unknown");
-+    record({ case: "held-lease-backup-migrate-quarantine-reopen", result, recovery, ownership: "durable-denial-held", notAnAdmissionReceipt: true });
-+  } finally { active = false; await execution.release(); }
-+  await api.closeOpenClawAgentDatabasesAsync();
-+  await api.closeOpenClawStateDatabaseByPathAsync(api.resolveOpenClawStateSqlitePath(environment));
-+}
-+
-+async function gateway(api, options, environment, record) {
-+  const config = { gateway: { mode: "local", bind: "loopback", auth: { mode: "none" }, tailscale: { mode: "off" } }, models: { catalogRefresh: { enabled: false } }, cron: { enabled: false }, update: { checkOnStart: false }, discovery: { mdns: { mode: "off" } } };
-+  const configPath = path.join(options.stateRoot, "openclaw.json");
-+  await writeFile(configPath, `${JSON.stringify(config)}\n`, { flag: "wx", mode: 0o600 });
-+  const argv = gatewayArgv(options.artifactRoot, options.port);
-+  const child = await api.createOwnedStdioProcess({ argv, cwd: options.artifactRoot, env: { ...environment, OPENCLAW_CONFIG_PATH: configPath }, exactEnv: true });
-+  let stdout = "", stderr = "", outputOverflow = false;
-+  const capture = (previous, chunk) => {
-+    if (previous.length + chunk.length > 1024 * 1024) {
-+      outputOverflow = true;
-+      child.kill("SIGTERM");
-+    }
-+    return (previous + chunk).slice(0, 1024 * 1024);
-+  };
-+  child.onStdout(chunk => { stdout = capture(stdout, chunk); });
-+  child.onStderr(chunk => { stderr = capture(stderr, chunk); });
-+  const probe = api.createConfiguredGatewayLocalProbe(config);
-+  const deadline = performance.now() + 90_000;
-+  let readiness, startup;
-+  try {
-+    while (performance.now() < deadline) {
-+      readiness = await probe.requestHttp({ host: "127.0.0.1", pathname: "/readyz", port: options.port, timeoutMs: 1000 });
-+      startup = await probe.requestHttp({ host: "127.0.0.1", pathname: "/startupz", port: options.port, timeoutMs: 1000 });
-+      if (readiness?.statusCode === 200 && startup?.statusCode === 200) break;
-+      await delay(100);
-+    }
-+    assert.equal(readiness?.statusCode, 200, "Full natural Gateway did not become ready");
-+    assert.equal(startup?.statusCode, 200, "Full natural Gateway did not complete startup");
-+    assert.equal(outputOverflow, false, "Gateway output exceeded the retained observation bound");
-+    child.kill("SIGTERM");
-+    const cleanup = await api.closeOwnedStdioProcess(child, { graceMs: 10_000 });
-+    const exit = await child.wait();
-+    assert.equal(cleanup, undefined, "Graceful Gateway required forced owner cleanup");
-+    assert.equal(exit.code, 0, "Natural Gateway shutdown failed");
-+    record({ case: "full-gateway-startup-ready-graceful-shutdown", argv, startup, readiness, exit, processOwnerExtinctionJoined: true, stdout, stderr });
-+  } catch (error) {
-+    await api.closeOwnedStdioProcess(child, { graceMs: 10_000 });
-+    record({ case: "gateway-failure", error: errorFacts(error), stdout, stderr });
-+    throw error;
-+  }
-+}
-+
-+export async function main(argv = process.argv.slice(2)) {
-+  const options = parseArguments(argv);
-+  assertNoExternalInterface();
-+  options.artifactRoot = await realpath(options.artifactRoot);
-+  await mkdir(options.stateRoot, { mode: 0o700 }); // Existing state, including an empty directory, is refused.
-+  assert.equal((await readdir(options.stateRoot)).length, 0);
-+  const environment = { PATH: process.env.PATH, HOME: options.stateRoot, LANG: "C.UTF-8", OPENCLAW_STATE_DIR: options.stateRoot, OPENCLAW_CONFIG_PATH: path.join(options.stateRoot, "openclaw.json") };
-+  // Secretless namespace: do not inherit credentials, proxy configuration, test/minimal flags or provider settings.
-+  for (const key of Object.keys(process.env)) delete process.env[key];
-+  Object.assign(process.env, environment);
-+  const report = { schema: "openclaw.native-ipc-gateway-observations/v1", artifactProfile: "original-full-production-build-plus-task-internal-entries", priorArtifactParity: "unproved", admissionOrReleaseAcceptance: false, cases: [], ownership: [] };
-+  const record = value => report.cases.push(value);
-+  let api;
-+  try {
-+    const entries = await loadEntries(options.artifactRoot);
-+    api = entries.api; report.loadedEntries = entries.loaded;
-+    await nativeIpc(api, entries.fixtureUrl, options.stateRoot, record);
-+    await maintenanceAndReopen(api, options.stateRoot, environment, record);
-+    // This Promise consumes original broker Worker.terminate()/slot.exit joins, not PID inference.
-+    await api.drainGlobalSingletonLifecycleState("close");
-+    report.ownership.push({ owner: "original-global-singleton-broker-close", status: "terminal", workerExitAndSlotJoins: "original-owner-promise" });
-+    report.ownership.push({ owner: "lost-ack-and-legacy-writer", status: "held-for-reconciliation", notAnAdmissionReceipt: true });
-+    await gateway(api, options, environment, record);
-+    report.completed = true;
-+  } catch (error) {
-+    report.completed = false; report.failure = errorFacts(error);
-+    if (api) {
-+      try { await api.drainGlobalSingletonLifecycleState("close"); }
-+      catch (cleanupError) { report.ownership.push({ owner: "original-pool-close", status: "held-for-reconciliation", failure: errorFacts(cleanupError) }); }
-+    }
-+    throw error;
-+  } finally {
-+    // No task directory or durable unknown ownership is evicted, on success or failure.
-+    await writeFile(options.report, `${JSON.stringify(report, null, 2)}\n`, { flag: "wx", mode: 0o600 });
-+  }
-+}
-+
-+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href)
-+  main().catch(error => { process.stderr.write(`${error.stack ?? error}\n`); process.exitCode = 1; });
-diff --git a/scripts/proofs/native-ipc-gateway/legacy-agent-fixture.ts b/scripts/proofs/native-ipc-gateway/legacy-agent-fixture.ts
-new file mode 100644
-index 0000000000000000000000000000000000000000..71d87b30d7c154527c90991023f50f5aecb8ed1e
---- /dev/null
-+++ b/scripts/proofs/native-ipc-gateway/legacy-agent-fixture.ts
-@@ -0,0 +1,23 @@
-+import { existsSync } from "node:fs";
-+import { openNodeSqliteDatabase } from "../../../src/infra/node-sqlite.js";
-+import { runSqliteImmediateTransactionSync } from "../../../src/infra/sqlite-transaction.js";
-+
-+// Exact unchanged bc8 baseline schema; the migration is performed by the original maintenance owner.
-+export const LEGACY_SCHEMA_VERSION = 24;
-+export const LEGACY_SCHEMA_SHA256 = "9d51b513d2f69abfd800e845d8f7baa21c69f274c8b356cb4d8391c6547df08d";
-+const LEGACY_SCHEMA_SQL = "-- Session storage doctrine: session_nodes.entry_json owns hot logical-session facts;\n-- session_entry_snapshots owns keyed cold values. Promoted node columns are query\n-- indexes; session_windows and their children own transcript generations.\n-- Legacy ACP provenance is private import evidence carried with its logical session.\n\nCREATE TABLE IF NOT EXISTS schema_meta (\n  meta_key TEXT NOT NULL PRIMARY KEY,\n  role TEXT NOT NULL,\n  schema_version INTEGER NOT NULL,\n  agent_id TEXT,\n  app_version TEXT,\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS session_nodes (\n  session_key TEXT NOT NULL PRIMARY KEY,\n  current_session_id TEXT NOT NULL,\n  entry_json TEXT NOT NULL,\n  snapshot_revision INTEGER NOT NULL DEFAULT 0,\n  legacy_acp_migration_json TEXT,\n  entry_valid INTEGER NOT NULL DEFAULT 0 CHECK (entry_valid IN (-1, 0, 1)),\n  updated_at INTEGER NOT NULL,\n  status TEXT CHECK (status IS NULL OR status IN ('running', 'done', 'failed', 'killed', 'timeout')),\n  created_at INTEGER,\n  created_via TEXT CHECK (created_via IS NULL OR created_via IN ('operator', 'spawn', 'channel', 'cron', 'talk', 'run', 'plugin', 'internal')),\n  created_actor_type TEXT CHECK (created_actor_type IS NULL OR created_actor_type IN ('human', 'agent', 'system')),\n  created_actor_id TEXT,\n  owner_actor_type TEXT,\n  owner_actor_id TEXT,\n  owner_assigned_by_type TEXT,\n  owner_assigned_by_id TEXT,\n  owner_assigned_at INTEGER,\n  project_id TEXT,\n  parent_session_key TEXT,\n  spawned_by TEXT,\n  fork_source_session_key TEXT,\n  fork_source_session_id TEXT,\n  fork_source_entry_id TEXT,\n  label TEXT,\n  display_name TEXT,\n  category TEXT,\n  icon TEXT,\n  pinned_at INTEGER,\n  archived_at INTEGER,\n  last_read_at INTEGER,\n  last_interaction_at INTEGER,\n  last_activity_at INTEGER\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS session_entry_snapshots (\n  session_key TEXT NOT NULL,\n  field TEXT NOT NULL CHECK (field IN ('sessionDiffBaseline', 'skillsSnapshot', 'systemPromptReport')),\n  value_json TEXT NOT NULL,\n  PRIMARY KEY (session_key, field),\n  FOREIGN KEY (session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE\n) STRICT, WITHOUT ROWID;\n\nCREATE TRIGGER IF NOT EXISTS session_entry_snapshots_after_insert\nAFTER INSERT ON session_entry_snapshots\nBEGIN\n  UPDATE session_nodes SET snapshot_revision = snapshot_revision + 1\n  WHERE session_key = NEW.session_key;\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_entry_snapshots_after_update\nAFTER UPDATE OF session_key, field, value_json ON session_entry_snapshots\nWHEN NEW.session_key IS NOT OLD.session_key\n  OR NEW.field IS NOT OLD.field OR NEW.value_json IS NOT OLD.value_json\nBEGIN\n  UPDATE session_nodes SET snapshot_revision = snapshot_revision + 1\n  WHERE session_key IN (OLD.session_key, NEW.session_key);\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_entry_snapshots_after_delete\nAFTER DELETE ON session_entry_snapshots\nBEGIN\n  UPDATE session_nodes SET snapshot_revision = snapshot_revision + 1\n  WHERE session_key = OLD.session_key;\nEND;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_updated_at\n  ON session_nodes(updated_at DESC, session_key);\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_last_interaction_at\n  ON session_nodes(last_interaction_at DESC, session_key);\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_label\n  ON session_nodes(label, session_key)\n  WHERE label IS NOT NULL;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_parent_session_key\n  ON session_nodes(parent_session_key, session_key);\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_spawned_by\n  ON session_nodes(spawned_by, session_key);\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_status\n  ON session_nodes(status, session_key)\n  WHERE status IS NOT NULL;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_archived_at\n  ON session_nodes(archived_at, session_key)\n  WHERE archived_at IS NOT NULL;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_active\n  ON session_nodes(session_key)\n  WHERE archived_at IS NULL;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_current_session_id\n  ON session_nodes(current_session_id);\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_entry_valid_pending\n  ON session_nodes(session_key)\n  WHERE entry_valid = 0;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_nodes_entry_not_valid\n  ON session_nodes(session_key)\n  WHERE entry_valid != 1;\n\nCREATE TABLE IF NOT EXISTS session_participants (\n  session_key TEXT NOT NULL,\n  identity_namespace TEXT NOT NULL,\n  actor_id TEXT NOT NULL,\n  contribution_count INTEGER NOT NULL,\n  first_prompted_at INTEGER,\n  last_prompted_at INTEGER,\n  PRIMARY KEY (session_key, identity_namespace, actor_id),\n  FOREIGN KEY (session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS session_key_contract (\n  id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),\n  main_key TEXT NOT NULL,\n  canonical_ready TEXT,\n  updated_at INTEGER NOT NULL\n) STRICT;\n\nINSERT OR IGNORE INTO session_key_contract (id, main_key, updated_at) VALUES (1, 'main', 0);\n\nCREATE TRIGGER IF NOT EXISTS session_nodes_entry_valid_after_insert\nAFTER INSERT ON session_nodes\nBEGIN\n  UPDATE session_nodes SET entry_valid = 0 WHERE session_key = NEW.session_key;\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_nodes_entry_valid_after_entry_update\nAFTER UPDATE OF entry_json ON session_nodes\nBEGIN\n  UPDATE session_nodes SET entry_valid = 0 WHERE session_key = NEW.session_key;\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_nodes_entry_valid_after_identity_update\nAFTER UPDATE OF current_session_id, updated_at ON session_nodes\nBEGIN\n  UPDATE session_nodes SET entry_valid = 0 WHERE session_key = NEW.session_key;\nEND;\n\nCREATE TABLE IF NOT EXISTS session_windows (\n  session_id TEXT NOT NULL PRIMARY KEY,\n  session_key TEXT NOT NULL,\n  previous_session_id TEXT,\n  reason TEXT CHECK (reason IS NULL OR reason IN ('initial', 'reset', 'rollover', 'fork', 'rewind', 'switch', 'recovery', 'compaction')),\n  session_scope TEXT NOT NULL DEFAULT 'conversation' CHECK (session_scope IN ('conversation', 'shared-main', 'group', 'channel')),\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL,\n  transcript_updated_at INTEGER DEFAULT NULL,\n  transcript_observed_at INTEGER DEFAULT NULL,\n  session_entry_provenance INTEGER NOT NULL DEFAULT 0 CHECK (session_entry_provenance IN (0, 1)),\n  acp_owned INTEGER NOT NULL DEFAULT 0 CHECK (acp_owned IN (0, 1)),\n  plugin_owner_id TEXT,\n  hook_external_content_source TEXT CHECK (hook_external_content_source IS NULL OR hook_external_content_source IN ('gmail', 'webhook')),\n  started_at INTEGER,\n  ended_at INTEGER,\n  status TEXT CHECK (status IS NULL OR status IN ('running', 'done', 'failed', 'killed', 'timeout')),\n  chat_type TEXT CHECK (chat_type IS NULL OR chat_type IN ('direct', 'group', 'channel')),\n  channel TEXT,\n  account_id TEXT,\n  primary_conversation_id TEXT,\n  model_provider TEXT,\n  model TEXT,\n  agent_harness_id TEXT,\n  parent_session_key TEXT,\n  spawned_by TEXT,\n  display_name TEXT,\n  FOREIGN KEY (session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE,\n  FOREIGN KEY (primary_conversation_id) REFERENCES conversations(conversation_id) ON DELETE SET NULL\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_windows_updated_at\n  ON session_windows(updated_at DESC, session_id);\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_windows_session_key\n  ON session_windows(session_key, updated_at DESC, session_id);\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_windows_created_at\n  ON session_windows(created_at DESC, session_id);\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_windows_conversation\n  ON session_windows(primary_conversation_id, updated_at DESC, session_id)\n  WHERE primary_conversation_id IS NOT NULL;\n\n-- No foreign key: node triggers settle key renames and deletion even while a\n-- maintenance owner has disabled foreign-key enforcement.\nCREATE TABLE IF NOT EXISTS session_canonical_validation_pending (\n  session_key TEXT NOT NULL PRIMARY KEY\n) STRICT;\n\n-- Avoid trigger-local conflict clauses: SQLite inherits the outer writer's\n-- conflict policy, including writers that predate this validation projection.\nCREATE TRIGGER IF NOT EXISTS session_nodes_canonical_pending_after_insert\nAFTER INSERT ON session_nodes\nBEGIN\n  INSERT INTO session_canonical_validation_pending (session_key)\n  SELECT NEW.session_key\n  WHERE NOT EXISTS (\n    SELECT 1 FROM session_canonical_validation_pending WHERE session_key = NEW.session_key\n  );\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_nodes_canonical_pending_after_update\nAFTER UPDATE OF session_key, current_session_id, entry_json, entry_valid,\n  parent_session_key, spawned_by, fork_source_session_key ON session_nodes\nWHEN OLD.session_key IS NOT NEW.session_key\n  OR OLD.current_session_id IS NOT NEW.current_session_id\n  OR OLD.entry_json IS NOT NEW.entry_json\n  OR OLD.entry_valid IS NOT NEW.entry_valid\n  OR OLD.parent_session_key IS NOT NEW.parent_session_key\n  OR OLD.spawned_by IS NOT NEW.spawned_by\n  OR OLD.fork_source_session_key IS NOT NEW.fork_source_session_key\nBEGIN\n  DELETE FROM session_canonical_validation_pending\n  WHERE session_key = OLD.session_key AND OLD.session_key IS NOT NEW.session_key;\n  INSERT INTO session_canonical_validation_pending (session_key)\n  SELECT NEW.session_key\n  WHERE NOT EXISTS (\n    SELECT 1 FROM session_canonical_validation_pending WHERE session_key = NEW.session_key\n  );\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_nodes_canonical_pending_after_delete\nAFTER DELETE ON session_nodes\nBEGIN\n  DELETE FROM session_canonical_validation_pending WHERE session_key = OLD.session_key;\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_windows_canonical_pending_after_insert\nAFTER INSERT ON session_windows\nBEGIN\n  INSERT INTO session_canonical_validation_pending (session_key)\n  SELECT node.session_key FROM session_nodes AS node\n  WHERE node.current_session_id = NEW.session_id\n    AND NOT EXISTS (\n      SELECT 1 FROM session_canonical_validation_pending AS pending\n      WHERE pending.session_key = node.session_key\n    );\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_windows_canonical_pending_after_update\nAFTER UPDATE OF session_id, session_key ON session_windows\nWHEN OLD.session_id IS NOT NEW.session_id OR OLD.session_key IS NOT NEW.session_key\nBEGIN\n  INSERT INTO session_canonical_validation_pending (session_key)\n  SELECT node.session_key FROM session_nodes AS node\n  WHERE node.current_session_id IN (OLD.session_id, NEW.session_id)\n    AND NOT EXISTS (\n      SELECT 1 FROM session_canonical_validation_pending AS pending\n      WHERE pending.session_key = node.session_key\n    );\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_windows_canonical_pending_after_delete\nAFTER DELETE ON session_windows\nBEGIN\n  INSERT INTO session_canonical_validation_pending (session_key)\n  SELECT node.session_key FROM session_nodes AS node\n  WHERE node.current_session_id = OLD.session_id\n    AND NOT EXISTS (\n      SELECT 1 FROM session_canonical_validation_pending AS pending\n      WHERE pending.session_key = node.session_key\n    );\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_key_contract_canonical_pending_after_insert\nAFTER INSERT ON session_key_contract\nBEGIN\n  INSERT INTO session_canonical_validation_pending (session_key)\n  SELECT node.session_key FROM session_nodes AS node\n  WHERE NOT EXISTS (\n    SELECT 1 FROM session_canonical_validation_pending AS pending\n    WHERE pending.session_key = node.session_key\n  );\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_key_contract_canonical_pending_after_update\nAFTER UPDATE OF main_key ON session_key_contract\nWHEN OLD.main_key IS NOT NEW.main_key\nBEGIN\n  INSERT INTO session_canonical_validation_pending (session_key)\n  SELECT node.session_key FROM session_nodes AS node\n  WHERE NOT EXISTS (\n    SELECT 1 FROM session_canonical_validation_pending AS pending\n    WHERE pending.session_key = node.session_key\n  );\nEND;\n\nCREATE TRIGGER IF NOT EXISTS session_key_contract_canonical_pending_after_delete\nAFTER DELETE ON session_key_contract\nBEGIN\n  INSERT INTO session_canonical_validation_pending (session_key)\n  SELECT node.session_key FROM session_nodes AS node\n  WHERE NOT EXISTS (\n    SELECT 1 FROM session_canonical_validation_pending AS pending\n    WHERE pending.session_key = node.session_key\n  );\nEND;\n\nCREATE TABLE IF NOT EXISTS conversations (\n  conversation_id TEXT NOT NULL PRIMARY KEY,\n  channel TEXT NOT NULL,\n  account_id TEXT NOT NULL,\n  kind TEXT NOT NULL CHECK (kind IN ('direct', 'group', 'channel')),\n  peer_id TEXT NOT NULL,\n  delivery_target TEXT NOT NULL,\n  parent_conversation_id TEXT,\n  thread_id TEXT,\n  native_channel_id TEXT,\n  native_direct_user_id TEXT,\n  label TEXT,\n  metadata_json TEXT,\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_conversations_lookup\n  ON conversations(channel, account_id, kind, peer_id, thread_id);\n\nCREATE UNIQUE INDEX IF NOT EXISTS idx_agent_conversations_identity\n  ON conversations(\n    channel,\n    account_id,\n    kind,\n    peer_id,\n    IFNULL(parent_conversation_id, ''),\n    IFNULL(thread_id, '')\n  );\n\nCREATE INDEX IF NOT EXISTS idx_agent_conversations_updated\n  ON conversations(updated_at DESC, conversation_id);\n\nCREATE TABLE IF NOT EXISTS conversation_deliveries (\n  operation_id TEXT NOT NULL PRIMARY KEY,\n  operation_kind TEXT NOT NULL CHECK (operation_kind IN ('send', 'turn')),\n  conversation_id TEXT NOT NULL,\n  source_session_key TEXT,\n  message_hash TEXT NOT NULL,\n  status TEXT NOT NULL CHECK (status IN ('created', 'queued', 'sent', 'suppressed', 'rejected', 'unknown', 'replied')),\n  prepared_message_id TEXT,\n  platform_message_id TEXT,\n  queue_id TEXT,\n  rejection_error TEXT,\n  reply_message_id TEXT,\n  reply_to_id TEXT,\n  reply_thread_id TEXT,\n  reply_text TEXT,\n  reply_timestamp INTEGER,\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL,\n  CHECK (\n    (status = 'rejected' AND rejection_error IS NOT NULL) OR\n    (status != 'rejected' AND rejection_error IS NULL)\n  ),\n  FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_conversation_deliveries_reply\n  ON conversation_deliveries(conversation_id, platform_message_id, prepared_message_id)\n  WHERE status IN ('queued', 'sent', 'replied');\n\nCREATE INDEX IF NOT EXISTS idx_agent_conversation_deliveries_updated\n  ON conversation_deliveries(updated_at DESC, operation_id);\n\nCREATE TABLE IF NOT EXISTS session_conversations (\n  session_id TEXT NOT NULL,\n  conversation_id TEXT NOT NULL,\n  role TEXT NOT NULL DEFAULT 'primary' CHECK (role IN ('primary', 'participant', 'related')),\n  route_context_json TEXT,\n  first_seen_at INTEGER NOT NULL,\n  last_seen_at INTEGER NOT NULL,\n  PRIMARY KEY (session_id, conversation_id, role),\n  FOREIGN KEY (session_id) REFERENCES \"session_windows\"(session_id) ON DELETE CASCADE,\n  FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE\n) STRICT;\n\n-- Older same-version writers preserve the envelope while updating the association.\nCREATE TRIGGER IF NOT EXISTS session_conversations_route_context_invalidate_after_update\nAFTER UPDATE OF role, last_seen_at ON session_conversations\nWHEN NEW.route_context_json IS OLD.route_context_json\nBEGIN\n  UPDATE session_conversations\n  SET route_context_json = NULL\n  WHERE session_id = NEW.session_id\n    AND conversation_id = NEW.conversation_id\n    AND role = NEW.role;\nEND;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_conversations_conversation\n  ON session_conversations(conversation_id, last_seen_at DESC, session_id);\n\nCREATE UNIQUE INDEX IF NOT EXISTS idx_agent_session_conversations_primary\n  ON session_conversations(session_id)\n  WHERE role = 'primary';\n\nCREATE TABLE IF NOT EXISTS session_members (\n  session_key TEXT NOT NULL,\n  identity_id TEXT NOT NULL,\n  added_by TEXT NOT NULL,\n  added_at INTEGER NOT NULL,\n  PRIMARY KEY (session_key, identity_id),\n  FOREIGN KEY (session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_members_identity\n  ON session_members(identity_id, session_key);\n\nCREATE TABLE IF NOT EXISTS session_suggestions (\n  id TEXT PRIMARY KEY,\n  session_key TEXT NOT NULL,\n  author_id TEXT NOT NULL,\n  author_label TEXT,\n  text TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  state TEXT NOT NULL CHECK (state IN ('pending', 'accepted', 'dismissed')),\n  dispatch_token TEXT,\n  dispatch_started_at INTEGER,\n  dispatch_resolution TEXT CHECK (dispatch_resolution IN ('send', 'queue', 'edit', 'dismiss')),\n  CHECK (\n    (dispatch_token IS NULL AND dispatch_started_at IS NULL AND dispatch_resolution IS NULL)\n    OR (dispatch_token IS NOT NULL AND dispatch_started_at IS NOT NULL AND dispatch_resolution IS NOT NULL)\n  ),\n  FOREIGN KEY (session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_suggestions_session_state_created\n  ON session_suggestions(session_key, state, created_at, id);\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_suggestions_author_created\n  ON session_suggestions(author_id, created_at, id);\n\nCREATE TABLE IF NOT EXISTS board_tabs (\n  session_key TEXT NOT NULL,\n  tab_id TEXT NOT NULL,\n  title TEXT NOT NULL,\n  position INTEGER NOT NULL CHECK (position >= 0),\n  chat_dock TEXT NOT NULL DEFAULT 'right' CHECK (chat_dock IN ('left', 'right', 'bottom', 'hidden')),\n  created_by TEXT NOT NULL CHECK (created_by IN ('user', 'agent')),\n  revision INTEGER NOT NULL CHECK (revision >= 0),\n  PRIMARY KEY (session_key, tab_id),\n  FOREIGN KEY (session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS board_widgets (\n  session_key TEXT NOT NULL,\n  name TEXT NOT NULL,\n  tab_id TEXT NOT NULL,\n  title TEXT,\n  content_kind TEXT NOT NULL CHECK (content_kind IN ('html', 'mcp-app', 'plugin')),\n  html BLOB,\n  descriptor_json TEXT,\n  sha256 TEXT NOT NULL,\n  view_generation TEXT,\n  revision INTEGER NOT NULL CHECK (revision >= 1),\n  size_w INTEGER NOT NULL CHECK (size_w BETWEEN 1 AND 12),\n  size_h INTEGER NOT NULL CHECK (size_h BETWEEN 1 AND 20),\n  position INTEGER NOT NULL CHECK (position >= 0),\n  manifest TEXT NOT NULL DEFAULT '{}',\n  grant_state TEXT NOT NULL DEFAULT 'none' CHECK (grant_state IN ('none', 'pending', 'granted', 'rejected')),\n  granted_sha TEXT,\n  created_by TEXT NOT NULL CHECK (created_by IN ('user', 'agent')),\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL,\n  PRIMARY KEY (session_key, name),\n  FOREIGN KEY (session_key, tab_id) REFERENCES board_tabs(session_key, tab_id) ON DELETE CASCADE,\n  CHECK (\n    (content_kind = 'html' AND html IS NOT NULL AND descriptor_json IS NULL AND view_generation IS NOT NULL) OR\n    (content_kind = 'mcp-app' AND html IS NULL AND descriptor_json IS NOT NULL AND view_generation IS NULL) OR\n    (content_kind = 'plugin' AND html IS NULL AND descriptor_json IS NOT NULL AND view_generation IS NULL)\n  )\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_board_widgets_tab_position\n  ON board_widgets(session_key, tab_id, position);\n\nCREATE TABLE IF NOT EXISTS session_progress_cards (\n  session_key TEXT NOT NULL PRIMARY KEY,\n  markdown TEXT,\n  steps_json TEXT,\n  revision INTEGER NOT NULL,\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL,\n  FOREIGN KEY (session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS heartbeat_outcomes (\n  session_key TEXT NOT NULL PRIMARY KEY,\n  run_session_key TEXT NOT NULL,\n  outcome TEXT NOT NULL CHECK (outcome IN ('progress', 'done', 'blocked', 'needs_attention')),\n  summary TEXT NOT NULL,\n  response_reason TEXT,\n  priority TEXT CHECK (priority IS NULL OR priority IN ('low', 'normal', 'high')),\n  next_check TEXT,\n  task_names_json TEXT,\n  wake_source TEXT,\n  wake_reason TEXT,\n  occurred_at INTEGER NOT NULL,\n  context_run_id TEXT,\n  context_claimed_at INTEGER,\n  updated_at INTEGER NOT NULL,\n  FOREIGN KEY (session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS message_tool_run_outcomes (\n  id INTEGER PRIMARY KEY,\n  run_id TEXT NOT NULL,\n  session_key TEXT NOT NULL,\n  agent_id TEXT NOT NULL,\n  provider TEXT NOT NULL,\n  model TEXT NOT NULL,\n  outcome TEXT NOT NULL CHECK (outcome IN ('tool_delivered', 'mute')),\n  run_status TEXT NOT NULL CHECK (run_status IN ('completed', 'errored', 'aborted')),\n  occurred_at INTEGER NOT NULL\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_message_tool_run_outcomes_occurred\n  ON message_tool_run_outcomes(occurred_at DESC, id DESC);\n\n-- Receipts outlive Goal clear and session reset so a delayed retry cannot recreate a Goal.\n-- They intentionally have no session FK; bounded retention belongs to the operation owner.\nCREATE TABLE IF NOT EXISTS session_goal_operations (\n  session_key TEXT NOT NULL,\n  operation_id TEXT NOT NULL,\n  session_id TEXT NOT NULL,\n  request_fingerprint TEXT NOT NULL,\n  result_json TEXT NOT NULL,\n  expires_at INTEGER NOT NULL,\n  PRIMARY KEY (session_key, operation_id)\n) STRICT;\nCREATE INDEX IF NOT EXISTS idx_agent_session_goal_operations_expiry\n  ON session_goal_operations(expires_at);\n\nCREATE TABLE IF NOT EXISTS transcript_events (\n  session_id TEXT NOT NULL,\n  seq INTEGER NOT NULL,\n  event_json TEXT,\n  created_at INTEGER NOT NULL,\n  event_zstd BLOB,\n  event_utf8_bytes INTEGER CHECK (event_utf8_bytes IS NULL OR event_utf8_bytes >= 0),\n  navigation_json TEXT,\n  PRIMARY KEY (session_id, seq),\n  FOREIGN KEY (session_id) REFERENCES \"session_windows\"(session_id) ON DELETE CASCADE,\n  CHECK (\n    (event_json IS NOT NULL AND event_zstd IS NULL)\n    OR (\n      event_json IS NULL AND event_zstd IS NOT NULL\n      AND event_utf8_bytes IS NOT NULL\n      AND event_utf8_bytes BETWEEN 1 AND 4194304\n      AND length(event_zstd) BETWEEN 1 AND 4194304\n      AND navigation_json IS NOT NULL\n    )\n  ),\n  CHECK (\n    navigation_json IS NULL OR CASE WHEN json_valid(navigation_json) THEN coalesce(\n      octet_length(navigation_json) <= 16384\n      AND json_type(navigation_json, '$.version') = 'integer'\n      AND json_extract(navigation_json, '$.version') = 1\n      AND json_type(navigation_json, '$.report') = 'object'\n      AND json_extract(navigation_json, '$.report.kind') IN ('canonical', 'leaf', 'link', 'ignored')\n      AND json_type(navigation_json, '$.navigation') = 'object'\n      AND json_type(navigation_json, '$.reset') = 'object'\n      AND json_type(navigation_json, '$.model') = 'object'\n      AND json_type(navigation_json, '$.modelBytes') = 'integer'\n      AND json_extract(navigation_json, '$.modelBytes') BETWEEN 0 AND 4194304\n      AND json_type(navigation_json, '$.modelWithoutCheckpointBytes') = 'integer'\n      AND json_extract(navigation_json, '$.modelWithoutCheckpointBytes') BETWEEN 0 AND 4194304\n      AND json_type(navigation_json, '$.withoutCustomDataBytes') = 'integer'\n      AND json_extract(navigation_json, '$.withoutCustomDataBytes') BETWEEN 0 AND 4194304,\n      0) ELSE 0 END\n  )\n) STRICT;\n\n-- Canonical cold-tier owner for reclaimed transcript generations. The derived\n-- .deleted/.reset file may be recreated from this row after a crash.\nCREATE TABLE IF NOT EXISTS session_transcript_archives (\n  session_id TEXT NOT NULL,\n  generation TEXT NOT NULL,\n  session_key TEXT NOT NULL,\n  reason TEXT NOT NULL CHECK (reason IN ('deleted', 'reset')),\n  encoding TEXT NOT NULL CHECK (encoding IN ('identity', 'zstd')),\n  archive_blob BLOB NOT NULL,\n  archive_sha256 TEXT NOT NULL CHECK (length(archive_sha256) = 64),\n  archive_name TEXT NOT NULL UNIQUE,\n  created_at INTEGER NOT NULL,\n  published_at INTEGER,\n  publish_attempts INTEGER NOT NULL DEFAULT 0 CHECK (publish_attempts >= 0),\n  last_publish_attempt_at INTEGER,\n  last_publish_error TEXT,\n  PRIMARY KEY (session_id, generation),\n  CHECK (archive_name NOT LIKE '%/%' AND archive_name NOT LIKE '%\\%')\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_transcript_archives_pending\n  ON session_transcript_archives(created_at, session_id, generation)\n  WHERE published_at IS NULL;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_transcript_archives_retention\n  ON session_transcript_archives(created_at, session_id, generation);\n\nCREATE TABLE IF NOT EXISTS session_transcript_cold_archives (\n  session_id TEXT NOT NULL PRIMARY KEY,\n  generation TEXT NOT NULL,\n  archive_name TEXT NOT NULL UNIQUE,\n  archive_sha256 TEXT NOT NULL CHECK (length(archive_sha256) = 64),\n  event_count INTEGER NOT NULL CHECK (event_count >= 1),\n  raw_bytes INTEGER NOT NULL CHECK (raw_bytes >= 0),\n  archive_bytes INTEGER NOT NULL CHECK (archive_bytes >= 0),\n  last_seq INTEGER NOT NULL,\n  archived_at INTEGER NOT NULL,\n  storage TEXT NOT NULL CHECK (storage IN ('file', 'sqlite')),\n  archive_blob BLOB,\n  FOREIGN KEY (session_id) REFERENCES \"session_windows\"(session_id) ON DELETE CASCADE,\n  CHECK (length(archive_name) > 0 AND archive_name NOT IN ('.', '..') AND archive_name NOT LIKE '%/%' AND archive_name NOT LIKE '%\\%'),\n  CHECK ((storage = 'file' AND archive_blob IS NULL) OR (storage = 'sqlite' AND archive_blob IS NOT NULL))\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS transcript_rewrite_watermarks (\n  session_id TEXT NOT NULL PRIMARY KEY,\n  generation TEXT NOT NULL,\n  updated_at INTEGER NOT NULL,\n  FOREIGN KEY (session_id) REFERENCES \"session_windows\"(session_id) ON DELETE CASCADE\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS trajectory_runtime_events (\n  session_id TEXT NOT NULL,\n  seq INTEGER NOT NULL,\n  run_id TEXT,\n  event_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  PRIMARY KEY (session_id, seq),\n  FOREIGN KEY (session_id) REFERENCES \"session_windows\"(session_id) ON DELETE CASCADE\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_trajectory_runtime_run\n  ON trajectory_runtime_events(session_id, run_id, seq)\n  WHERE run_id IS NOT NULL;\n\nCREATE TABLE IF NOT EXISTS acp_parent_stream_events (\n  session_id TEXT NOT NULL,\n  run_id TEXT NOT NULL,\n  seq INTEGER NOT NULL,\n  event_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  PRIMARY KEY (session_id, run_id, seq),\n  FOREIGN KEY (session_id) REFERENCES \"session_windows\"(session_id) ON DELETE CASCADE\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_acp_parent_stream_run\n  ON acp_parent_stream_events(run_id, seq);\n\nCREATE TABLE IF NOT EXISTS transcript_event_identities (\n  session_id TEXT NOT NULL,\n  event_id TEXT NOT NULL,\n  seq INTEGER NOT NULL,\n  event_type TEXT,\n  parent_id TEXT,\n  message_idempotency_key TEXT,\n  created_at INTEGER NOT NULL,\n  PRIMARY KEY (session_id, event_id),\n  FOREIGN KEY (session_id, seq) REFERENCES transcript_events(session_id, seq) ON DELETE CASCADE\n) STRICT;\n\nCREATE UNIQUE INDEX IF NOT EXISTS idx_agent_transcript_message_idempotency\n  ON transcript_event_identities(session_id, message_idempotency_key)\n  WHERE message_idempotency_key IS NOT NULL;\n\nCREATE INDEX IF NOT EXISTS idx_agent_transcript_event_identity_sequence\n  ON transcript_event_identities(session_id, seq);\n\nCREATE INDEX IF NOT EXISTS idx_agent_transcript_event_parent\n  ON transcript_event_identities(session_id, parent_id)\n  WHERE parent_id IS NOT NULL;\n\nCREATE INDEX IF NOT EXISTS idx_agent_transcript_event_sequence\n  ON transcript_event_identities(session_id, event_type, seq DESC);\n\nCREATE TABLE IF NOT EXISTS context_engine_turn_outbox (\n  advancement_key TEXT NOT NULL PRIMARY KEY,\n  engine_id TEXT NOT NULL,\n  owner_plugin_id TEXT,\n  session_id TEXT NOT NULL,\n  payload_json TEXT NOT NULL,\n  attempt_count INTEGER NOT NULL DEFAULT 0,\n  last_attempt_at INTEGER,\n  last_error TEXT,\n  created_at INTEGER NOT NULL\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_context_engine_turn_outbox_engine\n  ON context_engine_turn_outbox(engine_id, created_at);\n\nCREATE TABLE IF NOT EXISTS cache_entries (\n  scope TEXT NOT NULL,\n  key TEXT NOT NULL,\n  value_json TEXT,\n  blob BLOB,\n  expires_at INTEGER,\n  updated_at INTEGER NOT NULL,\n  PRIMARY KEY (scope, key)\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_cache_expiry\n  ON cache_entries(scope, expires_at, key)\n  WHERE expires_at IS NOT NULL;\n\nCREATE INDEX IF NOT EXISTS idx_agent_cache_updated\n  ON cache_entries(scope, updated_at DESC, key);\n\nCREATE TABLE IF NOT EXISTS auth_profile_store (\n  store_key TEXT NOT NULL PRIMARY KEY,\n  store_json TEXT NOT NULL,\n  updated_at INTEGER NOT NULL\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS auth_profile_state (\n  state_key TEXT NOT NULL PRIMARY KEY,\n  state_json TEXT NOT NULL,\n  updated_at INTEGER NOT NULL\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS memory_index_meta (\n  key TEXT PRIMARY KEY,\n  value TEXT NOT NULL\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS memory_index_sources (\n  id INTEGER PRIMARY KEY,\n  path TEXT NOT NULL,\n  source TEXT NOT NULL DEFAULT 'memory',\n  hash TEXT NOT NULL,\n  mtime REAL NOT NULL,\n  size INTEGER NOT NULL,\n  UNIQUE (path, source)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS memory_index_chunks (\n  chunk_rowid INTEGER PRIMARY KEY,\n  id TEXT NOT NULL UNIQUE,\n  path TEXT NOT NULL,\n  source TEXT NOT NULL DEFAULT 'memory',\n  start_line INTEGER NOT NULL,\n  end_line INTEGER NOT NULL,\n  hash TEXT NOT NULL,\n  model TEXT NOT NULL,\n  text TEXT NOT NULL,\n  embedding BLOB NOT NULL,\n  updated_at INTEGER NOT NULL\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS memory_index_chunk_recall_metadata (\n  chunk_id TEXT PRIMARY KEY,\n  importance INTEGER CHECK (importance IS NULL OR importance BETWEEN 1 AND 10),\n  triggers TEXT,\n  project_key TEXT,\n  FOREIGN KEY (chunk_id) REFERENCES memory_index_chunks(id) ON DELETE CASCADE\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS memory_index_chunk_provenance (\n  chunk_id TEXT PRIMARY KEY,\n  origin_class TEXT NOT NULL CHECK (origin_class IN ('owner', 'agent', 'untrusted', 'system')),\n  session_kind TEXT NOT NULL CHECK (session_kind IN ('interactive', 'cron', 'heartbeat', 'subagent', 'unknown')),\n  observed_at INTEGER NOT NULL,\n  supersedes_key TEXT,\n  FOREIGN KEY (chunk_id) REFERENCES memory_index_chunks(id) ON DELETE CASCADE\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS memory_entry_origins (\n  entry_key TEXT NOT NULL,\n  agent_id TEXT NOT NULL,\n  session_id TEXT NOT NULL,\n  session_key TEXT,\n  origin_class TEXT NOT NULL CHECK (origin_class IN ('owner', 'agent', 'untrusted', 'system')),\n  observed_at INTEGER NOT NULL,\n  PRIMARY KEY (entry_key, agent_id, session_id)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS memory_session_tombstones (\n  session_id TEXT NOT NULL PRIMARY KEY,\n  agent_id TEXT NOT NULL,\n  reason TEXT NOT NULL,\n  created_at INTEGER NOT NULL\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS memory_embedding_cache (\n  provider TEXT NOT NULL,\n  model TEXT NOT NULL,\n  provider_key TEXT NOT NULL,\n  hash TEXT NOT NULL,\n  embedding BLOB NOT NULL,\n  dims INTEGER,\n  updated_at INTEGER NOT NULL,\n  PRIMARY KEY (provider, model, provider_key, hash)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS memory_index_state (\n  id INTEGER PRIMARY KEY CHECK (id = 1),\n  revision INTEGER NOT NULL\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS standing_intents (\n  intent_key INTEGER PRIMARY KEY,\n  id TEXT NOT NULL UNIQUE,\n  description TEXT NOT NULL,\n  trigger_keywords TEXT NOT NULL,\n  trigger_embedding TEXT,\n  channel_scope TEXT,\n  sender_scope TEXT,\n  creator_sender TEXT CHECK (creator_sender IS NULL OR length(trim(creator_sender)) > 0),\n  status TEXT NOT NULL CHECK (status IN ('pending', 'armed', 'fired', 'done', 'cancelled', 'expired')),\n  expires_at INTEGER NOT NULL,\n  max_fires INTEGER NOT NULL CHECK (max_fires > 0),\n  fire_count INTEGER NOT NULL DEFAULT 0 CHECK (fire_count >= 0),\n  cooldown_seconds INTEGER NOT NULL DEFAULT 86400 CHECK (cooldown_seconds >= 0),\n  last_fired_at INTEGER,\n  created_at INTEGER NOT NULL,\n  source_session_id TEXT\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_standing_intents_lifecycle\n  ON standing_intents(status, expires_at, last_fired_at);\n\nCREATE INDEX IF NOT EXISTS idx_standing_intents_scope\n  ON standing_intents(status, channel_scope, sender_scope);\n\nCREATE VIRTUAL TABLE IF NOT EXISTS standing_intents_fts USING fts5(\n  trigger_keywords,\n  content = 'standing_intents',\n  content_rowid = 'intent_key',\n  tokenize = 'unicode61 remove_diacritics 2'\n);\n\nCREATE TRIGGER IF NOT EXISTS standing_intents_fts_after_insert\nAFTER INSERT ON standing_intents\nBEGIN\n  INSERT INTO standing_intents_fts(rowid, trigger_keywords)\n  VALUES (new.intent_key, new.trigger_keywords);\nEND;\n\nCREATE TRIGGER IF NOT EXISTS standing_intents_fts_after_delete\nAFTER DELETE ON standing_intents\nBEGIN\n  INSERT INTO standing_intents_fts(standing_intents_fts, rowid, trigger_keywords)\n  VALUES ('delete', old.intent_key, old.trigger_keywords);\nEND;\n\nCREATE TRIGGER IF NOT EXISTS standing_intents_fts_after_update\nAFTER UPDATE OF trigger_keywords ON standing_intents\nBEGIN\n  INSERT INTO standing_intents_fts(standing_intents_fts, rowid, trigger_keywords)\n  VALUES ('delete', old.intent_key, old.trigger_keywords);\n  INSERT INTO standing_intents_fts(rowid, trigger_keywords)\n  VALUES (new.intent_key, new.trigger_keywords);\nEND;\n\nCREATE TABLE IF NOT EXISTS session_transcript_index_state (\n  session_id TEXT NOT NULL PRIMARY KEY,\n  indexed_seq INTEGER NOT NULL,\n  leaf_event_id TEXT,\n  needs_rebuild INTEGER NOT NULL DEFAULT 0,\n  active_event_count INTEGER NOT NULL DEFAULT 0,\n  active_message_count INTEGER NOT NULL DEFAULT 0,\n  updated_at INTEGER NOT NULL,\n  FOREIGN KEY (session_id) REFERENCES session_windows(session_id) ON DELETE CASCADE\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS session_transcript_active_events (\n  session_id TEXT NOT NULL,\n  active_position INTEGER NOT NULL CHECK (active_position >= 0),\n  event_seq INTEGER NOT NULL,\n  message_position INTEGER CHECK (message_position IS NULL OR message_position >= 0),\n  context_eligible INTEGER,\n  PRIMARY KEY (session_id, active_position),\n  FOREIGN KEY (session_id, event_seq) REFERENCES transcript_events(session_id, seq) ON DELETE CASCADE\n) STRICT;\n\nCREATE UNIQUE INDEX IF NOT EXISTS idx_agent_transcript_active_event_seq\n  ON session_transcript_active_events(session_id, event_seq);\n\nCREATE UNIQUE INDEX IF NOT EXISTS idx_agent_transcript_active_messages\n  ON session_transcript_active_events(session_id, message_position)\n  WHERE message_position IS NOT NULL;\n\nCREATE INDEX IF NOT EXISTS idx_agent_transcript_context_pending\n  ON session_transcript_active_events(session_id)\n  WHERE context_eligible IS NULL;\n\nCREATE VIRTUAL TABLE IF NOT EXISTS session_transcript_fts USING fts5(\n  text,\n  session_id UNINDEXED,\n  message_id UNINDEXED,\n  role UNINDEXED,\n  timestamp UNINDEXED,\n  tokenize = 'unicode61 remove_diacritics 2'\n);\n\nCREATE TABLE IF NOT EXISTS session_transcript_fts_rows (\n  id INTEGER PRIMARY KEY,\n  session_id TEXT NOT NULL,\n  message_id TEXT\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_session_transcript_fts_rows_session_message\n  ON session_transcript_fts_rows(session_id, message_id);\n\nCREATE TRIGGER IF NOT EXISTS session_transcript_fts_rows_after_delete\nAFTER DELETE ON session_transcript_fts_rows\nBEGIN\n  DELETE FROM session_transcript_fts WHERE rowid = OLD.id;\nEND;\n\nINSERT OR IGNORE INTO memory_index_state (id, revision) VALUES (1, 0);\n\nCREATE TRIGGER IF NOT EXISTS memory_index_sources_revision_after_insert\nAFTER INSERT ON memory_index_sources\nBEGIN\n  UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1;\nEND;\n\nCREATE TRIGGER IF NOT EXISTS memory_index_sources_revision_after_update\nAFTER UPDATE ON memory_index_sources\nBEGIN\n  UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1;\nEND;\n\nCREATE TRIGGER IF NOT EXISTS memory_index_sources_revision_after_delete\nAFTER DELETE ON memory_index_sources\nBEGIN\n  UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1;\nEND;\n\nCREATE TRIGGER IF NOT EXISTS memory_index_chunks_revision_after_insert\nAFTER INSERT ON memory_index_chunks\nBEGIN\n  UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1;\nEND;\n\nCREATE TRIGGER IF NOT EXISTS memory_index_chunks_revision_after_update\nAFTER UPDATE ON memory_index_chunks\nBEGIN\n  UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1;\nEND;\n\nCREATE TRIGGER IF NOT EXISTS memory_index_chunks_revision_after_delete\nAFTER DELETE ON memory_index_chunks\nBEGIN\n  UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1;\nEND;\n\nCREATE INDEX IF NOT EXISTS idx_memory_embedding_cache_updated_at\n  ON memory_embedding_cache(updated_at);\n\nCREATE INDEX IF NOT EXISTS idx_memory_index_sources_source\n  ON memory_index_sources(source);\n\nCREATE INDEX IF NOT EXISTS idx_memory_index_chunks_path_source\n  ON memory_index_chunks(path, source);\n\nCREATE INDEX IF NOT EXISTS idx_memory_index_chunks_path\n  ON memory_index_chunks(path);\n\nCREATE INDEX IF NOT EXISTS idx_memory_index_chunks_source\n  ON memory_index_chunks(source);\n\n-- Accepted input stays outside the active transcript until its exact turn owns execution.\nCREATE TABLE IF NOT EXISTS session_pending_inputs (\n  seq INTEGER PRIMARY KEY AUTOINCREMENT,\n  input_id TEXT NOT NULL UNIQUE,\n  session_key TEXT NOT NULL,\n  session_id TEXT NOT NULL,\n  idempotency_key TEXT NOT NULL,\n  run_id TEXT NOT NULL,\n  request_hash TEXT NOT NULL,\n  message_json TEXT NOT NULL,\n  lifecycle_generation TEXT NOT NULL,\n  state TEXT NOT NULL CHECK (state IN ('queued', 'interrupted', 'cancelled')),\n  accepted_at INTEGER NOT NULL,\n  consumed_event_id TEXT,\n  UNIQUE (session_id, idempotency_key),\n  FOREIGN KEY (session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE,\n  FOREIGN KEY (session_id) REFERENCES session_windows(session_id) ON DELETE CASCADE\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_agent_session_pending_inputs_session\n  ON session_pending_inputs(session_key, session_id, seq DESC);\n\n-- Processing completion is separate from input consumption; neither schedules replay.\nCREATE TABLE IF NOT EXISTS session_input_completions (\n  session_key TEXT NOT NULL,\n  session_id TEXT NOT NULL,\n  idempotency_key TEXT NOT NULL,\n  run_id TEXT NOT NULL,\n  request_hash TEXT NOT NULL,\n  outcome_json TEXT NOT NULL,\n  succeeded INTEGER NOT NULL CHECK (succeeded IN (0, 1)),\n  completed_at INTEGER NOT NULL,\n  PRIMARY KEY (session_id, idempotency_key),\n  FOREIGN KEY (session_key) REFERENCES session_nodes(session_key) ON DELETE CASCADE,\n  FOREIGN KEY (session_id) REFERENCES session_windows(session_id) ON DELETE CASCADE\n) STRICT;\n";
-+export function seedLegacyAgentFixture(pathname: string, agentId: string) {
-+  if (existsSync(pathname)) throw new Error("Legacy fixture requires a fresh task-owned store");
-+  const database = openNodeSqliteDatabase(pathname);
-+  const target = { sessionKey: `agent:${agentId}:qualification`, sessionId: "qualification-session", runId: "qualification-legacy-writer", lifecycleRevision: null };
-+  try {
-+    runSqliteImmediateTransactionSync(database, () => {
-+      database.exec(LEGACY_SCHEMA_SQL); // sqlite-allow-raw -- Exact historical task fixture schema.
-+      database.exec("PRAGMA user_version = 24"); // sqlite-allow-raw -- Pinned historical schema owner.
-+      database.prepare("INSERT INTO schema_meta VALUES ('primary','agent',24,?,'qualification',1,1)").run(agentId);
-+      const entry = JSON.stringify({ sessionId: target.sessionId, updatedAt: 1, activeWriterRunId: target.runId });
-+      database.prepare("INSERT INTO session_nodes (session_key,current_session_id,entry_json,updated_at) VALUES (?,?,?,1)").run(target.sessionKey,target.sessionId,entry);
-+    });
-+    return target;
-+  } finally { database.close(); }
-+}
-diff --git a/scripts/proofs/native-ipc-gateway/native-api.ts b/scripts/proofs/native-ipc-gateway/native-api.ts
-new file mode 100644
-index 0000000000000000000000000000000000000000..5bdaa7ad8b15f3f1cda9ffb32b266d894a045966
---- /dev/null
-+++ b/scripts/proofs/native-ipc-gateway/native-api.ts
-@@ -0,0 +1,16 @@
-+// Task-only stable entry in the original unified production build graph. No public SDK export.
-+export { openSqliteWorkerStore, runSqliteWorkerStoreOperation } from "../../../src/plugin-sdk/sqlite-runtime.js";
-+export { openNodeSqliteDatabase, resolveExistingSqliteFileUri } from "../../../src/infra/node-sqlite.js";
-+export { createSqliteWorkerOperationAdmission } from "../../../src/infra/sqlite-worker-operation-admission.js";
-+export { hasSqliteWorkerOutcomeUnknown } from "../../../src/infra/sqlite-worker-contract.js";
-+export { readDatabasePathIdentitySync } from "../../../src/infra/sqlite-worker-identity.js";
-+export { drainGlobalSingletonLifecycleState } from "../../../src/shared/global-singleton.js";
-+export { closeOpenClawAgentDatabasesAsync } from "../../../src/state/openclaw-agent-db-lifecycle.js";
-+export { closeOpenClawStateDatabaseByPathAsync } from "../../../src/state/openclaw-state-db-cache.js";
-+export { resolveOpenClawStateSqlitePath } from "../../../src/state/openclaw-state-db.paths.js";
-+export { captureOpenClawAgentDatabaseExecution } from "../../../src/state/openclaw-agent-execution.js";
-+export { restoreAgentRunQuarantines } from "../../../src/state/agent-run-quarantine.js";
-+export { quarantineLegacyAgentRunsForMaintenance } from "../../../src/state/agent-run-quarantine-maintenance.js";
-+export { createOwnedStdioProcess, closeOwnedStdioProcess } from "../../../src/process/owned-stdio.js";
-+export { createConfiguredGatewayLocalProbe } from "../../../src/gateway/local-http-probe.js";
-+export { seedLegacyAgentFixture } from "./legacy-agent-fixture.js";
-diff --git a/scripts/proofs/native-ipc-gateway/native-fixture.ts b/scripts/proofs/native-ipc-gateway/native-fixture.ts
-new file mode 100644
-index 0000000000000000000000000000000000000000..1962eb8b80a6e556825448ce7383ddf2fd629767
---- /dev/null
-+++ b/scripts/proofs/native-ipc-gateway/native-fixture.ts
-@@ -0,0 +1,54 @@
-+import { isMainThread, threadId } from "node:worker_threads";
-+import { openNodeSqliteDatabase } from "../../../src/plugin-sdk/sqlite-worker-runtime.js";
-+import { runSqliteImmediateTransactionSync, requestSqliteWorkerOperationAdmission } from "../../../src/plugin-sdk/sqlite-worker-runtime.js";
-+import { deferSqliteWorkerCommitReceipt } from "../../../src/infra/sqlite-worker-operation-admission.js";
-+import { deferSqlitePostCommitPublication } from "../../../src/infra/sqlite-post-commit.js";
-+import type { SqliteWorkerBackend } from "../../../src/infra/sqlite-worker-contract.js";
-+
-+type Operations = {
-+  reserve: { input: { key: string }; output: { key: string; kind: "reserved"; threadId: number } };
-+  commit: { input: { key: string }; output: { key: string; kind: "committed"; threadId: number } };
-+  lostAck: { input: { key: string }; output: never };
-+  read: { input: undefined; output: Record<string, unknown>[] };
-+};
-+
-+/** Only fixture data is synthetic. SQLite, broker, admission port and native ACK owners are original. */
-+export function createSqliteWorkerBackend(
-+  _input: unknown,
-+  context: { databasePath: string },
-+): SqliteWorkerBackend<Operations> {
-+  if (isMainThread) throw new Error("Fixture must execute in the original broker's Worker");
-+  const database = openNodeSqliteDatabase(context.databasePath);
-+  database.exec("CREATE TABLE IF NOT EXISTS qualification_reservations (key TEXT PRIMARY KEY, committed INTEGER NOT NULL CHECK (committed IN (0,1))) STRICT"); // sqlite-allow-raw -- Task fixture owner only.
-+  function write<Kind extends "reserved" | "committed">(key: string, kind: Kind, lostAck: boolean) {
-+    if (!key || key.includes("\0")) throw new Error("Fixture key must be exact");
-+    const facts = { key, kind, threadId };
-+    return runSqliteImmediateTransactionSync(database, () => {
-+      requestSqliteWorkerOperationAdmission({ stage: "transaction", facts });
-+      if (kind === "reserved") database.prepare("INSERT INTO qualification_reservations VALUES (?,0)").run(key);
-+      else {
-+        const result = database.prepare("UPDATE qualification_reservations SET committed=1 WHERE key=? AND committed=0").run(key);
-+        if (result.changes !== 1) throw new Error("Commit requires one original reservation");
-+      }
-+      requestSqliteWorkerOperationAdmission({ stage: "commit", facts });
-+      if (lostAck && !deferSqlitePostCommitPublication(database, () => process.exit(17)))
-+        throw new Error("Actual post-COMMIT fault seam unavailable");
-+      // Lost ACK exits this genuine Worker before this original protocol observer can publish.
-+      deferSqliteWorkerCommitReceipt(database, facts);
-+      return facts;
-+    });
-+  }
-+  return {
-+    execute(command) {
-+      if (command.type === "read") return database.prepare("SELECT key,committed FROM qualification_reservations ORDER BY key").all();
-+      if (command.type === "reserve") return write(command.input.key, "reserved", false);
-+      if (command.type === "commit") return write(command.input.key, "committed", false);
-+      write(command.input.key, "committed", true);
-+      throw new Error("Native post-COMMIT worker exit was not reached");
-+    },
-+    assertSettled() {
-+      if (database.isTransaction) throw new Error("Native fixture transaction remains unsettled");
-+    },
-+    close() { database.close(); },
-+  };
-+}
-diff --git a/src/agents/agent-command-execution-identity.ts b/src/agents/agent-command-execution-identity.ts
-index 7e83e96a8a64650bfa820579f48ba73d9fe8b416..cbc000d52e2b8e5804944720aeaf56b5156b880f 100644
---- a/src/agents/agent-command-execution-identity.ts
-+++ b/src/agents/agent-command-execution-identity.ts
-@@ -33,6 +33,8 @@ import {
-   bindPreparedRunRequiredClosure,
-   closeAdmittedRunRequiredWriter,
-   completeAdmittedRunRequiredClosure,
-+  assertOriginalRequiredRunClosureProof,
-+  readAdmittedRunRequiredTerminalFacts,
-   publishAdmittedRunRequiredReview,
-   releaseAdmittedRunSelectedNativeModelAuthCustody,
-   retireAdmittedRunRequiredWriter,
-@@ -232,6 +234,11 @@ export function prepareAgentCommandExecutionIdentity(params: {
-           if (requiredRunClosureSelection && admittedContext) {
-             const proof = await completeAdmittedRunRequiredClosure(admittedContext);
-             if (!proof) throw new Error("Selected command has no original closure proof");
-+            if (opts.onRequiredRunTerminalFacts) {
-+              const terminal = readAdmittedRunRequiredTerminalFacts(proof, admittedContext);
-+              await opts.onRequiredRunTerminalFacts(terminal);
-+              assertOriginalRequiredRunClosureProof(proof, admittedContext);
-+            }
-             await retireAdmittedRunRequiredWriter(admittedContext, originalSessionAgentId, proof);
-             await publishAdmittedRunRequiredReview(admittedContext, proof);
+ Gateway commands using OpenClaw's managed agent loop return their completed reply before optional memory
+ flushing and compaction. That work has its own session owner and uses the command's
+ remaining time. A new turn in the same session cancels and settles it before
+diff --git a/src/cli/program/register.agent-turn.ts b/src/cli/program/register.agent-turn.ts
+index 16d6be758039710f2b0cb96b628d09e0ee578798..a5779384ea9a65b213c6af243a87bf75e971eb27 100644
+--- a/src/cli/program/register.agent-turn.ts
++++ b/src/cli/program/register.agent-turn.ts
+@@ -24,6 +24,11 @@ export function registerAgentTurnCommand(
+     .option("--session-id <id>", "Use an explicit session id")
+     .option("--agent <id>", "Agent id (overrides routing bindings)")
+     .option("--model <id>", "Model override for this run (provider/model or model id)")
++    .option(
++      "--required-execution-closure <profile>",
++      "Require native-sse-no-tools closure for a Gateway model run (requires operator.admin)",
++    )
++    .option("--run-id <id>", "Retain this run's idempotency key across Gateway retries")
+     .option(
+       "--thinking <level>",
+       `Thinking level: ${THINKING_LEVELS_HELP.replaceAll("|", " | ")} where supported`,
+@@ -157,8 +162,18 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
+             thinking?: string;
+             timeout?: string;
+             json?: boolean;
++            requiredExecutionClosure?: string;
++            runId?: string;
            }
-@@ -306,6 +313,7 @@ export function sanitizePublicAgentCommandIngressOpts(
-     cronCreatorAuthorityCapability: undefined,
-     onAdmittedRunContext: undefined,
-     onPostAdmittedRunContext: undefined,
-+    onRequiredRunTerminalFacts: undefined,
-     beforeTerminalDelivery: undefined,
-   });
- }
-diff --git a/src/agents/command/types.ts b/src/agents/command/types.ts
-index f5bef7b3a7c4798f10698d2345b52f0a61bb1a23..f6b5314242027926e3740ae33a5e1c9040712949 100644
---- a/src/agents/command/types.ts
-+++ b/src/agents/command/types.ts
-@@ -230,6 +230,10 @@ export type AgentCommandOpts = {
-   onPostAdmittedRunContext?: (
-     context: import("../admitted-run-context.js").AdmittedRunContext,
-   ) => void | Promise<void>;
-+  /** Original closed-proof facts captured before held auth releases; never a policy or publication grant. */
-+  onRequiredRunTerminalFacts?: (
-+    facts: import("../required-run-closure.js").OriginalRequiredRunTerminalFacts,
-+  ) => void | Promise<void>;
-   /** Gateway joins terminal transcript writes before delivery or failed-command cleanup. */
-   beforeTerminalDelivery?: () => Promise<void>;
-   /** Called when the actual run model is selected, including fallback retries. */
-@@ -271,6 +275,7 @@ type AgentCommandGatewayOnlyKey =
-   | "cronCreatorAuthorityCapability"
-   | "onAdmittedRunContext"
-   | "onPostAdmittedRunContext"
-+  | "onRequiredRunTerminalFacts"
-   | "beforeTerminalDelivery";
- 
- /** Restricted option surface for external ingress callsites. */
-diff --git a/src/agents/embedded-agent-runner/run/auth-controller.ts b/src/agents/embedded-agent-runner/run/auth-controller.ts
-index 7c5edc277edb7831fa0988c01be96f43f63ecfb3..e2142e1d685932c5714c9112f76874467e71012b 100644
---- a/src/agents/embedded-agent-runner/run/auth-controller.ts
-+++ b/src/agents/embedded-agent-runner/run/auth-controller.ts
-@@ -9,6 +9,7 @@ import {
-   type ProviderRuntimeAuthCustody,
- } from "../../../plugins/provider-runtime.js";
- import { isDeepStrictEqual } from "node:util";
-+import { createHash } from "node:crypto";
- import { SecretSurfaceUnavailableError } from "../../../secrets/runtime-degraded-state.js";
- import {
-   type AuthProfileStore,
-@@ -46,7 +47,11 @@ import {
-   type PreparedAgentRuntimeAuthAttempt,
- } from "../../runtime-plan/prepare-auth.js";
- import type { PreparedAgentRunAdmission } from "../../admitted-run-context.js";
--import { getPreparedRunSelectedNativeReviewRequirement, type RequiredRunClosureSelection } from "../../required-run-closure.js";
-+import {
-+  getPreparedRunSelectedNativeReviewRequirement,
-+  readOriginalSelectedNativeRunBootstrap,
-+  type RequiredRunClosureSelection,
-+} from "../../required-run-closure.js";
- import type { PreparedModelRuntimeLease } from "../../prepared-model-runtime.types.js";
- import {
-   readPreparedModelRuntimeLeaseCustody, assertPreparedModelRuntimeLeaseCustody,
-@@ -119,12 +124,16 @@ type NativeModelAuthCustody = {
-   assertRequestCredential(receipt: object, binding: object): void;
-   hold: PreparedModelRuntimeTerminalHold | undefined;
-   claimed: boolean;
-+  generation: number;
-   model: Readonly<{ provider: string; id: string; api: string; baseUrl: string }>;
- };
- const nativeModelAuthCustody = new WeakMap<SelectedNativeModelAuthCustody, NativeModelAuthCustody>();
--const nativeModelAuthSourceWitnesses = new WeakMap<SelectedNativeModelAuthCustody, readonly (() => void)[]>();
-+const nativeModelAuthSourceWitnesses = new WeakMap<SelectedNativeModelAuthCustody, {
-+  bootstrap: ReturnType<typeof readOriginalSelectedNativeRunBootstrap>;
-+  witnesses: readonly (() => void)[];
-+}>();
- 
--/** Provenance assertion only; the root still owns run liveness and approved loaded-build joins. */
-+/** Original model/auth custody; the root owns run liveness, while release qualification stays outside runtime authority. */
- export function assertEmbeddedNativeModelAuthCustody(receipt: SelectedNativeModelAuthCustody) {
-   const custody = nativeModelAuthCustody.get(receipt);
-   if (!custody) throw new Error("Original native model/auth custody is foreign or copied");
-@@ -136,18 +145,31 @@ export function assertEmbeddedNativeModelAuthCustody(receipt: SelectedNativeMode
-   return Object.freeze({ model: custody.model, harness: custody.harness });
- }
- 
--/** Observation acquisition retains source witnesses; it grants no native execution/completeness. */
-+/** Join actual loaded namespace owners to this live Gateway; this does not approve a release artifact. */
- export async function acquireSelectedNativeModelAuthSourceWitness(receipt: SelectedNativeModelAuthCustody, selection: RequiredRunClosureSelection): Promise<void> {
-   const custody = nativeModelAuthCustody.get(receipt);
-   if (!selection || !custody || custody.selection !== selection) throw new Error("Native model/auth custody belongs to another original selected run");
-   selection.assertReceiptCurrent();
-+  const bootstrap = readOriginalSelectedNativeRunBootstrap(selection);
-   assertEmbeddedNativeModelAuthCustody(receipt);
-+  const assertSourceCurrent = () => {
-+    selection.assertReceiptCurrent();
-+    bootstrap.assertCurrent();
-+    if (readOriginalSelectedNativeRunBootstrap(selection) !== bootstrap)
-+      throw new Error("Selected native model/auth bootstrap changed during source acquisition");
-+    assertEmbeddedNativeModelAuthCustody(receipt);
-+  };
-   const planner = await assertProviderModelAuthPolicyBuiltinCustody(custody.plannerPolicy);
-+  assertSourceCurrent();
-   const credential = await assertProviderModelAuthPolicyBuiltinCustody(custody.credentialPolicy);
-+  assertSourceCurrent();
-   const runtime = await assertProviderRuntimeAuthBuiltinCustody(custody.runtimeAuth);
-+  assertSourceCurrent();
-   // Loader qualification awaits cannot hide substitution or a later auth generation.
-   assertEmbeddedNativeModelAuthCustody(receipt);
--  nativeModelAuthSourceWitnesses.set(receipt, Object.freeze([planner, credential, runtime]));
-+  nativeModelAuthSourceWitnesses.set(receipt, Object.freeze({
-+    bootstrap, witnesses: Object.freeze([planner, credential, runtime]),
-+  }));
-   assertSelectedNativeModelAuthSourceWitnessCurrent(receipt, selection);
- }
- 
-@@ -157,16 +179,15 @@ export function assertSelectedNativeModelAuthSourceWitnessCurrent(receipt: Selec
-   const witnesses = nativeModelAuthSourceWitnesses.get(receipt);
-   if (!selection || !custody || custody.selection !== selection || !witnesses) throw new Error("Selected native model/auth source witnesses were not acquired for this original run");
-   selection.assertReceiptCurrent();
-+  witnesses.bootstrap.assertCurrent();
-+  if (readOriginalSelectedNativeRunBootstrap(selection) !== witnesses.bootstrap)
-+    throw new Error("Selected native model/auth bootstrap no longer owns its source witnesses");
-   assertEmbeddedNativeModelAuthCustody(receipt);
--  for (const assertCurrent of witnesses) assertCurrent();
-+  for (const assertCurrent of witnesses.witnesses) assertCurrent();
-   selection.assertReceiptCurrent();
-+  witnesses.bootstrap.assertCurrent();
- }
- 
--function refuseMissingSelectedNativeModelAuthContracts(): never {
--  throw new Error(
--    "Selected native model/auth qualification is unavailable: approved loaded-build and namespace/bootstrap custody are not bound",
--  );
--}
- /** Root joins actual issued credentials to this ORIGINAL held controller generation. */
- export function assertSelectedNativeModelAuthRequestCredential(
-   receipt: SelectedNativeModelAuthCustody, selection: RequiredRunClosureSelection,
-@@ -181,20 +202,46 @@ export function assertSelectedNativeModelAuthRequestCredential(
-   selection.assertReceiptCurrent();
- }
- 
--/** Root binders must use this strict consumer; observational source witnesses cannot qualify. */
-+/** Root claims only the same original held auth owner after all loaded-runtime joins pass. */
- export async function assertSelectedNativeModelAuthCustody(receipt: SelectedNativeModelAuthCustody, selection: RequiredRunClosureSelection): Promise<void> {
-   const custody = nativeModelAuthCustody.get(receipt);
-   if (!selection || !custody || custody.selection !== selection) throw new Error("Native model/auth custody belongs to another original selected run");
-   assertEmbeddedNativeModelAuthCustody(receipt);
--  refuseMissingSelectedNativeModelAuthContracts();
-+  await acquireSelectedNativeModelAuthSourceWitness(receipt, selection);
-+  // This awaited join must finish on the same live kernel, namespace and auth generation.
-+  assertSelectedNativeModelAuthSourceWitnessCurrent(receipt, selection);
-+  assertEmbeddedNativeModelAuthCustody(receipt);
-+  if (!custody.hold) throw new Error("Selected native model/auth requires its original terminal hold");
-+  // Ordinary run settlement releases only unclaimed holds. The original root now
-+  // owns this exact hold through required terminal validation and its finally cleanup.
-+  custody.claimed = true;
- }
- 
--/** Native transaction/precommit cannot await and cannot promote observation to completeness. */
-+/** Synchronous pre-effect guard: retained live runtime ownership, never hashes or release DTOs. */
- export function assertSelectedNativeModelAuthCustodyCurrent(receipt: SelectedNativeModelAuthCustody, selection: RequiredRunClosureSelection): void {
-   const custody = nativeModelAuthCustody.get(receipt);
-   if (!selection || !custody || custody.selection !== selection) throw new Error("Native model/auth custody belongs to another original selected run");
-+  if (!custody.claimed || !custody.hold) throw new Error("Selected native model/auth was not claimed by its original root");
-   assertEmbeddedNativeModelAuthCustody(receipt);
--  refuseMissingSelectedNativeModelAuthContracts();
-+  assertSelectedNativeModelAuthSourceWitnessCurrent(receipt, selection);
-+}
-+
-+/** Current original configuration facts, never credentials or a release grant. */
-+export function readSelectedNativeModelAuthConfiguration(
-+  receipt: SelectedNativeModelAuthCustody,
-+  selection: RequiredRunClosureSelection,
-+): Readonly<{ provider: string; id: string; api: string; endpointSha256: string; controllerGeneration: number }> {
-+  assertSelectedNativeModelAuthCustodyCurrent(receipt, selection);
-+  const custody = nativeModelAuthCustody.get(receipt)!;
-+  const facts = Object.freeze({
-+    provider: custody.model.provider,
-+    id: custody.model.id,
-+    api: custody.model.api,
-+    endpointSha256: createHash("sha256").update(custody.model.baseUrl, "utf8").digest("hex"),
-+    controllerGeneration: custody.generation,
-+  });
-+  assertSelectedNativeModelAuthCustodyCurrent(receipt, selection);
-+  return facts;
- }
- export async function releaseSelectedNativeModelAuthCustody(receipt: SelectedNativeModelAuthCustody, selection: RequiredRunClosureSelection): Promise<void> {
-   const custody = nativeModelAuthCustody.get(receipt);
-@@ -915,7 +962,7 @@ export function createEmbeddedRunAuthController(params: {
-         const hold = selection && lease && modelLease ? retainPreparedModelRuntimeLeaseCustody(lease, modelLease.snapshot) : undefined;
-         const receipt: SelectedNativeModelAuthCustody = Object.freeze({ kind: "original-native-model-auth-custody" });
-         nativeModelAuthCustody.set(receipt, {
--          selection, harness: params.agentHarness, builtin, plannerPolicy, credentialPolicy, runtimeAuth: ownedRuntimeAuth, model: tuple, hold, claimed: false,
-+          selection, harness: params.agentHarness, builtin, plannerPolicy, credentialPolicy, runtimeAuth: ownedRuntimeAuth, model: tuple, hold, claimed: false, generation,
-           assertRequestCredential(requestCredential, binding) {
-             if (!sinkCredential) throw new Error("Original model/auth controller has no natural credential sink");
-             assertAuthStorageSelectedRequestCredentialRuntime(requestCredential, binding, sinkCredential);
-diff --git a/src/agents/required-run-closure.ts b/src/agents/required-run-closure.ts
-index 19d9fe23f5865b9f14816cd693bf5a3da4de9a3d..fbfa440ffa8f314f049e4722e705c8d9e0b3120c 100644
---- a/src/agents/required-run-closure.ts
-+++ b/src/agents/required-run-closure.ts
-@@ -1,5 +1,5 @@
- /** Optional required closure belongs to the original authenticated run, never an agent name. */
--import { randomUUID } from "node:crypto";
-+import { createHash, randomUUID } from "node:crypto";
- import { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
- import {
-   parseMergeguezReviewRequest, mergeguezReviewIngressDigest, validateMergeguezReviewOutput, sealMergeguezReviewOutput,
-@@ -85,10 +85,12 @@ type SelectionState = {
-   model: string;
-   operator: AdmittedRunOperatorAuthority;
-   source: () => void;
-+  modelInput: Readonly<{ text: string; sha256: string; bytes: number }>;
-   selection?: RequiredRunClosureSelection;
-   reviewRequest?: MergeguezReviewRequest;
-   reviewOutput?: SealedMergeguezReviewOutput;
-   reviewValidated?: ValidatedMergeguezReviewOutput;
-+  nativeBootstrap?: import("../gateway/server-kernel.js").OriginalGatewayNativeCustody;
-   reviewBootstrap?: import("../gateway/server-kernel.js").OriginalGatewayNativeCustody;
-   reviewTerminal?: import("@openclaw/ai/internal/openai").SelectedNativeCodexSseProviderReceipt;
-   readReviewTerminal?: typeof import("@openclaw/ai/internal/openai").readSelectedNativeCodexSseProviderTerminalOutput;
-@@ -98,6 +100,7 @@ type SelectionState = {
-     receipt: import("./embedded-agent-runner/run/auth-controller.js").SelectedNativeModelAuthCustody;
-     assertCurrent: typeof import("./embedded-agent-runner/run/auth-controller.js").assertSelectedNativeModelAuthCustodyCurrent;
-     assertRequestCredential: typeof import("./embedded-agent-runner/run/auth-controller.js").assertSelectedNativeModelAuthRequestCredential;
-+    readConfiguration: typeof import("./embedded-agent-runner/run/auth-controller.js").readSelectedNativeModelAuthConfiguration;
-     release: typeof import("./embedded-agent-runner/run/auth-controller.js").releaseSelectedNativeModelAuthCustody;
-     releasePromise?: Promise<void>;
-   };
-@@ -128,6 +131,7 @@ function assertOriginalSource(state: SelectionState): void {
-   if (state.phase === "failed")
-     throw new Error("Required run closure is failed or unknown", { cause: state.failure });
-   state.source();
-+  state.nativeBootstrap?.assertCurrent();
-   state.reviewBootstrap?.assertCurrent();
-   state.operator.assertCurrent();
-   assertOperatorModelAllowed(state.operator, { provider: state.provider, model: state.model });
-@@ -181,6 +185,8 @@ export function prepareRequiredRunClosureSelection(input: {
-   sessionId: string;
-   provider: string;
-   model: string;
-+  /** The original prepared user turn, not a declared coverage or policy receipt. */
-+  message: string;
-   assertCurrent: () => void;
-   mergeguezReviewRequest?: unknown;
- }): RequiredRunClosureSelection {
-@@ -198,6 +204,15 @@ export function prepareRequiredRunClosureSelection(input: {
-   )
-     throw new Error("Required closure needs an explicit native provider and fresh session target");
-   const reviewRequest = input.mergeguezReviewRequest === undefined ? undefined : parseMergeguezReviewRequest(input.mergeguezReviewRequest);
-+  const message = input.message;
-+  input.operator.assertCurrent();
-+  input.assertCurrent();
-+  if (typeof message !== "string" || !message || !message.isWellFormed() ||
-+      Buffer.byteLength(message, "utf8") > 4 * 1024 * 1024)
-+    throw new Error("Selected native input requires a complete bounded original user turn");
-+  const modelInput = Object.freeze({ text: message,
-+    sha256: createHash("sha256").update(message, "utf8").digest("hex"),
-+    bytes: Buffer.byteLength(message, "utf8") });
-   input.operator.assertCurrent();
-   input.assertCurrent();
-   const state: SelectionState = {
-@@ -211,6 +226,7 @@ export function prepareRequiredRunClosureSelection(input: {
-     model: input.model,
-     operator: input.operator,
-     source: input.assertCurrent,
-+    modelInput,
-     providers: new Set(),
-     cleanups: new Set(),
-     phase: "prepared",
-@@ -258,6 +274,21 @@ export function getPreparedRunSelectedNativeReviewRequirement(
-   return selection;
- }
- 
-+/** Original loaded lifetime only; release acceptance is a separate owning contract. */
-+export function readOriginalSelectedNativeRunBootstrap(
-+  selection: RequiredRunClosureSelection,
-+): import("../gateway/server-kernel.js").OriginalGatewayNativeCustody {
-+  const state = selections.get(selection);
-+  if (!state || !state.context || !state.auditGatewayOwner || !state.nativeBootstrap ||
-+      state.phase === "prepared" || state.phase === "binding")
-+    throw new Error("Selected native run has no bound original Gateway bootstrap");
-+  assertOriginalSource(state);
-+  const bootstrap = state.nativeBootstrap;
-+  bootstrap.assertCurrent();
-+  assertOriginalSource(state);
-+  return bootstrap;
-+}
-+
- /** Joins the original auth controller once; DTOs and validator callbacks grant nothing. */
- export async function bindPreparedRunSelectedNativeModelAuthCustody(
-   prepared: PreparedAgentRunAdmission,
-@@ -278,10 +309,11 @@ export async function bindPreparedRunSelectedNativeModelAuthCustody(
-       receipt,
-       assertCurrent: owner.assertSelectedNativeModelAuthCustodyCurrent,
-       assertRequestCredential: owner.assertSelectedNativeModelAuthRequestCredential,
-+      readConfiguration: owner.readSelectedNativeModelAuthConfiguration,
-       release: owner.releaseSelectedNativeModelAuthCustody,
-     };
--    if (typeof state.modelAuth.assertRequestCredential !== "function")
--      throw new Error("Original selected model/auth request credential validation is unavailable");
-+    if (typeof state.modelAuth.assertRequestCredential !== "function" || typeof state.modelAuth.readConfiguration !== "function")
-+      throw new Error("Original selected model/auth request credential or configuration reader is unavailable");
-     await owner.assertSelectedNativeModelAuthCustody(receipt, selection);
-     assertExecuting(state);
-     state.modelAuth.assertCurrent(receipt, selection);
-@@ -316,6 +348,8 @@ function assertRetainedProviderWireCustody(
-   // Only the original provider owner can return a genuinely sealed zero-issued result.
-   const requests = state.assertProviderWireCustody(receipt, state.providerBinding);
-   for (const request of requests) {
-+    if (request.inputSha256 !== state.modelInput.sha256 || request.inputBytes !== state.modelInput.bytes)
-+      throw new Error("Original issued model input differs from its prepared complete user turn");
-     state.modelAuth.assertRequestCredential(
-       state.modelAuth.receipt,
-       state.selection,
-@@ -407,7 +441,8 @@ export async function bindAdmittedRunRequiredClosure(
-     } = await import("@openclaw/ai/internal/openai");
-     if (
-       typeof assertSelectedNativeCodexSseProviderReceipt !== "function" ||
--      typeof assertSelectedNativeCodexSseProviderWireCustody !== "function"
-+      typeof assertSelectedNativeCodexSseProviderWireCustody !== "function" ||
-+      typeof readSelectedNativeCodexSseProviderTerminalOutput !== "function"
-     )
-       throw new Error("Selected native provider receipt or wire validation is unavailable in this build");
-     assertOriginalSource(state);
-@@ -415,13 +450,16 @@ export async function bindAdmittedRunRequiredClosure(
-       throw new Error("Required run original admission changed during provider acquisition");
-     state.assertProviderReceipt = assertSelectedNativeCodexSseProviderReceipt;
-     state.assertProviderWireCustody = assertSelectedNativeCodexSseProviderWireCustody;
-+    state.readReviewTerminal = readSelectedNativeCodexSseProviderTerminalOutput;
-+    // Every selected native run uses this natural bootstrap, including execution
-+    // without the optional broker-owned publication request. Never accept a
-+    // requested boot ID, hash or supplied validator in place of its private owner.
-+    const { captureOriginalGatewayNativeCustody } = await import("../gateway/server-kernel.js");
-+    assertOriginalSource(state);
-+    state.nativeBootstrap = captureOriginalGatewayNativeCustody(gatewayOwner);
-+    assertOriginalSource(state);
-     if (state.reviewRequest) {
--      if (typeof readSelectedNativeCodexSseProviderTerminalOutput !== "function")
--        throw new Error("Original selected model terminal output reader is unavailable");
--      state.readReviewTerminal = readSelectedNativeCodexSseProviderTerminalOutput;
--      const { captureOriginalGatewayNativeCustody } = await import("../gateway/server-kernel.js");
--      assertOriginalSource(state);
--      state.reviewBootstrap = captureOriginalGatewayNativeCustody(gatewayOwner);
-+      state.reviewBootstrap = state.nativeBootstrap;
-       assertOriginalSource(state);
-     }
-   } catch (error) {
-@@ -447,6 +485,33 @@ export async function bindAdmittedRunRequiredClosure(
-         assertSelectedNativeReviewNoChildAdmission(receipt, cleanupBinding);
-     },
-     assertReceiptCurrent: () => assertOriginalSource(state),
-+    assertIssuedModelInput(bodyJson: string) {
-+      assertExecuting(state);
-+      if (typeof bodyJson !== "string" || Buffer.byteLength(bodyJson, "utf8") > 8 * 1024 * 1024)
-+        throw new Error("Selected native serialized input exceeds its complete envelope bound");
-+      const wire: unknown = JSON.parse(bodyJson);
-+      if (!wire || typeof wire !== "object" || Array.isArray(wire))
-+        throw new Error("Selected native wire input is not an original request object");
-+      const body = wire as Record<string, unknown>;
-+      const input = body.input;
-+      if (!Array.isArray(input) || input.length !== 1 || body.previous_response_id !== undefined ||
-+          body.instructions !== "You are a helpful assistant.")
-+        throw new Error("Selected native input contains foreign history or instructions");
-+      const item: unknown = input[0];
-+      if (!item || typeof item !== "object" || Array.isArray(item))
-+        throw new Error("Selected native input has no original user message");
-+      const message = item as Record<string, unknown>;
-+      if (message.type !== "message" || message.role !== "user" ||
-+          !Array.isArray(message.content) || message.content.length !== 1)
-+        throw new Error("Selected native input is not one complete original user message");
-+      const part: unknown = message.content[0];
-+      if (!part || typeof part !== "object" || Array.isArray(part) ||
-+          (part as Record<string, unknown>).type !== "input_text" ||
-+          (part as Record<string, unknown>).text !== state.modelInput.text)
-+        throw new Error("Selected native serialized input dropped or changed its prepared user turn");
-+      assertExecuting(state);
-+      return Object.freeze({ inputSha256: state.modelInput.sha256, inputBytes: state.modelInput.bytes });
-+    },
-     bindProvider(receipt: SelectedNativeCodexSseProviderReceipt) {
-       assertExecuting(state);
-       const retainedProviderReceiptAssertion = state.assertProviderReceipt;
-@@ -599,6 +664,187 @@ export type OriginalRequiredRunClosureCustodyFacts = Readonly<{
-   terminalEvidenceSha256: string;
- }>;
- 
-+/** Diagnostic facts of ORIGINAL issued bytes, never repository policy or file coverage authority. */
-+export function readOriginalRequiredRunIssuedModelInput(
-+  proof: unknown, context: AdmittedRunContext, gatewayOwner: object,
-+): Readonly<{ inputSha256: string; inputBytes: number; bodies: readonly Readonly<{ ordinal: number; bodySha256: string }>[] }> {
-+  readOriginalRequiredRunClosureCustody(proof, context, gatewayOwner);
-+  const state = proofs.get(proof as object)!;
-+  if (!state.providerBinding || !state.assertProviderWireCustody)
-+    throw new Error("Original selected provider input custody is unavailable");
-+  const bodies: Readonly<{ ordinal: number; bodySha256: string }>[] = [];
-+  for (const receipt of state.providers) {
-+    for (const request of state.assertProviderWireCustody(receipt, state.providerBinding)) {
-+      if (request.inputSha256 !== state.modelInput.sha256 || request.inputBytes !== state.modelInput.bytes)
-+        throw new Error("Original issued input snapshot differs from prepared user turn");
-+      bodies.push(Object.freeze({ ordinal: request.ordinal, bodySha256: request.bodySha256 }));
-+    }
-+  }
-+  readOriginalRequiredRunClosureCustody(proof, context, gatewayOwner);
-+  return Object.freeze({ inputSha256: state.modelInput.sha256, inputBytes: state.modelInput.bytes,
-+    bodies: Object.freeze(bodies) });
-+}
-+
-+export type OriginalRequiredRunIdentity = OriginalRequiredRunClosureCustodyFacts & Readonly<{
-+  gatewayInstanceId: string;
-+  /** Core-only diagnostics; these fields do not establish accepted artifact custody. */
-+  sourceBuildSha256: string | null;
-+  sourceBuildScope: "core-dist-javascript/v1" | null;
-+  configuration: ReturnType<typeof import("./embedded-agent-runner/run/auth-controller.js").readSelectedNativeModelAuthConfiguration>;
-+}>;
-+export type OriginalRequiredRunModelAttempt = Readonly<{
-+  ordinal: number;
-+  outcome: "completed" | "incomplete" | "failed" | "cancelled";
-+  provider: string;
-+  api: string;
-+  model: string;
-+  endpointSha256: string;
-+  bodySha256: string;
-+  inputSha256: string;
-+  inputBytes: number;
-+  responseId?: string;
-+  responseModel?: string;
-+  eventType?: string;
-+  status?: string;
-+  incompleteReason?: string;
-+  httpStatus?: number;
-+}>;
-+export type OriginalRequiredRunRawTerminal = Readonly<{
-+  kind: "completed";
-+  ordinal: number;
-+  responseId: string;
-+  text: string;
-+  textSha256: string;
-+  bytes: number;
-+}> | Readonly<{ kind: "no_single_completed_response"; issuedAttempts: number }>;
-+export type OriginalRequiredRunTerminalFacts = Readonly<{
-+  schema: "openclaw.original-required-run-terminal/v1";
-+  runIdentity: OriginalRequiredRunIdentity;
-+  input: ReturnType<typeof readOriginalRequiredRunIssuedModelInput>;
-+  modelAttempts: readonly OriginalRequiredRunModelAttempt[];
-+  rawTerminal: OriginalRequiredRunRawTerminal;
-+}>;
-+
-+/** Same current original run/session/kernel and held auth configuration; no copied config grant. */
-+export function readOriginalRequiredRunIdentity(
-+  proof: unknown, context: AdmittedRunContext, gatewayOwner: object,
-+): OriginalRequiredRunIdentity {
-+  const identity = readOriginalRequiredRunClosureCustody(proof, context, gatewayOwner);
-+  const state = proofs.get(proof as object)!;
-+  if (!state.nativeBootstrap || !state.selection || !state.modelAuth)
-+    throw new Error("Original terminal identity lacks its kernel or model/auth owner");
-+  state.nativeBootstrap.assertCurrent();
-+  if (state.nativeBootstrap.lifecycleGeneration !== identity.lifecycleGeneration)
-+    throw new Error("Original terminal kernel and run lifecycle differ");
-+  const configuration = state.modelAuth.readConfiguration(state.modelAuth.receipt, state.selection);
-+  if (configuration.provider !== state.provider || configuration.id !== state.model)
-+    throw new Error("Original terminal configuration differs from selected run");
-+  const result = Object.freeze({ ...identity,
-+    gatewayInstanceId: state.nativeBootstrap.gatewayInstanceId,
-+    sourceBuildSha256: state.nativeBootstrap.sourceBuildSha256,
-+    sourceBuildScope: state.nativeBootstrap.sourceBuildScope,
-+    configuration,
-+  });
-+  readOriginalRequiredRunClosureCustody(proof, context, gatewayOwner);
-+  return result;
-+}
-+
-+function terminalDescriptor(value: string, maximum: number): string {
-+  if (typeof value !== "string" || !value.isWellFormed() || Buffer.byteLength(value, "utf8") > maximum)
-+    throw new Error("Original terminal descriptor exceeds its complete bounded contract");
-+  return value;
-+}
-+
-+/** Original provider-invoked attempts, including genuine sealed zero-issued owners. */
-+export function readOriginalRequiredRunModelAttempts(
-+  proof: unknown, context: AdmittedRunContext, gatewayOwner: object,
-+): readonly OriginalRequiredRunModelAttempt[] {
-+  readOriginalRequiredRunClosureCustody(proof, context, gatewayOwner);
-+  const state = proofs.get(proof as object)!;
-+  if (!state.providerBinding || !state.assertProviderWireCustody || state.providers.size > 64)
-+    throw new Error("Original terminal provider inventory is unavailable or exceeds its bound");
-+  const result: OriginalRequiredRunModelAttempt[] = [];
-+  const ordinals = new Set<number>();
-+  for (const receipt of state.providers) {
-+    const attempts = receipt.assertTerminal();
-+    const wires = state.assertProviderWireCustody(receipt, state.providerBinding);
-+    if (attempts.length !== wires.length || result.length + attempts.length > 64)
-+      throw new Error("Original terminal attempt and wire inventory differ or exceed their bound");
-+    for (const [index, attempt] of attempts.entries()) {
-+      const wire = wires[index];
-+      if (!wire || wire.ordinal !== attempt.ordinal || !Number.isSafeInteger(attempt.ordinal) ||
-+          attempt.ordinal < 1 || ordinals.has(attempt.ordinal) ||
-+          attempt.outcome === "pending" || attempt.outcome === "unknown" ||
-+          attempt.wireModel !== state.model || receipt.model.provider !== state.provider ||
-+          receipt.model.id !== state.model || wire.inputSha256 !== state.modelInput.sha256 ||
-+          wire.inputBytes !== state.modelInput.bytes)
-+        throw new Error("Original terminal attempt lacks exact issued run/model/input custody");
-+      ordinals.add(attempt.ordinal);
-+      result.push(Object.freeze({
-+        ordinal: attempt.ordinal, outcome: attempt.outcome,
-+        provider: receipt.model.provider, api: receipt.model.api, model: receipt.model.id,
-+        endpointSha256: createHash("sha256").update(receipt.model.endpoint, "utf8").digest("hex"),
-+        bodySha256: wire.bodySha256, inputSha256: wire.inputSha256, inputBytes: wire.inputBytes,
-+        ...(attempt.responseId !== undefined ? { responseId: terminalDescriptor(attempt.responseId, 512) } : {}),
-+        ...(attempt.responseModel !== undefined ? { responseModel: terminalDescriptor(attempt.responseModel, 256) } : {}),
-+        ...(attempt.eventType !== undefined ? { eventType: terminalDescriptor(attempt.eventType, 80) } : {}),
-+        ...(attempt.status !== undefined ? { status: terminalDescriptor(attempt.status, 80) } : {}),
-+        ...(attempt.incompleteReason !== undefined ? { incompleteReason: terminalDescriptor(attempt.incompleteReason, 256) } : {}),
-+        ...(attempt.httpStatus !== undefined ? { httpStatus: attempt.httpStatus } : {}),
-+      }));
-+    }
-+  }
-+  result.sort((a, b) => a.ordinal - b.ordinal);
-+  readOriginalRequiredRunClosureCustody(proof, context, gatewayOwner);
-+  return Object.freeze(result);
-+}
-+
-+/** Full raw text from the original completed provider, never reconstructed from parsed findings. */
-+export function readOriginalRequiredRunRawTerminal(
-+  proof: unknown, context: AdmittedRunContext, gatewayOwner: object,
-+): OriginalRequiredRunRawTerminal {
-+  const attempts = readOriginalRequiredRunModelAttempts(proof, context, gatewayOwner);
-+  const state = proofs.get(proof as object)!;
-+  if (state.providers.size !== 1 || attempts.length !== 1 || attempts[0]?.outcome !== "completed") {
-+    readOriginalRequiredRunClosureCustody(proof, context, gatewayOwner);
-+    return Object.freeze({ kind: "no_single_completed_response", issuedAttempts: attempts.length });
-+  }
-+  if (!state.readReviewTerminal || !state.providerBinding)
-+    throw new Error("Original completed raw terminal reader is unavailable");
-+  const receipt = state.providers.values().next().value!;
-+  const terminal = state.readReviewTerminal(receipt, state.providerBinding);
-+  if (terminal.ordinal !== attempts[0].ordinal || terminal.responseId !== attempts[0].responseId)
-+    throw new Error("Original raw terminal differs from its issued attempt");
-+  const bytes = Buffer.byteLength(terminal.text, "utf8");
-+  if (!terminal.text.isWellFormed() || bytes > 1024 * 1024)
-+    throw new Error("Original raw terminal exceeds its complete bounded contract");
-+  const result = Object.freeze({ kind: "completed" as const, ...terminal, bytes,
-+    textSha256: createHash("sha256").update(terminal.text, "utf8").digest("hex") });
-+  readOriginalRequiredRunClosureCustody(proof, context, gatewayOwner);
-+  return result;
-+}
-+
-+/** One current synchronous snapshot for the original Gateway result owner. No policy/publication grant. */
-+export function readOriginalRequiredRunTerminalFacts(
-+  proof: unknown, context: AdmittedRunContext, gatewayOwner: object,
-+): OriginalRequiredRunTerminalFacts {
-+  const runIdentity = readOriginalRequiredRunIdentity(proof, context, gatewayOwner);
-+  const input = readOriginalRequiredRunIssuedModelInput(proof, context, gatewayOwner);
-+  const modelAttempts = readOriginalRequiredRunModelAttempts(proof, context, gatewayOwner);
-+  const rawTerminal = readOriginalRequiredRunRawTerminal(proof, context, gatewayOwner);
-+  readOriginalRequiredRunClosureCustody(proof, context, gatewayOwner);
-+  return Object.freeze({ schema: "openclaw.original-required-run-terminal/v1", runIdentity, input, modelAttempts, rawTerminal });
-+}
-+
-+/** Command finish has this same original context while its private held auth owner is still current. */
-+export function readAdmittedRunRequiredTerminalFacts(
-+  proof: RequiredRunClosureProof, context: AdmittedRunContext,
-+): OriginalRequiredRunTerminalFacts {
-+  const state = admittedSelections.get(context);
-+  if (!state?.auditGatewayOwner) throw new Error("Original terminal consumer lacks its Gateway binding");
-+  return readOriginalRequiredRunTerminalFacts(proof, context, state.auditGatewayOwner);
-+}
-+
- /** The native owner retains this exact proof/context/bootstrap join across awaits. */
- export function readOriginalRequiredRunClosureCustody(
-   proof: unknown,
-diff --git a/src/gateway/agent-turn/agent-run-dispatch.ts b/src/gateway/agent-turn/agent-run-dispatch.ts
-index a7997fddf49edd9fd55b7290b9285a7f225d4af3..626c6e18ff25b1e780f541c5579cb64937767985 100644
---- a/src/gateway/agent-turn/agent-run-dispatch.ts
-+++ b/src/gateway/agent-turn/agent-run-dispatch.ts
-@@ -7,6 +7,7 @@ import {
-   type AgentRunTerminalOutcome,
- } from "../../agents/agent-run-terminal-outcome.js";
- import type { PreparedAgentCommandRuntimeContext } from "../../agents/command/prepare.js";
-+import type { OriginalRequiredRunTerminalFacts } from "../../agents/required-run-closure.js";
- import {
-   createCronCreatorAuthorityCapability,
-   runWithCronCreatorAuthorityCapability,
-@@ -55,6 +56,8 @@ export function dispatchAgentRunFromGateway(params: {
-   admittedRunEntry: ChatAbortControllerEntry | undefined;
-   ingressOpts: Parameters<typeof agentCommandFromGatewayIngress>[0];
-   runId: string;
-+  /** Private natural Gateway source; public ingress cannot author original terminal facts. */
-+  readRequiredRunTerminalFacts?: () => OriginalRequiredRunTerminalFacts | undefined;
-   cronCreatorAuthority?: GatewayCronCreatorAuthorityAdmission;
-   dedupeKeys: readonly string[];
-   /**
-@@ -273,6 +276,16 @@ export function dispatchAgentRunFromGateway(params: {
-         yielded: result?.meta?.yielded === true,
-         ...readFollowupTerminalReply(params.runId, result?.meta),
-       });
-+      const requiredRunTerminal = params.readRequiredRunTerminalFacts?.();
-+      if (responseStatus === "ok" && params.readRequiredRunTerminalFacts && !requiredRunTerminal)
-+        throw new Error("Selected native result lacks original terminal facts");
-+      const assertRequiredRunTerminalCurrent = () => {
-+        if (!params.readRequiredRunTerminalFacts) return;
-+        assertSettlementCurrent?.();
-+        if (params.readRequiredRunTerminalFacts?.() !== requiredRunTerminal)
-+          throw new Error("Original selected terminal result changed before its Gateway publication");
-+      };
-+      assertRequiredRunTerminalCurrent();
-       const payload = {
-         runId: params.runId,
-         status: responseStatus,
-@@ -292,10 +305,12 @@ export function dispatchAgentRunFromGateway(params: {
-           ? { providerStarted: terminalOutcome.providerStarted }
-           : {}),
-         result,
-+        ...(requiredRunTerminal ? { requiredRunTerminal } : {}),
-       };
-       const inputProcessingCompleted =
-         recordedInputCompletion?.reason === "completed" && responseStatus === "ok";
-       const persistTerminalDedupe = () => {
-+        assertRequiredRunTerminalCurrent();
-         setGatewayDedupeEntries({
-           dedupe: params.context.dedupe,
-           keys: params.dedupeKeys,
-@@ -334,6 +349,7 @@ export function dispatchAgentRunFromGateway(params: {
-         return { terminalOutcome, settled };
-       }
-       persistTerminalDedupe();
-+      assertRequiredRunTerminalCurrent();
-       // A final response resumes durable delivery cleanup. Release the terminal
-       // run owner first so exact-session deletion cannot race this admission.
-       cleanupRunOwner();
-diff --git a/src/gateway/agent-turn/agent-run-execution-phase.ts b/src/gateway/agent-turn/agent-run-execution-phase.ts
-index a959a0de70f7eb03a13c0a45bc9ca4f7f58b163d..aa29f387dce7de622cda4c1eb1cf1f9074f93d05 100644
---- a/src/gateway/agent-turn/agent-run-execution-phase.ts
-+++ b/src/gateway/agent-turn/agent-run-execution-phase.ts
-@@ -23,6 +23,7 @@ import {
-   prepareRequiredRunClosureSelection,
-   bindAdmittedRunRequiredClosure,
-   type RequiredRunClosureSelection,
-+  type OriginalRequiredRunTerminalFacts,
- } from "../../agents/required-run-closure.js";
- import { resolveScheduledToolPolicyContext } from "../../agents/scheduled-tool-policy.js";
- import { isExecutionIdentityCollectionEnabled } from "../../audit/audit-config.js";
-@@ -137,6 +138,7 @@ export async function startAgentRunExecution(params: StartAgentRunExecutionParam
-     };
- 
-     let requiredRunClosureSelection: RequiredRunClosureSelection | undefined;
-+    let requiredRunTerminalFacts: OriginalRequiredRunTerminalFacts | undefined;
-     if (params.request.requiredExecutionClosure) {
-       const { operatorAuthority, requiredClosureModel } = prepared;
-       if (
-@@ -157,6 +159,7 @@ export async function startAgentRunExecution(params: StartAgentRunExecutionParam
-         sessionId: abortEntry.sessionId,
-         provider: requiredClosureModel.provider,
-         model: requiredClosureModel.model,
-+        message: prepared.userTurn.message,
-         assertCurrent: assertDispatchCurrent,
-         mergeguezReviewRequest: params.request.mergeguezReviewRequest,
-       });
-@@ -542,6 +545,17 @@ export async function startAgentRunExecution(params: StartAgentRunExecutionParam
-                 ...(executionIdentityAdmission ? { executionIdentityAdmission } : {}),
-                 operationalRunInstance: prepared.operationalRunInstance,
-                 requiredRunClosureSelection,
-+                onRequiredRunTerminalFacts: requiredRunClosureSelection ? (facts) => {
-+                  assertDispatchCurrent();
-+                  requiredRunClosureSelection!.assertReceiptCurrent();
-+                  if (requiredRunTerminalFacts || facts.runIdentity.runId !== params.runId ||
-+                      facts.runIdentity.operationalInstanceId !== operationalRunInstance.instanceId ||
-+                      facts.runIdentity.sessionKey !== params.resolvedSessionKey ||
-+                      facts.runIdentity.sessionId !== abortEntry?.sessionId ||
-+                      facts.runIdentity.lifecycleGeneration !== params.lifecycleGeneration)
-+                    throw new Error("Original Gateway terminal result changed its exact source admission");
-+                  requiredRunTerminalFacts = facts;
-+                } : undefined,
-                 operatorAuthority: prepared.operatorAuthority,
-                 onAdmittedRunContext: async (admittedRunContext) => {
-                   if (requiredRunClosureSelection) {
-@@ -626,6 +640,11 @@ export async function startAgentRunExecution(params: StartAgentRunExecutionParam
-                 allowModelOverride: prepared.effectiveAllowModelOverride,
-               },
-               runId: params.runId,
-+              readRequiredRunTerminalFacts: requiredRunClosureSelection ? () => {
-+                requiredRunClosureSelection!.assertReceiptCurrent();
-+                params.assertContextCurrent?.();
-+                return requiredRunTerminalFacts;
-+              } : undefined,
-               dedupeKeys: params.agentDedupeKeys,
-               abortController: prepared.activeRunAbort.controller,
-               cleanupAbortController: cleanupAdmittedRun,
-diff --git a/src/state/agent-run-quarantine-maintenance.ts b/src/state/agent-run-quarantine-maintenance.ts
-new file mode 100644
-index 0000000000000000000000000000000000000000..c52c284d216a511d6c3c2e818bb6736a7813be4c
---- /dev/null
-+++ b/src/state/agent-run-quarantine-maintenance.ts
-@@ -0,0 +1,92 @@
-+import { openSync, closeSync } from "node:fs";
-+import { isDeepStrictEqual } from "node:util";
-+import { clearNodeSqliteKyselyCacheForDatabase } from "../infra/kysely-sync.js";
-+import { openNodeSqliteDatabase, resolveExistingSqliteFileUri } from "../infra/node-sqlite.js";
-+import { backupNodeSqliteDatabase } from "../infra/sqlite-backup.js";
-+import { runSqliteImmediateTransactionSync } from "../infra/sqlite-transaction.js";
-+import { readDatabasePathIdentitySync } from "../infra/sqlite-worker-identity.js";
-+import { quarantineAgentRunInCurrentProcess } from "../infra/agent-run-registry.js";
-+import {
-+  commitAgentRunRecoveryQuarantinesInTransaction,
-+  reserveAgentRunRecoveryIntentsInTransaction,
-+} from "./agent-run-recovery-intents.kernel.js";
-+import {
-+  parseAgentRunQuarantineRequest, parseAgentRunQuarantineReceipts,
-+  type AgentRunQuarantineRequest,
-+} from "./agent-run-quarantine.types.js";
-+import {
-+  assertAgentDatabaseMaintenanceAuthority,
-+  invalidateOpenClawAgentDatabaseIntegrityBeforeMutation,
-+} from "./openclaw-agent-db-lease.js";
-+import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
-+import {
-+  assertOpenClawAgentDatabaseOwner, assertOpenClawAgentDatabaseForMaintenance,
-+  migrateOpenClawAgentDatabaseForMaintenance,
-+} from "./openclaw-agent-db-maintenance.js";
-+import type { OpenClawAgentDatabaseOptions } from "./openclaw-agent-db-contract.js";
-+import { resolveOpenClawAgentSqlitePath } from "./openclaw-agent-db.paths.js";
-+
-+/** Offline denial uses the existing stopped-writer lease, never an ordinary worker source. */
-+export async function quarantineLegacyAgentRunsForMaintenance(
-+  options: OpenClawAgentDatabaseOptions,
-+  input: AgentRunQuarantineRequest,
-+  backupPath: string,
-+) {
-+  const request = parseAgentRunQuarantineRequest(input);
-+  const pathname = resolveOpenClawAgentSqlitePath(options);
-+  // Capture the physical store before lease acquisition can yield. No later pathname adoption.
-+  const identity = readDatabasePathIdentitySync(pathname);
-+  if (!identity.key.startsWith("file:")) throw new Error("Maintenance requires existing storage");
-+  return withAgentDatabaseMaintenanceLease({ env: options.env }, async (maintenance) => {
-+    const assertCurrent = () => {
-+      maintenance.signal.throwIfAborted();
-+      assertAgentDatabaseMaintenanceAuthority(maintenance);
-+      if (!isDeepStrictEqual(readDatabasePathIdentitySync(pathname), identity))
-+        throw new Error("Quarantine maintenance physical store changed");
-+    };
-+    assertCurrent();
-+    const before = openNodeSqliteDatabase(resolveExistingSqliteFileUri(pathname));
-+    let backupPages: number;
-+    try {
-+      assertOpenClawAgentDatabaseOwner(before, { agentId: options.agentId, pathname });
-+      // The original backup owner writes only this exclusively reserved task target.
-+      const reservation = openSync(backupPath, "wx", 0o600);
-+      closeSync(reservation);
-+      backupPages = await backupNodeSqliteDatabase(before, backupPath);
-+      assertCurrent();
-+    } finally {
-+      clearNodeSqliteKyselyCacheForDatabase(before);
-+      before.close();
-+    }
-+    await migrateOpenClawAgentDatabaseForMaintenance({ agentId: options.agentId, pathname }, maintenance);
-+    assertCurrent();
-+    invalidateOpenClawAgentDatabaseIntegrityBeforeMutation(pathname, options.env ?? process.env);
-+    assertCurrent();
-+    const database = openNodeSqliteDatabase(resolveExistingSqliteFileUri(pathname));
-+    try {
-+      assertOpenClawAgentDatabaseForMaintenance(database, { agentId: options.agentId, pathname });
-+      for (const target of request.targets) {
-+        assertCurrent();
-+        quarantineAgentRunInCurrentProcess(target.runId);
-+      }
-+      // Separate original native transactions retain the recovery reservation on later failure.
-+      const reserve = runSqliteImmediateTransactionSync(database, () => {
-+        assertCurrent();
-+        const result = reserveAgentRunRecoveryIntentsInTransaction(database, request);
-+        assertCurrent();
-+        return result;
-+      });
-+      const receipts = runSqliteImmediateTransactionSync(database, () => {
-+        assertCurrent();
-+        const result = commitAgentRunRecoveryQuarantinesInTransaction(database, request);
-+        assertCurrent();
-+        return result;
-+      });
-+      assertCurrent();
-+      return { backupPages, reserve, receipts: parseAgentRunQuarantineReceipts(receipts, request) };
-+    } finally {
-+      clearNodeSqliteKyselyCacheForDatabase(database);
-+      database.close();
-+    }
-+  });
-+}
-diff --git a/src/state/agent-run-quarantine.ts b/src/state/agent-run-quarantine.ts
-index 7e7f74ee9a803d8cc0fe2edc6a364fda0576dcdc..6e51564cb4204e91d5209bd8ad02b257a9e95720 100644
---- a/src/state/agent-run-quarantine.ts
-+++ b/src/state/agent-run-quarantine.ts
-@@ -3,7 +3,11 @@ import {
-   quarantineAgentRunInCurrentProcess,
-   retireAgentRunInCurrentProcess,
- } from "../infra/agent-run-registry.js";
--import type { AgentRunQuarantineRequest } from "./agent-run-quarantine.types.js";
-+import {
-+  parseAgentRunQuarantineRequest,
-+  parseAgentRunQuarantineReceipts,
-+  type AgentRunQuarantineRequest,
-+} from "./agent-run-quarantine.types.js";
- import {
-   parseAgentRunWriterRetirementRequest,
-   type AgentRunWriterRetirementRequest,
-@@ -18,16 +22,16 @@ export async function quarantineLegacyAgentRuns(
-   input: AgentRunQuarantineRequest,
- ) {
-   source.assertCurrent();
--  // Clone before yielding; caller mutation cannot redirect either revocation or persistence.
--  const captured = Object.freeze({
--    requestId: input.requestId,
--    targets: Object.freeze(input.targets.map((target) => Object.freeze({ ...target }))),
--  });
-+  const captured = parseAgentRunQuarantineRequest(input);
-   for (const target of captured.targets) {
-+    // Registry revocation can close this source between target callbacks.
-+    source.assertCurrent();
-     // Deny first, persist second. On failure the local hold remains; never restore permission.
-     quarantineAgentRunInCurrentProcess(target.runId);
-   }
-+  source.assertCurrent();
-   const receipts = await execution.runExisting(source, async (scope) => {
-+    source.assertCurrent();
-     await scope.execute({ type: "agent.runs.recovery.reserve", input: captured });
-     source.assertCurrent();
-     const committed = await scope.execute({ type: "agent.runs.quarantine", input: captured });
-@@ -40,7 +44,9 @@ export async function quarantineLegacyAgentRuns(
-       "Quarantine requires the existing native agent database; recovery remains held",
-     );
-   }
--  return receipts;
-+  const capturedReceipts = parseAgentRunQuarantineReceipts(receipts, captured);
-+  source.assertCurrent();
-+  return capturedReceipts;
- }
- 
- /** Rehydrate denial through the original worker; no file-path or DTO grants authority. */
-diff --git a/src/state/agent-run-quarantine.types.ts b/src/state/agent-run-quarantine.types.ts
-index 6983a63c0b9315eda1318f17dad722cb3bd1cc94..12c84ac34b36d3be6d42fb21816fa09f46a39165 100644
---- a/src/state/agent-run-quarantine.types.ts
-+++ b/src/state/agent-run-quarantine.types.ts
-@@ -1,3 +1,5 @@
-+import { types } from "node:util";
-+
- /** Revocation evidence never represents execution, provider or cleanup settlement. */
- export type AgentRunQuarantineTarget = Readonly<{
-   sessionKey: string;
-@@ -25,3 +27,91 @@ export type AgentRunQuarantineReceipt = AgentRunQuarantineTarget &
-     historicalRetirement: "unknown";
-     notAnAdmissionReceipt: true;
-   }>;
-+
-+/** Snapshot data without invoking caller getters or proxy traps. */
-+function ownData(value: unknown, keys: readonly string[]): Record<string, unknown> {
-+  if (!value || typeof value !== "object" || Array.isArray(value) || types.isProxy(value))
-+    throw new Error("Quarantine requires an own-data record");
-+  const descriptors = Object.getOwnPropertyDescriptors(value);
-+  if (Reflect.ownKeys(descriptors).length !== keys.length)
-+    throw new Error("Quarantine record fields are absent or unexpected");
-+  const result: Record<string, unknown> = Object.create(null);
-+  for (const key of keys) {
-+    const descriptor = Object.getOwnPropertyDescriptor(descriptors, key)?.value;
-+    if (!descriptor || !Object.hasOwn(descriptor, "value"))
-+      throw new Error("Quarantine record fields are absent or accessor-backed");
-+    result[key] = descriptor.value;
-+  }
-+  return result;
-+}
-+
-+function exactText(value: unknown): string {
-+  if (typeof value !== "string" || !value || value.trim() !== value || value.includes("\0"))
-+    throw new Error("Quarantine requires an exact nonempty identity");
-+  return value;
-+}
-+
-+function ownArray(value: unknown): readonly unknown[] {
-+  if (!Array.isArray(value) || types.isProxy(value) || value.length < 1 || value.length > 32)
-+    throw new Error("Quarantine requires a bounded nonempty array");
-+  const result: unknown[] = [];
-+  for (let index = 0; index < value.length; index++) {
-+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-+    if (!descriptor || !Object.hasOwn(descriptor, "value"))
-+      throw new Error("Quarantine array is sparse or accessor-backed");
-+    result.push(descriptor.value);
-+  }
-+  return result;
-+}
-+
-+const TARGET_KEYS = ["runId", "sessionId", "sessionKey", "lifecycleRevision"];
-+function targetFromData(data: Record<string, unknown>): AgentRunQuarantineTarget {
-+  const lifecycleRevision = data.lifecycleRevision === null ? null : exactText(data.lifecycleRevision);
-+  return Object.freeze({
-+    runId: exactText(data.runId), sessionId: exactText(data.sessionId),
-+    sessionKey: exactText(data.sessionKey), lifecycleRevision,
-+  });
-+}
-+
-+/** Parsing grants no maintenance, native transaction, drain or admission authority. */
-+export function parseAgentRunQuarantineRequest(value: unknown): AgentRunQuarantineRequest {
-+  const data = ownData(value, ["requestId", "targets"]);
-+  const requestId = exactText(data.requestId);
-+  const targets = ownArray(data.targets).map((entry) => targetFromData(ownData(entry, TARGET_KEYS)));
-+  if (new Set(targets.map((target) => target.runId)).size !== targets.length)
-+    throw new Error("Quarantine requires distinct exact run targets");
-+  return Object.freeze({ requestId, targets: Object.freeze(targets) });
-+}
-+
-+/** Complete exact denial data, never proof of native commit or provider settlement. */
-+export function parseAgentRunQuarantineReceipts(
-+  value: unknown,
-+  request: AgentRunQuarantineRequest,
-+): readonly AgentRunQuarantineReceipt[] {
-+  const rows = ownArray(value);
-+  if (rows.length !== request.targets.length)
-+    throw new Error("Quarantine result does not cover every exact target");
-+  const remaining = new Map(request.targets.map((target) => [target.runId, target]));
-+  const receipts = rows.map((entry): AgentRunQuarantineReceipt => {
-+    const data = ownData(entry, [...TARGET_KEYS, "kind", "quarantineId", "requestId", "committedAt",
-+      "entrySha256", "executionDrain", "providerDrain", "localCleanup", "historicalRetirement", "notAnAdmissionReceipt"]);
-+    const target = targetFromData(data);
-+    const expected = remaining.get(target.runId);
-+    if (!expected || target.sessionKey !== expected.sessionKey || target.sessionId !== expected.sessionId ||
-+        target.lifecycleRevision !== expected.lifecycleRevision)
-+      throw new Error("Quarantine receipt differs from the exact requested owner");
-+    remaining.delete(target.runId);
-+    if (data.kind !== "agent-run-quarantined" || data.executionDrain !== "unknown" ||
-+        data.providerDrain !== "unknown" || data.localCleanup !== "unknown" ||
-+        data.historicalRetirement !== "unknown" || data.notAnAdmissionReceipt !== true ||
-+        typeof data.committedAt !== "number" || !Number.isSafeInteger(data.committedAt) || data.committedAt < 0 ||
-+        typeof data.entrySha256 !== "string" || !/^[a-f0-9]{64}$/u.test(data.entrySha256))
-+      throw new Error("Quarantine receipt is incomplete or claims unsupported settlement");
-+    return Object.freeze({ ...target, kind: "agent-run-quarantined", quarantineId: exactText(data.quarantineId),
-+      // Idempotent readback retains its original creator; it never re-labels the fence.
-+      requestId: exactText(data.requestId), committedAt: data.committedAt, entrySha256: data.entrySha256,
-+      executionDrain: "unknown", providerDrain: "unknown", localCleanup: "unknown",
-+      historicalRetirement: "unknown", notAnAdmissionReceipt: true });
-+  });
-+  return Object.freeze(receipts);
-+}
-diff --git a/tsdown.config.ts b/tsdown.config.ts
-index 3fd630b5ea3b1d29af9de7d3172749a31b69cb1b..fa5db4fb93201c4b19c7aacefbad14a7491c757f 100644
---- a/tsdown.config.ts
-+++ b/tsdown.config.ts
-@@ -443,6 +443,15 @@ function listBundledPluginEntrySources(
- 
- function buildCoreDistEntries(): Record<string, string> {
-   return {
-+    // This optional task qualification profile changes the complete artifact.
-+    // These entries share the SAME original full unified production build graph and owner chunks.
-+    ...(process.env.OPENCLAW_BUILD_NATIVE_IPC_GATEWAY_QUALIFICATION === "1"
-+      ? {
-+          "proofs/native-ipc-gateway-driver": "scripts/proofs/native-ipc-gateway/driver.mjs",
-+          "proofs/native-ipc-gateway-api": "scripts/proofs/native-ipc-gateway/native-api.ts",
-+          "proofs/native-ipc-gateway-fixture": "scripts/proofs/native-ipc-gateway/native-fixture.ts",
+         | undefined;
++      for (const [flag, value] of [
++        ["--required-execution-closure", parentOpts?.requiredExecutionClosure],
++        ["--run-id", parentOpts?.runId],
++      ]) {
++        if (value !== undefined) {
++          throw new Error(`${flag} cannot be used with agent exec`);
 +        }
-+      : {}),
-     index: "src/index.ts",
-     entry: "src/entry.ts",
-     "infra/package-lifecycle": "src/infra/package-lifecycle.ts",
++      }
+       const execOpts = {
+         ...opts,
+         messageFile: opts.messageFile ?? parentOpts?.messageFile,
+diff --git a/src/cli/program/register.agent.test.ts b/src/cli/program/register.agent.test.ts
+index edc87a080b29d8e108cd40d856e85f1f84b81575..6ccb1083786616a00dffa372dd0c4523c700fbf1 100644
+--- a/src/cli/program/register.agent.test.ts
++++ b/src/cli/program/register.agent.test.ts
+@@ -86,6 +86,39 @@ beforeEach(() => {
+ });
+ 
+ describe("agent command registration", () => {
++  it("forwards required closure and the retained run id to the Gateway caller", async () => {
++    await runCli([
++      "agent",
++      "--message",
++      "hi",
++      "--agent",
++      "ops",
++      "--required-execution-closure",
++      "native-sse-no-tools",
++      "--run-id",
++      "review-attempt-7",
++    ]);
++    expect(agentCliCommandMock).toHaveBeenCalledExactlyOnceWith(
++      expect.objectContaining({
++        requiredExecutionClosure: "native-sse-no-tools",
++        runId: "review-attempt-7",
++      }),
++      runtime,
++    );
++    expect(agentExecCommandMock).not.toHaveBeenCalled();
++  });
++
++  it.each([
++    ["--required-execution-closure", "native-sse-no-tools"],
++    ["--run-id", "review-attempt-7"],
++  ])("refuses parent %s for embedded exec", async (flag, value) => {
++    await expect(runCli(["agent", flag, value, "exec", "hi"])).rejects.toThrow(
++      `${flag} cannot be used with agent exec`,
++    );
++    expect(agentCliCommandMock).not.toHaveBeenCalled();
++    expect(agentExecCommandMock).not.toHaveBeenCalled();
++  });
++
+   it("normalizes explicit verbosity", async () => {
+     await runCli("agent --message hi --verbose ON --json".split(" "));
+     expect(mocks.setVerboseMock).toHaveBeenCalledWith(true);
+diff --git a/src/commands/agent-via-gateway.test.ts b/src/commands/agent-via-gateway.test.ts
+index 36e15a2e1b0496c6bdb57e4f66809fd831a2ea59..f6b37494a2b3017a573042eab80b738684a3fcee 100644
+--- a/src/commands/agent-via-gateway.test.ts
++++ b/src/commands/agent-via-gateway.test.ts
+@@ -383,6 +383,7 @@ describe("agentCliCommand", () => {
+     ["sessionId", "--session-id"],
+     ["sessionKey", "--session-key"],
+     ["to", "--to"],
++    ["runId", "--run-id"],
+   ] as const)(
+     "rejects blank %s selectors before local or Gateway dispatch",
+     async (option, flag) => {
+@@ -404,6 +405,139 @@ describe("agentCliCommand", () => {
+     },
+   );
+ 
++  it.each(["", "   ", "unsupported-profile"])(
++    "refuses unsupported required closure %j before any dispatch",
++    async (requiredExecutionClosure) => {
++      await expect(
++        agentCliCommand({ message: "hi", agent: "ops", requiredExecutionClosure }, runtime),
++      ).rejects.toThrow("--required-execution-closure must be native-sse-no-tools");
++      expect(callGateway).not.toHaveBeenCalled();
++      expect(agentCommand).not.toHaveBeenCalled();
++      expect(loadConfig).not.toHaveBeenCalled();
++      expect(loadRuntimeConfig).not.toHaveBeenCalled();
++    },
++  );
++
++  it("refuses required closure with local execution before loading the runtime", async () => {
++    await expect(
++      agentCliCommand(
++        { message: "hi", agent: "ops", requiredExecutionClosure: "native-sse-no-tools", local: true },
++        runtime,
++      ),
++    ).rejects.toThrow("--required-execution-closure cannot be used with --local");
++    expect(callGateway).not.toHaveBeenCalled();
++    expect(agentCommand).not.toHaveBeenCalled();
++    expect(loadRuntimeConfig).not.toHaveBeenCalled();
++  });
++
++  it.each([false, true])(
++    "dispatches required closure with admin identity (remote=%s)",
++    async (remote) => {
++      await withTempStore(
++        async () => {
++          const response = { ...gatewaySuccessReply("closed"), requiredRunClosure: { original: true } };
++          callGateway.mockResolvedValue(response);
++          const result = await agentCliCommand(
++            {
++              message: "hi",
++              agent: "ops",
++              model: "openai/approved-model",
++              json: true,
++              timeout: "0",
++              runId: "review-attempt-7",
++              requiredExecutionClosure: "native-sse-no-tools",
++            },
++            jsonRuntime,
++          );
++          const request = requireRecord(requireFirstCallArg(callGateway, "gateway"), "gateway request");
++          expect(request).toMatchObject({
++            method: "agent",
++            clientName: "gateway-client",
++            mode: "backend",
++            scopes: ["operator.admin"],
++            expectFinal: true,
++            timeoutMs: 2_147_000_000,
++            params: {
++              requiredExecutionClosure: "native-sse-no-tools",
++              modelRun: true,
++              promptMode: "none",
++              idempotencyKey: "review-attempt-7",
++              model: "openai/approved-model",
++            },
++          });
++          expect(request.params).not.toHaveProperty("mergeguezReviewRequest");
++          expect(result).toBe(response);
++          expect(jsonRuntime.writeJson).toHaveBeenCalledWith(response);
++          expect(agentCommand).not.toHaveBeenCalled();
++        },
++        {
++          agents: { entries: { ops: {} } },
++          ...(remote ? remoteGatewayConfig : {}),
++        },
++      );
++    },
++  );
++
++  it("requests required closure admin identity without a model override", async () => {
++    await withTempStore(
++      async () => {
++        mockGatewaySuccessReply();
++        await agentCliCommand(
++          { message: "hi", agent: "ops", requiredExecutionClosure: "native-sse-no-tools" },
++          runtime,
++        );
++        const request = requireRecord(requireFirstCallArg(callGateway, "gateway"), "gateway request");
++        expect(request).toMatchObject({
++          clientName: "gateway-client",
++          mode: "backend",
++          scopes: ["operator.admin"],
++        });
++      },
++      { agents: { entries: { ops: {} } }, ...remoteGatewayConfig },
++    );
++  });
++
++  it("retains required closure and the supplied run id across connection retries", async () => {
++    vi.useFakeTimers();
++    try {
++      await withTempStore(
++        async () => {
++          const started = createDeferredCore();
++          callGateway
++            .mockImplementationOnce(async () => {
++              started.resolve();
++              throw createGatewayNormalCloseError();
++            })
++            .mockResolvedValueOnce(gatewaySuccessReply("closed"));
++          const run = agentCliCommand(
++            {
++              message: "hi",
++              agent: "ops",
++              runId: "review-attempt-7",
++              requiredExecutionClosure: "native-sse-no-tools",
++            },
++            runtime,
++          );
++          await started.promise;
++          await vi.advanceTimersByTimeAsync(1_000);
++          await run;
++          expect(callGateway).toHaveBeenCalledTimes(2);
++          for (const [request] of callGateway.mock.calls) {
++            expect(request.params).toMatchObject({
++              idempotencyKey: "review-attempt-7",
++              requiredExecutionClosure: "native-sse-no-tools",
++              modelRun: true,
++              promptMode: "none",
++            });
++          }
++        },
++        { agents: { entries: { ops: {} } } },
++      );
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++
+   it("clamps oversized gateway timeout seconds at the command boundary", async () => {
+     await withTempStore(async () => {
+       mockGatewaySuccessReply();
+@@ -446,6 +580,9 @@ describe("agentCliCommand", () => {
+           expect(request.scopes).toEqual(["operator.admin"]);
+           expect(request.params).toMatchObject({ agentId: explicitOwnership ? "solo" : "main" });
+           expect(request.params).not.toHaveProperty("cleanupBundleMcpOnRunEnd");
++          expect(request.params).not.toHaveProperty("requiredExecutionClosure");
++          expect(request.params).not.toHaveProperty("modelRun");
++          expect(request.params).not.toHaveProperty("promptMode");
+           expect(agentCommand).not.toHaveBeenCalled();
+           expect(agentModuleLoadCount).not.toHaveBeenCalled();
+           expect(runtime.log).toHaveBeenCalledWith("hello");
+diff --git a/src/commands/agent-via-gateway.ts b/src/commands/agent-via-gateway.ts
+index 10841c2ca7e8ea2a16d11bdb1129ff6416ca6400..c64953ba5a1fbe0474ad0757b32839a1dc992d3c 100644
+--- a/src/commands/agent-via-gateway.ts
++++ b/src/commands/agent-via-gateway.ts
+@@ -104,6 +104,7 @@ type AgentCliOpts = {
+   messageFile?: string;
+   agent?: string;
+   model?: string;
++  requiredExecutionClosure?: string;
+   to?: string;
+   sessionId?: string;
+   sessionKey?: string;
+@@ -1011,14 +1012,15 @@ async function agentViaGatewayCommand(
+ 
+   const idempotencyKey = normalizeOptionalString(opts.runId) || randomIdempotencyKey();
+   const modelOverride = normalizeOptionalString(opts.model);
+-  const needsAdminGatewayIdentity = Boolean(modelOverride) || isSessionResetCommand(body);
++  const needsAdminGatewayIdentity =
++    Boolean(modelOverride) || Boolean(opts.requiredExecutionClosure) || isSessionResetCommand(body);
+   const gatewayIdentity: AgentGatewayCallIdentity = {
+     clientName: needsAdminGatewayIdentity
+       ? GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT
+       : GATEWAY_CLIENT_NAMES.CLI,
+     mode: needsAdminGatewayIdentity ? GATEWAY_CLIENT_MODES.BACKEND : GATEWAY_CLIENT_MODES.CLI,
+-    // Overrides/resets require admin; otherwise only the local operator requests
+-    // owner scope, and remote callers keep the agent method's least-privilege scope.
++    // Model overrides, required closure, and resets require admin; otherwise only the local
++    // operator requests owner scope, and remote callers keep the agent method's least-privilege scope.
+     ...(needsAdminGatewayIdentity || !remoteGateway ? { scopes: [ADMIN_SCOPE] } : {}),
+   };
+ 
+@@ -1039,6 +1041,13 @@ async function agentViaGatewayCommand(
+             message: body,
+             agentId,
+             model: modelOverride,
++            ...(opts.requiredExecutionClosure
++              ? {
++                  requiredExecutionClosure: opts.requiredExecutionClosure,
++                  modelRun: true,
++                  promptMode: "none",
++                }
++              : {}),
+             to: opts.to,
+             replyTo: opts.replyTo,
+             sessionId: opts.sessionId,
+@@ -1188,17 +1197,26 @@ export async function agentCliCommand(
+   runtime: RuntimeEnv,
+   deps?: AgentCliDeps,
+ ) {
++  if (opts.requiredExecutionClosure !== undefined) {
++    if (opts.requiredExecutionClosure !== "native-sse-no-tools") {
++      throw new Error("--required-execution-closure must be native-sse-no-tools");
++    }
++    if (opts.local === true) {
++      throw new Error("--required-execution-closure cannot be used with --local");
++    }
++  }
+   if (opts.local !== true) {
+     // Check the operator entry before model overrides select a backend identity
+     // or target resolution reads another session. Embedded one-shot runs are separate.
+     assertGatewayCliMessageContext("agent");
+   }
+-  // A present blank selector must not become an omitted target during normalization.
++  // A present blank selector or run id must not become omitted during normalization.
+   for (const [flag, value] of [
+     ["--agent", opts.agent],
+     ["--session-id", opts.sessionId],
+     ["--session-key", opts.sessionKey],
+     ["--to", opts.to],
++    ["--run-id", opts.runId],
+   ]) {
+     if (value !== undefined && !value.trim()) {
+       throw new Error(`${flag} must not be blank`);

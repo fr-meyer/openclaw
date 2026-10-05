@@ -105,9 +105,9 @@ export function mergeDependencies(deployed, runnable, cap, deadline = Infinity) 
 
 export function validateBuildReceipt(build, contract, expectedJob) {
   need(build.complete === true && build.source_commit === contract.source_commit && build.source_tree === contract.source_tree &&
-    JSON.stringify(build.compile_argv) === JSON.stringify(contract.compile_argv) && JSON.stringify(build.environment) === JSON.stringify(contract.compile_environment), 'fresh successful same-profile build receipt absent');
+    JSON.stringify(build.targeted_test_argv) === JSON.stringify(contract.targeted_test_argv) && JSON.stringify(build.compile_argv) === JSON.stringify(contract.compile_argv) && JSON.stringify(build.environment) === JSON.stringify(contract.compile_environment), 'fresh successful same-profile build receipt absent');
   need(typeof expectedJob === 'string' && /^[0-9]+-1$/.test(expectedJob) && build.job === expectedJob, 'build current job identity differs');
-  const expected = [['corepack', contract.packageManager, ...contract.install_argv], ...contract.compile_argv];
+  const expected = [['corepack', contract.packageManager, ...contract.install_argv], ...contract.targeted_test_argv, ...contract.compile_argv];
   need(Array.isArray(build.commands) && JSON.stringify(build.commands.map(command => command.argv)) === JSON.stringify(expected) && build.commands.every(command => command.code === 0 && command.signal === null), 'actual successful install/type/build command receipts absent');
 }
 

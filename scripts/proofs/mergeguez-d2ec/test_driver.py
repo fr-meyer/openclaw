@@ -723,8 +723,10 @@ class RunnableContinuation(unittest.TestCase):
             if writable: self.assertFalse(Path(destination) in Path('/artifact').parents)
         self.assertEqual(set(destination for destination, (_, writable) in mounts.items() if writable), {'/qualification/native-state', '/qualification/native-output', '/tmp'})
     def test_chain_keeps_real_parent_before_final_commit(self):
-        chain = C['source_chain']; self.assertEqual(len(chain), 2)
+        chain = C['source_chain']; self.assertEqual(len(chain), 3)
         self.assertEqual(chain[0]['parent'], C['baseline']); self.assertEqual(chain[1]['parent'], chain[0]['commit'])
+        self.assertEqual(chain[2]['parent'], chain[1]['commit'])
+        self.assertEqual([step['patch'] for step in chain], ['parent-source.patch', 'intermediate-source.patch', 'source.patch'])
         self.assertEqual(chain[-1]['commit'], C['source_commit']); self.assertEqual(chain[-1]['tree'], C['source_tree'])
         for step in chain:
             self.assertEqual(d.digest(P / step['patch']), step['patch_sha256'])
@@ -734,9 +736,18 @@ class RunnableContinuation(unittest.TestCase):
         self.assertEqual(C['package_argv'][:4], ['pnpm', 'exec', 'node', 'scripts/package-openclaw-for-docker.mjs'])
         self.assertIn('--skip-build', C['package_argv']); self.assertNotIn('--allow-unreleased', C['package_argv'])
         code = (P / 'runtime.mjs').read_text()
+        self.assertLess(code.index('for (const argv of contract.targeted_test_argv)'), code.index('for (const argv of contract.compile_argv)'))
         self.assertLess(code.index('for (const argv of contract.compile_argv)'), code.index('await run(contract.package_argv)'))
         self.assertLess(code.index("'/offline-compile-build.json'"), code.index('await run(contract.package_argv)'))
         self.assertEqual(C['compile_environment'], {'OPENCLAW_BUILD_NATIVE_IPC_GATEWAY_QUALIFICATION': '1'})
+    def test_exact_cli_named_source_inventory_and_unchanged_hard_bounds(self):
+        self.assertEqual(C['targeted_test_argv'], [['node','scripts/run-vitest.mjs','run','src/cli/program/register.agent.test.ts','src/commands/agent-via-gateway.test.ts']])
+        self.assertEqual(len(C['source_inputs']), 20)
+        self.assertEqual(len(set(entry['path'] for entry in C['source_inputs'])), 20)
+        self.assertEqual([origin['selected_postimage_count'] for origin in C['source_inputs_origins']], [15,5])
+        self.assertTrue(all(entry['mode']=='100644' and d.re.fullmatch('[0-9a-f]{64}',entry['sha256']) for entry in C['source_inputs']))
+        self.assertEqual(C['phase_max_seconds']['offline-compile'], 1800)
+        self.assertEqual((C['work_seconds'],C['total_seconds'],C['cpus'],C['memory_bytes'],C['filesystem_bytes']), (2400,2700,4,12*1024**3,10*1024**3))
     def test_compressed_stream_cap_refuses_before_overflow(self):
         import io
         output = io.BytesIO(); writer = d.CappedArchiveWriter(output, 4, 1000)
@@ -775,8 +786,8 @@ class RunnableRetentionFixture(unittest.TestCase):
             link=mount / 'source/dist/extensions/example/node_modules/example'; link.parent.mkdir(parents=True); link.symlink_to(os.path.relpath(dependency, link.parent))
             with self.assertRaisesRegex(d.Refusal,'escaping compiled link'): list(d.compiled_walk(mount/'source', C['compiled_roots'], mount.stat().st_dev))
             reports = mount / 'reports'; reports.mkdir()
-            commands = [['corepack', C['packageManager'], *C['install_argv']], *C['compile_argv']]
-            (reports / 'offline-compile-build.json').write_text(json.dumps({'complete':True,'job':'1-1','source_commit':C['source_commit'],'source_tree':C['source_tree'],'compile_argv':C['compile_argv'],'environment':C['compile_environment'],'commands':[{'argv':argv,'code':0,'signal':None} for argv in commands]}))
+            commands = [['corepack', C['packageManager'], *C['install_argv']], *C['targeted_test_argv'], *C['compile_argv']]
+            (reports / 'offline-compile-build.json').write_text(json.dumps({'complete':True,'job':'1-1','source_commit':C['source_commit'],'source_tree':C['source_tree'],'targeted_test_argv':C['targeted_test_argv'],'compile_argv':C['compile_argv'],'environment':C['compile_environment'],'commands':[{'argv':argv,'code':0,'signal':None} for argv in commands]}))
             args = [str(mount),str(control),str(mount.stat().st_dev),str(os.getuid()),str(os.getgid()),'1000','1-1','1']
             with patch.object(d, 'PROOF', proof), patch.object(d, 'uptime', return_value=10), patch.object(Path, 'is_mount', return_value=True): d.retain(args)
             with d.tarfile.open(control / 'runnable.tar.gz') as archive:
