@@ -1,6 +1,7 @@
 {
   "extends": "../../../../tsconfig.core.json",
   "compilerOptions": {
+    "rootDir": "../../../..",
     "typeRoots": [
       "../../../../node_modules/@types"
     ]
