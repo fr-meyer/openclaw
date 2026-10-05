@@ -1,0 +1,13 @@
+{
+  "extends": "../../../../tsconfig.core.json",
+  "compilerOptions": {
+    "typeRoots": [
+      "../../../../node_modules/@types"
+    ]
+  },
+  "include": [
+    "../../../../src/agents/mcp-http-transport.ts",
+    "../../../../src/agents/mcp-http-tool-schema-compatibility.ts"
+  ],
+  "exclude": []
+}

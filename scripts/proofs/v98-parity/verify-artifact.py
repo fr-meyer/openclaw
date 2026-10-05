@@ -15,10 +15,10 @@ import tarfile
 import types
 import zipfile
 
-SOURCE = "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf"
-TREE = "ba825f670dc5ba943f7893cb267225d1f68d3110"
+SOURCE = "fe1b334f74f1e43efc22f91c1c3738e59c52519c"
+TREE = "5da503ec4fdd8242a5caf71ae8bfc1621c8996f3"
 COLLECTOR_SHA = "03b9a4627af452e6ad16361f3bcd9dbc3e55327661a11d500bc2c387089572d7"
-CONTRACT_SHA = "56f06026d785dadda5bd42854dc80b8afe9780dcbaf0f41762f5e2c30ec3fb6d"
+CONTRACT_SHA = "0500efff460f1b37f2065ef9b7e067e52806473b5a5189ac7e30e62fd326ee55"
 
 
 def require(condition, message):
@@ -393,7 +393,7 @@ def verify(archive, metadata_path, run_path, source, out, *, run_id, attempt, to
         require(digest(source / path) == expected, "compiled entry authority source changed")
     run = read_json(run_path)
     require(run.get("id") == run_id and run.get("run_attempt") == attempt
-            and run.get("head_sha") == tooling and run.get("head_branch") == "candidate/v2026.9.8-runtime-qualification"
+            and run.get("head_sha") == tooling and run.get("head_branch") == collector.CONTRACT["qualificationBranch"]
             and run.get("event") == "push" and run.get("path") == ".github/workflows/v98-parity-artifact-prepare.yml"
             and run.get("status") == "completed" and run.get("repository", {}).get("full_name") == "fr-meyer/openclaw", "exact workflow run identity mismatch")
     metadata = read_json(metadata_path)
@@ -402,7 +402,7 @@ def verify(archive, metadata_path, run_path, source, out, *, run_id, attempt, to
     artifact = artifacts[0]
     require(artifact.get("id") == artifact_id and artifact.get("workflow_run", {}).get("id") == run_id
             and artifact.get("workflow_run", {}).get("head_sha") == tooling
-            and artifact.get("name") == f"v98-parity-build-bc8b82b2-{run_id}-{attempt}"
+            and artifact.get("name") == f"v98-parity-build-{SOURCE[:8]}-{run_id}-{attempt}"
             and artifact.get("expired") is False, "exact artifact identity mismatch")
     created = datetime.datetime.fromisoformat(artifact["created_at"].replace("Z", "+00:00"))
     expires = datetime.datetime.fromisoformat(artifact["expires_at"].replace("Z", "+00:00"))

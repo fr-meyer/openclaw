@@ -1,14 +1,14 @@
 {
   "schema": "openclaw-v98-build-runtime-route/v1",
-  "sourceCommit": "bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf",
-  "sourceTree": "ba825f670dc5ba943f7893cb267225d1f68d3110",
+  "sourceCommit": "fe1b334f74f1e43efc22f91c1c3738e59c52519c",
+  "sourceTree": "5da503ec4fdd8242a5caf71ae8bfc1621c8996f3",
   "version": "2026.9.8",
-  "qualificationBranch": "candidate/v2026.9.8-runtime-qualification",
+  "qualificationBranch": "candidate/v2026.9.8-runtime-admission-5",
   "platform": "linux/amd64",
   "platformScope": "Synthetic fixture platform, not observed production architecture qualification",
   "artifactPreparation": {
     "workflow": ".github/workflows/v98-parity-artifact-prepare.yml",
-    "trigger": "One approved push to separate qualification branch; no default-branch installation or merge",
+    "trigger": "One explicitly approved exact-commit/run-number push on the existing runtime-admission-5 branch; attempts2+ and later tooling-only pushes cannot admit build jobs.",
     "host": "GitHub-hosted ubuntu-24.04",
     "jobWallMinutes": 45,
     "parallelJobs": 1,
@@ -125,11 +125,12 @@
       "expandedManifestLimitBytes": 67108864,
       "manifestEncoding": "gzip-json, deterministic mtime=0; compressed <=8MiB evidence limit",
       "failureEvidence": "Write layout-assessment.json and complete compressed filesystem inventory before image validation. All 79 required path outcomes and Doctor zero/multiple/error details remain non-admitted metadata. Retain sealed image only if receipt, inventory, layout, preflight, iid and inspect evidence all retained."
-    }
+    },
+    "focusedSourceCheckMinutes": 15
   },
   "frozenFixture": {
-    "sha256": "777936fa311d3b6fb141dff1fc67f46e2cfddf0651bf75b30ae62f74368f674e",
-    "predecessorStateSha256": "32a9ec60e38f1511e6f5fcd532f4c631d680d537a8325601f5bdf8221cf20fa3",
+    "sha256": "0c3b33ee321e88dea9f47b13d0eaec84dc11b60a8fbaeb2a72df7ca96890577d",
+    "predecessorStateSha256": "6b53fb7f426678a3962f7746bd26feea2f3d840cc896d51a8a740a9e0dbada3e",
     "predecessorWorkboardSha256": "aa15bf48dbe292993a47c7286d5f7e12fe2ffbd74442c92b37ad98018bd2e810",
     "predecessorPublisherControllerSha256": "c3d63b3c567541f72fb33c6982b41d4d5e4efa7fdd2d43ba5d7d14e624ebdbfc",
     "privateData": false,
@@ -142,7 +143,8 @@
       "restore",
       "assert rollback"
     ],
-    "phaseStatus": "NEVER_RUN"
+    "phaseStatus": "NEVER_RUN_FOR_CORRECTED_FIXTURE_AND_NEW_SOURCE",
+    "includedInProposedSource": true
   },
   "runtimeAdmission": {
     "status": "DESIGN_ONLY; no executable native policy or fixture workflow admitted",
@@ -171,10 +173,11 @@
     "capabilityProbe": "Before fixture import, prove allowed scratch read/write/fsync, existing outside sentinel read/write denied in main and Worker, network denied, same-binary spawn/exec denied, SQLite WAL/backup/checkpoint/close and joined Worker allowed, installed policy and cgroups exact; prove deliberate deadline termination and positive cgroup emptiness. One refused probe stops; no broader retry",
     "phaseDriver": "Reviewed additional readonly driver sets argv and sequentially imports unchanged fixture bytes with unique URL queries; no child processes. One aggregate budget across phases. Join native Workers before advancing or accepting completion",
     "failureCustody": "Capture failed scratch files, stdout/stderr, policy/image/source/fixture hashes, exact argv/minimal env, elapsed/CPU/memory/scratch peaks and closure before unmounting only owned scratch; preserve failures and uncertain cleanup",
-    "releaseScope": "Synthetic preservation only. Does not qualify production committed WAL, all roles, loaded publisher/Gateway/Workboard behavior or backward writer switch"
+    "releaseScope": "Synthetic preservation only. Does not qualify production committed WAL, all roles, loaded publisher/Gateway/Workboard behavior or backward writer switch",
+    "newSourceStatus": "NEVER_RUN; historical design fields are not new-image admission authority. Exact post-build packet and native read binding must be rederived and reviewed."
   },
-  "approvalRequiredNow": "Authorize one non-force push of this reviewed artifact-only proposal to fr-meyer/openclaw candidate/v2026.9.8-runtime-qualification, one 45-minute hosted canonical build with its public image/package/tool/apt downloads, and seven-day Actions artifact retention. No fixture execution or boundary change included",
-  "approvalRequiredLater": "After exact image/closure and native confinement implementation are reviewed, explicitly admit one bounded capability test and then the frozen six-phase attempt under the above Linux kernel boundary and runner-local scratch mount. No implicit reuse of old v9.7 or Colima approvals",
+  "approvalRequiredNow": "Authorize only the reviewed build tooling commit to the existing runtime-admission-5 branch, one focused exact-source CI job up to15min and one canonical artifact build job up to45min, public pinned dependencies, seven-day artifact retention. Both jobs are first-attempt-only and guarded by exact public commit/run-number latches.",
+  "approvalRequiredLater": "After the new artifact is inertly verified and its image closure/read bindings independently reviewed, a separate reviewed tooling-only fast-forward commit and one15min confined synthetic attempt need explicit approval for their actual immutable commit/image tuple. No production deployment or schema mutation.",
   "qualifiedCandidateImmutable": true,
   "brokerCoordination": {
     "reportedMissingArtifacts": "Seven worker/export artifacts, including SQLite workers and normalization-core; exact broker list must be joined to retained complete image inventory before native execution admission",
@@ -182,5 +185,6 @@
     "laterUse": "Retain complete image and compiled file pins for separately reviewed original native bootstrap/migration/boot qualification",
     "ownership": "Broker owns original terminal provider/tool/child/audit/cleanup drain fencing and >1024 retained-state completeness; this proposal adds no competing runtime owner",
     "separateGate": "The bounded six-phase shared-state fixture does not qualify Gateway retirement, native drain fencing or large retained-state completeness"
-  }
+  },
+  "sourceQualification": "REVIEWED_LOCAL_COMPOSITION; NEW_HOSTED_SOURCE_CHECKS_AND_IMAGE_NEVER_RUN"
 }

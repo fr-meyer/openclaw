@@ -1,14 +1,14 @@
-name: V98 Parity Artifact Preparation
-run-name: V98 Parity Artifact Preparation bc8b82b2 ${{ github.run_id }}
+name: V98 Combined Source and Artifact Preparation
+run-name: V98 combined fe1b334f ${{ github.run_id }}
 
-# Proposal: publishing this workflow on the named branch requires new approval.
-# It does not execute the synthetic fixture or change its permission boundary.
+# First-attempt-only jobs require fresh exact commit/run-number approval.
+# New image bindings need a separate reviewed commit before runtime admission.
 on:
   push:
-    branches: [candidate/v2026.9.8-runtime-qualification]
+    branches: [candidate/v2026.9.8-runtime-admission-5]
     paths:
       - .github/workflows/v98-parity-artifact-prepare.yml
-      - scripts/proofs/v98-parity/**
+      - scripts/proofs/v98-parity/contract.json
 
 permissions:
   contents: read
@@ -19,19 +19,100 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  TARGET_SHA: bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
-  TARGET_TREE: ba825f670dc5ba943f7893cb267225d1f68d3110
+  TARGET_SHA: fe1b334f74f1e43efc22f91c1c3738e59c52519c
+  TARGET_TREE: 5da503ec4fdd8242a5caf71ae8bfc1621c8996f3
 
 jobs:
+  source-checks:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'fr-meyer/openclaw' &&
+      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-admission-5' &&
+      github.sha == vars.V98_BUILD_APPROVED_COMMIT &&
+      format('{0}', github.run_number) == vars.V98_BUILD_APPROVED_RUN_NUMBER &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact reviewed combined source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fe1b334f74f1e43efc22f91c1c3738e59c52519c
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check source attribution before setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$TARGET_TREE"
+          test -z "$(git status --porcelain=v1)"
+
+      - name: Prepare repository toolchain and maintained semantic containment
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24.18.0"
+          semantic-checks: "true"
+          install-bun: "false"
+          cache-mode: "off"
+          frozen-lockfile: "true"
+
+      - name: Checkout exact build tooling config
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .v98-tooling
+          sparse-checkout: |
+            scripts/proofs/v98-parity/nowistay-focused-tsconfig.json
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run focused strict source and complete MCP HTTP lifecycle checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C .v98-tooling rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git -C .v98-tooling status --porcelain=v1)"
+          out="$RUNNER_TEMP/v98-focused-ci"
+          mkdir -m 700 "$out"
+          {
+            node scripts/run-tsgo.mjs -p .v98-tooling/scripts/proofs/v98-parity/nowistay-focused-tsconfig.json --noEmit
+            node scripts/run-oxlint.mjs --tsconfig config/tsconfig/oxlint.core.json --deny-warnings \
+              src/agents/mcp-http-tool-schema-compatibility.ts src/agents/mcp-http-transport.ts
+            node scripts/run-oxlint.mjs --tsconfig test/tsconfig/tsconfig.test.root.json --deny-warnings \
+              test/mcp-nowistay-schema-compatibility.test.mjs test/mcp-nowistay-sdk-regression.test.mjs
+            pnpm exec oxfmt --check \
+              src/agents/mcp-http-tool-schema-compatibility.ts src/agents/mcp-http-transport.ts \
+              test/mcp-nowistay-schema-compatibility.test.mjs test/mcp-nowistay-sdk-regression.test.mjs \
+              test/fixtures/nowistay-list-properties-output-schema.json
+            node --permission --allow-fs-read="$GITHUB_WORKSPACE" --test-isolation=none --test \
+              test/mcp-nowistay-schema-compatibility.test.mjs test/mcp-nowistay-sdk-regression.test.mjs
+            pnpm test src/agents/mcp-http-transport.test.ts --maxWorkers=1
+            git diff --exit-code
+            git diff --cached --exit-code
+          } 2>&1 | tee "$out/checks.log"
+          test "$(wc -c < "$out/checks.log")" -le 8388608
+          # Exactly one uploaded artifact belongs to the producer run. Focused
+          # CI results are retained in its exact job/step logs and collected
+          # read-only locally before any later admission.
+
   prepare:
-    if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/candidate/v2026.9.8-runtime-qualification'
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'fr-meyer/openclaw' &&
+      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-admission-5' &&
+      github.sha == vars.V98_BUILD_APPROVED_COMMIT &&
+      format('{0}', github.run_number) == vars.V98_BUILD_APPROVED_RUN_NUMBER &&
+      github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - name: Checkout exact qualified product source
+      - name: Checkout exact reviewed combined source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: bc8b82b2cbbbb81f5abe6093e1bb3af4f1f70cdf
+          ref: fe1b334f74f1e43efc22f91c1c3738e59c52519c
           path: source
           fetch-depth: 1
           persist-credentials: false
@@ -54,7 +135,10 @@ jobs:
           test "$(git -C source rev-parse HEAD)" = "$TARGET_SHA"
           test "$(git -C source rev-parse 'HEAD^{tree}')" = "$TARGET_TREE"
           test -z "$(git -C source status --porcelain=v1)"
-          python3 -m unittest discover -s tooling/scripts/proofs/v98-parity -p 'test_*.py'
+          test "$(git -C tooling rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git -C tooling status --porcelain=v1)"
+          export V98_QUALIFIED_SOURCE="$GITHUB_WORKSPACE/source"
+          python3 -B -m unittest discover -s tooling/scripts/proofs/v98-parity -p 'test_*.py'
           # Use the repository's reviewed actionlint pin; no local acquisition.
           export GOBIN="$RUNNER_TEMP/v98-actionlint"
           go install github.com/rhysd/actionlint/cmd/actionlint@011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7
@@ -118,7 +202,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: v98-parity-build-bc8b82b2-${{ github.run_id }}-${{ github.run_attempt }}
+          name: v98-parity-build-fe1b334f-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/v98-parity-upload/
           if-no-files-found: error
           retention-days: 7

@@ -75,7 +75,7 @@ class ArtifactBoundaryTests(unittest.TestCase):
         special = {entry: b"export { prepareOpenClawStateDatabaseSchema }",
                    "app/dist/build-info.json": json.dumps({
                        "commit": COLLECTOR.CONTRACT["sourceCommit"], "version": "2026.9.8",
-                       "buildId": "2026.9.8-bc8b82b2cbbb-2026-10-04"}).encode()}
+                       "buildId": "2026.9.8-" + COLLECTOR.CONTRACT["sourceCommit"][:12] + "-synthetic-layout-test"}).encode()}
         entries[entry] = {"path": "/" + entry, "type": "file", "bytes": len(special[entry]),
                           "sha256": hashlib.sha256(special[entry]).hexdigest()}
         for name, row in entries.items():

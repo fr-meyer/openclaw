@@ -71,7 +71,7 @@ class ArtifactClientTests(unittest.TestCase):
                  for name in COLLECTOR.CONTRACT["artifactPreparation"]["requiredCompiledEntries"]["paths"]}
         files["usr/local/bin/node"] = b"inert representative Node bytes; never executable"
         files["app/dist/build-info.json"] = json.dumps({"commit": VALIDATOR.SOURCE, "version": "2026.9.8",
-                                                      "buildId": "2026.9.8-bc8b82b2cbbb-synthetic-layout-test"}).encode()
+                                                      "buildId": "2026.9.8-" + VALIDATOR.SOURCE[:12] + "-synthetic-layout-test"}).encode()
         observed = json.loads(Path(__file__).with_name("observed-layout.json").read_text())
         for chunk in observed["chunks"]:
             files["app/dist/" + chunk["name"]] = (chunk["exportTable"] + "\n").encode()
@@ -95,7 +95,7 @@ class ArtifactClientTests(unittest.TestCase):
         fixture = {"root": root, "stage": stage, "layers": layers, "compressed": compressed,
                    "archive": root / "artifact.zip", "metadata": root / "artifacts.json", "run": root / "run.json"}
         COLLECTOR.write_json(fixture["run"], {"id": RUN, "run_attempt": 1, "head_sha": TOOLING,
-                                             "head_branch": "candidate/v2026.9.8-runtime-qualification", "event": "push",
+                                             "head_branch": COLLECTOR.CONTRACT["qualificationBranch"], "event": "push",
                                              "path": ".github/workflows/v98-parity-artifact-prepare.yml", "status": "completed",
                                              "conclusion": "success", "repository": {"full_name": "fr-meyer/openclaw"}})
         payloads = {path.name: path.read_bytes() for path in stage.iterdir()}
@@ -118,7 +118,7 @@ class ArtifactClientTests(unittest.TestCase):
             for name, value in payloads.items():
                 archive.writestr(name, value)
         metadata = {"total_count": 1, "artifacts": [{"id": ARTIFACT, "workflow_run": {"id": RUN, "head_sha": TOOLING},
-                                                    "name": f"v98-parity-build-bc8b82b2-{RUN}-1", "expired": False,
+                                                    "name": f"v98-parity-build-{VALIDATOR.SOURCE[:8]}-{RUN}-1", "expired": False,
                                                     "created_at": "2026-10-04T07:00:00Z", "expires_at": "2026-10-11T07:00:00Z",
                                                     "size_in_bytes": fixture["archive"].stat().st_size,
                                                     "digest": "sha256:" + VALIDATOR.digest(fixture["archive"])}]}
