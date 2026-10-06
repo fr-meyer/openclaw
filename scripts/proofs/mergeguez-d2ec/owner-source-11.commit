@@ -1,0 +1,6 @@
+tree 0283eba4ed85194f6ce21042517fe89749570304
+parent 834ee400b29afd981270b32c1f1d855ef428b60d
+author Codex <codex@openai.com> 1791291399 +0000
+committer Codex <codex@openai.com> 1791291399 +0000
+
+fix(proofs): preserve readonly WAL-aware native readbacks

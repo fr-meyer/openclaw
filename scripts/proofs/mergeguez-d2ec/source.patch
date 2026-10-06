@@ -1,22 +1,62 @@
-diff --git a/scripts/proofs/native-ipc-gateway/driver.mjs b/scripts/proofs/native-ipc-gateway/driver.mjs
-index 00ae36a77ab6964e97e67fa172a8b0d3fc1012cf..97ebf4c21052758b477f8e4ea2ed0a5e31b1f823 100644
---- a/scripts/proofs/native-ipc-gateway/driver.mjs
-+++ b/scripts/proofs/native-ipc-gateway/driver.mjs
-@@ -127,7 +127,7 @@ async function nativeIpc(api, fixtureUrl, stateRoot, record) {
-   assert.equal(admission.committed, undefined, "Readback may not fabricate the lost native ACK");
-   let closeFailure;
-   try { await lost.close(); } catch (error) { closeFailure = errorFacts(error); }
--  const database = api.openNodeSqliteDatabase(api.resolveExistingSqliteFileUri(lostPath), { readOnly: true });
-+  const database = api.openNodeSqliteDatabase(lostPath, { readOnly: true });
-   let rows;
-   try { rows = database.prepare("SELECT key,committed FROM qualification_reservations").all().map(row => ({ key: row.key, committed: row.committed })); } finally { database.close(); }
-   assert.deepEqual(rows, [{ key: "lost", committed: 1 }]);
-@@ -144,7 +144,7 @@ async function maintenanceAndReopen(api, stateRoot, environment, record) {
-   assert.equal(result.receipts.length, 1);
-   assert.equal(result.receipts[0].notAnAdmissionReceipt, true);
-   for (const key of ["executionDrain", "providerDrain", "localCleanup", "historicalRetirement"]) assert.equal(result.receipts[0][key], "unknown");
--  const backup = api.openNodeSqliteDatabase(api.resolveExistingSqliteFileUri(backupPath), { readOnly: true });
-+  const backup = api.openNodeSqliteDatabase(backupPath, { readOnly: true });
-   try {
-     assert.equal(backup.prepare("PRAGMA user_version").get().user_version, 24);
-     assert.equal(backup.prepare("SELECT count(*) AS count FROM session_nodes").get().count, 1);
+diff --git a/src/state/openclaw-agent-canonical-validation-schema.test.ts b/src/state/openclaw-agent-canonical-validation-schema.test.ts
+index 6c5075b6a5ceddebef2a7d06e2dc3237c76562e8..a3a10ab2fbbb95eec7d6df6ae51b11cbdace4bb8 100644
+--- a/src/state/openclaw-agent-canonical-validation-schema.test.ts
++++ b/src/state/openclaw-agent-canonical-validation-schema.test.ts
+@@ -199,6 +199,32 @@ describe("canonical session validation invalidation", () => {
+ });
+ 
+ describe("canonical validation schema admission", () => {
++  it("admits canonical run-quarantine guards and rejects their removal", () => {
++    withDatabase((database) => {
++      expect(
++        database
++          .prepare("SELECT name FROM sqlite_schema WHERE name = ?")
++          .get("agent_run_quarantine_session_nodes_insert"),
++      ).toBeDefined();
++      assertCanonicalSessionValidationSchema(database);
++      database.exec("DROP TRIGGER agent_run_quarantine_session_nodes_insert");
++      expect(() => assertCanonicalSessionValidationSchema(database)).toThrow(
++        /missing or drifted: agent_run_quarantine_session_nodes_insert/u,
++      );
++    });
++  });
++
++  it("rejects an additional session trigger that clears canonical pending keys", () => {
++    withDatabase((database) => {
++      assertCanonicalSessionValidationSchema(database);
++      database.exec(`CREATE TRIGGER clear_pending_after_node AFTER INSERT ON session_nodes
++        BEGIN DELETE FROM session_canonical_validation_pending; END`);
++      expect(() => assertCanonicalSessionValidationSchema(database)).toThrow(
++        /missing or drifted: clear_pending_after_node/u,
++      );
++    });
++  });
++
+   const missingTable = expect.objectContaining({
+     name: "SessionMetadataUnavailableError",
+     reason: "table-missing",
+diff --git a/src/state/openclaw-agent-canonical-validation-schema.ts b/src/state/openclaw-agent-canonical-validation-schema.ts
+index 42a2c7343c6a0fe57841acced457578d5087ac90..66f2ba72815ed675457653018ac68a1d67b43d69 100644
+--- a/src/state/openclaw-agent-canonical-validation-schema.ts
++++ b/src/state/openclaw-agent-canonical-validation-schema.ts
+@@ -46,17 +46,9 @@ function expectedDefinitions(): Map<string, string | null> {
+       const database = openNodeSqliteDatabase(":memory:");
+       try {
+         // sqlite-allow-raw -- Bootstrap the canonical DDL in an isolated schema comparison database.
+-        database.exec(
+-          [
+-            extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_nodes"),
+-            extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_windows"),
+-            extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_key_contract", {
+-              endMarker: "CREATE TABLE IF NOT EXISTS session_windows (",
+-              includeEndMarker: false,
+-            }),
+-            canonicalSessionValidationSchemaSql(),
+-          ].join("\n"),
+-        );
++        // Reads include every trigger on canonical tables, including guards
++        // outside the validation group, so compare against their complete DDL.
++        database.exec(OPENCLAW_AGENT_SCHEMA_SQL);
+         return readDefinitions(database);
+       } finally {
+         database.close();

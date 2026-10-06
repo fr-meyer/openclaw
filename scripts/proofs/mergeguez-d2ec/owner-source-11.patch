@@ -1,0 +1,22 @@
+diff --git a/scripts/proofs/native-ipc-gateway/driver.mjs b/scripts/proofs/native-ipc-gateway/driver.mjs
+index 00ae36a77ab6964e97e67fa172a8b0d3fc1012cf..97ebf4c21052758b477f8e4ea2ed0a5e31b1f823 100644
+--- a/scripts/proofs/native-ipc-gateway/driver.mjs
++++ b/scripts/proofs/native-ipc-gateway/driver.mjs
+@@ -127,7 +127,7 @@ async function nativeIpc(api, fixtureUrl, stateRoot, record) {
+   assert.equal(admission.committed, undefined, "Readback may not fabricate the lost native ACK");
+   let closeFailure;
+   try { await lost.close(); } catch (error) { closeFailure = errorFacts(error); }
+-  const database = api.openNodeSqliteDatabase(api.resolveExistingSqliteFileUri(lostPath), { readOnly: true });
++  const database = api.openNodeSqliteDatabase(lostPath, { readOnly: true });
+   let rows;
+   try { rows = database.prepare("SELECT key,committed FROM qualification_reservations").all().map(row => ({ key: row.key, committed: row.committed })); } finally { database.close(); }
+   assert.deepEqual(rows, [{ key: "lost", committed: 1 }]);
+@@ -144,7 +144,7 @@ async function maintenanceAndReopen(api, stateRoot, environment, record) {
+   assert.equal(result.receipts.length, 1);
+   assert.equal(result.receipts[0].notAnAdmissionReceipt, true);
+   for (const key of ["executionDrain", "providerDrain", "localCleanup", "historicalRetirement"]) assert.equal(result.receipts[0][key], "unknown");
+-  const backup = api.openNodeSqliteDatabase(api.resolveExistingSqliteFileUri(backupPath), { readOnly: true });
++  const backup = api.openNodeSqliteDatabase(backupPath, { readOnly: true });
+   try {
+     assert.equal(backup.prepare("PRAGMA user_version").get().user_version, 24);
+     assert.equal(backup.prepare("SELECT count(*) AS count FROM session_nodes").get().count, 1);
