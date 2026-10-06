@@ -46,11 +46,44 @@ unmounted scratch. The loaded image is intentionally retained on failure.
 Frozen scratch reached a sampled 6,574,080 bytes within the hard 16 MiB cap;
 an exact peak or complete six-phase fit is not established.
 
-The corrected fixture is unexecuted: its six phases are `NEVER_RUN`. Run 8's
-approval is consumed. A separately reviewed exact publication/runtime approval
-and fresh head/counter/artifact checks are required; the observed next counter
-is 9. No runtime permit was changed by this preparation, and no new image or
-automatic retry is included. Earlier run 7 skipped admission on the old latch.
+Runtime `37396157793`, number 9/attempt 1 at
+`1df984859c948b789fe56790449539038d706787`, passed all 111 hosted pure
+checks, all three confined modes and all six corrected synthetic fixture phases.
+Doctor returned zero warnings and one change; candidate schema was 19 and
+predecessor/rollback schema was 17. Frozen mode took 43.565 seconds and
+3.063 CPU seconds; its maximum sampled allocation was 6,602,752 bytes under
+the unchanged hard 16 MiB cap. Samples do not establish an exact peak.
+
+The workflow failed after successful mode cleanup: the one exact-image
+`docker image rm` command timed out after 15 seconds. All three mode receipts
+joined stopped containers, positive parent extinction, stable final CPU and
+accounting release. Those receipts are written only after exact container
+removal and scratch unmount succeed. The final image state is **unknown**;
+`qualification.json` was not written. Job completion and its generic orphan
+cleanup message do not prove image deletion or runner destruction.
+
+Artifact `11382854863`, ZIP SHA-256
+`b584b1c132ef9751710450346a692e59b7c4e31797b3e17240ed0c8a217e7231`,
+retains 23 regular files without omissions and expires on
+`2026-10-13T00:56:57Z`. Run 9's approval is consumed. Its phase evidence remains
+valid, and its failed aggregate result remains retained.
+
+This local, unexecuted cleanup correction writes bounded mode observations
+before removal, then retains the one 15-second removal outcome and one
+five-second exact-image inspection. The collector includes both receipts within
+the existing 20 MiB budget. Qualification requires successful removal command
+completion and verified absence. A timeout remains a failure even if image
+metadata is absent: Docker 28.0.4's classic image store deletes metadata before
+layer release. The runner's backend path was not recorded. Generic daemon
+errors, changed identity and inspection timeouts
+remain unknown. There is no retry, force removal, longer deadline or policy
+expansion. Inert owner-entrypoint checks cover ten outcomes, including unresolved
+mode ownership, and fail on the pre-fix missing mode receipt.
+
+Any new publication or cleanup execution needs separate exact approval and
+fresh head/counter/artifact checks. No second run or dispatch is authorized.
+Earlier run 7 skipped admission on the old latch. Historical receipts below
+keep their original observations; they do not qualify installed real data.
 
 The following execution history concerns the earlier `bc8b82b2` source/image.
 Run `37290863839`, number 5/attempt 1 at
@@ -426,6 +459,7 @@ all records/assertions and the 16 MiB limit remain intact.
 [SQLite PRAGMAs](https://www.sqlite.org/pragma.html) describe the transaction,
 checkpoint and cache-spill behavior underlying this source correction. These
 contracts and inert tests do not replace actual confined runtime measurements.
+
 ## Reusable branch and diagnostic proposal
 
 Reuse `candidate/v2026.9.8-runtime-admission-5` and its existing workflow file.

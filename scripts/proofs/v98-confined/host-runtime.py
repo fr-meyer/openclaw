@@ -1350,6 +1350,8 @@ def collect_evidence(validation, host_output, destination):
              (host_output / "host-preflight.json", Path("host-preflight.json"), 32 * 1024),
              (host_output / "startup-preflight.json", Path("startup-preflight.json"), 32 * 1024),
              (host_output / "preparation.json", Path("preparation.json"), 1024 * 1024),
+             (host_output / "mode-observations.json", Path("mode-observations.json"), 2 * 1024 * 1024),
+             (host_output / "image-cleanup.json", Path("image-cleanup.json"), 32 * 1024),
              (host_output / "qualification.json", Path("qualification.json"), 2 * 1024 * 1024)]
     for number in (1, 2, 3):
         attempt = host_output / f"attempt-{number}"
@@ -1445,10 +1447,66 @@ def verify_hosted_attempt(commit):
     return {"commit": commit, "runNumber": int(number), "runAttempt": 1}
 
 
+def cleanup_owned_image(output):
+    """Retain the one removal result and one exact-image observation, even on refusal."""
+    observations = {}
+    removal_error = None
+    image_absent = False
+    for operation, verb, timeout in (("removal", "rm", 15), ("inspection", "inspect", 5)):
+        argv = ["docker", "image", verb, IMAGE_ID]
+        row = {"argv": argv, "timeoutSeconds": timeout, "status": "UNKNOWN"}
+        if operation == "inspection":
+            row["imageState"] = "UNKNOWN"
+        try:
+            result = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    timeout=timeout, check=False)
+            require(len(result.stdout) <= 65536 and len(result.stderr) <= 65536,
+                    "image cleanup command output budget exceeded")
+            row.update({"status": "COMPLETED", "returnCode": result.returncode,
+                        "stdout": bounded_text(result.stdout.decode("utf-8", "replace"), 2000),
+                        "stderr": bounded_text(result.stderr.decode("utf-8", "replace"), 2000),
+                        "stdoutSha256": hashlib.sha256(result.stdout).hexdigest(),
+                        "stderrSha256": hashlib.sha256(result.stderr).hexdigest()})
+            if operation == "removal":
+                require(result.returncode == 0, "exact image removal failed: " + row["stderr"])
+            else:
+                # A daemon outage, generic nonzero exit or changed image identity
+                # does not establish absence. Metadata absence never repairs a
+                # failed removal: backend layer release may still be unfinished.
+                image_absent = (result.returncode == 1 and result.stdout.strip() == b"[]"
+                    and result.stderr.strip() ==
+                    ("Error response from daemon: No such image: " + IMAGE_ID).encode())
+                row["imageState"] = "ABSENT" if image_absent else "UNKNOWN"
+                if result.returncode == 0:
+                    images = json.loads(result.stdout)
+                    if (isinstance(images, list) and len(images) == 1
+                            and isinstance(images[0], dict) and images[0].get("Id") == IMAGE_ID):
+                        row["imageState"] = "PRESENT"
+        except (OSError, subprocess.TimeoutExpired, Refusal, ValueError) as error:
+            row["failure"] = failure_detail(error, "exact image " + operation)
+            if isinstance(error, subprocess.TimeoutExpired):
+                row["status"] = "TIMED_OUT"
+            if operation == "removal":
+                removal_error = error
+        observations[operation] = row
+    complete = removal_error is None and image_absent
+    receipt = {"schema": "openclaw-v98-owned-image-cleanup/v1", "imageConfigId": IMAGE_ID,
+               "status": "COMPLETE" if complete else "INCOMPLETE; NO_RUNTIME_QUALIFICATION",
+               "removal": observations["removal"], "inspection": observations["inspection"],
+               "successfulRemovalAndVerifiedAbsence": complete}
+    encoded = (json.dumps(receipt, indent=2) + "\n").encode()
+    require(len(encoded) <= 32 * 1024, "image cleanup receipt exceeds budget")
+    (Path(output) / "image-cleanup.json").write_bytes(encoded)
+    if removal_error is not None:
+        raise removal_error
+    require(image_absent, "exact image absence was not verified; cleanup receipt retained")
+    return receipt
+
+
 def execute(args):
     require(os.geteuid() == 0 and platform.system() == "Linux" and platform.machine() == "x86_64",
             "hosted root Linux x86-64 runner required")
-    verify_hosted_attempt(args.tooling_commit)
+    hosted_attempt = verify_hosted_attempt(args.tooling_commit)
     tooling = Path(args.tooling).resolve()
     source = Path(args.source).resolve()
     commit = args.tooling_commit
@@ -1483,15 +1541,20 @@ def execute(args):
             and loaded[0].get("Os") == "linux" and loaded[0].get("Architecture") == "amd64",
             "loaded image config or target architecture differs from selected retained bytes")
     completed = []
-    try:
-        for index, mode in enumerate(MODE_LIMITS, start=1):
-            completed.append(run_mode(IMAGE_ID, proof, out / f"attempt-{index}",
-                                      f"v98-confined-{os.environ['GITHUB_RUN_ID']}-1-{index}", mode))
-    finally:
-        if len(completed) == len(MODE_LIMITS):
-            command(["docker", "image", "rm", IMAGE_ID], timeout=15)
+    for index, mode in enumerate(MODE_LIMITS, start=1):
+        completed.append(run_mode(IMAGE_ID, proof, out / f"attempt-{index}",
+                                  f"v98-confined-{os.environ['GITHUB_RUN_ID']}-1-{index}", mode))
+    # Successful mode facts precede image cleanup so its failure cannot hide
+    # them. They are observations, not an aggregate qualification receipt.
+    encoded = (json.dumps({"status": "SYNTHETIC_MODE_OBSERVATIONS_COMPLETE; IMAGE_CLEANUP_PENDING",
+        "toolingCommit": commit, "sourceCommit": SOURCE, "sourceTree": TREE,
+        "hostedAttempt": hosted_attempt, "imageConfigId": IMAGE_ID, "modes": completed,
+        "productionAdmitted": False, "productionStateRead": False}, indent=2) + "\n").encode()
+    require(len(encoded) <= 2 * 1024 * 1024, "mode observation receipt exceeds budget")
+    (out / "mode-observations.json").write_bytes(encoded)
+    cleanup = cleanup_owned_image(out)
     (out / "qualification.json").write_text(json.dumps({"status": "SYNTHETIC_HOST_OBSERVATIONS_COMPLETE",
-        "imageConfigId": IMAGE_ID, "modes": completed,
+        "imageConfigId": IMAGE_ID, "modes": completed, "imageCleanup": cleanup,
         "productionAdmitted": False, "productionStateRead": False}, indent=2) + "\n")
 
 

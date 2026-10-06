@@ -798,6 +798,101 @@ class HostContractTests(unittest.TestCase):
                 commands.assert_not_called(); invoked.assert_not_called()
             self.assertTrue((args.output / "startup-preflight.json").is_file())
 
+    def test_actual_execute_preserves_modes_and_requires_completed_image_cleanup(self):
+        tooling = Path(__file__).resolve().parents[3]
+        binding = HOST.read_json(Path(__file__).with_name("read-policy") / "runtime-read-binding.json")
+        absent = SimpleNamespace(returncode=1, stdout=b"[]\n", stderr=(
+            "Error response from daemon: No such image: " + HOST.IMAGE_ID + "\n").encode())
+        loaded = SimpleNamespace(returncode=0, stderr=b"", stdout=json.dumps([
+            {"Id": HOST.IMAGE_ID, "Os": "linux", "Architecture": "amd64"}]).encode())
+        removed = SimpleNamespace(returncode=0, stdout=b"Deleted: owned image\n", stderr=b"")
+        timeout = HOST.subprocess.TimeoutExpired(["docker", "image", "rm", HOST.IMAGE_ID], 15)
+        cases = [
+            ("timeout_then_absent", timeout, absent, HOST.subprocess.TimeoutExpired, "ABSENT"),
+            ("complete", removed, absent, None, "ABSENT"),
+            ("present", removed, loaded, HOST.Refusal, "PRESENT"),
+            ("daemon_error", removed, SimpleNamespace(returncode=1, stdout=b"[]\n",
+                stderr=b"Cannot connect to the Docker daemon\n"), HOST.Refusal, "UNKNOWN"),
+            ("inspect_timeout", removed, HOST.subprocess.TimeoutExpired(
+                ["docker", "image", "inspect", HOST.IMAGE_ID], 5), HOST.Refusal, "UNKNOWN"),
+            ("remove_conflict", SimpleNamespace(returncode=1, stdout=b"",
+                stderr=b"image is in use\n"), loaded, HOST.Refusal, "PRESENT"),
+            ("inspect_identity_drift", removed, SimpleNamespace(returncode=0, stderr=b"",
+                stdout=b'[{"Id":"sha256:wrong"}]\n'), HOST.Refusal, "UNKNOWN"),
+            ("remove_os_error", OSError(errno.EIO, "removal failed"), absent, OSError, "ABSENT"),
+            ("inspect_output_budget", removed, SimpleNamespace(returncode=1, stdout=b"x" * 65537,
+                stderr=absent.stderr), HOST.Refusal, "UNKNOWN"),
+            ("mode_failed", None, None, HOST.Refusal, None),
+        ]
+        for name, removal, inspection, failure, image_state in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                args = SimpleNamespace(tooling=tooling, source=tooling, tooling_commit="d7" * 20,
+                    validation=root / "validation.json", image=root / "unused-image", output=root / "host")
+                args.validation.write_text("{}\n")
+                modes = [{"mode": mode, "observed": True} for mode in HOST.MODE_LIMITS]
+                def docker(argv, **options):
+                    if argv == ["docker", "image", "rm", HOST.IMAGE_ID]:
+                        # Observable ordering: removal sees the already-written
+                        # mode receipt, even if it subsequently times out.
+                        self.assertEqual(HOST.read_json(args.output / "mode-observations.json")["modes"], modes)
+                    next_result = docker_results.pop(0)
+                    if isinstance(next_result, Exception):
+                        raise next_result
+                    return next_result
+                docker_results = [absent, removed, loaded]
+                mode_results = [modes[0], HOST.Refusal("mode ownership remains unresolved")]
+                if image_state is not None:
+                    docker_results += [removal, inspection]
+                    mode_results = modes
+                with patch.object(HOST.os, "geteuid", return_value=0), \
+                     patch.object(HOST.platform, "system", return_value="Linux"), \
+                     patch.object(HOST.platform, "machine", return_value="x86_64"), \
+                     patch.dict(HOST.os.environ, {"GITHUB_REPOSITORY": "fr-meyer/openclaw",
+                         "GITHUB_REF": "refs/heads/candidate/v2026.9.8-runtime-admission-5",
+                         "GITHUB_RUN_ID": "2", "GITHUB_RUN_ATTEMPT": "1", "GITHUB_RUN_NUMBER": "2",
+                         "GITHUB_EVENT_NAME": "push", "GITHUB_SHA": "d7" * 20,
+                         "V98_APPROVED_COMMIT": "d7" * 20, "V98_APPROVED_RUN_NUMBER": "2"}, clear=True), \
+                     patch.object(HOST, "verify_source_manifest"), \
+                     patch.object(HOST, "git", side_effect=[HOST.SOURCE, HOST.TREE, ""]), \
+                     patch.object(HOST, "verify_prepared", return_value=(
+                         {"toolingCommit": "f656dd5b26346761a8a2425645a4bc3969b6faeb"}, binding)), \
+                     patch.object(HOST, "prepare_proof", return_value=[]), \
+                     patch.object(HOST, "compile_native", return_value="inert"), \
+                     patch.object(HOST, "host_preflight"), \
+                     patch.object(HOST, "run_mode", side_effect=mode_results), \
+                     patch.object(HOST.subprocess, "run", side_effect=docker) as invoked:
+                    if failure is None:
+                        HOST.execute(args)
+                    else:
+                        with self.assertRaises(failure):
+                            HOST.execute(args)
+                    if image_state is None:
+                        self.assertEqual(len(invoked.call_args_list), 3)
+                        self.assertFalse((args.output / "mode-observations.json").exists())
+                        self.assertFalse((args.output / "image-cleanup.json").exists())
+                        self.assertFalse((args.output / "qualification.json").exists())
+                        continue
+                    self.assertEqual(len(invoked.call_args_list), 5)
+                    self.assertEqual(invoked.call_args_list[-2].args[0], ["docker", "image", "rm", HOST.IMAGE_ID])
+                    self.assertEqual(invoked.call_args_list[-2].kwargs["timeout"], 15)
+                    self.assertEqual(invoked.call_args_list[-1].args[0], ["docker", "image", "inspect", HOST.IMAGE_ID])
+                    self.assertEqual(invoked.call_args_list[-1].kwargs["timeout"], 5)
+                observations = HOST.read_json(args.output / "mode-observations.json")
+                cleanup = HOST.read_json(args.output / "image-cleanup.json")
+                self.assertEqual(observations["modes"], modes)
+                self.assertEqual(cleanup["inspection"]["imageState"], image_state)
+                self.assertEqual(cleanup["successfulRemovalAndVerifiedAbsence"], failure is None)
+                if name == "timeout_then_absent":
+                    self.assertEqual(cleanup["removal"]["status"], "TIMED_OUT")
+                    self.assertEqual(cleanup["removal"]["failure"]["type"], "TimeoutExpired")
+                self.assertEqual((args.output / "qualification.json").exists(), failure is None)
+                custody = HOST.collect_evidence(args.validation, args.output, root / "upload")
+                retained = {row["path"] for row in custody["copied"]}
+                self.assertTrue({"mode-observations.json", "image-cleanup.json"} <= retained)
+                self.assertEqual("qualification.json" in retained, failure is None)
+                self.assertEqual(custody["omitted"], [])
+
     def test_native_observations_join_product_not_only_claims(self):
         native = [{"event": "host_gate_ready", "mode": "--capability-probe"},
                   {"event": "base_boundary_installed", "phase": 0},
