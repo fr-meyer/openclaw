@@ -937,7 +937,7 @@
       }
     }
   },
-  "patch_sha256": "cea536a271fb390cafbf8bba6ad7570d8a7384dda7fd35672ea053c70a377163",
+  "patch_sha256": "a874fc6e5ceb91864c94d6ab96275aceb7e2ee0b7a7725f8f7a35c17a8772c54",
   "phase_max_seconds": {
     "offline-compile": 1800,
     "offline-native": 300,
@@ -946,7 +946,7 @@
     "warm-fetch": 420
   },
   "pids": 512,
-  "raw_commit_sha256": "8c1b82441745c122cdd173ed9a83c3b726dd0b6df5153cb9609a03418918ce10",
+  "raw_commit_sha256": "f31eb2eb0c555668203cea2a730058af912e0ff999887dfab15456bde07e294a",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
   "retention_cap_bytes": 536870912,
@@ -2806,14 +2806,23 @@
       "parent": "ca879faa305626636d500e1a7f881079b70b5b6f",
       "commit": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
       "tree": "a5a42ea0fd97af95d6fac9f2bf2e955f3a48fd56",
-      "patch": "source.patch",
+      "patch": "owner-source-6.patch",
       "patch_sha256": "cea536a271fb390cafbf8bba6ad7570d8a7384dda7fd35672ea053c70a377163",
-      "raw_commit": "source.commit",
+      "raw_commit": "owner-source-6.commit",
       "raw_commit_sha256": "8c1b82441745c122cdd173ed9a83c3b726dd0b6df5153cb9609a03418918ce10"
+    },
+    {
+      "parent": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
+      "commit": "9325b6f25a15f4eb10ac24258dcc5750909ea9cc",
+      "tree": "7f7f5334fa059cc55764893e721d7058d6138633",
+      "patch": "source.patch",
+      "patch_sha256": "a874fc6e5ceb91864c94d6ab96275aceb7e2ee0b7a7725f8f7a35c17a8772c54",
+      "raw_commit": "source.commit",
+      "raw_commit_sha256": "f31eb2eb0c555668203cea2a730058af912e0ff999887dfab15456bde07e294a"
     }
   ],
-  "source_commit": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
-  "source_tree": "a5a42ea0fd97af95d6fac9f2bf2e955f3a48fd56",
+  "source_commit": "9325b6f25a15f4eb10ac24258dcc5750909ea9cc",
+  "source_tree": "7f7f5334fa059cc55764893e721d7058d6138633",
   "total_seconds": 2700,
   "work_seconds": 2400,
   "portable_runnable_unpacked_cap_bytes": 2147483648,
@@ -2831,7 +2840,9 @@
       "src/gateway/server-plugin-subagent-runtime.test.ts",
       "src/gateway/server-managed-task-flow-runtime.test.ts",
       "src/tasks/managed-task-flow-host.test.ts",
-      "packages/ai/src/transports/openai-responses-request-lifecycle.test.ts"
+      "packages/ai/src/transports/openai-responses-request-lifecycle.test.ts",
+      "src/infra/runtime-worker-url.test.ts",
+      "test/scripts/agent-database-worker-package-paths.test.ts"
     ]
   ],
   "source_inputs": [
@@ -3134,14 +3145,74 @@
       "mode": "100644",
       "bytes": 40082,
       "sha256": "e322af18f12786424d1c0bb409cd177479918f4bfe4fb059dc428343bfa3abde"
+    },
+    {
+      "path": "scripts/lib/package-dist-imports.mjs",
+      "mode": "100644",
+      "bytes": 7089,
+      "sha256": "0e3945d6835c4f9ee6139d67065f38999b8e85398ea9fdfaa663c7008c54d4dc"
+    },
+    {
+      "path": "scripts/lib/runtime-process-core-build-entries.mts",
+      "mode": "100644",
+      "bytes": 1880,
+      "sha256": "eb01847ed528f0140761519a778bc9e0348b952d1e6a2dc2e5bdbd46ce92e27f"
+    },
+    {
+      "path": "src/infra/runtime-process-entrypoints.ts",
+      "mode": "100644",
+      "bytes": 5379,
+      "sha256": "268c60b7f71e9c794a2603d20859a36e92dd8696be9749086ee1a6cff0582227"
+    },
+    {
+      "path": "src/infra/runtime-process-url.ts",
+      "mode": "100644",
+      "bytes": 736,
+      "sha256": "0914e78c0e99eecfb49d0aafec3e82d8e6fa61f3a22cfbf97669c0ffc8441f1e"
+    },
+    {
+      "path": "src/infra/runtime-worker-url.test.ts",
+      "mode": "100644",
+      "bytes": 9617,
+      "sha256": "0606946397318d7da9471b8a2dbf5d2755944c231fb7c7421fbdc974cb33b86a"
+    },
+    {
+      "path": "src/infra/runtime-worker-url.ts",
+      "mode": "100644",
+      "bytes": 3120,
+      "sha256": "9b694a778a84725e989ad2380195557993afbf25dc97e64112f7a65b2a2087e0"
+    },
+    {
+      "path": "src/state/native-review-publication-intents.ts",
+      "mode": "100644",
+      "bytes": 12932,
+      "sha256": "3ad0101d49f050570289965b22a0d08824012fd47cd068a307d8e80d6458b3b1"
+    },
+    {
+      "path": "src/state/openclaw-agent-execution.worker.ts",
+      "mode": "100644",
+      "bytes": 32026,
+      "sha256": "726723e2e6b6d1f39ca2ac11cdbdaa0d29d1fcb4db01ad9aecdb188099c092e5"
+    },
+    {
+      "path": "src/state/openclaw-agent-worker-store.ts",
+      "mode": "100644",
+      "bytes": 32379,
+      "sha256": "6d38cf77cc12dc654268b734a66a44d94e0fede43c02b6f972c61a6b8e3e357c"
+    },
+    {
+      "path": "test/scripts/agent-database-worker-package-paths.test.ts",
+      "mode": "100644",
+      "bytes": 2024,
+      "sha256": "280af826bde24210e057af5a59fcde9c9e9c7554508f2cc2b0290d192ec65717"
     }
   ],
   "source_inputs_origins": [
     {
-      "source_commit": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
-      "receipt_sha256": "ff731e2db1e0bdf82a0b63b82c92a7ce99c9f020af88722226d35ce3e1742054",
-      "selected_postimage_count": 50,
-      "meaning": "exact successor postimages; explicit response narrowing and focused tests; no matching compiled/native proof"
+      "source_commit": "9325b6f25a15f4eb10ac24258dcc5750909ea9cc",
+      "receipt_sha256": "b7c90c3917ad0e74fb24a36ee430ba78bbcd2d4a1fc67bc70f682604a86380bf",
+      "selected_postimage_count": 60,
+      "meaning": "Exact two caller URL repair, maintained worker path regressions and unchanged shared resolver/build/checker/worker; full new-head package qualification still required"
     }
   ]
 }

@@ -1,0 +1,85 @@
+diff --git a/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts b/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts
+index 676897cbc21e59e83ccf5a82de4915e84e168327..fdcf6c3c3ce299acba4bfd2a5fbcaf3a919e4fa3 100644
+--- a/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts
++++ b/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts
+@@ -51,6 +51,10 @@ function fixture() {
+       }
+       for await (const event of owner.observe(events())) void event;
+     },
++    async response(response: unknown, type = "response.completed") {
++      async function* events() { yield { type, response }; }
++      for await (const event of owner.observe(events())) void event;
++    },
+     async drain() { owner.finish(); resolveProducer(); await receipt.sealAndWait(); },
+     read: () => readSelectedNativeCodexSseProviderTerminalOutput(receipt, binding),
+     readCopy: () => readSelectedNativeCodexSseProviderTerminalOutput({ ...receipt }, binding),
+@@ -106,3 +110,56 @@ describe("original selected terminal token accounting", () => {
+     g.revoke(); expect(g.read).toThrow("retired");
+   });
+ });
++
++
++describe("original selected terminal response validation", () => {
++  it.each([
++    { kind: "absent", response: undefined }, { kind: "null", response: null },
++    { kind: "number", response: 0 }, { kind: "string", response: "invalid" },
++    { kind: "array", response: [] },
++  ])(
++    "keeps a missing or non-record terminal response unknown ($kind)",
++    async ({ response }) => {
++      const f = fixture();
++      await expect(f.response(response)).rejects.toThrow("no-tools response");
++      expect(f.receipt.attempts[0]?.outcome).toBe("unknown");
++      await expect(f.drain()).rejects.toThrow("not terminal");
++      expect(f.read).toThrow("not terminal");
++    },
++  );
++
++  it.each([
++    { omit: "id", error: "unknown remote outcome" },
++    { omit: "status", error: "unknown remote outcome" },
++    { omit: "model", error: "approved model" },
++    { omit: "output", error: "no-tools response" },
++  ])("preserves the required terminal $omit gate", async ({ omit, error }) => {
++    const f = fixture();
++    const response: Record<string, unknown> = {
++      id: "fixture-response", model: model.id, status: "completed",
++      output: [{ type: "message", role: "assistant", status: "completed",
++        content: [{ type: "output_text", text: "whole original verdict" }] }],
++    };
++    delete response[omit];
++    await expect(f.response(response)).rejects.toThrow(error);
++    expect(f.receipt.attempts[0]?.outcome).toBe("unknown");
++    await expect(f.drain()).rejects.toThrow("not terminal");
++    expect(f.read).toThrow("not terminal");
++  });
++
++  it("retains a coherent response.done only after the original producer drains", async () => {
++    const f = fixture();
++    await f.response({
++      id: "fixture-response", model: model.id, status: "completed",
++      usage: { input_tokens: 7, output_tokens: 5, total_tokens: 12 },
++      output: [{ type: "message", role: "assistant", status: "completed",
++        content: [{ type: "output_text", text: "whole original verdict" }] }],
++    }, "response.done");
++    expect(f.read).toThrow("not terminal");
++    await f.drain();
++    expect(f.receipt.assertTerminal()[0]?.tokenUsage).toEqual({
++      state: "available", inputTokens: 7, outputTokens: 5, totalTokens: 12,
++    });
++    expect(f.read().text).toBe("whole original verdict");
++  });
++});
+diff --git a/packages/ai/src/transports/openai-responses-request-lifecycle.ts b/packages/ai/src/transports/openai-responses-request-lifecycle.ts
+index d21b9b55e0433562d02dd590205b7dccc93fdc1c..bfd82bb1eca0660e27bebbbcfeb024c9268d8c9c 100644
+--- a/packages/ai/src/transports/openai-responses-request-lifecycle.ts
++++ b/packages/ai/src/transports/openai-responses-request-lifecycle.ts
+@@ -515,7 +515,7 @@ export function createSelectedNativeCodexSseRequestOwner(
+                   (type === "response.failed" && (status === "failed" || status === "cancelled")) ||
+                   (type === "response.done" && (status === "completed" || status === "incomplete" ||
+                     status === "failed" || status === "cancelled"));
+-                if (!id || (previousId && previousId !== id) || !coherent ||
++                if (!response || !id || (previousId && previousId !== id) || !coherent ||
+                     (status !== "completed" && status !== "incomplete" && status !== "failed" && status !== "cancelled")) unknown();
+                 else {
+                   const details = isRecord(response?.incomplete_details) ? response.incomplete_details : undefined;

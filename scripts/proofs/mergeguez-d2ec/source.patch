@@ -1,85 +1,115 @@
-diff --git a/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts b/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts
-index 676897cbc21e59e83ccf5a82de4915e84e168327..fdcf6c3c3ce299acba4bfd2a5fbcaf3a919e4fa3 100644
---- a/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts
-+++ b/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts
-@@ -51,6 +51,10 @@ function fixture() {
-       }
-       for await (const event of owner.observe(events())) void event;
-     },
-+    async response(response: unknown, type = "response.completed") {
-+      async function* events() { yield { type, response }; }
-+      for await (const event of owner.observe(events())) void event;
-+    },
-     async drain() { owner.finish(); resolveProducer(); await receipt.sealAndWait(); },
-     read: () => readSelectedNativeCodexSseProviderTerminalOutput(receipt, binding),
-     readCopy: () => readSelectedNativeCodexSseProviderTerminalOutput({ ...receipt }, binding),
-@@ -106,3 +110,56 @@ describe("original selected terminal token accounting", () => {
-     g.revoke(); expect(g.read).toThrow("retired");
-   });
+diff --git a/src/infra/runtime-worker-url.test.ts b/src/infra/runtime-worker-url.test.ts
+index 94fcb2144c7a7ee0b4fa79cc3f5a600256698a5a..68215411780c9d42f065f66823b13dec099adae8 100644
+--- a/src/infra/runtime-worker-url.test.ts
++++ b/src/infra/runtime-worker-url.test.ts
+@@ -184,6 +184,24 @@ describe("resolveRuntimeWorkerArgv", () => {
  });
-+
-+
-+describe("original selected terminal response validation", () => {
+ 
+ describe("resolveRuntimeProcessEntrypointUrl", () => {
 +  it.each([
-+    { kind: "absent", response: undefined }, { kind: "null", response: null },
-+    { kind: "number", response: 0 }, { kind: "string", response: "invalid" },
-+    { kind: "array", response: [] },
-+  ])(
-+    "keeps a missing or non-record terminal response unknown ($kind)",
-+    async ({ response }) => {
-+      const f = fixture();
-+      await expect(f.response(response)).rejects.toThrow("no-tools response");
-+      expect(f.receipt.attempts[0]?.outcome).toBe("unknown");
-+      await expect(f.drain()).rejects.toThrow("not terminal");
-+      expect(f.read).toThrow("not terminal");
-+    },
-+  );
-+
-+  it.each([
-+    { omit: "id", error: "unknown remote outcome" },
-+    { omit: "status", error: "unknown remote outcome" },
-+    { omit: "model", error: "approved model" },
-+    { omit: "output", error: "no-tools response" },
-+  ])("preserves the required terminal $omit gate", async ({ omit, error }) => {
-+    const f = fixture();
-+    const response: Record<string, unknown> = {
-+      id: "fixture-response", model: model.id, status: "completed",
-+      output: [{ type: "message", role: "assistant", status: "completed",
-+        content: [{ type: "output_text", text: "whole original verdict" }] }],
-+    };
-+    delete response[omit];
-+    await expect(f.response(response)).rejects.toThrow(error);
-+    expect(f.receipt.attempts[0]?.outcome).toBe("unknown");
-+    await expect(f.drain()).rejects.toThrow("not terminal");
-+    expect(f.read).toThrow("not terminal");
++    "dist/native-review-publication-intents-BzGzM_u7.mjs",
++    "dist/openclaw-agent-worker-store-DDQVQOF3.mjs",
++    "dist/package-update-activation-recovery.mjs",
++    "dist/worker/sqlite-store.worker.mjs",
++    "dist/worker/worker.mjs",
++  ])("uses the stable agent database worker from %s", async (modulePath) => {
++    const { runtimeProcessEntrypoints } = await import("./runtime-process-entrypoints.js");
++    const root = path.resolve("agent-database-worker-package");
++    const entry = runtimeProcessEntrypoints.agentDatabaseExecution;
++    expect(
++      fileURLToPath(resolveRuntimeWorkerUrl({
++        ...entry,
++        currentModuleUrl: pathToFileURL(path.join(root, modulePath)).href,
++      })),
++    ).toBe(path.join(root, "dist/state/openclaw-agent-execution.worker.js"));
 +  });
 +
-+  it("retains a coherent response.done only after the original producer drains", async () => {
-+    const f = fixture();
-+    await f.response({
-+      id: "fixture-response", model: model.id, status: "completed",
-+      usage: { input_tokens: 7, output_tokens: 5, total_tokens: 12 },
-+      output: [{ type: "message", role: "assistant", status: "completed",
-+        content: [{ type: "output_text", text: "whole original verdict" }] }],
-+    }, "response.done");
-+    expect(f.read).toThrow("not terminal");
-+    await f.drain();
-+    expect(f.receipt.assertTerminal()[0]?.tokenUsage).toEqual({
-+      state: "available", inputTokens: 7, outputTokens: 5, totalTokens: 12,
-+    });
-+    expect(f.read().text).toBe("whole original verdict");
+   it("uses canonical launchers unless the sealed bundle registers a sibling", async () => {
+     vi.resetModules();
+     try {
+diff --git a/src/state/native-review-publication-intents.ts b/src/state/native-review-publication-intents.ts
+index 75977f70c221fe340d257c5b8ef03e545acf936b..6409b575d013e7461d3beaa45658dbb2442c6f16 100644
+--- a/src/state/native-review-publication-intents.ts
++++ b/src/state/native-review-publication-intents.ts
+@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
+ import { isProxy } from "node:util/types";
+ import { assertOriginalRequiredRunReviewIntentPurpose, readOriginalRequiredRunReviewIntentCustody } from "../agents/required-run-closure.js";
+ import { readOriginalSelectedReviewPublicationDatabase } from "../agents/embedded-agent-runner/run/session-bootstrap.js";
++import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
+ import { captureOpenClawAgentDatabaseExecution, type OpenClawAgentDatabaseExecution } from "./openclaw-agent-execution.js";
+ import { openOpenClawAgentSqliteWorkerStore } from "./openclaw-agent-worker-store.js";
+ import { parseNativeReviewIntentRequest, type NativeReviewIntentRequest, type NativeReviewIntentResult } from "./native-review-publication-intent.types.js";
+@@ -66,7 +67,7 @@ async function open(original: OriginalNativeReviewInput): Promise<Owner> {
+   let store: Store | undefined;
+   try {
+     assertCurrent();
+-    store = await openOpenClawAgentSqliteWorkerStore(physical.options, { execution }, { moduleUrl: new URL("./openclaw-agent-execution.worker.js", import.meta.url), input: undefined }, true);
++    store = await openOpenClawAgentSqliteWorkerStore(physical.options, { execution }, { moduleUrl: resolveRuntimeProcessEntrypointUrl("agentDatabaseExecution"), input: undefined }, true);
+     assertCurrent();
+     return { original, request, execution, store, assertCurrent, phase: "opening" };
+   } catch (error) {
+diff --git a/src/state/openclaw-agent-worker-store.ts b/src/state/openclaw-agent-worker-store.ts
+index f71d44adaf99de0477fff70a9a53a6a1edd0d40d..b99283b44d0b63f662dc8d103ae450a0740e79c2 100644
+--- a/src/state/openclaw-agent-worker-store.ts
++++ b/src/state/openclaw-agent-worker-store.ts
+@@ -13,6 +13,7 @@ import { readOriginalRequiredRunClosureCustody } from "../agents/required-run-cl
+ import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
+ import { resolveStateDir } from "../config/state-dir.js";
+ import { formatErrorMessage } from "../infra/errors.js";
++import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
+ import {
+   createSqliteLifecycleAggregateError,
+   throwSqliteLifecycleErrors,
+@@ -701,7 +702,7 @@ export async function retireOriginalClosedRunWriter(
+       {
+         // Retire/intent-read go directly through this same canonical native owner;
+         // the publication facade does not spawn a separate domain Worker here.
+-        moduleUrl: new URL("./openclaw-agent-execution.worker.js", import.meta.url),
++        moduleUrl: resolveRuntimeProcessEntrypointUrl("agentDatabaseExecution"),
+         input: undefined,
+       },
+     );
+diff --git a/test/scripts/agent-database-worker-package-paths.test.ts b/test/scripts/agent-database-worker-package-paths.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f8249e93731da8aa1a13796781b528618befd04f
+--- /dev/null
++++ b/test/scripts/agent-database-worker-package-paths.test.ts
+@@ -0,0 +1,38 @@
++import { readFileSync } from "node:fs";
++import { fileURLToPath } from "node:url";
++import { transform } from "esbuild";
++import { describe, expect, it } from "vitest";
++import { collectPackageDistImportErrors, collectPackageDistImports } from "../../scripts/lib/package-dist-imports.mjs";
++import { createRuntimeProcessBuildEntries, runtimeProcessCoreEntrypoints } from "../../scripts/lib/runtime-process-core-build-entries.mts";
++import { runtimeProcessEntrypoints } from "../../src/infra/runtime-process-entrypoints.js";
++
++const worker = runtimeProcessEntrypoints.agentDatabaseExecution;
++const emittedWorker = `dist/${worker.distWorkerPath}`;
++const callers = [
++  "src/state/openclaw-agent-worker-store.ts",
++  "src/state/native-review-publication-intents.ts",
++];
++
++describe("agent database worker package paths", () => {
++  it("emits the existing agent database worker at its shared runtime path", () => {
++    const entries = createRuntimeProcessBuildEntries(runtimeProcessCoreEntrypoints);
++    expect(entries[worker.distWorkerPath.replace(/\.js$/u, "")]).toBe(
++      fileURLToPath(new URL("../../src/state/openclaw-agent-execution.worker.ts", import.meta.url)),
++    );
++  });
++
++  it.each(callers)("keeps %s worker URLs in the emitted package", async (caller) => {
++    const source = readFileSync(new URL(`../../${caller}`, import.meta.url), "utf8");
++    const { code } = await transform(source, { loader: "ts", format: "esm" });
++    // Other module imports belong to the full tarball gate. This focused check
++    // covers the worker URLs which formerly moved with bundled caller chunks.
++    for (const importerPath of ["dist/agent-database-caller.mjs", "dist/worker/worker.mjs"]) {
++      const files = [importerPath, emittedWorker];
++      const imports = collectPackageDistImports({
++        files: [importerPath],
++        readText: () => code,
++      }).filter((edge) => edge.importedPath.endsWith("openclaw-agent-execution.worker.js"));
++      expect(collectPackageDistImportErrors({ files, imports })).toEqual([]);
++    }
 +  });
 +});
-diff --git a/packages/ai/src/transports/openai-responses-request-lifecycle.ts b/packages/ai/src/transports/openai-responses-request-lifecycle.ts
-index d21b9b55e0433562d02dd590205b7dccc93fdc1c..bfd82bb1eca0660e27bebbbcfeb024c9268d8c9c 100644
---- a/packages/ai/src/transports/openai-responses-request-lifecycle.ts
-+++ b/packages/ai/src/transports/openai-responses-request-lifecycle.ts
-@@ -515,7 +515,7 @@ export function createSelectedNativeCodexSseRequestOwner(
-                   (type === "response.failed" && (status === "failed" || status === "cancelled")) ||
-                   (type === "response.done" && (status === "completed" || status === "incomplete" ||
-                     status === "failed" || status === "cancelled"));
--                if (!id || (previousId && previousId !== id) || !coherent ||
-+                if (!response || !id || (previousId && previousId !== id) || !coherent ||
-                     (status !== "completed" && status !== "incomplete" && status !== "failed" && status !== "cancelled")) unknown();
-                 else {
-                   const details = isRecord(response?.incomplete_details) ? response.incomplete_details : undefined;

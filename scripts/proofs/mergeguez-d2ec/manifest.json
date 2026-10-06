@@ -1,7 +1,7 @@
 {
   "schema": "mergeguez.sealed-runnable-qualification-tooling/v3",
-  "source_commit": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
-  "source_tree": "a5a42ea0fd97af95d6fac9f2bf2e955f3a48fd56",
+  "source_commit": "9325b6f25a15f4eb10ac24258dcc5750909ea9cc",
+  "source_tree": "7f7f5334fa059cc55764893e721d7058d6138633",
   "files": [
     {
       "path": "cli-source.commit",
@@ -15,8 +15,8 @@
     },
     {
       "path": "contract.json",
-      "bytes": 95261,
-      "sha256": "acb689fd92618331529d5b83a40e25a9a293f9b51c480eb2ab17d6f0f46f5e43"
+      "bytes": 97893,
+      "sha256": "e2b5be01d1b2b19130a8d057a1af2234f3d1023a9560de8d97e69804c5833c24"
     },
     {
       "path": "driver.py",
@@ -89,6 +89,16 @@
       "sha256": "136d462b07e2b9824c029bf793132e73b90dddcc64cfa152153838b5d90b7cb7"
     },
     {
+      "path": "owner-source-6.commit",
+      "bytes": 290,
+      "sha256": "8c1b82441745c122cdd173ed9a83c3b726dd0b6df5153cb9609a03418918ce10"
+    },
+    {
+      "path": "owner-source-6.patch",
+      "bytes": 4667,
+      "sha256": "cea536a271fb390cafbf8bba6ad7570d8a7384dda7fd35672ea053c70a377163"
+    },
+    {
       "path": "parent-source.commit",
       "bytes": 273,
       "sha256": "55dbf17dcbd3350b6d4445ad08c015565cf481335b39a2facfb31951eb98eee3"
@@ -105,18 +115,18 @@
     },
     {
       "path": "source.commit",
-      "bytes": 290,
-      "sha256": "8c1b82441745c122cdd173ed9a83c3b726dd0b6df5153cb9609a03418918ce10"
+      "bytes": 293,
+      "sha256": "f31eb2eb0c555668203cea2a730058af912e0ff999887dfab15456bde07e294a"
     },
     {
       "path": "source.patch",
-      "bytes": 4667,
-      "sha256": "cea536a271fb390cafbf8bba6ad7570d8a7384dda7fd35672ea053c70a377163"
+      "bytes": 6759,
+      "sha256": "a874fc6e5ceb91864c94d6ab96275aceb7e2ee0b7a7725f8f7a35c17a8772c54"
     },
     {
       "path": "test_driver.py",
-      "bytes": 63467,
-      "sha256": "34ce7e52b3d74a538ae0b8222f9b79746aeaa144646b7a7b319bdf14078f7a4d"
+      "bytes": 63568,
+      "sha256": "e1fdfcd852f2128fc9d4c6e20c3ccef310864daad049fdf2035fb068dab2ced8"
     },
     {
       "path": "test_materialize.mjs",
@@ -125,8 +135,8 @@
     },
     {
       "path": "test_runtime.mjs",
-      "bytes": 24860,
-      "sha256": "feaa3ac919ad61b83ecdd1aaf15eb5b05b73978f0443001761d4fd7c222ee5cb"
+      "bytes": 24960,
+      "sha256": "c0b5fff8e8778fb274d956e576f9d6dcb7bd779aa756bdbacc05002c1c05e1bd"
     }
   ]
 }
