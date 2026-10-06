@@ -1,0 +1,13 @@
+diff --git a/src/commands/agent-via-gateway.test.ts b/src/commands/agent-via-gateway.test.ts
+index f6b37494a2b3017a573042eab80b738684a3fcee..132c0a8c8ba687826cdf1af72eece44e4a86afdb 100644
+--- a/src/commands/agent-via-gateway.test.ts
++++ b/src/commands/agent-via-gateway.test.ts
+@@ -467,7 +467,7 @@ describe("agentCliCommand", () => {
+           });
+           expect(request.params).not.toHaveProperty("mergeguezReviewRequest");
+           expect(result).toBe(response);
+-          expect(jsonRuntime.writeJson).toHaveBeenCalledWith(response);
++          expect(jsonRuntime.writeJson).toHaveBeenCalledWith(response, 2);
+           expect(agentCommand).not.toHaveBeenCalled();
+         },
+         {

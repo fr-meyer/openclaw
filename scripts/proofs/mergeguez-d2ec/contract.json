@@ -937,7 +937,7 @@
       }
     }
   },
-  "patch_sha256": "136d462b07e2b9824c029bf793132e73b90dddcc64cfa152153838b5d90b7cb7",
+  "patch_sha256": "cea536a271fb390cafbf8bba6ad7570d8a7384dda7fd35672ea053c70a377163",
   "phase_max_seconds": {
     "offline-compile": 1800,
     "offline-native": 300,
@@ -946,7 +946,7 @@
     "warm-fetch": 420
   },
   "pids": 512,
-  "raw_commit_sha256": "0c72f1757528737ad8b95ea43be06b8ab744ce989f86232971d5ce9dfacd1684",
+  "raw_commit_sha256": "8c1b82441745c122cdd173ed9a83c3b726dd0b6df5153cb9609a03418918ce10",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
   "retention_cap_bytes": 536870912,
@@ -2797,14 +2797,23 @@
       "parent": "21358c605b0b17d0dbe13111436671f6c3aca218",
       "commit": "ca879faa305626636d500e1a7f881079b70b5b6f",
       "tree": "cbc5db00e5e8174b94c638badc8838cbb0fb3136",
-      "patch": "source.patch",
+      "patch": "owner-source-5.patch",
       "patch_sha256": "136d462b07e2b9824c029bf793132e73b90dddcc64cfa152153838b5d90b7cb7",
-      "raw_commit": "source.commit",
+      "raw_commit": "owner-source-5.commit",
       "raw_commit_sha256": "0c72f1757528737ad8b95ea43be06b8ab744ce989f86232971d5ce9dfacd1684"
+    },
+    {
+      "parent": "ca879faa305626636d500e1a7f881079b70b5b6f",
+      "commit": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
+      "tree": "a5a42ea0fd97af95d6fac9f2bf2e955f3a48fd56",
+      "patch": "source.patch",
+      "patch_sha256": "cea536a271fb390cafbf8bba6ad7570d8a7384dda7fd35672ea053c70a377163",
+      "raw_commit": "source.commit",
+      "raw_commit_sha256": "8c1b82441745c122cdd173ed9a83c3b726dd0b6df5153cb9609a03418918ce10"
     }
   ],
-  "source_commit": "ca879faa305626636d500e1a7f881079b70b5b6f",
-  "source_tree": "cbc5db00e5e8174b94c638badc8838cbb0fb3136",
+  "source_commit": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
+  "source_tree": "a5a42ea0fd97af95d6fac9f2bf2e955f3a48fd56",
   "total_seconds": 2700,
   "work_seconds": 2400,
   "portable_runnable_unpacked_cap_bytes": 2147483648,
@@ -2847,14 +2856,14 @@
     {
       "path": "packages/ai/src/transports/openai-responses-request-lifecycle.test.ts",
       "mode": "100644",
-      "bytes": 5770,
-      "sha256": "c5f27809a8da7f332ef9af7ba847232362a146791d5d8a93d125f726763a1f4e"
+      "bytes": 8253,
+      "sha256": "cff93e561c2e1ffa65961e4550186c83ec4191c5f8a6bc76591ae42395ea1e99"
     },
     {
       "path": "packages/ai/src/transports/openai-responses-request-lifecycle.ts",
       "mode": "100644",
-      "bytes": 28524,
-      "sha256": "6f5f4be59ec674d0ac5229a461fe493b61ce027731e14a214d24d6f0967a4d9a"
+      "bytes": 28537,
+      "sha256": "a3b08811551efd0d854d21513d5b266c9442cdb6027c369f0ab45c73fa31bb5d"
     },
     {
       "path": "scripts/proofs/native-ipc-gateway/driver.mjs",
@@ -3129,10 +3138,10 @@
   ],
   "source_inputs_origins": [
     {
-      "source_commit": "ca879faa305626636d500e1a7f881079b70b5b6f",
-      "receipt_sha256": "999a3fded9c1f91ae308ddaf30b2ea5254ab77aa29e6abdda65739517065ab6d",
+      "source_commit": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
+      "receipt_sha256": "ff731e2db1e0bdf82a0b63b82c92a7ce99c9f020af88722226d35ce3e1742054",
       "selected_postimage_count": 50,
-      "meaning": "exact successor named postimages; one corrected test assertion; no loaded/native proof"
+      "meaning": "exact successor postimages; explicit response narrowing and focused tests; no matching compiled/native proof"
     }
   ]
 }

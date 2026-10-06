@@ -1,6 +1,6 @@
-tree cbc5db00e5e8174b94c638badc8838cbb0fb3136
-parent 21358c605b0b17d0dbe13111436671f6c3aca218
-author Franck MEYER <meyerfranckpro@gmail.com> 1791263882 +0000
-committer Franck MEYER <meyerfranckpro@gmail.com> 1791263882 +0000
+tree a5a42ea0fd97af95d6fac9f2bf2e955f3a48fd56
+parent ca879faa305626636d500e1a7f881079b70b5b6f
+author Franck MEYER <meyerfranckpro@gmail.com> 1791266221 +0000
+committer Franck MEYER <meyerfranckpro@gmail.com> 1791266221 +0000
 
-test(commands): assert existing JSON indentation contract
+fix(ai): narrow original terminal response before reading usage

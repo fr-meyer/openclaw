@@ -1,0 +1,6 @@
+tree cbc5db00e5e8174b94c638badc8838cbb0fb3136
+parent 21358c605b0b17d0dbe13111436671f6c3aca218
+author Franck MEYER <meyerfranckpro@gmail.com> 1791263882 +0000
+committer Franck MEYER <meyerfranckpro@gmail.com> 1791263882 +0000
+
+test(commands): assert existing JSON indentation contract
