@@ -1,0 +1,430 @@
+diff --git a/docs/plugins/sdk-runtime.md b/docs/plugins/sdk-runtime.md
+index 3a032278390910a7bd9570b3738dc4f1c1663f8b..5687d29372ba21c1022542789529eefceaccde3d 100644
+--- a/docs/plugins/sdk-runtime.md
++++ b/docs/plugins/sdk-runtime.md
+@@ -403,5 +403,32 @@ Run observations combine proven retained task history with the normal subagent
+ owner. Interrupted, missing, ambiguous, or unknown outcomes remain uncertain.
+ Cancellation requires the original native run, session, generation, and owner;
+ an ID or a descendant cancellation count cannot prove success. This bridge does
+-not create canonical task rows or enable private TaskFlow worker launch. Launch
+-continues through `api.runtime.subagent.run` and its existing admission policy.
++not create canonical task rows or enable private TaskFlow worker launch. Ordinary
++launch continues through `api.runtime.subagent.run` and its existing admission
++policy.
++
++An original registered plugin callback can also launch one selected native child
++through its bound flow owner: `await bound.launchSubagent({ flowId,
++expectedRevision, parentTaskId, request })`. The request supplies a fresh child
++session key and session ID, the original attempt as `idempotencyKey`, the complete
++input, an explicit timeout, and `requiredExecutionClosure: "native-sse-no-tools"`.
++The host captures the original Gateway and plugin lifetime; a copied binding,
++configured session key, or public constructor cannot create that authority.
++
++Await `createManaged`, `get`, and `list` before using their recorded flow fields.
++Use the returned original owner and revision, and close every borrowed flow/run
++binding after accepted execution and cleanup settle. A supplied `parentTaskId`
++must identify the current original native task whose child session is this bound
++requester. Read it through the same runtime's bound run observations; never seed
++a parent row or redirect a controller-owned flow to a different worker. A fresh
++controller-root flow can omit the parent when its purpose has no active worker;
++that lane does not replace another worker's live purpose. The host checks the
++flow revision and native parent again across admission and before child issuance.
++
++Selected native terminal facts report each issued model attempt's `tokenUsage`.
++`state: "available"` carries only the original terminal's safe, coherent input,
++output, and total counts. Missing, incomplete, invalid, or inconsistent counts
++remain `state: "unavailable"`; reported zero counts are distinct from missing
++usage. Receipt closure proves original execution ownership, not budget success.
++Consumers retain their accounting, publication, and retry hold when required
++usage is unavailable.
+diff --git a/packages/ai/src/internal/openai.ts b/packages/ai/src/internal/openai.ts
+index 27f3264bfcd0f604bcef6e1824bcc683c9cb81d2..fb6a4c733b37f329864aaffe852889f1c3a81858 100644
+--- a/packages/ai/src/internal/openai.ts
++++ b/packages/ai/src/internal/openai.ts
+@@ -35,6 +35,7 @@ export {
+   type SelectedNativeCodexSseReviewBinding,
+   type SelectedNativeCodexSseProviderReceipt,
+   type SelectedNativeCodexSseAttempt,
++  type SelectedNativeCodexSseTokenUsage,
+ } from "../transports/openai-responses-request-lifecycle.js";
+ export { bindResponsesInputMessage } from "../transports/openai-responses-replay-messages-internal.js";
+ export {
+diff --git a/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts b/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..676897cbc21e59e83ccf5a82de4915e84e168327
+--- /dev/null
++++ b/packages/ai/src/transports/openai-responses-request-lifecycle.test.ts
+@@ -0,0 +1,108 @@
++import { describe, expect, it } from "vitest";
++import {
++  EventStream,
++  getEventStreamRequestOwner,
++  startEventStreamProducer,
++} from "@openclaw/llm-core/event-stream";
++import {
++  createSelectedNativeCodexSseRequestOwner,
++  readSelectedNativeCodexSseProviderTerminalOutput,
++  selectedNativeCodexSseReview,
++  type SelectedNativeCodexSseProviderReceipt,
++} from "./openai-responses-request-lifecycle.js";
++
++// Original event stream/request-owner code; only admitted host/auth ports are
++// inert. These tests do not execute a provider or grant native run authority.
++const model = { provider: "openai", api: "openai-chatgpt-responses", id: "fixture-model", endpoint: "https://fixture.invalid" };
++function fixture() {
++  let current = true;
++  let resolveProducer = () => {};
++  const assertCurrent = () => { if (!current) throw new Error("Original owner retired"); };
++  const binding = {
++    assertCurrent,
++    assertReceiptCurrent: assertCurrent,
++    assertIssuedModelInput: () => ({ inputSha256: "a".repeat(64), inputBytes: 8 }),
++    bindProvider: (_receipt: SelectedNativeCodexSseProviderReceipt) => {},
++  };
++  const options = {};
++  selectedNativeCodexSseReview.set(options, binding);
++  selectedNativeCodexSseReview.setCredential(options, {
++    binding, credential: {}, hostReceipt: {},
++    port: { assertHost: assertCurrent, assertFinal: assertCurrent },
++  });
++  const stream = new EventStream<Record<string, unknown>>(() => false, event => event);
++  const owner = createSelectedNativeCodexSseRequestOwner(stream, options, model);
++  if (!owner) throw new Error("Missing original request owner");
++  const receipt = getEventStreamRequestOwner(stream) as SelectedNativeCodexSseProviderReceipt;
++  const producer = new Promise<void>(resolve => { resolveProducer = resolve; });
++  startEventStreamProducer(stream, () => producer, owner.reserveProducer);
++  owner.observeFinalAuthorization("fixture-only", "fixture-only", new Headers());
++  owner.beforeIssue(undefined, JSON.stringify({ model: model.id, stream: true, input: [] }), model);
++  return {
++    receipt,
++    revoke: () => { current = false; },
++    async terminal(usage: unknown) {
++      async function* events() {
++        yield { type: "response.completed", response: {
++          id: "fixture-response", model: model.id, status: "completed", usage,
++          output: [{ type: "message", role: "assistant", status: "completed",
++            content: [{ type: "output_text", text: "whole original verdict" }] }],
++        } };
++      }
++      for await (const event of owner.observe(events())) void event;
++    },
++    async drain() { owner.finish(); resolveProducer(); await receipt.sealAndWait(); },
++    read: () => readSelectedNativeCodexSseProviderTerminalOutput(receipt, binding),
++    readCopy: () => readSelectedNativeCodexSseProviderTerminalOutput({ ...receipt }, binding),
++  };
++}
++
++describe("original selected terminal token accounting", () => {
++  it("retains coherent original counts including reported zero without borrowing a mutable payload", async () => {
++    for (const usage of [{ input_tokens: 7, output_tokens: 5, total_tokens: 12 },
++                         { input_tokens: 0, output_tokens: 0, total_tokens: 0 }]) {
++      const f = fixture();
++      const expected = { state: "available", inputTokens: usage.input_tokens,
++        outputTokens: usage.output_tokens, totalTokens: usage.total_tokens };
++      await f.terminal(usage);
++      usage.total_tokens = 999;
++      await f.drain();
++      expect(f.receipt.assertTerminal()[0]?.tokenUsage).toEqual(expected);
++      expect(f.read().text).toBe("whole original verdict");
++    }
++  });
++
++  it("keeps absent, partial, unsafe and inconsistent accounting unavailable without losing raw terminal text", async () => {
++    const cases = [
++      { usage: undefined, reason: "missing" }, { usage: null, reason: "missing" },
++      { usage: {}, reason: "incomplete" },
++      { usage: { input_tokens: 7, output_tokens: 5 }, reason: "incomplete" },
++      { usage: { input_tokens: true, output_tokens: 5, total_tokens: 6 }, reason: "invalid" },
++      { usage: { input_tokens: -1, output_tokens: 5, total_tokens: 4 }, reason: "invalid" },
++      { usage: { input_tokens: 1.5, output_tokens: 5, total_tokens: 6.5 }, reason: "invalid" },
++      { usage: { input_tokens: 7, output_tokens: 5, total_tokens: 13 }, reason: "inconsistent" },
++      { usage: { input_tokens: Number.MAX_SAFE_INTEGER, output_tokens: 1, total_tokens: Number.MAX_SAFE_INTEGER }, reason: "inconsistent" },
++    ];
++    for (const c of cases) {
++      const f = fixture(); await f.terminal(c.usage); await f.drain();
++      expect(f.receipt.assertTerminal()[0]?.tokenUsage).toEqual({ state: "unavailable", reason: c.reason });
++      expect(f.read().text).toBe("whole original verdict");
++    }
++  });
++
++  it("revokes prior terminal closure when the original stream later changes usage", async () => {
++    const f = fixture();
++    await f.terminal({ input_tokens: 7, output_tokens: 5, total_tokens: 12 }); await f.drain();
++    await expect(f.terminal({ input_tokens: 7, output_tokens: 6, total_tokens: 13 })).rejects.toThrow("token usage changed");
++    expect(() => f.receipt.assertTerminal()).toThrow("not terminal");
++    expect(f.read).toThrow("not terminal");
++  });
++
++  it("cannot upgrade missing accounting after closure or read through copied/retired receipt custody", async () => {
++    const f = fixture(); await f.terminal(undefined); await f.drain();
++    await expect(f.terminal({ input_tokens: 0, output_tokens: 0, total_tokens: 0 })).rejects.toThrow("token usage changed");
++    const g = fixture(); await g.terminal({ input_tokens: 0, output_tokens: 0, total_tokens: 0 }); await g.drain();
++    expect(g.readCopy).toThrow("original selected admission");
++    g.revoke(); expect(g.read).toThrow("retired");
++  });
++});
+diff --git a/packages/ai/src/transports/openai-responses-request-lifecycle.ts b/packages/ai/src/transports/openai-responses-request-lifecycle.ts
+index 47548e9fece0c6efdeae758ab7a41613c508f4d8..d21b9b55e0433562d02dd590205b7dccc93fdc1c 100644
+--- a/packages/ai/src/transports/openai-responses-request-lifecycle.ts
++++ b/packages/ai/src/transports/openai-responses-request-lifecycle.ts
+@@ -70,6 +70,53 @@ export type SelectedNativeCodexSseReviewBinding = Readonly<{
+   bindProvider(receipt: SelectedNativeCodexSseProviderReceipt): void;
+ }>;
+ 
++/** Reported counts only; missing or contradictory accounting never becomes zero. */
++export type SelectedNativeCodexSseTokenUsage =
++  | Readonly<{ state: "available"; inputTokens: number; outputTokens: number; totalTokens: number }>
++  | Readonly<{ state: "unavailable"; reason: "missing" | "incomplete" | "invalid" | "inconsistent" }>;
++
++function terminalTokenUsage(value: unknown): SelectedNativeCodexSseTokenUsage {
++  if (value === undefined || value === null) {
++    return Object.freeze({ state: "unavailable", reason: "missing" });
++  }
++  if (!isRecord(value)) {
++    return Object.freeze({ state: "unavailable", reason: "invalid" });
++  }
++  const inputTokens = value.input_tokens;
++  const outputTokens = value.output_tokens;
++  const totalTokens = value.total_tokens;
++  if (inputTokens === undefined || outputTokens === undefined || totalTokens === undefined) {
++    return Object.freeze({ state: "unavailable", reason: "incomplete" });
++  }
++  if (
++    typeof inputTokens !== "number" || !Number.isSafeInteger(inputTokens) || inputTokens < 0 ||
++    typeof outputTokens !== "number" || !Number.isSafeInteger(outputTokens) || outputTokens < 0 ||
++    typeof totalTokens !== "number" || !Number.isSafeInteger(totalTokens) || totalTokens < 0
++  ) {
++    return Object.freeze({ state: "unavailable", reason: "invalid" });
++  }
++  if (!Number.isSafeInteger(inputTokens + outputTokens) || totalTokens !== inputTokens + outputTokens) {
++    return Object.freeze({ state: "unavailable", reason: "inconsistent" });
++  }
++  return Object.freeze({ state: "available", inputTokens, outputTokens, totalTokens });
++}
++
++function sameTokenUsage(
++  left: SelectedNativeCodexSseTokenUsage | undefined,
++  right: SelectedNativeCodexSseTokenUsage,
++): boolean {
++  if (!left || left.state !== right.state) {
++    return false;
++  }
++  if (left.state === "unavailable") {
++    return right.state === "unavailable" && left.reason === right.reason;
++  }
++  return (
++    right.state === "available" && left.inputTokens === right.inputTokens &&
++    left.outputTokens === right.outputTokens && left.totalTokens === right.totalTokens
++  );
++}
++
+ export type SelectedNativeCodexSseAttempt = Readonly<{
+   ordinal: number;
+   dispatch: "issued";
+@@ -81,6 +128,7 @@ export type SelectedNativeCodexSseAttempt = Readonly<{
+   status?: string;
+   incompleteReason?: string;
+   httpStatus?: number;
++  tokenUsage?: SelectedNativeCodexSseTokenUsage;
+ }>;
+ 
+ export type SelectedNativeCodexSseProviderReceipt = Readonly<{
+@@ -474,6 +522,7 @@ export function createSelectedNativeCodexSseRequestOwner(
+                   active = Object.freeze({
+                     ...active, outcome: status,
+                     responseId: id, responseModel: admittedModel.id, eventType: type, status,
++                    tokenUsage: terminalTokenUsage(response.usage),
+                     ...(typeof details?.reason === "string" ? { incompleteReason: details.reason } : {}),
+                   });
+                 }
+@@ -484,6 +533,8 @@ export function createSelectedNativeCodexSseRequestOwner(
+                 if (!response || response.status !== "completed" || active.outcome !== "completed" ||
+                     typeof response.id !== "string" || response.id !== active.responseId)
+                   throw new Error("Selected terminal output is unsuccessful or contradictory");
++                if (!sameTokenUsage(active.tokenUsage, terminalTokenUsage(response.usage)))
++                  throw new Error("Original selected terminal token usage changed after completion");
+                 const next = Object.freeze({ ordinal: active.ordinal, responseId: response.id, text: terminalText(response) });
+                 if (completedOutput && (next.ordinal !== completedOutput.ordinal || next.responseId !== completedOutput.responseId || next.text !== completedOutput.text))
+                   throw new Error("Original selected terminal text changed after completion");
+diff --git a/src/agents/required-run-closure.ts b/src/agents/required-run-closure.ts
+index 0bc3a6a82dc622d4678dc21f37da176f7b13c9e5..3a0bb9520902630bae6d29889fdd258b7db60c1c 100644
+--- a/src/agents/required-run-closure.ts
++++ b/src/agents/required-run-closure.ts
+@@ -742,6 +742,7 @@ export type OriginalRequiredRunModelAttempt = Readonly<{
+   status?: string;
+   incompleteReason?: string;
+   httpStatus?: number;
++  tokenUsage: import("@openclaw/ai/internal/openai").SelectedNativeCodexSseTokenUsage;
+ }>;
+ export type OriginalRequiredRunRawTerminal = Readonly<{
+   kind: "completed";
+@@ -828,6 +829,7 @@ export function readOriginalRequiredRunModelAttempts(
+         ...(attempt.status !== undefined ? { status: terminalDescriptor(attempt.status, 80) } : {}),
+         ...(attempt.incompleteReason !== undefined ? { incompleteReason: terminalDescriptor(attempt.incompleteReason, 256) } : {}),
+         ...(attempt.httpStatus !== undefined ? { httpStatus: attempt.httpStatus } : {}),
++        tokenUsage: attempt.tokenUsage ?? Object.freeze({ state: "unavailable" as const, reason: "missing" as const }),
+       }));
+     }
+   }
+diff --git a/src/gateway/server-managed-task-flow-runtime.test.ts b/src/gateway/server-managed-task-flow-runtime.test.ts
+index f749de61b52d3d40943f984c663af8b671a636ed..0e965df2b425b498acd04ba5343d0e6fa19e46c3 100644
+--- a/src/gateway/server-managed-task-flow-runtime.test.ts
++++ b/src/gateway/server-managed-task-flow-runtime.test.ts
+@@ -1,7 +1,9 @@
+ import { describe, expect, it, vi } from "vitest";
+ import type { ManagedTaskSubagentRequest } from "../tasks/managed-task-flow-contract.js";
++import type { SubagentRunRecord } from "../agents/subagents/registry/subagent-registry.types.js";
+ import {
+   createManagedTaskFlowHost,
++  getManagedTaskSubagentRegistration,
+   retainManagedTaskSubagentExecution,
+   type ManagedTaskSubagentSource,
+ } from "../tasks/managed-task-flow-host.js";
+@@ -13,7 +15,11 @@ const original = vi.hoisted(() => {
+   let source: ManagedTaskSubagentSource | undefined;
+   const context = { getRuntimeConfig: () => ({}) };
+   const resolver = () => context;
+-  const state = { current: true, releases: 0 };
++  const state = { current: true, releases: 0, allowWrites: false, writes: 0 };
++  const nativeParents = new Map<string, SubagentRunRecord>();
++  const flow = { flowId: "flow", ownerKey: "agent:ops:main", controllerId: "example/v1",
++    revision: 3, status: "running", syncMode: "managed", notifyPolicy: "silent",
++    goal: "bounded original purpose", createdAt: 1, updatedAt: 1 };
+   const instance = {
+     pluginId: "example",
+     lifecycle: new AbortController(),
+@@ -30,6 +36,8 @@ const original = vi.hoisted(() => {
+     context,
+     resolver,
+     state,
++    flow,
++    nativeParents,
+     instance,
+     owner,
+     scope: { pluginId: "example", pluginRegistry: {}, resolveGatewayContext: resolver },
+@@ -43,8 +51,9 @@ vi.mock("../infra/sqlite-readonly-worker-context.js", () => ({
+   captureSqliteReadOnlyWorkerScope: () => <T>(run: () => T) => run(),
+ }));
+ vi.mock("../infra/sqlite-worker-store.js", () => ({
+-  createSqliteWorkerWriteAdmission: () => {
+-    throw new Error("No native write fixture");
++  createSqliteWorkerWriteAdmission: (check: () => void) => {
++    if (!original.state.allowWrites) throw new Error("No native write fixture");
++    return { assertCurrent: check };
+   },
+ }));
+ vi.mock("../plugins/plugin-instance-invocation.js", () => ({
+@@ -64,16 +73,10 @@ vi.mock("../routing/session-key.js", () => ({
+   isIncognitoSessionKey: () => false,
+ }));
+ vi.mock("../state/openclaw-state-db-readonly.js", () => ({
+-  executeExistingOpenClawStateRead: async () => ({
++  executeExistingOpenClawStateRead: async (_target: unknown, command: { type: string; input: { ownerKey: string } }) => ({
+     ok: true,
+-    type: "tasks.managedFlows.get",
+-    value: {
+-      flowId: "flow",
+-      ownerKey: "agent:ops:main",
+-      controllerId: "example/v1",
+-      revision: 3,
+-      status: "running",
+-    },
++    type: command.type,
++    value: command.input.ownerKey === original.flow.ownerKey ? original.flow : undefined,
+   }),
+ }));
+ vi.mock("../state/openclaw-state-worker-context.js", () => ({
+@@ -90,8 +93,18 @@ vi.mock("../state/openclaw-state-worker-context.js", () => ({
+   }),
+ }));
+ vi.mock("../state/openclaw-state-worker-store.js", () => ({
+-  runOpenClawStateWorkerOperation: () => {
+-    throw new Error("No native worker fixture");
++  runOpenClawStateWorkerOperation: async (_context: unknown,
++    run: (worker: { execute(command: { type: string; input: { ownerKey: string } }): Promise<unknown> }) => Promise<unknown>,
++    options: { assertCurrent(): void }) => {
++    if (!original.state.allowWrites) throw new Error("No native worker fixture");
++    return run({ execute: async command => {
++      await Promise.resolve();
++      options.assertCurrent();
++      if (command.type !== "tasks.managedFlows.create" || command.input.ownerKey !== original.flow.ownerKey)
++        throw new Error("Unexpected original bootstrap write");
++      original.state.writes++;
++      return original.flow;
++    } });
+   },
+ }));
+ vi.mock("./session-access-authority.js", () => ({
+@@ -100,8 +113,9 @@ vi.mock("./session-access-authority.js", () => ({
+   },
+ }));
+ vi.mock("../agents/subagents/registry/subagent-registry-memory.js", () => ({
+-  subagentRuns: new Map(),
+-  getSubagentRunsForChildSession: () => [],
++  subagentRuns: original.nativeParents,
++  getSubagentRunsForChildSession: (sessionKey: string) =>
++    [...original.nativeParents.values()].filter(parent => parent.childSessionKey === sessionKey),
+ }));
+ vi.mock("../agents/subagents/registry/subagent-registry-persistence.js", () => ({
+   assertSubagentRegistryWriteOutcomeKnown() {},
+@@ -119,6 +133,60 @@ const request: ManagedTaskSubagentRequest = {
+   requiredExecutionClosure: "native-sse-no-tools",
+ };
+ describe("original Gateway managed host identity", () => {
++  it("bootstraps a flow through awaited original task APIs before root native child admission", async () => {
++    original.state.current = true; original.owner.revoked = false;
++    original.state.allowWrites = true; original.state.writes = 0;
++    const runtime = createGatewayManagedTaskFlowRuntime(original.resolver, new AbortController().signal, {
++      launchSubagent: async (_request, source) => {
++        expect(getManagedTaskSubagentRegistration(source, { runId: "attempt", sessionKey: request.sessionKey })).toMatchObject({
++          ownerKey: "agent:ops:main", flowId: "flow", expectedRevision: 3,
++        });
++        return { runId: "attempt" };
++      },
++    });
++    const bound = runtime.managedFlows.bindSession({ sessionKey: "agent:ops:main" });
++    try {
++      const pending = bound.createManaged({ controllerId: "example/v1", goal: "bounded original purpose" });
++      expect(original.state.writes).toBe(0);
++      const created = await pending;
++      const current = await bound.get(created.flowId);
++      expect(current?.ownerKey).toBe("agent:ops:main");
++      expect(original.state.writes).toBe(1);
++      await bound.launchSubagent({ flowId: created.flowId, expectedRevision: created.revision, request });
++    } finally { await bound.close(); original.state.allowWrites = false; }
++  });
++
++  it("binds an actual current parent record and refuses foreign flow or replaced native parent", async () => {
++    original.state.current = true; original.owner.revoked = false;
++    const parent: SubagentRunRecord = {
++      runId: "parent-run", taskRunId: "parent-task", childSessionKey: "agent:ops:main",
++      requesterSessionKey: "agent:ops:controller", controllerSessionKey: "agent:ops:controller",
++      requesterDisplayKey: "controller", task: "original parent purpose", cleanup: "keep",
++      label: "plugin:example", generation: 4, createdAt: 1,
++      execution: { status: "running", startedAt: 1 }, completion: { required: false }, delivery: { status: "not_required" },
++    };
++    original.nativeParents.set(parent.runId, parent);
++    let launches = 0;
++    const runtime = createGatewayManagedTaskFlowRuntime(original.resolver, new AbortController().signal, {
++      launchSubagent: async (_request, source) => {
++        const registration = getManagedTaskSubagentRegistration(source, { runId: "attempt", sessionKey: request.sessionKey });
++        expect(registration.parent).toMatchObject({ runId: "parent-run", taskRunId: "parent-task", generation: 4 });
++        original.nativeParents.set(parent.runId, { ...parent, generation: 5 });
++        expect(() => source.assertCurrent()).toThrow("retired");
++        launches++;
++        return { runId: "attempt" };
++      },
++    });
++    const foreign = runtime.managedFlows.bindSession({ sessionKey: "agent:ops:foreign" });
++    const bound = runtime.managedFlows.bindSession({ sessionKey: "agent:ops:main" });
++    try {
++      await expect(foreign.launchSubagent({ flowId: "flow", expectedRevision: 3, parentTaskId: "parent-task", request })).rejects.toThrow("active original flow");
++      expect(launches).toBe(0);
++      await bound.launchSubagent({ flowId: "flow", expectedRevision: 3, parentTaskId: "parent-task", request });
++      expect(launches).toBe(1);
++    } finally { await foreign.close(); await bound.close(); original.nativeParents.clear(); }
++  });
++
+   it("refuses arbitrary generic constructor callbacks before native source preparation", async () => {
+     const prepare = vi.fn(async () => ({
+       registration: {

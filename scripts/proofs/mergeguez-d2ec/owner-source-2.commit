@@ -1,0 +1,6 @@
+tree a142c6f72f14559ddebb7492070f794f85094064
+parent af2a2709882439227a5b9fa0e4b70b5d5d872e03
+author Franck MEYER <meyerfranckpro@gmail.com> 1791247161 +0000
+committer Franck MEYER <meyerfranckpro@gmail.com> 1791247161 +0000
+
+fix(agents): retain original native terminal token usage

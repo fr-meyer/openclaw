@@ -937,7 +937,7 @@
       }
     }
   },
-  "patch_sha256": "1bc2661e35277a7268979072fa768ef6101ee321a93aac654bb4d2d83752535a",
+  "patch_sha256": "b778a374124479fa5d57a453d617b99a90984823861191d994af322298db688e",
   "phase_max_seconds": {
     "offline-compile": 1800,
     "offline-native": 300,
@@ -946,7 +946,7 @@
     "warm-fetch": 420
   },
   "pids": 512,
-  "raw_commit_sha256": "383bb895e3f14814317b3c1aac1ba8166ac9c614978f5314eed7420f98723ce3",
+  "raw_commit_sha256": "56c825b24331d93f8ebdbc92cb6cf1e10013adc88ebfa2d0e81684ee1551bf0a",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
   "retention_cap_bytes": 536870912,
@@ -2752,28 +2752,68 @@
       "parent": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
       "commit": "43719c923f28758caf0cf85f1c02d719772ea6f2",
       "tree": "45a737e31f2c571a8219cb90aec45a1a517b2f30",
-      "patch": "source.patch",
+      "patch": "cli-source.patch",
       "patch_sha256": "1bc2661e35277a7268979072fa768ef6101ee321a93aac654bb4d2d83752535a",
-      "raw_commit": "source.commit",
+      "raw_commit": "cli-source.commit",
       "raw_commit_sha256": "383bb895e3f14814317b3c1aac1ba8166ac9c614978f5314eed7420f98723ce3"
+    },
+    {
+      "parent": "43719c923f28758caf0cf85f1c02d719772ea6f2",
+      "commit": "af2a2709882439227a5b9fa0e4b70b5d5d872e03",
+      "tree": "50392dd633201a7e6500d8680e81ec0ede79a91f",
+      "patch": "owner-source-1.patch",
+      "patch_sha256": "cad362fd7c81dca3469c754e184f307b5e0fd9e60fa64f599133c9a71b6cd85d",
+      "raw_commit": "owner-source-1.commit",
+      "raw_commit_sha256": "410e8f62b6d631add93351ff729a89cba3bcf644950695628dd30c88b3438a92"
+    },
+    {
+      "parent": "af2a2709882439227a5b9fa0e4b70b5d5d872e03",
+      "commit": "722a0a76a60ef3bbbbd566c6a71c9fe90f64447e",
+      "tree": "a142c6f72f14559ddebb7492070f794f85094064",
+      "patch": "owner-source-2.patch",
+      "patch_sha256": "7a9e74fa1ca7e91a2ad5d95eedc3621ec23cd818e29ee4c3c4920c0fa757f5c2",
+      "raw_commit": "owner-source-2.commit",
+      "raw_commit_sha256": "f90214e65dc12a8ac0a6b406dadba94f87bf95002ae017a8ba675e7bcd589b5c"
+    },
+    {
+      "parent": "722a0a76a60ef3bbbbd566c6a71c9fe90f64447e",
+      "commit": "1cbf2f749a4becdaa1476b7628bfa51c43b81d48",
+      "tree": "b9cc538aced106ff083dabcf2347edfa9e791519",
+      "patch": "owner-source-3.patch",
+      "patch_sha256": "dd6d03ea669ddc78692efbd7ffafc5db27e1c386e27f3427aa3f1230c0da1cc0",
+      "raw_commit": "owner-source-3.commit",
+      "raw_commit_sha256": "c267a1997ac63ccaaedba4d1da1ed0fb63203ae81128387b1543bd2f29167d89"
+    },
+    {
+      "parent": "1cbf2f749a4becdaa1476b7628bfa51c43b81d48",
+      "commit": "21358c605b0b17d0dbe13111436671f6c3aca218",
+      "tree": "2ecddedfdd8b41b97c1b1231e2644e0a33a86f80",
+      "patch": "source.patch",
+      "patch_sha256": "b778a374124479fa5d57a453d617b99a90984823861191d994af322298db688e",
+      "raw_commit": "source.commit",
+      "raw_commit_sha256": "56c825b24331d93f8ebdbc92cb6cf1e10013adc88ebfa2d0e81684ee1551bf0a"
     }
   ],
-  "source_commit": "43719c923f28758caf0cf85f1c02d719772ea6f2",
-  "source_tree": "45a737e31f2c571a8219cb90aec45a1a517b2f30",
+  "source_commit": "21358c605b0b17d0dbe13111436671f6c3aca218",
+  "source_tree": "2ecddedfdd8b41b97c1b1231e2644e0a33a86f80",
   "total_seconds": 2700,
   "work_seconds": 2400,
   "portable_runnable_unpacked_cap_bytes": 2147483648,
   "npm_version": "11.20.0",
   "size_measurement": "Unmeasured: compiled emits <=512MiB; portable runnable unpacked <=2GiB; combined retained package+runnable+native archive <=512MiB, native state <=32MiB; task volume10GiB unchanged. Overflow fails closed, no resize or rerun.",
   "phase_budget_meaning": "Each phase ceiling is intersected with the single unchanged2400s work deadline. Per-phase ceilings do not create extra time authority; total2700s includes cleanup and upload. Selected new packaging/materialization/native sizes and timings remain unmeasured.",
-  "qualification_scope": "Same exact CLI/core successor source; maintained targeted CLI suites, production/scripts types, one full optional production profile, original checked package plus contained offline locked dependency graph, compiled native IPC and natural Gateway startup/shutdown observations. No broker task-purpose binding or admission/release acceptance.",
+  "qualification_scope": "Accepted coherent controller/launcher and original CLI source; maintained selected owner suites, production/scripts types, one full optional production build, original checked package and offline locked complete SDK graph, compiled native IPC and natural Gateway startup/shutdown. The separately accepted private consumer qualifies its own original worker/native purpose against this retained graph; this public job grants no broker admission, publication or release.",
   "targeted_test_argv": [
     [
       "node",
       "scripts/run-vitest.mjs",
       "run",
       "src/cli/program/register.agent.test.ts",
-      "src/commands/agent-via-gateway.test.ts"
+      "src/commands/agent-via-gateway.test.ts",
+      "src/gateway/server-plugin-subagent-runtime.test.ts",
+      "src/gateway/server-managed-task-flow-runtime.test.ts",
+      "src/tasks/managed-task-flow-host.test.ts",
+      "packages/ai/src/transports/openai-responses-request-lifecycle.test.ts"
     ]
   ],
   "source_inputs": [
@@ -2784,10 +2824,28 @@
       "sha256": "8a770827d8c4582621f6fcea001839729f8dcd75f242bccf1d1dc4495bfbfa07"
     },
     {
+      "path": "docs/plugins/sdk-runtime.md",
+      "mode": "100644",
+      "bytes": 28870,
+      "sha256": "c3f7c402737724df8a9839622a3d3c687945b8e461751145e7a7dfdafc58fd3e"
+    },
+    {
+      "path": "packages/ai/src/internal/openai.ts",
+      "mode": "100644",
+      "bytes": 2050,
+      "sha256": "b970b6609d0f58f98c9e2b0690d9da3732a5448654555db708bc82fe3f19a17a"
+    },
+    {
+      "path": "packages/ai/src/transports/openai-responses-request-lifecycle.test.ts",
+      "mode": "100644",
+      "bytes": 5770,
+      "sha256": "c5f27809a8da7f332ef9af7ba847232362a146791d5d8a93d125f726763a1f4e"
+    },
+    {
       "path": "packages/ai/src/transports/openai-responses-request-lifecycle.ts",
       "mode": "100644",
-      "bytes": 26120,
-      "sha256": "5813ff5fce18e091029f2952ac2a26f149cb9defbd79c1e1e758c26fa0b63506"
+      "bytes": 28524,
+      "sha256": "6f5f4be59ec674d0ac5229a461fe493b61ce027731e14a214d24d6f0967a4d9a"
     },
     {
       "path": "scripts/proofs/native-ipc-gateway/driver.mjs",
@@ -2834,8 +2892,38 @@
     {
       "path": "src/agents/required-run-closure.ts",
       "mode": "100644",
-      "bytes": 52584,
-      "sha256": "ed19b0d999774b276dd0790f76dcf2cb76d36d1dab4ecb4082f95b12f5d83de1"
+      "bytes": 54161,
+      "sha256": "c9577fab5c81c76fc785303e2f2d2a9aa26452ba7c0a870c2a252a4683c2dcf1"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-persistence.ts",
+      "mode": "100644",
+      "bytes": 17331,
+      "sha256": "d4003dff4fb636abb8ba3d4b10964aaa514a288780028d680b2258eebc4b0aaf"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-read.types.ts",
+      "mode": "100644",
+      "bytes": 4639,
+      "sha256": "112625d2f63f9a178d1e3e960bcbcae78682dcf5fd7ef958fa9cc81b02241f44"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-run-launch.ts",
+      "mode": "100644",
+      "bytes": 21454,
+      "sha256": "b15f765cedf55d8feb1cd9606820ffd573e45aeb5539f007af2783be71a3cadc"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry.store.kernel.ts",
+      "mode": "100644",
+      "bytes": 4222,
+      "sha256": "7522a8ae6e5d99bed942790e4a5d89efb1aca1523d31d9f75d158db9965a317d"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry.types.ts",
+      "mode": "100644",
+      "bytes": 10451,
+      "sha256": "e8b42b07fbe04b9d780a91b3b070f780c502d4f71b43f042fd36b69f980fa9a5"
     },
     {
       "path": "src/cli/program/register.agent-turn.ts",
@@ -2862,6 +2950,18 @@
       "sha256": "9dffeb60227435356868b74490ac04a380d2cd50e9c5c9ebba5aa27871ec8517"
     },
     {
+      "path": "src/gateway/agent-turn/agent-request-preflight.ts",
+      "mode": "100644",
+      "bytes": 16928,
+      "sha256": "337086c672fe58e3cdbe512fbd69054eb52dee5bf22f27826beb7e628e2e1696"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-run-admission-phase.ts",
+      "mode": "100644",
+      "bytes": 27151,
+      "sha256": "5baf99200ef38d5f8142cf4c793a2f9a71087a57eac20f60b6c7d3b5a57dddab"
+    },
+    {
       "path": "src/gateway/agent-turn/agent-run-dispatch.ts",
       "mode": "100644",
       "bytes": 18671,
@@ -2870,8 +2970,98 @@
     {
       "path": "src/gateway/agent-turn/agent-run-execution-phase.ts",
       "mode": "100644",
-      "bytes": 35318,
-      "sha256": "66b765d90114d56495490b9861bf0c15acc81baec2c545ddafb0520e5f9be3f6"
+      "bytes": 35557,
+      "sha256": "bd05d064fe8a4d4c35f5857e1cd017865447ef9ae786a2dd3b15da2f1c7d8e47"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-run-subagent.ts",
+      "mode": "100644",
+      "bytes": 8028,
+      "sha256": "07f371af9d937873ed51d59357d7ff14259a1ee79b2568ed00deabfa3f24cd97"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-turn-service.ts",
+      "mode": "100644",
+      "bytes": 28237,
+      "sha256": "332ad74b2271cc4d47bf04f779eae1e3c9c06513e4b6809e82c73dc02bffbc92"
+    },
+    {
+      "path": "src/gateway/agent-turn/internal-facade.ts",
+      "mode": "100644",
+      "bytes": 16377,
+      "sha256": "8544159e01762c82ee95e33df1830d0ff9bc43e8e6e65055c561ae1c31b692b3"
+    },
+    {
+      "path": "src/gateway/agent-turn/internal-facade.types.ts",
+      "mode": "100644",
+      "bytes": 2464,
+      "sha256": "a38b39e746b8651158ef2ab0d14b9fb481be2ae229798500dc0e838f47f3449d"
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.test.ts",
+      "mode": "100644",
+      "bytes": 12970,
+      "sha256": "f3c669ccb3a62dc4e9f714b93c8892da420acf8df2649d9bb21869f3de0d93d3"
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.ts",
+      "mode": "100644",
+      "bytes": 25231,
+      "sha256": "bf8406a2eea79098b03687dbbc372081a581285f4ab6e35e4d5dc2eaed9b96ce"
+    },
+    {
+      "path": "src/gateway/server-methods/agent-subagent-registration.ts",
+      "mode": "100644",
+      "bytes": 5413,
+      "sha256": "522acd2650ab3119c9b3d7f1b15d16dee8b22e3caf0337f69afcb7ef1a88da79"
+    },
+    {
+      "path": "src/gateway/server-methods/client-types.ts",
+      "mode": "100644",
+      "bytes": 6756,
+      "sha256": "25885c03bef275201e593f09faf71942d1a3ca0c79796bda7e1d25a662331e22"
+    },
+    {
+      "path": "src/gateway/server-plugin-in-process-dispatch.ts",
+      "mode": "100644",
+      "bytes": 31964,
+      "sha256": "34d17280aead822b1fbe8fd0cb2fb33098af8cd4575ebc60248930372afc9c0b"
+    },
+    {
+      "path": "src/gateway/server-plugin-in-process-dispatch.types.ts",
+      "mode": "100644",
+      "bytes": 3823,
+      "sha256": "dbdc0517b520095b415c77b444466efcf41f6bcd89a34f23b7305f91c1800927"
+    },
+    {
+      "path": "src/gateway/server-plugin-runtime-client.ts",
+      "mode": "100644",
+      "bytes": 9433,
+      "sha256": "372211a960f45d86bde4ad3ccfb7e27a7317b65a50c6b4485afbd92039acde03"
+    },
+    {
+      "path": "src/gateway/server-plugin-subagent-runtime.test.ts",
+      "mode": "100644",
+      "bytes": 32198,
+      "sha256": "cd1617625b399f5718388efdd90920bc70a94e8e12bc4693a37121ad9c462cbd"
+    },
+    {
+      "path": "src/gateway/server-plugin-subagent-runtime.ts",
+      "mode": "100644",
+      "bytes": 29851,
+      "sha256": "a79eaf3fdbcd5d927cbb3157db8a0c58aa49d4503461015950e91e74a1cdea23"
+    },
+    {
+      "path": "src/gateway/server-plugins.ts",
+      "mode": "100644",
+      "bytes": 17380,
+      "sha256": "d1ef1103d0a7990a559770a397eb2ee92077b444726772cee1954696e01802f0"
+    },
+    {
+      "path": "src/plugins/runtime/types.ts",
+      "mode": "100644",
+      "bytes": 9481,
+      "sha256": "ff8e356e1bec723695348a181f5120f6fe46df6cf4cd0b2a793876c87a1136af"
     },
     {
       "path": "src/state/agent-run-quarantine-maintenance.ts",
@@ -2892,6 +3082,36 @@
       "sha256": "19ebc2dadfb07b68364243b373cb84974ac7fc1eb972f720a2a5d5cfe1d12ffc"
     },
     {
+      "path": "src/state/openclaw-state-worker-runtime.ts",
+      "mode": "100644",
+      "bytes": 28987,
+      "sha256": "86caec348eb6ed0ac52f409727b314087cb8085e78e099fad973666e8ea872b3"
+    },
+    {
+      "path": "src/tasks/managed-task-flow-contract.ts",
+      "mode": "100644",
+      "bytes": 9030,
+      "sha256": "5d1f5c9b525d6cd496f0b3bdeef0320d7acfab0d1c80c79c1983a37919c5743f"
+    },
+    {
+      "path": "src/tasks/managed-task-flow-host.test.ts",
+      "mode": "100644",
+      "bytes": 10351,
+      "sha256": "ed1a191636e2a8e7e3b9b8c718fd476d82418c84238d262d4ca39fb51d6a629d"
+    },
+    {
+      "path": "src/tasks/managed-task-flow-host.ts",
+      "mode": "100644",
+      "bytes": 20176,
+      "sha256": "b1427bffc84825e6367d54c9e91ccdcc5bad906ced1d9f5f03100f18fb168112"
+    },
+    {
+      "path": "src/tasks/managed-task-flow.worker.ts",
+      "mode": "100644",
+      "bytes": 30387,
+      "sha256": "a4a7f226c09a55e9682368ee307355f63164b589504ec279e5a5929896ad1ce0"
+    },
+    {
       "path": "tsdown.config.ts",
       "mode": "100644",
       "bytes": 40082,
@@ -2900,14 +3120,10 @@
   ],
   "source_inputs_origins": [
     {
-      "source_commit": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
-      "receipt_sha256": "b8c842a4966d4344f3a37ff13623e099b33699f5e7af1d50911348813d63a6a4",
-      "selected_postimage_count": 15
-    },
-    {
-      "source_commit": "43719c923f28758caf0cf85f1c02d719772ea6f2",
-      "receipt_sha256": "d38374986bd55561c58392ce0dffc11ebc1094ad97cea58b33c80fe1e6d5e7b9",
-      "selected_postimage_count": 5
+      "source_commit": "21358c605b0b17d0dbe13111436671f6c3aca218",
+      "receipt_sha256": "081701c8644dc7bea3e30d8c94fc2247446851b0643c9821283cb18beb333115",
+      "selected_postimage_count": 50,
+      "meaning": "final exact named postimages; finite identity, not loaded/native proof"
     }
   ]
 }

@@ -1,0 +1,6 @@
+tree 45a737e31f2c571a8219cb90aec45a1a517b2f30
+parent 8afcb3426ebcc194484ad26af3bbcb6c6992192f
+author Franck MEYER <meyerfranckpro@gmail.com> 1791234264 +0000
+committer Franck MEYER <meyerfranckpro@gmail.com> 1791234264 +0000
+
+Forward native closure selection through the original agent CLI

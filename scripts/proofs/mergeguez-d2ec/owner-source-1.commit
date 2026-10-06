@@ -1,0 +1,10 @@
+tree 50392dd633201a7e6500d8680e81ec0ede79a91f
+parent 43719c923f28758caf0cf85f1c02d719772ea6f2
+author Codex <codex@localhost> 1791240753 +0900
+committer Codex <codex@localhost> 1791240753 +0900
+
+Carry selected native execution through original managed task owners
+
+Bind source issuance to the genuine Gateway host and original native ledger.
+Retain physical execution and ambiguous publication through retirement.
+Source-only reviewed; build/native/private consumer qualification remains pending.

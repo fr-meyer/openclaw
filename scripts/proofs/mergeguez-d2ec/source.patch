@@ -1,344 +1,63 @@
-diff --git a/docs/cli/agent.md b/docs/cli/agent.md
-index 73aad1083a0204d943bfc85a0dd1e6ccda81a6f8..6854571347bae9bdac2b34919cbcf9561995196d 100644
---- a/docs/cli/agent.md
-+++ b/docs/cli/agent.md
-@@ -326,6 +326,8 @@ These are observations, not statistical speed guarantees.
- - `--session-id <id>`: explicit session id
- - `--agent <id>`: agent id; overrides routing bindings
- - `--model <id>`: model override for this run (`provider/model` or model id)
-+- `--required-execution-closure <profile>`: require the `native-sse-no-tools` profile for a Gateway model run
-+- `--run-id <id>`: supply the idempotency key retained across Gateway retries; blank values are rejected
- - `--thinking <level>`: agent thinking level (`off`, `minimal`, `low`, `medium`, `high`, plus provider/runtime-supported levels such as `xhigh`, `adaptive`, `max`, or `ultra`)
- - `--verbose <on|off>`: persist verbose level for the session
- - `--channel <channel>`: delivery channel; omit to use the main session channel
-@@ -337,6 +339,16 @@ These are observations, not statistical speed guarantees.
- - `--timeout <seconds>`: override this command's agent-turn deadline (default 600, or `agents.defaults.timeoutSeconds`); `0` disables the overall deadline. The 600-second fallback belongs to this CLI command, not ordinary Gateway turns, whose default is 48 hours.
- - `--json`: output JSON
+diff --git a/docs/plugins/sdk-runtime.md b/docs/plugins/sdk-runtime.md
+index 925de790609219d6ce058de93fd1b60c91aacb67..79fd1ca978e38f9b820c9785069dfd571adf9b92 100644
+--- a/docs/plugins/sdk-runtime.md
++++ b/docs/plugins/sdk-runtime.md
+@@ -425,6 +425,11 @@ controller-root flow can omit the parent when its purpose has no active worker;
+ that lane does not replace another worker's live purpose. The host checks the
+ flow revision and native parent again across admission and before child issuance.
  
-+Selecting `--required-execution-closure native-sse-no-tools` sends `modelRun: true`
-+and `promptMode: "none"` with the profile and requests the existing `operator.admin`
-+identity. The Gateway still checks the operator authority, selected model, provider,
-+and fresh session. Other profile values, blank profiles, and `--local` are rejected
-+before dispatch. Omitting the flag preserves the ordinary turn settings.
++Before dispatch, require `api.runtime.tasks.availability.controllerWorkerLaunch === true`.
++Older runtimes may ignore unknown public run fields; absent or false support
++requires holding the flow before dispatch, with no raw-run fallback. This marker
++identifies protocol support and grants no task authority.
 +
-+Both `--required-execution-closure` and `--run-id` are rejected with `agent exec`,
-+which has no retained Gateway run identity. Reuse a `--run-id` only for retries of
-+the same attempt.
-+
- Gateway commands using OpenClaw's managed agent loop return their completed reply before optional memory
- flushing and compaction. That work has its own session owner and uses the command's
- remaining time. A new turn in the same session cancels and settles it before
-diff --git a/src/cli/program/register.agent-turn.ts b/src/cli/program/register.agent-turn.ts
-index 16d6be758039710f2b0cb96b628d09e0ee578798..a5779384ea9a65b213c6af243a87bf75e971eb27 100644
---- a/src/cli/program/register.agent-turn.ts
-+++ b/src/cli/program/register.agent-turn.ts
-@@ -24,6 +24,11 @@ export function registerAgentTurnCommand(
-     .option("--session-id <id>", "Use an explicit session id")
-     .option("--agent <id>", "Agent id (overrides routing bindings)")
-     .option("--model <id>", "Model override for this run (provider/model or model id)")
-+    .option(
-+      "--required-execution-closure <profile>",
-+      "Require native-sse-no-tools closure for a Gateway model run (requires operator.admin)",
-+    )
-+    .option("--run-id <id>", "Retain this run's idempotency key across Gateway retries")
-     .option(
-       "--thinking <level>",
-       `Thinking level: ${THINKING_LEVELS_HELP.replaceAll("|", " | ")} where supported`,
-@@ -157,8 +162,18 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
-             thinking?: string;
-             timeout?: string;
-             json?: boolean;
-+            requiredExecutionClosure?: string;
-+            runId?: string;
-           }
-         | undefined;
-+      for (const [flag, value] of [
-+        ["--required-execution-closure", parentOpts?.requiredExecutionClosure],
-+        ["--run-id", parentOpts?.runId],
-+      ]) {
-+        if (value !== undefined) {
-+          throw new Error(`${flag} cannot be used with agent exec`);
-+        }
-+      }
-       const execOpts = {
-         ...opts,
-         messageFile: opts.messageFile ?? parentOpts?.messageFile,
-diff --git a/src/cli/program/register.agent.test.ts b/src/cli/program/register.agent.test.ts
-index edc87a080b29d8e108cd40d856e85f1f84b81575..6ccb1083786616a00dffa372dd0c4523c700fbf1 100644
---- a/src/cli/program/register.agent.test.ts
-+++ b/src/cli/program/register.agent.test.ts
-@@ -86,6 +86,39 @@ beforeEach(() => {
- });
+ The ordinary tool-using launcher can retain that same controller relationship:
+ `api.runtime.subagent.run({ ...workerRequest, managedFlow: {
+ requesterSessionKey: originalController, flowId, expectedRevision } })`.
+diff --git a/src/gateway/server-managed-task-flow-runtime.test.ts b/src/gateway/server-managed-task-flow-runtime.test.ts
+index a11b4e1fd6e1b1a2e83d4a558f550a0a5bef05d4..40c40d5aceb7a37366084c7ccbc6cfdc77ab0433 100644
+--- a/src/gateway/server-managed-task-flow-runtime.test.ts
++++ b/src/gateway/server-managed-task-flow-runtime.test.ts
+@@ -147,11 +147,17 @@ describe("original Gateway managed host identity", () => {
+         return { runId: worker.idempotencyKey! };
+       },
+     });
++    expect(runtime.availability.controllerWorkerLaunch).toBe(true);
+     const bound = runtime.managedFlows.bindSession({ sessionKey: "agent:ops:main" });
+     try { await bound.launchSubagent({ flowId: "flow", expectedRevision: 3, request: worker }); }
+     finally { await bound.close(); }
+   });
  
- describe("agent command registration", () => {
-+  it("forwards required closure and the retained run id to the Gateway caller", async () => {
-+    await runCli([
-+      "agent",
-+      "--message",
-+      "hi",
-+      "--agent",
-+      "ops",
-+      "--required-execution-closure",
-+      "native-sse-no-tools",
-+      "--run-id",
-+      "review-attempt-7",
-+    ]);
-+    expect(agentCliCommandMock).toHaveBeenCalledExactlyOnceWith(
-+      expect.objectContaining({
-+        requiredExecutionClosure: "native-sse-no-tools",
-+        runId: "review-attempt-7",
-+      }),
-+      runtime,
-+    );
-+    expect(agentExecCommandMock).not.toHaveBeenCalled();
++  it("does not advertise ordinary launch support without the original worker dispatcher", () => {
++    const runtime = createGatewayManagedTaskFlowRuntime(original.resolver, new AbortController().signal);
++    expect(runtime.availability.controllerWorkerLaunch).toBe(false);
 +  });
 +
-+  it.each([
-+    ["--required-execution-closure", "native-sse-no-tools"],
-+    ["--run-id", "review-attempt-7"],
-+  ])("refuses parent %s for embedded exec", async (flag, value) => {
-+    await expect(runCli(["agent", flag, value, "exec", "hi"])).rejects.toThrow(
-+      `${flag} cannot be used with agent exec`,
-+    );
-+    expect(agentCliCommandMock).not.toHaveBeenCalled();
-+    expect(agentExecCommandMock).not.toHaveBeenCalled();
-+  });
-+
-   it("normalizes explicit verbosity", async () => {
-     await runCli("agent --message hi --verbose ON --json".split(" "));
-     expect(mocks.setVerboseMock).toHaveBeenCalledWith(true);
-diff --git a/src/commands/agent-via-gateway.test.ts b/src/commands/agent-via-gateway.test.ts
-index 36e15a2e1b0496c6bdb57e4f66809fd831a2ea59..f6b37494a2b3017a573042eab80b738684a3fcee 100644
---- a/src/commands/agent-via-gateway.test.ts
-+++ b/src/commands/agent-via-gateway.test.ts
-@@ -383,6 +383,7 @@ describe("agentCliCommand", () => {
-     ["sessionId", "--session-id"],
-     ["sessionKey", "--session-key"],
-     ["to", "--to"],
-+    ["runId", "--run-id"],
-   ] as const)(
-     "rejects blank %s selectors before local or Gateway dispatch",
-     async (option, flag) => {
-@@ -404,6 +405,139 @@ describe("agentCliCommand", () => {
-     },
-   );
- 
-+  it.each(["", "   ", "unsupported-profile"])(
-+    "refuses unsupported required closure %j before any dispatch",
-+    async (requiredExecutionClosure) => {
-+      await expect(
-+        agentCliCommand({ message: "hi", agent: "ops", requiredExecutionClosure }, runtime),
-+      ).rejects.toThrow("--required-execution-closure must be native-sse-no-tools");
-+      expect(callGateway).not.toHaveBeenCalled();
-+      expect(agentCommand).not.toHaveBeenCalled();
-+      expect(loadConfig).not.toHaveBeenCalled();
-+      expect(loadRuntimeConfig).not.toHaveBeenCalled();
-+    },
-+  );
-+
-+  it("refuses required closure with local execution before loading the runtime", async () => {
-+    await expect(
-+      agentCliCommand(
-+        { message: "hi", agent: "ops", requiredExecutionClosure: "native-sse-no-tools", local: true },
-+        runtime,
-+      ),
-+    ).rejects.toThrow("--required-execution-closure cannot be used with --local");
-+    expect(callGateway).not.toHaveBeenCalled();
-+    expect(agentCommand).not.toHaveBeenCalled();
-+    expect(loadRuntimeConfig).not.toHaveBeenCalled();
-+  });
-+
-+  it.each([false, true])(
-+    "dispatches required closure with admin identity (remote=%s)",
-+    async (remote) => {
-+      await withTempStore(
-+        async () => {
-+          const response = { ...gatewaySuccessReply("closed"), requiredRunClosure: { original: true } };
-+          callGateway.mockResolvedValue(response);
-+          const result = await agentCliCommand(
-+            {
-+              message: "hi",
-+              agent: "ops",
-+              model: "openai/approved-model",
-+              json: true,
-+              timeout: "0",
-+              runId: "review-attempt-7",
-+              requiredExecutionClosure: "native-sse-no-tools",
-+            },
-+            jsonRuntime,
-+          );
-+          const request = requireRecord(requireFirstCallArg(callGateway, "gateway"), "gateway request");
-+          expect(request).toMatchObject({
-+            method: "agent",
-+            clientName: "gateway-client",
-+            mode: "backend",
-+            scopes: ["operator.admin"],
-+            expectFinal: true,
-+            timeoutMs: 2_147_000_000,
-+            params: {
-+              requiredExecutionClosure: "native-sse-no-tools",
-+              modelRun: true,
-+              promptMode: "none",
-+              idempotencyKey: "review-attempt-7",
-+              model: "openai/approved-model",
-+            },
-+          });
-+          expect(request.params).not.toHaveProperty("mergeguezReviewRequest");
-+          expect(result).toBe(response);
-+          expect(jsonRuntime.writeJson).toHaveBeenCalledWith(response);
-+          expect(agentCommand).not.toHaveBeenCalled();
-+        },
-+        {
-+          agents: { entries: { ops: {} } },
-+          ...(remote ? remoteGatewayConfig : {}),
-+        },
-+      );
-+    },
-+  );
-+
-+  it("requests required closure admin identity without a model override", async () => {
-+    await withTempStore(
-+      async () => {
-+        mockGatewaySuccessReply();
-+        await agentCliCommand(
-+          { message: "hi", agent: "ops", requiredExecutionClosure: "native-sse-no-tools" },
-+          runtime,
-+        );
-+        const request = requireRecord(requireFirstCallArg(callGateway, "gateway"), "gateway request");
-+        expect(request).toMatchObject({
-+          clientName: "gateway-client",
-+          mode: "backend",
-+          scopes: ["operator.admin"],
-+        });
-+      },
-+      { agents: { entries: { ops: {} } }, ...remoteGatewayConfig },
-+    );
-+  });
-+
-+  it("retains required closure and the supplied run id across connection retries", async () => {
-+    vi.useFakeTimers();
-+    try {
-+      await withTempStore(
-+        async () => {
-+          const started = createDeferredCore();
-+          callGateway
-+            .mockImplementationOnce(async () => {
-+              started.resolve();
-+              throw createGatewayNormalCloseError();
-+            })
-+            .mockResolvedValueOnce(gatewaySuccessReply("closed"));
-+          const run = agentCliCommand(
-+            {
-+              message: "hi",
-+              agent: "ops",
-+              runId: "review-attempt-7",
-+              requiredExecutionClosure: "native-sse-no-tools",
-+            },
-+            runtime,
-+          );
-+          await started.promise;
-+          await vi.advanceTimersByTimeAsync(1_000);
-+          await run;
-+          expect(callGateway).toHaveBeenCalledTimes(2);
-+          for (const [request] of callGateway.mock.calls) {
-+            expect(request.params).toMatchObject({
-+              idempotencyKey: "review-attempt-7",
-+              requiredExecutionClosure: "native-sse-no-tools",
-+              modelRun: true,
-+              promptMode: "none",
-+            });
-+          }
-+        },
-+        { agents: { entries: { ops: {} } } },
-+      );
-+    } finally {
-+      vi.useRealTimers();
-+    }
-+  });
-+
-   it("clamps oversized gateway timeout seconds at the command boundary", async () => {
-     await withTempStore(async () => {
-       mockGatewaySuccessReply();
-@@ -446,6 +580,9 @@ describe("agentCliCommand", () => {
-           expect(request.scopes).toEqual(["operator.admin"]);
-           expect(request.params).toMatchObject({ agentId: explicitOwnership ? "solo" : "main" });
-           expect(request.params).not.toHaveProperty("cleanupBundleMcpOnRunEnd");
-+          expect(request.params).not.toHaveProperty("requiredExecutionClosure");
-+          expect(request.params).not.toHaveProperty("modelRun");
-+          expect(request.params).not.toHaveProperty("promptMode");
-           expect(agentCommand).not.toHaveBeenCalled();
-           expect(agentModuleLoadCount).not.toHaveBeenCalled();
-           expect(runtime.log).toHaveBeenCalledWith("hello");
-diff --git a/src/commands/agent-via-gateway.ts b/src/commands/agent-via-gateway.ts
-index 10841c2ca7e8ea2a16d11bdb1129ff6416ca6400..c64953ba5a1fbe0474ad0757b32839a1dc992d3c 100644
---- a/src/commands/agent-via-gateway.ts
-+++ b/src/commands/agent-via-gateway.ts
-@@ -104,6 +104,7 @@ type AgentCliOpts = {
-   messageFile?: string;
-   agent?: string;
-   model?: string;
-+  requiredExecutionClosure?: string;
-   to?: string;
-   sessionId?: string;
-   sessionKey?: string;
-@@ -1011,14 +1012,15 @@ async function agentViaGatewayCommand(
- 
-   const idempotencyKey = normalizeOptionalString(opts.runId) || randomIdempotencyKey();
-   const modelOverride = normalizeOptionalString(opts.model);
--  const needsAdminGatewayIdentity = Boolean(modelOverride) || isSessionResetCommand(body);
-+  const needsAdminGatewayIdentity =
-+    Boolean(modelOverride) || Boolean(opts.requiredExecutionClosure) || isSessionResetCommand(body);
-   const gatewayIdentity: AgentGatewayCallIdentity = {
-     clientName: needsAdminGatewayIdentity
-       ? GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT
-       : GATEWAY_CLIENT_NAMES.CLI,
-     mode: needsAdminGatewayIdentity ? GATEWAY_CLIENT_MODES.BACKEND : GATEWAY_CLIENT_MODES.CLI,
--    // Overrides/resets require admin; otherwise only the local operator requests
--    // owner scope, and remote callers keep the agent method's least-privilege scope.
-+    // Model overrides, required closure, and resets require admin; otherwise only the local
-+    // operator requests owner scope, and remote callers keep the agent method's least-privilege scope.
-     ...(needsAdminGatewayIdentity || !remoteGateway ? { scopes: [ADMIN_SCOPE] } : {}),
-   };
- 
-@@ -1039,6 +1041,13 @@ async function agentViaGatewayCommand(
-             message: body,
-             agentId,
-             model: modelOverride,
-+            ...(opts.requiredExecutionClosure
-+              ? {
-+                  requiredExecutionClosure: opts.requiredExecutionClosure,
-+                  modelRun: true,
-+                  promptMode: "none",
-+                }
-+              : {}),
-             to: opts.to,
-             replyTo: opts.replyTo,
-             sessionId: opts.sessionId,
-@@ -1188,17 +1197,26 @@ export async function agentCliCommand(
-   runtime: RuntimeEnv,
-   deps?: AgentCliDeps,
- ) {
-+  if (opts.requiredExecutionClosure !== undefined) {
-+    if (opts.requiredExecutionClosure !== "native-sse-no-tools") {
-+      throw new Error("--required-execution-closure must be native-sse-no-tools");
-+    }
-+    if (opts.local === true) {
-+      throw new Error("--required-execution-closure cannot be used with --local");
-+    }
-+  }
-   if (opts.local !== true) {
-     // Check the operator entry before model overrides select a backend identity
-     // or target resolution reads another session. Embedded one-shot runs are separate.
-     assertGatewayCliMessageContext("agent");
-   }
--  // A present blank selector must not become an omitted target during normalization.
-+  // A present blank selector or run id must not become omitted during normalization.
-   for (const [flag, value] of [
-     ["--agent", opts.agent],
-     ["--session-id", opts.sessionId],
-     ["--session-key", opts.sessionKey],
-     ["--to", opts.to],
-+    ["--run-id", opts.runId],
-   ]) {
-     if (value !== undefined && !value.trim()) {
-       throw new Error(`${flag} must not be blank`);
+   it("bootstraps a flow through awaited original task APIs before root native child admission", async () => {
+     original.state.current = true; original.owner.revoked = false;
+     original.state.allowWrites = true; original.state.writes = 0;
+diff --git a/src/gateway/server-managed-task-flow-runtime.ts b/src/gateway/server-managed-task-flow-runtime.ts
+index c79bddd78fc5c0b59e88d32d344a9a1cfdef5b96..9827b5de01f7c163dd4d3fae2639e0edc68684e0 100644
+--- a/src/gateway/server-managed-task-flow-runtime.ts
++++ b/src/gateway/server-managed-task-flow-runtime.ts
+@@ -562,6 +562,7 @@ export function createGatewayManagedTaskFlowRuntime(
+       controllerParity: true,
+       canonicalTaskCreate: false,
+       workerLaunch: Boolean(nativeDispatch),
++      controllerWorkerLaunch: Boolean(nativeDispatch),
+     }),
+     managedFlows: {
+       bindSession: (input) => {
+diff --git a/src/plugins/runtime/types.ts b/src/plugins/runtime/types.ts
+index b2b01c5a526fc5e7d86104561b23a99cff44c5c0..c8c9ccc4999f20b4e9b59f15f35d0f4242ea3782 100644
+--- a/src/plugins/runtime/types.ts
++++ b/src/plugins/runtime/types.ts
+@@ -24,6 +24,8 @@ type PluginManagedTaskFlowRuntime = {
+     controllerParity: boolean;
+     canonicalTaskCreate: false;
+     workerLaunch: boolean;
++    /** Ordinary controller-bound public launcher protocol, not a task permission grant. */
++    controllerWorkerLaunch?: boolean;
+   }>;
+   managedFlows: { bindSession(input: { sessionKey: string }): BoundManagedTaskFlows };
+   runs: { bindSession(input: { sessionKey: string; agentId?: string }): BoundManagedTaskRuns };

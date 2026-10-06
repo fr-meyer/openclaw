@@ -1,0 +1,364 @@
+diff --git a/docs/plugins/sdk-runtime.md b/docs/plugins/sdk-runtime.md
+index 5687d29372ba21c1022542789529eefceaccde3d..925de790609219d6ce058de93fd1b60c91aacb67 100644
+--- a/docs/plugins/sdk-runtime.md
++++ b/docs/plugins/sdk-runtime.md
+@@ -425,6 +425,24 @@ controller-root flow can omit the parent when its purpose has no active worker;
+ that lane does not replace another worker's live purpose. The host checks the
+ flow revision and native parent again across admission and before child issuance.
+ 
++The ordinary tool-using launcher can retain that same controller relationship:
++`api.runtime.subagent.run({ ...workerRequest, managedFlow: {
++requesterSessionKey: originalController, flowId, expectedRevision } })`.
++These fields select the original flow; they grant no authority. The actual
++Gateway/plugin owner binds the flow and publishes the native worker's requester,
++controller, flow, task, and generation before admission returns. An optional
++`parentTaskId` must be the original current parent. Foreign or cancelled flows,
++changed revisions, copied host/source objects, and unsupported runtimes refuse.
++
++This ordinary launcher preserves the worker's registered tools, prompt, working
++directory, and timeout. It does not select the no-tools review closure. Its
++returned `execution` promise observes the original worker and host cleanup;
++the returned run ID proves admission, not drain. The launcher retains its own
++host until that execution settles, so closing a separate borrowed read binding
++does not cancel the issued worker. Callers retain unknown/failure policy and
++native lifecycle reconciliation; the promise does not grant review, budget,
++retry, publication, or merge authority.
++
+ Selected native terminal facts report each issued model attempt's `tokenUsage`.
+ `state: "available"` carries only the original terminal's safe, coherent input,
+ output, and total counts. Missing, incomplete, invalid, or inconsistent counts
+diff --git a/src/gateway/server-managed-task-flow-runtime.test.ts b/src/gateway/server-managed-task-flow-runtime.test.ts
+index 0e965df2b425b498acd04ba5343d0e6fa19e46c3..a11b4e1fd6e1b1a2e83d4a558f550a0a5bef05d4 100644
+--- a/src/gateway/server-managed-task-flow-runtime.test.ts
++++ b/src/gateway/server-managed-task-flow-runtime.test.ts
+@@ -133,6 +133,25 @@ const request: ManagedTaskSubagentRequest = {
+   requiredExecutionClosure: "native-sse-no-tools",
+ };
+ describe("original Gateway managed host identity", () => {
++  it("prepares ordinary tool workers through the same original controller flow source", async () => {
++    original.state.current = true; original.owner.revoked = false;
++    const { requiredExecutionClosure: _selected, ...ordinary } = request;
++    const worker = { ...ordinary, toolsAlsoAllow: ["controller_tool"], cwd: "/workspace/controller" };
++    const runtime = createGatewayManagedTaskFlowRuntime(original.resolver, new AbortController().signal, {
++      launchSubagent: async (captured, source) => {
++        expect(captured).toMatchObject(worker);
++        expect(captured.requiredExecutionClosure).toBeUndefined();
++        expect(getManagedTaskSubagentRegistration(source, { runId: worker.idempotencyKey!, sessionKey: worker.sessionKey })).toMatchObject({
++          ownerKey: "agent:ops:main", flowId: "flow", expectedRevision: 3,
++        });
++        return { runId: worker.idempotencyKey! };
++      },
++    });
++    const bound = runtime.managedFlows.bindSession({ sessionKey: "agent:ops:main" });
++    try { await bound.launchSubagent({ flowId: "flow", expectedRevision: 3, request: worker }); }
++    finally { await bound.close(); }
++  });
++
+   it("bootstraps a flow through awaited original task APIs before root native child admission", async () => {
+     original.state.current = true; original.owner.revoked = false;
+     original.state.allowWrites = true; original.state.writes = 0;
+diff --git a/src/gateway/server-managed-task-flow-runtime.ts b/src/gateway/server-managed-task-flow-runtime.ts
+index 3208996e5f9bb94afe10112d87db6bfc416eddf6..c79bddd78fc5c0b59e88d32d344a9a1cfdef5b96 100644
+--- a/src/gateway/server-managed-task-flow-runtime.ts
++++ b/src/gateway/server-managed-task-flow-runtime.ts
+@@ -312,11 +312,12 @@ export function createGatewayManagedTaskFlowRuntime(
+               !child || childSessionKey !== childSessionKey.trim() ||
+               isIncognitoSessionKey(childSessionKey) || childSessionKey === sessionKey ||
+               !childSessionKey.includes(":subagent:") ||
+-              request.requiredExecutionClosure !== "native-sse-no-tools" ||
++              (request.requiredExecutionClosure !== undefined &&
++                request.requiredExecutionClosure !== "native-sse-no-tools") ||
+               request.completionDelivery !== undefined || request.deliver === true ||
+               !launch.flowId || launch.flowId !== launch.flowId.trim() ||
+               !Number.isSafeInteger(launch.expectedRevision) || launch.expectedRevision < 0) {
+-            throw new Error("Native flow dispatch requires one exact fresh child and selected execution profile");
++            throw new Error("Native flow dispatch requires one exact fresh child and supported execution profile");
+           }
+           const flow = await runOwned(() => executeRead({
+             type: "tasks.managedFlows.get",
+diff --git a/src/gateway/server-plugin-subagent-runtime.test.ts b/src/gateway/server-plugin-subagent-runtime.test.ts
+index 865b7171e30f963634010dd26284bcc2eb80b601..605a4275bf0ff537bf226008701087fb924ca683 100644
+--- a/src/gateway/server-plugin-subagent-runtime.test.ts
++++ b/src/gateway/server-plugin-subagent-runtime.test.ts
+@@ -19,6 +19,7 @@ import {
+   withPluginRuntimePluginScope,
+ } from "../plugins/runtime/gateway-request-scope.js";
+ import type { PluginRuntime } from "../plugins/runtime/types.js";
++import type { BoundManagedTaskFlows } from "../tasks/managed-task-flow-contract.js";
+ import {
+   createBackgroundWorkOwner,
+   getBackgroundWorkSnapshot,
+@@ -789,3 +790,79 @@ describe("native managed task selection", () => {
+       .toThrow("original Gateway subagent runtime");
+   });
+ });
++
++describe("controller-bound ordinary launcher", () => {
++  const managedFlow = {
++    requesterSessionKey: "agent:controller:main",
++    flowId: "original-flow",
++    expectedRevision: 3,
++  };
++  const request = {
++    sessionKey: "agent:research:subagent:worker",
++    idempotencyKey: "original-worker-attempt",
++    message: "Original controller work",
++    toolsAlsoAllow: ["controller_tool"],
++    cwd: "/workspace/controller",
++    runTimeoutSeconds: 3600,
++    managedFlow,
++  };
++
++  it("retains its launch host through physical cleanup after returning admission", async () => {
++    const physical = createDeferred<void>();
++    const close = vi.fn(async () => {});
++    const launchSubagent = vi.fn(async () => ({
++      runId: request.idempotencyKey,
++      sessionKey: request.sessionKey,
++      execution: physical.promise,
++    }));
++    const bind = vi.fn(() => ({ close, launchSubagent }) as unknown as BoundManagedTaskFlows);
++    const runtime = createGatewaySubagentRuntime(undefined, {}, undefined, bind);
++    const result = await runtime.run(request);
++    expect(bind).toHaveBeenCalledWith({ sessionKey: managedFlow.requesterSessionKey });
++    expect(launchSubagent).toHaveBeenCalledWith(expect.objectContaining({
++      flowId: managedFlow.flowId,
++      expectedRevision: managedFlow.expectedRevision,
++      request: expect.objectContaining({
++        sessionKey: request.sessionKey,
++        idempotencyKey: request.idempotencyKey,
++        toolsAlsoAllow: request.toolsAlsoAllow,
++        cwd: request.cwd,
++        runTimeoutSeconds: request.runTimeoutSeconds,
++        sessionId: expect.any(String),
++      }),
++    }));
++    expect(close).not.toHaveBeenCalled();
++    physical.resolve();
++    await result.execution;
++    expect(close).toHaveBeenCalledTimes(1);
++  });
++
++  it("keeps execution and cleanup failure observable", async () => {
++    const physical = createDeferred<void>();
++    const close = vi.fn(async () => { throw new Error("cleanup unknown"); });
++    const runtime = createGatewaySubagentRuntime(undefined, {}, undefined,
++      () => ({ close, launchSubagent: async () => ({ runId: request.idempotencyKey,
++        execution: physical.promise }) }) as unknown as BoundManagedTaskFlows);
++    const result = await runtime.run(request);
++    physical.reject(new Error("worker failed"));
++    await expect(result.execution).rejects.toThrow("did not verify");
++    expect(close).toHaveBeenCalledTimes(1);
++  });
++
++  it("refuses a missing physical owner and closes the borrowed launch host", async () => {
++    const close = vi.fn(async () => {});
++    const runtime = createGatewaySubagentRuntime(undefined, {}, undefined,
++      () => ({ close, launchSubagent: async () => ({ runId: request.idempotencyKey }) }) as unknown as BoundManagedTaskFlows);
++    await expect(runtime.run(request)).rejects.toThrow("original physical execution owner");
++    expect(close).toHaveBeenCalledTimes(1);
++  });
++
++  it("does not use this selector as selected review or human delivery authority", async () => {
++    const bind = vi.fn(() => { throw new Error("must not bind"); });
++    const runtime = createGatewaySubagentRuntime(undefined, {}, undefined, bind);
++    for (const extra of [{ deliver: true }, { requiredExecutionClosure: "native-sse-no-tools" as const }]) {
++      await expect(runtime.run({ ...request, ...extra })).rejects.toThrow("ordinary worker profile");
++    }
++    expect(bind).not.toHaveBeenCalled();
++  });
++});
+diff --git a/src/gateway/server-plugin-subagent-runtime.ts b/src/gateway/server-plugin-subagent-runtime.ts
+index 47ee1940cc4de2a830300d4d52aa87e2c764caff..bde52a4a9fd5bcaed65d3919c8551d1c5688d1f0 100644
+--- a/src/gateway/server-plugin-subagent-runtime.ts
++++ b/src/gateway/server-plugin-subagent-runtime.ts
+@@ -16,6 +16,7 @@ import {
+ } from "../plugins/runtime/gateway-request-scope.js";
+ import { resolvePluginSubagentCompletionRequester } from "../plugins/runtime/subagent-requester-context.js";
+ import type { PluginRuntime, SubagentRunParams, SubagentRunResult } from "../plugins/runtime/types.js";
++import type { BoundManagedTaskFlows } from "../tasks/managed-task-flow-contract.js";
+ import {
+   assertManagedTaskSubagentSource,
+   retainManagedTaskSubagentExecution,
+@@ -179,6 +180,7 @@ export function createGatewaySubagentRuntime(
+   resolveGatewayContext?: GatewayContextResolver,
+   overridePolicies: PluginSubagentOverridePolicies = {},
+   runtimeLifetime?: AbortSignal,
++  bindManagedFlow?: (input: { sessionKey: string }) => BoundManagedTaskFlows,
+ ): PluginRuntime["subagent"] {
+   const authorizeModelOverride = (params: { provider?: string; model?: string }, nativeTask = false) => {
+     const scope = getPluginRuntimeGatewayRequestScope();
+@@ -228,7 +230,62 @@ export function createGatewaySubagentRuntime(
+   };
+ 
+   const run: ManagedTaskRuntimeRun = async (request, managedTaskSubagentSource) => {
+-    const params = { ...request };
++    const { managedFlow, ...params } = request;
++    if (managedFlow !== undefined) {
++      // This existing public launcher enters the original bound flow owner.
++      // Selection data cannot create a source or borrow human/tool authority.
++      if (managedTaskSubagentSource || params.requiredExecutionClosure !== undefined ||
++          params.completionDelivery !== undefined || params.deliver === true || !bindManagedFlow ||
++          !managedFlow || typeof managedFlow.requesterSessionKey !== "string" ||
++          !managedFlow.requesterSessionKey.trim() ||
++          managedFlow.requesterSessionKey !== managedFlow.requesterSessionKey.trim() ||
++          typeof managedFlow.flowId !== "string" || !managedFlow.flowId.trim() ||
++          managedFlow.flowId !== managedFlow.flowId.trim() ||
++          !Number.isSafeInteger(managedFlow.expectedRevision) || managedFlow.expectedRevision < 0) {
++        throw new Error("Controller launcher requires its original bound flow and ordinary worker profile.");
++      }
++      runtimeLifetime?.throwIfAborted();
++      params.signal?.throwIfAborted();
++      params.assertCurrent?.();
++      const selection = { ...managedFlow };
++      const bound = bindManagedFlow({ sessionKey: selection.requesterSessionKey });
++      try {
++        const result = await bound.launchSubagent({
++          flowId: selection.flowId,
++          expectedRevision: selection.expectedRevision,
++          ...(selection.parentTaskId !== undefined ? { parentTaskId: selection.parentTaskId } : {}),
++          request: {
++            ...params,
++            sessionId: params.sessionId ?? randomUUID(),
++            idempotencyKey: params.idempotencyKey ?? randomUUID(),
++          },
++        });
++        const physical = result.execution;
++        if (!physical) {
++          throw new Error("Controller launcher lacks its original physical execution owner.");
++        }
++        const execution = physical.then(
++          () => bound.close(),
++          async (error: unknown) => {
++            try { await bound.close(); }
++            catch (cleanupError) {
++              throw new AggregateError([error, cleanupError], "Controller worker and host cleanup did not verify");
++            }
++            throw error;
++          },
++        );
++        // Native events remain the delivery owner. Preserve this rejected promise
++        // for explicit cleanup observers without making it an unhandled rejection.
++        void execution.catch(() => undefined);
++        return { ...result, execution };
++      } catch (error) {
++        try { await bound.close(); }
++        catch (cleanupError) {
++          throw new AggregateError([error, cleanupError], "Controller launch and host cleanup did not verify");
++        }
++        throw error;
++      }
++    }
+     const selected = params.requiredExecutionClosure !== undefined;
+     if (selected && params.requiredExecutionClosure !== "native-sse-no-tools") {
+       throw new Error("Unsupported plugin subagent execution-closure profile.");
+@@ -332,6 +389,7 @@ export function createGatewaySubagentRuntime(
+       // The command owns parsing. Replacing its input with this result would
+       // apply non-idempotent provider aliases again; retain the authorized syntax.
+     }
++    let physicalExecution: Promise<void> | undefined;
+     const payload = await dispatchGatewayMethodInProcess<{
+       runId?: string;
+       sessionKey?: string;
+@@ -343,6 +401,7 @@ export function createGatewaySubagentRuntime(
+         sessionKey: params.sessionKey,
+         message: params.message,
+         deliver: params.deliver ?? false,
++        ...(managedTaskSubagentSource ? { sessionId: params.sessionId } : {}),
+         ...(selected ? {
+           sessionId: params.sessionId,
+           requiredExecutionClosure: params.requiredExecutionClosure,
+@@ -364,9 +423,12 @@ export function createGatewaySubagentRuntime(
+       {
+         ...(managedTaskSubagentSource ? {
+           managedTaskSubagentSource,
+-          expectFinal: true,
++          expectFinal: selected,
+           cancelOnDeadline: true,
+-          onExecution: (execution) => retainManagedTaskSubagentExecution(managedTaskSubagentSource, execution),
++          onExecution: (execution) => {
++            physicalExecution = execution;
++            retainManagedTaskSubagentExecution(managedTaskSubagentSource, execution);
++          },
+         } : {}),
+         signal: AbortSignal.any([params.signal, runtimeLifetime, managedTaskSubagentSource?.signal]
+           .filter((signal): signal is AbortSignal => signal !== undefined)),
+@@ -389,6 +451,9 @@ export function createGatewaySubagentRuntime(
+     const runtime = normalizePluginSubagentRunRuntime(payload?.runtime);
+     if (managedTaskSubagentSource) {
+       managedTaskSubagentSource.assertReceiptCurrent();
++      if (!selected && !physicalExecution) {
++        throw new Error("Managed worker lacks its original physical execution promise.");
++      }
+     }
+     if (managedTaskSubagentSource &&
+         (runId !== params.idempotencyKey || sessionKey !== params.sessionKey)) {
+@@ -413,6 +478,7 @@ export function createGatewaySubagentRuntime(
+       throw new Error("Selected native worker lacks its original terminal facts; ownership remains unresolved.");
+     }
+     return { runId, sessionKey, ...(runtime ? { runtime } : {}),
++      ...(managedTaskSubagentSource && !selected && physicalExecution ? { execution: physicalExecution } : {}),
+       ...(selected && payload.requiredRunTerminal ? { requiredRunTerminal: payload.requiredRunTerminal } : {}) };
+   };
+ 
+diff --git a/src/gateway/server-plugins.ts b/src/gateway/server-plugins.ts
+index 8437a37f4dca93425c31279d38a508772505f6eb..ed59c37f0a45b3a70eb8fd12563ef754db6ea0da 100644
+--- a/src/gateway/server-plugins.ts
++++ b/src/gateway/server-plugins.ts
+@@ -210,7 +210,17 @@ function createGatewayPluginRuntimeBindings(
+   if (resolveBoundGatewayContext) {
+     bindGatewayContextResolver(resolveBoundGatewayContext, resolveGatewayContext);
+   }
+-  const subagent = createGatewaySubagentRuntime(resolveBoundGatewayContext, overridePolicies, signal);
++  const subagent = createGatewaySubagentRuntime(
++    resolveBoundGatewayContext,
++    overridePolicies,
++    signal,
++    (input) => tasks.managedFlows.bindSession(input),
++  );
++  const tasks: NonNullable<PluginRuntime["tasks"]> = createGatewayManagedTaskFlowRuntime(
++    resolveBoundGatewayContext, signal, {
++      launchSubagent: (request, source) => runWithManagedTaskSubagentSource(subagent, request, source),
++    },
++  );
+   return {
+     retire: () => {
+       lifetime.abort(new Error("Plugin Gateway runtime retired; duplex invocation cancelled."));
+@@ -239,9 +249,7 @@ function createGatewayPluginRuntimeBindings(
+       hooks: createGatewayHooksRuntime(resolveBoundGatewayContext),
+       nodes: createGatewayNodesRuntime(resolveBoundGatewayContext, signal),
+       subagent,
+-      tasks: createGatewayManagedTaskFlowRuntime(resolveBoundGatewayContext, signal, {
+-        launchSubagent: (request, source) => runWithManagedTaskSubagentSource(subagent, request, source),
+-      }),
++      tasks,
+     },
+   };
+ }
+diff --git a/src/plugins/runtime/types.ts b/src/plugins/runtime/types.ts
+index d8c5ed5d04a9123296a3869eb89548067c0f1709..b2b01c5a526fc5e7d86104561b23a99cff44c5c0 100644
+--- a/src/plugins/runtime/types.ts
++++ b/src/plugins/runtime/types.ts
+@@ -37,6 +37,13 @@ export type SubagentRunParams = {
+   sessionKey: string;
+   /** Exact fresh session for a selected native run; never existing-session adoption. */
+   sessionId?: string;
++  /** Selection of the calling plugin's original controller flow, never a grant. */
++  managedFlow?: {
++    requesterSessionKey: string;
++    flowId: string;
++    expectedRevision: number;
++    parentTaskId?: string;
++  };
+   message: string;
+   /** Requires admission through the original bound native task/flow owner. */
+   requiredExecutionClosure?: "native-sse-no-tools";
+@@ -81,6 +88,8 @@ export type SubagentRunResult = {
+   runId: string;
+   /** Canonical accepted session identity. Optional for explicit/custom runtimes. */
+   sessionKey?: string;
++  /** Original execution plus host cleanup for a controller-bound launcher. Admission is not drain. */
++  execution?: Promise<void>;
+   /** Actual selected terminal facts; validate the complete contract before consuming. */
+   requiredRunTerminal?: unknown;
+   runtime?: {

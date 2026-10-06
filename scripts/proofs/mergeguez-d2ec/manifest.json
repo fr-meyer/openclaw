@@ -1,12 +1,22 @@
 {
   "schema": "mergeguez.sealed-runnable-qualification-tooling/v3",
-  "source_commit": "43719c923f28758caf0cf85f1c02d719772ea6f2",
-  "source_tree": "45a737e31f2c571a8219cb90aec45a1a517b2f30",
+  "source_commit": "21358c605b0b17d0dbe13111436671f6c3aca218",
+  "source_tree": "2ecddedfdd8b41b97c1b1231e2644e0a33a86f80",
   "files": [
     {
+      "path": "cli-source.commit",
+      "bytes": 290,
+      "sha256": "383bb895e3f14814317b3c1aac1ba8166ac9c614978f5314eed7420f98723ce3"
+    },
+    {
+      "path": "cli-source.patch",
+      "bytes": 15313,
+      "sha256": "1bc2661e35277a7268979072fa768ef6101ee321a93aac654bb4d2d83752535a"
+    },
+    {
       "path": "contract.json",
-      "bytes": 86032,
-      "sha256": "0eac4827d68c1eb2c6fdee567a70a2f88a4e752c156c3cf7757615930bbd522b"
+      "bytes": 94305,
+      "sha256": "5cd606492b61c2b36e5e6f664b17a56bb9f97e782e2e7b95c3505f1c1c625057"
     },
     {
       "path": "driver.py",
@@ -29,6 +39,36 @@
       "sha256": "5e623995512a9ef94b2cceeb83edfb7a4768bb15e4cb129a478195bef59040f4"
     },
     {
+      "path": "owner-source-1.commit",
+      "bytes": 496,
+      "sha256": "410e8f62b6d631add93351ff729a89cba3bcf644950695628dd30c88b3438a92"
+    },
+    {
+      "path": "owner-source-1.patch",
+      "bytes": 131837,
+      "sha256": "cad362fd7c81dca3469c754e184f307b5e0fd9e60fa64f599133c9a71b6cd85d"
+    },
+    {
+      "path": "owner-source-2.commit",
+      "bytes": 283,
+      "sha256": "f90214e65dc12a8ac0a6b406dadba94f87bf95002ae017a8ba675e7bcd589b5c"
+    },
+    {
+      "path": "owner-source-2.patch",
+      "bytes": 23567,
+      "sha256": "7a9e74fa1ca7e91a2ad5d95eedc3621ec23cd818e29ee4c3c4920c0fa757f5c2"
+    },
+    {
+      "path": "owner-source-3.commit",
+      "bytes": 292,
+      "sha256": "c267a1997ac63ccaaedba4d1da1ed0fb63203ae81128387b1543bd2f29167d89"
+    },
+    {
+      "path": "owner-source-3.patch",
+      "bytes": 19465,
+      "sha256": "dd6d03ea669ddc78692efbd7ffafc5db27e1c386e27f3427aa3f1230c0da1cc0"
+    },
+    {
       "path": "parent-source.commit",
       "bytes": 273,
       "sha256": "55dbf17dcbd3350b6d4445ad08c015565cf481335b39a2facfb31951eb98eee3"
@@ -45,18 +85,18 @@
     },
     {
       "path": "source.commit",
-      "bytes": 290,
-      "sha256": "383bb895e3f14814317b3c1aac1ba8166ac9c614978f5314eed7420f98723ce3"
+      "bytes": 293,
+      "sha256": "56c825b24331d93f8ebdbc92cb6cf1e10013adc88ebfa2d0e81684ee1551bf0a"
     },
     {
       "path": "source.patch",
-      "bytes": 15313,
-      "sha256": "1bc2661e35277a7268979072fa768ef6101ee321a93aac654bb4d2d83752535a"
+      "bytes": 3679,
+      "sha256": "b778a374124479fa5d57a453d617b99a90984823861191d994af322298db688e"
     },
     {
       "path": "test_driver.py",
-      "bytes": 63201,
-      "sha256": "02de92df7780890a69044f1dbb7cdc0359482a2a9df3e025e52a66367a022c03"
+      "bytes": 63467,
+      "sha256": "84331da7536679ff6732abc9ae229ca1f684d378703239b09b8c8ca990a01305"
     },
     {
       "path": "test_materialize.mjs",
@@ -65,8 +105,8 @@
     },
     {
       "path": "test_runtime.mjs",
-      "bytes": 24629,
-      "sha256": "59fc2d6c5b851bfa8d3de7d4ea108d91f9b2cedf1e3c7287623fcc435b37c81e"
+      "bytes": 24860,
+      "sha256": "feaa3ac919ad61b83ecdd1aaf15eb5b05b73978f0443001761d4fd7c222ee5cb"
     }
   ]
 }

@@ -1,6 +1,6 @@
-tree 45a737e31f2c571a8219cb90aec45a1a517b2f30
-parent 8afcb3426ebcc194484ad26af3bbcb6c6992192f
-author Franck MEYER <meyerfranckpro@gmail.com> 1791234264 +0000
-committer Franck MEYER <meyerfranckpro@gmail.com> 1791234264 +0000
+tree 2ecddedfdd8b41b97c1b1231e2644e0a33a86f80
+parent 1cbf2f749a4becdaa1476b7628bfa51c43b81d48
+author Franck MEYER <meyerfranckpro@gmail.com> 1791252137 +0000
+committer Franck MEYER <meyerfranckpro@gmail.com> 1791252137 +0000
 
-Forward native closure selection through the original agent CLI
+fix(gateway): advertise controller launch protocol before dispatch
