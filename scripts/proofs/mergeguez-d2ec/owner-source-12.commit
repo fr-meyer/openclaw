@@ -1,0 +1,10 @@
+tree 8733a0064c0f198e713368c6869bf4b20f40a543
+parent 7e98e1cb4b0ae217d2c59d4db15f9c632a998f69
+author Codex <codex@openai.com> 1791300043 +0900
+committer Codex <codex@openai.com> 1791300043 +0900
+
+fix(state): compare canonical guards against complete schema
+
+Build expected canonical definitions from the complete current DDL in the
+existing isolated comparison database. Preserve exact trigger comparison
+and add quarantine-removal and additional-trigger regressions.

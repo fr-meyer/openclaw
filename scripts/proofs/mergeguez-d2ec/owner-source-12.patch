@@ -1,0 +1,62 @@
+diff --git a/src/state/openclaw-agent-canonical-validation-schema.test.ts b/src/state/openclaw-agent-canonical-validation-schema.test.ts
+index 6c5075b6a5ceddebef2a7d06e2dc3237c76562e8..a3a10ab2fbbb95eec7d6df6ae51b11cbdace4bb8 100644
+--- a/src/state/openclaw-agent-canonical-validation-schema.test.ts
++++ b/src/state/openclaw-agent-canonical-validation-schema.test.ts
+@@ -199,6 +199,32 @@ describe("canonical session validation invalidation", () => {
+ });
+ 
+ describe("canonical validation schema admission", () => {
++  it("admits canonical run-quarantine guards and rejects their removal", () => {
++    withDatabase((database) => {
++      expect(
++        database
++          .prepare("SELECT name FROM sqlite_schema WHERE name = ?")
++          .get("agent_run_quarantine_session_nodes_insert"),
++      ).toBeDefined();
++      assertCanonicalSessionValidationSchema(database);
++      database.exec("DROP TRIGGER agent_run_quarantine_session_nodes_insert");
++      expect(() => assertCanonicalSessionValidationSchema(database)).toThrow(
++        /missing or drifted: agent_run_quarantine_session_nodes_insert/u,
++      );
++    });
++  });
++
++  it("rejects an additional session trigger that clears canonical pending keys", () => {
++    withDatabase((database) => {
++      assertCanonicalSessionValidationSchema(database);
++      database.exec(`CREATE TRIGGER clear_pending_after_node AFTER INSERT ON session_nodes
++        BEGIN DELETE FROM session_canonical_validation_pending; END`);
++      expect(() => assertCanonicalSessionValidationSchema(database)).toThrow(
++        /missing or drifted: clear_pending_after_node/u,
++      );
++    });
++  });
++
+   const missingTable = expect.objectContaining({
+     name: "SessionMetadataUnavailableError",
+     reason: "table-missing",
+diff --git a/src/state/openclaw-agent-canonical-validation-schema.ts b/src/state/openclaw-agent-canonical-validation-schema.ts
+index 42a2c7343c6a0fe57841acced457578d5087ac90..66f2ba72815ed675457653018ac68a1d67b43d69 100644
+--- a/src/state/openclaw-agent-canonical-validation-schema.ts
++++ b/src/state/openclaw-agent-canonical-validation-schema.ts
+@@ -46,17 +46,9 @@ function expectedDefinitions(): Map<string, string | null> {
+       const database = openNodeSqliteDatabase(":memory:");
+       try {
+         // sqlite-allow-raw -- Bootstrap the canonical DDL in an isolated schema comparison database.
+-        database.exec(
+-          [
+-            extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_nodes"),
+-            extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_windows"),
+-            extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_key_contract", {
+-              endMarker: "CREATE TABLE IF NOT EXISTS session_windows (",
+-              includeEndMarker: false,
+-            }),
+-            canonicalSessionValidationSchemaSql(),
+-          ].join("\n"),
+-        );
++        // Reads include every trigger on canonical tables, including guards
++        // outside the validation group, so compare against their complete DDL.
++        database.exec(OPENCLAW_AGENT_SCHEMA_SQL);
+         return readDefinitions(database);
+       } finally {
+         database.close();

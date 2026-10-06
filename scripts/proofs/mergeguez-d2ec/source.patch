@@ -1,62 +1,135 @@
 diff --git a/src/state/openclaw-agent-canonical-validation-schema.test.ts b/src/state/openclaw-agent-canonical-validation-schema.test.ts
-index 6c5075b6a5ceddebef2a7d06e2dc3237c76562e8..a3a10ab2fbbb95eec7d6df6ae51b11cbdace4bb8 100644
+index a3a10ab2..d36ac4f7 100644
 --- a/src/state/openclaw-agent-canonical-validation-schema.test.ts
 +++ b/src/state/openclaw-agent-canonical-validation-schema.test.ts
-@@ -199,6 +199,32 @@ describe("canonical session validation invalidation", () => {
- });
- 
- describe("canonical validation schema admission", () => {
-+  it("admits canonical run-quarantine guards and rejects their removal", () => {
-+    withDatabase((database) => {
-+      expect(
-+        database
-+          .prepare("SELECT name FROM sqlite_schema WHERE name = ?")
-+          .get("agent_run_quarantine_session_nodes_insert"),
-+      ).toBeDefined();
-+      assertCanonicalSessionValidationSchema(database);
-+      database.exec("DROP TRIGGER agent_run_quarantine_session_nodes_insert");
-+      expect(() => assertCanonicalSessionValidationSchema(database)).toThrow(
-+        /missing or drifted: agent_run_quarantine_session_nodes_insert/u,
-+      );
-+    });
-+  });
-+
-+  it("rejects an additional session trigger that clears canonical pending keys", () => {
-+    withDatabase((database) => {
-+      assertCanonicalSessionValidationSchema(database);
-+      database.exec(`CREATE TRIGGER clear_pending_after_node AFTER INSERT ON session_nodes
-+        BEGIN DELETE FROM session_canonical_validation_pending; END`);
-+      expect(() => assertCanonicalSessionValidationSchema(database)).toThrow(
-+        /missing or drifted: clear_pending_after_node/u,
-+      );
-+    });
-+  });
-+
-   const missingTable = expect.objectContaining({
-     name: "SessionMetadataUnavailableError",
-     reason: "table-missing",
-diff --git a/src/state/openclaw-agent-canonical-validation-schema.ts b/src/state/openclaw-agent-canonical-validation-schema.ts
-index 42a2c7343c6a0fe57841acced457578d5087ac90..66f2ba72815ed675457653018ac68a1d67b43d69 100644
---- a/src/state/openclaw-agent-canonical-validation-schema.ts
-+++ b/src/state/openclaw-agent-canonical-validation-schema.ts
-@@ -46,17 +46,9 @@ function expectedDefinitions(): Map<string, string | null> {
-       const database = openNodeSqliteDatabase(":memory:");
-       try {
-         // sqlite-allow-raw -- Bootstrap the canonical DDL in an isolated schema comparison database.
--        database.exec(
--          [
--            extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_nodes"),
--            extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_windows"),
--            extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_key_contract", {
--              endMarker: "CREATE TABLE IF NOT EXISTS session_windows (",
--              includeEndMarker: false,
--            }),
--            canonicalSessionValidationSchemaSql(),
--          ].join("\n"),
--        );
-+        // Reads include every trigger on canonical tables, including guards
-+        // outside the validation group, so compare against their complete DDL.
+@@ -8,6 +8,7 @@ import {
+ } from "./openclaw-agent-canonical-validation-schema.js";
+ import { OPENCLAW_AGENT_SCHEMA_VERSION } from "./openclaw-agent-db-contract.js";
+ import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
++import { getOpenClawAgentMigrationSchema } from "./openclaw-agent-db-schema-helpers.js";
+ import { ensureOpenClawAgentDatabaseSchema } from "./openclaw-agent-db-schema.js";
+ import { OPENCLAW_AGENT_SCHEMA_V21_SQL } from "./openclaw-agent-schema-v21.test-support.js";
+ import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
+@@ -272,7 +273,8 @@ describe("canonical validation schema admission", () => {
+           database[Symbol.dispose]();
+         }
+         database.open();
+-        database.exec(withoutCanonicalSessionValidationSchema(OPENCLAW_AGENT_SCHEMA_SQL));
 +        database.exec(OPENCLAW_AGENT_SCHEMA_SQL);
-         return readDefinitions(database);
-       } finally {
-         database.close();
++        database.exec("DROP TABLE session_canonical_validation_pending");
+         database.exec(`PRAGMA schema_version = ${cookie}`);
+         expect(() => assertCanonicalSessionValidationSchema(database)).toThrow(missingTable);
+       });
+@@ -288,7 +290,8 @@ describe("canonical validation schema admission", () => {
+         assert(typeof cookie === "number");
+         const replacement = new DatabaseSync(":memory:");
+         try {
+-          replacement.exec(withoutCanonicalSessionValidationSchema(OPENCLAW_AGENT_SCHEMA_SQL));
++          replacement.exec(OPENCLAW_AGENT_SCHEMA_SQL);
++          replacement.exec("DROP TABLE session_canonical_validation_pending");
+           replacement.exec(`PRAGMA schema_version = ${cookie}`);
+           database.deserialize(replacement.serialize());
+           expect(() => assertCanonicalSessionValidationSchema(database)).toThrow(missingTable);
+@@ -409,3 +412,59 @@ describe("agent schema 21 migration", () => {
+     });
+   });
+ });
++
++
++describe("agent snapshot migration target schema", () => {
++  it("installs current guards and backfills native writers when storage is already migrated", async () => {
++    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
++      const pathname = state.path("pre-snapshot.sqlite");
++      const database = new DatabaseSync(pathname);
++      try {
++        database.exec(getOpenClawAgentMigrationSchema(23));
++        database.exec(`PRAGMA user_version = 23;
++          INSERT INTO schema_meta (meta_key, role, schema_version, agent_id, created_at, updated_at)
++          VALUES ('primary', 'agent', 23, 'main', 1, 1)`);
++        insertNode(database, key, "target");
++        database
++          .prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = ?")
++          .run(
++            JSON.stringify({ sessionId: "target", updatedAt: 1, activeWriterRunId: "pre-snapshot-run" }),
++            key,
++          );
++        const before = database.prepare("SELECT *, 0 AS snapshot_revision FROM session_nodes").all();
++        await withAgentDatabaseMaintenanceLease({ env: state.env }, async () => {
++          ensureOpenClawAgentDatabaseSchema(database, {
++            agentId: "main",
++            env: state.env,
++            path: pathname,
++          });
++        });
++        expect(database.prepare("SELECT * FROM session_nodes").all()).toEqual(before);
++        expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(
++          OPENCLAW_AGENT_SCHEMA_VERSION,
++        );
++        expect(
++          database
++            .prepare("SELECT schema_version FROM schema_meta WHERE meta_key = 'primary'")
++            .get()?.schema_version,
++        ).toBe(OPENCLAW_AGENT_SCHEMA_VERSION);
++        expect(database.prepare("SELECT * FROM session_entry_snapshots").all()).toEqual([]);
++        assertCanonicalSessionValidationSchema(database);
++        expect(
++          database
++            .prepare(`SELECT run_id, session_key, session_id, created_at, evidence_kind
++              FROM agent_run_writer_intents WHERE run_id = 'pre-snapshot-run'`)
++            .get(),
++        ).toEqual({
++          run_id: "pre-snapshot-run",
++          session_key: key,
++          session_id: "target",
++          created_at: 1,
++          evidence_kind: "native-writer-persisted",
++        });
++      } finally {
++        database.close();
++      }
++    });
++  });
++});
+diff --git a/src/state/openclaw-agent-db-schema.ts b/src/state/openclaw-agent-db-schema.ts
+index 3193176a..542870b5 100644
+--- a/src/state/openclaw-agent-db-schema.ts
++++ b/src/state/openclaw-agent-db-schema.ts
+@@ -92,10 +92,7 @@ import {
+ } from "./openclaw-agent-participants-migration.js";
+ import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
+ import { migrateSessionEntrySnapshotsInTransaction } from "./openclaw-agent-session-snapshots-migration.js";
+-import {
+-  SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION,
+-  withoutSessionEntrySnapshotsSchema,
+-} from "./openclaw-agent-session-snapshots-schema.js";
++import { SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION } from "./openclaw-agent-session-snapshots-schema.js";
+ import { withLegacyAgentStorageSchema } from "./openclaw-agent-storage-schema.js";
+ import { migrateDeployedTranscriptFtsRowsInTransaction } from "./openclaw-agent-transcript-fts-schema.js";
+ import { migrateTranscriptPayloadStorageInTransaction } from "./openclaw-agent-transcript-payload-migration.js";
+@@ -360,7 +357,7 @@ function ensureAgentSchema(
+         previousVersion < SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION &&
+         targetVersion >= SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION;
+       const storageSchemaSql = requiresSnapshotMigration
+-        ? withoutSessionEntrySnapshotsSchema(schemaSql)
++        ? getOpenClawAgentMigrationSchema(SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION - 1)
+         : schemaSql;
+       const migrationSchemaSql = requiresStorageMigration
+         ? withLegacyAgentStorageSchema(storageSchemaSql, previousVersion)
+@@ -411,6 +408,8 @@ function ensureAgentSchema(
+         }
+         if (requiresSnapshotMigration) {
+           migrateSessionEntrySnapshotsInTransaction(db);
++          // Install target guards only after their snapshot dependencies exist.
++          db.exec(schemaSql); // sqlite-allow-raw -- Transactional migration schema owner.
+         }
+         finishAgentSchemaMigration(
+           db,
+@@ -507,6 +506,8 @@ function ensureAgentSchema(
+       }
+       if (requiresSnapshotMigration) {
+         migrateSessionEntrySnapshotsInTransaction(db);
++        // Install target guards only after their snapshot dependencies exist.
++        db.exec(schemaSql); // sqlite-allow-raw -- Transactional migration schema owner.
+       }
+       finishAgentSchemaMigration(
+         db,
