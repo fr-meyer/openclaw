@@ -937,7 +937,7 @@
       }
     }
   },
-  "patch_sha256": "87987f329de73ce9f7257e7f77b8992a1c536eece5e84defaad7d31c9936476c",
+  "patch_sha256": "b9f801bbac3c6b0105e630a2a77c7325d8b7de9407a5d9209dfa0142b6738a69",
   "phase_max_seconds": {
     "offline-compile": 1800,
     "offline-native": 300,
@@ -946,7 +946,7 @@
     "warm-fetch": 420
   },
   "pids": 512,
-  "raw_commit_sha256": "f2363098e950058d4eac8bd40edd1b09c6420aa131faa17ad6dc322d6b46f306",
+  "raw_commit_sha256": "dcf6c2b0d16005beb19b4898c80eae282204d1ec0ea89f25cfc68e31cccb4d17",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
   "retention_cap_bytes": 536870912,
@@ -2833,14 +2833,23 @@
       "parent": "35cdf058f1f25768f2882a00ea9b5860872d4675",
       "commit": "bb8940742c2a282527e587be25fbe70a61ce1e85",
       "tree": "db9cbcef33b06c20e8b8d6ffc43d1d8e4a178466",
-      "patch": "source.patch",
+      "patch": "owner-source-9.patch",
       "patch_sha256": "87987f329de73ce9f7257e7f77b8992a1c536eece5e84defaad7d31c9936476c",
-      "raw_commit": "source.commit",
+      "raw_commit": "owner-source-9.commit",
       "raw_commit_sha256": "f2363098e950058d4eac8bd40edd1b09c6420aa131faa17ad6dc322d6b46f306"
+    },
+    {
+      "parent": "bb8940742c2a282527e587be25fbe70a61ce1e85",
+      "commit": "834ee400b29afd981270b32c1f1d855ef428b60d",
+      "tree": "4d27a4f9f1120b99fd250ce02b3b4ae88d62723c",
+      "patch": "source.patch",
+      "patch_sha256": "b9f801bbac3c6b0105e630a2a77c7325d8b7de9407a5d9209dfa0142b6738a69",
+      "raw_commit": "source.commit",
+      "raw_commit_sha256": "dcf6c2b0d16005beb19b4898c80eae282204d1ec0ea89f25cfc68e31cccb4d17"
     }
   ],
-  "source_commit": "bb8940742c2a282527e587be25fbe70a61ce1e85",
-  "source_tree": "db9cbcef33b06c20e8b8d6ffc43d1d8e4a178466",
+  "source_commit": "834ee400b29afd981270b32c1f1d855ef428b60d",
+  "source_tree": "4d27a4f9f1120b99fd250ce02b3b4ae88d62723c",
   "total_seconds": 2700,
   "work_seconds": 2400,
   "portable_runnable_unpacked_cap_bytes": 2147483648,
@@ -2928,8 +2937,8 @@
     {
       "path": "scripts/proofs/native-ipc-gateway/native-fixture.ts",
       "mode": "100644",
-      "bytes": 3326,
-      "sha256": "708dd1ab62e42a651431b3350009e5164945a06fe6c007fb33225fbf5bd2d77e"
+      "bytes": 3453,
+      "sha256": "e77af166746444fb9ce3c25e28c66b7461961946cfe9a64948e224adb3700771"
     },
     {
       "path": "scripts/tsdown-build.mts",
@@ -3240,10 +3249,10 @@
   ],
   "source_inputs_origins": [
     {
-      "source_commit": "bb8940742c2a282527e587be25fbe70a61ce1e85",
-      "receipt_sha256": "4c05b626733d1190ab08720762641b11848ac4c9cc1c7c3f5c992c333a002e5e",
+      "source_commit": "834ee400b29afd981270b32c1f1d855ef428b60d",
+      "receipt_sha256": "d18011bff1f85dfcb9b4958656da93c087f53a5c647850bbd0169e89844042f0",
       "selected_postimage_count": 62,
-      "meaning": "Exact existing serial-build source plus four-line original grace fixture ordering correction; finite source identity only, canonical Linux test and matching build/native qualification still required"
+      "meaning": "Finite source postimage identity only. Existing native receipt/publication guard and all driver assertions unchanged; corrected compiled native qualification remains required."
     }
   ]
 }

@@ -1,0 +1,15 @@
+diff --git a/test/scripts/tsdown-build.test.ts b/test/scripts/tsdown-build.test.ts
+index 7db4c67f5115e4fd5f9c813eb07b81c2028083f1..869703857da90a01e085c77fee55480cb69a5aa3 100644
+--- a/test/scripts/tsdown-build.test.ts
++++ b/test/scripts/tsdown-build.test.ts
+@@ -2807,6 +2807,10 @@ describe("runTsdownBuildInvocation", () => {
+           expect(fs.readFileSync(cleanupPath, "utf8")).toBe("");
+           expect(output.chunks.join("")).not.toContain("forcing SIGKILL");
+           fs.writeFileSync(releasePath, "release");
++          const exitingPid = childPid;
++          await vi.waitUntil(() => !isProcessAlive(exitingPid), { timeout: 2_000, interval: 5 });
++          // Resume native drain deadlines only after the child has used its controlled grace.
++          supervisor.resume();
+           const result = await supervisor.completion;
+ 
+           expect(result).toMatchObject({ timedOut: true, status: 0, signal: null, error: null });
