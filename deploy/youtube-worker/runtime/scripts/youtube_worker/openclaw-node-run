@@ -1,0 +1,207 @@
+#!/usr/bin/env node
+
+const { spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
+
+function usage() {
+  console.log(`Usage:
+  scripts/openclaw-node-run [options] -- <argv...>
+  scripts/openclaw-node-run [options] --shell '<shell command>'
+
+Options:
+  --node <name|id|ip>       Node to run on (default: OPENCLAW_NODE; otherwise required)
+  --cwd <path>              Working directory on the node (default: OPENCLAW_NODE_CWD; otherwise required)
+  --timeout-ms <ms>         Remote command timeout (default: 600000)
+  --invoke-timeout-ms <ms>  Gateway/node invoke timeout (default: command timeout + 10000)
+  --agent <id>              Agent id for audit binding (default: OPENCLAW_AGENT_ID; otherwise required)
+  --session-key <key>       Session key for audit binding
+  --allow-local-dev         Explicitly allow a repository/development command on the node
+  --justification <text>    Required with --allow-local-dev; records why the exception is needed
+  --json                    Print raw gateway JSON instead of stdout/stderr
+  --help                    Show this help
+
+Examples:
+  scripts/openclaw-node-run --cwd /home/worker -- /bin/pwd
+  scripts/openclaw-node-run --cwd /home/worker --shell 'mdls Downloads/Report.pdf'
+`);
+}
+
+function fail(message, code = 1) {
+  console.error(message);
+  process.exit(code);
+}
+
+const opts = {
+  node: process.env.OPENCLAW_NODE || null,
+  cwd: process.env.OPENCLAW_NODE_CWD || null,
+  timeoutMs: Number.parseInt(process.env.OPENCLAW_NODE_TIMEOUT_MS || "600000", 10),
+  invokeTimeoutMs: null,
+  agentId: process.env.OPENCLAW_AGENT_ID || null,
+  sessionKey: process.env.OPENCLAW_SESSION_KEY || null,
+  allowLocalDev: false,
+  justification: null,
+  json: false,
+  shell: null,
+};
+
+const command = [];
+for (let i = 2; i < process.argv.length; i += 1) {
+  const arg = process.argv[i];
+  if (arg === "--help" || arg === "-h") {
+    usage();
+    process.exit(0);
+  } else if (arg === "--node") {
+    opts.node = process.argv[++i] || fail("--node requires a value");
+  } else if (arg === "--cwd") {
+    opts.cwd = process.argv[++i] || fail("--cwd requires a value");
+  } else if (arg === "--timeout-ms") {
+    opts.timeoutMs = Number.parseInt(process.argv[++i] || "", 10);
+  } else if (arg === "--invoke-timeout-ms") {
+    opts.invokeTimeoutMs = Number.parseInt(process.argv[++i] || "", 10);
+  } else if (arg === "--agent") {
+    opts.agentId = process.argv[++i] || fail("--agent requires a value");
+  } else if (arg === "--session-key") {
+    opts.sessionKey = process.argv[++i] || fail("--session-key requires a value");
+  } else if (arg === "--allow-local-dev") {
+    opts.allowLocalDev = true;
+  } else if (arg === "--justification") {
+    opts.justification = process.argv[++i] || fail("--justification requires a value");
+  } else if (arg === "--json") {
+    opts.json = true;
+  } else if (arg === "--shell") {
+    opts.shell = process.argv[++i] || fail("--shell requires a value");
+  } else if (arg === "--") {
+    command.push(...process.argv.slice(i + 1));
+    break;
+  } else {
+    command.push(arg);
+  }
+}
+
+if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs < 1) fail("--timeout-ms must be a positive integer");
+if (opts.invokeTimeoutMs == null) opts.invokeTimeoutMs = opts.timeoutMs + 10000;
+if (!Number.isFinite(opts.invokeTimeoutMs) || opts.invokeTimeoutMs < 10000) fail("--invoke-timeout-ms must be at least 10000");
+if (opts.shell && command.length > 0) fail("Use either --shell or argv after --, not both");
+if (!opts.shell && command.length === 0) {
+  usage();
+  fail("missing command");
+}
+
+if (!opts.node || !opts.cwd || !opts.agentId) fail("explicit node, working directory and audit agent are required");
+
+// Bound the internal audit transcript without creating one session per command.
+// A fixed node-run key accumulated thousands of context-eligible events and made
+// recurring node work rebuild a multi-megabyte prompt on the Gateway thread.
+// Hourly buckets preserve nearby command provenance while capping prompt growth.
+if (!opts.sessionKey) {
+  const hourBucket = new Date().toISOString().slice(0, 13).replace(/[-T:]/g, "");
+  opts.sessionKey = `agent:${opts.agentId}:node-run:${hourBucket}`;
+}
+
+// The Mac node is a device-access bridge, not a development worker. Keep the
+// default fail-closed: repository, package, build, test, and Docker commands
+// must run on the canonical GCP workspace instead. Local development is still
+// possible, but requires an explicit flag plus a short justification.
+const commandText = opts.shell || command.join(" ");
+const repositoryWorkPattern = /(?:\b(?:git|gh|npm|pnpm|yarn|bun|docker|podman|make)\b|\b(?:pytest|vitest|jest|tsc|eslint|prettier)\b|\b(?:clone|worktree)\b|\bopenclaw\s+(?:update|install|gateway|plugin|plugins|config|doctor|dev|run|start)\b|\b(?:node_modules|package\.json|pnpm-lock\.yaml)\b)/i;
+const repositoryWorkMatch = commandText.match(repositoryWorkPattern);
+if (repositoryWorkMatch && !opts.allowLocalDev) {
+  fail(
+    `refusing Mac-node repository/development command matching ${JSON.stringify(repositoryWorkMatch[0])}; ` +
+    "run repository work on the GCP server, or use --allow-local-dev with --justification for an exceptional local task",
+  );
+}
+if (repositoryWorkMatch && opts.allowLocalDev) {
+  if (!opts.justification) {
+    fail("--allow-local-dev requires --justification");
+  }
+  console.error(`[openclaw-node-run] LOCAL DEVELOPMENT OVERRIDE: ${opts.justification}`);
+}
+
+function runOpenClaw(args, input) {
+  const result = spawnSync("openclaw", args, {
+    input,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.error) fail(`openclaw failed: ${result.error.message}`);
+  if (result.status !== 0) {
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    process.exit(result.status || 1);
+  }
+  return result.stdout;
+}
+
+const statusRaw = runOpenClaw(["nodes", "status", "--json", "--timeout", "30000"]);
+let nodes;
+try {
+  nodes = JSON.parse(statusRaw).nodes || [];
+} catch (err) {
+  fail(`failed to parse nodes status JSON: ${err.message}`);
+}
+
+const needle = String(opts.node).toLowerCase();
+const matches = nodes.filter((node) => {
+  return [node.nodeId, node.displayName, node.remoteIp]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase() === needle);
+});
+const node = (matches.find((entry) => entry.connected) || matches[0]);
+if (!node) fail(`node not found: ${opts.node}`);
+if (!node.connected) fail(`node is not connected: ${node.displayName || node.nodeId}`);
+if (!Array.isArray(node.commands) || !node.commands.includes("system.run")) {
+  fail(`node does not advertise system.run: ${node.displayName || node.nodeId}`);
+}
+
+const remoteCommand = opts.shell ? ["/bin/sh", "-lc", opts.shell] : command;
+const runId = `node-run-${crypto.randomUUID()}`;
+const params = {
+  nodeId: node.nodeId,
+  command: "system.run",
+  params: {
+    command: remoteCommand,
+    cwd: opts.cwd,
+    timeoutMs: opts.timeoutMs,
+    agentId: opts.agentId,
+    sessionKey: opts.sessionKey,
+    runId,
+    suppressNotifyOnStart: true,
+    suppressNotifyOnExit: true,
+  },
+  idempotencyKey: runId,
+};
+if (opts.shell) params.params.rawCommand = opts.shell;
+
+const raw = runOpenClaw([
+  "gateway",
+  "call",
+  "node.invoke",
+  "--json",
+  "--timeout",
+  String(opts.invokeTimeoutMs),
+  "--params",
+  JSON.stringify(params),
+]);
+
+if (opts.json) {
+  process.stdout.write(raw);
+  if (!raw.endsWith("\n")) process.stdout.write("\n");
+  process.exit(0);
+}
+
+let response;
+try {
+  response = JSON.parse(raw);
+} catch (err) {
+  process.stdout.write(raw);
+  fail(`failed to parse gateway response JSON: ${err.message}`);
+}
+
+const payload = response && typeof response === "object" ? response.payload || {} : {};
+if (typeof payload.stdout === "string") process.stdout.write(payload.stdout);
+if (typeof payload.stderr === "string") process.stderr.write(payload.stderr);
+if (payload.error) process.stderr.write(String(payload.error) + "\n");
+
+const exitCode = typeof payload.exitCode === "number" ? payload.exitCode : (response.ok ? 0 : 1);
+process.exit(exitCode);
