@@ -937,7 +937,7 @@
       }
     }
   },
-  "patch_sha256": "e2a2a0bac9844a6e8dac05eac5cfe6872e0cf5bd160d408d55d1a5f6dab92663",
+  "patch_sha256": "87987f329de73ce9f7257e7f77b8992a1c536eece5e84defaad7d31c9936476c",
   "phase_max_seconds": {
     "offline-compile": 1800,
     "offline-native": 300,
@@ -946,7 +946,7 @@
     "warm-fetch": 420
   },
   "pids": 512,
-  "raw_commit_sha256": "46e47f03ce2aa16b781efe0e67fc576175cfe49ceb4e23028939efb6007f3f5d",
+  "raw_commit_sha256": "f2363098e950058d4eac8bd40edd1b09c6420aa131faa17ad6dc322d6b46f306",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
   "retention_cap_bytes": 536870912,
@@ -2824,14 +2824,23 @@
       "parent": "9325b6f25a15f4eb10ac24258dcc5750909ea9cc",
       "commit": "35cdf058f1f25768f2882a00ea9b5860872d4675",
       "tree": "2fa028bb36086bbaf0f7608c91b3d2a1c35963a8",
-      "patch": "source.patch",
+      "patch": "owner-source-8.patch",
       "patch_sha256": "e2a2a0bac9844a6e8dac05eac5cfe6872e0cf5bd160d408d55d1a5f6dab92663",
-      "raw_commit": "source.commit",
+      "raw_commit": "owner-source-8.commit",
       "raw_commit_sha256": "46e47f03ce2aa16b781efe0e67fc576175cfe49ceb4e23028939efb6007f3f5d"
+    },
+    {
+      "parent": "35cdf058f1f25768f2882a00ea9b5860872d4675",
+      "commit": "bb8940742c2a282527e587be25fbe70a61ce1e85",
+      "tree": "db9cbcef33b06c20e8b8d6ffc43d1d8e4a178466",
+      "patch": "source.patch",
+      "patch_sha256": "87987f329de73ce9f7257e7f77b8992a1c536eece5e84defaad7d31c9936476c",
+      "raw_commit": "source.commit",
+      "raw_commit_sha256": "f2363098e950058d4eac8bd40edd1b09c6420aa131faa17ad6dc322d6b46f306"
     }
   ],
-  "source_commit": "35cdf058f1f25768f2882a00ea9b5860872d4675",
-  "source_tree": "2fa028bb36086bbaf0f7608c91b3d2a1c35963a8",
+  "source_commit": "bb8940742c2a282527e587be25fbe70a61ce1e85",
+  "source_tree": "db9cbcef33b06c20e8b8d6ffc43d1d8e4a178466",
   "total_seconds": 2700,
   "work_seconds": 2400,
   "portable_runnable_unpacked_cap_bytes": 2147483648,
@@ -3219,8 +3228,8 @@
     {
       "path": "test/scripts/tsdown-build.test.ts",
       "mode": "100644",
-      "bytes": 118701,
-      "sha256": "639155d4d4ad1850cbfd226501ae2edf67d0ee39c9a2e835f9bed45690bd48f6"
+      "bytes": 118964,
+      "sha256": "226e2ea0cefe8827c042c376090c80e09bc4af25fabfce6193dfac0bc39a4580"
     },
     {
       "path": "tsdown.config.ts",
@@ -3231,10 +3240,10 @@
   ],
   "source_inputs_origins": [
     {
-      "source_commit": "35cdf058f1f25768f2882a00ea9b5860872d4675",
-      "receipt_sha256": "a56426fa272069523c63ff0479662f796e679ae9c290ec83e8ee4701618e5e88",
+      "source_commit": "bb8940742c2a282527e587be25fbe70a61ce1e85",
+      "receipt_sha256": "4c05b626733d1190ab08720762641b11848ac4c9cc1c7c3f5c992c333a002e5e",
       "selected_postimage_count": 62,
-      "meaning": "Exact reviewed source chain plus unified runtime serial-config default and maintained option regressions; finite source identity only, matching build and native qualification still required"
+      "meaning": "Exact existing serial-build source plus four-line original grace fixture ordering correction; finite source identity only, canonical Linux test and matching build/native qualification still required"
     }
   ]
 }

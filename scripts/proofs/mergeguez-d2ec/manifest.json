@@ -1,7 +1,7 @@
 {
   "schema": "mergeguez.sealed-runnable-qualification-tooling/v3",
-  "source_commit": "35cdf058f1f25768f2882a00ea9b5860872d4675",
-  "source_tree": "2fa028bb36086bbaf0f7608c91b3d2a1c35963a8",
+  "source_commit": "bb8940742c2a282527e587be25fbe70a61ce1e85",
+  "source_tree": "db9cbcef33b06c20e8b8d6ffc43d1d8e4a178466",
   "files": [
     {
       "path": "cli-source.commit",
@@ -15,8 +15,8 @@
     },
     {
       "path": "contract.json",
-      "bytes": 98796,
-      "sha256": "e314a9399ae522c15929c9c049ad52ce447e521510a066113dc15f56b4ebe480"
+      "bytes": 99264,
+      "sha256": "a54a59f8768bc00cec27c9653c46ffb1cb96212ee82000466923f87c7c77cd23"
     },
     {
       "path": "driver.py",
@@ -109,6 +109,16 @@
       "sha256": "a874fc6e5ceb91864c94d6ab96275aceb7e2ee0b7a7725f8f7a35c17a8772c54"
     },
     {
+      "path": "owner-source-8.commit",
+      "bytes": 238,
+      "sha256": "46e47f03ce2aa16b781efe0e67fc576175cfe49ceb4e23028939efb6007f3f5d"
+    },
+    {
+      "path": "owner-source-8.patch",
+      "bytes": 3431,
+      "sha256": "e2a2a0bac9844a6e8dac05eac5cfe6872e0cf5bd160d408d55d1a5f6dab92663"
+    },
+    {
       "path": "parent-source.commit",
       "bytes": 273,
       "sha256": "55dbf17dcbd3350b6d4445ad08c015565cf481335b39a2facfb31951eb98eee3"
@@ -125,18 +135,18 @@
     },
     {
       "path": "source.commit",
-      "bytes": 238,
-      "sha256": "46e47f03ce2aa16b781efe0e67fc576175cfe49ceb4e23028939efb6007f3f5d"
+      "bytes": 242,
+      "sha256": "f2363098e950058d4eac8bd40edd1b09c6420aa131faa17ad6dc322d6b46f306"
     },
     {
       "path": "source.patch",
-      "bytes": 3431,
-      "sha256": "e2a2a0bac9844a6e8dac05eac5cfe6872e0cf5bd160d408d55d1a5f6dab92663"
+      "bytes": 945,
+      "sha256": "87987f329de73ce9f7257e7f77b8992a1c536eece5e84defaad7d31c9936476c"
     },
     {
       "path": "test_driver.py",
       "bytes": 63605,
-      "sha256": "ad9ca6f11fc77c7b14c6dbe2483ab0778193049f52eec404d811e44b3633214c"
+      "sha256": "10c6dde079105ba710524221fb49b4e559028cc6f976c7108c8792d6d17c6049"
     },
     {
       "path": "test_materialize.mjs",

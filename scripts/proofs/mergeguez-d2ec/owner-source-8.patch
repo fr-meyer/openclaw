@@ -1,0 +1,80 @@
+diff --git a/scripts/tsdown-build.mts b/scripts/tsdown-build.mts
+index ff3672f9..66c7641c 100644
+--- a/scripts/tsdown-build.mts
++++ b/scripts/tsdown-build.mts
+@@ -893,9 +893,9 @@ export function resolveTsdownBuildInvocation(
+     "--logLevel",
+     logLevel,
+     "--no-clean",
+-    // Native declaration children retain entire compiler graphs. Let tsdown own
+-    // config admission so preparation and trace drainage cannot overlap unboundedly.
+-    ...(!explicitConcurrency && !runtimeOnly && tsdownDeclarationsEnabled(args, env)
++    // Runtime and declaration configs share the compiler's cgroup budget. Let tsdown
++    // own serial Rolldown admission so their largest graphs do not overlap by default.
++    ...(!explicitConcurrency && (runtimeOnly || tsdownDeclarationsEnabled(args, env))
+       ? ["--concurrency", "1"]
+       : []),
+     ...forwardedArgs,
+diff --git a/test/scripts/tsdown-build.test.ts b/test/scripts/tsdown-build.test.ts
+index 2eb894cc..7db4c67f 100644
+--- a/test/scripts/tsdown-build.test.ts
++++ b/test/scripts/tsdown-build.test.ts
+@@ -153,6 +153,49 @@ describe("resolveTsdownBuildInvocation", () => {
+     expect(result.args.filter((arg) => arg === "--concurrency")).toHaveLength(1);
+   });
+ 
++  it.each([
++    [
++      "environment",
++      ["--config", "tsdown.config.ts", "--filter", "openclaw-unified"],
++      { OPENCLAW_RUN_NODE_SKIP_DTS_BUILD: "1" },
++    ],
++    ["CLI", ["--config=tsdown.config.ts", "--filter=openclaw-unified", "--no-dts"], {}],
++    ["short selectors", ["-c", "tsdown.config.ts", "-F", "openclaw-unified", "--no-dts"], {}],
++  ])(
++    "serializes %s unified runtime configs without dropping forwarded args",
++    (_source, args, env) => {
++      const result = resolveTsdownBuildInvocation({
++        args,
++        env,
++        platform: "linux",
++        nodeExecPath: "/usr/bin/node",
++        ...NO_MEMORY_LIMIT,
++      });
++      expect(result.args).toEqual(expect.arrayContaining(["--concurrency", "1"]));
++      expect(result.args.filter((arg) => arg === "--concurrency")).toHaveLength(1);
++      expect(result.args.slice(-args.length)).toEqual(args);
++    },
++  );
++
++  it("retains an explicit unified runtime concurrency override", () => {
++    const args = [
++      "--config",
++      "tsdown.config.ts",
++      "--filter",
++      "openclaw-unified",
++      "--concurrency=2",
++    ];
++    const result = resolveTsdownBuildInvocation({
++      args,
++      env: { OPENCLAW_RUN_NODE_SKIP_DTS_BUILD: "1" },
++      platform: "linux",
++      nodeExecPath: "/usr/bin/node",
++      ...NO_MEMORY_LIMIT,
++    });
++    expect(result.args).not.toContain("--concurrency");
++    expect(result.args.slice(-args.length)).toEqual(args);
++  });
++
+   it("builds AI, packages, runtime, and bounded declarations sequentially", () => {
+     const results = resolveTsdownBuildInvocations({
+       args: ["--format", "esm"],
+@@ -167,7 +210,7 @@ describe("resolveTsdownBuildInvocation", () => {
+       expect.arrayContaining(["--config", "tsdown.ai.config.ts", "--format", "esm"]),
+     );
+     expect(results[1]?.args).toEqual(expect.arrayContaining(["--concurrency", "1"]));
+-    expect(results[2]?.args).not.toContain("--concurrency");
++    expect(results[2]?.args).toEqual(expect.arrayContaining(["--concurrency", "1"]));
+     const filters = results.slice(1).map((result) => {
+       const filterIndex = result.args.indexOf("--filter");
+       return result.args[filterIndex + 1];

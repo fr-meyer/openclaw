@@ -1,6 +1,6 @@
-tree 2fa028bb36086bbaf0f7608c91b3d2a1c35963a8
-parent 9325b6f25a15f4eb10ac24258dcc5750909ea9cc
-author Codex <codex@local> 1791279440 +0000
-committer Codex <codex@local> 1791279440 +0000
+tree db9cbcef33b06c20e8b8d6ffc43d1d8e4a178466
+parent 35cdf058f1f25768f2882a00ea9b5860872d4675
+author Codex <codex@local> 1791282559 +0000
+committer Codex <codex@local> 1791282559 +0000
 
-build: serialize unified runtime configs by default
+test(build): resume native grace drain after child exit
