@@ -1,0 +1,53 @@
+diff --git a/scripts/proofs/native-ipc-gateway/native-fixture.ts b/scripts/proofs/native-ipc-gateway/native-fixture.ts
+index 1962eb8b..666d45d6 100644
+--- a/scripts/proofs/native-ipc-gateway/native-fixture.ts
++++ b/scripts/proofs/native-ipc-gateway/native-fixture.ts
+@@ -2,7 +2,10 @@ import { isMainThread, threadId } from "node:worker_threads";
+ import { openNodeSqliteDatabase } from "../../../src/plugin-sdk/sqlite-worker-runtime.js";
+ import { runSqliteImmediateTransactionSync, requestSqliteWorkerOperationAdmission } from "../../../src/plugin-sdk/sqlite-worker-runtime.js";
+ import { deferSqliteWorkerCommitReceipt } from "../../../src/infra/sqlite-worker-operation-admission.js";
+-import { deferSqlitePostCommitPublication } from "../../../src/infra/sqlite-post-commit.js";
++import {
++  deferSqlitePostCommitPublication,
++  withSqlitePostCommitPublications,
++} from "../../../src/infra/sqlite-post-commit.js";
+ import type { SqliteWorkerBackend } from "../../../src/infra/sqlite-worker-contract.js";
+ 
+ type Operations = {
+@@ -23,20 +26,22 @@ export function createSqliteWorkerBackend(
+   function write<Kind extends "reserved" | "committed">(key: string, kind: Kind, lostAck: boolean) {
+     if (!key || key.includes("\0")) throw new Error("Fixture key must be exact");
+     const facts = { key, kind, threadId };
+-    return runSqliteImmediateTransactionSync(database, () => {
+-      requestSqliteWorkerOperationAdmission({ stage: "transaction", facts });
+-      if (kind === "reserved") database.prepare("INSERT INTO qualification_reservations VALUES (?,0)").run(key);
+-      else {
+-        const result = database.prepare("UPDATE qualification_reservations SET committed=1 WHERE key=? AND committed=0").run(key);
+-        if (result.changes !== 1) throw new Error("Commit requires one original reservation");
+-      }
+-      requestSqliteWorkerOperationAdmission({ stage: "commit", facts });
+-      if (lostAck && !deferSqlitePostCommitPublication(database, () => process.exit(17)))
+-        throw new Error("Actual post-COMMIT fault seam unavailable");
+-      // Lost ACK exits this genuine Worker before this original protocol observer can publish.
+-      deferSqliteWorkerCommitReceipt(database, facts);
+-      return facts;
+-    });
++    return withSqlitePostCommitPublications(database, () =>
++      runSqliteImmediateTransactionSync(database, () => {
++        requestSqliteWorkerOperationAdmission({ stage: "transaction", facts });
++        if (kind === "reserved") database.prepare("INSERT INTO qualification_reservations VALUES (?,0)").run(key);
++        else {
++          const result = database.prepare("UPDATE qualification_reservations SET committed=1 WHERE key=? AND committed=0").run(key);
++          if (result.changes !== 1) throw new Error("Commit requires one original reservation");
++        }
++        requestSqliteWorkerOperationAdmission({ stage: "commit", facts });
++        if (lostAck && !deferSqlitePostCommitPublication(database, () => process.exit(17)))
++          throw new Error("Actual post-COMMIT fault seam unavailable");
++        // Lost ACK exits this genuine Worker before this original protocol observer can publish.
++        deferSqliteWorkerCommitReceipt(database, facts);
++        return facts;
++      }),
++    );
+   }
+   return {
+     execute(command) {

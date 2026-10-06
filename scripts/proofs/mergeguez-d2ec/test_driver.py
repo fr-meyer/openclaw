@@ -723,7 +723,7 @@ class RunnableContinuation(unittest.TestCase):
             if writable: self.assertFalse(Path(destination) in Path('/artifact').parents)
         self.assertEqual(set(destination for destination, (_, writable) in mounts.items() if writable), {'/qualification/native-state', '/qualification/native-output', '/tmp'})
     def test_chain_keeps_real_parent_before_final_commit(self):
-        chain = C['source_chain']; self.assertEqual(len(chain), 13)
+        chain = C['source_chain']; self.assertEqual(len(chain), 14)
         self.assertEqual(chain[0]['parent'], C['baseline']); self.assertEqual(chain[1]['parent'], chain[0]['commit'])
         self.assertEqual(chain[2]['parent'], chain[1]['commit'])
         self.assertEqual([step['parent'] for step in chain[1:]], [step['commit'] for step in chain[:-1]])

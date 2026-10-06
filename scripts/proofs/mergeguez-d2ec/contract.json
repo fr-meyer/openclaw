@@ -937,7 +937,7 @@
       }
     }
   },
-  "patch_sha256": "b9f801bbac3c6b0105e630a2a77c7325d8b7de9407a5d9209dfa0142b6738a69",
+  "patch_sha256": "7541c13c6963be1174f0b8dd6d2a9d9e03321a599866eb1816f5a893180a4c9b",
   "phase_max_seconds": {
     "offline-compile": 1800,
     "offline-native": 300,
@@ -946,7 +946,7 @@
     "warm-fetch": 420
   },
   "pids": 512,
-  "raw_commit_sha256": "dcf6c2b0d16005beb19b4898c80eae282204d1ec0ea89f25cfc68e31cccb4d17",
+  "raw_commit_sha256": "adc0cf4ee85849a9bb14be06529c8b5d308bc32c7b8b2b86de323d48a01313fd",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
   "retention_cap_bytes": 536870912,
@@ -2842,14 +2842,23 @@
       "parent": "bb8940742c2a282527e587be25fbe70a61ce1e85",
       "commit": "834ee400b29afd981270b32c1f1d855ef428b60d",
       "tree": "4d27a4f9f1120b99fd250ce02b3b4ae88d62723c",
-      "patch": "source.patch",
+      "patch": "owner-source-10.patch",
       "patch_sha256": "b9f801bbac3c6b0105e630a2a77c7325d8b7de9407a5d9209dfa0142b6738a69",
-      "raw_commit": "source.commit",
+      "raw_commit": "owner-source-10.commit",
       "raw_commit_sha256": "dcf6c2b0d16005beb19b4898c80eae282204d1ec0ea89f25cfc68e31cccb4d17"
+    },
+    {
+      "parent": "834ee400b29afd981270b32c1f1d855ef428b60d",
+      "commit": "7e98e1cb4b0ae217d2c59d4db15f9c632a998f69",
+      "tree": "0283eba4ed85194f6ce21042517fe89749570304",
+      "patch": "source.patch",
+      "patch_sha256": "7541c13c6963be1174f0b8dd6d2a9d9e03321a599866eb1816f5a893180a4c9b",
+      "raw_commit": "source.commit",
+      "raw_commit_sha256": "adc0cf4ee85849a9bb14be06529c8b5d308bc32c7b8b2b86de323d48a01313fd"
     }
   ],
-  "source_commit": "834ee400b29afd981270b32c1f1d855ef428b60d",
-  "source_tree": "4d27a4f9f1120b99fd250ce02b3b4ae88d62723c",
+  "source_commit": "7e98e1cb4b0ae217d2c59d4db15f9c632a998f69",
+  "source_tree": "0283eba4ed85194f6ce21042517fe89749570304",
   "total_seconds": 2700,
   "work_seconds": 2400,
   "portable_runnable_unpacked_cap_bytes": 2147483648,
@@ -2919,8 +2928,8 @@
     {
       "path": "scripts/proofs/native-ipc-gateway/driver.mjs",
       "mode": "100644",
-      "bytes": 15635,
-      "sha256": "ac8b727870f8d29819932ed9bd0055b1224866acfa94e6f0372eb4aee9ce5462"
+      "bytes": 15567,
+      "sha256": "7f05399a793869b02d12a5236ce56c6c317905d007c65871e45126cba4fc9c75"
     },
     {
       "path": "scripts/proofs/native-ipc-gateway/legacy-agent-fixture.ts",
@@ -3249,8 +3258,8 @@
   ],
   "source_inputs_origins": [
     {
-      "source_commit": "834ee400b29afd981270b32c1f1d855ef428b60d",
-      "receipt_sha256": "d18011bff1f85dfcb9b4958656da93c087f53a5c647850bbd0169e89844042f0",
+      "source_commit": "7e98e1cb4b0ae217d2c59d4db15f9c632a998f69",
+      "receipt_sha256": "659e9270edfad5da14449d7b2db8c95167d06dd812a48594b95d7c700adb7a11",
       "selected_postimage_count": 62,
       "meaning": "Finite source postimage identity only. Existing native receipt/publication guard and all driver assertions unchanged; corrected compiled native qualification remains required."
     }

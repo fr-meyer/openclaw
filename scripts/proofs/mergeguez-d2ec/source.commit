@@ -1,6 +1,6 @@
-tree 4d27a4f9f1120b99fd250ce02b3b4ae88d62723c
-parent bb8940742c2a282527e587be25fbe70a61ce1e85
-author Codex <codex@localhost> 1791285967 +0000
-committer Codex <codex@localhost> 1791285967 +0000
+tree 0283eba4ed85194f6ce21042517fe89749570304
+parent 834ee400b29afd981270b32c1f1d855ef428b60d
+author Codex <codex@openai.com> 1791291399 +0000
+committer Codex <codex@openai.com> 1791291399 +0000
 
-test(native): retain transaction publication owner in IPC fixture
+fix(proofs): preserve readonly WAL-aware native readbacks

@@ -1,53 +1,22 @@
-diff --git a/scripts/proofs/native-ipc-gateway/native-fixture.ts b/scripts/proofs/native-ipc-gateway/native-fixture.ts
-index 1962eb8b..666d45d6 100644
---- a/scripts/proofs/native-ipc-gateway/native-fixture.ts
-+++ b/scripts/proofs/native-ipc-gateway/native-fixture.ts
-@@ -2,7 +2,10 @@ import { isMainThread, threadId } from "node:worker_threads";
- import { openNodeSqliteDatabase } from "../../../src/plugin-sdk/sqlite-worker-runtime.js";
- import { runSqliteImmediateTransactionSync, requestSqliteWorkerOperationAdmission } from "../../../src/plugin-sdk/sqlite-worker-runtime.js";
- import { deferSqliteWorkerCommitReceipt } from "../../../src/infra/sqlite-worker-operation-admission.js";
--import { deferSqlitePostCommitPublication } from "../../../src/infra/sqlite-post-commit.js";
-+import {
-+  deferSqlitePostCommitPublication,
-+  withSqlitePostCommitPublications,
-+} from "../../../src/infra/sqlite-post-commit.js";
- import type { SqliteWorkerBackend } from "../../../src/infra/sqlite-worker-contract.js";
- 
- type Operations = {
-@@ -23,20 +26,22 @@ export function createSqliteWorkerBackend(
-   function write<Kind extends "reserved" | "committed">(key: string, kind: Kind, lostAck: boolean) {
-     if (!key || key.includes("\0")) throw new Error("Fixture key must be exact");
-     const facts = { key, kind, threadId };
--    return runSqliteImmediateTransactionSync(database, () => {
--      requestSqliteWorkerOperationAdmission({ stage: "transaction", facts });
--      if (kind === "reserved") database.prepare("INSERT INTO qualification_reservations VALUES (?,0)").run(key);
--      else {
--        const result = database.prepare("UPDATE qualification_reservations SET committed=1 WHERE key=? AND committed=0").run(key);
--        if (result.changes !== 1) throw new Error("Commit requires one original reservation");
--      }
--      requestSqliteWorkerOperationAdmission({ stage: "commit", facts });
--      if (lostAck && !deferSqlitePostCommitPublication(database, () => process.exit(17)))
--        throw new Error("Actual post-COMMIT fault seam unavailable");
--      // Lost ACK exits this genuine Worker before this original protocol observer can publish.
--      deferSqliteWorkerCommitReceipt(database, facts);
--      return facts;
--    });
-+    return withSqlitePostCommitPublications(database, () =>
-+      runSqliteImmediateTransactionSync(database, () => {
-+        requestSqliteWorkerOperationAdmission({ stage: "transaction", facts });
-+        if (kind === "reserved") database.prepare("INSERT INTO qualification_reservations VALUES (?,0)").run(key);
-+        else {
-+          const result = database.prepare("UPDATE qualification_reservations SET committed=1 WHERE key=? AND committed=0").run(key);
-+          if (result.changes !== 1) throw new Error("Commit requires one original reservation");
-+        }
-+        requestSqliteWorkerOperationAdmission({ stage: "commit", facts });
-+        if (lostAck && !deferSqlitePostCommitPublication(database, () => process.exit(17)))
-+          throw new Error("Actual post-COMMIT fault seam unavailable");
-+        // Lost ACK exits this genuine Worker before this original protocol observer can publish.
-+        deferSqliteWorkerCommitReceipt(database, facts);
-+        return facts;
-+      }),
-+    );
-   }
-   return {
-     execute(command) {
+diff --git a/scripts/proofs/native-ipc-gateway/driver.mjs b/scripts/proofs/native-ipc-gateway/driver.mjs
+index 00ae36a77ab6964e97e67fa172a8b0d3fc1012cf..97ebf4c21052758b477f8e4ea2ed0a5e31b1f823 100644
+--- a/scripts/proofs/native-ipc-gateway/driver.mjs
++++ b/scripts/proofs/native-ipc-gateway/driver.mjs
+@@ -127,7 +127,7 @@ async function nativeIpc(api, fixtureUrl, stateRoot, record) {
+   assert.equal(admission.committed, undefined, "Readback may not fabricate the lost native ACK");
+   let closeFailure;
+   try { await lost.close(); } catch (error) { closeFailure = errorFacts(error); }
+-  const database = api.openNodeSqliteDatabase(api.resolveExistingSqliteFileUri(lostPath), { readOnly: true });
++  const database = api.openNodeSqliteDatabase(lostPath, { readOnly: true });
+   let rows;
+   try { rows = database.prepare("SELECT key,committed FROM qualification_reservations").all().map(row => ({ key: row.key, committed: row.committed })); } finally { database.close(); }
+   assert.deepEqual(rows, [{ key: "lost", committed: 1 }]);
+@@ -144,7 +144,7 @@ async function maintenanceAndReopen(api, stateRoot, environment, record) {
+   assert.equal(result.receipts.length, 1);
+   assert.equal(result.receipts[0].notAnAdmissionReceipt, true);
+   for (const key of ["executionDrain", "providerDrain", "localCleanup", "historicalRetirement"]) assert.equal(result.receipts[0][key], "unknown");
+-  const backup = api.openNodeSqliteDatabase(api.resolveExistingSqliteFileUri(backupPath), { readOnly: true });
++  const backup = api.openNodeSqliteDatabase(backupPath, { readOnly: true });
+   try {
+     assert.equal(backup.prepare("PRAGMA user_version").get().user_version, 24);
+     assert.equal(backup.prepare("SELECT count(*) AS count FROM session_nodes").get().count, 1);

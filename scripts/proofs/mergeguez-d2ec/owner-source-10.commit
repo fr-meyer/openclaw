@@ -1,0 +1,6 @@
+tree 4d27a4f9f1120b99fd250ce02b3b4ae88d62723c
+parent bb8940742c2a282527e587be25fbe70a61ce1e85
+author Codex <codex@localhost> 1791285967 +0000
+committer Codex <codex@localhost> 1791285967 +0000
+
+test(native): retain transaction publication owner in IPC fixture
