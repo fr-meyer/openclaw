@@ -1,6 +1,6 @@
-tree 2ecddedfdd8b41b97c1b1231e2644e0a33a86f80
-parent 1cbf2f749a4becdaa1476b7628bfa51c43b81d48
-author Franck MEYER <meyerfranckpro@gmail.com> 1791252137 +0000
-committer Franck MEYER <meyerfranckpro@gmail.com> 1791252137 +0000
+tree cbc5db00e5e8174b94c638badc8838cbb0fb3136
+parent 21358c605b0b17d0dbe13111436671f6c3aca218
+author Franck MEYER <meyerfranckpro@gmail.com> 1791263882 +0000
+committer Franck MEYER <meyerfranckpro@gmail.com> 1791263882 +0000
 
-fix(gateway): advertise controller launch protocol before dispatch
+test(commands): assert existing JSON indentation contract

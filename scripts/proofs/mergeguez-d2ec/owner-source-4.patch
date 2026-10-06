@@ -1,0 +1,63 @@
+diff --git a/docs/plugins/sdk-runtime.md b/docs/plugins/sdk-runtime.md
+index 925de790609219d6ce058de93fd1b60c91aacb67..79fd1ca978e38f9b820c9785069dfd571adf9b92 100644
+--- a/docs/plugins/sdk-runtime.md
++++ b/docs/plugins/sdk-runtime.md
+@@ -425,6 +425,11 @@ controller-root flow can omit the parent when its purpose has no active worker;
+ that lane does not replace another worker's live purpose. The host checks the
+ flow revision and native parent again across admission and before child issuance.
+ 
++Before dispatch, require `api.runtime.tasks.availability.controllerWorkerLaunch === true`.
++Older runtimes may ignore unknown public run fields; absent or false support
++requires holding the flow before dispatch, with no raw-run fallback. This marker
++identifies protocol support and grants no task authority.
++
+ The ordinary tool-using launcher can retain that same controller relationship:
+ `api.runtime.subagent.run({ ...workerRequest, managedFlow: {
+ requesterSessionKey: originalController, flowId, expectedRevision } })`.
+diff --git a/src/gateway/server-managed-task-flow-runtime.test.ts b/src/gateway/server-managed-task-flow-runtime.test.ts
+index a11b4e1fd6e1b1a2e83d4a558f550a0a5bef05d4..40c40d5aceb7a37366084c7ccbc6cfdc77ab0433 100644
+--- a/src/gateway/server-managed-task-flow-runtime.test.ts
++++ b/src/gateway/server-managed-task-flow-runtime.test.ts
+@@ -147,11 +147,17 @@ describe("original Gateway managed host identity", () => {
+         return { runId: worker.idempotencyKey! };
+       },
+     });
++    expect(runtime.availability.controllerWorkerLaunch).toBe(true);
+     const bound = runtime.managedFlows.bindSession({ sessionKey: "agent:ops:main" });
+     try { await bound.launchSubagent({ flowId: "flow", expectedRevision: 3, request: worker }); }
+     finally { await bound.close(); }
+   });
+ 
++  it("does not advertise ordinary launch support without the original worker dispatcher", () => {
++    const runtime = createGatewayManagedTaskFlowRuntime(original.resolver, new AbortController().signal);
++    expect(runtime.availability.controllerWorkerLaunch).toBe(false);
++  });
++
+   it("bootstraps a flow through awaited original task APIs before root native child admission", async () => {
+     original.state.current = true; original.owner.revoked = false;
+     original.state.allowWrites = true; original.state.writes = 0;
+diff --git a/src/gateway/server-managed-task-flow-runtime.ts b/src/gateway/server-managed-task-flow-runtime.ts
+index c79bddd78fc5c0b59e88d32d344a9a1cfdef5b96..9827b5de01f7c163dd4d3fae2639e0edc68684e0 100644
+--- a/src/gateway/server-managed-task-flow-runtime.ts
++++ b/src/gateway/server-managed-task-flow-runtime.ts
+@@ -562,6 +562,7 @@ export function createGatewayManagedTaskFlowRuntime(
+       controllerParity: true,
+       canonicalTaskCreate: false,
+       workerLaunch: Boolean(nativeDispatch),
++      controllerWorkerLaunch: Boolean(nativeDispatch),
+     }),
+     managedFlows: {
+       bindSession: (input) => {
+diff --git a/src/plugins/runtime/types.ts b/src/plugins/runtime/types.ts
+index b2b01c5a526fc5e7d86104561b23a99cff44c5c0..c8c9ccc4999f20b4e9b59f15f35d0f4242ea3782 100644
+--- a/src/plugins/runtime/types.ts
++++ b/src/plugins/runtime/types.ts
+@@ -24,6 +24,8 @@ type PluginManagedTaskFlowRuntime = {
+     controllerParity: boolean;
+     canonicalTaskCreate: false;
+     workerLaunch: boolean;
++    /** Ordinary controller-bound public launcher protocol, not a task permission grant. */
++    controllerWorkerLaunch?: boolean;
+   }>;
+   managedFlows: { bindSession(input: { sessionKey: string }): BoundManagedTaskFlows };
+   runs: { bindSession(input: { sessionKey: string; agentId?: string }): BoundManagedTaskRuns };

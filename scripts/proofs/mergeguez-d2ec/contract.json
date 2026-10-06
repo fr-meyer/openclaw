@@ -937,7 +937,7 @@
       }
     }
   },
-  "patch_sha256": "b778a374124479fa5d57a453d617b99a90984823861191d994af322298db688e",
+  "patch_sha256": "136d462b07e2b9824c029bf793132e73b90dddcc64cfa152153838b5d90b7cb7",
   "phase_max_seconds": {
     "offline-compile": 1800,
     "offline-native": 300,
@@ -946,7 +946,7 @@
     "warm-fetch": 420
   },
   "pids": 512,
-  "raw_commit_sha256": "56c825b24331d93f8ebdbc92cb6cf1e10013adc88ebfa2d0e81684ee1551bf0a",
+  "raw_commit_sha256": "0c72f1757528737ad8b95ea43be06b8ab744ce989f86232971d5ce9dfacd1684",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
   "retention_cap_bytes": 536870912,
@@ -2788,14 +2788,23 @@
       "parent": "1cbf2f749a4becdaa1476b7628bfa51c43b81d48",
       "commit": "21358c605b0b17d0dbe13111436671f6c3aca218",
       "tree": "2ecddedfdd8b41b97c1b1231e2644e0a33a86f80",
-      "patch": "source.patch",
+      "patch": "owner-source-4.patch",
       "patch_sha256": "b778a374124479fa5d57a453d617b99a90984823861191d994af322298db688e",
-      "raw_commit": "source.commit",
+      "raw_commit": "owner-source-4.commit",
       "raw_commit_sha256": "56c825b24331d93f8ebdbc92cb6cf1e10013adc88ebfa2d0e81684ee1551bf0a"
+    },
+    {
+      "parent": "21358c605b0b17d0dbe13111436671f6c3aca218",
+      "commit": "ca879faa305626636d500e1a7f881079b70b5b6f",
+      "tree": "cbc5db00e5e8174b94c638badc8838cbb0fb3136",
+      "patch": "source.patch",
+      "patch_sha256": "136d462b07e2b9824c029bf793132e73b90dddcc64cfa152153838b5d90b7cb7",
+      "raw_commit": "source.commit",
+      "raw_commit_sha256": "0c72f1757528737ad8b95ea43be06b8ab744ce989f86232971d5ce9dfacd1684"
     }
   ],
-  "source_commit": "21358c605b0b17d0dbe13111436671f6c3aca218",
-  "source_tree": "2ecddedfdd8b41b97c1b1231e2644e0a33a86f80",
+  "source_commit": "ca879faa305626636d500e1a7f881079b70b5b6f",
+  "source_tree": "cbc5db00e5e8174b94c638badc8838cbb0fb3136",
   "total_seconds": 2700,
   "work_seconds": 2400,
   "portable_runnable_unpacked_cap_bytes": 2147483648,
@@ -2940,8 +2949,8 @@
     {
       "path": "src/commands/agent-via-gateway.test.ts",
       "mode": "100644",
-      "bytes": 104194,
-      "sha256": "a8e1268cb39c8a6cdc98eb493bb8608d1966270ae2895f176a8cc323356de338"
+      "bytes": 104197,
+      "sha256": "48dbf473fb30bc62aedab2716f74daa5e05df3bdaa87df759f212dbe1f361905"
     },
     {
       "path": "src/commands/agent-via-gateway.ts",
@@ -3120,10 +3129,10 @@
   ],
   "source_inputs_origins": [
     {
-      "source_commit": "21358c605b0b17d0dbe13111436671f6c3aca218",
-      "receipt_sha256": "081701c8644dc7bea3e30d8c94fc2247446851b0643c9821283cb18beb333115",
+      "source_commit": "ca879faa305626636d500e1a7f881079b70b5b6f",
+      "receipt_sha256": "999a3fded9c1f91ae308ddaf30b2ea5254ab77aa29e6abdda65739517065ab6d",
       "selected_postimage_count": 50,
-      "meaning": "final exact named postimages; finite identity, not loaded/native proof"
+      "meaning": "exact successor named postimages; one corrected test assertion; no loaded/native proof"
     }
   ]
 }
