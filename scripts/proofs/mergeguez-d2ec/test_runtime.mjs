@@ -15,6 +15,8 @@ const contract = JSON.parse(fs.readFileSync(root + '/contract.json', 'utf8'));
 const code = fs.readFileSync(root + '/runtime.mjs', 'utf8');
 async function fixture(phase, options = {}) {
   const timers = new Set();
+  let warmTargetExists = !!options.existingWarmTarget;
+  const retired = [];
   const commands = []; const writes = {}; const proc = { argv: ['node', '/proof/runtime.mjs', phase], env: { QUALIFICATION_JOB: '1-1', QUALIFICATION_NONCE: 'a'.repeat(64), QUALIFICATION_UPTIME_DEADLINE: '1000' }, versions: { node: '24.16.0' }, getuid: () => 1000, getgid: () => 1000, exitCode: 0 };
   const fakeFs = {
     readFileSync(p) {
@@ -53,6 +55,10 @@ async function fixture(phase, options = {}) {
     },
     realpathSync: p => { if (p.endsWith('/source-dependency-link')) throw new Error('source dependency link followed'); return p; },
     lstatSync(p) {
+      if (phase === 'warm-fetch' && p === '/qualification/deployed') {
+        if (!warmTargetExists) return undefined;
+        return { dev: options.crossDeviceWarmTarget ? 2 : 1, uid: options.foreignWarmTarget ? 0 : 1000, gid: 1000, isDirectory: () => true, isSymbolicLink: () => !!options.aliasedWarmTarget };
+      }
       const sourceInput = contract.source_inputs.find(entry => p === '/qualification/source/' + entry.path);
       const output = (p.includes('/dist/') && /\.(js|mjs|ts|mts|json)$/.test(p)) || p.endsWith('/fixture-emitted.js');
       if(options.missingPackage && p.endsWith('/packages/ai/dist/index.mjs') || options.missingRoot && p.endsWith('/build-info.json')) throw new Error('ENOENT fixture');
@@ -62,6 +68,11 @@ async function fixture(phase, options = {}) {
     statSync: () => ({ size: options.noSdk ? 0 : 3, isFile: () => true }),
     readdirSync: p => contract.compiled_roots.some(root => p === '/qualification/source/' + root) ? ['fixture-emitted.js', ...(options.sourceDependencyLink ? ['source-dependency-link'] : [])] : [], existsSync: () => true, mkdirSync() {},
     writeFileSync(p, value) { writes[p] = value; },
+    rmSync(p, opts) {
+      assert.equal(p, '/qualification/deployed'); assert.deepEqual(JSON.parse(JSON.stringify(opts)), {recursive:true});
+      if (options.retireWarmFailure) throw new Error('fixture retirement failed');
+      retired.push(p); warmTargetExists = false;
+    },
   };
   const fakeCrypto = { createHash(name) {
     let body;
@@ -85,8 +96,9 @@ async function fixture(phase, options = {}) {
     },
     spawn(bin, args, opts) {
       commands.push({ argv: [bin, ...args], env: opts.env, cwd: opts.cwd });
+      if (phase === 'warm-fetch' && args.includes('deploy')) warmTargetExists = !options.missingWarmTarget;
       const child = new EventEmitter(); child.kill = () => {};
-      queueMicrotask(() => options.spawnError ? child.emit('error', new Error('ENOENT fixture')) : child.emit('exit', options.failTargeted && bin === 'node' && args[0] === 'scripts/run-vitest.mjs' || options.failType && bin === 'pnpm' ? 1 : 0, null));
+      queueMicrotask(() => options.spawnError ? child.emit('error', new Error('ENOENT fixture')) : child.emit('exit', options.failTargeted && bin === 'node' && args[0] === 'scripts/run-vitest.mjs' || options.failType && bin === 'pnpm' || options.failWarmDeploy && phase === 'warm-fetch' && args.includes('deploy') || options.failOfflineDeploy && phase === 'offline-compile' && args.includes('deploy') ? 1 : 0, null));
       return child;
     },
   };
@@ -98,7 +110,7 @@ async function fixture(phase, options = {}) {
     return new vm.SyntheticModule(['default', ...Object.keys(dep)], function () { this.setExport('default', dep); for (const k of Object.keys(dep)) this.setExport(k, dep[k]); }, { context });
   });
   await module.evaluate();
-  return { commands, receipt: JSON.parse(writes[(phase === 'offline-native' ? '/qualification/native-output/' : '/qualification/reports/') + phase + '-receipt.json']), exit: proc.exitCode, timers: timers.size, buildReceiptWritten: Object.hasOwn(writes,'/qualification/reports/offline-compile-build.json'), buildReceipt: writes['/qualification/reports/offline-compile-build.json'] ? JSON.parse(writes['/qualification/reports/offline-compile-build.json']) : null };
+  return { commands, retired, receipt: JSON.parse(writes[(phase === 'offline-native' ? '/qualification/native-output/' : '/qualification/reports/') + phase + '-receipt.json']), exit: proc.exitCode, timers: timers.size, buildReceiptWritten: Object.hasOwn(writes,'/qualification/reports/offline-compile-build.json'), buildReceipt: writes['/qualification/reports/offline-compile-build.json'] ? JSON.parse(writes['/qualification/reports/offline-compile-build.json']) : null };
 }
 let checks = 0;
 // These literal argv contracts come from pnpm v12.5.1's pinned Clap
@@ -111,9 +123,14 @@ assert.deepEqual(contract.targeted_test_argv, [["node", "scripts/run-vitest.mjs"
 for (const options of [{ unlimited: true }, { swap: true }, { wrongGate: true }, { wrongHead: true }, { wrongLock: true }, { credential: true }, { configError: true }, { dirty: true }]) {
   const r = await fixture('offline-compile', options); assert.equal(r.receipt.complete, false); assert.equal(r.commands.length, 0); checks++;
 }
-const warm = await fixture('warm-fetch'); assert.equal(warm.receipt.complete, true); assert.deepEqual(warm.commands.at(-1).argv, ['corepack', contract.packageManager, ...contract.fetch_argv]); assert.ok(warm.commands.every(x => x.env.COREPACK_ENABLE_NETWORK === '1')); checks++;
+const warm = await fixture('warm-fetch'); assert.equal(warm.receipt.complete, true); assert.deepEqual(warm.commands[3].argv, ['corepack', contract.packageManager, ...contract.fetch_argv]); assert.ok(warm.commands.every(x => x.env.COREPACK_ENABLE_NETWORK === '1')); checks++;
 assert.deepEqual(warm.commands.slice(0, 3).map(x => x.argv), [['corepack', 'enable', '--install-directory', '/qualification/toolchain/bin'], ['corepack', 'prepare', contract.packageManager, '--activate'], ['corepack', contract.packageManager, '--version']]); checks++;
+assert.deepEqual(warm.commands[4].argv, ['corepack', contract.packageManager, '--filter', 'openclaw', 'deploy', '--prod', '--ignore-scripts', '--store-dir=/qualification/pnpm-store', '/qualification/deployed']); assert.deepEqual(warm.retired, ['/qualification/deployed']); assert.equal(warm.receipt.cache_preparation.compiled_or_native_qualification, false); assert.equal(warm.receipt.cache_preparation.final_offline_deploy_required, true); checks++;
+const failedWarm = await fixture('warm-fetch', {failWarmDeploy:true}); assert.equal(failedWarm.receipt.complete, false); assert.equal(failedWarm.commands.length,5); assert.deepEqual(failedWarm.retired,[]); assert.equal(failedWarm.receipt.commands.at(-1).code,1); assert.equal(failedWarm.timers,0); checks++;
+const priorWarm = await fixture('warm-fetch', {existingWarmTarget:true}); assert.equal(priorWarm.receipt.complete,false); assert.equal(priorWarm.commands.length,4); assert.deepEqual(priorWarm.retired,[]); assert.match(priorWarm.receipt.error,/target already exists/); checks++;
+for(const options of [{aliasedWarmTarget:true},{crossDeviceWarmTarget:true},{foreignWarmTarget:true},{missingWarmTarget:true},{retireWarmFailure:true}]) { const unsafe = await fixture('warm-fetch',options); assert.equal(unsafe.receipt.complete,false); assert.equal(unsafe.commands.length,5); assert.deepEqual(unsafe.retired,[]); assert.equal(unsafe.timers,0); checks++; }
 const offline = await fixture('offline-compile'); assert.equal(offline.receipt.complete, true); assert.deepEqual(offline.commands.map(x => x.argv), [['corepack', contract.packageManager, ...contract.install_argv], ...contract.targeted_test_argv, ...contract.compile_argv, contract.package_argv, contract.deploy_argv, contract.materialize_argv]); assert.ok(offline.commands.every(x => x.env.COREPACK_ENABLE_NETWORK === '0' && !('GITHUB_TOKEN' in x.env))); checks++;
+const failedOfflineDeploy = await fixture('offline-compile', {failOfflineDeploy:true}); assert.equal(failedOfflineDeploy.receipt.complete,false); assert.deepEqual(failedOfflineDeploy.commands.at(-1).argv,contract.deploy_argv); assert.equal(failedOfflineDeploy.commands.length,7); assert.equal(failedOfflineDeploy.receipt.commands.at(-1).code,1); assert.deepEqual(failedOfflineDeploy.retired,[]); assert.ok(failedOfflineDeploy.commands.every(x=>x.env.COREPACK_ENABLE_NETWORK==='0')); checks++;
 assert.equal(offline.commands.filter(command => command.argv.join(' ') === 'pnpm build').length, 1); assert.deepEqual(offline.buildReceipt.targeted_test_argv, contract.targeted_test_argv); assert.equal(offline.buildReceipt.commands.length, 5); checks++;
 const failedTargeted = await fixture('offline-compile', {failTargeted:true}); assert.equal(failedTargeted.receipt.complete,false); assert.equal(failedTargeted.commands.length,2); assert.equal(failedTargeted.commands.at(-1).argv[1],'scripts/run-vitest.mjs'); assert.equal(failedTargeted.buildReceiptWritten,false); checks++;
 const changedNamedSource = await fixture('offline-compile', {changedNamedSource:true}); assert.equal(changedNamedSource.receipt.complete,false); assert.equal(changedNamedSource.commands.length,0); assert.match(changedNamedSource.receipt.error,/named source input changed/); checks++;

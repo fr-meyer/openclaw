@@ -110,8 +110,8 @@
     },
     {
       "path": "runtime.mjs",
-      "bytes": 19732,
-      "sha256": "7cc876f9231bc32b4a969af8582422f7b6f6f1bcac3bf4580f32568a45e78364"
+      "bytes": 21381,
+      "sha256": "60ad97385a4121bf3198b1cdbd37b403a2ad9c1f168ee20e01fb98afb121114d"
     },
     {
       "path": "source.commit",
@@ -135,8 +135,8 @@
     },
     {
       "path": "test_runtime.mjs",
-      "bytes": 24960,
-      "sha256": "c0b5fff8e8778fb274d956e576f9d6dcb7bd779aa756bdbacc05002c1c05e1bd"
+      "bytes": 27820,
+      "sha256": "ded3b4ae1d302d1fee3aba9d30103ec46b484b0f5e7dc9c3cff44df538f8101d"
     }
   ]
 }

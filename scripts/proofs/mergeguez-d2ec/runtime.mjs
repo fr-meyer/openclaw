@@ -207,6 +207,21 @@ async function main() {
     requireThat(bun === '1.4.2', 'Bun version mismatch');
     receipt.versions = { node: process.versions.node, pnpm, bun };
     await run(['corepack', contract.packageManager, ...contract.fetch_argv], true);
+    attestSource();
+    // fetch can accept age checks via canonical-fetch HEAD probes without
+    // persisting the full metadata needed by a fresh offline deploy lockfile.
+    // Warm that original deploy profile under the same pnpm/cache/policy owner;
+    // its pre-build output is temporary and cannot qualify the compiled package.
+    const deployRoot = contract.deploy_argv.at(-1);
+    requireThat(contract.deploy_argv[0] === 'pnpm' && deployRoot === '/qualification/deployed' && contract.deploy_argv.filter(arg => arg === '--offline').length === 1, 'unsupported cache warming deploy profile');
+    requireThat(fs.lstatSync(deployRoot, { throwIfNoEntry: false }) === undefined, 'cache warming deploy target already exists');
+    await run(['corepack', contract.packageManager, ...contract.deploy_argv.slice(1).filter(arg => arg !== '--offline')], true);
+    attestSource();
+    const deployed = fs.lstatSync(deployRoot, { throwIfNoEntry: false });
+    requireThat(deployed && deployed.isDirectory() && !deployed.isSymbolicLink() && fs.realpathSync(deployRoot) === deployRoot && deployed.dev === fs.lstatSync(source).dev && deployed.uid === contract.compiler_uid && deployed.gid === contract.compiler_gid, 'cache warming deploy target missing or unsafe');
+    fs.rmSync(deployRoot, { recursive: true });
+    requireThat(fs.lstatSync(deployRoot, { throwIfNoEntry: false }) === undefined, 'cache warming deploy target not retired');
+    receipt.cache_preparation = { owner: 'pinned pnpm original deploy profile', target: deployRoot, temporary_deploy_retired: true, compiled_or_native_qualification: false, final_offline_deploy_required: true };
   } else {
     await run(['corepack', contract.packageManager, ...contract.install_argv]);
     attestSource();
