@@ -1,0 +1,6 @@
+tree 7f7f5334fa059cc55764893e721d7058d6138633
+parent b9962ab43a5cf4de5529a710706bbb5e5c030b5f
+author Franck MEYER <meyerfranckpro@gmail.com> 1791270893 +0000
+committer Franck MEYER <meyerfranckpro@gmail.com> 1791270893 +0000
+
+fix(state): resolve agent worker through shared runtime entrypoint

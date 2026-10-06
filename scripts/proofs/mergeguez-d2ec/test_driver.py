@@ -723,7 +723,7 @@ class RunnableContinuation(unittest.TestCase):
             if writable: self.assertFalse(Path(destination) in Path('/artifact').parents)
         self.assertEqual(set(destination for destination, (_, writable) in mounts.items() if writable), {'/qualification/native-state', '/qualification/native-output', '/tmp'})
     def test_chain_keeps_real_parent_before_final_commit(self):
-        chain = C['source_chain']; self.assertEqual(len(chain), 10)
+        chain = C['source_chain']; self.assertEqual(len(chain), 11)
         self.assertEqual(chain[0]['parent'], C['baseline']); self.assertEqual(chain[1]['parent'], chain[0]['commit'])
         self.assertEqual(chain[2]['parent'], chain[1]['commit'])
         self.assertEqual([step['parent'] for step in chain[1:]], [step['commit'] for step in chain[:-1]])
@@ -742,10 +742,10 @@ class RunnableContinuation(unittest.TestCase):
         self.assertLess(code.index("'/offline-compile-build.json'"), code.index('await run(contract.package_argv)'))
         self.assertEqual(C['compile_environment'], {'OPENCLAW_BUILD_NATIVE_IPC_GATEWAY_QUALIFICATION': '1'})
     def test_exact_cli_named_source_inventory_and_unchanged_hard_bounds(self):
-        self.assertEqual(C['targeted_test_argv'], [['node', 'scripts/run-vitest.mjs', 'run', 'src/cli/program/register.agent.test.ts', 'src/commands/agent-via-gateway.test.ts', 'src/gateway/server-plugin-subagent-runtime.test.ts', 'src/gateway/server-managed-task-flow-runtime.test.ts', 'src/tasks/managed-task-flow-host.test.ts', 'packages/ai/src/transports/openai-responses-request-lifecycle.test.ts', 'src/infra/runtime-worker-url.test.ts', 'test/scripts/agent-database-worker-package-paths.test.ts']])
-        self.assertEqual(len(C['source_inputs']), 60)
-        self.assertEqual(len(set(entry['path'] for entry in C['source_inputs'])), 60)
-        self.assertEqual([origin['selected_postimage_count'] for origin in C['source_inputs_origins']], [60])
+        self.assertEqual(C['targeted_test_argv'], [['node', 'scripts/run-vitest.mjs', 'run', 'src/cli/program/register.agent.test.ts', 'src/commands/agent-via-gateway.test.ts', 'src/gateway/server-plugin-subagent-runtime.test.ts', 'src/gateway/server-managed-task-flow-runtime.test.ts', 'src/tasks/managed-task-flow-host.test.ts', 'packages/ai/src/transports/openai-responses-request-lifecycle.test.ts', 'src/infra/runtime-worker-url.test.ts', 'test/scripts/agent-database-worker-package-paths.test.ts', 'test/scripts/tsdown-build.test.ts']])
+        self.assertEqual(len(C['source_inputs']), 62)
+        self.assertEqual(len(set(entry['path'] for entry in C['source_inputs'])), 62)
+        self.assertEqual([origin['selected_postimage_count'] for origin in C['source_inputs_origins']], [62])
         self.assertTrue(all(entry['mode']=='100644' and d.re.fullmatch('[0-9a-f]{64}',entry['sha256']) for entry in C['source_inputs']))
         self.assertEqual(C['phase_max_seconds']['offline-compile'], 1800)
         self.assertEqual((C['work_seconds'],C['total_seconds'],C['cpus'],C['memory_bytes'],C['filesystem_bytes']), (2400,2700,4,12*1024**3,10*1024**3))

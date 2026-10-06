@@ -1,6 +1,6 @@
-tree 7f7f5334fa059cc55764893e721d7058d6138633
-parent b9962ab43a5cf4de5529a710706bbb5e5c030b5f
-author Franck MEYER <meyerfranckpro@gmail.com> 1791270893 +0000
-committer Franck MEYER <meyerfranckpro@gmail.com> 1791270893 +0000
+tree 2fa028bb36086bbaf0f7608c91b3d2a1c35963a8
+parent 9325b6f25a15f4eb10ac24258dcc5750909ea9cc
+author Codex <codex@local> 1791279440 +0000
+committer Codex <codex@local> 1791279440 +0000
 
-fix(state): resolve agent worker through shared runtime entrypoint
+build: serialize unified runtime configs by default

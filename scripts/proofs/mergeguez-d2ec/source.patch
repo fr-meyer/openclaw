@@ -1,115 +1,80 @@
-diff --git a/src/infra/runtime-worker-url.test.ts b/src/infra/runtime-worker-url.test.ts
-index 94fcb2144c7a7ee0b4fa79cc3f5a600256698a5a..68215411780c9d42f065f66823b13dec099adae8 100644
---- a/src/infra/runtime-worker-url.test.ts
-+++ b/src/infra/runtime-worker-url.test.ts
-@@ -184,6 +184,24 @@ describe("resolveRuntimeWorkerArgv", () => {
- });
+diff --git a/scripts/tsdown-build.mts b/scripts/tsdown-build.mts
+index ff3672f9..66c7641c 100644
+--- a/scripts/tsdown-build.mts
++++ b/scripts/tsdown-build.mts
+@@ -893,9 +893,9 @@ export function resolveTsdownBuildInvocation(
+     "--logLevel",
+     logLevel,
+     "--no-clean",
+-    // Native declaration children retain entire compiler graphs. Let tsdown own
+-    // config admission so preparation and trace drainage cannot overlap unboundedly.
+-    ...(!explicitConcurrency && !runtimeOnly && tsdownDeclarationsEnabled(args, env)
++    // Runtime and declaration configs share the compiler's cgroup budget. Let tsdown
++    // own serial Rolldown admission so their largest graphs do not overlap by default.
++    ...(!explicitConcurrency && (runtimeOnly || tsdownDeclarationsEnabled(args, env))
+       ? ["--concurrency", "1"]
+       : []),
+     ...forwardedArgs,
+diff --git a/test/scripts/tsdown-build.test.ts b/test/scripts/tsdown-build.test.ts
+index 2eb894cc..7db4c67f 100644
+--- a/test/scripts/tsdown-build.test.ts
++++ b/test/scripts/tsdown-build.test.ts
+@@ -153,6 +153,49 @@ describe("resolveTsdownBuildInvocation", () => {
+     expect(result.args.filter((arg) => arg === "--concurrency")).toHaveLength(1);
+   });
  
- describe("resolveRuntimeProcessEntrypointUrl", () => {
 +  it.each([
-+    "dist/native-review-publication-intents-BzGzM_u7.mjs",
-+    "dist/openclaw-agent-worker-store-DDQVQOF3.mjs",
-+    "dist/package-update-activation-recovery.mjs",
-+    "dist/worker/sqlite-store.worker.mjs",
-+    "dist/worker/worker.mjs",
-+  ])("uses the stable agent database worker from %s", async (modulePath) => {
-+    const { runtimeProcessEntrypoints } = await import("./runtime-process-entrypoints.js");
-+    const root = path.resolve("agent-database-worker-package");
-+    const entry = runtimeProcessEntrypoints.agentDatabaseExecution;
-+    expect(
-+      fileURLToPath(resolveRuntimeWorkerUrl({
-+        ...entry,
-+        currentModuleUrl: pathToFileURL(path.join(root, modulePath)).href,
-+      })),
-+    ).toBe(path.join(root, "dist/state/openclaw-agent-execution.worker.js"));
++    [
++      "environment",
++      ["--config", "tsdown.config.ts", "--filter", "openclaw-unified"],
++      { OPENCLAW_RUN_NODE_SKIP_DTS_BUILD: "1" },
++    ],
++    ["CLI", ["--config=tsdown.config.ts", "--filter=openclaw-unified", "--no-dts"], {}],
++    ["short selectors", ["-c", "tsdown.config.ts", "-F", "openclaw-unified", "--no-dts"], {}],
++  ])(
++    "serializes %s unified runtime configs without dropping forwarded args",
++    (_source, args, env) => {
++      const result = resolveTsdownBuildInvocation({
++        args,
++        env,
++        platform: "linux",
++        nodeExecPath: "/usr/bin/node",
++        ...NO_MEMORY_LIMIT,
++      });
++      expect(result.args).toEqual(expect.arrayContaining(["--concurrency", "1"]));
++      expect(result.args.filter((arg) => arg === "--concurrency")).toHaveLength(1);
++      expect(result.args.slice(-args.length)).toEqual(args);
++    },
++  );
++
++  it("retains an explicit unified runtime concurrency override", () => {
++    const args = [
++      "--config",
++      "tsdown.config.ts",
++      "--filter",
++      "openclaw-unified",
++      "--concurrency=2",
++    ];
++    const result = resolveTsdownBuildInvocation({
++      args,
++      env: { OPENCLAW_RUN_NODE_SKIP_DTS_BUILD: "1" },
++      platform: "linux",
++      nodeExecPath: "/usr/bin/node",
++      ...NO_MEMORY_LIMIT,
++    });
++    expect(result.args).not.toContain("--concurrency");
++    expect(result.args.slice(-args.length)).toEqual(args);
 +  });
 +
-   it("uses canonical launchers unless the sealed bundle registers a sibling", async () => {
-     vi.resetModules();
-     try {
-diff --git a/src/state/native-review-publication-intents.ts b/src/state/native-review-publication-intents.ts
-index 75977f70c221fe340d257c5b8ef03e545acf936b..6409b575d013e7461d3beaa45658dbb2442c6f16 100644
---- a/src/state/native-review-publication-intents.ts
-+++ b/src/state/native-review-publication-intents.ts
-@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
- import { isProxy } from "node:util/types";
- import { assertOriginalRequiredRunReviewIntentPurpose, readOriginalRequiredRunReviewIntentCustody } from "../agents/required-run-closure.js";
- import { readOriginalSelectedReviewPublicationDatabase } from "../agents/embedded-agent-runner/run/session-bootstrap.js";
-+import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
- import { captureOpenClawAgentDatabaseExecution, type OpenClawAgentDatabaseExecution } from "./openclaw-agent-execution.js";
- import { openOpenClawAgentSqliteWorkerStore } from "./openclaw-agent-worker-store.js";
- import { parseNativeReviewIntentRequest, type NativeReviewIntentRequest, type NativeReviewIntentResult } from "./native-review-publication-intent.types.js";
-@@ -66,7 +67,7 @@ async function open(original: OriginalNativeReviewInput): Promise<Owner> {
-   let store: Store | undefined;
-   try {
-     assertCurrent();
--    store = await openOpenClawAgentSqliteWorkerStore(physical.options, { execution }, { moduleUrl: new URL("./openclaw-agent-execution.worker.js", import.meta.url), input: undefined }, true);
-+    store = await openOpenClawAgentSqliteWorkerStore(physical.options, { execution }, { moduleUrl: resolveRuntimeProcessEntrypointUrl("agentDatabaseExecution"), input: undefined }, true);
-     assertCurrent();
-     return { original, request, execution, store, assertCurrent, phase: "opening" };
-   } catch (error) {
-diff --git a/src/state/openclaw-agent-worker-store.ts b/src/state/openclaw-agent-worker-store.ts
-index f71d44adaf99de0477fff70a9a53a6a1edd0d40d..b99283b44d0b63f662dc8d103ae450a0740e79c2 100644
---- a/src/state/openclaw-agent-worker-store.ts
-+++ b/src/state/openclaw-agent-worker-store.ts
-@@ -13,6 +13,7 @@ import { readOriginalRequiredRunClosureCustody } from "../agents/required-run-cl
- import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
- import { resolveStateDir } from "../config/state-dir.js";
- import { formatErrorMessage } from "../infra/errors.js";
-+import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
- import {
-   createSqliteLifecycleAggregateError,
-   throwSqliteLifecycleErrors,
-@@ -701,7 +702,7 @@ export async function retireOriginalClosedRunWriter(
-       {
-         // Retire/intent-read go directly through this same canonical native owner;
-         // the publication facade does not spawn a separate domain Worker here.
--        moduleUrl: new URL("./openclaw-agent-execution.worker.js", import.meta.url),
-+        moduleUrl: resolveRuntimeProcessEntrypointUrl("agentDatabaseExecution"),
-         input: undefined,
-       },
+   it("builds AI, packages, runtime, and bounded declarations sequentially", () => {
+     const results = resolveTsdownBuildInvocations({
+       args: ["--format", "esm"],
+@@ -167,7 +210,7 @@ describe("resolveTsdownBuildInvocation", () => {
+       expect.arrayContaining(["--config", "tsdown.ai.config.ts", "--format", "esm"]),
      );
-diff --git a/test/scripts/agent-database-worker-package-paths.test.ts b/test/scripts/agent-database-worker-package-paths.test.ts
-new file mode 100644
-index 0000000000000000000000000000000000000000..f8249e93731da8aa1a13796781b528618befd04f
---- /dev/null
-+++ b/test/scripts/agent-database-worker-package-paths.test.ts
-@@ -0,0 +1,38 @@
-+import { readFileSync } from "node:fs";
-+import { fileURLToPath } from "node:url";
-+import { transform } from "esbuild";
-+import { describe, expect, it } from "vitest";
-+import { collectPackageDistImportErrors, collectPackageDistImports } from "../../scripts/lib/package-dist-imports.mjs";
-+import { createRuntimeProcessBuildEntries, runtimeProcessCoreEntrypoints } from "../../scripts/lib/runtime-process-core-build-entries.mts";
-+import { runtimeProcessEntrypoints } from "../../src/infra/runtime-process-entrypoints.js";
-+
-+const worker = runtimeProcessEntrypoints.agentDatabaseExecution;
-+const emittedWorker = `dist/${worker.distWorkerPath}`;
-+const callers = [
-+  "src/state/openclaw-agent-worker-store.ts",
-+  "src/state/native-review-publication-intents.ts",
-+];
-+
-+describe("agent database worker package paths", () => {
-+  it("emits the existing agent database worker at its shared runtime path", () => {
-+    const entries = createRuntimeProcessBuildEntries(runtimeProcessCoreEntrypoints);
-+    expect(entries[worker.distWorkerPath.replace(/\.js$/u, "")]).toBe(
-+      fileURLToPath(new URL("../../src/state/openclaw-agent-execution.worker.ts", import.meta.url)),
-+    );
-+  });
-+
-+  it.each(callers)("keeps %s worker URLs in the emitted package", async (caller) => {
-+    const source = readFileSync(new URL(`../../${caller}`, import.meta.url), "utf8");
-+    const { code } = await transform(source, { loader: "ts", format: "esm" });
-+    // Other module imports belong to the full tarball gate. This focused check
-+    // covers the worker URLs which formerly moved with bundled caller chunks.
-+    for (const importerPath of ["dist/agent-database-caller.mjs", "dist/worker/worker.mjs"]) {
-+      const files = [importerPath, emittedWorker];
-+      const imports = collectPackageDistImports({
-+        files: [importerPath],
-+        readText: () => code,
-+      }).filter((edge) => edge.importedPath.endsWith("openclaw-agent-execution.worker.js"));
-+      expect(collectPackageDistImportErrors({ files, imports })).toEqual([]);
-+    }
-+  });
-+});
+     expect(results[1]?.args).toEqual(expect.arrayContaining(["--concurrency", "1"]));
+-    expect(results[2]?.args).not.toContain("--concurrency");
++    expect(results[2]?.args).toEqual(expect.arrayContaining(["--concurrency", "1"]));
+     const filters = results.slice(1).map((result) => {
+       const filterIndex = result.args.indexOf("--filter");
+       return result.args[filterIndex + 1];
