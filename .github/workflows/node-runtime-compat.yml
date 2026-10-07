@@ -1,0 +1,42 @@
+# Proposal only; requires separately scoped publication and execution approval.
+# Save as node-runtime-compat.yml ONLY on the new qualification branch.
+# Its existing default-branch manual-dispatch registration is reused; the
+# default branch and its actual Node compatibility workflow remain untouched.
+name: Synthetic124 sanitized Debian12 qualification
+"on":
+  workflow_dispatch:
+    inputs:
+      approved_commit:
+        description: Exact final commit recorded in the new one-attempt approval receipt
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: synthetic124-debian12-qualification
+  cancel-in-progress: false
+jobs:
+  qualify:
+    if: github.repository == 'fr-meyer/openclaw' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/qualification/synthetic124-sanitized-debian12-20261007' && github.sha == inputs.approved_commit && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          lfs: false
+          submodules: false
+      - name: Bound source only launcher
+        shell: bash
+        env:
+          SYNTHETIC124_APPROVED_COMMIT: ${{ inputs.approved_commit }}
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_REF,SYNTHETIC124_APPROVED_COMMIT /usr/bin/python3 -I -S -B -u .qualification/launch.py
+# No artifacts, caches, cloud auth, SSH, Docker daemon, release or push step.
+# The reviewed execution join must bind this workflow to a single exact
+# commit and attempt=1 and verify source hashes before sudo. The owner must
+# record the returned run ID and consume the single dispatch allowance;
+# a run ID cannot be known before workflow_dispatch creates the run.
