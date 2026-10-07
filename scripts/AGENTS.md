@@ -4,6 +4,8 @@ This directory owns local tooling, script wrappers, and generated-artifact helpe
 
 ## Wrapper Rules
 
+- `scripts/pnpm.mjs` owns repository-local pnpm bootstrap and invocation. Root `package.json` owns the exact pnpm integrity pin; `scripts/pnpm-bootstrap/package-lock.json` pins the bootstrap Corepack package. Use `node scripts/pnpm.mjs --setup` before checks on fresh or restricted checkouts; tool state stays under ignored `.local/toolchain/`. Keep the existing Actions setup owners aligned with those canonical pins.
+
 - macOS-only Bash scripts use `#!/bin/bash` and Bash 3.2-compatible syntax; invoke them directly or with `/bin/bash`, including fixtures.
 - Portable Bash entrypoints using heredocs/here-strings (including sourced helpers) carry the inline Darwin Bash 5.3+ re-exec guard before those operations to prevent heredoc pipe deadlocks; stdin/sourced installers must request `/bin/bash` when replay is impossible.
 
