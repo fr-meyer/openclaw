@@ -11,11 +11,21 @@ import type {
   DiagnosticMemoryUsage,
 } from "../infra/diagnostic-events.js";
 import {
+  sanitizeMcpLifecycleFields,
+  sanitizeMcpLifecyclePhase,
+} from "../infra/diagnostic-mcp-lifecycle.js";
+import {
   collectErrorGraphCandidates,
   formatErrorMessage,
   isMissingPathError,
 } from "../infra/errors.js";
 import { registerFatalErrorHook } from "../infra/fatal-error-hooks.js";
+import {
+  readRequiredNumber,
+  readOptionalPositiveInteger,
+  readTimestampMs,
+  readOptionalNumber,
+} from "./diagnostic-stability-bundle-numbers.js";
 import {
   getDiagnosticStabilitySnapshot,
   MAX_DIAGNOSTIC_STABILITY_LIMIT,
@@ -276,36 +286,6 @@ function readObject(value: unknown, label: string): Record<string, unknown> {
     throw new Error(`Invalid stability bundle: ${label} must be an object`);
   }
   return value as Record<string, unknown>;
-}
-
-function readRequiredNumber(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`Invalid stability bundle: ${label} must be a finite number`);
-  }
-  return value;
-}
-
-function readOptionalPositiveInteger(value: unknown, label: string): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const parsed = readRequiredNumber(value, label);
-  return parsed >= 0 ? Math.floor(parsed) : undefined;
-}
-
-function readTimestampMs(value: unknown, label: string): number {
-  const timestamp = readRequiredNumber(value, label);
-  if (Number.isNaN(new Date(timestamp).getTime())) {
-    throw new Error(`Invalid stability bundle: ${label} must be a valid timestamp`);
-  }
-  return timestamp;
-}
-
-function readOptionalNumber(value: unknown, label: string): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  return readRequiredNumber(value, label);
 }
 
 function readRequiredString(value: unknown, label: string): string {
@@ -737,6 +717,19 @@ function readStabilityEventRecord(
       processed: readRequiredNumber(webhooks.processed, `${label}.webhooks.processed`),
       errors: readRequiredNumber(webhooks.errors, `${label}.webhooks.errors`),
     };
+  }
+  if (sanitized.type === "mcp.lifecycle") {
+    sanitized.phase = sanitizeMcpLifecyclePhase(record.phase);
+    if (record.phase !== undefined && !sanitized.phase) {
+      throw new Error("Invalid stability bundle: " + label + ".phase");
+    }
+  }
+  if (sanitized.type === "mcp.lifecycle" && record.mcp !== undefined) {
+    const mcp = sanitizeMcpLifecycleFields(record.mcp);
+    if (!mcp) {
+      throw new Error("Invalid stability bundle: " + label + ".mcp");
+    }
+    sanitized.mcp = mcp;
   }
   if (record.memory !== undefined) {
     sanitized.memory = readMemoryUsage(record.memory, `${label}.memory`);

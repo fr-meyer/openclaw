@@ -190,6 +190,25 @@ openclaw gateway stability --type payload.large
 openclaw gateway stability --json
 ```
 
+MCP ownership transitions appear as `mcp.lifecycle` events:
+
+```bash
+openclaw gateway stability --type mcp.lifecycle --json
+```
+
+Each event records an opaque transport generation, `providerClass` (`stdio`,
+`sse`, or `streamable-http`), retirement intent, connection state, and cleanup
+outcome. `childPid` is a historical stdio root PID in the Gateway process's PID
+namespace; it does not establish that the process is still alive.
+`serverRuntimeActiveLeases` counts the server runtime's leases, shared across
+its transport generations. Aliases, commands, URLs, credentials, and error text
+are excluded. These timestamped transitions use the existing bounded recorder,
+not a complete current ownership census: disabled collection, queue drops,
+ring eviction, and restart can leave gaps. An `uncertain` cleanup outcome does
+not certify closure, and later lease changes need not include that settled
+generation. Installing this instrumentation requires a rebuilt Gateway and
+restart; it cannot reconstruct generations that existed before activation.
+
 Inspect the newest persisted bundle after a fatal exit, shutdown timeout, or
 restart startup failure:
 

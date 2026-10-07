@@ -5,6 +5,17 @@ import {
   type DiagnosticMemoryUsage,
 } from "../infra/diagnostic-events.js";
 import {
+  sanitizeMcpLifecycleFields,
+  sanitizeMcpLifecyclePhase,
+  type DiagnosticMcpLifecycleFields,
+} from "../infra/diagnostic-mcp-lifecycle.js";
+import {
+  assignReasonCode,
+  copyExporterCode,
+  copyReasonCode,
+  resolveDiagnosticLivenessRecordLevel,
+} from "./diagnostic-stability-codes.js";
+import {
   DEFAULT_DIAGNOSTIC_STABILITY_CAPACITY,
   normalizeDiagnosticStabilityQuery,
 } from "./diagnostic-stability-query.js";
@@ -16,16 +27,13 @@ export {
 
 // Ring-buffer recorder for stability diagnostics and support-bundle snapshots.
 const MAX_DIAGNOSTIC_EXPORTER_STATES = 16;
-const LIVENESS_EVENT_LOOP_DELAY_WARN_MS = 1_000;
-
-const SAFE_REASON_CODE = /^[A-Za-z0-9_.:-]{1,120}$/u;
-const SAFE_EXPORTER_CODE = /^[A-Za-z0-9_-]{1,120}$/u;
 
 /** Sanitized diagnostic event record retained in the stability ring buffer. */
 export type DiagnosticStabilityEventRecord = {
   seq: number;
   ts: number;
   type: DiagnosticEventPayload["type"];
+  mcp?: DiagnosticMcpLifecycleFields;
   channel?: string;
   pluginId?: string;
   source?: string;
@@ -183,17 +191,6 @@ function getDiagnosticStabilityState(): DiagnosticStabilityState {
   return globalStore["__openclawDiagnosticStabilityState"];
 }
 
-function copyReasonCode(reason: unknown): string | undefined {
-  if (typeof reason !== "string" || !SAFE_REASON_CODE.test(reason)) {
-    return undefined;
-  }
-  return reason;
-}
-
-function copyExporterCode(value: unknown): string | undefined {
-  return typeof value === "string" && SAFE_EXPORTER_CODE.test(value) ? value : undefined;
-}
-
 function isDiagnosticExporterSignal(
   value: unknown,
 ): value is DiagnosticExporterHealthUpdate["signal"] {
@@ -206,29 +203,6 @@ function isDiagnosticExporterStatus(
   return value === "started" || value === "failure" || value === "recovered" || value === "dropped";
 }
 
-function assignReasonCode(
-  record: DiagnosticStabilityEventRecord,
-  reason: string | undefined,
-): void {
-  const reasonCode = copyReasonCode(reason);
-  if (reasonCode) {
-    record.reason = reasonCode;
-  }
-}
-
-function resolveDiagnosticLivenessRecordLevel(
-  event: Extract<DiagnosticEventPayload, { type: "diagnostic.liveness.warning" }>,
-): "warning" | "info" {
-  const hasBlockingWork = event.waiting > 0 || event.queued > 0;
-  const hasSustainedEventLoopDelay =
-    (event.eventLoopDelayP99Ms ?? 0) >= LIVENESS_EVENT_LOOP_DELAY_WARN_MS;
-  return event.degradedSinceMs !== undefined ||
-    hasBlockingWork ||
-    (event.active > 0 && hasSustainedEventLoopDelay)
-    ? "warning"
-    : "info";
-}
-
 function sanitizeDiagnosticEvent(event: DiagnosticEventPayload): DiagnosticStabilityEventRecord {
   const record: DiagnosticStabilityEventRecord = {
     seq: event.seq,
@@ -237,6 +211,10 @@ function sanitizeDiagnosticEvent(event: DiagnosticEventPayload): DiagnosticStabi
   };
 
   switch (event.type) {
+    case "mcp.lifecycle":
+      record.phase = sanitizeMcpLifecyclePhase(event.phase);
+      record.mcp = sanitizeMcpLifecycleFields(event.mcp);
+      break;
     case "agent.commentary":
       // Trusted commentary belongs to harness traces, not the stability subscription.
       break;
@@ -795,12 +773,20 @@ export function startDiagnosticStabilityRecorder(): void {
     return;
   }
   state.unsubscribe = onInternalDiagnosticEvent(
-    (event) => {
+    (event, metadata) => {
+      if (event.type === "mcp.lifecycle" && !metadata.trusted) {
+        return;
+      }
       appendRecord(sanitizeDiagnosticEvent(event));
     },
     {
       // Recovery needs model-call telemetry; other trusted events have dedicated owners.
-      includeTrusted: ["model.call.started", "model.call.completed", "model.call.error"],
+      includeTrusted: [
+        "model.call.started",
+        "model.call.completed",
+        "model.call.error",
+        "mcp.lifecycle",
+      ],
       exclude: [
         "log.record",
         "telemetry.exporter",

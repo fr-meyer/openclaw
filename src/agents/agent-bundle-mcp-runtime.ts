@@ -1,6 +1,6 @@
 /** Session-scoped MCP runtime catalog loader and transport lifecycle. */
+import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import {
   ErrorCode,
   ListToolsResultSchema,
@@ -10,12 +10,25 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
+import type {
+  DiagnosticMcpLifecyclePhase,
+  DiagnosticMcpRetirementIntent,
+} from "../infra/diagnostic-mcp-lifecycle.js";
 import { logWarn } from "../logger.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+import {
+  isMcpMethodNotFoundError,
+  listAllTools,
+  BUNDLE_MCP_LIST_LIMITS,
+} from "./agent-bundle-mcp-catalog-listing.js";
 import {
   createCombinedSessionMcpRuntime,
   mergeMcpToolCatalogs,
 } from "./agent-bundle-mcp-combined.js";
+import {
+  recordBundleMcpSession,
+  type BundleMcpSession,
+} from "./agent-bundle-mcp-lifecycle-diagnostics.js";
 import {
   disposeAllSessionMcpRuntimes,
   getSessionMcpRuntimeManagerForTesting,
@@ -58,24 +71,9 @@ import {
 } from "./mcp-metadata.js";
 import { collectMcpPaginatedItems } from "./mcp-pagination.js";
 import { isMcpToolAllowed, normalizeMcpToolFilter } from "./mcp-tool-filter.js";
-import { normalizeMcpToolCatalog, type McpToolCatalogMetadata } from "./mcp-tool-metadata.js";
+import { normalizeMcpToolCatalog } from "./mcp-tool-metadata.js";
 import { resolveMcpTransport } from "./mcp-transport.js";
 import { recordAgentCleanupFailure } from "./run-cleanup-timeout.js";
-
-type BundleMcpSession = {
-  serverName: string;
-  client: Client;
-  transport: Transport;
-  transportType: "stdio" | "sse" | "streamable-http";
-  requestTimeoutMs: number;
-  connected: boolean;
-  disconnectReason?: string;
-  retiring: boolean;
-  connectPromise?: Promise<void>;
-  disposePromise?: Promise<void>;
-  detachStderr?: () => void;
-  toolMetadata?: McpToolCatalogMetadata;
-};
 
 const BUNDLE_MCP_FAILURE_THRESHOLD = 3;
 const BUNDLE_MCP_FAILURE_COOLDOWN_MS = 60_000;
@@ -84,9 +82,6 @@ const BUNDLE_MCP_CATALOG_FAILURE_RETRY_MS = 5_000;
 // explicit request timeout, with room for a cold remote (OAuth, HTTP) listing.
 const BUNDLE_MCP_CATALOG_LIST_TIMEOUT_MS = 10_000;
 const BUNDLE_MCP_DISPOSE_TIMEOUT_MS = 5_000;
-const BUNDLE_MCP_MAX_LIST_PAGES = 128;
-const BUNDLE_MCP_MAX_LIST_ITEMS = 16_384;
-const BUNDLE_MCP_MAX_LIST_BYTES = 10 * 1024 * 1024;
 let bundleMcpCatalogListTimeoutMs: number | undefined;
 const BUNDLE_MCP_TEST_STATE_KEY = Symbol.for("openclaw.bundleMcpTestState");
 type BundleMcpTestState = { disposeTimeoutMs?: number };
@@ -102,52 +97,6 @@ type McpServerBackoffState = {
 };
 
 export { createMcpJsonSchemaValidator as createBundleMcpJsonSchemaValidator };
-
-async function listAllTools(
-  client: Client,
-  timeoutMs: number,
-  signal: AbortSignal,
-): Promise<Tool[]> {
-  return await collectMcpPaginatedItems({
-    label: "MCP tool listing",
-    itemLabel: "tools",
-    timeoutMs,
-    maxPages: BUNDLE_MCP_MAX_LIST_PAGES,
-    maxItems: BUNDLE_MCP_MAX_LIST_ITEMS,
-    maxBytes: BUNDLE_MCP_MAX_LIST_BYTES,
-    signal,
-    loadPage: async ({ cursor, requestTimeoutMs, signal: requestSignal }) => {
-      const requestController = new AbortController();
-      const onAbort = () => requestController.abort(requestSignal.reason);
-      requestSignal.addEventListener("abort", onAbort, { once: true });
-      if (requestSignal.aborted) {
-        onAbort();
-      }
-      try {
-        const page = await client.request(
-          { method: "tools/list", params: cursor === undefined ? undefined : { cursor } },
-          ListToolsResultSchema,
-          {
-            timeout: requestTimeoutMs,
-            maxTotalTimeout: requestTimeoutMs,
-            signal: requestController.signal,
-          },
-        );
-        return { items: page.tools, nextCursor: page.nextCursor, serializedValue: page };
-      } finally {
-        requestSignal.removeEventListener("abort", onAbort);
-      }
-    },
-  });
-}
-
-function isMcpMethodNotFoundError(error: unknown): boolean {
-  if (isRecord(error) && error.code === ErrorCode.MethodNotFound) {
-    return true;
-  }
-  const message = String(error);
-  return message.includes("-32601") || /\b(?:method not found|unknown method)\b/i.test(message);
-}
 
 function hasConfiguredMcpRequestTimeout(rawServer: unknown): boolean {
   if (!rawServer || typeof rawServer !== "object") {
@@ -199,7 +148,10 @@ function createDisposedError(sessionId: string): Error {
   return new Error(`bundle-mcp runtime disposed for session ${sessionId}`);
 }
 
-type ServerMcpRuntime = SessionMcpRuntime & { readonly pluginOwned: boolean };
+type ServerMcpRuntime = SessionMcpRuntime & {
+  readonly pluginOwned: boolean;
+  recordRetirementIntent: (intent: DiagnosticMcpRetirementIntent) => void;
+};
 
 export function createSessionMcpRuntime(
   params: Parameters<CreateSessionMcpRuntime>[0],
@@ -351,6 +303,12 @@ export function createSessionMcpRuntime(
     }
   };
   sessionMcpRuntimeOwners.set(runtime, {
+    recordRetirementIntent(intent) {
+      // Transferred servers follow their new owner; old facades retain only routing.
+      for (const part of owned.values()) {
+        part.recordRetirementIntent(intent);
+      }
+    },
     hasServers: () => owned.size > 0,
     isCurrent: () => !invalidated,
     replace: (nextParams) => createSessionMcpRuntime(nextParams, owned),
@@ -434,6 +392,7 @@ function createServerMcpRuntime(
   const createdAt = Date.now();
   let lastUsedAt = createdAt;
   let activeLeases = 0;
+  let retirementIntent: DiagnosticMcpRetirementIntent = "none";
   let retiredCatalog: McpToolCatalog | undefined;
   const lifecycleAbortController = new AbortController();
   let catalog: McpToolCatalog | null = null;
@@ -479,26 +438,48 @@ function createServerMcpRuntime(
   let currentSession: BundleMcpSession | undefined;
   let disposal: Promise<void> | undefined;
   let cleanupFailed = false;
-  const pendingDisposals = new Set<Promise<void>>();
+  const pendingDisposals = new Map<BundleMcpSession, Promise<void>>();
+  const recordSession = (session: BundleMcpSession, phase: DiagnosticMcpLifecyclePhase) =>
+    recordBundleMcpSession(session, phase, {
+      activeLeases,
+      retirementIntent,
+      catalogRetired: Boolean(retiredCatalog),
+    });
+  const recordOwnedSessions = (phase: DiagnosticMcpLifecyclePhase) => {
+    if (currentSession) {
+      recordSession(currentSession, phase);
+    }
+    for (const session of pendingDisposals.keys()) {
+      if (session !== currentSession) {
+        recordSession(session, phase);
+      }
+    }
+  };
   const disposeSession = (session: BundleMcpSession): Promise<void> => {
     if (session.disposePromise) {
       return session.disposePromise;
     }
+    session.closeOutcome = "pending";
+    recordSession(session, "retirement");
     const closing = disposeBundleMcpSession(session)
       .then((outcome) => {
+        session.closeOutcome = outcome;
+        recordSession(session, "cleanup");
         if (outcome === "uncertain") {
           cleanupFailed = true;
           recordAgentCleanupFailure();
         }
       })
       .catch((error: unknown) => {
+        session.closeOutcome = "uncertain";
+        recordSession(session, "cleanup");
         cleanupFailed = true;
         recordAgentCleanupFailure();
         throw error;
       })
-      .finally(() => pendingDisposals.delete(closing));
+      .finally(() => pendingDisposals.delete(session));
     session.disposePromise = closing;
-    pendingDisposals.add(closing);
+    pendingDisposals.set(session, closing);
     return closing;
   };
 
@@ -558,6 +539,7 @@ function createServerMcpRuntime(
       })
       .then(() => {
         session.connected = true;
+        recordSession(session, "connected");
       })
       .finally(() => {
         session.connectPromise = undefined;
@@ -679,9 +661,9 @@ function createServerMcpRuntime(
       label: `MCP ${kind === "resources" ? "resource" : "prompt"} listing`,
       itemLabel: kind,
       timeoutMs: session.requestTimeoutMs,
-      maxPages: BUNDLE_MCP_MAX_LIST_PAGES,
-      maxItems: BUNDLE_MCP_MAX_LIST_ITEMS,
-      maxBytes: BUNDLE_MCP_MAX_LIST_BYTES,
+      maxPages: BUNDLE_MCP_LIST_LIMITS.pages,
+      maxItems: BUNDLE_MCP_LIST_LIMITS.items,
+      maxBytes: BUNDLE_MCP_LIST_LIMITS.bytes,
       signal: callerSignal
         ? AbortSignal.any([lifecycleAbortController.signal, callerSignal])
         : lifecycleAbortController.signal,
@@ -770,6 +752,8 @@ function createServerMcpRuntime(
           },
         );
         const createdSession: BundleMcpSession = {
+          generationId: randomUUID(),
+          closeOutcome: "not-requested",
           serverName,
           client,
           transport: resolved.transport,
@@ -786,6 +770,7 @@ function createServerMcpRuntime(
           const wasConnected = createdSession.connected;
           createdSession.connected = false;
           createdSession.disconnectReason = "mcp transport closed";
+          recordSession(createdSession, "transport-closed");
           // Only established current sessions invalidate the catalog. Startup closes
           // already belong to catalog loading, and retirement must not start a rebuild.
           if (
@@ -800,6 +785,7 @@ function createServerMcpRuntime(
         };
         session = createdSession;
         currentSession = session;
+        recordSession(session, "created");
       }
 
       try {
@@ -999,6 +985,12 @@ function createServerMcpRuntime(
   };
 
   const runtime: ServerMcpRuntime = {
+    recordRetirementIntent(intent) {
+      if (retirementIntent !== intent) {
+        retirementIntent = intent;
+        recordOwnedSessions("retirement");
+      }
+    },
     // Provenance travels with the transport; a later explicit definition cannot relabel it.
     pluginOwned:
       !Object.hasOwn(params.cfg?.mcp?.servers ?? {}, serverName) ||
@@ -1022,6 +1014,7 @@ function createServerMcpRuntime(
     },
     acquireLease() {
       activeLeases += 1;
+      recordOwnedSessions("lease");
       let released = false;
       return () => {
         if (released) {
@@ -1029,6 +1022,7 @@ function createServerMcpRuntime(
         }
         released = true;
         activeLeases = Math.max(0, activeLeases - 1);
+        recordOwnedSessions("lease");
         // Release is not use: refreshing lastUsedAt here defeats the idle-sweep TTL.
       };
     },
@@ -1113,7 +1107,7 @@ function createServerMcpRuntime(
     },
     async joinCleanup() {
       await disposal;
-      await Promise.allSettled(pendingDisposals);
+      await Promise.allSettled(pendingDisposals.values());
       if (cleanupFailed) {
         recordAgentCleanupFailure();
         throw new Error("MCP runtime cleanup could not confirm closure");
@@ -1147,7 +1141,7 @@ function createServerMcpRuntime(
             await disposeSession(session).catch(() => undefined);
           }
           await pendingCatalog?.catch(() => undefined);
-          await Promise.allSettled(pendingDisposals);
+          await Promise.allSettled(pendingDisposals.values());
         })();
       }
       // Physical cleanup is single-flight; uncertainty belongs to every caller.

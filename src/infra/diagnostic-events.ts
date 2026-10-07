@@ -10,11 +10,13 @@ import {
   type InternalDiagnosticEventInterest,
   updateInternalDiagnosticEventInterest,
 } from "./diagnostic-event-listener-presence.js";
+import type { DiagnosticAsyncQueueDroppedFields } from "./diagnostic-event-queue-types.js";
 import {
   cloneDiagnosticValueForListener,
   createDiagnosticMetadataForListener,
   deepFreezeDiagnosticValue,
 } from "./diagnostic-event-snapshot.js";
+import type { DiagnosticMcpLifecycleEventFields } from "./diagnostic-mcp-lifecycle.js";
 import {
   consumeCoreModelRequestLifecycleDiagnosticEvent,
   CORE_MODEL_REQUEST_LIFECYCLE_METADATA_KEY,
@@ -830,18 +832,11 @@ export type DiagnosticTelemetryExporterEvent = DiagnosticBaseEvent & {
   errorCategory?: string;
 };
 
-export type DiagnosticAsyncQueueDroppedEvent = DiagnosticBaseEvent & {
-  type: "diagnostic.async_queue.dropped";
-  droppedEvents: number;
-  droppedTrustedEvents?: number;
-  droppedUntrustedEvents?: number;
-  droppedPriorityEvents?: number;
-  queueLength: number;
-  maxQueueLength: number;
-  drainBatchSize: number;
-};
+export type DiagnosticAsyncQueueDroppedEvent = DiagnosticBaseEvent &
+  DiagnosticAsyncQueueDroppedFields;
 
 export type DiagnosticEventPayload =
+  | (DiagnosticBaseEvent & DiagnosticMcpLifecycleEventFields)
   | DiagnosticGatewayRpcEvent
   | DiagnosticUsageEvent
   | DiagnosticWebhookReceivedEvent
@@ -1020,6 +1015,7 @@ const MAX_ASYNC_DIAGNOSTIC_EVENTS = 10_000;
 const MAX_ASYNC_DIAGNOSTIC_EVENTS_PER_TURN = 100;
 const DIAGNOSTIC_EVENTS_STATE_KEY = Symbol.for("openclaw.diagnosticEvents.state.v1");
 const ASYNC_DIAGNOSTIC_EVENT_TYPES = new Set<DiagnosticEventPayload["type"]>([
+  "mcp.lifecycle",
   "diagnostic.gc",
   "gateway.event_loop.sample",
   "gateway.rpc",

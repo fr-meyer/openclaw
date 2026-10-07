@@ -45,6 +45,7 @@ export class OpenClawStdioClientTransport implements Transport {
   private readonly readBuffer: McpStdioDecoder;
   private readonly stderrStream: PassThrough | null = null;
   private process?: OwnedStdioProcess;
+  private spawnedPid?: number;
   private starting?: Promise<void>;
   private closing?: Promise<void>;
   private forceRequested = false;
@@ -101,6 +102,7 @@ export class OpenClawStdioClientTransport implements Transport {
           this.stderrStream ?? (this.serverParams.stderr === "ignore" ? undefined : process.stderr),
       });
       this.process = child;
+      this.spawnedPid = child.pid;
       child.onError((error) => this.onerror?.(error));
       const receive = (chunk: Buffer) => {
         if (this.closing) {
@@ -157,6 +159,11 @@ export class OpenClawStdioClientTransport implements Transport {
 
   get pid() {
     return this.process?.pid ?? null;
+  }
+
+  /** Historical root identity only; does not claim the child remains alive. */
+  get diagnosticPid() {
+    return this.spawnedPid;
   }
 
   get cleanupResult() {

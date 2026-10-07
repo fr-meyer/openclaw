@@ -333,6 +333,7 @@ export function createSessionMcpRuntimeManager(
         return false;
       }
       store.deferredRetirementSessionIds.add(sessionId);
+      lifecycle.recordRetirementIntent(sessionId);
       return true;
     },
     async completeDeferredRetirement(sessionId, runtime) {

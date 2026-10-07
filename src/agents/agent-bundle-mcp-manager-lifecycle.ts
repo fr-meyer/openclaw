@@ -255,6 +255,23 @@ export function createSessionMcpRuntimeManagerLifecycle(store: SessionMcpRuntime
     return total;
   };
 
+  const recordRetirementIntent = (sessionId: string): void => {
+    const intent = store.requiredRetirementSessionIds.has(sessionId)
+      ? "required"
+      : store.deferredRetirementSessionIds.has(sessionId)
+        ? "deferred"
+        : "none";
+    for (const runtime of store.runtimesBySessionId.values()) {
+      if (runtime.sessionId === sessionId) {
+        try {
+          sessionMcpRuntimeOwners.get(runtime)?.recordRetirementIntent?.(intent);
+        } catch {
+          // A diagnostic observer cannot change the manager's retirement decision.
+        }
+      }
+    }
+  };
+
   const runExclusiveOnRuntimeKeys = <T>(
     runtimeKeys: string[],
     work: () => Promise<T>,
@@ -514,6 +531,7 @@ export function createSessionMcpRuntimeManagerLifecycle(store: SessionMcpRuntime
     store,
     runtimeKeysForSessionId,
     totalActiveLeasesForSessionId,
+    recordRetirementIntent,
     runExclusiveOnRuntimeKeys,
     sweepIdleRuntimes,
     reserveRuntimeSlot,

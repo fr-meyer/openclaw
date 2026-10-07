@@ -76,10 +76,12 @@ export function createSessionMcpRuntimeManagerInstall(
       // otherwise a racing run could escape the required session teardown.
       store.deferredRetirementSessionIds.add(sessionId);
       revokeMcpAppModelContext(runtime);
+      lifecycle.recordRetirementIntent(sessionId);
       return;
     }
     store.deferredRetirementSessionIds.delete(sessionId);
     allowMcpAppModelContext(runtime);
+    lifecycle.recordRetirementIntent(sessionId);
   };
 
   /** Install under the runtime-key queue shared by acquisition and disposal. */
