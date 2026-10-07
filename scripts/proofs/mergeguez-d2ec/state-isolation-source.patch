@@ -1,0 +1,215 @@
+diff --git a/scripts/proofs/native-ipc-gateway/driver.mjs b/scripts/proofs/native-ipc-gateway/driver.mjs
+index 97ebf4c21052758b477f8e4ea2ed0a5e31b1f823..855c05292f60e793e3ca8900d10364c5a0ad31b6 100644
+--- a/scripts/proofs/native-ipc-gateway/driver.mjs
++++ b/scripts/proofs/native-ipc-gateway/driver.mjs
+@@ -1,6 +1,6 @@
+ import assert from "node:assert/strict";
+ import { createHash } from "node:crypto";
+-import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
++import { lstat, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+ import { networkInterfaces } from "node:os";
+ import path from "node:path";
+ import { pathToFileURL } from "node:url";
+@@ -33,6 +33,30 @@ export function gatewayArgv(artifactRoot, port) {
+   return [process.execPath, path.join(artifactRoot, ENTRY_PATHS.gateway), "gateway", "run", "--bind", "loopback", "--auth", "none", "--tailscale", "off", "--port", String(port)];
+ }
+ 
++export async function createQualificationStateScope(stateRoot, kind, searchPath) {
++  assert.ok(kind === "ownership-fixtures" || kind === "gateway-clean");
++  const root = path.join(await realpath(stateRoot), kind);
++  await mkdir(root, { mode: 0o700 }); // Refuse existing state; never clear a held fixture.
++  const identity = await lstat(root);
++  return Object.freeze({
++    stateRoot: root,
++    identity: Object.freeze({ dev: identity.dev, ino: identity.ino }),
++    environment: Object.freeze({ PATH: searchPath, HOME: root, LANG: "C.UTF-8", OPENCLAW_STATE_DIR: root, OPENCLAW_CONFIG_PATH: path.join(root, "openclaw.json") }),
++  });
++}
++
++export async function prepareGatewayStart(scope, artifactRoot, port) {
++  const identity = await lstat(scope.stateRoot);
++  assert.ok(identity.isDirectory() && !identity.isSymbolicLink());
++  assert.deepEqual({ dev: identity.dev, ino: identity.ino }, scope.identity);
++  assert.equal(await realpath(scope.stateRoot), scope.stateRoot);
++  assert.deepEqual(await readdir(scope.stateRoot), [], "Positive Gateway case requires fresh state");
++  const config = { gateway: { mode: "local", bind: "loopback", auth: { mode: "none" }, tailscale: { mode: "off" } }, models: { catalogRefresh: { enabled: false } }, cron: { enabled: false }, update: { checkOnStart: false }, discovery: { mdns: { mode: "off" } } };
++  const configPath = path.join(scope.stateRoot, "openclaw.json");
++  await writeFile(configPath, `${JSON.stringify(config)}\n`, { flag: "wx", mode: 0o600 });
++  return { config, configPath, argv: gatewayArgv(artifactRoot, port), environment: scope.environment };
++}
++
+ function errorFacts(error) {
+   return { name: error instanceof Error ? error.name : "unknown", message: error instanceof Error ? error.message : String(error), code: error?.code };
+ }
+@@ -174,11 +198,8 @@ async function maintenanceAndReopen(api, stateRoot, environment, record) {
+   await api.closeOpenClawStateDatabaseByPathAsync(api.resolveOpenClawStateSqlitePath(environment));
+ }
+ 
+-async function gateway(api, options, environment, record) {
+-  const config = { gateway: { mode: "local", bind: "loopback", auth: { mode: "none" }, tailscale: { mode: "off" } }, models: { catalogRefresh: { enabled: false } }, cron: { enabled: false }, update: { checkOnStart: false }, discovery: { mdns: { mode: "off" } } };
+-  const configPath = path.join(options.stateRoot, "openclaw.json");
+-  await writeFile(configPath, `${JSON.stringify(config)}\n`, { flag: "wx", mode: 0o600 });
+-  const argv = gatewayArgv(options.artifactRoot, options.port);
++async function gateway(api, options, scope, record) {
++  const { config, configPath, argv, environment } = await prepareGatewayStart(scope, options.artifactRoot, options.port);
+   const child = await api.createOwnedStdioProcess({ argv, cwd: options.artifactRoot, env: { ...environment, OPENCLAW_CONFIG_PATH: configPath }, exactEnv: true });
+   let stdout = "", stderr = "", outputOverflow = false;
+   const capture = (previous, chunk) => {
+@@ -222,23 +243,28 @@ export async function main(argv = process.argv.slice(2)) {
+   options.artifactRoot = await realpath(options.artifactRoot);
+   await mkdir(options.stateRoot, { mode: 0o700 }); // Existing state, including an empty directory, is refused.
+   assert.equal((await readdir(options.stateRoot)).length, 0);
+-  const environment = { PATH: process.env.PATH, HOME: options.stateRoot, LANG: "C.UTF-8", OPENCLAW_STATE_DIR: options.stateRoot, OPENCLAW_CONFIG_PATH: path.join(options.stateRoot, "openclaw.json") };
++  const fixtures = await createQualificationStateScope(options.stateRoot, "ownership-fixtures", process.env.PATH);
++  const environment = fixtures.environment;
+   // Secretless namespace: do not inherit credentials, proxy configuration, test/minimal flags or provider settings.
+   for (const key of Object.keys(process.env)) delete process.env[key];
+   Object.assign(process.env, environment);
+-  const report = { schema: "openclaw.native-ipc-gateway-observations/v1", artifactProfile: "original-full-production-build-plus-task-internal-entries", priorArtifactParity: "unproved", admissionOrReleaseAcceptance: false, cases: [], ownership: [] };
++  const report = { schema: "openclaw.native-ipc-gateway-observations/v1", artifactProfile: "original-full-production-build-plus-task-internal-entries", priorArtifactParity: "unproved", admissionOrReleaseAcceptance: false, stateScopes: { ownershipFixtures: fixtures.stateRoot }, cases: [], ownership: [] };
+   const record = value => report.cases.push(value);
+   let api;
+   try {
+     const entries = await loadEntries(options.artifactRoot);
+     api = entries.api; report.loadedEntries = entries.loaded;
+-    await nativeIpc(api, entries.fixtureUrl, options.stateRoot, record);
+-    await maintenanceAndReopen(api, options.stateRoot, environment, record);
++    await nativeIpc(api, entries.fixtureUrl, fixtures.stateRoot, record);
++    await maintenanceAndReopen(api, fixtures.stateRoot, environment, record);
+     // This Promise consumes original broker Worker.terminate()/slot.exit joins, not PID inference.
+     await api.drainGlobalSingletonLifecycleState("close");
+     report.ownership.push({ owner: "original-global-singleton-broker-close", status: "terminal", workerExitAndSlotJoins: "original-owner-promise" });
+     report.ownership.push({ owner: "lost-ack-and-legacy-writer", status: "held-for-reconciliation", notAnAdmissionReceipt: true });
+-    await gateway(api, options, environment, record);
++    // Global physical drain leaves durable denials held. The positive boot case
++    // starts separately; neither fresh state nor readiness settles those records.
++    const clean = await createQualificationStateScope(options.stateRoot, "gateway-clean", environment.PATH);
++    report.stateScopes.cleanGateway = clean.stateRoot;
++    await gateway(api, options, clean, record);
+     report.completed = true;
+   } catch (error) {
+     report.completed = false; report.failure = errorFacts(error);
+diff --git a/test/scripts/native-ipc-gateway-state-isolation.test.ts b/test/scripts/native-ipc-gateway-state-isolation.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..489d07433652a92d6deb8bc2e381bf49bb4c223c
+--- /dev/null
++++ b/test/scripts/native-ipc-gateway-state-isolation.test.ts
+@@ -0,0 +1,118 @@
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import { readFileSync } from "node:fs";
++import { mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import path from "node:path";
++import { DatabaseSync } from "node:sqlite";
++import { describe, it } from "vitest";
++import { createQualificationStateScope, prepareGatewayStart } from "../../scripts/proofs/native-ipc-gateway/driver.mjs";
++
++async function fixture(run) {
++  const root = await mkdtemp(path.join(tmpdir(), "native-state-isolation-"));
++  try { await run(root); }
++  finally { await rm(root, { recursive: true, force: true }); }
++}
++
++describe("native qualification state isolation", () => {
++  it("preserves actual quarantine denial and held database/backup bytes while preparing clean startup", async () => {
++    await fixture(async (root) => {
++      const negative = await createQualificationStateScope(root, "ownership-fixtures", "/original/path");
++      const pathname = path.join(negative.stateRoot, "held.sqlite");
++      const schema = readFileSync(new URL("../../src/state/openclaw-agent-schema.sql", import.meta.url), "utf8");
++      const trigger = schema.match(/CREATE TRIGGER IF NOT EXISTS agent_run_quarantine_session_nodes_update\n[\s\S]*?BEGIN SELECT RAISE\(ABORT, 'agent run is quarantined'\); END;/u)?.[0];
++      assert.ok(trigger);
++      // This primitive fixture exercises the original SQL trigger, not native
++      // migration/admission or a substitute owner/settlement receipt.
++      const database = new DatabaseSync(pathname);
++      try {
++        database.exec("CREATE TABLE session_nodes(session_key TEXT PRIMARY KEY,current_session_id TEXT,entry_json TEXT,entry_valid INTEGER); CREATE TABLE agent_run_native_revocations(run_id TEXT PRIMARY KEY,session_key TEXT,session_id TEXT);");
++        database.exec("INSERT INTO session_nodes VALUES('agent:qualification:qualification','held-session','{}',0); INSERT INTO agent_run_native_revocations VALUES('held-run','agent:qualification:qualification','held-session');");
++        database.exec(trigger);
++        assert.throws(() => database.exec("UPDATE session_nodes SET entry_valid=1"), /agent run is quarantined/u);
++      } finally { database.close(); }
++      const before = await readFile(pathname);
++      const backup = path.join(negative.stateRoot, "original.backup");
++      await writeFile(backup, before);
++      const unknown = { executionDrain: "unknown", providerDrain: "unknown", ownership: "held-for-reconciliation", notAnAdmissionReceipt: true };
++      const held = path.join(negative.stateRoot, "held-evidence.json");
++      await writeFile(held, JSON.stringify(unknown));
++
++      const clean = await createQualificationStateScope(root, "gateway-clean", negative.environment.PATH);
++      assert.deepEqual(await readdir(clean.stateRoot), []);
++      const launch = await prepareGatewayStart(clean, "/artifact", 18941);
++      assert.notEqual(clean.stateRoot, negative.stateRoot);
++      assert.equal(launch.environment.HOME, clean.stateRoot);
++      assert.equal(launch.environment.OPENCLAW_STATE_DIR, clean.stateRoot);
++      assert.equal(launch.environment.OPENCLAW_CONFIG_PATH, launch.configPath);
++      assert.equal(launch.configPath, path.join(clean.stateRoot, "openclaw.json"));
++      assert.equal(launch.environment.PATH, "/original/path");
++      assert.deepEqual(Object.keys(launch.environment).sort(), ["HOME", "LANG", "OPENCLAW_CONFIG_PATH", "OPENCLAW_STATE_DIR", "PATH"]);
++      assert.equal(launch.config.gateway.bind, "loopback");
++      assert.equal(launch.config.gateway.auth.mode, "none");
++      assert.equal(launch.config.cron.enabled, false);
++      assert.equal(launch.config.models.catalogRefresh.enabled, false);
++      assert.deepEqual(await readFile(pathname), before);
++      assert.deepEqual(await readFile(backup), before);
++      assert.deepEqual(JSON.parse(await readFile(held, "utf8")), unknown);
++      const reopened = new DatabaseSync(pathname);
++      try {
++        assert.throws(() => reopened.exec("UPDATE session_nodes SET entry_valid=1"), /agent run is quarantined/u);
++        assert.equal(reopened.prepare("SELECT count(*) AS n FROM agent_run_native_revocations").get().n, 1);
++        assert.equal(reopened.prepare("SELECT entry_valid FROM session_nodes").get().entry_valid, 0);
++      } finally { reopened.close(); }
++    });
++  });
++
++  it("refuses reuse of either existing phase root without altering evidence", async () => {
++    await fixture(async (root) => {
++      for (const kind of ["ownership-fixtures", "gateway-clean"]) {
++        const scope = await createQualificationStateScope(root, kind, "/original/path");
++        const held = path.join(scope.stateRoot, "unknown");
++        await writeFile(held, "preserve");
++        await assert.rejects(createQualificationStateScope(root, kind, "/original/path"), { code: "EEXIST" });
++        assert.equal(await readFile(held, "utf8"), "preserve");
++      }
++    });
++  });
++
++  it("rejects state injected before positive configuration", async () => {
++    await fixture(async (root) => {
++      const clean = await createQualificationStateScope(root, "gateway-clean", "/original/path");
++      await writeFile(path.join(clean.stateRoot, "unknown"), "held");
++      await assert.rejects(prepareGatewayStart(clean, "/artifact", 18941), /requires fresh state/u);
++      assert.deepEqual(await readdir(clean.stateRoot), ["unknown"]);
++    });
++  });
++
++  it("rejects a successor directory at the captured positive pathname", async () => {
++    await fixture(async (root) => {
++      const clean = await createQualificationStateScope(root, "gateway-clean", "/original/path");
++      await rename(clean.stateRoot, path.join(root, "retained-old"));
++      await mkdir(clean.stateRoot);
++      await assert.rejects(prepareGatewayStart(clean, "/artifact", 18941));
++      assert.deepEqual(await readdir(clean.stateRoot), []);
++    });
++  });
++
++  it("rejects a symlink replacement without writing its target", async () => {
++    await fixture(async (root) => {
++      const clean = await createQualificationStateScope(root, "gateway-clean", "/original/path");
++      const target = path.join(root, "retained-old");
++      await rename(clean.stateRoot, target);
++      await symlink(target, clean.stateRoot);
++      await assert.rejects(prepareGatewayStart(clean, "/artifact", 18941));
++      assert.deepEqual(await readdir(target), []);
++    });
++  });
++
++  it("refuses repeated positive preparation and preserves the original configuration", async () => {
++    await fixture(async (root) => {
++      const clean = await createQualificationStateScope(root, "gateway-clean", "/original/path");
++      const first = await prepareGatewayStart(clean, "/artifact", 18941);
++      const before = createHash("sha256").update(await readFile(first.configPath)).digest("hex");
++      await assert.rejects(prepareGatewayStart(clean, "/artifact", 18941), /requires fresh state/u);
++      assert.equal(createHash("sha256").update(await readFile(first.configPath)).digest("hex"), before);
++    });
++  });
++});

@@ -1,0 +1,6 @@
+tree 4a67cb919839f0fb33c9bb401ca2b17952a437e6
+parent 2fc895b4f672a9888aa7806be95eaec689d1093c
+author Codex <codex@openai.com> 1791345820 +0900
+committer Codex <codex@openai.com> 1791345820 +0900
+
+fix: isolate clean Gateway qualification from held fixtures
