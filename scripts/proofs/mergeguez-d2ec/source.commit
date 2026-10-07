@@ -1,6 +1,6 @@
-tree f31eff936a27c37ff0d9721a2be6b2206e564d1f
-parent 8c0a101b12a46ddb47d98b0e3d2b2f3c039378e9
-author Codex <codex@openai.com> 1791308457 +0000
-committer Codex <codex@openai.com> 1791308457 +0000
+tree dc6c6dfe15f267ccbbbaa7c52ee881eb31c9f380
+parent 91e60019c0d8470aaa49995d2f19d5345e293e46
+author Codex <codex@openai.com> 1791335556 +0000
+committer Codex <codex@openai.com> 1791335556 +0000
 
-fix(state): order snapshot migration schema guards
+test(state): preserve derived validity in snapshot migration assertions
