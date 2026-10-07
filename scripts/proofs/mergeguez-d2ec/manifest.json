@@ -35,8 +35,8 @@
     },
     {
       "path": "materialize.mjs",
-      "bytes": 12482,
-      "sha256": "5e623995512a9ef94b2cceeb83edfb7a4768bb15e4cb129a478195bef59040f4"
+      "bytes": 16508,
+      "sha256": "8aae88c02023b8f4bc05b89dd1b99432ced203354f24a9b6b3b55014f292341e"
     },
     {
       "path": "owner-source-1.commit",
@@ -200,8 +200,8 @@
     },
     {
       "path": "test_materialize.mjs",
-      "bytes": 5694,
-      "sha256": "bc0bebdd7cd3b286ecac6c9d8185aa61bddb3eca378b80d351da877bf3ef7c30"
+      "bytes": 12574,
+      "sha256": "870c284edf04c4ef1376423d3bc5e69b30ceeebcf64b7724c0d67e941f56f6db"
     },
     {
       "path": "test_runtime.mjs",

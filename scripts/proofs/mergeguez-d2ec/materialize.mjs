@@ -103,6 +103,53 @@ export function mergeDependencies(deployed, runnable, cap, deadline = Infinity) 
   return { packed, merged, preservedPackedPackages: preserved };
 }
 
+// Complete only the original checked package's lifecycle while this private stage is writable.
+// The launcher and the read-only native artifact retain their ordinary lifecycle gates.
+export async function completeRunnablePackageLifecycle(runnable, cap, deadline) {
+  need(Number.isFinite(deadline) && Date.now() < deadline, 'package lifecycle deadline exhausted');
+  runnable = path.resolve(runnable);
+  const directory = fs.lstatSync(runnable);
+  need(directory.isDirectory() && !directory.isSymbolicLink() && fs.realpathSync(runnable) === runnable, 'aliased lifecycle package root');
+  const markers = new Set(['.openclaw-lifecycle-pending', 'dist/openclaw-install-guard']);
+  const lockPath = path.join(runnable, '.openclaw-lifecycle-lock');
+  need(!fs.lstatSync(lockPath, { throwIfNoEntry: false }), 'package lifecycle already has an unresolved owner');
+  const pending = [...markers].filter(name => {
+    const st = fs.lstatSync(path.join(runnable, name), { throwIfNoEntry: false });
+    if (!st) return false;
+    need(st.isFile() && !st.isSymbolicLink(), 'package lifecycle marker is not a regular file');
+    return true;
+  });
+  const before = inventory(runnable, cap, deadline);
+  const previous = new Map(before.entries.map(entry => [entry.path, entry]));
+  const ownerPath = 'dist/infra/package-lifecycle.js';
+  need(previous.get(ownerPath)?.type === 'file', 'original compiled package lifecycle owner absent');
+  const owner = await import(pathToFileURL(path.join(runnable, ownerPath)).href);
+  need(typeof owner.completePendingPackageLifecycle === 'function', 'original package lifecycle owner interface absent');
+  const scriptBudgetMs = Math.min(60000, deadline - Date.now());
+  need(scriptBudgetMs > 0, 'package lifecycle deadline exhausted');
+  const completed = await owner.completePendingPackageLifecycle({ packageRoot: runnable, timeoutMs: scriptBudgetMs });
+  need(Date.now() < deadline, 'package lifecycle deadline exhausted');
+  const currentDirectory = fs.lstatSync(runnable);
+  need(currentDirectory.dev === directory.dev && currentDirectory.ino === directory.ino && !currentDirectory.isSymbolicLink(), 'package lifecycle root generation changed');
+  need(completed === (pending.length > 0), 'package lifecycle owner did not attest the observed pending work');
+  need(!fs.lstatSync(lockPath, { throwIfNoEntry: false }), 'package lifecycle writer ownership remains unresolved');
+  need([...markers].every(name => !fs.lstatSync(path.join(runnable, name), { throwIfNoEntry: false })), 'package lifecycle marker remains pending');
+  const after = inventory(runnable, cap, deadline);
+  const current = new Map(after.entries.map(entry => [entry.path, entry]));
+  need([...markers].every(name => !current.has(name)), 'package lifecycle marker remains pending');
+  for (const [name, entry] of previous) {
+    if (!markers.has(name)) need(JSON.stringify(current.get(name)) === JSON.stringify(entry), 'package lifecycle changed checked runnable bytes: ' + name);
+  }
+  need(after.entries.every(entry => previous.has(entry.path)), 'package lifecycle introduced unchecked runnable content');
+  return { schema: 'mergeguez.original-package-lifecycle-completion/v1', ownerPath,
+    ownerSha256: previous.get(ownerPath).sha256, pendingMarkers: pending, completed,
+    removedMarkers: pending, writerLockAbsent: true, directory: { dev: directory.dev, ino: directory.ino },
+    beforeInventorySha256: before.sha256, afterInventorySha256: after.sha256,
+    unchangedCheckedFileBytesAndLinks: true, metadataParity: 'file modes and empty directories are outside the baseline inventory contract',
+    scriptBudgetMs, admissionOrReleaseAcceptance: false,
+    inventory: after };
+}
+
 export function validateBuildReceipt(build, contract, expectedJob) {
   need(build.complete === true && build.source_commit === contract.source_commit && build.source_tree === contract.source_tree &&
     JSON.stringify(build.targeted_test_argv) === JSON.stringify(contract.targeted_test_argv) && JSON.stringify(build.compile_argv) === JSON.stringify(contract.compile_argv) && JSON.stringify(build.environment) === JSON.stringify(contract.compile_environment), 'fresh successful same-profile build receipt absent');
@@ -140,12 +187,14 @@ export async function materialize(source, tarball, deployed, runnable, buildFile
   }
   const buildInfo = JSON.parse(fs.readFileSync(path.join(runnable, 'dist/build-info.json')));
   need(buildInfo.commit === contract.source_commit, 'package was built from another source');
-  const provenance = { schema: 'mergeguez.same-build-runnable-package/v1', source_commit: contract.source_commit, source_tree: contract.source_tree, job: build.job, checked_package_sha256: before, deploy_argv: contract.deploy_argv, build, packed: result.packed, deployed: inventory(deployed, contract.portable_runnable_unpacked_cap_bytes, deadline, true), runnable: result.merged, preservedPackedPackages: result.preservedPackedPackages, admissionOrReleaseAcceptance: false };
+  const packageLifecycle = await completeRunnablePackageLifecycle(runnable, contract.portable_runnable_unpacked_cap_bytes, deadline);
+  const { inventory: lifecycleInventory, ...lifecycleReceipt } = packageLifecycle;
+  const provenance = { packageLifecycle: lifecycleReceipt, schema: 'mergeguez.same-build-runnable-package/v1', source_commit: contract.source_commit, source_tree: contract.source_tree, job: build.job, checked_package_sha256: before, deploy_argv: contract.deploy_argv, build, packed: result.packed, deployed: inventory(deployed, contract.portable_runnable_unpacked_cap_bytes, deadline, true), runnable: lifecycleInventory, materializedBeforeLifecycle: result.merged, preservedPackedPackages: result.preservedPackedPackages, admissionOrReleaseAcceptance: false };
   const output = path.join(runnable, 'qualification-provenance.json');
   fs.writeFileSync(output, JSON.stringify(provenance) + '\n', { flag: 'wx', mode: 0o600 });
   need(listed.files === result.packed.entries.filter(entry => entry.type === 'file').length, 'extracted package inventory differs from original tarball');
   const finalInventory = inventory(runnable, contract.portable_runnable_unpacked_cap_bytes, deadline);
-  const summary = { totalBytes: finalInventory.totalBytes, files: finalInventory.entries.length, inventory_sha256: finalInventory.sha256, provenance_sha256: hash(output), checked_package_sha256: before, admissionOrReleaseAcceptance: false };
+  const summary = { totalBytes: finalInventory.totalBytes, files: finalInventory.entries.length, inventory_sha256: finalInventory.sha256, provenance_sha256: hash(output), checked_package_sha256: before, packageLifecycle: lifecycleReceipt, admissionOrReleaseAcceptance: false };
   fs.writeFileSync(path.join(path.dirname(buildFile), 'runnable-materialization.json'), JSON.stringify(summary) + '\n', { flag: 'wx', mode: 0o600 });
   return summary;
 }
