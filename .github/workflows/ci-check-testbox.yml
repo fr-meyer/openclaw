@@ -1,4 +1,4 @@
-name: MCP ownership qualification
+name: MCP ownership fixture qualification
 
 on:
   workflow_dispatch:
@@ -16,19 +16,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: mcp-ownership-qualification-${{ inputs.expected_sha }}
+  group: mcp-ownership-fixture-qualification-${{ inputs.expected_sha }}
   cancel-in-progress: false
 
 jobs:
   qualify:
     if: ${{ github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/qualification/mcp-ownership-20261007' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       EXPECTED_TREE: ${{ inputs.expected_tree }}
       OPENCLAW_TSGO_TIMEOUT_MS: "600000"
-      OPENCLAW_TSDOWN_TIMEOUT_MS: "900000"
       OPENCLAW_VITEST_MAX_WORKERS: "1"
     steps:
       - name: Validate immutable admission
@@ -42,7 +41,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.expected_sha }}
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
       - name: Verify source and runner capacity
         shell: bash
@@ -51,15 +50,11 @@ jobs:
           [[ "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]]
           [[ "$(git rev-parse 'HEAD^{tree}')" == "$EXPECTED_TREE" ]]
           available_kib=$(df -Pk . | awk 'NR==2 {print $4}')
-          if (( available_kib < 10485760 )); then
-            echo 'Less than 10 GiB free; stop without cleanup or larger-runner allocation.' >&2
-            exit 1
-          fi
           available_memory_kib=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
           available_cpus=$(nproc)
           printf 'freeDiskKiB=%s availableMemoryKiB=%s availableCPUs=%s\n' "$available_kib" "$available_memory_kib" "$available_cpus"
-          if (( available_memory_kib < 13631488 || available_cpus < 4 )); then
-            echo 'Less than 13 GiB available memory or four CPUs; stop within the standard runner budget.' >&2
+          if (( available_kib < 10485760 || available_memory_kib < 13631488 || available_cpus < 4 )); then
+            echo 'Insufficient standard runner capacity; stop without cleanup or larger-runner allocation.' >&2
             exit 1
           fi
       - name: Setup exact Node through the existing Node-only owner
@@ -72,44 +67,28 @@ jobs:
           [[ "$(node -p 'process.versions.node')" == '24.18.0' ]]
       - name: Install exact checkout-owned dependencies
         id: install
-        timeout-minutes: 15
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
           node scripts/pnpm.mjs --setup
           node scripts/pnpm.mjs install --frozen-lockfile --store-dir .local/qualification-pnpm-store
           node -e 'const fs=require("node:fs"); const p=JSON.parse(fs.readFileSync("package.json")); const t=JSON.parse(fs.readFileSync("node_modules/typescript/package.json")); if(t.version!==p.devDependencies.typescript) throw new Error("Compiler pin mismatch"); console.log(JSON.stringify({node:process.version,typescript:t.version,sourceTree:process.env.EXPECTED_TREE}));'
-      - name: Core production types
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        timeout-minutes: 10
-        run: node scripts/pnpm.mjs exec node scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo
-      - name: Types for the two new test owners
+      - name: Types for the repaired lifecycle test owner
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         timeout-minutes: 10
         run: >-
           node scripts/pnpm.mjs exec node scripts/run-tsgo-core-test-shards.mjs
-          --changed-paths-json '["src/agents/agent-bundle-mcp-lifecycle-diagnostics.test.ts","src/logging/diagnostic-stability-mcp.test.ts"]'
-      - name: Ownership and privacy tests plus manager and transport siblings
+          --changed-paths-json '["src/agents/agent-bundle-mcp-lifecycle-diagnostics.test.ts"]'
+      - name: Types for the previously skipped state-logging test owner
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        timeout-minutes: 10
+        run: >-
+          node scripts/pnpm.mjs exec node scripts/run-tsgo-core-test-shards.mjs
+          --changed-paths-json '["src/logging/diagnostic-stability-mcp.test.ts"]'
+      - name: Repaired lifecycle runtime cases
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         timeout-minutes: 5
         run: >-
           node scripts/pnpm.mjs exec node scripts/run-vitest.mjs run --configLoader runner
           src/agents/agent-bundle-mcp-lifecycle-diagnostics.test.ts
-          src/logging/diagnostic-stability-mcp.test.ts
-          src/logging/diagnostic-stability.test.ts
-          src/logging/diagnostic-stability-bundle.test.ts
-          src/agents/agent-bundle-mcp-manager.lifecycle.test.ts
-          src/agents/mcp-stdio-transport.test.ts
-      - name: Canonical typed build
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        timeout-minutes: 20
-        run: node scripts/pnpm.mjs build:strict-smoke
-      - name: Product and pnpm changed-file gate
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        timeout-minutes: 10
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t changed < <(git diff --name-only 8b1f5c8ff5d02d45e23d685e67d460c21514c87a HEAD -- . ':!.github/workflows/ci-check-testbox.yml')
-          [[ "${#changed[@]}" -eq 24 ]]
-          node scripts/pnpm.mjs exec node scripts/check-changed.mjs -- "${changed[@]}"

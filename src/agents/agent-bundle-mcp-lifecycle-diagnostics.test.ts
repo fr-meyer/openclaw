@@ -102,8 +102,9 @@ function makeChild() {
       done();
     },
   });
+  const pid: number = 9001 + children.length;
   const child = {
-    pid: 9001 + children.length,
+    pid,
     stdin,
     supportsRawOutput: true,
     onStdout: (_text: (text: string) => void, raw?: (chunk: Buffer) => void) => {
