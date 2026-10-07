@@ -47,6 +47,35 @@ For coordinated change sets that genuinely need more than 20 PRs, join the **#cl
 
 ## Source dependencies
 
+Prepare the repository's exact pnpm release with
+`node scripts/pnpm.mjs --setup`. This installs only the integrity-locked Corepack
+bootstrap and the pnpm version/hash from root `package.json`. It works with Node's
+bundled npm even when Corepack or pnpm is absent from PATH. Tool executables,
+Corepack/npm caches, and the default pnpm store stay under ignored
+`.local/toolchain/`; no global installation or shell configuration changes.
+
+Use `node scripts/pnpm.mjs <pnpm arguments>` for subsequent commands, including
+`node scripts/pnpm.mjs install --frozen-lockfile`. Descendants receive the local
+tools on PATH and the same writable cache. Initial setup needs access to the
+official npm registry; after setup, `COREPACK_ENABLE_NETWORK=0 node
+scripts/pnpm.mjs --setup` verifies the cached exact release without downloading.
+Workspace dependencies are separate and must already be available for offline
+checks. Check disk headroom before a full source install.
+
+For prepared dependencies, run the direct Node check harness through that same
+environment: `node scripts/pnpm.mjs exec node scripts/check-changed.mjs --
+<paths...>`. Explicit `PNPM_CONFIG_MODULES_DIR` remains available for an existing
+tooling installation; do not install or reconcile through a borrowed dependency
+link.
+
+Root `package.json` owns Node and pnpm requirements; `node-version.mjs` shares the
+Node release contract. `scripts/pnpm-bootstrap/package-lock.json` owns only the
+Corepack bootstrap version and tarball integrity. Maintain this source-checkout
+entrypoint in `scripts/pnpm.mjs`. Existing Actions environment/store setup remains
+in `.github/actions/setup-node-env` and `.github/actions/setup-pnpm-store-cache`.
+Fresh or restricted CI can use the same `node scripts/pnpm.mjs --setup`, then
+`node scripts/pnpm.mjs install --frozen-lockfile` and its chosen check command.
+
 Run `pnpm install --frozen-lockfile` from the workspace root. Source checkouts use
 pnpm's isolated linker, which keeps dependencies in `node_modules/.pnpm` and links
 them into each workspace package. On supported macOS volumes, this also lets pnpm
