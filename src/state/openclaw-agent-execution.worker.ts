@@ -295,6 +295,9 @@ function openAgentDatabaseBackend(
     | typeof import("../config/sessions/session-accessor.sqlite-replacement-state.js")
     | undefined;
   let trajectory: typeof import("../trajectory/runtime-store.sqlite.js") | undefined;
+  let transcriptIndex:
+    | typeof import("../config/sessions/session-transcript-reconcile-write-kernel.js")
+    | undefined;
   const domain = createAgentDatabaseDomainOwner({
     databasePath: input.databasePath,
     assertCurrent() {
@@ -314,6 +317,13 @@ function openAgentDatabaseBackend(
   };
   return {
     prepare(command) {
+      if (command.type === "session.transcriptIndex.write") {
+        return import("../config/sessions/session-transcript-reconcile-write-kernel.js").then(
+          (module) => {
+            transcriptIndex = module;
+          },
+        );
+      }
       if (command.type === "session.entry.read") {
         return import("../config/sessions/session-accessor.sqlite-entry-read.js").then((module) => {
           entryReader = module;
@@ -392,6 +402,25 @@ function openAgentDatabaseBackend(
     },
     execute(command) {
       assertOpen();
+      if (command.type === "session.transcriptIndex.write" && transcriptIndex) {
+        const opened = openWriter();
+        const execute = transcriptIndex.executeSessionTranscriptReconcileWrite;
+        return runOpenClawAgentWriteTransaction(
+          (current) => {
+            if (current.db !== opened.db) {
+              throw new Error("Transcript reconciliation lost its canonical database owner");
+            }
+            admit("transaction");
+            const result = execute(current, command.input);
+            const receipt = { kind: "session-transcript-index-write", result };
+            deferSqliteWorkerCommitReceipt(current.db, receipt);
+            admit("commit", receipt);
+            return result;
+          },
+          options,
+          { operationLabel: `sessions.transcript-index.${command.input.kind}` },
+        );
+      }
       if (
         command.type === "database.domain.bind" ||
         command.type === "database.domain.execute" ||

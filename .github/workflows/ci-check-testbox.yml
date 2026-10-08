@@ -1,4 +1,4 @@
-name: MCP ownership fixture qualification
+name: Durable transcript worker qualification
 
 on:
   workflow_dispatch:
@@ -16,18 +16,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: mcp-ownership-fixture-qualification-${{ inputs.expected_sha }}
+  group: durable-transcript-qualification-${{ inputs.expected_sha }}
   cancel-in-progress: false
 
 jobs:
   qualify:
-    if: ${{ github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/qualification/mcp-ownership-20261007' }}
+    if: ${{ github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/qualification/durable-transcript-20261008' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       EXPECTED_TREE: ${{ inputs.expected_tree }}
       OPENCLAW_TSGO_TIMEOUT_MS: "600000"
+      OPENCLAW_TSDOWN_TIMEOUT_MS: "900000"
       OPENCLAW_VITEST_MAX_WORKERS: "1"
     steps:
       - name: Validate immutable admission
@@ -41,7 +42,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.expected_sha }}
-          fetch-depth: 1
+          fetch-depth: 2
           persist-credentials: false
       - name: Verify source and runner capacity
         shell: bash
@@ -57,6 +58,42 @@ jobs:
             echo 'Insufficient standard runner capacity; stop without cleanup or larger-runner allocation.' >&2
             exit 1
           fi
+      - name: Verify exact reviewed source delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD^)" == "c34e90e1ac1d380e06204f2182b6adb7dba59ae9" ]]
+          python3 - <<'PYVERIFY'
+          import json, subprocess
+          expected = set(["src/config/sessions/session-transcript-reconcile-custody.ts", "src/config/sessions/session-transcript-reconcile-read-kernel.ts", "src/config/sessions/session-transcript-reconcile-reader.test.ts", "src/config/sessions/session-transcript-reconcile-reader.ts", "src/config/sessions/session-transcript-reconcile-reader.worker.test.ts", "src/config/sessions/session-transcript-reconcile-readiness.ts", "src/config/sessions/session-transcript-reconcile-write-contract.ts", "src/config/sessions/session-transcript-reconcile-write-kernel.ts", "src/config/sessions/session-transcript-reconcile-writer.test.ts", "src/config/sessions/session-transcript-reconcile-writer.ts", "src/config/sessions/session-transcript-reconcile.custody-control.test.ts", "src/config/sessions/session-transcript-reconcile.dirty-peer.test-support.mjs", "src/config/sessions/session-transcript-reconcile.entry-worker.test.ts", "src/config/sessions/session-transcript-reconcile.ts", "src/config/sessions/session-transcript-worker-readers.ts", "src/config/sessions/session-transcript-worker-runtime.ts", "src/config/sessions/session-transcript-worker.types.ts", "src/config/sessions/session-transcript.worker.ts", "src/state/agent-deletion-cleanup.ts", "src/state/openclaw-agent-db-resources.close-wait.test.ts", "src/state/openclaw-agent-db-resources.ts", "src/state/openclaw-agent-execution-contract.ts", "src/state/openclaw-agent-execution.worker.ts", ".github/workflows/ci-check-testbox.yml"])
+          actual = set(subprocess.check_output(["git", "diff", "--name-only", "HEAD^", "HEAD"], text=True).splitlines())
+          assert actual == expected, (sorted(actual - expected), sorted(expected - actual))
+          PYVERIFY
+          sha256sum --check <<'SHA256'
+          7eb4ddc5b85aa22c722d7ef15a8508535996e62762e17111edf09bbcd069a05b  src/config/sessions/session-transcript-reconcile-custody.ts
+          b9f04f2ba5072bc26579b003892e101fd5df3f79fc23f687d9d2b562a12790b6  src/config/sessions/session-transcript-reconcile-read-kernel.ts
+          e32e6165904c10831da93c73a07b5886482e3be04fb96215c1725e8f2bc16c44  src/config/sessions/session-transcript-reconcile-reader.test.ts
+          158f14287aa1c72eebf7b7e1c45c97af803ecbd565cfbbf624a6a30f4fd1b209  src/config/sessions/session-transcript-reconcile-reader.ts
+          c3d4c65cd1f0dcbdd1a4593a752ced7ebafc414e0cc7eed29f298aed839e2244  src/config/sessions/session-transcript-reconcile-reader.worker.test.ts
+          18b298f18517521a761055713c9eb83a3388369b5af0a24d01aabf9dc3c08539  src/config/sessions/session-transcript-reconcile-readiness.ts
+          0ea34f02d58828d47d49346b99d417d82f4beb5b6c3c6ea37f4755edb4c6bdee  src/config/sessions/session-transcript-reconcile-write-contract.ts
+          2a1324ed377cb308db0a4485a86b89bfa0ce1102e7100fc905a41a4e992adac6  src/config/sessions/session-transcript-reconcile-write-kernel.ts
+          7a3ae04cbee01201ed6618699d60b124f68cda7e09902ad02992636f9885327e  src/config/sessions/session-transcript-reconcile-writer.test.ts
+          a582ec7baaa784f81dfe66d56c4e2ba7a07bdbde741618a140b49849b7217a9a  src/config/sessions/session-transcript-reconcile-writer.ts
+          fedb7d77afdef54a6f8c7a16c1d52065657ddf718bae66c093d897653350af28  src/config/sessions/session-transcript-reconcile.custody-control.test.ts
+          8c6737c3cf756b10c42075787dcb8976b1fcdf48499e03531a2701e7eb588225  src/config/sessions/session-transcript-reconcile.dirty-peer.test-support.mjs
+          c6c196b7b7f24313cf6e11d25790e0ae5bb579cd43b39215f194bba4aaadd8d8  src/config/sessions/session-transcript-reconcile.entry-worker.test.ts
+          ee24ba4f40915e3ef466a7e66895a1607139d0f507346cf78f60779c12aac512  src/config/sessions/session-transcript-reconcile.ts
+          e75644a9dd9ea491bbde43da2abfbe18b1753c2d951683446b891bf8634a5cee  src/config/sessions/session-transcript-worker-readers.ts
+          3632aed4ae22128d1128ae4bcb1615ac3a4dcd97334670fdf5e50f6a65157740  src/config/sessions/session-transcript-worker-runtime.ts
+          a24361f3f1a388ece261c38517d14eed8d407e522f6c7868bdd0ac90d34ca2b5  src/config/sessions/session-transcript-worker.types.ts
+          199b2e92f7829e06c604cc14678bb946cc94d0e4bc0d7abdeedaf49c3f66112c  src/config/sessions/session-transcript.worker.ts
+          3816cf415f6337439ad2dc3c56730a7982f3a6efc31770aa67c50212528b4d76  src/state/agent-deletion-cleanup.ts
+          0285b8a8253835732a80d45581724b82b430680ae7c253dd949beb3f692f9488  src/state/openclaw-agent-db-resources.close-wait.test.ts
+          700efad5abfbd713bd60ae53212ae6780f453e7255e9d93bbbacb2f4de3407c7  src/state/openclaw-agent-db-resources.ts
+          15e5d5321d543cb8f5fa606c38663b81c8a9d65ebe5fb16efbb65e96053b2a6a  src/state/openclaw-agent-execution-contract.ts
+          d9bdd0bb6f5abe5c4dedb1fc06c6918cb5c6246495d6192e5c4fffa2afce7adc  src/state/openclaw-agent-execution.worker.ts
+          SHA256
       - name: Setup exact Node through the existing Node-only owner
         timeout-minutes: 5
         shell: bash
@@ -67,28 +104,41 @@ jobs:
           [[ "$(node -p 'process.versions.node')" == '24.18.0' ]]
       - name: Install exact checkout-owned dependencies
         id: install
-        timeout-minutes: 10
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
           node scripts/pnpm.mjs --setup
           node scripts/pnpm.mjs install --frozen-lockfile --store-dir .local/qualification-pnpm-store
+          [[ "$(node scripts/pnpm.mjs --version)" == "12.4.2" ]]
           node -e 'const fs=require("node:fs"); const p=JSON.parse(fs.readFileSync("package.json")); const t=JSON.parse(fs.readFileSync("node_modules/typescript/package.json")); if(t.version!==p.devDependencies.typescript) throw new Error("Compiler pin mismatch"); console.log(JSON.stringify({node:process.version,typescript:t.version,sourceTree:process.env.EXPECTED_TREE}));'
-      - name: Types for the repaired lifecycle test owner
+      - name: Core production types
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         timeout-minutes: 10
         run: >-
-          node scripts/pnpm.mjs exec node scripts/run-tsgo-core-test-shards.mjs
-          --changed-paths-json '["src/agents/agent-bundle-mcp-lifecycle-diagnostics.test.ts"]'
-      - name: Types for the previously skipped state-logging test owner
+          node scripts/pnpm.mjs exec node scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo
+      - name: Complete agents-sessions test owner types
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         timeout-minutes: 10
         run: >-
-          node scripts/pnpm.mjs exec node scripts/run-tsgo-core-test-shards.mjs
-          --changed-paths-json '["src/logging/diagnostic-stability-mcp.test.ts"]'
-      - name: Repaired lifecycle runtime cases
+          node scripts/pnpm.mjs exec node scripts/run-tsgo-core-test-shards.mjs --ci-graphs-json '["core-test-agents-sessions"]'
+      - name: Complete state-logging test owner types
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: >-
-          node scripts/pnpm.mjs exec node scripts/run-vitest.mjs run --configLoader runner
-          src/agents/agent-bundle-mcp-lifecycle-diagnostics.test.ts
+          node scripts/pnpm.mjs exec node scripts/run-tsgo-core-test-shards.mjs --ci-graphs-json '["core-test-state-logging"]'
+      - name: Canonical typed runtime and SDK build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        timeout-minutes: 20
+        run: >-
+          node scripts/pnpm.mjs build:strict-smoke
+      - name: Native entry, read, writer, custody and close-fence runtime proofs
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        timeout-minutes: 10
+        run: >-
+          node scripts/pnpm.mjs exec node scripts/run-vitest.mjs run --configLoader runner src/config/sessions/session-transcript-reconcile-reader.test.ts src/config/sessions/session-transcript-reconcile-reader.worker.test.ts src/config/sessions/session-transcript-reconcile-writer.test.ts src/config/sessions/session-transcript-reconcile.custody-control.test.ts src/config/sessions/session-transcript-reconcile.entry-worker.test.ts src/state/openclaw-agent-db-resources.close-wait.test.ts
+      - name: All reviewed source changed checks
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        timeout-minutes: 10
+        run: >-
+          node scripts/pnpm.mjs exec node scripts/check-changed.mjs -- src/config/sessions/session-transcript-reconcile-custody.ts src/config/sessions/session-transcript-reconcile-read-kernel.ts src/config/sessions/session-transcript-reconcile-reader.test.ts src/config/sessions/session-transcript-reconcile-reader.ts src/config/sessions/session-transcript-reconcile-reader.worker.test.ts src/config/sessions/session-transcript-reconcile-readiness.ts src/config/sessions/session-transcript-reconcile-write-contract.ts src/config/sessions/session-transcript-reconcile-write-kernel.ts src/config/sessions/session-transcript-reconcile-writer.test.ts src/config/sessions/session-transcript-reconcile-writer.ts src/config/sessions/session-transcript-reconcile.custody-control.test.ts src/config/sessions/session-transcript-reconcile.dirty-peer.test-support.mjs src/config/sessions/session-transcript-reconcile.entry-worker.test.ts src/config/sessions/session-transcript-reconcile.ts src/config/sessions/session-transcript-worker-readers.ts src/config/sessions/session-transcript-worker-runtime.ts src/config/sessions/session-transcript-worker.types.ts src/config/sessions/session-transcript.worker.ts src/state/agent-deletion-cleanup.ts src/state/openclaw-agent-db-resources.close-wait.test.ts src/state/openclaw-agent-db-resources.ts src/state/openclaw-agent-execution-contract.ts src/state/openclaw-agent-execution.worker.ts

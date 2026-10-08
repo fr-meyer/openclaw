@@ -273,6 +273,17 @@ export function createSessionHistoryWorkerReaders(
             : ok(value.entry);
         },
       ),
+    readTranscriptReconcilePendingResult: async (input) =>
+      await runRequest(
+        () => ({ kind: "transcript-reconcile-pending", ...input }),
+        JSON.stringify(input).length * 2,
+        (value) => {
+          assertResultKind(value, "transcript-reconcile-pending", "reconcile readiness");
+          return value.readError
+            ? err(decodeSessionTranscriptWorkerReadError(value.readError))
+            : ok(value.result);
+        },
+      ),
     readEntries: async (scope) =>
       await runRequest(
         () => ({ kind: "session-entry-list", scope }),

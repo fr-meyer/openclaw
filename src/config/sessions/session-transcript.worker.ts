@@ -303,6 +303,13 @@ serveOwnedWorkerTasks(
           return { kind: "session-entry-read" as const, entry: read.value, source };
         });
       }
+      if (request.kind === "transcript-reconcile-pending") {
+        const { readSessionTranscriptReconcilePending } =
+          await import("./session-transcript-reconcile-read-kernel.js");
+        return await withHistoryDatabase(request.database, request.kind, () =>
+          readSessionTranscriptReconcilePending(request),
+        );
+      }
       if (request.kind === "session-entry-list") {
         const { listSessionEntriesReadOnly } =
           await import("./session-accessor.sqlite-entry-list.read.js");

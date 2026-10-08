@@ -296,6 +296,24 @@ type SessionEntryReadWorkerResult = {
     }
 );
 
+type SessionTranscriptReconcilePendingWorkerInput = {
+  kind: "transcript-reconcile-pending";
+  database: { agentId: string; path: string };
+  env: NodeJS.ProcessEnv;
+  sessionId?: string;
+  fileIdentity?: { key: string; birthtime?: string };
+};
+
+export type SessionTranscriptReconcilePendingRead = { found: boolean; pending: boolean };
+
+type SessionTranscriptReconcilePendingWorkerResult = {
+  kind: "transcript-reconcile-pending";
+  source?: CapturedSessionEntryReadSource & { databaseIdentity: string };
+} & (
+  | { result: SessionTranscriptReconcilePendingRead; readError?: never }
+  | { result?: never; readError: SessionTranscriptWorkerReadError }
+);
+
 type SessionEntryListWorkerInput = {
   kind: "session-entry-list";
   database: { agentId: string; path: string };
@@ -427,6 +445,7 @@ export type SessionHistoryWorkerInput =
   | SessionProgressCardWorkerInput
   | SessionEntryListWorkerInput
   | SessionEntryReadWorkerInput
+  | SessionTranscriptReconcilePendingWorkerInput
   | SessionExactEntriesWorkerInput
   | SessionRowFactsWorkerInput
   | SessionStoreTargetWorkerInput
@@ -476,6 +495,7 @@ export type SessionTranscriptWorkerValues = {
   "session-progress-card": { kind: "session-progress-card"; card: ProgressCard | null };
   "session-entry-list": SessionEntryListWorkerResult;
   "session-entry-read": SessionEntryReadWorkerResult;
+  "transcript-reconcile-pending": SessionTranscriptReconcilePendingWorkerResult;
   "session-exact-entries": SessionExactEntriesWorkerResult;
   "session-row-facts": SessionRowFactsWorkerResult;
   "session-store-target":
@@ -570,6 +590,14 @@ export type SessionHistoryWorkerDatabase = {
   ) => Promise<
     import("@openclaw/normalization-core/result").Result<
       SessionEntryReadWorkerResult["entry"],
+      unknown
+    >
+  >;
+  readTranscriptReconcilePendingResult: (
+    input: Omit<SessionTranscriptReconcilePendingWorkerInput, "kind" | "database">,
+  ) => Promise<
+    import("@openclaw/normalization-core/result").Result<
+      SessionTranscriptReconcilePendingRead,
       unknown
     >
   >;

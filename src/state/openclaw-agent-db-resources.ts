@@ -2,6 +2,7 @@ import path from "node:path";
 import { normalizeAgentId } from "@openclaw/normalization-core/agent-id";
 import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
 import { isPathInside } from "../infra/path-guards.js";
+import { createDeferredCore } from "../shared/deferred.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { getOpenClawDatabaseMaintenanceScope } from "./openclaw-state-db-async-lifecycle.js";
 
@@ -32,7 +33,7 @@ const resources = resolveGlobalSingleton(
   () => ({
     active: new Set<AgentDatabaseResource>(),
     closing: new Map<AgentDatabaseResource, Promise<void> | undefined>(),
-    selections: new Set<AgentDatabaseCloseSelection>(),
+    selections: new Map<AgentDatabaseCloseSelection, Promise<void>>(),
   }),
 );
 
@@ -124,7 +125,9 @@ function registerAgentDatabaseResource(resource: AgentDatabaseResource): () => v
     path: path.resolve(resource.path),
   };
   if (
-    [...resources.selections].some((selection) => matchesAgentDatabaseClose(selection, owned)) ||
+    [...resources.selections.keys()].some((selection) =>
+      matchesAgentDatabaseClose(selection, owned),
+    ) ||
     [...resources.closing.keys()].some(
       (closing) =>
         (closing.path === owned.path ||
@@ -208,13 +211,59 @@ export function revokeAgentDatabaseResources(
   return pending;
 }
 
+/** Join existing retirement fences without revoking resources or retrying failed cleanup. */
+export async function waitForAgentDatabaseResourceClose(target: {
+  agentId: string;
+  path: string;
+}): Promise<void> {
+  const captured = { agentId: normalizeAgentId(target.agentId), path: path.resolve(target.path) };
+  while (true) {
+    const pending = new Set<Promise<void>>();
+    for (const [selection, closed] of resources.selections) {
+      if (matchesAgentDatabaseClose(selection, captured)) {
+        pending.add(closed);
+      }
+    }
+    let incomplete = false;
+    for (const [resource, closed] of resources.closing) {
+      if (matchesAgentDatabaseClose(captured, resource)) {
+        if (closed) {
+          pending.add(closed);
+        } else {
+          incomplete = true;
+        }
+      }
+    }
+    if (pending.size === 0 && !incomplete) {
+      return;
+    }
+    const settled = await Promise.allSettled(pending);
+    const errors = settled.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (incomplete) {
+      errors.push(new Error("Agent database resource cleanup remains incomplete"));
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "Agent database close fence failed");
+    }
+    // A matching close may start while the preceding snapshot drains. Recheck
+    // the authoritative owner before admitting the caller's successor resource.
+  }
+}
+
 export async function drainAgentDatabaseResources<T>(
   selection: AgentDatabaseCloseSelection,
   closeNative: () => Promise<T>,
 ): Promise<T> {
-  resources.selections.add(selection);
+  // Each invocation owns its fence, including overlapping drains passed the
+  // same caller selection object. Capture it before any revocation or yield.
+  const retainedSelection = Object.freeze({ ...selection });
+  const closed = createDeferredCore();
+  void closed.promise.catch(() => {});
+  resources.selections.set(retainedSelection, closed.promise);
   try {
-    const results = await Promise.allSettled(revokeAgentDatabaseResources(selection));
+    const results = await Promise.allSettled(revokeAgentDatabaseResources(retainedSelection));
     const errors = results.flatMap((result) =>
       result.status === "rejected" ? [result.reason] : [],
     );
@@ -222,7 +271,12 @@ export async function drainAgentDatabaseResources<T>(
       throw new AggregateError(errors, "Agent database resource drainage failed");
     }
     return await closeNative();
+  } catch (error) {
+    resources.selections.delete(retainedSelection);
+    closed.reject(error);
+    throw error;
   } finally {
-    resources.selections.delete(selection);
+    resources.selections.delete(retainedSelection);
+    closed.resolve();
   }
 }

@@ -12,6 +12,10 @@ import type {
   PublishedSessionTranscriptArchive,
   SessionLegacyArchiveRemovalResult,
 } from "../config/sessions/session-history-archive-pruning.types.js";
+import type {
+  SessionTranscriptReconcileWrite,
+  SessionTranscriptReconcileWriteResult,
+} from "../config/sessions/session-transcript-reconcile-write-contract.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { SqliteWalReclamationResult } from "../infra/sqlite-wal-reclamation.js";
 import type { DatabasePathIdentity } from "../infra/sqlite-worker-identity.js";
@@ -50,6 +54,10 @@ export type AgentDatabaseExecutionOpen = {
 };
 
 export type AgentDatabaseOperations = AgentDatabaseDomainOperations & {
+  "session.transcriptIndex.write": {
+    input: SessionTranscriptReconcileWrite;
+    output: SessionTranscriptReconcileWriteResult;
+  };
   "trajectory.events.append": { input: SqliteTrajectoryRuntimeAppend; output: void };
   "session.archives.preparePublication": {
     input: {

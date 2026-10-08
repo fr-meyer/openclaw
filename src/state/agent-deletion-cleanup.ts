@@ -144,6 +144,21 @@ export function createAgentDeletionDatabaseCleanup(owner: {
   };
 }
 
+/** Capture the live cleanup target before logical locators perform asynchronous discovery. */
+export function captureAgentDeletionDatabaseCleanupTarget(
+  params: Pick<OpenClawAgentDatabaseOptions, "agentId" | "env">,
+): Pick<AgentDeletionDatabaseCleanupScope, "agentId" | "path" | "assertCurrent"> | undefined {
+  const scope = databaseCleanup.getStore();
+  if (!scope || scope.agentId !== normalizeAgentId(params.agentId)) {
+    return undefined;
+  }
+  if (scope.statePath !== path.resolve(resolveOpenClawStateSqlitePath(params.env ?? process.env))) {
+    throw new Error("Agent deletion database cleanup belongs to another state database.");
+  }
+  scope.assertCurrent();
+  return { agentId: scope.agentId, path: scope.path, assertCurrent: scope.assertCurrent };
+}
+
 export function getAgentDeletionDatabaseCleanup(
   params: OpenClawAgentDatabaseOptions & { statePath?: string },
 ): AgentDeletionDatabaseCleanupScope | undefined {

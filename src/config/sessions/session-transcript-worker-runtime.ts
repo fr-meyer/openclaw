@@ -111,9 +111,13 @@ export function retainSessionHistoryWorkerDatabase(
   const owned = acquireHistoryDatabaseResource(options);
   const { database } = owned;
   let entryReadSource: (CapturedSessionEntryReadSource & { databaseIdentity: string }) | undefined;
+  let revocationFailure: WorkerTaskError | undefined;
   const assertCurrent = () => {
     if (owned.revoked) {
-      throw new WorkerTaskError("Session history database read was revoked", "unavailable");
+      throw (revocationFailure ??= new WorkerTaskError(
+        "Session history database read was revoked",
+        "unavailable",
+      ));
     }
     if (entryReadSource) {
       assertExistingDatabaseIdentity(
@@ -204,7 +208,8 @@ export function retainSessionHistoryWorkerDatabase(
         if (
           typeof received !== "boolean" &&
           !Array.isArray(received) &&
-          received.kind === "session-entry-read" &&
+          (received.kind === "session-entry-read" ||
+            received.kind === "transcript-reconcile-pending") &&
           received.source
         ) {
           const source = received.source;
@@ -243,7 +248,12 @@ export function retainSessionHistoryWorkerDatabase(
       assertCurrent,
       ...createSessionHistoryWorkerReaders(runRequest),
     };
-    return { owner, release };
+    return {
+      owner,
+      release,
+      isRevokedFailure: (error: unknown) =>
+        owned.revoked && revocationFailure !== undefined && error === revocationFailure,
+    };
   } catch (error) {
     try {
       release();
