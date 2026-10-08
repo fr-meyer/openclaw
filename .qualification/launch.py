@@ -17,7 +17,7 @@ import time
 import types
 
 EXECUTION_AUTHORIZED = True
-CONTROLLER_SHA = '12753c1b906904dcef68e82eacf2f1fe55b6e75866267f2c3c725e314f10bf17'
+CONTROLLER_SHA='fc5020e82353ebd3cc3e3a6e867f5dc1609e6fa2df6a288561b425da023d99f3'
 SNAPSHOT = 'https://snapshot.debian.org/archive/debian/20260927T000000Z/'
 
 def require(value, code):
