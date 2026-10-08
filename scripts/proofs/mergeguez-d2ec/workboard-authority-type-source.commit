@@ -1,0 +1,6 @@
+tree 8abf0ba371e3aa195f6b11da622d7469cb72a673
+parent f90ce82ac6661848a5422b51959d5de41eae6316
+author Codex isolated source <codex-isolated@invalid> 1791436835 +0000
+committer Codex isolated source <codex-isolated@invalid> 1791436835 +0000
+
+fix(sqlite): declare private recovery refusal as never

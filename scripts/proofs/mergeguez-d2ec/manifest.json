@@ -1,7 +1,7 @@
 {
   "schema": "mergeguez.sealed-runnable-qualification-tooling/v3",
-  "source_commit": "f90ce82ac6661848a5422b51959d5de41eae6316",
-  "source_tree": "e58a86e119b1d7722caf60230c19cdf9ed368592",
+  "source_commit": "4fe15797e025e121b0dd09881469b85547713f1b",
+  "source_tree": "8abf0ba371e3aa195f6b11da622d7469cb72a673",
   "files": [
     {
       "path": "cli-source.commit",
@@ -15,8 +15,8 @@
     },
     {
       "path": "contract.json",
-      "bytes": 111773,
-      "sha256": "a6cb05e6ce440c54e9e7c0c39d987e601dfe5f44aec8b5af5630d9af4664eb1e"
+      "bytes": 112665,
+      "sha256": "1366545d64f1018e04103538f2153845c390f7211cfcaf2c12cb82c274418c69"
     },
     {
       "path": "driver.py",
@@ -205,8 +205,8 @@
     },
     {
       "path": "test_driver.py",
-      "bytes": 63974,
-      "sha256": "584d79f8ee9c863594f3f78da2c52b2e8c38ba86357a8256c8968e2cf5812bab"
+      "bytes": 64063,
+      "sha256": "a63e795f88f9e4c80082eb6eec54b594588e6737edee0b9fe41b4a6203b5ca26"
     },
     {
       "path": "test_materialize.mjs",
@@ -232,6 +232,16 @@
       "path": "test_workboard_runtime.mjs",
       "bytes": 13840,
       "sha256": "d4ef5bd26f1421e7149f9975c58a5c60a8bd8179f769280366af49b22d45f0ac"
+    },
+    {
+      "path": "workboard-authority-type-source.commit",
+      "bytes": 295,
+      "sha256": "224ce9b0dcee58905523d74e9979959c83be54cf4f4650a8c8211658442609a8"
+    },
+    {
+      "path": "workboard-authority-type-source.patch",
+      "bytes": 983,
+      "sha256": "b63d630055ba0b17ff31350540811beed599cf3c1c164b7be94f4cf60fe01279"
     },
     {
       "path": "workboard-custody/Interface.md",

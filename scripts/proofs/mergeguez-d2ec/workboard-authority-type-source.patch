@@ -1,0 +1,13 @@
+diff --git a/src/infra/sqlite-worker-private-recovery-authority.ts b/src/infra/sqlite-worker-private-recovery-authority.ts
+index ee8707b78eed4985702e0fc294cd5c8a4ad2f763..5fbd23bee561b8028644fdf776cea71c28f6fded 100644
+--- a/src/infra/sqlite-worker-private-recovery-authority.ts
++++ b/src/infra/sqlite-worker-private-recovery-authority.ts
+@@ -34,7 +34,7 @@ const factories = new WeakMap<SqliteWorkerAdmissionFactory, {
+   active: boolean; dispatched: boolean; grants: number;
+ }>();
+ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+-const fail = () => { throw new SqliteWorkerError("Private recovery authority is unavailable", "closed"); };
++function fail(): never { throw new SqliteWorkerError("Private recovery authority is unavailable", "closed"); }
+ 
+ /** Internal registration, called by the existing broker facade, never a private grant. */
+ export function registerSqliteWorkerRecoveryTarget(target: Target): SqliteWorkerRecoveryTarget {

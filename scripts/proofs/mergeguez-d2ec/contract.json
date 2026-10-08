@@ -2918,9 +2918,18 @@
       "raw_commit": "workboard-source.commit",
       "raw_commit_sha256": "282b535c1ca0854c97fa39bcd3a936c14f05f0d3a47a782678c41e82544c9eb7",
       "tree": "e58a86e119b1d7722caf60230c19cdf9ed368592"
+    },
+    {
+      "commit": "4fe15797e025e121b0dd09881469b85547713f1b",
+      "parent": "f90ce82ac6661848a5422b51959d5de41eae6316",
+      "patch": "workboard-authority-type-source.patch",
+      "patch_sha256": "b63d630055ba0b17ff31350540811beed599cf3c1c164b7be94f4cf60fe01279",
+      "raw_commit": "workboard-authority-type-source.commit",
+      "raw_commit_sha256": "224ce9b0dcee58905523d74e9979959c83be54cf4f4650a8c8211658442609a8",
+      "tree": "8abf0ba371e3aa195f6b11da622d7469cb72a673"
     }
   ],
-  "source_commit": "f90ce82ac6661848a5422b51959d5de41eae6316",
+  "source_commit": "4fe15797e025e121b0dd09881469b85547713f1b",
   "source_inputs": [
     {
       "bytes": 38169,
@@ -3313,10 +3322,10 @@
       "sha256": "66a09ed97b946bb7f7bed7777545d8f95c37bf316d5cf896d7f68e7cd2859b23"
     },
     {
-      "bytes": 6874,
+      "bytes": 6877,
       "mode": "100644",
       "path": "src/infra/sqlite-worker-private-recovery-authority.ts",
-      "sha256": "792e9e7383cf6d65ad8e2d6a814b9302b70679de7cc608eafed7c628a16e6714"
+      "sha256": "43ea9898666f525600649d37379f1d42ac475a023ff4dc45323ee5694ac81d85"
     },
     {
       "bytes": 9974,
@@ -3463,9 +3472,15 @@
       "receipt_sha256": "f81400b9289b3448409f4b1d0e368620be4547f6b5b9cb7c6d19ed2f7e2e4a3f",
       "selected_postimage_count": 22,
       "source_commit": "f90ce82ac6661848a5422b51959d5de41eae6316"
+    },
+    {
+      "meaning": "Independently reviewed one-line explicit never declaration; exact f90 guards and all remaining source inputs preserved. Matching build/native acceptance remains required.",
+      "receipt_sha256": "858bd17e2a5807dc761abc4d4bfc164cecde7ee238074fcd50d50117a67686b1",
+      "selected_postimage_count": 1,
+      "source_commit": "4fe15797e025e121b0dd09881469b85547713f1b"
     }
   ],
-  "source_tree": "e58a86e119b1d7722caf60230c19cdf9ed368592",
+  "source_tree": "8abf0ba371e3aa195f6b11da622d7469cb72a673",
   "targeted_test_argv": [
     [
       "node",
