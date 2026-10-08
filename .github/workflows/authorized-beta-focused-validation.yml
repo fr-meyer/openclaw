@@ -1,95 +1,256 @@
-name: Authorized Beta Focused Validation
+name: YouTube notification source qualification
 
 on:
   workflow_dispatch:
 
 permissions:
-  actions: read
-  attestations: write
   contents: read
-  id-token: write
 
 concurrency:
-  group: authorized-beta-focused-validation
+  group: youtube-notification-source-qualification-${{ github.ref }}
   cancel-in-progress: false
 
 env:
+  CI: "true"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  NODE_VERSION: "24.21.0"
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    if: github.repository == 'fr-meyer/openclaw' && github.event.repository.fork == true && github.event.repository.private == false && github.ref == 'refs/heads/fix/youtube-notification-only-deploy-20261008' && github.event_name == 'workflow_dispatch' && github.actor == 'fr-meyer' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - name: Validate protected tooling identity
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Checkout the dispatched workflow and its frozen source ancestry
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+          filter: ""
+          persist-credentials: false
+          lfs: false
+          submodules: false
+
+      - name: Admit only the one-file overlay and the complete frozen source
+        timeout-minutes: 2
+        shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "${GITHUB_REF}" =~ ^refs/tags/release-publish/([a-f0-9]{12})-[1-9][0-9]*$ ]]; then
-            echo "Authorized beta focused validation requires a protected release-publish tag." >&2
-            exit 1
-          fi
-          if [[ "${GITHUB_SHA:0:12}" != "${BASH_REMATCH[1]}" ]]; then
-            echo "Protected release-publish tag does not match the workflow SHA." >&2
-            exit 1
-          fi
-          tag="${GITHUB_REF#refs/tags/}"
-          remote_sha="$(
-            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
-              --jq '.object | select(.type == "commit") | .sha'
-          )"
-          [[ "${remote_sha}" == "${GITHUB_SHA}" ]] || {
-            echo "Protected release-publish tag moved after dispatch." >&2
-            exit 1
-          }
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          source = "8c37b9e27bb197996eaee21aa0197f947a08a998"
+          tree = "0fffee15bab60d3cdec575783295cc234d95aa05"
+          base = "97ea251e809e0f0a2b0753a00891fc96a4169c8f"
+          workflow = b".github/workflows/authorized-beta-focused-validation.yml"
+          def git(*args):
+              return subprocess.check_output(["git", *args], timeout=30)
+          assert git("rev-parse", "HEAD").decode().strip() == os.environ["GITHUB_SHA"]
+          assert git("rev-list", "--parents", "-n", "1", "HEAD").decode().split() == [os.environ["GITHUB_SHA"], source]
+          assert git("rev-parse", "HEAD^").decode().strip() == source
+          assert git("diff-tree", "--no-commit-id", "--name-only", "-r", "-z", source, "HEAD") == workflow + b"\0"
+          assert git("ls-tree", "HEAD", workflow.decode()).startswith(b"100644 blob ")
+          assert not git("status", "--porcelain=v1", "--untracked-files=all")
+          subprocess.run(["git", "checkout", "--detach", source], check=True, timeout=30)
+          assert git("rev-parse", "HEAD", "HEAD^{tree}", "HEAD^").decode().splitlines() == [source, tree, base]
+          assert not git("status", "--porcelain=v1", "--untracked-files=all")
+          sparse = subprocess.run(["git", "config", "--get", "core.sparseCheckout"], capture_output=True, timeout=10)
+          assert sparse.returncode in (0, 1) and sparse.stdout.strip() != b"true"
+          entries = git("ls-tree", "-r", "-z", "HEAD").split(b"\0")[:-1]
+          assert len(entries) == 49769
+          assert all(row.split(b"\t", 1)[0].split()[1] == b"blob" for row in entries)
+          objects = sorted({row.split(b"\t", 1)[0].split()[2] for row in entries})
+          metadata = subprocess.run(["git", "cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"], input=b"\n".join(objects)+b"\n", capture_output=True, check=True, timeout=30).stdout.splitlines()
+          assert len(metadata) == len(objects) and all(len(row.split()) == 3 and row.split()[1] == b"blob" for row in metadata)
+          run = os.environ["GITHUB_RUN_ID"]
+          attempt = os.environ["GITHUB_RUN_ATTEMPT"]
+          assert run.isdecimal() and attempt == "1"
+          temp = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
+          owned = temp / ("youtube-notification-source-" + run + "-" + attempt)
+          owned.mkdir(mode=0o700)
+          workspace = pathlib.Path(os.environ["GITHUB_WORKSPACE"]).resolve(strict=True)
+          assert workspace.parent == pathlib.Path(os.environ["RUNNER_WORKSPACE"]).resolve(strict=True)
+          assert workspace.name == "openclaw" and (workspace / ".git").is_dir()
+          (owned / "owner.json").write_text(json.dumps({"run":run,"attempt":attempt,"workspace":str(workspace),"source":source})+"\n")
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              for key, child in [("PNPM_HOME","pnpm-home"),("COREPACK_HOME","corepack-home"),("PNPM_CONFIG_STORE_DIR","pnpm-store"),("PNPM_CONFIG_CACHE_DIR","pnpm-cache")]:
+                  output.write(key+"="+str(owned / child)+"\n")
+          print(json.dumps({"state":"full_exact_source_admitted","source":source,"tree":tree,"base":base,"tracked_files":len(entries),"workflow_sha":os.environ["GITHUB_SHA"]}, sort_keys=True))
+          PY
 
-      - name: Checkout trusted tooling
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Checkout frozen candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: 3fbe94065c2b94f4c08acb6742a69938bf408d94
-          path: candidate
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Setup Node environment
+      - name: Install the exact lock through the source-owned Node setup
+        id: node_setup
+        timeout-minutes: 18
         uses: ./.github/actions/setup-node-env
         with:
-          cache-mode: restore
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: "24.19.0"
           install-bun: "false"
+          install-deps: "true"
+          frozen-lockfile: "true"
+          cache-mode: "off"
+          dependency-cache: "false"
+          vitest-fs-cache: "false"
+          vitest-worker-cache: "false"
+          restore-test-caches: "false"
+          node-compile-cache: "false"
+          build-all-cache-scope: ""
 
-      - name: Build focused evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Execute the twelve canonical selected checks once
+        timeout-minutes: 20
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/authorized-beta-focused"
-          node --import tsx scripts/validate-authorized-beta-focused-evidence.mts create \
-            --candidate-root candidate \
-            --output "${RUNNER_TEMP}/authorized-beta-focused/evidence.json" \
-            --producer-run-id "${GITHUB_RUN_ID}" \
-            --producer-run-attempt "${GITHUB_RUN_ATTEMPT}" \
-            --producer-workflow-full-ref "${GITHUB_REF}" \
-            --producer-workflow-sha "${GITHUB_SHA}"
+          test "$(git rev-parse HEAD)" = 8c37b9e27bb197996eaee21aa0197f947a08a998
+          test "$(git rev-parse HEAD^{tree})" = 0fffee15bab60d3cdec575783295cc234d95aa05
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+          node --version
+          pnpm --version
+          python3 - <<'PY'
+          import json, os, pathlib, select, signal, subprocess, time
 
-      - name: Attest focused evidence
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: ${{ runner.temp }}/authorized-beta-focused/evidence.json
+          def birth(pid):
+              return pathlib.Path("/proc", str(pid), "stat").read_text().rsplit(")", 1)[1].split()[19]
 
-      - name: Upload focused evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: authorized-beta-focused-v1-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/authorized-beta-focused/evidence.json
-          if-no-files-found: error
-          retention-days: 30
+          def wait_absent(pid, started):
+              for _ in range(100):
+                  try:
+                      current = birth(pid)
+                  except FileNotFoundError:
+                      return
+                  if current != started:
+                      return
+                  time.sleep(0.05)
+              raise RuntimeError("owned namespace init extinction unconfirmed")
+
+          def run_owned(argv, owned, seconds=1100):
+              state = owned / "process.json"
+              state.write_text(json.dumps({"state":"launching"})+"\n")
+              read_ready, write_ready = os.pipe()
+              proc = None
+              recorded = None
+              def interrupted(signum, frame):
+                  raise TimeoutError("owned check interrupted")
+              previous = {sig:signal.signal(sig, interrupted) for sig in (signal.SIGTERM, signal.SIGINT)}
+              code = 124
+              try:
+                  proc = subprocess.Popen(argv+[str(write_ready)], stdin=subprocess.PIPE, start_new_session=True, pass_fds=(write_ready,))
+                  os.close(write_ready)
+                  write_ready = None
+                  recorded = {"pid":proc.pid,"start":birth(proc.pid),"state":"starting"}
+                  state.write_text(json.dumps(recorded)+"\n")
+                  assert select.select([read_ready], [], [], 10)[0]
+                  assert os.read(read_ready, 6) == b"READY\n"
+                  children = pathlib.Path("/proc",str(proc.pid),"task",str(proc.pid),"children").read_text().split()
+                  assert len(children) == 1
+                  init_pid = int(children[0])
+                  status = pathlib.Path("/proc",str(init_pid),"status").read_text().splitlines()
+                  nspid = next(line.split()[1:] for line in status if line.startswith("NSpid:"))
+                  assert len(nspid) >= 2 and nspid[-1] == "1"
+                  assert pathlib.Path("/proc",str(init_pid),"ns/pid").readlink() != pathlib.Path("/proc/self/ns/pid").readlink()
+                  recorded.update({"init_pid":init_pid,"init_start":birth(init_pid),"state":"active"})
+                  state.write_text(json.dumps(recorded)+"\n")
+                  proc.stdin.write(b"GO\n")
+                  proc.stdin.close()
+                  code = proc.wait(timeout=seconds)
+              except (subprocess.TimeoutExpired, TimeoutError):
+                  pass
+              finally:
+                  for sig, handler in previous.items():
+                      signal.signal(sig, handler)
+                  os.close(read_ready)
+                  if write_ready is not None:
+                      os.close(write_ready)
+                  if proc is not None:
+                      # --kill-child=KILL kills PID1 when unshare dies; PID1 teardown
+                      # drains every namespace member, including detached child groups.
+                      for sig in (signal.SIGTERM, signal.SIGKILL):
+                          try:
+                              os.killpg(proc.pid, sig)
+                          except ProcessLookupError:
+                              pass
+                      proc.wait(timeout=5)
+                  if recorded is None or "init_pid" not in recorded:
+                      raise RuntimeError("namespace ownership unconfirmed; preserve owned files")
+                  wait_absent(recorded["init_pid"], recorded["init_start"])
+                  recorded.update({"state":"stopped","exit_code":code})
+                  state.write_text(json.dumps(recorded)+"\n")
+              return code
+          if __name__ == "__main__":
+              owned = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve(strict=True) / ("youtube-notification-source-"+os.environ["GITHUB_RUN_ID"]+"-"+os.environ["GITHUB_RUN_ATTEMPT"])
+              command = ["node","scripts/check-changed.mjs","--","deploy/youtube-worker/README.md","deploy/youtube-worker/deployment.py","deploy/youtube-worker/runtime/scripts/youtube_global_windows_supervisor.py","deploy/youtube-worker/runtime/scripts/youtube_windows_deployment.py","deploy/youtube-worker/tests/test_deployment.py"]
+              namespace = ["unshare","--user","--map-current-user","--net","--pid","--fork","--mount-proc","--kill-child=KILL","--"]
+              probe = "import os,pathlib,sys; assert os.getpid()==1; assert str(pathlib.Path('/proc/self/ns/pid').readlink()) != sys.argv[1]; print('owned_pid_namespace_admitted')"
+              host_namespace = str(pathlib.Path("/proc/self/ns/pid").readlink())
+              subprocess.run(namespace+["python3","-I","-S","-B","-c",probe,host_namespace], check=True, timeout=10)
+              init = "import json,os,signal,subprocess,sys; assert os.getpid()==1; fd=int(sys.argv[2]); os.write(fd,b'READY\\n'); os.close(fd); assert sys.stdin.readline()=='GO\\n'; child=subprocess.Popen(json.loads(sys.argv[1]),stdin=subprocess.DEVNULL); signal.signal(signal.SIGTERM,lambda *_: child.send_signal(signal.SIGTERM)); signal.signal(signal.SIGINT,lambda *_: child.send_signal(signal.SIGINT)); raise SystemExit(child.wait())"
+              code = run_owned(namespace+["python3","-I","-S","-B","-c",init,json.dumps(command)], owned)
+              print(json.dumps({"state":"canonical_non_dry_finished","exit_code":code,"source":"8c37b9e27bb197996eaee21aa0197f947a08a998"}, sort_keys=True))
+              raise SystemExit(code)
+          PY
+
+      - name: Clean this admitted checkout and scoped dependency store
+        if: always()
+        timeout-minutes: 1
+        shell: bash
+        env:
+          SETUP_OUTCOME: ${{ steps.node_setup.outcome }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, shutil, signal, subprocess, time
+          temp = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
+          owned = temp / ("youtube-notification-source-"+os.environ["GITHUB_RUN_ID"]+"-"+os.environ["GITHUB_RUN_ATTEMPT"])
+          if not owned.exists():
+              print('{"state":"no_qualification_owner_admitted"}')
+              raise SystemExit(0)
+          assert not owned.is_symlink() and owned.is_dir()
+          receipt = json.loads((owned / "owner.json").read_text())
+          assert receipt["run"] == os.environ["GITHUB_RUN_ID"] and receipt["attempt"] == "1"
+          assert receipt["source"] == "8c37b9e27bb197996eaee21aa0197f947a08a998"
+          assert os.environ["SETUP_OUTCOME"] == "success", "dependency setup incomplete; preserve files for hosted runner disposal"
+          state_path = owned / "process.json"
+          if state_path.exists():
+              state = json.loads(state_path.read_text())
+              if state["state"] != "stopped":
+                  assert "pid" in state and "init_pid" in state, "namespace ownership unconfirmed; preserve owned files"
+                  pid = state["pid"]
+                  try:
+                      os.killpg(pid, 0)
+                  except ProcessLookupError:
+                      pass
+                  else:
+                      birth = pathlib.Path("/proc", str(pid), "stat").read_text().rsplit(")", 1)[1].split()[19]
+                      assert birth == state["start"] and os.getpgid(pid) == pid
+                      for sig in (signal.SIGTERM, signal.SIGKILL):
+                          try:
+                              os.killpg(pid, sig)
+                          except ProcessLookupError:
+                              pass
+                      for _ in range(100):
+                          try:
+                              os.killpg(pid, 0)
+                          except ProcessLookupError:
+                              break
+                          time.sleep(0.05)
+                      else:
+                          raise RuntimeError("owned process group cleanup unconfirmed")
+                  for _ in range(100):
+                      try:
+                          current = pathlib.Path("/proc",str(state["init_pid"]),"stat").read_text().rsplit(")",1)[1].split()[19]
+                      except FileNotFoundError:
+                          break
+                      if current != state["init_start"]:
+                          break
+                      time.sleep(0.05)
+                  else:
+                      raise RuntimeError("owned namespace init extinction unconfirmed")
+          workspace = pathlib.Path(receipt["workspace"])
+          assert workspace == pathlib.Path(os.environ["GITHUB_WORKSPACE"]).resolve(strict=True)
+          assert workspace.parent == pathlib.Path(os.environ["RUNNER_WORKSPACE"]).resolve(strict=True)
+          assert workspace.name == "openclaw" and not workspace.is_symlink()
+          origin = subprocess.check_output(["git","-C",str(workspace),"remote","get-url","origin"], text=True, timeout=10).strip()
+          assert origin in ("https://github.com/fr-meyer/openclaw", "https://github.com/fr-meyer/openclaw.git")
+          shutil.rmtree(workspace)
+          shutil.rmtree(owned)
+          print('{"state":"owned_checkout_and_scoped_store_removed","bootstrap_temp_cleanup":"hosted_runner_disposal"}')
+          PY
