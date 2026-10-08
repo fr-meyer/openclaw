@@ -41,7 +41,7 @@ REASONS = {
     "worker_session_interrupted": ("Worker extraction was interrupted by Windows session shutdown", "Verify a stable worker session and the stopped worker before same-lease recovery"),
     "bot_check": ("Anonymous extraction hit a bot check", "Review the stored failure without adding cookies or replaying the batch"),
     "auth_required": ("Anonymous extraction requires authentication", "Review this video's eligibility under the existing anonymous policy"),
-    "rate_limited": ("Anonymous extraction was rate limited", "Respect the existing cooldown before coordinated recovery"),
+    "rate_limited": ("Anonymous extraction was rate limited", "Agree on a bounded wait before explicit same-lease recovery; no automatic restart is scheduled"),
     "unsafe_archive_boundary": ("Archive boundary validation failed", "Inspect the exact archive path before any retry"),
     "transient_timeout": ("Extraction timed out", "Verify termination and the current lease before any retry"),
     "error": ("Worker needs investigation", "Inspect this video's stored extraction error"),

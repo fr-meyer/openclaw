@@ -12,6 +12,7 @@ EXPECTED_FILES = {
     "scripts/youtube_safe_diagnostics.py", "scripts/youtube_windows_config.py",
     "scripts/youtube_windows_import.py", "scripts/youtube_windows_transport.py",
     "scripts/youtube_windows_deployment.py", "scripts/youtube_worker/openclaw-node-run",
+    "scripts/youtube_worker_alerts.py",
     "scripts/youtube_ycombinator/import_chunk_bundle.py", "scripts/youtube_ycombinator/build_catalog.py",
 }
 

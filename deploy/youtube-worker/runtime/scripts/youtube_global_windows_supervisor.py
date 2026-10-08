@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 from youtube_windows_deployment import verify_managed_sources
+import youtube_worker_alerts as ALERTS
+from youtube_safe_diagnostics import REASONS, VIDEO_ID
 
 WORKSPACE = Path(__file__).resolve().parents[1]
 try:
@@ -32,6 +35,7 @@ RUNS_ROOT = POOL_ROOT / "windows-canaries"
 MARKER_PATH = POOL_ROOT / "gates/windows-worker-cutover.json"
 STATE_PATH = POOL_ROOT / "windows-supervisor-state.json"
 LOCK_PATH = POOL_ROOT / "locks/windows-supervisor.lock"
+ALERT_DATABASE = POOL_ROOT / "windows-notifications.sqlite3"
 SCRIPT_PATH = WORKSPACE / "scripts/youtube_global_windows_supervisor.py"
 DECLARATION_KEY = "youtube-global-windows-supervisor-v1"
 EXPECTED_ARGV = ["python3", str(SCRIPT_PATH), "cron"]
@@ -503,9 +507,183 @@ def tick(*, launch: bool = True) -> dict[str, Any]:
         }
 
 
-def cron_reconcile_main() -> int:
+def notification_record(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 1024 * 1024:
+        raise GP.PoolError("Windows notification evidence is unavailable or unsafe")
+    record = read_json(path)
+    if not isinstance(record, dict):
+        raise GP.PoolError("Windows notification evidence is not an object")
+    return record
+
+
+def notification_recovery_verified(root: Path, manifest: dict[str, Any]) -> bool:
+    """Consume the coordinator's committed receipts, never perform recovery."""
+    if manifest.get("state") != "completed" or manifest.get("worker_alive") is not False:
+        return False
+    run_id, lease_id = manifest.get("canary_id"), manifest.get("lease_id")
+    bundle = manifest.get("bundle_sha256")
+    if not isinstance(bundle, str) or not re.fullmatch(r"[0-9a-f]{64}", bundle):
+        return False
+    imported = notification_record(root / "imports/chunk-0001.json")
+    journal = notification_record(root / "finalization.json")
+    queue = notification_record(root / "queue/state.json")
+    lease = notification_record(POOL_ROOT / "leases" / (lease_id + ".json"))
+    chunk = notification_record(POOL_ROOT / "chunks" / (run_id + ".json"))
+    ids = manifest.get("video_ids")
+    archived = imported.get("video_ids") or []
+    terminal = imported.get("terminal_items") or []
+    if not isinstance(ids, list) or not 1 <= len(ids) <= WC.MAX_CANARY_ITEMS or any(not isinstance(v, str) or not VIDEO_ID.fullmatch(v) for v in ids):
+        return False
+    if not isinstance(archived, list) or not isinstance(terminal, list) or any(not isinstance(row, dict) for row in terminal):
+        return False
+    terminal_states = {"skipped_private", "skipped_age_restricted", "skipped_unavailable"}
+    expected = {v: "archived" for v in archived if isinstance(v, str)}
+    expected.update({row.get("video_id"): row.get("state") for row in terminal if isinstance(row.get("video_id"), str)})
+    partition = archived + [row.get("video_id") for row in terminal]
+    if (imported.get("validated") is not True or imported.get("requested_video_ids") != ids
+        or imported.get("incomplete_items") or imported.get("incomplete_count") != 0
+        or len(partition) != len(ids) or len(expected) != len(ids) or set(expected) != set(ids)
+        or any(row.get("state") not in terminal_states for row in terminal)
+        or imported.get("cookies_used") is not False or imported.get("media_files") != 0
+        or journal.get("state") != "committed" or journal.get("canary_id") != run_id
+        or journal.get("lease_id") != lease_id
+        or not all(record.get("bundle_sha256") == bundle for record in (imported, journal))
+        or lease.get("state") != "completed" or lease.get("lease_id") != lease_id
+        or lease.get("chunk_id") != run_id or lease.get("video_ids") != ids
+        or chunk.get("state") != "completed" or chunk.get("lease_id") != lease_id):
+        return False
+    if queue.get("state") != "completed" or queue.get("bundle_sha256") != bundle or queue.get("worker_alive") is not False:
+        return False
     try:
-        result = tick(launch=False)
+        WC.LC.validate_journal(journal, run_id, lease_id, bundle, set(ids))
+    except WC.LC.GP.PoolError:
+        return False
+    for video in ids:
+        item = notification_record(POOL_ROOT / "items" / (video + ".json"))
+        if item.get("status") != expected[video] or item.get("active_lease_id") is not None or item.get("active_node") is not None:
+            return False
+    return True
+
+
+def notification_partial_outcome(root: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    """Use validated import outcomes; finalization can retain an old reason."""
+    imported = notification_record(root / "imports/chunk-0001.json")
+    ids = manifest.get("video_ids")
+    bundle = manifest.get("bundle_sha256")
+    if (not isinstance(ids, list) or not 1 <= len(ids) <= WC.MAX_CANARY_ITEMS
+        or any(not isinstance(video, str) or not VIDEO_ID.fullmatch(video) for video in ids)
+        or not isinstance(bundle, str) or not re.fullmatch(r"[0-9a-f]{64}", bundle)
+        or imported.get("requested_video_ids") != ids or imported.get("bundle_sha256") != bundle
+        or imported.get("cookies_used") is not False or imported.get("media_files") != 0):
+        raise GP.PoolError("Windows partial notification import evidence differs")
+    archived, _terminal, incomplete = WC.LC.import_outcomes(imported)
+    if not incomplete or imported.get("incomplete_count") != len(incomplete):
+        raise GP.PoolError("Windows partial notification outcome counts differ")
+    outcomes = []
+    for video, row in sorted(incomplete.items()):
+        state, code = row.get("state"), row.get("failure_class")
+        if any(value is not None and (not isinstance(value, str) or len(value) > 256) for value in (state, code)):
+            raise GP.PoolError("Windows partial notification classification is invalid")
+        outcomes.append({"video_id": video, "state": state, "failure_class": code})
+    primary = next((row for row in outcomes if row["failure_class"]), outcomes[0])
+    reason = primary["failure_class"] if primary["failure_class"] in REASONS else "unknown"
+    return {"failure_code": "partial:" + reason + ":" + stable_hash(outcomes),
+            "video_id": primary["video_id"], "archived_count": len(archived),
+            "incomplete_count": len(incomplete)}
+
+
+def notification_snapshot(run_id: str) -> dict[str, Any] | None:
+    if not isinstance(run_id, str) or not re.fullmatch(r"windows-canary-prod-[a-z0-9-]{1,64}", run_id):
+        raise GP.PoolError("Windows notification run identity is invalid")
+    root = RUNS_ROOT / run_id
+    manifest = notification_record(root / "manifest.json")
+    lease_id = manifest.get("lease_id")
+    if manifest.get("canary_id") != run_id or not isinstance(lease_id, str) or not re.fullmatch(r"[0-9a-f-]{36}", lease_id):
+        raise GP.PoolError("Windows notification run/lease evidence differs")
+    state = manifest.get("state")
+    summary = manifest.get("remote_summary") or {}
+    if not isinstance(summary, dict):
+        raise GP.PoolError("Windows notification summary is invalid")
+    recovery = notification_recovery_verified(root, manifest)
+    if recovery:
+        phase = "resolved"
+    elif state in {"blocked", "attention_required", "partial"}:
+        phase = "attention"
+    elif state == "running" and manifest.get("worker_alive") is True:
+        phase = "watching"
+    else:
+        return None
+    if state == "partial":
+        return {"run_id": run_id, "lease_id": lease_id, "phase": "attention",
+                "recovery_verified": False, **notification_partial_outcome(root, manifest)}
+    # Free-form errors and polling timestamps never become fingerprints or text.
+    remote_state = summary.get("state")
+    # Reconciliation retains old manifest fields. An unexpected remote state
+    # must not inherit a previous, recognized circuit and disappear as a repeat.
+    raw_code = summary.get("circuit_reason") or (manifest.get("reason") if state != "attention_required" else None) or "unknown"
+    if any(value is not None and (not isinstance(value, str) or len(value) > 256) for value in (raw_code, remote_state)):
+        raise GP.PoolError("Windows notification classification is invalid")
+    recognized = state != "attention_required" and raw_code in REASONS and raw_code != "unknown"
+    code = raw_code if recognized else "unknown:" + stable_hash({
+        "state": state,
+        # Hash the complete bounded structured classification; only the digest
+        # enters incident state/text. Digits and punctuation retain identity.
+        "remote_state": remote_state,
+        "code": raw_code,
+    })
+    video = summary.get("current_video_id")
+    video = video if isinstance(video, str) and VIDEO_ID.fullmatch(video) else None
+    counts = summary.get("counts") or {}
+    if not isinstance(counts, dict):
+        raise GP.PoolError("Windows notification counts are invalid")
+    archived = counts.get("archived", manifest.get("archived_count", 0))
+    archived = archived if type(archived) is int and 0 <= archived <= WC.MAX_CANARY_ITEMS else 0
+    total = manifest.get("expected_item_count")
+    total = total if type(total) is int and 1 <= total <= WC.MAX_CANARY_ITEMS else 24
+    terminal = sum(value for key, value in counts.items() if key in {"skipped_private", "skipped_age_restricted", "skipped_unavailable"}
+                   and type(value) is int and 0 <= value <= total)
+    if archived + terminal > total:
+        raise GP.PoolError("Windows notification outcome counts differ")
+    return {"run_id": run_id, "lease_id": lease_id, "phase": phase, "failure_code": code,
+            "video_id": video, "archived_count": archived, "incomplete_count": 0 if recovery else total - archived - terminal,
+            "recovery_verified": recovery}
+
+
+def emit_notifications(result: dict[str, Any]) -> None:
+    """Both scheduled callers reserve through the same durable incident owner."""
+    with GP.FileLock(LOCK_PATH, blocking=False), GP.FileLock(POOL_ROOT / "locks/coordinator.lock", blocking=False):
+        emit_notifications_locked(result)
+
+
+def emit_notifications_locked(result: dict[str, Any]) -> None:
+    current = result.get("run_id")
+    if result.get("alert") and not isinstance(current, str):
+        raise GP.PoolError("Windows attention result has no run identity")
+    with ALERTS.NotificationStore(ALERT_DATABASE) as store:
+        candidates = ([current] if isinstance(current, str) else []) + store.unfinished_runs(limit=8, exclude_run_id=current)
+        for run_id in candidates:
+            snapshot = notification_snapshot(run_id)
+            if snapshot is None:
+                continue
+            reservation = store.observe(snapshot, now=dt.datetime.now(dt.timezone.utc))
+            if reservation is None:
+                continue
+            try:
+                print(reservation.message, flush=True)
+            except BaseException:
+                store.mark_emission(reservation.event_id, successful=False)
+                raise
+            store.mark_emission(reservation.event_id, successful=True)
+            return
+    print("NO_REPLY")
+
+
+def scheduled_main(*, launch: bool) -> int:
+    try:
+        result = tick(launch=launch)
+        emit_notifications(result)
     except GP.PoolLockError:
         print("NO_REPLY")
         return 0
@@ -518,27 +696,15 @@ def cron_reconcile_main() -> int:
                 return 0
         print(f"Windows YouTube supervisor failed closed: {type(exc).__name__}. No new worker was authorized.", file=sys.stderr)
         return 1
-    print("Windows YouTube worker needs attention." if result.get("alert") else "NO_REPLY")
     return 0
+
+
+def cron_reconcile_main() -> int:
+    return scheduled_main(launch=False)
 
 
 def cron_main() -> int:
-    try:
-        result = tick()
-    except GP.PoolLockError:
-        print("NO_REPLY")
-        return 0
-    except Exception as exc:
-        if is_node_unavailable(exc):
-            current = active_runs()
-            if len(current) <= 1:
-                defer_node_unavailable(current)
-                print("NO_REPLY")
-                return 0
-        print(f"Windows YouTube supervisor failed closed: {type(exc).__name__}. No new worker was authorized.", file=sys.stderr)
-        return 1
-    print("Windows YouTube worker needs attention." if result.get("alert") else "NO_REPLY")
-    return 0
+    return scheduled_main(launch=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -552,6 +718,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("cron")
     sub.add_parser("cron-reconcile")
     sub.add_parser("status")
+    sub.add_parser("notification-status")
     return parser
 
 
@@ -567,6 +734,9 @@ def main(argv: list[str] | None = None) -> int:
         return cron_main()
     elif args.command == "cron-reconcile":
         return cron_reconcile_main()
+    elif args.command == "notification-status":
+        with ALERTS.NotificationStore(ALERT_DATABASE, read_only=True) as store:
+            result = store.status()
     else:
         result = read_json(STATE_PATH, {}) or {"state": "not_started", "windows_enabled": False}
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
