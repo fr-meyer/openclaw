@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -15,6 +17,25 @@ import uuid
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
+
+# Scheduled commands fence imports as well as tick/output. Imported callers
+# retain the existing operation locks; deployment never edits scheduler argv.
+_COMMAND_LOCK_FD = None
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] in {"cron", "cron-reconcile", "tick"}:
+    _command_data = Path(os.environ.get("OPENCLAW_YOUTUBE_DATA_ROOT", "~/.openclaw/data/youtube-transcripts")).expanduser()
+    _command_lock = _command_data / "state/automation/global/locks/windows-supervisor.lock"
+    if any(part.is_symlink() for part in [_command_lock, *_command_lock.parents]):
+        raise RuntimeError("Windows supervisor lock path is redirected")
+    _command_lock.parent.mkdir(parents=True, exist_ok=True)
+    _COMMAND_LOCK_FD = os.open(_command_lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        fcntl.flock(_COMMAND_LOCK_FD, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(_COMMAND_LOCK_FD)
+        print("NO_REPLY")
+        raise SystemExit(0)
+_LOADED_SUPERVISOR_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
 from youtube_windows_deployment import verify_managed_sources
 import youtube_worker_alerts as ALERTS
 from youtube_safe_diagnostics import REASONS, VIDEO_ID
@@ -196,7 +217,7 @@ def record_cutover(job_id: str, *, chunk_size: int = 8) -> dict[str, Any]:
 
 
 def validate_cutover() -> dict[str, Any]:
-    verify_managed_sources(WORKSPACE, WC.WINDOWS_CONFIG)
+    verify_managed_sources(WORKSPACE, WC.WINDOWS_CONFIG, loaded_supervisor_sha256=_LOADED_SUPERVISOR_SHA256)
     marker = read_json(MARKER_PATH, {}) or {}
     if marker.get("schema") != "franck.youtube-global-pool.windows-worker-cutover.v1" or marker.get("enabled") is not True:
         raise GP.PoolError("Windows worker cutover marker is absent or disabled")
@@ -351,7 +372,7 @@ def defer_node_unavailable(current: list[tuple[str, dict[str, Any]]]) -> dict[st
 
 
 def tick(*, launch: bool = True) -> dict[str, Any]:
-    with GP.FileLock(LOCK_PATH, blocking=False):
+    with supervisor_lock():
         current = active_runs()
         if len(current) > 1:
             raise GP.PoolError("multiple non-final Windows production runs")
@@ -653,8 +674,12 @@ def notification_snapshot(run_id: str) -> dict[str, Any] | None:
 
 def emit_notifications(result: dict[str, Any]) -> None:
     """Both scheduled callers reserve through the same durable incident owner."""
-    with GP.FileLock(LOCK_PATH, blocking=False), GP.FileLock(POOL_ROOT / "locks/coordinator.lock", blocking=False):
+    with supervisor_lock(), GP.FileLock(POOL_ROOT / "locks/coordinator.lock", blocking=False):
         emit_notifications_locked(result)
+
+
+def supervisor_lock():
+    return contextlib.nullcontext() if _COMMAND_LOCK_FD is not None else GP.FileLock(LOCK_PATH, blocking=False)
 
 
 def emit_notifications_locked(result: dict[str, Any]) -> None:
@@ -744,4 +769,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    finally:
+        if _COMMAND_LOCK_FD is not None:
+            os.close(_COMMAND_LOCK_FD)

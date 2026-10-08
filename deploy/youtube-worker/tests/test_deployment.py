@@ -3,6 +3,12 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import os
+import copy
+import datetime as dt
+import json
+import shutil
+import subprocess
+import sys
 import time
 import unittest
 from unittest.mock import patch
@@ -198,6 +204,321 @@ class DeploymentTests(unittest.TestCase):
                 finally:
                     ancestor.unlink()
                     saved.rename(ancestor)
+
+
+class NotificationDeploymentTests(unittest.TestCase):
+    """Actual five-target transaction against a bound blocked lifecycle fixture."""
+
+    def setUp(self):
+        case = fixtures.CoordinatorRecoveryTests()
+        case.setUp(); self.addCleanup(case.doCleanups)
+        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.workspace = Path(self.temp.name) / "workspace"; self.workspace.mkdir()
+        self.data = Path(self.temp.name) / "data"
+        self.pool = self.data / "state/automation/global"
+        shutil.copytree(case.pool, self.pool)
+        self.config = copy.deepcopy(fixtures.CONFIG)
+        self.source = deploy.source_files()
+        wrapper = deploy.digest((deploy.BUNDLE / "windows/yt-dlp-anonymous.cmd").read_bytes())
+        self.config["assets"]["wrapper_sha256"] = wrapper
+        # A full admitted baseline has no alert helper. Native/protected bytes
+        # are real; old notification owners are deliberately distinct bytes.
+        previous = {key: raw for key, raw in self.source.items() if key != "scripts/youtube_worker_alerts.py"}
+        previous[deploy.SUPERVISOR] = b"# synthetic prior notification owner\n"
+        for key, raw in previous.items():
+            path = self.workspace / key
+            deploy.atomic(path, raw, mode=0o750 if path.name == "openclaw-node-run" else 0o640)
+        self.baseline = {"schema": "openclaw.youtube.windows-release.v1", "repository": deploy.REPOSITORY,
+            "compatibility": deploy.COMPATIBILITY, "revision": self.config["assets"]["fork_revision"],
+            "files": {key: deploy.digest(raw) for key, raw in previous.items()},
+            "archiver": {"repository": "fr-meyer/agent-toolkit", "revision": self.config["assets"]["archiver_revision"],
+                "path": "skills/youtube-transcript-archive/scripts/archive_youtube_transcript.py", "sha256": self.config["assets"]["archiver_sha256"]},
+            "wrapper_sha256": wrapper}
+        self.release = {**self.baseline, "revision": "a" * 40, "files": {key: deploy.digest(raw) for key, raw in self.source.items()}}
+        self.identity = deploy.release_identity(self.release, self.source)
+        deploy.atomic(self.data / "state/config/windows-worker.json", deploy.json_bytes(self.config), mode=0o600)
+        deploy.atomic(self.pool / "gates/windows-worker-cutover.json", deploy.json_bytes({"enabled": True,
+            "node_id": self.config["node"]["id"], "worker_sha256": self.baseline["files"]["scripts/youtube_global_chunk_worker.py"],
+            "adapter_sha256": self.baseline["files"]["scripts/youtube_global_windows_adapter.ps1"], "scheduler_identity_sha256": "d" * 64}), mode=0o600)
+        deploy.atomic(self.data / "state/config/windows-deployment.json", deploy.json_bytes({
+            "schema": "openclaw.youtube.windows-deployment.v1", "revision": self.baseline["revision"],
+            "release_sha256": deploy.digest(deploy.json_bytes(self.baseline)), "files": self.baseline["files"],
+            "assets": self.config["assets"], "configuration_sha256": deploy.digest(deploy.json_bytes(self.config))}), mode=0o600)
+        root = self.pool / "windows-canaries" / fixtures.CANARY
+        manifest = deploy.read(root / "manifest.json")
+        self.ids = [f"fixture{i:04d}" for i in range(1, 25)]
+        urls = root / "chunks/0001.tsv"
+        urls.write_text("".join(f"{video}\t{fixtures.gp.canonical_url(video)}\n" for video in self.ids))
+        manifest.update(assets=self.config["assets"], worker_alive=False, video_ids=self.ids,
+            expected_item_count=24, urls_sha256=deploy.digest(urls.read_bytes()))
+        manifest["binding_sha256"] = fixtures.wc.stable_hash(fixtures.wc._binding_payload(fixtures.CANARY,
+            fixtures.LEASE, self.ids, manifest["urls_sha256"], manifest["node"]))
+        lease_path = self.pool / "leases" / (fixtures.LEASE + ".json")
+        lease = deploy.read(lease_path); lease["video_ids"] = self.ids
+        deploy.atomic(lease_path, deploy.json_bytes(lease)); manifest["lease_sha256"] = fixtures.wc._lease_binding_hash(lease)
+        chunk_paths = [self.pool / "chunks" / (fixtures.CANARY + ".json"), root / "chunks/0001.json"]
+        for path in chunk_paths:
+            chunk = deploy.read(path); chunk["binding_sha256"] = manifest["binding_sha256"]
+            chunk["items"] = [{"video_id": video, "url": fixtures.gp.canonical_url(video), "state": "pending"} for video in self.ids]
+            chunk["chunk_sha256"] = fixtures.wc._chunk_binding_hash(chunk)
+            deploy.atomic(path, deploy.json_bytes(chunk))
+            manifest["chunk_sha256"] = chunk["chunk_sha256"]
+        template = deploy.read(self.pool / "items" / (fixtures.IDS[0] + ".json"))
+        for video in self.ids:
+            deploy.atomic(self.pool / "items" / (video + ".json"), deploy.json_bytes({**template, "video_id": video}))
+        for video in self.ids[:3]:
+            deploy.atomic(root / "original-archives" / (video + ".txt"), ("synthetic validated original " + video).encode())
+        deploy.atomic(root / "manifest.json", deploy.json_bytes(manifest))
+        remote = fixtures.wc._normalise_probe(copy.deepcopy(case.remote))
+        remote["assets"] = self.config["assets"]
+        remote["staging"]["assets"] = self.config["assets"]
+        remote["staging"]["urls_sha256"] = manifest["urls_sha256"]
+        remote["items"] = {video: {"attempts": 1} for video in self.ids}
+        self.readiness = {"schema": "openclaw.youtube.windows-notification-readiness.v1",
+            "checked_at": dt.datetime.now(dt.timezone.utc).isoformat(), "canary_id": fixtures.CANARY,
+            "lease_id": fixtures.LEASE, "checkpoint_sha256": fixtures.DIGEST, "node_id": self.config["node"]["id"],
+            "node_connected": True, "assets": self.config["assets"], "remote": remote,
+            "worker_account": self.config["assets"]["worker_account"],
+            "adapter_sha256": manifest["adapter_sha256"], "archiver_sha256": self.config["assets"]["archiver_sha256"],
+            "wrapper_sha256": wrapper, "configuration_sha256": deploy.digest((self.data / "state/config/windows-worker.json").read_bytes()),
+            "cutover_sha256": deploy.digest((self.pool / "gates/windows-worker-cutover.json").read_bytes())}
+        self.proofs = {"revision": self.release["revision"], "release_sha256": self.identity,
+            **{key: {"state": "passed", "evidence_sha256": "c" * 64} for key in ("autoreview", "offline_tests")},
+            "native_windows": {"state": "inherited", "evidence_sha256": "e" * 64,
+                "baseline_release_sha256": deploy.digest(deploy.json_bytes(self.baseline)), "assets": self.config["assets"],
+                "worker_sha256": self.baseline["files"]["scripts/youtube_global_chunk_worker.py"],
+                "adapter_sha256": self.baseline["files"]["scripts/youtube_global_windows_adapter.ps1"]}}
+        self.journal = self.workspace / ".openclaw/tmp/notification-deploy/transaction.json"
+        self.proposed = deploy.notification_targets(self.workspace, self.data, self.release, self.config, self.source, self.baseline)
+        self.expected = {str(path): deploy.digest(path.read_bytes()) if path.is_file() else None for path in self.proposed}
+        p = patch.object(deploy, "verify_source_revision"); p.start(); self.addCleanup(p.stop)
+        self.sentinel = self.pool / "windows-canaries/windows-canary-fixture-closed/archives/original.txt"
+        deploy.atomic(self.sentinel, b"synthetic original validated output\n")
+        deploy.atomic(self.sentinel.parent.parent / "imports/receipt.json", b'{"synthetic":"closed validated import"}\n')
+        self.ledger = self.pool / "windows-notifications.sqlite3"
+        # A real durable reservation, outside the deployment write set, must
+        # survive rollback so an already noticed incident stays quiet.
+        self.notice_snapshot = {"run_id": "windows-canary-prod-fixture-notification", "lease_id": fixtures.LEASE, "phase": "attention",
+            "failure_code": "rate_limited", "video_id": self.ids[3], "archived_count": 3,
+            "incomplete_count": 21, "recovery_verified": False}
+        with fixtures.sv.ALERTS.NotificationStore(self.ledger) as store:
+            self.assertIsNotNone(store.observe(self.notice_snapshot, now=dt.datetime.now(dt.timezone.utc)))
+
+    def activate(self):
+        return deploy.activate_notifications(self.workspace, self.data, self.release, self.config, self.proofs,
+            self.expected, self.journal, self.baseline, self.readiness)
+
+    def tree(self):
+        return {str(path): (path.read_bytes(), path.stat().st_mode & 0o777) for root in (self.workspace, self.data)
+            for path in root.rglob("*") if path.is_file() and path != self.journal and path.name not in {"windows-supervisor.lock", "coordinator.lock", "reconcile.lock"} and "__pycache__" not in path.parts}
+
+    def test_blocked_same_lease_changes_only_five_targets_and_restores_all_preimages(self):
+        before = self.tree()
+        self.assertEqual(self.activate()["state"], "committed")
+        changed = {key for key, value in self.tree().items() if before.get(key) != value}
+        self.assertLessEqual(changed, set(self.expected))
+        self.assertIn(str(self.workspace / "scripts/youtube_worker_alerts.py"), changed)
+        self.assertEqual(deploy.read(self.data / "state/config/windows-deployment.json")["assets"], self.config["assets"])
+        self.assertEqual(deploy.rollback(self.journal, readiness=self.readiness)["state"], "rolled_back")
+        self.assertEqual(self.tree(), before)
+        with fixtures.sv.ALERTS.NotificationStore(self.ledger) as store:
+            self.assertIsNone(store.observe(self.notice_snapshot, now=dt.datetime.now(dt.timezone.utc)))
+
+    def test_full_installer_still_refuses_the_same_active_lease(self):
+        proofs = copy.deepcopy(self.proofs)
+        proofs["native_windows"] = {"state": "passed", "evidence_sha256": "e" * 64}
+        with self.assertRaisesRegex(deploy.DeploymentError, "active authoritative lease"):
+            deploy.activate(self.workspace, self.data, self.release, self.config, proofs, self.expected, self.journal)
+        self.assertFalse(self.journal.exists())
+
+    def test_journal_cannot_replace_runtime_ledger_or_run_state(self):
+        before = self.tree()
+        original = self.journal
+        for path in (self.workspace / "scripts/youtube_worker_alerts.py", self.pool / "new-run-artifact.json", self.ledger):
+            with self.subTest(path=path):
+                self.journal = path
+                with self.assertRaisesRegex(deploy.DeploymentError, "private deployment artifact"): self.activate()
+        self.journal = original
+        self.assertEqual(self.tree(), before)
+
+    def test_unknown_running_stale_or_mismatched_readiness_refuses_before_journal(self):
+        original = copy.deepcopy(self.readiness)
+        cases = [("checked_at", "2001-01-01T00:00:00Z"), ("node_connected", False), ("lease_id", "other"),
+            ("checkpoint_sha256", "0" * 64)]
+        for key, value in cases:
+            with self.subTest(key=key):
+                self.readiness = copy.deepcopy(original); self.readiness[key] = value
+                with self.assertRaises(deploy.DeploymentError): self.activate()
+                self.assertFalse(self.journal.exists())
+        for key, value in (("worker_alive", True), ("worker_alive", None), ("worker_lock_free", None)):
+            with self.subTest(key=key, value=value):
+                self.readiness = copy.deepcopy(original); self.readiness["remote"][key] = value
+                with self.assertRaises(deploy.DeploymentError): self.activate()
+                self.assertFalse(self.journal.exists())
+
+    def test_each_current_item_binding_and_unknown_recovery_intent_is_fenced(self):
+        for video in self.ids:
+            path = self.pool / "items" / (video + ".json"); raw = path.read_bytes()
+            row = deploy.read(path); row["active_node"] = "9" * 64
+            deploy.atomic(path, deploy.json_bytes(row))
+            with self.assertRaises(deploy.DeploymentError): self.activate()
+            self.assertFalse(self.journal.exists()); path.write_bytes(raw)
+        request = self.pool / "windows-canaries" / fixtures.CANARY / "resume-requests/fixture.json"
+        for state in ("intent", "uncertain", "unexpected", "acknowledged"):
+            deploy.atomic(request, deploy.json_bytes({"state": state}))
+            with self.assertRaisesRegex(deploy.DeploymentError, "unresolved"): self.activate()
+            self.assertFalse(self.journal.exists())
+
+    def test_protected_source_config_and_pin_drift_are_not_notification_changes(self):
+        before = self.tree()
+        for path in (self.workspace / "scripts/youtube_global_chunk_worker.py", self.data / "state/config/windows-worker.json",
+                     self.pool / "gates/windows-worker-cutover.json"):
+            raw = path.read_bytes(); path.write_bytes(raw + b"\n")
+            with self.subTest(path=path):
+                with self.assertRaises(deploy.DeploymentError): self.activate()
+                self.assertFalse(self.journal.exists())
+            path.write_bytes(raw)
+        self.assertEqual(self.tree(), before)
+
+    def test_candidate_cannot_change_protected_worker_even_with_recomputed_release(self):
+        source = {**self.source, "scripts/youtube_global_chunk_worker.py": b"synthetic changed worker"}
+        self.release["files"] = {key: deploy.digest(raw) for key, raw in source.items()}
+        self.proofs["release_sha256"] = deploy.digest(deploy.json_bytes(self.release))
+        with patch.object(deploy, "source_files", return_value=source):
+            with self.assertRaisesRegex(deploy.DeploymentError, "changes protected source"): self.activate()
+        self.assertFalse(self.journal.exists())
+
+    def test_unrelated_process_cwd_is_not_read_but_relevant_unknown_cwd_refuses(self):
+        process = Path(self.temp.name) / "synthetic-proc-123"; process.mkdir()
+        cmdline = process / "cmdline"
+        cmdline.write_bytes(b"/usr/bin/sleep\x00300\x00")
+        with patch.object(deploy, "bounded_children", return_value=[process]):
+            deploy.commands_drained(self.workspace)
+            cmdline.write_bytes(b"python3\x00scripts/youtube_global_windows_supervisor.py\x00cron\x00")
+            with self.assertRaisesRegex(deploy.DeploymentError, "outcome unknown"):
+                deploy.commands_drained(self.workspace)
+
+    def test_direct_reconcile_and_both_owner_lock_contentions_refuse_without_writes(self):
+        for relative in ("locks/windows-supervisor.lock", "locks/coordinator.lock", "windows-canaries/" + fixtures.CANARY + "/reconcile.lock"):
+            with self.subTest(relative=relative), fixtures.gp.FileLock(self.pool / relative, blocking=False):
+                with self.assertRaises(deploy.DeploymentError): self.activate()
+                self.assertFalse(self.journal.exists())
+
+    def test_real_existing_command_is_drained_before_writes_and_new_cron_fences_imports(self):
+        process = subprocess.Popen([sys.executable, "-c", "import sys;print('ready',flush=True);sys.stdin.read()", str(self.workspace / deploy.SUPERVISOR)],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(process.stdout.readline().strip(), "ready")
+            with self.assertRaisesRegex(deploy.DeploymentError, "still active"): self.activate()
+            self.assertFalse(self.journal.exists())
+        finally:
+            process.communicate(input="", timeout=2)
+        atomic = deploy.atomic
+        observed = []
+        def during(path, raw, **options):
+            atomic(path, raw, **options)
+            if path == self.workspace / deploy.SUPERVISOR:
+                for command in ("cron", "cron-reconcile"):
+                    result = subprocess.run([sys.executable, str(path), command], text=True, capture_output=True, timeout=2,
+                        env={**os.environ, "OPENCLAW_YOUTUBE_DATA_ROOT": str(self.data)})
+                    observed.append((result.returncode, result.stdout.strip(), result.stderr))
+        with patch.object(deploy, "atomic", side_effect=during): self.activate()
+        self.assertEqual(observed, [(0, "NO_REPLY", ""), (0, "NO_REPLY", "")])
+
+    def test_rollback_keeps_startup_fence_through_source_and_receipt_restoration(self):
+        before = self.tree(); self.activate(); atomic = deploy.atomic
+        observed = []
+        def during(path, raw, **options):
+            atomic(path, raw, **options)
+            if path in self.proposed and path != self.workspace / deploy.SUPERVISOR:
+                for command in ("cron", "cron-reconcile"):
+                    result = subprocess.run([sys.executable, str(self.workspace / deploy.SUPERVISOR), command],
+                        text=True, capture_output=True, timeout=2,
+                        env={**os.environ, "OPENCLAW_YOUTUBE_DATA_ROOT": str(self.data)})
+                    observed.append((result.returncode, result.stdout.strip(), result.stderr))
+        with patch.object(deploy, "atomic", side_effect=during):
+            self.assertEqual(deploy.rollback(self.journal, readiness=self.readiness)["state"], "rolled_back")
+        self.assertTrue(observed)
+        self.assertTrue(all(result == (0, "NO_REPLY", "") for result in observed), observed)
+        self.assertEqual(self.tree(), before)
+
+    def test_loaded_old_owner_cannot_accept_new_receipt(self):
+        self.activate()
+        path = self.workspace / "scripts/youtube_windows_deployment.py"
+        spec = importlib.util.spec_from_file_location("fixture_notification_reader", path)
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        with patch.dict(os.environ, {"OPENCLAW_YOUTUBE_DATA_ROOT": str(self.data)}):
+            for loaded in (None, "0" * 64):
+                with self.assertRaisesRegex(RuntimeError, "loaded-owner"):
+                    module.verify_managed_sources(self.workspace, self.config, loaded_supervisor_sha256=loaded)
+            module.verify_managed_sources(self.workspace, self.config,
+                loaded_supervisor_sha256=self.release["files"][deploy.SUPERVISOR])
+
+    def test_interrupted_replacement_or_lost_commit_response_is_inspected_never_replayed(self):
+        # Every durable replacement, including the committed journal write,
+        # can finish before the caller loses its acknowledgement.
+        for destination in [*self.proposed, self.journal]:
+            with self.subTest(destination=destination):
+                before = self.tree(); atomic = deploy.atomic; fired = False
+                def lose_response(path, raw, **options):
+                    nonlocal fired
+                    atomic(path, raw, **options)
+                    committed = path == self.journal and json.loads(raw).get("state") == "committed"
+                    if not fired and (path == destination and path != self.journal or committed and destination == self.journal):
+                        fired = True; raise OSError("synthetic lost durable write response")
+                with patch.object(deploy, "atomic", side_effect=lose_response):
+                    with self.assertRaises(OSError): self.activate()
+                self.assertTrue(fired)
+                self.assertIn(deploy.read(self.journal)["state"], {"prepared", "committed"})
+                with self.assertRaisesRegex(deploy.DeploymentError, "already exists"): self.activate()
+                deploy.rollback(self.journal, readiness=self.readiness)
+                self.assertEqual(self.tree(), before); self.journal.unlink()
+
+    def test_total_deadline_includes_admission_and_write_then_preserves_intent(self):
+        clock = [0.0]; atomic = deploy.atomic
+        def expire(path, raw, **options):
+            atomic(path, raw, **options)
+            if path == self.workspace / "scripts/youtube_worker_alerts.py": clock[0] = 31.0
+        with patch.object(deploy.time, "monotonic", side_effect=lambda: clock[0]), patch.object(deploy, "atomic", side_effect=expire):
+            with self.assertRaisesRegex(deploy.DeploymentError, "deadline reached"): self.activate()
+        self.assertEqual(deploy.read(self.journal)["state"], "prepared")
+        with deploy.boundary_locks(self.data, canary_id=fixtures.CANARY): pass
+        deploy.rollback(self.journal, readiness=self.readiness)
+        self.assertFalse((self.workspace / "scripts/youtube_worker_alerts.py").exists())
+
+    def test_rollback_lost_final_write_response_and_later_drift_are_preserved(self):
+        before = self.tree(); self.activate(); atomic = deploy.atomic
+        def interrupt(path, raw, **options):
+            atomic(path, raw, **options)
+            if path == self.workspace / deploy.SUPERVISOR: raise OSError("synthetic interrupted rollback")
+        with patch.object(deploy, "atomic", side_effect=interrupt):
+            with self.assertRaises(OSError): deploy.rollback(self.journal, readiness=self.readiness)
+        self.assertEqual(deploy.read(self.journal)["state"], "committed")
+        path = self.workspace / "scripts/youtube_safe_diagnostics.py"; installed = path.read_bytes()
+        path.write_bytes(b"synthetic later source drift")
+        with self.assertRaisesRegex(deploy.DeploymentError, "unknown or drifted"):
+            deploy.rollback(self.journal, readiness=self.readiness)
+        self.assertEqual(path.read_bytes(), b"synthetic later source drift")
+        path.write_bytes(installed)
+        mode = path.stat().st_mode & 0o777; path.chmod(mode ^ 0o004)
+        with self.assertRaisesRegex(deploy.DeploymentError, "unknown or drifted"):
+            deploy.rollback(self.journal, readiness=self.readiness)
+        self.assertEqual(path.stat().st_mode & 0o777, mode ^ 0o004)
+        path.chmod(mode); deploy.rollback(self.journal, readiness=self.readiness)
+        self.assertEqual(self.tree(), before)
+
+    def test_partial_rollback_retains_startup_fence_and_can_restore_known_preimages(self):
+        before = self.tree(); self.activate(); atomic = deploy.atomic
+        def interrupt(path, raw, **options):
+            atomic(path, raw, **options)
+            if path == self.workspace / "scripts/youtube_safe_diagnostics.py":
+                raise OSError("synthetic interrupted intermediate rollback")
+        with patch.object(deploy, "atomic", side_effect=interrupt):
+            with self.assertRaises(OSError): deploy.rollback(self.journal, readiness=self.readiness)
+        self.assertEqual(deploy.read(self.journal)["state"], "committed")
+        self.assertEqual((self.workspace / deploy.SUPERVISOR).read_bytes(), self.source[deploy.SUPERVISOR])
+        deploy.rollback(self.journal, readiness=self.readiness)
+        self.assertEqual(self.tree(), before)
 
 
 class TrackedSourceRevisionTests(unittest.TestCase):

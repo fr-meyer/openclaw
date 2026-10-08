@@ -52,6 +52,7 @@ bounding, and do not expose raw command exception chains.
    Add `archiver: {repository, revision, path, sha256}` using the canonical
    toolkit commit's actual file bytes. Never pin dirty/new bytes to an older
    commit. Hash the serialized release record; retain it outside public Git.
+
 3. Stage the reviewed candidate for native Windows validation through the
    already authorized local repair chat, without switching desktop connections:
 
@@ -63,6 +64,7 @@ bounding, and do not expose raw command exception chains.
    compiles the worker, runs native staging/lock tests and mocked worker regressions, and executes only offline
    wrapper preflight. Retain its exact component/runtime/account receipt. No
    extraction, credential change, permission change or restart is required.
+
 4. Stage rollback copies and the reviewed Windows files without activating them.
    During activation below, wait for GCP's `boundary_locked` receipt before the
    local Windows owner installs
@@ -110,6 +112,7 @@ bounding, and do not expose raw command exception chains.
    external Windows configuration/provenance and worker/adapter cutover hashes.
    It preserves existing scheduler, safety and notification fields. Cron checks
    the complete managed source/config inventory before admitting a new batch.
+
 7. Validate the actual node/account/assets through the supported coordinator
    `preflight`, then observe one normally scheduled batch. Completion requires
    matching staged worker/adapter/assets, archive validation, matching bundle and
@@ -127,6 +130,71 @@ It refuses active leases or unexpected later drift. Coordinate restoration of
 the Windows asset rollback receipt/copies before resuming scheduled work. A
 prepared/interrupted deployment is recovery state; preserve its journal rather
 than guessing, deleting it or launching a worker.
+
+## Notification-only source installation
+
+The same deployment owner has an explicit `--notification-only` variant for a
+known stopped, blocked run. It does not release/resume that run or make it idle.
+The ordinary full installer and rollback still require no active lease.
+
+This variant admits one existing full-bundle baseline, then changes only
+`youtube_global_windows_supervisor.py`, `youtube_worker_alerts.py`,
+`youtube_safe_diagnostics.py`, `youtube_windows_deployment.py` and the existing
+`state/config/windows-deployment.json` integrity receipt. That receipt records
+the new GCP source revision separately from its unchanged native asset revision
+and full baseline. Windows configuration bytes/modes, cutover, worker, adapter,
+wrapper, archiver, checkpoints, attempts, archives and import receipts remain
+unchanged. There is no Windows installation handshake or scheduler edit.
+
+Supply `--baseline-release` for the actually installed full release. Source
+review and offline proofs remain exact-candidate bound. `native_windows` must
+be explicitly `inherited`, with its original evidence digest, baseline release
+digest, exact assets, worker and adapter hashes; do not label a new native test
+passed. A fresh operator receipt (`--readiness`) has schema
+`openclaw.youtube.windows-notification-readiness.v1`, `checked_at` within 60
+seconds, exact `canary_id`, `lease_id`, `node_id`, `node_connected: true`,
+`assets`, actual `worker_account`, actual adapter/archiver/wrapper SHA-256
+readbacks, `configuration_sha256`, `cutover_sha256`, `checkpoint_sha256`, and the existing normalized read-only `Probe`
+result as `remote`. Obtain it through the existing authorized coordinator and
+local Windows account; it must prove stopped worker, free OS lock, unchanged
+checkpoint/staging and account/assets. Receipt data alone never replaces the
+authoritative graph, reread under supervisor, same-run reconcile and coordinator
+nonblocking locks. Unknown recovery/import/finalization outcomes are refused.
+
+```sh
+python3 deploy/youtube-worker/deployment.py plan --notification-only \
+  --workspace <existing-workspace> --data-root <existing-data-root> \
+  --release <candidate-release.json> --configuration <unchanged-windows-worker.json> \
+  --baseline-release <installed-full-release.json>
+python3 deploy/youtube-worker/deployment.py activate --notification-only \
+  --workspace <existing-workspace> --data-root <existing-data-root> \
+  --release <candidate-release.json> --configuration <unchanged-windows-worker.json> \
+  --baseline-release <installed-full-release.json> --readiness <fresh-readiness.json> \
+  --proofs <candidate-proofs.json> --expected-current <plan.json> --journal <new-journal.json>
+python3 deploy/youtube-worker/deployment.py rollback \
+  --journal <recorded-journal.json> --readiness <fresh-readiness.json>
+```
+
+The transaction has a 30-second total monotonic deadline, including admission,
+durable writes, readback and journal commit. Kernel operations can delay signal
+delivery; an expired command never reports success on return to user space.
+It refuses existing commands through bounded Linux process evidence. New cron
+commands take the existing supervisor lock before imports and quietly skip a
+busy boundary; the reader also rejects a stale loaded supervisor. Use a normal
+cron gap; do not pause scheduling. Files are individually atomic under the
+existing journal, not one filesystem-wide atomic swap.
+
+Timeout, interruption or lost response can leave a prepared or committed
+journal. Inspect that recorded outcome; never repeat activation. Explicit
+rollback requires the same fresh stopped-run proof and protected preimages,
+restores only known before/after bytes and original modes, durably removes a
+new helper, and retains the notification database/tombstones. Drift or unknown
+outcomes stop recovery. Rollback retains the new startup fence while restoring
+dependencies and the baseline receipt, then restores the baseline supervisor
+last. The mode admits only the original full baseline; a
+second notification-only upgrade needs a separately reviewed owner contract.
+The journal is a private deployment artifact under the workspace's
+`.openclaw/tmp/`; it cannot target runtime source, the ledger or run state.
 
 ## Explicit stopped-run recovery
 
@@ -236,10 +304,11 @@ python3 scripts/youtube_global_windows_supervisor.py notification-status
 ```
 
 This source repair adds one managed helper to the versioned release inventory.
-Activation continues to require the existing between-run boundary. It cannot
-replace source/configuration beneath an active pinned run. Prepare the exact
-release, review and offline evidence now; separately approve same-run recovery
-and normal finalization before attempting a later idle deployment boundary.
+Full-bundle activation requires the existing between-run boundary. It cannot
+replace source/configuration beneath an active pinned run. The explicit
+notification-only variant above preserves those pins and uses its own narrow
+admission in the same owner. Never recover extraction merely to open a
+notification deployment boundary.
 Preserve notification state on rollback so an old incident is not re-emitted.
 
 ## Proposed bounded rate-limit recovery policy
