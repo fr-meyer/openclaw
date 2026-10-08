@@ -187,6 +187,93 @@ count (4096), including streamed gzip/zstd expansion before tar parsing. Validat
 terminal outcomes are persisted into both personal and YC source projections;
 blocked/incomplete items remain pending.
 
+## Incident notification ownership
+
+`cron` and `cron-reconcile` share the supervisor's notification operation.
+The standalone Python supervisor owns `windows-notifications.sqlite3` beneath
+the existing pool root; it does not open OpenClaw's control-plane database or
+execute SQL on the Gateway thread. Its small SQLite schema and transactions
+are external-worker primitives, with schema identity checked at admission,
+EXTRA synchronization, and durable directory creation. It retains incident
+tombstones rather than pruning and later rediscovering an old failure.
+
+An incident includes the production run, its existing lease, failure
+classification and affected video. Routine reconciliation timestamps, polling
+counts and worker PIDs are excluded. One initial attention notice is reserved;
+unchanged checks print `NO_REPLY`, with no scheduled reminder. A previously unseen
+failure or affected video produces one updated notice. Returning to an already
+reported incident after a restart stays quiet. A running worker may produce
+one progress notice per incident, which explicitly says completion is unvalidated.
+Repeated recovery attempts do not repeat that notice. Recovery
+requires the matching validated import, committed canonical finalization journal,
+completed lease/chunk, matching completed queue and cleared item bindings. Healthy historical runs do not
+produce new success notices. Unrecognized classifications use bounded closed
+text and retain distinct stable fingerprints; genuine supervisor/state failures
+remain visible through the existing failed-closed path.
+Partial-run notices derive classification and counts from the matching validated
+import outcomes, including changes to any unfinished item, rather than a retained
+pre-recovery manifest reason. Raw item diagnostics never enter the fingerprint.
+
+Notification writers serialize across both jobs and process restarts. The
+supervisor rereads lifecycle facts under its existing supervisor/coordinator
+locks, commits the incident/event reservation, then writes stdout and records
+`emitted` or `uncertain`. `reserved` can mean a process died before stdout.
+These states describe **at-most-once emission attempts**, not exactly-once
+WhatsApp delivery. A crash after reservation can lose a notice; a failed or
+partially written stdout result is not automatically replayed.
+
+The deployed command-job contract has no reliable recipient acknowledgement:
+its positive delivery receipt can include downstream suppression, and its
+negative receipt can include a partial send. Missing or failed scheduler
+receipts therefore cannot authorize an automatic resend. Investigate an
+uncertain event through the existing scheduler history and incident reference;
+any further external notification requires its own authorization. The helper
+never sends a message itself or alters scheduler delivery settings. Inspect
+stored summaries without writes using:
+
+```sh
+python3 scripts/youtube_global_windows_supervisor.py notification-status
+```
+
+This source repair adds one managed helper to the versioned release inventory.
+Activation continues to require the existing between-run boundary. It cannot
+replace source/configuration beneath an active pinned run. Prepare the exact
+release, review and offline evidence now; separately approve same-run recovery
+and normal finalization before attempting a later idle deployment boundary.
+Preserve notification state on rollback so an old incident is not re-emitted.
+
+## Proposed bounded rate-limit recovery policy
+
+This notification repair does not install a retry timer or authorize extraction.
+`waiting_network_cooldown` currently opens a circuit and exits without a
+deadline. New-batch launch intervals and daily limits do not define HTTP 429
+recovery timing. Elapsed waiting is eligibility for an approved attempt, never
+proof that the source restriction cleared.
+
+A separately reviewed coordinator policy can use these finite bounds:
+
+- First explicit recovery: not before four hours after the immutable recorded
+  429 occurrence, with fresh same-lease/checkpoint/node/lock/pin proofs.
+- A new 429 stops immediately. A second recovery requires separate approval
+  and eight hours after that new occurrence. Permit at most two recovery
+  dispatch intents for the entire run, including uncertain outcomes, across
+  changing videos and checkpoints; do not replenish that budget on restart.
+- Preserve the existing per-video attempt cap. If the rate-limited item already
+  exhausted it, hold for review instead of skipping it and continuing extraction.
+- A valid future structured `Retry-After` must never be shortened. A value
+  beyond a proposed 24-hour planning horizon becomes a manual hold, not a
+  downward-clamped wait. The current stderr-only contract does not retain this
+  header, so no returned reset time can be inferred from it.
+- Bot, authentication, configuration and unexpected failures remain explicit
+  manual holds. No timer, circuit reset, replacement batch or route change
+  can authorize their recovery.
+
+Implement any future deadline/budget in GCP's existing coordinator and recovery
+receipt contract, leaving Windows checkpoint bytes and staged components intact.
+Routine polling must not move the immutable occurrence/deadline. Reuse the
+existing durable intent-before-RPC/no-replay semantics, and consume no recovery
+slot for readiness failures before dispatch.
+
 ## Offline tests
 
 Use the workspace's approved `openclaw-worktree-test-isolated` helper against
