@@ -5,6 +5,7 @@ Activation requires frozen commit/run identity and all three source guards.
 """
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -105,11 +106,195 @@ def validate_receipt(raw, verifier):
     return {'fixtures': 124, 'counts': [29, 95], 'scope_verified': True, 'controller_cleanup_verified': True,
             'exact_userland': expected['exact_runtime'], 'scope': expected['scope']}
 
+def controller_diagnostic(raw, verifier):
+    """Retain closed failure facts before the exit gate; never export raw rows."""
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            require(key not in value, 'RECEIPT_SCHEMA')
+            value[key] = item
+        return value
+    def integer(value, low, high):
+        return type(value) is int and low <= value <= high
+    def failure(value):
+        require(value is None or verifier.valid_failure(value), 'RECEIPT_SCHEMA')
+        return value
+    require(len(raw) <= 20480, 'RECEIPT_CAP')
+    lines = raw.splitlines()
+    require(2 <= len(lines) <= 5 and all(len(line) <= 16384 for line in lines), 'RECEIPT_SCHEMA')
+    try:
+        rows = [json.loads(line, object_pairs_hook=pairs,
+                           parse_constant=lambda _: require(False, 'RECEIPT_SCHEMA')) for line in lines]
+    except (ValueError, UnicodeError):
+        raise RuntimeError('RECEIPT_SCHEMA') from None
+    require(all(type(row) is dict for row in rows), 'RECEIPT_SCHEMA')
+    order = {'fresh_preflight': 0, 'diagnostic_result': 1, 'controller_hold': 2,
+             'cleanup': 3, 'cleanup_hold': 3, 'terminal': 4}
+    kinds = [row.get('kind') for row in rows]
+    require(all(type(k) is str and k in order for k in kinds)
+            and kinds[-1] == 'terminal'
+            and all(order[a] < order[b] for a, b in zip(kinds, kinds[1:])), 'RECEIPT_SCHEMA')
+    terminal = rows[-1]
+    require(set(terminal) == {'kind', 'status', 'dispatch_attempts', 'fixture_cases_reported',
+            'fixture_execution', 'first_failure', 'cleanup_failure', 'cleanup_ok', 'no_automatic_retry'}, 'RECEIPT_SCHEMA')
+    require(terminal['status'] in ('COMPLETE', 'FIXED_HOLD')
+            and integer(terminal['dispatch_attempts'], 0, 1)
+            and type(terminal['cleanup_ok']) is bool
+            and terminal['no_automatic_retry'] is True, 'RECEIPT_SCHEMA')
+    first = failure(terminal['first_failure'])
+    cleanup_failure = failure(terminal['cleanup_failure'])
+    diagnostic = suite = hold = cleanup = None
+    for row in rows[:-1]:
+        kind = row['kind']
+        if kind == 'fresh_preflight':
+            expected = {'admitted': True, 'scope': 'DISPOSABLE_HOSTED_DEBIAN12_SYNTHETIC_ONLY',
+                        'exact_runtime': {'Python': '3.11.2', 'SQLite': '3.40.1', 'systemd': '252', 'architecture': 'x86_64'},
+                        'fixtures_started': False, 'production_data_access': False}
+            require(set(row) == {'kind', 'facts'} and row['facts'] == expected
+                    and all(type(row['facts'][key]) is bool for key in
+                            ('admitted', 'fixtures_started', 'production_data_access')), 'RECEIPT_SCHEMA')
+        elif kind == 'diagnostic_result':
+            require(kinds[0] == 'fresh_preflight' and set(row) == {'kind', 'facts'}, 'RECEIPT_SCHEMA')
+            diagnostic = row['facts']
+            require(type(diagnostic) is dict and set(diagnostic) == {'events', 'first_failure', 'protocol_failure',
+                    'transport_failure', 'exit', 'elapsed_seconds', 'input_bytes_sent', 'stdout_bytes', 'stderr_bytes'}, 'RECEIPT_SCHEMA')
+            require(type(diagnostic['events']) is list and len(diagnostic['events']) <= 3, 'RECEIPT_SCHEMA')
+            parsed = verifier.parse_child(b'\n'.join(json.dumps(event, allow_nan=False).encode()
+                                                   for event in diagnostic['events']))
+            protocol = failure(diagnostic['protocol_failure'])
+            # The frozen controller omits a rejected raw line from events.
+            # Preserve its closed protocol code without claiming to recheck it.
+            require(parsed['events'] == diagnostic['events']
+                    and (protocol is None or protocol['stage'] == 'transport.protocol')
+                    and (parsed['protocol_failure'] is None or protocol is not None), 'RECEIPT_SCHEMA')
+            transport = failure(diagnostic['transport_failure'])
+            child = next((event['failure'] for event in parsed['events']
+                          if event.get('kind') in ('synthetic_setup_hold', 'synthetic_resource_hold')), None)
+            suite = next((event['facts'] for event in parsed['events']
+                          if event.get('scope') == 'LINUX_SYNTHETIC_UNIT_SUITE_ONLY'), None)
+            require(diagnostic['exit'] is None or integer(diagnostic['exit'], -255, 255), 'RECEIPT_SCHEMA')
+            exit_failure = {'stage': 'transport.exit', 'error': 'NONZERO_EXIT'} if diagnostic['exit'] not in (0, None) else None
+            primary = ({'stage': 'fixtures.suite', 'error': 'SUITE_FAILURE'} if suite and not suite['ok'] else None) \
+                      or child or transport or exit_failure or protocol
+            require(failure(diagnostic['first_failure']) == primary, 'RECEIPT_SCHEMA')
+            require(integer(diagnostic['input_bytes_sent'], 0, len(verifier.PAYLOAD.encode()))
+                    and all(integer(diagnostic[key], 0, 16384) for key in ('stdout_bytes', 'stderr_bytes'))
+                    and diagnostic['stdout_bytes'] + diagnostic['stderr_bytes'] <= 16384, 'RECEIPT_SCHEMA')
+            elapsed = diagnostic['elapsed_seconds']
+            require(type(elapsed) in (int, float) and math.isfinite(elapsed) and 0 <= elapsed <= 35, 'RECEIPT_SCHEMA')
+        elif kind == 'controller_hold':
+            require(set(row) == {'kind', 'failure', 'dispatch_attempted'}
+                    and type(row['dispatch_attempted']) is bool
+                    and int(row['dispatch_attempted']) == terminal['dispatch_attempts'], 'RECEIPT_SCHEMA')
+            hold = failure(row['failure'])
+            require(hold is not None, 'RECEIPT_SCHEMA')
+        elif kind == 'cleanup':
+            require(kinds[0] == 'fresh_preflight' and set(row) == {'kind', 'facts'}
+                    and row['facts'] == {'unit_absent': True, 'own_cgroup_absent': True, 'namespace_removed': True}
+                    and all(type(value) is bool for value in row['facts'].values()), 'RECEIPT_SCHEMA')
+            cleanup = True
+        elif kind == 'cleanup_hold':
+            require(kinds[0] == 'fresh_preflight' and set(row) == {'kind', 'failure'}
+                    and failure(row['failure']) is not None and row['failure'] == cleanup_failure, 'RECEIPT_SCHEMA')
+            cleanup = False
+    require(first == (hold or (diagnostic or {}).get('first_failure'))
+            and (cleanup_failure is None if cleanup is not False else cleanup_failure is not None), 'RECEIPT_SCHEMA')
+    require(cleanup is None or terminal['cleanup_ok'] is cleanup, 'RECEIPT_SCHEMA')
+    require(not terminal['dispatch_attempts'] or diagnostic is not None or hold is not None, 'RECEIPT_SCHEMA')
+    if diagnostic is not None:
+        require(terminal['dispatch_attempts'] == 1, 'RECEIPT_SCHEMA')
+    setup_hold = any(event.get('kind') == 'synthetic_setup_hold' for event in (diagnostic or {}).get('events', []))
+    execution = 'NOT_STARTED' if not terminal['dispatch_attempts'] or setup_hold else ('RESULT_REPORTED' if suite else 'UNVERIFIED')
+    cases = sum(suite['counts']) if suite else None
+    require(terminal['fixture_execution'] == execution and terminal['fixture_cases_reported'] == cases
+            and (cases is None or type(terminal['fixture_cases_reported']) is int), 'RECEIPT_SCHEMA')
+    if terminal['status'] == 'COMPLETE':
+        validate_receipt(raw, verifier)  # Existing success admission stays exact.
+    else:
+        require(first is not None or cleanup_failure is not None, 'RECEIPT_SCHEMA')
+    return {'status': terminal['status'], 'first_failure': first, 'cleanup_failure': cleanup_failure,
+            'protocol_failure': (diagnostic or {}).get('protocol_failure'),
+            'transport_failure': (diagnostic or {}).get('transport_failure'),
+            'dispatch_attempts': terminal['dispatch_attempts'], 'fixture_execution': execution,
+            'fixture_cases_reported': cases, 'cases_executed': 0 if execution == 'NOT_STARTED' else cases,
+            'suite_counts': [dict((key, group[key]) for key in ('run', 'failures', 'errors', 'skipped',
+                              'expected_failures', 'unexpected_successes')) for group in suite['groups']] if suite else None,
+            'cleanup_ok': terminal['cleanup_ok']}
+
+def container_unit_state(unit, timeout=3):
+    result = selected(['/usr/bin/systemctl', 'show', unit, '-p', 'LoadState', '-p', 'Description',
+                       '-p', 'Transient', '-p', 'ActiveState', '-p', 'MainPID'], timeout)
+    require(result.returncode == 0, 'METADATA_HOLD')
+    values = {}
+    for line in result.stdout.decode('ascii').splitlines():
+        key, separator, value = line.partition('=')
+        require(separator and key not in values, 'METADATA_HOLD')
+        values[key] = value
+    require(set(values) == {'LoadState', 'Description', 'Transient', 'ActiveState', 'MainPID'}
+            and values['Transient'] in ('yes', 'no')
+            and re.fullmatch('[0-9]{1,10}', values['MainPID']), 'METADATA_HOLD')
+    return values
+
+def cleanup_container(unit, machine):
+    """Stop only the exact owned service; success requires fresh absence proof."""
+    summary = {'verified_absent': False, 'stage': 'METADATA', 'stop_returncode': None,
+               'reset_returncode': None, 'last_observation': None}
+    def owned(state):
+        if state['LoadState'] == 'not-found':
+            require(state['ActiveState'] == 'inactive' and state['MainPID'] == '0', 'CLEANUP_HOLD')
+            return False
+        summary['stage'] = 'OWNERSHIP'
+        require(state['LoadState'] == 'loaded' and state['Description'] == machine
+                and state['Transient'] == 'yes', 'OWNERSHIP_HOLD')
+        return True
+    def action(verb, timeout):
+        try:
+            result = selected(['/usr/bin/systemctl', verb, unit], timeout)
+            require(type(result.returncode) is int and -255 <= result.returncode <= 255, 'CLEANUP_HOLD')
+            return result.returncode
+        except BaseException:
+            return None  # Delivery uncertain; never retry. Verify final state.
+    def state(timeout=3):
+        summary['stage'] = 'METADATA'
+        return container_unit_state(unit, timeout)
+    try:
+        current = state()
+        if owned(current):
+            summary['stage'] = 'STOP'
+            summary['stop_returncode'] = action('stop', 12)
+            current = state()
+            if owned(current) and current['ActiveState'] == 'failed' and current['MainPID'] == '0':
+                summary['stage'] = 'RESET'
+                summary['reset_returncode'] = action('reset-failed', 3)
+                current = state()
+        deadline = time.monotonic() + 2
+        while True:
+            present = owned(current)
+            summary['stage'] = 'VERIFY'
+            cgroup_absent = not os.path.lexists('/sys/fs/cgroup/system.slice/' + unit)
+            machine_absent = not os.path.lexists('/run/systemd/machines/' + machine)
+            summary['last_observation'] = {'unit_absent': not present, 'own_cgroup_absent': cgroup_absent,
+                                           'machine_registration_absent': machine_absent}
+            resources_absent = cgroup_absent and machine_absent
+            if not present and resources_absent:
+                summary.update(verified_absent=True, stage='ABSENT')
+                break
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(min(.1, max(0, deadline - time.monotonic())))
+            current = state(max(.01, min(.5, deadline - time.monotonic())))
+    except BaseException:
+        pass  # Only this finite summary is exported, never metadata/errors.
+    return summary
+
 def main():
     failure = None
     clean = True
     launched = False
     validated = None
+    diagnostic = None
+    controller_returncode = None
+    outer_cleanup = None
     unit = root = machine = None
     try:
         run = identity(os.environ)
@@ -181,6 +366,9 @@ def main():
                             require(len(data) <= 20480, 'RECEIPT_CAP')
                 require(not selector.get_map(), 'CONTROLLER_TIMEOUT')
                 proc.wait(timeout=max(.01, deadline - time.monotonic()))
+                if type(proc.returncode) is int and -255 <= proc.returncode <= 255:
+                    controller_returncode = proc.returncode
+                diagnostic = controller_diagnostic(bytes(data), verifier)
                 require(proc.returncode == 0, 'CONTROLLER_HOLD')
                 validated = validate_receipt(bytes(data), verifier)
             finally:
@@ -197,21 +385,14 @@ def main():
         failure = str(exc) if type(exc) is RuntimeError and str(exc) in known else 'FIXED_RUNTIME_HOLD'
     finally:
         if launched:
-            try:
-                # Exact run-bound service only; preserve the rootfs on uncertainty.
-                actual = selected(['/usr/bin/systemctl', 'show', unit, '-p', 'Description', '--value'])
-                require(actual.returncode == 0 and actual.stdout.strip().decode('ascii') == machine, 'OWNERSHIP_HOLD')
-                command(['/usr/bin/systemctl', 'stop', unit], 12)
-                command(['/usr/bin/systemctl', 'reset-failed', unit], 3)
-                state = selected(['/usr/bin/systemctl', 'show', unit, '-p', 'LoadState', '--value'])
-                require(state.returncode == 0 and state.stdout.strip() == b'not-found', 'CLEANUP_HOLD')
-                require(not Path('/sys/fs/cgroup/system.slice', unit).exists(), 'CLEANUP_HOLD')
-                require(not Path('/run/systemd/machines', machine).exists(), 'CLEANUP_HOLD')
-            except BaseException:
-                clean = False
+            outer_cleanup = cleanup_container(unit, machine)
+            clean = outer_cleanup['verified_absent']
         # No recursive deletion: clean rootfs remains only on disposable runner.
         print(json.dumps({'kind': 'hosted_route_terminal', 'failure': failure,
                           'method_qualification': validated,
+                          'controller_returncode': controller_returncode,
+                          'controller_diagnostic': diagnostic,
+                          'outer_cleanup': outer_cleanup,
                           'complete': validated is not None and failure is None and clean,
                           'commit': os.environ.get('GITHUB_SHA') if validated else None,
                           'run_id': run if validated else None,
