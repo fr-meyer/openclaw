@@ -63,6 +63,8 @@ import {
   readDiskEvictableArchivedSessionBatch,
   readHistoricalSessionIdsInDatabase,
 } from "./session-history-eviction-candidates.js";
+import { maintenanceLane } from "./session-transcript-worker-resources.js";
+import { withSessionHistoryWorkerDatabase } from "./session-transcript-worker-runtime.js";
 import { resolveMaintenanceConfig } from "./store-maintenance-runtime.js";
 
 /** Reports the same physical total enforce mode compares, without projecting logical row bytes. */
@@ -176,10 +178,6 @@ async function readHistoricalSessionIds(params: {
       database: openOpenClawAgentDatabase(params.databaseOptions),
     });
   }
-  const [{ withSessionHistoryWorkerDatabase }, { maintenanceLane }] = await Promise.all([
-    import("./session-transcript-worker-runtime.js"),
-    import("./session-transcript-worker-resources.js"),
-  ]);
   return withSessionHistoryWorkerDatabase(
     params.databaseOptions,
     (owner) =>

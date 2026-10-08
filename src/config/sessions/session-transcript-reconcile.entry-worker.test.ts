@@ -234,13 +234,11 @@ it("keeps preview-triggered durable repair and chat retry off the host while ano
       const preflight = dispatch.hold((command) => command.kind === "preflight");
       const polled = createDeferredCore();
       const wake = createDeferredCore();
-      const delay = vi
-        .spyOn(timers, "setTimeout")
-        .mockImplementation(async <T>(_ms: number, value?: T) => {
-          polled.resolve();
-          await wake.promise;
-          return value as T;
-        });
+      const delay = vi.spyOn(timers, "setTimeout").mockImplementation(async (_ms, value) => {
+        polled.resolve();
+        await wake.promise;
+        return value;
+      });
       const observation = observeReconcileHostSqlite({ control: [], data: [storePath] });
       const publications = vi.fn();
       const unsubscribe = sessionChanges.subscribe(publications);
@@ -457,12 +455,10 @@ it("renews an in-flight readiness reader after exact cache revocation while reta
         Reflect.apply(postMessage, this, args);
       });
       const wake = createDeferredCore();
-      const delay = vi
-        .spyOn(timers, "setTimeout")
-        .mockImplementation(async <T>(_ms: number, value?: T) => {
-          await wake.promise;
-          return value as T;
-        });
+      const delay = vi.spyOn(timers, "setTimeout").mockImplementation(async (_ms, value) => {
+        await wake.promise;
+        return value;
+      });
       const unsubscribe = sessionChanges.subscribe((change) => {
         if ("sessionKey" in change && change.sessionKey === scope.sessionKey) {
           wake.resolve();

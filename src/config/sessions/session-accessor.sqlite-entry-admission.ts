@@ -82,19 +82,13 @@ export async function loadSessionEntryForAdmission(
     if (incognito) {
       return { entry: readSessionEntryRow(database, resolved.sessionKey)?.entry, databaseClaim };
     }
-    const { withSessionHistoryWorkerDatabase } =
-      await import("./session-transcript-worker-runtime.js");
-    assertCurrent();
-    const result = await withSessionHistoryWorkerDatabase(options, (owner) => {
-      assertCurrent();
-      return owner.readExactEntries(
-        {
-          sessionKeys: [resolved.sessionKey],
-          env: options.env!,
-          includeAuthorization: true,
-        },
-        preparation.signal,
-      );
+    const { readSessionEntryForAdmissionInWorker } =
+      await import("./session-accessor.sqlite-entry-admission-worker.js");
+    const result = await readSessionEntryForAdmissionInWorker({
+      options,
+      sessionKey: resolved.sessionKey,
+      assertCurrent,
+      signal: preparation.signal,
     });
     assertCurrent();
     databaseClaim.assertCurrent();

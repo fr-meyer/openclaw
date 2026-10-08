@@ -29,6 +29,7 @@ import {
   claimPreparedSessionTranscriptProjectionInTransaction,
   deletePreparedSessionTranscriptProjectionChunkInTransaction,
   finalizePreparedSessionTranscriptProjectionInTransaction,
+  type PreparedSessionTranscriptProjection,
   type PreparedSessionTranscriptProjectionMetadata,
 } from "./session-transcript-projection-rebuild.js";
 import type { MemoryTranscriptProjectionSource } from "./session-transcript-reconcile-memory.js";
@@ -36,6 +37,7 @@ import {
   isSessionTranscriptReconcileWriteResult,
   type SessionTranscriptReconcileWrite,
   type SessionTranscriptReconcileWriteKind,
+  type SessionTranscriptReconcileWriteResult,
   type SessionTranscriptReconcileWriteResultFor,
 } from "./session-transcript-reconcile-write-contract.js";
 import type { EncodedTranscriptFtsChunk } from "./session-transcript-reconcile.worker.js";
@@ -55,6 +57,15 @@ export type SessionTranscriptReconcileWriter = {
     command: SessionTranscriptReconcileWrite & { kind: K },
   ): Promise<SessionTranscriptReconcileWriteResultFor<K>>;
 };
+
+function publishFinalizedProjection(
+  storePath: string,
+  receipt: SessionTranscriptReconcileWriteResult,
+): void {
+  if (receipt.kind === "finalize" && receipt.finalized && receipt.sessionKey) {
+    sessionChanges.emit({ storePath, sessionKey: receipt.sessionKey });
+  }
+}
 
 function rejectUnknownWrite(cause: unknown): never {
   if (hasSqliteWorkerOutcomeUnknown(cause)) {
@@ -110,9 +121,7 @@ export function createSessionTranscriptReconcileWriter(
                 const receipt = facts.result;
                 // Publish a proved commit even when delivery or later cleanup failed.
                 // This remains inside the phase's writer FIFO, after native COMMIT.
-                if (receipt.kind === "finalize" && receipt.finalized && receipt.sessionKey) {
-                  sessionChanges.emit({ storePath: options.path, sessionKey: receipt.sessionKey });
-                }
+                publishFinalizedProjection(options.path, receipt);
                 if (!outcome.ok) {
                   throw outcome.error;
                 }
@@ -245,14 +254,10 @@ export async function appendPreparedProjectionChunk(
   active: ActivePreparedProjection,
   rows:
     | {
-        activeRows: Parameters<
-          typeof appendPreparedSessionTranscriptProjectionChunkInTransaction
-        >[1]["activeRows"];
+        activeRows: PreparedSessionTranscriptProjection["activeRows"];
       }
     | {
-        ftsRows: Parameters<
-          typeof appendPreparedSessionTranscriptProjectionChunkInTransaction
-        >[1]["ftsRows"];
+        ftsRows: PreparedSessionTranscriptProjection["ftsRows"];
       },
   memorySource?: MemoryTranscriptProjectionSource,
   writer?: SessionTranscriptReconcileWriter,

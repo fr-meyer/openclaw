@@ -65,7 +65,6 @@ function fixture(onTestFinished: (cleanup: () => void) => void) {
     publication: unknown;
     committed: { facts: unknown } | undefined;
     settlement: SqliteWorkerNativeSettlement | undefined;
-    delivered: SessionTranscriptReconcileWriteResult | undefined;
     deliveryError?: unknown;
     cleanupError?: unknown;
   } = {
@@ -78,7 +77,6 @@ function fixture(onTestFinished: (cleanup: () => void) => void) {
       facts: { kind: "session-transcript-index-write", result: committedFinalize },
     },
     settlement: { kind: "completed" },
-    delivered: committedFinalize,
   };
   vi.spyOn(admission, "committed", "get").mockImplementation(() => state.committed);
   vi.spyOn(admission, "settlement", "get").mockImplementation(() => state.settlement);
@@ -108,7 +106,7 @@ function fixture(onTestFinished: (cleanup: () => void) => void) {
     prepare,
     async runExisting(_source, run) {
       if (state.missing) {
-        return state.delivered;
+        return undefined;
       }
       return await run(worker);
     },
@@ -261,12 +259,10 @@ it("preserves refused claims and void phase wrappers while refusing missing stor
   const refused = { kind: "claim", owned: false } satisfies SessionTranscriptReconcileWriteResult;
   owned.state.publication = { kind: "session-transcript-index-write", result: refused };
   owned.state.committed = { facts: owned.state.publication };
-  owned.state.delivered = refused;
   await expect(owned.writer.write({ kind: "claim", plan, claimId: 3 })).resolves.toEqual(refused);
   const sweep = { kind: "orphan-sweep" } satisfies SessionTranscriptReconcileWriteResult;
   owned.state.publication = { kind: "session-transcript-index-write", result: sweep };
   owned.state.committed = { facts: owned.state.publication };
-  owned.state.delivered = undefined;
   await expect(owned.writer.write({ kind: "orphan-sweep" })).resolves.toEqual(sweep);
   owned.state.missing = true;
   await expect(owned.writer.write({ kind: "orphan-sweep" })).rejects.toThrow(
@@ -286,7 +282,6 @@ it("prepares first-use storage only for preflight and returns confirmed no-work"
   } satisfies SessionTranscriptReconcileWriteResult;
   owned.state.publication = { kind: "session-transcript-index-write", result };
   owned.state.committed = { facts: owned.state.publication };
-  owned.state.delivered = result;
   await expect(owned.writer.write({ kind: "preflight" })).resolves.toEqual(result);
   expect(owned.prepare).toHaveBeenCalledOnce();
   expect(owned.published).toEqual([]);
