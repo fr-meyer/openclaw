@@ -17,7 +17,7 @@ import time
 import types
 
 EXECUTION_AUTHORIZED = True
-CONTROLLER_SHA = '52202680e22de6d6c8224ee9b6d5d32c1b9cf18cd6b641fc4c4eca006c2c87e3'
+CONTROLLER_SHA = '12753c1b906904dcef68e82eacf2f1fe55b6e75866267f2c3c725e314f10bf17'
 SNAPSHOT = 'https://snapshot.debian.org/archive/debian/20260927T000000Z/'
 
 def require(value, code):
@@ -106,6 +106,41 @@ def validate_receipt(raw, verifier):
     return {'fixtures': 124, 'counts': [29, 95], 'scope_verified': True, 'controller_cleanup_verified': True,
             'exact_userland': expected['exact_runtime'], 'scope': expected['scope']}
 
+def suite_diagnostics(suite, verifier):
+    """Export schema-checked synthetic facts only, with explicit omissions."""
+    verifier.validate_facts(suite, verifier.POLICY)
+    groups = []
+    for group in suite['groups']:
+        cases = []
+        for case, outcome, exception, reason, count in group['case_records']:
+            cases.append({'case': verifier.POLICY['cases'][case] if case >= 0 else 'UNRECOGNIZED_CASE',
+                          'stage': 'fixtures.suite', 'outcome': verifier.OUTCOMES[outcome],
+                          'exception': verifier.EXCEPTIONS[exception],
+                          'assertion_reason': verifier.REASONS[reason], 'events': count})
+        details = [dict(detail, stage='fixtures.suite',
+                        assertion_reason=verifier.assertion_reason(detail))
+                   for detail in group['details']]
+        groups.append({'run': group['run'], 'issue_count': group['issue_count'],
+                       'unrecognized_cases': group['unrecognized_cases'],
+                       'cases': cases, 'expanded_case_events_omitted': 0,
+                       'case_records': [list(record) for record in group['case_records']],
+                       'case_records_omitted': group['case_records_omitted'],
+                       'details': details, 'details_omitted': group['details_omitted'],
+                       'case_records_complete': group['case_records_omitted'] == 0,
+                       'expanded_cases_complete': group['case_records_omitted'] == 0})
+    # The expanded public IDs also have a fixed cap; retain cases before stacks.
+    while len(json.dumps(groups, allow_nan=False).encode()) > 8192:
+        detailed = [group for group in groups if group['details']]
+        if detailed:
+            group = max(detailed, key=lambda group:len(group['details']))
+            group['details'].pop()
+            group['details_omitted'] += 1
+        else:
+            group = max(groups, key=lambda group:len(group['cases']))
+            group['expanded_case_events_omitted'] += group['cases'].pop()['events']
+            group['expanded_cases_complete'] = False
+    require(len(json.dumps(groups, allow_nan=False).encode()) <= 8192, 'RECEIPT_CAP')
+    return groups
 def controller_diagnostic(raw, verifier):
     """Retain closed failure facts before the exit gate; never export raw rows."""
     def pairs(items):
@@ -219,6 +254,12 @@ def controller_diagnostic(raw, verifier):
             'fixture_cases_reported': cases, 'cases_executed': 0 if execution == 'NOT_STARTED' else cases,
             'suite_counts': [dict((key, group[key]) for key in ('run', 'failures', 'errors', 'skipped',
                               'expected_failures', 'unexpected_successes')) for group in suite['groups']] if suite else None,
+            'suite_diagnostics': suite_diagnostics(suite, verifier) if suite else None,
+            'suite_case_codebook': {'case_index': 'FROZEN_SYNTHETIC_POLICY_ORDER',
+                                   'outcomes': list(verifier.OUTCOMES),
+                                   'exceptions': list(verifier.EXCEPTIONS),
+                                   'reasons': list(verifier.REASONS),
+                                   'payload_SHA256': verifier.PAYLOAD_SHA} if suite else None,
             'cleanup_ok': terminal['cleanup_ok']}
 
 def container_unit_state(unit, timeout=3):
