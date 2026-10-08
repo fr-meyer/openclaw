@@ -1,10 +1,11 @@
 // Plugin Boundary Report tests cover plugin boundary report script behavior.
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createPluginBoundaryReport,
   isPluginCompatEligibleForRemoval,
   type PluginBoundaryReportResult,
 } from "../../scripts/plugin-boundary-report.js";
+import * as pluginCompatRegistry from "../../src/plugins/compat/registry.js";
 
 describe("plugin-boundary-report", () => {
   let summaryResult: PluginBoundaryReportResult;
@@ -68,14 +69,57 @@ describe("plugin-boundary-report", () => {
 
   it("treats removeAfter as the final compatibility day", () => {
     expect(
-      isPluginCompatEligibleForRemoval("2026-08-12", new Date("2026-08-12T23:59:59.999Z")),
+      isPluginCompatEligibleForRemoval("2026-10-01", new Date("2026-10-01T23:59:59.999Z")),
     ).toBe(false);
     expect(
-      isPluginCompatEligibleForRemoval("2026-08-12", new Date("2026-08-13T00:00:00.000Z")),
+      isPluginCompatEligibleForRemoval("2026-10-01", new Date("2026-10-02T00:00:00.000Z")),
     ).toBe(true);
-    expect(isPluginCompatEligibleForRemoval(undefined, new Date("2026-08-13T00:00:00.000Z"))).toBe(
+    expect(isPluginCompatEligibleForRemoval(undefined, new Date("2026-10-02T00:00:00.000Z"))).toBe(
       false,
     );
+  });
+
+  it("identifies the failing deprecated records separately from pending removals", () => {
+    const fixtureDates = new Map([
+      ["media-legacy-projection", "2000-01-01"],
+      ["agent-harness-terminal-result-aliases", "2999-01-01"],
+      ["plugin-sdk-inbound-reply-dispatch-subpath", undefined],
+      ["sdk-untrusted-context-identifier-aliases", "2000-01-01"],
+    ]);
+    const records = pluginCompatRegistry
+      .listPluginCompatRecords()
+      .filter((record) => fixtureDates.has(record.code))
+      .map((record) => Object.assign({}, record, { removeAfter: fixtureDates.get(record.code) }));
+    expect(records).toHaveLength(4);
+    const registrySpy = vi.spyOn(pluginCompatRegistry, "listPluginCompatRecords");
+    registrySpy.mockReturnValue(records);
+    try {
+      const args = ["--summary", "--fail-on-eligible-compat"];
+      const text = createPluginBoundaryReport(args);
+      const json = createPluginBoundaryReport([...args, "--json"]);
+      const summary = JSON.parse(json.stdout) as {
+        compat: { eligibleForRemoval: unknown[]; removalPendingCount: number };
+      };
+
+      expect(text.exitCode).toBe(1);
+      expect(text.stderr).toBe(
+        "plugin-boundary-report: 1 compatibility record(s) are due for removal\n",
+      );
+      expect(json.exitCode).toBe(text.exitCode);
+      expect(json.stderr).toBe(text.stderr);
+      expect(summary.compat.eligibleForRemoval).toEqual([
+        { code: "media-legacy-projection", owner: "sdk", removeAfter: "2000-01-01" },
+      ]);
+      expect(summary.compat.removalPendingCount).toBe(1);
+      expect(
+        text.stdout.split("\n").filter((line) => line.startsWith("  eligible-for-removal ")),
+      ).toEqual(["  eligible-for-removal 2000-01-01 media-legacy-projection owner=sdk"]);
+      expect(text.stdout).toContain(
+        "  removal-pending 2000-01-01 sdk-untrusted-context-identifier-aliases",
+      );
+    } finally {
+      registrySpy.mockRestore();
+    }
   });
 
   it("renders removal-pending blockers and reader references without changing fail gates", () => {
