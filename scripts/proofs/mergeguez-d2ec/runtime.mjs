@@ -13,6 +13,59 @@ const deadline = Number(process.env.QUALIFICATION_UPTIME_DEADLINE);
 const source = '/qualification/source';
 const reports = phase === 'offline-native' ? '/qualification/native-output' : '/qualification/reports';
 const receipt = { schema: 'mergeguez.container-qualification/v1', phase, job, complete: false, commands: [] };
+// Bounded metadata only. Never serialize an arbitrary error message, payload or stack.
+function workboardFailureDisposition(error) {
+  const own = (value, key) => {
+    if (!value || (typeof value !== 'object' && typeof value !== 'function')) return undefined;
+    try { return Object.getOwnPropertyDescriptor(value, key)?.value; } catch { return undefined; }
+  };
+  const cause = own(error, 'cause');
+  const acceptedCodes = new Set(['outcome-unknown', 'closed', 'PRIVATE_ACKNOWLEDGEMENT_OUTCOME_UNKNOWN',
+    'SYNTHETIC_NATIVE_CONTEXT_INVALID', 'SYNTHETIC_NATIVE_OWNER_RETIRED', 'SYNTHETIC_PARENT_CUSTODY_INVALID',
+    'SYNTHETIC_DIRECTORY_CUSTODY_INVALID', 'SYNTHETIC_CUSTODY_ACK_INVALID', 'REVOKED_PRIVATE_CAPTURE_ADMITTED',
+    'SYNTHETIC_NATIVE_CLEANUP_FAILED', 'SYNTHETIC_NATIVE_OPERATION_FAILED']);
+  const rawCode = own(error, 'code'), causeCode = own(cause, 'code');
+  const code = acceptedCodes.has(rawCode) ? rawCode : acceptedCodes.has(causeCode) ? causeCode : 'WORKBOARD_NATIVE_OPERATION_FAILED';
+  const outcomeUnknown = [rawCode, causeCode].some(value => value === 'outcome-unknown' || value === 'PRIVATE_ACKNOWLEDGEMENT_OUTCOME_UNKNOWN');
+  // The companion's frozen wire allowlist is retained as metadata, not authority.
+  const allowedCleanup = new Set(['PRIVATE_AUTHORITY_REVOKE_FAILED', 'WORKBOARD_STORE_CLOSE_FAILED', 'CUSTODIAN_CLOSE_FAILED', 'SQLITE_BROKER_DRAIN_FAILED',
+    'BOOTSTRAP_CLOSE_FAILED','CLEANUP_DIAGNOSTICS_TRUNCATED','CLEANUP_DIAGNOSTIC_INVALID','CLEANUP_FAILED','CUSTODY_STACK_CLOSE_FAILED','DESCRIPTOR_CLOSE_FAILED','DIRECTORY_CLOSE_FAILED','FAILURE_RECEIPT_FAILED','FILE_CLOSE_FAILED','FINALIZATION_FAILED','GIT_DIRECTORY_CLOSE_FAILED','LOCK_CLOSE_FAILED','OUTPUT_CLOSE_FAILED','PATHSPEC_CLOSE_FAILED','PATHSPEC_UNLINK_FAILED','RECEIPT_WRITE_FAILED','RESTORE_TEMP_CLEANUP_FAILED','TEMPORARY_UNLINK_FAILED']);
+  const cleanupCodes = [];
+  for (const value of [own(error, 'cleanupCodes'), own(cause, 'cleanupCodes')]) {
+    if (!Array.isArray(value)) continue;
+    for (let i = 0; i < Math.min(value.length, 64); i++) {
+      const item = own(value, String(i));
+      if (allowedCleanup.has(item) && !cleanupCodes.includes(item)) cleanupCodes.push(item);
+    }
+    if (value.length > 64 && !cleanupCodes.includes('CLEANUP_DIAGNOSTICS_TRUNCATED')) cleanupCodes.push('CLEANUP_DIAGNOSTICS_TRUNCATED');
+  }
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const hex = /^[0-9a-f]{64}$/;
+  const rawContext = own(error, 'qualificationContext');
+  let operationContext = null;
+  if (own(rawContext, 'synthetic') === true && typeof own(rawContext, 'captureInvoked') === 'boolean' &&
+      ['operationId', 'sourceBootId', 'sourceGenerationId'].every(key => typeof own(rawContext, key) === 'string' && uuid.test(own(rawContext, key))) &&
+      typeof own(rawContext, 'profileSha256') === 'string' && hex.test(own(rawContext, 'profileSha256'))) {
+    operationContext = {};
+    for (const key of ['operationId', 'sourceBootId', 'sourceGenerationId', 'profileSha256', 'captureInvoked', 'synthetic']) operationContext[key] = own(rawContext, key);
+  }
+  const rawCustody = own(error, 'recoveryContext') ?? own(cause, 'recoveryContext'), rawBinding = own(rawCustody, 'binding');
+  const binding = {}, hashKeys = ['profileSha256', 'schemaSha256', 'assuranceSha256', 'captureIntervalSha256', 'manifestSha256', 'inputSha256'];
+  let custodyContext = null;
+  if (own(rawCustody, 'contract') === 'workboard.native-runtime-logical-recovery.v1' && own(rawCustody, 'kind') === 'capture' &&
+      typeof own(rawCustody, 'operationId') === 'string' && uuid.test(own(rawCustody, 'operationId')) &&
+      typeof own(rawCustody, 'assuranceSha256') === 'string' && hex.test(own(rawCustody, 'assuranceSha256')) &&
+      ['sourceBootId', 'sourceGenerationId'].every(key => typeof own(rawBinding, key) === 'string' && uuid.test(own(rawBinding, key))) &&
+      typeof own(rawBinding, 'sourceOwnerId') === 'string' && own(rawBinding, 'sourceOwnerId') === 'workboard-native-' + own(rawBinding, 'sourceGenerationId') &&
+      hashKeys.every(key => typeof own(rawBinding, key) === 'string' && hex.test(own(rawBinding, key))) &&
+      own(rawBinding, 'assuranceSha256') === own(rawCustody, 'assuranceSha256')) {
+    for (const key of ['sourceBootId', 'sourceOwnerId', 'sourceGenerationId', ...hashKeys]) binding[key] = own(rawBinding, key);
+    custodyContext = {contract: own(rawCustody, 'contract'), kind: 'capture', operationId: own(rawCustody, 'operationId'), assuranceSha256: own(rawCustody, 'assuranceSha256'), binding};
+  }
+  return {schema: 'workboard.synthetic-native-failure.v1', code, cleanupCodes, outcomeUnknown,
+    retryAllowed: false, reconciliationRequired: outcomeUnknown || operationContext?.captureInvoked === true, operationContext, custodyContext,
+    synthetic: true, productionAcceptance: false, fullRecoveryReady: false};
+}
 const uptime = () => Number(fs.readFileSync('/proc/uptime', 'utf8').split(' ')[0]);
 function requireThat(ok, message) { if (!ok) throw new Error(message); }
 function remaining() { const n = deadline - uptime(); requireThat(Number.isFinite(n) && n > 0, 'shared work deadline exhausted'); return n; }
@@ -193,10 +246,42 @@ async function main() {
     const packedGraph = actual.entries.filter(entry => entry.path !== 'qualification-provenance.json');
     requireThat(crypto.createHash('sha256').update(JSON.stringify(packedGraph)).digest('hex') === provenance.runnable.sha256, 'immutable runnable graph differs from same-build provenance');
     fs.mkdirSync('/qualification/native-output/home', { recursive: true });
-    await run(contract.native_argv, false, '/artifact');
-    const observations = JSON.parse(fs.readFileSync('/qualification/native-output/native-observations.json', 'utf8'));
-    requireThat(observations.completed === true && observations.admissionOrReleaseAcceptance === false && observations.priorArtifactParity === 'unproved' && observations.ownership.some(owner => owner.status === 'held-for-reconciliation'), 'original native proof failed or lost durable unknown ownership');
-    receipt.native = { report_sha256: sha('/qualification/native-output/native-observations.json'), artifact_inventory_sha256: actual.sha256, source_commit: contract.source_commit, source_tree: contract.source_tree, admissionOrReleaseAcceptance: false, unknown_ownership: 'retained; no release or approval' };
+    if (contract.qualification_scope === 'workboard-native-worker-logical-recovery.synthetic.v1') {
+      // This actual admitted native-phase lifetime owns only the fresh synthetic scopes.
+      // Do not reconstruct it in a subprocess from IDs or the dropped childEnv fields.
+      let nativeCurrent = true;
+      const priorEnvironment = {...process.env};
+      const assertNativeCurrent = () => {
+        requireThat(nativeCurrent && phase === 'offline-native', 'native proof owner retired');
+        remaining();
+      };
+      try {
+        assertNativeCurrent();
+        const namespace = '/qualification/native-state/workboard-runtime';
+        fs.mkdirSync(namespace, {mode: 0o700});
+        for (const key of Object.keys(process.env)) delete process.env[key];
+        Object.assign(process.env, {PATH: '/usr/local/bin:/usr/bin:/bin', HOME: namespace, LANG: 'C.UTF-8', OPENCLAW_STATE_DIR: namespace, OPENCLAW_CONFIG_PATH: path.join(namespace, 'openclaw.json')});
+        assertNativeCurrent();
+        const {runWorkboardPrivateRecoveryQualification} = await import('/artifact/dist/proofs/workboard-private-recovery-controller.js');
+        assertNativeCurrent();
+        const observations = await runWorkboardPrivateRecoveryQualification(Object.freeze({
+          assertCurrent: assertNativeCurrent, profileSha256: sha('/proof/manifest.json'), python: '/usr/bin/python3',
+        }));
+        assertNativeCurrent();
+        requireThat(observations.schema === contract.qualification_scope && observations.completed === true && observations.synthetic === true && observations.productionAcceptance === false && observations.fullRecoveryReady === false && observations.originalFactoryTargetIssuerJoined === true && observations.storeAndCustodianJoined === true && observations.revokedCallRejected === true && observations.postAcknowledgementRestoreQualified === false, 'Workboard synthetic native proof incomplete');
+        fs.writeFileSync('/qualification/native-output/native-observations.json', JSON.stringify(observations));
+        receipt.native = { profile: contract.qualification_scope, report_sha256: sha('/qualification/native-output/native-observations.json'), artifact_inventory_sha256: actual.sha256, source_commit: contract.source_commit, source_tree: contract.source_tree, synthetic: true, productionAcceptance: false, fullRecoveryReady: false, postAcknowledgementRestoreQualified: false };
+      } finally {
+        nativeCurrent = false;
+        for (const key of Object.keys(process.env)) delete process.env[key];
+        Object.assign(process.env, priorEnvironment);
+      }
+    } else {
+      await run(contract.native_argv, false, '/artifact');
+      const observations = JSON.parse(fs.readFileSync('/qualification/native-output/native-observations.json', 'utf8'));
+      requireThat(observations.completed === true && observations.admissionOrReleaseAcceptance === false && observations.priorArtifactParity === 'unproved' && observations.ownership.some(owner => owner.status === 'held-for-reconciliation'), 'original native proof failed or lost durable unknown ownership');
+      receipt.native = { report_sha256: sha('/qualification/native-output/native-observations.json'), artifact_inventory_sha256: actual.sha256, source_commit: contract.source_commit, source_tree: contract.source_tree, admissionOrReleaseAcceptance: false, unknown_ownership: 'retained; no release or approval' };
+    }
   } else if (phase === 'warm-fetch') {
     await run(['corepack', 'enable', '--install-directory', '/qualification/toolchain/bin'], true);
     await run(['corepack', 'prepare', contract.packageManager, '--activate'], true);
@@ -206,6 +291,12 @@ async function main() {
     const bun = execFileSync('/qualification/toolchain/bun', ['--version'], { encoding: 'utf8', env: childEnv(false), timeout: 10000 }).trim();
     requireThat(bun === '1.4.2', 'Bun version mismatch');
     receipt.versions = { node: process.versions.node, pnpm, bun };
+    if (contract.qualification_scope === 'workboard-native-worker-logical-recovery.synthetic.v1') {
+      // Inspect the existing pinned-image runtime before heavy compilation; never install.
+      const probe = 'import json,os,sqlite3,sys; assert sys.version_info >= (3,11); assert hasattr(os,"O_NOFOLLOW") and os.open in os.supports_dir_fd; print(json.dumps({"pythonVersion":list(sys.version_info[:3]),"sqliteVersion":sqlite3.sqlite_version,"descriptorAvailable":True}))';
+      receipt.pythonPreflight = JSON.parse(execFileSync('/usr/bin/python3', ['-I', '-c', probe], {encoding: 'utf8', env: childEnv(false), timeout: Math.min(10000, remaining() * 1000)}));
+      requireThat(receipt.pythonPreflight.descriptorAvailable === true, 'existing Python descriptor runtime unavailable');
+    }
     await run(['corepack', contract.packageManager, ...contract.fetch_argv], true);
     attestSource();
     // fetch can accept age checks via canonical-fetch HEAD probes without
@@ -261,5 +352,11 @@ async function main() {
   }
   receipt.complete = true;
 }
-try { await main(); } catch (error) { receipt.error = String(error.message); process.exitCode = 1; }
+try { await main(); } catch (error) {
+  if (contract.qualification_scope === 'workboard-native-worker-logical-recovery.synthetic.v1') {
+    receipt.workboardFailure = workboardFailureDisposition(error);
+    receipt.error = receipt.workboardFailure.code;
+  } else receipt.error = error instanceof Error ? String(error.message) : 'NON_ERROR_THROWN';
+  process.exitCode = 1;
+}
 finally { fs.mkdirSync(reports, { recursive: true }); fs.writeFileSync(reports + '/' + phase + '-receipt.json', JSON.stringify(receipt, null, 2) + '\n'); }

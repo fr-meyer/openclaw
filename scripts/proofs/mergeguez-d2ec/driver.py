@@ -100,11 +100,54 @@ def contained_walk(root, expected_device=None):
             need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1, 'special or hard-linked task input')
         yield p, st
 
-def phase_mounts(mount, proof, gates, phase):
+WORKBOARD_PROFILE = 'workboard-native-worker-logical-recovery.synthetic.v1'
+
+def validated_tooling_inputs(proof, manifest, contract, loaded_hash):
+    """Exact source inputs only; nested paths belong solely to the frozen companion."""
+    proof = Path(proof)
+    need(proof.resolve() == proof and not proof.is_symlink(), 'tooling root alias')
+    companion = contract.get('workboard_companion_inputs', []) if contract.get('qualification_scope') == WORKBOARD_PROFILE else []
+    need(type(companion) is list and (not companion or len(companion) == 17), 'wrong companion closure')
+    expected = {}
+    for x in companion:
+        need(type(x) is dict and set(x) == {'path', 'bytes', 'sha256'}, 'wrong companion declaration')
+        name = x['path']
+        need(type(name) is str and name.startswith('workboard-custody/') and name not in expected, 'wrong companion path')
+        expected[name] = x
+    need(contract.get('qualification_scope') != WORKBOARD_PROFILE or len(expected) == 17, 'missing frozen companion closure')
+    need(type(manifest) is dict and type(manifest.get('files')) is list, 'wrong tooling inventory')
+    seen, nested = set(), set()
+    for x in manifest['files']:
+        need(type(x) is dict and set(x) == {'path', 'bytes', 'sha256'}, 'wrong tooling declaration')
+        name = x['path']
+        need(type(name) is str and name and name not in seen, 'duplicate tooling path')
+        parts = name.split('/')
+        need(all(part and part not in ('.', '..') for part in parts) and not name.startswith('/'), 'escaping tooling path')
+        if len(parts) > 1:
+            need(name in expected and x == expected[name], 'unsealed nested tooling path')
+            nested.add(name)
+        p = proof
+        for part in parts[:-1]:
+            p = p / part
+            st = p.lstat()
+            need(stat.S_ISDIR(st.st_mode) and not stat.S_ISLNK(st.st_mode), 'tooling ancestor alias')
+        p = p / parts[-1]
+        st = p.lstat()
+        need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and p.resolve().is_relative_to(proof), 'tooling path alias')
+        need(type(x['bytes']) is int and x['bytes'] >= 0 and type(x['sha256']) is str and re.fullmatch('[0-9a-f]{64}', x['sha256']), 'wrong tooling identity')
+        need(st.st_size == x['bytes'] and digest(p) == x['sha256'], 'tooling bytes changed')
+        if name == 'driver.py': need(x['sha256'] == loaded_hash, 'loaded driver differs from sealed driver')
+        seen.add(name)
+    need(nested == set(expected), 'incomplete companion closure')
+    return tuple(sorted(nested))
+
+def phase_mounts(mount, proof, gates, phase, companion_inputs=()):
     mount, proof, gates = Path(mount), Path(proof), Path(gates)
     if phase == 'offline-native':
         # No overlapping RW ancestor, source checkout, store, or source patch mount.
-        return {'/artifact': (str(mount / 'runnable'), False), '/qualification/native-state': (str(mount / 'native-state'), True), '/qualification/native-output': (str(mount / 'native-output'), True), '/tmp': (str(mount / 'native-tmp'), True), '/control': (str(gates), False), **{'/proof/' + name: (str(proof / name), False) for name in ['runtime.mjs', 'materialize.mjs', 'contract.json']}}
+        proof_files = ['runtime.mjs', 'materialize.mjs', 'contract.json']
+        if companion_inputs: proof_files += ['manifest.json', *companion_inputs]
+        return {'/artifact': (str(mount / 'runnable'), False), '/qualification/native-state': (str(mount / 'native-state'), True), '/qualification/native-output': (str(mount / 'native-output'), True), '/tmp': (str(mount / 'native-tmp'), True), '/control': (str(gates), False), **{'/proof/' + name: (str(proof / name), False) for name in proof_files}}
     result = {'/qualification': (str(mount), True), '/proof': (str(proof), False), '/control': (str(gates), False), '/tmp': (str(mount / 'tmp'), True)}
     if phase == 'offline-compile': result['/qualification/toolchain'] = (str(mount / 'toolchain'), False)
     return result
@@ -210,13 +253,10 @@ class Driver:
 
     def verify_tooling(self):
         m = PROOF / 'manifest.json'
+        manifest_stat = m.lstat()
+        need(stat.S_ISREG(manifest_stat.st_mode) and manifest_stat.st_nlink == 1, 'tooling manifest alias')
         need(digest(m) == os.environ['QUALIFICATION_MANIFEST_SHA256'], 'tooling manifest mismatch')
-        for x in json.loads(m.read_text())['files']:
-            p = PROOF / x['path']
-            need(p.resolve().parent == PROOF and p.is_file() and not p.is_symlink(), 'tooling path alias')
-            need(p.stat().st_size == x['bytes'] and digest(p) == x['sha256'], 'tooling bytes changed')
-            if x['path'] == 'driver.py':
-                need(x['sha256'] == LOADED_HASH, 'loaded driver differs from sealed driver')
+        self.workboard_companion_inputs = validated_tooling_inputs(PROOF, json.loads(m.read_text()), self.c, LOADED_HASH)
         admission = validate_event(os.environ, json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text()), self.c)
         need(self.state['job'] == os.environ['GITHUB_RUN_ID'] + '-1', 'job receipt mismatch')
         bind_admission(self.state, admission)
@@ -461,7 +501,7 @@ class Driver:
         nonce = secrets.token_hex(32)
         record = {'name': 'mergeguez-' + phase + '-' + self.state['job'], 'kind': 'worker', 'phase': phase, 'started': False}
         self.state['containers'].append(record); self.save()
-        mounts = phase_mounts(self.mount, PROOF, self.gates, phase)
+        mounts = phase_mounts(self.mount, PROOF, self.gates, phase, self.workboard_companion_inputs)
         argv = ['create', '--name', record['name'], '--platform', 'linux/amd64', '--user', '1000:1000', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--cgroupns', 'private', '--ipc', 'private', '--network', 'bridge' if phase == 'warm-fetch' else 'none', '--memory', str(self.c['memory_bytes']), '--memory-swap', str(self.c['memory_bytes']), '--cpus', '4', '--pids-limit', '512', '--log-driver', 'none', '--label', 'mergeguez.qualification.job=' + self.state['job'], '--label', 'mergeguez.qualification.driver=' + LOADED_HASH]
         for destination, (origin, writable) in mounts.items():
             argv += ['--mount', 'type=bind,src=' + origin + ',dst=' + destination + ('' if writable else ',readonly')]

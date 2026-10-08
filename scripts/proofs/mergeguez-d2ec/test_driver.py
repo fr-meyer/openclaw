@@ -402,6 +402,7 @@ class ExecutionGuards(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name).resolve()
         self.driver = object.__new__(d.Driver); self.driver.c = C; self.driver.workspace = self.root; self.driver.control = self.root; self.driver.mount = self.root / 'mount'; self.driver.gates = self.root / 'gates'; self.driver.gates.mkdir()
+        self.driver.workboard_companion_inputs = ()
         self.driver.work_deadline = 1000; self.driver.cleanup_deadline = 2000; self.driver.log_bytes = C['log_cap_bytes']; self.driver.env = {'PATH': '/usr/bin:/bin', 'HOME': str(self.root)}
         self.driver.admission = {'run_id': 'fixture'}; self.driver.state = {'admission': dict(self.driver.admission)}
     def tearDown(self): self.temp.cleanup()
@@ -482,6 +483,7 @@ class NativeCustody(unittest.TestCase):
             (self.path / name).write_text(value)
         self.custody = {'pid': self.pid, 'container_id': self.cid, 'start_ticks': '100', 'cgroup': str(self.path)}
         self.driver = object.__new__(d.Driver); self.driver.c = C; self.driver.work_deadline = 1000
+        self.driver.workboard_companion_inputs = ()
         self.driver.state = {'containers': []}; self.driver.state_path = self.root / 'state.json'
         self.driver.save = lambda: d.atomic(self.driver.state_path, self.driver.state)
         self.record = {'id': self.cid, 'name': 'worker', 'started': True, 'kind': 'worker'}
@@ -723,11 +725,12 @@ class RunnableContinuation(unittest.TestCase):
             if writable: self.assertFalse(Path(destination) in Path('/artifact').parents)
         self.assertEqual(set(destination for destination, (_, writable) in mounts.items() if writable), {'/qualification/native-state', '/qualification/native-output', '/tmp'})
     def test_chain_keeps_real_parent_before_final_commit(self):
-        chain = C['source_chain']; self.assertEqual(len(chain), 18)
+        chain = C['source_chain']; self.assertEqual(len(chain), 19)
         self.assertEqual(chain[0]['parent'], C['baseline']); self.assertEqual(chain[1]['parent'], chain[0]['commit'])
         self.assertEqual(chain[2]['parent'], chain[1]['commit'])
         self.assertEqual([step['parent'] for step in chain[1:]], [step['commit'] for step in chain[:-1]])
-        self.assertEqual(chain[-1]['patch'], 'state-isolation-source.patch')
+        self.assertEqual(chain[-1]['patch'], 'workboard-source.patch')
+        self.assertEqual(chain[-2]['patch'], 'state-isolation-source.patch')
         self.assertEqual(chain[-1]['commit'], C['source_commit']); self.assertEqual(chain[-1]['tree'], C['source_tree'])
         for step in chain:
             self.assertEqual(d.digest(P / step['patch']), step['patch_sha256'])
@@ -743,9 +746,9 @@ class RunnableContinuation(unittest.TestCase):
         self.assertEqual(C['compile_environment'], {'OPENCLAW_BUILD_NATIVE_IPC_GATEWAY_QUALIFICATION': '1'})
     def test_exact_cli_named_source_inventory_and_unchanged_hard_bounds(self):
         self.assertEqual(C['targeted_test_argv'], [['node', 'scripts/run-vitest.mjs', 'run', 'src/cli/program/register.agent.test.ts', 'src/commands/agent-via-gateway.test.ts', 'src/gateway/server-plugin-subagent-runtime.test.ts', 'src/gateway/server-managed-task-flow-runtime.test.ts', 'src/tasks/managed-task-flow-host.test.ts', 'packages/ai/src/transports/openai-responses-request-lifecycle.test.ts', 'src/infra/runtime-worker-url.test.ts', 'test/scripts/agent-database-worker-package-paths.test.ts', 'test/scripts/tsdown-build.test.ts', 'src/state/openclaw-agent-canonical-validation-schema.test.ts', 'test/scripts/native-ipc-gateway-state-isolation.test.ts']])
-        self.assertEqual(len(C['source_inputs']), 67)
-        self.assertEqual(len(set(entry['path'] for entry in C['source_inputs'])), 67)
-        self.assertEqual([origin['selected_postimage_count'] for origin in C['source_inputs_origins']], [67])
+        self.assertEqual(len(C['source_inputs']), 88)
+        self.assertEqual(len(set(entry['path'] for entry in C['source_inputs'])), 88)
+        self.assertEqual([origin['selected_postimage_count'] for origin in C['source_inputs_origins']], [67, 22])
         self.assertTrue(all(entry['mode']=='100644' and d.re.fullmatch('[0-9a-f]{64}',entry['sha256']) for entry in C['source_inputs']))
         self.assertEqual(C['phase_max_seconds']['offline-compile'], 1800)
         self.assertEqual((C['work_seconds'],C['total_seconds'],C['cpus'],C['memory_bytes'],C['filesystem_bytes']), (2400,2700,4,12*1024**3,10*1024**3))
@@ -805,6 +808,7 @@ class IssuedReaderCustody(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp).resolve(); driver = object.__new__(d.Driver)
             driver.c = C; driver.control = root; driver.mount = root/'volume'; driver.mount.mkdir(); driver.gates = root/'gates'; driver.gates.mkdir(); driver.state_path = root/'state.json'
+            driver.workboard_companion_inputs = ()
             driver.work_deadline = 300; driver.cleanup_deadline = 360; driver.log_bytes = 0; driver.env = {}; driver.budget = lambda *a,**k:None
             driver.state = {'job':'1-1','phase':'prepared','containers':[],'complete':False,'images':{C['node_image']:'sha256:'+'b'*64}}
             class Process:

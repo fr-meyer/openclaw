@@ -1,0 +1,80 @@
+{
+  "schema": "workboard-native-worker-custody-source-pins.v1",
+  "pins": [
+    {
+      "path": "worker-custody-bridge.mjs",
+      "sha256": "428f8e9b64dfed3f5ec75a7f36bdb754579dbdb954b06b069e1b71dbc9475cbc",
+      "bytes": 17467
+    },
+    {
+      "path": "logical-transport-contract.mjs",
+      "sha256": "31a935f3798de6da4af32de17f4dbf8347e8bc537f0e56acc3a285203c4dfaa1",
+      "bytes": 2623
+    },
+    {
+      "path": "test-worker-custody-bridge.mjs",
+      "sha256": "6edb2d52793ecd16ca11457c62bc157c0d1a936b84dd653472b1df39cc0280a9",
+      "bytes": 15705
+    },
+    {
+      "path": "Interface.md",
+      "sha256": "957cd622cbb089a075735e4c92bd187eb6f55e6c4f78f0742b55b1582b6edbad",
+      "bytes": 4362
+    },
+    {
+      "path": "dependency-pins.json",
+      "sha256": "65668dc95d7e3136c6c814d1edbf477dbc726e2e94633c8d7a06b197917a66c7",
+      "bytes": 2587
+    },
+    {
+      "path": "unit-receipt.json",
+      "sha256": "8464eea9284bfcf73fdcd1a0e8cce1d6d260922ba1b4b886bc0e8bbb5b19ef4c",
+      "bytes": 3499
+    },
+    {
+      "path": "vendor/adapter/custody/workboard_private_custody.py",
+      "sha256": "c9b291c42e9179be0ea363f56694db3b0ae8c4957a7e968a9a6b56f8dc20a917",
+      "bytes": 23385
+    },
+    {
+      "path": "vendor/adapter/ledger/workboard_acceptance_ledger.py",
+      "sha256": "03cd5b84db0866813f3d9e2b7cd718302d7af0705f11edd8a931d79dc5938d9e",
+      "bytes": 20896
+    },
+    {
+      "path": "vendor/adapter/logical-assurance.mjs",
+      "sha256": "1d3703c3dfa65553b3f89f9d0a373cd8b10e82a0d1f119d6ce2cf3765fc44814",
+      "bytes": 2207
+    },
+    {
+      "path": "vendor/adapter/native-memory-codec.mjs",
+      "sha256": "b995bc4a98b2916b4285ef8974f28d2c1312628e0070dd713cfcf0d2cd993565",
+      "bytes": 8819
+    },
+    {
+      "path": "vendor/adapter/proof_keeper.py",
+      "sha256": "94b64e5d5167829aa47240ffd259f1132df60a12196d2afcf77820ea7e9cde4c",
+      "bytes": 8684
+    },
+    {
+      "path": "vendor/adapter/recovery_worker.py",
+      "sha256": "d3a5748ce502327b96c759f7a6e378e7e93de088a97d83deed9a360199d8ef19",
+      "bytes": 10887
+    },
+    {
+      "path": "vendor/adapter/schema.sql",
+      "sha256": "ddf7208a4e79d53b4cde461de6c6ce32d322537069cefd5c603f835e13f2bc25",
+      "bytes": 7388
+    },
+    {
+      "path": "vendor/adapter/sealed-python-client.mjs",
+      "sha256": "d86506c5ac8960b89e75a66ed641b5501e0fdf87dd211f6160210df062ba6e69",
+      "bytes": 10472
+    },
+    {
+      "path": "vendor/adapter/shared/family_publish_io.py",
+      "sha256": "ef1f6341e8fbc29c13b3acb873fbc9181f0075f6869c37bc6fa87fba52d6b967",
+      "bytes": 7822
+    }
+  ]
+}

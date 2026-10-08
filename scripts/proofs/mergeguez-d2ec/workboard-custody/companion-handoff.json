@@ -1,0 +1,75 @@
+{
+  "schema": "workboard-native-worker-custody-handoff.v1",
+  "createdAtUTC": "2026-10-01T01:40:29.518162+00:00",
+  "status": "TWO_P2_FINDINGS_REMEDIATED_AUTHOR_UNITS_PASS_REVIEW_PENDING",
+  "synthetic": true,
+  "productionAcceptance": false,
+  "authorityMinted": false,
+  "actualWorkerIntegrationRun": false,
+  "pythonCustodyProcessStarted": false,
+  "hostBridgeOpensSQLite": false,
+  "hostBridgeImportsSQLiteCodec": false,
+  "hostValidation": "bounded transport, header, strict logical typed payload, UTF8, table/blob/schema hash bindings only",
+  "semanticAssurance": "exact pinned native-worker codec before transfer; private original actor/lease broker path must establish result provenance; payload/assertion alone does not",
+  "interface": "custodian.persist(payload: Uint8Array, operationId: string, assertCurrent: () => void): Promise<sanitized capture record>",
+  "construction": "strict sourceBinding, python, custodyRoot, executionBootId, sizeLimit; dormant frozen closure",
+  "transportByteLimit": 33554432,
+  "defaultAggregateQuotaBytes": 4194304,
+  "ackDeadlineMs": 60000,
+  "ackDeadlineIsAuthorization": false,
+  "authorChecks": {
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0,
+    "vmMockIsActualTransportProof": false,
+    "semanticCodecProbeIsWorkerIntegration": false,
+    "reentrantCloseHelperConstructions": 0,
+    "sentAcceptanceHasExplicitUnknownOutcome": true,
+    "knownPreSendRejectStageRetained": true
+  },
+  "dependencyVendorCopies": 9,
+  "sharedIoVersion": "frozen-v5",
+  "sharedIoSha256": "ef1f6341e8fbc29c13b3acb873fbc9181f0075f6869c37bc6fa87fba52d6b967",
+  "publisherRepinned": false,
+  "runtimeGaps": [
+    "exact private deployed runtime issuer/trusted-bootstrap binding",
+    "actual worker-to-real sealed descriptor custody integration under parent resource admission",
+    "operational JS/interpreter loaded-image attestation",
+    "production capture, restore and authority cutover remain unauthorized"
+  ],
+  "sourcePins": {
+    "path": "source-pins.json",
+    "sha256": "11067c29c126b62056c2b2a98547915ddc4bdab1d5ee0985226d555728a052ac",
+    "bytes": 2592
+  },
+  "bridgeSource": {
+    "path": "worker-custody-bridge.mjs",
+    "sha256": "428f8e9b64dfed3f5ec75a7f36bdb754579dbdb954b06b069e1b71dbc9475cbc",
+    "bytes": 17467
+  },
+  "transportContract": {
+    "path": "logical-transport-contract.mjs",
+    "sha256": "31a935f3798de6da4af32de17f4dbf8347e8bc537f0e56acc3a285203c4dfaa1",
+    "bytes": 2623
+  },
+  "unitReceipt": {
+    "path": "unit-receipt.json",
+    "sha256": "8464eea9284bfcf73fdcd1a0e8cce1d6d260922ba1b4b886bc0e8bbb5b19ef4c",
+    "bytes": 3499
+  },
+  "ownedDirectory": "parallel/native-worker-logical-port-v1/companion",
+  "nonOwnedFilesChanged": false,
+  "reviewFixes": [
+    {
+      "finding": "P2 helper construction after reentrant closure",
+      "previousBridgeSha256": "55598a35c257bfd536b6d6ea02cb72e995f6734183be334604456044dfa57f94",
+      "fix": "post-callback closed-state recheck",
+      "independentRetestPending": true
+    },
+    {
+      "finding": "P2 sent acceptance failures missing machine ambiguity signal",
+      "fix": "normalize sent transport/invalid acknowledgment/post-acceptance retirement to explicit unknown code plus immutable reconcile/no-retry disposition and bounded original/cleanup codes",
+      "independentRetestPending": true
+    }
+  ]
+}

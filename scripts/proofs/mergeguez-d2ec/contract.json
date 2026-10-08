@@ -101,8 +101,19 @@
     "--port",
     "18941"
   ],
+  "native_invocation": {
+    "entry": "/artifact/dist/proofs/workboard-private-recovery-controller.js",
+    "export": "runWorkboardPrivateRecoveryQualification",
+    "fullRecoveryReady": false,
+    "kind": "same-process-source-owner-closure",
+    "native_argv_used": false,
+    "productionAcceptance": false,
+    "source_owner": "Original runtime.mjs admitted offline-native branch",
+    "synthetic": true
+  },
   "native_state_cap_bytes": 33554432,
   "node_image": "docker.io/library/node:24-bookworm@sha256:64af3819f9275802414d7cdc38c27e9d82bd564dec4d4da87d008255d36c63b4",
+  "npm_version": "11.20.0",
   "outside_free_reserve_bytes": 1073741824,
   "packageManager": "pnpm@12.5.1+sha512.e3f305bc784a2bc89f5ad3b6138889470fae8d2af5f36b61216ec91c2c3d64089775f9de38aac331044ea40f245cb0d5666392dfdf65824e1907ef6a2c62de5f",
   "package_argv": [
@@ -938,6 +949,7 @@
     }
   },
   "patch_sha256": "c36d6bf19fed616620398f45304628f510b9e86d4ed878a9851ad11bf4afc83c",
+  "phase_budget_meaning": "Each phase ceiling is intersected with the single unchanged2400s work deadline. Per-phase ceilings do not create extra time authority; total2700s includes cleanup and upload. Selected new packaging/materialization/native sizes and timings remain unmeasured.",
   "phase_max_seconds": {
     "offline-compile": 1800,
     "offline-native": 300,
@@ -946,6 +958,8 @@
     "warm-fetch": 420
   },
   "pids": 512,
+  "portable_runnable_unpacked_cap_bytes": 2147483648,
+  "qualification_scope": "workboard-native-worker-logical-recovery.synthetic.v1",
   "raw_commit_sha256": "d7fc5e214542eaad5eea0b560b29cddd41b918a8d7105beeaca2c7f34a35d355",
   "repository": "fr-meyer/openclaw",
   "repository_id": 1309456040,
@@ -963,7 +977,10 @@
     "./dist/cli-startup-metadata.json",
     "./dist/proofs/native-ipc-gateway-driver.js",
     "./dist/proofs/native-ipc-gateway-api.js",
-    "./dist/proofs/native-ipc-gateway-fixture.js"
+    "./dist/proofs/native-ipc-gateway-fixture.js",
+    "./dist/proofs/workboard-private-recovery-controller.js",
+    "./dist/proofs/workboard-private-recovery-api.js",
+    "./dist/extensions/workboard/src/sqlite-store.worker.js"
   ],
   "runnable_profile": "original-full-production-build-plus-task-internal-entries",
   "schema": "mergeguez.exact-runnable-native-qualification/v3",
@@ -2729,6 +2746,7 @@
       null
     ]
   ],
+  "size_measurement": "Unmeasured: compiled emits <=512MiB; portable runnable unpacked <=2GiB; combined retained package+runnable+native archive <=512MiB, native state <=32MiB; task volume10GiB unchanged. Overflow fails closed, no resize or rerun.",
   "source_chain": [
     {
       "commit": "e6903a41049ace9a4ae22e467f244af747157b0d",
@@ -2749,159 +2767,705 @@
       "tree": "7b39f2755c80152d5f7299153e344ec6f3182f99"
     },
     {
-      "parent": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
       "commit": "43719c923f28758caf0cf85f1c02d719772ea6f2",
-      "tree": "45a737e31f2c571a8219cb90aec45a1a517b2f30",
+      "parent": "8afcb3426ebcc194484ad26af3bbcb6c6992192f",
       "patch": "cli-source.patch",
       "patch_sha256": "1bc2661e35277a7268979072fa768ef6101ee321a93aac654bb4d2d83752535a",
       "raw_commit": "cli-source.commit",
-      "raw_commit_sha256": "383bb895e3f14814317b3c1aac1ba8166ac9c614978f5314eed7420f98723ce3"
+      "raw_commit_sha256": "383bb895e3f14814317b3c1aac1ba8166ac9c614978f5314eed7420f98723ce3",
+      "tree": "45a737e31f2c571a8219cb90aec45a1a517b2f30"
     },
     {
-      "parent": "43719c923f28758caf0cf85f1c02d719772ea6f2",
       "commit": "af2a2709882439227a5b9fa0e4b70b5d5d872e03",
-      "tree": "50392dd633201a7e6500d8680e81ec0ede79a91f",
+      "parent": "43719c923f28758caf0cf85f1c02d719772ea6f2",
       "patch": "owner-source-1.patch",
       "patch_sha256": "cad362fd7c81dca3469c754e184f307b5e0fd9e60fa64f599133c9a71b6cd85d",
       "raw_commit": "owner-source-1.commit",
-      "raw_commit_sha256": "410e8f62b6d631add93351ff729a89cba3bcf644950695628dd30c88b3438a92"
+      "raw_commit_sha256": "410e8f62b6d631add93351ff729a89cba3bcf644950695628dd30c88b3438a92",
+      "tree": "50392dd633201a7e6500d8680e81ec0ede79a91f"
     },
     {
-      "parent": "af2a2709882439227a5b9fa0e4b70b5d5d872e03",
       "commit": "722a0a76a60ef3bbbbd566c6a71c9fe90f64447e",
-      "tree": "a142c6f72f14559ddebb7492070f794f85094064",
+      "parent": "af2a2709882439227a5b9fa0e4b70b5d5d872e03",
       "patch": "owner-source-2.patch",
       "patch_sha256": "7a9e74fa1ca7e91a2ad5d95eedc3621ec23cd818e29ee4c3c4920c0fa757f5c2",
       "raw_commit": "owner-source-2.commit",
-      "raw_commit_sha256": "f90214e65dc12a8ac0a6b406dadba94f87bf95002ae017a8ba675e7bcd589b5c"
+      "raw_commit_sha256": "f90214e65dc12a8ac0a6b406dadba94f87bf95002ae017a8ba675e7bcd589b5c",
+      "tree": "a142c6f72f14559ddebb7492070f794f85094064"
     },
     {
-      "parent": "722a0a76a60ef3bbbbd566c6a71c9fe90f64447e",
       "commit": "1cbf2f749a4becdaa1476b7628bfa51c43b81d48",
-      "tree": "b9cc538aced106ff083dabcf2347edfa9e791519",
+      "parent": "722a0a76a60ef3bbbbd566c6a71c9fe90f64447e",
       "patch": "owner-source-3.patch",
       "patch_sha256": "dd6d03ea669ddc78692efbd7ffafc5db27e1c386e27f3427aa3f1230c0da1cc0",
       "raw_commit": "owner-source-3.commit",
-      "raw_commit_sha256": "c267a1997ac63ccaaedba4d1da1ed0fb63203ae81128387b1543bd2f29167d89"
+      "raw_commit_sha256": "c267a1997ac63ccaaedba4d1da1ed0fb63203ae81128387b1543bd2f29167d89",
+      "tree": "b9cc538aced106ff083dabcf2347edfa9e791519"
     },
     {
-      "parent": "1cbf2f749a4becdaa1476b7628bfa51c43b81d48",
       "commit": "21358c605b0b17d0dbe13111436671f6c3aca218",
-      "tree": "2ecddedfdd8b41b97c1b1231e2644e0a33a86f80",
+      "parent": "1cbf2f749a4becdaa1476b7628bfa51c43b81d48",
       "patch": "owner-source-4.patch",
       "patch_sha256": "b778a374124479fa5d57a453d617b99a90984823861191d994af322298db688e",
       "raw_commit": "owner-source-4.commit",
-      "raw_commit_sha256": "56c825b24331d93f8ebdbc92cb6cf1e10013adc88ebfa2d0e81684ee1551bf0a"
+      "raw_commit_sha256": "56c825b24331d93f8ebdbc92cb6cf1e10013adc88ebfa2d0e81684ee1551bf0a",
+      "tree": "2ecddedfdd8b41b97c1b1231e2644e0a33a86f80"
     },
     {
-      "parent": "21358c605b0b17d0dbe13111436671f6c3aca218",
       "commit": "ca879faa305626636d500e1a7f881079b70b5b6f",
-      "tree": "cbc5db00e5e8174b94c638badc8838cbb0fb3136",
+      "parent": "21358c605b0b17d0dbe13111436671f6c3aca218",
       "patch": "owner-source-5.patch",
       "patch_sha256": "136d462b07e2b9824c029bf793132e73b90dddcc64cfa152153838b5d90b7cb7",
       "raw_commit": "owner-source-5.commit",
-      "raw_commit_sha256": "0c72f1757528737ad8b95ea43be06b8ab744ce989f86232971d5ce9dfacd1684"
+      "raw_commit_sha256": "0c72f1757528737ad8b95ea43be06b8ab744ce989f86232971d5ce9dfacd1684",
+      "tree": "cbc5db00e5e8174b94c638badc8838cbb0fb3136"
     },
     {
-      "parent": "ca879faa305626636d500e1a7f881079b70b5b6f",
       "commit": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
-      "tree": "a5a42ea0fd97af95d6fac9f2bf2e955f3a48fd56",
+      "parent": "ca879faa305626636d500e1a7f881079b70b5b6f",
       "patch": "owner-source-6.patch",
       "patch_sha256": "cea536a271fb390cafbf8bba6ad7570d8a7384dda7fd35672ea053c70a377163",
       "raw_commit": "owner-source-6.commit",
-      "raw_commit_sha256": "8c1b82441745c122cdd173ed9a83c3b726dd0b6df5153cb9609a03418918ce10"
+      "raw_commit_sha256": "8c1b82441745c122cdd173ed9a83c3b726dd0b6df5153cb9609a03418918ce10",
+      "tree": "a5a42ea0fd97af95d6fac9f2bf2e955f3a48fd56"
     },
     {
-      "parent": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
       "commit": "9325b6f25a15f4eb10ac24258dcc5750909ea9cc",
-      "tree": "7f7f5334fa059cc55764893e721d7058d6138633",
+      "parent": "b9962ab43a5cf4de5529a710706bbb5e5c030b5f",
       "patch": "owner-source-7.patch",
       "patch_sha256": "a874fc6e5ceb91864c94d6ab96275aceb7e2ee0b7a7725f8f7a35c17a8772c54",
       "raw_commit": "owner-source-7.commit",
-      "raw_commit_sha256": "f31eb2eb0c555668203cea2a730058af912e0ff999887dfab15456bde07e294a"
+      "raw_commit_sha256": "f31eb2eb0c555668203cea2a730058af912e0ff999887dfab15456bde07e294a",
+      "tree": "7f7f5334fa059cc55764893e721d7058d6138633"
     },
     {
-      "parent": "9325b6f25a15f4eb10ac24258dcc5750909ea9cc",
       "commit": "35cdf058f1f25768f2882a00ea9b5860872d4675",
-      "tree": "2fa028bb36086bbaf0f7608c91b3d2a1c35963a8",
+      "parent": "9325b6f25a15f4eb10ac24258dcc5750909ea9cc",
       "patch": "owner-source-8.patch",
       "patch_sha256": "e2a2a0bac9844a6e8dac05eac5cfe6872e0cf5bd160d408d55d1a5f6dab92663",
       "raw_commit": "owner-source-8.commit",
-      "raw_commit_sha256": "46e47f03ce2aa16b781efe0e67fc576175cfe49ceb4e23028939efb6007f3f5d"
+      "raw_commit_sha256": "46e47f03ce2aa16b781efe0e67fc576175cfe49ceb4e23028939efb6007f3f5d",
+      "tree": "2fa028bb36086bbaf0f7608c91b3d2a1c35963a8"
     },
     {
-      "parent": "35cdf058f1f25768f2882a00ea9b5860872d4675",
       "commit": "bb8940742c2a282527e587be25fbe70a61ce1e85",
-      "tree": "db9cbcef33b06c20e8b8d6ffc43d1d8e4a178466",
+      "parent": "35cdf058f1f25768f2882a00ea9b5860872d4675",
       "patch": "owner-source-9.patch",
       "patch_sha256": "87987f329de73ce9f7257e7f77b8992a1c536eece5e84defaad7d31c9936476c",
       "raw_commit": "owner-source-9.commit",
-      "raw_commit_sha256": "f2363098e950058d4eac8bd40edd1b09c6420aa131faa17ad6dc322d6b46f306"
+      "raw_commit_sha256": "f2363098e950058d4eac8bd40edd1b09c6420aa131faa17ad6dc322d6b46f306",
+      "tree": "db9cbcef33b06c20e8b8d6ffc43d1d8e4a178466"
     },
     {
-      "parent": "bb8940742c2a282527e587be25fbe70a61ce1e85",
       "commit": "834ee400b29afd981270b32c1f1d855ef428b60d",
-      "tree": "4d27a4f9f1120b99fd250ce02b3b4ae88d62723c",
+      "parent": "bb8940742c2a282527e587be25fbe70a61ce1e85",
       "patch": "owner-source-10.patch",
       "patch_sha256": "b9f801bbac3c6b0105e630a2a77c7325d8b7de9407a5d9209dfa0142b6738a69",
       "raw_commit": "owner-source-10.commit",
-      "raw_commit_sha256": "dcf6c2b0d16005beb19b4898c80eae282204d1ec0ea89f25cfc68e31cccb4d17"
+      "raw_commit_sha256": "dcf6c2b0d16005beb19b4898c80eae282204d1ec0ea89f25cfc68e31cccb4d17",
+      "tree": "4d27a4f9f1120b99fd250ce02b3b4ae88d62723c"
     },
     {
-      "parent": "834ee400b29afd981270b32c1f1d855ef428b60d",
       "commit": "7e98e1cb4b0ae217d2c59d4db15f9c632a998f69",
-      "tree": "0283eba4ed85194f6ce21042517fe89749570304",
+      "parent": "834ee400b29afd981270b32c1f1d855ef428b60d",
       "patch": "owner-source-11.patch",
       "patch_sha256": "7541c13c6963be1174f0b8dd6d2a9d9e03321a599866eb1816f5a893180a4c9b",
       "raw_commit": "owner-source-11.commit",
-      "raw_commit_sha256": "adc0cf4ee85849a9bb14be06529c8b5d308bc32c7b8b2b86de323d48a01313fd"
+      "raw_commit_sha256": "adc0cf4ee85849a9bb14be06529c8b5d308bc32c7b8b2b86de323d48a01313fd",
+      "tree": "0283eba4ed85194f6ce21042517fe89749570304"
     },
     {
-      "parent": "7e98e1cb4b0ae217d2c59d4db15f9c632a998f69",
       "commit": "8c0a101b12a46ddb47d98b0e3d2b2f3c039378e9",
-      "tree": "8733a0064c0f198e713368c6869bf4b20f40a543",
+      "parent": "7e98e1cb4b0ae217d2c59d4db15f9c632a998f69",
       "patch": "owner-source-12.patch",
       "patch_sha256": "fdc2023ce05fff08903b0f976d3594238b6cf85806f79f4a89c14498fcd8657d",
       "raw_commit": "owner-source-12.commit",
-      "raw_commit_sha256": "8c760af0d944ca156ed136d9bea8c0508d216b73331f83a9beb9296184962578"
+      "raw_commit_sha256": "8c760af0d944ca156ed136d9bea8c0508d216b73331f83a9beb9296184962578",
+      "tree": "8733a0064c0f198e713368c6869bf4b20f40a543"
     },
     {
-      "parent": "8c0a101b12a46ddb47d98b0e3d2b2f3c039378e9",
       "commit": "91e60019c0d8470aaa49995d2f19d5345e293e46",
-      "tree": "f31eff936a27c37ff0d9721a2be6b2206e564d1f",
+      "parent": "8c0a101b12a46ddb47d98b0e3d2b2f3c039378e9",
       "patch": "owner-source-13.patch",
       "patch_sha256": "6b2a22ae092f7b5474b55e6a841876bcf7608fbb3831177aba50abf9a8a66d76",
       "raw_commit": "owner-source-13.commit",
-      "raw_commit_sha256": "a847335ba24795c29c4b083bb1ea162a9c34505c3cff347b8b878df3f567d437"
+      "raw_commit_sha256": "a847335ba24795c29c4b083bb1ea162a9c34505c3cff347b8b878df3f567d437",
+      "tree": "f31eff936a27c37ff0d9721a2be6b2206e564d1f"
     },
     {
-      "parent": "91e60019c0d8470aaa49995d2f19d5345e293e46",
       "commit": "2fc895b4f672a9888aa7806be95eaec689d1093c",
-      "tree": "dc6c6dfe15f267ccbbbaa7c52ee881eb31c9f380",
+      "parent": "91e60019c0d8470aaa49995d2f19d5345e293e46",
       "patch": "source.patch",
       "patch_sha256": "f6693c969d108f508d25bb1df9e6fa75db6e34769c4b5054a350bf9abbe49af2",
       "raw_commit": "source.commit",
-      "raw_commit_sha256": "962056591264ab6123325bb8e7fa6dd0eefca33197a1dc6684dfcc6bd19327c6"
+      "raw_commit_sha256": "962056591264ab6123325bb8e7fa6dd0eefca33197a1dc6684dfcc6bd19327c6",
+      "tree": "dc6c6dfe15f267ccbbbaa7c52ee881eb31c9f380"
     },
     {
-      "parent": "2fc895b4f672a9888aa7806be95eaec689d1093c",
       "commit": "6037a26355cd2e900da2380f9b746ce76db112c0",
-      "tree": "4a67cb919839f0fb33c9bb401ca2b17952a437e6",
+      "parent": "2fc895b4f672a9888aa7806be95eaec689d1093c",
       "patch": "state-isolation-source.patch",
       "patch_sha256": "c36d6bf19fed616620398f45304628f510b9e86d4ed878a9851ad11bf4afc83c",
       "raw_commit": "state-isolation-source.commit",
-      "raw_commit_sha256": "d7fc5e214542eaad5eea0b560b29cddd41b918a8d7105beeaca2c7f34a35d355"
+      "raw_commit_sha256": "d7fc5e214542eaad5eea0b560b29cddd41b918a8d7105beeaca2c7f34a35d355",
+      "tree": "4a67cb919839f0fb33c9bb401ca2b17952a437e6"
+    },
+    {
+      "commit": "f90ce82ac6661848a5422b51959d5de41eae6316",
+      "parent": "6037a26355cd2e900da2380f9b746ce76db112c0",
+      "patch": "workboard-source.patch",
+      "patch_sha256": "0cce713b2f9651eae7df7e6f357d2c9bf99f7bb5552835aa218b4871c87d860b",
+      "raw_commit": "workboard-source.commit",
+      "raw_commit_sha256": "282b535c1ca0854c97fa39bcd3a936c14f05f0d3a47a782678c41e82544c9eb7",
+      "tree": "e58a86e119b1d7722caf60230c19cdf9ed368592"
     }
   ],
-  "source_commit": "6037a26355cd2e900da2380f9b746ce76db112c0",
-  "source_tree": "4a67cb919839f0fb33c9bb401ca2b17952a437e6",
-  "total_seconds": 2700,
-  "work_seconds": 2400,
-  "portable_runnable_unpacked_cap_bytes": 2147483648,
-  "npm_version": "11.20.0",
-  "size_measurement": "Unmeasured: compiled emits <=512MiB; portable runnable unpacked <=2GiB; combined retained package+runnable+native archive <=512MiB, native state <=32MiB; task volume10GiB unchanged. Overflow fails closed, no resize or rerun.",
-  "phase_budget_meaning": "Each phase ceiling is intersected with the single unchanged2400s work deadline. Per-phase ceilings do not create extra time authority; total2700s includes cleanup and upload. Selected new packaging/materialization/native sizes and timings remain unmeasured.",
-  "qualification_scope": "Accepted coherent controller/launcher and original CLI source; maintained selected owner suites, production/scripts types, one full optional production build, original checked package and offline locked complete SDK graph, compiled native IPC and natural Gateway startup/shutdown. The separately accepted private consumer qualifies its own original worker/native purpose against this retained graph; this public job grants no broker admission, publication or release.",
+  "source_commit": "f90ce82ac6661848a5422b51959d5de41eae6316",
+  "source_inputs": [
+    {
+      "bytes": 38169,
+      "mode": "100644",
+      "path": "docs/cli/agent.md",
+      "sha256": "8a770827d8c4582621f6fcea001839729f8dcd75f242bccf1d1dc4495bfbfa07"
+    },
+    {
+      "bytes": 28870,
+      "mode": "100644",
+      "path": "docs/plugins/sdk-runtime.md",
+      "sha256": "c3f7c402737724df8a9839622a3d3c687945b8e461751145e7a7dfdafc58fd3e"
+    },
+    {
+      "bytes": 2491,
+      "mode": "100644",
+      "path": "docs/plugins/sqlite-private-recovery.md",
+      "sha256": "a4dec173371953eccb28bbf12ef9af1d07ec7a2cf6354c08ee8a41a87cab6228"
+    },
+    {
+      "bytes": 531,
+      "mode": "100644",
+      "path": "extensions/workboard/api.ts",
+      "sha256": "e07e80660e561a5eb55cd59e7a5257ffb9ade5abe00f49096346fd6ec42e4710"
+    },
+    {
+      "bytes": 246,
+      "mode": "100644",
+      "path": "extensions/workboard/src/private-recovery/logical-assurance.d.mts",
+      "sha256": "6cacd3e3d046ab4b76e13d2f02f8666552b194dc4104dd957f23da7cb2b8359b"
+    },
+    {
+      "bytes": 2207,
+      "mode": "100644",
+      "path": "extensions/workboard/src/private-recovery/logical-assurance.mjs",
+      "sha256": "1d3703c3dfa65553b3f89f9d0a373cd8b10e82a0d1f119d6ce2cf3765fc44814"
+    },
+    {
+      "bytes": 441,
+      "mode": "100644",
+      "path": "extensions/workboard/src/private-recovery/native-memory-codec.d.mts",
+      "sha256": "1917d3ff452da6ab005d1c85c30a8af40b195c2146d2c2d4f73241411b661638"
+    },
+    {
+      "bytes": 9154,
+      "mode": "100644",
+      "path": "extensions/workboard/src/private-recovery/native-memory-codec.mjs",
+      "sha256": "7671af7def75958b759744b666f9d3edb8bad1140f07fb9c2f7de19f196ab9e6"
+    },
+    {
+      "bytes": 9457,
+      "mode": "100644",
+      "path": "extensions/workboard/src/private-recovery/schema-data.mjs",
+      "sha256": "047802598f5b93768e4285f5ff5242273a4349c8f59b1de29901b4ebe976df03"
+    },
+    {
+      "bytes": 3035,
+      "mode": "100644",
+      "path": "extensions/workboard/src/sqlite-store-contract.ts",
+      "sha256": "74a4e5d67d8e1f57f38f56d391a1ab7b04673cd3f74648e3d2cbf3155f378440"
+    },
+    {
+      "bytes": 27309,
+      "mode": "100644",
+      "path": "extensions/workboard/src/sqlite-store-kernel.ts",
+      "sha256": "2ef58e9441265508a64abe2b8b7d9b67596526bf8ead5859e5612a966bf8e24e"
+    },
+    {
+      "bytes": 1764,
+      "mode": "100644",
+      "path": "extensions/workboard/src/sqlite-store-private-recovery.ts",
+      "sha256": "9fd2b1415556a1091d8a3b7eca621667cb1f87e4e44b8aea396c5ee21a6b6f32"
+    },
+    {
+      "bytes": 11109,
+      "mode": "100644",
+      "path": "extensions/workboard/src/sqlite-store.ts",
+      "sha256": "21838d831dadd1ac9b8edd2e057badcb38cf5842514a3709fbc5f029a707169f"
+    },
+    {
+      "bytes": 6096,
+      "mode": "100644",
+      "path": "extensions/workboard/src/sqlite-store.worker.ts",
+      "sha256": "fc5bfecda8e19b2a500706cf5f11235ee45287a04f16ce38a79aebc7d51f065a"
+    },
+    {
+      "bytes": 42287,
+      "mode": "100644",
+      "path": "extensions/workboard/src/store-core.ts",
+      "sha256": "a8cfd97277438dce3bc300d63973499dccd5464e59bfeb5f98c3e0b69968670a"
+    },
+    {
+      "bytes": 24010,
+      "mode": "100644",
+      "path": "extensions/workboard/src/store.ts",
+      "sha256": "ac1ba02ed2481c1e4f1c33ca1549f509efcc4d6459cdbba2efa524ec395db0f0"
+    },
+    {
+      "bytes": 2050,
+      "mode": "100644",
+      "path": "packages/ai/src/internal/openai.ts",
+      "sha256": "b970b6609d0f58f98c9e2b0690d9da3732a5448654555db708bc82fe3f19a17a"
+    },
+    {
+      "bytes": 8253,
+      "mode": "100644",
+      "path": "packages/ai/src/transports/openai-responses-request-lifecycle.test.ts",
+      "sha256": "cff93e561c2e1ffa65961e4550186c83ec4191c5f8a6bc76591ae42395ea1e99"
+    },
+    {
+      "bytes": 28537,
+      "mode": "100644",
+      "path": "packages/ai/src/transports/openai-responses-request-lifecycle.ts",
+      "sha256": "a3b08811551efd0d854d21513d5b266c9442cdb6027c369f0ab45c73fa31bb5d"
+    },
+    {
+      "bytes": 7089,
+      "mode": "100644",
+      "path": "scripts/lib/package-dist-imports.mjs",
+      "sha256": "0e3945d6835c4f9ee6139d67065f38999b8e85398ea9fdfaa663c7008c54d4dc"
+    },
+    {
+      "bytes": 1880,
+      "mode": "100644",
+      "path": "scripts/lib/runtime-process-core-build-entries.mts",
+      "sha256": "eb01847ed528f0140761519a778bc9e0348b952d1e6a2dc2e5bdbd46ce92e27f"
+    },
+    {
+      "bytes": 17138,
+      "mode": "100644",
+      "path": "scripts/proofs/native-ipc-gateway/driver.mjs",
+      "sha256": "8d38d2c3c57488e707431799e493e84e22759575ba7bb6f440704ff0b0340e0e"
+    },
+    {
+      "bytes": 40766,
+      "mode": "100644",
+      "path": "scripts/proofs/native-ipc-gateway/legacy-agent-fixture.ts",
+      "sha256": "e528d0d055b8807d9d7f84b7c0cef9bb8c6a15e93d9a11f443f493d4f70b4ffb"
+    },
+    {
+      "bytes": 1582,
+      "mode": "100644",
+      "path": "scripts/proofs/native-ipc-gateway/native-api.ts",
+      "sha256": "a4c44232b1fcd8559fbfba11a5580ed81b97b9d71da37b9ce0394c48eb6b6e58"
+    },
+    {
+      "bytes": 3453,
+      "mode": "100644",
+      "path": "scripts/proofs/native-ipc-gateway/native-fixture.ts",
+      "sha256": "e77af166746444fb9ce3c25e28c66b7461961946cfe9a64948e224adb3700771"
+    },
+    {
+      "bytes": 6976,
+      "mode": "100644",
+      "path": "scripts/proofs/workboard-private-recovery/controller.mjs",
+      "sha256": "ecb1009f293105d42de622f2616a7ca542a5fdca20a048a4d721bef3ec028938"
+    },
+    {
+      "bytes": 394,
+      "mode": "100644",
+      "path": "scripts/proofs/workboard-private-recovery/native-api.ts",
+      "sha256": "6b27f4f6a7750403906ac6218b2891032787e979314508e45c988d96fabec68b"
+    },
+    {
+      "bytes": 51579,
+      "mode": "100644",
+      "path": "scripts/tsdown-build.mts",
+      "sha256": "bc141f75012eb4be7f4dc398942f0fca082fc5a33d11b09113c63f63f404182f"
+    },
+    {
+      "bytes": 12286,
+      "mode": "100644",
+      "path": "src/agents/agent-command-execution-identity.ts",
+      "sha256": "93689f7eb0fc564e1ee6fc3f93c5f6a7b14d2de371bc9d71a305a6f5fdfc441b"
+    },
+    {
+      "bytes": 15626,
+      "mode": "100644",
+      "path": "src/agents/command/types.ts",
+      "sha256": "28846746eadf25bf5b603dd3d5be36b4c62899ba9c7833af7bf92cc641c0ff80"
+    },
+    {
+      "bytes": 50146,
+      "mode": "100644",
+      "path": "src/agents/embedded-agent-runner/run/auth-controller.ts",
+      "sha256": "bee25e27d4f0015400aaeb23850b5ad1a81c0fe52dab07cf26d2c7e380d3081a"
+    },
+    {
+      "bytes": 54161,
+      "mode": "100644",
+      "path": "src/agents/required-run-closure.ts",
+      "sha256": "c9577fab5c81c76fc785303e2f2d2a9aa26452ba7c0a870c2a252a4683c2dcf1"
+    },
+    {
+      "bytes": 17331,
+      "mode": "100644",
+      "path": "src/agents/subagents/registry/subagent-registry-persistence.ts",
+      "sha256": "d4003dff4fb636abb8ba3d4b10964aaa514a288780028d680b2258eebc4b0aaf"
+    },
+    {
+      "bytes": 4639,
+      "mode": "100644",
+      "path": "src/agents/subagents/registry/subagent-registry-read.types.ts",
+      "sha256": "112625d2f63f9a178d1e3e960bcbcae78682dcf5fd7ef958fa9cc81b02241f44"
+    },
+    {
+      "bytes": 21454,
+      "mode": "100644",
+      "path": "src/agents/subagents/registry/subagent-registry-run-launch.ts",
+      "sha256": "b15f765cedf55d8feb1cd9606820ffd573e45aeb5539f007af2783be71a3cadc"
+    },
+    {
+      "bytes": 4222,
+      "mode": "100644",
+      "path": "src/agents/subagents/registry/subagent-registry.store.kernel.ts",
+      "sha256": "7522a8ae6e5d99bed942790e4a5d89efb1aca1523d31d9f75d158db9965a317d"
+    },
+    {
+      "bytes": 10451,
+      "mode": "100644",
+      "path": "src/agents/subagents/registry/subagent-registry.types.ts",
+      "sha256": "e8b42b07fbe04b9d780a91b3b070f780c502d4f71b43f042fd36b69f980fa9a5"
+    },
+    {
+      "bytes": 9271,
+      "mode": "100644",
+      "path": "src/cli/program/register.agent-turn.ts",
+      "sha256": "4186571f871fb331f5a0d8354094b57c982ae9d110736bc0aced09f9ac3c276f"
+    },
+    {
+      "bytes": 9407,
+      "mode": "100644",
+      "path": "src/cli/program/register.agent.test.ts",
+      "sha256": "b1e552749d9b65889765c28431a6a1d062e53c1c077039943590d27d66b45329"
+    },
+    {
+      "bytes": 104197,
+      "mode": "100644",
+      "path": "src/commands/agent-via-gateway.test.ts",
+      "sha256": "48dbf473fb30bc62aedab2716f74daa5e05df3bdaa87df759f212dbe1f361905"
+    },
+    {
+      "bytes": 46751,
+      "mode": "100644",
+      "path": "src/commands/agent-via-gateway.ts",
+      "sha256": "9dffeb60227435356868b74490ac04a380d2cd50e9c5c9ebba5aa27871ec8517"
+    },
+    {
+      "bytes": 16928,
+      "mode": "100644",
+      "path": "src/gateway/agent-turn/agent-request-preflight.ts",
+      "sha256": "337086c672fe58e3cdbe512fbd69054eb52dee5bf22f27826beb7e628e2e1696"
+    },
+    {
+      "bytes": 27151,
+      "mode": "100644",
+      "path": "src/gateway/agent-turn/agent-run-admission-phase.ts",
+      "sha256": "5baf99200ef38d5f8142cf4c793a2f9a71087a57eac20f60b6c7d3b5a57dddab"
+    },
+    {
+      "bytes": 18671,
+      "mode": "100644",
+      "path": "src/gateway/agent-turn/agent-run-dispatch.ts",
+      "sha256": "c22cb5031031c559113acf146ab5d02e9e2acd817ba495020ab2d46d560d9265"
+    },
+    {
+      "bytes": 35557,
+      "mode": "100644",
+      "path": "src/gateway/agent-turn/agent-run-execution-phase.ts",
+      "sha256": "bd05d064fe8a4d4c35f5857e1cd017865447ef9ae786a2dd3b15da2f1c7d8e47"
+    },
+    {
+      "bytes": 8028,
+      "mode": "100644",
+      "path": "src/gateway/agent-turn/agent-run-subagent.ts",
+      "sha256": "07f371af9d937873ed51d59357d7ff14259a1ee79b2568ed00deabfa3f24cd97"
+    },
+    {
+      "bytes": 28237,
+      "mode": "100644",
+      "path": "src/gateway/agent-turn/agent-turn-service.ts",
+      "sha256": "332ad74b2271cc4d47bf04f779eae1e3c9c06513e4b6809e82c73dc02bffbc92"
+    },
+    {
+      "bytes": 16377,
+      "mode": "100644",
+      "path": "src/gateway/agent-turn/internal-facade.ts",
+      "sha256": "8544159e01762c82ee95e33df1830d0ff9bc43e8e6e65055c561ae1c31b692b3"
+    },
+    {
+      "bytes": 2464,
+      "mode": "100644",
+      "path": "src/gateway/agent-turn/internal-facade.types.ts",
+      "sha256": "a38b39e746b8651158ef2ab0d14b9fb481be2ae229798500dc0e838f47f3449d"
+    },
+    {
+      "bytes": 12970,
+      "mode": "100644",
+      "path": "src/gateway/server-managed-task-flow-runtime.test.ts",
+      "sha256": "f3c669ccb3a62dc4e9f714b93c8892da420acf8df2649d9bb21869f3de0d93d3"
+    },
+    {
+      "bytes": 25231,
+      "mode": "100644",
+      "path": "src/gateway/server-managed-task-flow-runtime.ts",
+      "sha256": "bf8406a2eea79098b03687dbbc372081a581285f4ab6e35e4d5dc2eaed9b96ce"
+    },
+    {
+      "bytes": 5413,
+      "mode": "100644",
+      "path": "src/gateway/server-methods/agent-subagent-registration.ts",
+      "sha256": "522acd2650ab3119c9b3d7f1b15d16dee8b22e3caf0337f69afcb7ef1a88da79"
+    },
+    {
+      "bytes": 6756,
+      "mode": "100644",
+      "path": "src/gateway/server-methods/client-types.ts",
+      "sha256": "25885c03bef275201e593f09faf71942d1a3ca0c79796bda7e1d25a662331e22"
+    },
+    {
+      "bytes": 31964,
+      "mode": "100644",
+      "path": "src/gateway/server-plugin-in-process-dispatch.ts",
+      "sha256": "34d17280aead822b1fbe8fd0cb2fb33098af8cd4575ebc60248930372afc9c0b"
+    },
+    {
+      "bytes": 3823,
+      "mode": "100644",
+      "path": "src/gateway/server-plugin-in-process-dispatch.types.ts",
+      "sha256": "dbdc0517b520095b415c77b444466efcf41f6bcd89a34f23b7305f91c1800927"
+    },
+    {
+      "bytes": 9433,
+      "mode": "100644",
+      "path": "src/gateway/server-plugin-runtime-client.ts",
+      "sha256": "372211a960f45d86bde4ad3ccfb7e27a7317b65a50c6b4485afbd92039acde03"
+    },
+    {
+      "bytes": 32198,
+      "mode": "100644",
+      "path": "src/gateway/server-plugin-subagent-runtime.test.ts",
+      "sha256": "cd1617625b399f5718388efdd90920bc70a94e8e12bc4693a37121ad9c462cbd"
+    },
+    {
+      "bytes": 29851,
+      "mode": "100644",
+      "path": "src/gateway/server-plugin-subagent-runtime.ts",
+      "sha256": "a79eaf3fdbcd5d927cbb3157db8a0c58aa49d4503461015950e91e74a1cdea23"
+    },
+    {
+      "bytes": 17380,
+      "mode": "100644",
+      "path": "src/gateway/server-plugins.ts",
+      "sha256": "d1ef1103d0a7990a559770a397eb2ee92077b444726772cee1954696e01802f0"
+    },
+    {
+      "bytes": 5379,
+      "mode": "100644",
+      "path": "src/infra/runtime-process-entrypoints.ts",
+      "sha256": "268c60b7f71e9c794a2603d20859a36e92dd8696be9749086ee1a6cff0582227"
+    },
+    {
+      "bytes": 736,
+      "mode": "100644",
+      "path": "src/infra/runtime-process-url.ts",
+      "sha256": "0914e78c0e99eecfb49d0aafec3e82d8e6fa61f3a22cfbf97669c0ffc8441f1e"
+    },
+    {
+      "bytes": 9617,
+      "mode": "100644",
+      "path": "src/infra/runtime-worker-url.test.ts",
+      "sha256": "0606946397318d7da9471b8a2dbf5d2755944c231fb7c7421fbdc974cb33b86a"
+    },
+    {
+      "bytes": 3120,
+      "mode": "100644",
+      "path": "src/infra/runtime-worker-url.ts",
+      "sha256": "9b694a778a84725e989ad2380195557993afbf25dc97e64112f7a65b2a2087e0"
+    },
+    {
+      "bytes": 27956,
+      "mode": "100644",
+      "path": "src/infra/sqlite-worker-broker.ts",
+      "sha256": "de318f390dfc1cece8fd35c077aa84776febda84017500c07eaf30f2023f448f"
+    },
+    {
+      "bytes": 5902,
+      "mode": "100644",
+      "path": "src/infra/sqlite-worker-client.ts",
+      "sha256": "66a09ed97b946bb7f7bed7777545d8f95c37bf316d5cf896d7f68e7cd2859b23"
+    },
+    {
+      "bytes": 6874,
+      "mode": "100644",
+      "path": "src/infra/sqlite-worker-private-recovery-authority.ts",
+      "sha256": "792e9e7383cf6d65ad8e2d6a814b9302b70679de7cc608eafed7c628a16e6714"
+    },
+    {
+      "bytes": 9974,
+      "mode": "100644",
+      "path": "src/infra/sqlite-worker-store.ts",
+      "sha256": "7e946a82e244b300a22dd1f73c2f7c1d7027368701b9d87eb97a4953f8b6981d"
+    },
+    {
+      "bytes": 2281,
+      "mode": "100644",
+      "path": "src/plugin-sdk/sqlite-runtime.ts",
+      "sha256": "ec8c72d582b670a0e7dc0489bbb249f870d4b1320cac5dca53693c66a21976e7"
+    },
+    {
+      "bytes": 9481,
+      "mode": "100644",
+      "path": "src/plugins/runtime/types.ts",
+      "sha256": "ff8e356e1bec723695348a181f5120f6fe46df6cf4cd0b2a793876c87a1136af"
+    },
+    {
+      "bytes": 4507,
+      "mode": "100644",
+      "path": "src/state/agent-run-quarantine-maintenance.ts",
+      "sha256": "e5aafe907905bcb2d157c9c93e0f5805d81c56e9288d8c2d8abed5c742f6e260"
+    },
+    {
+      "bytes": 4396,
+      "mode": "100644",
+      "path": "src/state/agent-run-quarantine.ts",
+      "sha256": "4819195c553e1d491d8496b5130baad9570853e931ebe67b7e4e615743eac0a3"
+    },
+    {
+      "bytes": 5792,
+      "mode": "100644",
+      "path": "src/state/agent-run-quarantine.types.ts",
+      "sha256": "19ebc2dadfb07b68364243b373cb84974ac7fc1eb972f720a2a5d5cfe1d12ffc"
+    },
+    {
+      "bytes": 12932,
+      "mode": "100644",
+      "path": "src/state/native-review-publication-intents.ts",
+      "sha256": "3ad0101d49f050570289965b22a0d08824012fd47cd068a307d8e80d6458b3b1"
+    },
+    {
+      "bytes": 19830,
+      "mode": "100644",
+      "path": "src/state/openclaw-agent-canonical-validation-schema.test.ts",
+      "sha256": "d4fa849acf8fbad8b2cbebf610f87772b9344f5a58e65def2a47d8a35ad830b1"
+    },
+    {
+      "bytes": 4868,
+      "mode": "100644",
+      "path": "src/state/openclaw-agent-canonical-validation-schema.ts",
+      "sha256": "dbe8cba649320ec770da6d4d052beee614ca2bbf82a8d7204f8719a1dc4c4726"
+    },
+    {
+      "bytes": 27299,
+      "mode": "100644",
+      "path": "src/state/openclaw-agent-db-schema.ts",
+      "sha256": "0433b57c1eb97ed239bc920ce96f7c4d6c096e07e0ceb1b04e708baf3e4bc460"
+    },
+    {
+      "bytes": 32026,
+      "mode": "100644",
+      "path": "src/state/openclaw-agent-execution.worker.ts",
+      "sha256": "726723e2e6b6d1f39ca2ac11cdbdaa0d29d1fcb4db01ad9aecdb188099c092e5"
+    },
+    {
+      "bytes": 96482,
+      "mode": "100644",
+      "path": "src/state/openclaw-agent-schema.sql",
+      "sha256": "7f998da4a86f23ebde4f7dbee68d77d5aec714da070ae1a9ef4bce8be7579cae"
+    },
+    {
+      "bytes": 32379,
+      "mode": "100644",
+      "path": "src/state/openclaw-agent-worker-store.ts",
+      "sha256": "6d38cf77cc12dc654268b734a66a44d94e0fede43c02b6f972c61a6b8e3e357c"
+    },
+    {
+      "bytes": 28987,
+      "mode": "100644",
+      "path": "src/state/openclaw-state-worker-runtime.ts",
+      "sha256": "86caec348eb6ed0ac52f409727b314087cb8085e78e099fad973666e8ea872b3"
+    },
+    {
+      "bytes": 9030,
+      "mode": "100644",
+      "path": "src/tasks/managed-task-flow-contract.ts",
+      "sha256": "5d1f5c9b525d6cd496f0b3bdeef0320d7acfab0d1c80c79c1983a37919c5743f"
+    },
+    {
+      "bytes": 10351,
+      "mode": "100644",
+      "path": "src/tasks/managed-task-flow-host.test.ts",
+      "sha256": "ed1a191636e2a8e7e3b9b8c718fd476d82418c84238d262d4ca39fb51d6a629d"
+    },
+    {
+      "bytes": 20176,
+      "mode": "100644",
+      "path": "src/tasks/managed-task-flow-host.ts",
+      "sha256": "b1427bffc84825e6367d54c9e91ccdcc5bad906ced1d9f5f03100f18fb168112"
+    },
+    {
+      "bytes": 30387,
+      "mode": "100644",
+      "path": "src/tasks/managed-task-flow.worker.ts",
+      "sha256": "a4a7f226c09a55e9682368ee307355f63164b589504ec279e5a5929896ad1ce0"
+    },
+    {
+      "bytes": 2024,
+      "mode": "100644",
+      "path": "test/scripts/agent-database-worker-package-paths.test.ts",
+      "sha256": "280af826bde24210e057af5a59fcde9c9e9c7554508f2cc2b0290d192ec65717"
+    },
+    {
+      "bytes": 7053,
+      "mode": "100644",
+      "path": "test/scripts/native-ipc-gateway-state-isolation.test.ts",
+      "sha256": "cb7f6958639f8a9a496de2963699443aa62dbd51fa04f1d99283ced1eac3ee73"
+    },
+    {
+      "bytes": 118964,
+      "mode": "100644",
+      "path": "test/scripts/tsdown-build.test.ts",
+      "sha256": "226e2ea0cefe8827c042c376090c80e09bc4af25fabfce6193dfac0bc39a4580"
+    },
+    {
+      "bytes": 40310,
+      "mode": "100644",
+      "path": "tsdown.config.ts",
+      "sha256": "3d82f0c6e3723bd6f556dfce90dfd577aacaa91b6e9891622e1e83dca08794d1"
+    }
+  ],
+  "source_inputs_origins": [
+    {
+      "meaning": "Finite critical source identity. Proof driver separates deliberate quarantine fixtures from clean startup; all original ownership/denial gates retained. Matching full build and compiled native qualification required.",
+      "receipt_sha256": "6feca0767c3eca8f3c6c95d06093ebfcba480dbdeca0ade4a7b27d353e274c1b",
+      "selected_postimage_count": 67,
+      "source_commit": "6037a26355cd2e900da2380f9b746ce76db112c0"
+    },
+    {
+      "meaning": "Separate Workboard synthetic source join; original target/issuer and in-process admitted lifetime plus frozen descriptor companion. No native Worker/build/operational acceptance.",
+      "receipt_sha256": "f81400b9289b3448409f4b1d0e368620be4547f6b5b9cb7c6d19ed2f7e2e4a3f",
+      "selected_postimage_count": 22,
+      "source_commit": "f90ce82ac6661848a5422b51959d5de41eae6316"
+    }
+  ],
+  "source_tree": "e58a86e119b1d7722caf60230c19cdf9ed368592",
   "targeted_test_argv": [
     [
       "node",
@@ -2920,416 +3484,93 @@
       "test/scripts/native-ipc-gateway-state-isolation.test.ts"
     ]
   ],
-  "source_inputs": [
+  "total_seconds": 2700,
+  "work_seconds": 2400,
+  "workboard_companion_inputs": [
     {
-      "path": "docs/cli/agent.md",
-      "mode": "100644",
-      "bytes": 38169,
-      "sha256": "8a770827d8c4582621f6fcea001839729f8dcd75f242bccf1d1dc4495bfbfa07"
+      "bytes": 4362,
+      "path": "workboard-custody/Interface.md",
+      "sha256": "957cd622cbb089a075735e4c92bd187eb6f55e6c4f78f0742b55b1582b6edbad"
     },
     {
-      "path": "docs/plugins/sdk-runtime.md",
-      "mode": "100644",
-      "bytes": 28870,
-      "sha256": "c3f7c402737724df8a9839622a3d3c687945b8e461751145e7a7dfdafc58fd3e"
+      "bytes": 3335,
+      "path": "workboard-custody/companion-handoff.json",
+      "sha256": "fd4232794fd183d6f790e574444f450a9d40965347e2e6675530f4bf25231786"
     },
     {
-      "path": "packages/ai/src/internal/openai.ts",
-      "mode": "100644",
-      "bytes": 2050,
-      "sha256": "b970b6609d0f58f98c9e2b0690d9da3732a5448654555db708bc82fe3f19a17a"
+      "bytes": 2587,
+      "path": "workboard-custody/dependency-pins.json",
+      "sha256": "65668dc95d7e3136c6c814d1edbf477dbc726e2e94633c8d7a06b197917a66c7"
     },
     {
-      "path": "packages/ai/src/transports/openai-responses-request-lifecycle.test.ts",
-      "mode": "100644",
-      "bytes": 8253,
-      "sha256": "cff93e561c2e1ffa65961e4550186c83ec4191c5f8a6bc76591ae42395ea1e99"
+      "bytes": 2623,
+      "path": "workboard-custody/logical-transport-contract.mjs",
+      "sha256": "31a935f3798de6da4af32de17f4dbf8347e8bc537f0e56acc3a285203c4dfaa1"
     },
     {
-      "path": "packages/ai/src/transports/openai-responses-request-lifecycle.ts",
-      "mode": "100644",
-      "bytes": 28537,
-      "sha256": "a3b08811551efd0d854d21513d5b266c9442cdb6027c369f0ab45c73fa31bb5d"
+      "bytes": 2592,
+      "path": "workboard-custody/source-pins.json",
+      "sha256": "11067c29c126b62056c2b2a98547915ddc4bdab1d5ee0985226d555728a052ac"
     },
     {
-      "path": "scripts/lib/package-dist-imports.mjs",
-      "mode": "100644",
-      "bytes": 7089,
-      "sha256": "0e3945d6835c4f9ee6139d67065f38999b8e85398ea9fdfaa663c7008c54d4dc"
+      "bytes": 15705,
+      "path": "workboard-custody/test-worker-custody-bridge.mjs",
+      "sha256": "6edb2d52793ecd16ca11457c62bc157c0d1a936b84dd653472b1df39cc0280a9"
     },
     {
-      "path": "scripts/lib/runtime-process-core-build-entries.mts",
-      "mode": "100644",
-      "bytes": 1880,
-      "sha256": "eb01847ed528f0140761519a778bc9e0348b952d1e6a2dc2e5bdbd46ce92e27f"
+      "bytes": 3499,
+      "path": "workboard-custody/unit-receipt.json",
+      "sha256": "8464eea9284bfcf73fdcd1a0e8cce1d6d260922ba1b4b886bc0e8bbb5b19ef4c"
     },
     {
-      "path": "scripts/proofs/native-ipc-gateway/driver.mjs",
-      "mode": "100644",
-      "bytes": 17138,
-      "sha256": "8d38d2c3c57488e707431799e493e84e22759575ba7bb6f440704ff0b0340e0e"
+      "bytes": 23385,
+      "path": "workboard-custody/vendor/adapter/custody/workboard_private_custody.py",
+      "sha256": "c9b291c42e9179be0ea363f56694db3b0ae8c4957a7e968a9a6b56f8dc20a917"
     },
     {
-      "path": "scripts/proofs/native-ipc-gateway/legacy-agent-fixture.ts",
-      "mode": "100644",
-      "bytes": 40766,
-      "sha256": "e528d0d055b8807d9d7f84b7c0cef9bb8c6a15e93d9a11f443f493d4f70b4ffb"
+      "bytes": 20896,
+      "path": "workboard-custody/vendor/adapter/ledger/workboard_acceptance_ledger.py",
+      "sha256": "03cd5b84db0866813f3d9e2b7cd718302d7af0705f11edd8a931d79dc5938d9e"
     },
     {
-      "path": "scripts/proofs/native-ipc-gateway/native-api.ts",
-      "mode": "100644",
-      "bytes": 1582,
-      "sha256": "a4c44232b1fcd8559fbfba11a5580ed81b97b9d71da37b9ce0394c48eb6b6e58"
+      "bytes": 2207,
+      "path": "workboard-custody/vendor/adapter/logical-assurance.mjs",
+      "sha256": "1d3703c3dfa65553b3f89f9d0a373cd8b10e82a0d1f119d6ce2cf3765fc44814"
     },
     {
-      "path": "scripts/proofs/native-ipc-gateway/native-fixture.ts",
-      "mode": "100644",
-      "bytes": 3453,
-      "sha256": "e77af166746444fb9ce3c25e28c66b7461961946cfe9a64948e224adb3700771"
+      "bytes": 8819,
+      "path": "workboard-custody/vendor/adapter/native-memory-codec.mjs",
+      "sha256": "b995bc4a98b2916b4285ef8974f28d2c1312628e0070dd713cfcf0d2cd993565"
     },
     {
-      "path": "scripts/tsdown-build.mts",
-      "mode": "100644",
-      "bytes": 51579,
-      "sha256": "bc141f75012eb4be7f4dc398942f0fca082fc5a33d11b09113c63f63f404182f"
+      "bytes": 8684,
+      "path": "workboard-custody/vendor/adapter/proof_keeper.py",
+      "sha256": "94b64e5d5167829aa47240ffd259f1132df60a12196d2afcf77820ea7e9cde4c"
     },
     {
-      "path": "src/agents/agent-command-execution-identity.ts",
-      "mode": "100644",
-      "bytes": 12286,
-      "sha256": "93689f7eb0fc564e1ee6fc3f93c5f6a7b14d2de371bc9d71a305a6f5fdfc441b"
+      "bytes": 10887,
+      "path": "workboard-custody/vendor/adapter/recovery_worker.py",
+      "sha256": "d3a5748ce502327b96c759f7a6e378e7e93de088a97d83deed9a360199d8ef19"
     },
     {
-      "path": "src/agents/command/types.ts",
-      "mode": "100644",
-      "bytes": 15626,
-      "sha256": "28846746eadf25bf5b603dd3d5be36b4c62899ba9c7833af7bf92cc641c0ff80"
+      "bytes": 7388,
+      "path": "workboard-custody/vendor/adapter/schema.sql",
+      "sha256": "ddf7208a4e79d53b4cde461de6c6ce32d322537069cefd5c603f835e13f2bc25"
     },
     {
-      "path": "src/agents/embedded-agent-runner/run/auth-controller.ts",
-      "mode": "100644",
-      "bytes": 50146,
-      "sha256": "bee25e27d4f0015400aaeb23850b5ad1a81c0fe52dab07cf26d2c7e380d3081a"
+      "bytes": 10472,
+      "path": "workboard-custody/vendor/adapter/sealed-python-client.mjs",
+      "sha256": "d86506c5ac8960b89e75a66ed641b5501e0fdf87dd211f6160210df062ba6e69"
     },
     {
-      "path": "src/agents/required-run-closure.ts",
-      "mode": "100644",
-      "bytes": 54161,
-      "sha256": "c9577fab5c81c76fc785303e2f2d2a9aa26452ba7c0a870c2a252a4683c2dcf1"
+      "bytes": 7822,
+      "path": "workboard-custody/vendor/adapter/shared/family_publish_io.py",
+      "sha256": "ef1f6341e8fbc29c13b3acb873fbc9181f0075f6869c37bc6fa87fba52d6b967"
     },
     {
-      "path": "src/agents/subagents/registry/subagent-registry-persistence.ts",
-      "mode": "100644",
-      "bytes": 17331,
-      "sha256": "d4003dff4fb636abb8ba3d4b10964aaa514a288780028d680b2258eebc4b0aaf"
-    },
-    {
-      "path": "src/agents/subagents/registry/subagent-registry-read.types.ts",
-      "mode": "100644",
-      "bytes": 4639,
-      "sha256": "112625d2f63f9a178d1e3e960bcbcae78682dcf5fd7ef958fa9cc81b02241f44"
-    },
-    {
-      "path": "src/agents/subagents/registry/subagent-registry-run-launch.ts",
-      "mode": "100644",
-      "bytes": 21454,
-      "sha256": "b15f765cedf55d8feb1cd9606820ffd573e45aeb5539f007af2783be71a3cadc"
-    },
-    {
-      "path": "src/agents/subagents/registry/subagent-registry.store.kernel.ts",
-      "mode": "100644",
-      "bytes": 4222,
-      "sha256": "7522a8ae6e5d99bed942790e4a5d89efb1aca1523d31d9f75d158db9965a317d"
-    },
-    {
-      "path": "src/agents/subagents/registry/subagent-registry.types.ts",
-      "mode": "100644",
-      "bytes": 10451,
-      "sha256": "e8b42b07fbe04b9d780a91b3b070f780c502d4f71b43f042fd36b69f980fa9a5"
-    },
-    {
-      "path": "src/cli/program/register.agent-turn.ts",
-      "mode": "100644",
-      "bytes": 9271,
-      "sha256": "4186571f871fb331f5a0d8354094b57c982ae9d110736bc0aced09f9ac3c276f"
-    },
-    {
-      "path": "src/cli/program/register.agent.test.ts",
-      "mode": "100644",
-      "bytes": 9407,
-      "sha256": "b1e552749d9b65889765c28431a6a1d062e53c1c077039943590d27d66b45329"
-    },
-    {
-      "path": "src/commands/agent-via-gateway.test.ts",
-      "mode": "100644",
-      "bytes": 104197,
-      "sha256": "48dbf473fb30bc62aedab2716f74daa5e05df3bdaa87df759f212dbe1f361905"
-    },
-    {
-      "path": "src/commands/agent-via-gateway.ts",
-      "mode": "100644",
-      "bytes": 46751,
-      "sha256": "9dffeb60227435356868b74490ac04a380d2cd50e9c5c9ebba5aa27871ec8517"
-    },
-    {
-      "path": "src/gateway/agent-turn/agent-request-preflight.ts",
-      "mode": "100644",
-      "bytes": 16928,
-      "sha256": "337086c672fe58e3cdbe512fbd69054eb52dee5bf22f27826beb7e628e2e1696"
-    },
-    {
-      "path": "src/gateway/agent-turn/agent-run-admission-phase.ts",
-      "mode": "100644",
-      "bytes": 27151,
-      "sha256": "5baf99200ef38d5f8142cf4c793a2f9a71087a57eac20f60b6c7d3b5a57dddab"
-    },
-    {
-      "path": "src/gateway/agent-turn/agent-run-dispatch.ts",
-      "mode": "100644",
-      "bytes": 18671,
-      "sha256": "c22cb5031031c559113acf146ab5d02e9e2acd817ba495020ab2d46d560d9265"
-    },
-    {
-      "path": "src/gateway/agent-turn/agent-run-execution-phase.ts",
-      "mode": "100644",
-      "bytes": 35557,
-      "sha256": "bd05d064fe8a4d4c35f5857e1cd017865447ef9ae786a2dd3b15da2f1c7d8e47"
-    },
-    {
-      "path": "src/gateway/agent-turn/agent-run-subagent.ts",
-      "mode": "100644",
-      "bytes": 8028,
-      "sha256": "07f371af9d937873ed51d59357d7ff14259a1ee79b2568ed00deabfa3f24cd97"
-    },
-    {
-      "path": "src/gateway/agent-turn/agent-turn-service.ts",
-      "mode": "100644",
-      "bytes": 28237,
-      "sha256": "332ad74b2271cc4d47bf04f779eae1e3c9c06513e4b6809e82c73dc02bffbc92"
-    },
-    {
-      "path": "src/gateway/agent-turn/internal-facade.ts",
-      "mode": "100644",
-      "bytes": 16377,
-      "sha256": "8544159e01762c82ee95e33df1830d0ff9bc43e8e6e65055c561ae1c31b692b3"
-    },
-    {
-      "path": "src/gateway/agent-turn/internal-facade.types.ts",
-      "mode": "100644",
-      "bytes": 2464,
-      "sha256": "a38b39e746b8651158ef2ab0d14b9fb481be2ae229798500dc0e838f47f3449d"
-    },
-    {
-      "path": "src/gateway/server-managed-task-flow-runtime.test.ts",
-      "mode": "100644",
-      "bytes": 12970,
-      "sha256": "f3c669ccb3a62dc4e9f714b93c8892da420acf8df2649d9bb21869f3de0d93d3"
-    },
-    {
-      "path": "src/gateway/server-managed-task-flow-runtime.ts",
-      "mode": "100644",
-      "bytes": 25231,
-      "sha256": "bf8406a2eea79098b03687dbbc372081a581285f4ab6e35e4d5dc2eaed9b96ce"
-    },
-    {
-      "path": "src/gateway/server-methods/agent-subagent-registration.ts",
-      "mode": "100644",
-      "bytes": 5413,
-      "sha256": "522acd2650ab3119c9b3d7f1b15d16dee8b22e3caf0337f69afcb7ef1a88da79"
-    },
-    {
-      "path": "src/gateway/server-methods/client-types.ts",
-      "mode": "100644",
-      "bytes": 6756,
-      "sha256": "25885c03bef275201e593f09faf71942d1a3ca0c79796bda7e1d25a662331e22"
-    },
-    {
-      "path": "src/gateway/server-plugin-in-process-dispatch.ts",
-      "mode": "100644",
-      "bytes": 31964,
-      "sha256": "34d17280aead822b1fbe8fd0cb2fb33098af8cd4575ebc60248930372afc9c0b"
-    },
-    {
-      "path": "src/gateway/server-plugin-in-process-dispatch.types.ts",
-      "mode": "100644",
-      "bytes": 3823,
-      "sha256": "dbdc0517b520095b415c77b444466efcf41f6bcd89a34f23b7305f91c1800927"
-    },
-    {
-      "path": "src/gateway/server-plugin-runtime-client.ts",
-      "mode": "100644",
-      "bytes": 9433,
-      "sha256": "372211a960f45d86bde4ad3ccfb7e27a7317b65a50c6b4485afbd92039acde03"
-    },
-    {
-      "path": "src/gateway/server-plugin-subagent-runtime.test.ts",
-      "mode": "100644",
-      "bytes": 32198,
-      "sha256": "cd1617625b399f5718388efdd90920bc70a94e8e12bc4693a37121ad9c462cbd"
-    },
-    {
-      "path": "src/gateway/server-plugin-subagent-runtime.ts",
-      "mode": "100644",
-      "bytes": 29851,
-      "sha256": "a79eaf3fdbcd5d927cbb3157db8a0c58aa49d4503461015950e91e74a1cdea23"
-    },
-    {
-      "path": "src/gateway/server-plugins.ts",
-      "mode": "100644",
-      "bytes": 17380,
-      "sha256": "d1ef1103d0a7990a559770a397eb2ee92077b444726772cee1954696e01802f0"
-    },
-    {
-      "path": "src/infra/runtime-process-entrypoints.ts",
-      "mode": "100644",
-      "bytes": 5379,
-      "sha256": "268c60b7f71e9c794a2603d20859a36e92dd8696be9749086ee1a6cff0582227"
-    },
-    {
-      "path": "src/infra/runtime-process-url.ts",
-      "mode": "100644",
-      "bytes": 736,
-      "sha256": "0914e78c0e99eecfb49d0aafec3e82d8e6fa61f3a22cfbf97669c0ffc8441f1e"
-    },
-    {
-      "path": "src/infra/runtime-worker-url.test.ts",
-      "mode": "100644",
-      "bytes": 9617,
-      "sha256": "0606946397318d7da9471b8a2dbf5d2755944c231fb7c7421fbdc974cb33b86a"
-    },
-    {
-      "path": "src/infra/runtime-worker-url.ts",
-      "mode": "100644",
-      "bytes": 3120,
-      "sha256": "9b694a778a84725e989ad2380195557993afbf25dc97e64112f7a65b2a2087e0"
-    },
-    {
-      "path": "src/plugins/runtime/types.ts",
-      "mode": "100644",
-      "bytes": 9481,
-      "sha256": "ff8e356e1bec723695348a181f5120f6fe46df6cf4cd0b2a793876c87a1136af"
-    },
-    {
-      "path": "src/state/agent-run-quarantine-maintenance.ts",
-      "mode": "100644",
-      "bytes": 4507,
-      "sha256": "e5aafe907905bcb2d157c9c93e0f5805d81c56e9288d8c2d8abed5c742f6e260"
-    },
-    {
-      "path": "src/state/agent-run-quarantine.ts",
-      "mode": "100644",
-      "bytes": 4396,
-      "sha256": "4819195c553e1d491d8496b5130baad9570853e931ebe67b7e4e615743eac0a3"
-    },
-    {
-      "path": "src/state/agent-run-quarantine.types.ts",
-      "mode": "100644",
-      "bytes": 5792,
-      "sha256": "19ebc2dadfb07b68364243b373cb84974ac7fc1eb972f720a2a5d5cfe1d12ffc"
-    },
-    {
-      "path": "src/state/native-review-publication-intents.ts",
-      "mode": "100644",
-      "bytes": 12932,
-      "sha256": "3ad0101d49f050570289965b22a0d08824012fd47cd068a307d8e80d6458b3b1"
-    },
-    {
-      "path": "src/state/openclaw-agent-canonical-validation-schema.test.ts",
-      "mode": "100644",
-      "bytes": 19830,
-      "sha256": "d4fa849acf8fbad8b2cbebf610f87772b9344f5a58e65def2a47d8a35ad830b1"
-    },
-    {
-      "path": "src/state/openclaw-agent-canonical-validation-schema.ts",
-      "mode": "100644",
-      "bytes": 4868,
-      "sha256": "dbe8cba649320ec770da6d4d052beee614ca2bbf82a8d7204f8719a1dc4c4726"
-    },
-    {
-      "path": "src/state/openclaw-agent-db-schema.ts",
-      "mode": "100644",
-      "bytes": 27299,
-      "sha256": "0433b57c1eb97ed239bc920ce96f7c4d6c096e07e0ceb1b04e708baf3e4bc460"
-    },
-    {
-      "path": "src/state/openclaw-agent-execution.worker.ts",
-      "mode": "100644",
-      "bytes": 32026,
-      "sha256": "726723e2e6b6d1f39ca2ac11cdbdaa0d29d1fcb4db01ad9aecdb188099c092e5"
-    },
-    {
-      "path": "src/state/openclaw-agent-schema.sql",
-      "mode": "100644",
-      "bytes": 96482,
-      "sha256": "7f998da4a86f23ebde4f7dbee68d77d5aec714da070ae1a9ef4bce8be7579cae"
-    },
-    {
-      "path": "src/state/openclaw-agent-worker-store.ts",
-      "mode": "100644",
-      "bytes": 32379,
-      "sha256": "6d38cf77cc12dc654268b734a66a44d94e0fede43c02b6f972c61a6b8e3e357c"
-    },
-    {
-      "path": "src/state/openclaw-state-worker-runtime.ts",
-      "mode": "100644",
-      "bytes": 28987,
-      "sha256": "86caec348eb6ed0ac52f409727b314087cb8085e78e099fad973666e8ea872b3"
-    },
-    {
-      "path": "src/tasks/managed-task-flow-contract.ts",
-      "mode": "100644",
-      "bytes": 9030,
-      "sha256": "5d1f5c9b525d6cd496f0b3bdeef0320d7acfab0d1c80c79c1983a37919c5743f"
-    },
-    {
-      "path": "src/tasks/managed-task-flow-host.test.ts",
-      "mode": "100644",
-      "bytes": 10351,
-      "sha256": "ed1a191636e2a8e7e3b9b8c718fd476d82418c84238d262d4ca39fb51d6a629d"
-    },
-    {
-      "path": "src/tasks/managed-task-flow-host.ts",
-      "mode": "100644",
-      "bytes": 20176,
-      "sha256": "b1427bffc84825e6367d54c9e91ccdcc5bad906ced1d9f5f03100f18fb168112"
-    },
-    {
-      "path": "src/tasks/managed-task-flow.worker.ts",
-      "mode": "100644",
-      "bytes": 30387,
-      "sha256": "a4a7f226c09a55e9682368ee307355f63164b589504ec279e5a5929896ad1ce0"
-    },
-    {
-      "path": "test/scripts/agent-database-worker-package-paths.test.ts",
-      "mode": "100644",
-      "bytes": 2024,
-      "sha256": "280af826bde24210e057af5a59fcde9c9e9c7554508f2cc2b0290d192ec65717"
-    },
-    {
-      "path": "test/scripts/native-ipc-gateway-state-isolation.test.ts",
-      "mode": "100644",
-      "bytes": 7053,
-      "sha256": "cb7f6958639f8a9a496de2963699443aa62dbd51fa04f1d99283ced1eac3ee73"
-    },
-    {
-      "path": "test/scripts/tsdown-build.test.ts",
-      "mode": "100644",
-      "bytes": 118964,
-      "sha256": "226e2ea0cefe8827c042c376090c80e09bc4af25fabfce6193dfac0bc39a4580"
-    },
-    {
-      "path": "tsdown.config.ts",
-      "mode": "100644",
-      "bytes": 40082,
-      "sha256": "e322af18f12786424d1c0bb409cd177479918f4bfe4fb059dc428343bfa3abde"
-    }
-  ],
-  "source_inputs_origins": [
-    {
-      "source_commit": "6037a26355cd2e900da2380f9b746ce76db112c0",
-      "receipt_sha256": "6feca0767c3eca8f3c6c95d06093ebfcba480dbdeca0ade4a7b27d353e274c1b",
-      "selected_postimage_count": 67,
-      "meaning": "Finite critical source identity. Proof driver separates deliberate quarantine fixtures from clean startup; all original ownership/denial gates retained. Matching full build and compiled native qualification required."
+      "bytes": 17467,
+      "path": "workboard-custody/worker-custody-bridge.mjs",
+      "sha256": "428f8e9b64dfed3f5ec75a7f36bdb754579dbdb954b06b069e1b71dbc9475cbc"
     }
   ]
 }

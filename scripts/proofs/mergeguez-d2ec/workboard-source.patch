@@ -1,0 +1,1191 @@
+diff --git a/docs/plugins/sqlite-private-recovery.md b/docs/plugins/sqlite-private-recovery.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..771d58a63c6f417649e03c8ae0745dbfbcdc7c35
+--- /dev/null
++++ b/docs/plugins/sqlite-private-recovery.md
+@@ -0,0 +1,40 @@
++---
++summary: "Source-owned private logical capture through the original SQLite worker actor and lease"
++title: "Private SQLite recovery admission"
++---
++
++The SQLite runtime SDK can bind an opaque recovery target to an existing native
++store and its original logical connection. Binding grants no private permission.
++Ordinary tool, Gateway, card, read/write and database admissions cannot invoke
++the reserved `private-recovery.capture` operation.
++
++`bindSqliteWorkerRecoveryTarget(store, connection, assertConnectionCurrent, decode)`
++captures the original admitted actor and lease. Its callback must describe that
++original connection lifecycle, not reopen a pathname or adopt a replacement.
++`capturePrivateSqliteWorkerRecovery(target, authority, operationId)` requires a
++live opaque host-issued private authority bound to that exact target. The
++host-only issuer is not exported through the SDK. Neither JSON nor matching IDs
++can construct the authority. The runtime client validates the serialized command
++against its registered source-owned private factory before dispatch.
++
++The backend requests prepare, transaction and precommit admission using the
++retained private operation port. Source checks can revoke permission across
++awaits or during a callback. Capture uses the original worker-held database
++handle; snapshot reconstruction and semantic verification remain on that worker.
++The existing actor operation stays retained through descriptor custody and its
++durable acknowledgement. Unknown acknowledgements are not replayed.
++
++Workboard supplies the codec for its unchanged schema3 and complete raw logical
++contents, including claims, history and blobs. Capturing them does not rearm
++claims or start work. Its worker result is bounded to 32 MiB; descriptor custody
++may impose a smaller quota and fails without truncation. Host code performs
++transport and manifest checks only; it does not open SQLite on the Gateway main
++thread. Inert restore stays independent of the operational store initializer,
++startup, migration, notifications and dispatch.
++
++This source feature has no default private issuer, route or schedule. A release
++integrator must bind the trusted startup/private owner and executed SDK/worker
++images, verify the shared authority registry, and admit an exact private custodian.
++Doctor, CLI and ordinary startup acquire no private capture authority. The
++isolated overlay's synthetic unit receipts do not establish those operational
++facts or permission to capture real user data.
+diff --git a/extensions/workboard/api.ts b/extensions/workboard/api.ts
+index 8d75444645224eab765c9741325c25a56af42ab2..8665c1808a9a2428cc6adbb3de8f9d2c686830e5 100644
+--- a/extensions/workboard/api.ts
++++ b/extensions/workboard/api.ts
+@@ -3,3 +3,13 @@ export {
+   type OpenClawPluginApi,
+   type OpenClawPluginService,
+ } from "openclaw/plugin-sdk/plugin-entry";
++
++/** Task-only factory; the original store retains actor/connection ownership. */
++export async function openWorkboardRecoveryQualificationStore(
++  options: { dbPath: string; workerModuleUrl: URL },
++  assertCurrent: () => void,
++) {
++  const { WorkboardStore } = await import("./src/store.js");
++  assertCurrent();
++  return WorkboardStore.openSqlite(options.workerModuleUrl, { dbPath: options.dbPath });
++}
+diff --git a/extensions/workboard/src/private-recovery/logical-assurance.d.mts b/extensions/workboard/src/private-recovery/logical-assurance.d.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..98a6d2db59f1cee8c68ea309cfb5c006a2aba2af
+--- /dev/null
++++ b/extensions/workboard/src/private-recovery/logical-assurance.d.mts
+@@ -0,0 +1,5 @@
++export const LOGICAL_ASSURANCE: { source: { readCutoff: string } };
++export function assertCaptureInterval(value: {
++  startedAtMs: number; completedAtMs: number; elapsedMs: number;
++  cutoff: string; exactCommitTimestampProven: false;
++}): unknown;
+diff --git a/extensions/workboard/src/private-recovery/logical-assurance.mjs b/extensions/workboard/src/private-recovery/logical-assurance.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0dfd29e5da017a8b6a975cbf9d67aabafe317e40
+--- /dev/null
++++ b/extensions/workboard/src/private-recovery/logical-assurance.mjs
+@@ -0,0 +1,23 @@
++// Fixed source-owned requirements; descriptive data, never a permission issuer.
++import {canonical,sha} from './native-memory-codec.mjs';
++const freeze=value=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
++export const LOGICAL_ASSURANCE=freeze({
++ contract:'workboard.logical-recovery-assurance.v1',
++ source:{opaqueOriginalOwnerRequired:true,captureRegistryEpochRequired:true,coherentReadTransactionRequired:true,readCutoff:'first-read-in-source-transaction',postCutoffCommitsIncluded:false,reopenByPathAllowed:false,deployedStoreSelectionProven:false,deployedStoreSelectionRequiredBeforeProduction:true,kernelMainWalShmBackingProven:false,kernelMainWalShmBackingRequired:false},
++ preservation:{exactSchemaRequired:true,tableCount:17,rawValuesRequired:true,textEncoding:'UTF-8',lossyTextAllowed:false,claimsAndLeasesRequired:true,attachmentReferencesAndBytesRequired:true},
++ destination:{sealedWorkerRequired:true,descriptorCustodyRequired:true,overwriteExistingAllowed:false},
++ restore:{acceptedOriginalCaptureRequired:true,sourceProfileBindingRequired:true,inertQuarantineRequired:true,runtimeStartAllowed:false,claimsRearmed:false,notificationsDelivered:false,overwriteLiveSourceAllowed:false},
++});
++export const LOGICAL_ASSURANCE_SHA256=sha(canonical(LOGICAL_ASSURANCE));
++export function assertLogicalAssurance(value){
++ if(canonical(value)!==canonical(LOGICAL_ASSURANCE)){const error=new Error('LOGICAL_ASSURANCE_REQUIRED');error.code='LOGICAL_ASSURANCE_REQUIRED';throw error;}
++ return LOGICAL_ASSURANCE;
++}
++export function assertCaptureInterval(value){
++ if(!value||Object.keys(value).sort().join(',')!=='completedAtMs,cutoff,elapsedMs,exactCommitTimestampProven,startedAtMs'||
++  !Number.isSafeInteger(value.startedAtMs)||!Number.isSafeInteger(value.completedAtMs)||!Number.isSafeInteger(value.elapsedMs)||
++  value.startedAtMs<0||value.completedAtMs<value.startedAtMs||value.elapsedMs<0||value.cutoff!==LOGICAL_ASSURANCE.source.readCutoff||value.exactCommitTimestampProven!==false){
++  const error=new Error('CAPTURE_INTERVAL_INVALID');error.code='CAPTURE_INTERVAL_INVALID';throw error;
++ }
++ return Object.freeze({...value});
++}
+diff --git a/extensions/workboard/src/private-recovery/native-memory-codec.d.mts b/extensions/workboard/src/private-recovery/native-memory-codec.d.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..17e52afbe2605464b1151dfdb816c039a5af349b
+--- /dev/null
++++ b/extensions/workboard/src/private-recovery/native-memory-codec.d.mts
+@@ -0,0 +1,7 @@
++import type { DatabaseSync } from "node:sqlite";
++export function captureOwnedDatabase(database: DatabaseSync, admission: {
++  onSnapshotStart(): void; onBeforeCommit(): void;
++}): { exported: unknown; diagnostics: unknown; cardRevisions: unknown };
++export function snapshotBytes(exported: unknown): Uint8Array;
++export function verifySnapshotBytes(bytes: Uint8Array, exported: unknown): true;
++export function canonical(value: unknown): string;
+diff --git a/extensions/workboard/src/private-recovery/native-memory-codec.mjs b/extensions/workboard/src/private-recovery/native-memory-codec.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3b86a3e7b68e2bed130b8f19e051447f463e2e90
+--- /dev/null
++++ b/extensions/workboard/src/private-recovery/native-memory-codec.mjs
+@@ -0,0 +1,120 @@
++// Isolated native in-memory SQLite codec; no source/destination path opener.
++import fs from 'node:fs';
++import {WORKBOARD_RECOVERY_SCHEMA} from './schema-data.mjs';
++import crypto from 'node:crypto';
++import {DatabaseSync} from 'node:sqlite';
++import {fileURLToPath} from 'node:url';
++export const CONTRACT='workboard.native-descriptor-recovery.v2';
++export const CORE_SOURCE_SHA256=crypto.createHash('sha256').update(fs.readFileSync(fileURLToPath(import.meta.url))).digest('hex');
++const DDL_SHA='ddf7208a4e79d53b4cde461de6c6ce32d322537069cefd5c603f835e13f2bc25';
++const MAX_BYTES=64*1024*1024,MAX_ROWS=100000;
++export const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
++export const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
++const q=name=>'"'+name.replaceAll('"','""')+'"';
++export class NativeCodecError extends Error{constructor(code){super(code);this.code=code;}}
++const fail=code=>{throw new NativeCodecError(code);};
++function schemaObjects(db) {return db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all().map(r=>[r.type,r.name,r.tbl_name,r.sql]);}
++function schemaDdl() {const raw=Buffer.from(WORKBOARD_RECOVERY_SCHEMA,'utf8');if(sha(raw)!==DDL_SHA)fail('SCHEMA_SOURCE_CHANGED');return raw.toString();}
++function expectedSchema() {const db=new DatabaseSync(':memory:');try{db.exec(schemaDdl());return schemaObjects(db);}finally{db.close();}}
++function encode(v) {
++  if(v===null)return {type:'null'};
++  if(typeof v==='bigint')return {type:'integer',decimal:v.toString()};
++  if(typeof v==='number'&&Number.isFinite(v))return {type:'real',value:v};
++  if(typeof v==='string')return {type:'text',value:v};
++  if(v instanceof Uint8Array)return {type:'blob',base64:Buffer.from(v).toString('base64'),bytes:v.length,sha256:sha(v)};
++  fail('UNSUPPORTED_SQLITE_VALUE');
++}
++function decode(v) {
++  if(canonical(Object.keys(v).sort())===canonical(['type'])&&v.type==='null')return null;
++  if(v.type==='integer'&&/^(-?(0|[1-9][0-9]*))$/.test(v.decimal)&&Object.keys(v).length===2){const n=BigInt(v.decimal);if(n<-(1n<<63n)||n>=(1n<<63n))fail('INTEGER_RANGE');return n;}
++  if(v.type==='text'&&typeof v.value==='string'&&Object.keys(v).length===2)return v.value;
++  if(v.type==='real'&&typeof v.value==='number'&&Number.isFinite(v.value)&&Object.keys(v).length===2)return v.value;
++  if(v.type==='blob'&&typeof v.base64==='string'&&Object.keys(v).length===4){const b=Buffer.from(v.base64,'base64');if(b.toString('base64')!==v.base64||b.length!==v.bytes||sha(b)!==v.sha256)fail('BLOB_REFERENCE_MISMATCH');return b;}
++  fail('INVALID_TYPED_VALUE');
++}
++function rawExport(db,deadline=Infinity) {
++  if(db.prepare('PRAGMA encoding').get().encoding!=='UTF-8')fail('SOURCE_ENCODING_UNSUPPORTED');
++  const pragmaNumber=name=>Number(Object.values(db.prepare('PRAGMA '+name).get())[0]);
++  if(pragmaNumber('page_count')*pragmaNumber('page_size')>MAX_BYTES)fail('RECOVERY_BYTE_LIMIT');
++  if(canonical(schemaObjects(db))!==canonical(expectedSchema()))fail('ACTUAL_SCHEMA_MISMATCH');
++  if(db.prepare('PRAGMA quick_check').all().some(r=>Object.values(r)[0]!=='ok'))fail('DATABASE_INTEGRITY_FAILED');
++  const versions=db.prepare('SELECT id FROM workboard_schema_migrations').all().map(r=>r.id);
++  if(!versions.includes('schema-3')||versions.some(x=>!['schema-1','schema-2','schema-3'].includes(x)))fail('SCHEMA_VERSION_MISMATCH');
++  const objects=schemaObjects(db),tables={};let count=0,bytes=0;
++  for(const name of objects.filter(r=>r[0]==='table').map(r=>r[1]).sort()) {
++    const info=db.prepare('PRAGMA table_xinfo('+q(name)+')').all(),columns=info.map(r=>r.name);
++    const textColumns=info.map((column,index)=>({column,index})).filter(({column})=>column.type==='TEXT');
++    // Native text decoding can replace invalid UTF-8. Bind exported strings to
++    // the original SQLite TEXT bytes before accepting any logical projection.
++    const stmt=db.prepare('SELECT *'+textColumns.map(({column})=>',CAST('+q(column.name)+' AS BLOB)').join('')+' FROM '+q(name));stmt.setReadBigInts(true);stmt.setReturnArrays(true);
++    const rows=[];
++    for(const selected of stmt.iterate()) {
++      const row=selected.slice(0,columns.length);
++      for(const [ordinal,{index}]of textColumns.entries()){
++        const value=row[index],bytes=selected[columns.length+ordinal];
++        if(value!==null&&(!(bytes instanceof Uint8Array)||typeof value!=='string'||!Buffer.from(value,'utf8').equals(Buffer.from(bytes))))fail('LOSSY_SQLITE_TEXT');
++      }
++      if(++count>MAX_ROWS)fail('RECOVERY_ROW_LIMIT');if(performance.now()>deadline)fail('RECOVERY_DEADLINE');
++      const value=row.map(encode);bytes+=Buffer.byteLength(canonical(value));if(bytes>MAX_BYTES)fail('RECOVERY_BYTE_LIMIT');rows.push(value);
++    }
++    rows.sort((a,b)=>{const x=canonical(a),y=canonical(b);return x<y?-1:x>y?1:0;});
++    tables[name]={columns,rows,sha256:sha(canonical(rows))};
++  }
++  const scalar=p=>Object.values(db.prepare('PRAGMA '+p).get())[0];
++  return {contract:CONTRACT,schemaVersion:3,schemaObjects:objects,schemaSha256:sha(canonical(objects)),
++    applicationId:scalar('application_id'),userVersion:scalar('user_version'),tables};
++}
++
++function warnings(db) {
++  const rows=sql=>db.prepare(sql).all();
++  return {foreignKeyViolations:rows('PRAGMA foreign_key_check'),
++    danglingDependencyTargets:rows('SELECT id,target_card_id FROM workboard_card_links WHERE target_card_id IS NOT NULL AND target_card_id NOT IN (SELECT id FROM workboard_cards) ORDER BY id'),
++    implicitBoards:rows('SELECT id,board_id FROM workboard_cards WHERE board_id NOT IN (SELECT id FROM workboard_boards) ORDER BY id'),
++    orphanBlobIds:rows('SELECT attachment_id FROM workboard_attachment_blobs WHERE attachment_id NOT IN (SELECT id FROM workboard_card_attachments) ORDER BY attachment_id'),
++    missingBlobIds:rows('SELECT id FROM workboard_card_attachments WHERE id NOT IN (SELECT attachment_id FROM workboard_attachment_blobs) ORDER BY id'),
++    blobSizeMismatches:rows('SELECT a.id FROM workboard_card_attachments a JOIN workboard_attachment_blobs b ON a.id=b.attachment_id WHERE a.byte_size!=length(b.content) ORDER BY a.id'),
++    danglingSubscriptionReferences:rows('SELECT id,board_id,card_id FROM workboard_notification_subscriptions WHERE board_id NOT IN (SELECT id FROM workboard_boards) OR (card_id IS NOT NULL AND card_id NOT IN (SELECT id FROM workboard_cards)) ORDER BY id')};
++}
++function revisions(exported) {
++  const table=exported.tables.workboard_cards;
++  return table.rows.map(row=>({cardId:row[table.columns.indexOf('id')].value,
++    updatedAt:row[table.columns.indexOf('updated_at')],rowSha256:sha(canonical(row))})).sort((a,b)=>a.cardId<b.cardId?-1:a.cardId>b.cardId?1:0);
++}
++
++export function captureOwnedDatabase(database,admission) {
++ if(!admission||typeof admission.onSnapshotStart!=='function'||typeof admission.onBeforeCommit!=='function')fail('PRIVATE_NATIVE_ADMISSION_REQUIRED');
++ if(!(database instanceof DatabaseSync)||!database.isOpen)fail('NATIVE_OWNER_CLOSED');
++ if(database.isTransaction)fail('SOURCE_TRANSACTION_ACTIVE');
++ const deadline=performance.now()+5000;database.exec('BEGIN DEFERRED');
++ try {admission.onSnapshotStart();const exported=rawExport(database,deadline),diagnostics=warnings(database);admission.onBeforeCommit();database.exec('COMMIT');return {exported,diagnostics,cardRevisions:revisions(exported)};}
++ catch(e){
++  if(database.isTransaction)try{database.exec('ROLLBACK');}catch{
++   const failure=new NativeCodecError('PRIVATE_READ_ROLLBACK_UNKNOWN');
++   Object.defineProperty(failure,'cause',{value:e});throw failure;
++  }
++  throw e;
++ }
++}
++export function snapshotBytes(exported) {
++ const db=new DatabaseSync(':memory:',{enableForeignKeyConstraints:false});
++ try{
++  db.exec(schemaDdl());db.exec('BEGIN IMMEDIATE');
++  for(const [name,t]of Object.entries(exported.tables)){
++   const stmt=db.prepare('INSERT INTO '+q(name)+' ('+t.columns.map(q).join(',')+') VALUES ('+t.columns.map(()=>'?').join(',')+')');
++   for(const row of t.rows)stmt.run(...row.map(decode));
++  }
++  for(const key of ['applicationId','userVersion'])if(!Number.isInteger(exported[key])||exported[key]<-2147483648||exported[key]>2147483647)fail('SQLITE_HEADER_RANGE');
++  db.exec('PRAGMA application_id='+exported.applicationId);db.exec('PRAGMA user_version='+exported.userVersion);db.exec('COMMIT');
++  if(canonical(rawExport(db))!==canonical(exported))fail('RESTORE_LOGICAL_MISMATCH');
++  const bytes=Buffer.from(db.serialize());if(bytes.length>MAX_BYTES)fail('RECOVERY_BYTE_LIMIT');return bytes;
++ }finally{db.close();}
++}
++export function inspectSnapshotBytes(bytes) {
++ if(!(bytes instanceof Uint8Array)||bytes.length>MAX_BYTES||Buffer.from(bytes).subarray(0,16).toString('latin1')!=='SQLite format 3\0')fail('SNAPSHOT_BYTES_INVALID');
++ const db=new DatabaseSync(':memory:');
++ try{db.deserialize(bytes);return rawExport(db);}finally{db.close();}
++}
++export function verifySnapshotBytes(bytes,exported) {
++ if(canonical(inspectSnapshotBytes(bytes))!==canonical(exported))fail('SNAPSHOT_EXPORT_MISMATCH');return true;
++}
++export const schemaDdlSha256=DDL_SHA;
+diff --git a/extensions/workboard/src/private-recovery/schema-data.mjs b/extensions/workboard/src/private-recovery/schema-data.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..c4821aaa217bbd6b89ac46aec5c8d5c10a958a8e
+--- /dev/null
++++ b/extensions/workboard/src/private-recovery/schema-data.mjs
+@@ -0,0 +1,234 @@
++// Generated from the unchanged recovery schema.sql fixture. The codec validates its SHA-256.
++// Imported code data survives unified worker bundling without a neighboring SQL asset.
++export const WORKBOARD_RECOVERY_SCHEMA =
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_schema_migrations (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      applied_at INTEGER NOT NULL\n" +
++  "    ) STRICT;\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_boards (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      name TEXT,\n" +
++  "      description TEXT,\n" +
++  "      icon TEXT,\n" +
++  "      color TEXT,\n" +
++  "      automation_job_id TEXT,\n" +
++  "      default_workspace_json TEXT,\n" +
++  "      orchestration_json TEXT,\n" +
++  "      created_at INTEGER NOT NULL,\n" +
++  "      updated_at INTEGER NOT NULL,\n" +
++  "      archived_at INTEGER\n" +
++  "    ) STRICT;\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_cards (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      board_id TEXT NOT NULL,\n" +
++  "      title TEXT NOT NULL,\n" +
++  "      notes TEXT,\n" +
++  "      status TEXT NOT NULL,\n" +
++  "      priority TEXT NOT NULL,\n" +
++  "      agent_id TEXT,\n" +
++  "      session_key TEXT,\n" +
++  "      run_id TEXT,\n" +
++  "      task_id TEXT,\n" +
++  "      source_url TEXT,\n" +
++  "      position REAL NOT NULL,\n" +
++  "      created_at INTEGER NOT NULL,\n" +
++  "      updated_at INTEGER NOT NULL,\n" +
++  "      started_at INTEGER,\n" +
++  "      completed_at INTEGER,\n" +
++  "      execution_id TEXT,\n" +
++  "      execution_kind TEXT,\n" +
++  "      execution_engine TEXT,\n" +
++  "      execution_mode TEXT,\n" +
++  "      execution_status TEXT,\n" +
++  "      execution_model TEXT,\n" +
++  "      execution_session_key TEXT,\n" +
++  "      execution_run_id TEXT,\n" +
++  "      execution_started_at INTEGER,\n" +
++  "      execution_updated_at INTEGER,\n" +
++  "      automation_json TEXT,\n" +
++  "      claim_json TEXT,\n" +
++  "      template_id TEXT,\n" +
++  "      archived_at INTEGER,\n" +
++  "      stale_json TEXT,\n" +
++  "      lifecycle_status_source_updated_at INTEGER,\n" +
++  "      failure_count INTEGER\n" +
++  "    ) STRICT;\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_cards_board_status_idx\n" +
++  "      ON workboard_cards(board_id, status, position);\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_cards_session_idx\n" +
++  "      ON workboard_cards(session_key, run_id);\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_card_labels (\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      label TEXT NOT NULL,\n" +
++  "      PRIMARY KEY(card_id, ordinal)\n" +
++  "    ) STRICT;\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_card_events (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      kind TEXT NOT NULL,\n" +
++  "      at INTEGER NOT NULL,\n" +
++  "      from_status TEXT,\n" +
++  "      to_status TEXT,\n" +
++  "      session_key TEXT,\n" +
++  "      run_id TEXT\n" +
++  "    ) STRICT;\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_card_events_card_idx\n" +
++  "      ON workboard_card_events(card_id, ordinal);\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_card_attempts (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      status TEXT NOT NULL,\n" +
++  "      started_at INTEGER NOT NULL,\n" +
++  "      ended_at INTEGER,\n" +
++  "      engine TEXT,\n" +
++  "      mode TEXT,\n" +
++  "      model TEXT,\n" +
++  "      session_key TEXT,\n" +
++  "      run_id TEXT,\n" +
++  "      error TEXT\n" +
++  "    ) STRICT;\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_card_attempts_card_idx\n" +
++  "      ON workboard_card_attempts(card_id, ordinal);\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_card_comments (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      body TEXT NOT NULL,\n" +
++  "      created_at INTEGER NOT NULL,\n" +
++  "      updated_at INTEGER\n" +
++  "    ) STRICT;\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_card_comments_card_idx\n" +
++  "      ON workboard_card_comments(card_id, ordinal);\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_card_links (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      type TEXT NOT NULL,\n" +
++  "      target_card_id TEXT,\n" +
++  "      title TEXT,\n" +
++  "      url TEXT,\n" +
++  "      created_at INTEGER NOT NULL\n" +
++  "    ) STRICT;\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_card_links_card_idx\n" +
++  "      ON workboard_card_links(card_id, ordinal);\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_card_proof (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      status TEXT NOT NULL,\n" +
++  "      label TEXT,\n" +
++  "      command TEXT,\n" +
++  "      url TEXT,\n" +
++  "      note TEXT,\n" +
++  "      created_at INTEGER NOT NULL\n" +
++  "    ) STRICT;\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_card_proof_card_idx\n" +
++  "      ON workboard_card_proof(card_id, ordinal);\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_card_artifacts (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      label TEXT,\n" +
++  "      url TEXT,\n" +
++  "      path TEXT,\n" +
++  "      mime_type TEXT,\n" +
++  "      created_at INTEGER NOT NULL\n" +
++  "    ) STRICT;\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_card_artifacts_card_idx\n" +
++  "      ON workboard_card_artifacts(card_id, ordinal);\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_card_diagnostics (\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      kind TEXT NOT NULL,\n" +
++  "      severity TEXT NOT NULL,\n" +
++  "      title TEXT NOT NULL,\n" +
++  "      detail TEXT NOT NULL,\n" +
++  "      first_seen_at INTEGER NOT NULL,\n" +
++  "      last_seen_at INTEGER NOT NULL,\n" +
++  "      count INTEGER NOT NULL,\n" +
++  "      actions_json TEXT NOT NULL,\n" +
++  "      PRIMARY KEY(card_id, ordinal)\n" +
++  "    ) STRICT;\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_card_notifications (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      kind TEXT NOT NULL,\n" +
++  "      message TEXT NOT NULL,\n" +
++  "      created_at INTEGER NOT NULL,\n" +
++  "      sequence INTEGER,\n" +
++  "      session_key TEXT,\n" +
++  "      run_id TEXT\n" +
++  "    ) STRICT;\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_card_notifications_card_idx\n" +
++  "      ON workboard_card_notifications(card_id, ordinal);\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_worker_logs (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      level TEXT NOT NULL,\n" +
++  "      message TEXT NOT NULL,\n" +
++  "      created_at INTEGER NOT NULL,\n" +
++  "      session_key TEXT,\n" +
++  "      run_id TEXT\n" +
++  "    ) STRICT;\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_worker_logs_card_idx\n" +
++  "      ON workboard_worker_logs(card_id, ordinal);\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_worker_protocol (\n" +
++  "      card_id TEXT PRIMARY KEY REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      state TEXT NOT NULL,\n" +
++  "      updated_at INTEGER NOT NULL,\n" +
++  "      detail TEXT\n" +
++  "    ) STRICT;\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_card_attachments (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      card_id TEXT NOT NULL REFERENCES workboard_cards(id) ON DELETE CASCADE,\n" +
++  "      ordinal INTEGER NOT NULL,\n" +
++  "      file_name TEXT NOT NULL,\n" +
++  "      byte_size INTEGER NOT NULL,\n" +
++  "      mime_type TEXT,\n" +
++  "      note TEXT,\n" +
++  "      created_at INTEGER NOT NULL\n" +
++  "    ) STRICT;\n" +
++  "    CREATE INDEX IF NOT EXISTS workboard_card_attachments_card_idx\n" +
++  "      ON workboard_card_attachments(card_id, ordinal);\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_attachment_blobs (\n" +
++  "      attachment_id TEXT PRIMARY KEY,\n" +
++  "      content BLOB NOT NULL\n" +
++  "    ) STRICT;\n" +
++  "\n" +
++  "    CREATE TABLE IF NOT EXISTS workboard_notification_subscriptions (\n" +
++  "      id TEXT PRIMARY KEY,\n" +
++  "      board_id TEXT NOT NULL,\n" +
++  "      card_id TEXT,\n" +
++  "      session_key TEXT,\n" +
++  "      run_id TEXT,\n" +
++  "      target TEXT,\n" +
++  "      event_kinds_json TEXT,\n" +
++  "      last_event_at INTEGER,\n" +
++  "      last_event_id TEXT,\n" +
++  "      last_event_sequence INTEGER,\n" +
++  "      delivered_event_ids_json TEXT,\n" +
++  "      created_at INTEGER NOT NULL,\n" +
++  "      updated_at INTEGER NOT NULL\n" +
++  "    ) STRICT;\n" +
++  "  ";
+diff --git a/extensions/workboard/src/sqlite-store-contract.ts b/extensions/workboard/src/sqlite-store-contract.ts
+index 2975b8166d1bf03e8cd4f851d0076d5c5a397a2e..2489ed7fc2738ec6a30b73e1064792f4f88f0ebe 100644
+--- a/extensions/workboard/src/sqlite-store-contract.ts
++++ b/extensions/workboard/src/sqlite-store-contract.ts
+@@ -6,12 +6,14 @@ import type {
+   WorkboardSubscriptionStore,
+ } from "./persistence-types.js";
+ import type { WorkboardSqliteResult } from "./sqlite-store-errors.js";
++import type { WorkboardPrivateCaptureInput } from "./sqlite-store-private-recovery.js";
+ 
+ type Operation<Method extends (...args: never[]) => unknown> = {
+   input: { connection: number; args: Parameters<Method> };
+   output: Awaited<ReturnType<Method>>;
+ };
+ export type WorkboardSqliteOperations = {
++  "private-recovery.capture": { input: WorkboardPrivateCaptureInput; output: Uint8Array };
+   "connection.open": { input: undefined; output: { connection: number; dataVersion: number } };
+   "connection.close": { input: { connection: number }; output: void };
+   dataVersion: { input: { connection: number }; output: number };
+diff --git a/extensions/workboard/src/sqlite-store-kernel.ts b/extensions/workboard/src/sqlite-store-kernel.ts
+index 1564d64dce666451c4cc1f1ee2bc4f31306f9657..edb874ddaa53be9bcf07b6a22c66000a316c671a 100644
+--- a/extensions/workboard/src/sqlite-store-kernel.ts
++++ b/extensions/workboard/src/sqlite-store-kernel.ts
+@@ -6,6 +6,7 @@ import type {
+ } from "@openclaw/workboard-contract";
+ import {
+   compileSqliteQueryBindings,
++  assertTransactionUsable,
+   executeSqliteQueryTakeFirstSync,
+   getNodeSqliteKysely,
+   iterateSqliteQuerySync,
+@@ -43,6 +44,7 @@ import {
+   type WorkboardCardDatabase,
+ } from "./sqlite-store-records.js";
+ import { createWorkboardDatabase } from "./sqlite-store-schema.js";
++import { captureWorkboardOwnedDatabase, type WorkboardPrivateCaptureInput } from "./sqlite-store-private-recovery.js";
+ import { bindNull, insertCard } from "./sqlite-store-write.js";
+ import {
+   MAX_WORKER_CONTEXT_PARENTS,
+@@ -60,6 +62,8 @@ export type WorkboardSqliteKernel = {
+   subscriptions: SyncStore<WorkboardSubscriptionStore>;
+   attachments: SyncStore<WorkboardKeyedStore<PersistedWorkboardAttachment>>;
+   dataVersion(this: void): number;
++  capturePrivateRecovery(input: WorkboardPrivateCaptureInput): Uint8Array;
++  assertNativeSettlement(): void;
+   close(this: void): void;
+ };
+ 
+@@ -697,7 +701,23 @@ export function createWorkboardSqliteKernel(
+   retainClose?: (close: () => void) => void,
+ ): WorkboardSqliteKernel {
+   const { db, close } = createWorkboardDatabase(dbPath, retainClose);
++  let privateCleanupUncertain = false;
+   return {
++    capturePrivateRecovery: (input) => {
++      try { return captureWorkboardOwnedDatabase(db, input); }
++      catch (error) {
++        if (error instanceof Error && "code" in error && error.code === "PRIVATE_READ_ROLLBACK_UNKNOWN") {
++          privateCleanupUncertain = true;
++        }
++        throw error;
++      }
++    },
++    assertNativeSettlement() {
++      if (privateCleanupUncertain || !db.isOpen || db.isTransaction) {
++        throw new Error("Workboard native transaction settlement is unknown.");
++      }
++      assertTransactionUsable(db);
++    },
+     cards: new WorkboardSqliteCardStore(db),
+     boards: new WorkboardSqliteBoardStore(db),
+     subscriptions: new WorkboardSqliteSubscriptionStore(db),
+diff --git a/extensions/workboard/src/sqlite-store-private-recovery.ts b/extensions/workboard/src/sqlite-store-private-recovery.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7af147d50b66a28408496fbc9517958f756f8ed1
+--- /dev/null
++++ b/extensions/workboard/src/sqlite-store-private-recovery.ts
+@@ -0,0 +1,28 @@
++import type { DatabaseSync } from "node:sqlite";
++import { requestSqliteWorkerOperationAdmission } from "openclaw/plugin-sdk/sqlite-worker-runtime";
++import { captureOwnedDatabase, snapshotBytes, verifySnapshotBytes, canonical } from "./private-recovery/native-memory-codec.mjs";
++import { LOGICAL_ASSURANCE, assertCaptureInterval } from "./private-recovery/logical-assurance.mjs";
++
++export type WorkboardPrivateCaptureInput = {
++  connection: number; operationId: string; nonce: string;
++};
++
++/** The original worker-held handle is captured; no operational path is reopened. */
++export function captureWorkboardOwnedDatabase(database: DatabaseSync, input: WorkboardPrivateCaptureInput): Uint8Array {
++  const facts = { kind: "private-recovery.capture", ...input };
++  requestSqliteWorkerOperationAdmission({ stage: "prepare", facts });
++  const startedAtMs = Date.now(), started = performance.now();
++  const captured = captureOwnedDatabase(database, {
++    onSnapshotStart() { requestSqliteWorkerOperationAdmission({ stage: "transaction", facts }); },
++    onBeforeCommit() { requestSqliteWorkerOperationAdmission({ stage: "commit", facts }); },
++  });
++  const captureInterval = assertCaptureInterval({
++    startedAtMs, completedAtMs: Date.now(), elapsedMs: Math.ceil(performance.now() - started),
++    cutoff: LOGICAL_ASSURANCE.source.readCutoff, exactCommitTimestampProven: false,
++  });
++  const snapshot = snapshotBytes(captured.exported);
++  verifySnapshotBytes(snapshot, captured.exported);
++  const payload = Buffer.from(canonical({ exported: captured.exported, snapshotBase64: Buffer.from(snapshot).toString("base64"), captureInterval }));
++  if (payload.byteLength > 32 * 1024 * 1024) throw new Error("Private recovery payload exceeds transport quota");
++  return payload;
++}
+diff --git a/extensions/workboard/src/sqlite-store.ts b/extensions/workboard/src/sqlite-store.ts
+index 51057ee247ccbe1411fccd63b71a6049ab1b5105..1b5e4971f282b2d4f1c4fd27442509910fc1a57e 100644
+--- a/extensions/workboard/src/sqlite-store.ts
++++ b/extensions/workboard/src/sqlite-store.ts
+@@ -4,6 +4,10 @@ import { extractErrorCode } from "openclaw/plugin-sdk/error-runtime";
+ import {
+   openSqliteWorkerStore,
+   runSqliteWorkerStoreOperation,
++  bindSqliteWorkerRecoveryTarget,
++  capturePrivateSqliteWorkerRecovery,
++  type SqliteWorkerRecoveryTarget,
++  type SqliteWorkerPrivateRecoveryAuthority,
+ } from "openclaw/plugin-sdk/sqlite-runtime";
+ import type {
+   PersistedWorkboardAttachment,
+@@ -20,7 +24,12 @@ import type {
+ import { unwrapWorkboardSqliteResult } from "./sqlite-store-errors.js";
+ import { resolveWorkboardSqlitePath } from "./sqlite-store-paths.js";
+ 
++export type WorkboardPrivateRecovery = {
++  prepareTarget(): Promise<SqliteWorkerRecoveryTarget>;
++  capture(authority: SqliteWorkerPrivateRecoveryAuthority, operationId: string): Promise<unknown>;
++};
+ type WorkboardSqliteStores = {
++  privateRecovery: WorkboardPrivateRecovery;
+   cards: WorkboardCardStore;
+   boards: WorkboardKeyedStore<PersistedWorkboardBoard>;
+   subscriptions: WorkboardSubscriptionStore;
+@@ -105,6 +114,24 @@ export function createWorkboardSqliteStores(options: {
+     });
+   const ready = opened.then((value) => value.dataVersion);
+   void ready.catch(() => {});
++  let recoveryTarget: Promise<SqliteWorkerRecoveryTarget> | undefined;
++  function prepareRecoveryTarget(): Promise<SqliteWorkerRecoveryTarget> {
++    recoveryTarget ??= opened.then(async ({ connection }) => {
++      const store = await worker;
++      return bindSqliteWorkerRecoveryTarget(store, connection, () => {
++        if (sealed || ownedConnection !== connection) {
++          throw new Error("Original Workboard recovery connection is closed or replaced.");
++        }
++      }, (result) => {
++        if (!result || typeof result !== "object" || !("ok" in result) || result.ok !== true ||
++            !("value" in result) || !(result.value instanceof Uint8Array)) {
++          throw new Error("Workboard private recovery result is invalid.");
++        }
++        return result.value;
++      });
++    });
++    return recoveryTarget;
++  }
+   async function execute<K extends keyof WorkboardSqliteOperations>(
+     type: K,
+     input: WorkboardSqliteOperations[K]["input"],
+@@ -159,6 +186,12 @@ export function createWorkboardSqliteStores(options: {
+     return (...args) => run(args, operation);
+   }
+   return {
++    privateRecovery: {
++      prepareTarget: prepareRecoveryTarget,
++      capture: (authority, operationId) => run(undefined, async () =>
++        capturePrivateSqliteWorkerRecovery(await prepareRecoveryTarget(), authority, operationId),
++      ),
++    },
+     async runWithWriteAuthority(assertCurrent, operation) {
+       const authority: { active: boolean; assertCurrent?: () => void } = {
+         active: true,
+diff --git a/extensions/workboard/src/sqlite-store.worker.ts b/extensions/workboard/src/sqlite-store.worker.ts
+index 3a45c0952074f98fd96b5ca868037fa6e9ed98cc..3f83722f18de5637125e2029dd10182265445401 100644
+--- a/extensions/workboard/src/sqlite-store.worker.ts
++++ b/extensions/workboard/src/sqlite-store.worker.ts
+@@ -40,6 +40,8 @@ export function createSqliteWorkerBackend(
+       throw new Error("Workboard SQLite connection initialization failed.");
+     }
+     switch (command.type) {
++      case "private-recovery.capture":
++        return kernel.capturePrivateRecovery(command.input);
+       case "dataVersion":
+         return kernel.dataVersion();
+       case "cards.register":
+@@ -128,6 +130,12 @@ export function createSqliteWorkerBackend(
+         return { ok: false, failure: encodeWorkboardSqliteFailure(error) };
+       }
+     },
++    assertSettled() {
++      for (const connection of connections.values()) {
++        if (!connection.kernel) throw new Error("Workboard native open cleanup is unsettled.");
++        connection.kernel.assertNativeSettlement();
++      }
++    },
+     close() {
+       const failures: unknown[] = [];
+       for (const [id, kernel] of connections) {
+diff --git a/extensions/workboard/src/store-core.ts b/extensions/workboard/src/store-core.ts
+index 9cfcbfd46f717c1942325a3de97116452309285d..66c586ec5ee3cd6b74219327ced3a79790f725a1 100644
+--- a/extensions/workboard/src/store-core.ts
++++ b/extensions/workboard/src/store-core.ts
+@@ -74,6 +74,8 @@ import {
+ } from "./store-normalizers.js";
+ import { readCards } from "./store-read.js";
+ import { WorkboardStoreRuntime } from "./store-runtime.js";
++import type { WorkboardPrivateRecovery } from "./sqlite-store.js";
++import type { SqliteWorkerPrivateRecoveryAuthority, SqliteWorkerRecoveryTarget } from "openclaw/plugin-sdk/sqlite-runtime";
+ 
+ type WorkboardMutationJournalEntry = {
+   before?: WorkboardCard;
+@@ -83,6 +85,7 @@ type WorkboardMutationJournalEntry = {
+ const WORKBOARD_CAS_ATTEMPTS = 3;
+ 
+ export class WorkboardCoreStore extends WorkboardStoreRuntime {
++  private readonly privateRecovery?: WorkboardPrivateRecovery;
+   private lastNotificationSequence = 0;
+   private compensationJournal?: WorkboardMutationJournalEntry[];
+   protected readonly store: WorkboardCardStore;
+@@ -100,9 +103,11 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
+       dataVersion?: () => number | Promise<number>;
+       close?: () => void | Promise<void>;
+       runWithWriteAuthority?: WorkboardWriteAuthority;
++      privateRecovery?: WorkboardPrivateRecovery;
+     },
+   ) {
+     super(stores.dataVersion, stores.close, stores.ready, stores.runWithWriteAuthority);
++    this.privateRecovery = stores.privateRecovery;
+     this.store = this.trackCardStore(store);
+     this.boardStore = this.track(stores.boards);
+     this.subscriptionStore = {
+@@ -112,6 +117,19 @@ export class WorkboardCoreStore extends WorkboardStoreRuntime {
+     this.attachmentStore = this.track(stores.attachments, { notifyChanges: false });
+   }
+ 
++  /** Source-owned native startup target; not a Gateway/tool/card permission. */
++  preparePrivateRecoveryTarget(): Promise<SqliteWorkerRecoveryTarget> {
++    const recovery = this.privateRecovery;
++    if (!recovery) return Promise.reject(new Error("Native Workboard recovery is unavailable."));
++    return this.runOperation(() => recovery.prepareTarget());
++  }
++
++  capturePrivateRecovery(authority: SqliteWorkerPrivateRecoveryAuthority, operationId: string): Promise<unknown> {
++    const recovery = this.privateRecovery;
++    if (!recovery) return Promise.reject(new Error("Native Workboard recovery is unavailable."));
++    return this.runOperation(() => recovery.capture(authority, operationId));
++  }
++
+   protected async withCardCompensation<T>(run: () => Promise<T>): Promise<T> {
+     if (this.compensationJournal) {
+       return await run();
+diff --git a/extensions/workboard/src/store.ts b/extensions/workboard/src/store.ts
+index 92585ff6166973f7113ce6741fad2f6bc1ca1a1f..76caf97d6fc7a4db247cf905b11adfdf80b56cac 100644
+--- a/extensions/workboard/src/store.ts
++++ b/extensions/workboard/src/store.ts
+@@ -666,8 +666,8 @@ export class WorkboardStore extends WorkboardNotificationStore {
+     );
+   }
+ 
+-  static openSqlite(workerModuleUrl: URL) {
+-    const stores = createWorkboardSqliteStores({ workerModuleUrl });
++  static openSqlite(workerModuleUrl: URL, options: { dbPath?: string } = {}) {
++    const stores = createWorkboardSqliteStores({ workerModuleUrl, dbPath: options.dbPath });
+     return new WorkboardStore(stores.cards, stores);
+   }
+ }
+diff --git a/scripts/proofs/workboard-private-recovery/controller.mjs b/scripts/proofs/workboard-private-recovery/controller.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..dba80eafd151095db8ed6f35e7386c4a9c5aa163
+--- /dev/null
++++ b/scripts/proofs/workboard-private-recovery/controller.mjs
+@@ -0,0 +1,116 @@
++// Dormant source-owned proof entry. Only the sealed native phase calls this.
++import fs from 'node:fs';
++import path from 'node:path';
++import crypto from 'node:crypto';
++import {pathToFileURL} from 'node:url';
++import {openWorkboardRecoveryQualificationStore, issueSqliteWorkerPrivateRecoveryAuthority, drainGlobalSingletonLifecycleState} from './native-api.js';
++
++const PROFILE = 'workboard-native-worker-logical-recovery.synthetic.v1';
++const STATE = '/qualification/native-state/workboard-proof';
++const CUSTODY = '/qualification/native-output/workboard-proof-custody';
++const WORKER = '/artifact/dist/extensions/workboard/src/sqlite-store.worker.js';
++const COMPANION = 'file:///proof/workboard-custody/worker-custody-bridge.mjs';
++const fail = code => { const error = new Error(code); error.code = code; throw error; };
++
++function prepareExclusiveDirectory(directory) {
++  const parent = path.dirname(directory), before = fs.lstatSync(parent);
++  if (!before.isDirectory() || before.isSymbolicLink() || before.uid !== process.geteuid() ||
++      (before.mode & 0o777) !== 0o700 || fs.realpathSync(parent) !== parent) fail('SYNTHETIC_PARENT_CUSTODY_INVALID');
++  fs.mkdirSync(directory, {mode: 0o700});
++  const opened = fs.lstatSync(directory);
++  if (!opened.isDirectory() || opened.isSymbolicLink() || opened.uid !== process.geteuid() ||
++      opened.dev !== before.dev || (opened.mode & 0o777) !== 0o700) fail('SYNTHETIC_DIRECTORY_CUSTODY_INVALID');
++}
++
++function checkedAcknowledgement(ack) {
++  if (!ack || ack.contract !== 'workboard.native-runtime-logical-recovery.v1' || ack.kind !== 'capture' ||
++      ack.synthetic !== true || ack.productionAcceptance !== false || ack.fullRecoveryReady !== false ||
++      ack.privateProofKept !== true || ack.rawProofPublished !== false || ack.runtimeStartAllowed !== false ||
++      ack.claimsRearmed !== false || ack.notificationsDelivered !== false) fail('SYNTHETIC_CUSTODY_ACK_INVALID');
++  return ack;
++}
++
++/**
++ * The caller is the actual admitted native-phase owner, not a grant DTO.
++ * Fresh directories and the original store belong to this one invocation.
++ * Its UUID/profile fields describe receipts; only retained closures admit work.
++ */
++export async function runWorkboardPrivateRecoveryQualification(context) {
++  if (!context || Object.keys(context).sort().join(',') !== 'assertCurrent,profileSha256,python' ||
++      typeof context.assertCurrent !== 'function' || !/^[0-9a-f]{64}$/.test(context.profileSha256) ||
++      context.python !== '/usr/bin/python3') fail('SYNTHETIC_NATIVE_CONTEXT_INVALID');
++  const parentCurrent = context.assertCurrent, profileSha256 = context.profileSha256, python = context.python;
++  let active = true, store, custodian, issued, primary, result, failed = false, captureInvoked = false;
++  const assertCurrent = () => {
++    if (!active) fail('SYNTHETIC_NATIVE_OWNER_RETIRED');
++    parentCurrent();
++    if (!active) fail('SYNTHETIC_NATIVE_OWNER_RETIRED');
++  };
++  const sourceBootId = crypto.randomUUID(), sourceGenerationId = crypto.randomUUID();
++  const operationId = crypto.randomUUID();
++  try {
++    assertCurrent();
++    prepareExclusiveDirectory(STATE);
++    assertCurrent();
++    prepareExclusiveDirectory(CUSTODY);
++    assertCurrent();
++    // Package graph and proof source pins are admitted by the original producer.
++    const {createWorkerCustodian} = await import(COMPANION);
++    assertCurrent();
++    store = await openWorkboardRecoveryQualificationStore({
++      dbPath: path.join(STATE, 'store.sqlite'), workerModuleUrl: pathToFileURL(WORKER),
++    }, assertCurrent);
++    assertCurrent();
++    await store.ready();
++    assertCurrent();
++    const target = await store.preparePrivateRecoveryTarget();
++    assertCurrent();
++    custodian = createWorkerCustodian({
++      sourceBinding: {sourceBootId, sourceGenerationId, sourceOwnerId: 'workboard-native-' + sourceGenerationId, profileSha256},
++      executionBootId: crypto.randomUUID(), python, custodyRoot: CUSTODY, sizeLimit: 4 * 1024 * 1024,
++    });
++    // This is the same executed internal issuer used by the genuine SDK target.
++    issued = issueSqliteWorkerPrivateRecoveryAuthority(target, {assertCurrent, custodian});
++    assertCurrent();
++    await custodian.ready(assertCurrent);
++    assertCurrent();
++    const card = await store.create({title: 'Synthetic recovery sentinel', status: 'todo', labels: ['synthetic-proof']}, undefined, assertCurrent);
++    assertCurrent();
++    await store.addAttachment(card.id, {
++      fileName: 'synthetic.txt', contentBase64: Buffer.from('synthetic recovery bytes\n').toString('base64'), mimeType: 'text/plain',
++    }, undefined, assertCurrent);
++    assertCurrent();
++    captureInvoked = true;
++    const ack = checkedAcknowledgement(await store.capturePrivateRecovery(issued.authority, operationId));
++    assertCurrent();
++    issued.revoke();
++    let revokedRejected = false;
++    try { await store.capturePrivateRecovery(issued.authority, crypto.randomUUID()); }
++    catch (error) { if (error?.code === 'closed') revokedRejected = true; else throw error; }
++    if (!revokedRejected) fail('REVOKED_PRIVATE_CAPTURE_ADMITTED');
++    result = {
++      schema: PROFILE, completed: true, synthetic: true, productionAcceptance: false, fullRecoveryReady: false,
++      originalFactoryTargetIssuerJoined: true, revokedCallRejected: true, fixtureCards: 1, fixtureAttachments: 1,
++      prePersistenceInertReconstruction: true, postAcknowledgementRestoreQualified: false,
++      acknowledgement: ack, runtimeStartAllowed: false, claimsRearmed: false, notificationsDelivered: false,
++    };
++  } catch (error) { failed = true; primary = error; }
++  // Revoke before yielding to joined shutdown; keep both owners even if one close fails.
++  active = false;
++  const cleanupCodes = [];
++  try { issued?.revoke(); } catch { cleanupCodes.push('PRIVATE_AUTHORITY_REVOKE_FAILED'); }
++  for (const [owner, code] of [[store, 'WORKBOARD_STORE_CLOSE_FAILED'], [custodian, 'CUSTODIAN_CLOSE_FAILED']]) {
++    try { await owner?.close(); } catch { cleanupCodes.push(code); }
++  }
++  // This isolated phase has no other core user: join the original broker owner too.
++  try { await drainGlobalSingletonLifecycleState(); } catch { cleanupCodes.push('SQLITE_BROKER_DRAIN_FAILED'); }
++  if (cleanupCodes.length || failed) {
++    const error = new Error(cleanupCodes.length ? 'SYNTHETIC_NATIVE_CLEANUP_FAILED' : 'SYNTHETIC_NATIVE_OPERATION_FAILED', {cause: primary});
++    const code = primary && (typeof primary === 'object' || typeof primary === 'function') ? Object.getOwnPropertyDescriptor(primary, 'code')?.value : undefined;
++    error.code = typeof code === 'string' ? code : cleanupCodes.length ? 'SYNTHETIC_NATIVE_CLEANUP_FAILED' : 'SYNTHETIC_NATIVE_OPERATION_FAILED';
++    error.cleanupCodes = Object.freeze(cleanupCodes);
++    error.qualificationContext = Object.freeze({operationId, sourceBootId, sourceGenerationId, profileSha256, captureInvoked, synthetic: true});
++    throw error;
++  }
++  return Object.freeze({...result, storeAndCustodianJoined: true});
++}
+diff --git a/scripts/proofs/workboard-private-recovery/native-api.ts b/scripts/proofs/workboard-private-recovery/native-api.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..84e8315024794528f3bacffc6e9ec7bbdc3600ad
+--- /dev/null
++++ b/scripts/proofs/workboard-private-recovery/native-api.ts
+@@ -0,0 +1,4 @@
++// Task-only entry in the original unified graph; issuer is never SDK-exported.
++export { openWorkboardRecoveryQualificationStore } from "../../../extensions/workboard/api.js";
++export { issueSqliteWorkerPrivateRecoveryAuthority } from "../../../src/infra/sqlite-worker-private-recovery-authority.js";
++export { drainGlobalSingletonLifecycleState } from "../../../src/shared/global-singleton.js";
+diff --git a/src/infra/sqlite-worker-broker.ts b/src/infra/sqlite-worker-broker.ts
+index 8988d638bb575a37322a0804d9085f95bda8a54d..2f3946f5960f7a33fae4c1204fa4eeeb50089dd6 100644
+--- a/src/infra/sqlite-worker-broker.ts
++++ b/src/infra/sqlite-worker-broker.ts
+@@ -53,6 +53,7 @@ import type { SqliteWorkerAdmissionFactory } from "./sqlite-worker-operation-adm
+ import type { SqliteWorkerOperationSettlement } from "./sqlite-worker-operation-settlement.js";
+ import type { SqliteWorkerStateContext } from "./sqlite-worker-state-context.js";
+ import { sqliteWorkerRequestBytes } from "./sqlite-worker-state-context.js";
++import type { PrivateRecoveryCommand } from "./sqlite-worker-private-recovery-authority.js";
+ 
+ const ADMISSION_TIMEOUT_MS = 10_000;
+ const MAX_STORES = 64;
+@@ -398,6 +399,35 @@ export class SqliteWorkerBroker {
+     return client.actor;
+   }
+ 
++  /** Private recovery binds native plugin actors without weakening shared-state identity. */
++  getRecoveryActorIdentity(store: object): object {
++    const client = this.stores.get(store);
++    if (!client || client.sealed || !client.isAvailable()) {
++      throw new SqliteWorkerError("SQLite recovery actor binding is unavailable", "closed");
++    }
++    return client.actor;
++  }
++
++  runPrivateRecoveryOperation<T>(
++    store: object,
++    command: PrivateRecoveryCommand,
++    createAdmission: SqliteWorkerAdmissionFactory,
++    assertCurrent: () => void,
++    consume: (result: unknown) => Promise<T>,
++  ): Promise<T> {
++    return runSqliteWorkerClientOperation(
++      this.draining ? undefined : this.stores.get(store),
++      async (scope) => consume(await scope.execute(command)),
++      undefined,
++      (pending) => {
++        this.operations.add(pending);
++        return () => this.operations.delete(pending);
++      },
++      () => assertCurrent(),
++      createAdmission,
++    );
++  }
++
+   hasUnclaimedSharedStateCleanup(databasePath: string): boolean {
+     return findUnclaimedSharedStateActors(this.actors.values(), databasePath).length > 0;
+   }
+diff --git a/src/infra/sqlite-worker-client.ts b/src/infra/sqlite-worker-client.ts
+index 2c9d80ccf4176dce42890aef79243c54cf926e6b..9ba9d5a6051a5901ea4b8e04e6ef9a970dfe2ff7 100644
+--- a/src/infra/sqlite-worker-client.ts
++++ b/src/infra/sqlite-worker-client.ts
+@@ -1,6 +1,6 @@
+ import { AsyncLocalStorage } from "node:async_hooks";
+ import { isPromise } from "node:util/types";
+-import { serialize } from "node:v8";
++import { deserialize, serialize } from "node:v8";
+ import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
+ import { createDeferredCore } from "../shared/deferred.js";
+ import { getOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
+@@ -11,6 +11,7 @@ import {
+   type SqliteWorkerStore,
+ } from "./sqlite-worker-contract.js";
+ import type { SqliteWorkerAdmissionFactory } from "./sqlite-worker-operation-admission.js";
++import { assertSqliteWorkerPrivateRecoveryCommand } from "./sqlite-worker-private-recovery-authority.js";
+ import {
+   captureSqliteWorkerStateContext,
+   type SqliteWorkerStateContext,
+@@ -101,6 +102,9 @@ export function createSqliteWorkerClient<Operations extends SqliteWorkerOperatio
+         assertCurrent?.();
+         // The queued guard and wire command must observe the same captured type.
+         payload = serialize({ type: commandType, input: command.input });
++        if (typeof commandType === "string" && commandType.startsWith("private-recovery.")) {
++          assertSqliteWorkerPrivateRecoveryCommand(deserialize(payload), owner.actor, createAdmission);
++        }
+       } catch (error) {
+         return Promise.reject(
+           toErrorObject(error, "SQLite worker command could not be serialized"),
+diff --git a/src/infra/sqlite-worker-private-recovery-authority.ts b/src/infra/sqlite-worker-private-recovery-authority.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ee8707b78eed4985702e0fc294cd5c8a4ad2f763
+--- /dev/null
++++ b/src/infra/sqlite-worker-private-recovery-authority.ts
+@@ -0,0 +1,149 @@
++import { randomUUID } from "node:crypto";
++import { SqliteWorkerError } from "./sqlite-worker-contract.js";
++import {
++  createSqliteWorkerOperationAdmission,
++  type SqliteWorkerAdmissionFactory,
++} from "./sqlite-worker-operation-admission.js";
++
++export const PRIVATE_RECOVERY_COMMAND = "private-recovery.capture";
++export type PrivateRecoveryCommand = {
++  type: typeof PRIVATE_RECOVERY_COMMAND;
++  input: { connection: number; operationId: string; nonce: string };
++};
++export type SqliteWorkerRecoveryTarget = Readonly<object>;
++export type SqliteWorkerPrivateRecoveryAuthority = Readonly<object>;
++type Target = {
++  actor: object;
++  connection: number;
++  assertCurrent(): void;
++  execute<T>(command: PrivateRecoveryCommand, factory: SqliteWorkerAdmissionFactory,
++             assertCurrent: () => void, consume: (result: unknown) => Promise<T>): Promise<T>;
++  decode(result: unknown): Uint8Array;
++};
++type Authority = {
++  target: Target;
++  assertOwnerCurrent(): void;
++  persist(payload: Uint8Array, operationId: string, assertCurrent: () => void): Promise<unknown>;
++  revoked: boolean;
++  operations: Set<string>;
++};
++const targets = new WeakMap<object, Target>();
++const authorities = new WeakMap<object, Authority>();
++const factories = new WeakMap<SqliteWorkerAdmissionFactory, {
++  target: Target; command: PrivateRecoveryCommand; assertCurrent(): void;
++  active: boolean; dispatched: boolean; grants: number;
++}>();
++const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
++const fail = () => { throw new SqliteWorkerError("Private recovery authority is unavailable", "closed"); };
++
++/** Internal registration, called by the existing broker facade, never a private grant. */
++export function registerSqliteWorkerRecoveryTarget(target: Target): SqliteWorkerRecoveryTarget {
++  target.assertCurrent();
++  if (!Number.isSafeInteger(target.connection) || target.connection <= 0) fail();
++  const handle = Object.freeze({});
++  targets.set(handle, { ...target });
++  return handle;
++}
++
++/** Host-only issuer. Deliberately absent from SDK exports and model/Gateway routes. */
++export function issueSqliteWorkerPrivateRecoveryAuthority(
++  targetHandle: SqliteWorkerRecoveryTarget,
++  owner: {
++    assertCurrent(): void;
++    custodian: { persist(payload: Uint8Array, operationId: string, assertCurrent: () => void): Promise<unknown> };
++  },
++): { authority: SqliteWorkerPrivateRecoveryAuthority; revoke(): void } {
++  const target = targets.get(targetHandle);
++  if (!target || typeof owner.assertCurrent !== "function" || typeof owner.custodian.persist !== "function") fail();
++  const assertOwnerCurrent = owner.assertCurrent.bind(owner);
++  const persist = owner.custodian.persist.bind(owner.custodian);
++  assertOwnerCurrent();
++  target.assertCurrent();
++  const authority = Object.freeze({});
++  const state: Authority = { target, assertOwnerCurrent, persist, revoked: false, operations: new Set() };
++  authorities.set(authority, state);
++  return Object.freeze({ authority, revoke() { state.revoked = true; } });
++}
++
++/** Broker client checks the actual serialized command against its opaque factory. */
++export function assertSqliteWorkerPrivateRecoveryCommand(
++  command: { type: PropertyKey; input: unknown }, actor: object,
++  factory: SqliteWorkerAdmissionFactory | undefined,
++): void {
++  if (typeof command.type !== "string" || !command.type.startsWith("private-recovery.")) return;
++  const state = factory && factories.get(factory);
++  if (!state || !state.active || state.dispatched || state.target.actor !== actor || command.type !== PRIVATE_RECOVERY_COMMAND) fail();
++  const input = command.input;
++  if (!input || typeof input !== "object" || Array.isArray(input)) fail();
++  const fields = Object.getOwnPropertyDescriptors(input);
++  if (Object.keys(fields).sort().join(",") !== "connection,nonce,operationId" ||
++      fields.connection?.value !== state.command.input.connection ||
++      fields.operationId?.value !== state.command.input.operationId ||
++      fields.nonce?.value !== state.command.input.nonce) fail();
++  state.assertCurrent();
++  state.dispatched = true;
++}
++
++/** Keep the original broker operation until private descriptor custody acknowledges it. */
++export async function capturePrivateSqliteWorkerRecovery(
++  targetHandle: SqliteWorkerRecoveryTarget,
++  capability: SqliteWorkerPrivateRecoveryAuthority,
++  operationId: string,
++): Promise<unknown> {
++  const target = targets.get(targetHandle), owner = authorities.get(capability);
++  if (!target || !owner || owner.target !== target || !UUID.test(operationId) || owner.operations.has(operationId) || owner.operations.size >= 1024) fail();
++  const assertCurrent = () => {
++    if (owner.revoked) fail();
++    owner.assertOwnerCurrent();
++    target.assertCurrent();
++    // A source-owned check can synchronously reenter retirement before returning.
++    if (owner.revoked) fail();
++  };
++  assertCurrent();
++  owner.operations.add(operationId);
++  const command: PrivateRecoveryCommand = Object.freeze({
++    type: PRIVATE_RECOVERY_COMMAND,
++    input: Object.freeze({ connection: target.connection, operationId, nonce: randomUUID() }),
++  });
++  let active = true;
++  const factory: SqliteWorkerAdmissionFactory = () => {
++    let phase = 0;
++    return {
++      nativeLocations: [],
++      admission: createSqliteWorkerOperationAdmission((request, grant) => {
++        if (!active) fail();
++        assertCurrent();
++        const facts = request.facts;
++        if (!facts || typeof facts !== "object" || Array.isArray(facts)) fail();
++        const fields = Object.getOwnPropertyDescriptors(facts);
++        if (Object.keys(fields).sort().join(",") !== "connection,kind,nonce,operationId" ||
++            fields.kind?.value !== PRIVATE_RECOVERY_COMMAND ||
++            fields.connection?.value !== command.input.connection ||
++            fields.operationId?.value !== operationId || fields.nonce?.value !== command.input.nonce ||
++            request.stage !== ["prepare", "transaction", "commit"][phase]) fail();
++        if (!grant()) fail();
++        phase++;
++        factoryState.grants = phase;
++      }),
++    };
++  };
++  const factoryState = { target, command, assertCurrent, active: true, dispatched: false, grants: 0 };
++  factories.set(factory, factoryState);
++  try {
++    return await target.execute(command, factory, assertCurrent, async (result) => {
++      assertCurrent();
++      if (factoryState.grants !== 3) fail();
++      const bytes = target.decode(result);
++      if (!(bytes instanceof Uint8Array) || bytes.byteLength > 32 * 1024 * 1024) fail();
++      assertCurrent();
++      const receipt = await owner.persist(bytes, operationId, assertCurrent);
++      try { assertCurrent(); }
++      catch { throw new SqliteWorkerError("Private recovery acknowledgement is unknown", "outcome-unknown"); }
++      return receipt;
++    });
++  } finally {
++    active = false;
++    factoryState.active = false;
++    factories.delete(factory);
++  }
++}
+diff --git a/src/infra/sqlite-worker-store.ts b/src/infra/sqlite-worker-store.ts
+index 16f6d68b5fb8294f2f2cd42488b9430d4469317f..7508582d8871db0fbc68f2d797f4dded26f4966d 100644
+--- a/src/infra/sqlite-worker-store.ts
++++ b/src/infra/sqlite-worker-store.ts
+@@ -18,6 +18,7 @@ import {
+   type SqliteWorkerAdmissionFactory,
+ } from "./sqlite-worker-operation-admission.js";
+ import type { SqliteWorkerStateContext } from "./sqlite-worker-state-context.js";
++import { registerSqliteWorkerRecoveryTarget, type SqliteWorkerRecoveryTarget } from "./sqlite-worker-private-recovery-authority.js";
+ 
+ function withCallerErrors<T>(result: Promise<T>): Promise<T> {
+   return result.catch((error: unknown) => {
+@@ -76,6 +77,27 @@ function resolveSqliteWorkerBroker() {
+   );
+ }
+ 
++/** Bind only the original native actor and logical lease; this issues no private scope. */
++export function bindSqliteWorkerRecoveryTarget(
++  store: object, originalConnection: number, assertConnectionCurrent: () => void,
++  decode: (result: unknown) => Uint8Array,
++): SqliteWorkerRecoveryTarget {
++  const broker = resolveSqliteWorkerBroker();
++  const actor = broker.getRecoveryActorIdentity(store);
++  const assertCurrent = () => {
++    assertConnectionCurrent();
++    if (broker.getRecoveryActorIdentity(store) !== actor) {
++      throw new SqliteWorkerError("SQLite recovery actor was replaced", "closed");
++    }
++  };
++  return registerSqliteWorkerRecoveryTarget({
++    actor, connection: originalConnection, assertCurrent, decode,
++    execute: (command, factory, current, consume) => withCallerErrors(
++      broker.runPrivateRecoveryOperation(store, command, factory, current, consume),
++    ),
++  });
++}
++
+ export type { SqliteWorkerInputPreparation } from "./sqlite-worker-broker.types.js";
+ 
+ /** Charge captured input before actor preparation can yield, then hand it to normal dispatch. */
+diff --git a/src/plugin-sdk/sqlite-runtime.ts b/src/plugin-sdk/sqlite-runtime.ts
+index a8ef3e97a437470b0042901ecc19b5141ffdc877..e3c7801bd345bcbcc72a2a9e23bfcdcf5bca9253 100644
+--- a/src/plugin-sdk/sqlite-runtime.ts
++++ b/src/plugin-sdk/sqlite-runtime.ts
+@@ -4,6 +4,7 @@ export type { Generated, Selectable } from "kysely";
+ export { runQueuedStoreWrite, type StoreWriterQueue } from "../shared/store-writer-queue.js";
+ export {
+   openSqliteWorkerStore,
++  bindSqliteWorkerRecoveryTarget,
+   runSqliteWorkerStoreOperation,
+   runSqliteWorkerStoreWrite,
+   SqliteWorkerError,
+@@ -12,6 +13,11 @@ export {
+   type SqliteWorkerOperations,
+   type SqliteWorkerStore,
+ } from "../infra/sqlite-worker-store.js";
++export {
++  capturePrivateSqliteWorkerRecovery,
++  type SqliteWorkerRecoveryTarget,
++  type SqliteWorkerPrivateRecoveryAuthority,
++} from "../infra/sqlite-worker-private-recovery-authority.js";
+ export { requestSqliteWorkerOperationAdmission } from "../infra/sqlite-worker-operation-admission.js";
+ export {
+   openOpenClawAgentSqliteWorkerStore,
+diff --git a/tsdown.config.ts b/tsdown.config.ts
+index fa5db4fb93201c4b19c7aacefbad14a7491c757f..80e3b28c2e10653c3e7271d2f98cd0885b2a2b61 100644
+--- a/tsdown.config.ts
++++ b/tsdown.config.ts
+@@ -450,6 +450,8 @@ function buildCoreDistEntries(): Record<string, string> {
+           "proofs/native-ipc-gateway-driver": "scripts/proofs/native-ipc-gateway/driver.mjs",
+           "proofs/native-ipc-gateway-api": "scripts/proofs/native-ipc-gateway/native-api.ts",
+           "proofs/native-ipc-gateway-fixture": "scripts/proofs/native-ipc-gateway/native-fixture.ts",
++          "proofs/workboard-private-recovery-controller": "scripts/proofs/workboard-private-recovery/controller.mjs",
++          "proofs/workboard-private-recovery-api": "scripts/proofs/workboard-private-recovery/native-api.ts",
+         }
+       : {}),
+     index: "src/index.ts",

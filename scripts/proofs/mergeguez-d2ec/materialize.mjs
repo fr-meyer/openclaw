@@ -168,7 +168,10 @@ export async function materialize(source, tarball, deployed, runnable, buildFile
   await tar.t({ file: tarball, strict: true, onReadEntry: entry => { need(Date.now() < deadline && entries.length < 200000, 'tar metadata/deadline cap exceeded'); entries.push({ path: entry.path, type: entry.type, size: entry.size, linkpath: entry.linkpath }); } });
   const listed = validateTarEntries(entries, contract.portable_runnable_unpacked_cap_bytes);
   const paths = new Set(entries.map(entry => entry.path));
-  for (const relative of ['openclaw.mjs', 'dist/build-info.json', 'dist/plugin-sdk/sqlite-runtime.js', 'dist/proofs/native-ipc-gateway-driver.js', 'dist/proofs/native-ipc-gateway-api.js', 'dist/proofs/native-ipc-gateway-fixture.js'])
+  const proofEntries = contract.qualification_scope === 'workboard-native-worker-logical-recovery.synthetic.v1'
+    ? ['dist/proofs/workboard-private-recovery-controller.js', 'dist/proofs/workboard-private-recovery-api.js', 'dist/extensions/workboard/src/sqlite-store.worker.js']
+    : ['dist/proofs/native-ipc-gateway-driver.js', 'dist/proofs/native-ipc-gateway-api.js', 'dist/proofs/native-ipc-gateway-fixture.js'];
+  for (const relative of ['openclaw.mjs', 'dist/build-info.json', 'dist/plugin-sdk/sqlite-runtime.js', ...proofEntries])
     need(paths.has('package/' + relative), 'actual checked package lacks required driver/runtime entry ' + relative);
   fs.mkdirSync(runnable, { mode: 0o700 });
   await tar.x({ file: tarball, cwd: runnable, strip: 1, preserveOwner: false, strict: true });

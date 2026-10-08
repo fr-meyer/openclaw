@@ -1,7 +1,7 @@
 {
   "schema": "mergeguez.sealed-runnable-qualification-tooling/v3",
-  "source_commit": "6037a26355cd2e900da2380f9b746ce76db112c0",
-  "source_tree": "4a67cb919839f0fb33c9bb401ca2b17952a437e6",
+  "source_commit": "f90ce82ac6661848a5422b51959d5de41eae6316",
+  "source_tree": "e58a86e119b1d7722caf60230c19cdf9ed368592",
   "files": [
     {
       "path": "cli-source.commit",
@@ -15,13 +15,13 @@
     },
     {
       "path": "contract.json",
-      "bytes": 103235,
-      "sha256": "70fb0b619b02e67ad8edfc49d5b9585e574466376d7dd7993e337c9de6b0a51a"
+      "bytes": 111773,
+      "sha256": "a6cb05e6ce440c54e9e7c0c39d987e601dfe5f44aec8b5af5630d9af4664eb1e"
     },
     {
       "path": "driver.py",
-      "bytes": 51558,
-      "sha256": "5c75128e1d185524a41a46706070c808babd71af535227d4d8268edb429abf40"
+      "bytes": 54123,
+      "sha256": "ee360c7ed1904af37a219ce217e9bf814a5459510ecde1392b30482fee72d79f"
     },
     {
       "path": "intermediate-source.commit",
@@ -35,8 +35,8 @@
     },
     {
       "path": "materialize.mjs",
-      "bytes": 16508,
-      "sha256": "8aae88c02023b8f4bc05b89dd1b99432ced203354f24a9b6b3b55014f292341e"
+      "bytes": 16813,
+      "sha256": "70823bc6649e24a1a737de6b0d8a970f20b6b8eb88a909180b4bef7aca0d76f8"
     },
     {
       "path": "owner-source-1.commit",
@@ -180,8 +180,8 @@
     },
     {
       "path": "runtime.mjs",
-      "bytes": 21381,
-      "sha256": "60ad97385a4121bf3198b1cdbd37b403a2ad9c1f168ee20e01fb98afb121114d"
+      "bytes": 29969,
+      "sha256": "9109dbde876b6fb13c5e5c3ba6c35aac8949b9d04d8992fb8b8aee13ef779006"
     },
     {
       "path": "source.commit",
@@ -205,18 +205,128 @@
     },
     {
       "path": "test_driver.py",
-      "bytes": 63744,
-      "sha256": "c984c0175ca11a6362b3a04f9d9036805e82962eb7358a063155e58e02939060"
+      "bytes": 63974,
+      "sha256": "584d79f8ee9c863594f3f78da2c52b2e8c38ba86357a8256c8968e2cf5812bab"
     },
     {
       "path": "test_materialize.mjs",
-      "bytes": 12574,
-      "sha256": "870c284edf04c4ef1376423d3bc5e69b30ceeebcf64b7724c0d67e941f56f6db"
+      "bytes": 16104,
+      "sha256": "6d50ffb15edd2643ebd635dd917f5a49476a043ff68597061a0ba40938f6ccab"
     },
     {
       "path": "test_runtime.mjs",
-      "bytes": 27980,
-      "sha256": "5dbc21eaa32ad05887e1350bdc3fbd4df367b14010c512d850b1758f8067f4df"
+      "bytes": 28713,
+      "sha256": "c4c8e33a26731d198d927d4531c0ca820438ba3d22d6722caba6da20358a2e27"
+    },
+    {
+      "path": "test_workboard_controller.mjs",
+      "bytes": 12495,
+      "sha256": "91a6848d1f702e4328335fea7aba715919bbbd8f158cabf09bca323898c8febf"
+    },
+    {
+      "path": "test_workboard_driver.py",
+      "bytes": 10198,
+      "sha256": "6a64a65fdf3205aa1c6a67078e6bd1337cc22b71288d31bd2a9dee9f7026c2ee"
+    },
+    {
+      "path": "test_workboard_runtime.mjs",
+      "bytes": 13840,
+      "sha256": "d4ef5bd26f1421e7149f9975c58a5c60a8bd8179f769280366af49b22d45f0ac"
+    },
+    {
+      "path": "workboard-custody/Interface.md",
+      "bytes": 4362,
+      "sha256": "957cd622cbb089a075735e4c92bd187eb6f55e6c4f78f0742b55b1582b6edbad"
+    },
+    {
+      "path": "workboard-custody/companion-handoff.json",
+      "bytes": 3335,
+      "sha256": "fd4232794fd183d6f790e574444f450a9d40965347e2e6675530f4bf25231786"
+    },
+    {
+      "path": "workboard-custody/dependency-pins.json",
+      "bytes": 2587,
+      "sha256": "65668dc95d7e3136c6c814d1edbf477dbc726e2e94633c8d7a06b197917a66c7"
+    },
+    {
+      "path": "workboard-custody/logical-transport-contract.mjs",
+      "bytes": 2623,
+      "sha256": "31a935f3798de6da4af32de17f4dbf8347e8bc537f0e56acc3a285203c4dfaa1"
+    },
+    {
+      "path": "workboard-custody/source-pins.json",
+      "bytes": 2592,
+      "sha256": "11067c29c126b62056c2b2a98547915ddc4bdab1d5ee0985226d555728a052ac"
+    },
+    {
+      "path": "workboard-custody/test-worker-custody-bridge.mjs",
+      "bytes": 15705,
+      "sha256": "6edb2d52793ecd16ca11457c62bc157c0d1a936b84dd653472b1df39cc0280a9"
+    },
+    {
+      "path": "workboard-custody/unit-receipt.json",
+      "bytes": 3499,
+      "sha256": "8464eea9284bfcf73fdcd1a0e8cce1d6d260922ba1b4b886bc0e8bbb5b19ef4c"
+    },
+    {
+      "path": "workboard-custody/vendor/adapter/custody/workboard_private_custody.py",
+      "bytes": 23385,
+      "sha256": "c9b291c42e9179be0ea363f56694db3b0ae8c4957a7e968a9a6b56f8dc20a917"
+    },
+    {
+      "path": "workboard-custody/vendor/adapter/ledger/workboard_acceptance_ledger.py",
+      "bytes": 20896,
+      "sha256": "03cd5b84db0866813f3d9e2b7cd718302d7af0705f11edd8a931d79dc5938d9e"
+    },
+    {
+      "path": "workboard-custody/vendor/adapter/logical-assurance.mjs",
+      "bytes": 2207,
+      "sha256": "1d3703c3dfa65553b3f89f9d0a373cd8b10e82a0d1f119d6ce2cf3765fc44814"
+    },
+    {
+      "path": "workboard-custody/vendor/adapter/native-memory-codec.mjs",
+      "bytes": 8819,
+      "sha256": "b995bc4a98b2916b4285ef8974f28d2c1312628e0070dd713cfcf0d2cd993565"
+    },
+    {
+      "path": "workboard-custody/vendor/adapter/proof_keeper.py",
+      "bytes": 8684,
+      "sha256": "94b64e5d5167829aa47240ffd259f1132df60a12196d2afcf77820ea7e9cde4c"
+    },
+    {
+      "path": "workboard-custody/vendor/adapter/recovery_worker.py",
+      "bytes": 10887,
+      "sha256": "d3a5748ce502327b96c759f7a6e378e7e93de088a97d83deed9a360199d8ef19"
+    },
+    {
+      "path": "workboard-custody/vendor/adapter/schema.sql",
+      "bytes": 7388,
+      "sha256": "ddf7208a4e79d53b4cde461de6c6ce32d322537069cefd5c603f835e13f2bc25"
+    },
+    {
+      "path": "workboard-custody/vendor/adapter/sealed-python-client.mjs",
+      "bytes": 10472,
+      "sha256": "d86506c5ac8960b89e75a66ed641b5501e0fdf87dd211f6160210df062ba6e69"
+    },
+    {
+      "path": "workboard-custody/vendor/adapter/shared/family_publish_io.py",
+      "bytes": 7822,
+      "sha256": "ef1f6341e8fbc29c13b3acb873fbc9181f0075f6869c37bc6fa87fba52d6b967"
+    },
+    {
+      "path": "workboard-custody/worker-custody-bridge.mjs",
+      "bytes": 17467,
+      "sha256": "428f8e9b64dfed3f5ec75a7f36bdb754579dbdb954b06b069e1b71dbc9475cbc"
+    },
+    {
+      "path": "workboard-source.commit",
+      "bytes": 314,
+      "sha256": "282b535c1ca0854c97fa39bcd3a936c14f05f0d3a47a782678c41e82544c9eb7"
+    },
+    {
+      "path": "workboard-source.patch",
+      "bytes": 63431,
+      "sha256": "0cce713b2f9651eae7df7e6f357d2c9bf99f7bb5552835aa218b4871c87d860b"
     }
   ]
 }

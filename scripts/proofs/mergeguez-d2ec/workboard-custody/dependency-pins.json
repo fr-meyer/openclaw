@@ -1,0 +1,61 @@
+{
+  "schema": "workboard-native-worker-custody-dependencies.v1",
+  "sharedIoVersion": "frozen-v5",
+  "sharedIoRepinned": false,
+  "pins": [
+    {
+      "path": "vendor/adapter/native-memory-codec.mjs",
+      "source": "parallel/native-logical-recovery-v1/candidate/adapter/native-memory-codec.mjs",
+      "sha256": "b995bc4a98b2916b4285ef8974f28d2c1312628e0070dd713cfcf0d2cd993565",
+      "bytes": 8819
+    },
+    {
+      "path": "vendor/adapter/logical-assurance.mjs",
+      "source": "parallel/native-logical-recovery-v1/candidate/adapter/logical-assurance.mjs",
+      "sha256": "1d3703c3dfa65553b3f89f9d0a373cd8b10e82a0d1f119d6ce2cf3765fc44814",
+      "bytes": 2207
+    },
+    {
+      "path": "vendor/adapter/schema.sql",
+      "source": "parallel/native-logical-recovery-v1/candidate/adapter/schema.sql",
+      "sha256": "ddf7208a4e79d53b4cde461de6c6ce32d322537069cefd5c603f835e13f2bc25",
+      "bytes": 7388
+    },
+    {
+      "path": "vendor/adapter/sealed-python-client.mjs",
+      "source": "parallel/native-logical-recovery-v1/candidate/adapter/sealed-python-client.mjs",
+      "sha256": "d86506c5ac8960b89e75a66ed641b5501e0fdf87dd211f6160210df062ba6e69",
+      "bytes": 10472
+    },
+    {
+      "path": "vendor/adapter/shared/family_publish_io.py",
+      "source": "parallel/native-logical-recovery-v1/candidate/adapter/shared/family_publish_io.py",
+      "sha256": "ef1f6341e8fbc29c13b3acb873fbc9181f0075f6869c37bc6fa87fba52d6b967",
+      "bytes": 7822
+    },
+    {
+      "path": "vendor/adapter/custody/workboard_private_custody.py",
+      "source": "parallel/native-logical-recovery-v1/candidate/adapter/custody/workboard_private_custody.py",
+      "sha256": "c9b291c42e9179be0ea363f56694db3b0ae8c4957a7e968a9a6b56f8dc20a917",
+      "bytes": 23385
+    },
+    {
+      "path": "vendor/adapter/ledger/workboard_acceptance_ledger.py",
+      "source": "parallel/native-logical-recovery-v1/candidate/adapter/ledger/workboard_acceptance_ledger.py",
+      "sha256": "03cd5b84db0866813f3d9e2b7cd718302d7af0705f11edd8a931d79dc5938d9e",
+      "bytes": 20896
+    },
+    {
+      "path": "vendor/adapter/proof_keeper.py",
+      "source": "parallel/native-logical-recovery-v1/candidate/adapter/proof_keeper.py",
+      "sha256": "94b64e5d5167829aa47240ffd259f1132df60a12196d2afcf77820ea7e9cde4c",
+      "bytes": 8684
+    },
+    {
+      "path": "vendor/adapter/recovery_worker.py",
+      "source": "parallel/native-logical-recovery-v1/candidate/adapter/recovery_worker.py",
+      "sha256": "d3a5748ce502327b96c759f7a6e378e7e93de088a97d83deed9a360199d8ef19",
+      "bytes": 10887
+    }
+  ]
+}

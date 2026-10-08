@@ -1,0 +1,37 @@
+{
+  "schema": "workboard-worker-custody-bridge-unit-receipt.v1",
+  "createdAtUTC": "2026-10-01T01:40:07.871820+00:00",
+  "synthetic": true,
+  "productionAcceptance": false,
+  "runtimeAdmissionProven": false,
+  "actualWorkerIntegrationRun": false,
+  "pythonCustodyProcessStarted": false,
+  "hostBridgeOpensSQLite": false,
+  "hostBridgeImportsSQLiteCodec": false,
+  "semanticFixtureScope": "unit-only in-memory codec negative probe; not broker/native-worker execution",
+  "hostValidationScope": "transport/header/typed payload/hash/UTF8/fixed contract only; private result provenance belongs to original actor/lease broker admission",
+  "scope": "unit codec fixture plus host-only transport validation and VM-mocked sealed transport interface",
+  "command": [
+    "/opt/homebrew/bin/node",
+    "--max-old-space-size=128",
+    "--experimental-vm-modules",
+    "--test-isolation=none",
+    "--test",
+    "parallel/native-worker-logical-port-v1/companion/test-worker-custody-bridge.mjs"
+  ],
+  "nodeSha256": "72c18e2eeda260f67a5b2b66e96fa9b5ad82864676ebb54925695d87120cae3f",
+  "elapsedSeconds": 0.17903558300167788,
+  "exitCode": 0,
+  "stdout": "\u2714 all17 exact schema and raw int64/claim/text bindings package without a grant (4.112167ms)\n\u2714 unrecognized payload and caller assurance fields are rejected (3.627208ms)\n\u2714 payload malformed UTF8 and JSON are rejected without replacement (0.176959ms)\n\u2714 noncanonical snapshot transport fails and snapshot semantics remain worker codec responsibility (6.756792ms)\n\u2714 table/hash, typed int64/blob and fixed logical export shape fail closed (8.013334ms)\n\u2714 logical cutoff cannot claim an exact commit timestamp (1.584833ms)\n\u2714 broker32MiB and aggregate descriptor quota both fail closed (1.157542ms)\n\u2714 source binding is fixed construction metadata and cannot accept added authority fields (0.214375ms)\n\u2714 real companion construction is dormant and absent admission prevents helper creation (0.822166ms)\n\u2714 host bridge dependency graph has no SQLite or memory codec import (3.7235ms)\n\u2714 reentrant local closure during live check prevents helper construction (1.967625ms)\n\u2714 stage and accept bind hashes through the sealed-client interface and return sanitized receipt (3.578458ms)\n\u2714 revocation after stage rejects bookkeeping and never accepts (3.201083ms)\n\u2714 retirement after acceptance is explicitly an unknown acknowledgement outcome (3.234333ms)\n\u2714 queued admission denial before acceptance send rejects its known stage (3.458375ms)\n\u2714 altered sealed helper hello cannot proceed to staging (2.485125ms)\n\u2714 sent acceptance transport failure is a machine-explicit unknown outcome with bounded diagnostics (3.481416ms)\n\u2714 malformed stage or acceptance acknowledgements cannot create a successful receipt (6.348625ms)\n\u2139 tests 18\n\u2139 suites 0\n\u2139 pass 18\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 97.685708\n",
+  "stderr": "(node:89561) ExperimentalWarning: VM Modules is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+  "reentrantClosureRegression": {
+    "helperConstructedAfterClose": 0,
+    "authorPassed": true
+  },
+  "sentAcceptanceAmbiguityRegression": {
+    "explicitUnknownCode": true,
+    "immutableReconcileNoRetryDisposition": true,
+    "boundedDiagnostics": true,
+    "knownPreSendRejectStageRetained": true
+  }
+}

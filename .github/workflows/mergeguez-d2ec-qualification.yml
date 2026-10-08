@@ -17,7 +17,7 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  QUALIFICATION_MANIFEST_SHA256: 8c390334cc5176c4c686c9549ecee64c0e1c642f1cd1029e46955c66ef04e776
+  QUALIFICATION_MANIFEST_SHA256: 6265ea65cdf8ee847d5abc3466511b9db3094613ce2ca2092bd39cb6f52bd26c
 
 jobs:
   qualify:
@@ -60,7 +60,9 @@ jobs:
           test -z "$(git -C tooling status --porcelain=v1)"
           (ulimit -t 15; timeout --kill-after=2s 30s python3 -m unittest discover -s tooling/scripts/proofs/mergeguez-d2ec -p 'test_*.py')
           (ulimit -t 15; timeout --kill-after=2s 30s node --max-old-space-size=96 --experimental-vm-modules tooling/scripts/proofs/mergeguez-d2ec/test_runtime.mjs)
-          (ulimit -t 15; timeout --kill-after=2s 30s node --max-old-space-size=96 tooling/scripts/proofs/mergeguez-d2ec/test_materialize.mjs)
+          (ulimit -t 15; timeout --kill-after=2s 30s node --max-old-space-size=96 --experimental-vm-modules tooling/scripts/proofs/mergeguez-d2ec/test_materialize.mjs)
+          (ulimit -t 15; timeout --kill-after=2s 30s node --max-old-space-size=96 --experimental-vm-modules tooling/scripts/proofs/mergeguez-d2ec/test_workboard_runtime.mjs)
+          (ulimit -t 15; timeout --kill-after=2s 30s node --max-old-space-size=96 --experimental-vm-modules tooling/scripts/proofs/mergeguez-d2ec/test_workboard_controller.mjs)
 
       - name: Prepare pinned images and mount bounded storage
         shell: bash

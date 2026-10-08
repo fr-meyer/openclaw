@@ -1,5 +1,5 @@
 // Exact runtime source under mocked command owners, plus a tiny original-link
-// filesystem control and one bounded Python retention fixture. No native worker,
+// filesystem control and one bounded Python retention fixture (hosted default). No native worker,
 // compiler/build, package manager, network, container, mount or OpenClaw import.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,7 +11,12 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { validateBuildReceipt } from './materialize.mjs';
 const root = path.dirname(new URL(import.meta.url).pathname);
-const contract = JSON.parse(fs.readFileSync(root + '/contract.json', 'utf8'));
+const selectedContract = JSON.parse(fs.readFileSync(root + '/contract.json', 'utf8'));
+// Preserve the shipped legacy command branch while the canonical profile selects
+// Workboard. The separate Workboard source fixtures exercise its live closure.
+const contract = {...selectedContract, qualification_scope: 'legacy-native-ipc-gateway-source-fixture'};
+const sourceOnly = process.env.MERGEGUEZ_SOURCE_ONLY_FIXTURES === '1';
+const skipped = [];
 const code = fs.readFileSync(root + '/runtime.mjs', 'utf8');
 async function fixture(phase, options = {}) {
   const timers = new Set();
@@ -63,7 +68,7 @@ async function fixture(phase, options = {}) {
       const output = (p.includes('/dist/') && /\.(js|mjs|ts|mts|json)$/.test(p)) || p.endsWith('/fixture-emitted.js');
       if(options.missingPackage && p.endsWith('/packages/ai/dist/index.mjs') || options.missingRoot && p.endsWith('/build-info.json')) throw new Error('ENOENT fixture');
       if (options.missingRuntime && p.endsWith('/sqlite-runtime.js') || options.missingDeclaration && p.endsWith('/core.d.ts')) throw new Error('ENOENT fixture');
-      return { dev: options.crossDevice && output ? 2 : 1, uid: 1000, gid: 1000, nlink: options.hardlink && output ? 2 : 1, size: sourceInput ? sourceInput.bytes : options.noSdk && output ? 0 : options.oversizedEmit && p.endsWith('/fixture-emitted.js') ? contract.compiled_cap_bytes + 1 : 3, isSymbolicLink: () => (options.sourceDependencyLink && p.endsWith('/source-dependency-link')) || !!options.outputLink && (output || p.endsWith('/plugin-sdk')), isDirectory: () => !output && !sourceInput, isFile: () => output || !!sourceInput };
+      return { dev: options.crossDevice && output ? 2 : 1, uid: 1000, gid: 1000, nlink: options.hardlink && output ? 2 : 1, size: sourceInput ? sourceInput.bytes : options.noSdk && output ? 0 : options.oversizedEmit && p.endsWith('/fixture-emitted.js') ? contract.compiled_cap_bytes + 1 : 3, isSymbolicLink: () => (options.sourceDependencyLink && p.endsWith('/source-dependency-link')) || !!options.outputLink && (output || p.includes('/dist/') && p.endsWith('/plugin-sdk')), isDirectory: () => !output && !sourceInput, isFile: () => output || !!sourceInput };
     },
     statSync: () => ({ size: options.noSdk ? 0 : 3, isFile: () => true }),
     readdirSync: p => contract.compiled_roots.some(root => p === '/qualification/source/' + root) ? ['fixture-emitted.js', ...(options.sourceDependencyLink ? ['source-dependency-link'] : [])] : [], existsSync: () => true, mkdirSync() {},
@@ -134,7 +139,7 @@ const failedOfflineDeploy = await fixture('offline-compile', {failOfflineDeploy:
 assert.equal(offline.commands.filter(command => command.argv.join(' ') === 'pnpm build').length, 1); assert.deepEqual(offline.buildReceipt.targeted_test_argv, contract.targeted_test_argv); assert.equal(offline.buildReceipt.commands.length, 5); checks++;
 const failedTargeted = await fixture('offline-compile', {failTargeted:true}); assert.equal(failedTargeted.receipt.complete,false); assert.equal(failedTargeted.commands.length,2); assert.equal(failedTargeted.commands.at(-1).argv[1],'scripts/run-vitest.mjs'); assert.equal(failedTargeted.buildReceiptWritten,false); checks++;
 const changedNamedSource = await fixture('offline-compile', {changedNamedSource:true}); assert.equal(changedNamedSource.receipt.complete,false); assert.equal(changedNamedSource.commands.length,0); assert.match(changedNamedSource.receipt.error,/named source input changed/); checks++;
-assert.equal(offline.receipt.source_identity.files,67); assert.match(offline.receipt.source_identity.kind,/source identity only/); checks++;
+assert.equal(offline.receipt.source_identity.files,88); assert.match(offline.receipt.source_identity.kind,/source identity only/); checks++;
 const failed = await fixture('offline-compile', { failType: true }); assert.equal(failed.receipt.complete, false); assert.equal(failed.commands.length, 3); assert.equal(failed.receipt.commands.at(-1).code, 1); checks++;
 const missing = await fixture('offline-compile', { noSdk: true }); assert.equal(missing.receipt.complete, false); assert.equal(missing.receipt.commands.length, 5); checks++;
 const spawnFailure = await fixture('offline-compile', { spawnError: true }); assert.equal(spawnFailure.receipt.complete, false); assert.equal(spawnFailure.timers, 0); assert.equal(spawnFailure.receipt.commands.length, 1); assert.match(spawnFailure.receipt.commands[0].error, /ENOENT/); checks++;
@@ -145,7 +150,7 @@ assert.equal(offline.receipt.sdk.export_count, 352); assert.equal(offline.receip
 for (const options of [{missingRuntime:true},{missingDeclaration:true},{changedExport:true},{escapedExport:true},{malformedExport:true},{outputLink:true},{crossDevice:true},{hardlink:true}]) {
   const r=await fixture('offline-compile',options); assert.equal(r.receipt.complete,false); assert.equal(r.commands.length,5); checks++;
 }
-assert.equal(offline.receipt.packages.packages,16); assert.equal(offline.receipt.packages.exports,160); assert.equal(offline.receipt.packages.artifacts,326); checks++;
+assert.equal(offline.receipt.packages.packages,16); assert.equal(offline.receipt.packages.exports,160); assert.equal(offline.receipt.packages.artifacts,329); checks++;
 for(const options of [{changedPackage:true},{missingPackage:true},{missingRoot:true}]) { const r=await fixture('offline-compile',options); assert.equal(r.receipt.complete,false); assert.equal(r.commands.length,5); checks++; }
 const native = await fixture('offline-native'); assert.equal(native.receipt.complete,true); assert.deepEqual(native.commands.map(x=>x.argv),[contract.native_argv]); assert.equal(native.commands[0].cwd,'/artifact'); assert.equal(native.receipt.native.admissionOrReleaseAcceptance,false); checks++;
 for (const options of [{oldBuildJob:true},{nativeFailed:true},{lostUnknown:true}]) { const r=await fixture('offline-native',options); assert.equal(r.receipt.complete,false); assert.equal(r.commands.length,options.oldBuildJob?0:1); checks++; }
@@ -179,10 +184,14 @@ async function originalSourceRetentionControl() {
     fs.writeFileSync(path.join(source,'dist/index.js'),'x'.repeat(2049));assert.throws(()=>module.namespace.qualifyCompiledEmits(),/compiled output cap/);fs.writeFileSync(path.join(source,'dist/index.js'),'owned compiled fixture');
     // The child runs only actual filesystem-retention code with inert clock/mount
     // ports and synthetic receipts; it cannot count as native/compiler proof.
+    if (sourceOnly) {
+      skipped.push('bounded Python original source-link and streamed retention child');
+    } else {
     const retained=JSON.parse(execFileSync('python3',['-c',"import importlib.util,json,os,sys\nfrom pathlib import Path\nfrom unittest.mock import patch\nproof=Path(sys.argv[1]);mount=Path(sys.argv[2]);control=mount/'control';control.mkdir()\nspec=importlib.util.spec_from_file_location('candidate_retention',proof/'driver.py');d=importlib.util.module_from_spec(spec);spec.loader.exec_module(d)\nc=json.loads((proof/'contract.json').read_text())\ntry:list(d.compiled_walk(mount/'source',c['compiled_roots'],mount.stat().st_dev))\nexcept d.Refusal as error:assert str(error)=='escaping compiled link'\nelse:raise AssertionError('Expected original source graph link refusal')\ncommands=[['corepack',c['packageManager'],*c['install_argv']],*c['targeted_test_argv'],*c['compile_argv']]\nbuild={'complete':True,'job':'1-1','source_commit':c['source_commit'],'source_tree':c['source_tree'],'targeted_test_argv':c['targeted_test_argv'],'compile_argv':c['compile_argv'],'environment':c['compile_environment'],'commands':[{'argv':argv,'code':0,'signal':None} for argv in commands]}\n(mount/'reports/offline-compile-build.json').write_text(json.dumps(build))\nfor name in c['retention_roots']:(mount/name).mkdir()\nfiles={'package/checked.tgz':b'checked original tar fixture','runnable/index.mjs':b'owned runnable fixture','native-state/unknown.db':b'held unknown fixture','native-state/pre-migration.backup':b'original backup fixture','native-output/native-observations.json':b'unknown is not approval fixture'}\nfor name,data in files.items():(mount/name).write_bytes(data)\nargs=[str(mount),str(control),str(mount.stat().st_dev),str(os.getuid()),str(os.getgid()),'300','1-1','1']\nwith patch.object(Path,'is_mount',return_value=True),patch.object(d,'uptime',return_value=0):d.retain(args)\nwith d.tarfile.open(control/'runnable.tar.gz') as archive:\n for name,data in files.items():assert archive.extractfile(name).read()==data\nfor name,data in files.items():assert (mount/name).read_bytes()==data\nassert (mount/'source/dist/extensions/example/node_modules/example').is_symlink()\nprint(json.dumps({'complete':True,'actual_streamed_package_runnable_unknown_backup_preserved':True,'source_link_removed':False,'native_build_container_network_calls':0}))\n",root,base],{encoding:'utf8',timeout:5000,env:{PATH:process.env.PATH,PYTHONDONTWRITEBYTECODE:'1'}}));
     assert.equal(retained.complete,true);assert.equal(retained.actual_streamed_package_runnable_unknown_backup_preserved,true);assert.equal(retained.source_link_removed,false);
+    }
   } finally { fs.rmSync(base,{recursive:true,force:true}); }
 }
 await originalSourceRetentionControl();checks++;
 
-console.log(JSON.stringify({ checks, passed: checks, native_commands_or_network: 0, scope: 'mocked compiler/native commands plus tiny original source-link and streamed retention control; one bounded Python fixture child' }));
+console.log(JSON.stringify({ checks, passed: checks, native_commands_or_network: 0, selected_profile: selectedContract.qualification_scope, fixture_profile: contract.qualification_scope, source_only: sourceOnly, skipped, full_suite_executed: skipped.length === 0, scope: 'mocked compiler/native commands plus tiny original source-link control; hosted default additionally runs bounded Python streamed retention child' }));

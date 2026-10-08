@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { validateTarEntries, inventory, mergeDependencies, validateBuildReceipt, completeRunnablePackageLifecycle } from './materialize.mjs';
 const contract = JSON.parse(fs.readFileSync(new URL('./contract.json', import.meta.url)));
 let checks = 0;
@@ -18,6 +19,44 @@ check(() => validateBuildReceipt(build, contract, '1-1'));
 for (const broken of [{ complete: false }, { source_commit: 'f'.repeat(40) }, { source_tree: 'f'.repeat(40) }, { targeted_test_argv: undefined }, { targeted_test_argv: [] }, { compile_argv: [['pnpm', 'build']] }, { environment: {} }, { job: '' }, { job: '2-1' }, { commands: [] }]) check(() => assert.throws(() => validateBuildReceipt({ ...build, ...broken }, contract, '1-1'), /build|job/));
 check(() => assert.throws(() => validateBuildReceipt({ ...build, commands: build.commands.filter(command => command.argv[0] !== 'node') }, contract, '1-1'), /command receipts/));
 check(() => assert.throws(() => validateBuildReceipt({ ...build, commands: build.commands.map(command => command.argv[0] === 'node' ? {...command, code:1} : command) }, contract, '1-1'), /command receipts/));
+// Evaluate the actual package-entry admission prefix before any extraction or
+// lifecycle operation. Both parser and filesystem ports are inert fixtures.
+const materializerSource = fs.readFileSync(new URL('./materialize.mjs', import.meta.url), 'utf8');
+const materializeStart = materializerSource.indexOf('export async function materialize(');
+const materializeGuardEnd = materializerSource.indexOf('  fs.mkdirSync(runnable, { mode: 0o700 });', materializeStart);
+assert(materializeStart >= 0 && materializeGuardEnd > materializeStart);
+const admissionPrefix = materializerSource.slice(materializeStart, materializeGuardEnd) + '\n  return { proofEntries };\n}';
+const profileEntries = {
+  legacy: ['dist/proofs/native-ipc-gateway-driver.js', 'dist/proofs/native-ipc-gateway-api.js', 'dist/proofs/native-ipc-gateway-fixture.js'],
+  workboard: ['dist/proofs/workboard-private-recovery-controller.js', 'dist/proofs/workboard-private-recovery-api.js', 'dist/extensions/workboard/src/sqlite-store.worker.js'],
+};
+async function profileFixture(profile, omitted) {
+  const profileContract = {...contract, qualification_scope: profile === 'workboard' ? 'workboard-native-worker-logical-recovery.synthetic.v1' : 'legacy-native-ipc-gateway-source-fixture'};
+  const entries = ['openclaw.mjs', 'dist/build-info.json', 'dist/plugin-sdk/sqlite-runtime.js', ...profileEntries[profile]]
+    .filter(relative => relative !== omitted).map(relative => file('package/' + relative));
+  const calls = [];
+  const context = vm.createContext({
+    fs: {readFileSync(name) { if (name === '/fixture/contract.json') return JSON.stringify(profileContract); if (name === '/fixture/build.json') return JSON.stringify(build); throw Error('unexpected fixture read'); }, existsSync() { return false; }},
+    path, process: {env: {QUALIFICATION_JOB: '1-1'}}, validateBuildReceipt,
+    need(value, reason) { assert(value, reason); }, hash() {return 'a'.repeat(64);}, validateTarEntries, Date,
+    createRequire(name) { assert.equal(name, '/fixture/source/package.json'); return dependency => {assert.equal(dependency, 'tar'); return {
+      async t(options) { calls.push('tar-list-double'); for (const entry of entries) options.onReadEntry(entry); },
+      async x() { throw Error('extraction must not execute in source fixtures'); },
+    }; }; },
+  });
+  const module = new vm.SourceTextModule(admissionPrefix, {context}); await module.link(() => {throw Error('unexpected materializer import');}); await module.evaluate();
+  let result, error;
+  try {result = await module.namespace.materialize('/fixture/source','/fixture/package.tgz','/fixture/deployed','/fixture/runnable','/fixture/build.json','/fixture/contract.json');} catch (caught) {error = caught;}
+  return {result, error, calls};
+}
+for (const profile of ['legacy', 'workboard']) {
+  const admitted = await profileFixture(profile);
+  assert.equal(admitted.error, undefined); assert.deepEqual(Array.from(admitted.result.proofEntries), profileEntries[profile]); assert.deepEqual(admitted.calls, ['tar-list-double']); checks++;
+  for (const omitted of profileEntries[profile]) {
+    const refused = await profileFixture(profile, omitted);
+    assert.equal(refused.result, undefined); assert.match(refused.error.message, /actual checked package lacks required driver\/runtime entry/); assert(refused.error.message.endsWith(omitted)); assert.deepEqual(refused.calls, ['tar-list-double']); checks++;
+  }
+}
 const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'mergeguez-materialize-')));
 try {
   const deployed = path.join(root, 'deployed'), runnable = path.join(root, 'runnable');
@@ -103,4 +142,4 @@ try {
 
 } finally { fs.rmSync(lifecycleRoot,{recursive:true,force:true}); }
 
-console.log(JSON.stringify({ checks, passed: checks, scope: 'small adapter and synthetic lifecycle-owner fixtures only; actual tar/parser/deploy/shipped native lifecycle behavior unexecuted', native_commands_or_network: 0 }));
+console.log(JSON.stringify({ checks, passed: checks, scope: 'small adapter, two-profile actual entry-admission prefix with inert parser/filesystem ports, and synthetic lifecycle-owner fixtures; actual tar/parser/deploy/shipped native lifecycle behavior unexecuted', native_commands_or_network: 0 }));
