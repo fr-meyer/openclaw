@@ -1,6 +1,6 @@
 import { Writable } from "node:stream";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, expectTypeOf, it, type Mock, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
@@ -15,6 +15,12 @@ import {
   startDiagnosticStabilityRecorder,
   stopDiagnosticStabilityRecorder,
 } from "../logging/diagnostic-stability.js";
+import type {
+  closeOwnedStdioProcess,
+  createOwnedStdioProcess,
+  OwnedStdioProcess,
+} from "../process/owned-stdio.js";
+import type { Deferred } from "../shared/deferred.js";
 import { createSessionMcpRuntimeManager } from "./agent-bundle-mcp-manager.js";
 import { createSessionMcpRuntime } from "./agent-bundle-mcp-runtime.js";
 import type { SessionMcpRuntimeManager } from "./agent-bundle-mcp-types.js";
@@ -22,8 +28,8 @@ import { OpenClawStreamableHTTPClientTransport } from "./mcp-http-transport.js";
 import { OpenClawStdioClientTransport } from "./mcp-stdio-transport.js";
 
 const { spawn, cleanup, resolveTransport } = vi.hoisted(() => ({
-  spawn: vi.fn(),
-  cleanup: vi.fn(),
+  spawn: vi.fn<typeof createOwnedStdioProcess>(),
+  cleanup: vi.fn<typeof closeOwnedStdioProcess>(),
   resolveTransport: vi.fn(),
 }));
 vi.mock("../process/owned-stdio.js", () => ({
@@ -40,8 +46,20 @@ vi.mock("./embedded-agent-mcp.js", () => ({
   }),
 }));
 
+type ChildExit = Awaited<ReturnType<OwnedStdioProcess["wait"]>>;
+type ChildFixture = {
+  child: OwnedStdioProcess & {
+    pid: number;
+    stdin: Writable;
+    kill: Mock<OwnedStdioProcess["kill"]>;
+    dispose: Mock<OwnedStdioProcess["dispose"]>;
+  };
+  root: Deferred<ChildExit>;
+  send: (message: JSONRPCMessage) => void;
+};
+
 const managers: SessionMcpRuntimeManager[] = [];
-const children: ReturnType<typeof makeChild>[] = [];
+const children: ChildFixture[] = [];
 const transports: OpenClawStdioClientTransport[] = [];
 const releases: Array<() => void> = [];
 let failInitialize = false;
@@ -57,8 +75,8 @@ const params = {
   } satisfies OpenClawConfig,
 };
 
-function makeChild() {
-  const root = createDeferred<{ code: number | null; signal: NodeJS.Signals | null }>();
+function makeChild(): ChildFixture {
+  const root = createDeferred<ChildExit>();
   let receive: ((chunk: Buffer) => void) | undefined;
   const send = (message: JSONRPCMessage) => receive?.(Buffer.from(JSON.stringify(message) + "\n"));
   const stdin = new Writable({
@@ -103,7 +121,7 @@ function makeChild() {
     },
   });
   const pid: number = 9001 + children.length;
-  const child = {
+  const child: ChildFixture["child"] = {
     pid,
     stdin,
     supportsRawOutput: true,
@@ -111,15 +129,28 @@ function makeChild() {
       receive = raw;
     },
     onStderr: () => {},
+    onExit: (listener) => {
+      void root.promise.then(({ code, signal }) => listener(code, signal));
+    },
     onError: () => {},
     wait: () => root.promise,
-    kill: vi.fn(),
-    dispose: vi.fn(),
+    kill: vi.fn<OwnedStdioProcess["kill"]>(),
+    dispose: vi.fn<OwnedStdioProcess["dispose"]>(),
   };
   const fixture = { child, root, send };
   children.push(fixture);
   return fixture;
 }
+
+// The agents-root compiler graph checks these contracts; Vitest alone does not.
+expectTypeOf<ReturnType<typeof makeChild>>().not.toBeAny();
+expectTypeOf<(typeof children)[number]>().not.toBeAny();
+expectTypeOf<(typeof children)[number]>().toEqualTypeOf<ReturnType<typeof makeChild>>();
+expectTypeOf<ReturnType<typeof makeChild>["child"]>().not.toBeAny();
+expectTypeOf<ReturnType<typeof makeChild>["child"]>().toExtend<OwnedStdioProcess>();
+expectTypeOf<ReturnType<typeof makeChild>["root"]["promise"]>().toEqualTypeOf<
+  ReturnType<OwnedStdioProcess["wait"]>
+>();
 
 async function events() {
   await waitForDiagnosticEventsDrained();
@@ -257,7 +288,7 @@ it("does not certify cleanup from a root close and rotates identity on reconnect
   managers.push(manager);
   const lease = await manager.acquire(params);
   await lease.runtime.getCatalog();
-  const gate = createDeferred();
+  const gate = createDeferred<undefined>();
   cleanup.mockImplementationOnce(() => gate.promise);
   children[0]!.root.resolve({ code: 0, signal: null });
   const before = await events();
@@ -268,7 +299,7 @@ it("does not certify cleanup from a root close and rotates identity on reconnect
     childPid: 9001,
   });
   const catalog = lease.runtime.getCatalog();
-  gate.resolve();
+  gate.resolve(undefined);
   await catalog;
   const after = await events();
   const connections = after.filter((record) => record.phase === "connected");
