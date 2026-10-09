@@ -1,7 +1,22 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { stripTypeScriptTypes } from "node:module";
 import test from "node:test";
-import { McpHttpToolSchemaCompatibility } from "../src/agents/mcp-http-tool-schema-compatibility.ts";
+
+const helperSource = stripTypeScriptTypes(
+  fs.readFileSync(
+    new URL("../src/agents/mcp-http-tool-schema-compatibility.ts", import.meta.url),
+    "utf8",
+  ),
+).replace(
+  '"@openclaw/normalization-core/record-coerce"',
+  JSON.stringify(
+    new URL("../packages/normalization-core/src/record-coerce.ts", import.meta.url).href,
+  ),
+);
+const { McpHttpToolSchemaCompatibility } = await import(
+  `data:text/javascript;base64,${Buffer.from(helperSource).toString("base64")}`
+);
 
 const publishedSchema = JSON.parse(
   fs.readFileSync(
