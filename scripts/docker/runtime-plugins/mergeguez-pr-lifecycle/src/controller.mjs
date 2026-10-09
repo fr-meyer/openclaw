@@ -356,7 +356,7 @@ export function normalizePullRequestEvent(input) {
     throw new Error("pull request event must be an object");
   }
   const action = cleanText(input.action, 40, "action");
-  if (!new Set(["opened", "reopened", "synchronize"]).has(action)) {
+  if (!new Set(["opened", "reopened", "synchronize", "edited"]).has(action)) {
     throw new Error("pull request action is not handled");
   }
   const repo = cleanText(input.repo, 200, "repo");
@@ -387,9 +387,10 @@ export function normalizeReviewResult(input) {
   }
   const repo = cleanText(input.repo, 200, "repo");
   const headSha = cleanText(input.headSha, 40, "headSha").toLowerCase();
+  const baseSha = optionalCleanText(input.baseSha, 40, "baseSha")?.toLowerCase();
   const outcome = cleanText(input.outcome, 40, "outcome");
-  if (!isRepo(repo) || !isSha(headSha)) {
-    throw new Error("review repo or headSha is invalid");
+  if (!isRepo(repo) || !isSha(headSha) || (baseSha !== undefined && !isSha(baseSha))) {
+    throw new Error("review repo, headSha or baseSha is invalid");
   }
   if (
     !new Set(["approved", "changes_requested", "failed_retryable", "failed_terminal"]).has(outcome)
@@ -403,6 +404,7 @@ export function normalizeReviewResult(input) {
     repo,
     prNumber: positiveInteger(input.prNumber, "prNumber"),
     headSha,
+    baseSha,
     outcome,
     reviewId: optionalCleanText(input.reviewId, 120, "reviewId"),
     coverageComplete: input.coverageComplete === true,
@@ -502,7 +504,11 @@ export function applyPullRequestEvent(state, eventInput, policyInput, now = Date
   if (!policy.allowForks && event.headRepo !== event.repo) {
     return blockState(state, "fork_not_allowed", now, event.eventId);
   }
-  if (event.headSha === state.headSha) {
+  if (
+    event.headSha === state.headSha &&
+    event.baseSha === state.baseSha &&
+    event.baseRef === state.baseRef
+  ) {
     if (isTerminalState(state)) {
       return { changed: false, state, effect: "none", reason: "terminal_same_head" };
     }
@@ -512,6 +518,9 @@ export function applyPullRequestEvent(state, eventInput, policyInput, now = Date
       effect: "none",
       reason: "same_head_event",
     };
+  }
+  if (state.activeWorker && state.orphanedWorker) {
+    throw new Error("new_head_has_multiple_unreconciled_workers");
   }
   const next = appendSeenEvent(
     {
@@ -526,7 +535,12 @@ export function applyPullRequestEvent(state, eventInput, policyInput, now = Date
       workerGeneration: Math.max(0, Number(state.workerGeneration) || 0) + 1,
       infrastructureRetryAt: null,
       infrastructureLastFailure: null,
-      orphanedWorker: null,
+      // A prior run retains authority until its terminal outcome or exact
+      // cancellation is observed. Dispatch reconciles this before reserving.
+      orphanedWorker: state.activeWorker
+        ? { ...state.activeWorker, launchOutcome: state.launchOutcome ?? null }
+        : (state.orphanedWorker ?? null),
+      launchOutcome: null,
       maxCycles: policy.maxCycles,
       maxRetries: policy.maxRetries,
       wallTimeMinutes: policy.wallTimeMinutes,
@@ -554,7 +568,12 @@ export function applyPullRequestEvent(state, eventInput, policyInput, now = Date
     },
     event.eventId,
   );
-  return { changed: true, state: next, effect: "continue", reason: "new_head" };
+  return {
+    changed: true,
+    state: next,
+    effect: "continue",
+    reason: event.headSha === state.headSha ? "base_changed" : "new_head",
+  };
 }
 
 function budgetBlock(state, now, eventId) {
@@ -586,12 +605,31 @@ export function applyReviewResult(state, resultInput, now = Date.now()) {
       reason: "stale_head_result",
     };
   }
+  if (!result.baseSha) {
+    return { changed: false, state, effect: "none", reason: "review_base_identity_missing" };
+  }
+  if (result.baseSha !== state.baseSha) {
+    return { changed: false, state, effect: "none", reason: "stale_base_result" };
+  }
   if (
     !new Set([PHASE.REVIEW_QUEUED, PHASE.REVIEW_RUNNING, PHASE.REVIEW_WAITING]).has(state.phase)
   ) {
     return { changed: false, state, effect: "none", reason: "unexpected_review_phase" };
   }
-  const withEvent = appendSeenEvent(state, result.eventId);
+  if (state.activeWorker && state.orphanedWorker) {
+    throw new Error("review_result_has_multiple_unreconciled_workers");
+  }
+  const withEvent = appendSeenEvent(
+    {
+      ...state,
+      orphanedWorker: state.activeWorker
+        ? { ...state.activeWorker, launchOutcome: state.launchOutcome ?? null }
+        : (state.orphanedWorker ?? null),
+      activeWorker: null,
+      launchOutcome: null,
+    },
+    result.eventId,
+  );
   const review = {
     reviewId: result.reviewId ?? null,
     headSha: result.headSha,
@@ -617,7 +655,6 @@ export function applyReviewResult(state, resultInput, now = Date.now()) {
       infrastructureRetryCount: 0,
       infrastructureRetryAt: null,
       infrastructureLastFailure: null,
-      orphanedWorker: null,
       review,
       findings: [],
       wait: null,
@@ -670,7 +707,6 @@ export function applyReviewResult(state, resultInput, now = Date.now()) {
       infrastructureRetryCount: 0,
       infrastructureRetryAt: null,
       infrastructureLastFailure: null,
-      orphanedWorker: null,
       updatedAt: now,
     };
     return { changed: true, state: next, effect: "continue", reason: "findings_ready" };
@@ -759,6 +795,7 @@ export function reserveWorker(state, kind, sessionKey, now = Date.now()) {
   const next = {
     ...baseState,
     phase: kind === "review" ? PHASE.REVIEW_RUNNING : PHASE.REMEDIATION_RUNNING,
+    launchOutcome: { status: "not_invoked" },
     activeWorker: {
       kind,
       sessionKey: cleanText(sessionKey, 500, "sessionKey"),
@@ -776,17 +813,32 @@ export function reserveWorker(state, kind, sessionKey, now = Date.now()) {
 }
 
 export function attachWorkerRun(state, sessionKey, runId, taskId, now = Date.now()) {
-  if (!state.activeWorker || state.activeWorker.sessionKey !== sessionKey) {
+  const field =
+    state.activeWorker?.sessionKey === sessionKey
+      ? "activeWorker"
+      : state.orphanedWorker?.sessionKey === sessionKey
+        ? "orphanedWorker"
+        : null;
+  if (!field) {
     return { changed: false, state, reason: "worker_reservation_changed" };
+  }
+  const normalizedRunId = cleanText(runId, 200, "runId");
+  if (state[field].runId && state[field].runId !== normalizedRunId) {
+    throw new Error("worker_run_identity_changed");
+  }
+  if (taskId && state[field].taskId && state[field].taskId !== taskId) {
+    throw new Error("worker_task_identity_changed");
   }
   return {
     changed: true,
     state: {
       ...state,
-      activeWorker: {
-        ...state.activeWorker,
-        runId: cleanText(runId, 200, "runId"),
-        taskId: taskId ? cleanText(taskId, 200, "taskId") : null,
+      ...(field === "activeWorker" ? { launchOutcome: null } : {}),
+      [field]: {
+        ...state[field],
+        runId: normalizedRunId,
+        taskId: taskId ? cleanText(taskId, 200, "taskId") : (state[field].taskId ?? null),
+        ...(field === "orphanedWorker" ? { launchOutcome: { status: "accepted" } } : {}),
       },
       updatedAt: now,
     },
@@ -859,6 +911,7 @@ export function applyWorkerReport(state, reportInput, callerSessionKey, now = Da
     kind: cleanText(reportInput.kind, 20, "kind"),
     outcome: cleanText(reportInput.outcome, 80, "outcome"),
     headSha: cleanText(reportInput.headSha, 40, "headSha").toLowerCase(),
+    baseSha: optionalCleanText(reportInput.baseSha, 40, "baseSha")?.toLowerCase(),
     cycle: reportInput.cycle,
     reviewId: optionalCleanText(reportInput.reviewId, 120, "reviewId"),
     summary: optionalCleanText(reportInput.summary, 1000, "summary"),
@@ -892,13 +945,28 @@ export function applyWorkerReport(state, reportInput, callerSessionKey, now = Da
     findings: sanitizeFindings(reportInput.findings ?? []),
   };
   assertWorkerReportMatches(state, report, callerSessionKey);
+  if (
+    report.kind === "review" &&
+    ["approved", "changes_requested"].includes(report.outcome) &&
+    report.baseSha !== state.baseSha
+  ) {
+    throw new Error("worker review result is not bound to the current reviewed base");
+  }
+  if (state.orphanedWorker) {
+    throw new Error("worker_report_has_unreconciled_orphan");
+  }
   const cleared = {
     ...state,
+    ...(state.phase === PHASE.BLOCKED &&
+    state.blocker === "worker_launch_outcome_unknown" &&
+    report.kind === "review"
+      ? { phase: PHASE.REVIEW_RUNNING, blocker: null, wait: null }
+      : {}),
     activeWorker: null,
     infrastructureRetryCount: 0,
     infrastructureRetryAt: null,
     infrastructureLastFailure: null,
-    orphanedWorker: null,
+    orphanedWorker: { ...state.activeWorker, launchOutcome: state.launchOutcome ?? null },
     updatedAt: now,
   };
 
@@ -930,6 +998,7 @@ export function applyWorkerReport(state, reportInput, callerSessionKey, now = Da
           repo: state.repo,
           prNumber: state.prNumber,
           headSha: state.headSha,
+          baseSha: report.baseSha ?? state.baseSha,
           outcome: report.outcome,
           reviewId: report.reviewId,
           coverageComplete: report.coverageComplete,
@@ -1034,7 +1103,16 @@ export function applyWorkerFailure(state, callerSessionKey, reason, now = Date.n
   }
   const kind = state.activeWorker.kind;
   const normalizedReason = cleanText(reason, 500, "reason");
-  const cleared = { ...state, activeWorker: null, updatedAt: now };
+  if (state.orphanedWorker) {
+    throw new Error("worker_failure_has_multiple_unreconciled_workers");
+  }
+  const cleared = {
+    ...state,
+    orphanedWorker: { ...state.activeWorker, launchOutcome: state.launchOutcome ?? null },
+    activeWorker: null,
+    launchOutcome: null,
+    updatedAt: now,
+  };
   if (classifyWorkerFailure(normalizedReason) === "infrastructure") {
     const attempt = Math.max(0, Number(state.infrastructureRetryCount) || 0) + 1;
     if (attempt > MAX_INFRASTRUCTURE_RETRIES) {
@@ -1050,7 +1128,7 @@ export function applyWorkerFailure(state, callerSessionKey, reason, now = Date.n
         infrastructureRetryAt: retryAt,
         infrastructureLastFailure: normalizedReason,
         orphanedWorker: {
-          ...state.activeWorker,
+          ...cleared.orphanedWorker,
           reason: normalizedReason,
           clearedAt: now,
         },
@@ -1178,6 +1256,9 @@ export function recoverState(
     }
     return { changed: false, state, effect: "wait", reason: "external_wait" };
   }
+  if (workerTask?.status === "unavailable") {
+    return { changed: false, state, effect: "hold", reason: "worker_observation_unavailable" };
+  }
   const reservedAt = Number(state.activeWorker.reservedAt) || 0;
   const age = now - reservedAt;
   if (workerTask && new Set(["queued", "running"]).has(workerTask.status)) {
@@ -1209,6 +1290,9 @@ export function recoverState(
   if (!workerTask && age < reservationGraceMs) {
     return { changed: false, state, effect: "wait", reason: "worker_start_grace" };
   }
+  if (!workerTask && (state.activeWorker.runId || state.activeWorker.taskId)) {
+    return { changed: false, state, effect: "wait", reason: "worker_run_observation_missing" };
+  }
   if (workerTask?.status === "succeeded") {
     if (state.activeWorker.kind === "remediation" && !findingsAreActionable(state.findings)) {
       return blockState(state, "findings_unusable", now);
@@ -1237,10 +1321,18 @@ export function recoverState(
 
 // oxlint-disable-next-line default-param-last -- Existing plugin API keeps the trailing event id stable.
 export function blockState(state, reason, now = Date.now(), eventId) {
+  if (state.activeWorker && state.orphanedWorker) {
+    // A single orphan slot cannot represent two live runs. Preserve the
+    // original state rather than silently dropping either worker identity.
+    throw new Error("block_has_multiple_unreconciled_workers");
+  }
   const next = appendSeenEvent(
     {
       ...state,
       phase: PHASE.BLOCKED,
+      orphanedWorker: state.activeWorker
+        ? { ...state.activeWorker, launchOutcome: state.launchOutcome ?? null }
+        : (state.orphanedWorker ?? null),
       activeWorker: null,
       wait: { kind: "manual_intervention", since: now },
       blocker: cleanText(reason, 1000, "blocker"),

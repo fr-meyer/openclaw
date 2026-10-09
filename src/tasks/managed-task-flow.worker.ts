@@ -274,6 +274,7 @@ function capacitySnapshot(
       .where("controller_id", "=", controllerId)
       .where("sync_mode", "=", "managed")
       .where("owner_key", "in", owners)
+      .where("status", "not in", ["succeeded", "failed", "cancelled", "lost"])
       .orderBy("owner_key", "asc")
       .orderBy("flow_id", "asc")
       .limit(4097),
@@ -559,6 +560,14 @@ export function executeManagedTaskFlowWriteCommand(
       if (current.revision !== expectedRevision) {
         requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
         return { applied: false, code: "revision_conflict", current };
+      }
+      if (
+        (fields.mutation === "resume" || fields.mutation === "setWaiting") &&
+        command.type !== "tasks.managedFlows.reserve" &&
+        ["succeeded", "failed", "cancelled", "lost"].includes(current.status)
+      ) {
+        requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
+        return { applied: false, code: "terminal_flow", current };
       }
       if (command.type === "tasks.managedFlows.reserve") {
         const captured = command.input.capacitySnapshot;

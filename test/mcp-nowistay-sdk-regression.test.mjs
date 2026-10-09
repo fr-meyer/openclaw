@@ -20,6 +20,9 @@ const helperSource = stripTypeScriptTypes(
     new URL("../src/agents/mcp-http-tool-schema-compatibility.ts", import.meta.url),
     "utf8",
   ),
+).replace(
+  '"@openclaw/normalization-core/record-coerce"',
+  JSON.stringify(import.meta.resolve("@openclaw/normalization-core/record-coerce")),
 );
 const httpSource = stripTypeScriptTypes(
   fs.readFileSync(new URL("../src/agents/mcp-http-transport.ts", import.meta.url), "utf8"),

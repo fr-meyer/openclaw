@@ -77,7 +77,7 @@ type ManagedTaskFlowMutationResult =
   | { applied: true; flow: ManagedTaskFlowRecord }
   | {
       applied: false;
-      code: "not_found" | "revision_conflict" | "capacity_snapshot_conflict";
+      code: "not_found" | "revision_conflict" | "capacity_snapshot_conflict" | "terminal_flow";
       current?: ManagedTaskFlowRecord;
     };
 

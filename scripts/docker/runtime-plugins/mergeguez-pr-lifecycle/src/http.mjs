@@ -35,19 +35,41 @@ export async function readJsonBody(req, options = {}) {
   let timer;
   try {
     const body = await new Promise((resolve, reject) => {
-      timer = setTimeout(() => reject(new Error("request_body_timeout")), timeoutMs);
-      req.on("data", (chunk) => {
+      let settled = false;
+      const cleanup = () => {
+        req.off("data", onData);
+        req.off("end", onEnd);
+        req.off("error", onError);
+        req.off("aborted", onAborted);
+      };
+      const settle = (callback, value, pause = false) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (pause) {
+          req.pause();
+        }
+        cleanup();
+        callback(value);
+      };
+      const onData = (chunk) => {
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         size += buffer.length;
         if (size > maxBytes) {
-          reject(new Error("request_body_too_large"));
+          settle(reject, new Error("request_body_too_large"), true);
           return;
         }
         chunks.push(buffer);
-      });
-      req.on("end", () => resolve(Buffer.concat(chunks)));
-      req.on("error", reject);
-      req.on("aborted", () => reject(new Error("request_aborted")));
+      };
+      const onEnd = () => settle(resolve, Buffer.concat(chunks));
+      const onError = (error) => settle(reject, error, true);
+      const onAborted = () => settle(reject, new Error("request_aborted"), true);
+      timer = setTimeout(() => settle(reject, new Error("request_body_timeout"), true), timeoutMs);
+      req.on("data", onData);
+      req.on("end", onEnd);
+      req.on("error", onError);
+      req.on("aborted", onAborted);
     });
     let json;
     try {
@@ -92,6 +114,7 @@ export function parseMergeguezReviewEvent(req, payload) {
     repo: payload?.repository,
     prNumber: payload?.pullRequest,
     headSha: payload?.headSha,
+    baseSha: payload?.baseSha,
     outcome: payload?.outcome,
     reviewId: payload?.reviewId,
     coverageComplete: payload?.coverageComplete,

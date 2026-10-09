@@ -1,6 +1,6 @@
 {
   "schema": "openclaw-v98-local-cut-manifest-v2",
-  "status": "source-qualified-checkpoint-runtime-unqualified",
+  "status": "prepared-corrective-successor-runtime-unqualified",
   "upstream": {
     "tag": "v2026.9.8",
     "commit": "fc23bc864e4553c2d215e479eeec47b67a0bf943",
@@ -91,5 +91,70 @@
     "gitBlob": "48d758506f8ea95846f3c6680770ac3ee51fde52",
     "sha256": "c717cc8ed7331b2b4787ed4cbe80d46d3d733de69e3dc9dd7f1d49e6b4942802"
   },
-  "qualification": "The ordered list covers the complete 14-commit source composition through the qualified checkpoint. This packaging successor and any future image or runtime require separate exact-source qualification; this manifest is source provenance, not release acceptance."
+  "qualification": "The ordered list covers the complete 14-commit source composition through the qualified checkpoint. This packaging successor and any future image or runtime require separate exact-source qualification; this manifest is source provenance, not release acceptance.",
+  "publisherPreparedSuccessor": {
+    "status": "prepared-runtime-unqualified",
+    "upstreamVersion": "v2026.9.8",
+    "baseCommit": "063fc54e7744e9da56bfe508a26a412199be25a5",
+    "baseTree": "60bde997df808ab75f659d06dff86d1d396064bb",
+    "sourceCommit": null,
+    "publisherPackagePath": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle",
+    "publisherPackageVersion": "0.1.1",
+    "publisherControllerSha256": "8b8f506d143e6b725488e7545b643f6453ca8d2258ea3b93d718cffdb9e63d06",
+    "publisherRuntimeSha256": "9822189b9590b5ea990f51c1f6f9d80fc8d97f8ed62acb8cf4db7ed5e39a6726",
+    "correctionLogic": {
+      "ownerCandidateVersion": "v2026.9.9",
+      "ownerStagedTree": "d48ca517b4e41a05d823f56c80ec5464f1349ce6",
+      "ownerReviewStatus": "current-source-unreviewed",
+      "reusePatchSha256": "15331e6ec0b3445fb0d98770d932ed8418e50d2a5177e36013237ed2b9e59913"
+    },
+    "preparedFilesSha256": {
+      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/controller.mjs": "8b8f506d143e6b725488e7545b643f6453ca8d2258ea3b93d718cffdb9e63d06",
+      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs": "9822189b9590b5ea990f51c1f6f9d80fc8d97f8ed62acb8cf4db7ed5e39a6726",
+      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs": "9b390ad547caaaa990b697b58e06b1b6b6ebd163bc689c0d576fe3a9e0de1d91",
+      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs": "90b9815860f20ae316cd6107239191ed040c94e9119a2c74a07980f8d3e9db97",
+      "src/agents/mcp-http-tool-schema-compatibility.ts": "0b4c03ace2c4fc00f207f4ce07b1e8c399757f490ba67300b6dbfce9ebcc54d7",
+      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/fixtures/predecessor-pin-package.json": "244cb85c2e49b004d5502f370dc5ce4cc78c42727f520c679ba9d2ff3c87d622",
+      "test/mcp-nowistay-sdk-regression.test.mjs": "57ecebe4f135380d26b13c1f449b318122a1121e873b7e4bbba82ad207efeb0a",
+      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md": "98163eedef57919ee0e4873b7b99da29597e67ee2e23dc07c5290d4869e02325",
+      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/http.mjs": "fc46936c998827c2ea04b177aa794d11d961fe234780dd9537bf74103eb59991",
+      "src/tasks/managed-task-flow.worker.ts": "54ee90060749953e131d2601f88ed5ae88d67c6e748126aab1e3909d20a0dcda",
+      "src/tasks/managed-task-flow-contract.ts": "13621dff7e31c5ff9ffec205346b499c608cc556b28fc3f6d3922fe415231dd4"
+    },
+    "qualification": "Historical qualifiedSourceCheckpoint and publisherSourceSuccessor remain unchanged. This corrective source leaves the image pin sourceCommit unset. Exact-source review and local commit identities are recorded in external receipts; image planning retains its historical binding and rejects the corrected runtime until a separate reviewed committed source binding.",
+    "fixtureCorrections": {
+      "predecessorController": "Retained compressed predecessor controller bytes verified against the frozen predecessor hash; never executed.",
+      "sdkHarness": "Resolve the canonical normalization-core import to its actual installed file URL before importing the stripped helper from a data URL.",
+      "predecessorHttp": "Retained compressed predecessor HTTP source bytes verified against frozen historical hash; never executed."
+    },
+    "publisherHttpSha256": "fc46936c998827c2ea04b177aa794d11d961fe234780dd9537bf74103eb59991",
+    "postReviewCorrections": {
+      "ownerReviewedAndRejectedTree": "d48ca517b4e41a05d823f56c80ec5464f1349ce6",
+      "ownerCorrectionPatchSha256": "9ae0e1dfe7a6b2be629e21ba7511ea165db09dd1695778b1e5f5a68901611044",
+      "ownerCorrectionReviewStatus": "unreviewed",
+      "findings": [
+        "P1 blocked flow lost active worker identity",
+        "P1 unavailable run-ledger admission looked like task absence",
+        "P2 rejected webhook body kept consuming bytes"
+      ],
+      "reusedLogicPatchSha256": "08c6a1ceb19408dd6b10ac0520bf0f9708128f78423bae780d79ec62b009684a"
+    },
+    "sourceReviewCorrections": {
+      "priorV98ReviewedRejectedTree": "d6bcf43be88f5c00dc60fe642eeeb0e438cf7c8c",
+      "reviewCycle": 1,
+      "reviewStatus": "exact-source-review-owned-by-external-receipt",
+      "corrections": [
+        "Persist pending native invocation and attach returned identity to superseded custody.",
+        "Preserve custody through every result/failure/reopen path, count held workers, and return a worker report before its own reconciliation.",
+        "Invalidate review on edited base identity and consume exact broker evidence for legacy signed events without baseSha.",
+        "Hold missing attached-run observations; bound capacity snapshots to nonterminal history.",
+        "Refuse squash/rebase before invoking the merge-only atomic broker contract."
+      ],
+      "secondReviewedRejectedTree": "34acb6a34a584ddc8c2eaa007c57a29c0ad84579",
+      "secondReviewCorrections": [
+        "Map authoritative structured broker blocking booleans to high/low controller severity; use actual producer shape in both registered-path fixtures.",
+        "Retry fenced returned-run attachment across same-reservation CAS conflicts without repeating native invocation; exact native terminal observation settles retained launch blocks in startup, recovery and lifecycle handling."
+      ]
+    }
+  }
 }

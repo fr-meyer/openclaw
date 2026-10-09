@@ -17,6 +17,7 @@ import {
   createState,
   flowMatches,
   isLifecycleState,
+  isSha,
   isTerminalState,
   normalizePolicy,
   normalizePullRequestEvent,
@@ -112,7 +113,35 @@ function captureCapacitySnapshot(value) {
   return Object.freeze(captured);
 }
 function recoverObservedState(state, workerTask, now, grace, extras) {
-  if (state?.activeWorker && state.launchOutcome?.status === "unknown" && !workerTask) {
+  if (
+    state?.phase === PHASE.BLOCKED &&
+    state.blocker === "worker_launch_outcome_unknown" &&
+    state.activeWorker &&
+    workerTask?.observationSource === "native-subagent" &&
+    TERMINAL_TASK_STATUSES.has(workerTask.status)
+  ) {
+    // Only the original native owner's exact terminal observation settles an
+    // interrupted attachment; a missing session or legacy row cannot do so.
+    return recoverState(
+      {
+        ...state,
+        phase:
+          state.activeWorker.kind === "review" ? PHASE.REVIEW_RUNNING : PHASE.REMEDIATION_RUNNING,
+        blocker: null,
+        wait: null,
+        launchOutcome: null,
+      },
+      workerTask,
+      now,
+      grace,
+      extras,
+    );
+  }
+  if (
+    state?.activeWorker &&
+    ["pending", "unknown"].includes(state.launchOutcome?.status) &&
+    !workerTask
+  ) {
     return { changed: false, state, effect: "hold", reason: "worker_launch_outcome_unknown" };
   }
   if (
@@ -473,6 +502,9 @@ function mergedState(state, receipt, now = Date.now()) {
 
 async function autoMergeReceipt(api, state) {
   requireAutoMergePolicy(state);
+  if ((state.autoMergeMethod ?? "merge") !== "merge") {
+    throw new Error("automatic_merge_method_unsupported_by_atomic_receipt");
+  }
   const alias = state.repo.split("/").at(-1);
   const remote = await runMergeguez(api, [
     "pr-state",
@@ -490,10 +522,12 @@ async function autoMergeReceipt(api, state) {
     throw new Error("automatic_merge_remote_identity_mismatch");
   }
   if (remote.merged === true) {
-    if (remote.merged_by?.login !== AUTO_MERGE_ACTOR) {
-      throw new Error("automatic_merge_reconciliation_actor_mismatch");
-    }
-    return { ...remote, reconciledAlreadyMerged: true };
+    // A merged_by actor alone cannot establish the exact reviewed base or
+    // protected merge parents after an ambiguous external outcome.
+    throw new Error("automatic_merge_already_merged_requires_exact_reconciliation");
+  }
+  if (remote.base?.sha !== state.baseSha) {
+    throw new Error("automatic_merge_remote_base_changed");
   }
   const review = remote.reviewers?.mergeguez_review;
   const checkRuns = Array.isArray(remote.checks?.check_runs) ? remote.checks.check_runs : [];
@@ -530,6 +564,8 @@ async function autoMergeReceipt(api, state) {
     String(state.prNumber),
     "--expected-base",
     "dev",
+    "--expected-base-sha",
+    state.baseSha,
     "--expected-head-branch",
     headRef,
     "--expected-head-sha",
@@ -538,13 +574,41 @@ async function autoMergeReceipt(api, state) {
     AUTO_MERGE_ACTOR,
     "--merge-method",
     state.autoMergeMethod ?? "merge",
+    "--require-taskflow-gates",
     "--json",
   ]);
+  const gates = receipt.taskflow_gates;
+  const enforcement = gates?.atomic_enforcement;
+  const mergeguezAppId = gates?.mergeguez_check_app_id;
+  const appBoundReviewCheck = enforcement?.required_status_checks?.some(
+    (check) => check?.context === "Mergeguez review" && check?.app_id === mergeguezAppId,
+  );
   if (
     receipt.merged !== true ||
     receipt.base !== "dev" ||
     receipt.head_sha !== state.headSha ||
-    receipt.actor_verification !== "passed"
+    receipt.actor_verification !== "passed" ||
+    !isSha(receipt.sha) ||
+    gates?.required_checks_ready !== true ||
+    gates?.mergeguez_check_ready !== true ||
+    gates?.exact_review_ready !== true ||
+    gates?.atomic_base_update !== true ||
+    !Number.isSafeInteger(mergeguezAppId) ||
+    mergeguezAppId < 1 ||
+    enforcement?.kind !== "github_branch_protection" ||
+    enforcement?.branch !== "dev" ||
+    enforcement?.matches_policy !== true ||
+    enforcement?.strict !== true ||
+    enforcement?.enforce_admins !== true ||
+    enforcement?.mergeguez_app_id !== mergeguezAppId ||
+    !appBoundReviewCheck ||
+    gates?.reviewed_base_sha !== state.baseSha ||
+    gates?.reviewed_head_sha !== state.headSha ||
+    gates?.actual_merge_commit_sha !== receipt.sha ||
+    !Array.isArray(gates?.actual_merge_parents) ||
+    gates.actual_merge_parents.length !== 2 ||
+    gates.actual_merge_parents[0] !== state.baseSha ||
+    gates.actual_merge_parents[1] !== state.headSha
   ) {
     throw new Error("automatic_merge_receipt_invalid");
   }
@@ -812,6 +876,9 @@ function persistState(boundFlows, flow, state) {
     stateJson: state,
     updatedAt: state.updatedAt,
   };
+  if (state.phase === PHASE.MERGE_READY && state.orphanedWorker) {
+    return boundFlows.setWaiting({ ...common, waitJson: flowWaitJson(state) });
+  }
   if (state.phase === PHASE.MERGE_READY || state.phase === PHASE.MERGED) {
     return boundFlows.finish({
       flowId: flow.flowId,
@@ -1001,13 +1068,27 @@ function enforceModeGate(state, now = Date.now()) {
 }
 
 async function applyEffect(api, config, boundFlows, flow, state, effect, options = {}) {
+  if (
+    state.orphanedWorker?.sessionKey === options.reportingWorkerSessionKey &&
+    options.reportingWorkerSessionKey
+  ) {
+    // A worker cannot await its own joined cancellation from inside its report.
+    // Return the report first; the lifecycle owner settles retained custody.
+    await scheduleWake(api, config, flow, "recover");
+    return;
+  }
   if (effect === "hold") {
     await clearWake(api, config, flow);
     return;
   }
   if (effect === "merge_ready") {
-    await clearWake(api, config, flow);
-    await notifyMergeReady(api, config, flow, state);
+    const settledFlow = await reconcileHeldOrphan(api, boundFlows, flow);
+    if (stateOf(settledFlow).orphanedWorker) {
+      await scheduleWake(api, config, settledFlow, "recover");
+      return;
+    }
+    await clearWake(api, config, settledFlow);
+    await notifyMergeReady(api, config, settledFlow, stateOf(settledFlow));
     return;
   }
   if (effect === "continue") {
@@ -1029,7 +1110,8 @@ async function applyEffect(api, config, boundFlows, flow, state, effect, options
   }
   if (effect === "wait" || effect === "blocked") {
     if (effect === "blocked") {
-      await clearWake(api, config, flow);
+      const heldFlow = await reconcileHeldOrphan(api, boundFlows, flow);
+      await clearWake(api, config, heldFlow);
     } else {
       await scheduleWake(api, config, flow, "recover");
     }
@@ -1042,6 +1124,15 @@ function workerAgentId(policy, kind) {
 
 function workerGenerationForState(state) {
   return Math.max(0, Number(state?.workerGeneration) || 0);
+}
+
+function retainedOrphanForReopen(state) {
+  if (state.activeWorker && state.orphanedWorker) {
+    throw new Error("reopen_has_multiple_unreconciled_workers");
+  }
+  return state.activeWorker
+    ? { ...state.activeWorker, launchOutcome: state.launchOutcome ?? null }
+    : (state.orphanedWorker ?? null);
 }
 
 function createWorkerSessionKey(policy, flow, state, kind) {
@@ -1082,7 +1173,7 @@ function activeReviewLeaseHolder(boundFlows, excludedFlowId, candidate, policies
     .filter((flow) => !TERMINAL_FLOW_STATUSES.has(flow.status))
     .find((flow) => {
       const other = stateOf(flow);
-      if (other?.activeWorker?.kind !== "review") {
+      if (other?.activeWorker?.kind !== "review" && other?.orphanedWorker?.kind !== "review") {
         return false;
       }
       return sharesReviewContentionDomain(other, candidate, policies);
@@ -1096,7 +1187,10 @@ function activeAuthorLeaseHolder(boundFlows, excludedFlowId, candidate, policies
     .filter((flow) => !TERMINAL_FLOW_STATUSES.has(flow.status))
     .find((flow) => {
       const other = stateOf(flow);
-      if (other?.activeWorker?.kind !== "remediation") {
+      if (
+        other?.activeWorker?.kind !== "remediation" &&
+        other?.orphanedWorker?.kind !== "remediation"
+      ) {
         return false;
       }
       return sharesReviewContentionDomain(other, candidate, policies);
@@ -1104,7 +1198,7 @@ function activeAuthorLeaseHolder(boundFlows, excludedFlowId, candidate, policies
 }
 
 function occupyingWorkerKind(state) {
-  const kind = state?.activeWorker?.kind;
+  const kind = state?.activeWorker?.kind ?? state?.orphanedWorker?.kind;
   return kind === "review" || kind === "remediation" ? kind : null;
 }
 
@@ -1211,7 +1305,45 @@ async function addDetachedWorktree(seed, dest, headSha) {
 
 async function ensureFlowWorkspace(api, policy, state) {
   if (typeof state?.flowWorkspace?.path === "string" && state.flowWorkspace.path.trim()) {
-    return state.flowWorkspace.path.trim();
+    const recorded = state.flowWorkspace.path.trim();
+    if (state.flowWorkspace.headSha === state.headSha || policy.maxParallelPrs <= 1) {
+      return recorded;
+    }
+    // A dedicated detached worktree survives a synchronize event. Rebind it
+    // only after the old worker has been reconciled and only when it is clean.
+    if (recorded !== provisionedFlowWorkspacePath(policy, state)) {
+      throw new Error("flow_workspace_path_changed");
+    }
+    if (typeof api.testProvisionFlowWorktree === "function") {
+      return api.testProvisionFlowWorktree(policy, state, { existingPath: recorded });
+    }
+    const { stdout: branch } = await execFile(
+      "git",
+      ["-C", recorded, "symbolic-ref", "--quiet", "--short", "HEAD"],
+      { encoding: "utf8", timeout: 30_000, windowsHide: true },
+    ).catch((error) => {
+      if (error.code === 1) {
+        return { stdout: "" }; // detached HEAD
+      }
+      throw error;
+    });
+    if (branch.trim()) {
+      throw new Error("flow_workspace_not_detached");
+    }
+    const { stdout: dirty } = await execFile(
+      "git",
+      ["-C", recorded, "status", "--porcelain", "--untracked-files=normal"],
+      { encoding: "utf8", timeout: 30_000, windowsHide: true },
+    );
+    if (dirty.trim()) {
+      throw new Error("flow_workspace_not_clean");
+    }
+    await execFile("git", ["-C", recorded, "checkout", "--detach", state.headSha], {
+      encoding: "utf8",
+      timeout: 60_000,
+      windowsHide: true,
+    });
+    return recorded;
   }
   if (
     typeof state?.workspacePreflight?.workspace === "string" &&
@@ -1342,10 +1474,11 @@ function buildWorkerMessage(flow, state, policy, kind) {
       "Check the Mergeguez contention-domain fence immediately before launch and preserve at most one active Mergeguez --apply per repository. Different repositories may review in parallel unless they share a workspace.",
       "Use only the executable /home/node/.openclaw/bin/mergeguez. Do not call git, ls, find, head, cat, another executable, or a shell operator, and do not explore or recheck the local workspace.",
       `First call exactly: /home/node/.openclaw/bin/mergeguez pr-state ${repositoryAlias} ${state.prNumber} --json`,
-      `Accept existing review evidence only when it is terminal, coverage-complete, and bound to exact head ${state.headSha}.`,
+      `Accept existing review evidence only when it is terminal, coverage-complete, and bound to exact head ${state.headSha} and reviewed base ${state.baseSha}.`,
       `If no such terminal review exists, call exactly: /home/node/.openclaw/bin/mergeguez mergeguez-review ${repositoryAlias} ${state.prNumber} --expected-sha ${state.headSha} --apply --json`,
       "For that mergeguez-review exec call, set timeoutSeconds=1800 and yieldMs=1000. If it yields a process session, poll it with timeout=30000 until the process is terminal.",
       `Call ${TOOL_NAME} exactly once with action=report, this flowId, kind=${kind}, headSha=${state.headSha}, and cycle=${state.cycle}.`,
+      "For approved or changes_requested, include baseSha equal to the actually observed reviewed_base_sha; never substitute a local or current base for review evidence.",
       "After the report tool returns, perform no further repository or review action.",
       "Do not call lifecycle status, admit, continue, recover, or another owner action. The worker reports its result exactly once and never drives the controller.",
       "If completion is external, report outcome=waiting_review with a bounded claimRef.",
@@ -1382,15 +1515,40 @@ async function resolveWorkerTask(api, ownerSessionKey, sessionKey, runId) {
   };
 }
 
+async function attachReturnedWorker(api, boundFlows, flowId, sessionKey, runId, taskId) {
+  let current = await boundFlows.get(flowId);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const attached = attachWorkerRun(stateOf(current), sessionKey, runId, taskId);
+    if (!attached.changed) {
+      const observed = await taskForWorker(api, current.ownerKey, { sessionKey, runId, taskId });
+      if (
+        observed?.observationSource === "native-subagent" &&
+        TERMINAL_TASK_STATUSES.has(observed.status)
+      ) {
+        return { flow: current, attached: false };
+      }
+      throw new Error("worker_reservation_changed_after_launch");
+    }
+    const mutation = await persistState(boundFlows, current, attached.state);
+    if (mutation.applied) {
+      return { flow: mutation.flow, attached: true };
+    }
+    if (mutation.code !== "revision_conflict") {
+      requireApplied(mutation);
+    }
+    // This retries only a fenced state attachment, never native invocation.
+    // The next attempt must still find this exact original reservation.
+    current = mutation.current ?? (await boundFlows.get(flowId));
+  }
+  throw new Error("worker_run_attachment_conflict");
+}
+
 async function dispatchWorker(api, config, boundFlows, flow) {
   let state = stateOf(flow);
   if (!state) {
     throw new Error("flow_state_invalid");
   }
   let workingFlow = flow;
-  if (state.phase === PHASE.MERGE_QUEUED) {
-    return await performAutoMerge(api, config, boundFlows, workingFlow, state);
-  }
   const policy = config.repositories.get(state.repo);
   if (!policy || !policy.enabled) {
     const blocked = blockState(state, "repository_policy_missing_or_disabled");
@@ -1404,7 +1562,7 @@ async function dispatchWorker(api, config, boundFlows, flow) {
     return requireApplied(await persistState(boundFlows, flow, gate.state));
   }
   const kind = workerKindForPhase(state.phase);
-  if (!kind) {
+  if (!kind && state.phase !== PHASE.MERGE_QUEUED) {
     return workingFlow;
   }
   if (state.orphanedWorker) {
@@ -1418,14 +1576,17 @@ async function dispatchWorker(api, config, boundFlows, flow) {
       orphanedWorker: null,
       lastGhostCleanup: {
         sessionKey: state.orphanedWorker.sessionKey,
-        runId: state.orphanedWorker.runId ?? null,
-        taskId: state.orphanedWorker.taskId ?? null,
+        runId: orphan.task?.runId ?? state.orphanedWorker.runId ?? null,
+        taskId: orphan.task?.id ?? state.orphanedWorker.taskId ?? null,
         reason: orphan.reason,
         reconciledAt: Date.now(),
       },
       updatedAt: Date.now(),
     };
     workingFlow = requireApplied(await persistState(boundFlows, workingFlow, state));
+  }
+  if (state.phase === PHASE.MERGE_QUEUED) {
+    return await performAutoMerge(api, config, boundFlows, workingFlow, state);
   }
   const preliminaryCapacity = captureCapacitySnapshot(
     await boundFlows.capacitySnapshot({
@@ -1548,6 +1709,14 @@ async function dispatchWorker(api, config, boundFlows, flow) {
       };
       reservedFlow = requireApplied(await persistState(boundFlows, reservedFlow, preparedState));
     }
+    // This write must settle before native invocation. Supersession retains
+    // pending custody even before the native run/session becomes observable.
+    const pendingState = {
+      ...stateOf(reservedFlow),
+      launchOutcome: { status: "pending", sessionKey, startedAt: Date.now() },
+      updatedAt: Date.now(),
+    };
+    reservedFlow = requireApplied(await persistState(boundFlows, reservedFlow, pendingState));
     launchInvoked = true;
     const run = await api.runtime.subagent.run({
       assertCurrent: () => boundFlows.assertCurrent(),
@@ -1576,28 +1745,53 @@ async function dispatchWorker(api, config, boundFlows, flow) {
     if (run.sessionKey && run.sessionKey !== sessionKey) {
       throw new Error(`worker_session_identity_mismatch:${run.sessionKey}`);
     }
-    let current = (await boundFlows.get(reservedFlow.flowId)) ?? reservedFlow;
-    let currentState = stateOf(current);
-    if (currentState?.activeWorker?.sessionKey !== sessionKey) {
-      throw new Error("worker_reservation_changed_after_launch");
-    }
-    const attachedRun = attachWorkerRun(currentState, sessionKey, run.runId, null);
-    if (attachedRun.changed) {
-      reservedFlow = requireApplied(await persistState(boundFlows, current, attachedRun.state));
-      current = reservedFlow;
-      currentState = attachedRun.state;
+    const attachedRun = await attachReturnedWorker(
+      api,
+      boundFlows,
+      reservedFlow.flowId,
+      sessionKey,
+      run.runId,
+      null,
+    );
+    reservedFlow = attachedRun.flow;
+    if (!attachedRun.attached) {
+      return reservedFlow;
     }
     const resolvedTask = await resolveWorkerTask(api, reservedFlow.ownerKey, sessionKey, run.runId);
     if (!resolvedTask.task) {
       throw new Error(resolvedTask.reason);
     }
     const taskId = resolvedTask.task.id ?? resolvedTask.task.taskId ?? null;
-    const attachedTask = attachWorkerRun(currentState, sessionKey, run.runId, taskId);
-    if (attachedTask.changed) {
-      reservedFlow = requireApplied(await persistState(boundFlows, current, attachedTask.state));
+    const attachedTask = await attachReturnedWorker(
+      api,
+      boundFlows,
+      reservedFlow.flowId,
+      sessionKey,
+      run.runId,
+      taskId,
+    );
+    reservedFlow = attachedTask.flow;
+    if (!attachedTask.attached) {
+      return reservedFlow;
     }
     // Worker lifecycle events drive the next transition. A scheduled model turn here
     // would repeatedly wake a controller chat while the worker is legitimately active.
+    if (stateOf(reservedFlow)?.orphanedWorker?.sessionKey === sessionKey) {
+      const latestState = stateOf(reservedFlow);
+      await applyEffect(
+        api,
+        config,
+        boundFlows,
+        reservedFlow,
+        latestState,
+        latestState.phase === PHASE.BLOCKED
+          ? "blocked"
+          : latestState.phase === PHASE.MERGE_READY
+            ? "merge_ready"
+            : "continue",
+      );
+      return (await boundFlows.get(reservedFlow.flowId)) ?? reservedFlow;
+    }
     await clearWake(api, config, reservedFlow);
     return reservedFlow;
   } catch (error) {
@@ -1613,6 +1807,30 @@ async function dispatchWorker(api, config, boundFlows, flow) {
       throw error;
     }
     const currentState = stateOf(current);
+    if (launchInvoked && currentState?.orphanedWorker?.sessionKey === sessionKey) {
+      const orphan = currentState.orphanedWorker;
+      const heldState = {
+        ...currentState,
+        orphanedWorker: {
+          ...orphan,
+          ...(launchedWorker?.sessionKey === sessionKey && launchedWorker.runId
+            ? { runId: launchedWorker.runId }
+            : {}),
+          launchOutcome: {
+            status: "unknown",
+            sessionKey,
+            observedSessionKey: launchedWorker?.sessionKey ?? null,
+            runId: launchedWorker?.runId ?? null,
+            failure: (error instanceof Error ? error.message : "unknown").slice(0, 300),
+            observedAt: Date.now(),
+          },
+        },
+        updatedAt: Date.now(),
+      };
+      const heldFlow = requireApplied(await persistState(boundFlows, current, heldState));
+      await scheduleWake(api, config, heldFlow, "recover");
+      return heldFlow;
+    }
     if (currentState?.activeWorker?.sessionKey !== sessionKey) {
       throw error;
     }
@@ -1620,6 +1838,12 @@ async function dispatchWorker(api, config, boundFlows, flow) {
     if (launchInvoked) {
       const heldState = {
         ...currentState,
+        activeWorker: {
+          ...currentState.activeWorker,
+          ...(launchedWorker?.sessionKey === sessionKey && launchedWorker.runId
+            ? { runId: launchedWorker.runId }
+            : {}),
+        },
         phase: PHASE.BLOCKED,
         blocker: "worker_launch_outcome_unknown",
         wait: { kind: "worker_launch_outcome_unknown", since: Date.now() },
@@ -1721,6 +1945,8 @@ async function ingestPullRequest(api, config, event) {
               : PHASE.REVIEW_QUEUED,
         // A reopened flow is a new execution generation; reusing the old key adopts stale history.
         workerGeneration: workerGenerationForState(currentState) + 1,
+        orphanedWorker: retainedOrphanForReopen(base),
+        activeWorker: null,
         wait: null,
         blocker: null,
         updatedAt: Date.now(),
@@ -1752,6 +1978,7 @@ async function ingestPullRequest(api, config, event) {
         phase: currentState.findings.length > 0 ? PHASE.REMEDIATION_QUEUED : PHASE.REVIEW_QUEUED,
         // A reopened flow is a new execution generation; reusing the old key adopts stale history.
         workerGeneration: workerGenerationForState(currentState) + 1,
+        orphanedWorker: retainedOrphanForReopen(base),
         activeWorker: null,
         wait: null,
         blocker: null,
@@ -1787,7 +2014,7 @@ async function ingestPullRequest(api, config, event) {
         infrastructureRetryCount: 0,
         infrastructureRetryAt: null,
         infrastructureLastFailure: null,
-        orphanedWorker: null,
+        orphanedWorker: retainedOrphanForReopen(base),
         activeWorker: null,
         wait: null,
         blocker: null,
@@ -1817,6 +2044,7 @@ async function ingestPullRequest(api, config, event) {
         ...refreshed,
         phase: currentState.findings.length > 0 ? PHASE.REMEDIATION_QUEUED : PHASE.REVIEW_QUEUED,
         workerGeneration: workerGenerationForState(currentState) + 1,
+        orphanedWorker: retainedOrphanForReopen(base),
         activeWorker: null,
         wait: null,
         blocker: null,
@@ -1875,7 +2103,7 @@ async function ingestPullRequest(api, config, event) {
         workerGeneration: workerGenerationForState(currentState) + 1,
         infrastructureRetryAt: null,
         infrastructureLastFailure: null,
-        orphanedWorker: null,
+        orphanedWorker: retainedOrphanForReopen(base),
         activeWorker: null,
         wait: null,
         blocker: null,
@@ -1912,7 +2140,7 @@ async function ingestPullRequest(api, config, event) {
         workerGeneration: workerGenerationForState(currentState) + 1,
         infrastructureRetryAt: null,
         infrastructureLastFailure: null,
-        orphanedWorker: null,
+        orphanedWorker: retainedOrphanForReopen(base),
         activeWorker: null,
         wait: null,
         blocker: null,
@@ -1960,6 +2188,76 @@ async function ingestPullRequest(api, config, event) {
   });
 }
 
+async function baseBoundReviewEvent(api, state, event) {
+  if (event.baseSha) {
+    return { event };
+  }
+  // Older signed producers omit baseSha. Treat that delivery as a wake-up
+  // and consume the broker's exact current review, never enrich stale
+  // webhook findings with a newer review's base.
+  let remote;
+  try {
+    remote = await runMergeguez(api, [
+      "pr-state",
+      event.repo.split("/").at(-1),
+      String(event.prNumber),
+      "--expected-sha",
+      event.headSha,
+      "--json",
+    ]);
+  } catch {
+    return { reason: "review_base_observation_unavailable" };
+  }
+  const review = remote.reviewers?.mergeguez_review;
+  if (
+    remote.head?.sha !== state.headSha ||
+    remote.head?.repo !== state.repo ||
+    remote.base?.sha !== state.baseSha ||
+    remote.base?.ref !== state.baseRef ||
+    review?.reviewed_head_sha !== state.headSha ||
+    review?.reviewed_base_sha !== state.baseSha ||
+    review?.coverage_complete !== true
+  ) {
+    return { reason: "review_base_identity_unverified" };
+  }
+  const approved =
+    ["approved", "passed", "success"].includes(review.status) &&
+    Number(review.findings_count) === 0 &&
+    Number(review.blocking_findings_count) === 0;
+  const changes =
+    ["changes_requested", "failed"].includes(review.status) &&
+    review.structured_findings === true &&
+    Array.isArray(review.findings) &&
+    review.findings.length > 0 &&
+    Number(review.findings_count) === review.findings.length;
+  if (!approved && !changes) {
+    return { reason: "review_base_identity_unverified" };
+  }
+  return {
+    event: {
+      ...event,
+      baseSha: review.reviewed_base_sha,
+      outcome: approved ? "approved" : "changes_requested",
+      coverageComplete: true,
+      findings: approved
+        ? []
+        : review.findings.map((finding) => ({
+            id: finding.id,
+            severity: finding.blocking === true ? "high" : "low",
+            summary:
+              typeof finding.summary === "string" ? finding.summary.slice(0, 500) : finding.summary,
+            path: finding.path,
+            ...((finding.line ?? finding.scope?.start_line) !== undefined
+              ? { line: finding.line ?? finding.scope.start_line }
+              : {}),
+          })),
+      retryAllowed: false,
+      reviewId: review.run_id || undefined,
+      summary: review.summary || undefined,
+    },
+  };
+}
+
 async function ingestReviewResult(api, config, event) {
   const bindings = [];
   return await withTaskBindingClosure(api, bindings, async () => {
@@ -1972,7 +2270,11 @@ async function ingestReviewResult(api, config, event) {
     }
     const { boundFlows, flow } = match;
     bindings.push(boundFlows);
-    const transition = applyReviewResult(stateOf(flow), event);
+    const resolvedReview = await baseBoundReviewEvent(api, stateOf(flow), event);
+    if (!resolvedReview.event) {
+      return { accepted: false, reason: resolvedReview.reason };
+    }
+    const transition = applyReviewResult(stateOf(flow), resolvedReview.event);
     if (!transition.changed) {
       return {
         accepted: true,
@@ -2145,6 +2447,7 @@ async function workerTaskLedgers(api, ownerSessionKey, worker) {
   ];
   const seen = new Set();
   const ledgers = [];
+  let admissionUnavailable = false;
   for (const binding of bindings) {
     const key = `${binding.sessionKey}\u0000${binding.agentId ?? ""}`;
     if (!binding.sessionKey || seen.has(key)) {
@@ -2155,7 +2458,9 @@ async function workerTaskLedgers(api, ownerSessionKey, worker) {
     try {
       ledger = await api.runtime.tasks.runs.bindSession(binding);
     } catch {
-      // One inaccessible ledger must not hide an exact task from another owner/worker ledger.
+      // Continue looking for an exact task in other owner/worker ledgers, but
+      // absence is not authoritative when any binding was unavailable.
+      admissionUnavailable = true;
       continue;
     }
     if (["get", "list", "cancel", "close"].some((name) => typeof ledger?.[name] !== "function")) {
@@ -2166,14 +2471,14 @@ async function workerTaskLedgers(api, ownerSessionKey, worker) {
     }
     ledgers.push(ledger);
   }
-  return ledgers;
+  return { ledgers, admissionUnavailable };
 }
 
 async function taskForWorker(api, ownerSessionKey, worker) {
   if (!worker?.sessionKey) {
     return undefined;
   }
-  const ledgers = await workerTaskLedgers(api, ownerSessionKey, worker);
+  const { ledgers, admissionUnavailable } = await workerTaskLedgers(api, ownerSessionKey, worker);
   return await withTaskBindingClosure(api, ledgers, async () => {
     if (worker.taskId) {
       for (const runs of ledgers) {
@@ -2195,12 +2500,22 @@ async function taskForWorker(api, ownerSessionKey, worker) {
         }
       }
     }
+    if (admissionUnavailable) {
+      throw new Error("publisher_run_observation_unavailable");
+    }
     return undefined;
   });
 }
 
 async function currentWorkerTask(api, ownerSessionKey, state) {
-  return await taskForWorker(api, ownerSessionKey, state.activeWorker);
+  try {
+    return await taskForWorker(api, ownerSessionKey, state.activeWorker);
+  } catch (error) {
+    if (error instanceof Error && error.message === "publisher_run_observation_unavailable") {
+      return { status: "unavailable", observationSource: "run-ledger-unavailable" };
+    }
+    throw error;
+  }
 }
 
 function workerMatchesTerminalLifecycleEvent(worker, event) {
@@ -2225,7 +2540,10 @@ async function reconcileTerminalWorkerEvent(api, config, event) {
     }
     for (const candidate of await collectLifecycleFlows(api, config)) {
       const candidateState = stateOf(candidate);
-      if (!workerMatchesTerminalLifecycleEvent(candidateState?.activeWorker, event)) {
+      if (
+        !workerMatchesTerminalLifecycleEvent(candidateState?.activeWorker, event) &&
+        !workerMatchesTerminalLifecycleEvent(candidateState?.orphanedWorker, event)
+      ) {
         continue;
       }
       const resolved = await resolveFlowBinding(api, config, candidate.flowId, candidate.ownerKey);
@@ -2233,6 +2551,24 @@ async function reconcileTerminalWorkerEvent(api, config, event) {
       bindings.push(boundFlows);
       let flow = resolved.flow;
       let state = stateOf(flow);
+      if (workerMatchesTerminalLifecycleEvent(state?.orphanedWorker, event)) {
+        flow = await reconcileHeldOrphan(api, boundFlows, flow);
+        state = stateOf(flow);
+        if (state.orphanedWorker) {
+          await scheduleWake(api, config, flow, "recover");
+        } else {
+          const effect =
+            state.phase === PHASE.MERGE_READY
+              ? "merge_ready"
+              : state.phase === PHASE.BLOCKED
+                ? "blocked"
+                : workerKindForPhase(state.phase) || state.phase === PHASE.MERGE_QUEUED
+                  ? "continue"
+                  : "wait";
+          await applyEffect(api, config, boundFlows, flow, state, effect);
+        }
+        return { handled: true, reason: "orphan_worker_reconciliation", flow: statusView(flow) };
+      }
       if (!workerMatchesTerminalLifecycleEvent(state?.activeWorker, event)) {
         return { handled: false, reason: "worker_event_superseded" };
       }
@@ -2293,10 +2629,32 @@ const ACTIVE_TASK_STATUSES = new Set(["queued", "running"]);
 const TERMINAL_TASK_STATUSES = new Set(["succeeded", "failed", "timed_out", "cancelled", "lost"]);
 
 async function reconcileOrphanedWorker(api, ownerSessionKey, orphanedWorker) {
-  if (!orphanedWorker?.sessionKey) {
+  if (!orphanedWorker) {
     return { safe: true, reason: "no_orphan" };
   }
-  const task = await taskForWorker(api, ownerSessionKey, orphanedWorker);
+  if (!orphanedWorker.sessionKey) {
+    return { safe: false, reason: "orphan_session_identity_missing" };
+  }
+  let task;
+  try {
+    task = await taskForWorker(api, ownerSessionKey, orphanedWorker);
+  } catch (error) {
+    if (error instanceof Error && error.message === "publisher_run_observation_unavailable") {
+      return { safe: false, reason: "orphan_run_observation_unavailable" };
+    }
+    throw error;
+  }
+  if (!task && ["pending", "unknown"].includes(orphanedWorker.launchOutcome?.status)) {
+    return { safe: false, reason: "orphan_launch_outcome_unknown" };
+  }
+  if (
+    !task &&
+    !orphanedWorker.runId &&
+    !orphanedWorker.taskId &&
+    orphanedWorker.launchOutcome?.status === "not_invoked"
+  ) {
+    return { safe: true, reason: "orphan_launch_not_invoked" };
+  }
   if (
     ["native-subagent", "legacy-task"].includes(task?.observationSource) &&
     task.status === "unknown"
@@ -2318,7 +2676,11 @@ async function reconcileOrphanedWorker(api, ownerSessionKey, orphanedWorker) {
     return { safe: false, reason: "orphan_legacy_cancellation_unavailable", task };
   }
   if (task && ACTIVE_TASK_STATUSES.has(task.status)) {
-    const ledgers = await workerTaskLedgers(api, ownerSessionKey, orphanedWorker);
+    const { ledgers, admissionUnavailable } = await workerTaskLedgers(
+      api,
+      ownerSessionKey,
+      orphanedWorker,
+    );
     const cancelledTask = await withTaskBindingClosure(api, ledgers, async () => {
       for (const runs of ledgers) {
         const exact = await runs.get(task.id);
@@ -2348,14 +2710,44 @@ async function reconcileOrphanedWorker(api, ownerSessionKey, orphanedWorker) {
     if (cancelledTask) {
       return cancelledTask;
     }
-  }
-  if (alive === false) {
-    return { safe: true, reason: task ? "orphan_session_dead_task_stale" : "orphan_session_dead" };
+    if (admissionUnavailable) {
+      return { safe: false, reason: "orphan_run_observation_unavailable", task };
+    }
   }
   return {
     safe: false,
-    reason: alive === true ? "orphan_session_still_alive" : "orphan_session_liveness_unknown",
+    reason: task
+      ? "orphan_cancellation_unconfirmed"
+      : alive === false
+        ? "orphan_run_observation_missing"
+        : alive === true
+          ? "orphan_session_still_alive"
+          : "orphan_session_liveness_unknown",
   };
+}
+
+async function reconcileHeldOrphan(api, boundFlows, flow) {
+  const state = stateOf(flow);
+  if (!state?.orphanedWorker) {
+    return flow;
+  }
+  const orphan = await reconcileOrphanedWorker(api, flow.ownerKey, state.orphanedWorker);
+  if (!orphan.safe) {
+    return flow;
+  }
+  const next = {
+    ...state,
+    orphanedWorker: null,
+    lastGhostCleanup: {
+      sessionKey: state.orphanedWorker.sessionKey,
+      runId: orphan.task?.runId ?? state.orphanedWorker.runId ?? null,
+      taskId: orphan.task?.id ?? state.orphanedWorker.taskId ?? null,
+      reason: orphan.reason,
+      reconciledAt: Date.now(),
+    },
+    updatedAt: Date.now(),
+  };
+  return requireApplied(await persistState(boundFlows, flow, next));
 }
 
 const DEAD_SESSION_STATUSES = new Set([
@@ -2513,7 +2905,26 @@ function createControllerTool(api, config, ctx) {
           ) {
             verifyRemediationEvidence(api, state, input);
           }
-          const transition = applyWorkerReport(state, input, ctx.sessionKey);
+          let workerInput = input;
+          if (
+            input.kind === "review" &&
+            ["approved", "changes_requested"].includes(input.outcome) &&
+            !input.baseSha
+          ) {
+            if (state.activeWorker?.sessionKey !== ctx.sessionKey) {
+              throw new Error("worker session does not own this step");
+            }
+            const observed = await baseBoundReviewEvent(api, state, {
+              ...input,
+              repo: state.repo,
+              prNumber: state.prNumber,
+            });
+            if (!observed.event) {
+              return result({ ok: false, reason: observed.reason, flow: statusView(flow) });
+            }
+            workerInput = { ...input, ...observed.event };
+          }
+          const transition = applyWorkerReport(state, workerInput, ctx.sessionKey);
           flow = requireApplied(await persistState(boundFlows, flow, transition.state));
           let nextState = transition.state;
           let nextEffect = transition.effect;
@@ -2525,6 +2936,7 @@ function createControllerTool(api, config, ctx) {
           }
           await applyEffect(api, config, boundFlows, flow, nextState, nextEffect, {
             dispatchImmediately: true,
+            reportingWorkerSessionKey: ctx.sessionKey,
           });
           flow = (await boundFlows.get(flow.flowId)) ?? flow;
           return result({ ok: true, transition: transition.reason, flow: statusView(flow) });
@@ -2549,6 +2961,32 @@ function createControllerTool(api, config, ctx) {
             flow = requireApplied(await persistState(boundFlows, flow, refreshed.state));
           }
           state = stateOf(flow);
+          if (state.phase === PHASE.BLOCKED && state.orphanedWorker) {
+            const beforeRevision = flow.revision;
+            flow = await reconcileHeldOrphan(api, boundFlows, flow);
+            return result({
+              ok: true,
+              recovery:
+                flow.revision === beforeRevision
+                  ? "blocked_orphan_still_unsettled"
+                  : "blocked_orphan_reconciled",
+              flow: statusView(flow),
+            });
+          }
+          if (state.phase === PHASE.MERGE_READY && state.orphanedWorker) {
+            flow = await reconcileHeldOrphan(api, boundFlows, flow);
+            if (stateOf(flow).orphanedWorker) {
+              await scheduleWake(api, config, flow, "recover");
+            } else {
+              await clearWake(api, config, flow);
+              await notifyMergeReady(api, config, flow, stateOf(flow));
+            }
+            return result({
+              ok: true,
+              recovery: "merge_ready_worker_reconciliation",
+              flow: statusView(flow),
+            });
+          }
           const evidence = await reconcileRemediationEvidence(api, config, boundFlows, flow);
           if (evidence.changed) {
             return result({ ok: true, recovery: evidence.reason, flow: statusView(evidence.flow) });
@@ -2605,8 +3043,22 @@ async function reconcileAtStartup(api, config) {
         if (!state) {
           continue;
         }
-        if (flow.status === "blocked" || state.phase === PHASE.BLOCKED) {
+        if (
+          (flow.status === "blocked" || state.phase === PHASE.BLOCKED) &&
+          !(state.blocker === "worker_launch_outcome_unknown" && state.activeWorker)
+        ) {
+          flow = await reconcileHeldOrphan(api, boundFlows, flow);
           await clearWake(api, config, flow);
+          continue;
+        }
+        if (state.phase === PHASE.MERGE_READY && state.orphanedWorker) {
+          flow = await reconcileHeldOrphan(api, boundFlows, flow);
+          if (stateOf(flow).orphanedWorker) {
+            await scheduleWake(api, config, flow, "recover");
+          } else {
+            await clearWake(api, config, flow);
+            await notifyMergeReady(api, config, flow, stateOf(flow));
+          }
           continue;
         }
         if (TERMINAL_FLOW_STATUSES.has(flow.status) || isTerminalState(state)) {

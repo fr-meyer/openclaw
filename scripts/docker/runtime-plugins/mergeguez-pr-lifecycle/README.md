@@ -1,11 +1,20 @@
 # Installed publisher compatibility for OpenClaw 9.8
 
 This private 0.1.1 source candidate adapts the installed 0.1.0 publisher to an
-asynchronous, worker-owned controller state bridge. The controller, HTTP parser
-and registration entry retain their exact installed source bytes. Review,
-remediation, signed ingress, head/base and broker attribution gates remain in
-those existing owners. This package does not grant merge approval or enable new
-TaskFlow automation.
+asynchronous, worker-owned controller state bridge. The registration entry retains
+its installed source bytes. The corrective controller preserves prior worker
+custody across pending launches, review results, reopened blocks and a new head or
+base. Retained workers occupy capacity until exact owner reconciliation. Worker
+reports return before their own run is reconciled. Unavailable run-ledger admission
+holds recovery; runtime dispatch reconciles the exact run before launch or clean
+detached-worktree rebinding. The HTTP reader pauses rejected bodies and removes
+its listeners. Automatic merge binds the
+reviewed base and head to the broker's protected merge receipt. The current atomic
+broker contract supports merge commits; squash and rebase refuse before a broker
+call. Signed review events can carry `baseSha`; older events consume the broker's
+exact current review instead of their potentially stale findings. Review,
+remediation and signed ingress remain in their existing owners. This package does
+not grant merge approval or enable new TaskFlow automation.
 
 The Gateway bridge must report `authorityVersion: 1` and
 `availability.controllerParity: true`. Canonical task creation and private
@@ -33,7 +42,8 @@ Workboard database family, including attachments and claims. This source patch
 adds no schema and does not copy, migrate, restore, publish or enable live data.
 
 `npm test` uses synthetic asynchronous owner ports. Those tests do not execute a
-Gateway, native SQLite worker, model, broker, Git transport, or scheduler.
+Gateway, native SQLite worker, model, external broker, remote Git transport, or
+scheduler. Worktree regressions use temporary local Git repositories.
 
 ## Local release pin transition
 
@@ -67,11 +77,16 @@ files cannot establish the identity of already evaluated applier code. Keep the
 applier's source identity bound in the release manifest separately from its
 target package. Do not alter the runtime source guard or loader admission.
 
-The unpublished 0.1.1 target now binds the reviewed lint correction at
-`14a2507d`; the historical `1e197fa2` candidate remains recorded separately as
-`sourceQualifiedCandidate`. Its runtime hash is not rewritten. The installed
-0.1.0 predecessor and the controller, HTTP parser and entrypoint bytes remain
-unchanged. This successor binding does not authorize pin application.
+The unpublished corrective 0.1.1 target binds controller `8b8f506d`, HTTP `fc46936c`,
+and runtime `9822189b` SHA-256 prefixes. Its pin-contract source commit is unset until a separate reviewed source binding.
+Exact-source review and local commit receipts are retained outside this package;
+runtime qualification remains pending. The tracked cut manifest preserves `14a2507d` as a
+historical publisher source successor and records the preparation separately;
+image planning will reject the corrected bytes against that historical binding.
+The historical `1e197fa2` candidate remains `sourceQualifiedCandidate`, and its
+runtime hash is unchanged. The complete installed 0.1.0 predecessor bytes remain
+unchanged, including the controller and HTTP reader retained by the rollback fixture. Prepared
+pins do not authorize application or qualify an image.
 
 Call the returned operation with `{ direction: "forward" | "reverse",
 expectedConfigPath, expectedConfigHash, expectedRuntimePath }`. An already-target

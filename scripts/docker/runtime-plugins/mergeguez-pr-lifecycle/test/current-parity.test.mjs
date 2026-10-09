@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 import test from "node:test";
 import {
@@ -10,13 +14,22 @@ import {
   FALLBACK_FIXER_MODEL,
   REVIEW_ACTOR,
   AUTHOR_ACTOR,
+  applyPullRequestEvent,
+  applyReviewResult,
+  applyWorkerReport,
   applyWorkerFailure,
   findingsAreActionable,
   isSha,
   isRepo,
   sanitizeFindings,
 } from "../src/controller.mjs";
-import { BODY_TIMEOUT_MS, MAX_BODY_BYTES, readJsonBody } from "../src/http.mjs";
+import {
+  BODY_TIMEOUT_MS,
+  MAX_BODY_BYTES,
+  parseGitHubPullRequest,
+  parseMergeguezReviewEvent,
+  readJsonBody,
+} from "../src/http.mjs";
 import * as runtime from "../src/runtime.mjs";
 import {
   OWNER,
@@ -36,6 +49,168 @@ const get = (f, id) => f.kernel.get(OWNER, id);
 const details = (value) => value.details;
 const continueFlow = (f, id, extra = {}) =>
   f.tool().execute("call", { action: "continue", flowId: id, ...extra });
+
+for (const update of ["same head", "new head", "blocked base"]) {
+  void test(`acknowledged run attachment reconciles CAS conflict for ${update}`, async () => {
+    const f = fixture();
+    const flow = f.seed();
+    let conflicted = false;
+    f.hooks.operation = async (_binding, name, input) => {
+      if (!conflicted && name === "resume" && input.stateJson?.activeWorker?.runId === "native-1") {
+        conflicted = true;
+        await __testing.ingestPullRequest(
+          f.api,
+          f.config,
+          prEvent({
+            eventId: "github:attachment-conflict",
+            ...(update === "new head"
+              ? { headSha: SHA_B }
+              : update === "blocked base"
+                ? { baseRef: "main" }
+                : {}),
+          }),
+        );
+      }
+    };
+    await continueFlow(f, flow.flowId);
+    assert.equal(conflicted, true);
+    assert.equal(f.calls.launches.length, 1);
+    const state = get(f, flow.flowId).stateJson;
+    assert.notEqual(state.blocker, "worker_launch_outcome_unknown");
+    assert.equal(
+      (state.activeWorker ?? state.orphanedWorker ?? state.lastGhostCleanup).runId,
+      "native-1",
+    );
+    if (update === "same head") {
+      assert.equal(state.phase, PHASE.REVIEW_RUNNING);
+      assert.equal(state.activeWorker.taskId, "observed-native-1");
+    } else if (update === "new head") {
+      assert.equal(state.orphanedWorker.taskId, "observed-native-1");
+      assert.equal(state.orphanedWorker.launchOutcome.status, "accepted");
+    } else if (update === "blocked base") {
+      assert.equal(state.lastGhostCleanup.reason, "orphan_task_cancelled");
+      assert.equal(state.orphanedWorker, null);
+    }
+    assertAllClosed(assert, f.calls);
+  });
+}
+
+for (const entry of ["manual recovery", "startup", "terminal event"]) {
+  void test(`exact native terminal outcome settles retained launch block through ${entry}`, async () => {
+    const f = fixture();
+    const worker = {
+      kind: "review",
+      sessionKey: "agent:reviewer:subagent:ack-conflict",
+      runId: "ack-run",
+      taskId: "ack-task",
+      headSha: SHA_A,
+      cycle: 0,
+      reservedAt: Date.now(),
+    };
+    const flow = f.seed(
+      {
+        phase: PHASE.BLOCKED,
+        blocker: "worker_launch_outcome_unknown",
+        activeWorker: worker,
+        launchOutcome: { status: "unknown", sessionKey: worker.sessionKey, runId: worker.runId },
+      },
+      { status: "blocked" },
+    );
+    f.kernel.observations.set(worker.taskId, {
+      id: worker.taskId,
+      requesterSessionKey: OWNER,
+      childSessionKey: worker.sessionKey,
+      observationSource: "native-subagent",
+      agentId: "reviewer",
+      runId: worker.runId,
+      status: "succeeded",
+    });
+    if (entry === "startup") {
+      await __testing.reconcileAtStartup(f.api, f.config);
+    } else if (entry === "manual recovery") {
+      await f.tool().execute("recover", { action: "recover", flowId: flow.flowId });
+    } else {
+      await __testing.reconcileTerminalWorkerEvent(f.api, f.config, {
+        stream: "lifecycle",
+        runId: worker.runId,
+        sessionKey: worker.sessionKey,
+        data: { phase: "end" },
+      });
+    }
+    const state = get(f, flow.flowId).stateJson;
+    assert.equal(state.activeWorker, null);
+    assert.equal(state.phase, PHASE.REVIEW_QUEUED);
+    assert.equal(state.blocker, null);
+    assert.equal(state.infrastructureRetryCount, 1);
+    assert.equal(f.calls.launches.length, 0);
+    assertAllClosed(assert, f.calls);
+  });
+}
+
+void test("legacy worker changes report maps broker blocking without cancelling its reporting run", async () => {
+  const f = fixture();
+  const flow = f.seed();
+  await continueFlow(f, flow.flowId);
+  const worker = get(f, flow.flowId).stateJson.activeWorker;
+  const tool = f.calls.tools[0].factory({ sessionKey: worker.sessionKey });
+  f.api.testRunMergeguez = async () => ({
+    head: { sha: SHA_A, repo: REPO },
+    base: { sha: SHA_B, ref: "dev" },
+    reviewers: {
+      mergeguez_review: {
+        status: "failed",
+        coverage_complete: true,
+        reviewed_head_sha: SHA_A,
+        reviewed_base_sha: SHA_B,
+        structured_findings: true,
+        findings_count: 2,
+        blocking_findings_count: 1,
+        run_id: "worker-broker-findings",
+        findings: [
+          {
+            id: "required",
+            blocking: true,
+            summary: "Required fix",
+            path: "required.mjs",
+            scope: { start_line: 4 },
+            acceptance_file: "required.test.mjs",
+          },
+          {
+            id: "optional",
+            blocking: false,
+            summary: "Small fix",
+            path: "optional.mjs",
+            scope: {},
+            acceptance_file: "",
+          },
+        ],
+      },
+    },
+  });
+  const reported = details(
+    await tool.execute("report", {
+      action: "report",
+      flowId: flow.flowId,
+      kind: "review",
+      outcome: "changes_requested",
+      headSha: SHA_A,
+      cycle: 0,
+      coverageComplete: true,
+      findings: [{ id: "stale", severity: "high", summary: "Old", path: "old.mjs" }],
+    }),
+  );
+  assert.equal(reported.ok, true);
+  const state = get(f, flow.flowId).stateJson;
+  assert.equal(state.phase, PHASE.REMEDIATION_QUEUED);
+  assert.equal(state.orphanedWorker.runId, worker.runId);
+  assert.deepEqual(state.findings, [
+    { id: "required", severity: "high", summary: "Required fix", path: "required.mjs", line: 4 },
+    { id: "optional", severity: "low", summary: "Small fix", path: "optional.mjs" },
+  ]);
+  assert.equal(f.calls.cancels.length, 0);
+  assert.equal(f.calls.launches.length, 1);
+  assertAllClosed(assert, f.calls);
+});
 
 void test("retained publisher policy exports govern persisted defaults and retry exhaustion", () => {
   const state = fixture().seed().stateJson;
@@ -64,6 +239,966 @@ void test("retained publisher policy exports govern persisted defaults and retry
   const exhausted = failure(MAX_INFRASTRUCTURE_RETRIES);
   assert.equal(exhausted.state.phase, PHASE.BLOCKED);
   assert.equal(exhausted.state.blocker, "infrastructure_retry_exhausted:worker_session_missing");
+});
+
+void test("new PR head preserves the old worker for exact reconciliation", () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:prior-head",
+    runId: "prior-run",
+    taskId: "prior-task",
+    headSha: SHA_A,
+  };
+  const state = {
+    ...f.seed().stateJson,
+    activeWorker: worker,
+    phase: PHASE.REVIEW_RUNNING,
+    flowWorkspace: { path: "/inert/speculoos-pr319", headSha: SHA_A },
+    workspacePreflight: { workspace: "/inert/speculoos-pr319", headSha: SHA_A },
+  };
+  const next = applyPullRequestEvent(
+    state,
+    prEvent({ eventId: "github:new-head", headSha: SHA_B, baseSha: SHA_A }),
+    f.config.repositories.get(REPO),
+  );
+  assert.equal(next.reason, "new_head");
+  assert.equal(next.state.headSha, SHA_B);
+  assert.deepEqual(next.state.orphanedWorker, { ...worker, launchOutcome: null });
+  assert.equal(next.state.activeWorker, null);
+  assert.equal(next.state.workspacePreflight, null);
+  assert.equal(next.state.flowWorkspace.headSha, SHA_A);
+  assert.throws(
+    () =>
+      applyPullRequestEvent(
+        { ...state, orphanedWorker: { sessionKey: "another-worker" } },
+        prEvent({ eventId: "github:two-workers", headSha: SHA_B }),
+        f.config.repositories.get(REPO),
+      ),
+    /new_head_has_multiple_unreconciled_workers/,
+  );
+});
+
+void test("same-head base change invalidates review and retains worker custody", () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:base-drift",
+    runId: "base-drift-run",
+    headSha: SHA_A,
+  };
+  const state = {
+    ...f.seed().stateJson,
+    phase: PHASE.REVIEW_RUNNING,
+    activeWorker: worker,
+    review: { outcome: "approved" },
+    mergeReady: { mergeAuthorized: true },
+  };
+  const changed = applyPullRequestEvent(
+    state,
+    prEvent({ eventId: "github:base-drift", baseSha: "c".repeat(40) }),
+    f.config.repositories.get(REPO),
+  );
+  assert.equal(changed.reason, "base_changed");
+  assert.equal(changed.state.phase, PHASE.REVIEW_QUEUED);
+  assert.equal(changed.state.headSha, SHA_A);
+  assert.equal(changed.state.baseSha, "c".repeat(40));
+  assert.equal(changed.state.review, null);
+  assert.equal(changed.state.mergeReady, null);
+  assert.equal(changed.state.orphanedWorker.runId, worker.runId);
+});
+
+void test("edited GitHub PR ingress carries a same-head base change", () => {
+  const event = parseGitHubPullRequest(
+    { headers: { "x-github-event": "pull_request", "x-github-delivery": "base-edit" } },
+    {
+      action: "edited",
+      repository: { full_name: REPO },
+      pull_request: {
+        number: 319,
+        head: { sha: SHA_A, repo: { full_name: REPO } },
+        base: { sha: "c".repeat(40), ref: "dev" },
+      },
+    },
+  );
+  assert.equal(event.action, "edited");
+  assert.equal(event.baseSha, "c".repeat(40));
+  const f = fixture();
+  const transition = applyPullRequestEvent(
+    f.seed().stateJson,
+    event,
+    f.config.repositories.get(REPO),
+  );
+  assert.equal(transition.reason, "base_changed");
+  assert.equal(
+    applyReviewResult(transition.state, {
+      eventId: "review:pre-edit-base",
+      repo: REPO,
+      prNumber: 319,
+      headSha: SHA_A,
+      baseSha: SHA_B,
+      outcome: "approved",
+      coverageComplete: true,
+      findings: [],
+    }).reason,
+    "stale_base_result",
+  );
+});
+
+void test("disallowed base blocks without losing an active worker", () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:disallowed-base",
+    runId: "disallowed-run",
+    taskId: "disallowed-task",
+    headSha: SHA_A,
+  };
+  const state = { ...f.seed().stateJson, phase: PHASE.REVIEW_RUNNING, activeWorker: worker };
+  const event = prEvent({ eventId: "github:disallowed-base", baseRef: "main" });
+  const blocked = applyPullRequestEvent(state, event, f.config.repositories.get(REPO));
+  assert.equal(blocked.state.phase, PHASE.BLOCKED);
+  assert.equal(blocked.state.activeWorker, null);
+  assert.deepEqual(blocked.state.orphanedWorker, { ...worker, launchOutcome: null });
+  assert.throws(
+    () =>
+      applyPullRequestEvent(
+        { ...state, orphanedWorker: { sessionKey: "agent:reviewer:subagent:older" } },
+        event,
+        f.config.repositories.get(REPO),
+      ),
+    /block_has_multiple_unreconciled_workers/,
+  );
+});
+
+void test("blocked ingress cancels the exact native worker before clearing orphan custody", async () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:blocked-native",
+    runId: "blocked-run",
+    taskId: "blocked-task",
+    headSha: SHA_A,
+  };
+  const flow = f.seed({ phase: PHASE.REVIEW_RUNNING, activeWorker: worker });
+  f.kernel.observations.set(worker.taskId, {
+    id: worker.taskId,
+    requesterSessionKey: OWNER,
+    childSessionKey: worker.sessionKey,
+    observationSource: "native-subagent",
+    agentId: "reviewer",
+    runId: worker.runId,
+    status: "running",
+  });
+  await __testing.ingestPullRequest(
+    f.api,
+    f.config,
+    prEvent({ eventId: "github:blocked-native", baseRef: "main" }),
+  );
+  const blocked = get(f, flow.flowId).stateJson;
+  assert.equal(blocked.phase, PHASE.BLOCKED);
+  assert.equal(blocked.orphanedWorker, null);
+  assert.equal(blocked.lastGhostCleanup.reason, "orphan_task_cancelled");
+  assert.equal(f.calls.cancels.length, 1);
+  assert.equal(f.calls.launches.length, 0);
+  assertAllClosed(assert, f.calls);
+});
+
+void test("legacy changes webhook consumes the broker's structured failed review contract", async () => {
+  const f = fixture();
+  const flow = f.seed();
+  f.api.testRunMergeguez = async () => ({
+    head: { sha: SHA_A, repo: REPO },
+    base: { sha: SHA_B, ref: "dev" },
+    reviewers: {
+      mergeguez_review: {
+        status: "failed",
+        coverage_complete: true,
+        reviewed_head_sha: SHA_A,
+        reviewed_base_sha: SHA_B,
+        structured_findings: true,
+        findings_count: 1,
+        blocking_findings_count: 1,
+        run_id: "broker-findings",
+        findings: [
+          {
+            id: "current",
+            blocking: true,
+            summary: "Current issue",
+            path: "current.mjs",
+            scope: { start_line: 7, end_line: 9, ambiguous: false },
+            acceptance_file: "current.test.mjs",
+          },
+        ],
+      },
+    },
+  });
+  await __testing.ingestReviewResult(f.api, f.config, {
+    eventId: "legacy:changes",
+    repo: REPO,
+    prNumber: 319,
+    headSha: SHA_A,
+    outcome: "changes_requested",
+    coverageComplete: true,
+    findings: [{ id: "stale", severity: "high", summary: "Old issue", path: "old.mjs" }],
+  });
+  const state = get(f, flow.flowId).stateJson;
+  assert.equal(state.phase, PHASE.REMEDIATION_RUNNING);
+  assert.deepEqual(state.findings, [
+    { id: "current", severity: "high", summary: "Current issue", path: "current.mjs", line: 7 },
+  ]);
+  assert.equal(f.calls.launches.length, 1);
+  assert.equal(state.activeWorker.kind, "remediation");
+  assertAllClosed(assert, f.calls);
+});
+
+void test("blocked ingress retains orphan custody when every run ledger is unavailable", async () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:blocked-unavailable",
+    runId: "unavailable-run",
+    taskId: "unavailable-task",
+    headSha: SHA_A,
+  };
+  const flow = f.seed({ phase: PHASE.REVIEW_RUNNING, activeWorker: worker });
+  f.hooks.bindRuns = () => {
+    throw new Error("fixture_denied");
+  };
+  await __testing.ingestPullRequest(
+    f.api,
+    f.config,
+    prEvent({ eventId: "github:blocked-unavailable", baseRef: "main" }),
+  );
+  const blocked = get(f, flow.flowId).stateJson;
+  assert.equal(blocked.phase, PHASE.BLOCKED);
+  assert.equal(blocked.orphanedWorker.runId, worker.runId);
+  assert.equal(blocked.lastGhostCleanup, null);
+  await __testing.reconcileAtStartup(f.api, f.config);
+  assert.equal(get(f, flow.flowId).stateJson.orphanedWorker.runId, worker.runId);
+  assert.equal(f.calls.launches.length, 0);
+  assertAllClosed(assert, f.calls);
+});
+
+void test("new-head orphan with unknown launch stays held without a task", async () => {
+  const f = fixture();
+  const worker = { sessionKey: "agent:reviewer:subagent:unknown", runId: null, taskId: null };
+  const result = await __testing.reconcileOrphanedWorker(f.api, OWNER, {
+    ...worker,
+    launchOutcome: { status: "unknown" },
+  });
+  assert.equal(result.safe, false);
+  assert.equal(result.reason, "orphan_launch_outcome_unknown");
+  assertAllClosed(assert, f.calls);
+});
+
+void test("absent session cannot settle an unobserved native orphan", async () => {
+  const f = fixture();
+  const result = await __testing.reconcileOrphanedWorker(f.api, OWNER, {
+    sessionKey: "agent:reviewer:subagent:missing-task",
+    runId: "accepted-native-run",
+    taskId: "missing-task",
+  });
+  assert.equal(result.safe, false);
+  assert.equal(result.reason, "orphan_run_observation_missing");
+  assertAllClosed(assert, f.calls);
+});
+
+void test("cycle-budget owner admission preserves an unreconciled review worker", async () => {
+  const original = pluginConfig();
+  const f = fixture(
+    pluginConfig({
+      repositories: {
+        [REPO]: { ...original.repositories[REPO], maxCycles: 3 },
+      },
+    }),
+  );
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:budget-orphan",
+    runId: "budget-run",
+    taskId: "budget-task",
+    headSha: SHA_A,
+  };
+  const flow = f.seed(
+    {
+      phase: PHASE.BLOCKED,
+      blocker: "review_fix_cycle_budget_exhausted",
+      cycle: 2,
+      maxCycles: 2,
+      orphanedWorker: worker,
+    },
+    { status: "blocked" },
+  );
+  f.hooks.bindRuns = () => {
+    throw new Error("fixture_denied");
+  };
+  const admitted = await __testing.ingestPullRequest(
+    f.api,
+    f.config,
+    prEvent({ eventId: "owner-admit:budget-reopen" }),
+  );
+  assert.equal(admitted.reason, "owner_admit_reopen_cycle_budget");
+  assert.equal(get(f, flow.flowId).stateJson.orphanedWorker.runId, worker.runId);
+  await continueFlow(f, flow.flowId);
+  assert.equal(get(f, flow.flowId).stateJson.orphanedWorker.runId, worker.runId);
+  assert.equal(f.calls.launches.length, 0);
+  assertAllClosed(assert, f.calls);
+});
+
+void test("external review result retains old-head and active worker custody", () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:review-result",
+    runId: "review-result-run",
+    taskId: "review-result-task",
+    headSha: SHA_A,
+  };
+  const input = {
+    eventId: "review:custody",
+    repo: REPO,
+    prNumber: 319,
+    headSha: SHA_A,
+    baseSha: SHA_B,
+    outcome: "approved",
+    coverageComplete: true,
+    findings: [],
+  };
+  for (const state of [
+    { ...f.seed().stateJson, phase: PHASE.REVIEW_QUEUED, orphanedWorker: worker },
+    { ...f.seed().stateJson, phase: PHASE.REVIEW_RUNNING, activeWorker: worker },
+  ]) {
+    const next = applyReviewResult(state, input);
+    assert.equal(next.state.phase, PHASE.MERGE_READY);
+    assert.equal(next.state.activeWorker, null);
+    assert.equal(next.state.orphanedWorker.runId, worker.runId);
+  }
+  assert.throws(
+    () =>
+      applyReviewResult(
+        {
+          ...f.seed().stateJson,
+          phase: PHASE.REVIEW_RUNNING,
+          activeWorker: worker,
+          orphanedWorker: worker,
+        },
+        input,
+      ),
+    /review_result_has_multiple_unreconciled_workers/,
+  );
+});
+
+void test("a delayed review from a previous base cannot approve the new base", () => {
+  const f = fixture();
+  const state = { ...f.seed().stateJson, baseSha: "c".repeat(40) };
+  const result = applyReviewResult(state, {
+    eventId: "review:stale-base",
+    repo: REPO,
+    prNumber: 319,
+    headSha: SHA_A,
+    baseSha: SHA_B,
+    outcome: "approved",
+    coverageComplete: true,
+    findings: [],
+  });
+  assert.equal(result.changed, false);
+  assert.equal(result.reason, "stale_base_result");
+  assert.equal(result.state, state);
+  const legacy = parseMergeguezReviewEvent(
+    { headers: { "x-mergeguez-event": "review.completed", "x-mergeguez-delivery": "old" } },
+    { repository: REPO, pullRequest: 319, headSha: SHA_A, outcome: "approved" },
+  );
+  assert.equal(legacy.baseSha, undefined);
+  assert.equal(applyReviewResult(state, legacy).reason, "review_base_identity_missing");
+});
+
+void test("worker approval requires its actually observed reviewed base", () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:base-proof",
+    headSha: SHA_A,
+    runId: "review-base-run",
+    cycle: 0,
+  };
+  const state = { ...f.seed().stateJson, phase: PHASE.REVIEW_RUNNING, activeWorker: worker };
+  const report = {
+    kind: "review",
+    outcome: "approved",
+    headSha: SHA_A,
+    cycle: 0,
+    coverageComplete: true,
+    findings: [],
+  };
+  for (const baseSha of [undefined, "c".repeat(40)]) {
+    assert.throws(
+      () => applyWorkerReport(state, { ...report, baseSha }, worker.sessionKey),
+      /not bound to the current reviewed base/,
+    );
+  }
+  const accepted = applyWorkerReport(state, { ...report, baseSha: SHA_B }, worker.sessionKey);
+  assert.equal(accepted.state.phase, PHASE.MERGE_READY);
+  assert.equal(accepted.state.orphanedWorker.runId, worker.runId);
+});
+
+void test("legacy worker report reads exact broker base and retains custody on unavailable proof", async () => {
+  const f = fixture();
+  const flow = f.seed();
+  await continueFlow(f, flow.flowId);
+  const worker = get(f, flow.flowId).stateJson.activeWorker;
+  const tool = f.calls.tools[0].factory({ sessionKey: worker.sessionKey });
+  let reviewedBase = "c".repeat(40);
+  f.api.testRunMergeguez = async () => ({
+    head: { sha: SHA_A, repo: REPO },
+    base: { sha: SHA_B, ref: "dev" },
+    reviewers: {
+      mergeguez_review: {
+        status: "approved",
+        coverage_complete: true,
+        reviewed_head_sha: SHA_A,
+        reviewed_base_sha: reviewedBase,
+        findings_count: 0,
+        blocking_findings_count: 0,
+        run_id: "current-broker-review",
+      },
+    },
+  });
+  const report = {
+    action: "report",
+    flowId: flow.flowId,
+    kind: "review",
+    outcome: "approved",
+    headSha: SHA_A,
+    cycle: 0,
+    coverageComplete: true,
+    findings: [],
+  };
+  const held = details(await tool.execute("legacy-report", report));
+  assert.equal(held.ok, false);
+  assert.equal(get(f, flow.flowId).stateJson.activeWorker.runId, worker.runId);
+  assert.equal(get(f, flow.flowId).stateJson.phase, PHASE.REVIEW_RUNNING);
+  reviewedBase = SHA_B;
+  const accepted = details(await tool.execute("legacy-report", report));
+  assert.equal(accepted.ok, true);
+  assert.equal(get(f, flow.flowId).stateJson.phase, PHASE.MERGE_READY);
+  assert.equal(get(f, flow.flowId).stateJson.orphanedWorker.runId, worker.runId);
+  assert.equal(f.calls.cancels.length, 0);
+  assertAllClosed(assert, f.calls);
+});
+
+for (const blocked of [false, true]) {
+  void test(`superseded pending launch retains its eventual exact run (${blocked ? "blocked" : "new head"})`, async () => {
+    const f = fixture();
+    const flow = f.seed();
+    let acknowledge;
+    const pending = new Promise((resolve) => {
+      acknowledge = resolve;
+    });
+    let entered;
+    const started = new Promise((resolve) => {
+      entered = resolve;
+    });
+    f.hooks.launch = async (request) => {
+      entered(request);
+      return await pending;
+    };
+    const launch = continueFlow(f, flow.flowId);
+    const request = await started;
+    assert.equal(get(f, flow.flowId).stateJson.launchOutcome.status, "pending");
+    await __testing.ingestPullRequest(
+      f.api,
+      f.config,
+      prEvent({
+        eventId: "github:pending-superseded",
+        ...(blocked ? { baseRef: "main" } : { headSha: SHA_B }),
+      }),
+    );
+    const held = get(f, flow.flowId).stateJson;
+    assert.equal(held.orphanedWorker.launchOutcome.status, "pending");
+    await continueFlow(f, flow.flowId);
+    assert.equal(f.calls.launches.length, 1);
+    assert.equal(get(f, flow.flowId).stateJson.orphanedWorker.sessionKey, request.sessionKey);
+    acknowledge({ runId: "superseded-native", sessionKey: request.sessionKey });
+    await launch;
+    const returned = get(f, flow.flowId).stateJson;
+    assert.equal(returned.orphanedWorker.runId, "superseded-native");
+    assert.equal(returned.orphanedWorker.launchOutcome.status, "unknown");
+    await continueFlow(f, flow.flowId);
+    assert.equal(f.calls.launches.length, 1);
+    assertAllClosed(assert, f.calls);
+  });
+}
+
+void test("a superseded launch attaches and cancels its exact acknowledged native task", async () => {
+  const f = fixture();
+  const flow = f.seed();
+  let acknowledge;
+  const pending = new Promise((resolve) => {
+    acknowledge = resolve;
+  });
+  let entered;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  f.hooks.launch = async (request) => {
+    entered(request);
+    return await pending;
+  };
+  const launch = continueFlow(f, flow.flowId);
+  const request = await started;
+  await __testing.ingestPullRequest(
+    f.api,
+    f.config,
+    prEvent({ eventId: "github:pending-blocked", baseRef: "main" }),
+  );
+  f.kernel.observations.set("accepted-task", {
+    id: "accepted-task",
+    requesterSessionKey: OWNER,
+    childSessionKey: request.sessionKey,
+    observationSource: "native-subagent",
+    agentId: "reviewer",
+    runId: "accepted-run",
+    status: "running",
+  });
+  acknowledge({ runId: "accepted-run", sessionKey: request.sessionKey });
+  await launch;
+  const state = get(f, flow.flowId).stateJson;
+  assert.equal(state.orphanedWorker, null);
+  assert.equal(state.lastGhostCleanup.runId, "accepted-run");
+  assert.equal(state.lastGhostCleanup.taskId, "accepted-task");
+  assert.equal(state.lastGhostCleanup.reason, "orphan_task_cancelled");
+  assert.deepEqual(
+    f.calls.cancels.map((value) => value.taskId),
+    ["accepted-task"],
+  );
+  assert.equal(f.calls.launches.length, 1);
+  assertAllClosed(assert, f.calls);
+});
+
+void test("legacy review webhook consumes exact broker review without reusing stale findings", async () => {
+  const f = fixture();
+  const flow = f.seed();
+  const legacy = parseMergeguezReviewEvent(
+    { headers: { "x-mergeguez-event": "review.completed", "x-mergeguez-delivery": "legacy" } },
+    {
+      repository: REPO,
+      pullRequest: 319,
+      headSha: SHA_A,
+      outcome: "changes_requested",
+      coverageComplete: true,
+      findings: [{ id: "stale", severity: "high", summary: "Old issue", path: "old.mjs" }],
+    },
+  );
+  let observedBase = "c".repeat(40);
+  const brokerCalls = [];
+  f.api.testRunMergeguez = async (args) => {
+    brokerCalls.push(args);
+    return {
+      head: { sha: SHA_A, repo: REPO },
+      base: { sha: SHA_B, ref: "dev" },
+      reviewers: {
+        mergeguez_review: {
+          status: "approved",
+          coverage_complete: true,
+          reviewed_head_sha: SHA_A,
+          reviewed_base_sha: observedBase,
+          findings_count: 0,
+          blocking_findings_count: 0,
+          run_id: "current-review",
+        },
+      },
+    };
+  };
+  const rejected = await __testing.ingestReviewResult(f.api, f.config, legacy);
+  assert.equal(rejected.reason, "review_base_identity_unverified");
+  assert.equal(get(f, flow.flowId).stateJson.phase, PHASE.REVIEW_QUEUED);
+  observedBase = SHA_B;
+  await __testing.ingestReviewResult(f.api, f.config, legacy);
+  const applied = get(f, flow.flowId).stateJson;
+  assert.equal(applied.phase, PHASE.MERGE_READY);
+  assert.equal(applied.review.reviewId, "current-review");
+  assert.equal(applied.review.outcome, "approved");
+  assert.deepEqual(applied.findings, []);
+  assert.ok(brokerCalls.every((args) => args[0] === "pr-state"));
+  assert.equal(f.calls.launches.length, 0);
+  assertAllClosed(assert, f.calls);
+});
+
+void test("ingress transitions retain every unsettled exact worker identity", () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:transition-invariant",
+    runId: "transition-run",
+    taskId: "transition-task",
+    headSha: SHA_A,
+  };
+  const state = { ...f.seed().stateJson, phase: PHASE.REVIEW_RUNNING, activeWorker: worker };
+  const policy = f.config.repositories.get(REPO);
+  const review = (outcome, findings = []) => ({
+    eventId: `review:${outcome}`,
+    repo: REPO,
+    prNumber: 319,
+    headSha: SHA_A,
+    baseSha: SHA_B,
+    outcome,
+    coverageComplete: true,
+    findings,
+  });
+  const cases = [
+    [
+      "new head",
+      () => applyPullRequestEvent(state, prEvent({ eventId: "head", headSha: SHA_B }), policy),
+    ],
+    [
+      "blocked base",
+      () => applyPullRequestEvent(state, prEvent({ eventId: "blocked", baseRef: "main" }), policy),
+    ],
+    [
+      "changed base",
+      () =>
+        applyPullRequestEvent(state, prEvent({ eventId: "base", baseSha: "c".repeat(40) }), policy),
+    ],
+    ["review approved", () => applyReviewResult(state, review("approved"))],
+    [
+      "review changes",
+      () =>
+        applyReviewResult(
+          state,
+          review("changes_requested", [
+            { id: "fix", severity: "high", summary: "Fix", path: "src/fix.ts" },
+          ]),
+        ),
+    ],
+    ["review terminal failure", () => applyReviewResult(state, review("failed_terminal"))],
+  ];
+  for (const [name, transition] of cases) {
+    const next = transition().state;
+    assert.equal(
+      next.activeWorker?.runId === worker.runId || next.orphanedWorker?.runId === worker.runId,
+      true,
+      `${String(name)} discarded the worker`,
+    );
+  }
+});
+
+void test("external approval remains waiting until its exact worker is reconciled", async () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:approval-worker",
+    runId: "approval-run",
+    taskId: "approval-task",
+    headSha: SHA_A,
+  };
+  const flow = f.seed({ phase: PHASE.REVIEW_RUNNING, activeWorker: worker });
+  f.kernel.observations.set(worker.taskId, {
+    id: worker.taskId,
+    requesterSessionKey: OWNER,
+    childSessionKey: worker.sessionKey,
+    observationSource: "native-subagent",
+    agentId: "reviewer",
+    runId: worker.runId,
+    status: "running",
+  });
+  f.hooks.bindRuns = () => {
+    throw new Error("fixture_denied");
+  };
+  await __testing.ingestReviewResult(f.api, f.config, {
+    eventId: "review:approval-worker",
+    repo: REPO,
+    prNumber: 319,
+    headSha: SHA_A,
+    baseSha: SHA_B,
+    outcome: "approved",
+    coverageComplete: true,
+    findings: [],
+  });
+  assert.equal(get(f, flow.flowId).status, "waiting");
+  assert.equal(get(f, flow.flowId).stateJson.orphanedWorker.runId, worker.runId);
+  assert.equal(f.calls.cancels.length, 0);
+  f.hooks.bindRuns = undefined;
+  const recovery = details(
+    await f.tool().execute("recover", { action: "recover", flowId: flow.flowId }),
+  );
+  assert.equal(recovery.ok, true);
+  assert.equal(get(f, flow.flowId).status, "succeeded");
+  assert.equal(get(f, flow.flowId).stateJson.orphanedWorker, null);
+  assert.equal(f.calls.cancels.length, 1);
+  assertAllClosed(assert, f.calls);
+});
+
+void test("automatic merge waits for an unreconciled review worker", async () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:merge-hold",
+    runId: "merge-hold-run",
+    taskId: "merge-hold-task",
+    headSha: SHA_A,
+  };
+  const flow = f.seed({
+    phase: PHASE.REVIEW_RUNNING,
+    activeWorker: worker,
+    autoMergeBaseBranches: ["dev"],
+  });
+  f.hooks.bindRuns = () => {
+    throw new Error("fixture_denied");
+  };
+  let brokerCalls = 0;
+  f.api.testRunMergeguez = () => {
+    brokerCalls += 1;
+    throw new Error("broker_must_not_run");
+  };
+  await __testing.ingestReviewResult(f.api, f.config, {
+    eventId: "review:merge-hold",
+    repo: REPO,
+    prNumber: 319,
+    headSha: SHA_A,
+    baseSha: SHA_B,
+    outcome: "approved",
+    coverageComplete: true,
+    findings: [],
+  });
+  assert.equal(get(f, flow.flowId).stateJson.phase, PHASE.MERGE_QUEUED);
+  assert.equal(get(f, flow.flowId).stateJson.orphanedWorker.runId, worker.runId);
+  assert.equal(brokerCalls, 0);
+  assertAllClosed(assert, f.calls);
+});
+
+void test("unreconciled orphan occupies the repository parallel slot", () => {
+  const f = fixture();
+  const orphan = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:slot-orphan",
+    runId: "slot-run",
+    headSha: SHA_A,
+  };
+  f.seed({ phase: PHASE.REVIEW_QUEUED, orphanedWorker: orphan });
+  const contender = f.seed({ prNumber: 320 });
+  const snapshot = f.kernel.snapshot([OWNER]);
+  const slot = __testing.evaluateParallelSlot(
+    f.config,
+    { list: () => snapshot.flows },
+    contender,
+    contender.stateJson,
+    "review",
+  );
+  assert.equal(slot.ok, false);
+  assert.equal(slot.wait.scope, "repo");
+  assert.equal(
+    __testing.activeReviewLeaseHolder(
+      { list: () => snapshot.flows },
+      contender.flowId,
+      contender.stateJson,
+      f.config.repositories,
+    )?.stateJson.orphanedWorker.runId,
+    orphan.runId,
+  );
+});
+
+void test("automatic merge refuses a changed remote base before invoking merge-pr", async () => {
+  const f = fixture();
+  const state = {
+    ...f.seed().stateJson,
+    phase: PHASE.MERGE_QUEUED,
+    autoMergeBaseBranches: ["dev"],
+    mergeReady: { mergeAuthorized: true },
+  };
+  const calls = [];
+  f.api.testRunMergeguez = async (args) => {
+    calls.push(args);
+    return {
+      head: { sha: state.headSha, repo: state.repo },
+      base: { ref: "dev", sha: SHA_A },
+      merged: false,
+    };
+  };
+  await assert.rejects(
+    __testing.autoMergeReceipt(f.api, state),
+    /automatic_merge_remote_base_changed/,
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "pr-state");
+});
+
+void test("automatic merge rejects unsupported receipt methods before broker calls", async () => {
+  const f = fixture();
+  for (const method of ["squash", "rebase"]) {
+    const state = {
+      ...f.seed().stateJson,
+      phase: PHASE.MERGE_QUEUED,
+      autoMergeMethod: method,
+      autoMergeBaseBranches: ["dev"],
+      mergeReady: { mergeAuthorized: true },
+    };
+    await assert.rejects(
+      __testing.autoMergeReceipt(f.api, state),
+      /automatic_merge_method_unsupported_by_atomic_receipt/,
+    );
+  }
+  assert.equal(f.calls.events.length, 0);
+});
+
+void test("automatic merge pins the reviewed base at the protected broker boundary", async () => {
+  const f = fixture();
+  const state = {
+    ...f.seed().stateJson,
+    phase: PHASE.MERGE_QUEUED,
+    autoMergeBaseBranches: ["dev"],
+    mergeReady: { mergeAuthorized: true },
+  };
+  const mergedSha = "c".repeat(40);
+  const calls = [];
+  let baseDriftsAfterPreflight = true;
+  let brokerSupportsAtomicGate = true;
+  let missingAtomicProof = false;
+  let alreadyMerged = false;
+  f.api.testRunMergeguez = async (args) => {
+    calls.push(args);
+    if (args[0] === "pr-state") {
+      return {
+        head: { sha: state.headSha, repo: state.repo, ref: "feat/reviewed" },
+        base: { ref: "dev", sha: state.baseSha },
+        merged: alreadyMerged,
+        state: "open",
+        draft: false,
+        mergeable: true,
+        reviewers: {
+          mergeguez_review: {
+            status: "approved",
+            coverage_complete: true,
+            reviewed_head_sha: state.headSha,
+            reviewed_base_sha: state.baseSha,
+            findings_count: 0,
+            blocking_findings_count: 0,
+          },
+        },
+        checks: {
+          ready: true,
+          check_runs: [{ name: "Mergeguez review", status: "completed", conclusion: "success" }],
+        },
+      };
+    }
+    if (baseDriftsAfterPreflight) {
+      throw new Error("taskflow merge gates observed base branch or SHA drift");
+    }
+    if (!brokerSupportsAtomicGate) {
+      throw new Error("unsupported merge-pr argument");
+    }
+    return {
+      merged: true,
+      base: "dev",
+      head_sha: state.headSha,
+      actor_verification: "passed",
+      sha: mergedSha,
+      taskflow_gates: missingAtomicProof
+        ? null
+        : {
+            required_checks_ready: true,
+            mergeguez_check_ready: true,
+            mergeguez_check_app_id: 12345,
+            exact_review_ready: true,
+            atomic_base_update: true,
+            reviewed_base_sha: state.baseSha,
+            reviewed_head_sha: state.headSha,
+            actual_merge_commit_sha: mergedSha,
+            actual_merge_parents: [state.baseSha, state.headSha],
+            atomic_enforcement: {
+              kind: "github_branch_protection",
+              branch: "dev",
+              matches_policy: true,
+              strict: true,
+              enforce_admins: true,
+              mergeguez_app_id: 12345,
+              required_status_checks: [{ context: "Mergeguez review", app_id: 12345 }],
+            },
+          },
+    };
+  };
+  await assert.rejects(
+    __testing.autoMergeReceipt(f.api, state),
+    /taskflow merge gates observed base branch or SHA drift/,
+  );
+  assert.deepEqual(calls[1], [
+    "merge-pr",
+    "speculoos",
+    "319",
+    "--expected-base",
+    "dev",
+    "--expected-base-sha",
+    state.baseSha,
+    "--expected-head-branch",
+    "feat/reviewed",
+    "--expected-head-sha",
+    state.headSha,
+    "--expected-actor-login",
+    "mergeguez[bot]",
+    "--merge-method",
+    "merge",
+    "--require-taskflow-gates",
+    "--json",
+  ]);
+
+  baseDriftsAfterPreflight = false;
+  brokerSupportsAtomicGate = false;
+  await assert.rejects(__testing.autoMergeReceipt(f.api, state), /unsupported merge-pr argument/);
+  brokerSupportsAtomicGate = true;
+  missingAtomicProof = true;
+  await assert.rejects(__testing.autoMergeReceipt(f.api, state), /automatic_merge_receipt_invalid/);
+  missingAtomicProof = false;
+  const receipt = await __testing.autoMergeReceipt(f.api, state);
+  assert.equal(receipt.taskflow_gates.atomic_base_update, true);
+  assert.deepEqual(receipt.taskflow_gates.actual_merge_parents, [state.baseSha, state.headSha]);
+
+  alreadyMerged = true;
+  await assert.rejects(
+    __testing.autoMergeReceipt(f.api, state),
+    /automatic_merge_already_merged_requires_exact_reconciliation/,
+  );
+});
+
+void test("new head rebinds a clean dedicated worktree and holds a dirty one", async () => {
+  const root = mkdtempSync(join(tmpdir(), "mergeguez-v99-worktree-"));
+  const seed = join(root, "seed");
+  const dest = join(root, "speculoos-pr319");
+  const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
+  try {
+    git("init", "-q", seed);
+    git("-C", seed, "config", "user.name", "Fixture");
+    git("-C", seed, "config", "user.email", "fixture@example.invalid");
+    writeFileSync(join(seed, "fixture.txt"), "old\n");
+    git("-C", seed, "add", "fixture.txt");
+    git("-C", seed, "commit", "-qm", "old");
+    const oldHead = git("-C", seed, "rev-parse", "HEAD");
+    writeFileSync(join(seed, "fixture.txt"), "new\n");
+    git("-C", seed, "commit", "-qam", "new");
+    const newHead = git("-C", seed, "rev-parse", "HEAD");
+    git("-C", seed, "worktree", "add", "--detach", dest, oldHead);
+    const f = fixture();
+    const policy = { ...f.config.repositories.get(REPO), workspace: seed, maxParallelPrs: 2 };
+    const state = {
+      ...f.seed().stateJson,
+      headSha: newHead,
+      flowWorkspace: { path: dest, headSha: oldHead },
+    };
+    delete f.api.testProvisionFlowWorktree;
+    assert.equal(await __testing.ensureFlowWorkspace(f.api, policy, state), dest);
+    assert.equal(git("-C", dest, "rev-parse", "HEAD"), newHead);
+    writeFileSync(join(dest, "untracked.txt"), "retain\n");
+    await assert.rejects(
+      __testing.ensureFlowWorkspace(f.api, policy, {
+        ...state,
+        headSha: oldHead,
+        flowWorkspace: { path: dest, headSha: newHead },
+      }),
+      /flow_workspace_not_clean/,
+    );
+    assert.equal(git("-C", dest, "rev-parse", "HEAD"), newHead);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 void test("retained review input exports normalize findings and require actionable scope", () => {
@@ -100,6 +1235,18 @@ void test("retained HTTP body reader enforces its default size limit", async () 
   assert.equal(accepted.json.value.length, MAX_BODY_BYTES - overhead);
 });
 
+void test("rejected HTTP body stops reading and removes its listeners", async () => {
+  const request = new Readable({ read() {} });
+  const rejected = assert.rejects(readJsonBody(request, { maxBytes: 3 }), /request_body_too_large/);
+  request.push(Buffer.alloc(4));
+  await rejected;
+  assert.equal(request.isPaused(), true);
+  for (const event of ["data", "end", "error", "aborted"]) {
+    assert.equal(request.listenerCount(event), 0);
+  }
+  request.destroy();
+});
+
 void test("retained HTTP body reader expires an incomplete body at its default deadline", async (t) => {
   assert.equal(BODY_TIMEOUT_MS, 15_000);
   t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -116,6 +1263,10 @@ void test("retained HTTP body reader expires an incomplete body at its default d
   t.mock.timers.tick(1);
   await rejected;
   assert.equal(settled, true);
+  assert.equal(request.isPaused(), true);
+  for (const event of ["data", "end", "error", "aborted"]) {
+    assert.equal(request.listenerCount(event), 0);
+  }
   request.destroy();
 });
 
@@ -473,6 +1624,57 @@ void test("one denied ledger does not hide an exact observation from the admitte
   assertAllClosed(assert, f.calls);
 });
 
+void test("denied run ledgers hold recovery and orphan reconciliation when no exact task is visible", async () => {
+  const f = fixture();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:denied-ledgers",
+    runId: "denied-run",
+    taskId: "denied-task",
+    reservedAt: Date.now() - 150_000,
+  };
+  f.hooks.bindRuns = () => {
+    throw new Error("fixture_denied");
+  };
+  const state = { ...f.seed().stateJson, phase: PHASE.REVIEW_RUNNING, activeWorker: worker };
+  const observation = await __testing.currentWorkerTask(f.api, OWNER, state);
+  assert.equal(observation.status, "unavailable");
+  const recovery = __testing.recoverObservedState(state, observation, Date.now(), 120_000, {
+    sessionAlive: false,
+  });
+  assert.equal(recovery.effect, "hold");
+  assert.equal(recovery.reason, "worker_observation_unavailable");
+  assert.equal(recovery.state.activeWorker.runId, worker.runId);
+  const orphan = await __testing.reconcileOrphanedWorker(f.api, OWNER, worker);
+  assert.equal(orphan.safe, false);
+  assert.equal(orphan.reason, "orphan_run_observation_unavailable");
+  assertAllClosed(assert, f.calls);
+});
+
+void test("missing observation for an attached run cannot consume retry budget", async () => {
+  const f = fixture();
+  const now = Date.now();
+  const worker = {
+    kind: "review",
+    sessionKey: "agent:reviewer:subagent:missing-attached",
+    runId: "accepted-native-run",
+    taskId: "accepted-native-task",
+    reservedAt: now - 180_000,
+  };
+  const state = { ...f.seed().stateJson, phase: PHASE.REVIEW_RUNNING, activeWorker: worker };
+  const observation = await __testing.currentWorkerTask(f.api, OWNER, state);
+  assert.equal(observation, undefined);
+  const recovery = __testing.recoverObservedState(state, observation, now, 120_000, {
+    sessionAlive: false,
+  });
+  assert.equal(recovery.changed, false);
+  assert.equal(recovery.effect, "wait");
+  assert.equal(recovery.reason, "worker_run_observation_missing");
+  assert.equal(recovery.state.activeWorker.runId, worker.runId);
+  assert.equal(recovery.state.retryCount, state.retryCount);
+  assertAllClosed(assert, f.calls);
+});
+
 void test("native unknown orphan remains held even when session is absent", async () => {
   const f = fixture();
   const worker = {
@@ -590,6 +1792,7 @@ void test("async review ingestion retains merge-ready terminal semantics and exp
     repo: REPO,
     prNumber: 319,
     headSha: SHA_A,
+    baseSha: SHA_B,
     outcome: "approved",
     reviewId: "synthetic-review",
     coverageComplete: true,
@@ -622,11 +1825,26 @@ void test("worker report entrypoint awaits CAS and retains worker caller identit
       cycle: 0,
       coverageComplete: true,
       reviewId: "synthetic-worker-report",
+      baseSha: SHA_B,
       findings: [],
     }),
   );
   assert.equal(result.ok, true);
   assert.equal(get(f, flow.flowId).stateJson.phase, PHASE.MERGE_READY);
+  assert.equal(get(f, flow.flowId).stateJson.orphanedWorker.runId, worker.runId);
+  assert.equal(get(f, flow.flowId).status, "waiting");
+  assert.equal(f.calls.cancels.length, 0);
+  f.kernel.observations.get(worker.taskId).status = "succeeded";
+  const terminal = await __testing.reconcileTerminalWorkerEvent(f.api, f.config, {
+    stream: "lifecycle",
+    runId: worker.runId,
+    sessionKey: worker.sessionKey,
+    data: { phase: "end" },
+  });
+  assert.equal(terminal.handled, true);
+  assert.equal(get(f, flow.flowId).stateJson.orphanedWorker, null);
+  assert.equal(get(f, flow.flowId).status, "succeeded");
+  assert.equal(f.calls.cancels.length, 0);
   assertAllClosed(assert, f.calls);
 });
 

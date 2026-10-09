@@ -35,10 +35,13 @@ export const INSTALLED_PUBLISHER_PIN_PAIR = Object.freeze({
   sourceQualifiedCandidate: SOURCE_QUALIFIED_CANDIDATE,
   candidate: Object.freeze({
     version: SOURCE_QUALIFIED_CANDIDATE.version,
-    sourceCommit: "14a2507d86423f1881d4aad79af634623aacda60",
+    // Corrective v2026.9.8 source is prepared locally; qualification is pending.
+    sourceCommit: null,
     files: Object.freeze({
       ...SOURCE_QUALIFIED_CANDIDATE.files,
-      "src/runtime.mjs": "d6d4d3859ff676de0bbd2b94b0e84d4a4d07977171e1754040d12fb0c9082b0b",
+      "src/http.mjs": "fc46936c998827c2ea04b177aa794d11d961fe234780dd9537bf74103eb59991",
+      "src/controller.mjs": "8b8f506d143e6b725488e7545b643f6453ca8d2258ea3b93d718cffdb9e63d06",
+      "src/runtime.mjs": "9822189b9590b5ea990f51c1f6f9d80fc8d97f8ed62acb8cf4db7ed5e39a6726",
     }),
   }),
 });

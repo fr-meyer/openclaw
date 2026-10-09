@@ -1,14 +1,11 @@
 import { createHash } from "node:crypto";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 
 const NOWISTAY_MCP_ENDPOINT = "https://api.nowistay.com/mcp";
 // Fresh tools/list contract observed on 2026-10-05. A changed contract stays strict.
 const NOWISTAY_LIST_PROPERTIES_SCHEMA_SHA256 =
   "dec273fd731992d5fe977c505e307feab862be078ad8c55079d364c8e58e8500";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function canonicalize(value: unknown, depth = 0): unknown {
   if (depth > 32) {
