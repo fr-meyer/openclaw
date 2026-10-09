@@ -35,8 +35,8 @@ export const INSTALLED_PUBLISHER_PIN_PAIR = Object.freeze({
   sourceQualifiedCandidate: SOURCE_QUALIFIED_CANDIDATE,
   candidate: Object.freeze({
     version: SOURCE_QUALIFIED_CANDIDATE.version,
-    // Corrective v2026.9.8 source is prepared locally; qualification is pending.
-    sourceCommit: null,
+    // Exact corrected source review passed; runtime qualification is pending.
+    sourceCommit: "d2d657811d1af6cc72926fdc4d43e20beb7ef44c",
     files: Object.freeze({
       ...SOURCE_QUALIFIED_CANDIDATE.files,
       "src/http.mjs": "fc46936c998827c2ea04b177aa794d11d961fe234780dd9537bf74103eb59991",

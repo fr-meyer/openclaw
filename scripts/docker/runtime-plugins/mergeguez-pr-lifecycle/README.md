@@ -78,15 +78,17 @@ applier's source identity bound in the release manifest separately from its
 target package. Do not alter the runtime source guard or loader admission.
 
 The unpublished corrective 0.1.1 target binds controller `8b8f506d`, HTTP `fc46936c`,
-and runtime `9822189b` SHA-256 prefixes. Its pin-contract source commit is unset until a separate reviewed source binding.
-Exact-source review and local commit receipts are retained outside this package;
-runtime qualification remains pending. The tracked cut manifest preserves `14a2507d` as a
-historical publisher source successor and records the preparation separately;
-image planning will reject the corrected bytes against that historical binding.
+and runtime `9822189b` SHA-256 prefixes. Its candidate source pin now names
+commit `d2d65781`, whose exact tree passed the final source review. The tracked
+cut manifest binds these installed targets through `publisherSourceSuccessor`
+and preserves the earlier `14a2507d` binding in history. The artifact metadata
+successor can be planned after its separate review and local commit; build,
+installed runtime and current-state recovery qualification remain pending.
+
 The historical `1e197fa2` candidate remains `sourceQualifiedCandidate`, and its
 runtime hash is unchanged. The complete installed 0.1.0 predecessor bytes remain
-unchanged, including the controller and HTTP reader retained by the rollback fixture. Prepared
-pins do not authorize application or qualify an image.
+unchanged, including the controller and HTTP reader retained by the rollback
+fixture. Source pins do not authorize application or qualify an image.
 
 Call the returned operation with `{ direction: "forward" | "reverse",
 expectedConfigPath, expectedConfigHash, expectedRuntimePath }`. An already-target

@@ -80,11 +80,12 @@
   "publisherSourceSuccessor": {
     "status": "reviewed-source-runtime-unqualified",
     "baseCheckpoint": "1e197fa258704d70e17a9efd831b2e3ecbc6e6f4",
-    "sourceCommit": "14a2507d86423f1881d4aad79af634623aacda60",
-    "tree": "c8ba718a52aecae8ce683ae373d6fe4fedddf018",
+    "sourceCommit": "d2d657811d1af6cc72926fdc4d43e20beb7ef44c",
+    "tree": "9f7a7edf809abbc9b8785629080b76469751295a",
     "publisherPackagePath": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle",
     "publisherPackageVersion": "0.1.1",
-    "publisherRuntimeSha256": "d6d4d3859ff676de0bbd2b94b0e84d4a4d07977171e1754040d12fb0c9082b0b"
+    "publisherRuntimeSha256": "9822189b9590b5ea990f51c1f6f9d80fc8d97f8ed62acb8cf4db7ed5e39a6726",
+    "reviewReceiptSha256": "14cbfc45364c95a361bbab687b6c38580a0e259a7390e8b30a21b2c863298f1b"
   },
   "dependencyLock": {
     "path": "pnpm-lock.yaml",
@@ -93,11 +94,11 @@
   },
   "qualification": "The ordered list covers the complete 14-commit source composition through the qualified checkpoint. This packaging successor and any future image or runtime require separate exact-source qualification; this manifest is source provenance, not release acceptance.",
   "publisherPreparedSuccessor": {
-    "status": "prepared-runtime-unqualified",
+    "status": "reviewed-source-runtime-unqualified",
     "upstreamVersion": "v2026.9.8",
     "baseCommit": "063fc54e7744e9da56bfe508a26a412199be25a5",
     "baseTree": "60bde997df808ab75f659d06dff86d1d396064bb",
-    "sourceCommit": null,
+    "sourceCommit": "d2d657811d1af6cc72926fdc4d43e20beb7ef44c",
     "publisherPackagePath": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle",
     "publisherPackageVersion": "0.1.1",
     "publisherControllerSha256": "8b8f506d143e6b725488e7545b643f6453ca8d2258ea3b93d718cffdb9e63d06",
@@ -111,17 +112,17 @@
     "preparedFilesSha256": {
       "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/controller.mjs": "8b8f506d143e6b725488e7545b643f6453ca8d2258ea3b93d718cffdb9e63d06",
       "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs": "9822189b9590b5ea990f51c1f6f9d80fc8d97f8ed62acb8cf4db7ed5e39a6726",
-      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs": "9b390ad547caaaa990b697b58e06b1b6b6ebd163bc689c0d576fe3a9e0de1d91",
+      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs": "28f00c055ee74ebac5d593beaeaf4a987328c6cf3bb9eac582115ad02b1770c4",
       "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs": "90b9815860f20ae316cd6107239191ed040c94e9119a2c74a07980f8d3e9db97",
       "src/agents/mcp-http-tool-schema-compatibility.ts": "0b4c03ace2c4fc00f207f4ce07b1e8c399757f490ba67300b6dbfce9ebcc54d7",
       "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/fixtures/predecessor-pin-package.json": "244cb85c2e49b004d5502f370dc5ce4cc78c42727f520c679ba9d2ff3c87d622",
       "test/mcp-nowistay-sdk-regression.test.mjs": "57ecebe4f135380d26b13c1f449b318122a1121e873b7e4bbba82ad207efeb0a",
-      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md": "98163eedef57919ee0e4873b7b99da29597e67ee2e23dc07c5290d4869e02325",
+      "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md": "e5e43512b0132d7d8f0067f3cff9bed96cae0ffe4b9faf995c52ea8600cade01",
       "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/http.mjs": "fc46936c998827c2ea04b177aa794d11d961fe234780dd9537bf74103eb59991",
       "src/tasks/managed-task-flow.worker.ts": "54ee90060749953e131d2601f88ed5ae88d67c6e748126aab1e3909d20a0dcda",
       "src/tasks/managed-task-flow-contract.ts": "13621dff7e31c5ff9ffec205346b499c608cc556b28fc3f6d3922fe415231dd4"
     },
-    "qualification": "Historical qualifiedSourceCheckpoint and publisherSourceSuccessor remain unchanged. This corrective source leaves the image pin sourceCommit unset. Exact-source review and local commit identities are recorded in external receipts; image planning retains its historical binding and rejects the corrected runtime until a separate reviewed committed source binding.",
+    "qualification": "The corrected publisher runtime is source-reviewed at d2d657811d1af6cc72926fdc4d43e20beb7ef44c/tree9f7a7edf809abbc9b8785629080b76469751295a. The artifact metadata successor binds these exact installed target bytes while keeping the prior publisherSourceSuccessor in history. Build, installed runtime, current-state parity, restore and rollback qualification remain pending.",
     "fixtureCorrections": {
       "predecessorController": "Retained compressed predecessor controller bytes verified against the frozen predecessor hash; never executed.",
       "sdkHarness": "Resolve the canonical normalization-core import to its actual installed file URL before importing the stripped helper from a data URL.",
@@ -155,6 +156,18 @@
         "Map authoritative structured broker blocking booleans to high/low controller severity; use actual producer shape in both registered-path fixtures.",
         "Retry fenced returned-run attachment across same-reservation CAS conflicts without repeating native invocation; exact native terminal observation settles retained launch blocks in startup, recovery and lifecycle handling."
       ]
+    },
+    "sourceTree": "9f7a7edf809abbc9b8785629080b76469751295a"
+  },
+  "publisherSourceSuccessorHistory": [
+    {
+      "status": "reviewed-source-runtime-unqualified",
+      "baseCheckpoint": "1e197fa258704d70e17a9efd831b2e3ecbc6e6f4",
+      "sourceCommit": "14a2507d86423f1881d4aad79af634623aacda60",
+      "tree": "c8ba718a52aecae8ce683ae373d6fe4fedddf018",
+      "publisherPackagePath": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle",
+      "publisherPackageVersion": "0.1.1",
+      "publisherRuntimeSha256": "d6d4d3859ff676de0bbd2b94b0e84d4a4d07977171e1754040d12fb0c9082b0b"
     }
-  }
+  ]
 }
