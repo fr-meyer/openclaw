@@ -1,14 +1,14 @@
 {
   "schema": "openclaw-v98-build-runtime-route/v1",
-  "sourceCommit": "fe1b334f74f1e43efc22f91c1c3738e59c52519c",
-  "sourceTree": "5da503ec4fdd8242a5caf71ae8bfc1621c8996f3",
+  "sourceCommit": "a5e58a1c523207432222698d9b52a99f159db719",
+  "sourceTree": "7469c5372a1bb7c818250d27a80a36627c4b0ad9",
   "version": "2026.9.8",
-  "qualificationBranch": "candidate/v2026.9.8-runtime-admission-5",
+  "qualificationBranch": "candidate/v2026.9.8-runtime-qualification",
   "platform": "linux/amd64",
   "platformScope": "Synthetic fixture platform, not observed production architecture qualification",
   "artifactPreparation": {
     "workflow": ".github/workflows/v98-parity-artifact-prepare.yml",
-    "trigger": "One explicitly approved exact-commit/run-number push on the existing runtime-admission-5 branch; attempts2+ and later tooling-only pushes cannot admit build jobs.",
+    "trigger": "One explicitly approved exact tooling commit/run-number push on candidate/v2026.9.8-runtime-qualification; source-checks precedes the single canonical build, with run_attempt1 only.",
     "host": "GitHub-hosted ubuntu-24.04",
     "jobWallMinutes": 45,
     "parallelJobs": 1,
@@ -176,7 +176,7 @@
     "releaseScope": "Synthetic preservation only. Does not qualify production committed WAL, all roles, loaded publisher/Gateway/Workboard behavior or backward writer switch",
     "newSourceStatus": "NEVER_RUN; historical design fields are not new-image admission authority. Exact post-build packet and native read binding must be rederived and reviewed."
   },
-  "approvalRequiredNow": "Authorize only the reviewed build tooling commit to the existing runtime-admission-5 branch, one focused exact-source CI job up to15min and one canonical artifact build job up to45min, public pinned dependencies, seven-day artifact retention. Both jobs are first-attempt-only and guarded by exact public commit/run-number latches.",
+  "approvalRequiredNow": "Authorize only the exact reviewed metadata and producer tooling commits to candidate/v2026.9.8-runtime-qualification in one fast-forward push, one15-minute focused source job followed by one45-minute canonical artifact build, public dependencies and seven-day artifact retention. Bind the tooling commit and next run_number before pushing; no attempts2+ or separate fullCI dispatch.",
   "approvalRequiredLater": "After the new artifact is inertly verified and its image closure/read bindings independently reviewed, a separate reviewed tooling-only fast-forward commit and one15min confined synthetic attempt need explicit approval for their actual immutable commit/image tuple. No production deployment or schema mutation.",
   "qualifiedCandidateImmutable": true,
   "brokerCoordination": {

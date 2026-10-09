@@ -1,11 +1,11 @@
 name: V98 Combined Source and Artifact Preparation
-run-name: V98 combined fe1b334f ${{ github.run_id }}
+run-name: V98 combined a5e58a1c ${{ github.run_id }}
 
 # First-attempt-only jobs require fresh exact commit/run-number approval.
 # New image bindings need a separate reviewed commit before runtime admission.
 on:
   push:
-    branches: [candidate/v2026.9.8-runtime-admission-5]
+    branches: [candidate/v2026.9.8-runtime-qualification]
     paths:
       - .github/workflows/v98-parity-artifact-prepare.yml
       - scripts/proofs/v98-parity/contract.json
@@ -20,15 +20,15 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  TARGET_SHA: fe1b334f74f1e43efc22f91c1c3738e59c52519c
-  TARGET_TREE: 5da503ec4fdd8242a5caf71ae8bfc1621c8996f3
+  TARGET_SHA: a5e58a1c523207432222698d9b52a99f159db719
+  TARGET_TREE: 7469c5372a1bb7c818250d27a80a36627c4b0ad9
 
 jobs:
   source-checks:
     if: >-
       github.event_name == 'push' &&
       github.repository == 'fr-meyer/openclaw' &&
-      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-admission-5' &&
+      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-qualification' &&
       github.sha == vars.V98_BUILD_APPROVED_COMMIT &&
       format('{0}', github.run_number) == vars.V98_BUILD_APPROVED_RUN_NUMBER &&
       github.run_attempt == 1
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout exact reviewed combined source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: fe1b334f74f1e43efc22f91c1c3738e59c52519c
+          ref: a5e58a1c523207432222698d9b52a99f159db719
           fetch-depth: 1
           persist-credentials: false
 
@@ -100,10 +100,11 @@ jobs:
           # read-only locally before any later admission.
 
   prepare:
+    needs: source-checks
     if: >-
       github.event_name == 'push' &&
       github.repository == 'fr-meyer/openclaw' &&
-      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-admission-5' &&
+      github.ref == 'refs/heads/candidate/v2026.9.8-runtime-qualification' &&
       github.sha == vars.V98_BUILD_APPROVED_COMMIT &&
       format('{0}', github.run_number) == vars.V98_BUILD_APPROVED_RUN_NUMBER &&
       github.run_attempt == 1
@@ -113,7 +114,7 @@ jobs:
       - name: Checkout exact reviewed combined source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: fe1b334f74f1e43efc22f91c1c3738e59c52519c
+          ref: a5e58a1c523207432222698d9b52a99f159db719
           path: source
           fetch-depth: 1
           persist-credentials: false
@@ -203,7 +204,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: v98-parity-build-fe1b334f-${{ github.run_id }}-${{ github.run_attempt }}
+          name: v98-parity-build-a5e58a1c-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/v98-parity-upload/
           if-no-files-found: error
           retention-days: 7
