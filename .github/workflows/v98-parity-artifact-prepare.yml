@@ -1,5 +1,5 @@
 name: V98 Combined Source and Artifact Preparation
-run-name: V98 combined a5e58a1c ${{ github.run_id }}
+run-name: V98 combined 97f72dbe ${{ github.run_id }}
 
 # First-attempt-only jobs require fresh exact commit/run-number approval.
 # New image bindings need a separate reviewed commit before runtime admission.
@@ -20,8 +20,8 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  TARGET_SHA: a5e58a1c523207432222698d9b52a99f159db719
-  TARGET_TREE: 7469c5372a1bb7c818250d27a80a36627c4b0ad9
+  TARGET_SHA: 97f72dbee43acda42438848ef1d8b3994aa26c6e
+  TARGET_TREE: 811a8525e01e644a1c1aa247c0304116b3049123
 
 jobs:
   source-checks:
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout exact reviewed combined source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: a5e58a1c523207432222698d9b52a99f159db719
+          ref: 97f72dbee43acda42438848ef1d8b3994aa26c6e
           fetch-depth: 1
           persist-credentials: false
 
@@ -114,7 +114,7 @@ jobs:
       - name: Checkout exact reviewed combined source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: a5e58a1c523207432222698d9b52a99f159db719
+          ref: 97f72dbee43acda42438848ef1d8b3994aa26c6e
           path: source
           fetch-depth: 1
           persist-credentials: false
@@ -204,7 +204,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: v98-parity-build-a5e58a1c-${{ github.run_id }}-${{ github.run_attempt }}
+          name: v98-parity-build-97f72dbe-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/v98-parity-upload/
           if-no-files-found: error
           retention-days: 7
