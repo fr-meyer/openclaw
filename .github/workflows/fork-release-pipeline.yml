@@ -291,7 +291,7 @@ jobs:
         with:
           ref: ${{ steps.identity.outputs.source_sha }}
           path: source
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
       - name: Prove source chain and release contracts before install
         id: source
@@ -359,7 +359,7 @@ jobs:
         with:
           ref: ${{ needs['v99-source'].outputs.source_sha }}
           path: source
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
       - name: Recheck source and manifest before build
         run: |
