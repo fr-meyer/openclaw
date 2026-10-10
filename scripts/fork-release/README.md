@@ -164,9 +164,9 @@ inputs or its hosted build supervisor.
 
 ## v2026.9.9 source-only preparation
 
-`manifests/v2026.9.9.json` pins the 9.9 upstream base and the one current
-source patch at `f4ce8729dded876d0d319b0547f6de7c2f2aa67d`. It remains
-`productionEligible: false`. The original seed manifest and its route are
+`manifests/v2026.9.9.json` pins the 9.9 upstream base and two ordered
+source patches. The final patch is `7419b2ea30d5100ee83f5fe53d146c04088e8f59`.
+It remains `productionEligible: false`. The original seed manifest and its route are
 unchanged. The v2 manifest adds an explicit Node test lane and the parity image
 build decision; `release.py gates --runner node` emits only Node's
 `*.test.mjs` paths, while its default emits the Vitest paths.

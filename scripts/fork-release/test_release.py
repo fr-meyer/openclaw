@@ -37,7 +37,7 @@ class ReleaseTests(unittest.TestCase):
         path = Path(__file__).with_name("manifests") / "v2026.9.9.json"
         manifest, _ = release.manifest_at(path)
         self.assertFalse(manifest["productionEligible"])
-        self.assertEqual(manifest["source"]["commit"], "f4ce8729dded876d0d319b0547f6de7c2f2aa67d")
+        self.assertEqual(manifest["source"]["commit"], "7419b2ea30d5100ee83f5fe53d146c04088e8f59")
         self.assertEqual(manifest["image"], {
             "architecture": "amd64", "extensions": "workboard", "parityImage": True
         })
