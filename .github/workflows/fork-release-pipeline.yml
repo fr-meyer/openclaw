@@ -189,7 +189,7 @@ jobs:
           python3 tooling/scripts/fork-release/release.py source-check \
             --manifest tooling/scripts/fork-release/manifest.json --source-dir source
           if [ "$NATIVE_VALIDATION" = 'true' ]; then
-            PYTHONPATH=tooling/scripts/fork-release python3 -m unittest test_release test_ops_gate
+            PYTHONPATH=tooling/scripts/fork-release python3 -m unittest test_release test_ops_gate test_native
           else
             python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_*.py'
           fi

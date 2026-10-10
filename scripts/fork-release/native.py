@@ -51,6 +51,7 @@ class Native:
   self.r={"productionEligible":False,"commands":[],"failures":[],"notRun":[],"peakRssBytes":0,"peakTaskBytes":0}
   self.c,self.f,self.u=(self.r[k]for k in("commands","failures","notRun"))
   self.end,self.p,self.cancel=time.monotonic()+110*60,None,False
+  self.planned,self.reached={},set()
   self.env={k:os.environ[k]for k in("PATH","LANG","TZ","GITHUB_WORKSPACE")if k in os.environ}
   self.env.update(CI="1",GITHUB_ACTIONS="true",HOME=str(self.w/"home"),COREPACK_HOME=str(self.w/"corepack"),COREPACK_NPM_REGISTRY="https://registry.npmjs.org",npm_config_registry="https://registry.npmjs.org/",NODE_OPTIONS="--max-old-space-size=6144",OPENCLAW_VITEST_MAX_WORKERS="1",XDG_CACHE_HOME=str(self.w/"cache"))
   Path(self.env["HOME"]).mkdir(exist_ok=True)
@@ -62,13 +63,50 @@ class Native:
   if self.p and self.p.poll()is None:kill(self.p.pid,signal.SIGTERM)
 
  def disk(self):
-  used=sum(int(row.split()[0])for row in subprocess.check_output(["du","-sx","--block-size=1",os.environ["GITHUB_WORKSPACE"],str(self.w)],text=True,timeout=30).splitlines())
-  self.r["peakTaskBytes"]=max(used,self.r["peakTaskBytes"])
-  need(used<=10*GIB and shutil.disk_usage(self.s).free>=2*GIB,"disk/reserve budget exceeded")
+  roots=[os.environ["GITHUB_WORKSPACE"],str(self.w)]
+  argv=["du","-sx","--block-size=1",*roots];end=time.monotonic()+30
+  for attempt in range(2):
+   remaining=end-time.monotonic()
+   if remaining<=0:raise subprocess.TimeoutExpired(argv,30)
+   scan=subprocess.run(argv,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env={**self.env,"LC_ALL":"C"},timeout=remaining)
+   if scan.returncode or scan.stderr:
+    lines=scan.stderr.splitlines();raced=[]
+    for line in lines:
+     match=re.fullmatch(r"du: cannot access '([^']+)': No such file or directory",line)
+     if not match:break
+     path=Path(match[1]);parent=self.w/"store/v11/files"
+     if path.parent!=parent or not re.fullmatch(r"stream[0-9]+",path.name) or parent.resolve()!=parent or not parent.is_dir():break
+     try:path.lstat()
+     except FileNotFoundError:raced.append(line)
+     else:break
+    transient=scan.returncode==1 and bool(lines) and len(raced)==len(lines)
+    need(transient and attempt==0,f"disk scan failed (exit {scan.returncode}): {clean(scan.stderr)[:4096]}")
+   rows=scan.stdout.splitlines();counts=[]
+   need(len(rows)==len(roots),"disk scan missing root totals")
+   for row,root in zip(rows,roots):
+    match=re.fullmatch(r"([0-9]+)\t"+re.escape(root),row)
+    need(match is not None,"disk scan malformed root total")
+    counts.append(int(match[1]))
+   used=sum(counts);self.r["peakTaskBytes"]=max(used,self.r["peakTaskBytes"])
+   need(used<=10*GIB and shutil.disk_usage(self.s).free>=2*GIB,"disk/reserve budget exceeded")
+   if not scan.returncode and not scan.stderr:return
+   self.r["diskScanRaceCount"]=self.r.get("diskScanRaceCount",0)+1
+   samples=self.r.setdefault("diskScanRaceSamples",[])
+   if len(samples)<8:samples.append({"diagnostic":clean(scan.stderr)[:4096],"partialTaskBytes":used,"action":"one clean rescan required"})
 
- def run(self,name,argv,seconds=300,want=False):
-  r={"name":name,"argv":argv};self.c.append(r)
-  if self.cancel or time.monotonic()>=self.end:
+ def plan(self,mf,pins):
+  stages=["corepack","install","changed-plan","changed-checks",*(x.replace(":","-")for x in TYPES),"source-build","cli-before"]
+  gates=dict.fromkeys(mf["gates"]["patchLifecycle"]+mf["gates"]["producerConsumer"]+list(GATEWAY)+[x for x in pins["fixtures"]if x.endswith(".test.ts")])
+  self.planned=dict.fromkeys(stages+["vitest:"+x for x in gates]+["node:"+x for x in mf["gates"]["node"]])
+
+ def report_not_run(self):
+  covered={x for item in self.u for x in item.get("stages",[item.get("stage")])}
+  self.u.extend({"stage":x,"reason":"NOT_RUN_AFTER_PREREQUISITE_FAILURE"}for x in self.planned if x not in self.reached and x not in covered)
+  self.r["plannedStages"]=list(self.planned);self.r["executedStages"]=[x for x in self.planned if x in self.reached]
+
+ def run(self,name,argv,seconds=300,want=False,owners=()):
+  r={"name":name,"argv":argv,"stages":list(owners or(name,))};self.c.append(r)
+  if self.cancel or seconds<=0 or time.monotonic()>=self.end:
    r.update(exit=None,reason="NOT_RUN_AFTER_TIME_OR_CANCELLATION")
    self.f.append(name);self.u.append(r);return r,""
   start=time.monotonic();end=min(self.end,start+seconds)
@@ -76,6 +114,7 @@ class Native:
   raw=self.w/"command.log";reason=None;next_disk=0;known={}
   with raw.open("wb")as output:
    self.p=subprocess.Popen(argv,cwd=self.s,env=env,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
+   self.reached.update(r["stages"])
    try:
     while self.p.poll()is None:
      rows=[tuple(map(int,x.split()))for x in subprocess.check_output(["ps","-e","-o","pid=,ppid=,rss="],text=True,timeout=10).splitlines()]
@@ -130,7 +169,7 @@ class Native:
   raw=self.w/f"{name}.json"
   argv=["node","--import","./scripts/tsx.mjs","scripts/test-projects.mts","--maxWorkers=1","--reporter=json",f"--outputFile={raw}",path]
   if old:argv+=["--testNamePattern",CASE]
-  r,_=self.run(name,argv,600 if path in GATEWAY else 300,want=old)
+  r,_=self.run(name,argv,600 if path in GATEWAY else 300,want=old,owners=("cli-before" if old else "vitest:"+path,))
   try:
    need(raw.exists()and raw.stat().st_size<=4*1024**2,"native report missing/oversized")
    report=read(raw)
@@ -147,10 +186,21 @@ class Native:
    r["reportFailure"]=str(error);self.f.append(name)
   finally:raw.unlink(missing_ok=True)
 
+ def node_contracts(self,paths):
+  end=min(self.end,time.monotonic()+600)
+  for i,path in enumerate(paths):
+   name=f"node-contract-{i+1}"
+   r,text=self.run(name,["node","--test","--test-concurrency=1",path],max(0,end-time.monotonic()),owners=("node:"+path,))
+   if r["exit"]is None:continue
+   r["tests"]={k:int(v)for k,v in re.findall(r"^# (tests|pass|fail|skipped) (\d+)$",text,re.M)}
+   if not(r["tests"].get("tests",0)>0 and r["tests"].get("skipped")==0):
+    r["reportFailure"]="Node contracts empty/skipped"
+    if name not in self.f:self.f.append(name)
+
  def execute(self):
   p,t=self.s,self.t
   pins=read(t/"scripts/fork-release/native-inputs.json");event=read(os.environ["GITHUB_EVENT_PATH"])
-  sha_t=os.environ["GITHUB_SHA"];m=t/"scripts/fork-release/manifest.json";mf=read(m);s=mf["source"]
+  sha_t=os.environ["GITHUB_SHA"];m=t/"scripts/fork-release/manifest.json";mf=read(m);s=mf["source"];self.plan(mf,pins)
   need(os.environ["GITHUB_REPOSITORY"]=="fr-meyer/openclaw" and not event["repository"]["private"],"public fork required")
   need(os.environ["GITHUB_REF"]==REF and os.environ["GITHUB_EVENT_NAME"]=="push" and os.environ["GITHUB_ACTOR"]=="fr-meyer" and os.environ["GITHUB_RUN_ATTEMPT"]=="1","ref/event/actor/attempt")
   need(re.fullmatch(r"[0-9a-f]{40}",sha_t)and git(t,"rev-parse","HEAD").decode().strip()==sha_t==os.environ["GITHUB_WORKFLOW_SHA"],"T/workflow differs")
@@ -185,18 +235,17 @@ class Native:
    for i,command in enumerate(plan[reached:]):
     guard=command[0]=="pnpm" and(command[1].startswith(("check:","lint:tmp:","lint:auth:","lint:webhook:","lint:plugins:","lint:extensions:no-","plugin-sdk:","plugins:","deps:","config:","sqlite:","runtime-sidecars:"))or command[1]=="dup:check:coverage")or command[0]=="node" and any(x.startswith("scripts/check-")for x in command[1:])
     if guard:self.run(f"remaining-guard-{i}",["corepack",*command]if command[0]=="pnpm" else command)
-    else:self.u.append({"argv":command,"reason":"NOT_RUN_AFTER_PLANNER_FAILURE"})
+    elif not any(command[:2]==["pnpm",x]for x in TYPES):self.u.append({"argv":command,"reason":"NOT_RUN_AFTER_PLANNER_FAILURE"})
    for owner in TYPES:
-    if not any(c[:2]==["pnpm",owner]for c in plan[:reached]):self.run(owner.replace(":","-"),["corepack","pnpm",owner],1800)
+    if any(c[:2]==["pnpm",owner]for c in plan[:reached]):self.reached.add(owner.replace(":","-"))
+    else:self.run(owner.replace(":","-"),["corepack","pnpm",owner],1800)
    self.run("source-build",["corepack","pnpm","build"],3300)
    cli.write_bytes(before(fixed))
    try:self.test("extensions/workboard/src/cli.test.ts",old=True)
    finally:cli.write_bytes(fixed);need(sha(cli.read_bytes())==NEW,"CLI restore failed")
    gates=dict.fromkeys(mf["gates"]["patchLifecycle"]+mf["gates"]["producerConsumer"]+list(GATEWAY)+[x for x in pins["fixtures"]if x.endswith(".test.ts")])
    for path in gates:self.test(path)
-   node,text=self.run("node-contracts",["node","--test","--test-concurrency=1",*mf["gates"]["node"]],600)
-   node["tests"]={k:int(v)for k,v in re.findall(r"^# (tests|pass|fail|skipped) (\d+)$",text,re.M)}
-   need(node["tests"].get("tests",0)>0 and node["tests"].get("skipped")==0,"Node contracts empty/skipped")
+   self.node_contracts(mf["gates"]["node"])
   finally:
    cli.write_bytes(fixed)
    for path,old in over:
@@ -213,10 +262,15 @@ def main():
   try:n.execute()
   except Exception as error:n.r["failures"].append(clean(str(error)))
   finally:
+   n.report_not_run()
    n.r["complete"]=not n.r["failures"]and not n.r["notRun"]
    rcp.write_text(json.dumps(n.r,indent=2)+"\n")
   return 0 if n.r["complete"]else 1
- r=read(rcp)if rcp.exists()else{"complete":False,"failures":["native unrun; inspect earlier steps"],"toolingSha":os.environ.get("GITHUB_SHA"),"runId":os.environ.get("GITHUB_RUN_ID")}
+ if not rcp.exists():
+  n.plan(read(n.t/"scripts/fork-release/manifest.json"),read(n.t/"scripts/fork-release/native-inputs.json"))
+  n.f.append("native unrun; inspect earlier steps");n.report_not_run()
+  n.r.update(complete=False,toolingSha=os.environ.get("GITHUB_SHA"),runId=os.environ.get("GITHUB_RUN_ID"));r=n.r
+ else:r=read(rcp)
  files=list(n.o.iterdir())
  need(all(p.is_file()and not p.is_symlink()and(p.name=="receipt.json" or re.fullmatch(r"\d+-[a-z0-9-]+\.log",p.name))for p in files),"unexpected evidence input")
  r["artifact"]={"retentionDays":3,"maximumBytes":20971520,"modeledGrossUsd":0.00053,"incrementalGithubCapUsd":0.01}
