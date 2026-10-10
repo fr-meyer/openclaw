@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { McpHttpToolSchemaCompatibility } from "../src/agents/mcp-http-tool-schema-compatibility.ts";
+import { stripTypeScriptTypes } from "node:module";
+
+// Node's plain test runner does not resolve the private workspace package alias.
+// Load the same source the production build uses, with only that import resolved.
+const compatibilitySource = stripTypeScriptTypes(
+  fs.readFileSync(new URL("../src/agents/mcp-http-tool-schema-compatibility.ts", import.meta.url), "utf8"),
+).replace(
+  '"@openclaw/normalization-core/record-coerce"',
+  JSON.stringify(new URL("../packages/normalization-core/src/record-coerce.ts", import.meta.url).href),
+);
+const { McpHttpToolSchemaCompatibility } = await import(
+  `data:text/javascript;base64,${Buffer.from(compatibilitySource).toString("base64")}`,
+);
 
 const publishedSchema = JSON.parse(
   fs.readFileSync(
