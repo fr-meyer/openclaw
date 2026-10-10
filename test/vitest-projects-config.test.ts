@@ -16,7 +16,7 @@ import { normalizeConfigPath, normalizeConfigPaths } from "./helpers/vitest-conf
 import {
   auditFullSuiteTestFileOwnership,
   listVitestConfigTestFiles,
-  standalonePublisherNodeTestFiles,
+  standaloneNodeTestFiles,
 } from "./vitest-projects-config.test-support.js";
 import { createAgentsCoreVitestConfig } from "./vitest/vitest.agents-core.config.ts";
 import { createAgentsEmbeddedIncompleteTurnVitestConfig } from "./vitest/vitest.agents-embedded-agent-incomplete-turn.config.ts";
@@ -421,10 +421,10 @@ describe("projects vitest config", () => {
     }
   });
 
-  it("executes the standalone publisher Node test suites", () => {
+  it("executes the standalone Node test suites", () => {
     const result = spawnSync(
       process.execPath,
-      ["--test", "--test-concurrency=1", ...standalonePublisherNodeTestFiles],
+      ["--test", "--test-concurrency=1", ...standaloneNodeTestFiles],
       { cwd: path.resolve("."), encoding: "utf8", timeout: 60_000 },
     );
     expect(result.status, result.stderr || result.stdout).toBe(0);

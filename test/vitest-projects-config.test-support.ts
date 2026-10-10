@@ -5,10 +5,12 @@ import { pathToFileURL } from "node:url";
 import { fullSuiteVitestShards } from "./vitest/vitest.test-shards.mjs";
 
 /** These node:test suites are run by a tooling Vitest owner, not by Vitest discovery. */
-export const standalonePublisherNodeTestFiles = [
+export const standaloneNodeTestFiles = [
   "scripts/docker/package-current-publisher.test.mjs",
   "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
   "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs",
+  "test/mcp-nowistay-schema-compatibility.test.mjs",
+  "test/mcp-nowistay-sdk-regression.test.mjs",
 ] as const;
 
 type VitestTestConfig = {
@@ -116,7 +118,7 @@ function listNormalFullSuiteTestFiles(): string[] {
     "src/gateway/gateway.test.ts",
     "src/gateway/server.startup-matrix-migration.integration.test.ts",
   ]);
-  const standaloneNodeTests = new Set<string>(standalonePublisherNodeTestFiles);
+  const standaloneNodeTests = new Set<string>(standaloneNodeTestFiles);
   return globSync(["**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"], {
     cwd: process.cwd(),
     exclude: ["**/.*/**", "**/dist/**", "**/node_modules/**", "**/vendor/**"],
