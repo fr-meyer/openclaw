@@ -26,7 +26,10 @@ function hash(path) {
 
 function validateManifest(path) {
   const manifest = json(path);
-  need(manifest.schema === "openclaw.fork-release.v1", "Wrong fork release manifest schema");
+  need(
+    ["openclaw.fork-release.v1", "openclaw.fork-release.v2"].includes(manifest.schema),
+    "Wrong fork release manifest schema",
+  );
   need(manifest.repository === "fr-meyer/openclaw", "Wrong fork release repository");
   need(
     SHA.test(manifest.source?.commit) && SHA.test(manifest.source?.tree),
@@ -121,7 +124,10 @@ async function main() {
     sourceSha === manifest.source.commit && sourceTree === manifest.source.tree,
     "Build source is not pinned candidate",
   );
-  const toolingRoot = dirname(dirname(dirname(manifestPath)));
+  const toolingRoot =
+    manifest.schema === "openclaw.fork-release.v2"
+      ? dirname(dirname(dirname(dirname(manifestPath))))
+      : dirname(dirname(dirname(manifestPath)));
   const toolingSha = execFileSync("git", ["-C", toolingRoot, "rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
@@ -159,6 +165,28 @@ async function main() {
     expectedDigest,
   });
   smokeDockerReleaseImage(ociDir, receipt.architecture, "default", image.configDigest);
+  if (manifest.image.parityImage) {
+    const verified = JSON.parse(
+      execFileSync(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "--entrypoint",
+          "node",
+          `openclaw-release-smoke:${receipt.architecture}-default`,
+          "/app/runtime-plugins/verify-package.mjs",
+          "--verify",
+          "/app/runtime-plugins",
+        ],
+        { encoding: "utf8", timeout: 120_000 },
+      ),
+    );
+    need(
+      verified.verified === true && verified.sourceCommit === sourceSha,
+      "Parity publisher package is not verified against the pinned source",
+    );
+  }
   receipt.imageDigest = image.imageDigest;
   receipt.configDigest = image.configDigest;
   writeFileSync(outputPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx", mode: 0o600 });

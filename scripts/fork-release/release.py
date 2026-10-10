@@ -47,7 +47,7 @@ def manifest_at(path):
     manifest = json.loads(raw)
     base_fields = {"schema", "repository", "candidate", "productionEligible", "source", "gates", "image"}
     need(type(manifest) is dict and set(manifest) in (base_fields, base_fields | {"review"}), "invalid manifest fields")
-    need(manifest.get("schema") == "openclaw.fork-release.v1", "wrong release manifest schema")
+    need(manifest.get("schema") in ("openclaw.fork-release.v1", "openclaw.fork-release.v2"), "wrong release manifest schema")
     need(manifest.get("repository") == "fr-meyer/openclaw", "wrong fork repository")
     need(matches(IDENT, manifest.get("candidate")), "invalid candidate name")
     need(type(manifest.get("productionEligible")) is bool, "missing production decision")
@@ -62,17 +62,21 @@ def manifest_at(path):
         need(matches(SHA, patch["commit"]) and matches(SHA, patch["tree"]), "invalid patch identity")
     need(patches[-1] == {"commit": source["commit"], "tree": source["tree"]}, "final patch differs from source")
     gates = manifest.get("gates", {})
-    need(type(gates) is dict and set(gates) == {"patchLifecycle", "producerConsumer"}, "missing focused gate")
+    v2 = manifest["schema"] == "openclaw.fork-release.v2"
+    need(type(gates) is dict and set(gates) == ({"patchLifecycle", "producerConsumer", "node"} if v2 else {"patchLifecycle", "producerConsumer"}), "missing focused gate")
     all_tests = []
-    for lane in ("patchLifecycle", "producerConsumer"):
+    for lane in ("patchLifecycle", "producerConsumer", "node") if v2 else ("patchLifecycle", "producerConsumer"):
         tests = gates[lane]
         need(type(tests) is list and 1 <= len(tests) <= 24, f"invalid {lane} gate")
         for test in tests:
             need(matches(TEST_PATH, test) and not test.startswith("/") and ".." not in test.split("/"), "invalid test path")
+            need(test.endswith(".test.mjs") == (lane == "node") if v2 else True, "test runner does not match gate")
             all_tests.append(test)
     need(len(all_tests) == len(set(all_tests)), "duplicate gate test")
     image = manifest.get("image", {})
-    need(type(image) is dict and set(image) == {"architecture", "extensions"}, "invalid image fields")
+    need(type(image) is dict and set(image) == ({"architecture", "extensions", "parityImage"} if v2 else {"architecture", "extensions"}), "invalid image fields")
+    if v2:
+        need(type(image["parityImage"]) is bool, "invalid parity image decision")
     need(image.get("architecture") == "amd64", "only hosted linux/amd64 is staged")
     need(matches(re.compile(r"[a-z0-9,-]{1,128}\Z"), image.get("extensions")), "invalid extension selection")
     review = manifest.get("review")
@@ -101,7 +105,7 @@ def check_source(manifest, source_dir):
         if index:
             need(git(source_dir, "rev-parse", f"{commit}^1") == chain[index - 1][0], "patch parent changed")
             need(git(source_dir, "show", "-s", "--format=%P", commit) == chain[index - 1][0], "patch is a merge")
-    for lane in ("patchLifecycle", "producerConsumer"):
+    for lane in ("patchLifecycle", "producerConsumer", "node") if manifest["schema"] == "openclaw.fork-release.v2" else ("patchLifecycle", "producerConsumer"):
         for test in manifest["gates"][lane]:
             need(git(source_dir, "cat-file", "-e", f"{source['commit']}:{test}") == "", f"missing pinned test: {test}")
     return chain
@@ -337,11 +341,13 @@ def main():
     parser.add_argument("--adapter", type=Path)
     parser.add_argument("--shared-deploy-lock", type=Path)
     parser.add_argument("--challenge")
+    parser.add_argument("--runner", choices=("vitest", "node"), default="vitest")
     args = parser.parse_args()
     manifest, manifest_hash = manifest_at(args.manifest)
     if args.command == "identity":
         print(f"source_sha={manifest['source']['commit']}")
         print(f"extensions={manifest['image']['extensions']}")
+        print(f"parity_image={int(manifest['image'].get('parityImage', False))}")
         print(f"manifest_sha256={manifest_hash}")
         print(f"review_base_sha={manifest.get('review', {}).get('baseSha', '')}")
         return
@@ -351,8 +357,9 @@ def main():
         print(f"Exact source and {len(manifest['source']['patches'])} ordered patches verified.")
         return
     if args.command == "gates":
-        for lane in ("patchLifecycle", "producerConsumer"):
-            print(*manifest["gates"][lane], sep="\n")
+        lanes = ("node",) if args.runner == "node" else ("patchLifecycle", "producerConsumer")
+        for lane in lanes:
+            print(*manifest["gates"].get(lane, ()), sep="\n")
         return
     need(args.private_root is not None, "private state root required")
     root = private_root(args.private_root)

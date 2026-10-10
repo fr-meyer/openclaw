@@ -139,7 +139,10 @@ jobs:
 
   qualify-and-prepare:
     name: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release-pipeline/contracts/') && 'Focused release contracts' || 'Qualify and prepare OCI' }}
-    if: github.event_name != 'pull_request' && github.repository == 'fr-meyer/openclaw'
+    if: >-
+      ${{ github.event_name != 'pull_request' && github.repository == 'fr-meyer/openclaw' &&
+          github.ref != 'refs/heads/release-pipeline/source/v2026.9.9' &&
+          github.ref != 'refs/heads/release-pipeline/image/v2026.9.9' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -255,4 +258,188 @@ jobs:
           path: ${{ runner.temp }}/fork-release/
           compression-level: 0
           retention-days: 14
+          if-no-files-found: error
+
+  v99-source:
+    name: v2026.9.9 exact source proof
+    if: >-
+      ${{ github.event_name == 'push' && github.repository == 'fr-meyer/openclaw' &&
+          (github.ref == 'refs/heads/release-pipeline/source/v2026.9.9' ||
+           github.ref == 'refs/heads/release-pipeline/image/v2026.9.9') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      source_sha: ${{ steps.identity.outputs.source_sha }}
+      extensions: ${{ steps.identity.outputs.extensions }}
+      parity_image: ${{ steps.identity.outputs.parity_image }}
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - name: Checkout exact pipeline tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          persist-credentials: false
+      - name: Resolve 9.9 manifest identity
+        id: identity
+        run: |
+          set -euo pipefail
+          python3 tooling/scripts/fork-release/release.py identity \
+            --manifest tooling/scripts/fork-release/manifests/v2026.9.9.json >> "$GITHUB_OUTPUT"
+      - name: Checkout exact 9.9 source and base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.identity.outputs.source_sha }}
+          path: source
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Prove source chain and release contracts before install
+        id: source
+        run: |
+          set -euo pipefail
+          python3 tooling/scripts/fork-release/release.py source-check \
+            --manifest tooling/scripts/fork-release/manifests/v2026.9.9.json --source-dir source
+          python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_*.py'
+          echo "version=$(python3 -c 'import json; print(json.load(open("source/package.json"))["version"])')" >> "$GITHUB_OUTPUT"
+      - name: Setup supported Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - name: Run publisher source plan and changed-owner planner
+        run: |
+          set -euo pipefail
+          cd source
+          git fetch --depth=1 https://github.com/openclaw/openclaw.git \
+            refs/tags/v2026.9.9:refs/tags/v2026.9.9
+          node scripts/docker/package-current-publisher.mjs --plan-image true
+          corepack enable
+          pnpm install --frozen-lockfile
+          node scripts/check-changed.mjs --dry-run \
+            --base bcfc88812a35243893585dbeca87ca41b48272ca --head HEAD \
+            2>&1 | tee "$RUNNER_TEMP/v99-changed-owner-plan.txt"
+          grep -F '[check:changed:dry-run] lanes=' "$RUNNER_TEMP/v99-changed-owner-plan.txt" >> "$GITHUB_STEP_SUMMARY"
+          echo "Changed-owner plan: base bcfc88812a35243893585dbeca87ca41b48272ca, head ${{ steps.identity.outputs.source_sha }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Type check and build exact source
+        run: |
+          set -euo pipefail
+          cd source
+          pnpm tsgo:test
+          pnpm build
+      - name: Run focused lifecycle and producer-consumer tests
+        run: |
+          set -euo pipefail
+          cd source
+          mapfile -t vitest_tests < <(python3 ../tooling/scripts/fork-release/release.py gates \
+            --manifest ../tooling/scripts/fork-release/manifests/v2026.9.9.json --runner vitest)
+          OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${vitest_tests[@]}"
+          mapfile -t node_tests < <(python3 ../tooling/scripts/fork-release/release.py gates \
+            --manifest ../tooling/scripts/fork-release/manifests/v2026.9.9.json --runner node)
+          node --test "${node_tests[@]}"
+          echo "Source proof passed for ${{ steps.identity.outputs.source_sha }}. No image was built in this job." >> "$GITHUB_STEP_SUMMARY"
+
+  v99-image:
+    name: v2026.9.9 digest-bound OCI proof
+    needs: [v99-source]
+    if: >-
+      ${{ github.event_name == 'push' && github.repository == 'fr-meyer/openclaw' &&
+          github.ref == 'refs/heads/release-pipeline/image/v2026.9.9' &&
+          needs['v99-source'].result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact pipeline tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          persist-credentials: false
+      - name: Checkout proven source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs['v99-source'].outputs.source_sha }}
+          path: source
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Recheck source and manifest before build
+        run: |
+          set -euo pipefail
+          python3 tooling/scripts/fork-release/release.py source-check \
+            --manifest tooling/scripts/fork-release/manifests/v2026.9.9.json --source-dir source
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Setup supported Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - name: Install reviewed OCI smoke transport
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y skopeo
+          skopeo --version | grep -Fx 'skopeo version 1.13.3'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Prepare OCI directory
+        run: mkdir -p "$RUNNER_TEMP/fork-release/oci"
+      - name: Build exact source once into OCI
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: source
+          platforms: linux/amd64
+          outputs: type=oci,dest=${{ runner.temp }}/fork-release/oci/default,tar=false,compression=gzip,compression-level=1
+          build-args: |
+            GITHUB_ACTIONS=true
+            GIT_COMMIT=${{ needs['v99-source'].outputs.source_sha }}
+            OPENCLAW_BUILD_TIMESTAMP=${{ env.built_at }}
+            OPENCLAW_DOCKER_BUILD_VERSION=${{ needs['v99-source'].outputs.version }}
+            OPENCLAW_EXTENSIONS=${{ needs['v99-source'].outputs.extensions }}
+            OPENCLAW_PARITY_IMAGE=${{ needs['v99-source'].outputs.parity_image }}
+          labels: |
+            org.opencontainers.image.revision=${{ needs['v99-source'].outputs.source_sha }}
+            org.opencontainers.image.version=${{ needs['v99-source'].outputs.version }}
+            org.opencontainers.image.created=${{ env.built_at }}
+          sbom: true
+          provenance: mode=max
+          push: false
+      - name: Seal and smoke exact OCI image
+        env:
+          BUILT_AT: ${{ env.built_at }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          BUILDKIT_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          node tooling/scripts/fork-release/image.mjs seal \
+            tooling/scripts/fork-release/manifests/v2026.9.9.json source \
+            "$RUNNER_TEMP/fork-release/oci/default" "$BUILDKIT_DIGEST" \
+            "$RUNNER_TEMP/fork-release/receipt.json"
+      - name: Bound public artifact bytes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "fork-release"
+          total = 0
+          for directory, dirs, files in os.walk(root, followlinks=False):
+              for name in dirs + files:
+                  path = Path(directory) / name
+                  if path.is_symlink():
+                      raise SystemExit("OCI artifact contains a symlink")
+                  if path.is_file():
+                      total += path.stat().st_size
+                  elif not path.is_dir():
+                      raise SystemExit("OCI artifact contains a special file")
+          if total > 4 * 1024**3:
+              raise SystemExit(f"OCI artifact exceeds 4 GiB cap: {total} bytes")
+          print(f"OCI artifact payload: {total} bytes, retention 3 days")
+          PY
+      - name: Retain tested OCI payload and public receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: fork-release-${{ needs['v99-source'].outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/fork-release/
+          compression-level: 0
+          retention-days: 3
           if-no-files-found: error

@@ -33,6 +33,21 @@ class ReleaseTests(unittest.TestCase):
         self.assertFalse(manifest["productionEligible"])
         self.assertEqual(manifest["source"]["patches"][-1]["commit"], manifest["source"]["commit"])
 
+    def test_v99_manifest_pins_source_and_separates_node_tests(self):
+        path = Path(__file__).with_name("manifests") / "v2026.9.9.json"
+        manifest, _ = release.manifest_at(path)
+        self.assertFalse(manifest["productionEligible"])
+        self.assertEqual(manifest["source"]["commit"], "f4ce8729dded876d0d319b0547f6de7c2f2aa67d")
+        self.assertEqual(manifest["image"], {
+            "architecture": "amd64", "extensions": "workboard", "parityImage": True
+        })
+        manifest["gates"]["node"][0] = "src/agents/worktrees/run-lease.test.ts"
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory) / "manifest.json"
+            candidate.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(release.Refusal, "test runner"):
+                release.manifest_at(candidate)
+
     def test_manifest_rejects_unpinned_or_duplicate_gate(self):
         manifest, _ = release.manifest_at(Path(__file__).with_name("manifest.json"))
         manifest["gates"]["producerConsumer"].append(manifest["gates"]["patchLifecycle"][0])

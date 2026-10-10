@@ -162,6 +162,32 @@ exact-source and offline contract gates, while allowing a reviewed manifest to
 select each future candidate. It does not copy that task's private companion
 inputs or its hosted build supervisor.
 
+## v2026.9.9 source-only preparation
+
+`manifests/v2026.9.9.json` pins the 9.9 upstream base and the one current
+source patch at `f4ce8729dded876d0d319b0547f6de7c2f2aa67d`. It remains
+`productionEligible: false`. The original seed manifest and its route are
+unchanged. The v2 manifest adds an explicit Node test lane and the parity image
+build decision; `release.py gates --runner node` emits only Node's
+`*.test.mjs` paths, while its default emits the Vitest paths.
+
+A reviewed push to `release-pipeline/source/v2026.9.9` runs the exact-source
+checkout, offline contracts, the inert publisher source plan, changed-owner
+planner, type checks, build, focused Vitest tests, and Node tests on a standard
+hosted Linux runner. The upstream `v2026.9.9` tag is fetched from the public
+upstream repository for the source plan; its peeled commit is checked against
+the source manifest. This route produces no OCI image or artifact.
+
+A separate reviewed push to `release-pipeline/image/v2026.9.9` first reruns
+the same source job, then allows one `linux/amd64` Buildx preparation with
+`OPENCLAW_EXTENSIONS=workboard` and `OPENCLAW_PARITY_IMAGE=1`. It seals and
+smokes the same source digest, verifies the packaged inert publisher against
+its source commit, and refuses an OCI payload over 4 GiB before a three-day
+artifact upload. Neither route uses secrets, registry pushes, deployment, or
+production authority. A branch push is an explicit CI dispatch with hosted
+runner and artifact storage effects; review its exact diff, current allowance,
+and artifact size before using the image route.
+
 ## Private deployment interface
 
 `release.py run` is an operator-side coordinator. It requires a reviewed
