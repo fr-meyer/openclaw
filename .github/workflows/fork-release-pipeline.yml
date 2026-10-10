@@ -138,9 +138,12 @@ jobs:
           if-no-files-found: error
 
   qualify-and-prepare:
+    name: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release-pipeline/contracts/') && 'Focused release contracts' || 'Qualify and prepare OCI' }}
     if: github.event_name != 'pull_request' && github.repository == 'fr-meyer/openclaw'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      CONTRACTS_ONLY: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release-pipeline/contracts/') }}
     steps:
       - name: Checkout trusted pipeline tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -157,7 +160,7 @@ jobs:
           python3 tooling/scripts/fork-release/release.py identity \
             --manifest tooling/scripts/fork-release/manifest.json >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - name: Verify manifest-only PR seal before a manual candidate build
+      - name: Verify manifest-only PR seal
         if: steps.identity.outputs.review_base_sha != ''
         env:
           BASE_SHA: ${{ steps.identity.outputs.review_base_sha }}
@@ -195,17 +198,24 @@ jobs:
           mapfile -t tests < <(python3 ../tooling/scripts/fork-release/release.py gates \
             --manifest ../tooling/scripts/fork-release/manifest.json)
           OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${tests[@]}"
+      - name: Record contract-only scope
+        if: env.CONTRACTS_ONLY == 'true'
+        run: echo "Focused source and contract gates passed; no OCI image was built." >> "$GITHUB_STEP_SUMMARY"
       - name: Install reviewed OCI smoke transport
+        if: env.CONTRACTS_ONLY != 'true'
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y skopeo
           skopeo --version | grep -Fx 'skopeo version 1.13.3'
       - name: Set up Docker Buildx
+        if: env.CONTRACTS_ONLY != 'true'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Prepare OCI directory
+        if: env.CONTRACTS_ONLY != 'true'
         run: mkdir -p "$RUNNER_TEMP/fork-release/oci"
       - name: Build exact candidate once into OCI
+        if: env.CONTRACTS_ONLY != 'true'
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -226,6 +236,7 @@ jobs:
           provenance: mode=max
           push: false
       - name: Verify OCI bytes and smoke that exact image
+        if: env.CONTRACTS_ONLY != 'true'
         env:
           BUILT_AT: ${{ steps.identity.outputs.built_at }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
@@ -237,6 +248,7 @@ jobs:
             "$RUNNER_TEMP/fork-release/oci/default" "$BUILDKIT_DIGEST" \
             "$RUNNER_TEMP/fork-release/receipt.json"
       - name: Retain the exact tested OCI payload and public receipt
+        if: env.CONTRACTS_ONLY != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: fork-release-${{ steps.identity.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}

@@ -131,11 +131,17 @@ master merge always needs the user's explicit decision, and another target
 must still satisfy all of its existing gates and policies. This helper never
 posts, approves, merges or changes GitHub settings.
 
+A reviewed push to `release-pipeline/contracts/**` runs the exact-source,
+offline regression, and focused lifecycle and producer/consumer gates on one
+hosted Ubuntu job. It skips OCI tooling, image creation, and artifact upload.
+Its green check is contract evidence only, never an image or deployment receipt.
+
 After the exact candidate PR and checks are reviewed, the hosted OCI build is
-started only by a separate `workflow_dispatch` (or a reviewed
-`release-pipeline/**` push). The normal PR-opening path cannot build it.
-GitHub requires the dispatch workflow file on the default branch, so this
-route begins only after the tooling has been reviewed and landed there.
+started only by a separate `workflow_dispatch` (or a reviewed push to another
+`release-pipeline/**` branch). The normal PR-opening path cannot build it.
+GitHub requires the dispatch workflow file on the default branch, so manual
+dispatch begins only after the tooling has been reviewed and landed there.
+The reviewed push route can validate a branch before that merge.
 
 ## Source and hosted proof
 
