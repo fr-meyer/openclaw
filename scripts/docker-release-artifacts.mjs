@@ -868,3 +868,5 @@ if (isDirectRunUrl(process.argv[1], import.meta.url)) {
     process.exitCode = 1;
   });
 }
+
+export { smokeImage as smokeDockerReleaseImage };
