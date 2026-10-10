@@ -1,3 +1,4 @@
+# Artifact rebuild request: workboard-core-4fe15797-20261010
 name: Mergeguez coherent native runnable qualification
 run-name: Mergeguez coherent native runnable qualification ${{ github.run_id }}
 
