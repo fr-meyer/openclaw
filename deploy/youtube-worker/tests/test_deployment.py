@@ -4,8 +4,10 @@ from pathlib import Path
 import tempfile
 import os
 import copy
+import contextlib
 import datetime as dt
 import json
+import io
 import shutil
 import subprocess
 import sys
@@ -323,6 +325,245 @@ class NotificationDeploymentTests(unittest.TestCase):
         self.assertEqual(self.tree(), before)
         with fixtures.sv.ALERTS.NotificationStore(self.ledger) as store:
             self.assertIsNone(store.observe(self.notice_snapshot, now=dt.datetime.now(dt.timezone.utc)))
+
+    def history(self, leases=1206, runs=710):
+        # Real metadata files at the observed failing production cardinality;
+        # original archives, receipt, ledger and all 24 bindings stay present.
+        for index in range(leases - 1):
+            path = self.pool / "leases" / f"history-{index:04d}.json"
+            path.write_bytes(deploy.json_bytes({"lease_id": path.stem, "state": "completed", "node": {"id": self.config["node"]["id"]}, "history_note": "x" * 900}))
+        for index in range(runs - 1):
+            root = self.pool / "windows-canaries" / f"windows-canary-history-{index:04d}"
+            root.mkdir()
+            (root / "manifest.json").write_bytes(deploy.json_bytes({"canary_id": root.name,
+                "state": "completed", "node": {"node_id": self.config["node"]["id"]}, "history_note": "x" * 4500}))
+
+    def plan(self):
+        root = Path(self.temp.name) / "plan-inputs"; root.mkdir(exist_ok=True)
+        arguments = []
+        for name, value in (("release", self.release), ("configuration", self.config),
+                            ("baseline-release", self.baseline), ("readiness", self.readiness)):
+            path = root / (name + ".json"); path.write_bytes(deploy.json_bytes(value))
+            arguments += ["--" + name, str(path)]
+        output = io.StringIO()
+        with patch.object(sys, "argv", [str(SOURCE), "plan", "--notification-only", "--workspace", str(self.workspace),
+                "--data-root", str(self.data), *arguments]), contextlib.redirect_stdout(output):
+            self.assertEqual(deploy.main(), 0)
+        return json.loads(output.getvalue())
+
+    def test_production_sized_history_real_plan_activation_and_rollback_preserve_graph(self):
+        self.history()
+        before = self.tree()
+        with patch.object(deploy, "boundary_locks", side_effect=AssertionError("read-only plan acquired boundary")):
+            self.assertEqual(self.plan(), self.expected)
+        self.assertEqual(self.tree(), before)
+        self.assertEqual(self.activate()["state"], "committed")
+        self.assertEqual(deploy.rollback(self.journal, readiness=self.readiness)["state"], "rolled_back")
+        self.assertEqual(self.tree(), before)
+
+    def test_malformed_historical_records_refuse_plan_and_activation_before_boundary(self):
+        path = self.pool / "leases/history-malformed.json"
+        for raw in (b"{", b"[]", b"\xff", b"\xef\xbb\xbf{}", b'{"state":"completed","node":"invalid"}', b'{"state":[]}'):
+            with self.subTest(raw=raw):
+                path.write_bytes(raw); before = self.tree()
+                with patch.object(deploy, "boundary_locks", side_effect=AssertionError("unsafe scan acquired boundary")):
+                    with self.assertRaises(deploy.DeploymentError): self.plan()
+                    with self.assertRaises(deploy.DeploymentError): self.activate()
+                self.assertFalse(self.journal.exists()); self.assertEqual(self.tree(), before)
+
+    def historical_record_path(self, kind):
+        if kind == "leases": return self.pool / "leases/history-node.json"
+        root = self.pool / "windows-canaries/windows-canary-history-node"
+        root.mkdir(exist_ok=True)
+        return root / "manifest.json"
+
+    def test_explicit_nonobject_nodes_refuse_both_histories_before_boundary(self):
+        for kind in ("leases", "windows-canaries"):
+            path = self.historical_record_path(kind)
+            for state in ("completed", "active" if kind == "leases" else "blocked"):
+                for node in (None, False, True, 0, 0.0, "", [], [None], "invalid"):
+                    with self.subTest(kind=kind, state=state, node=node):
+                        path.write_bytes(deploy.json_bytes({"state": state, "node": node})); before = self.tree()
+                        with patch.object(deploy, "boundary_locks", side_effect=AssertionError("malformed node acquired boundary")):
+                            with self.assertRaisesRegex(deploy.DeploymentError, "node/state record is malformed"): self.plan()
+                            with self.assertRaisesRegex(deploy.DeploymentError, "node/state record is malformed"): self.activate()
+                        self.assertFalse(self.journal.exists()); self.assertEqual(self.tree(), before)
+            path.unlink()
+
+    def test_missing_or_empty_live_node_identity_refuses_before_boundary(self):
+        for kind in ("leases", "windows-canaries"):
+            path = self.historical_record_path(kind)
+            key = "id" if kind == "leases" else "node_id"
+            for state in (("active",) if kind == "leases" else ("preparing", "prepared", "blocked", "running")):
+                rows = [{"state": state}, {"state": state, "node": {}}]
+                rows += [{"state": state, "node": {key: value}} for value in (None, False, 0, "", [])]
+                for row in rows:
+                    with self.subTest(kind=kind, row=row):
+                        path.write_bytes(deploy.json_bytes(row)); before = self.tree()
+                        with patch.object(deploy, "boundary_locks", side_effect=AssertionError("unknown owner acquired boundary")):
+                            with self.assertRaisesRegex(deploy.DeploymentError, "node identity is incomplete"): self.plan()
+                            with self.assertRaisesRegex(deploy.DeploymentError, "node identity is incomplete"): self.activate()
+                        self.assertFalse(self.journal.exists()); self.assertEqual(self.tree(), before)
+            path.unlink()
+
+    def test_terminal_missing_or_object_nodes_preserve_history_and_same_run(self):
+        paths = [self.historical_record_path(kind) for kind in ("leases", "windows-canaries")]
+        for path in paths: path.write_bytes(deploy.json_bytes({"state": "completed"}))
+        for kind, path in zip(("leases", "windows-canaries"), paths):
+            states = ("completed", "partial") if kind == "leases" else ("completed", "partial", "superseded_before_lease")
+            for state in states:
+                rows = [{"state": state}, {"state": state, "node": {}},
+                        {"state": state, "node": {"id": "9" * 64, "node_id": "9" * 64, "platform": "linux"}}]
+                for row in rows:
+                    with self.subTest(kind=kind, row=row):
+                        path.write_bytes(deploy.json_bytes(row)); before = self.tree()
+                        with patch.object(deploy, "boundary_locks", side_effect=AssertionError("plan acquired boundary")):
+                            self.assertEqual(self.plan(), self.expected)
+                        self.assertEqual(self.tree(), before)
+            path.write_bytes(deploy.json_bytes({"state": "completed"}))
+        before = self.tree()
+        self.assertEqual(self.activate()["state"], "committed")
+        self.assertEqual(deploy.rollback(self.journal, readiness=self.readiness)["state"], "rolled_back")
+        self.assertEqual(self.tree(), before)
+
+    def test_valid_other_node_objects_keep_existing_ownership_rules(self):
+        lease = self.historical_record_path("leases")
+        run = self.historical_record_path("windows-canaries")
+        lease.write_bytes(deploy.json_bytes({"state": "active", "node": {"id": "9" * 64, "platform": "linux"}}))
+        run.write_bytes(deploy.json_bytes({"state": "blocked", "node": {"node_id": "9" * 64, "platform": "windows"}}))
+        before = self.tree()
+        with patch.object(deploy, "boundary_locks", side_effect=AssertionError("plan acquired boundary")):
+            self.assertEqual(self.plan(), self.expected)
+        self.assertEqual(self.tree(), before)
+
+    def test_misplaced_node_namespace_does_not_hide_an_additional_owner(self):
+        path = self.pool / "leases/history-misplaced.json"
+        path.write_bytes(deploy.json_bytes({"state": "blocked", "node": {"node_id": self.config["node"]["id"]}}))
+        with patch.object(deploy, "boundary_locks", side_effect=AssertionError("ambiguous scan acquired boundary")):
+            with self.assertRaisesRegex(deploy.DeploymentError, "ownership differs"): self.activate()
+        self.assertFalse(self.journal.exists())
+
+    @contextlib.contextmanager
+    def inventory_view(self, kind, count, *, ignored=False):
+        # Fixed synthetic enumeration tests the capacity boundary cheaply.
+        # The production-sized test above exercises actual unique files.
+        root = self.pool / kind
+        if kind == "windows-canaries" and not ignored:
+            directory = root / "windows-canary-history-capacity"; directory.mkdir(exist_ok=True)
+            path = directory / "manifest.json"
+        else: path = root / ("ignored.txt" if ignored else "history-capacity.json")
+        path.write_bytes(b'{"state":"completed"}\n')
+        scandir = deploy.os.scandir
+        with scandir(root) as entries: existing = list(entries)
+        active_name = fixtures.LEASE + ".json" if kind == "leases" else fixtures.CANARY
+        active = next(entry for entry in existing if entry.name == active_name)
+        historical_name = path.parent.name if kind == "windows-canaries" and not ignored else path.name
+        historical = next(entry for entry in existing if entry.name == historical_name)
+        @contextlib.contextmanager
+        def enumerated(directory):
+            if Path(directory) == root:
+                yield iter([active] + [historical] * (count - 1))
+            else:
+                with scandir(directory) as entries: yield entries
+        with patch.object(deploy.os, "scandir", side_effect=enumerated): yield
+
+    def test_entry_capacity_boundary_is_finite_and_counts_ignored_names(self):
+        for kind in ("leases", "windows-canaries"):
+            with self.subTest(kind=kind), self.inventory_view(kind, deploy.NotificationInventory.ENTRY_LIMIT):
+                self.assertEqual(self.plan(), self.expected)
+            for ignored in (False, True):
+                with self.subTest(kind=kind, ignored=ignored), self.inventory_view(kind, deploy.NotificationInventory.ENTRY_LIMIT + 1, ignored=ignored):
+                    with patch.object(deploy, "boundary_locks", side_effect=AssertionError("over-bound scan acquired boundary")):
+                        with self.assertRaisesRegex(deploy.DeploymentError, "entries exceed bound"): self.plan()
+                        with self.assertRaisesRegex(deploy.DeploymentError, "entries exceed bound"): self.activate()
+                    self.assertFalse(self.journal.exists())
+
+    def test_special_or_symlinked_record_refuses_before_boundary(self):
+        path = self.pool / "leases/history-unsafe.json"
+        for kind in ("symlink", "fifo"):
+            if kind == "fifo" and not hasattr(os, "mkfifo"): continue
+            if kind == "symlink": path.symlink_to(self.pool / "leases" / (fixtures.LEASE + ".json"))
+            else: os.mkfifo(path)
+            try:
+                with patch.object(deploy, "boundary_locks", side_effect=AssertionError("unsafe scan acquired boundary")):
+                    with self.assertRaises(deploy.DeploymentError): self.plan()
+                self.assertFalse(self.journal.exists())
+            finally: path.unlink()
+
+    def test_record_and_aggregate_byte_capacity_stop_before_boundary(self):
+        path = self.pool / "leases/history-bytes.json"
+        path.write_bytes(b" " * (deploy.NotificationInventory.RECORD_LIMIT + 1))
+        with patch.object(deploy, "boundary_locks", side_effect=AssertionError("over-byte scan acquired boundary")):
+            with self.assertRaisesRegex(deploy.DeploymentError, "bytes exceed bound"): self.activate()
+        path.write_bytes(b'{"state":"completed"}\n')
+        with patch.object(deploy.NotificationInventory, "BYTE_LIMIT", 1):
+            with patch.object(deploy, "boundary_locks", side_effect=AssertionError("over-byte scan acquired boundary")):
+                with self.assertRaisesRegex(deploy.DeploymentError, "bytes exceed bound"): self.plan()
+        self.assertFalse(self.journal.exists())
+        inventory = deploy.NotificationInventory(self.workspace, self.data)
+        with patch.object(inventory, "BYTE_LIMIT", path.stat().st_size):
+            self.assertEqual(inventory.read_json(path)["state"], "completed")
+            with self.assertRaisesRegex(deploy.DeploymentError, "bytes exceed bound"): inventory.read_json(path)
+
+    def test_growing_inventory_is_not_retried_or_admitted(self):
+        read = deploy.NotificationInventory.read_json
+        grown = False
+        def grow(inventory, path, default=None):
+            nonlocal grown
+            row = read(inventory, path, default)
+            if not grown and Path(path).parent == self.pool / "leases":
+                grown = True
+                (self.pool / "leases/concurrent-history.json").write_bytes(b'{"state":"completed"}\n')
+            return row
+        with patch.object(deploy.NotificationInventory, "read_json", new=grow), patch.object(deploy, "boundary_locks", side_effect=AssertionError("growing scan acquired boundary")):
+            with self.assertRaisesRegex(deploy.DeploymentError, "changed during scan"): self.activate()
+        self.assertTrue(grown); self.assertFalse(self.journal.exists())
+
+    def test_scan_time_budget_expires_before_boundary_without_real_waits(self):
+        clock = [0.0]; read = deploy.NotificationInventory.read_json
+        def expire(inventory, path, default=None):
+            result = read(inventory, path, default); clock[0] = 6.0
+            return result
+        with patch.object(deploy.time, "monotonic", side_effect=lambda: clock[0]), patch.object(deploy.NotificationInventory, "read_json", new=expire), patch.object(deploy, "boundary_locks", side_effect=AssertionError("expired scan acquired boundary")):
+            with self.assertRaisesRegex(deploy.DeploymentError, "scan deadline"): self.activate()
+        self.assertFalse(self.journal.exists())
+
+    def test_installed_repeated_reads_share_budget_and_restore_reader_on_interruption(self):
+        raw = deploy.NotificationInventory.raw
+        lease_path = self.pool / "leases" / (fixtures.LEASE + ".json")
+        for failure in (deploy.DeploymentError("synthetic read budget exhausted"), KeyboardInterrupt()):
+            reads = 0
+            original_path, original_data = sys.path[:], os.environ.get("OPENCLAW_YOUTUBE_DATA_ROOT")
+            original_reader = sys.modules["youtube_global_pool"].read_json
+            original_store = sys.modules["youtube_global_pool"].PoolStore
+            def interrupt(inventory, path):
+                nonlocal reads
+                result = raw(inventory, path)
+                if Path(path) == lease_path:
+                    reads += 1
+                    if reads == 2: raise failure
+                return result
+            with self.subTest(failure=type(failure)), patch.object(deploy.NotificationInventory, "raw", new=interrupt), patch.object(deploy, "boundary_locks", side_effect=AssertionError("interrupted scan acquired boundary")):
+                with self.assertRaises(type(failure)): self.activate()
+            self.assertEqual(reads, 2)
+            self.assertIs(sys.modules["youtube_global_pool"].read_json, original_reader)
+            self.assertIs(sys.modules["youtube_global_pool"].PoolStore, original_store)
+            self.assertEqual(sys.path, original_path)
+            self.assertEqual(os.environ.get("OPENCLAW_YOUTUBE_DATA_ROOT"), original_data)
+            self.assertFalse(self.journal.exists())
+
+    def test_locked_scan_repeats_live_ownership_instead_of_reusing_preflight(self):
+        locks = deploy.boundary_locks
+        @contextlib.contextmanager
+        def raced(data, *, canary_id=None):
+            with locks(data, canary_id=canary_id):
+                (self.pool / "leases/concurrent-active.json").write_bytes(deploy.json_bytes({
+                    "state": "active", "lease_id": "other", "node": {"id": self.config["node"]["id"]}}))
+                yield
+        with patch.object(deploy, "boundary_locks", side_effect=raced):
+            with self.assertRaisesRegex(deploy.DeploymentError, "ownership differs"): self.activate()
+        self.assertFalse(self.journal.exists())
+        self.assertFalse((self.workspace / "scripts/youtube_worker_alerts.py").exists())
 
     def test_full_installer_still_refuses_the_same_active_lease(self):
         proofs = copy.deepcopy(self.proofs)

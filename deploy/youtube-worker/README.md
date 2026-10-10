@@ -165,7 +165,7 @@ nonblocking locks. Unknown recovery/import/finalization outcomes are refused.
 python3 deploy/youtube-worker/deployment.py plan --notification-only \
   --workspace <existing-workspace> --data-root <existing-data-root> \
   --release <candidate-release.json> --configuration <unchanged-windows-worker.json> \
-  --baseline-release <installed-full-release.json>
+  --baseline-release <installed-full-release.json> --readiness <fresh-readiness.json>
 python3 deploy/youtube-worker/deployment.py activate --notification-only \
   --workspace <existing-workspace> --data-root <existing-data-root> \
   --release <candidate-release.json> --configuration <unchanged-windows-worker.json> \
@@ -174,6 +174,35 @@ python3 deploy/youtube-worker/deployment.py activate --notification-only \
 python3 deploy/youtube-worker/deployment.py rollback \
   --journal <recorded-journal.json> --readiness <fresh-readiness.json>
 ```
+
+The read-only notification plan requires fresh readiness and runs the complete
+inventory, installed graph and existing-command preflight without creating or
+acquiring deployment locks. Activation repeats this preflight before its
+boundary, then rereads it under all three locks; a plan never supplies live
+authority. Rollback also refuses unsafe state before acquiring its boundary.
+
+Historical leases and run manifests are streamed rather than retained as a list.
+Each directory admits at most 4096 direct entries, including ignored names;
+only fixed `manifest.json` children are inspected, without recursive scanning.
+All records, including completed history and other nodes, must be readable JSON
+objects. An explicit `node` must be an object: `null`, booleans, numbers, strings
+and arrays are refused, including falsey values. Inactive leases and terminal
+runs may omit historical node data. Active leases and nonterminal runs require
+a nonempty string node identity; empty objects cannot establish live ownership.
+Each record/read is capped at 2 MiB, and one admission has a 16 MiB
+aggregate actual-read budget and a five-second monotonic budget. The installed
+lifecycle still owns every graph, item, lease, staging and checkpoint decision;
+its read primitives share this budget, including its repeated lease scan.
+Directory and file metadata watches reject concurrent growth or replacement.
+Nothing is filtered away merely to fit a budget, and no automatic retry is made.
+
+These bounds cover the measured production inventory of 1207 lease records
+(1.03 MB) and 710 manifests (3.26 MB), including repeated lifecycle reads and
+the existing maximum of 25 bound items. Memory retains one parsed historical
+record, at most one selected owner per directory and bounded metadata watches.
+Over-budget or changed inventories require a new reviewed preparation; do not
+delete history or raise a production guard during activation. Existing-command
+admission retains its process/argv caps and adds a five-second scan budget.
 
 The transaction has a 30-second total monotonic deadline, including admission,
 durable writes, readback and journal commit. Kernel operations can delay signal

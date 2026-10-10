@@ -6,6 +6,7 @@ import base64
 import contextlib
 import datetime as dt
 import fcntl
+import fnmatch
 import hashlib
 import importlib.util
 import json
@@ -330,19 +331,112 @@ def notification_deadline(seconds: float = 30):
 
 def bounded_children(root: Path, pattern: str, *, limit: int = 512) -> list[Path]:
     result = []
-    for path in root.glob(pattern):
-        if len(result) == limit: raise DeploymentError("notification admission inventory exceeds bound")
-        result.append(path)
+    if not root.exists(): return result
+    with os.scandir(root) as entries:
+        for count, entry in enumerate(entries, 1):
+            if count > 4096: raise DeploymentError("notification directory entries exceed bound")
+            if not fnmatch.fnmatchcase(entry.name, pattern): continue
+            if len(result) == limit: raise DeploymentError("notification admission inventory exceeds bound")
+            result.append(Path(entry.path))
     return result
+
+
+class NotificationInventory:
+    """Stream history; bound actual reads, including the installed graph reader.
+
+    Production sizing: 1207 leases + 710 manifests occupy 4.29 MB. A 16 MiB
+    aggregate read budget also covers the lifecycle's repeated lease reads and
+    its at-most-25-item graph. No historical row is skipped or retained whole.
+    Metadata watches detect growth/replacement; they are never authority caches.
+    """
+    ENTRY_LIMIT = 4096
+    BYTE_LIMIT = 16 * 1024 * 1024
+    RECORD_LIMIT = 2 * 1024 * 1024
+    SECONDS = 5
+
+    def __init__(self, workspace: Path, data: Path):
+        self.workspace, self.data = workspace, data
+        self.started = time.monotonic()
+        self.bytes_read = 0
+        self.watches = {}
+
+    def check(self):
+        if time.monotonic() - self.started >= self.SECONDS:
+            raise DeploymentError("notification admission scan deadline reached before writes")
+
+    def watch(self, path: Path, info=None):
+        self.check()
+        info = path.lstat() if info is None else info
+        value = (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        if path in self.watches and self.watches[path] != value:
+            raise DeploymentError("notification admission inventory changed during scan")
+        self.watches[path] = value
+
+    def raw(self, path: Path) -> bytes:
+        path = Path(path)
+        root = self.data if path.is_relative_to(self.data) else self.workspace
+        safe_target(root, path.relative_to(root).as_posix())
+        self.check()
+        limit = min(self.RECORD_LIMIT, self.BYTE_LIMIT - self.bytes_read)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode): raise DeploymentError("notification admission record is not a regular file")
+            if info.st_size > limit:
+                raise DeploymentError("notification admission record or aggregate bytes exceed bound")
+            self.watch(path, info)
+            raw = handle.read(limit + 1)
+            if len(raw) > limit:
+                raise DeploymentError("notification admission record or aggregate bytes exceed bound")
+            self.bytes_read += len(raw)
+            self.watch(path, os.fstat(handle.fileno()))
+        self.check()
+        return raw
+
+    def read_json(self, path: Path, default=None):
+        try: raw = self.raw(path)
+        except FileNotFoundError: return default
+        try: row = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeError, RecursionError):
+            raise DeploymentError("notification admission record is malformed") from None
+        self.check()
+        if not isinstance(row, dict): raise DeploymentError("notification admission record is not an object")
+        return row
+
+    def rows(self, pool: Path, kind: str):
+        root = safe_target(self.data, (pool / kind).relative_to(self.data).as_posix())
+        self.watch(root)
+        with os.scandir(root) as entries:
+            for count, entry in enumerate(entries, 1):
+                self.check()
+                if count > self.ENTRY_LIMIT: raise DeploymentError("notification directory entries exceed bound")
+                path = Path(entry.path)
+                if kind == "leases":
+                    if not entry.name.endswith(".json"): continue
+                else:
+                    if entry.is_symlink(): raise DeploymentError("notification run inventory has symlink")
+                    if not entry.is_dir(follow_symlinks=False): continue
+                    self.watch(path)
+                    path /= "manifest.json"
+                    if not path.exists() and not path.is_symlink(): continue
+                row = self.read_json(path)
+                if row is None: raise DeploymentError("notification admission record disappeared")
+                yield row
+
+    def verify(self):
+        for path in tuple(self.watches): self.watch(path)
+        self.check()
 
 
 def commands_drained(workspace: Path) -> None:
     """Refuse existing commands; the installed startup lock fences new cron."""
     proc = Path("/proc")
     if not proc.is_dir(): raise DeploymentError("notification command admission requires Linux proc evidence")
+    started = time.monotonic()
     candidates = bounded_children(proc, "[0-9]*", limit=4096)
     scripts = {str(workspace / key) for key in (SUPERVISOR, "scripts/youtube_global_windows_canary.py")}
     for directory in candidates:
+        if time.monotonic() - started >= 5: raise DeploymentError("notification command scan deadline reached")
         if directory.name == str(os.getpid()): continue
         try:
             with (directory / "cmdline").open("rb") as handle: raw = handle.read(16385)
@@ -362,6 +456,7 @@ def commands_drained(workspace: Path) -> None:
             raise DeploymentError("notification command admission outcome unknown") from None
         if any(os.path.normpath(str(cwd / value)) in scripts for value in relative):
             raise DeploymentError("Windows command is still active; wait for its ordinary completion")
+    if time.monotonic() - started >= 5: raise DeploymentError("notification command scan deadline reached")
 
 
 def notification_targets(workspace: Path, data: Path, release: dict, configuration: dict, source: dict[str, bytes], baseline: dict) -> dict[Path, bytes]:
@@ -419,22 +514,39 @@ def notification_admission(workspace: Path, data: Path, configuration: dict, rea
     except (KeyError, TypeError, ValueError):
         raise DeploymentError("notification readiness is stale, incomplete or mismatched") from None
     pool = data / "state/automation/global"
+    inventory = NotificationInventory(workspace, data)
     if (readiness.get("configuration_sha256") != digest(safe_target(data, "state/config/windows-worker.json").read_bytes())
         or readiness.get("cutover_sha256") != digest(safe_target(data, "state/automation/global/gates/windows-worker-cutover.json").read_bytes())):
         raise DeploymentError("notification protected configuration/cutover preimage differs")
-    for relative, pattern in (("leases", "*.json"), ("windows-canaries", "*/manifest.json")):
-        rows = [read(safe_target(data, path.relative_to(data).as_posix())) for path in bounded_children(pool / relative, pattern)]
-        selected = [row for row in rows if ((row.get("node") or {}).get("id") == configuration["node"]["id"] and row.get("state") == "active") or ((row.get("node") or {}).get("node_id") == configuration["node"]["id"] and row.get("state") not in {"completed", "partial", "superseded_before_lease"})]
+    for relative in ("leases", "windows-canaries"):
+        selected = []
+        for row in inventory.rows(pool, relative):
+            node = row.get("node", {})
+            state = row.get("state")
+            if not isinstance(node, dict) or state is not None and not isinstance(state, str):
+                raise DeploymentError("notification admission node/state record is malformed")
+            # Inactive leases and terminal runs may omit historical node data.
+            # An active lease or nonterminal run must identify its owner; an
+            # absent/empty object cannot prove that it belongs to another node.
+            needs_owner = state == "active" if relative == "leases" else state not in {"completed", "partial", "superseded_before_lease"}
+            owner_key = "id" if relative == "leases" else "node_id"
+            if needs_owner and (not isinstance(node.get(owner_key), str) or not node[owner_key]):
+                raise DeploymentError("notification admission node identity is incomplete")
+            owned = ((node.get("id") == configuration["node"]["id"] and row.get("state") == "active")
+                or (node.get("node_id") == configuration["node"]["id"] and row.get("state") not in {"completed", "partial", "superseded_before_lease"}))
+            if owned:
+                if selected: raise DeploymentError("notification same-run authoritative ownership differs")
+                selected.append(row)
         if len(selected) != 1 or selected[0].get("lease_id") != lease_id or (relative == "windows-canaries" and selected[0].get("canary_id") != canary_id):
             raise DeploymentError("notification same-run authoritative ownership differs")
     root = pool / "windows-canaries" / canary_id
-    manifest = read(safe_target(data, (root / "manifest.json").relative_to(data).as_posix()))
+    manifest = inventory.read_json(safe_target(data, (root / "manifest.json").relative_to(data).as_posix()))
     if manifest.get("state") != "blocked" or manifest.get("worker_alive") is not False:
         raise DeploymentError("notification admission requires a known stopped blocked run")
     if (root / "finalization.json").exists() or bounded_children(root / "imports", "*.json", limit=25):
         raise DeploymentError("notification run has import/finalization activity")
     for request in bounded_children(root / "resume-requests", "*.json", limit=25):
-        row = read(safe_target(data, request.relative_to(data).as_posix()))
+        row = inventory.read_json(safe_target(data, request.relative_to(data).as_posix()))
         binding = {key: manifest.get(key) for key in ("canary_id", "lease_id", "binding_sha256", "worker_sha256", "adapter_sha256", "urls_sha256")}
         if (row.get("state") != "acknowledged" or row.get("schema") != "openclaw.youtube.windows-resume.v1"
             or row.get("binding") != binding or not re.fullmatch(r"[0-9a-f]{64}", str(row.get("checkpoint_sha256")))
@@ -443,13 +555,33 @@ def notification_admission(workspace: Path, data: Path, configuration: dict, rea
     # Reuse the installed, protected lifecycle's complete graph/staging checks.
     scripts = workspace / "scripts"
     old_path, old_data = sys.path[:], os.environ.get("OPENCLAW_YOUTUBE_DATA_ROOT")
+    pool_module, old_pool_read, old_pool_store = None, None, None
     try:
         sys.path.insert(0, str(scripts)); os.environ["OPENCLAW_YOUTUBE_DATA_ROOT"] = str(data)
         spec = importlib.util.spec_from_file_location("notification_deployment_lifecycle", scripts / "youtube_global_windows_canary.py")
         if spec is None or spec.loader is None: raise DeploymentError("installed lifecycle unavailable")
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
         module.POOL_ROOT = pool
-        module.CANARIES_ROOT = pool / "windows-canaries"
+        # Keep every installed graph decision; adapt only its read primitives.
+        # In particular, its second history scan cannot escape this byte/time
+        # budget. Restore the shared pool reader even after interruption.
+        class BudgetPath(type(Path())):
+            def read_text(self, encoding=None, errors=None):
+                return inventory.raw(self).decode(encoding or "utf-8", errors or "strict")
+            def glob(self, pattern):
+                inventory.watch(Path(self))
+                for path in bounded_children(Path(self), pattern, limit=inventory.ENTRY_LIMIT):
+                    inventory.check()
+                    yield BudgetPath(path)
+        module.CANARIES_ROOT = BudgetPath(pool / "windows-canaries")
+        module.read_json = inventory.read_json
+        pool_module, old_pool_read, old_pool_store = module.GP, module.GP.read_json, module.GP.PoolStore
+        class BudgetPoolStore(old_pool_store):
+            @property
+            def leases_dir(self): return BudgetPath(super().leases_dir)
+        pool_module.read_json = inventory.read_json
+        pool_module.PoolStore = BudgetPoolStore
+        module.sha256_file = lambda path: digest(inventory.raw(path))
         module.validate_prelaunch_bindings(canary_id, manifest)
         remote = readiness.get("remote") or {}
         module._strict_remote_binding(manifest, remote)
@@ -461,13 +593,17 @@ def notification_admission(workspace: Path, data: Path, configuration: dict, rea
     except Exception:
         raise DeploymentError("notification lifecycle binding/probe proof differs") from None
     finally:
+        if pool_module is not None:
+            pool_module.read_json, pool_module.PoolStore = old_pool_read, old_pool_store
         sys.path[:] = old_path
         if old_data is None: os.environ.pop("OPENCLAW_YOUTUBE_DATA_ROOT", None)
         else: os.environ["OPENCLAW_YOUTUBE_DATA_ROOT"] = old_data
     paths = [root / "manifest.json", root / "chunks/0001.tsv", root / "chunks/0001.json", pool / "chunks" / (canary_id + ".json"), pool / "leases" / (lease_id + ".json")]
     paths += [pool / "items" / (video + ".json") for video in manifest["video_ids"]]
     paths += list(managed_state_paths(data)[:2])
-    return {str(path): file_fingerprint(safe_target(data, path.relative_to(data).as_posix())) for path in paths}
+    result = {str(path): {"sha256": digest(inventory.raw(path)), "mode": stat.S_IMODE(path.stat().st_mode)} for path in paths}
+    inventory.verify()
+    return result
 
 
 def file_fingerprint(path: Path) -> dict:
@@ -499,9 +635,16 @@ def activate_notifications(workspace: Path, data: Path, release: dict, configura
         proposed = notification_targets(workspace, data, release, configuration, source, baseline)
         canary_id = readiness.get("canary_id")
         if not isinstance(canary_id, str) or not re.fullmatch(r"windows-canary-[A-Za-z0-9_-]{1,100}", canary_id): raise DeploymentError("notification run identity invalid")
+        # Fail unsafe inventories/graphs before creating or taking any boundary.
+        # These observations are not authority: repeat them under all locks.
+        preflight = notification_snapshot(workspace, data, configuration, readiness)
+        commands_drained(workspace); check()
+        if {str(path): digest(path.read_bytes()) if path.is_file() else None for path in proposed} != expected:
+            raise DeploymentError("deployment preimage hashes changed")
         with boundary_locks(data, canary_id=canary_id):
             proposed = notification_targets(workspace, data, release, configuration, source, baseline)
             protected = notification_snapshot(workspace, data, configuration, readiness)
+            if protected != preflight: raise DeploymentError("notification protected state changed before boundary")
             commands_drained(workspace); check()
             actual = {str(path): digest(path.read_bytes()) if path.is_file() else None for path in proposed}
             if actual != expected: raise DeploymentError("deployment preimage hashes changed")
@@ -541,6 +684,9 @@ def rollback_notifications(journal_path: Path, journal: dict, readiness: dict) -
         rows = journal.get("files") or []
         if len(rows) != len(paths) or {row.get("path") for row in rows} != paths:
             raise DeploymentError("notification rollback write set differs")
+        if notification_snapshot(workspace, data, configuration, readiness) != journal.get("protected"):
+            raise DeploymentError("notification rollback protected state drifted")
+        commands_drained(workspace); check()
         with boundary_locks(data, canary_id=journal["canary_id"]):
             if notification_snapshot(workspace, data, configuration, readiness) != journal.get("protected"):
                 raise DeploymentError("notification rollback protected state drifted")
@@ -640,8 +786,18 @@ def main() -> int:
         parser.error("notification-only requires baseline-release and forbids Windows installation handoff")
     baseline = read(args.baseline_release) if args.notification_only else None
     if args.action == "plan":
-        proposed = notification_targets(workspace, data, release, configuration, source, baseline) if args.notification_only else targets(workspace, data, release, configuration, source)
-        print(json.dumps({str(path): digest(path.read_bytes()) if path.is_file() else None for path in proposed}, indent=2)); return 0
+        if args.notification_only:
+            if not args.readiness: parser.error("notification-only plan requires fresh readiness")
+            with notification_deadline():
+                verify_source_revision(release["revision"], source)
+                proposed = notification_targets(workspace, data, release, configuration, source, baseline)
+                notification_snapshot(workspace, data, configuration, read(args.readiness))
+                commands_drained(workspace)
+                plan = {str(path): digest(path.read_bytes()) if path.is_file() else None for path in proposed}
+        else:
+            proposed = targets(workspace, data, release, configuration, source)
+            plan = {str(path): digest(path.read_bytes()) if path.is_file() else None for path in proposed}
+        print(json.dumps(plan, indent=2)); return 0
     if not all((args.proofs, args.expected_current, args.journal)): parser.error("proofs, expected-current and journal are required for activation")
     if args.notification_only:
         if not args.readiness: parser.error("notification-only activation requires fresh readiness")
