@@ -19,6 +19,7 @@ import importlib.util
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -75,6 +76,16 @@ FILE_FETCH_TIMEOUT_SECONDS = 300
 NODE_RETRY_ATTEMPTS = 5
 NODE_RETRY_SLEEP_SECONDS = 2.0
 T = TypeVar("T")
+_LOADED_CANARY_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+RESUME_SCHEMA = "openclaw.youtube.windows-resume.v2"
+RECOVERY_POLICY = "gcp-rate-recovery-v1"
+RECOVERY_WAITS = (4 * 3600, 8 * 3600)
+RECOVERY_HORIZON = 24 * 3600
+RECOVERY_DISPATCHED = {"intent", "uncertain", "acknowledged"}
+RECOVERY_STATES = RECOVERY_DISPATCHED | {"armed", "expired", "held"}
+RECOVERY_MAX_RECEIPTS = 64
+RECOVERY_MAX_RECEIPT_BYTES = 64 * 1024
+RECOVERY_MAX_TOTAL_BYTES = 1024 * 1024
 
 
 def load_module(name: str, path: Path) -> Any:
@@ -94,6 +105,10 @@ YC = LC.YC
 
 class SelectionConflictError(GP.PoolError):
     """Selected items were claimed by another node before lease creation."""
+
+
+class RecoveryNotReady(GP.PoolError):
+    """The same approved checkpoint is temporarily busy, without a dispatch."""
 
 
 def _transient_node_errors() -> tuple[type[BaseException], ...]:
@@ -985,54 +1000,382 @@ def checkpoint_sha256(remote: dict[str, Any]) -> str:
     return digest
 
 
-def resume_canary(canary_id: str, *, expected_checkpoint_sha256: str) -> dict[str, Any]:
-    canary_id = validate_canary_id(canary_id)
+def _recovery_time(value: str) -> dt.datetime:
+    try:
+        if not isinstance(value, str) or len(value) > 64:
+            raise ValueError()
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None or parsed.utcoffset() != dt.timedelta(0):
+            raise ValueError()
+        return parsed
+    except (ValueError, OverflowError):
+        raise GP.PoolError("Windows recovery timestamp is invalid") from None
+
+
+def _recovery_now(now: dt.datetime | None) -> dt.datetime:
+    value = now if now is not None else dt.datetime.now(dt.timezone.utc)
+    if not isinstance(value, dt.datetime) or value.tzinfo is None:
+        raise GP.PoolError("Windows recovery clock is invalid")
+    return value.astimezone(dt.timezone.utc)
+
+
+def _recovery_stamp(value: dt.datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def _resume_binding(manifest: dict[str, Any]) -> dict[str, Any]:
+    return {key: manifest.get(key) for key in ("canary_id", "lease_id", "binding_sha256", "worker_sha256", "adapter_sha256", "urls_sha256")}
+
+
+def _existing_recovery_root(canary_id: str) -> Path:
     root = canary_root(canary_id)
+    manifest = root / "manifest.json"
+    if root.is_symlink() or not root.is_dir() or manifest.is_symlink() or not manifest.is_file():
+        raise GP.PoolError("Windows recovery requires an existing canary manifest")
+    return root
+
+
+def _recovery_receipt_reader() -> Callable[[Path], bytes]:
+    """Share the actual receipt-byte ceiling across one operation's rereads."""
+    remaining = RECOVERY_MAX_TOTAL_BYTES
+    def read(path: Path) -> bytes:
+        nonlocal remaining
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= RECOVERY_MAX_RECEIPT_BYTES
+            or info.st_size > remaining):
+            raise GP.PoolError("Windows recovery receipt operation exceeds its byte contract")
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except OSError:
+            raise GP.PoolError("Windows recovery receipt cannot be opened safely") from None
+        with os.fdopen(fd, "rb") as handle:
+            opened = os.fstat(handle.fileno())
+            if (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns) != (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns):
+                raise GP.PoolError("Windows recovery receipt changed during admission")
+            raw = handle.read(info.st_size)
+            after = os.fstat(handle.fileno())
+            remaining -= len(raw)
+            if len(raw) != info.st_size or (after.st_size, after.st_mtime_ns) != (info.st_size, info.st_mtime_ns):
+                raise GP.PoolError("Windows recovery receipt changed during read")
+        return raw
+    return read
+
+
+def resume_request_inventory(root: Path, manifest: dict[str, Any], *,
+                             read_raw: Callable[[Path], bytes] | None = None) -> dict[str, dict]:
+    """One bounded external-tool receipt owner; never probes or changes state."""
+    read_raw = read_raw or _recovery_receipt_reader()
+    directory = root / "resume-requests"
+    if any(path.is_symlink() for path in (root, directory)):
+        raise GP.PoolError("Windows recovery receipt path is redirected")
+    if not directory.exists():
+        return {}
+    if not directory.is_dir():
+        raise GP.PoolError("Windows recovery receipt directory is invalid")
+    result = {}
+    total = 0
+    consumed_ordinals = set()
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            if len(result) >= RECOVERY_MAX_RECEIPTS or not re.fullmatch(r"[0-9a-f]{64}\.json", entry.name):
+                raise GP.PoolError("Windows recovery receipt inventory exceeds its contract")
+            info = entry.stat(follow_symlinks=False)
+            if (not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= RECOVERY_MAX_RECEIPT_BYTES
+                or info.st_size > RECOVERY_MAX_TOTAL_BYTES - total):
+                raise GP.PoolError("Windows recovery receipt exceeds its byte contract")
+            raw = read_raw(Path(entry.path))
+            total += len(raw)
+            if not isinstance(raw, bytes) or len(raw) != info.st_size or len(raw) > RECOVERY_MAX_RECEIPT_BYTES or total > RECOVERY_MAX_TOTAL_BYTES:
+                raise GP.PoolError("Windows recovery receipt inventory changed or exceeds its byte contract")
+            try:
+                row = json.loads(raw)
+            except (ValueError, UnicodeError):
+                raise GP.PoolError("Windows recovery request receipt is corrupt or mismatched") from None
+            digest = entry.name[:-5]
+            if (not isinstance(row, dict) or row.get("binding") != _resume_binding(manifest)
+                or row.get("checkpoint_sha256") != digest
+                or row.get("schema") not in {"openclaw.youtube.windows-resume.v1", RESUME_SCHEMA}):
+                raise GP.PoolError("Windows recovery request receipt is corrupt or mismatched")
+            created = _recovery_time(row.get("created_at"))
+            if row["schema"].endswith(".v1"):
+                if row.get("state") not in RECOVERY_DISPATCHED:
+                    raise GP.PoolError("Windows legacy recovery receipt state is invalid")
+            else:
+                approved = _recovery_time(row.get("approved_at"))
+                occurrence = _recovery_time(row.get("occurrence_at"))
+                due = _recovery_time(row.get("due_at"))
+                expires = _recovery_time(row.get("grant_expires_at"))
+                ordinal = row.get("recovery_ordinal")
+                if (row.get("policy_version") != RECOVERY_POLICY or row.get("state") not in RECOVERY_STATES
+                    or type(ordinal) is not int or ordinal not in {1, 2}
+                    or row.get("occurrence_checkpoint_sha256") != digest
+                    or not re.fullmatch(r"[A-Za-z0-9_-]{11}", str(row.get("failed_video_id")))
+                    or type(row.get("failed_video_attempt")) is not int or not 1 <= row["failed_video_attempt"] < 3
+                    or not isinstance(row.get("approval_reference"), str)
+                    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}", row["approval_reference"])
+                    or created != approved or occurrence > approved
+                    or expires != approved + dt.timedelta(seconds=RECOVERY_HORIZON)
+                    or not occurrence + dt.timedelta(seconds=RECOVERY_WAITS[ordinal - 1]) <= due <= occurrence + dt.timedelta(seconds=RECOVERY_HORIZON)
+                    or due >= expires):
+                    raise GP.PoolError("Windows bounded recovery receipt is corrupt or mismatched")
+                if row["state"] in RECOVERY_DISPATCHED:
+                    if ordinal in consumed_ordinals:
+                        raise GP.PoolError("Windows recovery ordinal was consumed more than once")
+                    consumed_ordinals.add(ordinal)
+                    dispatched = _recovery_time(row.get("dispatched_at"))
+                    if not max(approved, due) <= dispatched < expires:
+                        raise GP.PoolError("Windows recovery dispatch chronology is invalid")
+            result[digest] = row
+    if sum(row["state"] == "armed" for row in result.values()) > 1:
+        raise GP.PoolError("Windows run has competing recovery grants")
+    return result
+
+
+def _rate_occurrence(manifest: dict, remote: dict, now: dt.datetime) -> tuple[str, int, dt.datetime]:
+    if (remote.get("state") != "waiting_network_cooldown" or remote.get("circuit_open") is not True
+        or remote.get("circuit_reason") != "rate_limited"):
+        raise GP.PoolError("Windows checkpoint is not an eligible rate-limit circuit")
+    items = remote.get("items")
+    ids = manifest.get("video_ids")
+    if not isinstance(items, dict) or not isinstance(ids, list) or set(items) != set(ids):
+        raise GP.PoolError("Windows recovery attempt map differs from the requested items")
+    allowed_states = {"archived", "pending", "running", "retry_wait", "blocked_error", "blocked_configuration",
+        "blocked_interrupted", "blocked_bot_check", "blocked_auth_required", "waiting_network_cooldown",
+        "skipped_private", "skipped_age_restricted", "skipped_unavailable"}
+    for video, item in items.items():
+        if (not isinstance(item, dict) or item.get("video_id") != video or item.get("url") != GP.canonical_url(video)
+            or type(item.get("attempts")) is not int or not 0 <= item["attempts"] <= 3
+            or item.get("state") not in allowed_states
+            or (item.get("process_exit_code") is not None and type(item["process_exit_code"]) is not int)):
+            raise GP.PoolError("Windows recovery attempt map is invalid")
+        if item.get("failure_class") == "rate_limited" and item["attempts"] >= 3:
+            raise GP.PoolError("Windows rate-limited item exhausted its attempt budget; manual hold")
+    video = remote.get("current_video_id")
+    item = items.get(video)
+    if (not isinstance(item, dict) or item.get("state") != "waiting_network_cooldown"
+        or item.get("failure_class") != "rate_limited" or not 1 <= item["attempts"] < 3):
+        raise GP.PoolError("Windows recovery failed-video occurrence is invalid")
+    occurrence = _recovery_time(remote.get("updated_at"))
+    if occurrence > now:
+        raise GP.PoolError("Windows rate-limit occurrence is in the future")
+    return video, item["attempts"], occurrence
+
+
+def _verify_recovery_sources() -> None:
+    from youtube_windows_deployment import verify_managed_sources
+    verify_managed_sources(WORKSPACE, WINDOWS_CONFIG, loaded_canary_sha256=_LOADED_CANARY_SHA256)
+
+
+def _recovery_probe(canary_id: str, manifest: dict, digest: str) -> dict:
+    validate_prelaunch_bindings(canary_id, manifest)
+    node = windows_node_status()
+    if node["nodeId"] != (manifest.get("node") or {}).get("node_id"):
+        raise GP.PoolError("Windows recovery node differs from active lease")
+    remote = probe_canary(canary_id)
+    if remote.get("exists") is not True:
+        raise GP.PoolError("Windows recovery requires existing staging")
+    _strict_remote_binding(manifest, remote)
+    if checkpoint_sha256(remote) != digest:
+        raise GP.PoolError("Windows recovery checkpoint changed; obtain fresh proof")
+    if remote.get("worker_alive") is not False or remote.get("worker_lock_free") is not True:
+        raise RecoveryNotReady("Windows recovery requires a stopped worker and a proven free OS lock")
+    return remote
+
+
+def _arm_rate_locked(canary_id: str, manifest: dict, digest: str, approval_reference: str,
+                     retry_after_at: str | None, now: dt.datetime | None, inventory: dict, remote: dict) -> dict:
+    current = _recovery_now(now)
+    if not isinstance(approval_reference, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}", approval_reference):
+        raise GP.PoolError("Windows rate recovery requires a bounded explicit approval reference")
+    previous = inventory.get(digest)
+    if previous:
+        if previous.get("approval_reference") != approval_reference:
+            raise GP.PoolError("Windows checkpoint already has a recovery request; observe it")
+        return previous
+    if any(row.get("approval_reference") == approval_reference or row["state"] == "armed" for row in inventory.values()):
+        raise GP.PoolError("Windows recovery needs a separate approval and no competing grant")
+    consumed = [row for row in inventory.values() if row["state"] in RECOVERY_DISPATCHED]
+    if len(consumed) >= len(RECOVERY_WAITS):
+        raise GP.PoolError("Windows run exhausted its recovery dispatch budget; manual hold")
+    video, attempt, occurrence = _rate_occurrence(manifest, remote, current)
+    if consumed:
+        last = max(consumed, key=lambda row: _recovery_time(row.get("dispatched_at", row["created_at"])))
+        last_dispatch = _recovery_time(last.get("dispatched_at", last["created_at"]))
+        if (last["checkpoint_sha256"] == digest or occurrence <= last_dispatch
+            or (last.get("failed_video_id") == video and attempt <= last["failed_video_attempt"])):
+            raise GP.PoolError("Windows second recovery requires a proven new rate-limit occurrence")
+    ordinal = len(consumed) + 1
+    due = occurrence + dt.timedelta(seconds=RECOVERY_WAITS[ordinal - 1])
+    if retry_after_at is not None:
+        due = max(due, _recovery_time(retry_after_at))
+    expires = current + dt.timedelta(seconds=RECOVERY_HORIZON)
+    if due > occurrence + dt.timedelta(seconds=RECOVERY_HORIZON) or due >= expires:
+        raise GP.PoolError("Windows recovery wait exceeds the finite planning horizon; manual hold")
+    request = {"schema": RESUME_SCHEMA, "policy_version": RECOVERY_POLICY, "binding": _resume_binding(manifest),
+        "checkpoint_sha256": digest, "occurrence_checkpoint_sha256": digest, "occurrence_at": _recovery_stamp(occurrence),
+        "failed_video_id": video, "failed_video_attempt": attempt, "recovery_ordinal": ordinal,
+        "due_at": _recovery_stamp(due), "approved_at": _recovery_stamp(current), "created_at": _recovery_stamp(current),
+        "grant_expires_at": _recovery_stamp(expires), "approval_reference": approval_reference, "state": "armed"}
+    # Readiness is awaited before this write. Recheck authoritative ownership now.
+    validate_prelaunch_bindings(canary_id, manifest)
+    atomic_json(canary_root(canary_id) / "resume-requests" / (digest + ".json"), request)
+    return request
+
+
+def arm_rate_recovery(canary_id: str, *, expected_checkpoint_sha256: str, approval_reference: str,
+                      retry_after_at: str | None = None, now: dt.datetime | None = None) -> dict[str, Any]:
+    canary_id = validate_canary_id(canary_id)
+    root = _existing_recovery_root(canary_id)
     if not isinstance(expected_checkpoint_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_checkpoint_sha256):
         raise GP.PoolError("explicit recovery requires a fresh checkpoint digest")
-    with GP.FileLock(root / "reconcile.lock", blocking=False):
-        store = GP.PoolStore(POOL_ROOT)
-        with store.coordinator_lock(blocking=False):
-            manifest = read_json(root / "manifest.json", {}) or {}
-            if manifest.get("state") in {"completed", "partial"}:
-                return {"state": manifest["state"], "canary_id": canary_id, "already_final": True}
-            if manifest.get("state") not in {"launching", "running", "returned", "blocked", "attention_required"}:
-                raise GP.PoolError("Windows canary is not resumable")
-            validate_prelaunch_bindings(canary_id, manifest)
-            request_path = root / "resume-requests" / (expected_checkpoint_sha256 + ".json")
-            binding = {key: manifest.get(key) for key in ("canary_id", "lease_id", "binding_sha256", "worker_sha256", "adapter_sha256", "urls_sha256")}
-            previous = read_json(request_path)
-            if previous is not None:
-                if not isinstance(previous, dict) or previous.get("binding") != binding or previous.get("checkpoint_sha256") != expected_checkpoint_sha256 or previous.get("state") not in {"intent", "uncertain", "acknowledged"}:
-                    raise GP.PoolError("Windows recovery request receipt is corrupt or mismatched")
-                return {"state": "already_requested", "canary_id": canary_id, "request_state": previous["state"], "observe_before_recovery": True}
-            node = windows_node_status()
-            if node["nodeId"] != (manifest.get("node") or {}).get("node_id"):
-                raise GP.PoolError("Windows recovery node differs from active lease")
-            remote = probe_canary(canary_id)
-            if remote.get("exists") is not True:
-                raise GP.PoolError("Windows recovery requires existing staging")
-            _strict_remote_binding(manifest, remote)
-            if checkpoint_sha256(remote) != expected_checkpoint_sha256:
-                raise GP.PoolError("Windows recovery checkpoint changed; obtain fresh proof")
-            if remote.get("worker_alive") is not False or remote.get("worker_lock_free") is not True:
-                raise GP.PoolError("Windows recovery requires a stopped worker and a proven free OS lock")
-            if remote.get("state") in REMOTE_IMPORTABLE:
-                return {"state": "returned", "canary_id": canary_id, "reconcile_required": True}
-            if remote.get("state") not in REMOTE_BLOCKED | {"running", "retry_wait"}:
-                raise GP.PoolError("Windows recovery checkpoint state is not recoverable")
-            request = {"schema": "openclaw.youtube.windows-resume.v1", "binding": binding, "checkpoint_sha256": expected_checkpoint_sha256, "state": "intent", "created_at": utcnow()}
-            atomic_json(request_path, request)
-            try:
-                reply = _normalise_probe(_invoke_adapter("Resume", staging_root=str(manifest["remote_staging_root"]), lease_id=str(manifest["lease_id"]), checkpoint_sha256=expected_checkpoint_sha256, timeout=300))
-                _strict_remote_binding(manifest, reply)
-            except Exception:
-                atomic_json(request_path, {**request, "state": "uncertain", "updated_at": utcnow()})
-                raise GP.PoolError("Windows recovery dispatch outcome uncertain; observe/reconcile before another explicit request") from None
-            state = "running" if reply.get("worker_alive") else ("returned" if reply.get("state") in REMOTE_IMPORTABLE else "blocked" if reply.get("state") in REMOTE_BLOCKED else "attention_required")
-            atomic_json(request_path, {**request, "state": "acknowledged", "updated_at": utcnow(), "remote_summary": remote_summary(reply)})
-            _set_state(root, state, resumed_at=utcnow(), worker_pid=reply.get("pid"), remote_state=reply.get("state"))
-            return {"state": state, "canary_id": canary_id, "lease_id": manifest["lease_id"], "cookies_used": False, "media_files": 0}
+    with GP.FileLock(root / "reconcile.lock", blocking=False), GP.PoolStore(POOL_ROOT).coordinator_lock(blocking=False):
+        manifest = read_json(root / "manifest.json", {}) or {}
+        if manifest.get("state") != "blocked":
+            raise GP.PoolError("Windows rate recovery requires an existing blocked run")
+        inventory = resume_request_inventory(root, manifest)
+        _verify_recovery_sources()
+        remote = _recovery_probe(canary_id, manifest, expected_checkpoint_sha256)
+        request = _arm_rate_locked(canary_id, manifest, expected_checkpoint_sha256, approval_reference, retry_after_at, now, inventory, remote)
+        return {"state": "recovery_armed" if request["state"] == "armed" else "already_requested", "canary_id": canary_id,
+                "request_state": request["state"], "due_at": request.get("due_at"), "grant_expires_at": request.get("grant_expires_at")}
+
+
+def _resume_canary_locked(canary_id: str, manifest: dict, digest: str, *,
+                          approval_reference: str | None = None, retry_after_at: str | None = None,
+                          now: dt.datetime | None = None, read_raw: Callable[[Path], bytes] | None = None) -> dict[str, Any]:
+    read_raw = read_raw or _recovery_receipt_reader()
+    root = canary_root(canary_id)
+    if manifest.get("state") in {"completed", "partial"}:
+        return {"state": manifest["state"], "canary_id": canary_id, "already_final": True}
+    if manifest.get("state") not in {"launching", "running", "returned", "blocked", "attention_required"}:
+        raise GP.PoolError("Windows canary is not resumable")
+    validate_prelaunch_bindings(canary_id, manifest)
+    inventory = resume_request_inventory(root, manifest, read_raw=read_raw)
+    previous = inventory.get(digest)
+    if previous and previous["state"] in RECOVERY_DISPATCHED:
+        return {"state": "already_requested", "canary_id": canary_id, "request_state": previous["state"], "observe_before_recovery": True}
+    request_path = root / "resume-requests" / (digest + ".json")
+    if previous:
+        if previous["state"] != "armed":
+            return {"state": "recovery_held", "canary_id": canary_id, "request_state": previous["state"]}
+        current = _recovery_now(now)
+        if current >= _recovery_time(previous["grant_expires_at"]):
+            atomic_json(request_path, {**previous, "state": "expired", "updated_at": _recovery_stamp(current)})
+            return {"state": "recovery_expired", "canary_id": canary_id}
+        if current < _recovery_time(previous["due_at"]):
+            return {"state": "recovery_waiting", "canary_id": canary_id, "due_at": previous["due_at"]}
+    remote = _recovery_probe(canary_id, manifest, digest)
+    if remote.get("state") in REMOTE_IMPORTABLE:
+        return {"state": "returned", "canary_id": canary_id, "reconcile_required": True}
+    if remote.get("state") not in REMOTE_BLOCKED | {"running", "retry_wait"}:
+        raise GP.PoolError("Windows recovery checkpoint state is not recoverable")
+    if remote.get("state") == "waiting_network_cooldown" or remote.get("circuit_reason") == "rate_limited" or previous:
+        _verify_recovery_sources()
+        if previous is None:
+            if approval_reference is None:
+                raise GP.PoolError("Windows rate recovery requires an explicit approved grant")
+            previous = _arm_rate_locked(canary_id, manifest, digest, approval_reference, retry_after_at, now, inventory, remote)
+        video, attempt, occurrence = _rate_occurrence(manifest, remote, _recovery_now(now))
+        if (video, attempt, _recovery_stamp(occurrence)) != (previous["failed_video_id"], previous["failed_video_attempt"], previous["occurrence_at"]):
+            raise GP.PoolError("Windows recovery occurrence changed")
+        current = _recovery_now(now)
+        if current >= _recovery_time(previous["grant_expires_at"]):
+            atomic_json(request_path, {**previous, "state": "expired", "updated_at": _recovery_stamp(current)})
+            return {"state": "recovery_expired", "canary_id": canary_id}
+        if current < _recovery_time(previous["due_at"]):
+            return {"state": "recovery_waiting", "canary_id": canary_id, "due_at": previous["due_at"]}
+        request = {**previous, "state": "intent", "dispatched_at": _recovery_stamp(current)}
+    else:
+        request = {"schema": "openclaw.youtube.windows-resume.v1", "binding": _resume_binding(manifest), "checkpoint_sha256": digest, "state": "intent", "created_at": utcnow()}
+    # The held locks serialize all receipt writers. Re-read the live authority and
+    # run budget after awaited readiness, immediately before intent/RPC.
+    validate_prelaunch_bindings(canary_id, manifest)
+    windows_node_status()
+    refreshed = resume_request_inventory(root, manifest, read_raw=read_raw)
+    if sum(row["state"] in RECOVERY_DISPATCHED for row in refreshed.values()) >= len(RECOVERY_WAITS):
+        raise GP.PoolError("Windows run exhausted its recovery dispatch budget; manual hold")
+    if previous:
+        if refreshed.get(digest) != previous:
+            raise GP.PoolError("Windows recovery grant changed before dispatch")
+        _verify_recovery_sources()
+    validate_prelaunch_bindings(canary_id, manifest)
+    if previous:
+        current = _recovery_now(now)
+        if current >= _recovery_time(previous["grant_expires_at"]):
+            atomic_json(request_path, {**previous, "state": "expired", "updated_at": _recovery_stamp(current)})
+            return {"state": "recovery_expired", "canary_id": canary_id}
+        if current < _recovery_time(previous["due_at"]):
+            return {"state": "recovery_waiting", "canary_id": canary_id, "reason": "grant_not_current"}
+        request["dispatched_at"] = _recovery_stamp(current)
+    atomic_json(request_path, request)
+    try:
+        reply = _normalise_probe(_invoke_adapter("Resume", staging_root=str(manifest["remote_staging_root"]), lease_id=str(manifest["lease_id"]), checkpoint_sha256=digest, timeout=300, verify_host=False))
+        _strict_remote_binding(manifest, reply)
+    except Exception:
+        atomic_json(request_path, {**request, "state": "uncertain", "updated_at": utcnow()})
+        raise GP.PoolError("Windows recovery dispatch outcome uncertain; observe/reconcile before another explicit request") from None
+    state = "running" if reply.get("worker_alive") else ("returned" if reply.get("state") in REMOTE_IMPORTABLE else "blocked" if reply.get("state") in REMOTE_BLOCKED else "attention_required")
+    atomic_json(request_path, {**request, "state": "acknowledged", "updated_at": utcnow(), "remote_summary": remote_summary(reply)})
+    _set_state(root, state, resumed_at=utcnow(), worker_pid=reply.get("pid"), remote_state=reply.get("state"))
+    return {"state": state, "canary_id": canary_id, "lease_id": manifest["lease_id"], "cookies_used": False, "media_files": 0}
+
+
+def resume_canary(canary_id: str, *, expected_checkpoint_sha256: str, approval_reference: str | None = None,
+                  retry_after_at: str | None = None) -> dict[str, Any]:
+    canary_id = validate_canary_id(canary_id)
+    if not isinstance(expected_checkpoint_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_checkpoint_sha256):
+        raise GP.PoolError("explicit recovery requires a fresh checkpoint digest")
+    root = _existing_recovery_root(canary_id)
+    with GP.FileLock(root / "reconcile.lock", blocking=False), GP.PoolStore(POOL_ROOT).coordinator_lock(blocking=False):
+        manifest = read_json(root / "manifest.json", {}) or {}
+        return _resume_canary_locked(canary_id, manifest, expected_checkpoint_sha256,
+                                    approval_reference=approval_reference, retry_after_at=retry_after_at)
+
+
+def continue_rate_recovery(canary_id: str, *, now: dt.datetime | None = None) -> dict[str, Any]:
+    """Scheduled observation can consume only an explicitly armed one-RPC grant."""
+    canary_id = validate_canary_id(canary_id)
+    root = _existing_recovery_root(canary_id)
+    read_raw = _recovery_receipt_reader()
+    with GP.FileLock(root / "reconcile.lock", blocking=False), GP.PoolStore(POOL_ROOT).coordinator_lock(blocking=False):
+        manifest = read_json(root / "manifest.json", {}) or {}
+        inventory = resume_request_inventory(root, manifest, read_raw=read_raw)
+        armed = [(digest, row) for digest, row in inventory.items() if row["state"] == "armed"]
+        if not armed:
+            return {"state": "recovery_unarmed", "canary_id": canary_id}
+        digest, request = armed[0]
+        try:
+            return _resume_canary_locked(canary_id, manifest, digest, now=now, read_raw=read_raw)
+        except _transient_node_errors():
+            return {"state": "recovery_waiting", "canary_id": canary_id, "reason": "node_unavailable"}
+        except RecoveryNotReady:
+            return {"state": "recovery_waiting", "canary_id": canary_id, "reason": "worker_or_lock_busy"}
+        except GP.PoolError:
+            # An adapter exception can happen after durable intent. Never turn
+            # that consumed slot back into an undispatched grant or hold.
+            current = resume_request_inventory(root, manifest, read_raw=read_raw).get(digest)
+            if current and current["state"] in RECOVERY_DISPATCHED:
+                raise
+            atomic_json(root / "resume-requests" / (digest + ".json"), {**request, "state": "held", "updated_at": _recovery_stamp(_recovery_now(now)), "hold_reason": "readiness_or_occurrence_refused"})
+            return {"state": "recovery_held", "canary_id": canary_id, "reason": "readiness_or_occurrence_refused"}
+
+
+
+def cancel_rate_recovery(canary_id: str, *, expected_checkpoint_sha256: str) -> dict[str, Any]:
+    """Revoke only an undispatched grant; retain every receipt and run binding."""
+    canary_id = validate_canary_id(canary_id)
+    root = _existing_recovery_root(canary_id)
+    with GP.FileLock(root / "reconcile.lock", blocking=False), GP.PoolStore(POOL_ROOT).coordinator_lock(blocking=False):
+        manifest = read_json(root / "manifest.json", {}) or {}
+        request = resume_request_inventory(root, manifest).get(expected_checkpoint_sha256)
+        if not request:
+            return {"state": "recovery_unarmed", "canary_id": canary_id}
+        if request["state"] in RECOVERY_DISPATCHED:
+            return {"state": "already_requested", "canary_id": canary_id, "observe_before_recovery": True}
+        if request["state"] == "armed":
+            atomic_json(root / "resume-requests" / (expected_checkpoint_sha256 + ".json"),
+                        {**request, "state": "held", "hold_reason": "operator_cancelled", "updated_at": utcnow()})
+        return {"state": "recovery_held", "canary_id": canary_id}
 
 
 def package_canary(canary_id: str) -> dict[str, Any]:
@@ -1378,11 +1721,14 @@ def build_parser() -> argparse.ArgumentParser:
     prepare = sub.add_parser("prepare")
     prepare.add_argument("--canary-id", required=True)
     prepare.add_argument("--item-count", type=int, default=1)
-    for name in ("launch", "probe", "resume", "package", "reconcile"):
+    for name in ("launch", "probe", "resume", "arm-rate", "cancel-rate", "recovery-status", "package", "reconcile"):
         command = sub.add_parser(name)
         command.add_argument("--canary-id", required=True)
-        if name == "resume":
+        if name in {"resume", "arm-rate", "cancel-rate"}:
             command.add_argument("--checkpoint-sha256", required=True)
+        if name in {"resume", "arm-rate"}:
+            command.add_argument("--approval-reference", required=name == "arm-rate")
+            command.add_argument("--retry-after-at", help="Validated UTC deadline; only extends the policy wait")
     return parser
 
 
@@ -1397,7 +1743,17 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "probe":
         result = probe_canary(args.canary_id)
     elif args.command == "resume":
-        result = resume_canary(args.canary_id, expected_checkpoint_sha256=args.checkpoint_sha256)
+        result = resume_canary(args.canary_id, expected_checkpoint_sha256=args.checkpoint_sha256,
+                               approval_reference=args.approval_reference, retry_after_at=args.retry_after_at)
+    elif args.command == "arm-rate":
+        result = arm_rate_recovery(args.canary_id, expected_checkpoint_sha256=args.checkpoint_sha256,
+                                  approval_reference=args.approval_reference, retry_after_at=args.retry_after_at)
+    elif args.command == "cancel-rate":
+        result = cancel_rate_recovery(args.canary_id, expected_checkpoint_sha256=args.checkpoint_sha256)
+    elif args.command == "recovery-status":
+        root = _existing_recovery_root(args.canary_id)
+        manifest = read_json(root / "manifest.json", {}) or {}
+        result = {"canary_id": args.canary_id, "requests": resume_request_inventory(root, manifest)}
     elif args.command == "package":
         result = package_canary(args.canary_id)
     else:

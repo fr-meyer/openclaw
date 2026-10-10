@@ -217,7 +217,8 @@ def record_cutover(job_id: str, *, chunk_size: int = 8) -> dict[str, Any]:
 
 
 def validate_cutover() -> dict[str, Any]:
-    verify_managed_sources(WORKSPACE, WC.WINDOWS_CONFIG, loaded_supervisor_sha256=_LOADED_SUPERVISOR_SHA256)
+    verify_managed_sources(WORKSPACE, WC.WINDOWS_CONFIG, loaded_supervisor_sha256=_LOADED_SUPERVISOR_SHA256,
+                           loaded_canary_sha256=WC._LOADED_CANARY_SHA256)
     marker = read_json(MARKER_PATH, {}) or {}
     if marker.get("schema") != "franck.youtube-global-pool.windows-worker-cutover.v1" or marker.get("enabled") is not True:
         raise GP.PoolError("Windows worker cutover marker is absent or disabled")
@@ -392,6 +393,10 @@ def tick(*, launch: bool = True) -> dict[str, Any]:
             validate_cutover()
             try:
                 result = WC.reconcile_canary(run_id)
+                if result.get("state") == "blocked":
+                    recovery = WC.continue_rate_recovery(run_id)
+                    if recovery.get("state") in {"running", "returned", "attention_required"}:
+                        result = recovery
             except Exception as exc:
                 if is_node_unavailable(exc):
                     return defer_node_unavailable(current)
@@ -447,6 +452,10 @@ def tick(*, launch: bool = True) -> dict[str, Any]:
                     action = "run_launch_reconciled"
                 elif state in RECONCILABLE_STATES:
                     result = WC.reconcile_canary(run_id)
+                    if result.get("state") == "blocked":
+                        recovery = WC.continue_rate_recovery(run_id)
+                        if recovery.get("state") in {"running", "returned", "attention_required"}:
+                            result = recovery
                     result_state = str(result.get("state") or "")
                     if result_state in {"blocked", "attention_required", "partial"}:
                         action = "run_attention_required" if result_state != "partial" else "run_partial"
