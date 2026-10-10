@@ -180,6 +180,10 @@ the source manifest. Both focused test lanes report their exit status; either
 failure keeps the source job red and the image job skipped. This route produces
 no OCI image or artifact.
 
+A new branch created at an already published commit may have no changed files
+for the push path filter and start no run. In that case, review and push a fresh
+documentation change in this allowlisted directory to request this image gate.
+
 A separate reviewed push to `release-pipeline/image/v2026.9.9` first reruns
 the same source job, then allows one `linux/amd64` Buildx preparation with
 `OPENCLAW_EXTENSIONS=workboard` and `OPENCLAW_PARITY_IMAGE=1`. It seals and
