@@ -1,95 +1,253 @@
-name: Authorized Beta Focused Validation
+name: YouTube frozen fixture and native qualification
 
 on:
   workflow_dispatch:
 
 permissions:
-  actions: read
-  attestations: write
   contents: read
-  id-token: write
 
 concurrency:
-  group: authorized-beta-focused-validation
+  group: youtube-notification-source-qualification-${{ github.ref }}
   cancel-in-progress: false
 
 env:
+  CI: "true"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  NODE_VERSION: "24.21.0"
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    if: github.repository == 'fr-meyer/openclaw' && github.event.repository.fork == true && github.event.repository.private == false && github.ref == 'refs/heads/fix/youtube-notification-fixture-ci-20261009' && github.event_name == 'workflow_dispatch' && github.actor == 'fr-meyer' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
-      - name: Validate protected tooling identity
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Checkout the dispatched workflow and its frozen source ancestry
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+          filter: ""
+          persist-credentials: false
+          lfs: false
+          submodules: false
+
+      - name: Admit only the one-file overlay and the complete frozen source
+        id: admission
+        timeout-minutes: 2
+        shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "${GITHUB_REF}" =~ ^refs/tags/release-publish/([a-f0-9]{12})-[1-9][0-9]*$ ]]; then
-            echo "Authorized beta focused validation requires a protected release-publish tag." >&2
-            exit 1
-          fi
-          if [[ "${GITHUB_SHA:0:12}" != "${BASH_REMATCH[1]}" ]]; then
-            echo "Protected release-publish tag does not match the workflow SHA." >&2
-            exit 1
-          fi
-          tag="${GITHUB_REF#refs/tags/}"
-          remote_sha="$(
-            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
-              --jq '.object | select(.type == "commit") | .sha'
-          )"
-          [[ "${remote_sha}" == "${GITHUB_SHA}" ]] || {
-            echo "Protected release-publish tag moved after dispatch." >&2
-            exit 1
+          python3 - <<'PY'
+          import datetime, hashlib, json, os, pathlib, shutil, subprocess
+          source = "8c37b9e27bb197996eaee21aa0197f947a08a998"
+          tree = "0fffee15bab60d3cdec575783295cc234d95aa05"
+          base = "97ea251e809e0f0a2b0753a00891fc96a4169c8f"
+          workflow = b".github/workflows/authorized-beta-focused-validation.yml"
+          def git(*args):
+              return subprocess.check_output(["git", *args], timeout=30)
+          assert git("rev-parse", "HEAD").decode().strip() == os.environ["GITHUB_SHA"]
+          assert git("rev-list", "--parents", "-n", "1", "HEAD").decode().split() == [os.environ["GITHUB_SHA"], source]
+          assert git("rev-parse", "HEAD^").decode().strip() == source
+          assert git("diff-tree", "--no-commit-id", "--name-only", "-r", "-z", source, "HEAD") == workflow + b"\0"
+          assert git("ls-tree", "HEAD", workflow.decode()).startswith(b"100644 blob ")
+          assert not git("status", "--porcelain=v1", "--untracked-files=all")
+          workflow_sha256 = hashlib.sha256(pathlib.Path(workflow.decode()).read_bytes()).hexdigest()
+          subprocess.run(["git", "checkout", "--detach", source], check=True, timeout=30)
+          assert git("rev-parse", "HEAD", "HEAD^{tree}", "HEAD^").decode().splitlines() == [source, tree, base]
+          assert not git("status", "--porcelain=v1", "--untracked-files=all")
+          sparse = subprocess.run(["git", "config", "--get", "core.sparseCheckout"], capture_output=True, timeout=10)
+          assert sparse.returncode in (0, 1) and sparse.stdout.strip() != b"true"
+          entries = git("ls-tree", "-r", "-z", "HEAD").split(b"\0")[:-1]
+          assert len(entries) == 49769
+          assert all(row.split(b"\t", 1)[0].split()[1] == b"blob" for row in entries)
+          objects = sorted({row.split(b"\t", 1)[0].split()[2] for row in entries})
+          metadata = subprocess.run(["git", "cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"], input=b"\n".join(objects)+b"\n", capture_output=True, check=True, timeout=30).stdout.splitlines()
+          assert len(metadata) == len(objects) and all(len(row.split()) == 3 and row.split()[1] == b"blob" for row in metadata)
+          sizes = {row.split()[0]: int(row.split()[2]) for row in metadata}
+          source_bytes = sum(sizes[row.split(b"\t", 1)[0].split()[2]] for row in entries)
+          assert source_bytes == 662471332
+          lock_hashes = {
+              "package.json": "b33f7cc9a5678a5dc37e731e72c9fe573e9f1590a81a026ea00f4bb17c5bec2b",
+              "pnpm-lock.yaml": "d7d01cedbd0b4f3224e38a82643b01aa0271d6a4e0e36439640113e95687e6eb",
+              "pnpm-workspace.yaml": "055eb743a7cc9b350bd52a5674eb8c1c8af071c468799237228951005cea0b6a",
+              ".npmrc": "f1d021e2abdf8817d83e35feb1f5d604e8c985aa0553bec3d417cf6f93e9c09c"
           }
+          assert all(hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest() == value for path, value in lock_hashes.items())
+          disk = shutil.disk_usage(os.environ["GITHUB_WORKSPACE"])
+          assert disk.free >= 10 * 1024**3, "insufficient initial runner disk"
+          run = os.environ["GITHUB_RUN_ID"]
+          attempt = os.environ["GITHUB_RUN_ATTEMPT"]
+          assert run.isdecimal() and attempt == "1"
+          temp = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
+          owned = temp / ("youtube-notification-source-" + run + "-" + attempt)
+          owned.mkdir(mode=0o700)
+          workspace = pathlib.Path(os.environ["GITHUB_WORKSPACE"]).resolve(strict=True)
+          assert workspace.parent == pathlib.Path(os.environ["RUNNER_WORKSPACE"]).resolve(strict=True)
+          assert workspace.name == "openclaw" and (workspace / ".git").is_dir()
+          (owned / "owner.json").write_text(json.dumps({"run":run,"attempt":attempt,"workspace":str(workspace),"source":source})+"\n")
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              for key, child in [("PNPM_HOME","pnpm-home"),("COREPACK_HOME","corepack-home"),("PNPM_CONFIG_STORE_DIR","pnpm-store"),("PNPM_CONFIG_CACHE_DIR","pnpm-cache")]:
+                  output.write(key+"="+str(owned / child)+"\n")
+          receipt = {"schema":"youtube-frozen-fixture.source.v1", "state":"full_exact_source_admitted", "checked_at":datetime.datetime.now(datetime.timezone.utc).isoformat(), "source":source, "tree":tree, "base":base, "tracked_files":len(entries), "source_bytes":source_bytes, "tracked_blob_inventory_sha256":hashlib.sha256(b"\0".join(entries)+b"\0").hexdigest(), "workflow_commit":os.environ["GITHUB_SHA"], "workflow_sha256":workflow_sha256, "lock_hashes":lock_hashes, "run":run, "attempt":attempt, "runner_disk_total_bytes":disk.total, "runner_disk_free_bytes":disk.free, "fixture_cleanup_owner":"GitHub hosted VM disposal after action post steps"}
+          (owned / "source-receipt.json").write_text(json.dumps(receipt, sort_keys=True)+"\n")
+          print(json.dumps(receipt, sort_keys=True))
+          PY
 
-      - name: Checkout trusted tooling
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Checkout frozen candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: 3fbe94065c2b94f4c08acb6742a69938bf408d94
-          path: candidate
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Setup Node environment
+      - name: Install the exact lock through the source-owned Node setup
+        id: node_setup
+        timeout-minutes: 18
         uses: ./.github/actions/setup-node-env
         with:
-          cache-mode: restore
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: "24.19.0"
           install-bun: "false"
+          install-deps: "true"
+          frozen-lockfile: "true"
+          cache-mode: "off"
+          dependency-cache: "false"
+          vitest-fs-cache: "false"
+          vitest-worker-cache: "false"
+          restore-test-caches: "false"
+          node-compile-cache: "false"
+          build-all-cache-scope: ""
 
-      - name: Build focused evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Retain actual source, dependency and runtime receipts
+        timeout-minutes: 5
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/authorized-beta-focused"
-          node --import tsx scripts/validate-authorized-beta-focused-evidence.mts create \
-            --candidate-root candidate \
-            --output "${RUNNER_TEMP}/authorized-beta-focused/evidence.json" \
-            --producer-run-id "${GITHUB_RUN_ID}" \
-            --producer-run-attempt "${GITHUB_RUN_ATTEMPT}" \
-            --producer-workflow-full-ref "${GITHUB_REF}" \
-            --producer-workflow-sha "${GITHUB_SHA}"
+          python3 - <<'PYRECEIPT'
+          import datetime, hashlib, json, os, pathlib, shutil, subprocess
+          owned = pathlib.Path(os.environ["RUNNER_TEMP"]) / ("youtube-notification-source-" + os.environ["GITHUB_RUN_ID"] + "-1")
+          before = json.loads((owned / "source-receipt.json").read_text())
+          assert all(hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest() == value for path, value in before["lock_hashes"].items())
+          assert subprocess.check_output(["git", "rev-parse", "HEAD", "HEAD^{tree}"], timeout=10).decode().splitlines() == [before["source"], before["tree"]]
+          assert not subprocess.check_output(["git", "status", "--porcelain=v1", "--untracked-files=no"], timeout=30)
+          def digest(path):
+              with open(path, "rb") as handle:
+                  return hashlib.file_digest(handle, "sha256").hexdigest()
+          tools = {}
+          for name in ("node", "corepack", "pnpm", "python3"):
+              found = shutil.which(name)
+              assert found, name
+              resolved = pathlib.Path(found).resolve(strict=True)
+              version = subprocess.check_output([found, "--version"], timeout=30).decode().strip()
+              tools[name] = {"path":found, "resolved_path":str(resolved), "sha256":digest(resolved), "version":version}
+          assert tools["node"]["version"] == "v24.19.0"
+          assert tools["pnpm"]["version"] == "12.4.2"
+          assert pathlib.Path("node_modules").is_dir() and not pathlib.Path("node_modules").is_symlink()
+          virtual = pathlib.Path("node_modules/.pnpm")
+          assert virtual.is_dir() and not virtual.is_symlink()
+          def payload_receipt(package):
+              tree = hashlib.sha256()
+              count = total = 0
+              def walk_error(error):
+                  raise error
+              for parent, dirs, files in os.walk(package, followlinks=False, onerror=walk_error):
+                  dirs.sort()
+                  for name in sorted(files + [name for name in dirs if (pathlib.Path(parent) / name).is_symlink()]):
+                      path = pathlib.Path(parent) / name
+                      relative = str(path.relative_to(package))
+                      info = path.lstat()
+                      if path.is_symlink():
+                          row = [relative, "symlink", info.st_mode, os.readlink(path)]
+                      elif path.is_file():
+                          row = [relative, "file", info.st_mode, info.st_size, digest(path)]
+                          count += 1
+                          total += info.st_size
+                      else:
+                          raise RuntimeError("unexpected package payload member")
+                      tree.update(json.dumps(row, separators=(",", ":")).encode()+b"\n")
+              return {"payload_tree_sha256":tree.hexdigest(), "payload_regular_files":count, "payload_regular_bytes":total}
+          manager_root = pathlib.Path(os.environ["COREPACK_HOME"]) / "v1/pnpm/12.4.2"
+          assert manager_root.resolve(strict=True).is_relative_to(pathlib.Path(os.environ["RUNNER_TEMP"]).resolve(strict=True))
+          assert not manager_root.is_symlink()
+          manager_receipt = {"path":str(manager_root), **payload_receipt(manager_root)}
+          assert json.loads((manager_root / "package.json").read_text())["version"] == "12.4.2"
+          inventory = []
+          for entry in sorted(virtual.iterdir()):
+              modules = entry / "node_modules"
+              if not modules.is_dir():
+                  continue
+              for child in sorted(modules.iterdir()):
+                  packages = sorted(child.iterdir()) if child.name.startswith("@") and child.is_dir() and not child.is_symlink() else [child]
+                  for package in packages:
+                      manifest = package / "package.json"
+                      if package.is_symlink() or not manifest.is_file():
+                          continue
+                      data = json.loads(manifest.read_text())
+                      inventory.append({"context":entry.name, "name":data.get("name"), "version":data.get("version"), "package_json_sha256":digest(manifest), **payload_receipt(package)})
+          encoded = json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode()
+          assert inventory and len(encoded) <= 2 * 1024**2 - 256
+          installed_lock = virtual / "lock.yaml"
+          assert installed_lock.is_file()
+          disk = shutil.disk_usage(".")
+          assert disk.free >= 2 * 1024**3, "insufficient disk reserve after install"
+          receipt = {"schema":"youtube-frozen-fixture.runtime.v1", "checked_at":datetime.datetime.now(datetime.timezone.utc).isoformat(), "source":before["source"], "source_lock_hashes_unchanged":True, "tools":tools, "manager_payload":manager_receipt, "corepack_home":os.environ.get("COREPACK_HOME"), "pnpm_home":os.environ.get("PNPM_HOME"), "store":os.environ.get("PNPM_CONFIG_STORE_DIR"), "cache":os.environ.get("PNPM_CONFIG_CACHE_DIR"), "physical_package_manifests":len(inventory), "installed_lock_sha256":digest(installed_lock), "installed_lock_bytes":installed_lock.stat().st_size, "physical_package_inventory_sha256":hashlib.sha256(encoded).hexdigest(), "runner_disk_free_bytes":disk.free, "normal_setup_succeeded":True, "cache_mode":"off", "dependency_cache":False, "scope":"normal frozen workspace install; lifecycle scripts enabled; no borrowed Gateway dependencies", "cleanup_owner":"GitHub hosted VM disposal after action post steps"}
+          (owned / "runtime-receipt.json").write_text(json.dumps(receipt, sort_keys=True)+"\n")
+          print(json.dumps(receipt, sort_keys=True))
+          chunks = [encoded[index:index+16384].decode("ascii") for index in range(0,len(encoded),16384)]
+          for index, chunk in enumerate(chunks):
+              print(json.dumps({"schema":"youtube-frozen-fixture.inventory-chunk.v1", "index":index, "chunks":len(chunks), "inventory_sha256":hashlib.sha256(encoded).hexdigest(), "data":chunk}, separators=(",", ":")))
+          PYRECEIPT
 
-      - name: Attest focused evidence
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: ${{ runner.temp }}/authorized-beta-focused/evidence.json
+      - name: Execute the twelve canonical selected checks once
+        id: canonical
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 8c37b9e27bb197996eaee21aa0197f947a08a998
+          test "$(git rev-parse HEAD^{tree})" = 0fffee15bab60d3cdec575783295cc234d95aa05
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+          started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          set +e
+          timeout --signal=TERM --kill-after=20s 1150s node scripts/check-changed.mjs -- deploy/youtube-worker/README.md deploy/youtube-worker/deployment.py deploy/youtube-worker/runtime/scripts/youtube_global_windows_supervisor.py deploy/youtube-worker/runtime/scripts/youtube_windows_deployment.py deploy/youtube-worker/tests/test_deployment.py
+          status=$?
+          set -e
+          ended=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          printf '{"schema":"youtube-frozen-fixture.canonical.v1","started_at":"%s","ended_at":"%s","exit_code":%s,"invocations":1,"isolation":"fresh secretless GitHub-hosted VM","nested_namespace":"not requested"}\n' "$started" "$ended" "$status"
+          exit "$status"
 
-      - name: Upload focused evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: authorized-beta-focused-v1-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/authorized-beta-focused/evidence.json
-          if-no-files-found: error
-          retention-days: 30
+      - name: Run the documented focused deployment suite once
+        id: python_tests
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          timeout --signal=TERM --kill-after=20s 210s python3 -m unittest discover -s deploy/youtube-worker/tests -p 'test_*.py' -v
+          status=$?
+          set -e
+          ended=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          printf '{"schema":"youtube-frozen-fixture.python.v1","started_at":"%s","ended_at":"%s","exit_code":%s,"invocations":1,"native_windows_process_tree_proof":"not supplied by Linux"}\n' "$started" "$ended" "$status"
+          exit "$status"
+
+      - name: Retain closeout receipt and leave the fixture to its runner owner
+        if: always()
+        timeout-minutes: 3
+        shell: bash
+        env:
+          SETUP_OUTCOME: ${{ steps.node_setup.outcome }}
+          CANONICAL_OUTCOME: ${{ steps.canonical.outcome }}
+          PYTHON_OUTCOME: ${{ steps.python_tests.outcome }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCLOSE'
+          import datetime, hashlib, json, os, pathlib, shutil, subprocess
+          owned = pathlib.Path(os.environ["RUNNER_TEMP"]) / ("youtube-notification-source-" + os.environ["GITHUB_RUN_ID"] + "-1")
+          before = json.loads((owned / "source-receipt.json").read_text()) if (owned / "source-receipt.json").is_file() else None
+          unchanged = None
+          if before:
+              unchanged = all(hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest() == value for path, value in before["lock_hashes"].items())
+          actual = subprocess.check_output(["git", "rev-parse", "HEAD", "HEAD^{tree}"], timeout=10).decode().splitlines() if pathlib.Path(".git").is_dir() else []
+          source_matches = bool(before and actual == [before["source"], before["tree"]])
+          dirty = subprocess.check_output(["git", "status", "--porcelain=v1", "--untracked-files=no"], timeout=30).decode() if pathlib.Path(".git").is_dir() else "checkout absent"
+          receipt = {"schema":"youtube-frozen-fixture.closeout.v1", "checked_at":datetime.datetime.now(datetime.timezone.utc).isoformat(), "source":before["source"] if before else None, "source_lock_hashes_unchanged":unchanged, "actual_source":actual[0] if actual else None, "actual_tree":actual[1] if len(actual)>1 else None, "source_matches_admission":source_matches, "tracked_source_dirty":bool(dirty), "setup_outcome":os.environ["SETUP_OUTCOME"], "canonical_outcome":os.environ["CANONICAL_OUTCOME"], "python_outcome":os.environ["PYTHON_OUTCOME"], "manual_deletions":0, "cleanup_owner":"GitHub hosted VM disposal after action post steps", "checkout_and_bootstrap_retained_for_post_steps":True, "disposal_observed_from_inside_running_job":False, "cache_uploads":0, "artifact_uploads":0, "runner_disk_free_bytes":shutil.disk_usage(".").free}
+          print(json.dumps(receipt, sort_keys=True))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("Frozen fixture closeout receipt\n\n```json\n"+json.dumps(receipt, indent=2, sort_keys=True)+"\n```\n")
+          if before:
+              assert source_matches and unchanged and not dirty
+          PYCLOSE
