@@ -340,37 +340,75 @@ admission in the same owner. Never recover extraction merely to open a
 notification deployment boundary.
 Preserve notification state on rollback so an old incident is not re-emitted.
 
-## Proposed bounded rate-limit recovery policy
+## Opt-in GCP rate-limit recovery
 
-This notification repair does not install a retry timer or authorize extraction.
-`waiting_network_cooldown` currently opens a circuit and exits without a
-deadline. New-batch launch intervals and daily limits do not define HTTP 429
-recovery timing. Elapsed waiting is eligibility for an approved attempt, never
-proof that the source restriction cleared.
+This source adds finite recovery eligibility, not permission to extract. Installing
+it leaves all grants unarmed. Existing new-batch launch limits are unchanged.
+An elapsed wait alone never clears a source restriction or authorizes a Resume.
 
-A separately reviewed coordinator policy can use these finite bounds:
+The existing GCP coordinator owns one checkpoint-bound grant per run. Its normal
+five-minute reconciliation job can consume an explicitly approved grant once:
 
-- First explicit recovery: not before four hours after the immutable recorded
-  429 occurrence, with fresh same-lease/checkpoint/node/lock/pin proofs.
-- A new 429 stops immediately. A second recovery requires separate approval
-  and eight hours after that new occurrence. Permit at most two recovery
-  dispatch intents for the entire run, including uncertain outcomes, across
-  changing videos and checkpoints; do not replenish that budget on restart.
-- Preserve the existing per-video attempt cap. If the rate-limited item already
-  exhausted it, hold for review instead of skipping it and continuing extraction.
-- A valid future structured `Retry-After` must never be shortened. A value
-  beyond a proposed 24-hour planning horizon becomes a manual hold, not a
-  downward-clamped wait. The current stderr-only contract does not retain this
-  header, so no returned reset time can be inferred from it.
-- Bot, authentication, configuration and unexpected failures remain explicit
-  manual holds. No timer, circuit reset, replacement batch or route change
-  can authorize their recovery.
+- First recovery: at least four hours after the immutable native 429 occurrence.
+- A proven new 429 stops the worker again. A second recovery needs a different
+  approval reference and at least eight hours after that new occurrence.
+- At most two durable dispatch intents for the entire run, including legacy
+  requests and uncertain outcomes. Changing video/checkpoint or restarting does
+  not replenish this budget. Readiness failure before intent consumes no slot.
+- A grant expires 24 hours after approval. Routine polls never extend its due or
+  expiry times. Offline/busy readiness can wait until expiry; changed bindings,
+  checkpoint or failure class hold the grant for review.
+- Keep the three-attempt per-video cap. An exhausted rate-limited item holds
+  before dispatch, rather than letting the worker pass it and extract later items.
+- A validated optional UTC `--retry-after-at` can only extend the policy wait.
+  A deadline more than 24 hours after the occurrence holds instead of being
+  shortened. Current extractor stderr does not preserve HTTP headers; do not
+  infer a returned reset time or make a provider call to obtain one.
+- Auth, bot, configuration, interruption and unexpected failures cannot arm rate
+  timers. Their existing explicit manual recovery contracts remain separate.
 
-Implement any future deadline/budget in GCP's existing coordinator and recovery
-receipt contract, leaving Windows checkpoint bytes and staged components intact.
-Routine polling must not move the immutable occurrence/deadline. Reuse the
-existing durable intent-before-RPC/no-replay semantics, and consume no recovery
-slot for readiness failures before dispatch.
+After separate recovery authorization and a fresh supported Probe, an operator
+can arm a single future continuation without immediately calling Resume:
+
+```sh
+python3 scripts/youtube_global_windows_canary.py arm-rate --canary-id <existing-id> \
+  --checkpoint-sha256 <fresh-digest> --approval-reference <recorded-one-attempt-approval>
+python3 scripts/youtube_global_windows_canary.py recovery-status --canary-id <existing-id>
+python3 scripts/youtube_global_windows_canary.py cancel-rate --canary-id <existing-id> \
+  --checkpoint-sha256 <armed-digest>
+```
+
+The explicit `resume` command accepts the same `--approval-reference` and optional
+`--retry-after-at`; it creates a rate grant if absent and dispatches only if due
+and freshly fenced. Existing non-rate manual Resume remains checkpoint-bound.
+A dispatched checkpoint always returns `already_requested`, never a second RPC.
+Expired/held receipts cannot be renewed by polls or overwritten with a new grant;
+operator review is required. Cancel changes only an undispatched grant to held.
+
+`resume-requests/<checkpoint>.json` remains the external-tool request contract,
+now with v2 approval/occurrence/deadline/ordinal fields. Existing v1 receipts stay
+byte-exact and count toward the run-wide budget. The owner validates at most 64
+receipts, 64 KiB each and 1 MiB total; malformed or excessive histories hold.
+The same per-run reconcile and pool coordinator locks serialize CLI, cancellation
+and both supervisor paths. After awaited readiness, the owner rereads authority
+and writes/fsyncs intent before the one no-retry adapter RPC. A lost reply retains
+uncertain intent. Only observation/normal reconciliation follows; no replay.
+
+Fresh checks preserve the active lease, every item/node binding, the stopped
+worker/free OS lock, staged worker/adapter/URL/native pins and checkpoint bytes.
+Valid archives, terminal skips, attempts and logs are reused. Successful output
+uses the existing validated packaging/import/finalization path. No lease reset,
+replacement batch, credential change, Windows install or notification mutation
+belongs to this recovery.
+
+The separate `--coordinator-only --baseline-deployment <installed-receipt>`
+deployment variant can update only GCP canary/supervisor/source verification and
+the deployment receipt while preserving a stopped run and all native/notification
+bytes. It validates the exact installed e9 notification or compatible coordinator
+baseline, captures resume-request directory absence/content/modes, and refuses
+armed or unconfirmed intent. Full-bundle and notification-only deployment
+contracts remain unchanged. Activation and recovery need separate approvals;
+activation never arms a grant.
 
 ## Offline tests
 

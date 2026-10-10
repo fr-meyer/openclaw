@@ -468,15 +468,18 @@ class NotificationDeploymentTests(unittest.TestCase):
         with patch.object(deploy.os, "scandir", side_effect=enumerated): yield
 
     def test_entry_capacity_boundary_is_finite_and_counts_ignored_names(self):
-        for kind in ("leases", "windows-canaries"):
-            with self.subTest(kind=kind), self.inventory_view(kind, deploy.NotificationInventory.ENTRY_LIMIT):
-                self.assertEqual(self.plan(), self.expected)
-            for ignored in (False, True):
-                with self.subTest(kind=kind, ignored=ignored), self.inventory_view(kind, deploy.NotificationInventory.ENTRY_LIMIT + 1, ignored=ignored):
-                    with patch.object(deploy, "boundary_locks", side_effect=AssertionError("over-bound scan acquired boundary")):
-                        with self.assertRaisesRegex(deploy.DeploymentError, "entries exceed bound"): self.plan()
-                        with self.assertRaisesRegex(deploy.DeploymentError, "entries exceed bound"): self.activate()
-                    self.assertFalse(self.journal.exists())
+        # Synthetic enumeration proves the entry limit independently of host
+        # CPU quota. The separate scan-deadline regression proves time expiry.
+        with patch.object(deploy.time, "monotonic", return_value=0.0):
+            for kind in ("leases", "windows-canaries"):
+                with self.subTest(kind=kind), self.inventory_view(kind, deploy.NotificationInventory.ENTRY_LIMIT):
+                    self.assertEqual(self.plan(), self.expected)
+                for ignored in (False, True):
+                    with self.subTest(kind=kind, ignored=ignored), self.inventory_view(kind, deploy.NotificationInventory.ENTRY_LIMIT + 1, ignored=ignored):
+                        with patch.object(deploy, "boundary_locks", side_effect=AssertionError("over-bound scan acquired boundary")):
+                            with self.assertRaisesRegex(deploy.DeploymentError, "entries exceed bound"): self.plan()
+                            with self.assertRaisesRegex(deploy.DeploymentError, "entries exceed bound"): self.activate()
+                        self.assertFalse(self.journal.exists())
 
     def test_special_or_symlinked_record_refuses_before_boundary(self):
         path = self.pool / "leases/history-unsafe.json"
@@ -760,6 +763,279 @@ class NotificationDeploymentTests(unittest.TestCase):
         self.assertEqual((self.workspace / deploy.SUPERVISOR).read_bytes(), self.source[deploy.SUPERVISOR])
         deploy.rollback(self.journal, readiness=self.readiness)
         self.assertEqual(self.tree(), before)
+
+
+class CoordinatorDeploymentTests(unittest.TestCase):
+    """Four-target extension of an installed notification repair, unarmed."""
+
+    def setUp(self):
+        notification = NotificationDeploymentTests()
+        notification.setUp(); self.addCleanup(notification.doCleanups)
+        notification.activate()
+        self.fixture = notification
+        for name in ("workspace", "data", "pool", "config", "source", "release", "identity", "readiness", "proofs", "ids"):
+            setattr(self, name, copy.deepcopy(getattr(notification, name)))
+        self.receipt_path = self.data / "state/config/windows-deployment.json"
+        self.baseline = deploy.read(self.receipt_path)
+        self.baseline["revision"] = deploy.NOTIFICATION_REVISION
+        self.baseline["release_sha256"] = deploy.digest(deploy.json_bytes({**notification.release,
+            "revision": deploy.NOTIFICATION_REVISION}))
+        # Distinct candidate bytes exercise all three replacements without
+        # rewriting any inherited native or installed notification provenance.
+        for key in deploy.COORDINATOR_FILES:
+            self.source[key] += b"\n# synthetic distinct coordinator candidate\n"
+        self.release["files"] = {key: deploy.digest(raw) for key, raw in self.source.items()}
+        self.identity = deploy.release_identity(self.release, self.source)
+        self.proofs["release_sha256"] = self.identity
+        p = patch.object(deploy, "source_files", return_value=self.source)
+        p.start(); self.addCleanup(p.stop)
+        deploy.atomic(self.receipt_path, deploy.json_bytes(self.baseline), mode=0o600)
+        self.proofs["native_windows"].update(
+            baseline_release_sha256=self.baseline["baseline"]["release_sha256"],
+            baseline_deployment_sha256=deploy.digest(self.receipt_path.read_bytes()))
+        self.journal = self.workspace / ".openclaw/tmp/coordinator-deploy/transaction.json"
+        notification.journal = self.journal
+        self.proposed = deploy.coordinator_targets(self.workspace, self.data, self.release, self.config, self.source, self.baseline)
+        self.expected = {str(path): deploy.digest(path.read_bytes()) for path in self.proposed}
+        self.root = self.pool / "windows-canaries" / fixtures.CANARY
+        self.requests = self.root / "resume-requests"
+
+    def tree(self): return self.fixture.tree()
+
+    def activate(self):
+        return deploy.activate_coordinator(self.workspace, self.data, self.release, self.config, self.proofs,
+            self.expected, self.journal, self.baseline, self.readiness)
+
+    def request(self, *, state="acknowledged", checkpoint=None):
+        manifest = deploy.read(self.root / "manifest.json")
+        checkpoint = checkpoint or fixtures.DIGEST
+        row = {"schema": "openclaw.youtube.windows-resume.v1", "state": state,
+            "checkpoint_sha256": checkpoint, "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "binding": {key: manifest.get(key) for key in ("canary_id", "lease_id", "binding_sha256", "worker_sha256", "adapter_sha256", "urls_sha256")}}
+        path = self.requests / (checkpoint + ".json")
+        deploy.atomic(path, deploy.json_bytes(row))
+        return path
+
+    def bounded_request(self, state, *, checkpoint=None):
+        path = self.request(state="acknowledged", checkpoint=checkpoint)
+        row = deploy.read(path)
+        approved = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=5)
+        occurrence = approved - dt.timedelta(hours=5)
+        row.update(schema="openclaw.youtube.windows-resume.v2", state=state,
+            policy_version="gcp-rate-recovery-v1", recovery_ordinal=1,
+            occurrence_checkpoint_sha256=row["checkpoint_sha256"],
+            occurrence_at=occurrence.isoformat(), failed_video_id=self.ids[3], failed_video_attempt=1,
+            due_at=(occurrence + dt.timedelta(hours=4)).isoformat(), approval_reference="synthetic-review-approval",
+            approved_at=approved.isoformat(), created_at=approved.isoformat(),
+            grant_expires_at=(approved + dt.timedelta(hours=24)).isoformat())
+        if state in {"intent", "uncertain", "acknowledged"}:
+            row["dispatched_at"] = (approved + dt.timedelta(minutes=1)).isoformat()
+        deploy.atomic(path, deploy.json_bytes(row))
+        return path
+
+    def plan(self, *, extra=()):
+        root = self.workspace / ".openclaw/tmp/coordinator-inputs"; root.mkdir(parents=True, exist_ok=True)
+        arguments = []
+        for name, value in (("release", self.release), ("configuration", self.config),
+                            ("baseline-deployment", self.baseline), ("readiness", self.readiness)):
+            path = root / (name + ".json"); path.write_bytes(deploy.json_bytes(value))
+            arguments += ["--" + name, str(path)]
+        output = io.StringIO()
+        with patch.object(sys, "argv", [str(SOURCE), "plan", "--coordinator-only", "--workspace", str(self.workspace),
+                "--data-root", str(self.data), *arguments, *extra]), contextlib.redirect_stdout(output):
+            self.assertEqual(deploy.main(), 0)
+        return json.loads(output.getvalue())
+
+    def test_real_coordinator_plan_four_target_activation_and_exact_rollback_preserve_notifications(self):
+        with patch.object(deploy, "boundary_locks", side_effect=AssertionError("read-only plan acquired boundary")):
+            self.assertEqual(self.plan(), self.expected)
+        before = self.tree()
+        self.assertEqual(set(self.expected), {str(self.workspace / key) for key in deploy.COORDINATOR_FILES} | {str(self.receipt_path)})
+        self.assertEqual(self.activate()["kind"], "coordinator-only")
+        self.assertEqual({key for key, value in self.tree().items() if before.get(key) != value}, set(self.expected))
+        receipt = deploy.read(self.receipt_path)
+        self.assertEqual(receipt["baseline"], self.baseline["baseline"])
+        self.assertEqual(receipt["notification_baseline"]["revision"], deploy.NOTIFICATION_REVISION)
+        self.assertEqual(receipt["previous"]["receipt_sha256"], deploy.digest(before[str(self.receipt_path)][0]))
+        journal = deploy.read(self.journal)
+        self.assertEqual(journal["protected"][str(self.requests)], {"exists": False})
+        self.assertEqual(deploy.rollback(self.journal, readiness=self.readiness)["kind"], "coordinator-only")
+        self.assertEqual(self.tree(), before)
+        with fixtures.sv.ALERTS.NotificationStore(self.fixture.ledger) as store:
+            self.assertIsNone(store.observe(self.fixture.notice_snapshot, now=dt.datetime.now(dt.timezone.utc)))
+
+    def test_unknown_baseline_kind_revision_or_provided_receipt_refuses_before_boundary(self):
+        before = self.tree()
+        for key, value in (("kind", None), ("revision", "0" * 40), ("release_sha256", "0" * 64)):
+            with self.subTest(key=key):
+                baseline = copy.deepcopy(self.baseline); baseline[key] = value
+                with patch.object(deploy, "boundary_locks", side_effect=AssertionError("invalid baseline acquired boundary")):
+                    with self.assertRaises(deploy.DeploymentError):
+                        deploy.activate_coordinator(self.workspace, self.data, self.release, self.config, self.proofs,
+                            self.expected, self.journal, baseline, self.readiness)
+                self.assertFalse(self.journal.exists()); self.assertEqual(self.tree(), before)
+
+    def test_candidate_cannot_change_notification_or_native_protected_source(self):
+        before = self.tree()
+        for key in ("scripts/youtube_worker_alerts.py", "scripts/youtube_safe_diagnostics.py",
+                    "scripts/youtube_global_chunk_worker.py", "scripts/youtube_global_windows_adapter.ps1"):
+            with self.subTest(key=key):
+                source = {**self.source, key: b"synthetic disallowed change"}
+                release = {**self.release, "files": {name: deploy.digest(raw) for name, raw in source.items()}}
+                proofs = copy.deepcopy(self.proofs); proofs["release_sha256"] = deploy.digest(deploy.json_bytes(release))
+                with patch.object(deploy, "source_files", return_value=source), patch.object(deploy, "boundary_locks", side_effect=AssertionError("protected source acquired boundary")):
+                    with self.assertRaisesRegex(deploy.DeploymentError, "changes protected source"):
+                        deploy.activate_coordinator(self.workspace, self.data, release, self.config, proofs,
+                            self.expected, self.journal, self.baseline, self.readiness)
+                self.assertFalse(self.journal.exists()); self.assertEqual(self.tree(), before)
+
+    def test_native_proof_binds_original_native_release_and_immediate_deployment(self):
+        for key in ("baseline_release_sha256", "baseline_deployment_sha256", "worker_sha256", "adapter_sha256"):
+            with self.subTest(key=key):
+                proofs = copy.deepcopy(self.proofs); proofs["native_windows"][key] = "0" * 64
+                with patch.object(deploy, "boundary_locks", side_effect=AssertionError("invalid native proof acquired boundary")):
+                    with self.assertRaises(deploy.DeploymentError):
+                        deploy.activate_coordinator(self.workspace, self.data, self.release, self.config, proofs,
+                            self.expected, self.journal, self.baseline, self.readiness)
+                self.assertFalse(self.journal.exists())
+
+    def test_unknown_or_unresolved_recovery_requests_refuse_before_boundary(self):
+        for state in ("intent", "uncertain", "unexpected"):
+            path = self.request(state=state)
+            with self.subTest(state=state), patch.object(deploy, "boundary_locks", side_effect=AssertionError("unresolved request acquired boundary")):
+                with self.assertRaises(deploy.DeploymentError): self.activate()
+            self.assertFalse(self.journal.exists()); path.unlink()
+        path = self.requests / "unknown.txt"; path.write_bytes(b"synthetic unexpected recovery artifact")
+        with patch.object(deploy, "boundary_locks", side_effect=AssertionError("unknown artifact acquired boundary")):
+            with self.assertRaises(deploy.DeploymentError): self.activate()
+        self.assertFalse(self.journal.exists())
+
+    def test_v2_armed_or_unresolved_receipt_refuses_and_nonarmed_receipts_are_preserved(self):
+        for state in ("armed", "intent", "uncertain"):
+            path = self.bounded_request(state)
+            with self.subTest(state=state), patch.object(deploy, "boundary_locks", side_effect=AssertionError("armed request acquired boundary")):
+                with self.assertRaisesRegex(deploy.DeploymentError, "armed or outcome unresolved"):
+                    self.activate()
+            self.assertFalse(self.journal.exists()); path.unlink()
+        for state in ("held", "expired", "acknowledged"):
+            path = self.bounded_request(state); before = self.tree()
+            with self.subTest(state=state):
+                self.activate()
+                self.assertEqual(deploy.read(self.journal)["protected"][str(path)]["sha256"], deploy.digest(path.read_bytes()))
+                deploy.rollback(self.journal, readiness=self.readiness)
+                self.assertEqual(self.tree(), before)
+            self.journal.unlink(); path.unlink()
+
+    def test_rollback_never_erases_an_armed_grant(self):
+        self.activate()
+        path = self.bounded_request("armed"); armed = path.read_bytes()
+        with self.assertRaisesRegex(deploy.DeploymentError, "armed or outcome unresolved"):
+            deploy.rollback(self.journal, readiness=self.readiness)
+        self.assertEqual(path.read_bytes(), armed)
+        self.assertEqual(deploy.read(self.journal)["state"], "committed")
+
+    def test_recovery_directory_absence_empty_set_content_and_modes_prevent_rollback_after_drift(self):
+        self.activate()
+        self.requests.mkdir()
+        with self.assertRaisesRegex(deploy.DeploymentError, "protected state drifted"):
+            deploy.rollback(self.journal, readiness=self.readiness)
+        self.requests.rmdir()
+        deploy.rollback(self.journal, readiness=self.readiness); self.journal.unlink()
+        path = self.request(); original = path.read_bytes(), path.stat().st_mode & 0o777
+        self.activate()
+        row = deploy.read(path); row["updated_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+        path.write_bytes(deploy.json_bytes(row))
+        with self.assertRaisesRegex(deploy.DeploymentError, "protected state drifted"):
+            deploy.rollback(self.journal, readiness=self.readiness)
+        path.write_bytes(original[0]); path.chmod(original[1] ^ 0o004)
+        with self.assertRaisesRegex(deploy.DeploymentError, "protected state drifted"):
+            deploy.rollback(self.journal, readiness=self.readiness)
+        path.chmod(original[1]); deploy.rollback(self.journal, readiness=self.readiness)
+
+    def test_recovery_request_arriving_between_preflight_and_boundary_refuses_without_journal(self):
+        locks = deploy.boundary_locks
+        @contextlib.contextmanager
+        def raced(data, *, canary_id=None):
+            with locks(data, canary_id=canary_id):
+                self.request()
+                yield
+        with patch.object(deploy, "boundary_locks", side_effect=raced):
+            with self.assertRaisesRegex(deploy.DeploymentError, "protected state changed"):
+                self.activate()
+        self.assertFalse(self.journal.exists())
+
+    def test_receipt_file_and_aggregate_limits_bound_actual_reads_before_boundary(self):
+        read = deploy.NotificationInventory.raw
+        actual = []
+        def measured(inventory, path, **options):
+            before = inventory.bytes_read
+            try: return read(inventory, path, **options)
+            finally:
+                if Path(path).parent == self.requests:
+                    actual.append(inventory.bytes_read - before)
+        path = self.request(); row = deploy.read(path)
+        row["synthetic_padding"] = "x" * 65536
+        path.write_bytes(deploy.json_bytes(row))
+        with patch.object(deploy.NotificationInventory, "raw", new=measured), patch.object(deploy, "boundary_locks", side_effect=AssertionError("over-byte request acquired boundary")):
+            with self.assertRaisesRegex(deploy.DeploymentError, "lifecycle binding/probe proof differs") as refused:
+                self.activate()
+        self.assertIsInstance(refused.exception.__context__, fixtures.gp.PoolError)
+        self.assertRegex(str(refused.exception.__context__), "recovery receipt exceeds its byte contract")
+        # The receipt owner rejects oversized metadata before the bounded raw
+        # reader is invoked; no content read or deployment boundary is needed.
+        self.assertEqual(actual, []); self.assertFalse(self.journal.exists()); path.unlink()
+        for ordinal in range(20):
+            path = self.bounded_request("held", checkpoint=f"{ordinal:064x}"); row = deploy.read(path)
+            row["synthetic_padding"] = "x" * 58000
+            path.write_bytes(deploy.json_bytes(row))
+        actual.clear()
+        with patch.object(deploy.NotificationInventory, "raw", new=measured), patch.object(deploy, "boundary_locks", side_effect=AssertionError("over-byte inventory acquired boundary")):
+            with self.assertRaisesRegex(deploy.DeploymentError, "lifecycle binding/probe proof differs") as refused:
+                self.activate()
+        self.assertIsInstance(refused.exception.__context__, fixtures.gp.PoolError)
+        self.assertRegex(str(refused.exception.__context__), "recovery receipt exceeds its byte contract")
+        self.assertGreater(sum(actual), 0); self.assertLessEqual(sum(actual), 1048576)
+        self.assertFalse(self.journal.exists())
+
+    def test_runtime_requires_current_loaded_canary_and_supervisor(self):
+        self.activate()
+        path = self.workspace / "scripts/youtube_windows_deployment.py"
+        spec = importlib.util.spec_from_file_location("fixture_coordinator_reader", path)
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        with patch.dict(os.environ, {"OPENCLAW_YOUTUBE_DATA_ROOT": str(self.data)}):
+            for canary, supervisor in ((None, self.release["files"][deploy.SUPERVISOR]),
+                    ("0" * 64, self.release["files"][deploy.SUPERVISOR]),
+                    (self.release["files"][deploy.COORDINATOR_FILES[0]], "0" * 64)):
+                with self.assertRaisesRegex(RuntimeError, "loaded-owner"):
+                    module.verify_managed_sources(self.workspace, self.config,
+                        loaded_supervisor_sha256=supervisor, loaded_canary_sha256=canary)
+            module.verify_managed_sources(self.workspace, self.config,
+                loaded_supervisor_sha256=self.release["files"][deploy.SUPERVISOR],
+                loaded_canary_sha256=self.release["files"][deploy.COORDINATOR_FILES[0]])
+            module.verify_managed_sources(self.workspace, self.config,
+                loaded_canary_sha256=self.release["files"][deploy.COORDINATOR_FILES[0]])
+
+    def test_compatible_coordinator_baseline_uses_constant_ancestry(self):
+        self.activate()
+        first = deploy.read(self.receipt_path)
+        self.baseline = first
+        self.proofs["native_windows"]["baseline_deployment_sha256"] = deploy.digest(self.receipt_path.read_bytes())
+        self.journal = self.workspace / ".openclaw/tmp/coordinator-second/transaction.json"
+        self.proposed = deploy.coordinator_targets(self.workspace, self.data, self.release, self.config, self.source, self.baseline)
+        self.expected = {str(path): deploy.digest(path.read_bytes()) for path in self.proposed}
+        self.activate()
+        second = deploy.read(self.receipt_path)
+        self.assertEqual(second["baseline"], first["baseline"])
+        self.assertEqual(second["notification_baseline"], first["notification_baseline"])
+        self.assertEqual(set(second["previous"]), {"kind", "revision", "release_sha256", "receipt_sha256", "files"})
+        self.assertLess(self.receipt_path.stat().st_size, 16384)
+        deploy.rollback(self.journal, readiness=self.readiness)
+        self.assertEqual(deploy.read(self.receipt_path), first)
+
+    def test_coordinator_cli_refuses_windows_handoff_or_mixed_variant(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            for extra in (("--await-windows",), ("--notification-only",)):
+                with self.subTest(extra=extra), self.assertRaises(SystemExit): self.plan(extra=extra)
 
 
 class TrackedSourceRevisionTests(unittest.TestCase):

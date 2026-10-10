@@ -28,6 +28,11 @@ NOTIFICATION_FILES = (
     "scripts/youtube_worker_alerts.py", "scripts/youtube_global_windows_supervisor.py",
     "scripts/youtube_safe_diagnostics.py", "scripts/youtube_windows_deployment.py",
 )
+COORDINATOR_FILES = (
+    "scripts/youtube_global_windows_canary.py", "scripts/youtube_global_windows_supervisor.py",
+    "scripts/youtube_windows_deployment.py",
+)
+NOTIFICATION_REVISION = "e9fb664681efc09856acb5ac32d3925d210a905c"
 SUPERVISOR = "scripts/youtube_global_windows_supervisor.py"
 
 
@@ -372,12 +377,13 @@ class NotificationInventory:
             raise DeploymentError("notification admission inventory changed during scan")
         self.watches[path] = value
 
-    def raw(self, path: Path) -> bytes:
+    def raw(self, path: Path, *, byte_limit: int | None = None) -> bytes:
         path = Path(path)
         root = self.data if path.is_relative_to(self.data) else self.workspace
         safe_target(root, path.relative_to(root).as_posix())
         self.check()
         limit = min(self.RECORD_LIMIT, self.BYTE_LIMIT - self.bytes_read)
+        if byte_limit is not None: limit = min(limit, byte_limit)
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(fd, "rb") as handle:
             info = os.fstat(handle.fileno())
@@ -498,7 +504,82 @@ def notification_targets(workspace: Path, data: Path, release: dict, configurati
     return proposed
 
 
-def notification_admission(workspace: Path, data: Path, configuration: dict, readiness: dict) -> dict[str, dict]:
+def coordinator_targets(workspace: Path, data: Path, release: dict, configuration: dict, source: dict[str, bytes], baseline: dict) -> dict[Path, bytes]:
+    """Extend the installed receipt while retaining bounded native ancestry."""
+    validate_configuration(configuration)
+    configuration_path, marker_path, deployment_path = managed_state_paths(data)
+    config_raw, receipt_raw = configuration_path.read_bytes(), deployment_path.read_bytes()
+    receipt = read(deployment_path)
+    spec = importlib.util.spec_from_file_location("coordinator_deployment_provenance", BUNDLE / "runtime/scripts/youtube_windows_deployment.py")
+    if spec is None or spec.loader is None: raise DeploymentError("managed deployment provenance owner unavailable")
+    owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
+    try: owner.validate_receipt_provenance(receipt, configuration)
+    except (RuntimeError, KeyError, TypeError, AttributeError):
+        raise DeploymentError("coordinator baseline/native/notification provenance differs") from None
+    if (baseline != receipt or receipt.get("kind") not in {"notification-only", "coordinator-only"}
+        or receipt.get("kind") == "notification-only" and receipt.get("revision") != NOTIFICATION_REVISION
+        or read(configuration_path) != configuration or receipt.get("configuration_sha256") != digest(config_raw)
+        or set(source) != set(receipt["files"])
+        or release.get("archiver", {}).get("revision") != configuration["assets"]["archiver_revision"]
+        or release.get("archiver", {}).get("sha256") != configuration["assets"]["archiver_sha256"]
+        or release.get("wrapper_sha256") != configuration["assets"]["wrapper_sha256"]):
+        raise DeploymentError("coordinator baseline/configuration provenance differs")
+    for key, expected in receipt["files"].items():
+        path = safe_target(workspace, key)
+        if not path.is_file() or digest(path.read_bytes()) != expected:
+            raise DeploymentError("coordinator baseline source drifted")
+        if key not in COORDINATOR_FILES and digest(source[key]) != expected:
+            raise DeploymentError("coordinator candidate changes protected source")
+    marker = read(marker_path)
+    if (marker.get("enabled") is not True or marker.get("node_id") != configuration["node"]["id"]
+        or marker.get("worker_sha256") != receipt["files"]["scripts/youtube_global_chunk_worker.py"]
+        or marker.get("adapter_sha256") != receipt["files"]["scripts/youtube_global_windows_adapter.ps1"]):
+        raise DeploymentError("coordinator protected cutover differs")
+    validate_transport_helper(workspace)
+    notification = receipt.get("notification_baseline") if receipt["kind"] == "coordinator-only" else {
+        "revision": receipt["revision"], "release_sha256": receipt["release_sha256"],
+        "receipt_sha256": digest(receipt_raw), "files": receipt["files"]}
+    proposed = {safe_target(workspace, key): source[key] for key in COORDINATOR_FILES}
+    proposed[deployment_path] = json_bytes({"schema": receipt["schema"], "kind": "coordinator-only",
+        "revision": release["revision"], "release_sha256": digest(json_bytes(release)), "files": release["files"],
+        "assets": configuration["assets"], "configuration_sha256": digest(config_raw), "baseline": receipt["baseline"],
+        "notification_baseline": notification, "previous": {"kind": receipt["kind"], "revision": receipt["revision"],
+            "release_sha256": receipt["release_sha256"], "receipt_sha256": digest(receipt_raw), "files": receipt["files"]}})
+    if len(proposed[deployment_path]) > 16384: raise DeploymentError("coordinator deployment receipt exceeds bound")
+    try: owner.validate_receipt_provenance(json.loads(proposed[deployment_path]), configuration)
+    except (RuntimeError, KeyError, TypeError, AttributeError):
+        raise DeploymentError("coordinator candidate/native/notification provenance differs") from None
+    return proposed
+
+
+def recovery_snapshot(root: Path, inventory: NotificationInventory, validated: dict[str, dict], captured: dict[Path, bytes]) -> dict[str, dict]:
+    """Protect request set/content, including absence; never create a grant."""
+    path = safe_target(inventory.data, (root / "resume-requests").relative_to(inventory.data).as_posix())
+    if not path.exists():
+        if validated: raise DeploymentError("coordinator recovery receipt inventory changed during scan")
+        inventory.watch(root)
+        return {str(path): {"exists": False}}
+    inventory.watch(path)
+    if not path.is_dir(): raise DeploymentError("coordinator recovery receipt inventory is not a directory")
+    requests = bounded_children(path, "*", limit=64)
+    if any(not re.fullmatch(r"[0-9a-f]{64}\.json", request.name) for request in requests):
+        raise DeploymentError("coordinator recovery receipt inventory differs")
+    if {request.stem for request in requests} != set(validated):
+        raise DeploymentError("coordinator recovery receipt inventory changed during scan")
+    result = {str(path): {"exists": True, "mode": stat.S_IMODE(path.stat().st_mode),
+        "entries": sorted(request.name for request in requests)}}
+    for request in requests:
+        # The owner already validated these bounded bytes. Revalidate metadata
+        # and the directory set rather than spend a second receipt read budget.
+        inventory.watch(request)
+        raw = captured[request]
+        if json.loads(raw) != validated[request.stem]:
+            raise DeploymentError("coordinator recovery receipt changed during scan")
+        result[str(request)] = {"sha256": digest(raw), "mode": stat.S_IMODE(request.stat().st_mode)}
+    return result
+
+
+def notification_admission(workspace: Path, data: Path, configuration: dict, readiness: dict, *, coordinator_only: bool = False) -> dict[str, dict]:
     try:
         checked = dt.datetime.fromisoformat(readiness["checked_at"].replace("Z", "+00:00"))
         age = (dt.datetime.now(dt.timezone.utc) - checked).total_seconds()
@@ -545,7 +626,7 @@ def notification_admission(workspace: Path, data: Path, configuration: dict, rea
         raise DeploymentError("notification admission requires a known stopped blocked run")
     if (root / "finalization.json").exists() or bounded_children(root / "imports", "*.json", limit=25):
         raise DeploymentError("notification run has import/finalization activity")
-    for request in bounded_children(root / "resume-requests", "*.json", limit=25):
+    for request in ([] if coordinator_only else bounded_children(root / "resume-requests", "*.json", limit=25)):
         row = inventory.read_json(safe_target(data, request.relative_to(data).as_posix()))
         binding = {key: manifest.get(key) for key in ("canary_id", "lease_id", "binding_sha256", "worker_sha256", "adapter_sha256", "urls_sha256")}
         if (row.get("state") != "acknowledged" or row.get("schema") != "openclaw.youtube.windows-resume.v1"
@@ -556,6 +637,8 @@ def notification_admission(workspace: Path, data: Path, configuration: dict, rea
     scripts = workspace / "scripts"
     old_path, old_data = sys.path[:], os.environ.get("OPENCLAW_YOUTUBE_DATA_ROOT")
     pool_module, old_pool_read, old_pool_store = None, None, None
+    validated_requests = {}
+    captured_requests = {}
     try:
         sys.path.insert(0, str(scripts)); os.environ["OPENCLAW_YOUTUBE_DATA_ROOT"] = str(data)
         spec = importlib.util.spec_from_file_location("notification_deployment_lifecycle", scripts / "youtube_global_windows_canary.py")
@@ -589,6 +672,22 @@ def notification_admission(workspace: Path, data: Path, configuration: dict, rea
             or remote.get("state") not in module.REMOTE_BLOCKED or module.checkpoint_sha256(remote) != readiness.get("checkpoint_sha256")
             or readiness.get("adapter_sha256") != manifest.get("adapter_sha256")):
             raise DeploymentError("notification checkpoint/worker proof differs")
+        if coordinator_only:
+            # The installed e9 lifecycle has no v2 reader. Use the qualified
+            # candidate's pure receipt owner, never a second schema validator.
+            spec = importlib.util.spec_from_file_location("coordinator_deployment_recovery", BUNDLE / "runtime/scripts/youtube_global_windows_canary.py")
+            if spec is None or spec.loader is None: raise DeploymentError("candidate recovery receipt owner unavailable")
+            candidate = importlib.util.module_from_spec(spec); spec.loader.exec_module(candidate)
+            receipt_bytes = 0
+            def recovery_raw(path):
+                nonlocal receipt_bytes
+                raw = inventory.raw(path, byte_limit=min(65536, 1048576 - receipt_bytes))
+                receipt_bytes += len(raw)
+                captured_requests[Path(path)] = raw
+                return raw
+            validated_requests = candidate.resume_request_inventory(root, manifest, read_raw=recovery_raw)
+            if any(row["state"] in {"armed", "intent", "uncertain"} for row in validated_requests.values()):
+                raise DeploymentError("coordinator recovery grant is armed or outcome unresolved")
     except DeploymentError: raise
     except Exception:
         raise DeploymentError("notification lifecycle binding/probe proof differs") from None
@@ -602,6 +701,7 @@ def notification_admission(workspace: Path, data: Path, configuration: dict, rea
     paths += [pool / "items" / (video + ".json") for video in manifest["video_ids"]]
     paths += list(managed_state_paths(data)[:2])
     result = {str(path): {"sha256": digest(inventory.raw(path)), "mode": stat.S_IMODE(path.stat().st_mode)} for path in paths}
+    if coordinator_only: result.update(recovery_snapshot(root, inventory, validated_requests, captured_requests))
     inventory.verify()
     return result
 
@@ -610,45 +710,63 @@ def file_fingerprint(path: Path) -> dict:
     return {"sha256": digest(path.read_bytes()), "mode": stat.S_IMODE(path.stat().st_mode)}
 
 
-def notification_snapshot(workspace: Path, data: Path, configuration: dict, readiness: dict) -> dict[str, dict]:
-    result = notification_admission(workspace, data, configuration, readiness)
-    for key in set(source_files()) - set(NOTIFICATION_FILES):
+def notification_snapshot(workspace: Path, data: Path, configuration: dict, readiness: dict, *, coordinator_only: bool = False) -> dict[str, dict]:
+    result = notification_admission(workspace, data, configuration, readiness, coordinator_only=coordinator_only)
+    for key in set(source_files()) - set(COORDINATOR_FILES if coordinator_only else NOTIFICATION_FILES):
         path = safe_target(workspace, key)
         result[str(path)] = file_fingerprint(path)
     return result
 
 
 def activate_notifications(workspace: Path, data: Path, release: dict, configuration: dict, proofs: dict, expected: dict, journal_path: Path, baseline: dict, readiness: dict, *, deadline_seconds: float = 30) -> dict:
+    return _activate_compatible(workspace, data, release, configuration, proofs, expected, journal_path,
+        baseline, readiness, kind="notification-only", deadline_seconds=deadline_seconds)
+
+
+def activate_coordinator(workspace: Path, data: Path, release: dict, configuration: dict, proofs: dict, expected: dict, journal_path: Path, baseline: dict, readiness: dict, *, deadline_seconds: float = 30) -> dict:
+    return _activate_compatible(workspace, data, release, configuration, proofs, expected, journal_path,
+        baseline, readiness, kind="coordinator-only", deadline_seconds=deadline_seconds)
+
+
+def _activate_compatible(workspace: Path, data: Path, release: dict, configuration: dict, proofs: dict, expected: dict, journal_path: Path, baseline: dict, readiness: dict, *, kind: str, deadline_seconds: float) -> dict:
+    coordinator_only = kind == "coordinator-only"
+    target_owner = coordinator_targets if coordinator_only else notification_targets
+    snapshot = lambda: notification_snapshot(workspace, data, configuration, readiness, coordinator_only=coordinator_only)
     with notification_deadline(deadline_seconds) as check:
         source = source_files(); identity = release_identity(release, source)
         check_proofs(release, identity, proofs, required=("autoreview", "offline_tests"))
         native = proofs.get("native_windows") or {}
-        if (native.get("state") != "inherited" or native.get("baseline_release_sha256") != digest(json_bytes(baseline))
+        native_baseline = baseline.get("baseline") if coordinator_only else None
+        if coordinator_only and not isinstance(native_baseline, dict):
+            raise DeploymentError("coordinator native baseline provenance unavailable")
+        if (native.get("state") != "inherited" or native.get("baseline_release_sha256") != (native_baseline.get("release_sha256") if coordinator_only else digest(json_bytes(baseline)))
             or native.get("assets") != configuration.get("assets")
             or native.get("worker_sha256") != baseline.get("files", {}).get("scripts/youtube_global_chunk_worker.py")
             or native.get("adapter_sha256") != baseline.get("files", {}).get("scripts/youtube_global_windows_adapter.ps1")
             or not re.fullmatch(r"[0-9a-f]{64}", str(native.get("evidence_sha256")))):
             raise DeploymentError("notification unchanged-byte native proof incomplete")
+        if coordinator_only and native.get("baseline_deployment_sha256") != digest(safe_target(data, "state/config/windows-deployment.json").read_bytes()):
+            raise DeploymentError("coordinator unchanged-byte native proof baseline differs")
         verify_source_revision(release["revision"], source)
         validate_notification_journal(workspace, journal_path)
         if journal_path.exists(): raise DeploymentError("deployment journal already exists; inspect its outcome")
-        proposed = notification_targets(workspace, data, release, configuration, source, baseline)
+        proposed = target_owner(workspace, data, release, configuration, source, baseline)
         canary_id = readiness.get("canary_id")
         if not isinstance(canary_id, str) or not re.fullmatch(r"windows-canary-[A-Za-z0-9_-]{1,100}", canary_id): raise DeploymentError("notification run identity invalid")
         # Fail unsafe inventories/graphs before creating or taking any boundary.
         # These observations are not authority: repeat them under all locks.
-        preflight = notification_snapshot(workspace, data, configuration, readiness)
+        preflight = snapshot()
         commands_drained(workspace); check()
         if {str(path): digest(path.read_bytes()) if path.is_file() else None for path in proposed} != expected:
             raise DeploymentError("deployment preimage hashes changed")
         with boundary_locks(data, canary_id=canary_id):
-            proposed = notification_targets(workspace, data, release, configuration, source, baseline)
-            protected = notification_snapshot(workspace, data, configuration, readiness)
+            proposed = target_owner(workspace, data, release, configuration, source, baseline)
+            protected = snapshot()
             if protected != preflight: raise DeploymentError("notification protected state changed before boundary")
             commands_drained(workspace); check()
             actual = {str(path): digest(path.read_bytes()) if path.is_file() else None for path in proposed}
             if actual != expected: raise DeploymentError("deployment preimage hashes changed")
-            journal = {"schema": "openclaw.youtube.windows-deploy-journal.v1", "kind": "notification-only", "state": "prepared",
+            journal = {"schema": "openclaw.youtube.windows-deploy-journal.v1", "kind": kind, "state": "prepared",
                 "revision": release["revision"], "release_sha256": identity, "workspace": str(workspace), "data_root": str(data),
                 "node_id": configuration["node"]["id"], "canary_id": canary_id, "lease_id": readiness["lease_id"],
                 "checkpoint_sha256": readiness["checkpoint_sha256"], "protected": protected,
@@ -660,10 +778,10 @@ def activate_notifications(workspace: Path, data: Path, release: dict, configura
             for path, raw in proposed.items():
                 atomic(path, raw, mode=stat.S_IMODE(path.stat().st_mode) if path.is_file() else 0o644); check()
                 if path == workspace / SUPERVISOR: commands_drained(workspace)
-            if any(digest(path.read_bytes()) != digest(raw) for path, raw in proposed.items()) or notification_snapshot(workspace, data, configuration, readiness) != protected:
+            if any(digest(path.read_bytes()) != digest(raw) for path, raw in proposed.items()) or snapshot() != protected:
                 raise DeploymentError("notification source or protected-state readback differs")
             check(); journal["state"] = "committed"; atomic(journal_path, json_bytes(journal)); check()
-            return {"state": "committed", "kind": "notification-only", "revision": release["revision"], "release_sha256": identity, "journal": str(journal_path)}
+            return {"state": "committed", "kind": kind, "revision": release["revision"], "release_sha256": identity, "journal": str(journal_path)}
 
 
 def validate_notification_journal(workspace: Path, journal_path: Path) -> None:
@@ -673,22 +791,29 @@ def validate_notification_journal(workspace: Path, journal_path: Path) -> None:
 
 
 def rollback_notifications(journal_path: Path, journal: dict, readiness: dict) -> dict:
+    return _rollback_compatible(journal_path, journal, readiness)
+
+
+def _rollback_compatible(journal_path: Path, journal: dict, readiness: dict) -> dict:
+    kind = journal["kind"]
+    coordinator_only = kind == "coordinator-only"
     with notification_deadline() as check:
         workspace, data = Path(journal["workspace"]), Path(journal["data_root"])
         validate_notification_journal(workspace, journal_path)
         configuration = read(safe_target(data, "state/config/windows-worker.json"))
         if any(readiness.get(key) != journal.get(key) for key in ("canary_id", "lease_id", "checkpoint_sha256")):
             raise DeploymentError("notification rollback readiness differs from recorded run")
-        paths = {str(safe_target(workspace, key)) for key in NOTIFICATION_FILES}
+        paths = {str(safe_target(workspace, key)) for key in (COORDINATOR_FILES if coordinator_only else NOTIFICATION_FILES)}
         paths.add(str(safe_target(data, "state/config/windows-deployment.json")))
         rows = journal.get("files") or []
         if len(rows) != len(paths) or {row.get("path") for row in rows} != paths:
             raise DeploymentError("notification rollback write set differs")
-        if notification_snapshot(workspace, data, configuration, readiness) != journal.get("protected"):
+        snapshot = lambda: notification_snapshot(workspace, data, configuration, readiness, coordinator_only=coordinator_only)
+        if snapshot() != journal.get("protected"):
             raise DeploymentError("notification rollback protected state drifted")
         commands_drained(workspace); check()
         with boundary_locks(data, canary_id=journal["canary_id"]):
-            if notification_snapshot(workspace, data, configuration, readiness) != journal.get("protected"):
+            if snapshot() != journal.get("protected"):
                 raise DeploymentError("notification rollback protected state drifted")
             commands_drained(workspace); check()
             for row in rows:
@@ -714,7 +839,7 @@ def rollback_notifications(journal_path: Path, journal: dict, readiness: dict) -
                 check()
                 if path == workspace / SUPERVISOR: commands_drained(workspace)
             commands_drained(workspace)
-            if notification_snapshot(workspace, data, configuration, readiness) != journal["protected"]:
+            if snapshot() != journal["protected"]:
                 raise DeploymentError("notification rollback protected readback differs")
             for row in rows:
                 path = Path(row["path"])
@@ -722,16 +847,16 @@ def rollback_notifications(journal_path: Path, journal: dict, readiness: dict) -
                 if (path.read_bytes() if path.is_file() else None) != before or (before is not None and stat.S_IMODE(path.stat().st_mode) != row["before_mode"]):
                     raise DeploymentError("notification rollback source readback differs")
             check(); journal["state"] = "rolled_back"; atomic(journal_path, json_bytes(journal)); check()
-            return {"state": "rolled_back", "kind": "notification-only", "journal": str(journal_path)}
+            return {"state": "rolled_back", "kind": kind, "journal": str(journal_path)}
 
 
 def rollback(journal_path: Path, *, readiness: dict | None = None) -> dict:
     journal = read(journal_path)
     if journal.get("schema") != "openclaw.youtube.windows-deploy-journal.v1" or journal.get("state") not in {"prepared", "committed"}:
         raise DeploymentError("rollback journal invalid or already consumed")
-    if journal.get("kind") == "notification-only":
+    if journal.get("kind") in {"notification-only", "coordinator-only"}:
         if not isinstance(readiness, dict): raise DeploymentError("notification rollback requires fresh readiness")
-        return rollback_notifications(journal_path, journal, readiness)
+        return _rollback_compatible(journal_path, journal, readiness)
     if journal.get("kind") is not None: raise DeploymentError("deployment journal kind unknown")
     workspace, data = Path(journal["workspace"]), Path(journal["data_root"])
     rows = journal.get("files")
@@ -766,8 +891,11 @@ def main() -> int:
     parser.add_argument("--proofs", type=Path)
     parser.add_argument("--expected-current", type=Path)
     parser.add_argument("--journal", type=Path)
-    parser.add_argument("--notification-only", action="store_true", help="Preserve a stopped blocked run and native provenance while changing only compatible GCP notification source")
+    variants = parser.add_mutually_exclusive_group()
+    variants.add_argument("--notification-only", action="store_true", help="Preserve a stopped blocked run and native provenance while changing only compatible GCP notification source")
+    variants.add_argument("--coordinator-only", action="store_true", help="Preserve installed notification/native provenance and an unarmed stopped run while changing only GCP recovery coordinator source")
     parser.add_argument("--baseline-release", type=Path)
+    parser.add_argument("--baseline-deployment", type=Path, help="Exact currently installed deployment receipt for coordinator-only plan/activation")
     parser.add_argument("--readiness", type=Path, help="Fresh existing-run read-only node/checkpoint/account/assets/free-lock receipt")
     parser.add_argument("--await-windows", action="store_true", help="Hold the verified coordinator boundary up to 60s for the local Windows installation receipt on stdin")
     args = parser.parse_args()
@@ -776,22 +904,27 @@ def main() -> int:
         print(json.dumps(rollback(args.journal, readiness=read(args.readiness) if args.readiness else None), indent=2)); return 0
     source = source_files()
     if args.action == "inventory":
-        print(json.dumps({"repository": REPOSITORY, "compatibility": COMPATIBILITY, "files": {key: digest(raw) for key, raw in source.items()}, "wrapper_sha256": digest((BUNDLE / "windows/yt-dlp-anonymous.cmd").read_bytes())}, indent=2)); return 0
+        inventory = {"repository": REPOSITORY, "compatibility": COMPATIBILITY, "files": {key: digest(raw) for key, raw in source.items()}, "wrapper_sha256": digest((BUNDLE / "windows/yt-dlp-anonymous.cmd").read_bytes())}
+        if args.coordinator_only: inventory.update(kind="coordinator-only", write_files=list(COORDINATOR_FILES))
+        print(json.dumps(inventory, indent=2)); return 0
     if not all((args.workspace, args.data_root, args.release, args.configuration)): parser.error("workspace, data-root, release and configuration are required")
     workspace, data = args.workspace.absolute(), args.data_root.absolute()
     if workspace.is_symlink() or data.is_symlink(): raise DeploymentError("deployment roots must be real directories")
     release, configuration = read(args.release), read(args.configuration)
     release_identity(release, source)
-    if args.notification_only and (not args.baseline_release or args.await_windows):
+    if args.notification_only and (not args.baseline_release or args.baseline_deployment or args.await_windows):
         parser.error("notification-only requires baseline-release and forbids Windows installation handoff")
-    baseline = read(args.baseline_release) if args.notification_only else None
+    if args.coordinator_only and (not args.baseline_deployment or args.baseline_release or args.await_windows):
+        parser.error("coordinator-only requires baseline-deployment and forbids Windows installation handoff")
+    baseline = read(args.baseline_deployment) if args.coordinator_only else read(args.baseline_release) if args.notification_only else None
     if args.action == "plan":
-        if args.notification_only:
-            if not args.readiness: parser.error("notification-only plan requires fresh readiness")
+        if args.notification_only or args.coordinator_only:
+            if not args.readiness: parser.error("compatible GCP-only plan requires fresh readiness")
             with notification_deadline():
                 verify_source_revision(release["revision"], source)
-                proposed = notification_targets(workspace, data, release, configuration, source, baseline)
-                notification_snapshot(workspace, data, configuration, read(args.readiness))
+                target_owner = coordinator_targets if args.coordinator_only else notification_targets
+                proposed = target_owner(workspace, data, release, configuration, source, baseline)
+                notification_snapshot(workspace, data, configuration, read(args.readiness), coordinator_only=args.coordinator_only)
                 commands_drained(workspace)
                 plan = {str(path): digest(path.read_bytes()) if path.is_file() else None for path in proposed}
         else:
@@ -799,9 +932,10 @@ def main() -> int:
             plan = {str(path): digest(path.read_bytes()) if path.is_file() else None for path in proposed}
         print(json.dumps(plan, indent=2)); return 0
     if not all((args.proofs, args.expected_current, args.journal)): parser.error("proofs, expected-current and journal are required for activation")
-    if args.notification_only:
-        if not args.readiness: parser.error("notification-only activation requires fresh readiness")
-        result = activate_notifications(workspace, data, release, configuration, read(args.proofs), read(args.expected_current), args.journal, baseline, read(args.readiness))
+    if args.notification_only or args.coordinator_only:
+        if not args.readiness: parser.error("compatible GCP-only activation requires fresh readiness")
+        activation_owner = activate_coordinator if args.coordinator_only else activate_notifications
+        result = activation_owner(workspace, data, release, configuration, read(args.proofs), read(args.expected_current), args.journal, baseline, read(args.readiness))
     else:
         result = activate(workspace, data, release, configuration, read(args.proofs), read(args.expected_current), args.journal, await_windows=args.await_windows)
     print(json.dumps(result, indent=2)); return 0
