@@ -8,6 +8,7 @@ import type {
   GatewayRequestContext,
   RespondFn,
 } from "../server-methods/shared-types.js";
+import type { AgentTurnExecutionOwner } from "./execution-settlement.types.js";
 
 export type AgentTurnFrame = readonly [
   ok: Parameters<RespondFn>[0],
@@ -16,6 +17,8 @@ export type AgentTurnFrame = readonly [
 ];
 
 export type AgentTurnIo = {
+  /** Publishes live producer observation before fresh acceptance. */
+  emitExecutionOwner?: (owner: AgentTurnExecutionOwner) => void;
   emitAcceptance: (acceptance: AgentTurnFrame, meta?: Parameters<RespondFn>[3]) => void;
   /** Publishes the exact controller before asynchronous runtime preparation. */
   emitStartOwner?: (runId: string, entry: ChatAbortControllerEntry) => void;

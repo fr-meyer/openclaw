@@ -679,6 +679,63 @@ describe("workboard gateway methods", () => {
       "maxStarts requires workboard.cards.dispatchWithOptions.",
     );
 
+    const legacyCardRespond = vi.fn();
+    await methods
+      .get("workboard.cards.dispatch")
+      ?.handler({ params: { cardId: "card-1" }, respond: legacyCardRespond } as never);
+    expect(legacyCardRespond.mock.calls[0]?.[0]).toBe(false);
+    expect(legacyCardRespond.mock.calls[0]?.[2]?.message).toBe(
+      "cardId requires workboard.cards.dispatchWithOptions.",
+    );
+
+    for (const value of ["", "   ", 42]) {
+      const invalidCardRespond = vi.fn();
+      await handler?.({ params: { cardId: value }, respond: invalidCardRespond } as never);
+      expect(invalidCardRespond.mock.calls[0]?.[0]).toBe(false);
+      expect(invalidCardRespond.mock.calls[0]?.[2]?.message).toBe(
+        "cardId must be a non-empty string.",
+      );
+    }
+
+    for (const value of ["", "   ", 42]) {
+      const invalidBoardRespond = vi.fn();
+      await handler?.({ params: { boardId: value }, respond: invalidBoardRespond } as never);
+      expect(invalidBoardRespond.mock.calls[0]?.[0]).toBe(false);
+      expect(invalidBoardRespond.mock.calls[0]?.[2]?.message).toBe(
+        "boardId must be a non-empty string.",
+      );
+    }
+
+    const unscopedIntent = vi.fn();
+    await handler?.({
+      params: { intentRunId: `wb-${"b".repeat(40)}` },
+      respond: unscopedIntent,
+    } as never);
+    expect(unscopedIntent.mock.calls[0]?.[2]?.message).toBe(
+      "intentRunId requires one exact card through dispatchWithOptions.",
+    );
+    for (const value of ["bad", 42, `wb-${"A".repeat(40)}`]) {
+      const invalidIntent = vi.fn();
+      await handler?.({
+        params: { cardId: "card-1", intentRunId: value },
+        respond: invalidIntent,
+      } as never);
+      expect(invalidIntent.mock.calls[0]?.[2]?.message).toBe(
+        "intentRunId must be a wb-<40 lowercase hex> dispatch intent id.",
+      );
+    }
+    expect(run).toHaveBeenCalledTimes(7);
+
+    const exactCapRespond = vi.fn();
+    await handler?.({
+      params: { cardId: "card-1", maxStarts: 2 },
+      respond: exactCapRespond,
+    } as never);
+    expect(exactCapRespond.mock.calls[0]?.[0]).toBe(false);
+    expect(exactCapRespond.mock.calls[0]?.[2]?.message).toBe(
+      "maxStarts must be 1 when cardId is provided.",
+    );
+
     for (const value of [0, -1, 1.5, "2"]) {
       const invalidRespond = vi.fn();
       await handler?.({ params: { maxStarts: value }, respond: invalidRespond } as never);

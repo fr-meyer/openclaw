@@ -1,8 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   WorkboardAttachment,
   WorkboardBoardMetadata,
   WorkboardCard,
+  WorkboardClaim,
   WorkboardDiagnostic,
   WorkboardExecution,
   WorkboardExecutionStatus,
@@ -41,7 +42,12 @@ import type {
   WorkboardDispatchResult,
   WorkboardMutationScope,
 } from "./store-inputs.js";
-import { capText, normalizeBoardId, normalizeTimestamp } from "./store-normalizers.js";
+import {
+  capText,
+  normalizeBoardId,
+  normalizeLaunchClaimGeneration,
+  normalizeTimestamp,
+} from "./store-normalizers.js";
 import { WorkboardNotificationStore } from "./store-notifications.js";
 import { readCards } from "./store-read.js";
 
@@ -67,6 +73,14 @@ type WorkboardExecutionAssociationPatch = WorkboardCardPatch & {
 };
 type WorkboardPreparedLaunch = Extract<WorkboardLaunchState, { phase: "prepared" }>;
 
+function intentProvisionalRunId(cardId: string, intentRunId: string): string {
+  if (!/^wb-[0-9a-f]{40}$/.test(intentRunId)) {
+    throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+  }
+  const digest = createHash("sha256").update(cardId).update("\0").update(intentRunId).digest("hex");
+  return `workboard:intent:${digest}`;
+}
+
 function preparedLaunchMatchesCard(
   card: WorkboardCard,
   expected: WorkboardPreparedLaunch,
@@ -77,6 +91,9 @@ function preparedLaunchMatchesCard(
     launch.requestedSessionKey === expected.requestedSessionKey &&
     launch.provisionalRunId === expected.provisionalRunId &&
     launch.preparedAt === expected.preparedAt &&
+    launch.claimOwnerId === expected.claimOwnerId &&
+    launch.claimGeneration === expected.claimGeneration &&
+    (launch.claimGeneration === undefined || claimMatchesLaunch(card.metadata?.claim, launch)) &&
     card.sessionKey === expected.requestedSessionKey &&
     card.runId === expected.provisionalRunId &&
     card.execution?.sessionKey === expected.requestedSessionKey &&
@@ -189,6 +206,27 @@ function lifecycleExecution(params: {
   };
 }
 
+function claimMatchesLaunch(
+  claim: WorkboardClaim | undefined,
+  launch: WorkboardLaunchState | undefined,
+): boolean {
+  if (!claim || !launch) {
+    return false;
+  }
+  if (launch.claimGeneration !== undefined) {
+    return claim.ownerId === launch.claimOwnerId && claim.claimedAt === launch.claimGeneration;
+  }
+  // Preserve lifecycle behavior for launches written before the claim snapshot existed.
+  return claim.claimedAt <= launch.preparedAt;
+}
+
+function claimConflictsWithLaunch(
+  claim: WorkboardClaim | undefined,
+  launch: WorkboardLaunchState | undefined,
+): boolean {
+  return Boolean(claim && launch && !claimMatchesLaunch(claim, launch));
+}
+
 // Capability layers split review boundaries only; the core still owns persistence and mutation order.
 export class WorkboardStore extends WorkboardNotificationStore {
   async prepareExecutionLaunch(
@@ -198,19 +236,30 @@ export class WorkboardStore extends WorkboardNotificationStore {
       now: number;
       scope: WorkboardMutationScope;
       assertOwnerCurrent?: () => void;
+      intentRunId?: string;
     },
   ): Promise<{ card: WorkboardCard; launch: WorkboardPreparedLaunch }> {
+    const intentKey =
+      input.intentRunId === undefined ? undefined : intentProvisionalRunId(id, input.intentRunId);
     return await this.enqueueMutation(async () => {
       const result = await this.updateLatestCard(
         id,
         (card) => {
           assertCanMutateClaimedCard(card, input.scope);
-          const provisionalRunId = `workboard:${card.id}:${card.updatedAt}`;
+          const provisionalRunId = intentKey ?? `workboard:${card.id}:${card.updatedAt}`;
+          const claim = card.metadata?.claim;
+          const claimGeneration = normalizeLaunchClaimGeneration(claim?.claimedAt);
+          if (claim && claimGeneration === undefined) {
+            throw new Error("Workboard launch requires a positive safe-integer claim generation.");
+          }
           const launch: WorkboardPreparedLaunch = {
             phase: "prepared",
             requestedSessionKey: input.requestedSessionKey,
             provisionalRunId,
             preparedAt: card.updatedAt,
+            ...(claim && claimGeneration !== undefined
+              ? { claimOwnerId: claim.ownerId, claimGeneration }
+              : {}),
           };
           return {
             sessionKey: input.requestedSessionKey,
@@ -335,8 +384,9 @@ export class WorkboardStore extends WorkboardNotificationStore {
           const launch = card.metadata?.automation?.launch;
           const associationIsCurrent =
             !input.association ||
-            ((input.sourceUpdatedAt === undefined ||
-              !shouldSkipPersistedLifecycleStatusUpdate(card, input.sourceUpdatedAt)) &&
+            (!claimConflictsWithLaunch(card.metadata?.claim, launch) &&
+              (input.sourceUpdatedAt === undefined ||
+                !shouldSkipPersistedLifecycleStatusUpdate(card, input.sourceUpdatedAt)) &&
               (launch?.phase !== "prepared" ||
                 (input.association.acceptedAt !== undefined &&
                   input.association.acceptedAt >= launch.preparedAt)) &&
@@ -454,13 +504,32 @@ export class WorkboardStore extends WorkboardNotificationStore {
     const now = typeof input === "number" ? input : normalizeTimestamp(input.now, Date.now());
     const boardId = typeof input === "number" ? undefined : normalizeBoardId(input.boardId);
     const assertOwnerCurrent = typeof input === "number" ? undefined : input.assertOwnerCurrent;
+    const rawCardId = typeof input === "number" ? undefined : input.cardId;
+    const cardId = typeof rawCardId === "string" ? rawCardId.trim() : undefined;
+    if (rawCardId !== undefined && !cardId) {
+      throw new Error("cardId must be a non-empty string.");
+    }
     return await this.enqueueMutation(async () => {
       const promoted: WorkboardCard[] = [];
       const reclaimed: WorkboardCard[] = [];
       const blocked: WorkboardCard[] = [];
       const orchestrated: WorkboardCard[] = [];
       const orchestratedByBoard = new Map<string, number>();
-      for (const card of await this.list({ boardId })) {
+      let cards: WorkboardCard[];
+      if (cardId) {
+        const card = await this.get(cardId);
+        if (!card) {
+          throw new Error(`card not found: ${cardId}`);
+        }
+        const actualBoardId = cardBoardId(card);
+        if (boardId && actualBoardId !== boardId) {
+          throw new Error(`card ${cardId} belongs to board ${actualBoardId}, not ${boardId}.`);
+        }
+        cards = [card];
+      } else {
+        cards = await this.list({ boardId });
+      }
+      for (const card of cards) {
         // Archived cards remain readable and restorable, but must never re-enter automation.
         if (card.metadata?.archivedAt) {
           continue;
@@ -549,6 +618,20 @@ export class WorkboardStore extends WorkboardNotificationStore {
           }
           if (wasPromoted && latest.status !== "blocked") {
             promoted.push(latest);
+          }
+          if (cardId) {
+            // Account the explicit request before worker admission. A later Gateway launch
+            // failure is still an attempted dispatch, while broad idle sweeps stay read-only.
+            await this.updateCard(latest.id, {
+              metadata: {
+                ...latest.metadata,
+                automation: {
+                  ...latest.metadata?.automation,
+                  dispatchCount: (latest.metadata?.automation?.dispatchCount ?? 0) + 1,
+                  lastDispatchAt: now,
+                },
+              },
+            });
           }
         }, assertOwnerCurrent);
       }
@@ -652,8 +735,14 @@ export class WorkboardStore extends WorkboardNotificationStore {
     });
   }
 
-  async buildWorkerContext(id: string): Promise<string> {
+  async buildWorkerContext(id: string, options: { relatedOnly?: boolean } = {}): Promise<string> {
     const card = await this.requireCard(id);
+    if (options.relatedOnly) {
+      const related = (
+        await Promise.all(cardParentIds(card).map(async (parentId) => await this.get(parentId)))
+      ).filter((entry): entry is WorkboardCard => entry !== undefined);
+      return buildWorkerContext(card, related, { includeRecentAgentWork: false });
+    }
     return buildWorkerContext(
       card,
       await readCards(this.store, {

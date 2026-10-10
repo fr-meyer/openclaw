@@ -2,13 +2,14 @@ import { WORKBOARD_STATUSES, type WorkboardCard } from "@openclaw/workboard-cont
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { ErrorCodes, errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { parseStrictPositiveInteger } from "openclaw/plugin-sdk/number-runtime";
-import { asRecord, isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { OpenClawPluginApi } from "../api.js";
 import { redactClaimToken, redactDispatchResult } from "./card-redaction.js";
 import {
   dispatchAndStartWorkboardCards,
   type WorkboardDispatchStartOptions,
 } from "./dispatcher.js";
+import type { WorkboardLiveExecutionTracker } from "./live-execution.js";
 import { WorkboardCardConflictError, type WorkboardStore } from "./store.js";
 import {
   resolveAgentWorkboardWorkspaceRuntime,
@@ -150,7 +151,7 @@ function gatewayDispatchOptions(params: {
   request: Pick<GatewayMethodContext, "client" | "context">;
   input: Pick<
     WorkboardDispatchStartOptions,
-    "boardId" | "cardId" | "maxStarts" | "provider" | "model"
+    "boardId" | "cardId" | "maxStarts" | "provider" | "model" | "intentRunId"
   >;
 }): WorkboardDispatchStartOptions {
   const { context, client } = params.request;
@@ -176,23 +177,71 @@ function gatewayDispatchOptions(params: {
 }
 
 export function createWorkboardDispatchHandler(params: {
+  liveExecutions?: WorkboardLiveExecutionTracker;
   api: OpenClawPluginApi;
   store: WorkboardStore;
   redactCard: (card: WorkboardCard) => WorkboardCard;
 }) {
   return async (
     { params: requestParams, respond, client, context }: GatewayMethodContext,
-    options: { supportsMaxStarts: boolean; directCard?: boolean },
+    options: { supportsMaxStarts: boolean; supportsCardId?: boolean; directCard?: boolean },
   ) => {
     try {
-      const cardId = options.directCard ? readId(requestParams) : undefined;
-      const { boardId, maxStarts: rawMaxStarts } = asRecord(requestParams);
+      const rawCardId = options.directCard
+        ? requestParams.id
+        : requestParams && typeof requestParams === "object" && "cardId" in requestParams
+          ? requestParams.cardId
+          : undefined;
+      if (!options.directCard && !options.supportsCardId && rawCardId !== undefined) {
+        throw new Error("cardId requires workboard.cards.dispatchWithOptions.");
+      }
+      let cardId: string | undefined;
+      if (options.directCard) {
+        cardId = readId({ id: rawCardId });
+      } else if (rawCardId !== undefined) {
+        if (typeof rawCardId !== "string" || !rawCardId.trim()) {
+          throw new Error("cardId must be a non-empty string.");
+        }
+        cardId = rawCardId.trim();
+      }
+      const rawBoardId =
+        requestParams && typeof requestParams === "object" && "boardId" in requestParams
+          ? requestParams.boardId
+          : undefined;
+      let boardId: string | undefined;
+      if (rawBoardId !== undefined) {
+        if (typeof rawBoardId !== "string" || !rawBoardId.trim()) {
+          throw new Error("boardId must be a non-empty string.");
+        }
+        boardId = rawBoardId.trim();
+      }
+      const rawMaxStarts =
+        requestParams && typeof requestParams === "object" && "maxStarts" in requestParams
+          ? requestParams.maxStarts
+          : undefined;
       if (!options.supportsMaxStarts && rawMaxStarts !== undefined) {
         throw new Error("maxStarts requires workboard.cards.dispatchWithOptions.");
       }
       const maxStarts = options.supportsMaxStarts
         ? readOptionalPositiveInteger(rawMaxStarts, "maxStarts")
         : undefined;
+      if (cardId && maxStarts !== undefined && maxStarts !== 1) {
+        throw new Error("maxStarts must be 1 when cardId is provided.");
+      }
+      const rawIntentRunId =
+        requestParams && typeof requestParams === "object" && "intentRunId" in requestParams
+          ? requestParams.intentRunId
+          : undefined;
+      if (rawIntentRunId !== undefined && (!options.supportsCardId || !cardId)) {
+        throw new Error("intentRunId requires one exact card through dispatchWithOptions.");
+      }
+      if (
+        rawIntentRunId !== undefined &&
+        (typeof rawIntentRunId !== "string" || !/^wb-[0-9a-f]{40}$/.test(rawIntentRunId))
+      ) {
+        throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+      }
+      const intentRunId = typeof rawIntentRunId === "string" ? rawIntentRunId : undefined;
       const provider =
         options.directCard &&
         typeof requestParams.provider === "string" &&
@@ -206,20 +255,25 @@ export function createWorkboardDispatchHandler(params: {
       const result = await dispatchAndStartWorkboardCards({
         store: params.store,
         subagent: params.api.runtime.subagent,
+        liveExecutions: params.liveExecutions,
         worktrees: params.api.runtime.worktrees,
-        options: gatewayDispatchOptions({
-          api: params.api,
-          request: { context, client },
-          input: {
-            ...(cardId ? { cardId, maxStarts: 1 } : {}),
-            boardId: typeof boardId === "string" ? boardId : undefined,
-            ...(maxStarts !== undefined ? { maxStarts } : {}),
-            ...(provider ? { provider } : {}),
-            ...(model ? { model } : {}),
-          },
-        }),
+        options: {
+          ...gatewayDispatchOptions({
+            api: params.api,
+            request: { context, client },
+            input: {
+              ...(cardId ? { cardId, maxStarts: 1 } : {}),
+              boardId,
+              ...(maxStarts !== undefined ? { maxStarts } : {}),
+              ...(provider ? { provider } : {}),
+              ...(model ? { model } : {}),
+              ...(intentRunId ? { intentRunId } : {}),
+            },
+          }),
+          ...(cardId ? { targetMode: options.directCard ? "start" : "dispatch" } : {}),
+        },
       });
-      if (cardId) {
+      if (options.directCard) {
         const started = result.started[0];
         if (!started?.card) {
           throw new Error(result.startFailures[0]?.error ?? "Workboard card did not start.");

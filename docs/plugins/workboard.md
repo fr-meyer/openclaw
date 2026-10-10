@@ -444,10 +444,22 @@ Diagnostics are computed from local card metadata. Built-in checks flag:
 
 Gateway RPC methods live under `workboard.*`:
 
-| Scope            | Methods                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `operator.read`  | `cards.list`, `cards.export`, `cards.diagnostics`, attachment list/get, notification event reads, `boards.list`, `cards.stats`, `cards.runs`                                                                                                                                                                                                                                                            |
-| `operator.write` | `cards.diagnostics.refresh`, create/captureSession/update/move/delete/comment/link/linkDependency/proof/artifact, attachment add/delete, worker log, protocol violation, claim/heartbeat/release/promote/reassign/reclaim/complete/block/unblock/start, `cards.dispatch`, `cards.bulk`, archive, `boards.upsert`/`archive`/`delete`, `cards.specify`/`decompose`, notification subscribe/delete/advance |
+| Scope            | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `operator.read`  | `cards.list`, `cards.export`, `cards.diagnostics`, attachment list/get, notification event reads, `boards.list`, `cards.stats`, `cards.runs`                                                                                                                                                                                                                                                                                                                     |
+| `operator.write` | `cards.diagnostics.refresh`, create/captureSession/update/move/delete/comment/link/linkDependency/proof/artifact, attachment add/delete, worker log, protocol violation, claim/heartbeat/release/promote/reassign/reclaim/complete/block/unblock/start, `cards.dispatch`, `cards.dispatchWithOptions`, `cards.dispatchWithTarget`, `cards.bulk`, archive, `boards.upsert`/`archive`/`delete`, `cards.specify`/`decompose`, notification subscribe/delete/advance |
+
+New exact-target callers use `workboard.cards.dispatchWithTarget`; an older Gateway
+rejects that distinct method instead of ignoring the target fields. The existing
+`workboard.cards.dispatchWithOptions` method also supports targeting on an upgraded
+Gateway for current consumers. An exact-card target-aware request may include
+`intentRunId` in the form `wb-` plus 40 lowercase hexadecimal characters.
+Workboard derives the prepared launch idempotency key as
+`workboard:intent:<sha256(cardId + NUL + intentRunId)>`, using UTF-8 bytes.
+This allows an external dispatch receipt to recognize the exact prepared
+launch without replacing Workboard's accepted worker run id. The key is
+correlation evidence only: the caller must still read the card, task/run/session
+ledger, and claim before treating the worker as started or stopped.
 
 `workboard.cards.update`, `workboard.cards.move`, `workboard.cards.archive`, and
 `workboard.cards.delete` accept an optional `expectedUpdatedAt` request field.
@@ -528,3 +540,19 @@ owner.
 - [Manage plugins](/plugins/manage-plugins)
 - [Sessions](/concepts/session)
 - [Managed worktrees](/concepts/managed-worktrees)
+
+## Live execution settlement
+
+`workboard.cards.executionSettlement({ id })` requires `operator.read` and
+reports live host producer completion for a card's exact accepted launch.
+The service binds the optional runtime observation only after acceptance is
+persisted, retaining the launch's claim owner/generation and accepted run/session.
+
+`producerState` is `pending`, `settled`, or `unknown`. Failed acceptance,
+replacement identity, unavailable runtime observation, retirement, and restart
+remain unknown. Retained observations are bounded by the 2,000-card service limit;
+oldest bindings are evicted and read back as unknown. Removing the mutable claim
+after acceptance keeps the saved launch identity readable. Even a settled producer returns `resourceFencing: "unknown"` and
+`releaseAuthorized: false`: lifecycle completion and this live readback cannot
+authorize releasing reservations or claim that arbitrary background processes
+have stopped. It does not persist evidence or change card/claim state.

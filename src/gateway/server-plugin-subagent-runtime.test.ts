@@ -746,3 +746,41 @@ describe("plugin background completions", () => {
     },
   );
 });
+
+describe("plugin live producer observation", () => {
+  it.each(["captured", "serialized", "wrong run", "wrong session"] as const)(
+    "accepts only an exact host-captured observation (%s)",
+    async (source) => {
+      const observeSettlement = vi.fn(() => "settled" as const);
+      vi.spyOn(inProcessDispatch, "dispatchGatewayMethodInProcess").mockImplementation(
+        async (_method, _params, options) => {
+          if (source !== "serialized") {
+            options?.onExecutionOwner?.({
+              runId: source === "wrong run" ? "other-run" : "accepted-run",
+              sessionKey: source === "wrong session" ? "agent:main:other" : "agent:main:worker",
+              observeSettlement,
+            });
+          }
+          return {
+            runId: "accepted-run",
+            sessionKey: "agent:main:worker",
+            execution: { observeSettlement },
+          } as never;
+        },
+      );
+      const result = await createRuntime().run({
+        sessionKey: "agent:main:worker",
+        message: "Synthetic worker",
+      });
+      if (source === "captured") {
+        expect(result.execution?.observeSettlement()).toBe("settled");
+        lifetime.abort(new Error("runtime retired"));
+        expect(() => result.execution?.observeSettlement()).toThrow("runtime retired");
+        expect(observeSettlement).toHaveBeenCalledOnce();
+      } else {
+        expect(result.execution).toBeUndefined();
+        expect(observeSettlement).not.toHaveBeenCalled();
+      }
+    },
+  );
+});
