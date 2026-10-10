@@ -164,8 +164,8 @@ inputs or its hosted build supervisor.
 
 ## v2026.9.9 source-only preparation
 
-`manifests/v2026.9.9.json` pins the 9.9 upstream base and two ordered
-source patches. The final patch is `7419b2ea30d5100ee83f5fe53d146c04088e8f59`.
+`manifests/v2026.9.9.json` pins the 9.9 upstream base and three ordered
+source patches. The final patch is `c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6`.
 It remains `productionEligible: false`. The original seed manifest and its route are
 unchanged. The v2 manifest adds an explicit Node test lane and the parity image
 build decision; `release.py gates --runner node` emits only Node's
@@ -176,7 +176,9 @@ checkout, offline contracts, the inert publisher source plan, changed-owner
 planner, type checks, build, focused Vitest tests, and Node tests on a standard
 hosted Linux runner. The upstream `v2026.9.9` tag is fetched from the public
 upstream repository for the source plan; its peeled commit is checked against
-the source manifest. This route produces no OCI image or artifact.
+the source manifest. Both focused test lanes report their exit status; either
+failure keeps the source job red and the image job skipped. This route produces
+no OCI image or artifact.
 
 A separate reviewed push to `release-pipeline/image/v2026.9.9` first reruns
 the same source job, then allows one `linux/amd64` Buildx preparation with

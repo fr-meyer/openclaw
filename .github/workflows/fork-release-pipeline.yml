@@ -291,7 +291,7 @@ jobs:
         with:
           ref: ${{ steps.identity.outputs.source_sha }}
           path: source
-          fetch-depth: 3
+          fetch-depth: 4
           persist-credentials: false
       - name: Prove source chain and release contracts before install
         id: source
@@ -330,12 +330,26 @@ jobs:
         run: |
           set -euo pipefail
           cd source
-          mapfile -t vitest_tests < <(python3 ../tooling/scripts/fork-release/release.py gates \
-            --manifest ../tooling/scripts/fork-release/manifests/v2026.9.9.json --runner vitest)
-          OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${vitest_tests[@]}"
-          mapfile -t node_tests < <(python3 ../tooling/scripts/fork-release/release.py gates \
-            --manifest ../tooling/scripts/fork-release/manifests/v2026.9.9.json --runner node)
-          node --test "${node_tests[@]}"
+          python3 ../tooling/scripts/fork-release/release.py gates \
+            --manifest ../tooling/scripts/fork-release/manifests/v2026.9.9.json --runner vitest \
+            > "$RUNNER_TEMP/v99-vitest-gates.txt"
+          python3 ../tooling/scripts/fork-release/release.py gates \
+            --manifest ../tooling/scripts/fork-release/manifests/v2026.9.9.json --runner node \
+            > "$RUNNER_TEMP/v99-node-gates.txt"
+          mapfile -t vitest_tests < "$RUNNER_TEMP/v99-vitest-gates.txt"
+          mapfile -t node_tests < "$RUNNER_TEMP/v99-node-gates.txt"
+          if (( ${#vitest_tests[@]} == 0 || ${#node_tests[@]} == 0 )); then
+            echo "Refusing an empty focused test lane" >&2
+            exit 1
+          fi
+          vitest_exit=0
+          OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${vitest_tests[@]}" || vitest_exit=$?
+          node_exit=0
+          node --test "${node_tests[@]}" || node_exit=$?
+          printf 'Focused Vitest exit: %s; Node exit: %s\n' "$vitest_exit" "$node_exit" >> "$GITHUB_STEP_SUMMARY"
+          if (( vitest_exit != 0 || node_exit != 0 )); then
+            exit 1
+          fi
           echo "Source proof passed for ${{ steps.identity.outputs.source_sha }}. No image was built in this job." >> "$GITHUB_STEP_SUMMARY"
 
   v99-image:
@@ -359,7 +373,7 @@ jobs:
         with:
           ref: ${{ needs['v99-source'].outputs.source_sha }}
           path: source
-          fetch-depth: 3
+          fetch-depth: 4
           persist-credentials: false
       - name: Recheck source and manifest before build
         run: |
