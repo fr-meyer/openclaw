@@ -64,7 +64,9 @@ export async function prepareInstanceBindingFixture(
   return { coordinator, bundledRoot, configPath, restoreChannelRuntimeLoader };
 }
 
-async function installChannelBindingRuntimeLoader(proof: ChannelBindingProof) {
+export async function installChannelBindingRuntimeLoader(
+  proof: Pick<ChannelBindingProof, "observations">,
+) {
   // Keep the real host factory in Vitest's module graph; fixture plugins still
   // load normally, with their original registry and instance runtime options.
   const [loaderModule, sdkAlias, fullRuntime] = await Promise.all([
