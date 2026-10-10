@@ -6,6 +6,7 @@ import type { PluginSubagentRequesterContext } from "../../plugins/runtime/subag
 import type { RuntimePluginToolGrant } from "../../plugins/runtime/tool-grant.js";
 import type { AgentRuntimeIdentity } from "../agent-runtime-identity-token.js";
 import type { GatewayAuthPolicy } from "../auth-policy.types.js";
+import type { GatewayAuthResult } from "../auth.js";
 import type { AuthenticatedGitHubIdentitySync } from "../github-user-identity.types.js";
 import type { GatewayOperatorAccessAuthority } from "../operator-access-policy.types.js";
 import type { GatewayOperatorRoleActor } from "../operator-role-actor.js";
@@ -40,6 +41,9 @@ export type GatewayNodeInvokeStream = {
 /** Per-connection client metadata captured after the gateway handshake. */
 export type GatewayClient = {
   connect: ConnectParams;
+  /** Host-attested handshake facts; never read from a request frame. */
+  authenticatedMethod?: GatewayAuthResult["method"];
+  gatewayBootId?: string;
   authPolicy?: GatewayAuthPolicy;
   /** Transport-owned revocation marker; retained callers have no authority after invalidation. */
   invalidated?: boolean;

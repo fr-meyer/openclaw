@@ -82,6 +82,12 @@ const runtimeSharedProjectOwners = [
     exclude: [],
   },
   {
+    config: "test/vitest/vitest.tasks.config.ts",
+    root: "src/tasks",
+    include: ["src/tasks/**/*.test.ts"],
+    exclude: databaseWorkerCoreTestFiles,
+  },
+  {
     config: "test/vitest/vitest.utils.config.ts",
     root: "src/utils",
     include: ["src/utils/**/*.test.ts"],

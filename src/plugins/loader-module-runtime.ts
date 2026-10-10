@@ -59,6 +59,7 @@ const LAZY_RUNTIME_PROPERTIES = {
   worktrees: true,
   webSearch: true,
   modelConfig: true,
+  tasks: true,
 } satisfies Record<keyof PluginRuntime, true>;
 
 export function runPluginRegisterSyncInRegistry(
@@ -252,6 +253,7 @@ export function createLazyPluginRuntime(params: {
         prop === "hooks" ||
         prop === "nodes" ||
         prop === "subagent" ||
+        prop === "tasks" ||
         prop === "modelAuth" ||
         prop === "modelConfig"
       ) {

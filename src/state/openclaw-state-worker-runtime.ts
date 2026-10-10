@@ -120,6 +120,12 @@ import {
   executeSkillUploadCommand,
 } from "../skills/lifecycle/upload-store.worker.js";
 import * as skillWorkshop from "../skills/workshop/store.worker.js";
+import {
+  executeManagedTaskFlowReadCommand,
+  executeManagedTaskFlowWriteCommand,
+  isManagedTaskFlowReadCommand,
+  isManagedTaskFlowWriteCommand,
+} from "../tasks/managed-task-flow.worker.js";
 import { executeTranscriptRead } from "../transcripts/store-worker-read.js";
 import {
   executeTranscriptWrite,
@@ -400,6 +406,9 @@ export function executeSharedStateCommand(
       : read(open().db);
   }
   const database = open();
+  if (isManagedTaskFlowReadCommand(command)) {
+    return executeManagedTaskFlowReadCommand(database, command);
+  }
   if (command.type === "githubRepository.personalPending") {
     return readPendingRepositoryGitHubPublicationInDatabase(database.db, command.input);
   }
@@ -461,6 +470,9 @@ export function executeSharedStateCommand(
     database,
     ...stateOptions(),
   };
+  if (isManagedTaskFlowWriteCommand(command)) {
+    return executeManagedTaskFlowWriteCommand(command, writeOptions);
+  }
   if (command.type === "plugins.deferredMigrations.record") {
     return recordDeferredPluginMigrationsInWorker(command.input, writeOptions);
   }

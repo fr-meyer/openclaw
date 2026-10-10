@@ -110,16 +110,31 @@ it.skipIf(process.platform === "win32").each([
       await nextTurn();
       expect(unhandled).not.toHaveBeenCalled();
       // The Gateway-side join retains failure as a value and cannot reject the process.
-      await expect(Promise.allSettled([cleanup, adapter.waitForExtinction()])).resolves.toEqual([
-        { status: "rejected", reason: failure },
-        { status: "rejected", reason: failure },
-      ]);
+      const outcomes = await Promise.allSettled([cleanup, adapter.waitForExtinction()]);
+      expect(outcomes[0]?.status).toBe("rejected");
+      expect(outcomes[1]?.status).toBe("rejected");
+      if (fault === "poll") {
+        expect(outcomes).toEqual([
+          { status: "rejected", reason: failure },
+          { status: "rejected", reason: failure },
+        ]);
+      } else {
+        for (const outcome of outcomes) {
+          if (outcome.status !== "rejected") {
+            throw new Error("expected cleanup to reject");
+          }
+          expect(outcome.reason).toBeInstanceOf(Error);
+          expect(outcome.reason.message).toContain("service child cleanup identity lost");
+        }
+      }
       stub.child.stdout?.emit("end");
       stub.child.stderr?.emit("end");
       if (rootObserved) {
         await expect(adapter.wait()).resolves.toEqual({ code: 0, signal: null });
-      } else {
+      } else if (fault === "poll") {
         await expect(adapter.wait()).rejects.toBe(failure);
+      } else {
+        await expect(adapter.wait()).rejects.toThrow("service child cleanup identity lost");
       }
     } finally {
       process.off("unhandledRejection", unhandled);

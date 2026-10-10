@@ -28,6 +28,7 @@ import { formatHelpExamples } from "../help-format.js";
 import { parseTimeoutMsWithFallback } from "../parse-timeout.js";
 import { setCommandJsonMode } from "../program/json-mode.js";
 import type { GatewayDiscoverOpts } from "./discover.js";
+import { runGatewayCallCommand } from "./gateway-call.js";
 import { isGatewayMachineOutput } from "./output-mode.js";
 import { addGatewayRestartHandoffCommands } from "./register-restart-handoff.js";
 import { addGatewayRunCommand } from "./run-command.js";
@@ -59,7 +60,6 @@ const loadDaemonStatusGatherModule = createLazyPromise(
 );
 
 const DEFAULT_GATEWAY_RPC_TIMEOUT_MS = 10_000;
-const SETUP_INFERENCE_DETECT_RPC_TIMEOUT_MS = 40_000;
 type GatewayCliDependencies = {
   loadGatewayHealthModule?: typeof loadGatewayHealthModule;
   loadHealthStyleModule?: typeof loadHealthStyleModule;
@@ -78,14 +78,6 @@ async function callGatewayReadOnlyCli(method: string, opts: GatewayRpcOpts, para
     defaultTimeoutMs: DEFAULT_GATEWAY_RPC_TIMEOUT_MS,
     sharedStateMode: "read-only",
   });
-}
-
-function parseGatewayCallParams(value = "{}"): unknown {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    throw new Error("--params must be valid JSON.");
-  }
 }
 
 function gatewayAction(action: Parameters<Command["action"]>[0], label?: string) {
@@ -470,26 +462,27 @@ export function registerGatewayCli(program: Command, deps: GatewayCliDependencie
         "--expect-url <url>",
         "Fail if the resolved Gateway URL differs; preserves configured authentication",
       )
+      .option(
+        "--verified-read <boot-id>",
+        "Require this Gateway boot ID for an authenticated worker namespace read",
+      )
       .option("--params <json>", "JSON object string for params", "{}")
       .action(
         gatewayAction(async (method, opts, command) => {
-          // Setup detection owns a 30s worker deadline; its transport must
-          // leave enough grace for the Gateway to return the typed outcome.
-          const callOpts =
-            method === "openclaw.setup.detect" &&
-            command.getOptionValueSource("timeout") === "default"
-              ? { ...opts, timeout: String(SETUP_INFERENCE_DETECT_RPC_TIMEOUT_MS) }
-              : opts;
-          const rpcOpts = resolveGatewayRpcOptionsWithLocalPort(callOpts, command);
-          const params = parseGatewayCallParams(String(opts.params ?? "{}"));
-          const result = await callGatewayReadOnlyCli(method, rpcOpts, params);
-          if (rpcOpts.json) {
+          const { result, verifiedRead, json } = await runGatewayCallCommand({
+            method,
+            opts,
+            command,
+            callReadOnly: callGatewayReadOnlyCli,
+          });
+          if (json) {
             defaultRuntime.writeJson(result);
             return;
           }
           const rich = isRich();
+          const label = verifiedRead ? "Gateway verified read" : "Gateway call";
           defaultRuntime.log(
-            `${colorize(rich, theme.heading, "Gateway call")}: ${colorize(rich, theme.muted, String(method))}`,
+            `${colorize(rich, theme.heading, label)}: ${colorize(rich, theme.muted, String(method))}`,
           );
           defaultRuntime.writeJson(result);
         }, "Gateway call failed"),

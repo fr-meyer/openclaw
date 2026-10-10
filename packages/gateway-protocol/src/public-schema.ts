@@ -90,6 +90,8 @@ export {
   WORKER_TRANSCRIPT_COMMIT_PROTOCOL_FEATURE,
   SystemInfoParamsSchema,
   SystemInfoResultSchema,
+  GatewayWorkerNamespaceGetParamsSchema,
+  GatewayWorkerNamespaceGetResultSchema,
   StateVersionSchema,
   AgentEventSchema,
   ConversationListItemSchema,

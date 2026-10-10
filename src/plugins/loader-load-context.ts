@@ -407,6 +407,7 @@ export function resolvePluginLoadCacheContext(options: PluginLoadOptions = {}) {
       modelConfig: resolveRuntimeBindingCacheId(options.runtimeOptions?.modelConfig),
       nodes: resolveRuntimeBindingCacheId(options.runtimeOptions?.nodes),
       subagent: resolveRuntimeBindingCacheId(options.runtimeOptions?.subagent),
+      tasks: resolveRuntimeBindingCacheId(options.runtimeOptions?.tasks),
       // Root publication becomes the next donor; only caller-owned handles track donor changes.
       borrowedGatewayRuntime: shouldActivate
         ? undefined

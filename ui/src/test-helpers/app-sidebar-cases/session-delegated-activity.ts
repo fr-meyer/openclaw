@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { GatewaySessionRow } from "../../api/types.ts";
+import { rosterActivityStore } from "../../lib/agents/roster-activity-store.ts";
 import { reconcileSessionChanged } from "../../lib/sessions/reconcile.ts";
 import { createGatewayHarness, createSessionsHarness, mountSidebar } from "../app-sidebar.ts";
 import { createTestGatewayClient } from "../gateway-client.ts";
 import { waitForFast } from "../wait-for.ts";
-import { mountRoster, roster, session } from "./roster.test-support.ts";
+import { mountRoster, roster, session, settleRoster } from "./roster.test-support.ts";
 
 describe("AppSidebar delegated activity", () => {
   it("loads hidden subagent activity for the selected parent without adding navigation rows", async () => {
@@ -147,6 +148,7 @@ describe("AppSidebar delegated activity", () => {
       rosterRows.filter((row) => row.key !== parentKey),
     );
     mixed.sidebar.sidebarAgentsMode = "roster";
+    await settleRoster(mixed.sidebar);
     const rosterParent = () => mixed.sidebar.querySelector(`[data-session-key="${parentKey}"]`)!;
     await waitForFast(() =>
       expect(mixed.sidebar.querySelector('[data-agent-collapse="main"]')).not.toBeNull(),
@@ -155,6 +157,7 @@ describe("AppSidebar delegated activity", () => {
     mixed.sidebar
       .querySelector<HTMLButtonElement>(`[data-child-session-toggle="${parentKey}"]`)!
       .click();
+    await settleRoster(mixed.sidebar);
     await waitForFast(() =>
       expect(mixed.sidebar.querySelector(`[data-session-key="${persistentKey}"]`)).not.toBeNull(),
     );
@@ -185,6 +188,8 @@ describe("AppSidebar delegated activity", () => {
       rosterRows[2]!,
     ];
     mixed.sessions.publishList({ result: mixed.result });
+    await rosterActivityStore(mixed.context).refresh();
+    await settleRoster(mixed.sidebar);
     await waitForFast(() =>
       expect(rosterParent().querySelector('[data-session-attention="error"]')).not.toBeNull(),
     );

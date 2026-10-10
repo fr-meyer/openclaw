@@ -92,6 +92,7 @@ import type * as curator from "../skills/workshop/curator.kernel.js";
 import type { listStoredSkillProposalEventsInDatabase } from "../skills/workshop/store-sqlite-event.js";
 import type { SkillWorkshopExecutionOperations } from "../skills/workshop/store.worker-contract.js";
 import type { SkillProposalEvent, SkillProposalRecord } from "../skills/workshop/types.js";
+import type { ManagedTaskFlowWorkerOperations } from "../tasks/managed-task-flow-contract.js";
 import type {
   TranscriptReadOperations,
   TranscriptWriteOperations,
@@ -109,7 +110,8 @@ import type { UserProfileWorkerOperations } from "./user-profiles.worker.js";
 export type OpenClawStateWorkerOpenPreparation = { type: "deviceIdentity"; identityKey: string };
 
 /** Commands share one physical shared-state actor; bindings belong to commands, not open input. */
-export type OpenClawStateWorkerOperations = UpdateRunReconciliationOperations &
+export type OpenClawStateWorkerOperations = ManagedTaskFlowWorkerOperations &
+  UpdateRunReconciliationOperations &
   CaptureWorkerOperations &
   TuiLastSessionWorkerOperations &
   AcpSessionWriteOperations &

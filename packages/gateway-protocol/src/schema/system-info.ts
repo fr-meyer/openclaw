@@ -7,6 +7,13 @@ import { GatewayEventLoopHealthSchema, GatewayProcessMemorySchema } from "./runt
 /** Empty request payload for Gateway host system information. */
 export const SystemInfoParamsSchema = closedObject({});
 
+/** A host-owned readback; callers cannot select a namespace or identity. */
+export const GatewayWorkerNamespaceGetParamsSchema = closedObject({});
+export const GatewayWorkerNamespaceGetResultSchema = closedObject({
+  bootId: Type.String({ minLength: 1, maxLength: 96 }),
+  namespace: Type.String({ minLength: 1, maxLength: 96 }),
+});
+
 const UtilityModelStatusSchema = Type.Union([
   closedObject({ status: Type.Literal("auto"), model: Type.String({ minLength: 1 }) }),
   closedObject({ status: Type.Literal("configured"), model: Type.String({ minLength: 1 }) }),
@@ -56,3 +63,5 @@ export const SystemInfoResultSchema = closedObject({
 // pull in the ProtocolSchemas registry.
 export type SystemInfoParams = Static<typeof SystemInfoParamsSchema>;
 export type SystemInfoResult = Static<typeof SystemInfoResultSchema>;
+export type GatewayWorkerNamespaceGetParams = Static<typeof GatewayWorkerNamespaceGetParamsSchema>;
+export type GatewayWorkerNamespaceGetResult = Static<typeof GatewayWorkerNamespaceGetResultSchema>;

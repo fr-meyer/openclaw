@@ -178,9 +178,9 @@ export async function createServiceChildRelayAdapter(
     waitError = new Error(`service child cleanup identity lost: ${message}`, options);
     try {
       events.emitError(waitError, "process");
-    } catch (error) {
-      // Observer failure cannot interrupt the authoritative cleanup settlement.
-      waitError = toErrorObject(error, "service child cleanup error observer failed");
+    } catch {
+      // An observer cannot replace the authoritative identity-loss error or
+      // interrupt cleanup settlement.
     }
     if (!commandPid) {
       startup.reject(waitError);

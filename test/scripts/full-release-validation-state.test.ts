@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterAll, afterEach, assert, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, assert, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildFullReleaseCandidateBinding } from "../../scripts/full-release-candidate-contract.mjs";
 import { publicationIntentInputs } from "../../scripts/full-release-publication-contract.mjs";
 import {
@@ -969,6 +969,9 @@ describe("release child attempt composition", () => {
 });
 
 describe("release decision policy", () => {
+  beforeEach(() => vi.stubEnv("GITHUB_REPOSITORY", "openclaw/openclaw"));
+  afterEach(() => vi.unstubAllEnvs());
+
   const windowsJob = {
     name: "checks-windows-node-test-2",
     conclusion: "failure",

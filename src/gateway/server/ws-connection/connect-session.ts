@@ -395,6 +395,8 @@ export async function attachAuthenticatedGatewayConnect(
     socket,
     connect: connectParams,
     connId,
+    authenticatedMethod: authMethod,
+    gatewayBootId: context.handler.bootId,
     connectionKind: "gateway",
     ...(!usesLegacyNodeProtocol && pluginSurfaceBaseUrl ? { pluginSurfaceBaseUrl } : {}),
     isDeviceTokenAuth: authMethod === "device-token",

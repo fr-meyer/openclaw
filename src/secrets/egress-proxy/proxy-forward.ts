@@ -6,7 +6,10 @@ import {
 } from "node:http";
 import { request as httpsRequest, type Agent as HttpsAgent } from "node:https";
 import { PassThrough, Writable, type Readable } from "node:stream";
-import { toForwardableResponseHeaders } from "./response-headers.js";
+import {
+  sanitizeSecretEgressResponseHeaders,
+  toForwardableResponseHeaders,
+} from "./response-headers.js";
 import {
   createSecretEgressBodyTransform,
   SecretEgressSubstitutionError,
@@ -169,12 +172,15 @@ function sendSecretEgressRequest(
         try {
           forward.response.writeHead(
             statusCode,
-            toForwardableResponseHeaders(upstreamResponse.headers),
+            sanitizeSecretEgressResponseHeaders(
+              toForwardableResponseHeaders(upstreamResponse.headers),
+            ),
           );
         } catch {
           // This callback runs outside any caller's try block; a throw here
           // would exit the Gateway. Keep the failure on this one request.
           refused = true;
+          forward.audit({ kind: "refused", host, substituted, reason: "upstream-error" });
           upstreamResponse.destroy();
           // Node may already have marked 1xx/204/304 heads bodyless, so a
           // refusal body cannot be framed reliably; close those instead.
@@ -273,9 +279,23 @@ function sendSecretEgressRequest(
     const clientSocket = forward.ownResource(forward.request.socket);
     // The handshake is an HTTP request; subsequent bytes are WebSocket frames,
     // not HTTP bodies. Forward them opaquely, including both parsers' head buffers.
+    try {
+      forward.response.writeHead(
+        101,
+        sanitizeSecretEgressResponseHeaders(toForwardableResponseHeaders(response.headers)),
+      );
+    } catch {
+      refused = true;
+      forward.audit({ kind: "refused", host, substituted, reason: "upstream-error" });
+      upstreamSocket.destroy();
+      bodyTransform.destroy();
+      // A failed 101 write can leave the response bodyless or partly committed.
+      // Closing it also releases the buffered upgrade through its close owner.
+      forward.response.destroy();
+      return;
+    }
     forward.response.off("close", onResponseClose);
     upgraded = true;
-    forward.response.writeHead(101, toForwardableResponseHeaders(response.headers));
     forward.response.end();
     forward.response.detachSocket(clientSocket);
     forward.releaseResponse();

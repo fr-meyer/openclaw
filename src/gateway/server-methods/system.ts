@@ -8,7 +8,9 @@ import {
 import {
   ErrorCodes,
   errorShape,
+  type GatewayWorkerNamespaceGetResult,
   type SystemInfoResult,
+  validateGatewayWorkerNamespaceGetParams,
   validateSystemInfoParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { validatePresenceActivityParams } from "../../../packages/gateway-protocol/src/schema/presence.js";
@@ -38,6 +40,7 @@ import {
 import { enqueueSystemEvent, isSystemEventContextChanged } from "../../infra/system-events.js";
 import { listSystemPresence, updateSystemPresence } from "../../infra/system-presence.js";
 import { normalizeAgentId, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
+import { READ_SCOPE } from "../method-scopes.js";
 import { createPresenceRecipientProjection } from "../presence-projection.js";
 import { getGatewayProcessInstanceId } from "../process-instance.js";
 import { readGatewayProcessVitals } from "../server/process-vitals.js";
@@ -143,6 +146,54 @@ async function collectSystemInfo(context: GatewayRequestContext): Promise<System
 
 /** Gateway handlers for identity, host information, heartbeat toggles, and presence events. */
 export const systemHandlers: GatewayRequestHandlers = {
+  "gateway.workerNamespace.get": (options) => {
+    const { params, respond, client, context, signal, hasCurrentClientAuthority } = options;
+    if (
+      !assertValidParams(
+        params,
+        validateGatewayWorkerNamespaceGetParams,
+        "gateway.workerNamespace.get",
+        respond,
+      )
+    ) {
+      return;
+    }
+    const method = client?.authenticatedMethod;
+    const approvedMethod =
+      method === "token" ||
+      method === "password" ||
+      method === "device-token" ||
+      method === "tailscale" ||
+      method === "trusted-proxy";
+    // The generic method router permits pre-connect traffic; require the exact
+    // admitted WebSocket and host-attested auth here as well.
+    if (
+      !client ||
+      (client.connect.role ?? "operator") !== "operator" ||
+      client.internal?.authenticatedOperator !== true ||
+      !approvedMethod ||
+      !client.connect.scopes?.includes(READ_SCOPE) ||
+      !client.connId ||
+      !client.gatewayBootId ||
+      client.connectionSignal?.aborted !== false ||
+      client.invalidated === true ||
+      signal?.aborted === true ||
+      hasCurrentClientAuthority?.() !== true
+    ) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "verified read unavailable"));
+      return;
+    }
+    const namespace = context.nodeWorkerGatewayNamespace;
+    if (!namespace) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "worker namespace unavailable"));
+      return;
+    }
+    const result: GatewayWorkerNamespaceGetResult = {
+      bootId: client.gatewayBootId,
+      namespace,
+    };
+    respond(true, result, undefined);
+  },
   "gateway.identity.get": async ({ respond }) => {
     const identity = await loadOrCreateProcessDeviceIdentityAsync();
     respond(

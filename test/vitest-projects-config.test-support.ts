@@ -4,6 +4,13 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fullSuiteVitestShards } from "./vitest/vitest.test-shards.mjs";
 
+/** These node:test suites are run by a tooling Vitest owner, not by Vitest discovery. */
+export const standalonePublisherNodeTestFiles = [
+  "scripts/docker/package-current-publisher.test.mjs",
+  "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+  "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs",
+] as const;
+
 type VitestTestConfig = {
   dir?: string;
   exclude?: string[];
@@ -109,6 +116,7 @@ function listNormalFullSuiteTestFiles(): string[] {
     "src/gateway/gateway.test.ts",
     "src/gateway/server.startup-matrix-migration.integration.test.ts",
   ]);
+  const standaloneNodeTests = new Set<string>(standalonePublisherNodeTestFiles);
   return globSync(["**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"], {
     cwd: process.cwd(),
     exclude: ["**/.*/**", "**/dist/**", "**/node_modules/**", "**/vendor/**"],
@@ -119,6 +127,7 @@ function listNormalFullSuiteTestFiles(): string[] {
         !file.includes(".live.test.") &&
         !file.includes(".e2e.test.") &&
         !file.startsWith("test/fixtures/") &&
+        !standaloneNodeTests.has(file) &&
         !e2eNamedIntegrationTests.has(file),
     )
     .toSorted((left, right) => left.localeCompare(right));

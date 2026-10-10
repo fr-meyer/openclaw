@@ -1,0 +1,40 @@
+{
+  "schema": "openclaw-v99-source-preparation-v1",
+  "status": "SOURCE_ONLY_UNQUALIFIED",
+  "upstream": {
+    "tag": "v2026.9.9",
+    "tagObject": "a5a5dcfb0d5d56ebdedc6a572d8b59fcab15ce12",
+    "commit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+    "tree": "702b8f6a50264e8de42f105992aff6406b073275"
+  },
+  "carryForward": {
+    "v98Base": "fc23bc864e4553c2d215e479eeec47b67a0bf943",
+    "v98ProductSource": "fe1b334f74f1e43efc22f91c1c3738e59c52519c",
+    "v98ProductPathsConsidered": 93,
+    "v98ProofPathsExcluded": 54,
+    "v98Provenance": "Frozen 9.8 manifest and complete-local-source-composition.json remain in the prior release owner workspace; this file does not transfer their runtime qualification."
+  },
+  "publisher": {
+    "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle",
+    "packageName": "@fr-meyer/openclaw-mergeguez-pr-lifecycle",
+    "packageVersion": "0.1.1",
+    "runtimeSha256": "b4251973afc235c7f3932302a865a799ba02e73697f6a7d1b02f577c939da12c",
+    "state": "INERT_SOURCE_ONLY_RUNTIME_UNQUALIFIED",
+    "signedReviewProducer": {
+      "state": "EXTERNAL_ADAPTER_UNVERIFIED",
+      "requiredPayloadField": "baseSha",
+      "requiredEvidenceField": "reviewed_base_sha",
+      "requiredClaimField": "claimRef",
+      "candidateClaimBinding": "IMPLEMENTED_SOURCE_ONLY_INSTALLED_SENDER_UNVERIFIED",
+      "installedAdapterPath": null,
+      "installedAdapterSha256": null,
+      "activation": "BLOCKED_PENDING_EXACT_ADAPTER_PIN_AND_SIGNED_CONTRACT_PROOF"
+    }
+  },
+  "deployment": {
+    "build": "NOT_RUN",
+    "runtime": "NOT_RUN",
+    "production": "UNCHANGED",
+    "rollback": "NOT_PROVEN_ON_9_9"
+  }
+}

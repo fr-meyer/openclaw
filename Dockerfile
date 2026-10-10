@@ -130,12 +130,22 @@ RUN sh scripts/docker/verify-native-addons.sh
 # Public source provenance supplied by release automation or local setup. Keep
 # these after the dependency layer so a new timestamp does not invalidate install.
 ARG GIT_COMMIT=""
+ARG OPENCLAW_PARITY_IMAGE=0
 ARG OPENCLAW_BUILD_TIMESTAMP=""
 ARG OPENCLAW_DOCKER_BUILD_VERSION=""
 ENV GIT_COMMIT=${GIT_COMMIT} \
     OPENCLAW_BUILD_TIMESTAMP=${OPENCLAW_BUILD_TIMESTAMP}
 
 COPY . .
+
+# Keep the separately installed publisher inert, with exact source and file
+# hashes beside the package. Parity builds require a pinned Git-context commit.
+RUN if [ "$OPENCLAW_PARITY_IMAGE" = "1" ]; then \
+      test -n "$GIT_COMMIT" || exit 1; \
+    fi && \
+    node scripts/docker/package-current-publisher.mjs \
+      --source scripts/docker/runtime-plugins/mergeguez-pr-lifecycle \
+      --out /tmp/openclaw-publisher-package --commit "$GIT_COMMIT"
 
 # The build stage also backs non-root live-test containers. Build contexts preserve
 # host modes, so normalize copied source readability without re-walking installed deps.
@@ -295,6 +305,8 @@ COPY --from=runtime-assets --chown=node:node /app/${OPENCLAW_BUNDLED_PLUGIN_DIR}
 COPY --from=runtime-assets --chown=node:node /app/skills ./skills
 COPY --from=runtime-assets --chown=node:node /app/docs ./docs
 COPY --from=runtime-assets --chown=node:node /app/qa ./qa
+COPY --from=build --chown=node:node /tmp/openclaw-publisher-package/ ./runtime-plugins/
+RUN node ./runtime-plugins/verify-package.mjs --verify ./runtime-plugins
 RUN --mount=from=dependency-inputs,source=/app/scripts/docker/verify-fs-safe-native.mjs,target=/tmp/verify-fs-safe-native.mjs \
     node /tmp/verify-fs-safe-native.mjs --package-root /app --mode require
 

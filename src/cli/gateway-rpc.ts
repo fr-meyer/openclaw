@@ -118,3 +118,11 @@ export async function callGatewayFromCliWithTransport<T = Record<string, unknown
   const runtime = await gatewayRpcRuntimeLoader.load();
   return await runtime.callGatewayFromCliRuntime<T>(method, opts, params, extra);
 }
+
+/** Keep the privileged verified read on the same lazy CLI runtime boundary. */
+export async function callGatewayVerifiedReadFromCli(
+  opts: Parameters<GatewayRpcRuntimeModule["callGatewayVerifiedRead"]>[0],
+) {
+  const runtime = await gatewayRpcRuntimeLoader.load();
+  return await runtime.callGatewayVerifiedRead(opts);
+}

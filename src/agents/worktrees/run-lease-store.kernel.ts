@@ -2,6 +2,14 @@ import type { DatabaseSync } from "node:sqlite";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
 import type { DB } from "../../state/openclaw-state-db.generated.js";
 import { collectLiveRunLeases, worktreeRunLeaseScope } from "./run-lease-owner.js";
+import type { ManagedWorktreeOwnerKind } from "./types.js";
+
+export type WorktreeRunLeaseExpectedAuthority = Readonly<{
+  ownerKind: ManagedWorktreeOwnerKind;
+  ownerId: string;
+  repoFingerprint: string;
+  path: string;
+}>;
 
 export type WorktreeRunLeaseRowInput = {
   worktreeId: string;
@@ -10,6 +18,7 @@ export type WorktreeRunLeaseRowInput = {
   startTime: number | null;
   now: number;
   exclusive?: true;
+  expectedAuthority?: WorktreeRunLeaseExpectedAuthority;
 };
 
 export function admitWorktreeRunLeaseInDatabase(
@@ -20,11 +29,41 @@ export function admitWorktreeRunLeaseInDatabase(
   const scope = worktreeRunLeaseScope(params.worktreeId);
   const record = executeSqliteQuerySync(
     db,
-    k.selectFrom("worktrees").select(["path", "removed_at"]).where("id", "=", params.worktreeId),
+    k
+      .selectFrom("worktrees")
+      .select(["path", "repo_fingerprint", "owner_kind", "owner_id", "removed_at"])
+      .where("id", "=", params.worktreeId),
   ).rows[0];
   const worktreePath = record?.path ?? params.worktreeId;
   if (!record || record.removed_at != null) {
     throw new Error(`managed worktree was removed: ${worktreePath}`);
+  }
+  const expected = params.expectedAuthority;
+  if (expected) {
+    const currentOwners = executeSqliteQuerySync(
+      db,
+      k
+        .selectFrom("worktrees")
+        .select(["id", "created_at"])
+        .where("owner_kind", "=", expected.ownerKind)
+        .where("owner_id", "=", expected.ownerId)
+        .where("repo_fingerprint", "=", expected.repoFingerprint)
+        .where("path", "=", expected.path)
+        .where("removed_at", "is", null)
+        .orderBy("created_at", "desc")
+        .limit(2),
+    ).rows;
+    const latestOwner = currentOwners[0];
+    if (
+      latestOwner?.id !== params.worktreeId ||
+      (currentOwners[1] && currentOwners[1].created_at === latestOwner?.created_at) ||
+      record.owner_kind !== expected.ownerKind ||
+      record.owner_id !== expected.ownerId ||
+      record.repo_fingerprint !== expected.repoFingerprint ||
+      record.path !== expected.path
+    ) {
+      throw new Error(`managed worktree is no longer authoritative: ${worktreePath}`);
+    }
   }
   const { removingToken, liveCount, exclusive } = collectLiveRunLeases(db, k, scope, {});
   if (removingToken !== undefined) {

@@ -19,6 +19,18 @@ const mocks = vi.hoisted(() => ({
     }
     return { ok: true };
   }),
+  callGatewayVerifiedRead: vi.fn(async (_opts: unknown) => ({
+    kind: "gateway-verified-read",
+    method: "gateway.workerNamespace.get",
+    connection: {
+      bootId: "boot-1",
+      connId: "conn-1",
+      authMethod: "token",
+      role: "operator",
+      scopes: ["operator.read"],
+    },
+    result: { bootId: "boot-1", namespace: "gateway-example" },
+  })),
   emitReachableGatewayAuthDiagnostic: vi.fn(async (_params: unknown) => false),
   formatHealthChannelLines: vi.fn(() => []),
   gatewayStatusCommand: vi.fn(async (_opts: unknown, _runtime: unknown) => {}),
@@ -67,6 +79,7 @@ vi.mock("../gateway-rpc.js", async () => ({
   ...(await vi.importActual<typeof import("../gateway-rpc.js")>("../gateway-rpc.js")),
   callGatewayFromCliWithTransport: (method: string, opts: unknown, params?: unknown) =>
     mocks.callGatewayCli(method, opts, params),
+  callGatewayVerifiedReadFromCli: (opts: unknown) => mocks.callGatewayVerifiedRead(opts),
 }));
 
 vi.mock("./run-command.js", () => ({
@@ -165,6 +178,7 @@ describe("gateway register option collisions", () => {
 
   beforeEach(() => {
     callGatewayCli.mockClear();
+    mocks.callGatewayVerifiedRead.mockClear();
     emitReachableGatewayAuthDiagnostic.mockClear();
     mocks.formatHealthChannelLines.mockClear();
     gatewayStatusCommand.mockClear();
@@ -365,6 +379,88 @@ describe("gateway register option collisions", () => {
       error: { type: "cli_error", message: "Use either --url or --port, not both." },
     });
     expect(defaultRuntime.error).not.toHaveBeenCalled();
+    expect(defaultRuntime.exit).toHaveBeenCalledWith(1);
+  });
+
+  it("routes a pinned worker namespace read through the verified connection", async () => {
+    await sharedProgram.parseAsync(
+      [
+        "gateway",
+        "call",
+        "gateway.workerNamespace.get",
+        "--verified-read",
+        "boot-1",
+        "--expect-url",
+        "wss://gateway.example/ws",
+        "--json",
+      ],
+      { from: "user" },
+    );
+
+    expect(callGatewayCli).not.toHaveBeenCalled();
+    expect(mocks.callGatewayVerifiedRead).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        expectedBootId: "boot-1",
+        expectUrl: "wss://gateway.example/ws",
+        json: true,
+      }),
+    );
+    expect(defaultRuntime.writeJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "gateway-verified-read",
+        result: { bootId: "boot-1", namespace: "gateway-example" },
+      }),
+    );
+  });
+
+  it.each([
+    {
+      name: "an unverified worker namespace call",
+      args: ["gateway", "call", "gateway.workerNamespace.get", "--json"],
+      error: "requires --verified-read",
+    },
+    {
+      name: "a verified read without a pinned endpoint",
+      args: [
+        "gateway",
+        "call",
+        "gateway.workerNamespace.get",
+        "--verified-read",
+        "boot-1",
+        "--json",
+      ],
+      error: "requires --expect-url",
+    },
+    {
+      name: "a verified read of another method",
+      args: ["gateway", "call", "health", "--verified-read", "boot-1", "--json"],
+      error: "only available for gateway.workerNamespace.get",
+    },
+    {
+      name: "a worker namespace read with nonempty parameters",
+      args: [
+        "gateway",
+        "call",
+        "gateway.workerNamespace.get",
+        "--verified-read",
+        "boot-1",
+        "--expect-url",
+        "wss://gateway.example/ws",
+        "--params",
+        '{"other":"namespace"}',
+        "--json",
+      ],
+      error: "accepts only empty params",
+    },
+  ])("rejects $name before opening a connection", async ({ args, error }) => {
+    await sharedProgram.parseAsync(args, { from: "user" });
+
+    expect(callGatewayCli).not.toHaveBeenCalled();
+    expect(mocks.callGatewayVerifiedRead).not.toHaveBeenCalled();
+    expect(defaultRuntime.writeJson).toHaveBeenCalledWith({
+      ok: false,
+      error: { type: "cli_error", message: expect.stringContaining(error) },
+    });
     expect(defaultRuntime.exit).toHaveBeenCalledWith(1);
   });
 

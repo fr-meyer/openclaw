@@ -14,10 +14,51 @@ import { setImmediate } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
 import { resolveSecretSentinel, sealSecretSentinel } from "../sentinel.js";
 import { createSecretEgressBodyBudget, forwardSecretEgressRequest } from "./proxy-forward.js";
+import {
+  sanitizeSecretEgressResponseHeaders,
+  toForwardableResponseHeaders,
+} from "./response-headers.js";
 
 vi.mock("node:https", { spy: true });
 
 describe("secret egress forwarding resource ownership", () => {
+  it("keeps native attachment encoding and omits malformed upstream headers", () => {
+    const received = Buffer.from("附件_2026-09-21.log", "utf8").toString("latin1");
+    const headers = sanitizeSecretEgressResponseHeaders(
+      toForwardableResponseHeaders({
+        "content-length": "1",
+        "content-disposition": `attachment; filename="${received}"`,
+        "x-safe": ["one", "two"],
+        "x-unsafe": ["safe", "unsafe\rvalue"],
+        "bad name": "value",
+      }),
+    );
+
+    expect(headers).toEqual({
+      "content-length": "1",
+      "content-disposition":
+        "attachment; filename=\"___2026-09-21.log\"; filename*=UTF-8''%E9%99%84%E4%BB%B6_2026-09-21.log",
+      "x-safe": ["one", "two"],
+    });
+
+    const prototypeHeader = sanitizeSecretEgressResponseHeaders(
+      toForwardableResponseHeaders(
+        Object.fromEntries([["__proto__", ["safe"]]]) as IncomingHttpHeaders,
+      ),
+    );
+    expect(Object.getPrototypeOf(prototypeHeader)).toBeNull();
+    expect(Object.hasOwn(prototypeHeader, "__proto__")).toBe(true);
+
+    const request = new IncomingMessage(new Socket());
+    const response = new ServerResponse(request);
+    try {
+      expect(() => response.writeHead(200, headers)).not.toThrow();
+    } finally {
+      request.destroy();
+      response.destroy();
+    }
+  });
+
   it.each([undefined, 0])(
     "releases body streams when upstream construction fails (length: %s)",
     async (length) => {
@@ -323,5 +364,65 @@ describe("secret egress forwarded response heads", () => {
     expect(result.uncaught).toEqual([]);
     expect(result.status).toBeUndefined();
     expect(result.clientError?.code).toBe("ECONNRESET");
+  });
+
+  it("closes both sockets when Node rejects a 101 head mid-write", async () => {
+    const clientSocket = new Socket();
+    const request = new IncomingMessage(clientSocket);
+    request.method = "GET";
+    request.headers = { upgrade: "websocket" };
+    const response = new ServerResponse(request);
+    response.assignSocket(clientSocket);
+    const upstream = new PassThrough();
+    const upstreamSocket = new PassThrough();
+    const upstreamResponse = new IncomingMessage(new Socket());
+    upstreamResponse.statusCode = 101;
+    upstreamResponse.headers = { upgrade: "websocket", trailer: "Expires" };
+    const bufferedClientFrames = new PassThrough();
+    const agent = new Agent();
+    const audit = vi.fn();
+    vi.mocked(httpsRequest).mockReturnValueOnce(upstream as unknown as ClientRequest);
+    try {
+      forwardSecretEgressRequest({
+        request,
+        response,
+        upgrade: { stream: bufferedClientFrames, stopBuffering() {} },
+        host: "localhost",
+        upstreamTlsAgent: agent,
+        prepareRequest: () => ({
+          target: new URL("https://localhost:1/"),
+          headers: {},
+          substituted: false,
+        }),
+        acquireBody: createSecretEgressBodyBudget(),
+        isActive: () => true,
+        ownResource: (resource) => resource,
+        releaseResponse() {},
+        resolveSentinel() {
+          return undefined;
+        },
+        audit,
+      });
+      upstream.emit("upgrade", upstreamResponse, upstreamSocket, Buffer.alloc(0));
+
+      expect(response.statusCode).toBe(101);
+      expect(response.destroyed).toBe(true);
+      expect(clientSocket.destroyed).toBe(true);
+      expect(upstreamSocket.destroyed).toBe(true);
+      expect(audit).toHaveBeenCalledWith({
+        kind: "refused",
+        host: "localhost",
+        substituted: false,
+        reason: "upstream-error",
+      });
+    } finally {
+      bufferedClientFrames.destroy();
+      upstreamResponse.destroy();
+      upstreamSocket.destroy();
+      upstream.destroy();
+      response.destroy();
+      request.destroy();
+      agent.destroy();
+    }
   });
 });
