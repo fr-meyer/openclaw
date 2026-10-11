@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   verifyDockerReleaseLayout,
   smokeDockerReleaseImage,
@@ -51,19 +52,24 @@ async function checkedLayout({ manifest, receipt, ociDir }) {
 }
 
 async function main() {
-  const [command, manifestPath, third, fourth, fifth, sixth] = process.argv.slice(2);
+  const [command, manifestPath, inventoryPath, third, fourth, fifth, sixth] = process.argv.slice(2);
   need(
     ["seal", "verify"].includes(command),
-    "Usage: image.mjs seal MANIFEST SOURCE OCI DIGEST OUTPUT | verify MANIFEST RECEIPT OCI",
+    "Usage: image.mjs seal MANIFEST INVENTORY SOURCE OCI DIGEST OUTPUT | verify MANIFEST INVENTORY RECEIPT OCI",
   );
   const manifest = validateManifest(manifestPath);
+  const preflightPath = fileURLToPath(new URL("preflight.py", import.meta.url));
+  const preflightArgs = ["--manifest", manifestPath, "--inventory", inventoryPath];
+  execFileSync("python3", [preflightPath, ...preflightArgs, "--metadata-only"], { stdio: "pipe" });
+  const inventoryHash = hash(inventoryPath);
   if (command === "verify") {
     const receipt = json(third);
-    need(receipt.schema === "openclaw.fork-release-image.v1", "Wrong image receipt schema");
+    need(receipt.schema === "openclaw.fork-release-image.v2", "Wrong image receipt schema");
     need(
       receipt.manifestSha256 === hash(manifestPath),
       "Image receipt belongs to another manifest",
     );
+    need(receipt.inventorySha256 === inventoryHash, "Image receipt inventory changed");
     need(
       receipt.repository === manifest.repository &&
         receipt.sourceSha === manifest.source.commit &&
@@ -99,6 +105,9 @@ async function main() {
     return;
   }
   const [sourceDir, ociDir, expectedDigest, outputPath] = [third, fourth, fifth, sixth];
+  execFileSync("python3", [preflightPath, ...preflightArgs, "--source-dir", sourceDir], {
+    stdio: "pipe",
+  });
   need(DIGEST.test(expectedDigest), "Missing exact BuildKit digest");
   need(process.env.GITHUB_REPOSITORY === manifest.repository, "Wrong producer repository");
   need(
@@ -129,12 +138,13 @@ async function main() {
     const parent = execFileSync("git", ["-C", toolingRoot, "show", "-s", "--format=%P", "HEAD"], {
       encoding: "utf8",
     }).trim();
-    need(parent === sourceSha, "PR head is not the manifest-only seal above the source");
+    need(parent === sourceSha, "PR head is not the metadata seal above the source");
   }
   const version = json(`${sourceDir}/package.json`).version;
   const receipt = {
-    schema: "openclaw.fork-release-image.v1",
+    schema: "openclaw.fork-release-image.v2",
     manifestSha256: hash(manifestPath),
+    inventorySha256: inventoryHash,
     repository: manifest.repository,
     sourceSha,
     sourceTree,

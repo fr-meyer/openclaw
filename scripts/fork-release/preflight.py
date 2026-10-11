@@ -121,7 +121,7 @@ def inventory_checks(checks, inventory, manifest, manifest_hash):
     return tests, ledger
 
 
-def source_checks(checks, manifest, source_dir, inventory_tests, ledger, upstream=None):
+def source_checks(checks, manifest, source_dir, inventory_tests, ledger, upstream=None, check_head=True, origins=()):
     def git_value(code, *args):
         try:
             return release.git(source_dir, *args)
@@ -140,12 +140,15 @@ def source_checks(checks, manifest, source_dir, inventory_tests, ledger, upstrea
         checks.need(False, "source.partial_clone.unsupported" if partial.returncode == 0 else "source.config.unavailable")
         return
     source = manifest["source"]
+    for index, origin in enumerate(origins):
+        checks.need(git_value(f"inventory.origin.{index}.object", "cat-file", "-t", origin) == "commit", f"inventory.origin.{index}.commit")
     if type(upstream) is dict and release.matches(release.SHA, upstream.get("tagObject")):
         tag = git_value("upstream.tag.unavailable", "cat-file", "tag", upstream["tagObject"])
         if tag is not None:
             header = dict(line.split(" ", 1) for line in tag.split("\n\n", 1)[0].splitlines() if " " in line)
             checks.need(header.get("object") == source["baseCommit"] and header.get("type") == "commit" and header.get("tag") == upstream.get("tag"), "upstream.tag.binding")
-    checks.need(git_value("source.checkout.unavailable", "rev-parse", "HEAD") == source["commit"], "source.checkout")
+    if check_head:
+        checks.need(git_value("source.checkout.unavailable", "rev-parse", "HEAD") == source["commit"], "source.checkout")
     chain = [(source["baseCommit"], source["baseTree"])] + [(p["commit"], p["tree"]) for p in source["patches"]]
     for index, (commit, tree) in enumerate(chain):
         checks.need(git_value(f"source.{index}.object", "rev-parse", f"{commit}^{{tree}}") == tree, f"source.{index}.tree")
@@ -168,6 +171,34 @@ def source_checks(checks, manifest, source_dir, inventory_tests, ledger, upstrea
     for index, test in enumerate(dict.fromkeys(tests)):
         git_value(f"source.test.{index}.missing", "cat-file", "-e", f"{source['commit']}:{test}")
 
+
+
+
+
+def origin_commits(inventory):
+    patches = inventory.get("patches") if type(inventory) is dict else None
+    return [entry["originCommit"] for entry in (patches if type(patches) is list else [])
+            if type(entry) is dict and release.matches(release.SHA, entry.get("originCommit"))]
+
+def history_commits(inventory):
+    """Exact fork objects needed to verify historical origin/path identities."""
+    return sorted({entry["originCommit"] for entry in inventory["patches"]} |
+                  {item["sourceCommit"] for entry in inventory["patches"] for item in entry["paths"]})
+
+def inventory_at(path, manifest, manifest_hash, source_dir=None, check_head=True):
+    """Fail closed on the reviewed ledger; optional local Git checks never fetch."""
+    checks = Checks()
+    try:
+        inventory = release.read_json(path)
+        tests, ledger = inventory_checks(checks, inventory, manifest, manifest_hash)
+    except (OSError, ValueError, TypeError, KeyError):
+        raise release.Refusal("inventory.invalid")
+    if source_dir is not None:
+        source_checks(checks, manifest, source_dir, tests, ledger,
+                      inventory.get("upstream") if type(inventory) is dict else None, check_head,
+                      origin_commits(inventory))
+    release.need(not checks.errors, "preflight: " + ", ".join(sorted(set(checks.errors))))
+    return inventory, digest(path)
 
 def backup_checks(checks, evidence, baseline, image_digest, now, max_age, retain_for):
     """Validate private observations; an adapter must independently establish facts."""
@@ -244,8 +275,10 @@ def deployment_checks(checks, receipt, manifest, manifest_hash, inventory_hash, 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for option in ("manifest", "inventory", "source-dir"):
+    for option in ("manifest", "inventory"):
         parser.add_argument("--" + option, required=True, type=Path)
+    parser.add_argument("--source-dir", type=Path)
+    parser.add_argument("--metadata-only", action="store_true")
     for option in ("image-receipt", "backup-evidence", "baseline", "deployment-receipt"):
         parser.add_argument("--" + option, type=Path)
     parser.add_argument("--now", type=utc, default=datetime.now(timezone.utc))
@@ -276,8 +309,12 @@ def main():
         if inventory is not None:
             tests, ledger = inventory_checks(checks, inventory, manifest, manifest_hash)
             upstream = inventory.get("upstream")
-        source_checks(checks, manifest, args.source_dir, tests, ledger, upstream)
-        if not checks.errors:
+        if not args.metadata_only:
+            if args.source_dir is None:
+                checks.need(False, "source.checkout.required")
+            else:
+                source_checks(checks, manifest, args.source_dir, tests, ledger, upstream, origins=origin_commits(inventory))
+        if not checks.errors and not args.metadata_only:
             try:
                 release.check_source(manifest, args.source_dir)
             except (OSError, subprocess.CalledProcessError, release.Refusal):
@@ -285,7 +322,7 @@ def main():
     image = None
     if args.image_receipt and manifest is not None:
         try:
-            image = release.receipt_at(args.image_receipt, manifest, manifest_hash)
+            image = release.receipt_at(args.image_receipt, manifest, manifest_hash, digest(args.inventory))
         except (OSError, ValueError, release.Refusal, KeyError, TypeError):
             checks.need(False, "image_receipt.invalid")
     if args.backup_evidence:

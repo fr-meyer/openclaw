@@ -15,7 +15,7 @@ shared `main`, published candidates, or release tags.
 A new `candidate/<version>` begins at a verified upstream stable tag, then
 applies a curated ordered queue. Preserve the existing 1–64 non-merge commit
 contract. Integrate task branches through draft PRs with pinned dependencies.
-Keep product source, tooling commit, and manifest-only PR seal distinct.
+Keep product source, tooling commit, and two-file metadata PR seal distinct.
 The legacy seed remains source-only; its fork base is not a verified stable tag.
 
 The versioned inventory binds the exact manifest bytes. Each logical patch has
@@ -49,14 +49,27 @@ A successful preflight never authorizes a build, merge, backup, or deployment.
 Partial/promisor object stores are refused before source probes so older Git
 cannot silently fetch missing objects. Provide a complete local object store.
 
-The workflow and coordinator are unchanged in this stage. The owner will wire
-this same entrypoint into existing source admission after the 9.9 repairs have
-been qualified and reconciled. No extra workflow, orchestrator, registry, or
-parallel release path is introduced. Versioned sidecars accompany archived
-candidate manifests; the current manifest-only seal rule stays intact.
-Before enforcement, bind the inventory hash in the existing PR/image/private
-approval evidence so it cannot change after review. That integration belongs
-to the existing evidence owner and requires tests of producer and consumer.
+The existing workflow invokes this entrypoint before focused tests or image
+preparation. Candidate metadata is sealed in exactly two files, manifest and
+inventory, above the pinned product source. This avoids a circular hash: the
+inventory hashes the final manifest; PR/image/private evidence then hashes both.
+The seal verifies committed bytes and source/blob coverage. The workflow retains
+the named upstream tag object and checks it against the ledger's exact tag/base.
+It acquires missing historical origin/path objects from the fixed fork by exact
+validated commit SHA, so adapted prior-release snapshots remain verifiable
+outside the new candidate ancestry. Missing history blocks qualification.
+
+Image evidence and private progress use v2 schemas. Old unbound v1 evidence is
+refused, never rewritten as proof. The coordinator checks the full source/ledger,
+PR evidence and OCI before private state creation, and binds inventory, baseline
+and backup policy into resumable operation IDs and the approval challenge.
+Before rehearsal/approval and immediately before deploy under the existing shared
+lock, a bounded read-only private `admit` interface must establish fresh baseline,
+archive and restore observations. Immutable backup identity must match rehearsal.
+The private adapter remains absent and unqualified, so this contract cannot
+authorize production on its own. No additional workflow or runner is introduced.
+The 9.9 owner retains runner repairs; reconcile those only after their exact
+hosted qualification through the parent.
 
 ## Evidence reuse and invalidation
 
@@ -156,16 +169,29 @@ backup groups require owner qualification.
 
 1. Review this small source package atop PR #15. Reconcile the 9.9 owner's
    qualified reusable fixes by exact commit/paths/test evidence through the
-   parent; do not import its active working tree. Integrate inventory research
+   parent; do not import its active working tree. The consolidated repair reported
+   at fd41a2d7a9b122868d3896ed72135598fe667caa is source-qualified but still hosted-pending.
+   Reuse its truthful command/PASS/FAIL/NOT_RUN accounting, owned mode-0700 cache
+   cleanup and bounded source snapshots only after exact hosted evidence. Remove
+   candidate-specific refs/baselines/CLI hashes through reviewed manifest bindings;
+   preserve its 29 Vitest and five Node owners and pre-overlay CI inventory order.
+   This package does not duplicate that runner. Integrate inventory research
    without starting a second inventory or 10.1 build.
 2. After separate publication approval, update the existing PR #15 branch
    without force, with fresh base/head and sanitized diff checks. Re-run its
    offline gates and opening/transition preflight. Review inherited
    `pull_request_target` dispatch effects and the main push triggers.
-3. Main merge requires its own decision. Before durable enforcement, review
-   the owner changes that bind inventory to evidence and call this preflight
-   in the existing workflow/coordinator. Keep draft contract qualification
-   separate from explicitly authorized image build.
+3. Main merge requires its own decision. Review the bundled inventory enforcement
+   in the existing workflow, PR seal, image/ops consumers and private coordinator.
+   Preserve product/tooling separation when adapting any qualified 9.9 repairs.
+   Trusted base tooling must land, then the parent must reconcile the 9.9 owner's
+   qualified selection interface: an immutable main tooling revision is selected
+   independently of the candidate metadata seal and exact product source, with
+   all identities bound in producer/consumer evidence. The current manual job
+   still uses github.sha for tooling and metadata together; an upstream-based
+   candidate lacking fork helpers cannot use it merely by sealing metadata.
+   This is an explicit source-only adoption prerequisite, not a completed migration.
+   Keep draft qualification separate from explicitly authorized image build.
 4. Separately approve any ruleset/protection or production environment changes:
    require the stable named contract/security checks, forbid force/deletion of
    main and immutable release/deploy tag patterns, and require serialized,

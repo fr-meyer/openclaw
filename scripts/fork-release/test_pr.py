@@ -5,6 +5,10 @@ import re
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+
+import release
+import preflight
 
 import pr
 
@@ -14,7 +18,7 @@ def git(root, *args):
                           capture_output=True, text=True).stdout.strip()
 
 
-def fixture(root):
+def fixture(root, historical=False):
     git(root, "init", "-q")
     git(root, "config", "user.email", "release-test@example.invalid")
     git(root, "config", "user.name", "Release Test")
@@ -26,6 +30,13 @@ def fixture(root):
     git(root, "commit", "-qm", "base")
     base = git(root, "rev-parse", "HEAD")
     base_tree = git(root, "rev-parse", "HEAD^{tree}")
+    origin = base
+    if historical:
+        (root / "product.txt").write_text("prior downstream behavior\n")
+        git(root, "add", "product.txt")
+        git(root, "commit", "-qm", "prior downstream patch")
+        origin = git(root, "rev-parse", "HEAD")
+        git(root, "checkout", "-q", "-b", "admitted", base)
     (root / "product.txt").write_text("after\n")
     git(root, "add", "product.txt")
     git(root, "commit", "-qm", "product")
@@ -49,7 +60,21 @@ def fixture(root):
     manifest_path = root / "scripts/fork-release/manifest.json"
     manifest_path.parent.mkdir(parents=True)
     manifest_path.write_text(json.dumps(manifest) + "\n")
-    git(root, "add", "scripts/fork-release/manifest.json")
+    inventory = {
+        "schema": "openclaw.fork-patch-inventory.v1", "repository": manifest["repository"],
+        "candidate": manifest["candidate"], "manifestSha256": pr.sha256(manifest_path.read_bytes()),
+        "upstream": {"tag": "v2026.10.1", "tagObject": "1" * 40, "commit": base,
+                     "verificationSha256": "a" * 64},
+        "patches": [{"id": "fixture-product", "originCommit": origin if historical else source, "disposition": "adapt" if historical else "carry",
+                     "appliedCommit": source, "rationale": "Keep the fixture change", "evidenceSha256": None,
+                     "regressionTests": ["src/a.test.ts"], "dependsOn": [], "regressionOwner": "fixture",
+                     "paths": [{"path": "product.txt", "boundary": "container", "sourceCommit": origin if historical else source,
+                                "sourceTree": git(root, "rev-parse", origin + "^{tree}") if historical else source_tree,
+                                "sourceBlob": git(root, "rev-parse", (origin if historical else source) + ":product.txt"),
+                                "upstreamBlob": git(root, "rev-parse", base + ":product.txt"),
+                                "candidateBlob": git(root, "rev-parse", source + ":product.txt")}]}]}
+    manifest_path.with_name("patch-inventory.json").write_text(json.dumps(inventory) + "\n")
+    git(root, "add", "scripts/fork-release/manifest.json", "scripts/fork-release/patch-inventory.json")
     git(root, "commit", "-qm", "manifest seal")
     head = git(root, "rev-parse", "HEAD")
     body = pr.template("release", "fr-meyer", "main", "Test release candidate", [])
@@ -68,6 +93,19 @@ def fixture(root):
 
 
 class PrTests(unittest.TestCase):
+    def setUp(self):
+        original = release.git
+        def observed_tag(checkout, *args):
+            # Tag creation is forbidden in this task. Only the tag observation is
+            # synthetic; source ancestry, blobs, diff and seal commits use real Git.
+            if args[:2] == ("cat-file", "tag") and args[2] == "1" * 40:
+                manifest = json.loads((Path(checkout) / "scripts/fork-release/manifest.json").read_text())
+                return "object " + manifest["source"]["baseCommit"] + "\ntype commit\ntag v2026.10.1\n\nfixture"
+            return original(checkout, *args)
+        self.tag_patch = patch.object(release, "git", side_effect=observed_tag)
+        self.tag_patch.start()
+        self.addCleanup(self.tag_patch.stop)
+
     def test_offline_seal_has_ordered_ancestry_after_bounded_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "origin"
@@ -88,6 +126,27 @@ class PrTests(unittest.TestCase):
                 checkout / "scripts/fork-release/manifest.json", checkout)
             self.assertEqual(checked["sourceSha"],
                              json.loads(manifest_path.read_text())["source"]["commit"])
+
+
+    def test_divergent_historical_patch_requires_explicit_pinned_object_acquisition(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "origin"
+            root.mkdir()
+            manifest_path, _, _ = fixture(root, historical=True)
+            checkout = Path(directory) / "candidate"
+            subprocess.run(["git", "clone", "--quiet", "--single-branch", "--depth=3",
+                            root.as_uri(), str(checkout)], check=True, capture_output=True)
+            manifest, manifest_hash = release.manifest_at(manifest_path)
+            inventory_path = manifest_path.with_name("patch-inventory.json")
+            inventory = json.loads(inventory_path.read_text())
+            origin = inventory["patches"][0]["originCommit"]
+            self.assertEqual(preflight.history_commits(inventory), [origin])
+            with self.assertRaisesRegex(release.Refusal, "source_object"):
+                preflight.inventory_at(inventory_path, manifest, manifest_hash, checkout, check_head=False)
+            # Local file transport models the workflow's fixed-fork SHA fetch; no network/tag creation.
+            git(checkout, "fetch", "--no-tags", "--depth=1", "origin", origin)
+            admitted, _ = preflight.inventory_at(inventory_path, manifest, manifest_hash, checkout, check_head=False)
+            self.assertEqual(admitted["patches"][0]["disposition"], "adapt")
 
     def test_opening_preflight_requires_guard_on_exact_base_and_security_gate(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -145,6 +204,52 @@ class PrTests(unittest.TestCase):
             self.assertEqual(pr.validate_binding(manifest_path, root)["sourceSha"],
                              evidence["sourceSha"])
 
+
+    def test_seal_refuses_dirty_inventory_untracked_metadata_and_extra_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, event, run = fixture(root)
+            inventory_path = manifest_path.with_name("patch-inventory.json")
+            inventory = json.loads(inventory_path.read_text())
+            inventory["patches"][0]["rationale"] = "Dirty decision"
+            inventory_path.write_text(json.dumps(inventory) + "\n")
+            with self.assertRaisesRegex(pr.Refusal, "committed PR head"):
+                pr.release_seal(pr.intake(event, run), manifest_path, root)
+            git(root, "add", str(inventory_path))
+            (root / "extra.txt").write_text("Unreviewed tooling\n")
+            git(root, "add", "extra.txt")
+            git(root, "commit", "--amend", "-qm", "extra seal content")
+            event["pull_request"]["head"]["sha"] = git(root, "rev-parse", "HEAD")
+            with self.assertRaisesRegex(pr.Refusal, "exactly manifest and inventory"):
+                pr.release_seal(pr.intake(event, run), manifest_path, root)
+
+
+    def test_inventory_origin_must_be_a_retained_commit_not_a_blob(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, _, _ = fixture(root)
+            path = manifest_path.with_name("patch-inventory.json")
+            inventory = json.loads(path.read_text())
+            inventory["patches"][0]["originCommit"] = inventory["patches"][0]["paths"][0]["sourceBlob"]
+            path.write_text(json.dumps(inventory) + "\n")
+            manifest, manifest_hash = release.manifest_at(manifest_path)
+            with self.assertRaisesRegex(release.Refusal, "inventory.origin.0.commit"):
+                preflight.inventory_at(path, manifest, manifest_hash, root, check_head=False)
+
+    def test_seal_refuses_inventory_queue_and_blob_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, event, run = fixture(root)
+            path = manifest_path.with_name("patch-inventory.json")
+            inventory = json.loads(path.read_text())
+            inventory["patches"][0]["appliedCommit"] = "f" * 40
+            inventory["patches"][0]["paths"][0]["candidateBlob"] = "f" * 40
+            path.write_text(json.dumps(inventory) + "\n")
+            with self.assertRaises(pr.Refusal) as error:
+                pr.release_seal(pr.intake(event, run), manifest_path, root)
+            self.assertIn("inventory.ordered_queue", str(error.exception))
+            self.assertIn("inventory.path.0.candidateBlob", str(error.exception))
+
     def test_generated_binding_rejects_stale_hash_and_cross_candidate_rebinding(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -175,7 +280,7 @@ class PrTests(unittest.TestCase):
             with self.assertRaisesRegex(pr.Refusal, "source binding is stale"):
                 pr.validate_binding(manifest_path, root)
 
-    def test_reseal_of_same_product_diff_can_reuse_diff_review(self):
+    def test_metadata_reseal_reuses_product_diff_but_rechecks_inventory(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest_path, event, run = fixture(root)
@@ -183,12 +288,18 @@ class PrTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text())
             manifest["candidate"] = "test-release-resealed"
             manifest_path.write_text(json.dumps(manifest) + "\n")
-            git(root, "add", "scripts/fork-release/manifest.json")
+            inventory_path = manifest_path.with_name("patch-inventory.json")
+            inventory = json.loads(inventory_path.read_text())
+            inventory["candidate"] = manifest["candidate"]
+            inventory["manifestSha256"] = pr.sha256(manifest_path.read_bytes())
+            inventory_path.write_text(json.dumps(inventory) + "\n")
+            git(root, "add", "scripts/fork-release/manifest.json", "scripts/fork-release/patch-inventory.json")
             git(root, "commit", "--amend", "-qm", "manifest seal")
             event["pull_request"]["head"]["sha"] = git(root, "rev-parse", "HEAD")
             after = pr.release_seal(pr.intake(event, run), manifest_path, root)
             self.assertNotEqual(before["headSha"], after["headSha"])
             self.assertTrue(pr.reusable_changed_diff(before, after))
+            self.assertNotEqual(before["inventorySha256"], after["inventorySha256"])
             event["pull_request"]["base"]["sha"] = "f" * 40
             with self.assertRaisesRegex(pr.Refusal, "manifest PR/base"):
                 pr.release_seal(pr.intake(event, run), manifest_path, root)

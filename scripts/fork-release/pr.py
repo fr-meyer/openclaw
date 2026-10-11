@@ -101,12 +101,20 @@ def release_seal(evidence, manifest_path, checkout):
     need(evidence["kind"] == "release", "only candidate PRs have release seals")
     manifest, manifest_hash = manifest_at(manifest_path)
     validate_binding(manifest_path, checkout)
+    import preflight
+    inventory_path = Path(manifest_path).with_name("patch-inventory.json")
+    _, inventory_hash = preflight.inventory_at(inventory_path, manifest, manifest_hash, checkout, check_head=False)
     review = manifest.get("review")
     need(review is not None and review["prNumber"] == evidence["prNumber"] and review["baseSha"] == evidence["baseSha"], "manifest PR/base differs from event")
     need(git(checkout, "rev-parse", "HEAD") == evidence["headSha"], "checkout is not the PR head")
-    need(git(checkout, "show", "-s", "--format=%P", "HEAD") == manifest["source"]["commit"], "PR head must be a single manifest seal commit")
+    need(git(checkout, "show", "-s", "--format=%P", "HEAD") == manifest["source"]["commit"], "PR head must be a single metadata seal commit")
     changed = git(checkout, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").splitlines()
-    need(changed == ["scripts/fork-release/manifest.json"], "seal commit changes more than the manifest")
+    metadata = ["scripts/fork-release/manifest.json", "scripts/fork-release/patch-inventory.json"]
+    need(changed == metadata, "seal commit must change exactly manifest and inventory")
+    for name, path in zip(metadata, (manifest_path, inventory_path)):
+        need(Path(path).resolve() == (Path(checkout) / name).resolve(), "metadata path escaped checkout")
+        need(Path(path).read_bytes() == git(checkout, "show", f"HEAD:{name}", binary=True),
+             "metadata differs from committed PR head")
     need(git(checkout, "cat-file", "-t", evidence["baseSha"]) == "commit", "PR base commit is unavailable")
     product_diff = git(checkout, "diff", "--binary", "--full-index", "--no-ext-diff",
                        evidence["baseSha"], manifest["source"]["commit"], binary=True)
@@ -114,7 +122,7 @@ def release_seal(evidence, manifest_path, checkout):
     need(changed_digest == review["changedDiffSha256"], "changed product diff differs from manifest")
     return {**evidence, "sourceSha": manifest["source"]["commit"],
             "sourceTree": manifest["source"]["tree"], "manifestSha256": manifest_hash,
-            "changedDiffSha256": changed_digest}
+            "inventorySha256": inventory_hash, "changedDiffSha256": changed_digest}
 
 
 def offline_release_seal(manifest_path, checkout):
@@ -232,6 +240,9 @@ def template(kind, owner, target, scope, dependencies):
 
 def assess_current(evidence, pr, reviews, run, jobs, dependencies=()):
     need(evidence.get("schema") == "openclaw.fork-task-pr-evidence.v1", "invalid PR evidence")
+    if evidence.get("kind") == "release":
+        need(matches(re.compile(r"[0-9a-f]{64}\Z"), evidence.get("inventorySha256")),
+             "release check lacks inventory binding")
     need(pr.get("number") == evidence["prNumber"] and pr.get("state") == "open", "PR is no longer open")
     current_intent = intent_from_body(pr.get("body"))
     need(all(current_intent[key] == evidence.get(key) for key in
@@ -268,6 +279,7 @@ def assess_current(evidence, pr, reviews, run, jobs, dependencies=()):
             "headSha": evidence["headSha"], "baseSha": evidence["baseSha"],
             "sourceSha": evidence.get("sourceSha"), "sourceTree": evidence.get("sourceTree"),
             "changedDiffSha256": evidence.get("changedDiffSha256"),
+            "inventorySha256": evidence.get("inventorySha256"),
             "runId": evidence["run"]["runId"], "attempt": evidence["run"]["attempt"],
             "checkRunId": evidence["run"]["checkRunId"], "reviewState": "approved_exact_head",
             "diffReviewReusable": evidence.get("changedDiffSha256") is not None,

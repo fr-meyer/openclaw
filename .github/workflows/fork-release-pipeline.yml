@@ -2,7 +2,17 @@ name: Fork PR and release qualification
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited, assigned, unassigned]
+    types:
+      [
+        opened,
+        reopened,
+        synchronize,
+        ready_for_review,
+        converted_to_draft,
+        edited,
+        assigned,
+        unassigned,
+      ]
   push:
     branches:
       - release-pipeline/**
@@ -79,6 +89,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             scripts/fork-release
+            scripts/lib
             .github/workflows/clawsweeper-dispatch.yml
           persist-credentials: false
       - name: Checkout exact candidate PR head
@@ -88,6 +99,13 @@ jobs:
           path: candidate
           fetch-depth: 66
           persist-credentials: false
+      - name: Resolve reviewed metadata and retain upstream tag object
+        id: candidate
+        run: |
+          set -euo pipefail
+          python3 trusted/scripts/fork-release/release.py identity \
+            --manifest candidate/scripts/fork-release/manifest.json \
+            --inventory candidate/scripts/fork-release/patch-inventory.json >> "$GITHUB_OUTPUT"
       - name: Seal exact PR head, base and changed product diff
         id: seal
         env:
@@ -97,6 +115,16 @@ jobs:
         run: |
           set -euo pipefail
           git -C candidate fetch --no-tags --depth=1 origin "$BASE_SHA"
+          TAG='${{ steps.candidate.outputs.upstream_tag }}'
+          if [[ -n "$TAG" ]]; then
+            git -C candidate fetch --no-tags --depth=1 https://github.com/openclaw/openclaw.git "refs/tags/$TAG"
+          fi
+          HISTORY_COMMITS='${{ steps.candidate.outputs.history_commits }}'
+          for COMMIT in $HISTORY_COMMITS; do
+            if ! git -C candidate cat-file -e "$COMMIT^{commit}" 2>/dev/null; then
+              git -C candidate fetch --no-tags --depth=1 origin "$COMMIT"
+            fi
+          done
           python3 trusted/scripts/fork-release/pr.py seal \
             --event "$GITHUB_EVENT_PATH" \
             --manifest candidate/scripts/fork-release/manifest.json \
@@ -109,17 +137,28 @@ jobs:
           path: source
           fetch-depth: 65
           persist-credentials: false
-      - name: Verify source, manifest and offline PR regressions
-        run: |
-          set -euo pipefail
-          python3 trusted/scripts/fork-release/release.py source-check \
-            --manifest candidate/scripts/fork-release/manifest.json --source-dir source
-          python3 -m unittest discover -s trusted/scripts/fork-release -p 'test_*.py'
       - name: Setup supported Node runtime
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24.21.0"
           package-manager-cache: false
+      - name: Verify source, manifest and offline PR regressions
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.candidate.outputs.upstream_tag }}'
+          if [[ -n "$TAG" ]]; then
+            git -C source fetch --no-tags --depth=1 https://github.com/openclaw/openclaw.git "refs/tags/$TAG"
+          fi
+          HISTORY_COMMITS='${{ steps.candidate.outputs.history_commits }}'
+          for COMMIT in $HISTORY_COMMITS; do
+            if ! git -C source cat-file -e "$COMMIT^{commit}" 2>/dev/null; then
+              git -C source fetch --no-tags --depth=1 origin "$COMMIT"
+            fi
+          done
+          python3 trusted/scripts/fork-release/preflight.py \
+            --manifest candidate/scripts/fork-release/manifest.json \
+            --inventory candidate/scripts/fork-release/patch-inventory.json --source-dir source
+          python3 -m unittest discover -s trusted/scripts/fork-release -p 'test_*.py'
       - name: Run focused candidate lifecycle and producer-consumer tests
         run: |
           set -euo pipefail
@@ -127,7 +166,8 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
           mapfile -t tests < <(python3 ../trusted/scripts/fork-release/release.py gates \
-            --manifest ../candidate/scripts/fork-release/manifest.json)
+            --manifest ../candidate/scripts/fork-release/manifest.json \
+            --inventory ../candidate/scripts/fork-release/patch-inventory.json)
           OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${tests[@]}"
       - name: Retain passing exact-head contract evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -155,15 +195,26 @@ jobs:
         run: |
           set -euo pipefail
           python3 tooling/scripts/fork-release/release.py identity \
-            --manifest tooling/scripts/fork-release/manifest.json >> "$GITHUB_OUTPUT"
+            --manifest tooling/scripts/fork-release/manifest.json \
+            --inventory tooling/scripts/fork-release/patch-inventory.json >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - name: Verify manifest-only PR seal before a manual candidate build
+      - name: Verify metadata PR seal before a manual candidate build
         if: steps.identity.outputs.review_base_sha != ''
         env:
           BASE_SHA: ${{ steps.identity.outputs.review_base_sha }}
         run: |
           set -euo pipefail
           git -C tooling fetch --no-tags --depth=1 origin "$BASE_SHA"
+          TAG='${{ steps.identity.outputs.upstream_tag }}'
+          if [[ -n "$TAG" ]]; then
+            git -C tooling fetch --no-tags --depth=1 https://github.com/openclaw/openclaw.git "refs/tags/$TAG"
+          fi
+          HISTORY_COMMITS='${{ steps.identity.outputs.history_commits }}'
+          for COMMIT in $HISTORY_COMMITS; do
+            if ! git -C tooling cat-file -e "$COMMIT^{commit}" 2>/dev/null; then
+              git -C tooling fetch --no-tags --depth=1 origin "$COMMIT"
+            fi
+          done
           python3 tooling/scripts/fork-release/pr.py seal-offline \
             --manifest tooling/scripts/fork-release/manifest.json --checkout tooling
       - name: Checkout exact candidate and ordered patch ancestry
@@ -173,19 +224,30 @@ jobs:
           path: source
           fetch-depth: 65
           persist-credentials: false
-      - name: Verify source and run offline pipeline regressions
-        id: source
-        run: |
-          set -euo pipefail
-          python3 tooling/scripts/fork-release/release.py source-check \
-            --manifest tooling/scripts/fork-release/manifest.json --source-dir source
-          python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_*.py'
-          python3 -c 'import json; print("version=" + json.load(open("source/package.json"))["version"])' >> "$GITHUB_OUTPUT"
       - name: Setup supported Node runtime
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24.21.0"
           package-manager-cache: false
+      - name: Verify source and run offline pipeline regressions
+        id: source
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.identity.outputs.upstream_tag }}'
+          if [[ -n "$TAG" ]]; then
+            git -C source fetch --no-tags --depth=1 https://github.com/openclaw/openclaw.git "refs/tags/$TAG"
+          fi
+          HISTORY_COMMITS='${{ steps.identity.outputs.history_commits }}'
+          for COMMIT in $HISTORY_COMMITS; do
+            if ! git -C source cat-file -e "$COMMIT^{commit}" 2>/dev/null; then
+              git -C source fetch --no-tags --depth=1 origin "$COMMIT"
+            fi
+          done
+          python3 tooling/scripts/fork-release/preflight.py \
+            --manifest tooling/scripts/fork-release/manifest.json \
+            --inventory tooling/scripts/fork-release/patch-inventory.json --source-dir source
+          python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_*.py'
+          python3 -c 'import json; print("version=" + json.load(open("source/package.json"))["version"])' >> "$GITHUB_OUTPUT"
       - name: Run focused custom patch and producer-consumer gates
         run: |
           set -euo pipefail
@@ -193,7 +255,8 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
           mapfile -t tests < <(python3 ../tooling/scripts/fork-release/release.py gates \
-            --manifest ../tooling/scripts/fork-release/manifest.json)
+            --manifest ../tooling/scripts/fork-release/manifest.json \
+            --inventory ../tooling/scripts/fork-release/patch-inventory.json)
           OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${tests[@]}"
       - name: Install reviewed OCI smoke transport
         run: |
@@ -233,7 +296,8 @@ jobs:
         run: |
           set -euo pipefail
           node tooling/scripts/fork-release/image.mjs seal \
-            tooling/scripts/fork-release/manifest.json source \
+            tooling/scripts/fork-release/manifest.json \
+            tooling/scripts/fork-release/patch-inventory.json source \
             "$RUNNER_TEMP/fork-release/oci/default" "$BUILDKIT_DIGEST" \
             "$RUNNER_TEMP/fork-release/receipt.json"
       - name: Retain the exact tested OCI payload and public receipt

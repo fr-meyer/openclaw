@@ -107,10 +107,11 @@ def check_source(manifest, source_dir):
     return chain
 
 
-def receipt_at(path, manifest, manifest_hash):
+def receipt_at(path, manifest, manifest_hash, inventory_hash):
     receipt = read_json(path)
-    need(type(receipt) is dict and receipt.get("schema") == "openclaw.fork-release-image.v1", "wrong image receipt schema")
+    need(type(receipt) is dict and receipt.get("schema") == "openclaw.fork-release-image.v2", "wrong image receipt schema")
     need(receipt.get("manifestSha256") == manifest_hash, "image receipt is for another manifest")
+    need(matches(re.compile(r"[0-9a-f]{64}\Z"), inventory_hash) and receipt.get("inventorySha256") == inventory_hash, "image receipt inventory mismatch")
     need(receipt.get("repository") == manifest["repository"], "image receipt repository mismatch")
     need(receipt.get("sourceSha") == manifest["source"]["commit"], "image receipt source mismatch")
     need(receipt.get("sourceTree") == manifest["source"]["tree"], "image receipt tree mismatch")
@@ -177,15 +178,24 @@ def atomic_json(path, value):
             os.unlink(temporary)
 
 
+
+def operation_id(state, phase):
+    keys = ("manifestSha256", "inventorySha256", "baselineSha256", "backupPolicySha256", "imageDigest")
+    return "fr-" + sha256((":".join(state[key] for key in keys) + ":" + phase).encode())[:32]
+
 def load_state(path):
     if not path.exists():
         return None
     stat = path.lstat()
     need(path.is_file() and not path.is_symlink() and stat.st_uid == os.getuid() and stat.st_mode & 0o077 == 0, "unsafe private state file")
     state = read_json(path)
-    need(type(state) is dict and state.get("schema") == "openclaw.fork-release-progress.v1", "wrong progress schema")
+    need(type(state) is dict and state.get("schema") == "openclaw.fork-release-progress.v2", "wrong progress schema")
     need(matches(IDENT, state.get("candidate")) and matches(re.compile(r"[0-9a-f]{64}\Z"), state.get("manifestSha256")), "invalid progress identity")
     need(matches(re.compile(r"[0-9a-f]{64}\Z"), state.get("receiptSha256")) and matches(SHA, state.get("sourceSha")) and matches(DIGEST, state.get("imageDigest")), "invalid progress source or image")
+    for key in ("inventorySha256", "baselineSha256", "backupPolicySha256"):
+        need(matches(re.compile(r"[0-9a-f]{64}\Z"), state.get(key)), "invalid progress " + key)
+    if "backupBindingSha256" in state:
+        need(matches(re.compile(r"[0-9a-f]{64}\Z"), state[key]), "invalid backup binding")
     if "prEvidenceSha256" in state:
         need(matches(re.compile(r"[0-9a-f]{64}\Z"), state["prEvidenceSha256"]), "invalid PR evidence identity")
     need(state.get("phase") in (*PHASES, "awaiting_approval", "completed", "rolled_back", "needs_operator"), "invalid progress phase")
@@ -193,7 +203,7 @@ def load_state(path):
     steps = state.get("steps")
     need(type(steps) is dict and set(steps).issubset(PHASES), "invalid operation set")
     for phase, step in steps.items():
-        expected = "fr-" + sha256(f"{state['manifestSha256']}:{state['imageDigest']}:{phase}".encode())[:32]
+        expected = operation_id(state, phase)
         need(type(step) is dict and step.get("operationId") == expected, "operation identity changed")
         need(type(step.get("attempts")) is int and 0 <= step["attempts"] <= 2, "invalid operation attempt count")
         need(step.get("state") in ("pending", "issued", "succeeded", "failed"), "invalid operation state")
@@ -209,7 +219,10 @@ def load_state(path):
 def challenge(state):
     steps = state["steps"]
     need(all(steps.get(phase, {}).get("state") == "succeeded" for phase in ("backup", "restore", "rehearsal")), "backup, restore and rehearsal are not complete")
-    material = [state["manifestSha256"], state["receiptSha256"], state.get("prEvidenceSha256", ""),
+    need(matches(re.compile(r"[0-9a-f]{64}\Z"), state.get("backupBindingSha256")), "fresh backup admission is missing")
+    material = [state["manifestSha256"], state["inventorySha256"], state["baselineSha256"],
+                state["backupPolicySha256"], state["backupBindingSha256"],
+                state["receiptSha256"], state.get("prEvidenceSha256", ""),
                 state["imageDigest"], *(steps[phase]["receiptId"] for phase in ("backup", "restore", "rehearsal"))]
     return sha256("\n".join(material).encode())
 
@@ -217,7 +230,9 @@ def challenge(state):
 def adapter_call(adapter, action, phase, operation_id, state, manifest_path, receipt_path, image_dir):
     command = [str(adapter), action, "--phase", phase, "--operation-id", operation_id,
                "--source-sha", state["sourceSha"], "--image-digest", state["imageDigest"],
-               "--manifest", str(manifest_path), "--image-receipt", str(receipt_path), "--oci-dir", str(image_dir)]
+               "--manifest", str(manifest_path), "--image-receipt", str(receipt_path), "--oci-dir", str(image_dir),
+               "--inventory-sha256", state["inventorySha256"],
+               "--baseline-sha256", state["baselineSha256"], "--backup-policy-sha256", state["backupPolicySha256"]]
     backup = state["steps"].get("backup", {}).get("receiptId")
     if backup:
         command += ["--backup-receipt", backup]
@@ -242,6 +257,8 @@ def adapter_call(adapter, action, phase, operation_id, state, manifest_path, rec
         raise Refusal("adapter returned invalid JSON") from error
     need(type(response) is dict, "adapter returned invalid response")
     need(response.get("operationId") == operation_id, "adapter operation ID mismatch")
+    for key in ("manifestSha256", "inventorySha256", "baselineSha256", "backupPolicySha256", "sourceSha", "imageDigest"):
+        need(response.get(key) == state[key], "adapter binding changed: " + key)
     need(response.get("state") in ("not_found", "in_progress", "succeeded", "failed"), "adapter state invalid")
     if response["state"] == "succeeded":
         need(matches(IDENT, response.get("receiptId")), "adapter success lacks opaque receipt ID")
@@ -252,14 +269,14 @@ def adapter_call(adapter, action, phase, operation_id, state, manifest_path, rec
     return response
 
 
-def reconcile_step(state, phase, adapter, manifest_path, receipt_path, image_dir, save):
+def reconcile_step(state, phase, adapter, manifest_path, receipt_path, image_dir, save, admission=None):
     if phase == "rollback":
         need(any(state["steps"].get(name, {}).get("rollbackFenceReceiptId") for name in ("deploy", "health")), "rollback lacks no-write fence proof")
     steps = state["steps"]
     step = steps.get(phase)
     if step is None:
-        operation_id = "fr-" + sha256(f"{state['manifestSha256']}:{state['imageDigest']}:{phase}".encode())[:32]
-        step = steps[phase] = {"operationId": operation_id, "attempts": 0, "state": "pending"}
+        op_id = operation_id(state, phase)
+        step = steps[phase] = {"operationId": op_id, "attempts": 0, "state": "pending"}
         save()
     if step["state"] == "succeeded":
         return "succeeded"
@@ -272,6 +289,10 @@ def reconcile_step(state, phase, adapter, manifest_path, receipt_path, image_dir
     if response["state"] == "not_found":
         if step["attempts"] >= 2:
             return "pending"
+        if phase in ("rehearsal", "deploy"):
+            need(callable(admission), "private backup admission interface required")
+            admission(state)
+            save()
         step["attempts"] += 1
         step["state"] = "issued"
         save()  # Persist the intent before the first possible mutation.
@@ -290,12 +311,14 @@ def reconcile_step(state, phase, adapter, manifest_path, receipt_path, image_dir
     return "pending"
 
 
-def advance(state, adapter, manifest_path, receipt_path, image_dir, save):
+def advance(state, adapter, manifest_path, receipt_path, image_dir, save, admission=None):
     while True:
         phase = state["phase"]
         if phase in ("completed", "rolled_back", "blocked", "awaiting_approval", "needs_operator"):
             return
-        result = reconcile_step(state, phase, adapter, manifest_path, receipt_path, image_dir, save)
+        if phase in ("rehearsal", "deploy"):
+            need(callable(admission), "private backup admission interface required")
+        result = reconcile_step(state, phase, adapter, manifest_path, receipt_path, image_dir, save, admission)
         if result == "pending":
             return
         if result in ("failed", "rollback_safe_failure"):
@@ -310,6 +333,72 @@ def advance(state, adapter, manifest_path, receipt_path, image_dir, save):
             state["phase"] = next_phase[phase]
         save()
 
+
+
+def private_inputs(baseline_path, policy_path):
+    need(baseline_path is not None and policy_path is not None, "private baseline and backup policy required")
+    baseline, policy = read_json(baseline_path), read_json(policy_path)
+    import preflight
+    checks = preflight.Checks()
+    checks.fields(baseline, "sourceSha imageDigest mutableInventorySha256", "baseline.fields")
+    if type(baseline) is dict:
+        checks.need(matches(SHA, baseline.get("sourceSha")), "baseline.source")
+        checks.need(matches(DIGEST, baseline.get("imageDigest")), "baseline.image")
+        checks.need(matches(preflight.HEX256, baseline.get("mutableInventorySha256")), "baseline.mutable_inventory")
+    if checks.fields(policy, "schema maxAgeSeconds retainSeconds", "backup.policy.fields"):
+        checks.need(policy["schema"] == "openclaw.fork-backup-policy.v1", "backup.policy.schema")
+        for key in ("maxAgeSeconds", "retainSeconds"):
+            checks.need(type(policy[key]) is int and policy[key] > 0, "backup.policy." + key)
+    need(not checks.errors, "preflight: " + ", ".join(sorted(set(checks.errors))))
+    return baseline, policy, sha256(Path(baseline_path).read_bytes()), sha256(Path(policy_path).read_bytes())
+
+
+def backup_admission(adapter, state, manifest_path, receipt_path, image_dir, baseline, policy, now=None):
+    """The private adapter reobserves archive facts and live baseline; no mutation."""
+    import preflight
+    command = [str(adapter), "admit", "--phase", state["phase"],
+               "--source-sha", state["sourceSha"], "--image-digest", state["imageDigest"],
+               "--manifest", str(manifest_path), "--image-receipt", str(receipt_path),
+               "--oci-dir", str(image_dir)]
+    for key, flag in (("inventorySha256", "inventory-sha256"), ("baselineSha256", "baseline-sha256"),
+                      ("backupPolicySha256", "backup-policy-sha256")):
+        command += ["--" + flag, state[key]]
+    for phase in ("backup", "restore"):
+        value = state["steps"].get(phase, {}).get("receiptId")
+        need(matches(IDENT, value), "backup and restore receipts required for admission")
+        command += ["--" + phase + "-receipt", value]
+    try:
+        response = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+    except subprocess.TimeoutExpired as error:
+        raise Refusal("private admission timed out") from error
+    need(response.returncode == 0, "private admission unavailable")
+    try:
+        value = json.loads(response.stdout)
+    except ValueError as error:
+        raise Refusal("private admission JSON invalid") from error
+    now = now or preflight.datetime.now(preflight.timezone.utc)
+    checks = preflight.Checks()
+    if checks.fields(value, "schema manifestSha256 inventorySha256 baselineSha256 backupPolicySha256 sourceSha imageDigest checkedAt evidence", "admission.fields"):
+        checks.need(value["schema"] == "openclaw.fork-private-admission.v1", "admission.schema")
+        for key in ("manifestSha256", "inventorySha256", "baselineSha256", "backupPolicySha256", "sourceSha", "imageDigest"):
+            checks.need(value[key] == state[key], "admission." + key)
+        observed = checks.timestamp(value["checkedAt"], "admission.checked_at")
+        if observed:
+            checks.need(0 <= (now - observed).total_seconds() <= 60, "admission.stale")
+        preflight.backup_checks(checks, value["evidence"], baseline, state["imageDigest"],
+                                now, policy["maxAgeSeconds"], policy["retainSeconds"])
+        if type(value["evidence"]) is dict:
+            for phase, field in (("backup", "archive"), ("restore", "restore")):
+                item = value["evidence"].get(field)
+                checks.need(type(item) is dict and item.get("receiptId") == state["steps"][phase]["receiptId"],
+                            "admission." + phase + ".receipt")
+    need(not checks.errors, "preflight: " + ", ".join(sorted(set(checks.errors))))
+    evidence = value["evidence"]
+    # verifiedAt and checkedAt may advance; immutable backup/restore identity must not.
+    bound = {**evidence, "archive": {key: item for key, item in evidence["archive"].items() if key != "verifiedAt"}}
+    binding = sha256(json.dumps(bound, sort_keys=True, separators=(",", ":")).encode())
+    need(state.get("backupBindingSha256", binding) == binding, "backup identity changed after rehearsal")
+    state["backupBindingSha256"] = binding
 
 def human_status(state):
     if state is None:
@@ -330,6 +419,9 @@ def main():
     parser.add_argument("command", choices=("identity", "source-check", "gates", "status", "run", "approve"))
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--source-dir", type=Path)
+    parser.add_argument("--inventory", required=True, type=Path)
+    parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--backup-policy", type=Path)
     parser.add_argument("--private-root", type=Path)
     parser.add_argument("--image-receipt", type=Path)
     parser.add_argument("--pr-evidence", type=Path)
@@ -339,14 +431,20 @@ def main():
     parser.add_argument("--challenge")
     args = parser.parse_args()
     manifest, manifest_hash = manifest_at(args.manifest)
+    import preflight
+    inventory, inventory_hash = preflight.inventory_at(args.inventory, manifest, manifest_hash)
     if args.command == "identity":
         print(f"source_sha={manifest['source']['commit']}")
         print(f"extensions={manifest['image']['extensions']}")
         print(f"manifest_sha256={manifest_hash}")
+        print(f"inventory_sha256={inventory_hash}")
+        print("history_commits=" + " ".join(preflight.history_commits(inventory)))
+        print(f"upstream_tag={inventory['upstream']['tag'] if inventory['upstream'] else ''}")
         print(f"review_base_sha={manifest.get('review', {}).get('baseSha', '')}")
         return
     if args.command == "source-check":
         need(args.source_dir is not None, "source checkout required")
+        preflight.inventory_at(args.inventory, manifest, manifest_hash, args.source_dir)
         check_source(manifest, args.source_dir)
         print(f"Exact source and {len(manifest['source']['patches'])} ordered patches verified.")
         return
@@ -355,13 +453,16 @@ def main():
             print(*manifest["gates"][lane], sep="\n")
         return
     need(args.private_root is not None, "private state root required")
-    root = private_root(args.private_root)
-    state_path = root / f"{manifest['candidate']}.json"
     if args.command == "status":
+        root = private_root(args.private_root)
+        state_path = root / f"{manifest['candidate']}.json"
         print(human_status(load_state(state_path)))
         return
     need(args.image_receipt is not None, "exact image receipt required")
-    receipt = receipt_at(args.image_receipt, manifest, manifest_hash)
+    need(args.source_dir is not None, "exact source checkout required before private operations")
+    preflight.inventory_at(args.inventory, manifest, manifest_hash, args.source_dir)
+    receipt = receipt_at(args.image_receipt, manifest, manifest_hash, inventory_hash)
+    baseline, policy, baseline_hash, policy_hash = private_inputs(args.baseline, args.backup_policy)
     receipt_hash = sha256(args.image_receipt.read_bytes())
     pr_evidence_hash = None
     if manifest.get("review") is not None:
@@ -369,8 +470,9 @@ def main():
         import pr as pr_checks
 
         evidence = read_json(args.pr_evidence)
+        need(type(evidence) is dict, "invalid PR evidence object")
         need(evidence.get("schema") == "openclaw.fork-task-pr-evidence.v1" and evidence.get("kind") == "release", "wrong PR check evidence")
-        need(evidence.get("manifestSha256") == manifest_hash and evidence.get("sourceSha") == manifest["source"]["commit"] and evidence.get("sourceTree") == manifest["source"]["tree"], "PR check source differs from release")
+        need(evidence.get("inventorySha256") == inventory_hash and evidence.get("manifestSha256") == manifest_hash and evidence.get("sourceSha") == manifest["source"]["commit"] and evidence.get("sourceTree") == manifest["source"]["tree"], "PR check source differs from release")
         review = manifest["review"]
         need(evidence.get("prNumber") == review["prNumber"] and evidence.get("baseSha") == review["baseSha"] and evidence.get("changedDiffSha256") == review["changedDiffSha256"], "PR check review binding differs")
         need(evidence.get("headSha") == receipt["review"]["headSha"], "PR check head differs from tested image")
@@ -378,11 +480,13 @@ def main():
         need(assessed["reviewState"] == "approved_exact_head", "current PR approval is missing")
         pr_evidence_hash = sha256(args.pr_evidence.read_bytes())
     need(manifest["productionEligible"], "seed manifest is not production eligible")
-    if args.command == "run":
+    if args.command in ("run", "approve"):
         need(args.adapter is not None and args.oci_dir is not None, "adapter and OCI artifact required")
         need(args.adapter.is_absolute() and args.adapter.is_file() and os.access(args.adapter, os.X_OK), "invalid adapter executable")
-        check = subprocess.run(["node", str(Path(__file__).with_name("image.mjs")), "verify", str(args.manifest), str(args.image_receipt), str(args.oci_dir)], check=False)
+        check = subprocess.run(["node", str(Path(__file__).with_name("image.mjs")), "verify", str(args.manifest), str(args.inventory), str(args.image_receipt), str(args.oci_dir)], check=False)
         need(check.returncode == 0, "OCI artifact does not match image receipt")
+    root = private_root(args.private_root)
+    state_path = root / f"{manifest['candidate']}.json"
     lock_path = root / "production.lock"
     lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     with os.fdopen(lock_fd, "r+", encoding="utf-8") as lock:
@@ -394,15 +498,21 @@ def main():
         state = load_state(state_path)
         if state is None:
             need(args.command == "run", "no prepared release exists")
-            state = {"schema": "openclaw.fork-release-progress.v1", "candidate": manifest["candidate"],
-                     "manifestSha256": manifest_hash, "sourceSha": manifest["source"]["commit"],
+            state = {"schema": "openclaw.fork-release-progress.v2", "candidate": manifest["candidate"],
+                     "manifestSha256": manifest_hash, "inventorySha256": inventory_hash,
+                     "baselineSha256": baseline_hash, "backupPolicySha256": policy_hash,
+                     "sourceSha": manifest["source"]["commit"],
                      "receiptSha256": receipt_hash, "imageDigest": receipt["indexDigest"],
                      **({"prEvidenceSha256": pr_evidence_hash} if pr_evidence_hash else {}),
                      "phase": "backup", "steps": {}, "approval": None}
             atomic_json(state_path, state)
         need(state["manifestSha256"] == manifest_hash and state["receiptSha256"] == receipt_hash and state["sourceSha"] == receipt["sourceSha"] and state["imageDigest"] == receipt["indexDigest"], "progress identity changed")
         need(state.get("prEvidenceSha256") == pr_evidence_hash, "PR check evidence changed")
+        need(state["inventorySha256"] == inventory_hash and state["baselineSha256"] == baseline_hash and state["backupPolicySha256"] == policy_hash, "private admission inputs changed")
+        def admission(current):
+            backup_admission(args.adapter, current, args.manifest, args.image_receipt, args.oci_dir, baseline, policy)
         if args.command == "approve":
+            admission(state)
             need(state["phase"] == "awaiting_approval" and args.challenge == challenge(state), "approval challenge differs from exact rehearsed release")
             state["approval"] = args.challenge
             state["phase"] = "deploy"
@@ -415,13 +525,15 @@ def main():
                 need(state["approval"] == challenge(state), "production approval no longer matches rehearsal")
             if state["phase"] in ("deploy", "health", "rollback", "cleanup"):
                 with production_deploy_lock(args.shared_deploy_lock):
-                    advance(state, args.adapter, args.manifest, args.image_receipt, args.oci_dir, save)
+                    advance(state, args.adapter, args.manifest, args.image_receipt, args.oci_dir, save, admission)
             else:
-                advance(state, args.adapter, args.manifest, args.image_receipt, args.oci_dir, save)
+                advance(state, args.adapter, args.manifest, args.image_receipt, args.oci_dir, save, admission)
         print(human_status(state))
 
 
 if __name__ == "__main__":
+    # Keep Refusal identity consistent when preflight imports this CLI module.
+    sys.modules["release"] = sys.modules[__name__]
     try:
         main()
     except (Refusal, OSError, subprocess.CalledProcessError, ValueError, KeyError) as error:

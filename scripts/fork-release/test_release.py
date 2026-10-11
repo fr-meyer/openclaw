@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 import fcntl
 import json
@@ -14,9 +15,11 @@ SPEC.loader.exec_module(release)
 
 def state():
     return {
-        "schema": "openclaw.fork-release-progress.v1",
+        "schema": "openclaw.fork-release-progress.v2",
         "candidate": "example",
         "manifestSha256": "a" * 64,
+        "inventorySha256": "e" * 64, "baselineSha256": "f" * 64, "backupPolicySha256": "1" * 64,
+        "backupBindingSha256": "2" * 64,
         "receiptSha256": "d" * 64,
         "sourceSha": "b" * 40,
         "imageDigest": "sha256:" + "c" * 64,
@@ -51,7 +54,8 @@ class ReleaseTests(unittest.TestCase):
         manifest_path = Path(__file__).with_name("manifest.json")
         manifest, manifest_hash = release.manifest_at(manifest_path)
         receipt = {
-            "schema": "openclaw.fork-release-image.v1",
+            "schema": "openclaw.fork-release-image.v2",
+            "inventorySha256": "e" * 64,
             "manifestSha256": manifest_hash,
             "repository": manifest["repository"],
             "sourceSha": manifest["source"]["commit"],
@@ -66,21 +70,127 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "receipt.json"
             path.write_text(json.dumps(receipt))
-            self.assertEqual(release.receipt_at(path, manifest, manifest_hash)["indexDigest"], receipt["indexDigest"])
+            self.assertEqual(release.receipt_at(path, manifest, manifest_hash, "e" * 64)["indexDigest"], receipt["indexDigest"])
             receipt["sourceTree"] = "e" * 40
             path.write_text(json.dumps(receipt))
             with self.assertRaisesRegex(release.Refusal, "tree mismatch"):
-                release.receipt_at(path, manifest, manifest_hash)
+                release.receipt_at(path, manifest, manifest_hash, "e" * 64)
             receipt["sourceTree"] = manifest["source"]["tree"]
             receipt["artifactName"] += "-retry"
             path.write_text(json.dumps(receipt))
             with self.assertRaisesRegex(release.Refusal, "artifact name mismatch"):
-                release.receipt_at(path, manifest, manifest_hash)
+                release.receipt_at(path, manifest, manifest_hash, "e" * 64)
             receipt["artifactName"] = f"fork-release-{manifest['source']['commit']}-42-1"
             receipt["indexDigest"] = "sha256:invalid"
             path.write_text(json.dumps(receipt))
             with self.assertRaisesRegex(release.Refusal, "invalid indexDigest"):
-                release.receipt_at(path, manifest, manifest_hash)
+                release.receipt_at(path, manifest, manifest_hash, "e" * 64)
+
+
+    def test_receipt_refuses_unbound_v1_and_changed_inventory(self):
+        manifest, manifest_hash = release.manifest_at(Path(__file__).with_name("manifest.json"))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "receipt.json"
+            path.write_text(json.dumps({"schema": "openclaw.fork-release-image.v1"}))
+            with self.assertRaisesRegex(release.Refusal, "schema"):
+                release.receipt_at(path, manifest, manifest_hash, "e" * 64)
+            path.write_text(json.dumps({"schema": "openclaw.fork-release-image.v2",
+                                        "manifestSha256": manifest_hash, "inventorySha256": "f" * 64}))
+            with self.assertRaisesRegex(release.Refusal, "inventory mismatch"):
+                release.receipt_at(path, manifest, manifest_hash, "e" * 64)
+
+    def test_inventory_baseline_and_policy_change_operation_and_approval_identity(self):
+        current = state()
+        for phase in ("backup", "restore", "rehearsal"):
+            current["steps"][phase] = {"state": "succeeded", "receiptId": phase + "-receipt"}
+        for key in ("inventorySha256", "baselineSha256", "backupPolicySha256", "backupBindingSha256"):
+            changed = copy.deepcopy(current)
+            changed[key] = "9" * 64
+            self.assertNotEqual(release.challenge(current), release.challenge(changed))
+            if key != "backupBindingSha256":
+                self.assertNotEqual(release.operation_id(current, "deploy"), release.operation_id(changed, "deploy"))
+
+    def test_rehearsal_and_deploy_refuse_missing_admission_before_adapter_calls(self):
+        for phase in ("rehearsal", "deploy"):
+            current = state()
+            current["phase"] = phase
+            with patch.object(release, "adapter_call") as call:
+                with self.assertRaisesRegex(release.Refusal, "admission interface required"):
+                    release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None)
+                call.assert_not_called()
+
+    def test_adapter_rejects_missing_inventory_binding_even_for_status(self):
+        current = state()
+        response = {key: current[key] for key in ("manifestSha256", "baselineSha256", "backupPolicySha256", "sourceSha", "imageDigest")}
+        response.update(operationId="fr-test", state="not_found")
+        with patch.object(release.subprocess, "run") as runner:
+            runner.return_value.returncode = 0
+            runner.return_value.stdout = json.dumps(response)
+            with self.assertRaisesRegex(release.Refusal, "inventorySha256"):
+                release.adapter_call("adapter", "status", "backup", "fr-test", current, "manifest", "receipt", "oci")
+
+    def test_live_admission_batches_backup_failures_and_binds_immutable_archive(self):
+        import preflight
+        current = state()
+        current.pop("backupBindingSha256")
+        current["phase"] = "rehearsal"
+        current["steps"] = {phase: {"state": "succeeded", "receiptId": phase + "-receipt"}
+                            for phase in ("backup", "restore")}
+        now = preflight.utc("2026-10-11T01:00:00Z")
+        baseline = {"sourceSha": "3" * 40, "imageDigest": "sha256:" + "4" * 64,
+                    "mutableInventorySha256": "5" * 64}
+        policy = {"schema": "openclaw.fork-backup-policy.v1", "maxAgeSeconds": 3600,
+                  "retainSeconds": 86400}
+        evidence = {"schema": "openclaw.fork-backup-evidence.v1", "baseline": baseline,
+                    "archive": {"receiptId": "backup-receipt", "sha256": "6" * 64,
+                                "sizeBytes": 100, "exists": True, "capturedAt": "2026-10-11T00:30:00Z",
+                                "verifiedAt": "2026-10-11T00:59:00Z", "retainUntil": "2026-10-13T00:00:00Z"},
+                    "restore": {"receiptId": "restore-receipt", "archiveSha256": "6" * 64,
+                                "imageDigest": current["imageDigest"], "state": "passed"}}
+        response = {key: current[key] for key in ("manifestSha256", "inventorySha256", "baselineSha256", "backupPolicySha256", "sourceSha", "imageDigest")}
+        response.update(schema="openclaw.fork-private-admission.v1", checkedAt="2026-10-11T01:00:00Z", evidence=evidence)
+        with patch.object(release.subprocess, "run") as runner:
+            runner.return_value.returncode = 0
+            runner.return_value.stdout = json.dumps(response)
+            release.backup_admission("adapter", current, "manifest", "receipt", "oci", baseline, policy, now)
+            binding = current["backupBindingSha256"]
+            evidence["archive"]["verifiedAt"] = "2026-10-11T01:00:00Z"
+            runner.return_value.stdout = json.dumps(response)
+            release.backup_admission("adapter", current, "manifest", "receipt", "oci", baseline, policy, now)
+            self.assertEqual(binding, current["backupBindingSha256"])
+            evidence["archive"]["exists"] = False
+            evidence["archive"]["capturedAt"] = "2026-10-10T00:00:00Z"
+            evidence["archive"]["retainUntil"] = "2026-10-11T02:00:00Z"
+            evidence["restore"]["state"] = "not_run"
+            runner.return_value.stdout = json.dumps(response)
+            with self.assertRaises(release.Refusal) as error:
+                release.backup_admission("adapter", current, "manifest", "receipt", "oci", baseline, policy, now)
+            for code in ("backup.archive.absent", "backup.archive.stale", "backup.archive.retention_short", "backup.restore.unproved"):
+                self.assertIn(code, str(error.exception))
+            evidence["archive"].update(exists=True, capturedAt="2026-10-11T00:30:00Z",
+                                       retainUntil="2026-10-13T00:00:00Z", sha256="7" * 64)
+            evidence["restore"].update(state="passed", archiveSha256="7" * 64)
+            runner.return_value.stdout = json.dumps(response)
+            with self.assertRaisesRegex(release.Refusal, "identity changed"):
+                release.backup_admission("adapter", current, "manifest", "receipt", "oci", baseline, policy, now)
+
+    def test_live_admission_refuses_unavailable_stale_and_changed_baseline(self):
+        import preflight
+        current = state()
+        current["phase"] = "deploy"
+        current["steps"] = {phase: {"state": "succeeded", "receiptId": phase + "-receipt"} for phase in ("backup", "restore")}
+        with patch.object(release.subprocess, "run") as runner:
+            runner.return_value.returncode = 1
+            with self.assertRaisesRegex(release.Refusal, "unavailable"):
+                release.backup_admission("adapter", current, "manifest", "receipt", "oci", {}, {}, preflight.utc("2026-10-11T01:00:00Z"))
+            runner.return_value.returncode = 0
+            response = {key: current[key] for key in ("manifestSha256", "inventorySha256", "baselineSha256", "backupPolicySha256", "sourceSha", "imageDigest")}
+            response.update(schema="openclaw.fork-private-admission.v1", checkedAt="2026-10-11T00:00:00Z", evidence=None)
+            runner.return_value.stdout = json.dumps(response)
+            with self.assertRaises(release.Refusal) as error:
+                release.backup_admission("adapter", current, "manifest", "receipt", "oci", {}, {"maxAgeSeconds": 1, "retainSeconds": 1}, preflight.utc("2026-10-11T01:00:00Z"))
+            self.assertIn("admission.stale", str(error.exception))
+            self.assertIn("backup.fields", str(error.exception))
 
     def test_rehearsal_stops_for_exact_approval_then_uses_same_digest(self):
         current = state()
@@ -96,16 +206,57 @@ class ReleaseTests(unittest.TestCase):
             return response
 
         with patch.object(release, "adapter_call", side_effect=adapter):
-            release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None)
+            release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None, lambda progress: None)
             self.assertEqual(current["phase"], "awaiting_approval")
             self.assertEqual({phase for _, phase, _ in calls}, {"backup", "restore", "rehearsal"})
             approval = release.challenge(current)
             current["approval"] = approval
             current["phase"] = "deploy"
-            release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None)
+            release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None, lambda progress: None)
         self.assertEqual(current["phase"], "completed")
         self.assertEqual({digest for _, _, digest in calls}, {current["imageDigest"]})
         self.assertEqual(current["steps"]["deploy"]["attempts"], 1)
+
+
+    def test_resumed_accepted_deploy_reconciles_before_live_baseline_admission(self):
+        current = state()
+        current["phase"] = "deploy"
+        current["steps"]["deploy"] = {"state": "issued", "attempts": 1,
+                                     "operationId": release.operation_id(current, "deploy")}
+        def adapter(_path, action, phase, op_id, progress, *_rest):
+            self.assertEqual(action, "status")
+            return {"state": "succeeded", "operationId": op_id, "receiptId": phase + "-receipt",
+                    "imageDigest": progress["imageDigest"]}
+        with patch.object(release, "adapter_call", side_effect=adapter), patch.object(release, "backup_admission") as admission:
+            release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None, admission)
+            self.assertEqual(current["phase"], "completed")
+            admission.assert_not_called()
+            self.assertEqual(current["steps"]["deploy"]["attempts"], 1)
+
+    def test_admission_uses_time_after_adapter_observation(self):
+        import preflight
+        current = state()
+        current["steps"] = {phase: {"state": "succeeded", "receiptId": phase + "-receipt"} for phase in ("backup", "restore")}
+        response = {key: current[key] for key in ("manifestSha256", "inventorySha256", "baselineSha256", "backupPolicySha256", "sourceSha", "imageDigest")}
+        response.update(schema="openclaw.fork-private-admission.v1", checkedAt="2026-10-11T01:00:10Z", evidence=None)
+        order = []
+        def observe(*args, **kwargs):
+            order.append("adapter")
+            result = type("Result", (), {})()
+            result.returncode, result.stdout = 0, json.dumps(response)
+            return result
+        from datetime import datetime
+        class Clock(datetime):
+            @staticmethod
+            def now(_zone):
+                order.append("clock")
+                return datetime(2026, 10, 11, 1, 0, 11, tzinfo=preflight.timezone.utc)
+        with patch.object(release.subprocess, "run", side_effect=observe), patch.object(preflight, "datetime", Clock):
+            # Archive body deliberately absent; timestamp must still be correctly assessed.
+            with self.assertRaises(release.Refusal) as error:
+                release.backup_admission("adapter", current, "manifest", "receipt", "oci", {}, {"maxAgeSeconds": 1, "retainSeconds": 1})
+            self.assertNotIn("admission.stale", str(error.exception))
+        self.assertEqual(order, ["adapter", "clock"])
 
     def test_uncertain_invoke_reconciles_operation_without_second_dispatch(self):
         current = state()
@@ -154,10 +305,10 @@ class ReleaseTests(unittest.TestCase):
         current = state()
         with patch.object(release.subprocess, "run") as runner:
             runner.return_value.returncode = 0
-            runner.return_value.stdout = json.dumps({
+            runner.return_value.stdout = json.dumps({**{key: current[key] for key in ("manifestSha256", "inventorySha256", "baselineSha256", "backupPolicySha256", "sourceSha")},
                 "operationId": "fr-test", "state": "succeeded", "receiptId": "proof-1",
                 "imageDigest": "sha256:" + "0" * 64})
-            with self.assertRaisesRegex(release.Refusal, "image digest changed"):
+            with self.assertRaisesRegex(release.Refusal, "binding changed: imageDigest"):
                 release.adapter_call("adapter", "invoke", "deploy", "fr-test", current,
                                      "manifest", "receipt", "oci")
 
@@ -179,7 +330,7 @@ class ReleaseTests(unittest.TestCase):
             return {"state": "succeeded", "operationId": operation_id, "receiptId": phase + "-receipt"}
 
         with patch.object(release, "adapter_call", side_effect=adapter):
-            release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None)
+            release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None, lambda progress: None)
         self.assertEqual(phases, ["health", "rollback", "cleanup"])
         self.assertEqual(current["phase"], "rolled_back")
 
@@ -195,7 +346,7 @@ class ReleaseTests(unittest.TestCase):
             return {"state": "failed", "operationId": operation_id}
 
         with patch.object(release, "adapter_call", side_effect=adapter):
-            release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None)
+            release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None, lambda progress: None)
         self.assertEqual(phases, ["deploy"])
         self.assertEqual(current["phase"], "needs_operator")
 
@@ -211,7 +362,7 @@ class ReleaseTests(unittest.TestCase):
 
         with patch.object(release, "adapter_call", side_effect=adapter):
             for _ in range(4):
-                release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None)
+                release.advance(current, "adapter", "manifest", "receipt", "oci", lambda: None, lambda progress: None)
         self.assertEqual(len(dispatched), 2)
         self.assertEqual(len(set(dispatched)), 1)
         self.assertEqual(current["steps"]["backup"]["attempts"], 2)

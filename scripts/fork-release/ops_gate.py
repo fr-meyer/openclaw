@@ -55,6 +55,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("image", "post"))
     parser.add_argument("--manifest", required=True, type=Path)
+    parser.add_argument("--inventory", required=True, type=Path)
     parser.add_argument("--image-receipt", required=True, type=Path)
     parser.add_argument("--gate", required=True, type=Path)
     parser.add_argument("--candidate-image")
@@ -62,7 +63,9 @@ def main():
     args = parser.parse_args()
     need(args.gate.is_absolute() and args.gate.is_file(), "reviewed gate path required")
     manifest, manifest_hash = manifest_at(args.manifest)
-    receipt = receipt_at(args.image_receipt, manifest, manifest_hash)
+    import preflight
+    _, inventory_hash = preflight.inventory_at(args.inventory, manifest, manifest_hash)
+    receipt = receipt_at(args.image_receipt, manifest, manifest_hash, inventory_hash)
     if args.mode == "image":
         need(args.candidate_image and not args.container, "candidate image required")
         command = [str(args.gate), "image", args.candidate_image, receipt["configDigest"]]
@@ -78,6 +81,7 @@ def main():
     validate_gate(payload, args.mode, receipt, manifest["source"]["commit"])
     print(json.dumps({"schema": "openclaw.fork-release-ops-gate.v1",
                       "mode": args.mode, "sourceSha": manifest["source"]["commit"],
+                      "inventorySha256": inventory_hash,
                       "indexDigest": receipt["indexDigest"],
                       "imageId": receipt["configDigest"],
                       "gateEvidenceSha256": hashlib.sha256(result.stdout.encode()).hexdigest()},

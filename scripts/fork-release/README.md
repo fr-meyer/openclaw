@@ -87,10 +87,12 @@ has different runner, metadata and external-review effects.
 ### One visible release candidate PR
 
 Open a single draft `candidate/` PR against fork `main` from the product source
-commit, then add one **manifest-only seal commit** to that same PR after its
-number is known. The seal commit's sole changed path is
-`scripts/fork-release/manifest.json`; its parent is the exact product source
-commit. The manifest's `review` object pins the PR number, exact base SHA and
+commit, then add one **metadata seal commit** to that same PR after its
+number is known. The seal commit changes exactly `scripts/fork-release/manifest.json` and
+`scripts/fork-release/patch-inventory.json`; its parent is the exact product source
+commit. The inventory binds the final manifest bytes, so neither file belongs in
+the product commit it describes. The PR receipt binds both hashes and the seal
+checks both files against their committed bytes. The manifest's `review` object pins the PR number, exact base SHA and
 SHA-256 of `git diff --binary --full-index --no-ext-diff BASE SOURCE`. The PR
 workflow verifies those facts, the ordered patch chain, and one focused
 lifecycle/producer-consumer test invocation. It runs while the PR is draft and
@@ -99,10 +101,12 @@ artifact names the head, base, source, diff, workflow, run, attempt and check.
 
 Generate the candidate binding from the product source checkout, rather than
 typing commit, tree or diff hashes. `bind` emits a separate proposed manifest;
-review and copy that file into the candidate branch, then make the manifest-only
+review and copy that file into the candidate branch, then make the metadata
 seal commit. It refuses a different candidate ID, PR number or PR base on an
 already bound manifest. The seal gate recomputes the binding from Git objects
-and fails if any patch tree or changed-diff hash is stale.
+and fails if any patch tree or changed-diff hash is stale. Complete and review
+the matching inventory after generating the manifest, then commit both metadata
+files together; a missing or unresolved inventory refuses the seal.
 
 ```sh
 python3 scripts/fork-release/pr.py bind \
@@ -119,8 +123,10 @@ mechanical; changed product behavior or deployment scope still needs review.
 
 `pr.py compare --previous OLD.json --evidence NEW.json` reports whether an
 earlier review covered the same product diff under the same PR/base and source
-tree. A manifest-only reseal can reuse that changed-diff review work. A fresh
-check and current-head approval are still required. `pr.py assess-live
+tree. A metadata reseal can reuse that changed-diff review work. A fresh
+check and current-head approval are still required. Inventory decisions are
+separate review work: a reusable product diff never carries forward an old
+inventory hash or image receipt. `pr.py assess-live
 --evidence RELEASE_PR_EVIDENCE.json` reads the public GitHub API without new
 credentials and checks current PR, review, run, job and dependency records;
 it rejects moved heads/bases, stale review, failed check and unresolved
@@ -137,14 +143,26 @@ started only by a separate `workflow_dispatch` (or a reviewed
 GitHub requires the dispatch workflow file on the default branch, so this
 route begins only after the tooling has been reviewed and landed there.
 
+The existing manual job still selects both tooling and candidate metadata from
+`github.sha`. An upstream-based candidate may omit those fork helper paths;
+landing trusted tooling on main and sealing metadata alone does not make that
+candidate buildable through this job. Before adopting the stable-tag strategy
+for a new candidate, the parent must reconcile the 9.9 owner's hosted-qualified
+tooling selection: select an immutable trusted main tooling revision separately
+from the exact candidate metadata seal and product source, and bind all three
+in producer/consumer evidence. This source-only package adds enforcement to the
+existing lane; it does not add a second runner or claim that migration is done.
+
 ## Source and hosted proof
 
 `manifest.json` is the single candidate source identity: base commit/tree,
 ordered custom commits/trees, final commit/tree, focused lifecycle and
 producer/consumer tests, and image architecture/extensions. `release.py
 source-check` verifies the entire parent chain and every named test in an exact
-checkout. The workflow runs those tests in one hosted Linux process, then uses
-the same checkout to build one OCI image. It uses the official Docker release
+checkout. For the existing tooling-bearing candidate shape, the workflow runs those tests
+in one hosted Linux process, then uses the same product checkout to build one
+OCI image. The separate immutable tooling selection above is a prerequisite for
+a new upstream-based candidate that does not contain those helpers. It uses the official Docker release
 preparation's OCI closure, attestation and smoke helpers; the smoke copy is
 checked against the prepared config digest. The OCI payload and `receipt.json`
 are uploaded together under a run/attempt-specific artifact name. No registry
@@ -160,7 +178,8 @@ inputs or its hosted build supervisor.
 
 `release.py run` is an operator-side coordinator. It requires a reviewed
 production-eligible manifest, the exact Actions image receipt and OCI payload,
-and a separately supplied executable adapter. It verifies OCI bytes, image
+the reviewed inventory and exact product checkout, a private baseline and backup
+policy, and a separately supplied executable adapter. It verifies OCI bytes, image
 labels and attestations before any operation. Its state is in a private mode
 `0700` directory; records and the production lock are mode `0600`. Use **one
 shared private root for all candidate releases**, for example
@@ -173,14 +192,15 @@ The adapter has one small command interface:
 ADAPTER status|invoke --phase PHASE --operation-id ID \
   --source-sha SHA --image-digest sha256:... \
   --manifest FILE --image-receipt FILE --oci-dir DIR \
+  --inventory-sha256 HASH --baseline-sha256 HASH --backup-policy-sha256 HASH \
   [--backup-receipt OPAQUE_ID] [--restore-receipt OPAQUE_ID] \
   [--rollback-fence-receipt OPAQUE_ID]
 ```
 
-Each call returns one JSON object with the same `operationId` and `state` of
+Each call returns the exact `manifestSha256`, `inventorySha256`, `baselineSha256`,
+`backupPolicySha256`, `sourceSha` and `imageDigest`, plus the same `operationId` and `state` of
 `not_found`, `in_progress`, `succeeded`, or `failed`. Success includes an opaque
-`receiptId`; `rehearsal`, `deploy`, and `health` success also includes the exact
-`imageDigest`. The adapter must durably deduplicate `invoke` by operation ID,
+`receiptId`. The adapter must durably deduplicate `invoke` by operation ID,
 and `status` must reconcile a possibly accepted operation before any retry.
 `backup` captures all mutable production data privately. `restore` copies
 that backup to a disposable isolated target; `rehearsal` tests the exact image
@@ -205,7 +225,8 @@ preflight. Both emit a compact receipt hash; keep the full gate output in
 private operation records. The OCI index digest remains the release identity
 in `release.py`; the config digest is the Docker daemon image ID. An adapter
 must call `image` before changing the Compose selector and `post` after
-recreation. No coordinator phase invokes this bridge automatically yet.
+recreation. The bridge requires `--inventory` and binds its hash in the small output receipt.
+No coordinator phase invokes this bridge automatically yet.
 
 The fork's `openclaw backup create --verify --json` and `backup restore
 ARCHIVE --target FRESH_DIR --json` are useful private capture and disposable
@@ -239,21 +260,25 @@ that ignores the shared lock needs a separate admission decision.
 Operator command shape after all separate publication and adapter reviews:
 
 ```sh
-python3 scripts/fork-release/release.py run --manifest MANIFEST \
+python3 scripts/fork-release/release.py run --manifest MANIFEST --inventory INVENTORY \
+  --source-dir EXACT_SOURCE --baseline PRIVATE_BASELINE --backup-policy PRIVATE_POLICY \
   --image-receipt RECEIPT --pr-evidence RELEASE_PR_EVIDENCE.json \
   --oci-dir OCI_DIR --private-root PRIVATE_ROOT \
   --adapter /absolute/path/to/reviewed-adapter \
   --shared-deploy-lock /home/frmeyer/openclaw-operations/.production-deploy.lock
-python3 scripts/fork-release/release.py status --manifest MANIFEST \
+python3 scripts/fork-release/release.py status --manifest MANIFEST --inventory INVENTORY \
   --private-root PRIVATE_ROOT
-python3 scripts/fork-release/release.py approve --manifest MANIFEST \
+python3 scripts/fork-release/release.py approve --manifest MANIFEST --inventory INVENTORY \
+  --source-dir EXACT_SOURCE --baseline PRIVATE_BASELINE --backup-policy PRIVATE_POLICY \
+  --oci-dir OCI_DIR --adapter /absolute/path/to/reviewed-adapter \
   --image-receipt RECEIPT --pr-evidence RELEASE_PR_EVIDENCE.json \
   --private-root PRIVATE_ROOT \
   --challenge PRINTED_CHALLENGE
 ```
 
 After backup, restore and rehearsal, `run` stops and prints a challenge over the exact
-manifest, image digest, backup, restore and rehearsal receipts. The operator reviews
+manifest/inventory, image, exact PR evidence, baseline/policy and immutable backup,
+restore and rehearsal receipts. The operator reviews
 those records, the current exact-head/base PR review and check evidence,
 the source/test run, the Actions producer run and artifact
 identity, then invokes `approve --challenge CHALLENGE`. That is the one scoped
@@ -318,6 +343,51 @@ adapter must verify and refresh them. Only stable error codes are emitted.
 `deployment-receipt.template.json` defines a sanitized completed-production
 receipt. Validate a filled receipt with `--deployment-receipt` and the original
 `--image-receipt`. The null template is deliberately ineligible.
-This stage creates no tags and leaves workflow/coordinator behavior unchanged.
-The evidence owner must bind the inventory hash and enforce this preflight
-in the existing lane before it becomes a production requirement.
+The existing workflow calls this same preflight before candidate tests or an OCI
+build; it explicitly retains the named upstream annotated tag object and then
+checks its exact object/base identity. It also fetches missing historical origin/path
+commits by their validated SHA from the fixed fork remote; adapted 9.8/9.9
+snapshots need not be ancestors of a new stable candidate. Unavailable objects
+refuse admission rather than weaken ledger coverage. `identity` and `gates` require
+`--inventory`. `image.mjs seal|verify` takes `MANIFEST INVENTORY` first.
+Image receipts use `openclaw.fork-release-image.v2`; older v1 receipts cannot
+be relabeled or reused. Private progress uses `openclaw.fork-release-progress.v2`
+and binds inventory, baseline and policy hashes into operation IDs and approval.
+Existing active release evidence remains with its owner; adopting this tooling
+requires a newly reviewed metadata seal and qualification, never an in-place
+edit of old evidence. No tags are created by this stage.
+
+### Private backup admission
+
+The private baseline is an independently approved object containing exactly
+`sourceSha`, `imageDigest`, and `mutableInventorySha256`. The policy is exactly
+`{"schema":"openclaw.fork-backup-policy.v1","maxAgeSeconds":POSITIVE_INTEGER,"retainSeconds":POSITIVE_INTEGER}`.
+Its values are private operational decisions; this repository chooses no defaults
+and changes no retention.
+
+Before rehearsal, before recording approval, and again under the existing
+operations lock immediately before a new deploy invocation, the coordinator calls a read-only
+`ADAPTER admit` using the source/image/metadata arguments above, both backup and
+restore receipt IDs, and `--phase`. It has no operation ID and must perform no
+mutation. A missing interface, nonzero result, timeout, malformed or stale response
+refuses progress. The response has exactly:
+`schema`, `manifestSha256`, `inventorySha256`, `baselineSha256`,
+`backupPolicySha256`, `sourceSha`, `imageDigest`, `checkedAt`, and `evidence`.
+The schema is `openclaw.fork-private-admission.v1`; `checkedAt` is UTC and within
+60 seconds. `evidence` is the exact private backup-evidence contract used by
+`backup_checks`. The adapter must independently observe the live production
+baseline, retained archive existence/readability/checksum/size, capture/check
+times and retention, and retained restore proof. It must match the persisted
+backup/restore receipt IDs. The coordinator batches refusals and binds immutable
+archive/restore identity into the rehearsal challenge; only `verifiedAt` and
+`checkedAt` may refresh without changing that identity.
+
+The interface does not implement the adapter or qualify private procedures.
+The adapter must still prove quiescence, complete compatible database groups,
+isolation, leases, runtime/host gates and safe rollback, and recheck archive
+usability before restore/rollback. Fail closed until those prerequisites are
+reviewed and exercised on disposable data. On interruption, reconcile an already
+issued deploy using its bound operation ID before requesting a new admission.
+An accepted/succeeded promotion can legitimately change the live baseline;
+it must never be repeated merely to refresh admission. A not-found operation
+requires fresh admission before its next permitted invocation.
