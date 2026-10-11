@@ -51,22 +51,66 @@ class SandboxAccountingTests(NativeFixture):
   self.assertNotIn(str(self.engine_root),json.dumps(self.n.r))
 
  def test_unknown_containerd_root_is_refused_before_any_allocation(self):
-  info={"ID":"engine-one","OSType":"linux","Architecture":"x86_64","LoggingDriver":"json-file","Driver":"overlay2","DockerRootDir":str(self.engine_root)}
+  info=self.info()
   processes={1:("one",["dockerd"]),2:("two",["containerd"])}
-  with patch("native_sandbox.os.uname",return_value=SimpleNamespace(sysname="Linux")),patch.object(self.a,"engine",return_value=json.dumps(info))as engine,patch.object(self.a,"processes",return_value=processes):
+  with patch("native_sandbox.os.uname",return_value=SimpleNamespace(sysname="Linux")),patch.object(self.a,"engine",return_value=json.dumps(info))as engine,patch.object(self.a,"processes",return_value=processes),patch.object(self.a,"daemon_temp",return_value=self.engine_root),patch.object(Path,"read_text",return_value="1 2 3 4 5 6 - overlay lower\n"):
    with self.assertRaisesRegex(RuntimeError,"content root unknown"):self.a.admit(self.n.end)
   self.assertEqual(engine.call_count,1)
   self.assertFalse(self.a.admission.exists());self.assertFalse(self.a.record.exists())
 
- def test_admission_pins_discovered_roots_and_refuses_missing_image_without_acquisition(self):
-  configuration=self.n.w/"containerd.toml";configuration.write_text('root = '+json.dumps(str(self.content_root)))
-  info={"ID":"engine-one","OSType":"linux","Architecture":"x86_64","LoggingDriver":"local","Driver":"overlay2","DockerRootDir":str(self.engine_root)}
-  processes={1:("one",["dockerd"]),2:("two",["containerd","--config",str(configuration)])}
-  with patch("native_sandbox.os.uname",return_value=SimpleNamespace(sysname="Linux")),patch.object(self.a,"engine",side_effect=[json.dumps(info),"[]"])as engine,patch.object(self.a,"processes",return_value=processes),patch.object(self.n,"disk")as disk:
-   with self.assertRaisesRegex(RuntimeError,"pinned image is absent"):self.a.admit(self.n.end)
-  self.assertEqual(self.a.roots,covering_roots([self.engine_root,self.content_root]))
-  self.assertEqual(engine.call_args.args[0],["image","inspect",IMAGE]);disk.assert_not_called()
-  self.assertFalse(self.a.admission.exists())
+ def info(self,**extra):return {"ID":"engine-one","OSType":"linux","Architecture":"x86_64","LoggingDriver":"local","Driver":"overlay2","DockerRootDir":str(self.engine_root),"ServerVersion":"28.0.4","DriverStatus":[["Backing Filesystem","extfs"],["Supports d_type","true"]],**extra}
+
+ def engine_admission(self,info=None,disk=None):
+  processes={1:("one",["dockerd"]),2:("two",["containerd","--root",str(self.content_root)])}
+  self.n.r["lastDiskSnapshot"]={"taskBytes":100,"roots":[{"freeBytes":6*native.GIB}]}
+  def sample(owned,end):self.n.r["sandboxMemoryAccounting"]={"totalBytes":100}
+  def read(path,*args,**kwargs):return "MemAvailable: 2097152 kB\n"if path==Path("/proc/meminfo")else"1 2 3 4 5 6 - overlay lower\n"
+  def engine(args,end):return json.dumps(info or self.info())if args[0]=="info"else"--input --quiet"
+  with patch("native_sandbox.os.uname",return_value=SimpleNamespace(sysname="Linux")),patch.object(self.a,"engine",side_effect=engine)as command,patch.object(self.a,"processes",return_value=processes),patch.object(self.a,"daemon_temp",return_value=self.engine_root),patch.object(Path,"read_text",read),patch.object(self.a,"sample",side_effect=sample),patch.object(self.n,"disk",side_effect=disk)as scan:
+   self.a.admit(self.n.end)
+  return command,scan
+
+ def test_early_full_accounting_admission_pins_roots_before_any_image_operation(self):
+  command,scan=self.engine_admission()
+  self.assertEqual(self.a.roots,covering_roots([self.engine_root,self.content_root]));scan.assert_called_once()
+  self.assertTrue(all(call.args[0][:2]!=["image","inspect"]for call in command.call_args_list))
+  self.assertEqual(self.n.r["sandboxAdmission"]["status"],"engine-accounting-readable");self.assertFalse(self.a.admission.exists());self.assertFalse(self.a.image_record.exists())
+
+ def test_unreadable_engine_footprint_refuses_under_existing_authority_without_retry(self):
+  for error in(PermissionError("private root"),RuntimeError("engine/task footprint unreadable")):
+   with self.subTest(error=type(error).__name__):
+    self.a.env["DOCKER_CONFIG"]=str(self.n.w/type(error).__name__)
+    with self.assertRaisesRegex(RuntimeError,"ENGINE_ACCOUNTING_UNREADABLE_UNDER_EXISTING_RUNNER_AUTHORITY"):self.engine_admission(disk=error)
+    self.assertFalse(self.a.admission.exists());self.assertFalse(self.a.image_record.exists())
+
+ def test_unreviewed_snapshotter_or_loader_version_refuses_before_traversal_and_network(self):
+  for extra in({"Driver":"overlayfs"},{"ServerVersion":"29.0.0"},{"DriverStatus":[["driver-type","io.containerd.snapshotter.v1"]]}):
+   with self.subTest(extra=extra):
+    self.a.env["DOCKER_CONFIG"]=str(self.n.w/str(len(list(self.n.w.iterdir()))))
+    with self.assertRaisesRegex(RuntimeError,"LOADER_CONTRACT_UNREVIEWED"):self.engine_admission(self.info(**extra))
+    self.assertFalse(self.a.image_record.exists())
+
+ def test_import_disk_reserve_refuses_before_image_transfer(self):
+  def disk():self.n.r["lastDiskSnapshot"]={"taskBytes":8*native.GIB,"roots":[{"freeBytes":6*native.GIB}]}
+  with self.assertRaisesRegex(RuntimeError,"IMAGE_STAGING_AND_IMPORT_RESERVE_UNAVAILABLE"):self.engine_admission(disk=disk)
+  self.assertFalse(self.a.image_record.exists())
+
+ def test_daemon_temp_follows_reviewed_initial_env_and_ignores_mutated_tmpdir(self):
+  temporary=self.root/"daemon-temp";temporary.mkdir();default=self.engine_root/"tmp";default.mkdir()
+  for raw,want in((b"PATH=/usr/bin\0TMPDIR=/wrong\0",default),(os.fsencode("DOCKER_TMPDIR="+str(temporary))+b"\0TMPDIR=/wrong\0",temporary)):
+   with patch.object(Path,"open",return_value=io.BytesIO(raw)):self.assertEqual(self.a.daemon_temp(1,self.engine_root),want)
+  with patch.object(Path,"open",return_value=io.BytesIO(b"DOCKER_TMPDIR=/one\0DOCKER_TMPDIR=/two\0")):
+   with self.assertRaisesRegex(RuntimeError,"TEMP_AMBIGUOUS"):self.a.daemon_temp(1,self.engine_root)
+
+ def test_final_image_disk_probe_shares_phase_deadline_and_restores_outer_owner(self):
+  from native_sandbox import CONFIG
+  self.a.socket=self.a.socket_identity();self.n.r["sandboxAdmission"]={"status":"engine-accounting-readable"}
+  self.a.image_record.write_text(json.dumps({"format":1,"phase":"confirmed","engineId":"engine-one","image":IMAGE,"runtimeImage":CONFIG,"registryOriginVerified":True,"imported":True,"transport":{}}));self.a.image_record.chmod(0o600)
+  end=self.n.work_end-10;previous=self.n.command_end
+  def disk():self.assertEqual(self.n.command_end,min(previous,end))
+  with patch.object(self.n,"run",return_value=({"exit":0,"reason":None},"")),patch.object(self.n,"disk",side_effect=disk)as scan,patch.object(self.a,"sample")as sample:
+   self.a.prepare_image(end)
+  scan.assert_called_once();self.assertEqual(sample.call_args.args[1],end);self.assertEqual(self.n.command_end,previous)
 
  def memory(self,groups,contents,owned):
   processes={1:("one",["dockerd"]),2:("two",["containerd"])};self.a.identities=processes

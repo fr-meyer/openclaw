@@ -115,6 +115,9 @@ describe("native Workboard Gateway release contract", () => {
           !("image" in admission) ||
           admission.image !==
             "docker.io/library/python@sha256:f040863673aea2570c3ff6a5c3fb4c673a016cbc5375005ad145915922b6b78a" ||
+          !("runtimeImage" in admission) ||
+          admission.runtimeImage !==
+            "sha256:4143a73d5a9804c1bb2f93cc823a7c173dbc62964d4a5ccabcb1167229b0e2b9" ||
           !("socket" in admission) ||
           !admission.socket ||
           typeof admission.socket !== "object" ||
@@ -130,7 +133,7 @@ describe("native Workboard Gateway release contract", () => {
           throw new Error("Native sandbox engine admission differs");
         }
         const engineId = admission.engineId;
-        const image = admission.image;
+        const image = admission.runtimeImage;
         const socket = {
           path: admission.socket.path,
           device: admission.socket.device,
@@ -289,7 +292,7 @@ describe("native Workboard Gateway release contract", () => {
                   workspaceRoot: path.join(path.dirname(workspace), "sandbox-workspaces"),
                   docker: {
                     image:
-                      "docker.io/library/python@sha256:f040863673aea2570c3ff6a5c3fb4c673a016cbc5375005ad145915922b6b78a",
+                      "sha256:4143a73d5a9804c1bb2f93cc823a7c173dbc62964d4a5ccabcb1167229b0e2b9",
                     containerPrefix: prefix,
                     workdir: "/workspace",
                     user: `${uid}:${gid}`,

@@ -1196,6 +1196,8 @@ def load_tests(loader, tests, pattern):
         tests.addTests(loader.loadTestsFromModule(test_native_batches))
         import test_native_sandbox
         tests.addTests(loader.loadTestsFromModule(test_native_sandbox))
+        import test_native_image
+        tests.addTests(loader.loadTestsFromModule(test_native_image))
     return tests
 
 

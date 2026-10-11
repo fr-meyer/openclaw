@@ -241,6 +241,7 @@ export function createNativeSandboxFixture(params: {
       typeof value.Id !== "string" ||
       !/^[a-f0-9]{64}$/u.test(value.Id) ||
       value.Name !== `/${record.entry.containerName}` ||
+      value.Image !== params.image ||
       configuration.Image !== params.image ||
       !labels ||
       [...labels].some(([key, text]) => capturedLabels[key] !== text) ||

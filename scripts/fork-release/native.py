@@ -879,6 +879,7 @@ class Native:
   need(re.fullmatch(r"[0-9a-f]{40}",sha_t)and git(t,"rev-parse","HEAD").decode().strip()==sha_t==os.environ["GITHUB_WORKFLOW_SHA"],"T/workflow differs")
   need(not mf["productionEligible"]and sha(m.read_bytes())==pins["manifestSha256"]and s["commit"]==pins["sourceCommit"]and s["tree"]==pins["sourceTree"],"S/tree/M differs")
   need(git(p,"rev-parse","HEAD").decode().strip()==s["commit"],"S checkout differs")
+  need(git(p,"rev-parse","HEAD^{tree}").decode().strip()==s["tree"],"S checkout tree differs")
   need(sha(git(p,"diff","--no-ext-diff","--binary","--full-index",BASE,s["commit"]))==PATCH,"reviewed patch differs")
   paths=git(p,"diff","--name-only",BASE,s["commit"]).decode().splitlines();need(len(paths)==42,"owner count differs")
   hh={f:sha((p/f).read_bytes())for f in pins["dependencyPaths"]}
@@ -890,9 +891,24 @@ class Native:
   need(snapshot["complete"]and not snapshot["unexpectedPaths"],"source admission differs")
   self.r.update(sourceSha=s["commit"],sourceTree=s["tree"],toolingSha=sha_t,manifestSha256=pins["manifestSha256"],inputsSha256=sha((t/"scripts/fork-release/native-inputs.json").read_bytes()),runId=os.environ["GITHUB_RUN_ID"],attempt=1,fileHashes=hh,fixtureHashes=pins["fixtures"])
   need(shutil.disk_usage(p).free>=12*GIB,"initial free space <12 GiB");self.disk()
-  version=lambda*a:subprocess.check_output(a,cwd=p,env=self.env,text=True,timeout=90).strip()
+  # Every pure fixture/base and runner prerequisite precedes network/install.
+  for path,want in pins["fixtures"].items():
+   need((re.fullmatch(r"(?:src/gateway|test/helpers)/[A-Za-z0-9_./-]+\.ts",path)or path=="extensions/workboard/src/gateway.test.ts")and ".."not in path.split("/"),"invalid test overlay")
+   data=(t/path).read_bytes();old=(p/path).read_bytes()if(p/path).exists()else None
+   need(sha(data)==want and(old is None or sha(old)==pins["fixtureBaseHashes"].get(path)),"fixture/base differs")
+  need(os.uname().sysname=="Linux"and sys.version_info>=(3,11)and hasattr(os,"pidfd_open")and hasattr(signal,"pidfd_send_signal"),"NATIVE_LINUX_PYTHON_PIDFD_PREREQUISITE_UNAVAILABLE")
+  need(all(shutil.which(tool,path=self.env["PATH"])for tool in("node","python3","docker","du","ps","bash","corepack")),"NATIVE_RUNNER_COMMAND_PREREQUISITE_UNAVAILABLE")
+  fd=os.pidfd_open(os.getpid());os.close(fd)
+  version=lambda*a:subprocess.check_output(a,cwd=p,env=self.env,text=True,timeout=5).strip()
   need(version("node","-p","process.versions.node+'/'+process.platform+'/'+process.arch")=="24.21.0/linux/x64","Node runtime differs")
   need(read(p/"package.json")["packageManager"]==pins["packageManager"],"packageManager differs")
+  need("GNU coreutils"in version("du","--version"),"NATIVE_GNU_DISK_ACCOUNTING_PREREQUISITE_UNAVAILABLE")
+  need(re.fullmatch(r"[0-9]+\s+[0-9]+\s+[0-9]+",version("ps","-p",str(os.getpid()),"-o","pid=,ppid=,rss=")),"NATIVE_PROCESS_ACCOUNTING_PREREQUISITE_UNAVAILABLE")
+  accounting=SandboxAccounting(self)
+  PRIVATE_REDACTOR=accounting.sanitize
+  image_end=min(self.work_end,time.monotonic()+90)
+  accounting.admit(min(image_end,time.monotonic()+30))
+  accounting.prepare_image(image_end)
   rt,_=self.run("corepack",["bash","-euc",'corepack enable; test "$(corepack pnpm --version)" = "12.5.1"; test "$(corepack pnpm config get registry)" = "https://registry.npmjs.org/"'])
   need(good(rt),"pnpm/official registry differs")
   ins,_=self.run("install",["corepack","pnpm","install","--frozen-lockfile","--store-dir",str(self.w/"store")],900)
@@ -907,9 +923,6 @@ class Native:
     data=(t/path).read_bytes();old=(p/path).read_bytes()if(p/path).exists()else None
     need(sha(data)==want and(old is None or sha(old)==pins["fixtureBaseHashes"].get(path)),"fixture/base differs")
     (p/path).parent.mkdir(parents=True,exist_ok=True);(p/path).write_bytes(data);over.append((p/path,old));self.expected[path]=want
-   accounting=SandboxAccounting(self)
-   PRIVATE_REDACTOR=accounting.sanitize
-   accounting.admit(min(self.work_end,time.monotonic()+30))
    planner=["node","scripts/check-changed.mjs","--base",BASE,"--head",s["commit"],"--",*paths,*pins["fixtures"]]
    dry,plan=self.run("changed-plan",planner[:2]+["--dry-run"]+planner[2:]);need(good(dry),"owner plan failed")
    plan=[shlex.split(l.split("would run: ",1)[1])for l in plan.splitlines()if l.startswith("[check:changed:dry-run] would run: ")];need(plan,"empty plan")

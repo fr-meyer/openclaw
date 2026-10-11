@@ -423,6 +423,7 @@ class BatchEntrypoint(unittest.TestCase):
    return event
   def fake_git(root,*args):
    if args==("rev-parse","HEAD"):return ("a"*40 if root==tooling else mf["source"]["commit"]).encode()
+   if args==("rev-parse","HEAD^{tree}"):return mf["source"]["tree"].encode()
    if "--name-only"in args:return "\n".join(paths).encode()
    if args[:1]==("status",):return b""
    return b"source-patch"
@@ -455,13 +456,22 @@ class BatchEntrypoint(unittest.TestCase):
   def test_many(paths):batches.append(list(paths))
   env={"GITHUB_REPOSITORY":"fr-meyer/openclaw","GITHUB_REF":native.REF,"GITHUB_EVENT_NAME":"push","GITHUB_ACTOR":"fr-meyer","GITHUB_RUN_ATTEMPT":"1","GITHUB_RUN_ID":"fixture-run","GITHUB_SHA":"a"*40,"GITHUB_WORKFLOW_SHA":"a"*40,"GITHUB_EVENT_PATH":"event"}
   fake_version="24.21.0/linux/x64\n"
-  def check_output(argv,**kwargs):return b""if argv[0]=="git"else fake_version
+  self.n.env["PATH"]="/usr/bin"
+  def check_output(argv,**kwargs):return b""if argv[0]=="git"else"GNU coreutils"if argv[0]=="du"else"1 1 1"if argv[0]=="ps"else fake_version
   with patch.dict(os.environ,env),patch.object(native,"read",side_effect=fake_read),patch.object(native,"git",side_effect=fake_git),patch.object(native,"sha",side_effect=fake_sha),patch.object(native,"before",return_value=b"old"),patch.object(native.shutil,"disk_usage",return_value=type("Free",(),{"free":12*native.GIB})()),patch.object(native.subprocess,"check_output",side_effect=check_output),patch.object(self.n,"source_snapshot",return_value={"complete":True,"unexpectedPaths":[]}),patch.object(self.n,"disk"),patch.object(self.n,"run",side_effect=run),patch.object(self.n,"test",side_effect=test_one),patch.object(self.n,"node_contracts"),patch.object(self.n,"test_many",side_effect=test_many,create=True):
    package=self.source/"package.json";package.write_text(json.dumps({"packageManager":pins["packageManager"]}))
    # read(package.json) must keep the pinned package-manager admission live.
    saved_read=fake_read
    def read_with_package(path):return {"packageManager":pins["packageManager"]}if str(path).endswith("package.json")else saved_read(path)
-   with patch.object(native,"read",side_effect=read_with_package),patch.object(native.SandboxAccounting,"admit"):
+   with contextlib.ExitStack()as stack:
+    stack.enter_context(patch.object(native,"read",side_effect=read_with_package))
+    admit=stack.enter_context(patch.object(native.SandboxAccounting,"admit"));prepare=stack.enter_context(patch.object(native.SandboxAccounting,"prepare_image"))
+    for prerequisite in(patch.object(native.os,"uname",return_value=type("Linux",(),{"sysname":"Linux"})()),patch.object(native.shutil,"which",return_value="/usr/bin/present"),patch.object(native.os,"pidfd_open",return_value=99999,create=True),patch.object(native.os,"close"),patch.object(native.signal,"pidfd_send_signal",create=True)):stack.enter_context(prerequisite)
+    for owner,error in((admit,"ENGINE_ACCOUNTING_UNREADABLE_UNDER_EXISTING_RUNNER_AUTHORITY"),(prepare,"PINNED_IMAGE_PREPARATION_UNCONFIRMED")):
+     owner.side_effect=RuntimeError(error)
+     with self.assertRaisesRegex(RuntimeError,error):self.n.execute()
+     self.n.run.assert_not_called();self.assertEqual(self.n.expected,{})
+     owner.side_effect=None
     self.n.execute()
   self.assertEqual(len(self.n.planned),44)
   self.assertEqual(len(single),2,"all positive owners must share source-owned batches")
@@ -483,8 +493,8 @@ class OfflineInclusion(unittest.TestCase):
   return ids
 
  def expected(self):
-  import test_native,test_native_batches,test_native_sandbox
-  modules=(test_native,test_native_batches,test_native_sandbox);expected=[]
+  import test_native,test_native_batches,test_native_sandbox,test_native_image
+  modules=(test_native,test_native_batches,test_native_sandbox,test_native_image);expected=[]
   for module in modules:
    for value in vars(module).values():
     if isinstance(value,type)and issubclass(value,unittest.TestCase):

@@ -7,7 +7,7 @@ import {
 
 const ID = "a".repeat(64);
 const FOREIGN = "b".repeat(64);
-const image = "pinned@sha256:" + "c".repeat(64);
+const image = "sha256:" + "c".repeat(64);
 function fixture() {
   const entry = {
     containerName: "native-one",
@@ -78,6 +78,7 @@ function fixture() {
         if (command[0] === "create") {
           containers.set(ID, {
             Id: ID,
+            Image: image,
             Name: "/native-one",
             Config: {
               Image: image,
@@ -315,15 +316,17 @@ test("work timeout leaves a reconciliable partial generation; closure has a sepa
   assert.equal(late.records.at(-1).phase, "held");
 });
 
-test("changed registry/physical generations are retained without removing replacements", async () => {
-  for (const kind of ["registry", "physical"]) {
+test("changed registry/physical/image generations are retained without removing replacements", async () => {
+  for (const kind of ["registry", "physical", "image"]) {
     const f = fixture();
     await f.owner.arm();
     await f.owner.execute(f.engine, f.args);
     if (kind === "registry") {
       f.state.entry = { ...f.state.entry, createdAtMs: 2 };
-    } else {
+    } else if (kind === "physical") {
       f.containers.set(ID, { ...f.containers.get(ID), Id: FOREIGN });
+    } else {
+      f.containers.get(ID).Image = "sha256:" + "d".repeat(64);
     }
     await assert.rejects(f.owner.retire(), /generation changed/);
     assert.equal(f.state.removals, 0);

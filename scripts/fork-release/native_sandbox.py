@@ -2,10 +2,12 @@
 import json,os,re,stat,subprocess,time,tomllib
 from pathlib import Path
 from release import need
+from native_image import CONFIG,STAGING,UNPACKED
 
 IMAGE="docker.io/library/python@sha256:f040863673aea2570c3ff6a5c3fb4c673a016cbc5375005ad145915922b6b78a"
 HOST="unix:///var/run/docker.sock"
 ENGINES={"dockerd","containerd","containerd-shim-runc-v2"}
+IMAGE_RESERVE=3*1024**3
 
 def covering_roots(roots):
  """Charge encompassing roots once; never subtract pre-existing host content."""
@@ -27,9 +29,11 @@ def private_record(path):
 
 class SandboxAccounting:
  def __init__(self,native):
-  self.n=native;self.roots=[];self.identities={};self.engine_id=None;self.groups=set();self.socket=None
+  self.n=native;self.roots=[];self.root_marks={};self.identities={};self.engine_id=None;self.groups=set();self.socket=None
   self.record=native.w/"native-sandbox-recovery.json"
   self.admission=native.w/"native-sandbox-admission.json"
+  self.image_record=native.w/"native-image-custody.json"
+  self.image_staging=native.w/"native-image-staging"
   self.env={**native.env,"DOCKER_HOST":HOST,"DOCKER_CONFIG":str(native.w/"docker-config")}
 
  def socket_identity(self):
@@ -61,25 +65,60 @@ class SandboxAccounting:
   need(result and any(Path(v[1][0]).name=="dockerd"for v in result.values())and any(Path(v[1][0]).name=="containerd"for v in result.values()),"complete local engine census unavailable")
   return result
 
+ def daemon_temp(self,pid,root):
+  # Moby 28.0.4 daemon.go prepareTempDir uses initial DOCKER_TMPDIR, else
+  # DockerRootDir/tmp, then canonicalizes it and sets the daemon's TMPDIR.
+  # /proc/environ does not prove later setenv values: never infer from TMPDIR.
+  with Path(f"/proc/{pid}/environ").open("rb")as source:data=source.read(65537)
+  need(len(data)<=65536 and data.endswith(b"\0"),"ENGINE_INITIAL_ENVIRONMENT_UNREADABLE_OR_UNBOUNDED")
+  selected=[]
+  for entry in data[:-1].split(b"\0"):
+   need(b"="in entry,"ENGINE_INITIAL_ENVIRONMENT_MALFORMED")
+   key,value=entry.split(b"=",1)
+   if key==b"DOCKER_TMPDIR":selected.append(os.fsdecode(value))
+  need(len(selected)<=1,"ENGINE_IMPORT_TEMP_AMBIGUOUS")
+  chosen=Path(selected[0])if selected and selected[0]else root/"tmp"
+  need(chosen.is_absolute(),"ENGINE_IMPORT_TEMP_RELATIVE_UNSUPPORTED")
+  return chosen.resolve(strict=True)
+
  def admit(self,end):
+  previous=self.n.command_end;self.n.command_end=min(previous,end)
+  try:self._admit(end)
+  except OSError:raise RuntimeError("ENGINE_ACCOUNTING_UNREADABLE_UNDER_EXISTING_RUNNER_AUTHORITY; no acquisition or dependency installation")from None
+  except RuntimeError as error:
+   if "footprint unreadable"in str(error):raise RuntimeError("ENGINE_ACCOUNTING_UNREADABLE_UNDER_EXISTING_RUNNER_AUTHORITY; no acquisition or dependency installation")from None
+   raise
+  finally:self.n.command_end=previous
+
+ def _admit(self,end):
   need(os.uname().sysname=="Linux" and not self.record.exists()and not self.admission.exists(),"fresh Linux native runtime admission required")
   self.socket=self.socket_identity()
   config=Path(self.env["DOCKER_CONFIG"]);config.mkdir(mode=0o700)
   need(not list(config.iterdir()),"ambient Docker configuration refused")
   info=json.loads(self.engine(["info","--format","{{json .}}"],end))
   need(isinstance(info,dict)and isinstance(info.get("ID"),str)and info["ID"]and info.get("OSType")=="linux" and info.get("Architecture")in("x86_64","amd64"),"local engine identity/platform unavailable")
-  need(info.get("LoggingDriver")in("json-file","local") and info.get("Driver")in("overlay2","overlayfs"),"engine logging/storage accounting unsupported")
+  status=info.get("DriverStatus")
+  need(info.get("ServerVersion")=="28.0.4"and info.get("Driver")=="overlay2"and isinstance(status,list)and all(isinstance(x,list)and len(x)==2 and all(isinstance(y,str)for y in x)for x in status)and ["Supports d_type","true"]in status and any(x[0]=="Backing Filesystem"for x in status)and not any(x[0]=="driver-type"for x in status),"ENGINE_LOADER_CONTRACT_UNREVIEWED; requires Moby 28.0.4 classic overlay2")
+  need(info.get("LoggingDriver")in("json-file","local"),"engine logging accounting unsupported")
   self.engine_id=info["ID"]
   root=Path(info["DockerRootDir"]);roots=[root]
   self.identities=self.processes(end)
-  for _,argv in self.identities.values():
+  for pid,(_,argv)in self.identities.items():
+   if Path(argv[0]).name=="dockerd":roots.append(self.daemon_temp(pid,root))
+   # Full engine process mount visibility is a prerequisite, before allocation.
+   mounts=Path(f"/proc/{pid}/mountinfo").read_text()
+   need(mounts and len(mounts)<=1024**2 and all(" - "in line for line in mounts.splitlines()),"ENGINE_MOUNT_ACCOUNTING_UNREADABLE")
    if Path(argv[0]).name!="containerd":continue
    def option(name):
     matches=[argv[i+1]for i,x in enumerate(argv[:-1])if x==name]+[x.split("=",1)[1]for x in argv if x.startswith(name+"=")]
     need(len(matches)<=1,"ambiguous containerd root/config")
     return matches[0]if matches else None
    explicit=option("--root");configuration=option("--config")or option("-c")
-   data=tomllib.loads(Path(configuration).read_text())if configuration else {}
+   if configuration:
+    with Path(configuration).open("rb")as source:raw=source.read(65537)
+    need(len(raw)<=65536,"containerd configuration exceeds bound")
+    data=tomllib.loads(raw.decode())
+   else:data={}
    selected=explicit or data.get("root")
    need(isinstance(selected,str)and selected.startswith("/"),"containerd content root unknown; no default guess")
    roots.append(Path(selected))
@@ -88,19 +127,40 @@ class SandboxAccounting:
   for root in self.roots:
    st=root.lstat()
    need(root.is_absolute()and root.resolve()==root and stat.S_ISDIR(st.st_mode),"engine storage root unavailable/aliased")
-  image=json.loads(self.engine(["image","inspect",IMAGE],end))
-  names={IMAGE,IMAGE.removeprefix("docker.io/"),IMAGE.removeprefix("docker.io/library/")}
-  need(isinstance(image,list)and len(image)==1 and names.intersection(image[0].get("RepoDigests",[]))and image[0].get("Os")=="linux"and image[0].get("Architecture")=="amd64","pinned image is absent; acquisition requires reviewed runtime authority")
+   self.root_marks[root]=(st.st_dev,st.st_ino)
   self.n.sandbox=self
   self.n.disk()
-  need(self.n.r["lastDiskSnapshot"]["taskBytes"]+128*1024**2<=10*1024**3,"native engine metadata admission reserve unavailable")
+  snapshot=self.n.r["lastDiskSnapshot"]
+  need(snapshot["taskBytes"]+IMAGE_RESERVE<=10*1024**3 and all(x["freeBytes"]>=2*1024**3+IMAGE_RESERVE for x in snapshot["roots"]),"ENGINE_IMAGE_STAGING_AND_IMPORT_RESERVE_UNAVAILABLE")
   self.sample({},end)
+  need(self.n.r["sandboxMemoryAccounting"]["totalBytes"]+1024**3<=12*1024**3,"ENGINE_IMAGE_MEMORY_RESERVE_UNAVAILABLE")
+  available=re.search(r"^MemAvailable:\s+([0-9]+) kB$",Path("/proc/meminfo").read_text(),re.M)
+  need(available and int(available[1])*1024>=1024**3,"ENGINE_IMAGE_HOST_MEMORY_RESERVE_UNAVAILABLE")
+  help_=self.engine(["image","load","--help"],end)
+  need("--input"in help_ and "--quiet"in help_,"ENGINE_IMAGE_LOAD_CLI_UNAVAILABLE")
+  self.n.env.update(DOCKER_HOST=HOST,DOCKER_CONFIG=str(config))
+  self.n.r["sandboxAdmission"]={"status":"engine-accounting-readable","image":IMAGE,"runtimeImage":CONFIG,"storageRoots":len(self.roots),"sampledNotQuota":True,"allocationLimit":1,"imageAcquired":False,"admissionReserveBytes":IMAGE_RESERVE,"imageStagingMaximumBytes":STAGING,"unpackedImageMaximumBytes":UNPACKED,"loaderContract":"Moby 28.0.4 classic overlay2"}
+
+ def prepare_image(self,end):
+  config=Path(self.env["DOCKER_CONFIG"])
+  self.n.remaining(end,phase="pinned image preparation")
+  self.n.env["OPENCLAW_NATIVE_IMAGE_END_MS"]=str(int((time.time()+max(0,end-time.monotonic()))*1000))
+  # Native.run reserves its existing 120s runtime and 60s process closure.
+  result,_=self.n.run("pinned-image-prepare",["python3","-I","-S",str(self.n.t/"scripts/fork-release/native_image.py"),"--state",str(self.image_record),"--staging",str(self.image_staging),"--engine-id",self.engine_id,"--socket-device",str(self.socket["device"]),"--socket-inode",str(self.socket["inode"])],max(0,end-time.monotonic())+180)
+  need(result.get("exit")==0 and not result.get("reason"),"PINNED_IMAGE_PREPARATION_UNCONFIRMED; no dependency installation or fixture allocation")
+  value=private_record(self.image_record)
+  need(value.get("phase")=="confirmed"and value.get("engineId")==self.engine_id and value.get("image")==IMAGE and value.get("runtimeImage")==CONFIG and value.get("registryOriginVerified")is True,"PINNED_IMAGE_CUSTODY_UNCONFIRMED")
+  self.n.remaining(end,phase="pinned image admission")
+  previous=self.n.command_end;self.n.command_end=min(previous,end)
+  try:self.n.disk();self.sample({},end)
+  finally:self.n.command_end=previous
   owners=[{"pid":pid,"start":start,"kind":Path(argv[0]).name}for pid,(start,argv)in self.identities.items()if Path(argv[0]).name in("dockerd","containerd")]
   need(len(owners)<=128,"engine owner admission exceeds bound")
-  value={"format":1,"host":HOST,"engineId":self.engine_id,"image":IMAGE,"socket":self.socket,"owners":owners}
+  value={"format":1,"host":HOST,"engineId":self.engine_id,"image":IMAGE,"runtimeImage":CONFIG,"socket":self.socket,"owners":owners}
   with self.admission.open("x")as output:os.chmod(self.admission,0o600);json.dump(value,output)
   self.n.env.update(DOCKER_HOST=HOST,DOCKER_CONFIG=str(config),OPENCLAW_NATIVE_SANDBOX_RECORD=str(self.record),OPENCLAW_NATIVE_SANDBOX_ADMISSION=str(self.admission))
-  self.n.r["sandboxAdmission"]={"status":"admitted","image":IMAGE,"storageRoots":len(self.roots),"sampledNotQuota":True,"allocationLimit":1,"imageAcquired":False}
+  self.n.r["sandboxAdmission"].update(status="admitted",imageAcquired=private_record(self.image_record).get("imported"),transport=private_record(self.image_record).get("transport"),imageDisposition="retained and accounted until ephemeral runner teardown")
+  self.n.remaining(end,phase="pinned image admission completed")
 
  def observation(self):
   if not self.record.exists():return None
@@ -110,7 +170,7 @@ class SandboxAccounting:
 
  def sanitize(self,text):
   value=self.observation()
-  strings=[self.engine_id,str(self.record),str(self.admission),str(self.n.w/"docker-config"),*(str(p)for p in self.roots)]
+  strings=[self.engine_id,str(self.record),str(self.admission),str(self.image_record),str(self.image_staging),str(self.n.w/"docker-config"),*(str(p)for p in self.roots)]
   strings.extend(str(p)for p in self.groups)
   strings.extend(arg for _,argv in self.identities.values()for arg in argv if arg.startswith("/"))
   if value:
@@ -123,6 +183,8 @@ class SandboxAccounting:
   return re.sub(r"/proc/[0-9]+(?:/[^\s:'\"]+)?","[private engine process]",text)
 
  def sample(self,owned,end):
+  for path,mark in self.root_marks.items():
+   st=path.lstat();need(path.resolve()==path and (st.st_dev,st.st_ino)==mark,"engine storage root changed")
   need(self.engine(["info","--format","{{.ID}}"],end).strip()==self.engine_id,"engine changed during accounting")
   processes=self.processes(end)
   # Daemons are observed, never signalled. Replacements invalidate admission.
@@ -167,6 +229,11 @@ class SandboxAccounting:
   need(total<=12*1024**3,"aggregate native/engine/container memory budget exceeded")
 
  def assert_retired(self,end):
+  if self.image_record.exists():
+   image=private_record(self.image_record)
+   need(image.get("engineId")==self.engine_id and image.get("image")==IMAGE and image.get("runtimeImage")==CONFIG,"IMAGE_CUSTODY_IDENTITY_UNKNOWN; retain")
+   need(image.get("phase")in("confirmed","failed-before-import")and not(image.get("phase")=="failed-before-import"and image.get("issued")is not False),"IMAGE_IMPORT_UNCONFIRMED; cache/staging custody retained")
+  elif self.image_staging.exists():need(False,"IMAGE_CUSTODY_RECORD_MISSING; retain staging")
   value=self.observation()
   if value is None:return
   need(value["phase"]=="retired","runtime retirement unconfirmed; cache/workspace custody retained")
