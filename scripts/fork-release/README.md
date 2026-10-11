@@ -11,8 +11,8 @@ set that field to `true`. Never change this seed merely to match a moving branch
 
 Use one task-specific branch and one draft PR per independent change. Name task
 branches `task/<short-name>` and release candidate branches
-`candidate/<version-or-name>`; start each in its own worktree from a reviewed
-fork commit. Do not switch or overwrite another task's checkout. The PR body
+`candidate/<version-or-name>`; start each future stable candidate from a verified
+upstream stable tag plus its curated downstream queue, in its own worktree. Do not switch or overwrite another task's checkout. The PR body
 declares one owner, exact target, scope and dependencies pinned as PR number +
 head SHA. Generate its body with the source-only helper:
 
@@ -284,3 +284,40 @@ in private progress and include it in the approval challenge.
 There is no assumption that the image can be rebuilt byte for byte later.
 BuildKit, dependency downloads and timestamps can vary; the OCI digest from
 the one hosted build is the only deployable image identity.
+
+## Durable release contracts
+
+[DECISION.md](DECISION.md) records the fork branch model, evidence reuse,
+backup and interruption contracts, version migration dependencies, and the
+separate publication/settings plan.
+
+The seed's manifest-bound `patch-inventory.json` records its two ordered patches
+and every affected path. It is not the full 9.8/9.9/10.1 inventory.
+Copy `patch-inventory.template.json` for a new reviewed candidate; nulls and
+`unknown` deliberately fail admission. Keep host-supervisor qualification
+separate from the container patch queue.
+
+Run the reusable offline preflight with an exact product source checkout:
+
+```sh
+python3 scripts/fork-release/preflight.py \
+  --manifest scripts/fork-release/manifest.json \
+  --inventory scripts/fork-release/patch-inventory.json \
+  --source-dir "$EXACT_PRODUCT_CHECKOUT"
+```
+
+It batches deterministic errors and returns nonzero on refusal. The source
+checkout must contain all pinned objects and tests; it never fetches or builds.
+For private backup checks, additionally supply `--image-receipt`,
+`--backup-evidence`, `--baseline`, and separately reviewed positive
+`--backup-max-age-seconds` / `--backup-retain-seconds` values.
+Private backup evidence uses the exact field contract in `backup_checks`.
+The validator cannot prove its input observations are true; the private
+adapter must verify and refresh them. Only stable error codes are emitted.
+
+`deployment-receipt.template.json` defines a sanitized completed-production
+receipt. Validate a filled receipt with `--deployment-receipt` and the original
+`--image-receipt`. The null template is deliberately ineligible.
+This stage creates no tags and leaves workflow/coordinator behavior unchanged.
+The evidence owner must bind the inventory hash and enforce this preflight
+in the existing lane before it becomes a production requirement.

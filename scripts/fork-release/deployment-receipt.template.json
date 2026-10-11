@@ -1,0 +1,33 @@
+{
+  "schema": "openclaw.fork-deployment.v1",
+  "repository": "fr-meyer/openclaw",
+  "version": null,
+  "deploymentId": null,
+  "deploymentTag": null,
+  "deployedAt": null,
+  "sourceSha": null,
+  "sourceTree": null,
+  "manifestSha256": null,
+  "inventorySha256": null,
+  "imageReceiptSha256": null,
+  "indexDigest": null,
+  "imageDigest": null,
+  "configDigest": null,
+  "toolingSha": null,
+  "producer": {
+    "workflowSha": null,
+    "runId": null,
+    "attempt": null
+  },
+  "privateEvidenceSha256": null,
+  "rollbackDeploymentTag": null,
+  "phaseStates": {
+    "backup": "not_run",
+    "restore": "not_run",
+    "rehearsal": "not_run",
+    "deploy": "not_run",
+    "health": "not_run",
+    "rollback": "not_run",
+    "cleanup": "not_run"
+  }
+}
