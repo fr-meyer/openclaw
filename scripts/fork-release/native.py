@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One pinned native proof, owned by the existing contracts-only hosted job."""
-import argparse,json,os,re,shlex,shutil,signal,subprocess,time
+import argparse,contextlib,json,os,re,shlex,shutil,signal,stat,subprocess,time
 from pathlib import Path
 from release import need,sha256 as sha,read_json as read
 
@@ -15,11 +15,15 @@ TYPES=("tsgo:core","tsgo:extensions","tsgo:core:test","tsgo:extensions:test")
 GATEWAY=("src/gateway/server-plugins.lifecycle.test.ts","src/gateway/server-methods.plugin-gateway-dispatch.test.ts","src/gateway/server.startup-websocket-race.test.ts")
 
 def git(root,*args):return subprocess.check_output(["git","-C",str(root),*args],timeout=30)
-def identity(pid):
+def process(pid):
  try:
   f=Path(f"/proc/{pid}/stat").read_text().rsplit(") ",1)[1].split()
-  return None if f[0]=="Z" else(int(f[2]),int(f[19]))
+  return None if f[0] in ("Z","X") else {"pid":pid,"parent":int(f[1]),"group":int(f[2]),"session":int(f[3]),"start":int(f[19]),"state":f[0]}
  except FileNotFoundError:return None
+
+def identity(pid):
+ p=process(pid)
+ return (p["group"],p["start"]) if p else None
 
 def kill(group,sig):
  try:os.killpg(group,sig)
@@ -51,6 +55,7 @@ class Native:
   self.r={"productionEligible":False,"commands":[],"failures":[],"notRun":[],"peakRssBytes":0,"peakTaskBytes":0}
   self.c,self.f,self.u=(self.r[k]for k in("commands","failures","notRun"))
   self.end,self.p,self.cancel=time.monotonic()+110*60,None,False
+  self.command_end,self.known=self.end,{}
   self.planned,self.reached={},set()
   self.env={k:os.environ[k]for k in("PATH","LANG","TZ","GITHUB_WORKSPACE")if k in os.environ}
   self.env.update(CI="1",GITHUB_ACTIONS="true",HOME=str(self.w/"home"),COREPACK_HOME=str(self.w/"corepack"),COREPACK_NPM_REGISTRY="https://registry.npmjs.org",npm_config_registry="https://registry.npmjs.org/",NODE_OPTIONS="--max-old-space-size=6144",OPENCLAW_VITEST_MAX_WORKERS="1",XDG_CACHE_HOME=str(self.w/"cache"))
@@ -62,37 +67,138 @@ class Native:
   self.cancel=True
   if self.p and self.p.poll()is None:kill(self.p.pid,signal.SIGTERM)
 
+ def remaining(self,end):
+  need(not self.cancel,"disk probe cancelled")
+  left=end-time.monotonic()
+  if left<=0:raise subprocess.TimeoutExpired("quiesced disk probe",30)
+  return left
+
+ def owned(self,end):
+  text=subprocess.check_output(["ps","-e","-o","pid=,ppid=,pgid=,sid=,rss="],text=True,timeout=min(10,self.remaining(end)))
+  self.remaining(end)
+  rows={}
+  for row in text.splitlines():
+   self.remaining(end)
+   parts=row.split();need(len(parts)==5 and all(x.isdecimal()for x in parts),"malformed process snapshot")
+   pid,parent,group,session,rss=map(int,parts)
+   # Unrelated kernel threads legitimately have PGID/SID zero; owned commands cannot.
+   need(pid>0 and pid not in rows,"malformed process identity")
+   rows[pid]=(parent,group,session,rss)
+  root=self.p.pid if self.p else None
+  owned={root}if root else set();live={}
+  for pid,want in list(self.known.items()):
+   self.remaining(end)
+   p=process(pid)
+   if p and (p["group"],p["start"])==want:live[pid]=p;owned.add(pid)
+  sessions={root}if root else set()
+  sessions.update(p["session"]for p in live.values())
+  while True:
+   self.remaining(end)
+   children={pid for pid,(parent,_,session,_)in rows.items()if parent in owned or session in sessions}
+   if children<=owned:break
+   owned|=children
+  result={}
+  for pid in owned:
+   self.remaining(end)
+   p=process(pid)
+   if not p:continue
+   need(p["group"]>0 and p["session"]>0,"malformed owned process identity")
+   need(pid!=os.getpid() and p["group"]!=os.getpgrp(),"owned process escaped into supervisor group")
+   need(pid in rows and rows[pid][1:3]==(p["group"],p["session"]),"process snapshot changed identity")
+   self.known[pid]=(p["group"],p["start"])
+   result[pid]={**p,"rss":rows[pid][3]*1024}
+  rss=sum(p["rss"]for p in result.values())
+  self.r["peakRssBytes"]=max(rss,self.r["peakRssBytes"])
+  need(rss<=12*GIB,"owned disk probe RSS budget exceeded")
+  return result
+
+ def stopped(self,pid,want,end):
+  self.remaining(end)
+  p=process(pid)
+  if not p:return True
+  need((p["group"],p["start"])==want,"paused process changed identity")
+  try:threads=list(Path(f"/proc/{pid}/task").iterdir())
+  except FileNotFoundError:return process(pid)is None
+  for thread in threads:
+   self.remaining(end)
+   try:state=(thread/"stat").read_text().rsplit(") ",1)[1].split()[0]
+   except FileNotFoundError:continue
+   if state not in ("T","t","Z","X"):return False
+  return p["state"]in("T","t")
+
+ @contextlib.contextmanager
+ def quiesced(self,end):
+  handles={};last=None;started=time.monotonic()
+  try:
+   if self.p or self.known:
+    need(hasattr(os,"pidfd_open")and hasattr(signal,"pidfd_send_signal"),"Linux pidfd signaling required for owned disk probe")
+    while True:
+     self.remaining(end);owned=self.owned(end);self.remaining(end)
+     # Stop the fresh command root first; pidfds keep signals bound to the opened process.
+     for pid in sorted(owned,key=lambda pid:(pid!=self.p.pid if self.p else True,pid)):
+      self.remaining(end)
+      p=owned[pid];want=(p["group"],p["start"])
+      if pid in handles:
+       need(handles[pid][1]==want,"paused PID reused during disk probe");continue
+      need(len(handles)<2048,"owned disk probe process bound exceeded")
+      try:fd=os.pidfd_open(pid)
+      except ProcessLookupError:continue
+      handles[pid]=(fd,want,False)
+      current_identity=identity(pid)
+      if current_identity is None:continue
+      need(current_identity==want,"process changed before disk pause")
+      self.remaining(end)
+      if p["state"]not in("T","t"):
+       # Mark before signaling so every possibly stopped process is resumed even on failure.
+       handles[pid]=(fd,want,True)
+       try:signal.pidfd_send_signal(fd,signal.SIGSTOP)
+       except ProcessLookupError:pass
+     current={(pid,p["group"],p["start"])for pid,p in owned.items()}
+     if current==last and all(self.stopped(pid,(p["group"],p["start"]),end)for pid,p in owned.items()):break
+     last=current;time.sleep(min(.02,self.remaining(end)))
+   self.remaining(end);yield
+   if self.p or self.known:
+    final=self.owned(end)
+    need({(pid,p["group"],p["start"])for pid,p in final.items()}<=last and all(self.stopped(pid,(p["group"],p["start"]),end)for pid,p in final.items()),"owned writers changed during disk scan")
+   self.remaining(end)
+  finally:
+   errors=[]
+   for pid,(fd,_,resume)in handles.items():
+    try:
+     if resume:signal.pidfd_send_signal(fd,signal.SIGCONT)
+    except ProcessLookupError:pass
+    except Exception as error:errors.append(f"resume {pid}: {error}")
+    finally:
+     try:os.close(fd)
+     except OSError as error:errors.append(f"close {pid}: {error}")
+   finished=time.monotonic()
+   self.r["diskPauseSeconds"]=round(self.r.get("diskPauseSeconds",0)+finished-started,3)
+   if errors:raise RuntimeError("owned disk resume failed: "+clean("; ".join(errors))[:4096])
+   if finished>=end:raise subprocess.TimeoutExpired("quiesced disk probe including resume",30)
+
  def disk(self):
-  roots=[os.environ["GITHUB_WORKSPACE"],str(self.w)]
-  argv=["du","-sx","--block-size=1",*roots];end=time.monotonic()+30
-  for attempt in range(2):
-   remaining=end-time.monotonic()
-   if remaining<=0:raise subprocess.TimeoutExpired(argv,30)
-   scan=subprocess.run(argv,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env={**self.env,"LC_ALL":"C"},timeout=remaining)
-   if scan.returncode or scan.stderr:
-    lines=scan.stderr.splitlines();raced=[]
-    for line in lines:
-     match=re.fullmatch(r"du: cannot access '([^']+)': No such file or directory",line)
-     if not match:break
-     path=Path(match[1]);parent=self.w/"store/v11/files"
-     if path.parent!=parent or not re.fullmatch(r"stream[0-9]+",path.name) or parent.resolve()!=parent or not parent.is_dir():break
-     try:path.lstat()
-     except FileNotFoundError:raced.append(line)
-     else:break
-    transient=scan.returncode==1 and bool(lines) and len(raced)==len(lines)
-    need(transient and attempt==0,f"disk scan failed (exit {scan.returncode}): {clean(scan.stderr)[:4096]}")
+  end=min(time.monotonic()+30,self.end,self.command_end)
+  roots=[Path(os.environ["GITHUB_WORKSPACE"]),self.w];marks=[]
+  for root in roots:
+   need(root.is_absolute()and root.resolve()==root,"disk root must be canonical without symlinks")
+   s=root.lstat();need(stat.S_ISDIR(s.st_mode),"disk root must be a directory")
+   marks.append((s.st_dev,s.st_ino))
+  need(not roots[0].is_relative_to(roots[1])and not roots[1].is_relative_to(roots[0])and self.s.is_relative_to(roots[0]),"disk roots overlap or source escapes workspace")
+  self.r["diskAccounting"]={"mode":"owned-process-quiesced-strict-du","unreadEntryAllowanceBytes":0,"unknownFootprint":"unbounded; refuse","sampledNotQuota":True}
+  with self.quiesced(end):
+   argv=["du","-sx","--block-size=1","--no-dereference",*(str(p)for p in roots)]
+   scan=subprocess.run(argv,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env={**self.env,"LC_ALL":"C"},timeout=self.remaining(end))
+   need(not scan.returncode and not scan.stderr,f"disk scan failed (exit {scan.returncode}): {clean(scan.stderr)[:4096]}")
    rows=scan.stdout.splitlines();counts=[]
    need(len(rows)==len(roots),"disk scan missing root totals")
-   for row,root in zip(rows,roots):
-    match=re.fullmatch(r"([0-9]+)\t"+re.escape(root),row)
+   for row,root,mark in zip(rows,roots,marks):
+    match=re.fullmatch(r"([0-9]+)\t"+re.escape(str(root)),row)
     need(match is not None,"disk scan malformed root total")
+    s=root.lstat();need(root.resolve()==root and stat.S_ISDIR(s.st_mode)and(s.st_dev,s.st_ino)==mark,"disk root replaced during scan")
     counts.append(int(match[1]))
    used=sum(counts);self.r["peakTaskBytes"]=max(used,self.r["peakTaskBytes"])
-   need(used<=10*GIB and shutil.disk_usage(self.s).free>=2*GIB,"disk/reserve budget exceeded")
-   if not scan.returncode and not scan.stderr:return
-   self.r["diskScanRaceCount"]=self.r.get("diskScanRaceCount",0)+1
-   samples=self.r.setdefault("diskScanRaceSamples",[])
-   if len(samples)<8:samples.append({"diagnostic":clean(scan.stderr)[:4096],"partialTaskBytes":used,"action":"one clean rescan required"})
+   need(used<=10*GIB and all(shutil.disk_usage(root).free>=2*GIB for root in roots),"disk/reserve budget exceeded")
+  self.r["diskSnapshots"]=self.r.get("diskSnapshots",0)+1
 
  def plan(self,mf,pins):
   stages=["corepack","install","changed-plan","changed-checks",*(x.replace(":","-")for x in TYPES),"source-build","cli-before"]
@@ -111,21 +217,23 @@ class Native:
    self.f.append(name);self.u.append(r);return r,""
   start=time.monotonic();end=min(self.end,start+seconds)
   env={**self.env,"OPENCLAW_VITEST_FS_MODULE_CACHE_PATH":str(self.w/f"vitest-{len(self.c)}")}
-  raw=self.w/"command.log";reason=None;next_disk=0;known={}
+  raw=self.w/"command.log";reason=None;next_disk=0;self.known={};known=self.known;self.command_end=end
   with raw.open("wb")as output:
    self.p=subprocess.Popen(argv,cwd=self.s,env=env,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
    self.reached.update(r["stages"])
    try:
     while self.p.poll()is None:
-     rows=[tuple(map(int,x.split()))for x in subprocess.check_output(["ps","-e","-o","pid=,ppid=,rss="],text=True,timeout=10).splitlines()]
-     owned={self.p.pid}
+     rows=[tuple(map(int,x.split()))for x in subprocess.check_output(["ps","-e","-o","pid=,ppid=,rss="],text=True,timeout=min(10,self.remaining(end))).splitlines()]
+     owned={self.p.pid}|{pid for pid,want in known.items()if identity(pid)==want}
      while True:
       child={pid for pid,parent,_ in rows if parent in owned}
       if child<=owned:break
       owned|=child
      for pid in owned:
       v=identity(pid)
-      if v and v[0]in owned:known[pid]=v
+      if v:
+       need(v[0]!=os.getpgrp(),"owned process escaped into supervisor group")
+       known[pid]=v
      rss=sum(rss*1024 for pid,_,rss in rows if pid in owned)
      self.r["peakRssBytes"]=max(rss,self.r["peakRssBytes"])
      now=time.monotonic()
@@ -147,7 +255,7 @@ class Native:
      while groups()and time.monotonic()<end:time.sleep(.1)
      for group in groups():kill(group,signal.SIGKILL)
     r["descendantCleanup"]={"captured":len(known),"stillLiveGroups":len(groups())}
-    self.p=None
+    self.p=None;self.known={};self.command_end=self.end
   total=raw.stat().st_size;reached=0
   with raw.open("rb")as stream:
    head=stream.read(16384);stream.seek(max(16384,total-49152));tail=stream.read(49152)

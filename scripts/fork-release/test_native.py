@@ -1,5 +1,8 @@
-"""Offline regressions for the retained disk-scan race and downstream receipts."""
+"""Cheap strict disk accounting, owned pause/cleanup, and receipt regressions."""
+import contextlib
 import json
+import signal
+import time
 import os
 import subprocess
 import sys
@@ -14,7 +17,7 @@ import native
 HERE = Path(__file__).resolve().parent
 
 
-class NativeDiskAndReceipt(unittest.TestCase):
+class NativeFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -46,73 +49,22 @@ class NativeDiskAndReceipt(unittest.TestCase):
             self.assertEqual(probe.call_count, 1)
         self.assertNotIn("diskScanRaceCount", self.n.r)
 
-    def test_disappearing_real_temporary_file_requires_clean_rescan(self):
-        self.stream.write_text("temporary store data")
-        def probe(*args, **kwargs):
-            self.assertEqual(args[0], ["du", "-sx", "--block-size=1", str(self.source), str(self.n.w)])
-            self.assertEqual(kwargs["env"]["LC_ALL"], "C")
-            self.assertGreater(kwargs["timeout"], 0)
-            self.assertLessEqual(kwargs["timeout"], 30)
-            if self.stream.exists():
-                self.stream.unlink()
-                return self.scan(1, self.diagnostic)
-            return self.scan(used=200)
-        with patch.object(native.subprocess, "run", side_effect=probe) as scan:
-            self.n.disk()
-        self.assertEqual(scan.call_count, 2)
-        self.assertEqual(self.n.r["diskScanRaceCount"], 1)
-        self.assertEqual(self.n.r["diskScanRaceSamples"][0]["diagnostic"], self.diagnostic)
-        self.assertEqual(self.n.r["peakTaskBytes"], 200)
 
-    def test_persistent_missing_file_refuses_without_third_scan(self):
-        with patch.object(native.subprocess, "run", return_value=self.scan(1, self.diagnostic)) as scan:
-            with self.assertRaisesRegex(RuntimeError, "stream278022.*No such file"):
-                self.n.disk()
-        self.assertEqual(scan.call_count, 2)
+class NativeDiskAndReceipt(NativeFixture):
+    def test_any_missing_entry_refuses_with_zero_unread_allowance(self):
+        self.fail_scan(self.scan(1, self.diagnostic), "No such file")
+        self.assertEqual(self.n.r["diskAccounting"]["unreadEntryAllowanceBytes"], 0)
+        self.assertEqual(self.n.r["diskAccounting"]["unknownFootprint"], "unbounded; refuse")
 
-    def test_permission_and_io_errors_never_retry(self):
+    def test_permission_io_and_mixed_errors_are_fatal(self):
         for cause in ("Permission denied", "Operation not permitted", "Input/output error"):
             with self.subTest(cause=cause):
-                self.fail_scan(self.scan(1, f"du: cannot access '{self.stream}': {cause}\n"), cause)
+                self.fail_scan(self.scan(1, self.diagnostic + cause), cause)
 
-    def test_mixed_missing_and_permission_errors_never_retry(self):
-        self.fail_scan(self.scan(1, self.diagnostic + "du: cannot read directory '/private': Permission denied\n"), "Permission denied")
-
-    def test_other_exit_or_empty_diagnostic_never_retry(self):
+    def test_other_exit_warning_or_empty_diagnostic_is_fatal(self):
         for code, stderr in ((2, self.diagnostic), (1, ""), (0, self.diagnostic), (1, "unexpected warning\n")):
             with self.subTest(code=code, stderr=stderr):
                 self.fail_scan(self.scan(code, stderr))
-
-    def test_other_missing_paths_are_not_temporary_store_races(self):
-        for path in (self.source / "stream278022", self.store / "normal-file", self.store / "streamX"):
-            with self.subTest(path=path):
-                self.fail_scan(self.scan(1, f"du: cannot access '{path}': No such file or directory\n"))
-
-    def test_existing_or_recreated_file_refuses(self):
-        self.stream.write_text("recreated")
-        self.fail_scan(self.scan(1, self.diagnostic))
-
-    def test_missing_parent_refuses(self):
-        self.store.rmdir()
-        self.fail_scan(self.scan(1, self.diagnostic))
-
-    def test_symlinked_store_parent_refuses(self):
-        self.store.rmdir()
-        elsewhere = self.root / "elsewhere"
-        elsewhere.mkdir()
-        self.store.symlink_to(elsewhere, target_is_directory=True)
-        self.fail_scan(self.scan(1, self.diagnostic))
-
-    def test_lstat_permission_failure_propagates(self):
-        with patch.object(native.subprocess, "run", return_value=self.scan(1, self.diagnostic)) as scan:
-            real = Path.lstat
-            def denied(path):
-                if path == self.stream:
-                    raise PermissionError("synthetic lstat permission denied")
-                return real(path)
-            with patch.object(Path, "lstat", denied), self.assertRaises(PermissionError):
-                self.n.disk()
-        self.assertEqual(scan.call_count, 1)
 
     def test_timeout_propagates_without_retry(self):
         with patch.object(native.subprocess, "run", side_effect=subprocess.TimeoutExpired(["du"], 30)) as scan:
@@ -120,16 +72,33 @@ class NativeDiskAndReceipt(unittest.TestCase):
                 self.n.disk()
         self.assertEqual(scan.call_count, 1)
 
-    def test_rescan_shares_original_thirty_second_budget(self):
-        with patch.object(native.time, "monotonic", side_effect=[0, 0, 7]), patch.object(native.subprocess, "run", side_effect=[self.scan(1, self.diagnostic), self.scan()]) as scan:
+    def test_probe_and_scan_share_thirty_seconds(self):
+        with patch.object(native.time, "monotonic", side_effect=[0, 0, 7, 7, 9, 10]), patch.object(native.subprocess, "run", return_value=self.scan()) as scan:
             self.n.disk()
-        self.assertEqual([x.kwargs["timeout"] for x in scan.call_args_list], [30, 23])
+        self.assertEqual(scan.call_args.kwargs["timeout"], 23)
+        self.assertEqual(scan.call_args.args[0], ["du", "-sx", "--block-size=1", "--no-dereference", str(self.source), str(self.n.w)])
+        self.assertEqual(scan.call_args.kwargs["env"]["LC_ALL"], "C")
 
-    def test_exhausted_rescan_budget_does_not_launch_second_scan(self):
-        with patch.object(native.time, "monotonic", side_effect=[0, 0, 30]), patch.object(native.subprocess, "run", return_value=self.scan(1, self.diagnostic)) as scan:
+    def test_command_and_global_deadlines_bound_probe(self):
+        for global_end, command_end, expected in ((100, 4, 4), (3, 100, 3)):
+            self.n.end, self.n.command_end = global_end, command_end
+            with self.subTest(expected=expected), patch.object(native.time, "monotonic", return_value=0), patch.object(native.subprocess, "run", return_value=self.scan()) as scan:
+                self.n.disk()
+            self.assertEqual(scan.call_args.kwargs["timeout"], expected)
+
+    def test_expired_or_cancelled_probe_does_not_scan(self):
+        for cancelled in (False, True):
+            self.n.cancel = cancelled
+            self.n.command_end = 0
+            with self.subTest(cancelled=cancelled), patch.object(native.subprocess, "run") as scan:
+                with self.assertRaises((RuntimeError, subprocess.TimeoutExpired)):
+                    self.n.disk()
+                scan.assert_not_called()
+
+    def test_scan_overrun_fails_even_if_du_returns_success(self):
+        with patch.object(native.time, "monotonic", side_effect=[0, 0, 0, 30, 30]), patch.object(native.subprocess, "run", return_value=self.scan()):
             with self.assertRaises(subprocess.TimeoutExpired):
                 self.n.disk()
-        self.assertEqual(scan.call_count, 1)
 
     def test_missing_malformed_negative_or_wrong_root_total_refuses(self):
         for output in ("", f"1\t{self.source}\n", f"-1\t{self.source}\n0\t{self.n.w}\n", f"1\t{self.source}\n0\t{self.source}\n", "unparseable\n\n"):
@@ -137,33 +106,52 @@ class NativeDiskAndReceipt(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "disk scan"):
                     self.n.disk()
 
-    def test_disk_budget_failure_not_cleared_by_rescan(self):
-        with patch.object(native.subprocess, "run", return_value=self.scan(1, self.diagnostic, 10 * native.GIB + 1)) as scan:
-            with self.assertRaisesRegex(RuntimeError, "disk/reserve budget"):
-                self.n.disk()
-        self.assertEqual(scan.call_count, 1)
-
-    def test_clean_rescan_still_enforces_disk_budget(self):
-        with patch.object(native.subprocess, "run", side_effect=[self.scan(1, self.diagnostic), self.scan(used=10 * native.GIB + 1)]):
-            with self.assertRaisesRegex(RuntimeError, "disk/reserve budget"):
-                self.n.disk()
-
-    def test_reserve_failure_still_refuses(self):
-        with patch.object(native.shutil, "disk_usage", return_value=SimpleNamespace(free=2 * native.GIB - 1)), patch.object(native.subprocess, "run", return_value=self.scan(1, self.diagnostic)) as scan:
-            with self.assertRaisesRegex(RuntimeError, "disk/reserve budget"):
-                self.n.disk()
-        self.assertEqual(scan.call_count, 1)
+    def test_disk_ceiling_and_reserve_both_enforced(self):
+        self.fail_scan(self.scan(used=10 * native.GIB + 1), "disk/reserve budget")
+        with patch.object(native.shutil, "disk_usage", return_value=SimpleNamespace(free=2 * native.GIB - 1)):
+            self.fail_scan(self.scan(), "disk/reserve budget")
 
     def test_exact_disk_and_reserve_limits_are_accepted(self):
         with patch.object(native.shutil, "disk_usage", return_value=SimpleNamespace(free=2 * native.GIB)), patch.object(native.subprocess, "run", return_value=self.scan(used=10 * native.GIB)):
             self.n.disk()
 
-    def test_diagnostic_samples_remain_bounded(self):
-        with patch.object(native.subprocess, "run", side_effect=[self.scan(1, self.diagnostic), self.scan()] * 10):
-            for _ in range(10):
+    def test_both_filesystems_require_reserve(self):
+        def usage(root):
+            return SimpleNamespace(free=(2 * native.GIB - 1) if root == self.n.w else 12 * native.GIB)
+        with patch.object(native.shutil, "disk_usage", side_effect=usage):
+            self.fail_scan(self.scan(), "disk/reserve budget")
+
+    def test_symlinked_relative_and_overlapping_roots_refuse_before_scan(self):
+        alias = self.root / "alias"
+        alias.symlink_to(self.source, target_is_directory=True)
+        for root in (str(alias), "relative", str(self.root)):
+            with self.subTest(root=root), patch.dict(os.environ, GITHUB_WORKSPACE=root), patch.object(native.subprocess, "run") as scan:
+                with self.assertRaisesRegex(RuntimeError, "disk root"):
+                    self.n.disk()
+                scan.assert_not_called()
+
+    def test_source_outside_workspace_refuses_before_scan(self):
+        other = self.root / "other"
+        other.mkdir()
+        with patch.dict(os.environ, GITHUB_WORKSPACE=str(other)), patch.object(native.subprocess, "run") as scan:
+            with self.assertRaisesRegex(RuntimeError, "source escapes"):
                 self.n.disk()
-        self.assertEqual(self.n.r["diskScanRaceCount"], 10)
-        self.assertEqual(len(self.n.r["diskScanRaceSamples"]), 8)
+            scan.assert_not_called()
+
+    def test_root_replaced_during_scan_refuses(self):
+        def replace(*args, **kwargs):
+            self.source.rename(self.root / "original")
+            self.source.mkdir()
+            return self.scan()
+        with patch.object(native.subprocess, "run", side_effect=replace), self.assertRaisesRegex(RuntimeError, "root replaced"):
+            self.n.disk()
+
+    def test_root_permission_and_io_failure_propagates_before_scan(self):
+        for error in (PermissionError("permission"), OSError("I/O")):
+            with self.subTest(error=error), patch.object(Path, "lstat", side_effect=error), patch.object(native.subprocess, "run") as scan:
+                with self.assertRaises(OSError):
+                    self.n.disk()
+                scan.assert_not_called()
 
     def plan(self):
         self.n.plan(json.loads((HERE / "manifest.json").read_text()), json.loads((HERE / "native-inputs.json").read_text()))
@@ -259,6 +247,255 @@ class NativeDiskAndReceipt(unittest.TestCase):
         self.assertFalse(receipt["complete"])
         self.assertEqual(len(receipt["notRun"]), 44)
         self.assertEqual(receipt["executedStages"], [])
+
+class OwnedPause(NativeFixture):
+    def p(self, pid, state="R", group=None, session=100):
+        return {"pid":pid, "parent":1, "group":group or pid, "session":session,
+                "start":pid+500, "state":state, "rss":4096}
+
+    @contextlib.contextmanager
+    def simulation(self, snapshots=None, stopped=True, identity=None, signal_error=None):
+        self.n.p = SimpleNamespace(pid=100)
+        self.procs = {100:self.p(100), 200:self.p(200)}
+        self.sent = []
+        def send(fd, sig):
+            self.sent.append((fd-1000, sig))
+            if signal_error:
+                signal_error(fd-1000, sig)
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch.object(self.n, "owned", side_effect=snapshots, return_value=self.procs))
+            stack.enter_context(patch.object(self.n, "stopped", return_value=stopped))
+            stack.enter_context(patch.object(native, "identity", side_effect=identity or (lambda pid:(self.procs[pid]["group"],self.procs[pid]["start"]))))
+            stack.enter_context(patch.object(native.os, "pidfd_open", side_effect=lambda pid:pid+1000, create=True))
+            stack.enter_context(patch.object(native.signal, "pidfd_send_signal", side_effect=send, create=True))
+            self.close = stack.enter_context(patch.object(native.os, "close"))
+            yield
+
+    def test_freezes_root_and_detached_group_then_resumes(self):
+        with self.simulation(), self.n.quiesced(time.monotonic()+5):
+            self.assertEqual(self.sent, [(100,signal.SIGSTOP),(200,signal.SIGSTOP)])
+        self.assertEqual(self.sent[-2:], [(100,signal.SIGCONT),(200,signal.SIGCONT)])
+        self.assertEqual(self.close.call_count, 2)
+
+    def test_new_descendant_discovered_before_stable_snapshot(self):
+        first={100:self.p(100)}
+        later={**first,200:self.p(200)}
+        with self.simulation([first,later,later,later]), self.n.quiesced(time.monotonic()+5):
+            self.assertEqual(self.sent, [(100,signal.SIGSTOP),(200,signal.SIGSTOP)])
+
+    def test_already_stopped_process_keeps_prior_state(self):
+        with self.simulation():
+            self.procs[200]["state"]="T"
+            with self.n.quiesced(time.monotonic()+5):
+                self.assertEqual(self.sent, [(100,signal.SIGSTOP)])
+        self.assertEqual(self.sent, [(100,signal.SIGSTOP),(100,signal.SIGCONT)])
+
+    def test_pid_reuse_refuses_before_signal_and_closes_handle(self):
+        with self.simulation(identity=lambda pid:(pid,99999)):
+            with self.assertRaisesRegex(RuntimeError,"process changed before disk pause"):
+                with self.n.quiesced(time.monotonic()+5):
+                    self.fail("must not admit scan")
+        self.assertEqual(self.sent, [])
+        self.assertEqual(self.close.call_count,1)
+
+    def test_exited_process_is_safe_without_signal(self):
+        with self.simulation(identity=lambda pid:None), self.n.quiesced(time.monotonic()+5):
+            self.assertEqual(self.sent, [])
+        self.assertEqual(self.close.call_count,2)
+
+    def test_scan_errors_timeout_and_cancellation_resume_every_paused_pid(self):
+        for error in (RuntimeError("ENOENT"), PermissionError("denied"), OSError("I/O"), subprocess.TimeoutExpired("du",30)):
+            with self.subTest(error=error), self.simulation():
+                with self.assertRaises(type(error)):
+                    with self.n.quiesced(time.monotonic()+5):
+                        raise error
+                self.assertEqual(self.sent[-2:], [(100,signal.SIGCONT),(200,signal.SIGCONT)])
+        with self.simulation(), self.assertRaisesRegex(RuntimeError,"cancelled"):
+            with self.n.quiesced(time.monotonic()+5):
+                self.n.cancel=True
+        self.assertEqual(self.sent[-2:], [(100,signal.SIGCONT),(200,signal.SIGCONT)])
+
+    def test_stopped_state_timeout_resumes_without_scanning(self):
+        clock=[0]
+        with self.simulation(stopped=False), patch.object(native.time,"monotonic",side_effect=lambda:clock[0]), patch.object(native.time,"sleep",side_effect=lambda _:clock.__setitem__(0,clock[0]+10)):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                with self.n.quiesced(30):
+                    self.fail("D/running state must not admit scan")
+        self.assertEqual(self.sent[-2:], [(100,signal.SIGCONT),(200,signal.SIGCONT)])
+
+    def test_pause_time_reduces_du_timeout_with_no_deadline_extension(self):
+        clock=[0]
+        with self.simulation(), patch.object(native.time,"monotonic",side_effect=lambda:clock[0]), patch.object(native.time,"sleep",side_effect=lambda _:clock.__setitem__(0,7)), patch.object(native.subprocess,"run",return_value=self.scan()) as scan:
+            self.n.disk()
+        self.assertEqual(scan.call_args.kwargs["timeout"],23)
+        self.assertEqual(self.sent[-2:],[(100,signal.SIGCONT),(200,signal.SIGCONT)])
+
+    def test_resume_failure_attempts_all_handles_then_refuses(self):
+        def fail(pid,sig):
+            if pid==100 and sig==signal.SIGCONT:raise PermissionError("denied")
+        with self.simulation(signal_error=fail), self.assertRaisesRegex(RuntimeError,"resume failed"):
+            with self.n.quiesced(time.monotonic()+5):pass
+        self.assertEqual(self.sent[-2:],[(100,signal.SIGCONT),(200,signal.SIGCONT)])
+        self.assertEqual(self.close.call_count,2)
+
+    def test_stop_failure_still_attempts_resume(self):
+        def fail(pid,sig):
+            if pid==200 and sig==signal.SIGSTOP:raise PermissionError("denied")
+        with self.simulation(signal_error=fail), self.assertRaises(PermissionError):
+            with self.n.quiesced(time.monotonic()+5):self.fail("must not admit scan")
+        self.assertEqual(self.sent[-2:],[(100,signal.SIGCONT),(200,signal.SIGCONT)])
+
+    def test_new_or_running_writer_after_scan_refuses(self):
+        first={100:self.p(100)}
+        later={**first,200:self.p(200)}
+        with self.simulation([first,first,later]), self.assertRaisesRegex(RuntimeError,"writers changed"):
+            with self.n.quiesced(time.monotonic()+5):pass
+        self.assertEqual(self.sent[-1],(100,signal.SIGCONT))
+
+    def test_malformed_snapshot_permission_and_foreign_group_refuse(self):
+        self.n.p=SimpleNamespace(pid=100)
+        for output in ("bad\n", "100 1 100 100 -1\n", "100 1 100 100 4\n100 1 100 100 4\n"):
+            with self.subTest(output=output),patch.object(native.subprocess,"check_output",return_value=output):
+                with self.assertRaisesRegex(RuntimeError,"malformed process"):
+                    self.n.owned(time.monotonic()+5)
+        with patch.object(native.subprocess,"check_output",return_value="100 1 100 100 4\n"),patch.object(native,"process",side_effect=PermissionError("denied")),self.assertRaises(PermissionError):
+            self.n.owned(time.monotonic()+5)
+        p=self.p(100,group=os.getpgrp())
+        with patch.object(native.subprocess,"check_output",return_value=f"100 1 {p['group']} 100 4\n"),patch.object(native,"process",return_value=p),self.assertRaisesRegex(RuntimeError,"supervisor group"):
+            self.n.owned(time.monotonic()+5)
+
+    def test_expired_snapshot_never_signals_new_process(self):
+        clock=[0]
+        with self.simulation(),patch.object(native.time,"monotonic",side_effect=lambda:clock[0]):
+            def late(_):
+                clock[0]=30
+                return self.procs
+            self.n.owned.side_effect=late
+            with self.assertRaises(subprocess.TimeoutExpired):
+                with self.n.quiesced(30):self.fail("expired snapshot must not admit scan")
+        self.assertEqual(self.sent,[])
+        self.close.assert_not_called()
+
+    def test_deadline_expiring_during_identity_check_does_not_pause(self):
+        clock=[0]
+        def late(pid):
+            clock[0]=30
+            return pid,pid+500
+        with self.simulation(identity=late),patch.object(native.time,"monotonic",side_effect=lambda:clock[0]),self.assertRaises(subprocess.TimeoutExpired):
+            with self.n.quiesced(30):self.fail("must not admit scan")
+        self.assertEqual(self.sent,[])
+        self.assertEqual(self.close.call_count,1)
+
+    def test_new_session_member_rss_peak_and_limit_are_enforced(self):
+        self.n.p=SimpleNamespace(pid=100)
+        procs={100:self.p(100),201:self.p(201,group=100)}
+        for extra in (0,1):
+            rows=f"100 1 100 100 0\n201 1 100 100 {12*native.GIB//1024+extra}\n"
+            with self.subTest(extra=extra),patch.object(native.subprocess,"check_output",return_value=rows),patch.object(native,"process",side_effect=lambda pid:procs.get(pid)):
+                if extra:
+                    with self.assertRaisesRegex(RuntimeError,"RSS budget"):
+                        self.n.owned(time.monotonic()+5)
+                else:
+                    self.assertEqual(set(self.n.owned(time.monotonic()+5)),{100,201})
+        self.assertEqual(self.n.r["peakRssBytes"],12*native.GIB+1024)
+
+    def test_fd_close_failure_does_not_skip_remaining_resume(self):
+        with self.simulation(),self.assertRaisesRegex(RuntimeError,"close 100"):
+            self.close.side_effect=[OSError("close failed"),None]
+            with self.n.quiesced(time.monotonic()+5):pass
+        self.assertEqual(self.sent[-2:],[(100,signal.SIGCONT),(200,signal.SIGCONT)])
+        self.assertEqual(self.close.call_count,2)
+
+    def test_resume_time_is_in_original_probe_deadline(self):
+        clock=[0]
+        def advance(pid,sig):
+            if sig==signal.SIGCONT:clock[0]=30
+        with self.simulation(signal_error=advance),patch.object(native.time,"monotonic",side_effect=lambda:clock[0]),self.assertRaises(subprocess.TimeoutExpired):
+            with self.n.quiesced(30):pass
+        self.assertEqual(self.sent[-2:],[(100,signal.SIGCONT),(200,signal.SIGCONT)])
+
+    def test_reparented_member_survives_detached_leader_exit(self):
+        self.n.p=SimpleNamespace(pid=100)
+        self.n.known={200:(200,700),201:(200,701)}
+        procs={100:self.p(100),201:self.p(201,group=200,session=200),202:self.p(202,group=200,session=200)}
+        rows="100 1 100 100 4\n201 1 200 200 4\n202 1 200 200 4\n900 1 900 900 4\n"
+        with patch.object(native.subprocess,"check_output",return_value=rows),patch.object(native,"process",side_effect=lambda pid:procs.get(pid)):
+            owned=self.n.owned(time.monotonic()+5)
+        self.assertEqual(set(owned),{100,201,202})
+        self.assertEqual(self.n.known[201],(200,701))
+        self.assertEqual(self.n.known[202],(200,702))
+        self.assertNotIn(900,self.n.known)
+
+    def test_unrelated_kernel_thread_zero_group_and_session_are_valid(self):
+        self.n.p=SimpleNamespace(pid=100)
+        with patch.object(native.subprocess,"check_output",return_value="2 0 0 0 0\n100 1 100 100 4\n"),patch.object(native,"process",side_effect=lambda pid:self.p(100)if pid==100 else None):
+            self.assertEqual(set(self.n.owned(time.monotonic()+5)),{100})
+        bad={**self.p(100),"group":0,"session":0}
+        with patch.object(native.subprocess,"check_output",return_value="100 1 0 0 4\n"),patch.object(native,"process",return_value=bad),self.assertRaisesRegex(RuntimeError,"malformed owned"):
+            self.n.owned(time.monotonic()+5)
+
+    def test_reused_known_identity_does_not_claim_foreign_session(self):
+        self.n.p=SimpleNamespace(pid=100)
+        self.n.known={200:(200,700)}
+        procs={100:self.p(100),200:{**self.p(200,session=900),"start":999}}
+        with patch.object(native.subprocess,"check_output",return_value="100 1 100 100 4\n200 1 200 900 4\n"),patch.object(native,"process",side_effect=lambda pid:procs.get(pid)):
+            self.assertEqual(set(self.n.owned(time.monotonic()+5)),{100})
+
+
+@unittest.skipUnless(sys.platform=="linux" and hasattr(os,"pidfd_open") and hasattr(signal,"pidfd_send_signal"),"real owned-writer probe requires hosted Linux pidfds/GNU du")
+class LinuxOwnedChurn(NativeFixture):
+    WRITER = """import os,sys,time
+from pathlib import Path
+root=Path(sys.argv[1]);root.mkdir(parents=True,exist_ok=True)
+(root/'ready').write_text(str(os.getpid()))
+i=0
+while True:
+ p=root/f'stream{i}';p.write_bytes(b'x'*128);p.rename(root/f'final{i}');(root/f'final{i}').unlink();i+=1
+ (root/'progress.tmp').write_text(str(i));(root/'progress.tmp').replace(root/'progress');time.sleep(.001)
+"""
+    def writer(self):
+        self.n.p=subprocess.Popen([sys.executable,"-c",self.WRITER,str(self.store)],start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        p=self.n.p
+        def cleanup():
+            if p.poll()is None:
+                os.killpg(p.pid,signal.SIGCONT);os.killpg(p.pid,signal.SIGTERM)
+                try:p.wait(timeout=2)
+                except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait(timeout=2)
+            self.n.p=None
+        self.addCleanup(cleanup)
+        end=time.monotonic()+2
+        while not (self.store/'progress').exists():
+            self.assertLess(time.monotonic(),end);time.sleep(.01)
+        return p
+
+    def test_repeated_actual_enoent_churn_admitted_by_stable_strict_snapshots(self):
+        p=self.writer();self.n.command_end=time.monotonic()+10
+        for _ in range(12):
+            self.n.disk()
+            self.assertIsNone(p.poll())
+            self.assertNotIn(native.process(p.pid)["state"],("T","t"))
+        self.assertEqual(self.n.r["diskSnapshots"],12)
+        self.assertNotIn("diskScanRaceCount",self.n.r)
+        self.assertGreater(int((self.store/'progress').read_text()),1)
+        self.assertLess(self.n.r["peakTaskBytes"],1024**2)
+
+    def test_interior_symlink_is_counted_without_following_target(self):
+        outside=self.root/'outside';outside.mkdir();(outside/'data').write_bytes(b'x'*65536)
+        (self.source/'link').symlink_to(outside,target_is_directory=True)
+        self.n.disk()
+        self.assertLess(self.n.r["peakTaskBytes"],65536)
+
+    def test_real_scan_failure_resumes_before_runner_termination(self):
+        real_run=native.subprocess.run
+        def probe(argv,*args,**kwargs):
+            return self.scan(1,self.diagnostic) if argv[0]=="du" else real_run(argv,*args,**kwargs)
+        with patch.object(native.subprocess,"run",side_effect=probe):
+            result,_=self.n.run("strict-failure",[sys.executable,"-c",self.WRITER,str(self.store)],seconds=5)
+        self.assertNotEqual(result["exit"],0)
+        self.assertIn("No such file",result["reason"])
+        self.assertEqual(result["descendantCleanup"]["stillLiveGroups"],0)
+        self.assertIsNone(self.n.p)
+        self.assertTrue(self.n.cancel)
 
 
 if __name__ == "__main__":
