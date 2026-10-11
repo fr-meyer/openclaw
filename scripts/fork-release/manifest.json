@@ -1,7 +1,7 @@
 {
   "schema": "openclaw.fork-release.v2",
   "repository": "fr-meyer/openclaw",
-  "candidate": "v2026.9.9-workboard-native-0e6cd516",
+  "candidate": "v2026.9.9-workboard-native-restricted-sandbox-f0408636",
   "productionEligible": false,
   "source": {
     "baseCommit": "bcfc88812a35243893585dbeca87ca41b48272ca",
@@ -22,10 +22,14 @@
       {
         "commit": "e9f477e19ca22736fbadd7593092275fda19e85d",
         "tree": "502b8c850928c211388d7dd9b63b6699814cb25d"
+      },
+      {
+        "commit": "048614a6bcbcaa924f07bed4902ab1f50a2e9e4e",
+        "tree": "0e52dfb4e200991e7297a04fd9364d8a2ef9f093"
       }
     ],
-    "commit": "e9f477e19ca22736fbadd7593092275fda19e85d",
-    "tree": "502b8c850928c211388d7dd9b63b6699814cb25d"
+    "commit": "048614a6bcbcaa924f07bed4902ab1f50a2e9e4e",
+    "tree": "0e52dfb4e200991e7297a04fd9364d8a2ef9f093"
   },
   "gates": {
     "patchLifecycle": [

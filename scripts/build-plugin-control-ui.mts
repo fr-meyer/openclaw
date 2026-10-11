@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
   buildPluginControlUi,
   writePluginBuildManifest,
@@ -30,6 +31,10 @@ if (process.argv.includes("--copy")) {
   if (!source) {
     throw new Error("Missing package.json openclaw.controlUi browser entrypoint.");
   }
-  manifest.controlUi = await buildPluginControlUi({ rootDir, source });
-  await writePluginBuildManifest(rootDir, manifest);
+  const declaration = await buildPluginControlUi({ rootDir, source });
+  // Building unchanged immutable assets must preserve the committed manifest bytes.
+  if (!isDeepStrictEqual(manifest.controlUi, declaration)) {
+    manifest.controlUi = declaration;
+    await writePluginBuildManifest(rootDir, manifest);
+  }
 }

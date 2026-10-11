@@ -101,16 +101,36 @@ describe("prepared Gateway worker namespace readback", () => {
     const options: Partial<GatewayRequestHandlerOptions> = { client };
     const aborted = new AbortController();
     aborted.abort();
-    if (reason === "no read scope") client.connect.scopes = [];
-    if (reason === "node role") client.connect.role = "node";
-    if (reason === "no attestation") client.internal = {};
-    if (reason === "no connection") client.connId = "";
-    if (reason === "no boot") client.gatewayBootId = undefined;
-    if (reason === "retired connection") client.connectionSignal = aborted.signal;
-    if (reason === "invalidated client") client.invalidated = true;
-    if (reason === "retired request") options.signal = aborted.signal;
-    if (reason === "retired authority") options.hasCurrentClientAuthority = () => false;
-    if (reason === "pre-connect") options.client = null;
+    if (reason === "no read scope") {
+      client.connect.scopes = [];
+    }
+    if (reason === "node role") {
+      client.connect.role = "node";
+    }
+    if (reason === "no attestation") {
+      client.internal = {};
+    }
+    if (reason === "no connection") {
+      client.connId = "";
+    }
+    if (reason === "no boot") {
+      client.gatewayBootId = undefined;
+    }
+    if (reason === "retired connection") {
+      client.connectionSignal = aborted.signal;
+    }
+    if (reason === "invalidated client") {
+      client.invalidated = true;
+    }
+    if (reason === "retired request") {
+      options.signal = aborted.signal;
+    }
+    if (reason === "retired authority") {
+      options.hasCurrentClientAuthority = () => false;
+    }
+    if (reason === "pre-connect") {
+      options.client = null;
+    }
     await expect(readNamespace(options)).resolves.toMatchObject({
       ok: false,
       payload: undefined,
