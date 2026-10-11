@@ -47,7 +47,7 @@ describe("native Workboard Gateway release contract", () => {
       agentCommandMock.mockImplementation(async () => {
         inferenceStarted.resolve();
         await finishInference.promise;
-        return { payloads: [] };
+        return { payloads: [], meta: { durationMs: 0 } };
       });
       try {
         const workspace = await tempDirs.make("openclaw-native-workboard-");

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One pinned native proof, owned by the existing contracts-only hosted job."""
-import argparse,contextlib,json,os,re,shlex,shutil,signal,stat,subprocess,time
+import argparse,contextlib,json,os,re,shlex,shutil,signal,stat,subprocess,sys,time
 from pathlib import Path
 from release import need,sha256 as sha,read_json as read
 
@@ -12,6 +12,7 @@ OLD="86f65061b021070c260cff5bbe7c263bc62e3aeeec7204079b95b78fde4b8714"
 NEW="27adbbe4703cc7d08816f30bff88338823669bf0cef6fe4c63c57c22f5bf764f"
 CASE="rejects exact dispatch when an older Gateway only supports untargeted methods"
 TYPES=("tsgo:core","tsgo:extensions","tsgo:core:test","tsgo:extensions:test")
+CI_INVENTORY="test/scripts/ci-node-test-plan.test.ts"
 GATEWAY=("src/gateway/server-plugins.lifecycle.test.ts","src/gateway/server-methods.plugin-gateway-dispatch.test.ts","src/gateway/server.startup-websocket-race.test.ts")
 
 def git(root,*args):return subprocess.check_output(["git","-C",str(root),*args],timeout=30)
@@ -46,6 +47,42 @@ def before(data):
  need(sha(old)==OLD,"predecessor CLI differs")
  return old
 
+def planner_progress(stream):
+ """Count named execution headers; summary rows prove failed-plan completion."""
+ commands=[];pending=None;blank=False;summary=False;results=[]
+ for raw in stream:
+  line=clean(raw.decode("utf-8","replace")).rstrip("\r\n")
+  if pending is not None and line.startswith("$ "):commands[pending]["argv"]=shlex.split(line[2:])
+  pending=None
+  # runCommand emits a blank line and a named header, including in-process
+  # guards without a shell argv. printPlan reasons have no separating blank.
+  if line=="[check:changed] summary":summary=True
+  elif blank and line.startswith("[check:changed] ")and not line.startswith(("[check:changed] lanes=","[check:changed] FAILED")):
+   commands.append({"name":line[len("[check:changed] "):],"argv":None,"status":None});pending=len(commands)-1
+  elif summary:
+   row=re.fullmatch(r"\s+[0-9.]+(?:ms|s)\s+(ok|failed:[0-9]+)\s+(.+)",line)
+   if row:results.append((row[2],0 if row[1]=="ok"else int(row[1].split(":")[1])))
+  blank=not line
+ need(len(commands)<=128 and len({c["name"]for c in commands})==len(commands),"ambiguous planner commands")
+ if summary:
+  need([name for name,_ in results]==[c["name"]for c in commands],"incomplete planner summary")
+  for command,(_,status)in zip(commands,results):command["status"]=status
+ return commands
+
+# Only the supervisor-created per-command cache is eligible. Descriptor-relative
+# rmtree never follows interior symlinks; failed joins retain the directory.
+CACHE_DISPOSAL="""import os,shutil,stat,sys
+root,name,dev,ino,parentdev,parentino=sys.argv[1:]
+assert shutil.rmtree.avoids_symlink_attacks
+fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+try:
+ s=os.fstat(fd);assert(s.st_dev,s.st_ino)==(int(parentdev),int(parentino))
+ s=os.stat(name,dir_fd=fd,follow_symlinks=False)
+ assert stat.S_ISDIR(s.st_mode)and(s.st_dev,s.st_ino)==(int(dev),int(ino))
+ shutil.rmtree(name,dir_fd=fd)
+finally:os.close(fd)
+"""
+
 class Native:
  def __init__(self,source,tooling):
   self.s,self.t=source.resolve(),tooling.resolve()
@@ -56,7 +93,7 @@ class Native:
   self.c,self.f,self.u=(self.r[k]for k in("commands","failures","notRun"))
   self.end,self.p,self.cancel=time.monotonic()+110*60,None,False
   self.command_end,self.known=self.end,{}
-  self.planned,self.reached={},set()
+  self.planned,self.reached={},set();self.expected={}
   self.env={k:os.environ[k]for k in("PATH","LANG","TZ","GITHUB_WORKSPACE")if k in os.environ}
   self.env.update(CI="1",GITHUB_ACTIONS="true",HOME=str(self.w/"home"),COREPACK_HOME=str(self.w/"corepack"),COREPACK_NPM_REGISTRY="https://registry.npmjs.org",npm_config_registry="https://registry.npmjs.org/",NODE_OPTIONS="--max-old-space-size=6144",OPENCLAW_VITEST_MAX_WORKERS="1",XDG_CACHE_HOME=str(self.w/"cache"))
   Path(self.env["HOME"]).mkdir(exist_ok=True)
@@ -197,8 +234,64 @@ class Native:
     s=root.lstat();need(root.resolve()==root and stat.S_ISDIR(s.st_mode)and(s.st_dev,s.st_ino)==mark,"disk root replaced during scan")
     counts.append(int(match[1]))
    used=sum(counts);self.r["peakTaskBytes"]=max(used,self.r["peakTaskBytes"])
-   need(used<=10*GIB and all(shutil.disk_usage(root).free>=2*GIB for root in roots),"disk/reserve budget exceeded")
+   free=[shutil.disk_usage(root).free for root in roots]
+   self.r["lastDiskSnapshot"]={"roots":[{"path":str(root),"bytes":count,"freeBytes":reserve}for root,count,reserve in zip(roots,counts,free)],"taskBytes":used,"taskCapExceeded":used>10*GIB,"reserveFailedRoots":[str(root)for root,reserve in zip(roots,free)if reserve<2*GIB]}
+   need(used<=10*GIB and all(reserve>=2*GIB for reserve in free),"disk/reserve budget exceeded")
   self.r["diskSnapshots"]=self.r.get("diskSnapshots",0)+1
+
+ def source_snapshot(self,phase):
+  """Record public tracked-path provenance, never source bodies or private state."""
+  snapshot={"phase":phase,"paths":[],"complete":False}
+  self.r.setdefault("sourceSnapshots",[]).append(snapshot)
+  try:
+   raw=subprocess.check_output(["git","-C",str(self.s),"diff","--raw","--no-abbrev","--no-renames","--no-ext-diff","-z","HEAD","--"],stderr=subprocess.PIPE,timeout=10)
+   need(len(raw)<=65536,"source diagnostic oversized")
+   fields=raw.split(b"\0");need(fields[-1]==b""and len(fields)%2==1,"source diagnostic malformed")
+   paths={}
+   for i in range(0,len(fields)-1,2):
+    header=fields[i].decode().split();path=fields[i+1].decode()
+    need(len(header)==5 and header[0].startswith(":"),"source diagnostic malformed")
+    paths[path]={"path":path,"change":header[4],"baseBlob":header[2],"tracked":True}
+   for path in self.expected:paths.setdefault(path,{"path":path,"tracked":False})
+   need(len(paths)<=128,"source diagnostic path bound exceeded")
+   read_bytes=0
+   for path,item in paths.items():
+    need(not Path(path).is_absolute()and ".."not in Path(path).parts,"source diagnostic path escapes")
+    file=self.s/path;need(file.parent.resolve().is_relative_to(self.s),"source diagnostic parent escapes")
+    if not file.exists()and not file.is_symlink():item["kind"]="missing"
+    elif file.is_symlink():item.update(kind="symlink",sha256=sha(os.fsencode(os.readlink(file))))
+    else:
+     st=file.lstat();need(stat.S_ISREG(st.st_mode),"source diagnostic non-file")
+     read_bytes+=st.st_size;need(read_bytes<=4*1024**2,"source diagnostic read bound exceeded")
+     item.update(kind="file",sha256=sha(file.read_bytes()))
+    item["expected"]=path in self.expected and item.get("sha256")==self.expected[path]
+    snapshot["paths"].append(item)
+   snapshot["unexpectedPaths"]=[x["path"]for x in snapshot["paths"]if not x["expected"]]
+   snapshot["complete"]=True
+   if snapshot["unexpectedPaths"]:self.f.append("source changed after "+phase)
+  except Exception as error:
+   snapshot["error"]=clean(str(error))[:4096];self.f.append("source diagnostic failed: "+snapshot["error"])
+  return snapshot
+
+ def dispose_cache(self,cache,mark,parent_mark,result,deadline=None):
+  end=min(time.monotonic()+30,self.end,deadline if deadline is not None else self.end);record={"path":str(cache),"removed":False}
+  result["cacheCleanup"]=record
+  try:
+   need(result["descendantCleanup"]["stillLiveGroups"]==0,"cache retained: captured groups still live")
+   need(cache.parent==self.w and re.fullmatch(r"vitest-[1-9][0-9]*",cache.name),"cache cleanup path differs")
+   need(cache.resolve()==cache and self.w.resolve()==self.w,"cache cleanup symlink")
+   st=cache.lstat();need(stat.S_ISDIR(st.st_mode)and(st.st_dev,st.st_ino)==mark,"cache replaced before cleanup")
+   scan=subprocess.run(["du","-sx","--block-size=1","--no-dereference",str(cache)],text=True,capture_output=True,timeout=min(10,self.remaining(end)))
+   need(not scan.returncode and not scan.stderr,"cache footprint scan failed")
+   match=re.fullmatch(r"([0-9]+)\t"+re.escape(str(cache))+r"\n",scan.stdout);need(match is not None,"cache footprint malformed")
+   record["bytesBefore"]=int(match[1])
+   removal=subprocess.run([sys.executable,"-I","-S","-c",CACHE_DISPOSAL,str(self.w),cache.name,*(str(x)for x in mark+parent_mark)],capture_output=True,text=True,timeout=self.remaining(end))
+   need(not removal.returncode and not removal.stderr,"cache cleanup failed: "+clean(removal.stderr)[:4096])
+   need(not cache.exists()and not cache.is_symlink(),"cache cleanup incomplete")
+   record["removed"]=True
+  except Exception as error:
+   record["error"]=clean(str(error))[:4096];self.cancel=True
+   result["reason"]=result["reason"]or record["error"]
 
  def plan(self,mf,pins):
   stages=["corepack","install","changed-plan","changed-checks",*(x.replace(":","-")for x in TYPES),"source-build","cli-before"]
@@ -216,7 +309,11 @@ class Native:
    r.update(exit=None,reason="NOT_RUN_AFTER_TIME_OR_CANCELLATION")
    self.f.append(name);self.u.append(r);return r,""
   start=time.monotonic();end=min(self.end,start+seconds)
-  env={**self.env,"OPENCLAW_VITEST_FS_MODULE_CACHE_PATH":str(self.w/f"vitest-{len(self.c)}")}
+  cache=self.w/f"vitest-{len(self.c)}"
+  need(self.w.resolve()==self.w and not cache.exists()and not cache.is_symlink(),"command cache ownership differs")
+  cache.mkdir(mode=0o700);st=cache.lstat();parent=self.w.lstat()
+  mark,parent_mark=(st.st_dev,st.st_ino),(parent.st_dev,parent.st_ino)
+  env={**self.env,"OPENCLAW_VITEST_FS_MODULE_CACHE_PATH":str(cache)}
   raw=self.w/"command.log";reason=None;next_disk=0;self.known={};known=self.known;self.command_end=end
   with raw.open("wb")as output:
    self.p=subprocess.Popen(argv,cwd=self.s,env=env,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
@@ -256,20 +353,22 @@ class Native:
      for group in groups():kill(group,signal.SIGKILL)
     r["descendantCleanup"]={"captured":len(known),"stillLiveGroups":len(groups())}
     self.p=None;self.known={};self.command_end=self.end
-  total=raw.stat().st_size;reached=0
+  total=raw.stat().st_size;progress=[]
   with raw.open("rb")as stream:
    head=stream.read(16384);stream.seek(max(16384,total-49152));tail=stream.read(49152)
-   stream.seek(0);carry=b""
-   while chunk:=stream.read(65536):
-    data=carry+chunk
-    reached+=sum(m.end()>len(carry)for m in re.finditer(rb"\n\n\[check:changed\] (?!lanes=)[^\n]+\n",data))
-    carry=data[-256:]
+   if name=="changed-checks":
+    stream.seek(0)
+    try:progress=planner_progress(stream)
+    except Exception as error:reason=reason or "planner progress refused: "+str(error);self.cancel=True
   raw.unlink()
   text=(head+(b"\n[BOUNDED LOG; MIDDLE OMITTED]\n" if total>65536 else b"")+tail).decode("utf-8","replace")
   log=f"{len(self.c):02}-{name}.log";(self.o/log).write_text(clean(text))
-  r.update(exit=status,reason=reason,seconds=round(time.monotonic()-start,3),log=log,outputBytes=total,logTruncated=total>65536,plannerReached=reached)
-  if(status or reason)and not want:self.f.append(name)
-  print(f"native {name}: exit={status}; {reason or 'completed'}\n{clean(text)}",flush=True)
+  r.update(exit=status,reason=reason,seconds=round(time.monotonic()-start,3),log=log,outputBytes=total,logTruncated=total>65536,plannerReached=len(progress),plannerCommands=progress)
+  self.dispose_cache(cache,mark,parent_mark,r,min(self.end,start+seconds))
+  self.source_snapshot(name)
+  r["seconds"]=round(time.monotonic()-start,3)
+  if not good(r)and not want:self.f.append(name)
+  print(f"native {name}: exit={status}; {r['reason']or 'completed'}\n{clean(text)}",flush=True)
   return r,text
 
  def test(self,path,old=False):
@@ -318,6 +417,8 @@ class Native:
   paths=git(p,"diff","--name-only",BASE,s["commit"]).decode().splitlines();need(len(paths)==41,"owner count differs")
   hh={f:sha((p/f).read_bytes())for f in pins["dependencyPaths"]}
   need(sha(json.dumps(hh,sort_keys=True,separators=(",",":")).encode())==pins["dependencyFingerprint"],"dependency fingerprint")
+  snapshot=self.source_snapshot("admission")
+  need(snapshot["complete"]and not snapshot["unexpectedPaths"],"source admission differs")
   self.r.update(sourceSha=s["commit"],sourceTree=s["tree"],toolingSha=sha_t,manifestSha256=pins["manifestSha256"],inputsSha256=sha((t/"scripts/fork-release/native-inputs.json").read_bytes()),runId=os.environ["GITHUB_RUN_ID"],attempt=1,fileHashes=hh,fixtureHashes=pins["fixtures"])
   need(shutil.disk_usage(p).free>=12*GIB,"initial free space <12 GiB");self.disk()
   version=lambda*a:subprocess.check_output(a,cwd=p,env=self.env,text=True,timeout=90).strip()
@@ -327,38 +428,51 @@ class Native:
   need(good(rt),"pnpm/official registry differs")
   ins,_=self.run("install",["corepack","pnpm","install","--frozen-lockfile","--store-dir",str(self.w/"store")],900)
   need(good(ins),"install failed; dependents unrun")
+  # Inventory assertions compare Git and filesystem discovery of exact S. Run
+  # this owner before T-only fixtures exist, once, without retrying a failure.
+  self.test(CI_INVENTORY)
   over=[];cli=p/"extensions/workboard/src/cli.ts";fixed=cli.read_bytes()
   try:
    for path,want in pins["fixtures"].items():
-    need(re.fullmatch(r"(?:src/gateway|test/helpers)/[A-Za-z0-9_./-]+\.ts",path)and ".." not in path.split("/"),"invalid test overlay")
+    need((re.fullmatch(r"(?:src/gateway|test/helpers)/[A-Za-z0-9_./-]+\.ts",path)or path=="extensions/workboard/src/gateway.test.ts")and ".." not in path.split("/"),"invalid test overlay")
     data=(t/path).read_bytes();old=(p/path).read_bytes()if(p/path).exists()else None
     need(sha(data)==want and(old is None or sha(old)==pins["fixtureBaseHashes"].get(path)),"fixture/base differs")
-    (p/path).parent.mkdir(parents=True,exist_ok=True);(p/path).write_bytes(data);over.append((p/path,old))
+    (p/path).parent.mkdir(parents=True,exist_ok=True);(p/path).write_bytes(data);over.append((p/path,old));self.expected[path]=want
    planner=["node","scripts/check-changed.mjs","--base",BASE,"--head",s["commit"],"--",*paths,*pins["fixtures"]]
    dry,plan=self.run("changed-plan",planner[:2]+["--dry-run"]+planner[2:]);need(good(dry),"owner plan failed")
    plan=[shlex.split(l.split("would run: ",1)[1])for l in plan.splitlines()if l.startswith("[check:changed:dry-run] would run: ")];need(plan,"empty plan")
    check,_=self.run("changed-checks",planner,3600)
-   reached=len(plan)if good(check)else check["plannerReached"]
+   reached=check["plannerReached"]
+   need(not good(check)or reached==len(plan),"passing planner omitted commands")
+   if good(check):
+    for command in check["plannerCommands"]:command["status"]=0
    need(reached<=len(plan),"ambiguous planner count")
    for i,command in enumerate(plan[reached:]):
     guard=command[0]=="pnpm" and(command[1].startswith(("check:","lint:tmp:","lint:auth:","lint:webhook:","lint:plugins:","lint:extensions:no-","plugin-sdk:","plugins:","deps:","config:","sqlite:","runtime-sidecars:"))or command[1]=="dup:check:coverage")or command[0]=="node" and any(x.startswith("scripts/check-")for x in command[1:])
     if guard:self.run(f"remaining-guard-{i}",["corepack",*command]if command[0]=="pnpm" else command)
     elif not any(command[:2]==["pnpm",x]for x in TYPES):self.u.append({"argv":command,"reason":"NOT_RUN_AFTER_PLANNER_FAILURE"})
    for owner in TYPES:
-    if any(c[:2]==["pnpm",owner]for c in plan[:reached]):self.reached.add(owner.replace(":","-"))
+    if any(c[:2]==["pnpm",owner]for c in plan[:reached]):
+     self.reached.add(owner.replace(":","-"))
+     self.r.setdefault("plannerStages",{})[owner.replace(":","-")]=check["plannerCommands"][next(i for i,c in enumerate(plan[:reached])if c[:2]==["pnpm",owner])]["status"]
     else:self.run(owner.replace(":","-"),["corepack","pnpm",owner],1800)
    self.run("source-build",["corepack","pnpm","build"],3300)
-   cli.write_bytes(before(fixed))
-   try:self.test("extensions/workboard/src/cli.test.ts",old=True)
-   finally:cli.write_bytes(fixed);need(sha(cli.read_bytes())==NEW,"CLI restore failed")
-   gates=dict.fromkeys(mf["gates"]["patchLifecycle"]+mf["gates"]["producerConsumer"]+list(GATEWAY)+[x for x in pins["fixtures"]if x.endswith(".test.ts")])
-   for path in gates:self.test(path)
    self.node_contracts(mf["gates"]["node"])
+   cli.write_bytes(before(fixed));self.expected["extensions/workboard/src/cli.ts"]=OLD
+   try:self.test("extensions/workboard/src/cli.test.ts",old=True)
+   finally:cli.write_bytes(fixed);self.expected.pop("extensions/workboard/src/cli.ts",None);need(sha(cli.read_bytes())==NEW,"CLI restore failed")
+   gates=dict.fromkeys(mf["gates"]["patchLifecycle"]+mf["gates"]["producerConsumer"]+list(GATEWAY)+[x for x in pins["fixtures"]if x.endswith(".test.ts")])
+   # Close previously missing coverage before the unchanged bulk owners consume
+   # the global budget. Every original owner remains present, exactly once.
+   priority=[x for x in pins["fixtures"]if x.endswith(".test.ts")]+[GATEWAY[-1]]
+   for path in dict.fromkeys(priority+list(gates)):
+    if path!=CI_INVENTORY:self.test(path)
   finally:
    cli.write_bytes(fixed)
    for path,old in over:
     if old is None:path.unlink(missing_ok=True)
     else:path.write_bytes(old)
+   self.expected.clear()
    self.r["cliRestoredSha256"]=sha(cli.read_bytes())
   need(not git(p,"status","--porcelain","--untracked-files=no").strip(),"tracked source changed")
 
@@ -370,6 +484,7 @@ def main():
   try:n.execute()
   except Exception as error:n.r["failures"].append(clean(str(error)))
   finally:
+   n.source_snapshot("final")
    n.report_not_run()
    n.r["complete"]=not n.r["failures"]and not n.r["notRun"]
    rcp.write_text(json.dumps(n.r,indent=2)+"\n")

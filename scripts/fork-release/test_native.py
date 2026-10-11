@@ -1,5 +1,6 @@
 """Cheap strict disk accounting, owned pause/cleanup, and receipt regressions."""
 import contextlib
+import io
 import json
 import signal
 import time
@@ -496,6 +497,180 @@ while True:
         self.assertEqual(result["descendantCleanup"]["stillLiveGroups"],0)
         self.assertIsNone(self.n.p)
         self.assertTrue(self.n.cancel)
+
+
+
+class RepairBatch(NativeFixture):
+    def test_planner_counts_command_argv_not_summary_heading(self):
+        log = b"""[check:changed] lanes=coreTests
+
+[check:changed] typecheck core
+$ node scripts/run-tsgo.mjs -p tsconfig.core.json
+
+[check:changed] typecheck core tests
+$ node scripts/run-tsgo-core-test-shards.mjs
+src/gateway/example.test.ts: error TS2345
+
+[check:changed] summary
+   63.77s  ok         typecheck core
+ 289.86s  failed:2   typecheck core tests
+[check:changed] FAILED (exit 2)
+"""
+        commands = native.planner_progress(io.BytesIO(log))
+        self.assertEqual([x["name"] for x in commands], ["typecheck core", "typecheck core tests"])
+        self.assertEqual([x["status"] for x in commands], [0, 2])
+        self.assertEqual(commands[1]["argv"], ["node", "scripts/run-tsgo-core-test-shards.mjs"])
+
+    def test_planner_success_has_started_commands_with_unknown_completion_until_exit(self):
+        result = native.planner_progress(io.BytesIO(b"\n[check:changed] owner\n$ node owner.mjs\n"))
+        self.assertEqual(result, [{"name": "owner", "argv": ["node", "owner.mjs"], "status": None}])
+
+    def test_in_process_guard_is_counted_without_a_shell_argv(self):
+        log = b"\n[check:changed] test temp creation report (warning-only)\nNo new warnings.\n\n[check:changed] summary\n 515ms ok test temp creation report (warning-only)\n"
+        self.assertEqual(native.planner_progress(io.BytesIO(log)), [{"name": "test temp creation report (warning-only)", "argv": None, "status": 0}])
+
+    def test_incomplete_duplicate_or_reordered_summary_refuses(self):
+        for log in (
+            b"\n[check:changed] first\n$ node one.mjs\n\n[check:changed] summary\n",
+            b"\n[check:changed] first\n$ node one.mjs\n\n[check:changed] first\n$ node two.mjs\n",
+            b"\n[check:changed] first\n$ node one.mjs\n\n[check:changed] second\n$ node two.mjs\n\n[check:changed] summary\n 1s ok second\n 1s ok first\n",
+        ):
+            with self.subTest(log=log), self.assertRaisesRegex(RuntimeError, "planner"):
+                native.planner_progress(io.BytesIO(log))
+
+    def cache(self):
+        cache = self.n.w / "vitest-1"
+        cache.mkdir()
+        st, parent = cache.lstat(), self.n.w.lstat()
+        return cache, (st.st_dev, st.st_ino), (parent.st_dev, parent.st_ino)
+
+    def cleanup(self, cache, mark, parent_mark, groups=0):
+        result = {"reason": None, "descendantCleanup": {"stillLiveGroups": groups}}
+        self.n.dispose_cache(cache, mark, parent_mark, result)
+        return result
+
+    @unittest.skipUnless(sys.platform=="linux", "cache footprint proof requires GNU du")
+    def test_cache_cleanup_is_joined_and_does_not_follow_links_or_touch_evidence(self):
+        cache, mark, parent_mark = self.cache()
+        evidence = self.n.o / "receipt.json"
+        evidence.write_text("preserve")
+        (cache / "compiled-module").write_bytes(b"x" * 1024)
+        (cache / "evidence-link").symlink_to(self.n.o, target_is_directory=True)
+        result = self.cleanup(cache, mark, parent_mark)
+        self.assertTrue(result["cacheCleanup"]["removed"])
+        self.assertGreater(result["cacheCleanup"]["bytesBefore"], 0)
+        self.assertFalse(cache.exists())
+        self.assertEqual(evidence.read_text(), "preserve")
+        self.assertIsNone(result["reason"])
+
+    def test_live_captured_groups_retain_owned_cache(self):
+        cache, mark, parent_mark = self.cache()
+        result = self.cleanup(cache, mark, parent_mark, groups=1)
+        self.assertFalse(result["cacheCleanup"]["removed"])
+        self.assertTrue(cache.is_dir())
+        self.assertIn("still live", result["reason"])
+
+    def test_replaced_cache_and_foreign_path_refuse_deletion(self):
+        cache, mark, parent_mark = self.cache()
+        original = self.n.w / "original"
+        cache.rename(original)
+        cache.mkdir()
+        (cache / "foreign").write_text("preserve")
+        result = self.cleanup(cache, mark, parent_mark)
+        self.assertIn("replaced", result["reason"])
+        self.assertEqual((cache / "foreign").read_text(), "preserve")
+        self.assertTrue(original.is_dir())
+
+    def test_symlink_root_refuses_deletion(self):
+        cache, mark, parent_mark = self.cache()
+        cache.rmdir()
+        cache.symlink_to(self.n.o, target_is_directory=True)
+        result = self.cleanup(cache, mark, parent_mark)
+        self.assertIn("symlink", result["reason"])
+        self.assertTrue(self.n.o.is_dir())
+
+    def test_cleanup_timeout_retains_failure_and_does_not_retry(self):
+        cache, mark, parent_mark = self.cache()
+        with patch.object(native.subprocess, "run", side_effect=subprocess.TimeoutExpired("du", 10)) as call:
+            result = self.cleanup(cache, mark, parent_mark)
+        self.assertEqual(call.call_count, 1)
+        self.assertFalse(result["cacheCleanup"]["removed"])
+        self.assertTrue(self.n.cancel)
+
+    @unittest.skipUnless(sys.platform=="linux", "cache footprint proof requires GNU du")
+    def test_parent_identity_change_refuses_inside_descriptor_owner(self):
+        cache, mark, parent_mark = self.cache()
+        result = self.cleanup(cache, mark, (parent_mark[0], parent_mark[1] + 1))
+        self.assertIn("cache cleanup failed", result["reason"])
+        self.assertTrue(cache.exists())
+
+    def test_cleanup_failure_after_successful_command_keeps_entry_point_red(self):
+        child = SimpleNamespace(pid=123456789, poll=lambda: 0, wait=lambda: 0)
+        def refuse(cache, mark, parent_mark, result, deadline):
+            result["reason"] = "cache retained"
+            self.n.cancel = True
+        with patch.object(native.subprocess, "Popen", return_value=child), patch.object(self.n, "dispose_cache", side_effect=refuse), patch.object(self.n, "source_snapshot"):
+            result, _ = self.n.run("last-owner", ["synthetic-command"])
+        self.assertEqual(result["exit"], 0)
+        self.assertFalse(native.good(result))
+        self.assertEqual(self.n.f, ["last-owner"])
+
+    def test_cleanup_cannot_extend_the_original_owner_deadline(self):
+        cache, mark, parent_mark = self.cache()
+        with patch.object(native.time, "monotonic", return_value=20), patch.object(native.subprocess, "run") as call:
+            result = {"reason": None, "descendantCleanup": {"stillLiveGroups": 0}}
+            self.n.dispose_cache(cache, mark, parent_mark, result, deadline=20)
+        call.assert_not_called()
+        self.assertFalse(result["cacheCleanup"]["removed"])
+        self.assertTrue(cache.exists())
+
+    def repository(self):
+        for args in (["init", "-q"],):
+            subprocess.run(["git", "-C", str(self.source), *args], check=True, capture_output=True)
+        (self.source / "tracked.txt").write_text("base")
+        subprocess.run(["git", "-C", str(self.source), "add", "tracked.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(self.source), "-c", "user.name=Synthetic", "-c", "user.email=synthetic@example.invalid", "commit", "-qm", "synthetic fixture"], check=True, capture_output=True)
+
+    def test_source_diagnostic_records_exact_dirty_path_without_content(self):
+        self.repository()
+        (self.source / "tracked.txt").write_text("changed-private-looking-body")
+        result = self.n.source_snapshot("after-build")
+        self.assertTrue(result["complete"])
+        self.assertEqual(result["unexpectedPaths"], ["tracked.txt"])
+        self.assertEqual(result["paths"][0]["change"], "M")
+        self.assertRegex(result["paths"][0]["baseBlob"], r"^[0-9a-f]{40}$")
+        self.assertNotIn("changed-private-looking-body", json.dumps(result))
+
+    def test_expected_tracked_and_new_overlays_require_exact_current_hash(self):
+        self.repository()
+        (self.source / "tracked.txt").write_text("overlay")
+        (self.source / "qualification.test.ts").write_text("fixture")
+        self.n.expected = {"tracked.txt": native.sha(b"overlay"), "qualification.test.ts": native.sha(b"fixture")}
+        first = self.n.source_snapshot("overlay")
+        self.assertEqual(first["unexpectedPaths"], [])
+        self.assertEqual(len(first["paths"]), 2)
+        (self.source / "qualification.test.ts").write_text("unexpected change")
+        self.assertEqual(self.n.source_snapshot("changed fixture")["unexpectedPaths"], ["qualification.test.ts"])
+
+    def test_source_deletion_and_oversized_diagnostic_remain_fail_closed(self):
+        self.repository()
+        (self.source / "tracked.txt").unlink()
+        result = self.n.source_snapshot("deleted")
+        self.assertEqual(result["paths"][0]["kind"], "missing")
+        self.assertEqual(result["unexpectedPaths"], ["tracked.txt"])
+        with patch.object(native.subprocess, "check_output", return_value=b"x" * 65537):
+            result = self.n.source_snapshot("oversized")
+        self.assertFalse(result["complete"])
+        self.assertIn("oversized", result["error"])
+
+    def test_budget_failure_keeps_root_sizes_and_distinguishes_cap_from_reserve(self):
+        with patch.object(native.subprocess, "run", return_value=self.scan(used=10*native.GIB+1)):
+            with self.assertRaisesRegex(RuntimeError, "budget"):
+                self.n.disk()
+        result = self.n.r["lastDiskSnapshot"]
+        self.assertEqual(result["taskBytes"], 10*native.GIB+1)
+        self.assertTrue(result["taskCapExceeded"])
+        self.assertEqual(result["reserveFailedRoots"], [])
 
 
 if __name__ == "__main__":

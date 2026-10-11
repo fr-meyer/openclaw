@@ -2,10 +2,11 @@
 
 This lane belongs only to `fr-meyer/openclaw`. It is independent of the active
 9.8 deployment and does not modify its candidate, release workflows, or server.
-The checked-in manifest pins a **source-only seed** at fork main `8b1f5c8`; it
-has `productionEligible: false`. A future candidate needs its own reviewed,
-complete ordered patch chain, focused test selection, and explicit decision to
-set that field to `true`. Never change this seed merely to match a moving branch.
+The current manifest pins the **source-only 9.9 candidate**
+`e9f477e19ca22736fbadd7593092275fda19e85d`; it has
+`productionEligible: false`. A production candidate needs its own reviewed
+patch chain, focused test selection, and explicit decision to set that field
+to `true`. Never change a manifest merely to match a moving branch.
 
 ## Parallel work through draft PRs
 
@@ -193,6 +194,37 @@ artifact upload. Neither route uses secrets, registry pushes, deployment, or
 production authority. A branch push is an explicit CI dispatch with hosted
 runner and artifact storage effects; review its exact diff, current allowance,
 and artifact size before using the image route.
+
+## Pinned native contract proof
+
+`native.py` owns the separately reviewed contracts-only hosted route. Runtime
+source, tree, manifest, dependency fingerprint and test overlay hashes are
+independent pins. The inherited CI inventory suite runs once after installation
+and before overlays, so its Git and filesystem inventories describe the same
+source. Test-only overlays correct qualification fixtures and exact inherited
+method expectations; they are restored after proof. A failed owner stays failed.
+
+Planner receipts count named command starts, including in-process guards, and
+record completed summary statuses. The summary itself is never a command;
+missing type owners run through their existing wrappers. Node contracts run
+after the source build, and changed fixtures plus the previously resource-stopped
+Gateway owner run before the remaining suites. Every original owner stays in
+the plan, once, under the same overall deadline.
+
+Each command gets a fresh filesystem module cache. After its captured process
+groups settle and its bounded log is sealed, the supervisor measures and removes
+only that cache through directory identity checks and descriptor-relative
+cleanup. Failed joins or cleanup retain it and fail the run. Source, evidence,
+dependencies and worker generations owned by repository wrappers are excluded
+from this cleanup. Cache removal shares the original owner deadline.
+
+Bounded source snapshots retain changed tracked paths, Git base blobs and current
+hashes without source bodies. Exact test overlays and the predecessor CLI control
+are labeled; unexpected changes remain failures even if later restoration makes
+the tree clean. Root disk totals and free-space measurements distinguish the
+10-GiB task ceiling from the 2-GiB runtime reserve. Native, job, RSS and evidence
+limits remain 110 minutes, 120 minutes, 12 GiB, and 20 MiB for three days. Passing
+source evidence does not authorize an image, deployment or production release.
 
 ## Private deployment interface
 
