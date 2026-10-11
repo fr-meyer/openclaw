@@ -1,0 +1,245 @@
+{
+  "schema": "openclaw.fork-patch-inventory.v1",
+  "repository": "fr-meyer/openclaw",
+  "candidate": "fork-main-seed-20260929",
+  "manifestSha256": "a4b8d816529e3d4639c5a634a09aff97f3ec28fb6b2c121314715d66128af59e",
+  "upstream": null,
+  "patches": [
+    {
+      "id": "worker-namespace-readback",
+      "originCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+      "disposition": "carry",
+      "appliedCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+      "rationale": "Retain the existing source-only seed intent; this is not a later stable-release disposition.",
+      "evidenceSha256": null,
+      "dependsOn": [],
+      "regressionOwner": "fr-meyer",
+      "regressionTests": [
+        "src/gateway/server.worker-namespace-readback.test.ts",
+        "src/node-host/node-worker-turn-store.test.ts",
+        "src/infra/node-invoke-lifecycle-contract.test.ts",
+        "src/gateway/session-history-worker.integration.test.ts"
+      ],
+      "paths": [
+        {
+          "path": "apps/android/app/src/main/java/ai/openclaw/app/gateway/GatewayProtocol.kt",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "74f83b425c3e512b4eeeee5f435b32fb7dd9a4ed",
+          "upstreamBlob": "2d1b0aa2588d09ea39c7392753665be976f272b4",
+          "candidateBlob": "74f83b425c3e512b4eeeee5f435b32fb7dd9a4ed"
+        },
+        {
+          "path": "docs/cli/gateway/query.md",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "6338268d564035d736e0b53ade104f5aa3c7d1bf",
+          "upstreamBlob": "e4b65c370853360a4422267019909d6d25a46273",
+          "candidateBlob": "6338268d564035d736e0b53ade104f5aa3c7d1bf"
+        },
+        {
+          "path": "src/gateway/methods/core-descriptors.ts",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "b96dc7007d0126a65d8f2796f27052ba6db0cb57",
+          "upstreamBlob": "4f5830218d88fd3c49e6726788d4c2c301269041",
+          "candidateBlob": "b96dc7007d0126a65d8f2796f27052ba6db0cb57"
+        },
+        {
+          "path": "src/gateway/server-kernel-request-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "ba7e781960eac4e9a5f2372a7d8be847a25c5081",
+          "upstreamBlob": "af281d14ded115fd4420367e08c1a27e2675016e",
+          "candidateBlob": "ba7e781960eac4e9a5f2372a7d8be847a25c5081"
+        },
+        {
+          "path": "src/gateway/server-methods-list.test.ts",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "a5fcfc21e74ebcf42bf27714dc7e382c635068f6",
+          "upstreamBlob": "0955f299f0ec5b4ab8f0e007c5a2422b623a7725",
+          "candidateBlob": "a5fcfc21e74ebcf42bf27714dc7e382c635068f6"
+        },
+        {
+          "path": "src/gateway/server-methods/client-types.ts",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "f4923901a839eb526dad6345b7deceb7bfcdc38e",
+          "upstreamBlob": "c4615702f24775859c702b1fa896ca07cbea099c",
+          "candidateBlob": "f4923901a839eb526dad6345b7deceb7bfcdc38e"
+        },
+        {
+          "path": "src/gateway/server-methods/shared-types.ts",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "0636c9dc3df90983f3a46741bfce0e4472f33e8c",
+          "upstreamBlob": "c117abbf0d17283c815d323438364ea99b6e89d5",
+          "candidateBlob": "0636c9dc3df90983f3a46741bfce0e4472f33e8c"
+        },
+        {
+          "path": "src/gateway/server-methods/system.ts",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "7515228cf880e3580bc2c15aa379bc1071a33d47",
+          "upstreamBlob": "f214085a00b5346965b72085bf76c9a3fde3cfe7",
+          "candidateBlob": "7515228cf880e3580bc2c15aa379bc1071a33d47"
+        },
+        {
+          "path": "src/gateway/server-runtime-state-prepare.ts",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "30cb7612da528f3ede570f08fb3aaa0c4b7693cf",
+          "upstreamBlob": "e3a5a39da7237bbbcede671a6c3e535cc567e636",
+          "candidateBlob": "30cb7612da528f3ede570f08fb3aaa0c4b7693cf"
+        },
+        {
+          "path": "src/gateway/server.worker-namespace-readback.test.ts",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "ada4313c67d3d7738c3c4e08ea3690ce6b56dffa",
+          "upstreamBlob": null,
+          "candidateBlob": "ada4313c67d3d7738c3c4e08ea3690ce6b56dffa"
+        },
+        {
+          "path": "src/gateway/server/ws-connection/connect-session.ts",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "b232a43b1f98f25790cebe72ccfde4067755daf4",
+          "upstreamBlob": "1766b43f4e70e70ce57fd06fb8c4c415e5722f8f",
+          "candidateBlob": "b232a43b1f98f25790cebe72ccfde4067755daf4"
+        },
+        {
+          "path": "src/gateway/server/ws-types.ts",
+          "boundary": "container",
+          "sourceCommit": "747e432bd5540ff729c416f7d491c62c648046dd",
+          "sourceTree": "80d22060e435a607490230ee87e5414064e04503",
+          "sourceBlob": "3872d0c0e36930c39c04c367ffeb7c02b1efa65e",
+          "upstreamBlob": "0fa5cd5f321059d27f1dda59d36ac038d58c70d5",
+          "candidateBlob": "3872d0c0e36930c39c04c367ffeb7c02b1efa65e"
+        }
+      ]
+    },
+    {
+      "id": "worker-journal-snapshots",
+      "originCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+      "disposition": "carry",
+      "appliedCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+      "rationale": "Retain the existing source-only seed intent; this is not a later stable-release disposition.",
+      "evidenceSha256": null,
+      "dependsOn": [
+        "worker-namespace-readback"
+      ],
+      "regressionOwner": "fr-meyer",
+      "regressionTests": [
+        "src/gateway/server.worker-namespace-readback.test.ts",
+        "src/node-host/node-worker-turn-store.test.ts",
+        "src/infra/node-invoke-lifecycle-contract.test.ts",
+        "src/gateway/session-history-worker.integration.test.ts"
+      ],
+      "paths": [
+        {
+          "path": "src/node-host/node-worker-journal-worker.ts",
+          "boundary": "container",
+          "sourceCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+          "sourceTree": "35ddb02eb7235932012fca04474ae3c314df9aa3",
+          "sourceBlob": "86098fd059af3a52aa690c2f995d864c4aaef08f",
+          "upstreamBlob": "6adb522b8b67bd36d6f063253ca3507d05091cb1",
+          "candidateBlob": "86098fd059af3a52aa690c2f995d864c4aaef08f"
+        },
+        {
+          "path": "src/node-host/node-worker-turn-snapshot.types.ts",
+          "boundary": "container",
+          "sourceCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+          "sourceTree": "35ddb02eb7235932012fca04474ae3c314df9aa3",
+          "sourceBlob": "6489fc33984156024c1156052125b582c7b61e0d",
+          "upstreamBlob": null,
+          "candidateBlob": "6489fc33984156024c1156052125b582c7b61e0d"
+        },
+        {
+          "path": "src/node-host/node-worker-turn-store.kernel.ts",
+          "boundary": "container",
+          "sourceCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+          "sourceTree": "35ddb02eb7235932012fca04474ae3c314df9aa3",
+          "sourceBlob": "f2b1e8572657b017b36f9cdbbb48d01aa6f5ff8e",
+          "upstreamBlob": "22bc4f9937e208e19c8ac8a610a47348f76e7369",
+          "candidateBlob": "f2b1e8572657b017b36f9cdbbb48d01aa6f5ff8e"
+        },
+        {
+          "path": "src/node-host/node-worker-turn-store.test.ts",
+          "boundary": "container",
+          "sourceCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+          "sourceTree": "35ddb02eb7235932012fca04474ae3c314df9aa3",
+          "sourceBlob": "69cdd9e3e8e94a47bc32e1d4584c3c10bcf93ba9",
+          "upstreamBlob": "b2f7c9b94311dbccb93878168cff8de5f0eb2188",
+          "candidateBlob": "69cdd9e3e8e94a47bc32e1d4584c3c10bcf93ba9"
+        },
+        {
+          "path": "src/node-host/node-worker-turn-store.ts",
+          "boundary": "container",
+          "sourceCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+          "sourceTree": "35ddb02eb7235932012fca04474ae3c314df9aa3",
+          "sourceBlob": "1d8344faa9032a1bd68238b7dc5e4719e5641a14",
+          "upstreamBlob": "4c408cebe3770efde7ac6ce3d0a5d6ebbd168d48",
+          "candidateBlob": "1d8344faa9032a1bd68238b7dc5e4719e5641a14"
+        },
+        {
+          "path": "src/state/openclaw-state-read-snapshot-loader.ts",
+          "boundary": "container",
+          "sourceCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+          "sourceTree": "35ddb02eb7235932012fca04474ae3c314df9aa3",
+          "sourceBlob": "882603cc73fca34de97c276516dbb7fafa5f22fc",
+          "upstreamBlob": null,
+          "candidateBlob": "882603cc73fca34de97c276516dbb7fafa5f22fc"
+        },
+        {
+          "path": "src/state/openclaw-state-read-worker.ts",
+          "boundary": "container",
+          "sourceCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+          "sourceTree": "35ddb02eb7235932012fca04474ae3c314df9aa3",
+          "sourceBlob": "eeb6821d150001d0b2372e936e0010512708c7a6",
+          "upstreamBlob": "e036c93152969ab1d1d093bfe7407beb1c168961",
+          "candidateBlob": "eeb6821d150001d0b2372e936e0010512708c7a6"
+        },
+        {
+          "path": "src/state/openclaw-state-read.types.ts",
+          "boundary": "container",
+          "sourceCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+          "sourceTree": "35ddb02eb7235932012fca04474ae3c314df9aa3",
+          "sourceBlob": "adb988d28b75bf6c6ac9fae4b0f37b103c14be2e",
+          "upstreamBlob": "29dd45b93ea07553a0dba1669cc847e1aa4ad01a",
+          "candidateBlob": "adb988d28b75bf6c6ac9fae4b0f37b103c14be2e"
+        },
+        {
+          "path": "src/state/openclaw-state-read.validation.ts",
+          "boundary": "container",
+          "sourceCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+          "sourceTree": "35ddb02eb7235932012fca04474ae3c314df9aa3",
+          "sourceBlob": "5209f3b35ccd07ee65f071a7758c3dd1bcbb5c01",
+          "upstreamBlob": "542a6537d4798617b00078121b99d4aefca10d33",
+          "candidateBlob": "5209f3b35ccd07ee65f071a7758c3dd1bcbb5c01"
+        },
+        {
+          "path": "src/state/openclaw-state-read.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+          "sourceTree": "35ddb02eb7235932012fca04474ae3c314df9aa3",
+          "sourceBlob": "43c1a6c00ccf326bebb5fa689b25c2b6d32a236a",
+          "upstreamBlob": "ec175a9e9dfa3a156cda6bbb6687e4a251e3ba3d",
+          "candidateBlob": "43c1a6c00ccf326bebb5fa689b25c2b6d32a236a"
+        }
+      ]
+    }
+  ]
+}

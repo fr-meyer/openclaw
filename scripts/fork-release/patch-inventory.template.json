@@ -1,0 +1,36 @@
+{
+  "schema": "openclaw.fork-patch-inventory.v1",
+  "repository": "fr-meyer/openclaw",
+  "candidate": null,
+  "manifestSha256": null,
+  "upstream": {
+    "tag": null,
+    "tagObject": null,
+    "commit": null,
+    "verificationSha256": null
+  },
+  "patches": [
+    {
+      "id": null,
+      "originCommit": null,
+      "disposition": "unknown",
+      "appliedCommit": null,
+      "rationale": "Reconcile the independently researched path ledger before qualification.",
+      "evidenceSha256": null,
+      "dependsOn": [],
+      "regressionOwner": null,
+      "regressionTests": [],
+      "paths": [
+        {
+          "path": null,
+          "boundary": null,
+          "sourceCommit": null,
+          "sourceTree": null,
+          "sourceBlob": null,
+          "upstreamBlob": null,
+          "candidateBlob": null
+        }
+      ]
+    }
+  ]
+}
