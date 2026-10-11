@@ -516,10 +516,55 @@ src/gateway/example.test.ts: error TS2345
  289.86s  failed:2   typecheck core tests
 [check:changed] FAILED (exit 2)
 """
-        commands = native.planner_progress(io.BytesIO(log))
-        self.assertEqual([x["name"] for x in commands], ["typecheck core", "typecheck core tests"])
-        self.assertEqual([x["status"] for x in commands], [0, 2])
-        self.assertEqual(commands[1]["argv"], ["node", "scripts/run-tsgo-core-test-shards.mjs"])
+        for duration, status, exit_code in (
+            (" 289.86s", "failed:2", 2),
+            ("1428.65s", "failed:2", 2),
+            ("1428.65s", "ok", 0),
+            ("  63.77s", "ok", 0),
+        ):
+            sample = log.replace(b" 289.86s  failed:2", f"{duration}  {status}".encode())
+            if exit_code == 0:
+                sample = sample.replace(b"[check:changed] FAILED (exit 2)\n", b"")
+            with self.subTest(duration=duration, status=status):
+                commands = native.planner_progress(io.BytesIO(sample))
+                self.assertEqual([x["name"] for x in commands], ["typecheck core", "typecheck core tests"])
+                self.assertEqual([x["status"] for x in commands], [0, exit_code])
+                self.assertEqual(commands[1]["argv"], ["node", "scripts/run-tsgo-core-test-shards.mjs"])
+
+    def test_failed_trailer_requires_complete_nonempty_summary(self):
+        header = b"\n[check:changed] owner\n$ node owner.mjs\n"
+        for sample in (
+            header,
+            header + b"\n[check:changed] summary\n",
+            header + b"\n[check:changed] summary\n1428.65s failed:2 own",
+            b"\n[check:changed] summary\n",
+        ):
+            with self.subTest(sample=sample), self.assertRaisesRegex(RuntimeError, "planner"):
+                native.planner_progress(io.BytesIO(sample + b"\n[check:changed] FAILED (exit 2)\n"))
+
+    def test_failed_command_entrypoint_retains_results_or_cancels_truncated_evidence(self):
+        header = b"\n[check:changed] owner\n$ node owner.mjs\n"
+        for sample, refused in (
+            (header + b"\n[check:changed] summary\n1428.65s failed:2 owner\n", False),
+            (header, True),
+        ):
+            self.n.cancel = False
+            def completed(argv, **kwargs):
+                kwargs["stdout"].write(sample)
+                return SimpleNamespace(pid=123456789, poll=lambda: 2, wait=lambda: 2)
+            with self.subTest(refused=refused), patch.object(native.subprocess, "Popen", side_effect=completed), patch.object(self.n, "dispose_cache") as cleanup, patch.object(self.n, "source_snapshot"):
+                result, _ = self.n.run("changed-checks", ["synthetic-planner"])
+                cleanup.assert_called_once()
+                self.assertEqual(result["exit"], 2)
+                self.assertFalse(native.good(result))
+                self.assertEqual(self.n.cancel, refused)
+                if refused:
+                    self.assertIn("planner progress refused", result["reason"])
+                    self.assertEqual(result["plannerReached"], 0)
+                else:
+                    self.assertIsNone(result["reason"])
+                    self.assertEqual(result["plannerReached"], 1)
+                    self.assertEqual(result["plannerCommands"][0]["status"], 2)
 
     def test_planner_success_has_started_commands_with_unknown_completion_until_exit(self):
         result = native.planner_progress(io.BytesIO(b"\n[check:changed] owner\n$ node owner.mjs\n"))
@@ -534,6 +579,9 @@ src/gateway/example.test.ts: error TS2345
             b"\n[check:changed] first\n$ node one.mjs\n\n[check:changed] summary\n",
             b"\n[check:changed] first\n$ node one.mjs\n\n[check:changed] first\n$ node two.mjs\n",
             b"\n[check:changed] first\n$ node one.mjs\n\n[check:changed] second\n$ node two.mjs\n\n[check:changed] summary\n 1s ok second\n 1s ok first\n",
+            b"\n[check:changed] first\n$ node one.mjs\n\n[check:changed] summary\n      1s ok first\n[check:changed] summary\n",
+            b"\n[check:changed] first\n$ node one.mjs\n\n[check:changed] summary\n      1s ok first\n\n[check:changed] second\n$ node two.mjs\n",
+            b"\n[check:changed] first\n$ node one.mjs\n\n[check:changed] summary\n      1s ok first\n1s ok first\n",
         ):
             with self.subTest(log=log), self.assertRaisesRegex(RuntimeError, "planner"):
                 native.planner_progress(io.BytesIO(log))

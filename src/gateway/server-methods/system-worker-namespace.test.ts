@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { systemHandlers } from "./system.js";
-import type { GatewayClient, GatewayRequestOptions } from "./types.js";
+import type { GatewayClient, GatewayRequestHandlerOptions } from "./types.js";
 
 const METHOD = "gateway.workerNamespace.get";
 const namespace = "gateway-synthetic-prepared-namespace";
@@ -16,17 +16,19 @@ function admittedClient(): GatewayClient {
   } as GatewayClient;
 }
 
-async function readNamespace(overrides: Partial<GatewayRequestOptions> = {}) {
+async function readNamespace(overrides: Partial<GatewayRequestHandlerOptions> = {}) {
   const respond = vi.fn();
   const options = {
+    req: { type: "req", id: "synthetic-namespace-read", method: METHOD },
     params: {},
     client: admittedClient(),
-    context: { nodeWorkerGatewayNamespace: namespace },
+    isWebchatConnect: () => false,
+    context: { nodeWorkerGatewayNamespace: namespace } as GatewayRequestHandlerOptions["context"],
     hasCurrentClientAuthority: () => true,
     signal: new AbortController().signal,
     ...overrides,
     respond,
-  } as GatewayRequestOptions;
+  } satisfies GatewayRequestHandlerOptions;
   await systemHandlers[METHOD]!(options);
   expect(respond).toHaveBeenCalledOnce();
   const [ok, payload, error] = respond.mock.calls[0]!;
@@ -34,6 +36,24 @@ async function readNamespace(overrides: Partial<GatewayRequestOptions> = {}) {
 }
 
 describe("prepared Gateway worker namespace readback", () => {
+  it("supplies the normalized registered-handler request shape", async () => {
+    const handler = vi.spyOn(systemHandlers, METHOD);
+    try {
+      await readNamespace();
+      expect(handler).toHaveBeenCalledOnce();
+      const [options] = handler.mock.calls[0]!;
+      expect(options.req).toEqual({
+        type: "req",
+        id: "synthetic-namespace-read",
+        method: METHOD,
+      });
+      expect(options.params).toEqual({});
+      expect(options.isWebchatConnect(null)).toBe(false);
+    } finally {
+      handler.mockRestore();
+    }
+  });
+
   it.each(["token", "password", "device-token", "tailscale", "trusted-proxy"] as const)(
     "returns prepared identity for a current admitted %s reader",
     async (authenticatedMethod) => {
@@ -78,7 +98,7 @@ describe("prepared Gateway worker namespace readback", () => {
     "pre-connect",
   ] as const)("rejects %s without disclosing identity", async (reason) => {
     const client = admittedClient();
-    const options: Partial<GatewayRequestOptions> = { client };
+    const options: Partial<GatewayRequestHandlerOptions> = { client };
     const aborted = new AbortController();
     aborted.abort();
     if (reason === "no read scope") client.connect.scopes = [];
@@ -103,7 +123,7 @@ describe("prepared Gateway worker namespace readback", () => {
       readNamespace({ params: { bootId: "caller-boot", namespace: "caller-namespace" } }),
     ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } });
     await expect(
-      readNamespace({ context: {} as GatewayRequestOptions["context"] }),
+      readNamespace({ context: {} as GatewayRequestHandlerOptions["context"] }),
     ).resolves.toMatchObject({ ok: false, error: { code: "UNAVAILABLE" } });
   });
 });

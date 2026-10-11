@@ -47,7 +47,7 @@ def before(data):
  need(sha(old)==OLD,"predecessor CLI differs")
  return old
 
-def planner_progress(stream):
+def planner_progress(stream,*,require_summary=False):
  """Count named execution headers; summary rows prove failed-plan completion."""
  commands=[];pending=None;blank=False;summary=False;results=[]
  for raw in stream:
@@ -56,14 +56,18 @@ def planner_progress(stream):
   pending=None
   # runCommand emits a blank line and a named header, including in-process
   # guards without a shell argv. printPlan reasons have no separating blank.
-  if line=="[check:changed] summary":summary=True
+  if line=="[check:changed] summary":
+   need(not summary,"duplicate planner summary");summary=True
+  elif line.startswith("[check:changed] FAILED"):require_summary=True
   elif blank and line.startswith("[check:changed] ")and not line.startswith(("[check:changed] lanes=","[check:changed] FAILED")):
+   need(not summary,"planner command after summary")
    commands.append({"name":line[len("[check:changed] "):],"argv":None,"status":None});pending=len(commands)-1
   elif summary:
-   row=re.fullmatch(r"\s+[0-9.]+(?:ms|s)\s+(ok|failed:[0-9]+)\s+(.+)",line)
+   row=re.fullmatch(r"\s*[0-9.]+(?:ms|s)\s+(ok|failed:[0-9]+)\s+(.+)",line)
    if row:results.append((row[2],0 if row[1]=="ok"else int(row[1].split(":")[1])))
   blank=not line
  need(len(commands)<=128 and len({c["name"]for c in commands})==len(commands),"ambiguous planner commands")
+ need(not require_summary or summary and commands,"failed planner missing summary")
  if summary:
   need([name for name,_ in results]==[c["name"]for c in commands],"incomplete planner summary")
   for command,(_,status)in zip(commands,results):command["status"]=status
@@ -358,7 +362,7 @@ class Native:
    head=stream.read(16384);stream.seek(max(16384,total-49152));tail=stream.read(49152)
    if name=="changed-checks":
     stream.seek(0)
-    try:progress=planner_progress(stream)
+    try:progress=planner_progress(stream,require_summary=bool(status))
     except Exception as error:reason=reason or "planner progress refused: "+str(error);self.cancel=True
   raw.unlink()
   text=(head+(b"\n[BOUNDED LOG; MIDDLE OMITTED]\n" if total>65536 else b"")+tail).decode("utf-8","replace")
