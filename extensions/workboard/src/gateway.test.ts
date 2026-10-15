@@ -176,32 +176,6 @@ describe("workboard gateway methods", () => {
     },
   );
 
-  it("exposes exact-card targeting through the existing dashboard dispatch action", () => {
-    const manifest = JSON.parse(
-      fs.readFileSync(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
-    ) as {
-      dashboard?: {
-        actionVerbs?: Array<{
-          id?: string;
-          method?: string;
-          paramShape?: { properties?: Record<string, unknown> };
-        }>;
-      };
-    };
-    const dispatch = manifest.dashboard?.actionVerbs?.find((entry) => entry.id === "dispatch");
-
-    expect(dispatch).toMatchObject({
-      method: "workboard.cards.dispatchWithOptions",
-      paramShape: {
-        properties: {
-          boardId: expect.any(Object),
-          cardId: expect.objectContaining({ type: "string", minLength: 1 }),
-          maxStarts: expect.objectContaining({ type: "integer", minimum: 1 }),
-        },
-      },
-    });
-  });
-
   it.each(["move", "archive", "delete"] as const)(
     "returns a redacted conflict for stale %s requests",
     async (action) => {
@@ -296,6 +270,8 @@ describe("workboard gateway methods", () => {
       "workboard.cards.dispatch.owner",
       "workboard.cards.dispatchWithOptions",
       "workboard.cards.dispatchWithOptions.owner",
+      "workboard.cards.dispatchExact",
+      "workboard.cards.dispatchExact.owner",
       "workboard.boards.list",
       "workboard.boards.upsert",
       "workboard.sessionsBoard.read",
@@ -846,10 +822,41 @@ describe("workboard gateway methods", () => {
       const siblingBefore = await store.get(sibling.id);
       const list = vi.spyOn(store, "list");
       registerWorkboardGatewayMethods({ api, store });
+      const manifest = JSON.parse(
+        fs.readFileSync(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
+      ) as {
+        dashboard?: {
+          actionVerbs?: Array<{
+            id?: string;
+            method?: string;
+            paramShape?: {
+              required?: string[];
+              properties?: Record<string, unknown>;
+            };
+          }>;
+        };
+      };
+      const exactAction = manifest.dashboard?.actionVerbs?.find(
+        (entry) => entry.id === "dispatchExact",
+      );
+      expect(exactAction).toMatchObject({
+        method: "workboard.cards.dispatchExact",
+        paramShape: {
+          required: ["cardId"],
+          properties: {
+            boardId: expect.any(Object),
+            cardId: expect.objectContaining({ type: "string", minLength: 1 }),
+          },
+        },
+      });
+      const exactHandler = exactAction?.method
+        ? methods.get(exactAction.method)?.handler
+        : undefined;
+      expect(exactHandler).toBeDefined();
       const respond = vi.fn();
       const intentRunId = `wb-${"a".repeat(40)}`;
 
-      await methods.get("workboard.cards.dispatchWithOptions")?.handler({
+      await exactHandler?.({
         params: { boardId: "ops", cardId: target.id, intentRunId },
         context: { getRuntimeConfig: () => ({}) },
         respond,
@@ -913,6 +920,7 @@ describe("workboard gateway methods", () => {
     );
     registerWorkboardGatewayMethods({ api, store });
     const handler = methods.get("workboard.cards.dispatchWithOptions")?.handler;
+    const exactHandler = methods.get("workboard.cards.dispatchExact")?.handler;
 
     const respond = vi.fn();
     await handler?.({ params: { boardId: "capped", maxStarts: 4 }, respond } as never);
@@ -980,12 +988,26 @@ describe("workboard gateway methods", () => {
       ?.handler({ params: { cardId: "card-1" }, respond: legacyCardRespond } as never);
     expect(legacyCardRespond.mock.calls[0]?.[0]).toBe(false);
     expect(legacyCardRespond.mock.calls[0]?.[2]?.message).toBe(
-      "cardId requires workboard.cards.dispatchWithOptions.",
+      "cardId requires workboard.cards.dispatchExact.",
+    );
+
+    const optionsCardRespond = vi.fn();
+    await handler?.({ params: { cardId: "card-1" }, respond: optionsCardRespond } as never);
+    expect(optionsCardRespond.mock.calls[0]?.[0]).toBe(false);
+    expect(optionsCardRespond.mock.calls[0]?.[2]?.message).toBe(
+      "cardId requires workboard.cards.dispatchExact.",
+    );
+
+    const missingExactCardRespond = vi.fn();
+    await exactHandler?.({ params: {}, respond: missingExactCardRespond } as never);
+    expect(missingExactCardRespond.mock.calls[0]?.[0]).toBe(false);
+    expect(missingExactCardRespond.mock.calls[0]?.[2]?.message).toBe(
+      "cardId is required for workboard.cards.dispatchExact.",
     );
 
     for (const value of ["", "   ", 42]) {
       const invalidCardRespond = vi.fn();
-      await handler?.({ params: { cardId: value }, respond: invalidCardRespond } as never);
+      await exactHandler?.({ params: { cardId: value }, respond: invalidCardRespond } as never);
       expect(invalidCardRespond.mock.calls[0]?.[0]).toBe(false);
       expect(invalidCardRespond.mock.calls[0]?.[2]?.message).toBe(
         "cardId must be a non-empty string.",
@@ -1007,11 +1029,11 @@ describe("workboard gateway methods", () => {
       respond: unscopedIntent,
     } as never);
     expect(unscopedIntent.mock.calls[0]?.[2]?.message).toBe(
-      "intentRunId requires one exact card through dispatchWithOptions.",
+      "intentRunId requires one exact card through dispatchExact.",
     );
     for (const value of ["bad", 42, `wb-${"A".repeat(40)}`]) {
       const invalidIntent = vi.fn();
-      await handler?.({
+      await exactHandler?.({
         params: { cardId: "card-1", intentRunId: value },
         respond: invalidIntent,
       } as never);
@@ -1022,7 +1044,7 @@ describe("workboard gateway methods", () => {
     expect(run).toHaveBeenCalledTimes(7);
 
     const exactCapRespond = vi.fn();
-    await handler?.({
+    await exactHandler?.({
       params: { cardId: "card-1", maxStarts: 2 },
       respond: exactCapRespond,
     } as never);

@@ -130,12 +130,20 @@ export function createWorkboardDispatchHandler(params: {
 }) {
   return async (
     { params: requestParams, client, context, sessionMutationCommitGuard }: GatewayMethodContext,
-    options: { supportsMaxStarts: boolean; supportsCardId?: boolean; directCard?: boolean },
+    options: {
+      supportsMaxStarts: boolean;
+      supportsCardId?: boolean;
+      requiresCardId?: boolean;
+      directCard?: boolean;
+    },
   ) => {
     const input = asRecord(requestParams);
     const rawCardId = options.directCard ? input.id : input.cardId;
+    if (options.requiresCardId && rawCardId === undefined) {
+      throw new Error("cardId is required for workboard.cards.dispatchExact.");
+    }
     if (!options.directCard && !options.supportsCardId && rawCardId !== undefined) {
-      throw new Error("cardId requires workboard.cards.dispatchWithOptions.");
+      throw new Error("cardId requires workboard.cards.dispatchExact.");
     }
     let cardId: string | undefined;
     if (options.directCard) {
@@ -166,7 +174,7 @@ export function createWorkboardDispatchHandler(params: {
     }
     const rawIntentRunId = input.intentRunId;
     if (rawIntentRunId !== undefined && (!options.supportsCardId || !cardId)) {
-      throw new Error("intentRunId requires one exact card through dispatchWithOptions.");
+      throw new Error("intentRunId requires one exact card through dispatchExact.");
     }
     if (
       rawIntentRunId !== undefined &&

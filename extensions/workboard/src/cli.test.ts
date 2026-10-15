@@ -170,7 +170,7 @@ describe("registerWorkboardCli", () => {
     expect(output).toContain("Archived card (archived)");
   });
 
-  it("forwards one exact --card target through dispatchWithOptions", async () => {
+  it("forwards one exact --card target through the fail-safe exact RPC", async () => {
     const store = createWorkboardSqliteTestStore();
     const program = createProgram(store);
     gatewayRuntime.callGatewayFromCli.mockResolvedValueOnce({ started: [], startFailures: [] });
@@ -181,7 +181,7 @@ describe("registerWorkboardCli", () => {
     );
 
     expect(gatewayRuntime.callGatewayFromCli).toHaveBeenCalledWith(
-      "workboard.cards.dispatchWithOptions",
+      "workboard.cards.dispatchExact",
       expect.anything(),
       { boardId: "ops", cardId: "card-exact-1" },
       expect.anything(),
@@ -208,6 +208,23 @@ describe("registerWorkboardCli", () => {
       }),
     ).rejects.toThrow("--max-starts must be 1 when --card is provided.");
     expect(gatewayRuntime.callGatewayFromCli).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when an older Gateway lacks the exact-card RPC", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const card = await store.create({ title: "Exact mixed-version target", status: "ready" });
+    const program = createProgram(store);
+    gatewayRuntime.callGatewayFromCli.mockRejectedValueOnce(
+      new Error("unknown method: workboard.cards.dispatchExact"),
+    );
+
+    await expect(
+      program.parseAsync(["workboard", "dispatch", "--card", card.id], { from: "user" }),
+    ).rejects.toThrow("unknown method: workboard.cards.dispatchExact");
+    expect(gatewayRuntime.callGatewayFromCli.mock.calls[0]?.[0]).toBe(
+      "workboard.cards.dispatchExact",
+    );
+    await expect(store.get(card.id)).resolves.toEqual(card);
   });
 
   it("never falls back to local data-only dispatch for an exact card", async () => {

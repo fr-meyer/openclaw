@@ -36,6 +36,7 @@ const CLI_OWNER_METHODS = new Set([
   "workboard.cards.move",
   "workboard.cards.dispatch",
   "workboard.cards.dispatchWithOptions",
+  "workboard.cards.dispatchExact",
 ]);
 
 function sessionsBoardView(input: Record<string, unknown>): WorkboardSessionsBoardView | undefined {
@@ -310,7 +311,14 @@ export function registerWorkboardGatewayMethods(params: {
     dispatchCards(request, { supportsMaxStarts: false }),
   );
   register("workboard.cards.dispatchWithOptions", WRITE_SCOPE, (request) =>
-    dispatchCards(request, { supportsMaxStarts: true, supportsCardId: true }),
+    dispatchCards(request, { supportsMaxStarts: true }),
+  );
+  register("workboard.cards.dispatchExact", WRITE_SCOPE, (request) =>
+    dispatchCards(request, {
+      supportsMaxStarts: true,
+      supportsCardId: true,
+      requiresCardId: true,
+    }),
   );
   register("workboard.boards.list", READ_SCOPE, () => store.listBoards());
   register("workboard.boards.upsert", WRITE_SCOPE, async (request) => {

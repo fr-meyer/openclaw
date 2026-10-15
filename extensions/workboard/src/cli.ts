@@ -261,8 +261,9 @@ export function registerWorkboardCli(params: {
     if (cardId && options.maxStarts !== undefined && options.maxStarts !== 1) {
       throw invalidCliArgument("--max-starts must be 1 when --card is provided.");
     }
-    const method =
-      options.maxStarts === undefined && !cardId
+    const method = cardId
+      ? "workboard.cards.dispatchExact"
+      : options.maxStarts === undefined
         ? "workboard.cards.dispatch"
         : "workboard.cards.dispatchWithOptions";
     const input = {
