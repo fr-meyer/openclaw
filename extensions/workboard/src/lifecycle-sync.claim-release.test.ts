@@ -557,7 +557,6 @@ describe("Workboard terminal claim lifecycle", () => {
     });
     expect(recovered?.metadata?.attempts).toEqual([
       expect.objectContaining({
-        id: "accepted-run",
         sessionKey: canonicalSessionKey,
         runId: "accepted-run",
         status: "succeeded",

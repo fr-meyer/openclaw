@@ -44,9 +44,10 @@ export function workboardCardMatchesLifecycleLink(
       );
       const mayBackfillProvisionalRun =
         !sourceBelongsToPriorAttempt &&
-        launch?.provisionalRunId === linkedRunId &&
-        (launch.phase === "prepared" ||
-          (launch.phase === "accepted" && launch.acceptedRunId === undefined));
+        ((launch?.provisionalRunId === linkedRunId &&
+          (launch.phase === "prepared" ||
+            (launch.phase === "accepted" && launch.acceptedRunId === undefined))) ||
+          (!launch && linkedRunId.startsWith(`workboard:${card.id}:`)));
       if (!mayBackfillProvisionalRun) {
         return false;
       }

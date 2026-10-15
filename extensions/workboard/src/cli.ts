@@ -34,11 +34,11 @@ type DispatchOptions = GatewayOptions & {
 };
 
 function invalidCliArgument(message: string): Error & { code: string; exitCode: number } {
-  const error = new Error(message) as Error & { code: string; exitCode: number };
-  error.name = "InvalidArgumentError";
-  error.code = "commander.invalidArgument";
-  error.exitCode = 1;
-  return error;
+  return Object.assign(new Error(message), {
+    name: "InvalidArgumentError",
+    code: "commander.invalidArgument",
+    exitCode: 1,
+  });
 }
 
 function parseMaxStarts(value: string): number {

@@ -38,6 +38,9 @@ export class WorkboardDispatchStore extends WorkboardNotificationStore {
       throw new Error("cardId must be a non-empty string.");
     }
     return await this.enqueueMutation(async () => {
+      if (boardId) {
+        await this.assertCardsBoard(boardId);
+      }
       const promoted: WorkboardCard[] = [];
       const reclaimed: WorkboardCard[] = [];
       const blocked: WorkboardCard[] = [];
@@ -50,6 +53,9 @@ export class WorkboardDispatchStore extends WorkboardNotificationStore {
           throw new Error(`card not found: ${cardId}`);
         }
         const actualBoardId = cardBoardId(card);
+        if (!boardId) {
+          await this.assertCardsBoard(actualBoardId);
+        }
         if (boardId && actualBoardId !== boardId) {
           throw new Error(`card ${cardId} belongs to board ${actualBoardId}, not ${boardId}.`);
         }
