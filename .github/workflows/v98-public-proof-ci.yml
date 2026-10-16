@@ -1,0 +1,72 @@
+name: V98 one keyless identity qualification
+# LOCAL SOURCE ONLY. Publication, trust and cleanup require the sealed approval.
+on:
+  push:
+    branches: [candidate/v2026.9.8-runtime-qualification]
+    paths:
+      - .github/workflows/v98-public-proof-ci.yml
+      - scripts/proofs/v98-ci-identity/**
+# Written/read back as a repository variable BEFORE the one approved push.
+# Freeze the public contract here; no waiting-job or environment-variable update.
+env:
+  V98_CI_IDENTITY_BINDING: ${{ vars.V98_CI_IDENTITY_BINDING }}
+permissions:
+  contents: read
+concurrency:
+  group: v98-keyless-identity-single-owner
+  cancel-in-progress: false
+jobs:
+  source:
+    if: >-
+      github.repository == 'fr-meyer/openclaw' &&
+      github.repository_id == '1309456040' &&
+      github.repository_owner_id == '26621962' &&
+      github.sha == vars.V98_CI_IDENTITY_APPROVED_COMMIT &&
+      format('{0}', github.run_number) == vars.V98_CI_IDENTITY_APPROVED_RUN_NUMBER &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Focused identity-only source tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -B -S scripts/proofs/v98-ci-identity/tests/check_identity.py
+  identity:
+    needs: source
+    if: >-
+      needs.source.result == 'success' &&
+      vars.V98_CI_IDENTITY_ENABLE == 'EXACT_ONE_IDENTITY_PROBE' &&
+      github.run_attempt == 1
+    environment: v98-public-proof-ci-admission
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: One separately approved identity exchange
+        shell: bash
+        env:
+          V98_IDENTITY_ENVIRONMENT: v98-public-proof-ci-admission
+          V98_IDENTITY_RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          set -euo pipefail
+          umask 077
+          V98_IDENTITY_ROOT="$GITHUB_WORKSPACE/scripts/proofs/v98-ci-identity"
+          find "$V98_IDENTITY_ROOT" -type d -exec chmod 700 {} +
+          find "$V98_IDENTITY_ROOT" -type f -exec chmod 600 {} +
+          ulimit -v 262144
+          ulimit -t 30
+          python3 -I -B -S "$V98_IDENTITY_ROOT/source/ci_identity.py" --run-approved-identity-once
+# No full VM owner, artifact acquisition/upload, SDK, SSH, private data or resource role.
