@@ -1,0 +1,57 @@
+{
+  "artifact": {
+    "count": 1,
+    "maximumBytes": 1048576,
+    "readelfMetadataMaximumBytes": 65536,
+    "retentionDays": 7
+  },
+  "inputs": {
+    "LICENSE.node": {
+      "bytes": 157609,
+      "sha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"
+    },
+    "include/node/js_native_api.h": {
+      "bytes": 33158,
+      "sha256": "8808ef8899a1691411928ef5dd7dae0537aedc93d3a34e223b2d89692e79c788"
+    },
+    "include/node/js_native_api_types.h": {
+      "bytes": 7871,
+      "sha256": "4f19cb90d240765cc0961d92a1ee20f65fdc50db7de1ab0a5cb6bc227224e1a0"
+    },
+    "include/node/node_api.h": {
+      "bytes": 10370,
+      "sha256": "2d4560831e525b47b060ec8a0864ab73993df9e20215ce9f0fe7b24cd31af32a"
+    },
+    "include/node/node_api_types.h": {
+      "bytes": 1930,
+      "sha256": "a25356630d3058f0a0c8937d9f297e9471e037fda58c2696d8a505c2bd99cb00"
+    },
+    "source/policy.generated.h": {
+      "bytes": 13394,
+      "sha256": "46c611b631dca19d6bf5b9ec42aa037319d7e393a83d2e8feb0df2113bbc480b"
+    },
+    "source/strict_guard.c": {
+      "bytes": 12235,
+      "sha256": "a88a670ce00aa152055762722f5316e736114c2ef74290c9155b39bcad0705c8"
+    }
+  },
+  "notRuntimeQualification": true,
+  "publicNodeHeaders": {
+    "filesystemManifestSha256": "b2a4190c91595ac2141cedc8bb9f580cf0e3b8b2df8d58328c1563bb50c947d2",
+    "imageArchiveSha256": "aa8e49f29a2ea4af3da4b8d48a2cfacf3c50cc6b233da6125a4680c4bd0378ed",
+    "imageConfigId": "sha256:c46157d99083ddcbf5e6f31a00946e1b6e6b9fabc555a06dbd3df4a333ff3e62",
+    "nodeExecutableSha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+  },
+  "purpose": "One future compiler-only guard shared object; no product rebuild, guard load, Nodefixture or private execution.",
+  "schema": "v98-public-guard-compiler-inputs/v1",
+  "toolchain": {
+    "binutilsVersion": "2.42",
+    "gccFullVersion": "13.3.0",
+    "maximumRequiredGlibc": "2.36",
+    "policy": "Use existing runner tools only; require exact versions or refuse. Never install/download a replacement.",
+    "pythonMajorMinor": "3.12",
+    "runner": "ubuntu-24.04",
+    "targetMachine": "linux/amd64",
+    "versionsConfirmedAvailableNow": false
+  }
+}

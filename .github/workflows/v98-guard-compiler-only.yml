@@ -1,0 +1,132 @@
+name: V98 one Linux guard compiler-only job
+# OFFLINE PROPOSAL. New exact approval is required before publication.
+# Pinned platform actions use Node; target Node and the guard never execute.
+on:
+  push:
+    branches: [candidate/v2026.9.8-runtime-qualification]
+    paths:
+      - .github/workflows/v98-guard-compiler-only.yml
+      - scripts/proofs/v98-linux-guard-compiler/**
+permissions:
+  contents: read
+concurrency:
+  group: v98-one-guard-compiler-only
+  cancel-in-progress: false
+jobs:
+  compile:
+    if: >-
+      github.repository == 'fr-meyer/openclaw' &&
+      github.repository_id == '1309456040' &&
+      github.repository_owner_id == '26621962' &&
+      github.sha == vars.V98_GUARD_COMPILER_APPROVED_COMMIT &&
+      format('{0}', github.run_number) == vars.V98_GUARD_COMPILER_APPROVED_RUN_NUMBER &&
+      vars.V98_GUARD_COMPILER_ENABLE == 'EXACT_ONE_LINUX_GUARD_COMPILE' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      V98_COMPILER_BINDING: ${{ vars.V98_GUARD_COMPILER_BINDING }}
+    steps:
+      - name: Admit original operator window before checkout
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          /usr/bin/python3 -I -B -S - <<'PY_GATE'
+          import json
+          import os
+          import re
+          import time
+          
+          def job_admission(phase, environment=None, now=None):
+              env = os.environ if environment is None else environment
+              now = time.time() if now is None else now
+              raw = env.get("V98_COMPILER_BINDING", "")
+              if not isinstance(raw, str) or len(raw) > 2048:
+                  raise ValueError("JOB_BINDING_REFUSED")
+          
+              def pairs(items):
+                  result = {}
+                  for key, value in items:
+                      if key in result:
+                          raise ValueError("DUPLICATE_BINDING_KEY")
+                      result[key] = value
+                  return result
+          
+              binding = json.loads(raw, object_pairs_hook=pairs)
+              keys = {"schema", "mode", "nonce", "operatorStartEpoch", "queueBeforeEpoch",
+                      "compileBeforeEpoch", "uploadBeforeEpoch", "remoteEndEpoch", "commit",
+                      "runNumber", "repository", "repositoryId", "ownerId", "branch"}
+              if type(binding) is not dict or set(binding) != keys:
+                  raise ValueError("EXACT_JOB_BINDING_KEYS")
+              if (binding["schema"] != "v98-compiler-job-binding/v1" or
+                      binding["mode"] != "EXACT_ONE_LINUX_GUARD_COMPILE" or
+                      not isinstance(binding["nonce"], str) or
+                      re.fullmatch("[a-f0-9]{32}", binding["nonce"]) is None or
+                      not isinstance(binding["commit"], str) or
+                      re.fullmatch("[a-f0-9]{40}", binding["commit"]) is None or
+                      type(binding["runNumber"]) is not int or binding["runNumber"] != 1):
+                  raise ValueError("EXACT_JOB_BINDING")
+              for key, offset in (("operatorStartEpoch", 0), ("queueBeforeEpoch", 840),
+                                  ("compileBeforeEpoch", 960), ("uploadBeforeEpoch", 1020),
+                                  ("remoteEndEpoch", 1080)):
+                  if (type(binding[key]) is not int or type(binding["operatorStartEpoch"]) is not int or
+                          binding[key] != binding["operatorStartEpoch"] + offset):
+                      raise ValueError("EXACT_OPERATOR_OFFSETS")
+              expected = {"GITHUB_REPOSITORY": "fr-meyer/openclaw", "GITHUB_REPOSITORY_ID": "1309456040",
+                          "GITHUB_REPOSITORY_OWNER_ID": "26621962", "GITHUB_EVENT_NAME": "push",
+                          "GITHUB_REF": "refs/heads/candidate/v2026.9.8-runtime-qualification",
+                          "GITHUB_SHA": binding["commit"], "GITHUB_RUN_NUMBER": "1",
+                          "GITHUB_RUN_ATTEMPT": "1", "RUNNER_ENVIRONMENT": "github-hosted",
+                          "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64",
+                          "GITHUB_WORKFLOW_REF": "fr-meyer/openclaw/.github/workflows/v98-guard-compiler-only.yml@refs/heads/candidate/v2026.9.8-runtime-qualification"}
+              if (binding["repository"] != expected["GITHUB_REPOSITORY"] or
+                      binding["repositoryId"] != expected["GITHUB_REPOSITORY_ID"] or
+                      binding["ownerId"] != expected["GITHUB_REPOSITORY_OWNER_ID"] or
+                      binding["branch"] != expected["GITHUB_REF"].removeprefix("refs/heads/") or
+                      any(env.get(key) != value for key, value in expected.items()) or
+                      re.fullmatch("[1-9][0-9]{0,14}", env.get("GITHUB_RUN_ID", "")) is None):
+                  raise ValueError("EXACT_HOSTED_PUSH_CONTEXT")
+              cutoffs = {"queue": "queueBeforeEpoch", "compile": "compileBeforeEpoch",
+                         "upload": "uploadBeforeEpoch"}
+              if (phase not in cutoffs or type(now) not in (int, float) or
+                      not binding["operatorStartEpoch"] <= now < binding[cutoffs[phase]]):
+                  raise ValueError("OPERATOR_JOB_WINDOW_CLOSED")
+              return binding
+          
+          job_admission("queue")
+          PY_GATE
+      - name: Get only reviewed public compiler inputs
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: scripts/proofs/v98-linux-guard-compiler
+      - name: Compile guard once and inspect ELF without loading it
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          /usr/bin/python3 -I -B -S scripts/proofs/v98-linux-guard-compiler/compile_guard.py
+      - name: Admit bounded artifact upload in original window
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          /usr/bin/python3 -I -B -S scripts/proofs/v98-linux-guard-compiler/compile_guard.py --admit-upload
+      - name: Retain one bounded public compiler artifact for seven days
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 1
+        with:
+          name: v98-guard-compiler-only-${{ github.run_id }}
+          path: scripts/proofs/v98-linux-guard-compiler/guard-build/v98-guard-compiler-only.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+          include-hidden-files: false
+# No target Node, guard load, fixture, dependency install, GCP or product build.
