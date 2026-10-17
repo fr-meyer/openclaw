@@ -23,6 +23,7 @@ vi.mock("../../infra/clawhub-plugin-catalog.js", () => ({
   fetchClawHubPluginCatalog: registry.plugins,
 }));
 vi.mock("../../plugins/management-service.js", () => ({ listManagedPlugins: registry.local }));
+// mock-isolation: Recommendation tests must never activate the real ClawHub install path.
 vi.mock("../../plugins/clawhub.js", () => ({ installPluginFromClawHub: registry.install }));
 vi.mock("../../infra/clawhub-skills.js", () => ({ searchClawHubSkills: registry.skills }));
 vi.mock("../../skills/discovery/status.js", () => ({
