@@ -48,7 +48,7 @@ def job_admission(phase, environment=None, now=None):
             re.fullmatch("[a-f0-9]{32}", binding["nonce"]) is None or
             not isinstance(binding["commit"], str) or
             re.fullmatch("[a-f0-9]{40}", binding["commit"]) is None or
-            type(binding["runNumber"]) is not int or binding["runNumber"] != 1):
+            type(binding["runNumber"]) is not int or binding["runNumber"] != 2):
         raise ValueError("EXACT_JOB_BINDING")
     for key, offset in (("operatorStartEpoch", 0), ("queueBeforeEpoch", 840),
                         ("compileBeforeEpoch", 960), ("uploadBeforeEpoch", 1020),
@@ -59,7 +59,7 @@ def job_admission(phase, environment=None, now=None):
     expected = {"GITHUB_REPOSITORY": "fr-meyer/openclaw", "GITHUB_REPOSITORY_ID": "1309456040",
                 "GITHUB_REPOSITORY_OWNER_ID": "26621962", "GITHUB_EVENT_NAME": "push",
                 "GITHUB_REF": "refs/heads/candidate/v2026.9.8-runtime-qualification",
-                "GITHUB_SHA": binding["commit"], "GITHUB_RUN_NUMBER": "1",
+                "GITHUB_SHA": binding["commit"], "GITHUB_RUN_NUMBER": "2",
                 "GITHUB_RUN_ATTEMPT": "1", "RUNNER_ENVIRONMENT": "github-hosted",
                 "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64",
                 "GITHUB_WORKFLOW_REF": "fr-meyer/openclaw/.github/workflows/v98-guard-compiler-only.yml@refs/heads/candidate/v2026.9.8-runtime-qualification"}
@@ -217,7 +217,7 @@ def main():
     receipt = {"schema": "v98-public-compiler-only-result/v1", "status": "PASS_COMPILE_AND_STATIC_ELF_ONLY",
         "operatorStartEpoch": binding["operatorStartEpoch"], "compileBeforeEpoch": binding["compileBeforeEpoch"],
         "publicAttemptNonce": binding["nonce"], "commit": binding["commit"],
-        "runId": os.environ["GITHUB_RUN_ID"], "runNumber": 1, "runAttempt": 1,
+        "runId": os.environ["GITHUB_RUN_ID"], "runNumber": 2, "runAttempt": 1,
         "inputManifestSha256": sha(manifest_path.read_bytes()), "compilerDriverSha256": sha(Path(__file__).read_bytes()),
         "gcc": gcc, "binutils": "2.42", "target": "linux/amd64", "glibcRequiredVersions": glibc,
         "maximumAdmittedGlibc": "2.36", "sharedObjectBytes": len(binary), "sharedObjectSha256": sha(binary),
