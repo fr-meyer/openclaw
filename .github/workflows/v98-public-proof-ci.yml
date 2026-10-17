@@ -70,3 +70,4 @@ jobs:
           ulimit -t 30
           python3 -I -B -S "$V98_IDENTITY_ROOT/source/ci_identity.py" --run-approved-identity-once
 # No full VM owner, artifact acquisition/upload, SDK, SSH, private data or resource role.
+# Fresh identity-only run 2; admission variables remain until terminal or bounded abort.
