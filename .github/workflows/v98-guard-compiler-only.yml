@@ -66,7 +66,7 @@ jobs:
                       re.fullmatch("[a-f0-9]{32}", binding["nonce"]) is None or
                       not isinstance(binding["commit"], str) or
                       re.fullmatch("[a-f0-9]{40}", binding["commit"]) is None or
-                      type(binding["runNumber"]) is not int or binding["runNumber"] != 2):
+                      type(binding["runNumber"]) is not int or binding["runNumber"] != 3):
                   raise ValueError("EXACT_JOB_BINDING")
               for key, offset in (("operatorStartEpoch", 0), ("queueBeforeEpoch", 840),
                                   ("compileBeforeEpoch", 960), ("uploadBeforeEpoch", 1020),
@@ -77,7 +77,7 @@ jobs:
               expected = {"GITHUB_REPOSITORY": "fr-meyer/openclaw", "GITHUB_REPOSITORY_ID": "1309456040",
                           "GITHUB_REPOSITORY_OWNER_ID": "26621962", "GITHUB_EVENT_NAME": "push",
                           "GITHUB_REF": "refs/heads/candidate/v2026.9.8-runtime-qualification",
-                          "GITHUB_SHA": binding["commit"], "GITHUB_RUN_NUMBER": "2",
+                          "GITHUB_SHA": binding["commit"], "GITHUB_RUN_NUMBER": "3",
                           "GITHUB_RUN_ATTEMPT": "1", "RUNNER_ENVIRONMENT": "github-hosted",
                           "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64",
                           "GITHUB_WORKFLOW_REF": "fr-meyer/openclaw/.github/workflows/v98-guard-compiler-only.yml@refs/heads/candidate/v2026.9.8-runtime-qualification"}
