@@ -328,20 +328,17 @@ describe("ClawHub message recommendations", () => {
     },
   );
 
-  it.each(["", " ", "\t\n"])(
-    "rejects blank query %j before catalog discovery",
-    async (query) => {
-      await expect(
-        messageTool().execute(`blank-${JSON.stringify(query)}`, {
-          action: "send",
-          clawhub: { query },
-        }),
-      ).rejects.toThrow(/too small/i);
-      expect(registry.plugins).not.toHaveBeenCalled();
-      expect(registry.skills).not.toHaveBeenCalled();
-      expect(registry.local).not.toHaveBeenCalled();
-    },
-  );
+  it.each(["", " ", "\t\n"])("rejects blank query %j before catalog discovery", async (query) => {
+    await expect(
+      messageTool().execute(`blank-${JSON.stringify(query)}`, {
+        action: "send",
+        clawhub: { query },
+      }),
+    ).rejects.toThrow(/too small/i);
+    expect(registry.plugins).not.toHaveBeenCalled();
+    expect(registry.skills).not.toHaveBeenCalled();
+    expect(registry.local).not.toHaveBeenCalled();
+  });
 
   it("limits pure recommendations to three official cards without installing", async () => {
     const extraRemotePlugins: (typeof remotePlugin)[] = [];
