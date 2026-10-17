@@ -311,15 +311,32 @@ describe("ClawHub message recommendations", () => {
     expect(registry.local).not.toHaveBeenCalled();
   });
 
-  it.each(["x", "__none__"])(
-    "rejects placeholder query %j before catalog discovery",
+  it.each(["R", "C#", "C++", "x", "__none__"])(
+    "accepts nonblank compatibility query %j",
+    async (query) => {
+      await messageTool().execute(`compatibility-${query}`, {
+        action: "send",
+        clawhub: { query },
+      });
+      expect(registry.plugins).toHaveBeenCalledWith({
+        query,
+        intent: "official",
+        limit: 3,
+      });
+      expect(registry.local).toHaveBeenCalledOnce();
+      expect(registry.install).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["", " ", "\t\n"])(
+    "rejects blank query %j before catalog discovery",
     async (query) => {
       await expect(
-        messageTool().execute(`placeholder-${query}`, {
+        messageTool().execute(`blank-${JSON.stringify(query)}`, {
           action: "send",
           clawhub: { query },
         }),
-      ).rejects.toThrow(/specific capability name|too small/i);
+      ).rejects.toThrow(/too small/i);
       expect(registry.plugins).not.toHaveBeenCalled();
       expect(registry.skills).not.toHaveBeenCalled();
       expect(registry.local).not.toHaveBeenCalled();
@@ -370,7 +387,7 @@ describe("ClawHub message recommendations", () => {
   it("documents the compatibility-preserving guarded schema", () => {
     expect(messageTool().parameters).toHaveProperty(
       "properties.clawhub.properties.query.minLength",
-      2,
+      1,
     );
     expect(messageTool().parameters).toHaveProperty("properties.clawhub.properties.intro");
     expect(messageTool({}, { currentChannelProvider: "telegram" }).parameters).not.toHaveProperty(

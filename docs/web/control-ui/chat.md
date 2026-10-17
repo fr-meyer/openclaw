@@ -694,7 +694,8 @@ The agent requests cards through `message` with a specific capability query:
 }
 ```
 
-`query` is required and placeholder queries are rejected. Existing query-only
+`query` is required and must contain at least one non-whitespace character.
+Short and punctuation-bearing capability names remain valid. Existing query-only
 requests remain valid. `kind` can be `plugin` or `skill`. Omit `kind` to check
 plugins first, then skills if no official plugin matches. `intro` is optional
 user-facing text shown with matching cards.

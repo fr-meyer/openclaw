@@ -188,9 +188,9 @@ function buildSendSchema(options: MessageToolSchemaOptions) {
       Type.Object(
         {
           query: Type.String({
-            minLength: 2,
+            minLength: 1,
             maxLength: 160,
-            description: "Specific capability name; placeholder queries are rejected.",
+            description: "Non-empty capability query.",
           }),
           kind: Type.Optional(stringEnum(["plugin", "skill"])),
           intro: Type.Optional(

@@ -16,22 +16,9 @@ import { resolveClawHubBaseUrl, resolveClawHubImageUrl } from "../clawhub-client
 import { fetchClawHubPluginCatalog } from "../clawhub-plugin-catalog.js";
 import { searchClawHubSkills } from "../clawhub-skills.js";
 
-const placeholderQueryTokens = new Set(["none", "null", "nil", "na"]);
-
 const requestSchema = z
   .object({
-    query: z
-      .string()
-      .trim()
-      .min(2)
-      .max(160)
-      .refine(
-        (query) => {
-          const token = query.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-          return token.length >= 2 && !placeholderQueryTokens.has(token);
-        },
-        { message: "Use a specific capability name instead of a placeholder query." },
-      ),
+    query: z.string().trim().min(1).max(160),
     kind: z.enum(["plugin", "skill"]).optional(),
     intro: z.string().trim().min(1).optional(),
   })
