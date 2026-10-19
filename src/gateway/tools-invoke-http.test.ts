@@ -156,6 +156,10 @@ vi.mock("../agents/openclaw-tools.js", async () => {
   }
   const successfulTool = (name: string, result: string) =>
     fixtureTool(name, async () => ({ ok: true, result }));
+  const pdfTool = fixtureTool("pdf", async () => ({
+    ok: true,
+    details: { model: "fixture-pdf", native: true },
+  }));
 
   const tools = [
     ...createUploadToolFixtures(hookMocks.uploadToolExecute),
@@ -206,6 +210,7 @@ vi.mock("../agents/openclaw-tools.js", async () => {
       return [
         await createToolsInvokeSessionSpawnFixture(ctx),
         ...tools,
+        ...(typeof ctx.agentDir === "string" && ctx.agentDir.trim() ? [pdfTool] : []),
         ...(ctx.disablePluginTools
           ? []
           : [
@@ -697,6 +702,117 @@ describe("POST /tools/invoke", () => {
   });
 });
 
+describe("tools.invoke optional PDF parity", () => {
+  it("constructs optional PDF tools over HTTP with the selected agent directory", async () => {
+    const sessionKey = "agent:main:pdf-parity-http";
+    sessionEntries.set(sessionKey, { sessionId: "pdf-parity-http-session" });
+    cfg = {
+      agents: {
+        defaults: { pdfModel: { primary: "google/gemini-flash-lite-latest" } },
+        entries: {
+          main: {
+            agentDir: "/tmp/openclaw-tools-invoke-main-agent",
+            tools: { allow: ["pdf"] },
+          },
+        },
+      },
+    };
+
+    const response = await invokeToolAuthed({ tool: "pdf", sessionKey });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      result: { ok: true, details: { model: "fixture-pdf", native: true } },
+    });
+    expect(lastCreateOpenClawToolsContext?.agentDir).toBe("/tmp/openclaw-tools-invoke-main-agent");
+    expect(lastCreateOpenClawToolsContext?.sessionId).toBe("pdf-parity-http-session");
+    expect(lastCreateOpenClawToolsContext?.disablePluginTools).toBe(true);
+  });
+
+  it("constructs optional PDF tools over RPC with the selected agent directory", async () => {
+    const sessionKey = "agent:main:pdf-parity";
+    sessionEntries.set(sessionKey, { sessionId: "pdf-parity-session" });
+    cfg = {
+      agents: {
+        defaults: { pdfModel: { primary: "google/gemini-flash-lite-latest" } },
+        entries: {
+          main: {
+            agentDir: "/tmp/openclaw-tools-invoke-main-agent",
+            tools: { allow: ["pdf"] },
+          },
+        },
+      },
+    };
+
+    const response = await invokeToolsRpc({ name: "pdf", sessionKey, args: {} });
+
+    expect(response?.[0]).toBe(true);
+    expect(response?.[1]).toMatchObject({
+      ok: true,
+      toolName: "pdf",
+      output: { ok: true, details: { model: "fixture-pdf", native: true } },
+    });
+    expect(lastCreateOpenClawToolsContext?.agentDir).toBe("/tmp/openclaw-tools-invoke-main-agent");
+    expect(lastCreateOpenClawToolsContext?.sessionId).toBe("pdf-parity-session");
+    expect(lastCreateOpenClawToolsContext?.disablePluginTools).toBe(true);
+  });
+
+  it("keeps PDF unavailable when the selected agent denies it", async () => {
+    const sessionKey = "agent:main:pdf-denied";
+    sessionEntries.set(sessionKey, { sessionId: "pdf-denied-session" });
+    cfg = {
+      agents: {
+        defaults: { pdfModel: { primary: "google/gemini-flash-lite-latest" } },
+        entries: {
+          main: {
+            agentDir: "/tmp/openclaw-tools-invoke-main-agent",
+            tools: { deny: ["pdf"] },
+          },
+        },
+      },
+    };
+
+    const response = await invokeToolsRpc({ name: "pdf", sessionKey, args: {} });
+
+    expect(response?.[0]).toBe(true);
+    expect(response?.[1]).toMatchObject({
+      ok: false,
+      toolName: "pdf",
+      error: { code: "not_found", message: "Tool not available: pdf" },
+    });
+    expect(lastCreateOpenClawToolsContext?.agentDir).toBe("/tmp/openclaw-tools-invoke-main-agent");
+  });
+
+  it("keeps PDF unavailable for an unknown session", async () => {
+    cfg = {
+      agents: {
+        defaults: { pdfModel: { primary: "google/gemini-flash-lite-latest" } },
+        entries: {
+          main: {
+            agentDir: "/tmp/openclaw-tools-invoke-main-agent",
+            tools: { allow: ["pdf"] },
+          },
+        },
+      },
+    };
+
+    const response = await invokeToolsRpc({
+      name: "pdf",
+      sessionKey: "agent:main:pdf-unknown",
+      args: {},
+    });
+
+    expect(response?.[0]).toBe(true);
+    expect(response?.[1]).toMatchObject({
+      ok: false,
+      toolName: "pdf",
+      error: { code: "not_found", message: "Tool not available: pdf" },
+    });
+    expect(lastCreateOpenClawToolsContext?.agentDir).toBeUndefined();
+  });
+});
+
 describe("tools.invoke Gateway RPC", () => {
   it("invokes a tool through the SDK-facing RPC envelope", async () => {
     allowAgentsListForMain();
@@ -929,6 +1045,7 @@ describe("tools.invoke Gateway RPC", () => {
         message: 'agent "other" does not match session key agent "main"',
       },
     });
+    expect(lastCreateOpenClawToolsContext).toBeUndefined();
   });
 
   it("accepts a non-canonical spelling of the session agent id", async () => {

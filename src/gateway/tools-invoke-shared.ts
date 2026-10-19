@@ -7,7 +7,7 @@ import {
 } from "@openclaw/normalization-core/string-coerce";
 import { GatewayClientRequestError } from "../../packages/gateway-client/src/request-error.js";
 import { ErrorCodes, errorShape } from "../../packages/gateway-protocol/src/index.js";
-import { resolveAgentWorkspaceDir } from "../agents/agent-scope-config.js";
+import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope-config.js";
 import { runBeforeToolCallHook } from "../agents/agent-tools.before-tool-call.js";
 import { resolveToolLoopDetectionConfig } from "../agents/agent-tools.js";
 import { getChannelAgentToolMeta } from "../agents/channel-tool-metadata.js";
@@ -485,6 +485,10 @@ async function invokeGatewayToolWithSignal(
   ) {
     return failure(400, "invalid_request", AGENT_HARNESS_SESSION_KEY_RESERVED_MESSAGE);
   }
+  // A persisted session now binds the request to an authorized agent. Carry
+  // that exact agent's directory so optional credential-aware core tools match
+  // tools.effective; unknown sessions and unbound resolver callers fail closed.
+  const agentDir = sessionEntry ? resolveAgentDir(params.cfg, selectedAgentId) : undefined;
   const sessionWorkspace =
     resolveIngressWorkspaceOverrideForSessionRun({
       spawnedBy: sessionEntry?.spawnedBy,
@@ -503,6 +507,7 @@ async function invokeGatewayToolWithSignal(
       sessionPermissionPolicy,
       preparedSessionWorkspaceDir: sessionWorkspace,
       agentId: selectedAgentId,
+      agentDir,
       messageProvider: params.messageChannel,
       accountId: params.accountId,
       agentTo: params.agentTo,

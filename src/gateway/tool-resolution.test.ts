@@ -262,11 +262,20 @@ describe("resolveGatewayScopedTools", () => {
   });
 
   it("keeps default-agent credentials out of unbound gateway calls", async () => {
-    const cfg = { agents: { defaults: { imageModel: { primary: "openai/gpt-5.4-mini" } } } };
+    const cfg = {
+      agents: {
+        defaults: {
+          imageModel: { primary: "openai/gpt-5.4-mini" },
+          pdfModel: { primary: "google/gemini-flash-lite-latest" },
+        },
+      },
+    };
     const unbound = await resolveTools({ cfg });
     const grantBound = await resolveTools({ cfg, agentDir: "/agents/cli" });
     expect(unbound.tools.some((tool) => tool.name === "view_image")).toBe(false);
+    expect(unbound.tools.some((tool) => tool.name === "pdf")).toBe(false);
     expect(grantBound.tools.some((tool) => tool.name === "view_image")).toBe(true);
+    expect(grantBound.tools.some((tool) => tool.name === "pdf")).toBe(true);
   });
 
   it("keeps unknown and disabled model vision distinct in cached tools", async () => {
