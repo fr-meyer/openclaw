@@ -91,10 +91,6 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
       normalizeBoundedString(input.token, undefined, 160, "claim token") ?? randomUUID();
     return await this.enqueueMutation(async () => {
       const now = Date.now();
-      const expiresAt = addWorkboardDurationMs(
-        now,
-        ttlSeconds ? secondsToDurationMs(ttlSeconds) : DEFAULT_CLAIM_TTL_MS,
-      );
       const guarded = await this.promoteDependencyReady(await this.requireCard(id), now);
       if (guarded.metadata?.archivedAt) {
         throw new Error("card is archived.");
