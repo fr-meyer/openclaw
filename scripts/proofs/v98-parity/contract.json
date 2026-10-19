@@ -1,7 +1,7 @@
 {
   "schema": "openclaw-v98-build-runtime-route/v1",
-  "sourceCommit": "97f72dbee43acda42438848ef1d8b3994aa26c6e",
-  "sourceTree": "811a8525e01e644a1c1aa247c0304116b3049123",
+  "sourceCommit": "682ad1177a2479c610c59fd639c7f556bb6a74c5",
+  "sourceTree": "6b909582bef1dbae90244d03e1ba3bdefc7ae6e1",
   "version": "2026.9.8",
   "qualificationBranch": "candidate/v2026.9.8-runtime-qualification",
   "platform": "linux/amd64",

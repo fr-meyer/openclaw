@@ -1,5 +1,5 @@
 name: V98 Combined Source and Artifact Preparation
-run-name: V98 combined 97f72dbe ${{ github.run_id }}
+run-name: V98 combined 682ad117 ${{ github.run_id }}
 
 # First-attempt-only jobs require fresh exact commit/run-number approval.
 # New image bindings need a separate reviewed commit before runtime admission.
@@ -20,8 +20,8 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  TARGET_SHA: 97f72dbee43acda42438848ef1d8b3994aa26c6e
-  TARGET_TREE: 811a8525e01e644a1c1aa247c0304116b3049123
+  TARGET_SHA: 682ad1177a2479c610c59fd639c7f556bb6a74c5
+  TARGET_TREE: 6b909582bef1dbae90244d03e1ba3bdefc7ae6e1
 
 jobs:
   source-checks:
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout exact reviewed combined source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 97f72dbee43acda42438848ef1d8b3994aa26c6e
+          ref: 682ad1177a2479c610c59fd639c7f556bb6a74c5
           fetch-depth: 1
           persist-credentials: false
 
@@ -91,6 +91,12 @@ jobs:
             node --permission --allow-fs-read="$GITHUB_WORKSPACE" --test-isolation=none --test \
               test/mcp-nowistay-schema-compatibility.test.mjs test/mcp-nowistay-sdk-regression.test.mjs
             pnpm test src/agents/mcp-http-transport.test.ts --maxWorkers=1
+            pnpm test packages/memory-host-sdk/src/host/memory-schema-storage-migration.test.ts \
+              src/state/openclaw-agent-db.storage-migration.test.ts \
+              src/state/openclaw-agent-db.v19-storage-migration.test.ts --maxWorkers=1
+            pnpm test src/plugins/compat/registry.test.ts \
+              test/scripts/plugin-boundary-report.test.ts \
+              src/plugin-sdk/session-store-runtime.test.ts --maxWorkers=1
             git diff --exit-code
             git diff --cached --exit-code
           } 2>&1 | tee "$out/checks.log"
@@ -114,7 +120,7 @@ jobs:
       - name: Checkout exact reviewed combined source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 97f72dbee43acda42438848ef1d8b3994aa26c6e
+          ref: 682ad1177a2479c610c59fd639c7f556bb6a74c5
           path: source
           fetch-depth: 1
           persist-credentials: false
@@ -204,7 +210,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: v98-parity-build-97f72dbe-${{ github.run_id }}-${{ github.run_attempt }}
+          name: v98-parity-build-682ad117-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/v98-parity-upload/
           if-no-files-found: error
           retention-days: 7
