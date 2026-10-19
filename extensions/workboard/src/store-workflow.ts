@@ -50,7 +50,6 @@ import {
   clearDiagnostics,
   deriveChildIdempotencyKey,
   normalizeArtifact,
-  normalizeAutomation,
   normalizeBoundedString,
   normalizeProofInput,
   normalizeStatus,
@@ -92,7 +91,11 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
       normalizeBoundedString(input.token, undefined, 160, "claim token") ?? randomUUID();
     return await this.enqueueMutation(async () => {
       const now = Date.now();
-      const guarded = await this.promoteDependencyReady(id, now);
+      const expiresAt = addWorkboardDurationMs(
+        now,
+        ttlSeconds ? secondsToDurationMs(ttlSeconds) : DEFAULT_CLAIM_TTL_MS,
+      );
+      const guarded = await this.promoteDependencyReady(await this.requireCard(id), now);
       if (guarded.metadata?.archivedAt) {
         throw new Error("card is archived.");
       }
@@ -287,14 +290,7 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
         ...finished,
         metadata: {
           ...metadata,
-          automation: normalizeAutomation(
-            {
-              ...metadata.automation,
-              summary,
-              createdCardIds,
-            },
-            metadata.automation,
-          ),
+          automation: { ...metadata.automation, summary, createdCardIds },
           comments: appendComment(metadata.comments, summary, now),
           proof: appendCompletionProof(metadata.proof, proof, proofId),
           artifacts: artifacts.length
@@ -432,7 +428,7 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
         },
         { enforceStatusHolds: true },
       );
-      return await this.promoteDependencyReady(reclaimed.id, now);
+      return await this.promoteDependencyReady(reclaimed, now);
     });
   }
 
@@ -465,13 +461,10 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
       const metadata = {
         ...existing.metadata,
         comments: appendComment(existing.metadata?.comments, summary, now),
-        automation: normalizeAutomation(
-          {
-            ...existing.metadata?.automation,
-            summary: summary ?? existing.metadata?.automation?.summary,
-          },
-          existing.metadata?.automation,
-        ),
+        automation: {
+          ...existing.metadata?.automation,
+          summary: summary ?? existing.metadata?.automation?.summary,
+        },
       };
       const { summary: _summary, status: _status, ...cardPatch } = input;
       return await this.updateCard(
@@ -548,14 +541,11 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
                     : latestParent.status,
                 metadata: {
                   ...latestParent.metadata,
-                  automation: normalizeAutomation(
-                    {
-                      ...latestParent.metadata?.automation,
-                      summary,
-                      createdCardIds: children.map((child) => child.id),
-                    },
-                    latestParent.metadata?.automation,
-                  ),
+                  automation: {
+                    ...latestParent.metadata?.automation,
+                    summary,
+                    createdCardIds: children.map((child) => child.id),
+                  },
                 },
               },
               { enforceStatusHolds: true },

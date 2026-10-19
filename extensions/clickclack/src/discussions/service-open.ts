@@ -32,7 +32,10 @@ import {
   slugifyDiscussionLabel,
   truncateDiscussionDisplayTitle,
 } from "./naming.js";
-import { markClickClackDiscussionChannelIdentityRevoked } from "./revoked-channel-store.js";
+import {
+  clearClickClackDiscussionChannelRevoked,
+  markClickClackDiscussionChannelIdentityRevoked,
+} from "./revoked-channel-store.js";
 
 const CHANNEL_NAME_MUTATION_ATTEMPTS = 4;
 
@@ -42,16 +45,11 @@ type OpenDiscussionParams = {
   account: ResolvedClickClackAccount;
   clientFactory: (account: ResolvedClickClackAccount) => ClickClackClient;
   installationId: string;
-  bindingGenerationFactory: () => string;
   sessionKey: string;
   ensureTimer: () => Promise<void>;
   reconcilePendingOpen: (pending: PendingDiscussionOpen) => Promise<void>;
   withChannelMutationLock: <T>(run: () => Promise<T>) => Promise<T>;
   ensureBindingCapacity: (sessionKey: string) => Promise<void>;
-  finalizePendingBinding: (
-    sessionKey: string,
-    binding: ClickClackDiscussionBinding,
-  ) => Promise<void>;
   warn: (message: string) => void;
 };
 
@@ -211,6 +209,29 @@ function assertManagedChannelListContract(
   }
 }
 
+export async function finalizePendingDiscussionBinding(
+  runtime: PluginRuntime,
+  sessionKey: string,
+  binding: ClickClackDiscussionBinding,
+): Promise<void> {
+  const pending = await getPendingDiscussionOpen(runtime, sessionKey);
+  if (pending?.externalRef === binding.externalRef) {
+    // A matching binding is the durable commit record. Clear the fail-closed
+    // tombstone first, then the recovery reservation; every crash point can
+    // replay this sequence without orphaning the remote channel.
+    await clearClickClackDiscussionChannelRevoked({
+      runtime,
+      serverBaseUrl: binding.serverBaseUrl,
+      channelId: binding.channelId,
+    });
+    await clearDiscussionBindingGeneration({
+      runtime,
+      sessionKey,
+      expectedGeneration: pending.generation,
+    });
+  }
+}
+
 export async function openClickClackDiscussionBinding(
   params: OpenDiscussionParams,
 ): Promise<ClickClackDiscussionBinding | undefined> {
@@ -259,24 +280,16 @@ export async function openClickClackDiscussionBinding(
   const config = runtime.config.current() as CoreConfig;
   const agentId = resolveSessionAgentIdStrict({ config, sessionKey });
   const fallback = fallbackDiscussionLabel(sessionKey, agentId);
-  const describeChannel = (
-    session: Parameters<typeof resolveDiscussionLabel>[0] & { category?: string },
-  ) => {
-    const label = resolveDiscussionLabel(session, sessionKey, agentId);
-    return {
-      label,
-      displayTitle: label === fallback ? "" : truncateDiscussionDisplayTitle(label),
-      section: session.category?.trim() || account.discussions.section,
-      externalUrl: controlSessionUrl(
-        account.discussions.controlUrlBase,
-        sessionKey,
-        account.agentId ?? agentId,
-        config.session?.mainKey,
-        label,
-      ),
-    };
-  };
-  const { label, displayTitle, section, externalUrl } = describeChannel(entry);
+  const label = resolveDiscussionLabel(entry, sessionKey, agentId);
+  const displayTitle = label === fallback ? "" : truncateDiscussionDisplayTitle(label);
+  const section = entry.category?.trim() || account.discussions.section;
+  const externalUrl = controlSessionUrl(
+    account.discussions.controlUrlBase,
+    sessionKey,
+    account.agentId ?? agentId,
+    config.session?.mainKey,
+    label,
+  );
   const assertCurrentAuthority = () => {
     // SAFETY: account resolution only reads the SDK's deep-readonly, schema-validated config.
     const currentAccounts = discussionAccounts(runtime.config.current() as CoreConfig);
@@ -310,7 +323,6 @@ export async function openClickClackDiscussionBinding(
       accountId: account.accountId,
       credentialFingerprint,
       destinationIdentity,
-      createGeneration: params.bindingGenerationFactory,
     });
     const generationScope = { runtime, sessionKey, expectedGeneration: bindingGeneration };
     const externalRef = discussionExternalRef(
@@ -444,43 +456,7 @@ export async function openClickClackDiscussionBinding(
       params.warn(`unattached discussion channel remains quarantined: ${channel.id}`);
       throw new Error("OpenClaw session became inactive while opening its ClickClack discussion");
     }
-    const {
-      label: currentLabel,
-      displayTitle: currentDisplayTitle,
-      section: currentSection,
-      externalUrl: updatedExternalUrl,
-    } = describeChannel(currentEntry);
-    const currentExternalUrl = updatedExternalUrl ?? "";
-    let currentChannel = channel;
-    if (
-      currentEntry.sessionId !== entry.sessionId ||
-      currentLabel !== label ||
-      currentDisplayTitle !== displayTitle ||
-      currentSection !== section ||
-      currentExternalUrl !== (externalUrl ?? "")
-    ) {
-      try {
-        currentChannel = await renameDiscussionChannel({
-          client,
-          workspaceId: workspace.id,
-          channelId: channel.id,
-          label: currentLabel,
-          sessionKey,
-          agentId,
-          patch: {
-            ...managedFields,
-            external_url: currentExternalUrl,
-            sidebar_section: currentSection,
-            display_title: currentDisplayTitle,
-          },
-          assertCurrentAuthority,
-        });
-      } catch (error) {
-        await clearPendingDiscussionOpen(generationScope);
-        params.warn(`unattached discussion channel remains quarantined: ${channel.id}`);
-        throw error;
-      }
-    }
+    // Presentation changes during creation are reconciled through the normal session owner.
     const nextBinding: ClickClackDiscussionBinding = {
       accountId: account.accountId,
       agentId,
@@ -488,18 +464,16 @@ export async function openClickClackDiscussionBinding(
       serverBaseUrl,
       credentialFingerprint,
       externalRef,
-      externalUrl: currentExternalUrl,
+      externalUrl: externalUrl ?? "",
       workspaceRef: account.discussions.workspace,
       workspaceId: workspace.id,
       channelId: channel.id,
       channelRouteId: channel.route_id,
       workspaceRouteId: workspace.route_id,
-      section: currentSection,
+      section,
       archived: false,
-      label: currentLabel,
-      ...(currentChannel.display_title !== undefined
-        ? { displayTitle: currentChannel.display_title }
-        : {}),
+      label,
+      ...(channel.display_title !== undefined ? { displayTitle: channel.display_title } : {}),
     };
     try {
       nextBinding.sessionId = assertCurrentAuthority().sessionId;
@@ -520,7 +494,7 @@ export async function openClickClackDiscussionBinding(
       params.warn(`unbound discussion channel remains quarantined: ${channel.id}`);
       throw error;
     }
-    await params.finalizePendingBinding(sessionKey, nextBinding);
+    await finalizePendingDiscussionBinding(runtime, sessionKey, nextBinding);
     return nextBinding;
   });
 }
@@ -531,16 +505,12 @@ export async function reconcilePendingDiscussionOpen(params: {
   clientFactory: (account: ResolvedClickClackAccount) => ClickClackClient;
   pending: PendingDiscussionOpen;
   allowRetry?: boolean;
-  finalizePendingBinding: (
-    sessionKey: string,
-    binding: ClickClackDiscussionBinding,
-  ) => Promise<void>;
   open: (sessionKey: string) => Promise<SessionDiscussionInfo>;
 }): Promise<void> {
   const { pending } = params;
   const currentBinding = await params.store.getAsync(pending.sessionKey);
   if (currentBinding?.externalRef === pending.externalRef) {
-    await params.finalizePendingBinding(pending.sessionKey, currentBinding);
+    await finalizePendingDiscussionBinding(params.runtime, pending.sessionKey, currentBinding);
     return;
   }
   // SAFETY: account resolution only reads the SDK's deep-readonly, schema-validated config.

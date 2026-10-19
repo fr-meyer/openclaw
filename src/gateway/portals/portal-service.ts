@@ -19,6 +19,7 @@ import {
 import type { GatewayPortalIngressConfig } from "../../config/types.gateway.js";
 import { resolveAdvertisedLanHostCore } from "../../infra/advertised-lan-host.js";
 import { sha256HexPrefixCore } from "../../infra/crypto-digest.js";
+import { closeHttpServers } from "../../infra/http-server-lifecycle.js";
 import { claimTailscaleServePort, type TailscaleRouteClaim } from "../../infra/tailscale.js";
 import { enqueueKeyedTask } from "../../plugin-sdk/keyed-async-queue.js";
 import { rejectWebSocketUpgrade } from "../../shared/websocket-upgrade-reject.js";
@@ -31,10 +32,8 @@ import {
   type PortalTarget,
 } from "./portal-http-proxy.js";
 import { createPortalIngress, portalIngressHostname } from "./portal-ingress.js";
-import { closePortalServers, removePortalServers } from "./portal-listeners.js";
+import { removePortalServers } from "./portal-listeners.js";
 import { resolvePortalTlsHostname } from "./portal-tls-hostname.js";
-
-const PORTAL_PORT_ALLOCATION_ATTEMPTS = 10;
 
 type PortalEntry = {
   id: string;
@@ -324,7 +323,7 @@ export function createGatewayPortalService(params: {
     runtime.detachOwner?.();
     // Release every owned resource even if a route owner reports a teardown error.
     const cleanup = await Promise.allSettled([
-      closePortalServers(runtime.servers),
+      closeHttpServers(runtime.servers, { force: true }),
       Promise.resolve().then(() => runtime.claim?.stop()),
       Promise.resolve().then(() => runtime.onClose?.()),
     ]);
@@ -456,29 +455,23 @@ export function createGatewayPortalService(params: {
               if (!primaryServer || !primaryHost) {
                 throw new Error("Missing primary portal HTTP server");
               }
-              for (let attempt = 0; attempt < PORTAL_PORT_ALLOCATION_ATTEMPTS; attempt += 1) {
-                await listenGatewayHttpServer({
-                  httpServer: primaryServer,
-                  bindHost: primaryHost,
-                  port: 0,
-                  retryEaddrinuse: false,
-                  serviceName: "portal",
-                  endpointScheme: tlsOptions ? "https" : "http",
-                });
-                const address = primaryServer.address();
-                if (!address || typeof address === "string") {
-                  throw new Error("Portal listener failed to resolve its port");
-                }
-                if (target.kind === "worker" || address.port !== targetPort) {
-                  portal.listenPort = address.port;
-                  break;
-                }
-                // A proxy cannot share its target port: it would dial itself and fail auth.
-                await closePortalServers([primaryServer]);
+              await listenGatewayHttpServer({
+                httpServer: primaryServer,
+                bindHost: primaryHost,
+                port: 0,
+                retryEaddrinuse: false,
+                serviceName: "portal",
+                endpointScheme: tlsOptions ? "https" : "http",
+              });
+              const address = primaryServer.address();
+              if (!address || typeof address === "string") {
+                throw new Error("Portal listener failed to resolve its port");
               }
-              if (portal.listenPort === 0) {
+              // A rare allocation of an inactive target's port fails without self-dialing.
+              if (target.kind === "local" && address.port === targetPort) {
                 throw new Error(`Portal listener repeatedly allocated target port ${targetPort}`);
               }
+              portal.listenPort = address.port;
               for (const [index, host] of bindHosts.entries()) {
                 if (index === 0) {
                   continue;
@@ -546,7 +539,7 @@ export function createGatewayPortalService(params: {
             for (const socket of upgradedSockets) {
               socket.destroy();
             }
-            await Promise.all([closePortalServers(servers), claim?.stop()]);
+            await Promise.all([closeHttpServers(servers, { force: true }), claim?.stop()]);
             throw error;
           }
           const runtime: PortalRuntimeEntry = {

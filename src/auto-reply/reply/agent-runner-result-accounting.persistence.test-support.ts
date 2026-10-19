@@ -3,23 +3,14 @@ import { vi } from "vitest";
 import type { CompactionAccountingFact } from "../../agents/embedded-agent-runner/run/internal-params.js";
 import type { EmbeddedAgentMeta } from "../../agents/embedded-agent-runner/types.js";
 import type { SessionEntry } from "../../config/sessions.js";
-import {
-  appendTranscriptMessage,
-  loadSessionEntry,
-  publishTranscriptUpdate,
-  replaceSessionEntry,
-} from "../../config/sessions/session-accessor.js";
+import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { createChatSendReplyDispatch } from "../../gateway/server-methods/chat-send-reply-dispatch.js";
 import * as workerAdmission from "../../infra/sqlite-worker-operation-admission.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { withPluginRuntimeRegistryScope } from "../../plugins/runtime/gateway-request-scope.js";
-import { attachSessionTranscriptRunId } from "../../sessions/transcript-events.js";
-import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
+import { createReplyOperation, type ReplyOperation } from "../../sessions/session-controller.js";
 import * as agentExecution from "../../state/openclaw-agent-execution.js";
-import { setReplyPayloadMetadata } from "../reply-payload.js";
 import type { ReplyPayload } from "../types.js";
 import { withAgentTurnCompletion } from "./agent-runner-completion.js";
 import type { AgentTurnCompletion } from "./agent-runner-completion.types.js";
@@ -31,12 +22,7 @@ import { accountAgentTurn, accountFollowupTurn } from "./agent-runner-result-acc
 import { completeReplyAgentRun } from "./agent-runner-result-complete.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
 import { deliverFollowupDecision, resolveFollowupDeliveryDecision } from "./followup-delivery.js";
-import type { AdmittedFollowupTurn } from "./followup-turn-admission.js";
-import {
-  createReplyOperation,
-  retainReplyOperationUntilComplete,
-  type ReplyOperation,
-} from "./reply-run-registry.js";
+import type { AdmittedFollowupTurn } from "./reply-agent-turn-preparation.js";
 import { createReplySessionEntryHandle } from "./session-entry-handle.js";
 import { createMockFollowupRun, createMockTypingController } from "./test-helpers.js";
 import { createTypingSignaler } from "./typing-mode.js";
@@ -132,7 +118,6 @@ export async function createAgentAccountingPersistenceFixture({
     resetTriggered: false,
   });
   replyOperation.setPhase("running");
-  retainReplyOperationUntilComplete(replyOperation);
   registerOperation(replyOperation);
   const context: FinalizeReplyAgentRunInput & { storePath: string } = {
     activeIsNewSession: false,
@@ -174,7 +159,6 @@ export async function createAgentAccountingPersistenceFixture({
       },
       fallback: { exhausted: false, attempts: [] },
       autoCompactionCount: 0,
-      didLogHeartbeatStrip: false,
     },
     runId,
     runStartedAt: Date.now(),
@@ -192,7 +176,6 @@ export async function createAgentAccountingPersistenceFixture({
     sessionEntry: entry,
     sessionStore,
     sessionKey,
-    generationFence: { sessionId: entry.sessionId, expectedStoreEntry: entry },
   });
   const turn: AdmittedFollowupTurn = {
     runId: context.runId,
@@ -205,7 +188,6 @@ export async function createAgentAccountingPersistenceFixture({
       storePath,
       current: () => handle.getCurrent(),
       publish: (next) => next && handle.replaceCurrent(next),
-      adopt: (next) => handle.adoptCurrent(next),
     },
     sessionStore: handle.toCompatSessionStore(),
     sendPolicy: "allow",
@@ -330,47 +312,6 @@ export async function createAgentAccountingPersistenceFixture({
     },
     read: () => loadSessionEntry({ storePath, sessionKey, readConsistency: "latest" }),
     replace: (next: InternalSessionEntry) => replaceSessionEntry({ storePath, sessionKey }, next),
-    persistLocalReply: async (text: string) => {
-      const scope = { agentId: "main", storePath, sessionKey, sessionId };
-      const userTurnRecorder = createUserTurnTranscriptRecorder({
-        input: { text: "Reply to this synthetic input.", idempotencyKey: `${runId}:user` },
-        target: { ...scope, sessionEntry: context.activeSessionEntry },
-      });
-      await userTurnRecorder.persistApproved();
-      const dispatch = createChatSendReplyDispatch({
-        getRuntimeConfig: () => cfg,
-        accountId: undefined,
-        isAgentRunStarted: () => true,
-        isRunCurrent: () => true,
-        logGateway: createSubsystemLogger("test/accounting-local-reply"),
-        session: {
-          ...scope,
-          entry: context.activeSessionEntry,
-          backingSessionId: sessionId,
-          cfg,
-          clientRunId: runId,
-          sessionLoadOptions: { agentId: "main" },
-        },
-        userTurnRecorder,
-      });
-      dispatch.captureAgentTranscriptStart(runId, null);
-      const message = attachSessionTranscriptRunId({ role: "assistant", content: text }, runId);
-      const appended = await appendTranscriptMessage(scope, { eventId: `${runId}:final`, message });
-      if (!appended.messageId) {
-        throw new Error("Expected a committed local assistant reply");
-      }
-      await publishTranscriptUpdate(scope, { message, messageId: appended.messageId });
-      context.sessionCtx = { Provider: "webchat", Surface: "webchat" };
-      context.opts = { resolveReplyDelivery: dispatch.resolveReplyDelivery };
-      context.execution.result.sourceReplyDeliveryState = "missing";
-      context.execution.result.payloads = [
-        setReplyPayloadMetadata(
-          { text },
-          { assistantMessageIndex: 0, assistantTranscriptOwned: true },
-        ),
-      ];
-      return scope;
-    },
     account: async (lane: "ordinary" | "followup", meta: Partial<EmbeddedAgentMeta>) => {
       context.execution.result.meta.agentMeta = {
         sessionId: entry.sessionId,
@@ -390,10 +331,10 @@ export async function createAgentAccountingPersistenceFixture({
             prepared: {
               kind: "continue",
               activeSessionEntry: accounting.activeSessionEntry,
+              replyCompletion: { expectation: "required", outcome: "delivered" },
               // The reply was already delivered; exercise completion bookkeeping
               // without creating another pending delivery intent.
               completedSourceReplyDelivery: true,
-              terminalReplyDelivery: "delivered",
               reminderNoteAppended: false,
               guardedReplyPayloads: [],
               responseUsageLine: undefined,

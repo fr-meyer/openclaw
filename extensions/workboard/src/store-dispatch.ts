@@ -69,7 +69,7 @@ export class WorkboardDispatchStore extends WorkboardNotificationStore {
           continue;
         }
         await this.withMutationAuthority(async () => {
-          let latest = await this.promoteDependencyReady(card.id, now);
+          let latest = await this.promoteDependencyReady(await this.requireCard(card.id), now);
           const wasPromoted = latest.status !== card.status;
           const claim = latest.metadata?.claim;
           const latestAttempt = latestRunningAttempt(latest);
