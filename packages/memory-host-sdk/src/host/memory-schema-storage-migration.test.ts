@@ -5,7 +5,10 @@ import {
   buildMemoryEmbeddingCacheSchema,
   MEMORY_INDEX_CHUNKS_SCHEMA_SQL,
 } from "./memory-schema-base.js";
-import { migrateMemoryIndexStorage } from "./memory-schema-storage-migration.js";
+import {
+  assertMemoryIndexStorageMigrationCompatible,
+  migrateMemoryIndexStorage,
+} from "./memory-schema-storage-migration.js";
 
 function legacyDatabase(embeddingType: "TEXT" | "ANY" = "TEXT"): DatabaseSync {
   const db = new DatabaseSync(":memory:");
@@ -64,6 +67,80 @@ function snapshot(db: DatabaseSync) {
 }
 
 describe("memory storage migration", () => {
+  describe.each(["TEXT", "ANY"] as const)("historical %s cache index", (embeddingType) => {
+    const indexName = "idx_memory_embedding_cache_model_hash";
+    const indexSql = `CREATE INDEX ${indexName} ON memory_embedding_cache(model, hash)`;
+
+    it("preserves the optional model/hash index, cache identity, and nonunique semantics", () => {
+      const db = legacyDatabase(embeddingType);
+      db.exec(indexSql);
+      // The index is deliberately nonunique: different providers can share both keys.
+      db.exec(`INSERT INTO memory_embedding_cache
+        SELECT 'other-provider', model, provider_key, hash, embedding, dims, updated_at
+        FROM memory_embedding_cache`);
+      const identities = db
+        .prepare(`SELECT rowid, provider, model, provider_key, hash, dims,
+        updated_at FROM memory_embedding_cache ORDER BY rowid`)
+        .all();
+      const terms = db.prepare(`PRAGMA index_xinfo(${indexName})`).all();
+      const before = snapshot(db);
+      assertMemoryIndexStorageMigrationCompatible(db);
+      expect(snapshot(db)).toEqual(before);
+
+      migrateMemoryIndexStorage(db);
+
+      expect(db.prepare("SELECT sql FROM sqlite_schema WHERE name = ?").get(indexName)).toEqual({
+        sql: indexSql,
+      });
+      expect(db.prepare(`PRAGMA index_xinfo(${indexName})`).all()).toEqual(terms);
+      expect(
+        db
+          .prepare(`SELECT rowid, provider, model, provider_key, hash, dims,
+        updated_at FROM memory_embedding_cache ORDER BY rowid`)
+          .all(),
+      ).toEqual(identities);
+      expect(db.prepare("SELECT embedding FROM memory_embedding_cache").all()).toEqual([
+        { embedding: encodeMemoryEmbedding([1 + Number.EPSILON, 0.1]) },
+        { embedding: encodeMemoryEmbedding([1 + Number.EPSILON, 0.1]) },
+      ]);
+      expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+      const migrated = snapshot(db);
+      migrateMemoryIndexStorage(db);
+      expect(snapshot(db)).toEqual(migrated);
+    });
+
+    it("leaves the optional index absent when it was not installed", () => {
+      const db = legacyDatabase(embeddingType);
+      migrateMemoryIndexStorage(db);
+      expect(
+        db.prepare("SELECT name FROM sqlite_schema WHERE name = ?").get(indexName),
+      ).toBeUndefined();
+    });
+
+    it.each([
+      `CREATE UNIQUE INDEX ${indexName} ON memory_embedding_cache(model, hash)`,
+      `${indexSql} WHERE dims IS NOT NULL`,
+      `CREATE INDEX ${indexName} ON memory_embedding_cache(hash, model)`,
+      `CREATE INDEX ${indexName} ON memory_embedding_cache(lower(model), hash)`,
+      `CREATE INDEX ${indexName} ON memory_embedding_cache(model COLLATE NOCASE, hash)`,
+      `CREATE INDEX ${indexName} ON memory_embedding_cache(model DESC, hash)`,
+      `CREATE INDEX ${indexName} ON memory_embedding_cache(model, hash, updated_at)`,
+      `CREATE INDEX ${indexName} ON memory_index_chunks(model, hash)`,
+      "CREATE INDEX operator_model_hash ON memory_embedding_cache(model, hash)",
+    ])("refuses altered or unknown definitions atomically: %s", (sql) => {
+      const db = legacyDatabase(embeddingType);
+      db.exec(sql);
+      const before = snapshot(db);
+      for (const operation of [
+        assertMemoryIndexStorageMigrationCompatible,
+        migrateMemoryIndexStorage,
+      ]) {
+        expect(() => operation(db)).toThrow(/unknown index|missing or drifted index/);
+        expect(snapshot(db)).toEqual(before);
+      }
+    });
+  });
+
   it("migrates historical ANY JSON and Float32 values into canonical Float64 storage", () => {
     const db = legacyDatabase("ANY");
     const before = snapshot(db);

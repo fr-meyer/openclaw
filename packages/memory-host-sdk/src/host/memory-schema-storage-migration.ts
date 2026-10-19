@@ -122,6 +122,11 @@ function storageShape(db: DatabaseSync, table: string, chunks: boolean): Storage
               : "idx_embedding_cache_updated_at",
           columns: "updated_at",
         },
+        // Historical canonical caches also used this optional lookup index.
+        // Validate its exact definition before the existing rebuild replays it.
+        ...(table === MEMORY_EMBEDDING_CACHE_TABLE
+          ? [{ name: "idx_memory_embedding_cache_model_hash", columns: "model, hash" }]
+          : []),
       ];
   schema += indexes
     .map((index) => `CREATE INDEX ${index.name} ON ${table}(${index.columns});`)
