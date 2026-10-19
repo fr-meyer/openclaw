@@ -76,7 +76,7 @@
         }
       },
       {
-        "id": "dispatchExact",
+        "id": "dispatch-exact",
         "method": "workboard.cards.dispatchExact",
         "description": "Dispatch one exact Workboard card without scanning unrelated cards.",
         "paramShape": {

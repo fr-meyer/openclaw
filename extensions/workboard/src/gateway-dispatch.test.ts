@@ -80,7 +80,7 @@ describe("workboard exact-card gateway dispatch", () => {
         };
       };
       const exactAction = manifest.dashboard?.actionVerbs?.find(
-        (entry) => entry.id === "dispatchExact",
+        (entry) => entry.id === "dispatch-exact",
       );
       expect(exactAction).toMatchObject({
         method: "workboard.cards.dispatchExact",
