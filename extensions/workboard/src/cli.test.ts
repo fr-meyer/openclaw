@@ -132,8 +132,6 @@ describe("registerWorkboardCli", () => {
   });
 
   it("forwards one exact --card target through the fail-safe exact RPC", async () => {
-    const store = createWorkboardSqliteTestStore();
-    const program = createProgram(store);
     gatewayRuntime.callGatewayFromCli.mockResolvedValueOnce({ started: [], startFailures: [] });
 
     await program.parseAsync(
@@ -150,9 +148,6 @@ describe("registerWorkboardCli", () => {
   });
 
   it("rejects a blank exact card before contacting the Gateway", async () => {
-    const store = createWorkboardSqliteTestStore();
-    const program = createProgram(store);
-
     await expect(
       program.parseAsync(["workboard", "dispatch", "--card", "   "], { from: "user" }),
     ).rejects.toThrow("--card must be a non-empty string.");
@@ -160,9 +155,6 @@ describe("registerWorkboardCli", () => {
   });
 
   it("rejects a multi-start cap for an exact card before contacting the Gateway", async () => {
-    const store = createWorkboardSqliteTestStore();
-    const program = createProgram(store);
-
     await expect(
       program.parseAsync(["workboard", "dispatch", "--card", "card-exact-1", "--max-starts", "2"], {
         from: "user",
@@ -172,9 +164,7 @@ describe("registerWorkboardCli", () => {
   });
 
   it("fails closed when an older Gateway lacks the exact-card RPC", async () => {
-    const store = createWorkboardSqliteTestStore();
     const card = await store.create({ title: "Exact mixed-version target", status: "ready" });
-    const program = createProgram(store);
     gatewayRuntime.callGatewayFromCli.mockRejectedValueOnce(
       new Error("unknown method: workboard.cards.dispatchExact"),
     );
@@ -189,9 +179,7 @@ describe("registerWorkboardCli", () => {
   });
 
   it("never falls back to local data-only dispatch for an exact card", async () => {
-    const store = createWorkboardSqliteTestStore();
     const card = await store.create({ title: "Exact remote target", status: "ready" });
-    const program = createProgram(store);
     gatewayRuntime.callGatewayFromCli.mockRejectedValueOnce(
       new Error("connect ECONNREFUSED 127.0.0.1:18789"),
     );
