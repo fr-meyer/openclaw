@@ -248,14 +248,14 @@ export const PLUGIN_COMPAT_RECORDS = [
   },
   {
     code: "deprecated-session-store-beta5-api",
-    status: "deprecated",
+    status: "removal-pending",
     owner: "sdk",
     introduced: "2026-05-21",
     deprecated: "2026-07-12",
     warningStarts: "2026-07-12",
     removeAfter: "2026-10-12",
     replacement:
-      "`getSessionEntry(...)`, `listSessionEntries(...)`, and row-level session mutations",
+      "`getSessionEntry(...)`, `listSessionEntries(...)`, and row-level session mutations; retain all six aliases until the minimum supported official plugin version excludes v2026.7.1-beta.5, published readers and package-root v2026.7.x upgrade consumers are verified migrated, and explicit breaking-release approval is granted",
     docsPath: "/plugins/sdk-migration#removed-session-and-transcript-file-apis",
     surfaces: [
       "openclaw/plugin-sdk/session-store-runtime loadSessionStore",
@@ -272,7 +272,7 @@ export const PLUGIN_COMPAT_RECORDS = [
       "src/plugins/compat/registry.test.ts",
     ],
     releaseNote:
-      "The beta.5 session-store import set and package-root whole-store aliases remain available while official plugins and package consumers migrate to row-level session access.",
+      "The beta.5 session-store import set and package-root whole-store aliases remain available with their original October 12 review date; removal is pending verified plugin and supported-upgrade migrations.",
   },
   {
     code: "plugin-sdk-session-agent-resolution-aliases",

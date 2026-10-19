@@ -64,7 +64,11 @@ const INLINE_RECALL_COLUMNS = [
   ["project_key", "project_key TEXT"],
 ] as const;
 
-type StorageShape = "absent" | "legacy" | "binary";
+type StorageShape = "absent" | "legacy" | "legacy-any" | "binary";
+
+function isLegacyStorage(shape: StorageShape): boolean {
+  return shape === "legacy" || shape === "legacy-any";
+}
 
 function storageShape(db: DatabaseSync, table: string, chunks: boolean): StorageShape {
   const tableColumns = columns(db, table);
@@ -74,19 +78,24 @@ function storageShape(db: DatabaseSync, table: string, chunks: boolean): Storage
   const shape =
     tableColumns.get("embedding") === "TEXT"
       ? "legacy"
-      : tableColumns.get("embedding") === "BLOB"
-        ? "binary"
-        : undefined;
+      : tableColumns.get("embedding") === "ANY"
+        ? "legacy-any"
+        : tableColumns.get("embedding") === "BLOB"
+          ? "binary"
+          : undefined;
   if (!shape || (chunks && tableColumns.has("chunk_rowid") !== (shape === "binary"))) {
     throw new Error(`Unsupported partial memory storage schema: ${table}`);
   }
   let schema = chunks
-    ? shape === "legacy"
+    ? isLegacyStorage(shape)
       ? LEGACY_CHUNK_SCHEMA
       : MEMORY_INDEX_CHUNKS_SCHEMA_SQL
-    : shape === "legacy"
+    : isLegacyStorage(shape)
       ? legacyCacheSchema(table)
       : buildMemoryEmbeddingCacheSchema(table);
+  if (shape === "legacy-any") {
+    schema = schema.replace("embedding TEXT NOT NULL", "embedding ANY NOT NULL");
+  }
   if (chunks) {
     const inline = INLINE_RECALL_COLUMNS.filter(([name]) => tableColumns.has(name));
     if (inline.length > 0) {
@@ -97,7 +106,7 @@ function storageShape(db: DatabaseSync, table: string, chunks: boolean): Storage
     }
   }
   if (
-    shape === "legacy" &&
+    isLegacyStorage(shape) &&
     db.prepare("SELECT strict FROM pragma_table_list WHERE schema = 'main' AND name = ?").get(table)
       ?.strict === 0
   ) {
@@ -131,7 +140,7 @@ function storageShape(db: DatabaseSync, table: string, chunks: boolean): Storage
         ]
       : [],
   });
-  if (shape === "legacy") {
+  if (isLegacyStorage(shape)) {
     assertKnownRebuildDependents(
       db,
       table,
@@ -191,10 +200,18 @@ function assertKnownRebuildDependents(
 }
 
 function storageShapes(db: DatabaseSync, cacheTable: string) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(cacheTable)) {
+    throw new Error("Invalid memory embedding cache table identifier");
+  }
   return {
     chunks: storageShape(db, "memory_index_chunks", true),
     cache: storageShape(db, cacheTable, false),
   };
+}
+
+/** Metadata-only preflight before another owner performs expensive data rewrites. */
+export function assertMemoryIndexStorageMigrationCompatible(db: DatabaseSync): void {
+  storageShapes(db, MEMORY_EMBEDDING_CACHE_TABLE);
 }
 
 function assertBinaryEmbeddings(db: DatabaseSync, table: string): void {
@@ -224,7 +241,28 @@ function legacyEmbedding(raw: SQLInputValue): number[] | undefined {
   }
 }
 
-/** Only migrations/imports interpret the retired JSON representation. */
+function legacyAnyEmbedding(raw: SQLInputValue): number[] | undefined {
+  if (typeof raw === "string") {
+    return legacyEmbedding(raw);
+  }
+  // Historical ANY writers stored little-endian Float32 blobs alongside JSON.
+  // Even an eight-byte blob is two Float32 values, not one current Float64 value.
+  if (!(raw instanceof Uint8Array) || raw.byteLength % 4 !== 0) {
+    throw new Error("Unsupported historical ANY embedding storage value");
+  }
+  const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+  const values: number[] = [];
+  for (let offset = 0; offset < raw.byteLength; offset += 4) {
+    const value = view.getFloat32(offset, true);
+    if (!Number.isFinite(value)) {
+      throw new Error("Invalid historical Float32 embedding");
+    }
+    values.push(value);
+  }
+  return values;
+}
+
+/** Only migrations/imports interpret retired embedding representations. */
 export function registerMemoryEmbeddingMigrationFunctions(
   db: DatabaseSync,
   renewAuthority?: () => void,
@@ -247,6 +285,14 @@ export function registerMemoryEmbeddingMigrationFunctions(
   db.function("openclaw_memory_embedding_json_valid", { deterministic: true }, (raw) => {
     renew();
     return Number(legacyEmbedding(raw) !== undefined);
+  });
+  db.function("openclaw_memory_embedding_from_any", { deterministic: true }, (raw) => {
+    renew();
+    return encodeMemoryEmbedding(legacyAnyEmbedding(raw) ?? []);
+  });
+  db.function("openclaw_memory_embedding_any_valid", { deterministic: true }, (raw) => {
+    renew();
+    return Number(legacyAnyEmbedding(raw) !== undefined);
   });
   db.function("openclaw_memory_embedding_blob_valid", { deterministic: true }, (raw) => {
     renew();
@@ -306,12 +352,11 @@ export function migrateMemoryIndexStorage(
   options: { embeddingCacheTable?: string; renewAuthority?: () => void } = {},
 ): void {
   const cacheTable = options.embeddingCacheTable ?? MEMORY_EMBEDDING_CACHE_TABLE;
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(cacheTable)) {
-    throw new Error("Invalid memory embedding cache table identifier");
-  }
   const shapes = storageShapes(db, cacheTable);
-  const migrateChunks = shapes.chunks === "legacy";
-  const migrateCache = shapes.cache === "legacy";
+  const migrateChunks = isLegacyStorage(shapes.chunks);
+  const migrateCache = isLegacyStorage(shapes.cache);
+  const chunkFormat = shapes.chunks === "legacy-any" ? "any" : "json";
+  const cacheFormat = shapes.cache === "legacy-any" ? "any" : "json";
   if (!migrateChunks && !migrateCache) {
     return;
   }
@@ -345,13 +390,13 @@ export function migrateMemoryIndexStorage(
           UPDATE memory_index_sources SET hash = ''
           WHERE (path, source) IN (
             SELECT path, source FROM memory_index_chunks
-            WHERE openclaw_memory_embedding_json_valid(embedding) = 0
+            WHERE openclaw_memory_embedding_${chunkFormat}_valid(embedding) = 0
           );
           INSERT INTO memory_index_meta (key, value)
           SELECT 'memory_vector_rebuild_v1', '1'
           WHERE EXISTS (
             SELECT 1 FROM memory_index_chunks
-            WHERE openclaw_memory_embedding_json_valid(embedding) = 0
+            WHERE openclaw_memory_embedding_${chunkFormat}_valid(embedding) = 0
           )
           ON CONFLICT(key) DO UPDATE SET value = excluded.value;
         `);
@@ -367,7 +412,7 @@ export function migrateMemoryIndexStorage(
             chunk_rowid, id, path, source, start_line, end_line, hash, model, text, embedding, updated_at
           )
           SELECT rowid, id, path, source, start_line, end_line, hash, model, text,
-                 openclaw_memory_embedding_from_json(embedding), updated_at
+                 openclaw_memory_embedding_from_${chunkFormat}(embedding), updated_at
           FROM memory_index_chunks;
           DROP TABLE memory_index_chunks;
           ALTER TABLE memory_index_chunks_storage_migration RENAME TO memory_index_chunks;
@@ -397,7 +442,7 @@ export function migrateMemoryIndexStorage(
         db.exec(`
           INSERT INTO ${replacement} (rowid, provider, model, provider_key, hash, embedding, dims, updated_at)
           SELECT rowid, provider, model, provider_key, hash,
-                 openclaw_memory_embedding_from_json(embedding), dims, updated_at
+                 openclaw_memory_embedding_from_${cacheFormat}(embedding), dims, updated_at
           FROM ${cacheTable};
           DROP TABLE ${cacheTable};
           ALTER TABLE ${replacement} RENAME TO ${cacheTable};

@@ -1,6 +1,6 @@
 {
   "schema": "openclaw-v98-confined-execution-packet/v1",
-  "status": "LOCAL_IMAGE_CLEANUP_OBSERVATION_CORRECTION; RUN9_SIX_PHASES_PASS_AGGREGATE_INCOMPLETE",
+  "status": "LOCAL_SOURCE_LINT_REVISION; EXECUTION_NEVER_RUN; HISTORICAL_EVIDENCE_RETAINED",
   "sourceCommit": "fe1b334f74f1e43efc22f91c1c3738e59c52519c",
   "sourceTree": "5da503ec4fdd8242a5caf71ae8bfc1621c8996f3",
   "sourceManifestPath": "scripts/proofs/v98-confined/source-manifest.json",
@@ -91,7 +91,7 @@
     "imageDirectoryReads": false,
     "metadataLookups": "stat/access/readlink are permitted in the private image/PID/mount scopes; Landlock file-content rules do not mediate them; not identical Node Permission Model metadata restrictions",
     "namespaceBindings": 360,
-    "readBindingSha256": "6b59ee5679b8d7a1d51e2a763a6543485c17811a053eb6a18eebf32be6d73cb6",
+    "readBindingSha256": "84f31d18ec613d1b3ba6b0b88874112432ca25386c30f4ace37227395ae67d9c",
     "completeImportClosureClaimed": false,
     "unexpectedReadSyscallOrChild": "DENY; REQUIRED_FLOW_OR_NATIVE_OWNER_FAILURE_STOPS_ATTEMPT; RETAIN; NO_RETRY_OR_BROADENING; CAUGHT_ERRNO_IS_NOT_AUTOMATIC_ATTEMPT_ABORT",
     "stdioSocketPairs": "At most three tracked anonymous AF_UNIX SOCK_STREAM|SOCK_CLOEXEC protocol-zero pairs in phase 3",
@@ -528,5 +528,19 @@
     "sameRetainedEvidenceLimitBytes": 20971520,
     "retryForceTimeoutOrPermissionExpansion": false,
     "newPublicationOrExecutionAuthorized": false
+  },
+  "localSourceRevision": {
+    "status": "SOURCE_ONLY; NOT_AN_APPROVED_EXECUTION_ENVELOPE; NEVER_RUN",
+    "purpose": "Correct executable fixture lint without changing native permissions, phase arguments, resource bounds or preserved assertions. Store the unchanged historical Workboard source as repository text data.",
+    "fixtureSha256": "ed2570b6eadb86ce05e8af33bcb0102a481a9b4f5d5ab1c7e223ab5403018eb9",
+    "previousFixtureSha256": "25eedca246b608355018e5c43fb0e0ff86d3c5473e445121b5cf4346124a9b0f",
+    "readBindingSha256": "84f31d18ec613d1b3ba6b0b88874112432ca25386c30f4ace37227395ae67d9c",
+    "retainedReadBindingSha256": "6b59ee5679b8d7a1d51e2a763a6543485c17811a053eb6a18eebf32be6d73cb6",
+    "retainedPacketSha256": "29a331d4bfa56a26edd74146ab507b60b7e538216cdcd17579018ab821d85d7f",
+    "retainedPacketStatus": "LOCAL_IMAGE_CLEANUP_OBSERVATION_CORRECTION; RUN9_SIX_PHASES_PASS_AGGREGATE_INCOMPLETE",
+    "historicalClaimsApplyOnlyToRetainedFixtureSha256": "25eedca246b608355018e5c43fb0e0ff86d3c5473e445121b5cf4346124a9b0f",
+    "retainedRunFactsUnchanged": true,
+    "productionAdmitted": false,
+    "executionAuthorized": false
   }
 }

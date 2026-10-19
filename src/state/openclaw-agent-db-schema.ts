@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
+  assertMemoryIndexStorageMigrationCompatible,
   ensureMemoryChunkProvenance,
   ensureMemoryRecallMetadataSchema,
   migrateMemoryIndexSourcesIdentity,
@@ -232,6 +233,7 @@ function migrateAgentStorageInTransaction(
   previousVersion: number,
 ): void {
   maintenanceAuthority.renewAgentDatabaseMaintenanceAuthorityIfPresent();
+  assertMemoryIndexStorageMigrationCompatible(db);
   if (previousVersion === TRANSCRIPT_FTS_ROW_SCHEMA_VERSION) {
     migrateDeployedTranscriptFtsRowsInTransaction(db, schemaSql);
   } else if (

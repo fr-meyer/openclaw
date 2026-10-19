@@ -7,7 +7,7 @@ import {
 } from "./memory-schema-base.js";
 import { migrateMemoryIndexStorage } from "./memory-schema-storage-migration.js";
 
-function legacyDatabase(): DatabaseSync {
+function legacyDatabase(embeddingType: "TEXT" | "ANY" = "TEXT"): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   onTestFinished(() => db.close());
   db.exec(`
@@ -20,7 +20,7 @@ function legacyDatabase(): DatabaseSync {
     CREATE TABLE memory_index_chunks (
       id TEXT PRIMARY KEY, path TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'memory',
       start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, hash TEXT NOT NULL,
-      model TEXT NOT NULL, text TEXT NOT NULL, embedding TEXT NOT NULL, updated_at INTEGER NOT NULL
+      model TEXT NOT NULL, text TEXT NOT NULL, embedding ${embeddingType} NOT NULL, updated_at INTEGER NOT NULL
     ) STRICT;
     CREATE TABLE memory_index_chunk_provenance (
       chunk_id TEXT PRIMARY KEY REFERENCES memory_index_chunks(id) ON DELETE CASCADE,
@@ -29,7 +29,7 @@ function legacyDatabase(): DatabaseSync {
     ) STRICT;
     CREATE TABLE memory_embedding_cache (
       provider TEXT NOT NULL, model TEXT NOT NULL, provider_key TEXT NOT NULL,
-      hash TEXT NOT NULL, embedding TEXT NOT NULL, dims INTEGER, updated_at INTEGER NOT NULL,
+      hash TEXT NOT NULL, embedding ${embeddingType} NOT NULL, dims INTEGER, updated_at INTEGER NOT NULL,
       PRIMARY KEY (provider, model, provider_key, hash)
     ) STRICT;
     CREATE VIRTUAL TABLE memory_index_chunks_fts USING fts5(
@@ -64,6 +64,101 @@ function snapshot(db: DatabaseSync) {
 }
 
 describe("memory storage migration", () => {
+  it("migrates historical ANY JSON and Float32 values into canonical Float64 storage", () => {
+    const db = legacyDatabase("ANY");
+    const before = snapshot(db);
+    // Frozen little-endian Float32 bytes, including a length divisible by eight.
+    const cases = [
+      { hex: "0000803f0000003f", values: [1, 0.5] },
+      { hex: "cdcccc3d", values: [0.10000000149011612] },
+      { hex: "0000008001000000", values: [-0, 1.401298464324817e-45] },
+      { hex: "", values: [] },
+    ];
+    const insertChunk = db.prepare(`INSERT INTO memory_index_chunks
+      SELECT ?, path, source, start_line, end_line, hash, model, text, ?, updated_at
+      FROM memory_index_chunks WHERE id = 'logical-id'`);
+    const insertCache = db.prepare(`INSERT INTO memory_embedding_cache
+      SELECT provider, model, provider_key, ?, ?, ?, updated_at FROM memory_embedding_cache WHERE hash = 'h'`);
+    for (const [index, item] of cases.entries()) {
+      const bytes = Buffer.from(item.hex, "hex");
+      insertChunk.run(`binary-${index}`, bytes);
+      insertCache.run(`binary-${index}`, bytes, item.values.length);
+    }
+    const identities = db
+      .prepare("SELECT rowid, id, text, updated_at FROM memory_index_chunks ORDER BY id")
+      .all();
+    const cacheIdentity = db
+      .prepare(
+        "SELECT rowid, provider, model, provider_key, hash, dims, updated_at FROM memory_embedding_cache ORDER BY hash",
+      )
+      .all();
+    migrateMemoryIndexStorage(db);
+    expect(
+      db
+        .prepare(
+          "SELECT chunk_rowid AS rowid, id, text, updated_at FROM memory_index_chunks ORDER BY id",
+        )
+        .all(),
+    ).toEqual(identities);
+    expect(
+      db
+        .prepare(
+          "SELECT rowid, provider, model, provider_key, hash, dims, updated_at FROM memory_embedding_cache ORDER BY hash",
+        )
+        .all(),
+    ).toEqual(cacheIdentity);
+    for (const [index, item] of cases.entries()) {
+      for (const [table, key] of [
+        ["memory_index_chunks", "id"],
+        ["memory_embedding_cache", "hash"],
+      ]) {
+        const row = db
+          .prepare(`SELECT embedding FROM ${table} WHERE ${key} = ?`)
+          .get(`binary-${index}`)!;
+        if (!(row.embedding instanceof Uint8Array)) {
+          throw new Error("Expected canonical binary embedding");
+        }
+        expect(decodeMemoryEmbedding(row.embedding)).toEqual(item.values);
+        expect(row.embedding.byteLength).toBe(item.values.length * 8);
+      }
+    }
+    const text = db
+      .prepare("SELECT embedding FROM memory_index_chunks WHERE id = 'logical-id'")
+      .get()!;
+    if (!(text.embedding instanceof Uint8Array)) {
+      throw new Error("Expected canonical binary embedding");
+    }
+    expect(decodeMemoryEmbedding(text.embedding)).toEqual([1 + Number.EPSILON, 0.1]);
+    for (const table of ["memory_index_chunks", "memory_embedding_cache"]) {
+      expect(
+        db.prepare(`SELECT type FROM pragma_table_info('${table}') WHERE name = 'embedding'`).get(),
+      ).toEqual({ type: "BLOB" });
+    }
+    expect(db.prepare("SELECT * FROM memory_index_chunk_provenance").all()).toEqual(
+      before.provenance,
+    );
+    expect(db.prepare("SELECT * FROM memory_index_meta").all()).toEqual(before.meta);
+    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+    const migrated = snapshot(db);
+    migrateMemoryIndexStorage(db);
+    expect(snapshot(db)).toEqual(migrated);
+  });
+
+  it.each([
+    42,
+    1.25,
+    Buffer.from("01", "hex"),
+    Buffer.from("0000807f", "hex"),
+    Buffer.from("0000c07f", "hex"),
+  ])("refuses unsupported ANY values without changing data or schema", (embedding) => {
+    const db = legacyDatabase("ANY");
+    db.prepare("UPDATE memory_embedding_cache SET embedding = ?").run(embedding);
+    const before = snapshot(db);
+    expect(() => migrateMemoryIndexStorage(db)).toThrow(/historical.*embedding/i);
+    expect(snapshot(db)).toEqual(before);
+  });
+
   it("converts vectors without providers and preserves identity, provenance, cache age, and FTS maintenance", () => {
     const db = legacyDatabase();
     migrateMemoryIndexStorage(db);
@@ -128,28 +223,31 @@ describe("memory storage migration", () => {
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
-  it("retains malformed-vector text and provenance while recording regeneration debt", () => {
-    const db = legacyDatabase();
-    db.exec(
-      "UPDATE memory_index_chunks SET embedding = '[1,null]'; UPDATE memory_embedding_cache SET embedding = 'invalid'",
-    );
-    migrateMemoryIndexStorage(db);
-    expect(
-      db.prepare("SELECT text, length(embedding) AS bytes FROM memory_index_chunks").get(),
-    ).toEqual({ text: "saffronquasar", bytes: 0 });
-    expect(db.prepare("SELECT hash FROM memory_index_sources").get()).toEqual({ hash: "" });
-    expect(
-      db
-        .prepare("SELECT value FROM memory_index_meta WHERE key = 'memory_vector_rebuild_v1'")
-        .get(),
-    ).toEqual({ value: "1" });
-    expect(db.prepare("SELECT count(*) AS count FROM memory_index_chunk_provenance").get()).toEqual(
-      { count: 1 },
-    );
-    expect(
-      db.prepare("SELECT length(embedding) AS bytes FROM memory_embedding_cache").get(),
-    ).toEqual({ bytes: 0 });
-  });
+  it.each(["TEXT", "ANY"] as const)(
+    "retains malformed %s JSON text and provenance while recording regeneration debt",
+    (embeddingType) => {
+      const db = legacyDatabase(embeddingType);
+      db.exec(
+        "UPDATE memory_index_chunks SET embedding = '[1,null]'; UPDATE memory_embedding_cache SET embedding = 'invalid'",
+      );
+      migrateMemoryIndexStorage(db);
+      expect(
+        db.prepare("SELECT text, length(embedding) AS bytes FROM memory_index_chunks").get(),
+      ).toEqual({ text: "saffronquasar", bytes: 0 });
+      expect(db.prepare("SELECT hash FROM memory_index_sources").get()).toEqual({ hash: "" });
+      expect(
+        db
+          .prepare("SELECT value FROM memory_index_meta WHERE key = 'memory_vector_rebuild_v1'")
+          .get(),
+      ).toEqual({ value: "1" });
+      expect(
+        db.prepare("SELECT count(*) AS count FROM memory_index_chunk_provenance").get(),
+      ).toEqual({ count: 1 });
+      expect(
+        db.prepare("SELECT length(embedding) AS bytes FROM memory_embedding_cache").get(),
+      ).toEqual({ bytes: 0 });
+    },
+  );
 
   it("rolls physical changes back with its enclosing admitted migration", () => {
     const db = legacyDatabase();

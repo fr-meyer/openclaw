@@ -101,6 +101,14 @@ source/vector rebuild debt. Usage rollups also move to a metadata envelope plus
 an identity or compressed body in the existing cache table; obsolete or invalid
 derived caches can be rebuilt.
 
+The migration also accepts the historical schema-19 `ANY` embedding tables used
+by the fork's 9.4 vector-storage patch. JSON text retains its finite numbers;
+little-endian Float32 blobs widen their stored values to canonical Float64 BLOBs.
+Scalar values, malformed binary lengths, and nonfinite binary coordinates refuse
+the transaction. `ANY` is migration input only. Schema compatibility is checked
+before transcript rewriting and again before memory conversion; unsupported row
+values still roll back the enclosing migration when conversion reaches them.
+
 Transcript full-text search keeps its existing content and rowids. A derived row
 map indexes session/message ownership so cleanup and reconciliation delete
 selected FTS rowids without scanning the full text table. Duplicate and null

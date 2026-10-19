@@ -1,9 +1,9 @@
 // Execute only inside the separately approved, native supervised Linux attempt.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { Resolver } from "node:dns/promises";
 import fs from "node:fs";
 import net from "node:net";
-import { Resolver } from "node:dns/promises";
-import { spawnSync } from "node:child_process";
 import { DatabaseSync, backup } from "node:sqlite";
 import { getHeapStatistics } from "node:v8";
 import { Worker, isMainThread, parentPort, workerData, resourceLimits } from "node:worker_threads";
@@ -30,8 +30,15 @@ async function deniedSocket(host) {
     });
     socket.once("error", (error) => {
       clearTimeout(timer);
-      if (error.code !== "EPERM") reject(error);
-      else resolve();
+      if (error.code !== "EPERM") {
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("socket emitted a non-Error", { cause: error }),
+        );
+      } else {
+        resolve();
+      }
     });
   });
 }
@@ -43,9 +50,15 @@ async function exercise(label) {
   try {
     fs.writeSync(file, "synthetic fsync control\n");
     fs.fsyncSync(file);
-  } finally { fs.closeSync(file); }
+  } finally {
+    fs.closeSync(file);
+  }
   const directory = fs.openSync(dir, "r");
-  try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
+  try {
+    fs.fsyncSync(directory);
+  } finally {
+    fs.closeSync(directory);
+  }
 
   // Sentinel is a real writable UID1000 file, created before Landlock in the
   // container's private 1MiB shm. EACCES cannot be a read-only-mount fake.
@@ -67,28 +80,40 @@ async function exercise(label) {
   let keepAlive;
   try {
     assert.equal(db.prepare("PRAGMA journal_mode=WAL").get().journal_mode, "wal");
-    db.exec("PRAGMA synchronous=FULL; CREATE TABLE synthetic(value TEXT); INSERT INTO synthetic VALUES('control');");
+    db.exec(
+      "PRAGMA synchronous=FULL; CREATE TABLE synthetic(value TEXT); INSERT INTO synthetic VALUES('control');",
+    );
     assert.equal(db.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
     keepAlive = setInterval(() => {}, 50);
-    assert.ok(await backup(db, `${dir}/backup.sqlite`) > 0);
+    assert.ok((await backup(db, `${dir}/backup.sqlite`)) > 0);
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   } finally {
     clearInterval(keepAlive);
     db.close();
   }
   const copy = new DatabaseSync(`${dir}/backup.sqlite`, { readOnly: true });
-  try { assert.equal(copy.prepare("SELECT value FROM synthetic").get().value, "control"); }
-  finally { copy.close(); }
-  return { label, fsync: true, sqliteWalBackupClose: true, deniedOutsideScratch: true, deniedSockets: true,
-    heapSizeLimitBytes: getHeapStatistics().heap_size_limit, workerResourceLimits: resourceLimits };
+  try {
+    assert.equal(copy.prepare("SELECT value FROM synthetic").get().value, "control");
+  } finally {
+    copy.close();
+  }
+  return {
+    label,
+    fsync: true,
+    sqliteWalBackupClose: true,
+    deniedOutsideScratch: true,
+    deniedSockets: true,
+    heapSizeLimitBytes: getHeapStatistics().heap_size_limit,
+    workerResourceLimits: resourceLimits,
+  };
 }
 
 if (!isMainThread) {
   if (workerData.deadline === true) {
-    parentPort.postMessage({ workerReady: true });
+    parentPort.postMessage({ workerReady: true }, []);
     setInterval(() => {}, 1000);
   } else {
-    parentPort.postMessage(await exercise("worker"));
+    parentPort.postMessage(await exercise("worker"), []);
     parentPort.close();
   }
 } else {
@@ -101,13 +126,16 @@ if (!isMainThread) {
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   if (mode === "--deadline-probe") {
     const worker = new Worker(new URL(import.meta.url), {
-      workerData: { deadline: true }, resourceLimits: { maxOldGenerationSizeMb: 512 },
+      workerData: { deadline: true },
+      resourceLimits: { maxOldGenerationSizeMb: 512 },
     });
     worker.once("message", () => {
       console.error(JSON.stringify({ event: "deadline_worker_ready" }));
       setInterval(() => {}, 1000);
     });
-    worker.once("error", (error) => { throw error; });
+    worker.once("error", (error) => {
+      throw error;
+    });
   } else {
     const main = await exercise("main");
     const child = spawnSync("/usr/local/bin/node", ["-e", "process.exit(0)"], { stdio: "inherit" });
@@ -115,16 +143,24 @@ if (!isMainThread) {
     assert.equal(child.error?.code, "EPERM");
     const workerResult = await new Promise((resolve, reject) => {
       const worker = new Worker(new URL(import.meta.url), {
-        workerData: { deadline: false }, resourceLimits: { maxOldGenerationSizeMb: 512 },
+        workerData: { deadline: false },
+        resourceLimits: { maxOldGenerationSizeMb: 512 },
       });
       let message;
-      worker.once("message", (value) => { message = value; });
+      worker.once("message", (value) => {
+        message = value;
+      });
       worker.once("error", reject);
       worker.once("exit", (code) => {
-        if (code !== 0 || !message) reject(new Error("Worker did not join successfully"));
-        else resolve(message);
+        if (code !== 0 || !message) {
+          reject(new Error("Worker did not join successfully"));
+        } else {
+          resolve(message);
+        }
       });
     });
-    console.error(JSON.stringify({ event: "capability_controls_joined", main, worker: workerResult }));
+    console.error(
+      JSON.stringify({ event: "capability_controls_joined", main, worker: workerResult }),
+    );
   }
 }

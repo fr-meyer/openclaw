@@ -333,6 +333,24 @@ warning and version observations. The newly bound current-image attempt remains
 unexecuted. Retained failed receipts are never converted to passes.
 
 `source-manifest.json` binds executable tooling, policies and frozen inputs.
+The historical Workboard module is stored as
+`inputs/predecessor-workboard.ts.txt` because the fixture reads its pinned text
+to extract SQL; it never imports or executes that module. Bundle preparation
+preserves its original bytes and `/proof/inputs/predecessor-workboard.ts` runtime
+filename. Historical hashes, phase arguments and retained receipts stay unchanged.
+
+The current local lint revision uses fixture
+`ed2570b6eadb86ce05e8af33bcb0102a481a9b4f5d5ab1c7e223ab5403018eb9`.
+Its manifest, derivation, binding and native fixture hash agree, but the revision
+has not executed and is not an approved execution envelope. Packet
+`localSourceRevision` identifies the prior packet and binding; retained run facts
+still refer to fixture
+`25eedca246b608355018e5c43fb0e0ff86d3c5473e445121b5cf4346124a9b0f`.
+Lint fixes preserve native Error identity, including across realms, and wrap
+unsupported non-Error failures with their cause. The existing read-boundary tests
+exercise failure propagation when diagnostic output also fails. No native
+permission, resource bound, phase argument or preserved assertion was relaxed.
+
 The final external approval packet binds that manifest, exact Git commit/tree,
 workflow, independent review and local test receipts. The workflow must run at
 that approved commit, once. The selected commit/run-number and first-attempt

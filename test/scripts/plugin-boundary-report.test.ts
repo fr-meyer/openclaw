@@ -41,7 +41,7 @@ describe("plugin-boundary-report", () => {
 
     expect(summaryResult.exitCode).toBe(0);
     expect(summaryResult.stderr).toBe("");
-    expect(summary.compat?.removalPendingCount).toBe(20);
+    expect(summary.compat?.removalPendingCount).toBe(21);
     expect(summary.compat?.removalPendingDueCount).toEqual(expect.any(Number));
     expect(summary.compat?.removalPending?.map((record) => record.code)).toEqual([
       "sdk-untrusted-context-identifier-aliases",
@@ -63,6 +63,7 @@ describe("plugin-boundary-report", () => {
       "plugin-sdk-broad-runtime-barrels",
       "plugin-sdk-focused-compat-aliases",
       "plugin-sdk-infra-runtime-subpath",
+      "deprecated-session-store-beta5-api",
       "plugin-sdk-plugin-config-runtime-public-demotion",
     ]);
     expect(summary.compat?.removalPending?.[0]).toMatchObject({
@@ -76,6 +77,20 @@ describe("plugin-boundary-report", () => {
       expect(record.blocker).toEqual(expect.stringMatching(/retain|replacement/iu));
       expect(record.readerCount).toEqual(expect.any(Number));
       if (originalPendingCodes.has(String(record.code))) {
+        expect(record.readerSample).toEqual(expect.arrayContaining([expect.any(String)]));
+      } else if (record.code === "deprecated-session-store-beta5-api") {
+        expect(record.removeAfter).toBe("2026-10-12");
+        expect(record.blocker).toEqual(
+          expect.stringContaining(
+            "minimum supported official plugin version excludes v2026.7.1-beta.5",
+          ),
+        );
+        expect(record.blocker).toEqual(
+          expect.stringContaining("published readers and package-root v2026.7.x upgrade consumers"),
+        );
+        expect(record.blocker).toEqual(
+          expect.stringContaining("explicit breaking-release approval"),
+        );
         expect(record.readerSample).toEqual(expect.arrayContaining([expect.any(String)]));
       } else {
         expect(record.removeAfter).toBe("2026-10-01");
@@ -109,7 +124,7 @@ describe("plugin-boundary-report", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain("removalPending=20");
+    expect(result.stdout).toContain("removalPending=21");
     expect(result.stdout).not.toContain("agent-harness-sdk-alias");
     expect(result.stdout).toMatch(/blocker=.*retain the public/iu);
     expect(result.stdout).toMatch(/readerRefs=\d+ readers=/u);

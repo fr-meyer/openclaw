@@ -47,8 +47,21 @@ LAZY_SUBAGENT_DERIVE_SHA = "692433db84c7b7bbda05927b4e6d451d60b11868cc80e2226a17
 LAZY_SUBAGENT_FIXTURE_SHA = "25eedca246b608355018e5c43fb0e0ff86d3c5473e445121b5cf4346124a9b0f"
 
 
+FIXTURE_LINT_DERIVE_SHA = "bf97829646dae3532bf55ec87080f991d143533d2af918e2abe031702f47a1b4"
+FIXTURE_LINT_SHA = "ed2570b6eadb86ce05e8af33bcb0102a481a9b4f5d5ab1c7e223ab5403018eb9"
+
+
 def baseline_source(raw):
     """Test fixture only: invert exact pinned revisions to the historical baseline."""
+    if RENDER.digest(raw) == FIXTURE_LINT_DERIVE_SHA:
+        pin = '"/proof/inputs/fixture.mjs": "'
+        text = raw.decode("utf-8")
+        if text.count(pin + FIXTURE_LINT_SHA) != 1:
+            raise ValueError("fixture lint revision inverse anchor changed")
+        raw = text.replace(pin + FIXTURE_LINT_SHA,
+                           pin + LAZY_SUBAGENT_FIXTURE_SHA, 1).encode("utf-8")
+        if RENDER.digest(raw) != LAZY_SUBAGENT_DERIVE_SHA:
+            raise ValueError("fixture lint inverse did not restore exact retained source")
     if RENDER.digest(raw) == LAZY_SUBAGENT_DERIVE_SHA:
         pin = '"/proof/inputs/fixture.mjs": "'
         text = raw.decode("utf-8")
@@ -191,7 +204,7 @@ class OpenSSLProposalTests(unittest.TestCase):
 
     def test_hosted_tests_accept_only_exact_future_source_without_regranting(self):
         current = (BASE / "derive_read_policy.py").read_bytes()
-        if RENDER.digest(current) in (IMAGE_REBOUND_DERIVE_SHA, LAZY_SUBAGENT_DERIVE_SHA):
+        if RENDER.digest(current) in (IMAGE_REBOUND_DERIVE_SHA, LAZY_SUBAGENT_DERIVE_SHA, FIXTURE_LINT_DERIVE_SHA):
             self.assertEqual(baseline_source(current), self.source)
             with self.assertRaisesRegex(ValueError, "neither exact"):
                 baseline_source(current + b"\n")

@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
+import { isNativeError } from "node:util/types";
 
 const SCHEMA = "openclaw-parity-synthetic-fixture/v1";
 const TIMESTAMP = 1_790_000_000_000;
@@ -18,17 +19,29 @@ const PINS = Object.freeze({
 });
 const STATE_TABLES = ["flow_runs", "task_runs", "task_delivery_state", "subagent_runs"];
 const WORKBOARD_TABLES = [
-  "workboard_schema_migrations", "workboard_boards", "workboard_cards",
-  "workboard_card_labels", "workboard_card_events", "workboard_card_attempts",
-  "workboard_card_comments", "workboard_card_links", "workboard_card_proof",
-  "workboard_card_artifacts", "workboard_card_diagnostics",
-  "workboard_card_notifications", "workboard_worker_logs", "workboard_worker_protocol",
-  "workboard_card_attachments", "workboard_attachment_blobs",
+  "workboard_schema_migrations",
+  "workboard_boards",
+  "workboard_cards",
+  "workboard_card_labels",
+  "workboard_card_events",
+  "workboard_card_attempts",
+  "workboard_card_comments",
+  "workboard_card_links",
+  "workboard_card_proof",
+  "workboard_card_artifacts",
+  "workboard_card_diagnostics",
+  "workboard_card_notifications",
+  "workboard_worker_logs",
+  "workboard_worker_protocol",
+  "workboard_card_attachments",
+  "workboard_attachment_blobs",
   "workboard_notification_subscriptions",
 ];
 const FILES = [
-  "state/openclaw.sqlite", "plugins/workboard/workboard.sqlite",
-  "config.synthetic.json", "workspace/synthetic-marker.txt",
+  "state/openclaw.sqlite",
+  "plugins/workboard/workboard.sqlite",
+  "config.synthetic.json",
+  "workspace/synthetic-marker.txt",
 ];
 const diagnosticState = { doctorResult: "NOT_CALLED", versions: {} };
 process.umask(0o077);
@@ -72,8 +85,11 @@ function workboardSqlFromSource(source) {
 }
 
 function sqlitePath(root, phase, which) {
-  return path.join(root, phase, which === "state"
-    ? "state/openclaw.sqlite" : "plugins/workboard/workboard.sqlite");
+  return path.join(
+    root,
+    phase,
+    which === "state" ? "state/openclaw.sqlite" : "plugins/workboard/workboard.sqlite",
+  );
 }
 
 function requireConsolidated(root, phase) {
@@ -91,7 +107,9 @@ function readSidecarStat(file) {
   try {
     return fs.lstatSync(file);
   } catch (error) {
-    if (error.code === "ENOENT") return undefined;
+    if (error.code === "ENOENT") {
+      return undefined;
+    }
     throw error;
   }
 }
@@ -99,6 +117,7 @@ function readSidecarStat(file) {
 function readMainPin(file) {
   const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
   let result;
+  /** @type {Error | undefined} */
   let failure;
   try {
     const before = fs.fstatSync(fd);
@@ -108,20 +127,38 @@ function readMainPin(file) {
     const digest = sha256(fs.readFileSync(fd));
     const after = fs.fstatSync(fd);
     for (const key of ["dev", "ino", "size", "uid", "gid", "nlink"]) {
-      if (before[key] !== after[key]) throw new Error("READ_BOUNDARY_MAIN_CHANGED");
+      if (before[key] !== after[key]) {
+        throw new Error("READ_BOUNDARY_MAIN_CHANGED");
+      }
     }
-    result = { file, dev: before.dev, ino: before.ino, size: before.size,
-      uid: before.uid, gid: before.gid, nlink: before.nlink, sha256: digest };
+    result = {
+      file,
+      dev: before.dev,
+      ino: before.ino,
+      size: before.size,
+      uid: before.uid,
+      gid: before.gid,
+      nlink: before.nlink,
+      sha256: digest,
+    };
   } catch (error) {
-    failure = error;
+    failure = isNativeError(error)
+      ? error
+      : new Error("READ_BOUNDARY_OPERATION_FAILED", { cause: error });
   } finally {
     try {
       fs.closeSync(fd);
     } catch (error) {
-      failure = failure ? new AggregateError([failure, error], "READ_BOUNDARY_FD_CLOSE_FAILED") : error;
+      failure = failure
+        ? new AggregateError([failure, error], "READ_BOUNDARY_FD_CLOSE_FAILED")
+        : isNativeError(error)
+          ? error
+          : new Error("READ_BOUNDARY_OPERATION_FAILED", { cause: error });
     }
   }
-  if (failure) throw failure;
+  if (failure) {
+    throw failure;
+  }
   return result;
 }
 
@@ -136,8 +173,12 @@ function settleReadBoundary(root, phase, pins) {
   // Read-only WAL connections can leave empty coordination files. Only the
   // successfully closed, unchanged synthetic read scope may ask SQLite to
   // settle them; file deletion is never a substitute for SQLite close.
-  if (pins.length !== 2 || pins.some((pin, index) =>
-    pin.file !== sqlitePath(root, phase, index === 0 ? "state" : "workboard"))) {
+  if (
+    pins.length !== 2 ||
+    pins.some(
+      (pin, index) => pin.file !== sqlitePath(root, phase, index === 0 ? "state" : "workboard"),
+    )
+  ) {
     throw new Error("READ_BOUNDARY_PINS_INVALID");
   }
   const pending = [];
@@ -148,25 +189,53 @@ function settleReadBoundary(root, phase, pins) {
     const journal = readSidecarStat(pin.file + "-journal");
     const wal = readSidecarStat(pin.file + "-wal");
     const shm = readSidecarStat(pin.file + "-shm");
-    if (journal || Boolean(wal) !== Boolean(shm)) throw new Error("READ_BOUNDARY_SIDECARS_UNEXPECTED");
-    if (!wal) continue;
-    for (const [sidecar, size] of [[wal, 0], [shm, 32768]]) {
-      if (!sidecar.isFile() || sidecar.nlink !== 1 || sidecar.size !== size ||
-          sidecar.dev !== pin.dev || sidecar.uid !== pin.uid || sidecar.gid !== pin.gid) {
+    if (journal || Boolean(wal) !== Boolean(shm)) {
+      throw new Error("READ_BOUNDARY_SIDECARS_UNEXPECTED");
+    }
+    if (!wal) {
+      continue;
+    }
+    for (const [sidecar, size] of [
+      [wal, 0],
+      [shm, 32768],
+    ]) {
+      if (
+        !sidecar.isFile() ||
+        sidecar.nlink !== 1 ||
+        sidecar.size !== size ||
+        sidecar.dev !== pin.dev ||
+        sidecar.uid !== pin.uid ||
+        sidecar.gid !== pin.gid
+      ) {
         throw new Error("READ_BOUNDARY_SIDECARS_UNEXPECTED");
       }
     }
     pending.push({ pin, wal, shm });
   }
   for (const { pin, wal, shm } of pending) {
-    if (JSON.stringify(readMainPin(pin.file)) !== JSON.stringify(pin)) throw new Error("READ_BOUNDARY_MAIN_CHANGED");
-    for (const [suffix, expected] of [["-wal", wal], ["-shm", shm]]) {
-      const actual = readSidecarStat(pin.file + suffix);
-      if (!actual || !actual.isFile() || ["dev", "ino", "size", "uid", "gid", "nlink"].some((key) =>
-        actual[key] !== expected[key])) throw new Error("READ_BOUNDARY_SIDECAR_CHANGED");
+    if (JSON.stringify(readMainPin(pin.file)) !== JSON.stringify(pin)) {
+      throw new Error("READ_BOUNDARY_MAIN_CHANGED");
     }
-    if (readSidecarStat(pin.file + "-journal")) throw new Error("READ_BOUNDARY_SIDECARS_UNEXPECTED");
+    /** @type {Array<[string, import("node:fs").Stats]>} */
+    const expectedSidecars = [
+      ["-wal", wal],
+      ["-shm", shm],
+    ];
+    for (const [suffix, expected] of expectedSidecars) {
+      const actual = readSidecarStat(pin.file + suffix);
+      if (
+        !actual ||
+        !actual.isFile() ||
+        ["dev", "ino", "size", "uid", "gid", "nlink"].some((key) => actual[key] !== expected[key])
+      ) {
+        throw new Error("READ_BOUNDARY_SIDECAR_CHANGED");
+      }
+    }
+    if (readSidecarStat(pin.file + "-journal")) {
+      throw new Error("READ_BOUNDARY_SIDECARS_UNEXPECTED");
+    }
     let owner;
+    /** @type {Error | undefined} */
     let failure;
     try {
       owner = new DatabaseSync(pin.file);
@@ -175,65 +244,91 @@ function settleReadBoundary(root, phase, pins) {
         throw new Error("READ_BOUNDARY_CHECKPOINT_UNSETTLED");
       }
     } catch (error) {
-      failure = error;
+      failure = isNativeError(error)
+        ? error
+        : new Error("READ_BOUNDARY_OPERATION_FAILED", { cause: error });
     } finally {
       try {
         owner?.close();
       } catch (error) {
-        failure = failure ? new AggregateError([failure, error], "READ_BOUNDARY_OWNER_CLOSE_FAILED") : error;
+        failure = failure
+          ? new AggregateError([failure, error], "READ_BOUNDARY_OWNER_CLOSE_FAILED")
+          : isNativeError(error)
+            ? error
+            : new Error("READ_BOUNDARY_OPERATION_FAILED", { cause: error });
       }
     }
-    if (failure) throw failure;
-    for (const suffix of ["-wal", "-shm", "-journal"]) {
-      if (readSidecarStat(pin.file + suffix)) throw new Error("READ_BOUNDARY_OWNER_DID_NOT_SETTLE");
+    if (failure) {
+      throw failure;
     }
-    if (JSON.stringify(readMainPin(pin.file)) !== JSON.stringify(pin)) throw new Error("READ_BOUNDARY_MAIN_CHANGED");
+    for (const suffix of ["-wal", "-shm", "-journal"]) {
+      if (readSidecarStat(pin.file + suffix)) {
+        throw new Error("READ_BOUNDARY_OWNER_DID_NOT_SETTLE");
+      }
+    }
+    if (JSON.stringify(readMainPin(pin.file)) !== JSON.stringify(pin)) {
+      throw new Error("READ_BOUNDARY_MAIN_CHANGED");
+    }
   }
   requireConsolidated(root, phase);
   for (const pin of pins) {
-    if (JSON.stringify(readMainPin(pin.file)) !== JSON.stringify(pin)) throw new Error("READ_BOUNDARY_MAIN_CHANGED");
+    if (JSON.stringify(readMainPin(pin.file)) !== JSON.stringify(pin)) {
+      throw new Error("READ_BOUNDARY_MAIN_CHANGED");
+    }
   }
 }
 
-function rowDigest(database, table, columns) {
-  if (!/^[a-z_]+$/u.test(table) || !columns.every((name) => /^[a-z_]+$/u.test(name))) {
+function rowDigest(database, table, columnNames) {
+  if (!/^[a-z_]+$/u.test(table) || !columnNames.every((name) => /^[a-z_]+$/u.test(name))) {
     throw new Error("UNEXPECTED_IDENTIFIER");
   }
-  const values = database.prepare(`SELECT ${columns.join(",")} FROM ${table}`).all();
-  const normalized = values.map((row) => JSON.stringify(row, (_key, value) =>
-    value instanceof Uint8Array ? { blobBase64: Buffer.from(value).toString("base64") } : value,
-  )).sort();
+  const values = database.prepare(`SELECT ${columnNames.join(",")} FROM ${table}`).all();
+  const normalized = values
+    .map((row) =>
+      JSON.stringify(row, (_key, value) =>
+        value instanceof Uint8Array ? { blobBase64: Buffer.from(value).toString("base64") } : value,
+      ),
+    )
+    .toSorted((left, right) => (left < right ? -1 : left > right ? 1 : 0));
   return { count: normalized.length, sha256: sha256(normalized.join("\n")) };
 }
 
 function columns(database, table) {
-  return database.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
+  return database
+    .prepare(`PRAGMA table_info(${table})`)
+    .all()
+    .map((row) => row.name);
 }
 
 function captureTables(database, names) {
-  return Object.fromEntries(names.map((table) => {
-    const fields = columns(database, table);
-    if (fields.length === 0) {
-      throw new Error(`TABLE_MISSING:${table}`);
-    }
-    return [table, { columns: fields, ...rowDigest(database, table, fields) }];
-  }));
+  return Object.fromEntries(
+    names.map((table) => {
+      const fields = columns(database, table);
+      if (fields.length === 0) {
+        throw new Error(`TABLE_MISSING:${table}`);
+      }
+      return [table, { columns: fields, ...rowDigest(database, table, fields) }];
+    }),
+  );
 }
 
 function schemaDigest(database, names) {
   const definitions = names.map((table) => {
-    const row = database.prepare(
-      "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
-    ).get(table);
+    const row = database
+      .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")
+      .get(table);
     if (typeof row?.sql !== "string") {
       throw new Error(`TABLE_DEFINITION_MISSING:${table}`);
     }
     return `${table}:${row.sql.replace(/\s+/gu, " ").trim()}`;
   });
-  const objects = database.prepare(`SELECT type,name,tbl_name,sql FROM sqlite_master
+  const objects = database
+    .prepare(`SELECT type,name,tbl_name,sql FROM sqlite_master
     WHERE type IN ('index','trigger','view')
       AND (substr(tbl_name,1,10)='workboard_' OR substr(name,1,10)='workboard_')
-    ORDER BY type,name`).all().map((row) => JSON.stringify(row));
+    ORDER BY type,name`)
+    .all()
+    .map((row) => JSON.stringify(row));
   return sha256([...definitions, ...objects].join("\n"));
 }
 
@@ -260,7 +355,9 @@ function closeDatabases(databases, primaryFailure) {
     }
   }
   if (failures.length > 0) {
-    if (primaryFailure !== undefined) failures.unshift(primaryFailure);
+    if (primaryFailure !== undefined) {
+      failures.unshift(primaryFailure);
+    }
     throw new AggregateError(failures, "SYNTHETIC_DATABASE_CLOSE_FAILED");
   }
 }
@@ -273,13 +370,17 @@ function seedDatabase(database, which, seed) {
   if (!pageLimit || database.isTransaction !== false) {
     throw new Error("INVALID_SEED_DATABASE");
   }
-  database.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; PRAGMA cache_spill=OFF;");
-  if (database.prepare("PRAGMA foreign_keys").get()?.foreign_keys !== 1 ||
-      database.prepare("PRAGMA journal_mode").get()?.journal_mode !== "wal" ||
-      database.prepare("PRAGMA wal_autocheckpoint").get()?.wal_autocheckpoint !== 0 ||
-      database.prepare("PRAGMA cache_spill").get()?.cache_spill !== 0 ||
-      database.prepare("PRAGMA page_size").get()?.page_size !== 4096 ||
-      database.prepare(`PRAGMA max_page_count=${pageLimit}`).get()?.max_page_count !== pageLimit) {
+  database.exec(
+    "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; PRAGMA cache_spill=OFF;",
+  );
+  if (
+    database.prepare("PRAGMA foreign_keys").get()?.foreign_keys !== 1 ||
+    database.prepare("PRAGMA journal_mode").get()?.journal_mode !== "wal" ||
+    database.prepare("PRAGMA wal_autocheckpoint").get()?.wal_autocheckpoint !== 0 ||
+    database.prepare("PRAGMA cache_spill").get()?.cache_spill !== 0 ||
+    database.prepare("PRAGMA page_size").get()?.page_size !== 4096 ||
+    database.prepare(`PRAGMA max_page_count=${pageLimit}`).get()?.max_page_count !== pageLimit
+  ) {
     throw new Error("SEED_STORAGE_PREREQUISITE_CHANGED");
   }
   database.exec("BEGIN IMMEDIATE");
@@ -298,7 +399,9 @@ function seedDatabase(database, which, seed) {
       try {
         database.exec("ROLLBACK");
       } catch (rollbackError) {
-        throw new AggregateError([error, rollbackError], "SEED_ROLLBACK_FAILED");
+        throw new AggregateError([error, rollbackError], "SEED_ROLLBACK_FAILED", {
+          cause: rollbackError,
+        });
       }
     }
     throw error;
@@ -307,46 +410,78 @@ function seedDatabase(database, which, seed) {
 
 function seedState(database, stateJson) {
   database.exec(stateJson.sql);
-  database.prepare(`INSERT INTO schema_meta
+  database
+    .prepare(`INSERT INTO schema_meta
     (meta_key,role,schema_version,agent_id,app_version,created_at,updated_at)
-    VALUES ('primary','global',17,NULL,'2026.9.4',?,?)`).run(TIMESTAMP, TIMESTAMP);
+    VALUES ('primary','global',17,NULL,'2026.9.4',?,?)`)
+    .run(TIMESTAMP, TIMESTAMP);
   database.exec("PRAGMA user_version=17");
   const flowId = "synthetic-flow-001";
   const taskId = "synthetic-task-001";
   const runId = "synthetic-run-001";
   const owner = "agent:main:synthetic-publisher";
-  database.prepare(`INSERT INTO flow_runs
+  database
+    .prepare(`INSERT INTO flow_runs
     (flow_id,sync_mode,owner_key,controller_id,revision,status,notify_policy,goal,
      current_step,state_json,wait_json,created_at,updated_at)
     VALUES (?,'managed',?,'mergeguez-pr-lifecycle/v1',7,'blocked','none',
             'synthetic parity fixture','blocked',?,?,?,?)`)
-    .run(flowId, owner, JSON.stringify(stateJson.blocked),
-      JSON.stringify(stateJson.blocked.wait), TIMESTAMP, TIMESTAMP);
-  database.prepare(`INSERT INTO task_runs
+    .run(
+      flowId,
+      owner,
+      JSON.stringify(stateJson.blocked),
+      JSON.stringify(stateJson.blocked.wait),
+      TIMESTAMP,
+      TIMESTAMP,
+    );
+  database
+    .prepare(`INSERT INTO task_runs
     (task_id,runtime,task_kind,requester_session_key,owner_key,scope_kind,
      child_session_key,parent_flow_id,run_id,agent_id,task,status,delivery_status,
      notify_policy,created_at,ended_at)
     VALUES (?,'subagent','review',?,?,'managed',?,?,?,'synthetic-worker',
             'synthetic review only','failed','not_requested','none',?,?)`)
-    .run(taskId, owner, owner, "agent:main:subagent:synthetic", flowId, runId,
-      TIMESTAMP, TIMESTAMP + 1);
-  database.prepare(`INSERT INTO task_delivery_state
+    .run(
+      taskId,
+      owner,
+      owner,
+      "agent:main:subagent:synthetic",
+      flowId,
+      runId,
+      TIMESTAMP,
+      TIMESTAMP + 1,
+    );
+  database
+    .prepare(`INSERT INTO task_delivery_state
     (task_id,requester_origin_json,last_notified_event_at) VALUES (?,?,?)`)
     .run(taskId, JSON.stringify({ channel: "synthetic" }), TIMESTAMP);
-  database.prepare(`INSERT INTO subagent_runs
+  database
+    .prepare(`INSERT INTO subagent_runs
     (run_id,child_session_key,requester_session_key,created_at,payload_json)
     VALUES (?,?,?,?,?)`)
-    .run(runId, "agent:main:subagent:synthetic", owner, TIMESTAMP,
-      JSON.stringify({ runId, childSessionKey: "agent:main:subagent:synthetic",
-        requesterSessionKey: owner, task: "synthetic review only", createdAt: TIMESTAMP,
-        execution: { status: "terminal" }, completion: { required: true },
-        delivery: { status: "suspended", suspendedReason: "permanent_failure" } }));
+    .run(
+      runId,
+      "agent:main:subagent:synthetic",
+      owner,
+      TIMESTAMP,
+      JSON.stringify({
+        runId,
+        childSessionKey: "agent:main:subagent:synthetic",
+        requesterSessionKey: owner,
+        task: "synthetic review only",
+        createdAt: TIMESTAMP,
+        execution: { status: "terminal" },
+        completion: { required: true },
+        delivery: { status: "suspended", suspendedReason: "permanent_failure" },
+      }),
+    );
 }
 
 function seedWorkboard(database, sql) {
   database.exec(sql);
   database.prepare("INSERT INTO workboard_schema_migrations VALUES ('schema-3',?)").run(TIMESTAMP);
-  database.prepare(`INSERT INTO workboard_boards
+  database
+    .prepare(`INSERT INTO workboard_boards
     (id,name,created_at,updated_at) VALUES ('synthetic-board','Synthetic board',?,?)`)
     .run(TIMESTAMP, TIMESTAMP);
   const insert = database.prepare(`INSERT INTO workboard_cards
@@ -355,33 +490,86 @@ function seedWorkboard(database, sql) {
     VALUES (?,'synthetic-board',? ,?,'normal',?,?,?, ?,?,?,?, ?,?)`);
   for (let index = 0; index < CARD_COUNT; index += 1) {
     const running = index < 9;
-    insert.run(`synthetic-card-${String(index).padStart(4, "0")}`,
-      `Synthetic card ${index}`, running ? "running" : "todo", index,
-      TIMESTAMP, TIMESTAMP, index >= CARD_COUNT - 3 ? TIMESTAMP : null,
+    insert.run(
+      `synthetic-card-${String(index).padStart(4, "0")}`,
+      `Synthetic card ${index}`,
+      running ? "running" : "todo",
+      index,
+      TIMESTAMP,
+      TIMESTAMP,
+      index >= CARD_COUNT - 3 ? TIMESTAMP : null,
       running ? `agent:main:subagent:card-${index}` : null,
       running ? `synthetic-card-run-${index}` : null,
-      running ? "agent-session" : null, running ? "autonomous" : null,
-      running ? "running" : null);
+      running ? "agent-session" : null,
+      running ? "autonomous" : null,
+      running ? "running" : null,
+    );
   }
   const card = "synthetic-card-0000";
+  /** @type {Array<[string, string, import("node:sqlite").SQLInputValue[]]>} */
   const rows = [
     ["workboard_card_labels", "card_id,ordinal,label", [card, 0, "synthetic"]],
-    ["workboard_card_events", "id,card_id,ordinal,kind,at", ["event-1", card, 0, "created", TIMESTAMP]],
-    ["workboard_card_attempts", "id,card_id,ordinal,status,started_at", ["attempt-1", card, 0, "running", TIMESTAMP]],
-    ["workboard_card_comments", "id,card_id,ordinal,body,created_at", ["comment-1", card, 0, "synthetic only", TIMESTAMP]],
-    ["workboard_card_links", "id,card_id,ordinal,type,target_card_id,created_at", ["link-1", card, 0, "reference", "synthetic-card-0001", TIMESTAMP]],
-    ["workboard_card_proof", "id,card_id,ordinal,status,created_at", ["proof-1", card, 0, "passed", TIMESTAMP]],
-    ["workboard_card_artifacts", "id,card_id,ordinal,label,created_at", ["artifact-1", card, 0, "synthetic", TIMESTAMP]],
-    ["workboard_card_diagnostics", "card_id,ordinal,kind,severity,title,detail,first_seen_at,last_seen_at,count,actions_json", [card, 0, "fixture", "info", "Synthetic", "Fixture only", TIMESTAMP, TIMESTAMP, 1, "[]"]],
-    ["workboard_card_notifications", "id,card_id,ordinal,kind,message,created_at", ["notification-1", card, 0, "fixture", "synthetic", TIMESTAMP]],
-    ["workboard_worker_logs", "id,card_id,ordinal,level,message,created_at", ["log-1", card, 0, "info", "synthetic", TIMESTAMP]],
+    [
+      "workboard_card_events",
+      "id,card_id,ordinal,kind,at",
+      ["event-1", card, 0, "created", TIMESTAMP],
+    ],
+    [
+      "workboard_card_attempts",
+      "id,card_id,ordinal,status,started_at",
+      ["attempt-1", card, 0, "running", TIMESTAMP],
+    ],
+    [
+      "workboard_card_comments",
+      "id,card_id,ordinal,body,created_at",
+      ["comment-1", card, 0, "synthetic only", TIMESTAMP],
+    ],
+    [
+      "workboard_card_links",
+      "id,card_id,ordinal,type,target_card_id,created_at",
+      ["link-1", card, 0, "reference", "synthetic-card-0001", TIMESTAMP],
+    ],
+    [
+      "workboard_card_proof",
+      "id,card_id,ordinal,status,created_at",
+      ["proof-1", card, 0, "passed", TIMESTAMP],
+    ],
+    [
+      "workboard_card_artifacts",
+      "id,card_id,ordinal,label,created_at",
+      ["artifact-1", card, 0, "synthetic", TIMESTAMP],
+    ],
+    [
+      "workboard_card_diagnostics",
+      "card_id,ordinal,kind,severity,title,detail,first_seen_at,last_seen_at,count,actions_json",
+      [card, 0, "fixture", "info", "Synthetic", "Fixture only", TIMESTAMP, TIMESTAMP, 1, "[]"],
+    ],
+    [
+      "workboard_card_notifications",
+      "id,card_id,ordinal,kind,message,created_at",
+      ["notification-1", card, 0, "fixture", "synthetic", TIMESTAMP],
+    ],
+    [
+      "workboard_worker_logs",
+      "id,card_id,ordinal,level,message,created_at",
+      ["log-1", card, 0, "info", "synthetic", TIMESTAMP],
+    ],
     ["workboard_worker_protocol", "card_id,state,updated_at", [card, "idle", TIMESTAMP]],
-    ["workboard_card_attachments", "id,card_id,ordinal,file_name,byte_size,created_at", ["attachment-1", card, 0, "synthetic.bin", 4, TIMESTAMP]],
+    [
+      "workboard_card_attachments",
+      "id,card_id,ordinal,file_name,byte_size,created_at",
+      ["attachment-1", card, 0, "synthetic.bin", 4, TIMESTAMP],
+    ],
     ["workboard_attachment_blobs", "attachment_id,content", ["attachment-1", Buffer.from("DATA")]],
-    ["workboard_notification_subscriptions", "id,board_id,created_at,updated_at", ["subscription-1", "synthetic-board", TIMESTAMP, TIMESTAMP]],
+    [
+      "workboard_notification_subscriptions",
+      "id,board_id,created_at,updated_at",
+      ["subscription-1", "synthetic-board", TIMESTAMP, TIMESTAMP],
+    ],
   ];
   for (const [table, names, values] of rows) {
-    database.prepare(`INSERT INTO ${table} (${names}) VALUES (${values.map(() => "?").join(",")})`)
+    database
+      .prepare(`INSERT INTO ${table} (${names}) VALUES (${values.map(() => "?").join(",")})`)
       .run(...values);
   }
 }
@@ -393,13 +581,31 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   const stateSql = requirePinnedSource(stateSqlPath, PINS.stateSql);
   const workboardSource = requirePinnedSource(workboardSourcePath, PINS.workboardSource);
   requirePinnedSource(controllerSourcePath, PINS.controllerSource);
-  const { createState, blockState, isLifecycleState } = await import(pathToFileURL(controllerSourcePath).href);
-  const state = createState({ action: "opened", eventId: "synthetic-opened",
-    repo: "fixture/openclaw", prNumber: 1, headSha: "a".repeat(40),
-    baseSha: "b".repeat(40), baseRef: "dev", headRepo: "fixture/openclaw" },
-  { reviewActor: "mergeguez", authorActor: "le-commis", reviewWorkerAgentId: "synthetic-review",
-    authorWorkerAgentId: "le-commis", workspace: "/synthetic/workspace",
-    baseBranches: ["dev"], mode: "observe" }, TIMESTAMP);
+  const { createState, blockState, isLifecycleState } = await import(
+    pathToFileURL(controllerSourcePath).href
+  );
+  const state = createState(
+    {
+      action: "opened",
+      eventId: "synthetic-opened",
+      repo: "fixture/openclaw",
+      prNumber: 1,
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40),
+      baseRef: "dev",
+      headRepo: "fixture/openclaw",
+    },
+    {
+      reviewActor: "mergeguez",
+      authorActor: "le-commis",
+      reviewWorkerAgentId: "synthetic-review",
+      authorWorkerAgentId: "le-commis",
+      workspace: "/synthetic/workspace",
+      baseBranches: ["dev"],
+      mode: "observe",
+    },
+    TIMESTAMP,
+  );
   const blocked = blockState(state, "synthetic_manual_hold", TIMESTAMP + 1).state;
   if (!isLifecycleState(blocked) || blocked.phase !== "blocked") {
     throw new Error("SYNTHETIC_CONTROLLER_STATE_INVALID");
@@ -417,14 +623,23 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   const seedStorage = {};
   try {
     workboardDb = new DatabaseSync(sqlitePath(root, "raw", "workboard"));
-    seedStorage.state = seedDatabase(stateDb, "state", () => seedState(stateDb, { sql: stateSql, blocked }));
-    seedStorage.workboard = seedDatabase(workboardDb, "workboard", () => seedWorkboard(workboardDb, workboardSqlFromSource(workboardSource)));
+    seedStorage.state = seedDatabase(stateDb, "state", () =>
+      seedState(stateDb, { sql: stateSql, blocked }),
+    );
+    seedStorage.workboard = seedDatabase(workboardDb, "workboard", () =>
+      seedWorkboard(workboardDb, workboardSqlFromSource(workboardSource)),
+    );
     for (const which of ["state", "workboard"]) {
       const storage = seedStorage[which];
       const wal = fs.statSync(sqlitePath(root, "raw", which) + "-wal");
       const frameSize = storage.pageSize + 24;
-      if (!wal.isFile() || wal.nlink !== 1 || wal.size < 32 + frameSize ||
-          wal.size > 32 + storage.pageLimit * frameSize || (wal.size - 32) % frameSize !== 0) {
+      if (
+        !wal.isFile() ||
+        wal.nlink !== 1 ||
+        wal.size < 32 + frameSize ||
+        wal.size > 32 + storage.pageLimit * frameSize ||
+        (wal.size - 32) % frameSize !== 0
+      ) {
         throw new Error(`SEED_WAL_OUTSIDE_LIMIT:${which}`);
       }
       storage.walBytesBeforeBackup = wal.size;
@@ -434,12 +649,26 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   } finally {
     closeDatabases([workboardDb, stateDb]);
   }
-  fs.writeFileSync(path.join(predecessor, "config.synthetic.json"),
-    JSON.stringify({ plugins: { entries: { "mergeguez-pr-lifecycle": {
-      enabled: true, config: { enabled: true, ownerSessionKey: "agent:main:synthetic-publisher" },
-    }, workboard: { enabled: true } } } }) + "\n", { mode: 0o600 });
+  fs.writeFileSync(
+    path.join(predecessor, "config.synthetic.json"),
+    JSON.stringify({
+      plugins: {
+        entries: {
+          "mergeguez-pr-lifecycle": {
+            enabled: true,
+            config: { enabled: true, ownerSessionKey: "agent:main:synthetic-publisher" },
+          },
+          workboard: { enabled: true },
+        },
+      },
+    }) + "\n",
+    { mode: 0o600 },
+  );
   fs.mkdirSync(path.join(predecessor, "workspace"), { mode: 0o700 });
-  fs.writeFileSync(path.join(predecessor, "workspace/synthetic-marker.txt"), "synthetic workspace\n");
+  fs.writeFileSync(
+    path.join(predecessor, "workspace/synthetic-marker.txt"),
+    "synthetic workspace\n",
+  );
   for (const relative of FILES) {
     const destination = path.join(candidate, relative);
     fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
@@ -453,11 +682,18 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   let manifest;
   let readFailure;
   try {
-    workboardRead = new DatabaseSync(sqlitePath(root, "predecessor", "workboard"), { readOnly: true });
+    workboardRead = new DatabaseSync(sqlitePath(root, "predecessor", "workboard"), {
+      readOnly: true,
+    });
     assertIntegrity(stateRead);
     assertIntegrity(workboardRead);
-    manifest = { schema: SCHEMA, syntheticOnly: true, sourcePins: PINS, seedStorage,
-      predecessorStateVersion: 17, candidateStateVersion: 19,
+    manifest = {
+      schema: SCHEMA,
+      syntheticOnly: true,
+      sourcePins: PINS,
+      seedStorage,
+      predecessorStateVersion: 17,
+      candidateStateVersion: 19,
       state: captureTables(stateRead, STATE_TABLES),
       workboard: captureTables(workboardRead, WORKBOARD_TABLES),
       workboardSchemaSha256: schemaDigest(workboardRead, WORKBOARD_TABLES),
@@ -465,10 +701,16 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
         state: sha256(fs.readFileSync(sqlitePath(root, "predecessor", "state"))),
         workboard: sha256(fs.readFileSync(sqlitePath(root, "predecessor", "workboard"))),
       },
-      files: Object.fromEntries(FILES.filter((name) => !name.endsWith(".sqlite"))
-        .map((name) => [name, sha256(fs.readFileSync(path.join(predecessor, name)))])) };
-    fs.writeFileSync(path.join(root, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n",
-      { mode: 0o600 });
+      files: Object.fromEntries(
+        FILES.filter((name) => !name.endsWith(".sqlite")).map((name) => [
+          name,
+          sha256(fs.readFileSync(path.join(predecessor, name))),
+        ]),
+      ),
+    };
+    fs.writeFileSync(path.join(root, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n", {
+      mode: 0o600,
+    });
   } catch (error) {
     readFailure = error;
     throw error;
@@ -480,7 +722,10 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   requireConsolidated(root, "candidate");
   for (const which of ["state", "workboard"]) {
     for (const phase of ["predecessor", "candidate"]) {
-      if (sha256(fs.readFileSync(sqlitePath(root, phase, which))) !== manifest.predecessorDbHashes[which]) {
+      if (
+        sha256(fs.readFileSync(sqlitePath(root, phase, which))) !==
+        manifest.predecessorDbHashes[which]
+      ) {
         throw new Error(`PREPARED_DATABASE_COPY_CHANGED:${phase}:${which}`);
       }
     }
@@ -489,7 +734,9 @@ async function prepare(root, stateSqlPath, workboardSourcePath, controllerSource
   // failure; successful preparation keeps the byte-pinned predecessor and the
   // independent candidate as the complete asserted inputs.
   fs.rmSync(raw, { recursive: true });
-  process.stdout.write(JSON.stringify({ prepared: true, syntheticOnly: true, cards: CARD_COUNT }) + "\n");
+  process.stdout.write(
+    JSON.stringify({ prepared: true, syntheticOnly: true, cards: CARD_COUNT }) + "\n",
+  );
 }
 
 function captureDoctorResult(result) {
@@ -503,8 +750,14 @@ function captureDoctorResult(result) {
   });
   // At most 8 x 512 warning and 4 x 256 change code units. Even JSON's
   // six-byte escaping stays below 32 KiB within the existing output cap.
-  process.stderr.write(JSON.stringify({ diagnostic: "native-doctor-result", syntheticOnly: true,
-    warnings: capture(result.warnings, 8, 512), changes: capture(result.changes, 4, 256) }) + "\n");
+  process.stderr.write(
+    JSON.stringify({
+      diagnostic: "native-doctor-result",
+      syntheticOnly: true,
+      warnings: capture(result.warnings, 8, 512),
+      changes: capture(result.changes, 4, 256),
+    }) + "\n",
+  );
   diagnosticState.doctorResult = "RETURNED_AND_CAPTURED";
 }
 
@@ -513,30 +766,50 @@ function captureStateVersion(database, phase, expectedVersion) {
   let result;
   try {
     const actualVersion = database.prepare("PRAGMA user_version").get()?.user_version;
-    observation = { expectedVersion, actualVersion: actualVersion ?? null,
-      availability: actualVersion === undefined ? "MISSING_VALUE" : "CAPTURED" };
+    observation = {
+      expectedVersion,
+      actualVersion: actualVersion ?? null,
+      availability: actualVersion === undefined ? "MISSING_VALUE" : "CAPTURED",
+    };
     result = { queried: true, actualVersion };
   } catch (error) {
-    observation = { expectedVersion, actualVersion: null, availability: "READ_FAILED",
-      error: String(error).slice(0, 512) };
+    observation = {
+      expectedVersion,
+      actualVersion: null,
+      availability: "READ_FAILED",
+      error: String(error).slice(0, 512),
+    };
     result = { queried: false };
   }
   diagnosticState.versions[phase] = observation;
-  process.stderr.write(JSON.stringify({ diagnostic: "state-schema-version", phase,
-    ...observation, syntheticOnly: true }) + "\n");
+  process.stderr.write(
+    JSON.stringify({
+      diagnostic: "state-schema-version",
+      phase,
+      ...observation,
+      syntheticOnly: true,
+    }) + "\n",
+  );
   return result;
 }
 
 function captureFixtureFailure(command, error) {
-  process.stderr.write(JSON.stringify({ diagnostic: "fixture-failure", syntheticOnly: true,
-    command: String(command).slice(0, 64), error: String(error).slice(0, 512),
-    doctorResult: diagnosticState.doctorResult === "AWAITING_RETURN"
-      ? "THREW_BEFORE_RETURN; WARNINGS_UNAVAILABLE" : diagnosticState.doctorResult,
-    versions: diagnosticState.versions,
-    unobservedVersions: ["predecessor", "candidate", "rollback"].filter(
-      (phase) => !Object.hasOwn(diagnosticState.versions, phase),
-    ),
-  }) + "\n");
+  process.stderr.write(
+    JSON.stringify({
+      diagnostic: "fixture-failure",
+      syntheticOnly: true,
+      command: String(command).slice(0, 64),
+      error: String(error).slice(0, 512),
+      doctorResult:
+        diagnosticState.doctorResult === "AWAITING_RETURN"
+          ? "THREW_BEFORE_RETURN; WARNINGS_UNAVAILABLE"
+          : diagnosticState.doctorResult,
+      versions: diagnosticState.versions,
+      unobservedVersions: ["predecessor", "candidate", "rollback"].filter(
+        (phase) => !Object.hasOwn(diagnosticState.versions, phase),
+      ),
+    }) + "\n",
+  );
 }
 
 function assertPhase(root, phase, beforeAssertions) {
@@ -563,22 +836,36 @@ function assertPhase(root, phase, beforeAssertions) {
     assertIntegrity(workboardDb);
     // A failed diagnostic read does not replace an original integrity failure.
     // If integrity passes, the original version query still owns its failure.
-    const actualVersion = versionRead.queried ? versionRead.actualVersion
+    const actualVersion = versionRead.queried
+      ? versionRead.actualVersion
       : stateDb.prepare("PRAGMA user_version").get()?.user_version;
     if (!versionRead.queried) {
-      diagnosticState.versions[phase] = { expectedVersion, actualVersion: actualVersion ?? null,
-        availability: "CAPTURED_ON_ASSERTION", diagnosticReadError: diagnosticState.versions[phase].error };
-      process.stderr.write(JSON.stringify({ diagnostic: "state-schema-version", phase,
-        ...diagnosticState.versions[phase], syntheticOnly: true }) + "\n");
+      diagnosticState.versions[phase] = {
+        expectedVersion,
+        actualVersion: actualVersion ?? null,
+        availability: "CAPTURED_ON_ASSERTION",
+        diagnosticReadError: diagnosticState.versions[phase].error,
+      };
+      process.stderr.write(
+        JSON.stringify({
+          diagnostic: "state-schema-version",
+          phase,
+          ...diagnosticState.versions[phase],
+          syntheticOnly: true,
+        }) + "\n",
+      );
     }
     if (actualVersion !== expectedVersion) {
       throw new Error("STATE_VERSION_MISMATCH");
     }
-    const metadata = stateDb.prepare(
-      "SELECT role,schema_version,agent_id FROM schema_meta WHERE meta_key='primary'",
-    ).get();
-    if (metadata?.role !== "global" || metadata.schema_version !== expectedVersion ||
-        metadata.agent_id !== null) {
+    const metadata = stateDb
+      .prepare("SELECT role,schema_version,agent_id FROM schema_meta WHERE meta_key='primary'")
+      .get();
+    if (
+      metadata?.role !== "global" ||
+      metadata.schema_version !== expectedVersion ||
+      metadata.agent_id !== null
+    ) {
       throw new Error("STATE_METADATA_MISMATCH");
     }
     if (schemaDigest(workboardDb, WORKBOARD_TABLES) !== manifest.workboardSchemaSha256) {
@@ -586,13 +873,18 @@ function assertPhase(root, phase, beforeAssertions) {
     }
     if (phase !== "candidate") {
       for (const which of ["state", "workboard"]) {
-        if (sha256(fs.readFileSync(sqlitePath(root, phase, which))) !==
-            manifest.predecessorDbHashes?.[which]) {
+        if (
+          sha256(fs.readFileSync(sqlitePath(root, phase, which))) !==
+          manifest.predecessorDbHashes?.[which]
+        ) {
           throw new Error(`PREDECESSOR_BYTES_CHANGED:${which}`);
         }
       }
     }
-    for (const [database, entries] of [[stateDb, manifest.state], [workboardDb, manifest.workboard]]) {
+    for (const [database, entries] of [
+      [stateDb, manifest.state],
+      [workboardDb, manifest.workboard],
+    ]) {
       for (const [table, expected] of Object.entries(entries)) {
         const actual = rowDigest(database, table, expected.columns);
         if (actual.count !== expected.count || actual.sha256 !== expected.sha256) {
@@ -600,7 +892,9 @@ function assertPhase(root, phase, beforeAssertions) {
         }
       }
     }
-    const flow = stateDb.prepare("SELECT controller_id,status FROM flow_runs WHERE flow_id='synthetic-flow-001'").get();
+    const flow = stateDb
+      .prepare("SELECT controller_id,status FROM flow_runs WHERE flow_id='synthetic-flow-001'")
+      .get();
     if (flow?.controller_id !== "mergeguez-pr-lifecycle/v1" || flow.status !== "blocked") {
       throw new Error("PUBLISHER_BLOCKED_FLOW_CHANGED");
     }
@@ -613,14 +907,26 @@ function assertPhase(root, phase, beforeAssertions) {
       const present = [];
       for (const name of ["controller_store_path", "requester_store_path"]) {
         const column = extraColumns.find((entry) => entry.name === name);
-        if (!column) continue;
-        if (column.type !== "TEXT" || column.notnull !== 0 || column.dflt_value !== null || column.pk !== 0) {
+        if (!column) {
+          continue;
+        }
+        if (
+          column.type !== "TEXT" ||
+          column.notnull !== 0 ||
+          column.dflt_value !== null ||
+          column.pk !== 0
+        ) {
           throw new Error(`CANDIDATE_SUBAGENT_SCHEMA_INVALID:${name}`);
         }
         present.push(name);
       }
-      if (present.length > 0 && stateDb.prepare(`SELECT 1 AS bound_parent_store FROM subagent_runs WHERE
-        ${present.map((name) => `${name} IS NOT NULL`).join(" OR ")} LIMIT 1`).get()) {
+      if (
+        present.length > 0 &&
+        stateDb
+          .prepare(`SELECT 1 AS bound_parent_store FROM subagent_runs WHERE
+        ${present.map((name) => `${name} IS NOT NULL`).join(" OR ")} LIMIT 1`)
+          .get()
+      ) {
         throw new Error("CANDIDATE_SUBAGENT_PROVENANCE_BACKFILLED");
       }
     }
@@ -646,8 +952,10 @@ async function migrateCandidate(root, sourceModulePath, sourceModuleSha256) {
   }
   requireConsolidated(root, "candidate");
   for (const which of ["state", "workboard"]) {
-    if (sha256(fs.readFileSync(sqlitePath(root, "candidate", which))) !==
-        manifest.predecessorDbHashes?.[which]) {
+    if (
+      sha256(fs.readFileSync(sqlitePath(root, "candidate", which))) !==
+      manifest.predecessorDbHashes?.[which]
+    ) {
       throw new Error(`CANDIDATE_PREIMAGE_CHANGED:${which}`);
     }
   }
@@ -669,13 +977,21 @@ async function migrateCandidate(root, sourceModulePath, sourceModuleSha256) {
   captureDoctorResult(result);
   assertPhase(root, "candidate", () => {
     assertPhase(root, "predecessor");
-    if (sha256(fs.readFileSync(sqlitePath(root, "candidate", "workboard"))) !==
-        manifest.predecessorDbHashes.workboard) {
+    if (
+      sha256(fs.readFileSync(sqlitePath(root, "candidate", "workboard"))) !==
+      manifest.predecessorDbHashes.workboard
+    ) {
       throw new Error("WORKBOARD_BYTES_CHANGED_BY_STATE_MIGRATION");
     }
   });
-  process.stdout.write(JSON.stringify({ migrated: true, syntheticOnly: true,
-    nativeDoctorChanges: result.changes.length, nativeDoctorWarnings: result.warnings.length }) + "\n");
+  process.stdout.write(
+    JSON.stringify({
+      migrated: true,
+      syntheticOnly: true,
+      nativeDoctorChanges: result.changes.length,
+      nativeDoctorWarnings: result.warnings.length,
+    }) + "\n",
+  );
 }
 
 function restore(root) {
@@ -700,7 +1016,9 @@ function restore(root) {
 const [command, untrustedRoot, ...args] = process.argv.slice(2);
 try {
   if (!command || !untrustedRoot) {
-    throw new Error("USAGE: fixture.mjs prepare|migrate|assert|restore <synthetic-parity-fixture-path> [source paths, source module/hash, or phase]");
+    throw new Error(
+      "USAGE: fixture.mjs prepare|migrate|assert|restore <synthetic-parity-fixture-path> [source paths, source module/hash, or phase]",
+    );
   }
   const root = requireFixtureRoot(untrustedRoot);
   if (command === "prepare" && args.length === 3) {
@@ -716,6 +1034,8 @@ try {
   }
 } catch (error) {
   // Preserve the exact primary failure even if the diagnostic sink fails.
-  try { captureFixtureFailure(command, error); } catch {}
+  try {
+    captureFixtureFailure(command, error);
+  } catch {}
   throw error;
 }

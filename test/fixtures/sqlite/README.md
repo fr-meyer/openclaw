@@ -8,6 +8,9 @@ contracts. `openclaw-agent-schema-v21.sql` freezes commit
 `openclaw-agent-schema-v19.sql` freezes commit
 `fb380bd4879be34aa160675d653560bb79690db9`, the last schema-19 commit before the
 schema-20 cold-storage migration, for container image replacement startup tests.
+`openclaw-agent-schema-v19-any.sql` freezes the earlier 9.4 schema at commit
+`0aad0267ab89ae16a9ba98d8ef8026bcc20534d6`, whose embedding columns use `ANY`.
+Its synthetic migration tests cover both JSON and little-endian Float32 values.
 `openclaw-agent-schema-v22.sql` freezes the deployed FTS ownership DDL from
 commit `00caa84ce72c0b4edd584cfa225bd262cd10ba49` ([#153834](https://github.com/openclaw/openclaw/pull/153834)).
 It contains `(session_id, fts_rowid)` ownership and nullable `fts_row_count`,
@@ -17,6 +20,8 @@ Golden source contracts:
 
 - Schema 19: 28,402 bytes; Git blob `c7034eff720b35a8f78f48ce07c3d2a554f5124e`;
   SHA-256 `fe93217454642e911608f81afc53c9fb3bb7c20cc32bc73f8f6eeaaf232b91b8`.
+- Schema 19 ANY: 28,400 bytes;
+  SHA-256 `71498f9c490189123db153ea73d1c6fd69b7f4d657714b0a08e561973fd415be`.
 - Schema 21: 34,836 bytes; Git blob `3dda3eb4928efc3fb74ff3a37337417cc7d30e74`;
   SHA-256 `8deb7d7000eab7c43bbee427f2e7a9b603bc549562594088a14eecf7c8cc5926`.
 - Schema 22: 35,110 bytes; Git blob `9c6c775549e92a021ea7f5b43d749718ba1189c7`;

@@ -49,10 +49,14 @@ MODE_LIMITS = {
     "--deadline-probe": (2.0, 1_000_000),
     "--run-frozen-six-phases": (60.0, 30_000_000),
 }
-PROOF_INPUTS = (
-    "fixture.mjs", "predecessor-state.sql", "predecessor-workboard.ts",
-    "predecessor-publisher-controller.mjs",
-)
+# Runtime names remain frozen; the historical Workboard module is repository
+# text data used only to extract its pinned SQL, not executable TypeScript.
+PROOF_INPUTS = {
+    "fixture.mjs": "fixture.mjs",
+    "predecessor-state.sql": "predecessor-state.sql",
+    "predecessor-workboard.ts": "predecessor-workboard.ts.txt",
+    "predecessor-publisher-controller.mjs": "predecessor-publisher-controller.mjs",
+}
 PROOF_READS = tuple(sorted(
     ["/proof/inputs/" + name for name in PROOF_INPUTS] +
     ["/proof/runner/v98-supervisor", "/proof/runner/v98-confine.so",
@@ -166,7 +170,7 @@ def verify_source_manifest(tooling, expected_commit):
          "proposal/render_delta.py", "test_openssl_proposal.py",
          "read-policy/runtime-read-binding.json", "read-policy/parent-read-paths.txt",
          "read-policy/helper-read-paths.txt")
-    } | {"scripts/proofs/v98-confined/inputs/" + name for name in PROOF_INPUTS} | {
+    } | {"scripts/proofs/v98-confined/inputs/" + name for name in PROOF_INPUTS.values()} | {
         ".github/workflows/v98-confined-runtime-3.yml",
         ".github/workflows/v98-confined-runtime-4.yml",
         ".github/workflows/v98-confined-runtime-5.yml",
@@ -283,8 +287,8 @@ def prepare_proof(tooling, binding, destination):
     destination.mkdir(mode=0o755)
     for child in ("inputs", "runner", "policy"):
         (destination / child).mkdir(mode=0o755)
-    for name in PROOF_INPUTS:
-        source = base / "inputs" / name
+    for name, source_name in PROOF_INPUTS.items():
+        source = base / "inputs" / source_name
         require(sha256(source) == binding["frozenInputHashes"]["/proof/inputs/" + name],
                 "frozen input changed: " + name)
         shutil.copyfile(source, destination / "inputs" / name)

@@ -107,6 +107,14 @@ October 1 annotation families are now `removal-pending`, with the original dates
 and the per-family removal conditions below preserved in the review queue.
 This does not authorize removal or claim a completed published-reader sweep.
 
+The beta.5 session-store bridge is also `removal-pending`, with its original
+2026-10-12 date unchanged. All six aliases remain available until the minimum
+supported official plugin version excludes v2026.7.1-beta.5, published readers
+and package-root v2026.7.x upgrade consumers are verified migrated, and explicit
+breaking-release approval is granted. The elapsed date alone does not establish
+those conditions; no completed support-floor change or reader migration is
+claimed.
+
 | Compatibility code                            | Removal condition                                                                                       | `removeAfter` |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------- |
 | `plugin-sdk-channel-setup-input-fields`       | Repeat the published-plugin artifact sweep and remove only fields with no reader.                       | 2026-10-01    |

@@ -5,6 +5,7 @@ import errno
 import json
 import os
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -57,6 +58,48 @@ def daemon_facts():
 def fake_scratch_mount(path):
     path.mkdir()
     return path.stat()
+
+
+class ProofPreparationTests(unittest.TestCase):
+    def test_predecessor_data_keeps_runtime_filename_bytes_and_hash_guard(self):
+        base = Path(__file__).parent
+        binding = HOST.read_json(base / "read-policy/runtime-read-binding.json")
+        runtime_name = "predecessor-workboard.ts"
+        source_name = runtime_name + ".txt"
+        expected_hash = binding["frozenInputHashes"]["/proof/inputs/" + runtime_name]
+        self.assertEqual(expected_hash,
+                         "aa15bf48dbe292993a47c7286d5f7e12fe2ffbd74442c92b37ad98018bd2e810")
+        original = (base / "inputs" / source_name).read_bytes()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            tooling = root / "tooling"
+            staged = tooling / "scripts/proofs/v98-confined"
+            (staged / "inputs").mkdir(parents=True)
+            (staged / "read-policy").mkdir()
+            for name in ("fixture.mjs", "predecessor-state.sql", source_name,
+                         "predecessor-publisher-controller.mjs"):
+                shutil.copyfile(base / "inputs" / name, staged / "inputs" / name)
+            shutil.copyfile(base / "capability-probe.mjs", staged / "capability-probe.mjs")
+            for scope in ("parent", "helper"):
+                name = scope + "-read-paths.txt"
+                shutil.copyfile(base / "read-policy" / name, staged / "read-policy" / name)
+            proof = root / "proof"
+            with patch.object(HOST.os, "chown"):
+                materialized = HOST.prepare_proof(tooling, binding, proof)
+                runtime_input = proof / "inputs" / runtime_name
+                self.assertEqual(runtime_input.read_bytes(), original)
+                self.assertEqual(HOST.sha256(runtime_input), expected_hash)
+                self.assertEqual(materialized["inputs/" + runtime_name], expected_hash)
+                self.assertEqual(runtime_input.stat().st_mode & 0o777, 0o444)
+                self.assertEqual({path.name for path in (proof / "inputs").iterdir()},
+                                 {Path(path).name for path in binding["frozenInputHashes"]})
+                self.assertFalse(any(path.suffix == ".txt"
+                                     for path in (proof / "inputs").iterdir()))
+                self.assertNotIn("inputs/" + source_name, materialized)
+                (staged / "inputs" / source_name).write_bytes(original + b"\n")
+                with self.assertRaisesRegex(HOST.Refusal, "^frozen input changed: predecessor-workboard[.]ts$"):
+                    HOST.prepare_proof(tooling, binding, root / "tampered-proof")
+                self.assertFalse((root / "tampered-proof/inputs" / runtime_name).exists())
 
 
 class HostContractTests(unittest.TestCase):

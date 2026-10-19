@@ -32,6 +32,7 @@ import {
 } from "./memory-schema-storage-migration.js";
 import { migrateSqliteSchemaToStrict } from "./openclaw-runtime-sqlite.js";
 export {
+  assertMemoryIndexStorageMigrationCompatible,
   markInvalidImportedMemoryEmbeddings,
   migrateMemoryIndexStorage,
   registerMemoryEmbeddingMigrationFunctions,
