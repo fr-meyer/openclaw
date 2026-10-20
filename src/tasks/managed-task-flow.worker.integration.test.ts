@@ -338,13 +338,14 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         },
       });
 
+      const cancelGeneration = 7;
       const cancelRun = createSubagentRunRecord({
         runId: "native-cancel-root",
         childSessionKey: "agent:reviewer:subagent:native-cancel-root",
         requesterSessionKey: ownerKey,
         controllerSessionKey: "agent:reviewer:main",
         label: "plugin:publisher",
-        generation: 7,
+        generation: cancelGeneration,
       });
       const cancelRow = bindSubagentRunRecord(cancelRun);
       const nativePersist = await executeManagedTaskFlowFixtureWrite(context, {
@@ -370,7 +371,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
               sessionKey: cancelRun.childSessionKey,
               runId: cancelRun.runId,
               taskId: cancelRun.runId,
-              nativeGeneration: cancelRun.generation,
+              nativeGeneration: cancelGeneration,
             },
           },
         },
@@ -383,27 +384,38 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         childSessionKey: cancelRun.childSessionKey,
         runId: cancelRun.runId,
         taskId: cancelRun.runId,
-        generation: cancelRun.generation,
+        generation: cancelGeneration,
       };
       const killRow = bindSubagentRunRecord({
         ...cancelRun,
         killIntent: { requestedAt: Date.now(), reason: "killed" },
       });
-      const killWrite = (suffix: string, managedFlowKillClaim: typeof claim) => ({
+      const killWrite = (
+        suffix: string,
+        managedFlowKillClaim: typeof claim,
+        proposedRow = killRow,
+        version = nativePersist.versions.get(cancelRun.runId) ?? null,
+      ) => ({
         type: "subagents.persistChanges" as const,
         input: {
           writeId: `managed-flow-cancel-${suffix}`,
-          values: [killRow],
+          values: [proposedRow],
           deleteRunIds: [],
-          versions: [
-            {
-              runId: cancelRun.runId,
-              version: nativePersist.versions.get(cancelRun.runId) ?? null,
-            },
-          ],
+          versions: [{ runId: cancelRun.runId, version }],
           managedFlowKillClaim,
         },
       });
+      const readCancelState = async () => ({
+        flow: await read({
+          type: "tasks.managedFlows.get",
+          input: { ownerKey, controllerId, flowId: cancelFlow.flowId },
+        }),
+        native: await read({
+          type: "subagents.runs",
+          scope: { kind: "ids", runIds: [cancelRun.runId] },
+        }),
+      });
+      const initialCancelState = await readCancelState();
       await expect(
         executeManagedTaskFlowFixtureWrite(
           context,
@@ -412,25 +424,43 @@ it("persists managed flows and unknown native runs through the schema-20 state w
             revision: claim.revision + 1,
           }),
         ),
-      ).rejects.toThrow(/changed before native admission/u);
+      ).rejects.toThrow("Managed flow kill claim changed before native admission");
+      expect(await readCancelState()).toEqual(initialCancelState);
       await expect(
         executeManagedTaskFlowFixtureWrite(
           context,
-          killWrite("replaced-worker", {
+          killWrite("mismatched-native-root", {
             ...claim,
             runId: "replaced-run",
           }),
         ),
-      ).rejects.toThrow(/exact native root|no longer names its worker/u);
+      ).rejects.toThrow("Managed flow kill admission must write only its exact native root");
+      expect(await readCancelState()).toEqual(initialCancelState);
+      const nextGenerationClaim = { ...claim, generation: claim.generation + 1 };
       await expect(
         executeManagedTaskFlowFixtureWrite(
           context,
-          killWrite("reused-generation", {
-            ...claim,
-            generation: claim.generation + 1,
-          }),
+          killWrite("mismatched-kill-intent", nextGenerationClaim),
         ),
-      ).rejects.toThrow(/no longer names its worker/u);
+      ).rejects.toThrow("Managed flow kill admission has no exact native kill intent");
+      expect(await readCancelState()).toEqual(initialCancelState);
+      // Align the proposed row and claim so admission reaches the stored flow.
+      // Its original generation must not authorize a newly claimed generation.
+      await expect(
+        executeManagedTaskFlowFixtureWrite(
+          context,
+          killWrite(
+            "unclaimed-generation",
+            nextGenerationClaim,
+            bindSubagentRunRecord({
+              ...cancelRun,
+              generation: nextGenerationClaim.generation,
+              killIntent: { requestedAt: Date.now(), reason: "killed" },
+            }),
+          ),
+        ),
+      ).rejects.toThrow("Managed flow kill claim no longer names its worker");
+      expect(await readCancelState()).toEqual(initialCancelState);
       await expect(
         executeManagedTaskFlowFixtureWrite(
           context,
@@ -439,15 +469,17 @@ it("persists managed flows and unknown native runs through the schema-20 state w
             controllerId: "other/v1",
           }),
         ),
-      ).rejects.toThrow(/changed before native admission/u);
+      ).rejects.toThrow("Managed flow kill claim changed before native admission");
+      expect(await readCancelState()).toEqual(initialCancelState);
 
+      const otherOwnerGeneration = 1;
       const otherOwnerRun = createSubagentRunRecord({
         runId: "same-plugin-other-owner",
         childSessionKey: "agent:reviewer:subagent:other-owner",
         requesterSessionKey: foreignOwnerKey,
         controllerSessionKey: "agent:reviewer:main",
         label: "plugin:publisher",
-        generation: 1,
+        generation: otherOwnerGeneration,
       });
       const otherOwnerRow = bindSubagentRunRecord(otherOwnerRun);
       const otherOwnerPersist = await executeManagedTaskFlowFixtureWrite(context, {
@@ -473,11 +505,22 @@ it("persists managed flows and unknown native runs through the schema-20 state w
               sessionKey: otherOwnerRun.childSessionKey,
               runId: otherOwnerRun.runId,
               taskId: otherOwnerRun.runId,
-              nativeGeneration: otherOwnerRun.generation,
+              nativeGeneration: otherOwnerGeneration,
             },
           },
         },
       });
+      const readOtherOwnerState = async () => ({
+        flow: await read({
+          type: "tasks.managedFlows.get",
+          input: { ownerKey, controllerId, flowId: claimedOtherOwnerFlow.flowId },
+        }),
+        native: await read({
+          type: "subagents.runs",
+          scope: { kind: "ids", runIds: [otherOwnerRun.runId] },
+        }),
+      });
+      const initialOtherOwnerState = await readOtherOwnerState();
       await expect(
         executeManagedTaskFlowFixtureWrite(context, {
           type: "subagents.persistChanges",
@@ -504,16 +547,20 @@ it("persists managed flows and unknown native runs through the schema-20 state w
               childSessionKey: otherOwnerRun.childSessionKey,
               runId: otherOwnerRun.runId,
               taskId: otherOwnerRun.runId,
-              generation: otherOwnerRun.generation,
+              generation: otherOwnerGeneration,
             },
           },
         }),
-      ).rejects.toThrow(/native run changed/u);
-      expect(
-        await executeManagedTaskFlowFixtureWrite(context, killWrite("accepted-root", claim)),
-      ).toMatchObject({
-        writeId: "managed-flow-cancel-accepted-root",
-      });
+      ).rejects.toThrow("Managed flow kill claim native run changed");
+      expect(await readOtherOwnerState()).toEqual(initialOtherOwnerState);
+      const acceptedKill = await executeManagedTaskFlowFixtureWrite(
+        context,
+        killWrite("accepted-root", claim),
+      );
+      if ("conflictRunIds" in acceptedKill) {
+        throw new Error("Exact native kill unexpectedly conflicted");
+      }
+      expect(acceptedKill.writeId).toBe("managed-flow-cancel-accepted-root");
       const claimedNative = await read({
         type: "subagents.runs",
         scope: { kind: "ids", runIds: [cancelRun.runId] },
@@ -522,6 +569,53 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         throw new Error("Native cancel claim observation unavailable");
       }
       expect(claimedNative.runs.get(cancelRun.runId)?.killIntent?.reason).toBe("killed");
+      expect(
+        await read({
+          type: "tasks.managedFlows.get",
+          input: { ownerKey, controllerId, flowId: cancelFlow.flowId },
+        }),
+      ).toEqual(initialCancelState.flow);
+
+      // A native replacement can reuse the run ID after the old kill was accepted.
+      // Use its current row version so CAS passes, then reject the old flow's grant.
+      const nextNativeGeneration = await executeManagedTaskFlowFixtureWrite(context, {
+        type: "subagents.persistChanges",
+        input: {
+          writeId: "managed-flow-cancel-native-generation-replaced",
+          values: [
+            bindSubagentRunRecord({ ...cancelRun, generation: nextGenerationClaim.generation }),
+          ],
+          deleteRunIds: [],
+          versions: [
+            { runId: cancelRun.runId, version: acceptedKill.versions.get(cancelRun.runId) ?? null },
+          ],
+        },
+      });
+      if ("conflictRunIds" in nextNativeGeneration) {
+        throw new Error("Native cancel generation replacement unexpectedly conflicted");
+      }
+      const replacedCancelState = await readCancelState();
+      if (!replacedCancelState.native || replacedCancelState.native.type !== "subagents.runs") {
+        throw new Error("Native cancel replacement observation unavailable");
+      }
+      expect(replacedCancelState.flow).toEqual(initialCancelState.flow);
+      expect(replacedCancelState.native.runs.get(cancelRun.runId)).toMatchObject({
+        generation: nextGenerationClaim.generation,
+        execution: { status: "running" },
+      });
+      expect(replacedCancelState.native.runs.get(cancelRun.runId)?.killIntent).toBeUndefined();
+      await expect(
+        executeManagedTaskFlowFixtureWrite(
+          context,
+          killWrite(
+            "retired-native-generation",
+            claim,
+            killRow,
+            nextNativeGeneration.versions.get(cancelRun.runId) ?? null,
+          ),
+        ),
+      ).rejects.toThrow("Managed flow kill claim native generation changed");
+      expect(await readCancelState()).toEqual(replacedCancelState);
 
       const launchChild = "agent:reviewer:subagent:launch-once";
       const prelaunch = await executeManagedTaskFlowFixtureWrite(context, {
@@ -566,6 +660,10 @@ it("persists managed flows and unknown native runs through the schema-20 state w
       if ("conflictRunIds" in firstLaunchReceipt) {
         throw new Error("First managed native launch unexpectedly conflicted");
       }
+      const firstNativeLaunch = await read({
+        type: "subagents.runs",
+        scope: { kind: "ids", runIds: [firstLaunch.runId] },
+      });
       await expect(
         executeManagedTaskFlowFixtureWrite(context, {
           type: "subagents.persistChanges",
@@ -582,7 +680,13 @@ it("persists managed flows and unknown native runs through the schema-20 state w
             managedFlowLaunchClaim: launchClaim,
           },
         }),
-      ).rejects.toThrow(/register one exact native run/u);
+      ).rejects.toThrow("Managed flow launch admission must register one exact native run");
+      expect(
+        await read({
+          type: "subagents.runs",
+          scope: { kind: "ids", runIds: [firstLaunch.runId] },
+        }),
+      ).toEqual(firstNativeLaunch);
       // Observe persisted facts as if the caller lost its registration reply.
       const attached = await read({
         type: "tasks.managedFlows.get",
@@ -614,7 +718,19 @@ it("persists managed flows and unknown native runs through the schema-20 state w
             managedFlowLaunchClaim: launchClaim,
           },
         }),
-      ).rejects.toThrow(/changed before native registration/u);
+      ).rejects.toThrow("Managed flow launch claim changed before native registration");
+      expect(
+        await read({
+          type: "tasks.managedFlows.get",
+          input: { ownerKey, controllerId, flowId: prelaunch.flowId },
+        }),
+      ).toEqual(attached);
+      expect(
+        await read({
+          type: "subagents.runs",
+          scope: { kind: "ids", runIds: [firstLaunch.runId] },
+        }),
+      ).toEqual(firstNativeLaunch);
       expect(
         await read({
           type: "subagents.runs",
