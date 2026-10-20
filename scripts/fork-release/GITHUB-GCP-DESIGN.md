@@ -8,17 +8,17 @@ identity federation, or create resources. Source PR #18 remains unqualified.
 
 Read-only CLI inspection on 2026-10-20 established:
 
-| Capability | Observed state | Consequence |
-| --- | --- | --- |
-| Fork | Public `fr-meyer/openclaw`, repository ID `1309456040`, owner ID `26621962` | Treat Actions logs/artifacts as public; bind identity to numeric IDs. |
-| Repository enforcement | No rulesets; `main` branch protection returned 404 | Main trust cannot rely on server-enforced review yet. |
-| Actions | Enabled; all actions allowed; default token read; workflow PR approval disabled | Audit/pin dependencies before privileged jobs. |
-| Environments | `docker-release` has no protection rules. Existing 9.8 proof environment has one required reviewer, permits self-review and admin bypass, and uses custom branch policies | Neither establishes the proposed production approval boundary. Leave both unchanged. |
-| Account plan | Plan not returned by API | Do not infer a paid tier. Environment API works; required reviewers are supported for public repositories on current plans. |
-| GCP federation | One existing proof pool and its GitHub provider are disabled; provider condition also ends in `&& false` | No working deployment federation established. Preserve this separate proof configuration. |
-| Runtime | Production VM running; disk inspection includes large persistent disks | A test disk restored from a snapshot must fit its original capacity, not its used bytes. |
-| Build lane | Exact source/tooling selection, OCI artifact and receipt; no GCP job or `id-token: write` | Existing build is preparation, not automatic production deployment. |
-| Private coordinator | `release.py`, `preflight.py`, `ops_gate.py`; adapter supplied externally | No qualified GitHub-to-GCP adapter or independent cleanup controller was found in this source. |
+| Capability             | Observed state                                                                                                                                                            | Consequence                                                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Fork                   | Public `fr-meyer/openclaw`, repository ID `1309456040`, owner ID `26621962`                                                                                               | Treat Actions logs/artifacts as public; bind identity to numeric IDs.                                                       |
+| Repository enforcement | No rulesets; `main` branch protection returned 404                                                                                                                        | Main trust cannot rely on server-enforced review yet.                                                                       |
+| Actions                | Enabled; all actions allowed; default token read; workflow PR approval disabled                                                                                           | Audit/pin dependencies before privileged jobs.                                                                              |
+| Environments           | `docker-release` has no protection rules. Existing 9.8 proof environment has one required reviewer, permits self-review and admin bypass, and uses custom branch policies | Neither establishes the proposed production approval boundary. Leave both unchanged.                                        |
+| Account plan           | Plan not returned by API                                                                                                                                                  | Do not infer a paid tier. Environment API works; required reviewers are supported for public repositories on current plans. |
+| GCP federation         | One existing proof pool and its GitHub provider are disabled; provider condition also ends in `&& false`                                                                  | No working deployment federation established. Preserve this separate proof configuration.                                   |
+| Runtime                | Production VM running; disk inspection includes large persistent disks                                                                                                    | A test disk restored from a snapshot must fit its original capacity, not its used bytes.                                    |
+| Build lane             | Exact source/tooling selection, OCI artifact and receipt; no GCP job or `id-token: write`                                                                                 | Existing build is preparation, not automatic production deployment.                                                         |
+| Private coordinator    | `release.py`, `preflight.py`, `ops_gate.py`; adapter supplied externally                                                                                                  | No qualified GitHub-to-GCP adapter or independent cleanup controller was found in this source.                              |
 
 These are observations, not settings changes. Recheck them before activation.
 The upstream-only Labeler failure does not establish a fork authentication problem.
@@ -95,18 +95,18 @@ misconfigured federation, interrupted controllers, and incorrect cleanup.
 Repository/cloud administrators remain trusted; their compromise is a residual
 risk. Native migration bugs and snapshot inconsistency require real rehearsal.
 
-| Threat | Proposed control | Required proof / current state |
-| --- | --- | --- |
-| A PR obtains cloud authority | No OIDC/secrets on candidate jobs; separate trusted dispatch job; numeric repo/owner ID, `main` ref, dispatch event, environment, audience and exact workflow SHA in provider condition | Offline proposed CEL is tested. Real issuer/signature/expiry/audience and negative-token tests are pending. |
-| Workflow or action supply-chain compromise | Protect `main`, require review and dismiss stale approvals, pin actions to full verified SHAs and dependency locks where supported; privileged tooling cannot be taken from candidate artifact | Enforcement and full dependency audit pending; workflow changes need separate review. |
-| Script/PR injection | Parse fixed JSON contracts; no expression interpolation of titles, branches, logs or candidate values into shell; fixed repository and explicit argv | Adapter integration tests with hostile strings pending. Plan input rejects mutable identities and unknown fields. |
-| Snapshot credentials exfiltrated | No attached/default VM service account; clean boot image; trusted offline sanitization; no production integration credentials; network/metadata restrictions below | No isolation policy configured here. Canary exfiltration tests and independent review required. |
-| Candidate forges evidence | Trusted supervisor owns clocks, exit status, resource IDs and receipt construction; candidate cannot write its ledger or invoke cloud APIs | Public receipt projection tested; live privilege separation and evidence authentication pending. |
-| Artifact substitution | Verify producer identity and exact OCI bytes/attestations, not just a supplied digest; immutable private artifact store with restricted writer, receipt binds source/tooling/image | Existing OCI verification reusable; private store/promotion binding pending. |
-| Stale data or duplicate sends | Fresh current-production capture/fence and rollback pair; native schema/delivery-fence checks | Existing coordinator cannot alone prove this; private adapter and disposable failure tests required. |
-| Retry creates duplicates or two owners | Durable intent before request, stable operation/request ID, remote status reconciliation, one lease owner with fenced writes | Existing coordinator models operations; cloud API/lease integration pending. |
-| Cleanup removes production or leaves paid orphans | Exact API IDs and immutable creation receipt, disposable role, ownership/fence check, absolute VM TTL, independent orphan reconciler | Cleanup implementation and crash tests pending; labels alone never authorize deletion. |
-| Public logs contain data | Only fixed enums, bounded time and trusted source/image IDs; private raw output with separately approved access/retention | Unknown-field, secret/PII-canary and malformed-input leak tests pass offline; end-to-end upload test pending. |
+| Threat                                            | Proposed control                                                                                                                                                                               | Required proof / current state                                                                                    |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| A PR obtains cloud authority                      | No OIDC/secrets on candidate jobs; separate trusted dispatch job; numeric repo/owner ID, `main` ref, dispatch event, environment, audience and exact workflow SHA in provider condition        | Offline proposed CEL is tested. Real issuer/signature/expiry/audience and negative-token tests are pending.       |
+| Workflow or action supply-chain compromise        | Protect `main`, require review and dismiss stale approvals, pin actions to full verified SHAs and dependency locks where supported; privileged tooling cannot be taken from candidate artifact | Enforcement and full dependency audit pending; workflow changes need separate review.                             |
+| Script/PR injection                               | Parse fixed JSON contracts; no expression interpolation of titles, branches, logs or candidate values into shell; fixed repository and explicit argv                                           | Adapter integration tests with hostile strings pending. Plan input rejects mutable identities and unknown fields. |
+| Snapshot credentials exfiltrated                  | No attached/default VM service account; clean boot image; trusted offline sanitization; no production integration credentials; network/metadata restrictions below                             | No isolation policy configured here. Canary exfiltration tests and independent review required.                   |
+| Candidate forges evidence                         | Trusted supervisor owns clocks, exit status, resource IDs and receipt construction; candidate cannot write its ledger or invoke cloud APIs                                                     | Public receipt projection tested; live privilege separation and evidence authentication pending.                  |
+| Artifact substitution                             | Verify producer identity and exact OCI bytes/attestations, not just a supplied digest; immutable private artifact store with restricted writer, receipt binds source/tooling/image             | Existing OCI verification reusable; private store/promotion binding pending.                                      |
+| Stale data or duplicate sends                     | Fresh current-production capture/fence and rollback pair; native schema/delivery-fence checks                                                                                                  | Existing coordinator cannot alone prove this; private adapter and disposable failure tests required.              |
+| Retry creates duplicates or two owners            | Durable intent before request, stable operation/request ID, remote status reconciliation, one lease owner with fenced writes                                                                   | Existing coordinator models operations; cloud API/lease integration pending.                                      |
+| Cleanup removes production or leaves paid orphans | Exact API IDs and immutable creation receipt, disposable role, ownership/fence check, absolute VM TTL, independent orphan reconciler                                                           | Cleanup implementation and crash tests pending; labels alone never authorize deletion.                            |
+| Public logs contain data                          | Only fixed enums, bounded time and trusted source/image IDs; private raw output with separately approved access/retention                                                                      | Unknown-field, secret/PII-canary and malformed-input leak tests pass offline; end-to-end upload test pending.     |
 
 ### Federation and tooling
 
@@ -176,15 +176,15 @@ the rehearsal operation terminal, and let the independent janitor recover a
 controller failure. Retain its receipt for later approval. Do not keep a test
 VM running while a human considers production promotion.
 
-| Event | Required reconciliation |
-| --- | --- |
-| Create request times out | Read operation/resource state by stable request ID and expected name; reconcile accepted creation before retry. An absent process is not proof of non-execution. |
-| Crash between creation and ledger write | Deterministic naming, provider operation and audit evidence reconcile the resource. A matching label alone is insufficient; ambiguous ownership needs operator review. |
-| GitHub cancellation / Mac offline | Durable controller continues status and cleanup independently. `always()` is useful but not a cleanup guarantee. |
-| Pass / fail | Persist private evidence, emit sanitized result, stop test writers, remove the owned VM, verify deletion, then remove exact unused test disks. |
-| VM TTL reached | Absolute termination time with DELETE is the last-resort compute bound. Record interrupted result; never call it a pass. Verify disks separately. |
-| Orphan disk / expired run | Independent scheduled reconciler claims a fenced cleanup lease and checks ledger, numeric IDs, role, expiry and users before deletion. Retained backups, shared disks and production are denied. |
-| Cleanup failed / changed resource ID | Keep `cleanup_pending`, alert with content-free IDs, retry only the same proven-owned resource. Do not broaden selectors or delete by name prefix. |
+| Event                                   | Required reconciliation                                                                                                                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Create request times out                | Read operation/resource state by stable request ID and expected name; reconcile accepted creation before retry. An absent process is not proof of non-execution.                                 |
+| Crash between creation and ledger write | Deterministic naming, provider operation and audit evidence reconcile the resource. A matching label alone is insufficient; ambiguous ownership needs operator review.                           |
+| GitHub cancellation / Mac offline       | Durable controller continues status and cleanup independently. `always()` is useful but not a cleanup guarantee.                                                                                 |
+| Pass / fail                             | Persist private evidence, emit sanitized result, stop test writers, remove the owned VM, verify deletion, then remove exact unused test disks.                                                   |
+| VM TTL reached                          | Absolute termination time with DELETE is the last-resort compute bound. Record interrupted result; never call it a pass. Verify disks separately.                                                |
+| Orphan disk / expired run               | Independent scheduled reconciler claims a fenced cleanup lease and checks ledger, numeric IDs, role, expiry and users before deletion. Retained backups, shared disks and production are denied. |
+| Cleanup failed / changed resource ID    | Keep `cleanup_pending`, alert with content-free IDs, retry only the same proven-owned resource. Do not broaden selectors or delete by name prefix.                                               |
 
 The adapter must set and verify disk auto-delete deliberately. VM deletion does
 not guarantee all disks or other billable resources disappear. An unattached
@@ -194,6 +194,34 @@ unreconciled operation exceed the approved envelope. Ordinary cleanup never
 deletes source snapshots, backups, artifact evidence or production resources.
 
 ## Resource/cost proposal and approvals
+
+The 9.8 rehearsal demonstrated a container memory limit failure while the host
+still had substantial available memory. Do not reuse its 8 GiB limit as a
+qualified migration envelope, or infer process allocation from SQLite's page
+cache setting. The interrupted copy is not a migration or rollback proof.
+
+Before a future authorized rehearsal, retain native stage boundaries with
+timestamps and sample the owned cgroup's current/peak memory, memory events,
+anonymous/file allocation and swap alongside process liveness and native
+output. Record the exact source, image, dataset and memory/swap limits. Size a
+bounded run from measured stage demand plus explicit headroom and current host
+reserves; no successful sizing measurement exists yet for 10.5 migration.
+Inspect relevant upstream memory-demand fixes at the selected source and
+exercise the native entry point without skipping integrity checks. Neither an
+idle host nor a quieter log establishes progress. The build client's resource
+limit and the BuildKit worker's limit are separate from migration sizing.
+
+Tagged 10.5 includes a relevant embedding fix: native SQLite returns after
+each converted row instead of retaining UDF handles across a whole-table
+conversion; rebuildable cache embeddings also have a 1 MiB SQL-side limit.
+Its archive migration still selects 32 complete blobs and can retain original
+and replacement buffers without an aggregate byte or decompression ceiling.
+These source findings do not attribute the 9.8 OOM. A successfully migrated
+agent-schema-24 input skips storage-23 and snapshot-24 conversions, so qualify
+the actual predecessor schema rather than assuming every old conversion runs.
+Reuse existing constrained-heap embedding tests; the specific remaining
+synthetic gap is archive expanded-byte and retained-batch measurement, including
+interruption/resume and content preservation.
 
 No resource creation or price promise is authorized by this document. Proposed
 per-run envelope: concurrency **1**, `e2-standard-4` or `e2-standard-8`, boot disk
@@ -211,15 +239,15 @@ Metering may lag: Google spend caps for eligible APIs do not stop persistent
 Compute Engine/storage charges. Enforce resource quotas, TTL and cleanup;
 never disable the production project's billing as a spending control.
 
-| Approval needed before activation | Exact scope to review |
-| --- | --- |
-| GitHub settings and workflow | Main rules/reviews, pinned workflow/actions, separate rehearsal and production environments, selected branches, reviewer identity, prevent self-review, disallow admin bypass. One-person self-dispatch needs an independent reviewer or a reviewed private approval route; do not silently relax the gate. |
-| WIF / service accounts | Provider issuer/audience/mappings/condition; exact principal bindings. Setup needs pool/provider administration and possibly API-enable permissions; these must not be runtime roles. Existing disabled proof pool remains untouched. |
-| Rehearsal project/network | Prefer a separately approved isolated project. Same-project separation needs a reviewed permission boundary; do not assume labels are an IAM boundary or every API supports resource conditions. No firewall/IAP/network change is made here. |
-| Runtime cloud permissions | Narrow adapter identity: approved snapshot `compute.snapshots.get/useReadOnly`; test-only `compute.disks.create/get/use/delete`, `compute.instances.create/get/delete/attachDisk`, required zone operation reads and subnet use. Add list only for the owned-resource reconciler. Exact custom roles and resource applicability require an API dry-run/review; no Editor/Owner grants. No candidate SA or production disk access. |
-| Artifact/evidence access | Restricted artifact reader/writer and private evidence object permissions; approved locations, encryption, access audit, retention and deletion policy. No bucket, secret or key is provisioned here. |
-| Production promotion | Separate operator/adapter authority, shared production lock, current-data backup/fence, rollback pairing and human challenge. No automatic production rollout is enabled. |
-| Capacity and cost | Approved machine/zone/disk envelope, fresh unit prices, per-run/monthly caps, controller cost, TTL, cleanup owner and alert recipient. No priced estimate yet. |
+| Approval needed before activation | Exact scope to review                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub settings and workflow      | Main rules/reviews, pinned workflow/actions, separate rehearsal and production environments, selected branches, reviewer identity, prevent self-review, disallow admin bypass. One-person self-dispatch needs an independent reviewer or a reviewed private approval route; do not silently relax the gate.                                                                                                                       |
+| WIF / service accounts            | Provider issuer/audience/mappings/condition; exact principal bindings. Setup needs pool/provider administration and possibly API-enable permissions; these must not be runtime roles. Existing disabled proof pool remains untouched.                                                                                                                                                                                             |
+| Rehearsal project/network         | Prefer a separately approved isolated project. Same-project separation needs a reviewed permission boundary; do not assume labels are an IAM boundary or every API supports resource conditions. No firewall/IAP/network change is made here.                                                                                                                                                                                     |
+| Runtime cloud permissions         | Narrow adapter identity: approved snapshot `compute.snapshots.get/useReadOnly`; test-only `compute.disks.create/get/use/delete`, `compute.instances.create/get/delete/attachDisk`, required zone operation reads and subnet use. Add list only for the owned-resource reconciler. Exact custom roles and resource applicability require an API dry-run/review; no Editor/Owner grants. No candidate SA or production disk access. |
+| Artifact/evidence access          | Restricted artifact reader/writer and private evidence object permissions; approved locations, encryption, access audit, retention and deletion policy. No bucket, secret or key is provisioned here.                                                                                                                                                                                                                             |
+| Production promotion              | Separate operator/adapter authority, shared production lock, current-data backup/fence, rollback pairing and human challenge. No automatic production rollout is enabled.                                                                                                                                                                                                                                                         |
+| Capacity and cost                 | Approved machine/zone/disk envelope, fresh unit prices, per-run/monthly caps, controller cost, TTL, cleanup owner and alert recipient. No priced estimate yet.                                                                                                                                                                                                                                                                    |
 
 ## What this PR implements and how to qualify it
 

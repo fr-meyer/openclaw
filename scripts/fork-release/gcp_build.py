@@ -1,0 +1,734 @@
+#!/usr/bin/env python3
+"""One durable GCP build client. No deployment, builder creation, or builder stop.
+
+prepare takes a closed private config plus the existing manifest/inventory/source
+bindings. start records an fsynced intent before systemd dispatch. Repeating start
+only observes that operation, including after a lost dispatch reply. status prints
+native output first and finalizes the existing GCP execution contract only after
+systemd and the private child receipt agree on terminal success.
+
+The existing Docker builder owns its solve. Cancelling this service/client does
+not prove the daemon-side solve stopped. Operations retain their builder reservation
+for owner reconciliation; this module never resets it. The fixed private root
+serializes users of this adapter, not other native Docker callers. Those still
+require ownership coordination and fresh builder inspection.
+"""
+
+import argparse
+from contextlib import contextmanager
+from datetime import datetime, timezone
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import selectors
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+import preflight
+import pr
+import release
+
+DOCKER = ("/usr/bin/sudo", "-n", "/usr/bin/docker")
+SYSTEMD_RUN = ("/usr/bin/sudo", "-n", "/usr/bin/systemd-run")
+SYSTEMCTL = ("/usr/bin/sudo", "-n", "/usr/bin/systemctl")
+CHOWN = ("/usr/bin/sudo", "-n", "/usr/bin/chown")
+ENDPOINT = "unix:///var/run/docker.sock"
+PRIVATE_ROOT = Path("/var/tmp/openclaw-fork-gcp-build")
+HELPERS = ("gcp_build.py", "release.py", "preflight.py", "pr.py")
+SAFE_ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1"}
+CONFIG_FIELDS = """schema operationId attempt projectNumber instanceId toolingSha
+sourceSha sourceTree manifestSha256 inventorySha256 builtAt builder limits dockerExport"""
+BUILDER_FIELDS = """name node endpoint containerId imageId memoryBytes memorySwapBytes
+cpuPeriod cpuQuota cpuShares nanoCpus pidsLimit readBps writeBps"""
+LIMIT_FIELDS = """timeoutSeconds clientMemoryBytes clientCpuQuotaPercent clientTasksMax
+minFreeBytes minMemoryAvailableBytes"""
+INTENT_FIELDS = """schema config sourceDir toolingDir uid gid version preparedAt
+supervisorSha256 buildArgv serviceArgv unitName"""
+SHOW_FIELDS = ("LoadState", "ActiveState", "SubState", "Result", "ExecMainCode",
+               "ExecMainStatus", "MainPID", "InvocationID")
+BUILDER_FORMAT = ('{"Name":{{json .Name}},"Driver":{{json .Driver}},"Nodes":['
+                  '{{range $i, $node := .Nodes}}{{if $i}},{{end}}'
+                  '{"Name":{{json $node.Name}},"Endpoint":{{json $node.Endpoint}},'
+                  '"Status":{{json $node.Status}}}{{end}}]}')
+CONTAINER_FORMAT = (
+    '{"Id":{{json .Id}},"Image":{{json .Image}},'
+    '"State":{"Running":{{json .State.Running}}},"HostConfig":{'
+    '"Memory":{{json .HostConfig.Memory}},"MemorySwap":{{json .HostConfig.MemorySwap}},'
+    '"CpuPeriod":{{json .HostConfig.CpuPeriod}},"CpuQuota":{{json .HostConfig.CpuQuota}},'
+    '"CpuShares":{{json .HostConfig.CpuShares}},"NanoCpus":{{json .HostConfig.NanoCpus}},'
+    '"PidsLimit":{{json .HostConfig.PidsLimit}},'
+    '"BlkioDeviceReadBps":{{json .HostConfig.BlkioDeviceReadBps}},'
+    '"BlkioDeviceWriteBps":{{json .HostConfig.BlkioDeviceWriteBps}}}}')
+need = release.need
+
+
+def fields(value, names, code):
+    need(type(value) is dict and set(value) == set(names.split()), code)
+
+
+def integer(value, low, high, code):
+    need(type(value) is int and low <= value <= high, code)
+
+
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def encode(value):
+    return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+
+
+def private_bytes(path):
+    path = Path(path)
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as stream:
+        metadata = os.fstat(stream.fileno())
+        need(stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.getuid()
+             and metadata.st_mode & 0o077 == 0, "build.evidence.not_private")
+        return stream.read()
+
+
+def read_private(path):
+    return json.loads(private_bytes(path))
+
+
+def sync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def write_once(path, data):
+    """Exclusive creation plus directory fsync; interrupted writes stay fenced."""
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    sync_directory(Path(path).parent)
+
+
+def outside(left, right):
+    left, right = Path(left).resolve(), Path(right).resolve()
+    need(left != right and left not in right.parents and right not in left.parents,
+         "build.evidence.overlaps_source")
+
+
+def validate_config(config):
+    fields(config, CONFIG_FIELDS, "build.config.fields")
+    need(config["schema"] == "openclaw.fork-gcp-build-config.v1", "build.config.schema")
+    need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), config["operationId"]),
+         "build.operation_id")
+    integer(config["attempt"], 1, 1000, "build.attempt")
+    for key in ("projectNumber", "instanceId"):
+        need(release.matches(re.compile(r"[1-9][0-9]*\Z"), config[key]), "build.cloud_identity")
+    for key in ("toolingSha", "sourceSha", "sourceTree"):
+        need(release.matches(release.SHA, config[key]), "build.source_identity")
+    for key in ("manifestSha256", "inventorySha256"):
+        need(release.matches(preflight.HEX256, config[key]), "build.metadata_identity")
+    preflight.utc(config["builtAt"])
+    need(config["builtAt"] <= now(), "build.future_timestamp")
+    # The native Docker exporter rejects the attested manifest list. Keep OCI
+    # attestations intact; another transport needs its own native qualification.
+    need(config["dockerExport"] is False, "build.export.unqualified_transport")
+    builder = config["builder"]
+    fields(builder, BUILDER_FIELDS, "build.builder.fields")
+    for key in ("name", "node"):
+        need(release.matches(re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}\Z"), builder[key]),
+             "build.builder.name")
+    need(builder["endpoint"] == ENDPOINT, "build.builder.endpoint")
+    need(release.matches(preflight.HEX256, builder["containerId"])
+         and release.matches(release.DIGEST, builder["imageId"]), "build.builder.identity")
+    for key in ("memoryBytes", "memorySwapBytes", "cpuPeriod", "cpuQuota", "cpuShares"):
+        integer(builder[key], 1, 1 << 50, "build.builder.resources")
+    integer(builder["nanoCpus"], 0, 1 << 50, "build.builder.nano_cpus")
+    need(builder["memorySwapBytes"] >= builder["memoryBytes"], "build.builder.swap")
+    # Record absent limits honestly. This adapter never changes the builder.
+    need(builder["pidsLimit"] is None or
+         (type(builder["pidsLimit"]) is int and builder["pidsLimit"] > 0), "build.builder.pids")
+    need(builder["readBps"] is None and builder["writeBps"] is None, "build.builder.io_contract")
+    limits = config["limits"]
+    fields(limits, LIMIT_FIELDS, "build.limits.fields")
+    integer(limits["timeoutSeconds"], 60, 86400, "build.timeout")
+    integer(limits["clientMemoryBytes"], 64 << 20, 2 << 30, "build.client_memory")
+    integer(limits["clientCpuQuotaPercent"], 1, 100, "build.client_cpu")
+    integer(limits["clientTasksMax"], 8, 128, "build.client_tasks")
+    for key in ("minFreeBytes", "minMemoryAvailableBytes"):
+        integer(limits[key], 1, 1 << 50, "build.reserve")
+
+
+def clean_checkout(root, sha):
+    need(release.git(root, "rev-parse", "HEAD") == sha, "build.checkout.head")
+    need(release.git(root, "status", "--porcelain", "--untracked-files=all") == "",
+         "build.checkout.dirty")
+
+
+def source_binding(config, manifest_path, inventory_path, source):
+    manifest, manifest_hash = release.manifest_at(manifest_path)
+    need(manifest_hash == config["manifestSha256"]
+         and preflight.digest(inventory_path) == config["inventorySha256"],
+         "build.metadata.binding")
+    need(manifest["source"]["commit"] == config["sourceSha"]
+         and manifest["source"]["tree"] == config["sourceTree"], "build.source.binding")
+    need(manifest["image"] == {"architecture": "amd64", "extensions": "codex,workboard"},
+         "build.image.selection")
+    clean_checkout(source, config["sourceSha"])
+    release.check_source(manifest, source)
+    inventory, _ = preflight.inventory_at(inventory_path, manifest, manifest_hash, source)
+    pr.validate_binding(manifest_path, source)
+    version = json.loads(pr.git(source, "show", f"{config['sourceSha']}:package.json"))["version"]
+    need(release.matches(re.compile(r"2026\.[1-9][0-9]*\.(?:0|[1-9][0-9]*)\Z"), version),
+         "build.version.not_stable")
+    need(type(inventory["upstream"]) is dict
+         and inventory["upstream"]["tag"] == f"v{version}", "build.version.upstream_mismatch")
+    return version
+
+
+def tooling_bytes(root, sha):
+    clean_checkout(root, sha)
+    result = {}
+    for name in HELPERS:
+        path = Path(root) / "scripts/fork-release" / name
+        committed = pr.git(root, "show", f"{sha}:scripts/fork-release/{name}", binary=True)
+        need(path.read_bytes() == committed, "build.tooling.changed")
+        result[name] = committed
+    need(Path(__file__).read_bytes() == result["gcp_build.py"], "build.tooling.executor")
+    return result
+
+
+def build_argv(op, config, version):
+    need(config["dockerExport"] is False, "build.export.unqualified_transport")
+    sha = config["sourceSha"]
+    command = [*DOCKER, "--host", ENDPOINT, "buildx", "build",
+               "--builder", config["builder"]["name"], "--platform", "linux/amd64",
+               "--network", "none", "--progress", "plain",
+               "--build-arg", "GITHUB_ACTIONS=true",
+               "--build-arg", f"GIT_COMMIT={sha}",
+               "--build-arg", "OPENCLAW_PARITY_IMAGE=1",
+               "--build-arg", f"OPENCLAW_BUILD_TIMESTAMP={config['builtAt']}",
+               "--build-arg", f"OPENCLAW_DOCKER_BUILD_VERSION={version}",
+               "--build-arg", "OPENCLAW_EXTENSIONS=codex,workboard",
+               "--label", f"org.opencontainers.image.revision={sha}",
+               "--label", "org.opencontainers.image.source=https://github.com/fr-meyer/openclaw",
+               "--label", f"org.opencontainers.image.version={version}",
+               "--label", f"org.opencontainers.image.created={config['builtAt']}",
+               "--metadata-file", str(op / "build-metadata.json"),
+               "--provenance", "mode=max", "--sbom", "true",
+               "--output", f"type=oci,dest={op / 'oci'},tar=false,compression=gzip,compression-level=1",
+               "--tag", f"openclaw-v105-prep:{sha[:12]}"]
+    return [*command, f"https://github.com/fr-meyer/openclaw.git#{sha}"]
+
+
+def service_argv(op, intent):
+    limits = intent["config"]["limits"]
+    return [*SYSTEMD_RUN, "--unit", intent["unitName"], "--service-type=exec",
+            "--uid", str(intent["uid"]), "--gid", str(intent["gid"]),
+            "--property=Restart=no", "--property=RemainAfterExit=yes",
+            "--property=KillMode=control-group", "--property=TimeoutStopSec=15",
+            f"--property=RuntimeMaxSec={limits['timeoutSeconds']}",
+            f"--property=MemoryMax={limits['clientMemoryBytes']}",
+            f"--property=CPUQuota={limits['clientCpuQuotaPercent']}%",
+            f"--property=TasksMax={limits['clientTasksMax']}",
+            "--property=UMask=0077", "--property=StandardOutput=journal",
+            "--property=StandardError=journal", "--working-directory", str(op),
+            "--", sys.executable, "-B", str(op / "supervisor/gcp_build.py"), "_serve", str(op)]
+
+
+def prepare(private_root, config, manifest, inventory, source, tooling):
+    validate_config(config)
+    source, tooling = Path(source).resolve(), Path(tooling).resolve()
+    root = Path(private_root).absolute()
+    need(root == PRIVATE_ROOT and root.resolve() == PRIVATE_ROOT.resolve()
+         and not root.is_symlink(), "build.private_root.not_canonical")
+    outside(root, source)
+    outside(root, tooling)
+    version = source_binding(config, manifest, inventory, source)
+    helpers = tooling_bytes(tooling, config["toolingSha"])
+    root = release.private_root(root)
+    op = root / config["operationId"]
+    op.mkdir(mode=0o700)  # Existing or partially prepared operations are never replaced.
+    (op / "supervisor").mkdir(mode=0o700)
+    for name, data in helpers.items():
+        write_once(op / "supervisor" / name, data)
+    write_once(op / "manifest.json", Path(manifest).read_bytes())
+    write_once(op / "patch-inventory.json", Path(inventory).read_bytes())
+    intent = {"schema": "openclaw.fork-gcp-build-intent.v1", "config": config,
+              "sourceDir": str(source), "toolingDir": str(tooling), "uid": os.getuid(),
+              "gid": os.getgid(), "version": version, "preparedAt": now(),
+              "supervisorSha256": {name: release.sha256(data) for name, data in helpers.items()},
+              "buildArgv": build_argv(op, config, version),
+              "serviceArgv": [], "unitName": f"openclaw-image-build-{config['operationId']}.service"}
+    intent["serviceArgv"] = service_argv(op, intent)
+    write_once(op / "intent.json", encode(intent))
+    return op
+
+
+def load_intent(op):
+    op = Path(op).resolve()
+    need(op.parent == PRIVATE_ROOT.resolve() and not PRIVATE_ROOT.is_symlink(),
+         "build.private_root.not_canonical")
+    need(op.is_dir() and op.parent.is_dir(), "build.operation.missing")
+    release.private_root(op.parent)
+    release.private_root(op)
+    intent = read_private(op / "intent.json")
+    fields(intent, INTENT_FIELDS, "build.intent.fields")
+    need(intent["schema"] == "openclaw.fork-gcp-build-intent.v1", "build.intent.schema")
+    config = intent["config"]
+    validate_config(config)
+    need(op.name == config["operationId"] and intent["uid"] == os.getuid()
+         and intent["gid"] == os.getgid(), "build.intent.owner")
+    for key in ("sourceDir", "toolingDir"):
+        outside(op.parent, intent[key])
+    need(intent["unitName"] == f"openclaw-image-build-{config['operationId']}.service",
+         "build.intent.unit")
+    fields(intent["supervisorSha256"], " ".join(HELPERS), "build.supervisor.fields")
+    for name, digest in intent["supervisorSha256"].items():
+        need(release.sha256(private_bytes(op / "supervisor" / name)) == digest,
+             "build.supervisor.changed")
+    need(preflight.digest(op / "manifest.json") == config["manifestSha256"]
+         and preflight.digest(op / "patch-inventory.json") == config["inventorySha256"],
+         "build.intent.metadata_changed")
+    need(intent["buildArgv"] == build_argv(op, config, intent["version"])
+         and intent["serviceArgv"] == service_argv(op, intent), "build.intent.argv_changed")
+    if (op / "start-intent.json").exists():
+        need(read_private(op / "start-intent.json")["intentSha256"] ==
+             preflight.digest(op / "intent.json"), "build.start_intent.changed")
+    return op, intent
+
+
+@contextmanager
+def operation_lock(op):
+    descriptor = os.open(op / "operation.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "r+b") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        yield
+
+
+def native(argv):
+    return subprocess.run(argv, capture_output=True, text=True, timeout=30, env=SAFE_ENV)
+
+
+def observe_builder(builder):
+    inspected = native([*DOCKER, "--host", ENDPOINT, "buildx", "inspect", builder["name"],
+                        "--format", BUILDER_FORMAT])
+    need(inspected.returncode == 0, "build.builder.inspect")
+    value = json.loads(inspected.stdout)
+    need(value["Name"] == builder["name"] and value["Driver"] == "docker-container"
+         and len(value["Nodes"]) == 1, "build.builder.driver")
+    node = value["Nodes"][0]
+    need(node["Name"] == builder["node"] and node["Endpoint"] == ENDPOINT
+         and node["Status"] == "running", "build.builder.node")
+    inspected = native([*DOCKER, "--host", ENDPOINT, "inspect",
+                        "--format", CONTAINER_FORMAT, f"buildx_buildkit_{builder['node']}"])
+    need(inspected.returncode == 0, "build.builder.container_inspect")
+    row = json.loads(inspected.stdout)
+    host = row["HostConfig"]
+    observed = {"name": value["Name"], "node": node["Name"], "endpoint": node["Endpoint"],
+                "containerId": row["Id"], "imageId": row["Image"],
+                **{key: host[native_key] for key, native_key in {
+                    "memoryBytes": "Memory", "memorySwapBytes": "MemorySwap",
+                    "cpuPeriod": "CpuPeriod", "cpuQuota": "CpuQuota", "cpuShares": "CpuShares",
+                    "nanoCpus": "NanoCpus", "pidsLimit": "PidsLimit",
+                    "readBps": "BlkioDeviceReadBps", "writeBps": "BlkioDeviceWriteBps"}.items()}}
+    need(row["State"]["Running"] is True and observed == builder, "build.builder.changed")
+    return observed
+
+
+def resource_sample(op):
+    memory = {}
+    for line in Path("/proc/meminfo").read_text().splitlines():
+        key, _, value = line.partition(":")
+        if key == "MemAvailable":
+            memory[key] = int(value.split()[0]) * 1024
+    need("MemAvailable" in memory, "build.capacity.memory_unavailable")
+    free = shutil.disk_usage(op).free
+    return {"freeBytes": free, "memoryAvailableBytes": memory["MemAvailable"]}
+
+
+def capacity(op, limits):
+    observed = resource_sample(op)
+    need(observed["freeBytes"] >= limits["minFreeBytes"], "build.capacity.disk_reserve")
+    need(observed["memoryAvailableBytes"] >= limits["minMemoryAvailableBytes"],
+         "build.capacity.memory_reserve")
+    return observed
+
+
+def record_resources(op, phase, observed=None):
+    """Small host samples, never builder peak usage or evidence of phase progress."""
+    record = {"observedAt": now(), "scope": "host", "phase": phase}
+    try:
+        record["resources"] = observed if observed is not None else resource_sample(op)
+    except (OSError, ValueError, release.Refusal) as error:
+        record["observationError"] = str(error)
+    try:
+        descriptor = os.open(op / "resources.jsonl", os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "ab", buffering=0) as stream:
+            stream.write((json.dumps(record, sort_keys=True) + "\n").encode())
+            os.fsync(stream.fileno())
+    except OSError as error:
+        # Diagnostic persistence must not replace the already observed child
+        # result or prevent its durable exit/completion records.
+        try:
+            os.write(2, f"{now()} host resource evidence unavailable: {error}\n".encode())
+        except OSError:
+            pass
+        return False
+    return True
+
+
+def reserve_builder(op, intent):
+    """A retained intent fences other operations even if systemd dispatch is uncertain."""
+    lease = op.parent / f"builder-{intent['config']['builder']['containerId']}.json"
+    value = {"operationId": op.name, "intentSha256": preflight.digest(op / "intent.json")}
+    try:
+        write_once(lease, encode(value))
+    except FileExistsError:
+        need(read_private(lease) == value, "build.builder.reserved_by_other_operation")
+
+
+def metadata_handoff_capability(op, intent):
+    result = native(["/usr/bin/sudo", "-n", "-l", "/usr/bin/chown",
+                     f"{intent['uid']}:{intent['gid']}", str(op / "build-metadata.json")])
+    need(result.returncode == 0, "build.metadata.handoff_unavailable")
+
+
+def take_metadata(op, intent):
+    """Transfer only the exact native output, after the Buildx client has joined."""
+    path = op / "build-metadata.json"
+    before = path.lstat()
+    need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+         and before.st_uid in (0, intent["uid"]), "build.metadata.unsafe_output")
+    if before.st_uid != intent["uid"]:
+        metadata_handoff_capability(op, intent)
+        result = native([*CHOWN, f"{intent['uid']}:{intent['gid']}", str(path)])
+        need(result.returncode == 0, "build.metadata.handoff_failed")
+    after = path.lstat()
+    need((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino)
+         and stat.S_ISREG(after.st_mode) and after.st_uid == intent["uid"]
+         and after.st_gid == intent["gid"] and after.st_nlink == 1,
+         "build.metadata.handoff_changed")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        current = os.fstat(descriptor)
+        need((current.st_dev, current.st_ino) == (after.st_dev, after.st_ino),
+             "build.metadata.handoff_changed")
+        os.fchmod(descriptor, 0o600)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def start(op):
+    need(sys.platform == "linux", "build.start.requires_gcp_linux")
+    op, intent = load_intent(op)
+    with operation_lock(op):
+        if (op / "start-intent.json").exists():
+            return status(op)
+        config = intent["config"]
+        source_binding(config, op / "manifest.json", op / "patch-inventory.json",
+                       intent["sourceDir"])
+        need(tooling_bytes(intent["toolingDir"], config["toolingSha"]) ==
+             {name: private_bytes(op / "supervisor" / name) for name in HELPERS},
+             "build.tooling.changed")
+        observe_builder(config["builder"])
+        reserve = capacity(op, config["limits"])
+        metadata_handoff_capability(op, intent)
+        reserve_builder(op, intent)
+        write_once(op / "start-intent.json", encode({
+            "intentSha256": preflight.digest(op / "intent.json"), "requestedAt": now(),
+            "unitName": intent["unitName"], "capacity": reserve}))
+        # Any exception after the fsynced start intent is an uncertain dispatch.
+        try:
+            result = native(intent["serviceArgv"])
+            record = {"observedAt": now(), "returnCode": result.returncode,
+                      "stdout": result.stdout, "stderr": result.stderr}
+        except (OSError, subprocess.TimeoutExpired):
+            record = {"observedAt": now(), "returnCode": None,
+                      "stdout": "", "stderr": "dispatch outcome uncertain; status only"}
+        write_once(op / "dispatch.json", encode(record))
+    return status(op)
+
+
+def run_child(op, intent):
+    """Called by the retained service, never an SSH-attached build process."""
+    invocation = os.environ.get("INVOCATION_ID", "")
+    need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), invocation), "build.service.invocation")
+    start_intent = read_private(op / "start-intent.json")
+    need(start_intent["intentSha256"] == preflight.digest(op / "intent.json"),
+         "build.start_intent.changed")
+    started = {"startedAt": now(), "invocationId": invocation}
+    write_once(op / "started.json", encode(started))
+    write_once(op / "resources.jsonl", b"")
+    previous_umask = os.umask(0o077)
+    signal_received = []
+    child = None
+    previous = {}
+
+    def cancel(signum, _frame):
+        signal_received.append(signum)
+        if child is not None and child.poll() is None:
+            child.terminate()
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        previous[signum] = signal.signal(signum, cancel)
+    native_exit, exit_code, reason = None, 1, "client failed before launch"
+    try:
+        observe_builder(intent["config"]["builder"])
+        record_resources(op, "start", capacity(op, intent["config"]["limits"]))
+        need(not signal_received, "build.cancelled_before_launch")
+        with open(op / "build.log", "xb", buffering=0) as log:
+            child = subprocess.Popen(intent["buildArgv"], cwd=op, env=SAFE_ENV,
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                     umask=0o022)
+            selector = selectors.DefaultSelector()
+            selector.register(child.stdout, selectors.EVENT_READ)
+            stop_at = None
+            next_capacity = time.monotonic()
+            next_sample = next_capacity + 30
+            deadline = next_capacity + intent["config"]["limits"]["timeoutSeconds"]
+            while selector.get_map() or child.poll() is None:
+                if time.monotonic() >= deadline and stop_at is None:
+                    reason = "client deadline; remote solve termination unobserved"
+                    child.terminate()
+                    stop_at = time.monotonic() + 10
+                if time.monotonic() >= next_capacity and stop_at is None:
+                    next_capacity = time.monotonic() + 2
+                    try:
+                        observed = capacity(op, intent["config"]["limits"])
+                        if time.monotonic() >= next_sample:
+                            record_resources(op, "periodic", observed)
+                            next_sample = time.monotonic() + 30
+                    except (OSError, ValueError, release.Refusal) as error:
+                        reason = str(error)
+                        record_resources(op, "reserve-failed")
+                        child.terminate()
+                        stop_at = time.monotonic() + 10
+                if signal_received and stop_at is None:
+                    reason = "service cancellation; remote solve termination unobserved"
+                    stop_at = time.monotonic() + 10
+                if stop_at is not None and time.monotonic() >= stop_at and child.poll() is None:
+                    child.kill()  # Only this client's PID; never a daemon/container.
+                for key, _ in selector.select(timeout=0.25):
+                    data = os.read(key.fd, 65536)
+                    if not data:
+                        selector.unregister(key.fileobj)
+                        continue
+                    # Prefix each received native output chunk; preserve its bytes.
+                    stamped = now().encode() + b" " + data
+                    log.write(stamped)
+                    sys.stdout.buffer.write(stamped)
+                    sys.stdout.buffer.flush()
+            selector.close()
+            child.stdout.close()
+            result = child.wait()
+            native_exit = result if result >= 0 else 128 - result
+            exit_code = native_exit
+            if stop_at is not None:
+                exit_code = exit_code or 75
+            else:
+                reason = "client exited; remote solve termination unobserved" if result else "client succeeded"
+            os.fsync(log.fileno())
+        if exit_code == 0:
+            # Sudo Buildx may atomically replace a precreated file; do not assume
+            # in-place writes retain the invoking user's ownership.
+            take_metadata(op, intent)
+    except BaseException:
+        exit_code = 1
+        reason = "supervisor failed; retain native output and reconcile"
+        raise
+    finally:
+        try:
+            if child is not None:
+                if child.poll() is None:
+                    child.terminate()
+                    try:
+                        child.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+                        child.wait(timeout=5)
+                native_exit = child.returncode if child.returncode >= 0 else 128 - child.returncode
+            if native_exit is not None:
+                write_once(op / "build.exit", f"{native_exit}\n".encode())
+            write_once(op / "completed.json", encode({
+                **started, "completedAt": now(), "exitCode": exit_code,
+                "nativeExitCode": native_exit, "reason": reason,
+                "remoteSolveTerminationObserved": False}))
+            record_resources(op, "end")
+        finally:
+            try:
+                for signum, handler in previous.items():
+                    signal.signal(signum, handler)
+            finally:
+                os.umask(previous_umask)
+    return exit_code
+
+
+def readable_outputs(op):
+    """Check access without copying/hashing layers; seal-gcp owns OCI validation.
+
+    The parent remains private0700. Only the native Buildx child uses umask0022,
+    so root-owned export directories/files can be traversed/read by this UID.
+    Native sudo/exporter behavior must be probed before candidate execution; an
+    unexpected mode here leaves the operation incomplete, without a receipt.
+    """
+    pending = [op / "oci"]
+    files = []
+    while pending:
+        directory = pending.pop()
+        need(stat.S_ISDIR(directory.lstat().st_mode), "build.output.unsafe_directory")
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(Path(entry.path))
+                else:
+                    files.append(Path(entry.path))
+    for path in files:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            need(stat.S_ISREG(os.fstat(descriptor).st_mode), "build.output.unsafe_file")
+        finally:
+            os.close(descriptor)
+
+
+def finalize(op, intent, service):
+    completed = read_private(op / "completed.json")
+    fields(completed, """startedAt invocationId completedAt exitCode nativeExitCode reason
+           remoteSolveTerminationObserved""", "build.completion.fields")
+    started = read_private(op / "started.json")
+    fields(started, "startedAt invocationId", "build.started.fields")
+    need(all(completed[key] == started[key] for key in started), "build.started.changed")
+    need(service["InvocationID"] == completed["invocationId"], "build.service.identity_changed")
+    need(completed["exitCode"] == 0 and completed["nativeExitCode"] == 0
+         and private_bytes(op / "build.exit").strip() == b"0",
+         "build.client.failed")
+    config = intent["config"]
+    for key in ("startedAt", "completedAt"):
+        preflight.utc(completed[key])
+    need(config["builtAt"] <= completed["startedAt"] <= completed["completedAt"] <= now(),
+         "build.time.order")
+    metadata = private_bytes(op / "build-metadata.json")
+    digest = json.loads(metadata)["containerimage.digest"]
+    need(release.matches(release.DIGEST, digest), "build.metadata.digest")
+    readable_outputs(op)
+    # Full OCI/SBOM/provenance verification remains with image.mjs seal-gcp.
+    index = json.loads((op / "oci/index.json").read_bytes())
+    need(len(index["manifests"]) == 1 and index["manifests"][0]["digest"] == digest,
+         "build.oci.index_binding")
+    execution = {"schema": "openclaw.fork-gcp-image-execution.v1",
+                 **{key: config[key] for key in (
+                     "operationId", "attempt", "projectNumber", "instanceId", "toolingSha",
+                     "sourceSha", "sourceTree", "manifestSha256", "inventorySha256", "builtAt")},
+                 "indexDigest": digest, "startedAt": completed["startedAt"],
+                 "completedAt": completed["completedAt"], "buildExitCode": 0,
+                 "buildMetadataSha256": release.sha256(metadata),
+                 "buildLogSha256": release.sha256(private_bytes(op / "build.log"))}
+    path = op / "execution.json"
+    try:
+        write_once(path, encode(execution))
+    except FileExistsError:
+        need(read_private(path) == execution, "build.execution.changed")
+    return execution
+
+
+def service_observation(intent):
+    result = native([*SYSTEMCTL, "show", intent["unitName"], "--no-pager",
+                     "--property=" + ",".join(SHOW_FIELDS)])
+    service = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+    return result, service
+
+
+def status(op):
+    op, intent = load_intent(op)
+    result, service = service_observation(intent)
+    state = "unknown"
+    if result.returncode == 0 and service.get("LoadState") == "loaded":
+        if service.get("SubState") == "running" and service.get("ActiveState") == "active":
+            state = "running"
+        elif service.get("ActiveState") == "failed":
+            state = "failed"
+        elif (service.get("SubState") in ("exited", "dead")
+              and service.get("Result") == "success" and service.get("ExecMainCode") == "1"
+              and service.get("ExecMainStatus") == "0" and service.get("MainPID") == "0"):
+            try:
+                finalize(op, intent, service)
+                state = "succeeded"
+            except (OSError, ValueError, KeyError, release.Refusal):
+                state = "incomplete"
+    log = op / "build.log"
+    return {"operationId": op.name, "unitName": intent["unitName"], "state": state,
+            "dispatchRecorded": (op / "start-intent.json").exists(),
+            "logBytes": log.stat().st_size if log.is_file() else 0,
+            "buildPhaseProgress": "unproven", "remoteSolveTerminationObserved": False,
+            "service": service}
+
+
+def cancel(op):
+    op, intent = load_intent(op)
+    need((op / "start-intent.json").exists(), "build.cancel.not_started")
+    with operation_lock(op):
+        if not (op / "cancel-intent.json").exists():
+            need((op / "started.json").exists(), "build.cancel.service_owner_unproven")
+            started = read_private(op / "started.json")
+            fields(started, "startedAt invocationId", "build.started.fields")
+            result, service = service_observation(intent)
+            need(result.returncode == 0 and service.get("LoadState") == "loaded"
+                 and service.get("ActiveState") == "active"
+                 and service.get("SubState") == "running"
+                 and release.matches(re.compile(r"[0-9a-f]{32}\Z"), started["invocationId"])
+                 and service.get("InvocationID") == started["invocationId"],
+                 "build.cancel.service_owner_unproven")
+            write_once(op / "cancel-intent.json", encode({"requestedAt": now(),
+                                                        "unitName": intent["unitName"],
+                                                        "invocationId": started["invocationId"]}))
+            try:
+                native([*SYSTEMCTL, "stop", intent["unitName"]])
+            except (OSError, subprocess.TimeoutExpired):
+                pass  # An uncertain cancellation is observation-only on retry.
+    return status(op)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    prep = sub.add_parser("prepare")
+    for name in ("config", "private-root", "manifest", "inventory", "source-dir", "tooling-dir"):
+        prep.add_argument("--" + name, required=True, type=Path)
+    for name in ("start", "status", "cancel", "_serve"):
+        sub.add_parser(name).add_argument("operation", type=Path)
+    args = parser.parse_args()
+    try:
+        if args.command == "prepare":
+            print(prepare(args.private_root, release.read_json(args.config), args.manifest,
+                          args.inventory, args.source_dir, args.tooling_dir))
+            return 0
+        if args.command == "_serve":
+            need(sys.platform == "linux", "build.service.requires_gcp_linux")
+            op, intent = load_intent(args.operation)
+            return run_child(op, intent)
+        if args.command == "status":
+            op, _ = load_intent(args.operation)
+            log = op / "build.log"
+            if log.is_file():
+                descriptor = os.open(log, os.O_RDONLY | os.O_NOFOLLOW)
+                with os.fdopen(descriptor, "rb") as stream:
+                    stream.seek(max(0, log.stat().st_size - 16384))
+                    sys.stdout.buffer.write(stream.read())
+                    sys.stdout.buffer.flush()
+        print(json.dumps({"start": start, "status": status, "cancel": cancel}[args.command](args.operation)))
+        return 0
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError, release.Refusal) as error:
+        print(f"GCP image build refused: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

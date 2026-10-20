@@ -173,6 +173,55 @@ exact-source and offline contract gates, while allowing a reviewed manifest to
 select each future candidate. It does not copy that task's private companion
 inputs or its hosted build supervisor.
 
+### Build once on the existing GCP host
+
+`gcp_build.py` adapts the existing native Buildx builder to one durable systemd
+service. It builds an image only; it does not own rehearsal, migration,
+production promotion, or cleanup. Run it from the clean, reviewed tooling
+checkout on GCP. Use a separate clean exact-source checkout and the generated
+candidate manifest/inventory.
+
+```sh
+python3 -B scripts/fork-release/gcp_build.py prepare \
+  --config "$PRIVATE_BUILD_CONFIG" \
+  --private-root /var/tmp/openclaw-fork-gcp-build \
+  --manifest "$MANIFEST" --inventory "$INVENTORY" \
+  --source-dir "$SOURCE_CHECKOUT" --tooling-dir "$TOOLING_CHECKOUT"
+python3 -B scripts/fork-release/gcp_build.py start "$OPERATION_DIRECTORY"
+python3 -B scripts/fork-release/gcp_build.py status "$OPERATION_DIRECTORY"
+```
+
+The closed configuration binds the exact source/tree/tooling and metadata
+hashes, stable release version, private cloud identity, existing builder
+container/image/resource limits, build timestamp, timeout, and free disk/memory
+reserves. `validate_config` owns its fields. Obtain identities and capacity from
+current native observations; the synthetic test configuration is not a host
+configuration or resource recommendation.
+
+The single canonical private root owns the builder reservation. Preparation
+does not dispatch a build. Start rechecks bindings and capacity, then fsyncs its
+intent before invoking systemd. Repeating start after a lost reply observes the
+same operation; it cannot dispatch again. An existing reservation is retained
+for reconciliation. This excludes competing operations through this adapter,
+not independent users of Docker; coordinate ownership before dispatch.
+
+The existing builder remains unchanged. The client has its own systemd limits;
+the recorded builder limits govern compilation separately. Native output is
+timestamped and shown before status. Resource observations describe measured
+host headroom, not builder peak allocation or semantic progress. A deadline or
+reserve breach stops only this operation's client. It does not establish that
+the remote BuildKit solve has settled. Cancellation requires the private
+started receipt to match the live unit invocation. No uncertain operation can
+produce a success receipt or automatically release the reservation.
+
+Keep the operation directory owned and `0700`. The Buildx child uses `0022`
+inside that private parent so root-created OCI exports can be read by the
+supervisor. The supervisor keeps `0077`; only the exact settled metadata file
+is handed back to its existing UID and normalized to `0600`. Verify actual
+OCI export permissions and that exact handoff on the host
+before a candidate build. This needs no recursive ownership change, credential
+change, new builder, or host package installation.
+
 ### Seal an image produced on the existing GCP host
 
 The same OCI, source, inventory and plugin checks can consume a privately
@@ -193,16 +242,25 @@ node scripts/fork-release/image.mjs seal-gcp \
   "$BUILDKIT_DIGEST" "$IMAGE_RECEIPT" "$PRIVATE_EXECUTION_DIRECTORY/execution.json"
 ```
 
-Skopeo remains the default smoke-copy transport. On a host without Skopeo, a
-single build can retain its OCI output and also use Buildx's Docker exporter to
-load a smoke copy under a unique task-owned tag. This requires Buildx and
-BuildKit 0.13 or later; verify the actual tool versions and dual-export behavior
-before using it. Pass a final `loaded` argument to `seal-gcp` only after that
-load. The verifier still checks the full retained OCI artifact, then requires
-the loaded image's immutable config digest to match before executing native
-smoke. It never trusts the mutable tag or substitutes Docker's image store for
+Skopeo remains the default smoke-copy transport. The GCP builder emits one OCI
+artifact with provenance and SBOM. Its `dockerExport` configuration must be
+`false`: the native host probe rejected combined Docker export because the
+attested result is a manifest list. Do not disable attestations to accommodate
+that exporter.
+
+On a host without Skopeo, first qualify native Docker loading of a tar archive
+of the **same retained OCI layout**, using the host's actual image store. This
+is a transport of existing bytes, not a second build. Pass a final `loaded`
+argument to `seal-gcp` only after that load. The verifier still checks the full
+retained OCI artifact, then requires the loaded image's immutable index digest
+to match before executing native smoke and plugin checks on the selected
+platform. Docker's containerd store reports the index for unqualified image
+inspection and the selected manifest for platform-qualified inspection; neither
+is the config digest. The receipt retains all three verified digests. Legacy
+Skopeo transport continues to verify the smoke copy's config digest.
+The verifier never trusts a mutable tag or substitutes Docker's image store for
 the artifact. No host package installation or registry push is required by this
-transport. See Docker's [multiple exporter contract](https://docs.docker.com/build/exporters/#multiple-exporters).
+transport. A successful exporter probe alone does not qualify the candidate.
 
 The existing private execution owner must start the build durably on GCP,
 outside the Mac SSH lifetime, and retain these regular files in an owned `0700`
@@ -229,9 +287,11 @@ This evidence directory must be outside **every** candidate mount, including a
 shared parent mount; the path check alone cannot establish mount isolation.
 Keep the supervisor, Docker socket and cloud credentials inaccessible to
 candidate code. Use the reviewed secretless build route and an exact source
-context. The native Dockerfile still needs dependency and OS acquisition:
-`--network=none` is usable only with a complete verified cache/closure. Do not
-remove its security updates or integrity steps to make an offline build pass.
+context. The reviewed candidate Dockerfile confines networked acquisition to
+manifest/patch inputs and runtime security tools before candidate payload.
+Candidate installs and builds run with networking disabled. Native frozen
+installs, lifecycle execution, addon checks, security updates, and integrity
+checks remain required; an acquisition cache alone is not a qualified image.
 
 Sealing verifies the private evidence bindings, every OCI blob and attestation,
 native workspace smoke and selected plugin payload. Smoke and plugin inspection

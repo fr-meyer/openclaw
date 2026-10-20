@@ -21,6 +21,7 @@ import {
   producerArtifactName,
   validateProducer,
 } from "./gcp-image-context.mjs";
+import { inspectLoadedPlugins } from "./image.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const digest = `sha256:${"a".repeat(64)}`;
@@ -306,6 +307,118 @@ if (command === "docker" && args[0] === "start" && process.env.SMOKE_FAIL_START 
       .split("\n")
       .map((line) => JSON.parse(line));
     assert.deepEqual(failure.at(-1).args, ["rm", "--force", "1".repeat(64)]);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    rmSync(root, { recursive: true });
+  }
+});
+
+test("loaded index smoke requires an exact digest and the explicit loaded transport", () => {
+  for (const options of [
+    { loadedIndexDigest: digest },
+    { transport: "skopeo", loadedIndexDigest: digest },
+    { transport: "loaded", loadedIndexDigest: "openclaw:mutable" },
+    { transport: "loaded", loadedIndexDigest: [digest] },
+    { transport: "loaded", loadedIndexDigest: null },
+  ]) {
+    assert.throws(
+      () => smokeDockerReleaseImage("/synthetic/oci", "amd64", "default", digest, options),
+      /Loaded smoke index requires loaded transport and an exact digest/u,
+    );
+  }
+  assert.throws(
+    () =>
+      smokeDockerReleaseImage("/synthetic/oci", "unknown", "default", digest, {
+        transport: "loaded",
+        loadedIndexDigest: digest,
+      }),
+    /Unsupported loaded smoke platform/u,
+  );
+});
+
+test("loaded OCI index remains immutable through smoke and platform-pinned plugin inspection", () => {
+  const root = mkdtempSync(join(tmpdir(), "fork-index-smoke-"));
+  const capture = join(root, "calls.jsonl");
+  const indexDigest = `sha256:${"c".repeat(64)}`;
+  const previous = Object.fromEntries(
+    ["PATH", "SMOKE_CAPTURE", "SMOKE_DIGEST", "SMOKE_FAIL_START"].map((key) => [
+      key,
+      process.env[key],
+    ]),
+  );
+  const fake = `#!${process.execPath}
+import { appendFileSync } from "node:fs";
+const args = process.argv.slice(2);
+appendFileSync(process.env.SMOKE_CAPTURE, JSON.stringify(args) + "\\n");
+if (args[0] === "image") console.log(process.env.SMOKE_DIGEST);
+if (args[0] === "create") console.log("2".repeat(64));
+if (args[0] === "inspect") console.log("false 0");
+if (args[0] === "run" && args.includes("/tmp/verify-image-plugins.mjs")) console.log("[]");
+if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17);
+`;
+  const calls = () =>
+    readFileSync(capture, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+  const options = {
+    isolation: "secretless",
+    transport: "loaded",
+    loadedIndexDigest: indexDigest,
+  };
+  try {
+    writeFileSync(join(root, "docker"), fake, { mode: 0o700 });
+    process.env.PATH = `${root}:${previous.PATH}`;
+    process.env.SMOKE_CAPTURE = capture;
+    process.env.SMOKE_DIGEST = indexDigest;
+    delete process.env.SMOKE_FAIL_START;
+    const smoke = smokeDockerReleaseImage("/synthetic/oci", "amd64", "default", digest, options);
+    assert.equal(smoke.imageReference, indexDigest);
+    const observed = calls();
+    assert.deepEqual(observed[0], ["image", "inspect", "--format", "{{.Id}}", indexDigest]);
+    const create = observed[1];
+    assert.equal(create[0], "create");
+    assert.equal(create[create.indexOf("--platform") + 1], "linux/amd64");
+    assert.equal(create[create.indexOf("--entrypoint") + 2], indexDigest);
+    assert.equal(create[create.indexOf("--network") + 1], "none");
+    assert.ok(create.includes("--read-only"));
+    assert.ok(!create.includes(digest));
+    assert.deepEqual(observed.at(-1), ["rm", "--force", "2".repeat(64)]);
+
+    assert.deepEqual(
+      inspectLoadedPlugins(
+        { image: { architecture: "amd64", extensions: "codex,workboard" } },
+        "2026.10.5",
+        smoke.imageReference,
+      ),
+      [],
+    );
+    const plugins = calls().at(-1);
+    assert.equal(plugins[0], "run");
+    assert.equal(plugins[plugins.indexOf("--platform") + 1], "linux/amd64");
+    assert.equal(plugins[plugins.indexOf("--entrypoint") + 2], indexDigest);
+    assert.equal(plugins[plugins.indexOf("--network") + 1], "none");
+    assert.ok(plugins.includes("--read-only"));
+    assert.ok(!plugins.includes(digest));
+
+    writeFileSync(capture, "");
+    process.env.SMOKE_DIGEST = digest;
+    assert.throws(
+      () => smokeDockerReleaseImage("/synthetic/oci", "amd64", "default", digest, options),
+      /does not match the prepared OCI image/u,
+    );
+    assert.deepEqual(calls(), [["image", "inspect", "--format", "{{.Id}}", indexDigest]]);
+
+    writeFileSync(capture, "");
+    process.env.SMOKE_DIGEST = indexDigest;
+    process.env.SMOKE_FAIL_START = "1";
+    assert.throws(() =>
+      smokeDockerReleaseImage("/synthetic/oci", "amd64", "default", digest, options),
+    );
+    assert.deepEqual(calls().at(-1), ["rm", "--force", "2".repeat(64)]);
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];

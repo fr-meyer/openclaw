@@ -269,6 +269,20 @@ function smokeImage(directory, architecture, variant, configDigest, options = {}
     "Unsupported Docker smoke transport.",
   );
   requireValue(DIGEST.test(configDigest), "Missing exact smoke config digest.");
+  requireValue(
+    options.loadedIndexDigest === undefined ||
+      (options.transport === "loaded" &&
+        typeof options.loadedIndexDigest === "string" &&
+        DIGEST.test(options.loadedIndexDigest)),
+    "Loaded smoke index requires loaded transport and an exact digest.",
+  );
+  const imageReference = options.loadedIndexDigest ?? configDigest;
+  const platform =
+    options.loadedIndexDigest === undefined ? [] : ["--platform", `linux/${architecture}`];
+  requireValue(
+    options.loadedIndexDigest === undefined || ARCHITECTURES.includes(architecture),
+    "Unsupported loaded smoke platform.",
+  );
   const image = `openclaw-release-smoke:${architecture}-${variant}`;
   // Only the smoke copy enters Docker's single-image store. The OCI artifact
   // retains the original index, SBOM, and provenance for digest-preserving promotion.
@@ -293,8 +307,10 @@ function smokeImage(directory, architecture, variant, configDigest, options = {}
       "inspect",
       "--format",
       "{{.Id}}",
-      options.transport === "loaded" ? configDigest : image,
-    ]).trim() === configDigest,
+      // Containerd's unqualified image identity is the loaded OCI index.
+      // Platform-qualified inspect reports the selected manifest instead.
+      options.transport === "loaded" ? imageReference : image,
+    ]).trim() === imageReference,
     "Smoke image does not match the prepared OCI image.",
   );
   const script =
@@ -326,10 +342,11 @@ function smokeImage(directory, architecture, variant, configDigest, options = {}
   if (options.isolation === "secretless") {
     const container = run("docker", [
       "create",
+      ...platform,
       ...isolation,
       "--entrypoint",
       "/bin/sh",
-      configDigest,
+      imageReference,
       "-lc",
       script,
     ]).trim();
@@ -353,16 +370,27 @@ function smokeImage(directory, architecture, variant, configDigest, options = {}
       // check or attached-client timeout cannot leave the test writer running.
       run("docker", ["rm", "--force", container], { timeout: 30_000 });
     }
-    return;
+    return { imageReference };
   }
   run(
     "docker",
-    ["run", "--rm", ...isolation, "--entrypoint", "/bin/sh", configDigest, "-lc", script],
+    [
+      "run",
+      "--rm",
+      ...platform,
+      ...isolation,
+      "--entrypoint",
+      "/bin/sh",
+      imageReference,
+      "-lc",
+      script,
+    ],
     {
       timeout: 120_000,
       stdio: "inherit",
     },
   );
+  return { imageReference };
 }
 
 function releaseContext(env) {

@@ -8,6 +8,7 @@ import {
   verifyDockerReleaseLayout,
   smokeDockerReleaseImage,
 } from "../docker-release-artifacts.mjs";
+import { isDirectRunUrl } from "../lib/direct-run.mjs";
 import {
   assertCleanSourceCheckout,
   producerArtifactName,
@@ -48,7 +49,8 @@ function validateManifest(path) {
   return manifest;
 }
 
-function inspectLoadedPlugins(manifest, version, configDigest) {
+export function inspectLoadedPlugins(manifest, version, imageReference) {
+  need(DIGEST.test(imageReference), "Plugin inspection requires an immutable image digest");
   const verifier = fileURLToPath(new URL("verify-image-plugins.mjs", import.meta.url));
   return JSON.parse(
     execFileSync(
@@ -56,6 +58,8 @@ function inspectLoadedPlugins(manifest, version, configDigest) {
       [
         "run",
         "--rm",
+        "--platform",
+        `linux/${manifest.image.architecture}`,
         "--network",
         "none",
         "--read-only",
@@ -73,7 +77,7 @@ function inspectLoadedPlugins(manifest, version, configDigest) {
         `type=bind,source=${verifier},target=/tmp/verify-image-plugins.mjs,readonly`,
         "--entrypoint",
         "node",
-        configDigest,
+        imageReference,
         "/tmp/verify-image-plugins.mjs",
         "/app",
         manifest.image.extensions,
@@ -296,18 +300,27 @@ async function main() {
     builtAt: receipt.builtAt,
     expectedDigest,
   });
-  smokeDockerReleaseImage(ociDir, receipt.architecture, "default", image.configDigest, {
-    isolation: "secretless",
-    transport: smokeTransport,
-  });
-  receipt.pluginPayload = inspectLoadedPlugins(manifest, version, image.configDigest);
+  const smoke = smokeDockerReleaseImage(
+    ociDir,
+    receipt.architecture,
+    "default",
+    image.configDigest,
+    {
+      isolation: "secretless",
+      transport: smokeTransport,
+      ...(smokeTransport === "loaded" ? { loadedIndexDigest: image.indexDigest } : {}),
+    },
+  );
+  receipt.pluginPayload = inspectLoadedPlugins(manifest, version, smoke.imageReference);
   receipt.imageDigest = image.imageDigest;
   receipt.configDigest = image.configDigest;
   writeFileSync(outputPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx", mode: 0o600 });
   console.log(`Prepared and smoked ${receipt.indexDigest}`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (isDirectRunUrl(process.argv[1], import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}
