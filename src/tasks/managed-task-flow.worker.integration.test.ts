@@ -5,9 +5,9 @@ import { OPENCLAW_STATE_SCHEMA_VERSION } from "../state/openclaw-state-db-contra
 import { executeExistingOpenClawStateRead } from "../state/openclaw-state-db-readonly.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
-import { executeOpenClawStateWorker } from "../state/openclaw-state-worker-store.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { executeManagedTaskFlowFixtureWrite } from "./managed-task-flow.test-helpers.js";
 
 const ownerKey = "agent:main:publisher";
 const foreignOwnerKey = "agent:main:foreign";
@@ -30,7 +30,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         return reply;
       };
 
-      const created = await executeOpenClawStateWorker(context, {
+      const created = await executeManagedTaskFlowFixtureWrite(context, {
         type: "tasks.managedFlows.create",
         input: {
           ownerKey,
@@ -40,7 +40,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
           dedupe: { stateFields: ["repo", "prNumber"] },
         },
       });
-      const duplicate = await executeOpenClawStateWorker(context, {
+      const duplicate = await executeManagedTaskFlowFixtureWrite(context, {
         type: "tasks.managedFlows.create",
         input: {
           ownerKey,
@@ -81,12 +81,12 @@ it("persists managed flows and unknown native runs through the schema-20 state w
       ) {
         throw new Error("Missing admitted capacity snapshot");
       }
-      await executeOpenClawStateWorker(context, {
+      await executeManagedTaskFlowFixtureWrite(context, {
         type: "tasks.managedFlows.create",
         input: { ownerKey, controllerId, goal: "Concurrent admitted flow" },
       });
       expect(
-        await executeOpenClawStateWorker(context, {
+        await executeManagedTaskFlowFixtureWrite(context, {
           type: "tasks.managedFlows.reserve",
           input: {
             ownerKey,
@@ -111,7 +111,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         throw new Error("Missing current capacity snapshot");
       }
       expect(
-        await executeOpenClawStateWorker(context, {
+        await executeManagedTaskFlowFixtureWrite(context, {
           type: "tasks.managedFlows.reserve",
           input: {
             ownerKey,
@@ -125,7 +125,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         }),
       ).toMatchObject({ applied: true, flow: { revision: 1, status: "running" } });
       expect(
-        await executeOpenClawStateWorker(context, {
+        await executeManagedTaskFlowFixtureWrite(context, {
           type: "tasks.managedFlows.mutate",
           input: {
             ownerKey,
@@ -149,7 +149,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         delivery: { status: "pending" },
       });
       const row = bindSubagentRunRecord(unknownRun);
-      await executeOpenClawStateWorker(context, {
+      await executeManagedTaskFlowFixtureWrite(context, {
         type: "subagents.persistChanges",
         input: {
           writeId: "managed-flow-native-observation",
@@ -193,7 +193,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         generation: 1,
       });
       const liveRow = bindSubagentRunRecord(liveRun);
-      await executeOpenClawStateWorker(context, {
+      const livePersist = await executeManagedTaskFlowFixtureWrite(context, {
         type: "subagents.persistChanges",
         input: {
           writeId: "managed-flow-live-native",
@@ -202,7 +202,10 @@ it("persists managed flows and unknown native runs through the schema-20 state w
           versions: [{ runId: liveRow.run_id, version: null }],
         },
       });
-      const workerFlow = await executeOpenClawStateWorker(context, {
+      if ("conflictRunIds" in livePersist) {
+        throw new Error("Live native fixture unexpectedly conflicted");
+      }
+      const workerFlow = await executeManagedTaskFlowFixtureWrite(context, {
         type: "tasks.managedFlows.create",
         input: {
           ownerKey,
@@ -232,22 +235,69 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         },
       };
       await expect(
-        executeOpenClawStateWorker(context, {
+        executeManagedTaskFlowFixtureWrite(context, {
           type: "tasks.managedFlows.mutate",
           input: {
             ...mutation,
             nativeWorkerGrant: { ...mutation.nativeWorkerGrant, generation: 2 },
           },
         }),
-      ).rejects.toThrow(/native run generation has retired/u);
+      ).rejects.toThrow("Worker flow mutation no longer targets its claimed active run");
       expect(
-        await executeOpenClawStateWorker(context, {
+        await read({
+          type: "tasks.managedFlows.get",
+          input: { ownerKey, controllerId, flowId: workerFlow.flowId },
+        }),
+      ).toMatchObject({
+        value: { revision: 0, status: "queued", stateJson: workerFlow.stateJson },
+      });
+      expect(
+        await executeManagedTaskFlowFixtureWrite(context, {
           type: "tasks.managedFlows.mutate",
           input: mutation,
         }),
       ).toMatchObject({ applied: true, flow: { revision: 1 } });
+
+      // Keep the flow's exact claim while the native owner advances its generation.
+      // This reaches the native-row predicate after the flow-claim predicate passes.
+      const replacedNative = await executeManagedTaskFlowFixtureWrite(context, {
+        type: "subagents.persistChanges",
+        input: {
+          writeId: "managed-flow-native-generation-replaced",
+          values: [bindSubagentRunRecord({ ...liveRun, generation: 2 })],
+          deleteRunIds: [],
+          versions: [
+            { runId: liveRun.runId, version: livePersist.versions.get(liveRun.runId) ?? null },
+          ],
+        },
+      });
+      if ("conflictRunIds" in replacedNative) {
+        throw new Error("Native generation replacement unexpectedly conflicted");
+      }
       expect(
-        await executeOpenClawStateWorker(context, {
+        await read({
+          type: "tasks.runs.get",
+          input: { ownerKey, controllerId, taskId: liveRun.runId, legacyOwnerObservation: false },
+        }),
+      ).toMatchObject({
+        value: { runId: liveRun.runId, generation: 2, status: "running" },
+      });
+      await expect(
+        executeManagedTaskFlowFixtureWrite(context, {
+          type: "tasks.managedFlows.mutate",
+          input: { ...mutation, expectedRevision: 1 },
+        }),
+      ).rejects.toThrow("Worker flow mutation native run generation has retired");
+      expect(
+        await read({
+          type: "tasks.managedFlows.get",
+          input: { ownerKey, controllerId, flowId: workerFlow.flowId },
+        }),
+      ).toMatchObject({
+        value: { revision: 1, status: "waiting", stateJson: workerFlow.stateJson },
+      });
+      expect(
+        await executeManagedTaskFlowFixtureWrite(context, {
           type: "tasks.managedFlows.mutate",
           input: {
             ownerKey,
@@ -265,11 +315,28 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         }),
       ).toMatchObject({ applied: true, flow: { revision: 2 } });
       await expect(
-        executeOpenClawStateWorker(context, {
+        executeManagedTaskFlowFixtureWrite(context, {
           type: "tasks.managedFlows.mutate",
           input: { ...mutation, expectedRevision: 2 },
         }),
       ).rejects.toThrow(/no longer targets its claimed active run/u);
+      expect(
+        await read({
+          type: "tasks.managedFlows.get",
+          input: { ownerKey, controllerId, flowId: workerFlow.flowId },
+        }),
+      ).toMatchObject({
+        value: {
+          revision: 2,
+          status: "queued",
+          stateJson: {
+            activeWorker: {
+              sessionKey: "agent:reviewer:subagent:replacement",
+              runId: "replacement",
+            },
+          },
+        },
+      });
 
       const cancelRun = createSubagentRunRecord({
         runId: "native-cancel-root",
@@ -280,7 +347,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         generation: 7,
       });
       const cancelRow = bindSubagentRunRecord(cancelRun);
-      const nativePersist = await executeOpenClawStateWorker(context, {
+      const nativePersist = await executeManagedTaskFlowFixtureWrite(context, {
         type: "subagents.persistChanges",
         input: {
           writeId: "managed-flow-cancel-native",
@@ -292,7 +359,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
       if ("conflictRunIds" in nativePersist) {
         throw new Error("Native cancel fixture unexpectedly conflicted");
       }
-      const cancelFlow = await executeOpenClawStateWorker(context, {
+      const cancelFlow = await executeManagedTaskFlowFixtureWrite(context, {
         type: "tasks.managedFlows.create",
         input: {
           ownerKey,
@@ -338,7 +405,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         },
       });
       await expect(
-        executeOpenClawStateWorker(
+        executeManagedTaskFlowFixtureWrite(
           context,
           killWrite("stale-revision", {
             ...claim,
@@ -347,7 +414,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         ),
       ).rejects.toThrow(/changed before native admission/u);
       await expect(
-        executeOpenClawStateWorker(
+        executeManagedTaskFlowFixtureWrite(
           context,
           killWrite("replaced-worker", {
             ...claim,
@@ -356,7 +423,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         ),
       ).rejects.toThrow(/exact native root|no longer names its worker/u);
       await expect(
-        executeOpenClawStateWorker(
+        executeManagedTaskFlowFixtureWrite(
           context,
           killWrite("reused-generation", {
             ...claim,
@@ -365,7 +432,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         ),
       ).rejects.toThrow(/no longer names its worker/u);
       await expect(
-        executeOpenClawStateWorker(
+        executeManagedTaskFlowFixtureWrite(
           context,
           killWrite("foreign-controller", {
             ...claim,
@@ -383,7 +450,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         generation: 1,
       });
       const otherOwnerRow = bindSubagentRunRecord(otherOwnerRun);
-      const otherOwnerPersist = await executeOpenClawStateWorker(context, {
+      const otherOwnerPersist = await executeManagedTaskFlowFixtureWrite(context, {
         type: "subagents.persistChanges",
         input: {
           writeId: "managed-flow-other-owner-native",
@@ -395,7 +462,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
       if ("conflictRunIds" in otherOwnerPersist) {
         throw new Error("Other-owner native fixture unexpectedly conflicted");
       }
-      const claimedOtherOwnerFlow = await executeOpenClawStateWorker(context, {
+      const claimedOtherOwnerFlow = await executeManagedTaskFlowFixtureWrite(context, {
         type: "tasks.managedFlows.create",
         input: {
           ownerKey,
@@ -412,7 +479,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         },
       });
       await expect(
-        executeOpenClawStateWorker(context, {
+        executeManagedTaskFlowFixtureWrite(context, {
           type: "subagents.persistChanges",
           input: {
             writeId: "managed-flow-cross-owner-denied",
@@ -443,7 +510,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         }),
       ).rejects.toThrow(/native run changed/u);
       expect(
-        await executeOpenClawStateWorker(context, killWrite("accepted-root", claim)),
+        await executeManagedTaskFlowFixtureWrite(context, killWrite("accepted-root", claim)),
       ).toMatchObject({
         writeId: "managed-flow-cancel-accepted-root",
       });
@@ -457,7 +524,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
       expect(claimedNative.runs.get(cancelRun.runId)?.killIntent?.reason).toBe("killed");
 
       const launchChild = "agent:reviewer:subagent:launch-once";
-      const prelaunch = await executeOpenClawStateWorker(context, {
+      const prelaunch = await executeManagedTaskFlowFixtureWrite(context, {
         type: "tasks.managedFlows.create",
         input: {
           ownerKey,
@@ -486,7 +553,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         generation: 1,
         expectsCompletionMessage: false,
       });
-      const firstLaunchReceipt = await executeOpenClawStateWorker(context, {
+      const firstLaunchReceipt = await executeManagedTaskFlowFixtureWrite(context, {
         type: "subagents.persistChanges",
         input: {
           writeId: "managed-flow-launch-first",
@@ -500,7 +567,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         throw new Error("First managed native launch unexpectedly conflicted");
       }
       await expect(
-        executeOpenClawStateWorker(context, {
+        executeManagedTaskFlowFixtureWrite(context, {
           type: "subagents.persistChanges",
           input: {
             writeId: "managed-flow-launch-rewrite-denied",
@@ -537,7 +604,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         generation: 2,
       });
       await expect(
-        executeOpenClawStateWorker(context, {
+        executeManagedTaskFlowFixtureWrite(context, {
           type: "subagents.persistChanges",
           input: {
             writeId: "managed-flow-launch-second",

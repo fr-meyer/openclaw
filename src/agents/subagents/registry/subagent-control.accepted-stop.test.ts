@@ -28,7 +28,7 @@ import {
   getActiveSessionWorkAdmissionCount,
 } from "../../../sessions/session-lifecycle-admission.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
-import { executeOpenClawStateWorker } from "../../../state/openclaw-state-worker-store.js";
+import { executeManagedTaskFlowFixtureWrite } from "../../../tasks/managed-task-flow.test-helpers.js";
 import { clearActiveEmbeddedRun, setActiveEmbeddedRun } from "../../embedded-agent-runner/runs.js";
 import { createEmbeddedRunHandle } from "../../embedded-agent-runner/runs.test-support.js";
 import { isSubagentRegistryWriteCommand } from "../../subagent-test-fixtures.test-helpers.js";
@@ -84,7 +84,7 @@ it("accepts only the claimed native root cancellation without traversing descend
   const ownerKey = "agent:main:publisher";
   const controllerId = "publisher/v1";
   const entry = subagentRuns.get(runId)!;
-  const flow = await executeOpenClawStateWorker(captureOpenClawStateWorkerContext(), {
+  const flow = await executeManagedTaskFlowFixtureWrite(captureOpenClawStateWorkerContext(), {
     type: "tasks.managedFlows.create",
     input: {
       ownerKey,

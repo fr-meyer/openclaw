@@ -7,7 +7,7 @@ import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { createPluginRecord } from "../plugins/status.test-helpers.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
-import { executeOpenClawStateWorker } from "../state/openclaw-state-worker-store.js";
+import { executeManagedTaskFlowFixtureWrite } from "../tasks/managed-task-flow.test-helpers.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { createGatewayManagedTaskFlowRuntime } from "./server-managed-task-flow-runtime.js";
@@ -45,7 +45,7 @@ it("binds status and worker views only to the current client actor and exact nat
       const instance = new PluginInstance("publisher", { record, registry });
       const runtime = createGatewayManagedTaskFlowRuntime(resolveGatewayContext);
       const nativeContext = captureOpenClawStateWorkerContext();
-      const statusFlow = await executeOpenClawStateWorker(nativeContext, {
+      const statusFlow = await executeManagedTaskFlowFixtureWrite(nativeContext, {
         type: "tasks.managedFlows.create",
         input: { ownerKey, controllerId, goal: "Status may inspect", status: "queued" },
       });
@@ -59,7 +59,7 @@ it("binds status and worker views only to the current client actor and exact nat
         expectsCompletionMessage: false,
       });
       const nativeRow = bindSubagentRunRecord(nativeRun);
-      await executeOpenClawStateWorker(nativeContext, {
+      await executeManagedTaskFlowFixtureWrite(nativeContext, {
         type: "subagents.persistChanges",
         input: {
           writeId: "managed-flow-client-worker",
@@ -74,7 +74,7 @@ it("binds status and worker views only to the current client actor and exact nat
         taskId: nativeRun.runId,
         nativeGeneration: 3,
       };
-      const workerFlow = await executeOpenClawStateWorker(nativeContext, {
+      const workerFlow = await executeManagedTaskFlowFixtureWrite(nativeContext, {
         type: "tasks.managedFlows.create",
         input: {
           ownerKey,
@@ -115,18 +115,16 @@ it("binds status and worker views only to the current client actor and exact nat
         run: () => Promise<T>,
         revalidate?: () => Promise<void>,
       ): Promise<T> =>
-        instance.run(() =>
-          withPluginRuntimeGatewayRequestScope(
-            {
-              context,
-              resolveGatewayContext,
-              client,
-              isWebchatConnect: () => false,
-              hasCurrentClientAuthority: () => !client.connectionSignal?.aborted,
-              ...(revalidate ? { revalidate } : {}),
-            },
-            run,
-          ),
+        withPluginRuntimeGatewayRequestScope(
+          {
+            context,
+            resolveGatewayContext,
+            client,
+            isWebchatConnect: () => false,
+            hasCurrentClientAuthority: () => !client.connectionSignal?.aborted,
+            ...(revalidate ? { revalidate } : {}),
+          },
+          () => instance.run(run),
         );
       try {
         const statusController = new AbortController();

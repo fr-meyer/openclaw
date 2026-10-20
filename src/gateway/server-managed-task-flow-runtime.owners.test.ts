@@ -5,7 +5,7 @@ import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { createPluginRecord } from "../plugins/status.test-helpers.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
-import { executeOpenClawStateWorker } from "../state/openclaw-state-worker-store.js";
+import { executeManagedTaskFlowFixtureWrite } from "../tasks/managed-task-flow.test-helpers.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import {
@@ -64,7 +64,7 @@ it("fails closed for malformed or incognito configured owners", () => {
     configuredManagedFlowOwners(
       config({
         ownerSessionKey: ownerKey,
-        legacyOwnerSessionKeys: ["agent:main:incognito:secret"],
+        legacyOwnerSessionKeys: ["agent:main:dashboard:incognito-secret"],
       }),
       "publisher",
       ownerKey,
@@ -127,7 +127,7 @@ it("mints a one-use launch only through the live plugin and exact owner-bound fl
     const instance = new PluginInstance("publisher", { record, registry });
     const nativeContext = captureOpenClawStateWorkerContext();
     const childSessionKey = "agent:reviewer:subagent:one-use-launch";
-    const flow = await executeOpenClawStateWorker(nativeContext, {
+    const flow = await executeManagedTaskFlowFixtureWrite(nativeContext, {
       type: "tasks.managedFlows.create",
       input: {
         ownerKey,
@@ -147,8 +147,14 @@ it("mints a one-use launch only through the live plugin and exact owner-bound fl
       isWebchatConnect: () => false,
     };
     try {
-      await instance.run(() =>
-        withPluginRuntimeGatewayRequestScope(scope, async () => {
+      expect(() =>
+        withPluginRuntimeGatewayRequestScope({ ...scope, pluginId: "publisher" }, () =>
+          runtime.managedFlows.bindSession({ sessionKey: ownerKey }),
+        ),
+      ).toThrow(/current plugin instance and original Gateway binding/u);
+      // The admitted instance adds its identity to the existing Gateway request.
+      await withPluginRuntimeGatewayRequestScope(scope, () =>
+        instance.run(async () => {
           expect(() => runtime.runs.bindSession({ sessionKey: childSessionKey })).toThrow(
             /configured owner|canonical bound set/u,
           );

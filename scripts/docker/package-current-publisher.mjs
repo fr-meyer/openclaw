@@ -143,16 +143,23 @@ async function planImage() {
     cut.productionEligible !== false ||
     cut.upstream.tag !== "v2026.10.5" ||
     git("cat-file", "-t", cut.upstream.tagObject) !== "tag" ||
-    !git("cat-file", "-p", cut.upstream.tagObject).split("\n").includes(`tag ${cut.upstream.tag}`) ||
+    !git("cat-file", "-p", cut.upstream.tagObject)
+      .split("\n")
+      .includes(`tag ${cut.upstream.tag}`) ||
     git("rev-parse", `${cut.upstream.tagObject}^{}`) !== cut.upstream.commit ||
     git("rev-parse", `${cut.upstream.commit}^{tree}`) !== cut.upstream.tree ||
     JSON.parse(await readFile("package.json", "utf8")).version !== "2026.10.5"
   ) {
-    throw new Error("10.5 source preparation, patch reconciliation, or tag binding differs from Git");
+    throw new Error(
+      "10.5 source preparation, patch reconciliation, or tag binding differs from Git",
+    );
   }
   git("merge-base", "--is-ancestor", cut.upstream.commit, head);
   const publisher = cut.publisher;
-  if (publisher.path !== SOURCE_PATH || publisher.packageName !== "@fr-meyer/openclaw-mergeguez-pr-lifecycle") {
+  if (
+    publisher.path !== SOURCE_PATH ||
+    publisher.packageName !== "@fr-meyer/openclaw-mergeguez-pr-lifecycle"
+  ) {
     throw new Error("Publisher identity differs from 10.5 source preparation manifest");
   }
   const source = resolve(SOURCE_PATH);
@@ -166,10 +173,7 @@ async function planImage() {
   }
   // The source-only candidate binds every packaged byte to this local HEAD.
   for (const file of PACKAGE_FILES) {
-    const committedBytes = execFileSync("git", [
-      "show",
-      `${head}:${SOURCE_PATH}/${file}`,
-    ]);
+    const committedBytes = execFileSync("git", ["show", `${head}:${SOURCE_PATH}/${file}`]);
     if (sha256(committedBytes) !== files[file]) {
       throw new Error(`Candidate commit does not contain current publisher bytes: ${file}`);
     }
@@ -182,6 +186,12 @@ async function planImage() {
     "Dockerfile",
     "--platform",
     "<observed-target-platform>",
+    "--network",
+    "none",
+    "--progress",
+    "plain",
+    "--build-arg",
+    "GITHUB_ACTIONS=true",
     "--build-arg",
     `GIT_COMMIT=${head}`,
     "--build-arg",
@@ -189,16 +199,27 @@ async function planImage() {
     "--build-arg",
     "OPENCLAW_BUILD_TIMESTAMP=<operator-selected-utc-timestamp>",
     "--build-arg",
+    "OPENCLAW_DOCKER_BUILD_VERSION=2026.10.5",
+    "--build-arg",
     "OPENCLAW_EXTENSIONS=codex,workboard",
     "--label",
     `org.opencontainers.image.revision=${head}`,
     "--label",
     "org.opencontainers.image.source=https://github.com/fr-meyer/openclaw",
+    "--label",
+    "org.opencontainers.image.version=2026.10.5",
+    "--label",
+    "org.opencontainers.image.created=<operator-selected-utc-timestamp>",
     "--metadata-file",
-    "<operator-selected-output-path>",
+    "<operator-selected-build-metadata-path>",
+    "--provenance",
+    "mode=max",
+    "--sbom",
+    "true",
+    "--output",
+    "type=oci,dest=<operator-selected-oci-directory>,tar=false,compression=gzip,compression-level=1",
     "--tag",
     `openclaw-v105-prep:${head.slice(0, 12)}`,
-    "--load",
     `https://github.com/fr-meyer/openclaw.git#${head}`,
   ];
   process.stdout.write(

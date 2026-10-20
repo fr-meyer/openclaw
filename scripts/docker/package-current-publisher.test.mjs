@@ -70,8 +70,14 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
   const commitFixture = (message) => {
     git("add", ".");
     git(
-      "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
-      "commit", "--allow-empty", "-qm", message,
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "--allow-empty",
+      "-qm",
+      message,
     );
     return git("rev-parse", "HEAD");
   };
@@ -81,17 +87,30 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
     await writeFile(join(root, "package.json"), '{"version":"2026.10.5"}\n');
     git("init", "-q");
     const upstream = commitFixture("synthetic stable source");
-    git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
-      "tag", "-a", "v2026.10.5", "-m", "synthetic stable tag");
+    git(
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "tag",
+      "-a",
+      "v2026.10.5",
+      "-m",
+      "synthetic stable tag",
+    );
     const runtimeBytes = await readFile(join(root, packagePath, "src/runtime.mjs"));
     const runtimeSha256 = (await import("node:crypto"))
-      .createHash("sha256").update(runtimeBytes).digest("hex");
+      .createHash("sha256")
+      .update(runtimeBytes)
+      .digest("hex");
     const cut = {
       schema: "openclaw-v105-source-preparation-v1",
       status: "SOURCE_ONLY_UNQUALIFIED",
       productionEligible: false,
       upstream: {
-        tag: "v2026.10.5", tagObject: git("rev-parse", "v2026.10.5"), commit: upstream,
+        tag: "v2026.10.5",
+        tagObject: git("rev-parse", "v2026.10.5"),
+        commit: upstream,
         tree: git("rev-parse", `${upstream}^{tree}`),
       },
       carryForward: { reconciliation: "COMPLETE_SOURCE" },
@@ -106,9 +125,11 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
     const manifestPath = join(root, "custom-patches/manifest.json");
     await writeFile(manifestPath, JSON.stringify(cut));
     const head = commitFixture("synthetic 10.5 source candidate");
-    const plan = () => spawnSync(process.execPath, [script, "--plan-image", "true"], {
-      cwd: root, encoding: "utf8",
-    });
+    const plan = () =>
+      spawnSync(process.execPath, [script, "--plan-image", "true"], {
+        cwd: root,
+        encoding: "utf8",
+      });
     const accepted = plan();
     assert.equal(accepted.status, 0, accepted.stderr);
     const body = JSON.parse(accepted.stdout);
@@ -117,7 +138,31 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
     assert.equal(body.upstreamCommit, upstream);
     assert.equal(body.executed, false);
     assert.equal(body.sourceQualified, false);
+    assert.equal(body.buildExecuted, false);
+    assert.equal(body.productionAccepted, false);
     assert.ok(body.command.includes("OPENCLAW_EXTENSIONS=codex,workboard"));
+    assert.ok(body.command.includes("GITHUB_ACTIONS=true"));
+    assert.ok(body.command.includes(`GIT_COMMIT=${head}`));
+    assert.ok(body.command.includes("OPENCLAW_BUILD_TIMESTAMP=<operator-selected-utc-timestamp>"));
+    assert.ok(body.command.includes("OPENCLAW_DOCKER_BUILD_VERSION=2026.10.5"));
+    assert.ok(body.command.includes(`org.opencontainers.image.revision=${head}`));
+    assert.ok(body.command.includes("org.opencontainers.image.version=2026.10.5"));
+    assert.ok(
+      body.command.includes("org.opencontainers.image.created=<operator-selected-utc-timestamp>"),
+    );
+    const option = (flag) => body.command[body.command.indexOf(flag) + 1];
+    assert.equal(option("--network"), "none");
+    assert.equal(option("--progress"), "plain");
+    assert.equal(option("--provenance"), "mode=max");
+    assert.equal(option("--sbom"), "true");
+    assert.equal(option("--metadata-file"), "<operator-selected-build-metadata-path>");
+    assert.equal(
+      option("--output"),
+      "type=oci,dest=<operator-selected-oci-directory>,tar=false,compression=gzip,compression-level=1",
+    );
+    assert.equal(body.command.includes("--load"), false);
+    assert.equal(body.command.includes("--push"), false);
+    assert.equal(body.command.at(-1), `https://github.com/fr-meyer/openclaw.git#${head}`);
 
     cut.carryForward.reconciliation = "IN_PROGRESS";
     await writeFile(manifestPath, JSON.stringify(cut));
