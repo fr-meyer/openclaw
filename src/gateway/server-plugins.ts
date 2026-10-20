@@ -39,6 +39,7 @@ import type {
 import { bindInProcessSessionDeliveryGeneration } from "./in-process-session-delivery.js";
 import { authorizeOperatorScopesForRequiredScope } from "./method-scopes.js";
 import { normalizeOperatorScopeList } from "./operator-scopes.js";
+import { createGatewayManagedTaskFlowRuntime } from "./server-managed-task-flow-runtime.js";
 import type { GatewayNodeInvokeStream } from "./server-methods/shared-types.js";
 import type { GatewayContextResolver, GatewayRequestHandler } from "./server-methods/types.js";
 import { resolveTrustedPluginGitHubAccount } from "./server-plugin-github-account.js";
@@ -281,7 +282,7 @@ function createGatewayPluginRuntimeBindings(
   resolveGatewayContext: GatewayContextResolver | undefined,
   overridePolicies: PluginSubagentOverridePolicies,
 ): {
-  runtime: Pick<PluginRuntime, "gateway" | "hooks" | "nodes" | "subagent"> &
+  runtime: Pick<PluginRuntime, "gateway" | "hooks" | "nodes" | "subagent" | "tasks"> &
     Pick<CreatePluginRuntimeOptions, "dispatchReplyFromConfig">;
   retire: () => void;
 } {
@@ -349,6 +350,7 @@ function createGatewayPluginRuntimeBindings(
       },
       nodes: createGatewayNodesRuntime(resolveBoundGatewayContext, signal),
       subagent: createGatewaySubagentRuntime(resolveBoundGatewayContext, overridePolicies, signal),
+      tasks: createGatewayManagedTaskFlowRuntime(resolveBoundGatewayContext, signal),
     },
   };
 }

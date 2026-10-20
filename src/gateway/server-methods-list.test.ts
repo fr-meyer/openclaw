@@ -9,6 +9,16 @@ import { LEGACY_ADVERTISED_GATEWAY_METHODS } from "./server-methods-list.test-fi
 import { coreGatewayHandlers } from "./server-methods.js";
 
 describe("listGatewayMethods", () => {
+  it("advertises the worker namespace read with operator read authority", () => {
+    expect(listGatewayMethods()).toContain("gateway.workerNamespace.get");
+    expect(coreGatewayHandlers["gateway.workerNamespace.get"]).toBeTypeOf("function");
+    const descriptor = createCoreGatewayMethodDescriptors(coreGatewayHandlers).find(
+      (entry) => entry.name === "gateway.workerNamespace.get",
+    );
+    expect(descriptor).toMatchObject({ scope: "operator.read", since: "2026.10" });
+    expect(descriptor?.controlPlaneWrite).toBeUndefined();
+  });
+
   it("preserves the frozen legacy advertised method prefix", () => {
     expect(listGatewayMethods().slice(0, LEGACY_ADVERTISED_GATEWAY_METHODS.length)).toEqual(
       LEGACY_ADVERTISED_GATEWAY_METHODS,

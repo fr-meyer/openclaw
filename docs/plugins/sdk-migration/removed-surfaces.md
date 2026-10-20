@@ -444,21 +444,25 @@ timeline for current status.
   </Accordion>
 
   <Accordion title="Tasks and TaskFlow APIs removed">
-    The Tasks registry and TaskFlow orchestration APIs have been removed,
-    including `api.runtime.tasks`, `registerDetachedTaskRuntime`, and the
-    `agent-harness-task-runtime` SDK subpath. No compatibility facade remains.
+    The general Tasks registry and TaskFlow orchestration APIs have been removed,
+    including `registerDetachedTaskRuntime` and the
+    `agent-harness-task-runtime` SDK subpath. A narrow
+    [`api.runtime.tasks` controller compatibility capability](/plugins/sdk-runtime/background-work#released-controller-state-compatibility)
+    remains for installed managed-flow controllers; it does not create canonical
+    tasks or launch workers.
     Use native subagent launch/wait/history APIs, cron run history, and the
     ordinary Lobster runner for their respective operations. Harness completion
     routing uses the completion-only `agent-harness-completion` subpath.
     This removal does not change the physical database schemas. Existing
     `task_runs`, `task_delivery_state`, and `flow_runs` tables, columns, and indexes
     remain unchanged. Cron reads and writes only its `runtime = 'cron'` history
-    rows in `task_runs`; non-Cron Task and TaskFlow rows remain untouched and
-    unused by the runtime. The Codex plugin's
+    rows in `task_runs`; the controller compatibility capability reads existing
+    non-Cron rows and mutates only its admitted managed `flow_runs` rows.
+    Cancellation stays with the native subagent owner. The Codex plugin's
     [Doctor migration](/gateway/doctor/config-migrations#native-codex-recovery-after-tasks-removal)
     preserves eligible owner-stamped native recovery facts in existing parent
     binding metadata, leaving source rows byte-identical. It adds no runtime Task
-    reader or replacement SDK surface; current requester authority still governs
+    migration reader; current requester authority still governs
     completion delivery. See the [versioning contract](/reference/database-schemas/versioning).
   </Accordion>
 

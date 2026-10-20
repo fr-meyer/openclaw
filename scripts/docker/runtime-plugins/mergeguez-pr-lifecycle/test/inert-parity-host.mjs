@@ -199,6 +199,21 @@ export function fixture(configInput = pluginConfig()) {
     return {
       assertCurrent: () => assertBinding(binding),
       close: () => close(binding),
+      captureNativeLaunch: (input) =>
+        operation(binding, "captureNativeLaunch", input, () => {
+          const flow = kernel.get(sessionKey, input.flowId);
+          if (
+            flow?.revision !== input.expectedRevision ||
+            flow?.stateJson?.activeWorker?.sessionKey !== input.childSessionKey
+          ) {
+            throw new Error("fixture_native_launch_claim_changed");
+          }
+          return Object.freeze({
+            flowId: input.flowId,
+            revision: input.expectedRevision,
+            childSessionKey: input.childSessionKey,
+          });
+        }),
       get: (id) => operation(binding, "get", id, () => kernel.get(sessionKey, id)),
       list: () => operation(binding, "list", undefined, () => kernel.list(sessionKey)),
       createManaged: (input) =>

@@ -402,6 +402,17 @@ it("rejects failed cancellation without an authoritative closing receipt", async
   );
 });
 
+it("preserves cleanup identity loss when an error observer throws", async () => {
+  const { adapter, close } = await createRelay("darwin");
+  adapter.onError(() => {
+    throw new Error("synthetic observer failure");
+  });
+  const extinction = adapter.waitForExtinction();
+  close();
+  await expect(extinction).rejects.toThrow("service child cleanup identity lost");
+  await expect(adapter.wait()).rejects.toThrow("service child cleanup identity lost");
+});
+
 it.each(["EOF", "close"])("joins outside-group lineage with %s", async (ending) => {
   const { adapter, completeRoot, emit, close, lineage } = await createRelay("darwin", true);
   completeRoot();

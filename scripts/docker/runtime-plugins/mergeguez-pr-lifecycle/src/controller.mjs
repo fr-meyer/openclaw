@@ -371,7 +371,11 @@ export function normalizePullRequestEvent(input) {
   let prUpdatedAt = null;
   if (input.prUpdatedAt !== undefined && input.prUpdatedAt !== null) {
     if (Number.isSafeInteger(input.prUpdatedAt)) {
-      if (input.prUpdatedAt < 0 || input.prUpdatedAt % 1000 !== 0 || !Number.isFinite(new Date(input.prUpdatedAt).getTime())) {
+      if (
+        input.prUpdatedAt < 0 ||
+        input.prUpdatedAt % 1000 !== 0 ||
+        !Number.isFinite(new Date(input.prUpdatedAt).getTime())
+      ) {
         throw new Error("prUpdatedAt must be an exact UTC second");
       }
       prUpdatedAt = input.prUpdatedAt;
@@ -564,8 +568,9 @@ export function applyPullRequestEvent(state, eventInput, policyInput, now = Date
           prEventAction:
             event.prUpdatedAt === null ||
             (event.prUpdatedAt === state.prEventUpdatedAt &&
-              event.action === "opened" && state.prEventAction !== "opened")
-              ? state.prEventAction ?? null
+              event.action === "opened" &&
+              state.prEventAction !== "opened")
+              ? (state.prEventAction ?? null)
               : event.action,
           updatedAt: now,
         },
@@ -673,7 +678,8 @@ export function applyReviewResult(state, resultInput, now = Date.now()) {
   }
   if (
     state.phase === PHASE.REVIEW_WAITING &&
-    (state.wait?.kind !== "mergeguez_review" || !state.wait.claimRef ||
+    (state.wait?.kind !== "mergeguez_review" ||
+      !state.wait.claimRef ||
       result.claimRef !== state.wait.claimRef)
   ) {
     return { changed: false, state, effect: "none", reason: "stale_claim_result" };
@@ -876,6 +882,16 @@ export function reserveWorker(state, kind, sessionKey, now = Date.now()) {
 export function attachWorkerRun(state, sessionKey, runId, taskId, now = Date.now()) {
   if (!state.activeWorker || state.activeWorker.sessionKey !== sessionKey) {
     return { changed: false, state, reason: "worker_reservation_changed" };
+  }
+  if (state.activeWorker.runId && state.activeWorker.runId !== runId) {
+    return { changed: false, state, reason: "worker_run_changed" };
+  }
+  if (
+    state.activeWorker.runId === runId &&
+    state.activeWorker.taskId === (taskId ?? null) &&
+    state.launchOutcome == null
+  ) {
+    return { changed: false, state, reason: "worker_already_attached" };
   }
   return {
     changed: true,

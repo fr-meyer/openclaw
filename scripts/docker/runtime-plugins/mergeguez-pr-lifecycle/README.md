@@ -108,11 +108,21 @@ files cannot establish the identity of already evaluated applier code. Keep the
 applier's source identity bound in the release manifest separately from its
 target package. Do not alter the runtime source guard or loader admission.
 
-The unpublished 0.1.1 target now binds the reviewed lint correction at
-`14a2507d`; the historical `1e197fa2` candidate remains recorded separately as
-`sourceQualifiedCandidate`. Its runtime hash is not rewritten. The installed
+The unpublished 0.1.1 target has been adapted for this 10.5 source candidate.
+The historical `1e197fa2` candidate remains recorded separately as
+`sourceQualifiedCandidate`; its runtime hash is not rewritten. The installed
 0.1.0 predecessor remains unchanged. This successor binding does not authorize
 pin application or attest the external review signing adapter.
+
+For the grouped upgrade after 9.8, this transition covers only the retained
+0.1.0 predecessor. The 9.8 deployment owner must supply the actual installed
+config pin, retained publisher package, and matching pre-upgrade build and data
+for rollback. Reconcile the exact predecessor and prove forward, reverse, and
+current-revision idempotence on an isolated copy before 10.5 activation. If 9.8
+leaves a different pin, this pair refuses it; the historical
+`sourceQualifiedCandidate` does not establish an installed predecessor, and
+reverse must not silently select 0.1.0. Source preparation does not qualify the
+publisher or authorize a pin change.
 
 Call the returned operation with `{ direction: "forward" | "reverse",
 expectedConfigPath, expectedConfigHash, expectedRuntimePath }`. An already-target

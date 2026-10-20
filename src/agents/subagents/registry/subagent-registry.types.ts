@@ -276,4 +276,6 @@ export type RegisterSubagentRunOptions = {
   assertCurrent?: () => void;
   assertPublicationCurrent?: () => void;
   retainOwnership?: (scope: SubagentRegistrationScope) => void;
+  /** Trusted Gateway claim; checked with native registration in one state transaction. */
+  managedFlowLaunchClaim?: import("../../../tasks/managed-task-flow-kill-claim.worker.js").ManagedFlowNativeLaunchClaim;
 };

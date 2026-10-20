@@ -5,11 +5,63 @@ import { UserChannelIdentitySchema } from "../../packages/gateway-protocol/src/s
 import { isChannelIngressReadCommand } from "../channels/message/ingress-queue-read-contract.js";
 import { isWorkspaceJournalReadCommand } from "../gateway/worker-environments/placement-workspace-journal.types.js";
 import { isPluginBlobReadCommand } from "../plugin-state/plugin-blob-worker-contract.js";
+import { parseAgentSessionKey, isIncognitoSessionKey } from "../routing/session-key.js";
+import { isManagedTaskFlowReadCommand } from "../tasks/managed-task-flow-contract.js";
 import { isTuiLastSessionReadCommand } from "../tui/tui-last-session.contract.js";
 import type { OpenClawStateReadRequest } from "./openclaw-state-read.types.js";
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function isManagedTaskFlowReadRequest(command: unknown): boolean {
+  if (!isManagedTaskFlowReadCommand(command) || !isRecord(command.input)) {
+    return false;
+  }
+  const input: Record<string, unknown> = command.input;
+  if (
+    typeof input.ownerKey !== "string" ||
+    input.ownerKey !== input.ownerKey.trim() ||
+    !parseAgentSessionKey(input.ownerKey) ||
+    isIncognitoSessionKey(input.ownerKey) ||
+    typeof input.controllerId !== "string" ||
+    !input.controllerId.trim() ||
+    input.controllerId !== input.controllerId.trim()
+  ) {
+    return false;
+  }
+  switch (command.type) {
+    case "tasks.managedFlows.capacitySnapshot": {
+      const owners = input.ownerSessionKeys;
+      return (
+        Array.isArray(owners) &&
+        owners.length >= 1 &&
+        owners.length <= 64 &&
+        owners.includes(input.ownerKey) &&
+        new Set(owners).size === owners.length &&
+        owners.every(
+          (owner) =>
+            typeof owner === "string" &&
+            owner === owner.trim() &&
+            Boolean(parseAgentSessionKey(owner)) &&
+            !isIncognitoSessionKey(owner),
+        )
+      );
+    }
+    case "tasks.managedFlows.get":
+      return typeof input.flowId === "string" && Boolean(input.flowId.trim());
+    case "tasks.managedFlows.list":
+      return true;
+    case "tasks.runs.get":
+      return (
+        typeof input.taskId === "string" &&
+        Boolean(input.taskId.trim()) &&
+        typeof input.legacyOwnerObservation === "boolean"
+      );
+    case "tasks.runs.list":
+      return typeof input.legacyOwnerObservation === "boolean";
+  }
+  return false;
 }
 
 function isAcpSessionReadInput(value: unknown): boolean {
@@ -33,6 +85,7 @@ export function isReadRequest(input: unknown): input is OpenClawStateReadRequest
     return false;
   }
   const { environment } = input.context;
+  const command = input.command;
   return (
     typeof input.databasePath === "string" &&
     typeof input.location === "string" &&
@@ -55,14 +108,15 @@ export function isReadRequest(input: unknown): input is OpenClawStateReadRequest
     typeof environment.OPENCLAW_STATE_DIR === "string" &&
     (environment.OPENCLAW_SUPERVISOR_MODE === undefined ||
       environment.OPENCLAW_SUPERVISOR_MODE === "external") &&
-    ((input.command.type === "meetingTranscripts.export" &&
-      ((input.command.format === "library" &&
-        typeof input.command.selector === "string" &&
-        typeof input.command.includeNotes === "boolean") ||
-        (input.command.format === "artifact" &&
-          isRecord(input.command.session) &&
-          typeof input.command.session.sessionId === "string" &&
-          typeof input.command.session.startedAt === "string"))) ||
+    (isManagedTaskFlowReadRequest(command) ||
+      (input.command.type === "meetingTranscripts.export" &&
+        ((input.command.format === "library" &&
+          typeof input.command.selector === "string" &&
+          typeof input.command.includeNotes === "boolean") ||
+          (input.command.format === "artifact" &&
+            isRecord(input.command.session) &&
+            typeof input.command.session.sessionId === "string" &&
+            typeof input.command.session.startedAt === "string"))) ||
       (input.command.type === "deliveryQueue.outbound" &&
         (input.command.id === undefined || typeof input.command.id === "string") &&
         (input.command.mode === "pending" || input.command.mode === "unfinished")) ||

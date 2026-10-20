@@ -7,6 +7,7 @@ import {
   parseRawSessionConversationRef,
   parseThreadSessionSuffix,
 } from "../../sessions/session-key-utils.js";
+import type { ManagedFlowNativeLaunchAuthority } from "../../tasks/managed-task-flow-kill-claim.worker.js";
 import type { GatewayContextResolver } from "./types.js";
 
 export type TrustedGroupMetadata = {
@@ -75,14 +76,29 @@ export async function registerPluginSubagentRunFromGateway(params: {
   task: string;
   requester?: PluginSubagentRequesterContext;
   pluginId?: string;
+  managedFlowLaunch?: ManagedFlowNativeLaunchAuthority;
   gatewayContextResolver?: GatewayContextResolver;
   assertCurrent: () => SessionEntry | undefined;
 }): Promise<void> {
   const { childSessionKey } = params;
-  const ownerSessionKey = resolveAgentMainSessionKey({
-    cfg: params.cfg,
-    agentId: resolveAgentIdFromSessionKey(childSessionKey),
-  });
+  const claim = params.managedFlowLaunch;
+  if (claim) {
+    claim.assertCurrent();
+    if (
+      params.requester ||
+      !params.pluginId ||
+      claim.controllerId !== `${params.pluginId}/v1` ||
+      claim.childSessionKey !== childSessionKey
+    ) {
+      throw new Error("Managed flow launch has no exact plugin and child admission");
+    }
+  }
+  const ownerSessionKey =
+    claim?.ownerKey ??
+    resolveAgentMainSessionKey({
+      cfg: params.cfg,
+      agentId: resolveAgentIdFromSessionKey(childSessionKey),
+    });
   const requesterSessionKey = params.requester?.sessionKey ?? ownerSessionKey;
   const {
     adoptPausedSubagentRunForFollowUp,
@@ -95,6 +111,7 @@ export async function registerPluginSubagentRunFromGateway(params: {
   // registration in case the pause publishes while admission is in flight.
   if (
     !params.requester &&
+    !claim &&
     (await adoptPausedSubagentRunForFollowUp({
       childSessionKey,
       childAgentId: params.childAgentId,
@@ -115,7 +132,7 @@ export async function registerPluginSubagentRunFromGateway(params: {
       controllerSessionKey: ownerSessionKey,
       requesterSessionKey,
       requesterOrigin: params.requester?.origin,
-      requesterDisplayKey: params.requester ? requesterSessionKey : "main",
+      requesterDisplayKey: params.requester || claim ? requesterSessionKey : "main",
       task: params.task,
       cleanup: "keep",
       ...(params.pluginId ? { label: `plugin:${params.pluginId}` } : {}),
@@ -123,9 +140,25 @@ export async function registerPluginSubagentRunFromGateway(params: {
       spawnMode: "run",
       gatewayContextResolver: params.gatewayContextResolver,
     },
-    { assertCurrent: params.assertCurrent },
+    {
+      assertCurrent: () => {
+        params.assertCurrent();
+        claim?.assertCurrent();
+      },
+      ...(claim
+        ? {
+            managedFlowLaunchClaim: {
+              ownerKey: claim.ownerKey,
+              controllerId: claim.controllerId,
+              flowId: claim.flowId,
+              revision: claim.revision,
+              childSessionKey: claim.childSessionKey,
+            },
+          }
+        : {}),
+    },
   );
-  if (!params.requester) {
+  if (!params.requester && !claim) {
     await adoptPausedSubagentRunIntoSuccessor({
       childSessionKey,
       childAgentId: params.childAgentId,

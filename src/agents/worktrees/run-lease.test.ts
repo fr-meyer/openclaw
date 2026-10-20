@@ -382,25 +382,28 @@ describe("worktree run lease", () => {
   it.each([
     ["tied", 0],
     ["newer", 1],
-  ] as const)("rejects a %s live row for the selected owner and checkout", async (_kind, offset) => {
-    const created = await createSessionWorktree();
-    const selected = await resolveWorktreeForPath({ candidatePaths: [created.path], env });
-    if (!selected) {
-      throw new Error("Expected a selected managed worktree");
-    }
-    const record = selected.record;
-    await insertRegistryWorktree(env, {
-      ...record,
-      id: `competing-${offset}`,
-      createdAt: record.createdAt + offset,
-      lastActiveAt: record.lastActiveAt + offset,
-    });
+  ] as const)(
+    "rejects a %s live row for the selected owner and checkout",
+    async (_kind, offset) => {
+      const created = await createSessionWorktree();
+      const selected = await resolveWorktreeForPath({ candidatePaths: [created.path], env });
+      if (!selected) {
+        throw new Error("Expected a selected managed worktree");
+      }
+      const record = selected.record;
+      await insertRegistryWorktree(env, {
+        ...record,
+        id: `competing-${offset}`,
+        createdAt: record.createdAt + offset,
+        lastActiveAt: record.lastActiveAt + offset,
+      });
 
-    await expect(acquireWorktreeRunLease(created.id, { source: selected })).rejects.toThrow(
-      "no longer authoritative",
-    );
-    expect(hasLiveWorktreeRunLease(env, created.id)).toBe(false);
-  });
+      await expect(acquireWorktreeRunLease(created.id, { source: selected })).rejects.toThrow(
+        "no longer authoritative",
+      );
+      expect(hasLiveWorktreeRunLease(env, created.id)).toBe(false);
+    },
+  );
 
   it("keeps the selected checkout authoritative when newer rows use other paths or repos", async () => {
     const created = await createSessionWorktree();
@@ -419,7 +422,6 @@ describe("worktree run lease", () => {
     await insertRegistryWorktree(env, {
       ...record,
       id: "newer-other-repo",
-      path: `${record.path}-other-repo`,
       repoFingerprint: "another-repo",
       createdAt: record.createdAt + 2,
       lastActiveAt: record.lastActiveAt + 2,

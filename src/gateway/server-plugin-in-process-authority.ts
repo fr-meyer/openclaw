@@ -424,6 +424,7 @@ export function resolveInProcessGatewayDispatch(
     ...(operatorRoleActor ? { operatorRoleActor } : {}),
     ...(operatorRunAuthority ? { operatorRunAuthority } : {}),
     ...(pluginRuntimeOwnerId ? { pluginRuntimeOwnerId } : {}),
+    ...(options?.managedFlowLaunch ? { managedFlowLaunch: options.managedFlowLaunch } : {}),
     ...(nodeInvokeApprovalSessionKey ? { nodeInvokeApprovalSessionKey } : {}),
     pluginSubagentRequester: options?.pluginSubagentRequester,
     runtimePluginToolGrant: options?.runtimePluginToolGrant,
@@ -442,6 +443,7 @@ export function resolveInProcessGatewayDispatch(
   const scopedClient = mergePluginRuntimeClientInternal(
     scope?.client,
     pluginRuntimeOwnerId ||
+      options?.managedFlowLaunch ||
       options?.agentRunTracking ||
       options?.pluginSubagentRequester ||
       options?.runtimePluginToolGrant ||
@@ -451,6 +453,7 @@ export function resolveInProcessGatewayDispatch(
       ? {
           ...(options?.agentRunTracking ? { agentRunTracking: options.agentRunTracking } : {}),
           ...(pluginRuntimeOwnerId ? { pluginRuntimeOwnerId } : {}),
+          ...(options?.managedFlowLaunch ? { managedFlowLaunch: options.managedFlowLaunch } : {}),
           ...(options?.pluginSubagentRequester
             ? { pluginSubagentRequester: options.pluginSubagentRequester }
             : {}),

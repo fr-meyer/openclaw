@@ -711,6 +711,7 @@ async function bindFlowsForSession(api, sessionKey) {
     "resume",
     "capacitySnapshot",
     "reserve",
+    "captureNativeLaunch",
     "assertCurrent",
     "close",
   ];
@@ -774,9 +775,10 @@ async function collectLifecycleFlows(api, config) {
 
 async function resolveFlowBinding(api, config, flowId, preferredSessionKey) {
   const keys = uniqueOwnerSessionKeys(config);
-  const ordered = preferredSessionKey
-    ? [preferredSessionKey, ...keys.filter((key) => key !== preferredSessionKey)]
-    : keys;
+  const ordered =
+    preferredSessionKey && keys.includes(preferredSessionKey)
+      ? [preferredSessionKey, ...keys.filter((key) => key !== preferredSessionKey)]
+      : keys;
   for (const sessionKey of ordered) {
     if (!sessionKey) {
       continue;
@@ -1656,6 +1658,11 @@ async function dispatchWorker(api, config, boundFlows, flow) {
     const run = await api.runtime.subagent.run({
       assertCurrent: () => boundFlows.assertCurrent(),
       sessionKey,
+      managedFlowLaunch: await boundFlows.captureNativeLaunch({
+        flowId: reservedFlow.flowId,
+        expectedRevision: reservedFlow.revision,
+        childSessionKey: sessionKey,
+      }),
       message: buildWorkerMessage(reservedFlow, stateOf(reservedFlow), policy, kind),
       ...(kind === "review" ? { toolsAlsoAllow: [TOOL_NAME] } : {}),
       lane: `mergeguez-pr-lifecycle:${state.repo}:${state.prNumber}`,
@@ -1777,7 +1784,12 @@ async function reconcileDeduplicatedPullRequest(api, config, boundFlows, origina
   let current = original;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (TERMINAL_FLOW_STATUSES.has(current.status)) {
-      return { accepted: false, created: false, flowId: current.flowId, reason: "flow_became_terminal" };
+      return {
+        accepted: false,
+        created: false,
+        flowId: current.flowId,
+        reason: "flow_became_terminal",
+      };
     }
     const state = stateOf(current);
     if (!state) {
@@ -1844,14 +1856,7 @@ async function ingestPullRequest(api, config, event) {
       // Reconcile the losing delivery against the committed row, not the
       // losing call's freshly constructed state.
       if (flow.deduplicated) {
-        return await reconcileDeduplicatedPullRequest(
-          api,
-          config,
-          boundFlows,
-          flow,
-          event,
-          policy,
-        );
+        return await reconcileDeduplicatedPullRequest(api, config, boundFlows, flow, event, policy);
       }
       if (stateOf(flow)?.mode !== "observe") {
         await scheduleWake(api, config, flow, "continue");
@@ -2619,10 +2624,7 @@ async function reconcileOrphanedWorker(api, ownerSessionKey, orphanedWorker) {
 
 async function reconcileHeldOrphan(api, boundFlows, flow) {
   const state = stateOf(flow);
-  if (
-    !new Set([PHASE.BLOCKED, PHASE.MERGE_READY]).has(state?.phase) ||
-    !state.orphanedWorker
-  ) {
+  if (!new Set([PHASE.BLOCKED, PHASE.MERGE_READY]).has(state?.phase) || !state.orphanedWorker) {
     return flow;
   }
   const orphan = await reconcileOrphanedWorker(api, flow.ownerKey, state.orphanedWorker);
@@ -2856,7 +2858,11 @@ function createControllerTool(api, config, ctx) {
               await clearWake(api, config, flow);
               await notifyMergeReady(api, config, flow, stateOf(flow));
             }
-            return result({ ok: true, recovery: "merge_ready_worker_reconciliation", flow: statusView(flow) });
+            return result({
+              ok: true,
+              recovery: "merge_ready_worker_reconciliation",
+              flow: statusView(flow),
+            });
           }
           const evidence = await reconcileRemediationEvidence(api, config, boundFlows, flow);
           if (evidence.changed) {

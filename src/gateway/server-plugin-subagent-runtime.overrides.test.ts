@@ -77,7 +77,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function run(override: { provider?: string; model?: string }) {
+function run(override: { provider?: string; model?: string; runTimeoutSeconds?: number }) {
   setRuntimeConfigSnapshot(config);
   const context = { getRuntimeConfig: () => config } as GatewayRequestContext;
   const runtime = createGatewaySubagentRuntime(
@@ -94,6 +94,22 @@ function run(override: { provider?: string; model?: string }) {
 }
 
 describe("plugin subagent initial override policy", () => {
+  it("forwards a bounded run deadline to the Gateway agent command", async () => {
+    config.models!.providers!.fixture!.models = [];
+    await expect(run({ model: "fixture/literal", runTimeoutSeconds: 180 })).resolves.toMatchObject({
+      runId: "override-run",
+    });
+    expect(dispatch.mock.calls[0]?.[1]).toMatchObject({ timeout: 180 });
+  });
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid plugin run deadline %s before dispatch",
+    async (runTimeoutSeconds) => {
+      await expect(run({ runTimeoutSeconds })).rejects.toThrow(/nonnegative safe integer/u);
+      expect(dispatch).not.toHaveBeenCalled();
+    },
+  );
+
   it("checks the exact configured execution target", async () => {
     await expect(run({ provider: "fixture", model: "literal" })).rejects.toThrow(
       /not allowlisted/u,

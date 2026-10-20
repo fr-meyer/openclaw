@@ -147,6 +147,29 @@ function filterSessionKeysByScopedAgent(params: {
   });
 }
 
+async function awaitWithSearchSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) {
+    return await promise;
+  }
+  signal.throwIfAborted();
+  let removeAbort = () => {};
+  const aborted = new Promise<never>((_resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    removeAbort = () => signal.removeEventListener("abort", onAbort);
+    if (signal.aborted) {
+      onAbort();
+    }
+  });
+  try {
+    const result = await Promise.race([promise, aborted]);
+    signal.throwIfAborted();
+    return result;
+  } finally {
+    removeAbort();
+  }
+}
+
 export async function filterMemorySearchHitsBySessionVisibility(params: {
   cfg: OpenClawConfig;
   agentId?: string;
@@ -156,7 +179,9 @@ export async function filterMemorySearchHitsBySessionVisibility(params: {
   conversationRecall?: ConversationRecallContext;
   /** Trusted control-plane calls may authorize only hits already scoped to this agent. */
   trustedAgentScope?: boolean;
+  signal?: AbortSignal;
 }): Promise<MemorySearchResult[]> {
+  params.signal?.throwIfAborted();
   // Session visibility owns transcript hits only. Loading the catalog here for
   // memory-only results decodes every saved session prompt on the Gateway loop.
   if (!params.hits.some((hit) => hit.source === "sessions")) {
@@ -189,30 +214,36 @@ export async function filterMemorySearchHitsBySessionVisibility(params: {
     ),
   ];
   const archives = archiveNames.length
-    ? await loadArchivedSessionsAsync({
-        agentId: scopedAgentId,
-        archiveNames,
-        storePath: resolveStorePath(params.cfg.session?.store, { agentId: scopedAgentId }),
-      })
+    ? await awaitWithSearchSignal(
+        loadArchivedSessionsAsync({
+          agentId: scopedAgentId,
+          archiveNames,
+          storePath: resolveStorePath(params.cfg.session?.store, { agentId: scopedAgentId }),
+        }),
+        params.signal,
+      )
     : [];
   const archivedSessionsByName = new Map(archives.map((archive) => [archive.archiveName, archive]));
   const guard = params.requesterSessionKey
-    ? await createSessionVisibilityGuard({
-        action: "history",
-        requesterSessionKey: params.requesterSessionKey,
-        requesterAgentId,
-        mainSessionKey:
-          requesterAgentId &&
-          (!params.sandboxed || resolveSandboxSessionToolsVisibility(params.cfg) === "all")
-            ? resolveCanonicalMainSessionKey({
-                agentId: requesterAgentId,
-                mainKey: params.cfg.session?.mainKey,
-                sessionScope: params.cfg.session?.scope,
-              })
-            : undefined,
-        visibility,
-        a2aPolicy,
-      })
+    ? await awaitWithSearchSignal(
+        createSessionVisibilityGuard({
+          action: "history",
+          requesterSessionKey: params.requesterSessionKey,
+          requesterAgentId,
+          mainSessionKey:
+            requesterAgentId &&
+            (!params.sandboxed || resolveSandboxSessionToolsVisibility(params.cfg) === "all")
+              ? resolveCanonicalMainSessionKey({
+                  agentId: requesterAgentId,
+                  mainKey: params.cfg.session?.mainKey,
+                  sessionScope: params.cfg.session?.scope,
+                })
+              : undefined,
+          visibility,
+          a2aPolicy,
+        }),
+        params.signal,
+      )
     : null;
 
   const { store: combinedSessionStore, storePath } = loadCombinedSessionStoreForGateway(
@@ -336,6 +367,7 @@ export async function filterMemorySearchHitsBySessionVisibility(params: {
 
   const next: MemorySearchResult[] = [];
   for (const hit of params.hits) {
+    params.signal?.throwIfAborted();
     if (hit.source !== "sessions") {
       if (!conversationRecall || conversationRecall.corpus === "configured") {
         next.push(hit);
@@ -410,7 +442,7 @@ export async function filterMemorySearchHitsBySessionVisibility(params: {
       identity.stem === anchorSessionId &&
       normalizedOwnerAgentId === normalizeAgentIdForCompare(recallAgentId)
     ) {
-      const cutoff = await resolveAnchorResetCutoff();
+      const cutoff = await awaitWithSearchSignal(resolveAnchorResetCutoff(), params.signal);
       allowResetAnchor = cutoff?.state === "valid" && hit.endLine < cutoff.cutoffLine;
     }
     const allowed = areSessionKeysAllowed(keys, archiveReason === "reset" || allowResetAnchor);
@@ -419,5 +451,6 @@ export async function filterMemorySearchHitsBySessionVisibility(params: {
     }
     next.push(hit);
   }
+  params.signal?.throwIfAborted();
   return next;
 }

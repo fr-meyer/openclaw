@@ -15,6 +15,10 @@ import type { SessionStateWorkerOperations } from "../../../sessions/session-sta
 import type { OpenClawStateDatabase } from "../../../state/openclaw-state-db-contract.js";
 import { ensureColumn } from "../../../state/openclaw-state-db-schema-helpers.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../../../state/openclaw-state-db.generated.js";
+import type {
+  ManagedFlowNativeKillClaim,
+  ManagedFlowNativeLaunchClaim,
+} from "../../../tasks/managed-task-flow-kill-claim.worker.js";
 import { subagentRunRowVersion, type SubagentRunSqliteRow } from "./subagent-registry.store.row.js";
 
 type SubagentRegistryDatabase = Pick<OpenClawStateKyselyDatabase, "subagent_runs">;
@@ -26,6 +30,9 @@ export type SubagentRegistryWrite = {
   values: readonly SubagentRunSqliteRow[];
   deleteRunIds: readonly string[];
   versions: readonly { runId: string; version: string | null }[];
+  /** Additional transaction predicate for the installed managed-flow controller. */
+  managedFlowKillClaim?: ManagedFlowNativeKillClaim;
+  managedFlowLaunchClaim?: ManagedFlowNativeLaunchClaim;
   terminalEvents?: readonly Pick<
     SessionStateWorkerOperations["sessionState.record"]["input"],
     "event" | "now" | "acpControl" | "sessionEntryCurrentSource"

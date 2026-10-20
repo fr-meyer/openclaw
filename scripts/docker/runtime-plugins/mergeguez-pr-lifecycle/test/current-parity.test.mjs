@@ -107,11 +107,12 @@ void test("new PR head preserves the old worker for exact reconciliation", () =>
   assert.equal(next.state.workspacePreflight, null);
   assert.equal(next.state.flowWorkspace.headSha, SHA_A);
   assert.throws(
-    () => applyPullRequestEvent(
-      { ...state, orphanedWorker: { sessionKey: "another-worker" } },
-      prEvent({ eventId: "github:two-workers", headSha: SHA_B }),
-      f.config.repositories.get(REPO),
-    ),
+    () =>
+      applyPullRequestEvent(
+        { ...state, orphanedWorker: { sessionKey: "another-worker" } },
+        prEvent({ eventId: "github:two-workers", headSha: SHA_B }),
+        f.config.repositories.get(REPO),
+      ),
     /new_head_has_multiple_unreconciled_workers/,
   );
 });
@@ -168,11 +169,7 @@ void test("edited GitHub PR ingress carries a same-head base change", () => {
     prEventUpdatedAt: Date.parse("2026-10-09T00:00:00Z"),
     prEventAction: "opened",
   };
-  const transition = applyPullRequestEvent(
-    state,
-    event,
-    f.config.repositories.get(REPO),
-  );
+  const transition = applyPullRequestEvent(state, event, f.config.repositories.get(REPO));
   assert.equal(transition.reason, "base_changed");
   assert.equal(
     applyReviewResult(transition.state, {
@@ -188,18 +185,19 @@ void test("edited GitHub PR ingress carries a same-head base change", () => {
     "stale_base_result",
   );
   assert.throws(
-    () => parseGitHubPullRequest(
-      { headers: { "x-github-event": "pull_request", "x-github-delivery": "missing-time" } },
-      {
-        action: "edited",
-        repository: { full_name: REPO },
-        pull_request: {
-          number: 319,
-          head: { sha: SHA_A, repo: { full_name: REPO } },
-          base: { sha: SHA_B, ref: "dev" },
+    () =>
+      parseGitHubPullRequest(
+        { headers: { "x-github-event": "pull_request", "x-github-delivery": "missing-time" } },
+        {
+          action: "edited",
+          repository: { full_name: REPO },
+          pull_request: {
+            number: 319,
+            head: { sha: SHA_A, repo: { full_name: REPO } },
+            base: { sha: SHA_B, ref: "dev" },
+          },
         },
-      },
-    ),
+      ),
     /updated_at is required/,
   );
 });
@@ -283,11 +281,12 @@ void test("disallowed base blocks without losing an active worker", () => {
   assert.equal(blocked.state.activeWorker, null);
   assert.deepEqual(blocked.state.orphanedWorker, { ...worker, launchOutcome: null });
   assert.throws(
-    () => applyPullRequestEvent(
-      { ...state, orphanedWorker: { sessionKey: "agent:reviewer:subagent:older" } },
-      event,
-      f.config.repositories.get(REPO),
-    ),
+    () =>
+      applyPullRequestEvent(
+        { ...state, orphanedWorker: { sessionKey: "agent:reviewer:subagent:older" } },
+        event,
+        f.config.repositories.get(REPO),
+      ),
     /block_has_multiple_unreconciled_workers/,
   );
 });
@@ -405,11 +404,13 @@ void test("absent session cannot settle an unobserved native orphan", async () =
 
 void test("cycle-budget owner admission preserves an unreconciled review worker", async () => {
   const original = pluginConfig();
-  const f = fixture(pluginConfig({
-    repositories: {
-      [REPO]: { ...original.repositories[REPO], maxCycles: 3 },
-    },
-  }));
+  const f = fixture(
+    pluginConfig({
+      repositories: {
+        [REPO]: { ...original.repositories[REPO], maxCycles: 3 },
+      },
+    }),
+  );
   const worker = {
     kind: "review",
     sessionKey: "agent:reviewer:subagent:budget-orphan",
@@ -417,13 +418,16 @@ void test("cycle-budget owner admission preserves an unreconciled review worker"
     taskId: "budget-task",
     headSha: SHA_A,
   };
-  const flow = f.seed({
-    phase: PHASE.BLOCKED,
-    blocker: "review_fix_cycle_budget_exhausted",
-    cycle: 2,
-    maxCycles: 2,
-    orphanedWorker: worker,
-  }, { status: "blocked" });
+  const flow = f.seed(
+    {
+      phase: PHASE.BLOCKED,
+      blocker: "review_fix_cycle_budget_exhausted",
+      cycle: 2,
+      maxCycles: 2,
+      orphanedWorker: worker,
+    },
+    { status: "blocked" },
+  );
   f.hooks.bindRuns = () => {
     throw new Error("fixture_denied");
   };
@@ -469,10 +473,16 @@ void test("external review result retains old-head and active worker custody", (
     assert.equal(next.state.orphanedWorker.runId, worker.runId);
   }
   assert.throws(
-    () => applyReviewResult(
-      { ...f.seed().stateJson, phase: PHASE.REVIEW_RUNNING, activeWorker: worker, orphanedWorker: worker },
-      input,
-    ),
+    () =>
+      applyReviewResult(
+        {
+          ...f.seed().stateJson,
+          phase: PHASE.REVIEW_RUNNING,
+          activeWorker: worker,
+          orphanedWorker: worker,
+        },
+        input,
+      ),
     /review_result_has_multiple_unreconciled_workers/,
   );
 });
@@ -494,10 +504,11 @@ void test("a delayed review from a previous base cannot approve the new base", (
   assert.equal(result.reason, "stale_base_result");
   assert.equal(result.state, state);
   assert.throws(
-    () => parseMergeguezReviewEvent(
-      { headers: { "x-mergeguez-event": "review.completed", "x-mergeguez-delivery": "old" } },
-      { repository: REPO, pullRequest: 319, headSha: SHA_A, outcome: "approved" },
-    ),
+    () =>
+      parseMergeguezReviewEvent(
+        { headers: { "x-mergeguez-event": "review.completed", "x-mergeguez-delivery": "old" } },
+        { repository: REPO, pullRequest: 319, headSha: SHA_A, outcome: "approved" },
+      ),
     /baseSha/,
   );
 });
@@ -524,13 +535,30 @@ void test("ingress transitions retain every unsettled exact worker identity", ()
     findings,
   });
   const cases = [
-    ["new head", () => applyPullRequestEvent(state, prEvent({ eventId: "head", headSha: SHA_B }), policy)],
-    ["blocked base", () => applyPullRequestEvent(state, prEvent({ eventId: "blocked", baseRef: "main" }), policy)],
-    ["changed base", () => applyPullRequestEvent(state, prEvent({ eventId: "base", baseSha: "c".repeat(40) }), policy)],
+    [
+      "new head",
+      () => applyPullRequestEvent(state, prEvent({ eventId: "head", headSha: SHA_B }), policy),
+    ],
+    [
+      "blocked base",
+      () => applyPullRequestEvent(state, prEvent({ eventId: "blocked", baseRef: "main" }), policy),
+    ],
+    [
+      "changed base",
+      () =>
+        applyPullRequestEvent(state, prEvent({ eventId: "base", baseSha: "c".repeat(40) }), policy),
+    ],
     ["review approved", () => applyReviewResult(state, review("approved"))],
-    ["review changes", () => applyReviewResult(state, review("changes_requested", [
-      { id: "fix", severity: "high", summary: "Fix", path: "src/fix.ts" },
-    ]))],
+    [
+      "review changes",
+      () =>
+        applyReviewResult(
+          state,
+          review("changes_requested", [
+            { id: "fix", severity: "high", summary: "Fix", path: "src/fix.ts" },
+          ]),
+        ),
+    ],
     ["review terminal failure", () => applyReviewResult(state, review("failed_terminal"))],
   ];
   for (const [name, transition] of cases) {
@@ -553,11 +581,14 @@ void test("external approval remains waiting until its exact worker is reconcile
     headSha: SHA_A,
   };
   const claimRef = "claim:approval-worker";
-  const flow = f.seed({
-    phase: PHASE.REVIEW_WAITING,
-    orphanedWorker: worker,
-    wait: { kind: "mergeguez_review", headSha: SHA_A, claimRef },
-  }, { status: "waiting" });
+  const flow = f.seed(
+    {
+      phase: PHASE.REVIEW_WAITING,
+      orphanedWorker: worker,
+      wait: { kind: "mergeguez_review", headSha: SHA_A, claimRef },
+    },
+    { status: "waiting" },
+  );
   f.kernel.observations.set(worker.taskId, {
     id: worker.taskId,
     requesterSessionKey: OWNER,
@@ -585,7 +616,9 @@ void test("external approval remains waiting until its exact worker is reconcile
   assert.equal(get(f, flow.flowId).stateJson.orphanedWorker.runId, worker.runId);
   assert.equal(f.calls.cancels.length, 0);
   f.hooks.bindRuns = undefined;
-  const recovery = details(await f.tool().execute("recover", { action: "recover", flowId: flow.flowId }));
+  const recovery = details(
+    await f.tool().execute("recover", { action: "recover", flowId: flow.flowId }),
+  );
   assert.equal(recovery.ok, true);
   assert.equal(get(f, flow.flowId).status, "succeeded");
   assert.equal(get(f, flow.flowId).stateJson.orphanedWorker, null);
@@ -602,12 +635,15 @@ void test("automatic merge waits for an unreconciled review worker", async () =>
     taskId: "merge-hold-task",
     headSha: SHA_A,
   };
-  const flow = f.seed({
-    phase: PHASE.REVIEW_WAITING,
-    orphanedWorker: worker,
-    wait: { kind: "mergeguez_review", headSha: SHA_A, claimRef: "claim:merge-hold" },
-    autoMergeBaseBranches: ["dev"],
-  }, { status: "waiting" });
+  const flow = f.seed(
+    {
+      phase: PHASE.REVIEW_WAITING,
+      orphanedWorker: worker,
+      wait: { kind: "mergeguez_review", headSha: SHA_A, claimRef: "claim:merge-hold" },
+      autoMergeBaseBranches: ["dev"],
+    },
+    { status: "waiting" },
+  );
   f.hooks.bindRuns = () => {
     throw new Error("fixture_denied");
   };
@@ -788,20 +824,28 @@ void test("automatic merge pins the reviewed base at the protected broker bounda
     /taskflow merge gates observed base branch or SHA drift/,
   );
   assert.deepEqual(calls[1], [
-    "merge-pr", "speculoos", "319", "--expected-base", "dev",
-    "--expected-base-sha", state.baseSha,
-    "--expected-head-branch", "feat/reviewed",
-    "--expected-head-sha", state.headSha,
-    "--expected-actor-login", "mergeguez[bot]",
-    "--merge-method", "merge", "--require-taskflow-gates", "--json",
+    "merge-pr",
+    "speculoos",
+    "319",
+    "--expected-base",
+    "dev",
+    "--expected-base-sha",
+    state.baseSha,
+    "--expected-head-branch",
+    "feat/reviewed",
+    "--expected-head-sha",
+    state.headSha,
+    "--expected-actor-login",
+    "mergeguez[bot]",
+    "--merge-method",
+    "merge",
+    "--require-taskflow-gates",
+    "--json",
   ]);
 
   baseDriftsAfterPreflight = false;
   brokerSupportsAtomicGate = false;
-  await assert.rejects(
-    __testing.autoMergeReceipt(f.api, state),
-    /unsupported merge-pr argument/,
-  );
+  await assert.rejects(__testing.autoMergeReceipt(f.api, state), /unsupported merge-pr argument/);
   brokerSupportsAtomicGate = true;
   missingAtomicProof = true;
   await assert.rejects(__testing.autoMergeReceipt(f.api, state), /automatic_merge_receipt_invalid/);
@@ -895,10 +939,7 @@ void test("retained HTTP body reader enforces its default size limit", async () 
 
 void test("rejected HTTP body stops reading and removes its listeners", async () => {
   const request = new Readable({ read() {} });
-  const rejected = assert.rejects(
-    readJsonBody(request, { maxBytes: 3 }),
-    /request_body_too_large/,
-  );
+  const rejected = assert.rejects(readJsonBody(request, { maxBytes: 3 }), /request_body_too_large/);
   request.push(Buffer.alloc(4));
   await rejected;
   assert.equal(request.isPaused(), true);
@@ -1149,7 +1190,12 @@ void test("restart keeps a persisted prelaunch reservation without a run acknowl
     launchOutcome: { status: "unknown", sessionKey: worker.sessionKey, observedAt: now - 180_000 },
   });
   const recovery = __testing.recoverObservedState(
-    get(f, flow.flowId).stateJson, undefined, now, 120_000, { sessionAlive: false });
+    get(f, flow.flowId).stateJson,
+    undefined,
+    now,
+    120_000,
+    { sessionAlive: false },
+  );
   assert.equal(recovery.changed, false);
   assert.equal(recovery.effect, "hold");
   assert.equal(recovery.reason, "worker_launch_outcome_unknown");
@@ -1491,10 +1537,13 @@ void test("legacy active orphan cannot be adopted or declared cancelled from abs
 void test("async review ingestion retains merge-ready terminal semantics and explicit merge authorization", async () => {
   const f = fixture(pluginConfig({ notificationSessionKey: OWNER }));
   const claimRef = "claim:async-review";
-  const flow = f.seed({
-    phase: PHASE.REVIEW_WAITING,
-    wait: { kind: "mergeguez_review", headSha: SHA_A, claimRef },
-  }, { status: "waiting" });
+  const flow = f.seed(
+    {
+      phase: PHASE.REVIEW_WAITING,
+      wait: { kind: "mergeguez_review", headSha: SHA_A, claimRef },
+    },
+    { status: "waiting" },
+  );
   const event = {
     eventId: "review-approved",
     repo: REPO,
@@ -1552,27 +1601,42 @@ void test("worker waiting report binds the claim used by a later signed completi
   const worker = get(f, flow.flowId).stateJson.activeWorker;
   const claimRef = "claim:worker-issued-319";
   const tool = f.calls.tools[0].factory({ sessionKey: worker.sessionKey });
-  const waiting = details(await tool.execute("report", {
-    action: "report",
-    flowId: flow.flowId,
-    kind: "review",
-    outcome: "waiting_review",
-    headSha: SHA_A,
-    cycle: 0,
-    claimRef,
-  }));
+  const waiting = details(
+    await tool.execute("report", {
+      action: "report",
+      flowId: flow.flowId,
+      kind: "review",
+      outcome: "waiting_review",
+      headSha: SHA_A,
+      cycle: 0,
+      claimRef,
+    }),
+  );
   assert.equal(waiting.ok, true);
   assert.equal(get(f, flow.flowId).stateJson.wait.claimRef, claimRef);
   const old = await __testing.ingestReviewResult(f.api, f.config, {
-    eventId: "review:old-worker-claim", repo: REPO, prNumber: 319, headSha: SHA_A,
-    baseSha: SHA_B, claimRef: "claim:older", outcome: "approved",
-    coverageComplete: true, findings: [],
+    eventId: "review:old-worker-claim",
+    repo: REPO,
+    prNumber: 319,
+    headSha: SHA_A,
+    baseSha: SHA_B,
+    claimRef: "claim:older",
+    outcome: "approved",
+    coverageComplete: true,
+    findings: [],
   });
   assert.equal(old.reason, "stale_claim_result");
   assert.equal(get(f, flow.flowId).stateJson.phase, PHASE.REVIEW_WAITING);
   const matched = await __testing.ingestReviewResult(f.api, f.config, {
-    eventId: "review:matching-worker-claim", repo: REPO, prNumber: 319, headSha: SHA_A,
-    baseSha: SHA_B, claimRef, outcome: "approved", coverageComplete: true, findings: [],
+    eventId: "review:matching-worker-claim",
+    repo: REPO,
+    prNumber: 319,
+    headSha: SHA_A,
+    baseSha: SHA_B,
+    claimRef,
+    outcome: "approved",
+    coverageComplete: true,
+    findings: [],
   });
   assert.equal(matched.accepted, true);
   assert.equal(get(f, flow.flowId).stateJson.phase, PHASE.MERGE_READY);
@@ -1582,23 +1646,28 @@ void test("worker waiting report binds the claim used by a later signed completi
 void test("periodic recovery preserves a live review claim until signed completion", async () => {
   const f = fixture();
   const claimRef = "claim:pending-across-wakes";
-  const flow = f.seed({
-    phase: PHASE.REVIEW_WAITING,
-    retryCount: 2,
-    wait: {
-      kind: "mergeguez_review",
-      headSha: SHA_A,
-      claimRef,
-      since: Date.now() - 6 * 60_000,
+  const flow = f.seed(
+    {
+      phase: PHASE.REVIEW_WAITING,
+      retryCount: 2,
+      wait: {
+        kind: "mergeguez_review",
+        headSha: SHA_A,
+        claimRef,
+        since: Date.now() - 6 * 60_000,
+      },
+      deadlineAt: Date.now() + 30 * 60_000,
     },
-    deadlineAt: Date.now() + 30 * 60_000,
-  }, { status: "waiting" });
+    { status: "waiting" },
+  );
   const initialRevision = flow.revision;
   for (let wake = 0; wake < 2; wake += 1) {
-    const recovery = details(await f.tool().execute("recover", {
-      action: "recover",
-      flowId: flow.flowId,
-    }));
+    const recovery = details(
+      await f.tool().execute("recover", {
+        action: "recover",
+        flowId: flow.flowId,
+      }),
+    );
     assert.equal(recovery.ok, true);
     assert.equal(recovery.recovery, "review_claim_pending");
     const current = get(f, flow.flowId);
@@ -1609,15 +1678,27 @@ void test("periodic recovery preserves a live review claim until signed completi
     assert.equal(f.calls.launches.length, 0);
   }
   const stale = await __testing.ingestReviewResult(f.api, f.config, {
-    eventId: "review:stale-after-wakes", repo: REPO, prNumber: 319,
-    headSha: SHA_A, baseSha: SHA_B, claimRef: "claim:retired",
-    outcome: "approved", coverageComplete: true, findings: [],
+    eventId: "review:stale-after-wakes",
+    repo: REPO,
+    prNumber: 319,
+    headSha: SHA_A,
+    baseSha: SHA_B,
+    claimRef: "claim:retired",
+    outcome: "approved",
+    coverageComplete: true,
+    findings: [],
   });
   assert.equal(stale.reason, "stale_claim_result");
   const matching = await __testing.ingestReviewResult(f.api, f.config, {
-    eventId: "review:matching-after-wakes", repo: REPO, prNumber: 319,
-    headSha: SHA_A, baseSha: SHA_B, claimRef,
-    outcome: "approved", coverageComplete: true, findings: [],
+    eventId: "review:matching-after-wakes",
+    repo: REPO,
+    prNumber: 319,
+    headSha: SHA_A,
+    baseSha: SHA_B,
+    claimRef,
+    outcome: "approved",
+    coverageComplete: true,
+    findings: [],
   });
   assert.equal(matching.accepted, true);
   assert.equal(get(f, flow.flowId).stateJson.phase, PHASE.MERGE_READY);
@@ -1648,8 +1729,12 @@ void test("external wait without a claim blocks before accepting signed results"
   const worker = get(f, flow.flowId).stateJson.activeWorker;
   const tool = f.calls.tools[0].factory({ sessionKey: worker.sessionKey });
   await tool.execute("report", {
-    action: "report", flowId: flow.flowId, kind: "review",
-    outcome: "waiting_review", headSha: SHA_A, cycle: 0,
+    action: "report",
+    flowId: flow.flowId,
+    kind: "review",
+    outcome: "waiting_review",
+    headSha: SHA_A,
+    cycle: 0,
   });
   const state = get(f, flow.flowId).stateJson;
   assert.equal(state.phase, PHASE.BLOCKED);
@@ -1823,6 +1908,33 @@ void test("compatibility guard permits parity with canonical creation and privat
   }
 });
 
+void test("configured non-owner status agent searches only configured controller owners", async () => {
+  const f = fixture(pluginConfig({ statusAgentIds: ["observer"] }));
+  const flow = f.seed();
+  registerMergeguezPrLifecycle(f.api);
+  const tool = f.calls.tools
+    .at(-1)
+    .factory({ sessionKey: "agent:observer:main", agentId: "observer" });
+  const inspected = details(
+    await tool.execute("status", { action: "status", flowId: flow.flowId }),
+  );
+  assert.equal(inspected.flowId, flow.flowId);
+  assert.deepEqual(
+    f.calls.bindings.map((binding) => binding.ownerKey),
+    [OWNER],
+  );
+  assertAllClosed(assert, f.calls);
+
+  const unrelated = f.calls.tools
+    .at(-1)
+    .factory({ sessionKey: "agent:unrelated:main", agentId: "unrelated" });
+  await assert.rejects(
+    unrelated.execute("status", { action: "status", flowId: flow.flowId }),
+    /flow_status_not_visible_to_this_session/,
+  );
+  assertAllClosed(assert, f.calls);
+});
+
 void test("old installed source pin remains fail-closed on changed runtime despite enabled config", () => {
   const f = fixture(
     pluginConfig({
@@ -1927,10 +2039,13 @@ void test("signed review ingress binds approval to reviewed base and active clai
   ]) {
     const f = fixture();
     const flow = waiting
-      ? f.seed({
-          phase: PHASE.REVIEW_WAITING,
-          wait: { kind: "mergeguez_review", headSha: SHA_A, claimRef: activeClaim },
-        }, { status: "waiting" })
+      ? f.seed(
+          {
+            phase: PHASE.REVIEW_WAITING,
+            wait: { kind: "mergeguez_review", headSha: SHA_A, claimRef: activeClaim },
+          },
+          { status: "waiting" },
+        )
       : f.seed();
     const secret = "synthetic-review-only";
     const body = Buffer.from(
@@ -1969,9 +2084,15 @@ void test("signed review ingress binds approval to reviewed base and active clai
     assert.equal(res.statusCode, statusCode, label);
     assert.equal(response.reason, reason, label);
     const state = get(f, flow.flowId).stateJson;
-    assert.equal(state.phase,
-      label === "matching" ? PHASE.MERGE_READY : waiting ? PHASE.REVIEW_WAITING : PHASE.REVIEW_QUEUED,
-      label);
+    assert.equal(
+      state.phase,
+      label === "matching"
+        ? PHASE.MERGE_READY
+        : waiting
+          ? PHASE.REVIEW_WAITING
+          : PHASE.REVIEW_QUEUED,
+      label,
+    );
     assertAllClosed(assert, f.calls);
   }
 });

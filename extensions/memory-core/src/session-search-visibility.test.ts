@@ -47,6 +47,45 @@ describe("filterMemorySearchHitsBySessionVisibility", () => {
     expect(filtered).toStrictEqual([]);
   });
 
+  it("refuses an aborted visibility request before reading session history", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("synthetic visibility cancellation"));
+    await expect(
+      filterMemorySearchHitsBySessionVisibility({
+        cfg: asOpenClawConfig({ tools: { sessions: { visibility: "all" } } }),
+        requesterSessionKey: "agent:main:main",
+        sandboxed: false,
+        hits: [searchHit("memory/allowed.md", "memory", "x")],
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("synthetic visibility cancellation");
+    expect(sessionTranscriptHit.loadCombinedSessionStoreForGateway).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Error", new Error("synthetic visibility cancellation")],
+    ["string", "synthetic visibility cancellation"],
+  ] as const)(
+    "preserves the exact %s cancellation reason while a guard is pending",
+    async (_kind, reason) => {
+      const guard = vi
+        .spyOn(sessionVisibility, "createSessionVisibilityGuard")
+        .mockImplementationOnce(() => new Promise<never>(() => {}));
+      const controller = new AbortController();
+      const pending = filterMemorySearchHitsBySessionVisibility({
+        cfg: asOpenClawConfig({ tools: { sessions: { visibility: "all" } } }),
+        requesterSessionKey: "agent:main:main",
+        sandboxed: false,
+        hits: [searchHit("sessions/pending.jsonl", "sessions", "x")],
+        signal: controller.signal,
+      });
+      expect(guard).toHaveBeenCalledOnce();
+      controller.abort(reason);
+      await expect(pending).rejects.toBe(reason);
+      expect(sessionTranscriptHit.loadCombinedSessionStoreForGateway).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([undefined, "configured", "sessions"] as const)(
     "does not load session history for memory-only hits with recall corpus %s",
     async (corpus) => {

@@ -1,12 +1,18 @@
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
 import type { DomainScope } from "../../../state/openclaw-state-worker-store.types.js";
+import type {
+  ManagedFlowNativeKillClaim,
+  ManagedFlowNativeLaunchClaim,
+} from "../../../tasks/managed-task-flow-kill-claim.worker.js";
 import type { SubagentRunMutation } from "./subagent-registry-mutation.types.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
 export type SubagentRegistryWriteAuthority = {
   assertCurrent: () => void;
   assertDatabase: () => void;
+  managedFlowKillClaim?: ManagedFlowNativeKillClaim;
+  managedFlowLaunchClaim?: ManagedFlowNativeLaunchClaim;
 };
 
 export type SubagentRunMutationOptions<P extends SubagentRunMutation<unknown>> = {
@@ -14,6 +20,8 @@ export type SubagentRunMutationOptions<P extends SubagentRunMutation<unknown>> =
   context?: OpenClawStateWorkerContext;
   assertCurrent?: () => void;
   pendingKillClaim?: SubagentRunRecord;
+  managedFlowKillClaim?: ManagedFlowNativeKillClaim;
+  managedFlowLaunchClaim?: ManagedFlowNativeLaunchClaim;
   gatewayRecovery?: {
     expected: SubagentRunRecord;
     previousResolver: GatewayContextResolver;

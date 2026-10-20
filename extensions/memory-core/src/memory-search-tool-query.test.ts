@@ -53,6 +53,10 @@ it.each(["fallback", "abort", "session"] as const)(
       signal: caller.signal,
       onPartialResults: snapshots,
     });
+    const queryOutcome = query.then(
+      () => ({ status: "fulfilled" as const }),
+      (error: unknown) => ({ status: "rejected" as const, error }),
+    );
     try {
       await searchEntered.promise;
       expect(filterMemorySearchHitsBySessionVisibility).toHaveBeenCalledTimes(
@@ -72,7 +76,39 @@ it.each(["fallback", "abort", "session"] as const)(
     } finally {
       filtering.resolve([]);
       finishSearch.resolve([]);
-      await query;
+      const outcome = await queryOutcome;
+      expect(filterMemorySearchHitsBySessionVisibility).toHaveBeenCalledWith(
+        expect.objectContaining({ signal: caller.signal }),
+      );
+      if (event === "abort") {
+        expect(outcome).toEqual({ status: "rejected", error: caller.signal.reason });
+      } else {
+        expect(outcome).toEqual({ status: "fulfilled" });
+      }
     }
   },
 );
+
+it("preserves non-cancellation search failures without refreshing the manager", async () => {
+  const failure = new Error("search backend unavailable");
+  const manager: MemorySearchManager = {
+    search: async () => {
+      throw failure;
+    },
+    status: () => ({ backend: "builtin", provider: "fixture" }),
+    readFile: async () => ({ status: "not_found", path: "", text: "" }),
+    probeEmbeddingAvailability: async () => ({ ok: true }),
+    probeVectorAvailability: async () => false,
+  };
+  const refreshManager = vi.fn(async () => null);
+  await expect(
+    executeMemorySearchToolQuery({
+      initialManager: { manager },
+      refreshManager,
+      query: { text: "keyword", resultLimit: 1, defaultSources: ["memory"] },
+      visibility: { cfg: {}, agentId: "main", sandboxed: false },
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toBe(failure);
+  expect(refreshManager).not.toHaveBeenCalled();
+});

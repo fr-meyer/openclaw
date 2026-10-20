@@ -35,12 +35,12 @@ export const INSTALLED_PUBLISHER_PIN_PAIR = Object.freeze({
   sourceQualifiedCandidate: SOURCE_QUALIFIED_CANDIDATE,
   candidate: Object.freeze({
     version: SOURCE_QUALIFIED_CANDIDATE.version,
-    sourceCommit: null, // The 9.9 source-only package is not a qualified release commit.
+    sourceCommit: null, // The 10.5 source-only package is not a qualified release commit.
     files: Object.freeze({
       ...SOURCE_QUALIFIED_CANDIDATE.files,
-      "src/controller.mjs": "c48ed897f94119fb7f66baaeda650dff81869f97fe153f65cefb548a06b5ebee",
+      "src/controller.mjs": "378c1a80618b93c0c6721bd71a6fe846d5b08d21eb90b6eeeac53621cae2a648",
       "src/http.mjs": "4561d649093cb3ba50f0e971c908eb949a4e1671bba1b12a550b689b17276498",
-      "src/runtime.mjs": "b4251973afc235c7f3932302a865a799ba02e73697f6a7d1b02f577c939da12c",
+      "src/runtime.mjs": "c96ee2ee390ea1f5366c6e0c8eb184e4cf30f76bfb50121c1623f1172ef01c54",
     }),
   }),
 });

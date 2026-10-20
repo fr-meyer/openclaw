@@ -5,6 +5,10 @@ import type { NodePluginToolDescriptor } from "../../../packages/gateway-protoco
 import type { AgentWaitResult } from "../../agents/run-wait.types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { OperatorScope } from "../../gateway/operator-scopes.js";
+import type {
+  BoundManagedTaskFlows,
+  BoundManagedTaskRuns,
+} from "../../tasks/managed-task-flow-contract.js";
 import type { PluginRuntimeCore, RuntimeLogger } from "./types-core.js";
 import type {
   RuntimeSessionFactsResult,
@@ -16,12 +20,28 @@ export type { RuntimeLogger };
 
 type PluginRuntimeChannel = import("./types-channel.js").PluginRuntimeChannel;
 
+/** Narrow released-controller compatibility, not the removed canonical Tasks/TaskFlow API. */
+type PluginManagedTaskFlowRuntime = {
+  readonly authorityVersion: 1;
+  readonly availability: Readonly<{
+    managedFlows: boolean;
+    taskRuns: boolean;
+    controllerParity: boolean;
+    canonicalTaskCreate: false;
+    workerLaunch: false;
+  }>;
+  managedFlows: { bindSession(input: { sessionKey: string }): BoundManagedTaskFlows };
+  runs: { bindSession(input: { sessionKey: string; agentId?: string }): BoundManagedTaskRuns };
+};
+
 // ── Subagent runtime types ──────────────────────────────────────────
 
 type SubagentRunParams = {
   /** Revalidate command authority at the host's run admission boundary. */
   assertCurrent?: () => void;
   sessionKey: string;
+  /** Opaque owner-bound capability from a managed flow's exact prelaunch window. */
+  managedFlowLaunch?: object;
   message: string;
   /** Run with an exact empty tool surface. */
   disableTools?: boolean;
@@ -38,6 +58,8 @@ type SubagentRunParams = {
   /** Deliver the completion to the authenticated requester of the current hook invocation. */
   completionDelivery?: "current-requester";
   idempotencyKey?: string;
+  /** Existing Gateway agent timeout in seconds; preserved for released plugin runs. */
+  runTimeoutSeconds?: number;
   cwd?: string;
 };
 
@@ -145,6 +167,7 @@ export type RuntimeGatewayRequestOptions = {
 
 /** Trusted in-process runtime surface injected into native plugins. */
 export type PluginRuntime = PluginRuntimeCore & {
+  tasks?: PluginManagedTaskFlowRuntime;
   gateway: {
     /** Whether this process owns an active Gateway request context. */
     isAvailable: () => Promise<boolean>;
@@ -262,6 +285,7 @@ export type CreatePluginRuntimeOptions = {
   hooks?: PluginRuntime["hooks"];
   subagent?: PluginRuntime["subagent"];
   nodes?: PluginRuntime["nodes"];
+  tasks?: PluginRuntime["tasks"];
   /** Native policy facades avoid re-evaluating SDK dependencies during registration. */
   modelAuth?: PluginRuntime["modelAuth"];
   modelConfig?: PluginRuntime["modelConfig"];

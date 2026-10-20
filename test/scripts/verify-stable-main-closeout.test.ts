@@ -652,6 +652,7 @@ process.stdout.write(JSON.stringify([
     const run = (lookups: "allowed" | "forbidden", ...extra: string[]) =>
       fixture.run(extra, {
         ...process.env,
+        GITHUB_REPOSITORY: "openclaw/openclaw",
         PATH: `${bin}:${process.env.PATH}`,
         WITHDRAWAL_LOOKUPS: lookups,
       });
