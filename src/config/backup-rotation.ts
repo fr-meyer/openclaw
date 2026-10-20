@@ -19,9 +19,13 @@ export async function prepareConfigFileWrite(
     assertCurrent?: () => void;
     destinationHardlinks?: "reject";
     durable?: boolean;
+    requireBackup?: boolean;
   } & Pick<ReplaceFileAtomicSyncOptions, "assertBeforeMutation" | "onDestinationState">,
 ) {
   const { configPath, fsModule } = params;
+  if (params.requireBackup && params.previousRaw === null) {
+    throw new Error("Required config backup has no existing source");
+  }
   const assertCurrent = createConfigWriteAuthorityGuard(params.assertCurrent);
   const assertBeforeMutation = createConfigWriteAuthorityGuard(
     params.assertBeforeMutation ?? assertCurrent,
@@ -46,16 +50,23 @@ export async function prepareConfigFileWrite(
       }
     }
   } catch (error) {
+    let cleanupFailure: { error: unknown } | undefined;
     try {
       await backup?.[Symbol.asyncDispose]();
     } catch (cleanupError) {
+      cleanupFailure = { error: cleanupError };
+    }
+    if (cleanupFailure) {
       throw new AggregateError(
-        [error, cleanupError],
+        [error, cleanupFailure.error],
         "Config backup preparation and cleanup failed",
-        { cause: cleanupError },
+        { cause: error },
       );
     }
     backup = undefined;
+    if (params.requireBackup) {
+      throw error;
+    }
     // Backup creation remains best effort; failed preparation never consumes history.
     assertCurrent?.();
   }
@@ -125,15 +136,21 @@ export async function prepareConfigFileWrite(
               }
             };
           };
-          const mutateBackupArtifact = (from: string, to?: string) => {
+          const mutateBackupArtifact = (from: string, to?: string, mustExist = false) => {
             assertBeforeMutation();
             try {
               using destination = to ? openBackupArtifact(to) : undefined;
               if (destination && !destination.ok && !isRootFileMissingFailure(destination)) {
+                if (params.requireBackup) {
+                  throw new Error("Required config backup destination is unavailable");
+                }
                 return;
               }
               using source = openBackupArtifact(from);
               if (!source.ok) {
+                if (params.requireBackup && (mustExist || !isRootFileMissingFailure(source))) {
+                  throw new Error("Required config backup source is unavailable");
+                }
                 return;
               }
               const assertSource = captureBackupIdentity(source.path, source.fd, "source");
@@ -158,8 +175,23 @@ export async function prepareConfigFileWrite(
                 fsModule.unlinkSync(source.path);
               }
             } catch (error) {
-              assertBeforeMutation();
-              if (error instanceof ConfigMutationConflictError) {
+              let authorityFailure: { error: unknown } | undefined;
+              try {
+                assertBeforeMutation();
+              } catch (authorityError) {
+                authorityFailure = { error: authorityError };
+              }
+              if (authorityFailure) {
+                if (authorityFailure.error === error) {
+                  throw error;
+                }
+                throw new AggregateError(
+                  [error, authorityFailure.error],
+                  "Config backup mutation and authority check failed",
+                  { cause: error },
+                );
+              }
+              if (params.requireBackup || error instanceof ConfigMutationConflictError) {
                 throw error;
               }
             }
@@ -170,7 +202,39 @@ export async function prepareConfigFileWrite(
             const from = index === 0 ? base : `${base}.${index}`;
             mutateBackupArtifact(from, `${base}.${index + 1}`);
           }
-          mutateBackupArtifact(backup.path, base);
+          mutateBackupArtifact(backup.path, base, true);
+          if (params.requireBackup) {
+            // Retain and sync the recovery name before publishing new config bytes.
+            const directoryFd = fsModule.openSync(path.dirname(configPath), "r");
+            let primaryFailure: { error: unknown } | undefined;
+            let closeFailure: { error: unknown } | undefined;
+            try {
+              assertBeforeMutation();
+              fsModule.fsyncSync(directoryFd);
+              assertBeforeMutation();
+            } catch (error) {
+              primaryFailure = { error };
+            } finally {
+              try {
+                fsModule.closeSync(directoryFd);
+              } catch (error) {
+                closeFailure = { error };
+              }
+            }
+            if (primaryFailure && closeFailure) {
+              throw new AggregateError(
+                [primaryFailure.error, closeFailure.error],
+                "Config backup sync and close failed",
+                { cause: primaryFailure.error },
+              );
+            }
+            if (primaryFailure) {
+              throw primaryFailure.error;
+            }
+            if (closeFailure) {
+              throw closeFailure.error;
+            }
+          }
         },
       });
     },
