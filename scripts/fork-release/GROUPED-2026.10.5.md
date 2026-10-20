@@ -15,9 +15,12 @@ deployable source, publish an image, or authorize production.
 ## Existing owners and source anchor
 
 - Reuse fork [release-pipeline PR #15](https://github.com/fr-meyer/openclaw/pull/15)
-  for the tooling lane. The 9.9 owner has
+  and its grouped preparation follow-up
+  [PR #17](https://github.com/fr-meyer/openclaw/pull/17) for tooling.
+  [PR #18](https://github.com/fr-meyer/openclaw/pull/18) owns the isolated
+  10.5 product source. The 9.9 owner has
   [`prep/v2026.9.9-source-only`](https://github.com/fr-meyer/openclaw/tree/prep/v2026.9.9-source-only).
-  No 10.5 fork branch existed in the relevant branch/PR inventory on October 20.
+  Continue these existing work items rather than creating another candidate.
 - The official signed tag [`v2026.10.5`](https://github.com/openclaw/openclaw/releases/tag/v2026.10.5)
   peels to `1b58cb9a1b4f4353e1add63c8506db4d890962e8`. Its tagged
   `package.json` says version `2026.10.5`, Node `>=24.16.0 <25 || >=26.1.0`,
@@ -33,6 +36,30 @@ deployable source, publish an image, or authorize production.
   is a separate gateway-only extended-stable September line. GitHub's official
   10.4...10.5 compare is diverged (2,704 ahead, 463 behind); reconcile content
   and patch intent against the exact 10.5 tree rather than merging tag history.
+
+## Stable release content reconciliation
+
+The following upgrade, recovery and security owners were inspected in the
+exact official 10.5 base. They retain the listed stable-release behavior.
+This is a scoped content check, not a claim that every divergent commit is
+equivalent. The fork patch ledger separately records each custom behavior.
+
+| Stable release | Behavior retained in the 10.5 base | Source owner and remaining qualification |
+| --- | --- | --- |
+| 9.9 | Snapshot timestamp drift is admitted only after file identity and content checks. Read-only opening of corrupt agent databases preserves quarantine recovery. | `src/infra/sqlite-snapshot-file.ts`; `src/state/openclaw-agent-db-readonly-open.ts`. Native backup/restore remains required. |
+| 10.1 | State schema 20 defaults historical delivery attempts to unknown; interrupted one-shot recovery requires proof that delivery never started. | `src/state/openclaw-state-db-cron-delivery-migration.ts`; `src/cron/store/run-recovery.kernel.ts`. Restart and rollback must not replay uncertain sends. |
+| 10.2 | Unsupported native cloning supports a guarded byte-copy fallback; owners supplying `beforeByteCopy` admit space before that fallback. Built-in credential redaction scans complete text across old chunk boundaries. | `src/infra/sqlite-file-copy.ts`; `src/logging/redact.ts`. Preserve native copy guards; check representative installed-provider compaction behavior separately. |
+| 10.3 | Prepared update rehearsals defer bookkeeping version stamps while retaining real config migrations. pnpm service entrypoints prefer the verified stable package link. | `src/config/io.meta.ts`; `src/daemon/program-args.ts`. Qualify the installed updater against the candidate; candidate fixes cannot change an already-running old updater. |
+| 10.4 | Doctor can admit an already prepared private disposable copy. Tlon distinguishes group-DM claims from privileged sender identity. | `src/commands/doctor-update-rehearsal-inventory.ts`; `extensions/tlon/src/monitor/index.ts`. Check configured policy plugins; older pending Tlon DMs without recorded sender provenance require the documented resend procedure. |
+| 10.5 | Agent schema 25 moves canonical-session validation to its writer contract. EmbeddingGemma format changes trigger a one-time rebuild only for affected indexes. | `src/state/openclaw-agent-canonical-validation-migration.ts`; `extensions/memory-core/src/memory/manager-reindex-state.ts`. Doctor, startup and applicable memory rebuild still need runtime proof. |
+
+The stable schema progression is 9.9 state 19/agent 24, 10.1 state 20,
+10.4 agent 24, and 10.5 agent 25. A history entry first naming a beta is
+not the stable introduction date. Keep both Codex compatibility checks:
+the documented installed-plugin minimum 2026.9.7 and the selected plugin's
+host/API requirements for 10.5. Workboard's pre-July data bridge and
+Sessionsboard data also need their native plugin migration/rollback contracts;
+do not silently import or discard older plugin data.
 
 ## Migration and qualification boundaries
 
@@ -65,10 +92,53 @@ deployable source, publish an image, or authorize production.
   execution/resume path need disposable proof and one owner before production
   eligibility can change from false.
 
+## Apply the 9.8 rehearsal experience
+
+The test database isolates data mutations. Its host, scratch files, Docker
+storage and I/O still need separate resource accounting. A stale host-free-space
+observation must not become a permanent admission rule.
+
+1. **Prepare once.** Finish the patch decisions, focused tests and exact source
+   seal before producing the image. Preserve the OCI payload, digest, plugin
+   evidence and producer receipt so a retry does not rebuild the candidate.
+2. **Restore once.** Prefer an identified snapshot restore over repeated file
+   copies. Keep database files, native backup outputs and temporary files on
+   the owned rehearsal disk. Measure free space on that filesystem separately
+   from the host root; a small emergency floor is not a forecast of native
+   backup space. Reuse a retained restore only after its owner has released it
+   and its receipt matches the intended starting data.
+3. **Distinguish the upgrade path.** While production is still 9.4, a daily
+   production snapshot proves a 9.4 starting point. The intended post-9.8 cell
+   needs a completed, identified 9.8 data/build pair, or an explicit native
+   9.4 → 9.8 → 10.5 rehearsal. The active 9.8 clone remains under its current
+   owner. Successful 9.8 Doctor output does not qualify 10.5.
+4. **Run durably.** A GCP-owned supervisor holds the operation lease and
+   records phase, exact process/container identity, timestamps and exit
+   receipts. The Mac submits or observes the operation; its connection does
+   not own the native process. Resume reconciles the existing operation before
+   launching anything.
+5. **Show native evidence first.** Surface timestamped application output,
+   then process liveness, CPU/I/O and last-output time. A silent SQLite backup
+   verification can still be active. Report a stall or uncertainty without
+   treating liveness as completion or skipping native integrity checks.
+6. **Prove the complete cell.** Test the installed upgrade driver against the
+   candidate, native Doctor/migration, startup/readiness, and rollback with
+   the matching pre-upgrade data and build. Preserve unknown delivery outcomes.
+   A later production operation must capture and migrate current live data;
+   it must never promote this rehearsal database.
+
+Bounded source tests may use a separate secretless container and synthetic
+state on existing approved capacity. They do not mount production data or the
+active 9.8 clone. A full restored-data rehearsal is a separate operation with
+an exact resource plan and owner; new paid resources or persistent access
+require their own approval.
+
 ## Current disposition
 
 The pipeline's manual job is being changed to read trusted `main` tooling and
 an exact candidate metadata head, with a current PR head/base check. It still
-needs hosted proof after reviewed integration. No grouped product patch queue,
-eligible manifest, retained OCI artifact, native 10.5 rehearsal, benchmark, or
-production decision exists in this preparation change.
+needs hosted proof after reviewed integration. The grouped source queue is
+under review in PR #18, with its per-path reconciliation and qualification
+state kept in `custom-patches/`. No production-eligible manifest, sealed 10.5
+OCI artifact, native restored-data rehearsal, rollback proof, comparative
+benchmark, or production decision is claimed here.
