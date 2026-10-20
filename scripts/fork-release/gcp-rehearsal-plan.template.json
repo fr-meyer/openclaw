@@ -1,0 +1,25 @@
+{
+  "schema": "openclaw.gcp-rehearsal-plan.v1",
+  "createdAt": null,
+  "expiresAt": null,
+  "audience": null,
+  "environment": "openclaw-rehearsal",
+  "binding": {
+    "sourceSha": null,
+    "toolingSha": null,
+    "imageDigest": null
+  },
+  "snapshot": {
+    "id": null,
+    "sizeGiB": null,
+    "purpose": "rehearsal_only"
+  },
+  "resources": {
+    "machineType": null,
+    "bootDiskGiB": null,
+    "dataDiskGiB": null,
+    "concurrency": 1,
+    "estimatedCostMicrousd": null,
+    "approvedCostMicrousd": null
+  }
+}

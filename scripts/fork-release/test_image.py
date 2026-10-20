@@ -43,6 +43,9 @@ class ImageBoundaryTests(unittest.TestCase):
 
     def test_actual_runtime_bridge_refuses_wrong_inventory_before_private_gate(self):
         with tempfile.TemporaryDirectory() as directory:
+            gate = Path(directory) / "private-gate"
+            gate.write_text('#!/bin/sh\nprintf invoked > "$0.invoked"\nexit 91\n')
+            gate.chmod(0o700)
             path = Path(directory) / "receipt.json"
             path.write_text(json.dumps({"schema": "openclaw.fork-release-image.v2",
                                         "manifestSha256": preflight.digest(HERE / "manifest.json"),
@@ -50,13 +53,14 @@ class ImageBoundaryTests(unittest.TestCase):
             result = subprocess.run(["python3", str(HERE / "ops_gate.py"), "image",
                                      "--manifest", str(HERE / "manifest.json"),
                                      "--inventory", str(HERE / "patch-inventory.json"),
-                                     "--image-receipt", str(path), "--gate", "/bin/false",
+                                     "--image-receipt", str(path), "--gate", str(gate),
                                      "--candidate-image", "never-invoked"],
                                     capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("image receipt inventory mismatch", result.stderr)
             self.assertNotIn("gate command failed", result.stderr)
             self.assertNotIn("Traceback", result.stderr)
+            self.assertFalse(Path(str(gate) + ".invoked").exists())
 
 
 if __name__ == "__main__":

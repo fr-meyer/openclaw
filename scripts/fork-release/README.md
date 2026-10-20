@@ -175,6 +175,14 @@ inputs or its hosted build supervisor.
 
 ## Private deployment interface
 
+The proposed GitHub-to-GCP route, disposable rehearsal lifecycle, privacy
+boundaries and activation prerequisites are in
+[`GITHUB-GCP-DESIGN.md`](GITHUB-GCP-DESIGN.md). Its offline contracts create no
+resources and grant no access. In particular, the backup used for rehearsal
+must never replace current live data: unattended promotion needs a fresh
+current-production capture and matching rollback under the production fence.
+That private adapter work is not implemented by this coordinator.
+
 `release.py run` is an operator-side coordinator. It requires a reviewed
 production-eligible manifest, the exact Actions image receipt and OCI payload,
 the reviewed inventory and exact product checkout, a private baseline and backup
