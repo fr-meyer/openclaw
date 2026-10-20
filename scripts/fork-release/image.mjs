@@ -8,10 +8,15 @@ import {
   verifyDockerReleaseLayout,
   smokeDockerReleaseImage,
 } from "../docker-release-artifacts.mjs";
+import {
+  assertCleanSourceCheckout,
+  producerArtifactName,
+  readGcpExecution,
+  validateProducer,
+} from "./gcp-image-context.mjs";
 
 const SHA = /^[0-9a-f]{40}$/u;
 const DIGEST = /^sha256:[0-9a-f]{64}$/u;
-const positive = /^[1-9][0-9]*$/u;
 
 function need(value, message) {
   if (!value) throw new Error(message);
@@ -43,16 +48,40 @@ function validateManifest(path) {
   return manifest;
 }
 
-function inspectLoadedPlugins(manifest, version) {
+function inspectLoadedPlugins(manifest, version, configDigest) {
   const verifier = fileURLToPath(new URL("verify-image-plugins.mjs", import.meta.url));
-  const image = `openclaw-release-smoke:${manifest.image.architecture}-default`;
-  return JSON.parse(execFileSync("docker", [
-    "run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
-    "--security-opt", "no-new-privileges", "--pids-limit", "64", "--memory", "256m",
-    "--cpus", "1", "--mount", `type=bind,source=${verifier},target=/tmp/verify-image-plugins.mjs,readonly`,
-    "--entrypoint", "node", image, "/tmp/verify-image-plugins.mjs", "/app",
-    manifest.image.extensions, version,
-  ], { encoding: "utf8", timeout: 120_000 }));
+  return JSON.parse(
+    execFileSync(
+      "docker",
+      [
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--pids-limit",
+        "64",
+        "--memory",
+        "256m",
+        "--cpus",
+        "1",
+        "--mount",
+        `type=bind,source=${verifier},target=/tmp/verify-image-plugins.mjs,readonly`,
+        "--entrypoint",
+        "node",
+        configDigest,
+        "/tmp/verify-image-plugins.mjs",
+        "/app",
+        manifest.image.extensions,
+        version,
+      ],
+      { encoding: "utf8", timeout: 120_000 },
+    ),
+  );
 }
 
 async function checkedLayout({ manifest, receipt, ociDir }) {
@@ -70,10 +99,25 @@ async function checkedLayout({ manifest, receipt, ociDir }) {
 }
 
 async function main() {
-  const [command, manifestPath, inventoryPath, third, fourth, fifth, sixth] = process.argv.slice(2);
+  const [
+    command,
+    manifestPath,
+    inventoryPath,
+    third,
+    fourth,
+    fifth,
+    sixth,
+    executionPath,
+    smokeTransport,
+  ] = process.argv.slice(2);
   need(
-    ["seal", "verify"].includes(command),
-    "Usage: image.mjs seal MANIFEST INVENTORY SOURCE OCI DIGEST OUTPUT | verify MANIFEST INVENTORY RECEIPT OCI",
+    ["seal", "seal-gcp", "verify"].includes(command),
+    "Usage: image.mjs seal MANIFEST INVENTORY SOURCE OCI DIGEST OUTPUT | seal-gcp MANIFEST INVENTORY SOURCE OCI DIGEST OUTPUT PRIVATE_EXECUTION [skopeo|loaded] | verify MANIFEST INVENTORY RECEIPT OCI",
+  );
+  need(
+    smokeTransport === undefined ||
+      (command === "seal-gcp" && ["skopeo", "loaded"].includes(smokeTransport)),
+    "Invalid explicit smoke transport",
   );
   const manifest = validateManifest(manifestPath);
   const preflightPath = fileURLToPath(new URL("preflight.py", import.meta.url));
@@ -102,9 +146,12 @@ async function main() {
       "Image plugin payload evidence changed",
     );
     need(
-      receipt.pluginPayload.some((entry) =>
-        entry.id === "codex" && entry.package === "@openclaw/codex" &&
-        entry.version === receipt.version),
+      receipt.pluginPayload.some(
+        (entry) =>
+          entry.id === "codex" &&
+          entry.package === "@openclaw/codex" &&
+          entry.version === receipt.version,
+      ),
       "Codex plugin evidence differs from image host",
     );
     need(
@@ -113,15 +160,9 @@ async function main() {
       ),
       "Invalid image digest",
     );
+    validateProducer(receipt.producer);
     need(
-      SHA.test(receipt.producer?.workflowSha) &&
-        positive.test(String(receipt.producer?.runId)) &&
-        positive.test(String(receipt.producer?.attempt)),
-      "Invalid producer identity",
-    );
-    need(
-      receipt.artifactName ===
-        `fork-release-${receipt.sourceSha}-${receipt.producer.runId}-${receipt.producer.attempt}`,
+      receipt.artifactName === producerArtifactName(receipt.sourceSha, receipt.producer),
       "Image artifact name changed",
     );
     if (manifest.review) {
@@ -129,27 +170,23 @@ async function main() {
       for (const key of ["prNumber", "baseSha", "changedDiffSha256"]) {
         need(receipt.review[key] === manifest.review[key], `Image PR ${key} changed`);
       }
+      if (receipt.producer.kind === "gcp") {
+        need(
+          receipt.review.headSha === receipt.sourceSha,
+          "GCP image review head differs from source",
+        );
+      }
     }
     await checkedLayout({ manifest, receipt, ociDir: fourth });
     console.log(`Verified ${receipt.indexDigest} for ${receipt.sourceSha}`);
     return;
   }
   const [sourceDir, ociDir, expectedDigest, outputPath] = [third, fourth, fifth, sixth];
+  assertCleanSourceCheckout(sourceDir);
   execFileSync("python3", [preflightPath, ...preflightArgs, "--source-dir", sourceDir], {
     stdio: "pipe",
   });
   need(DIGEST.test(expectedDigest), "Missing exact BuildKit digest");
-  need(process.env.GITHUB_REPOSITORY === manifest.repository, "Wrong producer repository");
-  need(
-    SHA.test(process.env.GITHUB_WORKFLOW_SHA) &&
-      positive.test(process.env.GITHUB_RUN_ID) &&
-      positive.test(process.env.GITHUB_RUN_ATTEMPT),
-    "Missing producer identity",
-  );
-  need(
-    process.env.GITHUB_SHA === process.env.GITHUB_WORKFLOW_SHA,
-    "Workflow source and checkout differ",
-  );
   const sourceSha = execFileSync("git", ["-C", sourceDir, "rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
@@ -160,17 +197,81 @@ async function main() {
     sourceSha === manifest.source.commit && sourceTree === manifest.source.tree,
     "Build source is not pinned candidate",
   );
-  const toolingRoot = dirname(dirname(dirname(manifestPath)));
-  const toolingSha = execFileSync("git", ["-C", toolingRoot, "rev-parse", "HEAD"], {
-    encoding: "utf8",
-  }).trim();
+  let reviewHead;
   if (manifest.review) {
-    const parent = execFileSync("git", ["-C", toolingRoot, "show", "-s", "--format=%P", "HEAD"], {
-      encoding: "utf8",
-    }).trim();
-    need(parent === sourceSha, "PR head is not the metadata seal above the source");
+    if (command === "seal-gcp") {
+      // GCP preparation binds the source PR directly. Its manifest/inventory can
+      // be private external inputs; neither their directory nor tooling HEAD
+      // pretends to be a metadata-only child in that PR.
+      reviewHead = sourceSha;
+      const productDiff = execFileSync("git", [
+        "-C",
+        sourceDir,
+        "diff",
+        "--binary",
+        "--full-index",
+        "--no-ext-diff",
+        manifest.review.baseSha,
+        sourceSha,
+      ]);
+      need(
+        createHash("sha256").update(productDiff).digest("hex") ===
+          manifest.review.changedDiffSha256,
+        "GCP image PR diff binding changed",
+      );
+    } else {
+      const metadataRoot = dirname(dirname(dirname(manifestPath)));
+      reviewHead = execFileSync("git", ["-C", metadataRoot, "rev-parse", "HEAD"], {
+        encoding: "utf8",
+      }).trim();
+      const parent = execFileSync(
+        "git",
+        ["-C", metadataRoot, "show", "-s", "--format=%P", "HEAD"],
+        {
+          encoding: "utf8",
+        },
+      ).trim();
+      need(parent === sourceSha, "PR head is not the metadata seal above the source");
+    }
   }
   const version = json(`${sourceDir}/package.json`).version;
+  let producer;
+  let builtAt;
+  if (command === "seal-gcp") {
+    need(executionPath, "Private GCP execution evidence required");
+    const trustedRoot = fileURLToPath(new URL("../../", import.meta.url));
+    const trustedSha = execFileSync("git", ["-C", trustedRoot, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+    need(
+      execFileSync("git", ["-C", trustedRoot, "status", "--porcelain"], {
+        encoding: "utf8",
+      }).trim() === "",
+      "GCP sealing requires clean committed tooling",
+    );
+    ({ producer, builtAt } = readGcpExecution(executionPath, {
+      sourceDir,
+      sourceSha,
+      sourceTree,
+      toolingSha: trustedSha,
+      manifestSha256: hash(manifestPath),
+      inventorySha256: inventoryHash,
+      indexDigest: expectedDigest,
+    }));
+  } else {
+    need(process.env.GITHUB_REPOSITORY === manifest.repository, "Wrong producer repository");
+    need(
+      process.env.GITHUB_SHA === process.env.GITHUB_WORKFLOW_SHA,
+      "Workflow source and checkout differ",
+    );
+    producer = {
+      workflowSha: process.env.GITHUB_WORKFLOW_SHA,
+      runId: process.env.GITHUB_RUN_ID,
+      attempt: process.env.GITHUB_RUN_ATTEMPT,
+    };
+    validateProducer(producer);
+    builtAt = process.env.BUILT_AT;
+  }
   const receipt = {
     schema: "openclaw.fork-release-image.v2",
     manifestSha256: hash(manifestPath),
@@ -181,15 +282,11 @@ async function main() {
     architecture: manifest.image.architecture,
     selectedExtensions: manifest.image.extensions,
     version,
-    builtAt: process.env.BUILT_AT,
+    builtAt,
     indexDigest: expectedDigest,
-    producer: {
-      workflowSha: process.env.GITHUB_WORKFLOW_SHA,
-      runId: process.env.GITHUB_RUN_ID,
-      attempt: process.env.GITHUB_RUN_ATTEMPT,
-    },
-    artifactName: `fork-release-${sourceSha}-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`,
-    ...(manifest.review ? { review: { ...manifest.review, headSha: toolingSha } } : {}),
+    producer,
+    artifactName: producerArtifactName(sourceSha, producer),
+    ...(manifest.review ? { review: { ...manifest.review, headSha: reviewHead } } : {}),
   };
   const image = await verifyDockerReleaseLayout({
     directory: ociDir,
@@ -199,8 +296,11 @@ async function main() {
     builtAt: receipt.builtAt,
     expectedDigest,
   });
-  smokeDockerReleaseImage(ociDir, receipt.architecture, "default", image.configDigest);
-  receipt.pluginPayload = inspectLoadedPlugins(manifest, version);
+  smokeDockerReleaseImage(ociDir, receipt.architecture, "default", image.configDigest, {
+    isolation: "secretless",
+    transport: smokeTransport,
+  });
+  receipt.pluginPayload = inspectLoadedPlugins(manifest, version, image.configDigest);
   receipt.imageDigest = image.imageDigest;
   receipt.configDigest = image.configDigest;
   writeFileSync(outputPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx", mode: 0o600 });

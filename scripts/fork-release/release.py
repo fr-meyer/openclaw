@@ -119,16 +119,41 @@ def receipt_at(path, manifest, manifest_hash, inventory_hash):
     for name in ("indexDigest", "imageDigest", "configDigest"):
         need(matches(DIGEST, receipt.get(name)), f"invalid {name}")
     producer = receipt.get("producer", {})
-    need(type(producer) is dict and matches(SHA, producer.get("workflowSha")), "invalid producer workflow SHA")
-    need(re.fullmatch(r"[1-9][0-9]*", str(producer.get("runId", ""))), "invalid producer run")
-    need(re.fullmatch(r"[1-9][0-9]*", str(producer.get("attempt", ""))), "invalid producer attempt")
-    need(receipt.get("artifactName") == f"fork-release-{receipt['sourceSha']}-{producer['runId']}-{producer['attempt']}", "image artifact name mismatch")
+    validate_producer(producer)
+    need(receipt.get("artifactName") == image_artifact_name(receipt["sourceSha"], producer), "image artifact name mismatch")
     if manifest.get("review") is not None:
         review = receipt.get("review", {})
         need(type(review) is dict and matches(SHA, review.get("headSha")), "image receipt lacks exact PR head")
         for key in ("prNumber", "baseSha", "changedDiffSha256"):
             need(review.get(key) == manifest["review"][key], f"image PR {key} mismatch")
+        if producer.get("kind") == "gcp":
+            need(review["headSha"] == receipt["sourceSha"], "GCP image review head differs from source")
     return receipt
+
+
+def producer_fields(producer):
+    if type(producer) is dict and producer.get("kind") == "gcp":
+        return "kind toolingSha operationId attempt executionSha256"
+    return "workflowSha runId attempt"
+
+
+def validate_producer(producer):
+    need(type(producer) is dict and set(producer) == set(producer_fields(producer).split()),
+         "invalid producer fields")
+    need(re.fullmatch(r"[1-9][0-9]*", str(producer.get("attempt", ""))), "invalid producer attempt")
+    if producer.get("kind") == "gcp":
+        need(matches(SHA, producer.get("toolingSha")), "invalid GCP producer tooling SHA")
+        need(matches(re.compile(r"[0-9a-f]{32}\Z"), producer.get("operationId")), "invalid GCP operation ID")
+        need(matches(re.compile(r"[0-9a-f]{64}\Z"), producer.get("executionSha256")), "invalid GCP execution digest")
+    else:
+        need(matches(SHA, producer.get("workflowSha")), "invalid producer workflow SHA")
+        need(re.fullmatch(r"[1-9][0-9]*", str(producer.get("runId", ""))), "invalid producer run")
+
+
+def image_artifact_name(source_sha, producer):
+    if producer.get("kind") == "gcp":
+        return f"fork-release-{source_sha}-gcp-{producer['operationId']}-{producer['attempt']}"
+    return f"fork-release-{source_sha}-{producer['runId']}-{producer['attempt']}"
 
 
 def private_root(path):

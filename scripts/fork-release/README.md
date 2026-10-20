@@ -173,6 +173,80 @@ exact-source and offline contract gates, while allowing a reviewed manifest to
 select each future candidate. It does not copy that task's private companion
 inputs or its hosted build supervisor.
 
+### Seal an image produced on the existing GCP host
+
+The same OCI, source, inventory and plugin checks can consume a privately
+supervised GCP build. Use `seal-gcp`; never invent GitHub workflow/run values for
+that execution. The source and tooling checkouts must identify their exact
+commits and be clean. Sealing refuses staged/unstaged tracked changes and
+untracked source files before reading working metadata. The manifest still needs the complete
+source/patch chain and inventory; the checked-in historical seed is not a 10.5
+manifest. GCP source-only sealing supports `productionEligible: false` and
+separate manifest/inventory files. If a review binding is present, its head is
+the source commit and its base-to-source diff is recomputed; tooling HEAD is
+never represented as that PR's metadata seal. A source-only preparation plan is
+not a sealed image.
+
+```sh
+node scripts/fork-release/image.mjs seal-gcp \
+  "$MANIFEST" "$INVENTORY" "$SOURCE_CHECKOUT" "$OCI_DIRECTORY" \
+  "$BUILDKIT_DIGEST" "$IMAGE_RECEIPT" "$PRIVATE_EXECUTION_DIRECTORY/execution.json"
+```
+
+Skopeo remains the default smoke-copy transport. On a host without Skopeo, a
+single build can retain its OCI output and also use Buildx's Docker exporter to
+load a smoke copy under a unique task-owned tag. This requires Buildx and
+BuildKit 0.13 or later; verify the actual tool versions and dual-export behavior
+before using it. Pass a final `loaded` argument to `seal-gcp` only after that
+load. The verifier still checks the full retained OCI artifact, then requires
+the loaded image's immutable config digest to match before executing native
+smoke. It never trusts the mutable tag or substitutes Docker's image store for
+the artifact. No host package installation or registry push is required by this
+transport. See Docker's [multiple exporter contract](https://docs.docker.com/build/exporters/#multiple-exporters).
+
+The existing private execution owner must start the build durably on GCP,
+outside the Mac SSH lifetime, and retain these regular files in an owned `0700`
+directory, each with `0600` permissions:
+
+| File                  | Supervisor-owned evidence                                          |
+| --------------------- | ------------------------------------------------------------------ |
+| `build-metadata.json` | Native BuildKit metadata containing `containerimage.digest`.       |
+| `build.log`           | Complete native build output. Keep it private.                     |
+| `build.exit`          | The completed build's native exit status; sealing requires `0`.    |
+| `execution.json`      | The exact record described below, written after the build settles. |
+
+The execution record's schema is `openclaw.fork-gcp-image-execution.v1`. Its
+fields are `operationId` (32 lowercase hex digits), `attempt` (positive integer
+or decimal string), numeric-string `projectNumber` and `instanceId`, exact
+`toolingSha`, `sourceSha`, `sourceTree`, `manifestSha256`, `inventorySha256`,
+`indexDigest`, UTC-second `builtAt`, `startedAt`, `completedAt`, integer
+`buildExitCode`, and SHA-256 `buildMetadataSha256` and `buildLogSha256`. Unknown
+fields are refused. Retain one operation identity across observations; reconcile
+an uncertain build before another attempt. The timestamps and file hashes come
+from the supervisor's observations, never candidate-supplied JSON.
+
+This evidence directory must be outside **every** candidate mount, including a
+shared parent mount; the path check alone cannot establish mount isolation.
+Keep the supervisor, Docker socket and cloud credentials inaccessible to
+candidate code. Use the reviewed secretless build route and an exact source
+context. The native Dockerfile still needs dependency and OS acquisition:
+`--network=none` is usable only with a complete verified cache/closure. Do not
+remove its security updates or integrity steps to make an offline build pass.
+
+Sealing verifies the private evidence bindings, every OCI blob and attestation,
+native workspace smoke and selected plugin payload. Smoke and plugin inspection
+use the verified config digest, network disabled, a read-only root and bounded
+resources. Native smoke creates one container, retains its returned immutable
+ID, verifies terminal success and removes only that container on success,
+failure or an attached-client timeout. The GCP producer in the public image receipt contains only `kind`,
+`toolingSha`, `operationId`, `attempt` and `executionSha256`; cloud identifiers,
+paths and raw logs remain private. It is a trusted supervisor attestation, not a
+cloud identity signature or permission to deploy. The existing coordinator
+accepts this producer identity without changing backup, review, approval or
+production-eligibility gates. This command does not launch a build or install a
+cloud controller; those execution and isolation responsibilities remain with
+the private owner.
+
 ## Private deployment interface
 
 The proposed GitHub-to-GCP route, disposable rehearsal lifecycle, privacy

@@ -259,35 +259,110 @@ if printf '%s\\n' "$smoke_output" | grep -q "Missing workspace template:"; then 
 if [ "$smoke_status" -ne 0 ]; then echo "Agent exited $smoke_status after workspace bootstrap (provider credentials are intentionally absent)."; fi
 `;
 
-function smokeImage(directory, architecture, variant, configDigest) {
+function smokeImage(directory, architecture, variant, configDigest, options = {}) {
+  requireValue(
+    options.isolation === undefined || options.isolation === "secretless",
+    "Unsupported Docker smoke isolation.",
+  );
+  requireValue(
+    options.transport === undefined || ["skopeo", "loaded"].includes(options.transport),
+    "Unsupported Docker smoke transport.",
+  );
+  requireValue(DIGEST.test(configDigest), "Missing exact smoke config digest.");
   const image = `openclaw-release-smoke:${architecture}-${variant}`;
   // Only the smoke copy enters Docker's single-image store. The OCI artifact
   // retains the original index, SBOM, and provenance for digest-preserving promotion.
-  run(
-    "skopeo",
-    [
-      "--override-os",
-      "linux",
-      "--override-arch",
-      architecture,
-      "copy",
-      `oci:${directory}`,
-      `docker-daemon:${image}`,
-    ],
-    { timeout: 600_000, stdio: "inherit" },
-  );
+  if (options.transport !== "loaded") {
+    run(
+      "skopeo",
+      [
+        "--override-os",
+        "linux",
+        "--override-arch",
+        architecture,
+        "copy",
+        `oci:${directory}`,
+        `docker-daemon:${image}`,
+      ],
+      { timeout: 600_000, stdio: "inherit" },
+    );
+  }
   requireValue(
-    run("docker", ["image", "inspect", "--format", "{{.Id}}", image]).trim() === configDigest,
+    run("docker", [
+      "image",
+      "inspect",
+      "--format",
+      "{{.Id}}",
+      options.transport === "loaded" ? configDigest : image,
+    ]).trim() === configDigest,
     "Smoke image does not match the prepared OCI image.",
   );
   const script =
     variant === "browser"
       ? String.raw`set -eu; browser="$(find /home/node/.cache/ms-playwright -maxdepth 5 -type f \( -name chrome -o -name chromium -o -name chrome-headless-shell \) -print | head -1)"; test -n "$browser"; "$browser" --version`
       : WORKSPACE_SMOKE;
-  run("docker", ["run", "--rm", "--entrypoint", "/bin/sh", image, "-lc", script], {
-    timeout: 120_000,
-    stdio: "inherit",
-  });
+  const isolation =
+    options.isolation === "secretless"
+      ? [
+          "--network",
+          "none",
+          "--read-only",
+          "--cap-drop",
+          "ALL",
+          "--security-opt",
+          "no-new-privileges",
+          "--pids-limit",
+          "128",
+          "--memory",
+          "2g",
+          "--cpus",
+          "1",
+          "--tmpfs",
+          "/tmp:rw,nosuid,nodev,size=536870912",
+        ]
+      : [];
+  // Keep the native workspace/browser smoke contract. Fork preparation on a
+  // shared host opts into isolation without replacing that contract.
+  if (options.isolation === "secretless") {
+    const container = run("docker", [
+      "create",
+      ...isolation,
+      "--entrypoint",
+      "/bin/sh",
+      configDigest,
+      "-lc",
+      script,
+    ]).trim();
+    requireValue(/^[0-9a-f]{64}$/u.test(container), "Invalid owned smoke container identity.");
+    try {
+      run("docker", ["start", "--attach", container], {
+        timeout: 120_000,
+        stdio: "inherit",
+      });
+      requireValue(
+        run("docker", [
+          "inspect",
+          "--format",
+          "{{.State.Running}} {{.State.ExitCode}}",
+          container,
+        ]).trim() === "false 0",
+        "Native smoke did not complete successfully.",
+      );
+    } finally {
+      // Only this create response grants cleanup authority. A failed native
+      // check or attached-client timeout cannot leave the test writer running.
+      run("docker", ["rm", "--force", container], { timeout: 30_000 });
+    }
+    return;
+  }
+  run(
+    "docker",
+    ["run", "--rm", ...isolation, "--entrypoint", "/bin/sh", configDigest, "-lc", script],
+    {
+      timeout: 120_000,
+      stdio: "inherit",
+    },
+  );
 }
 
 function releaseContext(env) {

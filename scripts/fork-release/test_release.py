@@ -99,6 +99,43 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(release.Refusal, "inventory mismatch"):
                 release.receipt_at(path, manifest, manifest_hash, "e" * 64)
 
+    def test_gcp_producer_uses_private_execution_binding_without_github_aliases(self):
+        producer = {"kind": "gcp", "toolingSha": "a" * 40, "operationId": "b" * 32,
+                    "attempt": "2", "executionSha256": "c" * 64}
+        release.validate_producer(producer)
+        self.assertEqual(release.image_artifact_name("d" * 40, producer),
+                         f"fork-release-{'d' * 40}-gcp-{'b' * 32}-2")
+        for field in ("toolingSha", "operationId", "attempt", "executionSha256"):
+            changed = {**producer, field: "invalid"}
+            with self.subTest(field=field), self.assertRaises(release.Refusal):
+                release.validate_producer(changed)
+        for extra in ("workflowSha", "runId", "instanceId", "privatePath"):
+            with self.subTest(extra=extra), self.assertRaisesRegex(release.Refusal, "producer fields"):
+                release.validate_producer({**producer, extra: "private"})
+
+    def test_source_only_gcp_receipt_binds_source_pr_head(self):
+        manifest, manifest_hash = release.manifest_at(Path(__file__).with_name("manifest.json"))
+        manifest["review"] = {"prNumber": 18, "baseSha": "1" * 40, "changedDiffSha256": "2" * 64}
+        producer = {"kind": "gcp", "toolingSha": "a" * 40, "operationId": "b" * 32,
+                    "attempt": "1", "executionSha256": "c" * 64}
+        receipt = {"schema": "openclaw.fork-release-image.v2", "manifestSha256": manifest_hash,
+                   "inventorySha256": "e" * 64, "repository": manifest["repository"],
+                   "sourceSha": manifest["source"]["commit"], "sourceTree": manifest["source"]["tree"],
+                   "architecture": "amd64", "indexDigest": "sha256:" + "a" * 64,
+                   "imageDigest": "sha256:" + "b" * 64, "configDigest": "sha256:" + "c" * 64,
+                   "producer": producer,
+                   "artifactName": release.image_artifact_name(manifest["source"]["commit"], producer),
+                   "review": {**manifest["review"], "headSha": manifest["source"]["commit"]}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "receipt.json"
+            path.write_text(json.dumps(receipt))
+            self.assertFalse(manifest["productionEligible"])
+            self.assertEqual(release.receipt_at(path, manifest, manifest_hash, "e" * 64), receipt)
+            receipt["review"]["headSha"] = producer["toolingSha"]
+            path.write_text(json.dumps(receipt))
+            with self.assertRaisesRegex(release.Refusal, "review head differs from source"):
+                release.receipt_at(path, manifest, manifest_hash, "e" * 64)
+
     def test_inventory_baseline_and_policy_change_operation_and_approval_identity(self):
         current = state()
         for phase in ("backup", "restore", "rehearsal"):

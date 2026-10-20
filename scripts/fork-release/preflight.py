@@ -247,8 +247,12 @@ def deployment_checks(checks, receipt, manifest, manifest_hash, inventory_hash, 
     checks.need(release.matches(VERSION, receipt["version"]), "deployment.version")
     checks.need(isinstance(image.get("version"), str) and receipt["version"] == "v" + image["version"], "deployment.version.image")
     checks.need(receipt["version"] == upstream_tag and release.matches(VERSION, upstream_tag), "deployment.version.upstream")
-    checks.fields(receipt["producer"], "workflowSha runId attempt", "deployment.producer.fields")
-    checks.fields(image["producer"], "workflowSha runId attempt", "image.producer.fields")
+    for owner, producer in (("deployment", receipt["producer"]), ("image", image["producer"])):
+        if checks.fields(producer, release.producer_fields(producer), owner + ".producer.fields"):
+            try:
+                release.validate_producer(producer)
+            except release.Refusal:
+                checks.need(False, owner + ".producer.invalid")
     checks.need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), receipt["deploymentId"]), "deployment.id")
     deployed = checks.timestamp(receipt["deployedAt"], "deployment.time")
     if deployed:
