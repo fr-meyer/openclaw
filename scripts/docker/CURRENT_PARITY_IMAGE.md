@@ -37,11 +37,20 @@ The plan preserves the native release workflow's OCI directory exporter
 blobs and Buildx metadata are the artifact; a Docker daemon smoke-test copy
 does not replace them.
 
-The command explicitly sets `--network none` for Dockerfile `RUN` execution.
-The unchanged native Dockerfile still contains pnpm, Debian, npm and Corepack
-acquisition steps. A build therefore needs an already prepared, verified
-dependency/cache closure; an offline miss remains a build prerequisite failure.
-Do not silently enable execution networking or remove native integrity checks.
+The command sets `--network none` as the Dockerfile execution default. The
+native Dockerfile separates package acquisition from candidate execution.
+Explicit network access is limited to reviewed acquisition steps: pinned
+Corepack/pnpm with manifests, lockfile and patches only, and the existing
+Debian security updates and npm refresh before candidate payload copies.
+Package acquisition disables lifecycle scripts and pnpmfile hooks; the native
+offline production/build installs retain their allowed lifecycle scripts and
+native-addon checks. Runtime Corepack uses the prepared cache and retains the
+final nonroot offline pnpm check. Candidate scripts, compilation and payload
+verification keep the network-disabled default.
+
+The package cache and each acquisition stage must complete before the image
+can qualify; an offline miss remains a prerequisite failure. Do not remove
+native integrity or security checks to make a build pass.
 BuildKit's Git-context, base-image and attestation-generator acquisition are
 separate from this `RUN` network setting and must use the approved secretless
 build route. The plan supplies no credentials, host mounts or SSH forwarding.

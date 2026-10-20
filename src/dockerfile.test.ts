@@ -146,13 +146,84 @@ describe("Dockerfile", () => {
       'ARG OPENCLAW_BUN_IMAGE="docker.io/oven/bun:1.4.2@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895"',
     );
     expect(dockerfile).toContain("FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS workspace-deps");
-    expect(dockerfile).toContain("FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS dependency-inputs");
+    expect(dockerfile).toContain("FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS dependency-acquisition");
+    expect(dockerfile).toContain("FROM dependency-acquisition AS dependency-inputs");
     expect(dockerfile).toContain("FROM dependency-inputs AS build");
     expect(dockerfile).toContain("FROM ${OPENCLAW_NODE_BOOKWORM_SLIM_IMAGE} AS base-runtime");
     expect(dockerfile).toContain("FROM base-runtime");
     expect(dockerfile).toContain("current multi-arch manifest list entries");
     expect(dockerfile).not.toContain("current amd64 entry");
     expect(dockerfile).not.toContain("OPENCLAW_VARIANT");
+  });
+
+  it("limits Docker acquisition networking to script-free package inputs and runtime tools", () => {
+    const dockerfile = readFileSync(dockerfilePath, "utf8");
+    const acquisitionStart = dockerfile.indexOf(" AS dependency-acquisition\n");
+    const acquisitionEnd = dockerfile.indexOf("\nFROM dependency-acquisition AS dependency-inputs");
+    expect(acquisitionStart).toBeGreaterThanOrEqual(0);
+    expect(acquisitionEnd).toBeGreaterThan(acquisitionStart);
+    const acquisition = dockerfile.slice(acquisitionStart, acquisitionEnd);
+    const instructions = collapseDockerContinuations(dockerfile).split("\n");
+    const networked = instructions.filter((line) => /^RUN .*--network=default/u.test(line));
+    expect(networked).toHaveLength(3);
+    expect(networked[0]).toContain("pnpm fetch --ignore-pnpmfile --config.ignoreScripts=true");
+    expect(networked[0]).not.toContain("--frozen-lockfile");
+    expect(networked[0]).not.toContain("--ignore-scripts");
+    const fetch = acquisition.indexOf("pnpm fetch");
+    const hashInputs = acquisition.indexOf("sha256sum pnpm-lock.yaml pnpm-workspace.yaml");
+    const verifyInputs = acquisition.indexOf("sha256sum -c /tmp/openclaw-fetch-inputs.sha256");
+    expect(hashInputs).toBeGreaterThanOrEqual(0);
+    expect(hashInputs).toBeLessThan(fetch);
+    expect(verifyInputs).toBeGreaterThan(fetch);
+    expect(networked[1]).toContain("apt-get dist-upgrade -y");
+    expect(networked[2]).toContain("npm install --global npm@latest --ignore-scripts");
+    expect(networked[2]).toContain("npm update");
+    expect(networked[2]).toContain("--omit=dev --ignore-scripts");
+    expect(acquisition).toContain("COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./");
+    expect(acquisition).toContain("COPY patches ./patches");
+    expect(acquisition).not.toMatch(/^COPY (?:scripts|src|node_modules|\. )/m);
+    expect(acquisition).not.toMatch(/\bnode (?:scripts\/|\.\/)/u);
+    expect(acquisition).not.toContain("pnpm install");
+    expect(acquisition).toContain('corepack prepare "$pnpm_spec" --activate');
+    expect(acquisition).toContain("require('./package.json').packageManager");
+    expect(acquisition).not.toContain("minimumReleaseAge=");
+    expect(acquisition).not.toContain("verifyStoreIntegrity=false");
+
+    const runtime = dockerfile.slice(dockerfile.indexOf("\nFROM base-runtime\n"));
+    const payloadStart = runtime.indexOf("COPY --from=runtime-assets");
+    expect(payloadStart).toBeGreaterThan(0);
+    expect(runtime.slice(payloadStart)).not.toContain("--network=default");
+    expect(runtime.slice(0, payloadStart)).toContain(
+      "COPY --from=dependency-acquisition /usr/local/share/corepack /usr/local/share/corepack",
+    );
+    expect(runtime.slice(payloadStart)).toContain(
+      'COREPACK_ENABLE_NETWORK=0 corepack "$pnpm_spec" --version',
+    );
+    expect(runtime.slice(runtime.indexOf("\nUSER node\n"))).toContain(
+      "COREPACK_ENABLE_NETWORK=0 PNPM_CONFIG_OFFLINE=true pnpm --version",
+    );
+  });
+
+  it("keeps native Docker installs and lifecycle checks offline after acquisition", () => {
+    const dockerfile = readFileSync(dockerfilePath, "utf8");
+    const instructions = collapseDockerContinuations(dockerfile).split("\n");
+    const installs = instructions.filter((line) => /^RUN .*pnpm install\b/u.test(line));
+    expect(installs).toHaveLength(2);
+    for (const install of installs) {
+      expect(install).toContain("--network=none");
+      expect(install).toContain("pnpm install --frozen-lockfile --offline");
+      expect(install).not.toContain("--ignore-scripts");
+      expect(install).not.toContain("--ignore-pnpmfile");
+      expect(install).toContain("--config.supportedArchitectures.os=linux");
+      expect(install).toContain("--config.supportedArchitectures.libc=glibc");
+    }
+    expect(
+      dockerfile.match(/^RUN --network=none sh scripts\/docker\/verify-native-addons\.sh$/gm),
+    ).toHaveLength(2);
+    expect(dockerfile).toContain("RUN --network=none node scripts/postinstall-bundled-plugins.mjs");
+    const build = instructions.find((line) => /^RUN .*pnpm build:docker;/u.test(line));
+    expect(build).toContain("--network=none");
+    expect(build).toContain("pnpm ui:build");
   });
 
   it("installs CA certificates and refreshes the trust store", async () => {
@@ -243,7 +314,9 @@ describe("Dockerfile", () => {
       readFile(dockerfilePath, "utf8"),
       readFile(join(repoRoot, "scripts/docker/verify-native-addons.sh"), "utf8"),
     ]);
-    expect(dockerfile.match(/^RUN sh scripts\/docker\/verify-native-addons.sh$/gm)).toHaveLength(2);
+    expect(
+      dockerfile.match(/^RUN --network=none sh scripts\/docker\/verify-native-addons.sh$/gm),
+    ).toHaveLength(2);
     expect(nativeCheck).toContain("grep -qx 'matrix' /tmp/openclaw-selected-plugin-dirs");
     expect(nativeCheck).toContain('find /app/node_modules -name "matrix-sdk-crypto*.node"');
     expect(nativeCheck).toContain(
@@ -266,7 +339,7 @@ describe("Dockerfile", () => {
     expect(workspaceDepsEnd).toBeGreaterThan(workspaceDepsStart);
 
     const workspaceDeps = dockerfile.slice(workspaceDepsStart, workspaceDepsEnd);
-    const extractionIndex = workspaceDeps.indexOf("RUN mkdir -p /out/");
+    const extractionIndex = workspaceDeps.indexOf("RUN --network=none mkdir -p /out/");
     const inputCopies = [
       "COPY scripts/lib/docker-plugin-selection.mjs /tmp/docker-plugin-selection.mjs",
       "COPY packages /tmp/packages",
@@ -335,8 +408,9 @@ describe("Dockerfile", () => {
         ),
       );
       const workspaceBody = stages.get("workspace-deps");
+      const acquisitionBody = stages.get("dependency-acquisition");
       const dependencyBody = stages.get("dependency-inputs");
-      if (!workspaceBody || !dependencyBody) {
+      if (!workspaceBody || !acquisitionBody || !dependencyBody) {
         throw new Error("Docker dependency input stages are missing");
       }
       const fixture = tempDirs.make("openclaw-docker-workspace-manifests-");
@@ -345,7 +419,7 @@ describe("Dockerfile", () => {
         fixture,
         stage: "workspace-deps",
       });
-      const extraction = [...workspaceBody.matchAll(/^RUN (.+)$/gm)]
+      const extraction = [...workspaceBody.matchAll(/^RUN --network=none (.+)$/gm)]
         .map(([, command]) => command)
         .join("\n")
         .replace(/\/(tmp|out)(?=\/|["\s]|$)/g, `${workspaceRoot}/$1`);
@@ -358,7 +432,7 @@ describe("Dockerfile", () => {
         },
       });
       const inputsRoot = await stageDockerManifestCopies({
-        body: dependencyBody,
+        body: `${acquisitionBody}\n${dependencyBody}`,
         fixture,
         stage: "dependency-inputs",
       });
@@ -571,9 +645,10 @@ describe("Dockerfile", () => {
       expect(production?.parent).toBe("dependency-inputs");
       expect(stages.get("build")?.parent).toBe(production?.parent);
       const inputs = stages.get("dependency-inputs");
-      expect(inputs?.parent).toBe("${OPENCLAW_NODE_BOOKWORM_IMAGE}");
+      expect(inputs?.parent).toBe("dependency-acquisition");
+      expect(stages.get("dependency-acquisition")?.parent).toBe("${OPENCLAW_NODE_BOOKWORM_IMAGE}");
       expect(inputs?.body).not.toMatch(/pnpm install|COPY \. \./);
-      expect(production?.body).toContain("pnpm install --frozen-lockfile --prod");
+      expect(production?.body).toContain("pnpm install --frozen-lockfile --offline --prod");
       expect(production?.body).not.toMatch(/--ignore-scripts|COPY .*node_modules/);
       expect(dockerfile).not.toContain("pnpm prune");
 
@@ -734,7 +809,7 @@ describe("Dockerfile", () => {
 
   it("keeps package manager metadata in runtime images", async () => {
     const dockerfile = collapseDockerContinuations(await readFile(dockerfilePath, "utf8"));
-    const installProd = "pnpm install --frozen-lockfile --prod";
+    const installProd = "pnpm install --frozen-lockfile --offline --prod";
     const finalWorkspaceCopy =
       "COPY --from=runtime-assets --chown=node:node /app/pnpm-workspace.yaml .";
 
