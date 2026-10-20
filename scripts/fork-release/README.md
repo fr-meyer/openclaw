@@ -138,20 +138,19 @@ must still satisfy all of its existing gates and policies. This helper never
 posts, approves, merges or changes GitHub settings.
 
 After the exact candidate PR and checks are reviewed, the hosted OCI build is
-started only by a separate `workflow_dispatch` (or a reviewed
-`release-pipeline/**` push). The normal PR-opening path cannot build it.
+started only by a separate `workflow_dispatch` on fork `main` with the exact
+40-character candidate metadata-seal commit, or a reviewed
+`release-pipeline/**` push. The normal PR-opening path cannot build it.
 GitHub requires the dispatch workflow file on the default branch, so this
 route begins only after the tooling has been reviewed and landed there.
 
-The existing manual job still selects both tooling and candidate metadata from
-`github.sha`. An upstream-based candidate may omit those fork helper paths;
-landing trusted tooling on main and sealing metadata alone does not make that
-candidate buildable through this job. Before adopting the stable-tag strategy
-for a new candidate, the parent must reconcile the 9.9 owner's hosted-qualified
-tooling selection: select an immutable trusted main tooling revision separately
-from the exact candidate metadata seal and product source, and bind all three
-in producer/consumer evidence. This source-only package adds enforcement to the
-existing lane; it does not add a second runner or claim that migration is done.
+The manual job now reads trusted tooling from the dispatched `main` commit and
+metadata from the exact input commit. It checks the current open fork candidate
+PR's head and base before using the sealed source identity. The source checkout
+and OCI receipt remain bound to the manifest's exact product commit and image
+bytes. This separation needs hosted qualification after the tooling lands; it
+does not grant build, merge, backup, or deployment authority. Reconcile the
+9.9 owner's other hosted-qualified runner fixes before adopting a candidate.
 
 ## Source and hosted proof
 
@@ -317,7 +316,11 @@ backup and interruption contracts, version migration dependencies, and the
 separate publication/settings plan.
 
 The seed's manifest-bound `patch-inventory.json` records its two ordered patches
-and every affected path. It is not the full 9.8/9.9/10.1 inventory.
+and every affected path. It is not the full 9.8/9.9/10.1–10.5 inventory.
+
+The post-9.8 grouped target and its source and migration facts are tracked in
+[`GROUPED-2026.10.5.md`](GROUPED-2026.10.5.md). It is preparation evidence, not
+an eligible candidate manifest.
 Copy `patch-inventory.template.json` for a new reviewed candidate; nulls and
 `unknown` deliberately fail admission. Keep host-supervisor qualification
 separate from the container patch queue.

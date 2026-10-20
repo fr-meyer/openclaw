@@ -441,6 +441,7 @@ def main():
         print("history_commits=" + " ".join(preflight.history_commits(inventory)))
         print(f"upstream_tag={inventory['upstream']['tag'] if inventory['upstream'] else ''}")
         print(f"review_base_sha={manifest.get('review', {}).get('baseSha', '')}")
+        print(f"review_pr_number={manifest.get('review', {}).get('prNumber', '')}")
         return
     if args.command == "source-check":
         need(args.source_dir is not None, "source checkout required")

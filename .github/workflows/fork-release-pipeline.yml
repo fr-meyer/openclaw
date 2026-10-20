@@ -21,6 +21,11 @@ on:
       - scripts/fork-release/**
       - scripts/docker-release-artifacts.mjs
   workflow_dispatch:
+    inputs:
+      candidate_head_sha:
+        description: Exact candidate metadata-seal commit (40 lowercase hex characters)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -178,25 +183,47 @@ jobs:
           if-no-files-found: error
 
   qualify-and-prepare:
-    if: github.event_name != 'pull_request' && github.repository == 'fr-meyer/openclaw'
+    if: >-
+      ${{ github.event_name != 'pull_request' && github.repository == 'fr-meyer/openclaw' &&
+          (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
+      - name: Validate manual candidate identity before checkout
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CANDIDATE_HEAD_SHA: ${{ inputs.candidate_head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
       - name: Checkout trusted pipeline tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           path: tooling
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact candidate metadata
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_head_sha || github.sha }}
+          path: metadata
           # Seal + at most 64 ordered source patches + source base.
           fetch-depth: 66
           persist-credentials: false
+      - name: Confirm candidate metadata commit
+        env:
+          CANDIDATE_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git -C metadata rev-parse HEAD)" == "$CANDIDATE_HEAD_SHA" ]]
       - name: Resolve exact source identity
         id: identity
         run: |
           set -euo pipefail
           python3 tooling/scripts/fork-release/release.py identity \
-            --manifest tooling/scripts/fork-release/manifest.json \
-            --inventory tooling/scripts/fork-release/patch-inventory.json >> "$GITHUB_OUTPUT"
+            --manifest metadata/scripts/fork-release/manifest.json \
+            --inventory metadata/scripts/fork-release/patch-inventory.json >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - name: Verify metadata PR seal before a manual candidate build
         if: steps.identity.outputs.review_base_sha != ''
@@ -204,19 +231,43 @@ jobs:
           BASE_SHA: ${{ steps.identity.outputs.review_base_sha }}
         run: |
           set -euo pipefail
-          git -C tooling fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git -C metadata fetch --no-tags --depth=1 origin "$BASE_SHA"
           TAG='${{ steps.identity.outputs.upstream_tag }}'
           if [[ -n "$TAG" ]]; then
-            git -C tooling fetch --no-tags --depth=1 https://github.com/openclaw/openclaw.git "refs/tags/$TAG"
+            git -C metadata fetch --no-tags --depth=1 https://github.com/openclaw/openclaw.git "refs/tags/$TAG"
           fi
           HISTORY_COMMITS='${{ steps.identity.outputs.history_commits }}'
           for COMMIT in $HISTORY_COMMITS; do
-            if ! git -C tooling cat-file -e "$COMMIT^{commit}" 2>/dev/null; then
-              git -C tooling fetch --no-tags --depth=1 origin "$COMMIT"
+            if ! git -C metadata cat-file -e "$COMMIT^{commit}" 2>/dev/null; then
+              git -C metadata fetch --no-tags --depth=1 origin "$COMMIT"
             fi
           done
           python3 tooling/scripts/fork-release/pr.py seal-offline \
-            --manifest tooling/scripts/fork-release/manifest.json --checkout tooling
+            --manifest metadata/scripts/fork-release/manifest.json --checkout metadata
+      - name: Confirm the exact candidate is the current PR head
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          PR_NUMBER: ${{ steps.identity.outputs.review_pr_number }}
+          PR_BASE_SHA: ${{ steps.identity.outputs.review_base_sha }}
+          CANDIDATE_HEAD_SHA: ${{ inputs.candidate_head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          python3 - <<'PY'
+          import os
+          import sys
+
+          sys.path.insert(0, "tooling/scripts/fork-release")
+          from pr import fetch_public_json, need
+
+          pr = fetch_public_json(f"repos/fr-meyer/openclaw/pulls/{os.environ['PR_NUMBER']}")
+          need(pr["state"] == "open" and pr["head"]["sha"] == os.environ["CANDIDATE_HEAD_SHA"],
+               "candidate PR is closed or its head changed")
+          need(pr["base"]["sha"] == os.environ["PR_BASE_SHA"] and pr["base"]["ref"] == "main",
+               "candidate PR base changed after sealing")
+          need(pr["head"]["repo"]["full_name"] == "fr-meyer/openclaw" and
+               pr["head"]["ref"].startswith("candidate/"), "candidate PR is outside fork release lane")
+          PY
       - name: Checkout exact candidate and ordered patch ancestry
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -244,8 +295,8 @@ jobs:
             fi
           done
           python3 tooling/scripts/fork-release/preflight.py \
-            --manifest tooling/scripts/fork-release/manifest.json \
-            --inventory tooling/scripts/fork-release/patch-inventory.json --source-dir source
+            --manifest metadata/scripts/fork-release/manifest.json \
+            --inventory metadata/scripts/fork-release/patch-inventory.json --source-dir source
           python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_*.py'
           python3 -c 'import json; print("version=" + json.load(open("source/package.json"))["version"])' >> "$GITHUB_OUTPUT"
       - name: Run focused custom patch and producer-consumer gates
@@ -255,8 +306,8 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
           mapfile -t tests < <(python3 ../tooling/scripts/fork-release/release.py gates \
-            --manifest ../tooling/scripts/fork-release/manifest.json \
-            --inventory ../tooling/scripts/fork-release/patch-inventory.json)
+            --manifest ../metadata/scripts/fork-release/manifest.json \
+            --inventory ../metadata/scripts/fork-release/patch-inventory.json)
           OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${tests[@]}"
       - name: Install reviewed OCI smoke transport
         run: |
@@ -296,8 +347,8 @@ jobs:
         run: |
           set -euo pipefail
           node tooling/scripts/fork-release/image.mjs seal \
-            tooling/scripts/fork-release/manifest.json \
-            tooling/scripts/fork-release/patch-inventory.json source \
+            metadata/scripts/fork-release/manifest.json \
+            metadata/scripts/fork-release/patch-inventory.json source \
             "$RUNNER_TEMP/fork-release/oci/default" "$BUILDKIT_DIGEST" \
             "$RUNNER_TEMP/fork-release/receipt.json"
       - name: Retain the exact tested OCI payload and public receipt

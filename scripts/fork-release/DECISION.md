@@ -1,7 +1,9 @@
 # Fork release decision and staged migration
 
 Accepted strategy, October 11, 2026. This document adds contracts to PR #15.
-Production order stays **9.8, then 9.9, then 10.1**. Existing release owners
+The October 11 plan said **9.8, then 9.9, then 10.1**. The October 20 scope
+groups the post-9.8 stable changes through **2026.10.5** into one future
+candidate; see [`GROUPED-2026.10.5.md`](GROUPED-2026.10.5.md). Existing release owners
 keep their candidates, repairs, runtime evidence, and activation decisions.
 
 ## Branch and source model
@@ -176,7 +178,7 @@ backup groups require owner qualification.
    candidate-specific refs/baselines/CLI hashes through reviewed manifest bindings;
    preserve its 29 Vitest and five Node owners and pre-overlay CI inventory order.
    This package does not duplicate that runner. Integrate inventory research
-   without starting a second inventory or 10.1 build.
+   without starting a second inventory or an unqualified candidate build.
 2. After separate publication approval, update the existing PR #15 branch
    without force, with fresh base/head and sanitized diff checks. Re-run its
    offline gates and opening/transition preflight. Review inherited
@@ -187,10 +189,10 @@ backup groups require owner qualification.
    Trusted base tooling must land, then the parent must reconcile the 9.9 owner's
    qualified selection interface: an immutable main tooling revision is selected
    independently of the candidate metadata seal and exact product source, with
-   all identities bound in producer/consumer evidence. The current manual job
-   still uses github.sha for tooling and metadata together; an upstream-based
-   candidate lacking fork helpers cannot use it merely by sealing metadata.
-   This is an explicit source-only adoption prerequisite, not a completed migration.
+   all identities bound in producer/consumer evidence. The manual job now
+   selects trusted `main` tooling and an exact candidate metadata head
+   separately, and checks that head against the live candidate PR. Hosted
+   qualification and the other 9.9 runner fixes remain adoption prerequisites.
    Keep draft qualification separate from explicitly authorized image build.
 4. Separately approve any ruleset/protection or production environment changes:
    require the stable named contract/security checks, forbid force/deletion of

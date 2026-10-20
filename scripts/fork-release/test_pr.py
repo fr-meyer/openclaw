@@ -111,13 +111,19 @@ class PrTests(unittest.TestCase):
             root = Path(directory) / "origin"
             root.mkdir()
             manifest_path, event, _ = fixture(root)
-            checkout = Path(directory) / "tooling"
+            checkout = Path(directory) / "metadata"
             workflow = (Path(__file__).resolve().parents[2] /
                         ".github/workflows/fork-release-pipeline.yml").read_text()
-            tooling_step = workflow.split("- name: Checkout trusted pipeline tooling", 1)[1].split(
+            metadata_step = workflow.split("- name: Checkout exact candidate metadata", 1)[1].split(
                 "- name:", 1)[0]
-            depth = re.search(r"fetch-depth:\s*(\d+)", tooling_step)
+            depth = re.search(r"fetch-depth:\s*(\d+)", metadata_step)
             self.assertIsNotNone(depth)
+            manual = workflow.split("  qualify-and-prepare:", 1)[1]
+            self.assertIn("candidate_head_sha:", workflow)
+            self.assertIn("github.ref == 'refs/heads/main'", manual)
+            self.assertIn("--manifest metadata/scripts/fork-release/manifest.json", manual)
+            self.assertIn("metadata/scripts/fork-release/patch-inventory.json source", manual)
+            self.assertNotIn("tooling/scripts/fork-release/manifest.json", manual)
             subprocess.run(["git", "clone", "--quiet", f"--depth={depth.group(1)}", root.as_uri(),
                             str(checkout)], check=True, capture_output=True)
             git(checkout, "fetch", "--no-tags", "--depth=1", "origin",
