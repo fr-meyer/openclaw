@@ -1,0 +1,95 @@
+{
+  "schema": "openclaw.local-source-seal-preparation.v1",
+  "sourceSha": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+  "sourceTree": "9dd42d178010367e153b73f42f1f7d14370b579f",
+  "toolingSha": "1b699d153fd474fec2136a245db6a407cf38050c",
+  "review": {
+    "prNumber": 18,
+    "baseSha": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "changedDiffSha256": "04d2714b03fc9a1f29b7319cd41dbc777df219badbf08d2e50e52b83959a678d"
+  },
+  "cachedPrObservation": {
+    "sha256": "677f9cb6eee998bf2bdc9e5df4f341fc0664669333b91ce789f00709a8ed293c",
+    "updatedAt": "2026-10-20T15:00:55Z",
+    "kind": "public-identity-projection",
+    "headSha": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+    "headRef": "prep/v2026.10.5-source-only",
+    "baseSha": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "baseRef": "prep/v2026.10.5-upstream-base",
+    "state": "open",
+    "draft": true
+  },
+  "cachedHeadMatchesCandidate": true,
+  "prObservationExactHeadVerified": true,
+  "observationProvenance": "Provided native GitHub CLI API public-identity-projection; the generator validates its exact identity and retains the provided bytes unchanged. A public identity projection is selected API fields, not the full raw response. updatedAt is the PR update time, not a fetch time. This generator makes no fresh API or signature-verification call.",
+  "upstreamVerification": {
+    "sha256": "365c9f12b7bb2b5fa2928f03bba0af15db4c764c2c1d0e5aeb2cc20cbb651f5d",
+    "verified": true,
+    "reason": "valid",
+    "verifiedAt": "2026-10-18T20:11:18Z",
+    "payloadAndSignatureMatchLocalTag": true
+  },
+  "originalSemanticPaths": 92,
+  "originalDispositionCounts": {
+    "ADAPTED_SOURCE_ONLY": 77,
+    "RETIRED_REVIEWED": 4,
+    "UPSTREAM_EQUIVALENT_REVIEWED": 3,
+    "CARRIED_INERT_SOURCE_ONLY": 6,
+    "CARRIED_SOURCE_ONLY": 2
+  },
+  "candidateChangedPaths": 113,
+  "introducedPaths": [
+    "custom-patches/reconciliation-2026.10.5.json",
+    "docs/plugins/sdk-migration.md",
+    "docs/plugins/sdk-runtime/config-and-utilities.md",
+    "extensions/memory-core/src/memory-search-tool-query.test.ts",
+    "src/agents/subagents/registry/subagent-control-kill-runtime.ts",
+    "src/agents/subagents/registry/subagent-control-kill.ts",
+    "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+    "src/agents/subagents/registry/subagent-registry-persistence.ts",
+    "src/agents/subagents/registry/subagent-registry-persistence.types.ts",
+    "src/agents/subagents/registry/subagent-registry-run-launch.ts",
+    "src/agents/subagents/registry/subagent-registry-run-manager.ts",
+    "src/agents/subagents/registry/subagent-registry.store.kernel.ts",
+    "src/agents/subagents/registry/subagent-registry.store.worker.ts",
+    "src/agents/subagents/registry/subagent-registry.types.ts",
+    "src/cli/gateway-rpc.runtime.test.ts",
+    "src/gateway/agent-turn/agent-run-subagent.ts",
+    "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+    "src/gateway/server-methods/agent-subagent-registration.ts",
+    "src/gateway/server-plugin-in-process-authority.ts",
+    "src/gateway/server-plugin-in-process-dispatch.types.ts",
+    "src/gateway/server-plugin-runtime-client.ts",
+    "src/gateway/server-plugin-subagent-runtime.overrides.test.ts",
+    "src/gateway/server-request-context.test.ts",
+    "src/gateway/server.auth.compat-baseline.test.ts",
+    "src/plugins/loader.gateway-bindings.test.ts",
+    "src/secrets/egress-proxy/response-headers.test.ts",
+    "src/state/openclaw-state-read.validation.managed-task-flow.test.ts",
+    "src/tasks/managed-task-flow-host.test.ts",
+    "src/tasks/managed-task-flow-kill-claim.worker.ts",
+    "src/tasks/managed-task-flow.test-helpers.ts",
+    "src/tasks/managed-task-flow.worker.integration.test.ts",
+    "test/vitest/vitest.database-worker-core-paths.mjs",
+    "test/vitest/vitest.gateway-server-paths.mjs"
+  ],
+  "coveredDistinctPaths": 126,
+  "appliedCommitCount": 9,
+  "nonAppliedDecisionCount": 7,
+  "referencedTestCount": 33,
+  "separateNativePrerequisites": [
+    {
+      "file": "native-nowistay-prerequisite.json",
+      "sha256": "c51a8f28b0830e6725b9f3d5ac3ce45ec6adf8a6351261b589aaaf265fb1f499",
+      "required": true
+    }
+  ],
+  "execution": "No candidate code or tests executed; no fetch or cloud operation.",
+  "remaining": [
+    "Recheck PR18 exact head/base at the later release admission boundary.",
+    "Full existing source preflight must run on an ordinary non-promisor checkout.",
+    "Bind separate node --test Nowistay SDK 1.32 qualification evidence; Vitest gates do not satisfy it.",
+    "Image build, native Doctor, readiness, and rollback remain separate qualification."
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema": "openclaw.local-semantic-decision-evidence.v1",
+  "semanticLedgerSha256": "7a6cee45289e9e1f8c281cf61166dfcf790ad2b8600a80003df95e1abc4c5e2d",
+  "verbatimSemanticDecision": {
+    "path": "ui/src/test-helpers/app-sidebar-cases/session-delegated-activity.ts",
+    "treeRelation": "UPSTREAM_CHANGED",
+    "disposition": "UPSTREAM_EQUIVALENT_REVIEWED",
+    "v99BaseBlob": "12e92e225be3a3e127fc5bdac8ec78ce144ed093",
+    "v99ForkBlob": "0f0071a81bfb459e54fdcca4e3e3aad3b08d68d1",
+    "v105UpstreamBlob": "78ccc2cb2509054b2603c667531dd4c48bf61076",
+    "reason": "10.5 already refreshes rosterActivityStore and awaits the affected delegated roster state with waitForFast. Retire the old settleRoster helper patch."
+  },
+  "candidateCommit": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+  "pathBinding": {
+    "path": "ui/src/test-helpers/app-sidebar-cases/session-delegated-activity.ts",
+    "boundary": "container",
+    "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+    "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+    "sourceBlob": "0f0071a81bfb459e54fdcca4e3e3aad3b08d68d1",
+    "upstreamBlob": "78ccc2cb2509054b2603c667531dd4c48bf61076",
+    "candidateBlob": "78ccc2cb2509054b2603c667531dd4c48bf61076"
+  },
+  "scope": "Retained reviewed semantic decision, not an exact-upstreamed patch claim.",
+  "regressionReferences": [
+    "ui/src/components/app-sidebar.sessions.test.ts"
+  ],
+  "qualification": "References only; no tests executed by this generator."
+}

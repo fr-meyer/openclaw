@@ -1,0 +1,28 @@
+{
+  "schema": "openclaw.local-semantic-decision-evidence.v1",
+  "semanticLedgerSha256": "7a6cee45289e9e1f8c281cf61166dfcf790ad2b8600a80003df95e1abc4c5e2d",
+  "verbatimSemanticDecision": {
+    "path": "test/scripts/full-release-validation-state.test.ts",
+    "treeRelation": "UPSTREAM_CHANGED",
+    "disposition": "UPSTREAM_EQUIVALENT_REVIEWED",
+    "v99BaseBlob": "a0cff54472e757ccd59feccfb9a6a23e37a6a5a6",
+    "v99ForkBlob": "7894c870c1337157f47207f9650a5215c408b57c",
+    "v105UpstreamBlob": "00d1ea11b72b16ae61535470603eecff2dbd1215",
+    "reason": "10.5 already pins GITHUB_REPOSITORY to openclaw/openclaw for these upstream release decision fixtures and restores the ambient value afterward."
+  },
+  "candidateCommit": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+  "pathBinding": {
+    "path": "test/scripts/full-release-validation-state.test.ts",
+    "boundary": "tooling",
+    "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+    "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+    "sourceBlob": "7894c870c1337157f47207f9650a5215c408b57c",
+    "upstreamBlob": "00d1ea11b72b16ae61535470603eecff2dbd1215",
+    "candidateBlob": "00d1ea11b72b16ae61535470603eecff2dbd1215"
+  },
+  "scope": "Retained reviewed semantic decision, not an exact-upstreamed patch claim.",
+  "regressionReferences": [
+    "test/scripts/full-release-validation-state.test.ts"
+  ],
+  "qualification": "References only; no tests executed by this generator."
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "openclaw.local-upstream-object-binding.v1",
+  "upstream": {
+    "tag": "v2026.10.5",
+    "tagObject": "9171d0a427738902efd811c648325cf54116743c",
+    "commit": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "tree": "a138559698570e238395121723a773106ac33f8c"
+  },
+  "tagBytesSha256": "cf47a84cef42fb9dd7f3187a949afc4412ea63d8fa2bfe251f26f2a6ce1ce762",
+  "sourceManifestSha256": "4be21ac74e07d223ab3a60a699e07415d62531ff1ea28d0b618e2ddbb2700478",
+  "scope": "Existing local Git object binding; no fresh network or signature-verification claim."
+}
