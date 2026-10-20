@@ -195,7 +195,7 @@ export function persistSubagentRunChangesInWorker(
           deleteRunIds.length !== 0 ||
           versions.length !== 1 ||
           versions[0]?.runId !== values[0]?.run_id ||
-          versions[0].version !== null
+          versions[0]?.version !== null
         ) {
           throw new Error("Managed flow launch admission must register one exact native run");
         }

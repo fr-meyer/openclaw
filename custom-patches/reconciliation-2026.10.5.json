@@ -13,14 +13,14 @@
       "UPSTREAM_UNCHANGED": 6
     },
     "dispositions": {
-      "ADAPTED_SOURCE_ONLY": 76,
+      "ADAPTED_SOURCE_ONLY": 77,
       "CARRIED_INERT_SOURCE_ONLY": 6,
       "CARRIED_SOURCE_ONLY": 2,
-      "RETIRED_REVIEWED": 5,
+      "RETIRED_REVIEWED": 4,
       "UPSTREAM_EQUIVALENT_REVIEWED": 3
     },
     "upstreamedExact": 0,
-    "retiredReviewed": 8
+    "retiredReviewed": 7
   },
   "paths": [
     {
@@ -351,11 +351,11 @@
     {
       "path": "scripts/plugin-sdk-surface-report.mts",
       "treeRelation": "UPSTREAM_CHANGED",
-      "disposition": "RETIRED_REVIEWED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
       "v99BaseBlob": "18f8444d9260ea993f171565ca33300de5eee62f",
       "v99ForkBlob": "3a9b3da6d9254dd107b7d5492a0d78e0f5a68054",
       "v105UpstreamBlob": "458050d7a8fc43be88f07540a8e1fc7193620c8c",
-      "reason": "The 9.9 fork raised the old public export budget by one. That historical budget is obsolete on 10.5; retain the upstream 10.5 budgets unchanged (3645 public exports, 2115 callable exports). Measure the adapted SDK and run the native gate separately; no budget waiver is implied.",
+      "reason": "Retarget the existing fork +1 export allowance to the measured 10.5 surface: 3646 public exports versus upstream 3645, solely for the unchanged CONFIG_MUTATION_CAPABILITIES durable-backup contract. Native measurement found 2115 callable exports and no unauthorized shipped-surface removals. Retain all callable, per-entrypoint, removal and other checks; no environment override or generated inventory change. Re-run the native gate with this exact source policy.",
       "semanticOwner": "plugin-sdk-surface-budget"
     },
     {

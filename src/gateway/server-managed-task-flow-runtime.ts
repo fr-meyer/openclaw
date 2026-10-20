@@ -25,6 +25,7 @@ import { runOpenClawStateWorkerOperation } from "../state/openclaw-state-worker-
 import {
   isManagedTaskFlowReadCommand,
   type ManagedTaskFlowReadOperations,
+  type ManagedTaskFlowWriteOperations,
   type ManagedTaskFlowWorkerOperations,
 } from "../tasks/managed-task-flow-contract.js";
 import { createManagedTaskFlowHost } from "../tasks/managed-task-flow-host.js";
@@ -598,54 +599,57 @@ export function createGatewayManagedTaskFlowRuntime(
         check();
         return value;
       }
-      // Overwrite even a JavaScript caller's undeclared extra field. Only this
-      // captured Gateway/native actor can attach a worker transaction grant.
-      const writeCommand =
-        command.type === "tasks.managedFlows.mutate"
-          ? {
-              ...command,
-              input: {
-                ...command.input,
-                nativeWorkerGrant:
-                  workerCandidate && workerGrant
-                    ? {
-                        childSessionKey: actor!.sessionKey,
-                        runId: workerGrant.runId,
-                        generation: workerGrant.generation,
-                        taskId: workerGrant.taskId,
-                      }
-                    : undefined,
-              },
-            }
-          : command;
-      const result = await runOwned(() =>
-        runOpenClawStateWorkerOperation(
-          stateContext,
-          async (worker) => {
-            check();
-            // Native commit/reply settlement stays inside this retained operation.
-            // The host checks only observations after this promise returns.
-            return worker.execute(writeCommand);
+      const dispatchWrite = <Key extends keyof ManagedTaskFlowWriteOperations>(writeCommand: {
+        type: Key;
+        input: ManagedTaskFlowWriteOperations[Key]["input"];
+      }): Promise<ManagedTaskFlowWriteOperations[Key]["output"]> =>
+        runOwned(() =>
+          runOpenClawStateWorkerOperation(
+            stateContext,
+            async (worker) => {
+              check();
+              // Native commit/reply settlement stays inside this retained operation.
+              // The host checks only observations after this promise returns.
+              return worker.execute(writeCommand);
+            },
+            {
+              assertCurrent: check,
+              createAdmission: createSqliteWorkerWriteAdmission(check, [
+                stateContext.admission.databasePath,
+              ]),
+            },
+          ),
+        );
+      if (command.type === "tasks.managedFlows.mutate") {
+        // Overwrite even a JavaScript caller's undeclared extra field. Only this
+        // captured Gateway/native actor can attach a worker transaction grant.
+        const result = await dispatchWrite({
+          type: command.type,
+          input: {
+            ...command.input,
+            nativeWorkerGrant:
+              workerCandidate && workerGrant
+                ? {
+                    childSessionKey: actor!.sessionKey,
+                    runId: workerGrant.runId,
+                    generation: workerGrant.generation,
+                    taskId: workerGrant.taskId,
+                  }
+                : undefined,
           },
-          {
-            assertCurrent: check,
-            createAdmission: createSqliteWorkerWriteAdmission(check, [
-              stateContext.admission.databasePath,
-            ]),
-          },
-        ),
-      );
-      if (
-        workerGrant &&
-        command.type === "tasks.managedFlows.mutate" &&
-        isRecord(result) &&
-        result.applied === true &&
-        isRecord(result.flow) &&
-        typeof result.flow.revision === "number"
-      ) {
-        workerGrant.revision = result.flow.revision;
+        });
+        if (workerGrant && result.applied) {
+          workerGrant.revision = result.flow.revision;
+        }
+        return result;
       }
-      return result;
+      if (
+        command.type === "tasks.managedFlows.reserve" ||
+        command.type === "tasks.managedFlows.create"
+      ) {
+        return dispatchWrite(command);
+      }
+      throw new Error("Managed task-flow write command is unavailable");
     }
     const host = createManagedTaskFlowHost({
       assertCurrent,

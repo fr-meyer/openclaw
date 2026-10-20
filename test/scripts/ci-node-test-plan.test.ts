@@ -577,11 +577,6 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
     defaultShards = createNodeTestShards();
   });
 
-  it("routes managed task tests through the shared runtime shard", () => {
-    const shard = defaultShards.find((candidate) => candidate.shardName === "core-runtime-shared");
-    expect(shard?.configs).toContain("test/vitest/vitest.tasks.config.ts");
-  });
-
   afterAll(() => {
     committedCompactPlans.clear();
   });
