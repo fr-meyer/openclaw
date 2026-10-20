@@ -53,10 +53,10 @@ INTENT_FIELDS = """schema config sourceDir toolingDir uid gid version preparedAt
 supervisorSha256 buildArgv serviceArgv unitName"""
 SHOW_FIELDS = ("LoadState", "ActiveState", "SubState", "Result", "ExecMainCode",
                "ExecMainStatus", "MainPID", "InvocationID")
-BUILDER_FORMAT = ('{"Name":{{json .Name}},"Driver":{{json .Driver}},"Nodes":['
-                  '{{range $i, $node := .Nodes}}{{if $i}},{{end}}'
-                  '{"Name":{{json $node.Name}},"Endpoint":{{json $node.Endpoint}},'
-                  '"Status":{{json $node.Status}}}{{end}}]}')
+# Buildx v0.33 inspect has no --format. Its ls formatter emits a flat builder
+# row followed by node rows; select the exact builder from this narrow JSONL.
+BUILDER_FORMAT = ('{"Builder":{{json .Builder.Name}},"Name":{{json .Name}},'
+                  '"DriverEndpoint":{{json .DriverEndpoint}},"Status":{{json .Status}}}')
 CONTAINER_FORMAT = (
     '{"Id":{{json .Id}},"Image":{{json .Image}},'
     '"State":{"Running":{{json .State.Running}}},"HostConfig":{'
@@ -318,21 +318,29 @@ def native(argv):
 
 
 def observe_builder(builder):
-    inspected = native([*DOCKER, "--host", ENDPOINT, "buildx", "inspect", builder["name"],
+    inspected = native([*DOCKER, "--host", ENDPOINT, "buildx", "ls",
+                        "--no-trunc", "--timeout", "10s",
                         "--format", BUILDER_FORMAT])
     need(inspected.returncode == 0, "build.builder.inspect")
-    value = json.loads(inspected.stdout)
-    need(value["Name"] == builder["name"] and value["Driver"] == "docker-container"
-         and len(value["Nodes"]) == 1, "build.builder.driver")
-    node = value["Nodes"][0]
-    need(node["Name"] == builder["node"] and node["Endpoint"] == ENDPOINT
+    rows = [json.loads(line) for line in inspected.stdout.splitlines() if line.strip()]
+    for row in rows:
+        fields(row, "Builder Name DriverEndpoint Status", "build.builder.list_fields")
+        need(all(type(value) is str for value in row.values()), "build.builder.list_values")
+    selected = [row for row in rows if row["Builder"] == builder["name"]]
+    drivers = [row for row in selected if row["Name"] == builder["name"]]
+    nodes = [row for row in selected if row["Name"] != builder["name"]]
+    need(len(drivers) == 1 and len(nodes) == 1, "build.builder.row_count")
+    driver, node = drivers[0], nodes[0]
+    need(driver["DriverEndpoint"] == "docker-container" and driver["Status"] == "",
+         "build.builder.driver")
+    need(node["Name"] == builder["node"] and node["DriverEndpoint"] == ENDPOINT
          and node["Status"] == "running", "build.builder.node")
     inspected = native([*DOCKER, "--host", ENDPOINT, "inspect",
                         "--format", CONTAINER_FORMAT, f"buildx_buildkit_{builder['node']}"])
     need(inspected.returncode == 0, "build.builder.container_inspect")
     row = json.loads(inspected.stdout)
     host = row["HostConfig"]
-    observed = {"name": value["Name"], "node": node["Name"], "endpoint": node["Endpoint"],
+    observed = {"name": driver["Name"], "node": node["Name"], "endpoint": node["DriverEndpoint"],
                 "containerId": row["Id"], "imageId": row["Image"],
                 **{key: host[native_key] for key, native_key in {
                     "memoryBytes": "Memory", "memorySwapBytes": "MemorySwap",

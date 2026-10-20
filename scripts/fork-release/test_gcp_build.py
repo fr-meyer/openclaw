@@ -399,9 +399,12 @@ class BuildTests(unittest.TestCase):
 
     def test_native_builder_identity_and_unbounded_io_are_observed_without_mutation(self):
         expected = self.config["builder"]
-        builder = {"Name": expected["name"], "Driver": "docker-container",
-                   "Nodes": [{"Name": expected["node"], "Endpoint": build.ENDPOINT,
-                              "Status": "running"}]}
+        builder = [
+            {"Builder": "unrelated", "Name": "unrelated", "DriverEndpoint": "docker", "Status": ""},
+            {"Builder": expected["name"], "Name": expected["name"],
+             "DriverEndpoint": "docker-container", "Status": ""},
+            {"Builder": expected["name"], "Name": expected["node"],
+             "DriverEndpoint": build.ENDPOINT, "Status": "running"}]
         container = {"Id": expected["containerId"], "Image": expected["imageId"],
                      "State": {"Running": True},
                      "HostConfig": {"Memory": expected["memoryBytes"],
@@ -414,22 +417,63 @@ class BuildTests(unittest.TestCase):
         def inspect(argv):
             calls.append(argv)
             return subprocess.CompletedProcess(
-                argv, 0, json.dumps(builder if "buildx" in argv else container), "")
+                argv, 0, "\n".join(json.dumps(row) for row in builder)
+                if "buildx" in argv else json.dumps(container), "")
 
         with patch.object(build, "native", side_effect=inspect):
             self.assertEqual(self.observe_builder_impl(expected), expected)
             container["Id"] = "0" * 64
             with self.assertRaisesRegex(release.Refusal, "builder.changed"):
                 self.observe_builder_impl(expected)
-        self.assertTrue(all("inspect" in argv and "stop" not in argv and "create" not in argv
+        self.assertTrue(all("stop" not in argv and "create" not in argv and "--bootstrap" not in argv
                             for argv in calls))
         for argv in calls:
+            if "buildx" in argv:
+                self.assertEqual(argv, [*build.DOCKER, "--host", build.ENDPOINT, "buildx", "ls",
+                                        "--no-trunc", "--timeout", "10s",
+                                        "--format", build.BUILDER_FORMAT])
+            else:
+                self.assertIn("inspect", argv)
             projection = argv[argv.index("--format") + 1]
             self.assertEqual(projection, build.BUILDER_FORMAT if "buildx" in argv
                              else build.CONTAINER_FORMAT)
             self.assertNotIn("{{json .}}", projection)
             self.assertNotIn("Env", projection)
             self.assertNotIn("Mounts", projection)
+
+    def test_flat_builder_rows_reject_ambiguous_driver_node_endpoint_and_status(self):
+        expected = self.config["builder"]
+        driver = {"Builder": expected["name"], "Name": expected["name"],
+                  "DriverEndpoint": "docker-container", "Status": ""}
+        node = {"Builder": expected["name"], "Name": expected["node"],
+                "DriverEndpoint": build.ENDPOINT, "Status": "running"}
+        cases = [[], [driver], [driver, driver, node], [driver, node, node]]
+        for field, value in (("DriverEndpoint", "docker"), ("Status", "error")):
+            cases.append([{**driver, field: value}, node])
+        for field, value in (("Builder", "different"), ("Name", "different-node"),
+                             ("DriverEndpoint", "unix:///other.sock"), ("Status", "stopped")):
+            cases.append([driver, {**node, field: value}])
+        for rows in cases:
+            with self.subTest(rows=rows), patch.object(
+                    build, "native", return_value=subprocess.CompletedProcess(
+                        [], 0, "\n".join(json.dumps(row) for row in rows), "")) as native:
+                with self.assertRaises(release.Refusal):
+                    self.observe_builder_impl(expected)
+                self.assertEqual(native.call_count, 1)
+
+    def test_builder_discovery_failure_stays_before_reservation_and_dispatch(self):
+        self.prepare()
+        with patch.object(build, "observe_builder", self.observe_builder_impl), patch.object(
+                build, "native", return_value=subprocess.CompletedProcess(
+                    [], 125, "", "unknown flag: --format")) as native:
+            with self.assertRaisesRegex(release.Refusal, "build.builder.inspect"):
+                build.start(self.op)
+            self.assertEqual(native.call_count, 1)
+            self.assertIn("ls", native.call_args.args[0])
+            self.assertNotIn("systemd-run", " ".join(native.call_args.args[0]))
+        self.assertFalse((self.op / "start-intent.json").exists())
+        self.assertFalse((self.op.parent /
+                          f"builder-{self.config['builder']['containerId']}.json").exists())
 
     def test_metadata_handoff_is_exact_and_fails_closed_on_symlink_or_unchanged_owner(self):
         self.prepare()
