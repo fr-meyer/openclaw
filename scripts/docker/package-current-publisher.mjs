@@ -189,7 +189,7 @@ async function planImage() {
     "--build-arg",
     "OPENCLAW_BUILD_TIMESTAMP=<operator-selected-utc-timestamp>",
     "--build-arg",
-    "OPENCLAW_EXTENSIONS=workboard",
+    "OPENCLAW_EXTENSIONS=codex,workboard",
     "--label",
     `org.opencontainers.image.revision=${head}`,
     "--label",

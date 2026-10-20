@@ -117,6 +117,7 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
     assert.equal(body.upstreamCommit, upstream);
     assert.equal(body.executed, false);
     assert.equal(body.sourceQualified, false);
+    assert.ok(body.command.includes("OPENCLAW_EXTENSIONS=codex,workboard"));
 
     cut.carryForward.reconciliation = "IN_PROGRESS";
     await writeFile(manifestPath, JSON.stringify(cut));

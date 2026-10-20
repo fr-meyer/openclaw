@@ -21,6 +21,10 @@ patch has a reviewed disposition and focused source proof, mark that field
 object and ancestry, product version, publisher runtime hash, and each
 packaged file against the clean candidate commit. It prints a Git-context
 Buildx command; it does not build or publish an image.
+The planned selected extensions include `codex` and `workboard`. Image
+qualification must inspect the final Codex plugin payload and its 10.5
+compatibility metadata; a Codex CLI executable alone is insufficient for
+the native Doctor plugin migrations.
 
 A later build must retain the exact source SHA, Buildx metadata, resolved
 packages, and final image digest. Base images are digest-pinned, but Debian
