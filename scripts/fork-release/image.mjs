@@ -34,7 +34,25 @@ function validateManifest(path) {
     "Invalid pinned source",
   );
   need(manifest.image?.architecture === "amd64", "Only linux/amd64 is staged");
+  need(
+    typeof manifest.image.extensions === "string" &&
+      manifest.image.extensions.split(",").every((id) => /^[a-z0-9][a-z0-9-]*$/u.test(id)),
+    "Invalid selected image extensions",
+  );
+  need(manifest.image.extensions.split(",").includes("codex"), "Image must include Codex plugin");
   return manifest;
+}
+
+function inspectLoadedPlugins(manifest, version) {
+  const verifier = fileURLToPath(new URL("verify-image-plugins.mjs", import.meta.url));
+  const image = `openclaw-release-smoke:${manifest.image.architecture}-default`;
+  return JSON.parse(execFileSync("docker", [
+    "run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
+    "--security-opt", "no-new-privileges", "--pids-limit", "64", "--memory", "256m",
+    "--cpus", "1", "--mount", `type=bind,source=${verifier},target=/tmp/verify-image-plugins.mjs,readonly`,
+    "--entrypoint", "node", image, "/tmp/verify-image-plugins.mjs", "/app",
+    manifest.image.extensions, version,
+  ], { encoding: "utf8", timeout: 120_000 }));
 }
 
 async function checkedLayout({ manifest, receipt, ociDir }) {
@@ -77,6 +95,18 @@ async function main() {
       "Image source identity changed",
     );
     need(receipt.architecture === manifest.image.architecture, "Image architecture changed");
+    need(
+      receipt.selectedExtensions === manifest.image.extensions &&
+        Array.isArray(receipt.pluginPayload) &&
+        receipt.pluginPayload.map((entry) => entry.id).join(",") === manifest.image.extensions,
+      "Image plugin payload evidence changed",
+    );
+    need(
+      receipt.pluginPayload.some((entry) =>
+        entry.id === "codex" && entry.package === "@openclaw/codex" &&
+        entry.version === receipt.version),
+      "Codex plugin evidence differs from image host",
+    );
     need(
       [receipt.indexDigest, receipt.imageDigest, receipt.configDigest].every((value) =>
         DIGEST.test(value),
@@ -149,6 +179,7 @@ async function main() {
     sourceSha,
     sourceTree,
     architecture: manifest.image.architecture,
+    selectedExtensions: manifest.image.extensions,
     version,
     builtAt: process.env.BUILT_AT,
     indexDigest: expectedDigest,
@@ -169,6 +200,7 @@ async function main() {
     expectedDigest,
   });
   smokeDockerReleaseImage(ociDir, receipt.architecture, "default", image.configDigest);
+  receipt.pluginPayload = inspectLoadedPlugins(manifest, version);
   receipt.imageDigest = image.imageDigest;
   receipt.configDigest = image.configDigest;
   writeFileSync(outputPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx", mode: 0o600 });

@@ -1,5 +1,13 @@
 # Grouped post-9.8 stable candidate through 2026.10.5
 
+The image seal inspects the loaded OCI image with the network disabled. It
+requires the selected plugin descriptors and compiled entries, and checks the
+Codex package version, host API compatibility, and Doctor migration contract
+against the image host version. The resulting plugin evidence is retained in
+the image receipt. This catches an image that contains a Codex CLI executable
+but omits the OpenClaw Codex plugin. A native Doctor rehearsal still provides
+the runtime migration proof.
+
 Source-only preparation, October 20, 2026. The active 9.8 rehearsal and the
 separate production owner are outside this lane. This file does not select a
 deployable source, publish an image, or authorize production.
