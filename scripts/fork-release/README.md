@@ -199,6 +199,15 @@ reserves. `validate_config` owns its fields. Obtain identities and capacity from
 current native observations; the synthetic test configuration is not a host
 configuration or resource recommendation.
 
+For a separately backed cache, the optional `cache` contract records the exact
+named volume, canonical backing path, numeric filesystem device and free-space
+floor. Before dispatch, the adapter verifies the local bind-volume options and
+the selected builder's writable `/var/lib/buildkit` mount. Runtime samples check
+the pinned device and cache free space separately from root/OCI space. If the
+cache directory is root-owned, its verified parent on the same device supplies
+the capacity sample. This does not create a volume, relocate Docker, authorize a
+protected disk mutation, or establish a hard filesystem quota.
+
 The single canonical private root owns the builder reservation. Preparation
 does not dispatch a build. Start rechecks bindings and capacity, then fsyncs its
 intent before invoking systemd. Repeating start after a lost reply observes the

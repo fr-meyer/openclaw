@@ -12,6 +12,7 @@ import stat
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -95,6 +96,8 @@ class BuildTests(unittest.TestCase):
                        "minFreeBytes": 1024, "minMemoryAvailableBytes": 1024}}
         self.helpers = {name: (HERE / name).read_bytes() for name in build.HELPERS}
         self.observe_builder_impl = build.observe_builder
+        self.capacity_impl = build.capacity
+        self.resource_sample_impl = build.resource_sample
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(build, "PRIVATE_ROOT", self.root / "private"))
@@ -127,6 +130,38 @@ class BuildTests(unittest.TestCase):
             self.assertTrue((self.op / "start-intent.json").exists())
             return subprocess.CompletedProcess(argv, 0, "Running as unit\n", "")
         return self.show()
+
+    def cache_fixture(self):
+        path = self.root / "cache-disk" / "cache"
+        path.mkdir(parents=True)
+        cache = {"volumeName": f"buildx_buildkit_{self.config['builder']['node']}_state",
+                 "backingPath": str(path), "filesystemDevice": path.stat().st_dev,
+                 "minFreeBytes": 44 << 30}
+        self.config["cache"] = cache
+        volume = {"Name": cache["volumeName"], "Driver": "local",
+                  "Mountpoint": "/synthetic/docker/volumes/cache/_data",
+                  "Options": {"type": "none", "o": "bind", "device": str(path)}}
+        mounts = [{"Type": "volume", "Name": cache["volumeName"],
+                   "Source": volume["Mountpoint"], "Destination": "/var/lib/buildkit",
+                   "Driver": "local", "RW": True}]
+        return cache, volume, mounts
+
+    def builder_fixture(self):
+        expected = self.config["builder"]
+        rows = [
+            {"Builder": "unrelated", "Name": "unrelated", "DriverEndpoint": "docker", "Status": ""},
+            {"Builder": expected["name"], "Name": expected["name"],
+             "DriverEndpoint": "docker-container", "Status": ""},
+            {"Builder": expected["name"], "Name": expected["node"],
+             "DriverEndpoint": build.ENDPOINT, "Status": "running"}]
+        container = {"Id": expected["containerId"], "Image": expected["imageId"],
+                     "State": {"Running": True},
+                     "HostConfig": {"Memory": expected["memoryBytes"],
+                                    "MemorySwap": expected["memorySwapBytes"],
+                                    "CpuPeriod": 100000, "CpuQuota": 500000,
+                                    "CpuShares": 128, "NanoCpus": 0, "PidsLimit": None,
+                                    "BlkioDeviceReadBps": None, "BlkioDeviceWriteBps": None}}
+        return rows, container
 
     def test_bound_command_and_closed_configuration(self):
         op = self.prepare()
@@ -409,9 +444,9 @@ class BuildTests(unittest.TestCase):
         record_resources = build.record_resources
         persisted = []
 
-        def broken_diagnostic_sink(op, phase, observed=None):
+        def broken_diagnostic_sink(op, phase, observed=None, cache=None):
             with patch.object(build.os, failing_operation, side_effect=OSError("diagnostic sink failed")):
-                persisted.append(record_resources(op, phase, observed))
+                persisted.append(record_resources(op, phase, observed, cache))
 
         output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
         previous_umask = os.umask(0o027)
@@ -491,19 +526,7 @@ class BuildTests(unittest.TestCase):
 
     def test_native_builder_identity_and_unbounded_io_are_observed_without_mutation(self):
         expected = self.config["builder"]
-        builder = [
-            {"Builder": "unrelated", "Name": "unrelated", "DriverEndpoint": "docker", "Status": ""},
-            {"Builder": expected["name"], "Name": expected["name"],
-             "DriverEndpoint": "docker-container", "Status": ""},
-            {"Builder": expected["name"], "Name": expected["node"],
-             "DriverEndpoint": build.ENDPOINT, "Status": "running"}]
-        container = {"Id": expected["containerId"], "Image": expected["imageId"],
-                     "State": {"Running": True},
-                     "HostConfig": {"Memory": expected["memoryBytes"],
-                                    "MemorySwap": expected["memorySwapBytes"],
-                                    "CpuPeriod": 100000, "CpuQuota": 500000,
-                                    "CpuShares": 128, "NanoCpus": 0, "PidsLimit": None,
-                                    "BlkioDeviceReadBps": None, "BlkioDeviceWriteBps": None}}
+        builder, container = self.builder_fixture()
         calls = []
 
         def inspect(argv):
@@ -532,6 +555,148 @@ class BuildTests(unittest.TestCase):
             self.assertNotIn("{{json .}}", projection)
             self.assertNotIn("Env", projection)
             self.assertNotIn("Mounts", projection)
+
+    def test_cache_contract_is_optional_closed_and_retained_in_the_operation(self):
+        build.validate_config(self.config)
+        build.validate_config({**self.config, "cache": None})
+        cache, _, _ = self.cache_fixture()
+        self.prepare()
+        _, intent = build.load_intent(self.op)
+        self.assertEqual(intent["config"]["cache"], cache)
+        for change in (
+                {"extra": "not allowed"}, {"volumeName": "another-volume"},
+                {"backingPath": "relative/cache"}, {"backingPath": "/"},
+                {"backingPath": str(self.root / "cache-disk") + "/../cache"},
+                {"filesystemDevice": "2065"}, {"filesystemDevice": True},
+                {"minFreeBytes": 0}):
+            with self.subTest(change=change), self.assertRaisesRegex(release.Refusal, "build.cache"):
+                build.validate_config({**self.config, "cache": {**cache, **change}})
+
+    def test_native_cache_binding_is_exact_and_failed_admission_never_dispatches(self):
+        cache, volume, mounts = self.cache_fixture()
+        builder, container = self.builder_fixture()
+        calls = []
+
+        def inspect(argv):
+            calls.append(argv)
+            if "buildx" in argv:
+                text = "\n".join(json.dumps(row) for row in builder)
+            elif "volume" in argv:
+                text = json.dumps(volume)
+            elif build.CACHE_MOUNT_FORMAT in argv:
+                text = "\n".join(json.dumps(row) for row in mounts)
+            else:
+                text = json.dumps(container)
+            return subprocess.CompletedProcess(argv, 0, text, "")
+
+        with patch.object(build, "native", side_effect=inspect):
+            self.assertEqual(self.observe_builder_impl(self.config["builder"], cache),
+                             self.config["builder"])
+            self.assertEqual(calls[-2], [*build.DOCKER, "--host", build.ENDPOINT,
+                                        "volume", "inspect", "--format",
+                                        build.CACHE_VOLUME_FORMAT, cache["volumeName"]])
+            self.assertEqual(calls[-1], [*build.DOCKER, "--host", build.ENDPOINT,
+                                        "inspect", "--format", build.CACHE_MOUNT_FORMAT,
+                                        self.config["builder"]["containerId"]])
+            for key, value in (("Name", "other-volume"), ("Driver", "other-driver"),
+                               ("Options", {**volume["Options"], "device": "/other/cache"}),
+                               ("Options", {**volume["Options"], "o": "ro,bind"}),
+                               ("Options", {**volume["Options"], "extra": "unreviewed"})):
+                old = volume[key]
+                with self.subTest(key=key, value=value):
+                    volume[key] = value
+                    with self.assertRaisesRegex(release.Refusal, "cache.volume_changed"):
+                        self.observe_builder_impl(self.config["builder"], cache)
+                volume[key] = old
+            for key, value in (("Type", "bind"), ("Name", "other-volume"),
+                               ("Source", "/other/mount"), ("Destination", "/other/target"),
+                               ("Driver", "other-driver"), ("RW", False)):
+                old = mounts[0][key]
+                with self.subTest(key=key, value=value):
+                    mounts[0][key] = value
+                    with self.assertRaisesRegex(release.Refusal, "cache.mount_changed"):
+                        self.observe_builder_impl(self.config["builder"], cache)
+                mounts[0][key] = old
+            self.prepare()
+            mounts[0]["RW"] = False
+            with patch.object(build, "observe_builder", self.observe_builder_impl):
+                with self.assertRaisesRegex(release.Refusal, "cache.mount_changed"):
+                    build.start(self.op)
+        self.assertFalse((self.op / "start-intent.json").exists())
+        self.assertFalse((self.op.parent /
+                          f"builder-{self.config['builder']['containerId']}.json").exists())
+        self.assertFalse(any("systemd-run" in " ".join(argv) or "create" in argv for argv in calls))
+        for argv in calls:
+            projection = argv[argv.index("--format") + 1]
+            self.assertNotIn("{{json .}}", projection)
+            self.assertNotIn("Env", projection)
+
+    def test_cache_sample_refuses_symlink_and_changed_backing_or_parent_device(self):
+        cache, _, _ = self.cache_fixture()
+        backing = Path(cache["backingPath"])
+        link = backing.parent / "linked-cache"
+        link.symlink_to(backing)
+        with self.assertRaisesRegex(release.Refusal, "cache.path_not_canonical"):
+            build.cache_sample({**cache, "backingPath": str(link)})
+        with self.assertRaisesRegex(release.Refusal, "cache.filesystem_changed"):
+            build.cache_sample({**cache, "filesystemDevice": cache["filesystemDevice"] + 1})
+        original_stat = Path.stat
+
+        def changed_parent(path, *args, **kwargs):
+            value = original_stat(path, *args, **kwargs)
+            if path == backing.parent:
+                fields = list(value)
+                fields[2] += 1
+                return os.stat_result(fields)
+            return value
+
+        with patch.object(Path, "stat", changed_parent):
+            with self.assertRaisesRegex(release.Refusal, "cache.filesystem_changed"):
+                build.cache_sample(cache)
+
+    def test_root_owned_cache_uses_only_its_verified_parent_for_free_space(self):
+        cache, _, _ = self.cache_fixture()
+        backing = Path(cache["backingPath"])
+
+        def disk_usage(path):
+            if path == backing:
+                raise PermissionError("BuildKit owns cache root")
+            self.assertEqual(path, backing.parent)
+            return SimpleNamespace(free=92 << 30)
+
+        with patch.object(build.shutil, "disk_usage", side_effect=disk_usage) as usage:
+            sample = build.cache_sample(cache)
+        self.assertEqual(sample, {"cacheFreeBytes": 92 << 30,
+                                  "cacheSamplePath": str(backing.parent),
+                                  "cacheFilesystemDevice": cache["filesystemDevice"]})
+        self.assertEqual(usage.call_count, 2)
+
+    def test_root_cache_and_memory_reserves_are_independent_and_samples_are_timestamped(self):
+        cache, _, _ = self.cache_fixture()
+        limits = {**self.config["limits"], "minFreeBytes": 16 << 30,
+                  "minMemoryAvailableBytes": 2 << 30}
+        available = {"root": 30 << 30, "cache": 92 << 30, "memory": 8 << 30}
+
+        def disk_usage(path):
+            return SimpleNamespace(free=available["cache" if str(path) == cache["backingPath"]
+                                                   else "root"])
+
+        with patch.object(build, "resource_sample", self.resource_sample_impl), patch.object(
+                Path, "read_text", side_effect=lambda: f"MemAvailable: {available['memory'] // 1024} kB\n"
+                ), patch.object(build.shutil, "disk_usage", side_effect=disk_usage):
+            sample = self.capacity_impl(self.root, limits, cache)
+            self.assertEqual(sample["freeBytes"], 30 << 30)
+            self.assertEqual(sample["cacheFreeBytes"], 92 << 30)
+            self.assertEqual(sample["cacheFilesystemDevice"], cache["filesystemDevice"])
+            build.preflight.utc(sample["observedAt"])
+            for key, value, code in (("root", (16 << 30) - 1, "disk_reserve"),
+                                     ("cache", (44 << 30) - 1, "cache_reserve"),
+                                     ("memory", (2 << 30) - 1, "memory_reserve")):
+                old = available[key]
+                available[key] = value
+                with self.subTest(key=key), self.assertRaisesRegex(release.Refusal, code):
+                    self.capacity_impl(self.root, limits, cache)
+                available[key] = old
 
     def test_flat_builder_rows_reject_ambiguous_driver_node_endpoint_and_status(self):
         expected = self.config["builder"]
@@ -609,6 +774,44 @@ class BuildTests(unittest.TestCase):
         completed = build.read_private(self.op / "completed.json")
         self.assertEqual(completed["reason"], "build.capacity.disk_reserve")
         self.assertFalse(completed["remoteSolveTerminationObserved"])
+        with patch.object(build, "native", return_value=self.show("active", "exited", "success", "1", "0")):
+            self.assertEqual(build.status(self.op)["state"], "incomplete")
+        self.assertFalse((self.op / "execution.json").exists())
+
+    def test_cache_budget_breach_joins_owned_client_and_retains_both_disk_samples(self):
+        cache, _, _ = self.cache_fixture()
+        self.child_fixture()
+        self.prepare()
+        with patch.object(build, "native", side_effect=self.fake_native):
+            build.start(self.op)
+        _, intent = build.load_intent(self.op)
+        count = 0
+
+        def sample(_op, configured_cache):
+            nonlocal count
+            self.assertEqual(configured_cache, cache)
+            count += 1
+            return {"observedAt": build.now(), "freeBytes": 30 << 30,
+                    "memoryAvailableBytes": 8 << 30,
+                    "cacheFreeBytes": (92 << 30) if count == 1 else cache["minFreeBytes"] - 1,
+                    "cacheSamplePath": cache["backingPath"],
+                    "cacheFilesystemDevice": cache["filesystemDevice"]}
+
+        output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+        with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), patch.object(
+                build.sys, "stdout", output), patch.object(
+                build, "capacity", self.capacity_impl), patch.object(
+                build, "resource_sample", side_effect=sample):
+            self.assertNotEqual(build.run_child(self.op, intent), 0)
+        completed = build.read_private(self.op / "completed.json")
+        self.assertEqual(completed["reason"], "build.capacity.cache_reserve")
+        self.assertFalse(completed["remoteSolveTerminationObserved"])
+        resources = [json.loads(line) for line in
+                     build.private_bytes(self.op / "resources.jsonl").splitlines()]
+        failure = next(row for row in resources if row["phase"] == "reserve-failed")
+        self.assertEqual(failure["resources"]["freeBytes"], 30 << 30)
+        self.assertEqual(failure["resources"]["cacheFreeBytes"], cache["minFreeBytes"] - 1)
+        build.preflight.utc(failure["resources"]["observedAt"])
         with patch.object(build, "native", return_value=self.show("active", "exited", "success", "1", "0")):
             self.assertEqual(build.status(self.op)["state"], "incomplete")
         self.assertFalse((self.op / "execution.json").exists())

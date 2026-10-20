@@ -52,6 +52,7 @@ BUILDER_FIELDS = """name node endpoint containerId imageId memoryBytes memorySwa
 cpuPeriod cpuQuota cpuShares nanoCpus pidsLimit readBps writeBps"""
 LIMIT_FIELDS = """timeoutSeconds clientMemoryBytes clientCpuQuotaPercent clientTasksMax
 minFreeBytes minMemoryAvailableBytes"""
+CACHE_FIELDS = "volumeName backingPath filesystemDevice minFreeBytes"
 INTENT_FIELDS = """schema config sourceDir toolingDir uid gid version preparedAt
 supervisorSha256 buildArgv serviceArgv unitName"""
 SHOW_FIELDS = ("LoadState", "ActiveState", "SubState", "Result", "ExecMainCode",
@@ -69,6 +70,14 @@ CONTAINER_FORMAT = (
     '"PidsLimit":{{json .HostConfig.PidsLimit}},'
     '"BlkioDeviceReadBps":{{json .HostConfig.BlkioDeviceReadBps}},'
     '"BlkioDeviceWriteBps":{{json .HostConfig.BlkioDeviceWriteBps}}}}')
+CACHE_VOLUME_FORMAT = (
+    '{"Name":{{json .Name}},"Driver":{{json .Driver}},'
+    '"Mountpoint":{{json .Mountpoint}},"Options":{{json .Options}}}')
+CACHE_MOUNT_FORMAT = (
+    '{{range .Mounts}}{{if eq .Destination "/var/lib/buildkit"}}'
+    '{"Type":{{json .Type}},"Name":{{json .Name}},"Source":{{json .Source}},'
+    '"Destination":{{json .Destination}},"Driver":{{json .Driver}},"RW":{{json .RW}}}'
+    '{{println}}{{end}}{{end}}')
 need = release.need
 
 
@@ -127,7 +136,9 @@ def outside(left, right):
 
 
 def validate_config(config):
-    fields(config, CONFIG_FIELDS, "build.config.fields")
+    # Older retained operations omit cache and keep their root-backed contract.
+    optional = " cache" if type(config) is dict and "cache" in config else ""
+    fields(config, CONFIG_FIELDS + optional, "build.config.fields")
     need(config["schema"] == "openclaw.fork-gcp-build-config.v1", "build.config.schema")
     need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), config["operationId"]),
          "build.operation_id")
@@ -167,6 +178,17 @@ def validate_config(config):
     integer(limits["clientTasksMax"], 8, 128, "build.client_tasks")
     for key in ("minFreeBytes", "minMemoryAvailableBytes"):
         integer(limits[key], 1, 1 << 50, "build.reserve")
+    cache = config.get("cache")
+    if cache is not None:
+        fields(cache, CACHE_FIELDS, "build.cache.fields")
+        need(cache["volumeName"] == f"buildx_buildkit_{builder['node']}_state",
+             "build.cache.volume_name")
+        value = cache["backingPath"]
+        need(type(value) is str and Path(value).is_absolute()
+             and str(Path(value)) == value and ".." not in Path(value).parts and value != "/",
+             "build.cache.path")
+        integer(cache["filesystemDevice"], 1, (1 << 64) - 1, "build.cache.device")
+        integer(cache["minFreeBytes"], 1, 1 << 50, "build.cache.reserve")
 
 
 def clean_checkout(root, sha):
@@ -324,7 +346,7 @@ def native(argv):
     return subprocess.run(argv, capture_output=True, text=True, timeout=30, env=SAFE_ENV)
 
 
-def observe_builder(builder):
+def observe_builder(builder, cache=None):
     inspected = native([*DOCKER, "--host", ENDPOINT, "buildx", "ls",
                         "--no-trunc", "--timeout", "10s",
                         "--format", BUILDER_FORMAT])
@@ -355,10 +377,63 @@ def observe_builder(builder):
                     "nanoCpus": "NanoCpus", "pidsLimit": "PidsLimit",
                     "readBps": "BlkioDeviceReadBps", "writeBps": "BlkioDeviceWriteBps"}.items()}}
     need(row["State"]["Running"] is True and observed == builder, "build.builder.changed")
+    if cache is not None:
+        observe_cache(builder, cache)
     return observed
 
 
-def resource_sample(op):
+def cache_path(cache):
+    """Verify the mounted filesystem without traversing BuildKit-owned contents."""
+    path = Path(cache["backingPath"])
+    need(path.resolve(strict=True) == path, "build.cache.path_not_canonical")
+    metadata = path.lstat()
+    parent = path.parent.stat()
+    need(stat.S_ISDIR(metadata.st_mode) and stat.S_ISDIR(parent.st_mode),
+         "build.cache.not_directory")
+    need(metadata.st_dev == parent.st_dev == cache["filesystemDevice"],
+         "build.cache.filesystem_changed")
+    return path, metadata
+
+
+def observe_cache(builder, cache):
+    inspected = native([*DOCKER, "--host", ENDPOINT, "volume", "inspect",
+                        "--format", CACHE_VOLUME_FORMAT, cache["volumeName"]])
+    need(inspected.returncode == 0, "build.cache.volume_inspect")
+    volume = json.loads(inspected.stdout)
+    fields(volume, "Name Driver Mountpoint Options", "build.cache.volume_fields")
+    need(volume["Name"] == cache["volumeName"] and volume["Driver"] == "local"
+         and volume["Options"] == {"type": "none", "o": "bind", "device": cache["backingPath"]}
+         and type(volume["Mountpoint"]) is str and Path(volume["Mountpoint"]).is_absolute(),
+         "build.cache.volume_changed")
+    # Inspect the already bound container ID, not a reusable builder name.
+    inspected = native([*DOCKER, "--host", ENDPOINT, "inspect", "--format",
+                        CACHE_MOUNT_FORMAT, builder["containerId"]])
+    need(inspected.returncode == 0, "build.cache.mount_inspect")
+    mounts = [json.loads(line) for line in inspected.stdout.splitlines() if line.strip()]
+    need(mounts == [{"Type": "volume", "Name": cache["volumeName"],
+                    "Source": volume["Mountpoint"], "Destination": "/var/lib/buildkit",
+                    "Driver": "local", "RW": True}], "build.cache.mount_changed")
+    cache_path(cache)
+
+
+def cache_sample(cache):
+    path, before = cache_path(cache)
+    sample_path = path
+    try:
+        free = shutil.disk_usage(path).free
+    except PermissionError:
+        # BuildKit can own cache/ as root0700. The verified parent is on exactly
+        # the same pinned device, so statvfs there measures the same free space.
+        sample_path = path.parent
+        free = shutil.disk_usage(sample_path).free
+    _, after = cache_path(cache)
+    need((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino),
+         "build.cache.path_changed")
+    return {"cacheFreeBytes": free, "cacheSamplePath": str(sample_path),
+            "cacheFilesystemDevice": after.st_dev}
+
+
+def resource_sample(op, cache=None):
     memory = {}
     for line in Path("/proc/meminfo").read_text().splitlines():
         key, _, value = line.partition(":")
@@ -366,22 +441,26 @@ def resource_sample(op):
             memory[key] = int(value.split()[0]) * 1024
     need("MemAvailable" in memory, "build.capacity.memory_unavailable")
     free = shutil.disk_usage(op).free
-    return {"freeBytes": free, "memoryAvailableBytes": memory["MemAvailable"]}
+    return {"observedAt": now(), "freeBytes": free,
+            "memoryAvailableBytes": memory["MemAvailable"],
+            **(cache_sample(cache) if cache is not None else {})}
 
 
-def capacity(op, limits):
-    observed = resource_sample(op)
+def capacity(op, limits, cache=None):
+    observed = resource_sample(op, cache)
     need(observed["freeBytes"] >= limits["minFreeBytes"], "build.capacity.disk_reserve")
     need(observed["memoryAvailableBytes"] >= limits["minMemoryAvailableBytes"],
          "build.capacity.memory_reserve")
+    if cache is not None:
+        need(observed["cacheFreeBytes"] >= cache["minFreeBytes"], "build.capacity.cache_reserve")
     return observed
 
 
-def record_resources(op, phase, observed=None):
+def record_resources(op, phase, observed=None, cache=None):
     """Small host samples, never builder peak usage or evidence of phase progress."""
     record = {"observedAt": now(), "scope": "host", "phase": phase}
     try:
-        record["resources"] = observed if observed is not None else resource_sample(op)
+        record["resources"] = observed if observed is not None else resource_sample(op, cache)
     except (OSError, ValueError, release.Refusal) as error:
         record["observationError"] = str(error)
     try:
@@ -454,8 +533,8 @@ def start(op):
         need(tooling_bytes(intent["toolingDir"], config["toolingSha"]) ==
              {name: private_bytes(op / "supervisor" / name) for name in HELPERS},
              "build.tooling.changed")
-        observe_builder(config["builder"])
-        reserve = capacity(op, config["limits"])
+        observe_builder(config["builder"], config.get("cache"))
+        reserve = capacity(op, config["limits"], config.get("cache"))
         metadata_handoff_capability(op, intent)
         reserve_builder(op, intent)
         write_once(op / "start-intent.json", encode({
@@ -498,9 +577,10 @@ def run_child(op, intent):
     for signum in (signal.SIGTERM, signal.SIGINT):
         previous[signum] = signal.signal(signum, cancel)
     native_exit, exit_code, reason = None, 1, "client failed before launch"
+    cache = intent["config"].get("cache")
     try:
-        observe_builder(intent["config"]["builder"])
-        record_resources(op, "start", capacity(op, intent["config"]["limits"]))
+        observe_builder(intent["config"]["builder"], cache)
+        record_resources(op, "start", capacity(op, intent["config"]["limits"], cache))
         need(not signal_received, "build.cancelled_before_launch")
         with open(op / "build.log", "xb", buffering=0) as log:
             child = subprocess.Popen(intent["buildArgv"], cwd=op, env=SAFE_ENV,
@@ -522,13 +602,13 @@ def run_child(op, intent):
                     if time.monotonic() >= next_capacity and stop_at is None:
                         next_capacity = time.monotonic() + 2
                         try:
-                            observed = capacity(op, intent["config"]["limits"])
+                            observed = capacity(op, intent["config"]["limits"], cache)
                             if time.monotonic() >= next_sample:
                                 record_resources(op, "periodic", observed)
                                 next_sample = time.monotonic() + 30
                         except (OSError, ValueError, release.Refusal) as error:
                             reason = str(error)
-                            record_resources(op, "reserve-failed")
+                            record_resources(op, "reserve-failed", cache=cache)
                             child.terminate()
                             stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
                     if signal_received and stop_at is None:
@@ -602,7 +682,7 @@ def run_child(op, intent):
                 **started, "completedAt": now(), "exitCode": exit_code,
                 "nativeExitCode": native_exit, "reason": reason,
                 "remoteSolveTerminationObserved": False}))
-            record_resources(op, "end")
+            record_resources(op, "end", cache=cache)
         finally:
             try:
                 for signum, handler in previous.items():

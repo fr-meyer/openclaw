@@ -235,10 +235,14 @@ mount and resource verification before use. It is not permission to mount a
 database directory or delete the failed rehearsal.
 
 Budget the cache and OCI export separately. The current executor's private
-operation root and OCI output remain on root, and its disk reserve does not
-observe a separate BuildKit volume. A disk-backed worker therefore needs a
-reviewed separate capacity guard before a full build; moving cache alone is
-not a complete root-space solution. Full candidate peak usage is unmeasured.
+operation root and OCI output remain on root. Its optional cache contract
+separately verifies the named volume, bind path and filesystem device and
+guards that filesystem's free space. Native storage binding qualification
+is still required; moving cache alone is not a complete root-space solution.
+The proposed existing-disk layout reserves 44 GiB free for the cache filesystem
+and 16 GiB on root. At the 17:14 UTC observation, those floors allowed about
+48.08 GiB and 13.66 GiB of growth respectively. These are available budgets,
+not measured build peaks or hard quotas. Full candidate peak usage is unmeasured.
 Do not delete old test databases merely to establish a new build workspace.
 Choose a bounded budget from fresh capacity and keep the migration and build
 serial: they cannot each claim the same available memory or disk headroom.
