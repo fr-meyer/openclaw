@@ -26,7 +26,12 @@ it("persists managed flows and unknown native runs through the schema-20 state w
           command,
           { context, current: true },
         );
-        expect(reply?.ok).toBe(true);
+        if (!reply) {
+          throw new Error(`State worker read ${command.type} returned no reply`);
+        }
+        if (!reply.ok) {
+          throw new Error(`State worker read ${command.type} failed: ${reply.message}`);
+        }
         return reply;
       };
 
@@ -74,11 +79,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         type: "tasks.managedFlows.capacitySnapshot",
         input: { ownerKey, controllerId, ownerSessionKeys: [ownerKey] },
       });
-      if (
-        !firstCapacity ||
-        firstCapacity.type !== "tasks.managedFlows.capacitySnapshot" ||
-        !firstCapacity.ok
-      ) {
+      if (firstCapacity.type !== "tasks.managedFlows.capacitySnapshot") {
         throw new Error("Missing admitted capacity snapshot");
       }
       await executeManagedTaskFlowFixtureWrite(context, {
@@ -103,11 +104,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         type: "tasks.managedFlows.capacitySnapshot",
         input: { ownerKey, controllerId, ownerSessionKeys: [ownerKey] },
       });
-      if (
-        !currentCapacity ||
-        currentCapacity.type !== "tasks.managedFlows.capacitySnapshot" ||
-        !currentCapacity.ok
-      ) {
+      if (currentCapacity.type !== "tasks.managedFlows.capacitySnapshot") {
         throw new Error("Missing current capacity snapshot");
       }
       expect(
@@ -565,7 +562,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         type: "subagents.runs",
         scope: { kind: "ids", runIds: [cancelRun.runId] },
       });
-      if (!claimedNative || claimedNative.type !== "subagents.runs") {
+      if (claimedNative.type !== "subagents.runs") {
         throw new Error("Native cancel claim observation unavailable");
       }
       expect(claimedNative.runs.get(cancelRun.runId)?.killIntent?.reason).toBe("killed");
@@ -595,7 +592,7 @@ it("persists managed flows and unknown native runs through the schema-20 state w
         throw new Error("Native cancel generation replacement unexpectedly conflicted");
       }
       const replacedCancelState = await readCancelState();
-      if (!replacedCancelState.native || replacedCancelState.native.type !== "subagents.runs") {
+      if (replacedCancelState.native.type !== "subagents.runs") {
         throw new Error("Native cancel replacement observation unavailable");
       }
       expect(replacedCancelState.flow).toEqual(initialCancelState.flow);
