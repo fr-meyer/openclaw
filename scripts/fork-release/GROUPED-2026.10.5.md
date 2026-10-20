@@ -8,6 +8,14 @@ the image receipt. This catches an image that contains a Codex CLI executable
 but omits the OpenClaw Codex plugin. A native Doctor rehearsal still provides
 the runtime migration proof.
 
+The fork's inherited Labeler uses two upstream GitHub App secrets that are
+empty in `fr-meyer/openclaw`. Its `pull_request_target` runs check out trusted
+fork `main`, so changing this draft PR cannot repair its current Labeler jobs.
+The reviewed workflow change selects the existing job-scoped `GITHUB_TOKEN`
+only in this personal fork, keeping upstream's App-token path and the same
+job permissions. It takes effect only after the workflow change reaches fork
+`main`; Labeler is not a required check on this draft PR's base.
+
 Source-only preparation, October 20, 2026. The active 9.8 rehearsal and the
 separate production owner are outside this lane. This file does not select a
 deployable source, publish an image, or authorize production.
