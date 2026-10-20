@@ -46,8 +46,10 @@ The upstream-only Labeler failure does not establish a fork authentication probl
 4. **Run native checks.** Complete native restore/Doctor/migration and integrity
    checks, then startup/readiness and representative bounded regressions.
    Exercise rollback on disposable data with the exact prior build and
-   compatible pre-migration data. State 19/agent 24 to state 20/agent 25 requires
-   that pairing. Unknown delivery-fence sends must never be replayed.
+   compatible pre-migration data. The selected upgrade is directly from the
+   current 9.4 baseline to 10.5; observe actual input schemas rather than
+   assuming the failed 9.8 rehearsal reached state 19/agent 24. The target
+   is state 20/agent 25. Unknown delivery-fence sends must never be replayed.
    EmbeddingGemma rebuilding is conditional on actual use.
 5. **Finish and dispose.** Persist minimal evidence, terminate the test writer,
    and delete the exact owned test VM/disks on pass, fail or cancellation.
@@ -222,6 +224,24 @@ the actual predecessor schema rather than assuming every old conversion runs.
 Reuse existing constrained-heap embedding tests; the specific remaining
 synthetic gap is archive expanded-byte and retained-batch measurement, including
 interruption/resume and content preservation.
+
+For the current preparation, retain the existing test disk and its failed
+rehearsal evidence. A separate directory on its existing free space can back a
+new explicitly named Buildx state volume without changing Docker's data root
+or the existing builder. Buildx's pinned docker-container driver mounts
+`buildx_buildkit_<node>_state`; Docker can reuse a precreated local volume with
+`type=none,o=bind,device=<dedicated-directory>`. This composition needs native
+mount and resource verification before use. It is not permission to mount a
+database directory or delete the failed rehearsal.
+
+Budget the cache and OCI export separately. The current executor's private
+operation root and OCI output remain on root, and its disk reserve does not
+observe a separate BuildKit volume. A disk-backed worker therefore needs a
+reviewed separate capacity guard before a full build; moving cache alone is
+not a complete root-space solution. Full candidate peak usage is unmeasured.
+Do not delete old test databases merely to establish a new build workspace.
+Choose a bounded budget from fresh capacity and keep the migration and build
+serial: they cannot each claim the same available memory or disk headroom.
 
 No resource creation or price promise is authorized by this document. Proposed
 per-run envelope: concurrency **1**, `e2-standard-4` or `e2-standard-8`, boot disk

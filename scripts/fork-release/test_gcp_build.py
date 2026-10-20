@@ -11,6 +11,7 @@ import subprocess
 import stat
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -133,8 +134,12 @@ class BuildTests(unittest.TestCase):
         command = intent["buildArgv"]
         self.assertEqual(command[:3], list(build.DOCKER))
         self.assertEqual(command[command.index("--network") + 1], "none")
-        self.assertEqual(command[-1], "https://github.com/fr-meyer/openclaw.git#" +
-                         self.config["sourceSha"])
+        sha = self.config["sourceSha"]
+        self.assertEqual(command[-1], "https://github.com/fr-meyer/openclaw.git"
+                         f"?fetch-by-commit=true&checksum={sha}#{sha}")
+        # Buildx's legacy client-side Git parser does not know this query.
+        # Its default forwards the context to the pinned native frontend.
+        self.assertNotIn("BUILDX_SEND_GIT_QUERY_AS_INPUT", build.SAFE_ENV)
         self.assertIn("OPENCLAW_EXTENSIONS=codex,workboard", command)
         self.assertIn("mode=max", command)
         self.assertIn("--sbom", command)
@@ -245,6 +250,93 @@ class BuildTests(unittest.TestCase):
             "print('native fixture output', flush=True)\n"
             f"sys.exit({exit_code})\n")
         self.stack.enter_context(patch.object(build, "DOCKER", (sys.executable, str(fixture))))
+
+    def descendant_pipe_fixture(self, parent_behavior):
+        ready = self.root / "pipe-holder.ready"
+        stop = self.root / "pipe-holder.stop"
+        done = self.root / "pipe-holder.done"
+        fixture = self.root / "inert-pipe-parent.py"
+        fixture.write_text(
+            "import os, pathlib, signal, sys, time\n"
+            f"ready, stop, done = map(pathlib.Path, {tuple(map(str, (ready, stop, done)))!r})\n"
+            f"behavior = {parent_behavior!r}\n"
+            "def terminated(*_args):\n"
+            "    sys.exit(7)\n"
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN if behavior == 'ignore' else terminated)\n"
+            "if os.fork() == 0:\n"
+            "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            "    ready.write_text(str(os.getpid()))\n"
+            "    deadline = time.monotonic() + 20\n"
+            "    while not stop.exists() and time.monotonic() < deadline:\n"
+            "        time.sleep(0.02)\n"
+            "    done.write_text('pipe holder exited')\n"
+            "    os._exit(0)\n"
+            "while not ready.exists():\n"
+            "    time.sleep(0.01)\n"
+            "print('native parent output before inherited pipe', flush=True)\n"
+            "if behavior == 'exit-zero':\n"
+            "    sys.exit(0)\n"
+            "deadline = time.monotonic() + 20\n"
+            "while time.monotonic() < deadline:\n"
+            "    time.sleep(0.02)\n"
+            "sys.exit(7)\n")
+        self.stack.enter_context(patch.object(build, "DOCKER", (sys.executable, str(fixture))))
+
+        def release_fixture_descendant():
+            stop.touch()
+            deadline = time.monotonic() + 3
+            while ready.exists() and not done.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            if ready.exists():
+                self.assertTrue(done.exists(), "owned inert descendant did not acknowledge release")
+
+        self.addCleanup(release_fixture_descendant)
+        return ready, done
+
+    def assert_descendant_pipe_cannot_hold_supervisor(self, parent_behavior, native_exit):
+        ready, done = self.descendant_pipe_fixture(parent_behavior)
+        self.prepare()
+        with patch.object(build, "native", side_effect=self.fake_native):
+            build.start(self.op)
+        _, intent = build.load_intent(self.op)
+        output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+
+        def capacity_after_parent_ready(*_args):
+            if parent_behavior != "exit-zero" and ready.exists():
+                raise release.Refusal("build.capacity.memory_reserve")
+            return {"freeBytes": 1 << 40, "memoryAvailableBytes": 1 << 40}
+
+        began = time.monotonic()
+        with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), \
+                patch.object(build.sys, "stdout", output), \
+                patch.object(build, "capacity", side_effect=capacity_after_parent_ready):
+            self.assertNotEqual(build.run_child(self.op, intent), 0)
+        self.assertLess(time.monotonic() - began, 10)
+        self.assertTrue(ready.exists())
+        self.assertFalse(done.exists(), "pipe holder must still be alive when supervisor returns")
+        completed = build.read_private(self.op / "completed.json")
+        self.assertEqual(completed["nativeExitCode"], native_exit)
+        self.assertEqual(build.private_bytes(self.op / "build.exit"), f"{native_exit}\n".encode())
+        self.assertFalse(completed["remoteSolveTerminationObserved"])
+        if parent_behavior == "exit-zero":
+            self.assertEqual(completed["exitCode"], 75)
+            self.assertIn("output pipe still open", completed["reason"])
+        else:
+            self.assertEqual(completed["exitCode"], native_exit)
+            self.assertEqual(completed["reason"], "build.capacity.memory_reserve")
+        self.assertIn(b"native parent output", build.private_bytes(self.op / "build.log"))
+        with patch.object(build, "native", return_value=self.show("active", "exited", "success", "1", "0")):
+            self.assertEqual(build.status(self.op)["state"], "incomplete")
+        self.assertFalse((self.op / "execution.json").exists())
+
+    def test_capacity_failure_drains_inherited_pipe_without_losing_primary_result(self):
+        self.assert_descendant_pipe_cannot_hold_supervisor("term-exit", 7)
+
+    def test_ignored_term_escalates_owned_client_and_bounds_inherited_pipe(self):
+        self.assert_descendant_pipe_cannot_hold_supervisor("ignore", 137)
+
+    def test_zero_exit_with_inherited_open_pipe_cannot_be_reported_successful(self):
+        self.assert_descendant_pipe_cannot_hold_supervisor("exit-zero", 0)
 
     def test_real_child_produces_hashed_private_execution_after_native_terminal_success(self):
         self.child_fixture()

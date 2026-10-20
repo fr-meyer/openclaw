@@ -40,6 +40,9 @@ SYSTEMCTL = ("/usr/bin/sudo", "-n", "/usr/bin/systemctl")
 CHOWN = ("/usr/bin/sudo", "-n", "/usr/bin/chown")
 ENDPOINT = "unix:///var/run/docker.sock"
 PRIVATE_ROOT = Path("/var/tmp/openclaw-fork-gcp-build")
+CLIENT_TERM_GRACE_SECONDS = 5
+CLIENT_JOIN_SECONDS = 2
+CLIENT_PIPE_DRAIN_SECONDS = 1
 HELPERS = ("gcp_build.py", "release.py", "preflight.py", "pr.py")
 SAFE_ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1"}
@@ -225,7 +228,11 @@ def build_argv(op, config, version):
                "--provenance", "mode=max", "--sbom", "true",
                "--output", f"type=oci,dest={op / 'oci'},tar=false,compression=gzip,compression-level=1",
                "--tag", f"openclaw-v105-prep:{sha[:12]}"]
-    return [*command, f"https://github.com/fr-meyer/openclaw.git#{sha}"]
+    # BuildKit's default raw-SHA route fetches tags and can unshallow history.
+    # The native commit-fetch route is shallow, while checksum still verifies
+    # the exact requested commit. Keep the full ref for provenance capture.
+    return [*command, "https://github.com/fr-meyer/openclaw.git"
+            f"?fetch-by-commit=true&checksum={sha}#{sha}"]
 
 
 def service_argv(op, intent):
@@ -479,6 +486,8 @@ def run_child(op, intent):
     previous_umask = os.umask(0o077)
     signal_received = []
     child = None
+    stop_at = None
+    join_attempted = False
     previous = {}
 
     def cancel(signum, _frame):
@@ -499,51 +508,69 @@ def run_child(op, intent):
                                      umask=0o022)
             selector = selectors.DefaultSelector()
             selector.register(child.stdout, selectors.EVENT_READ)
-            stop_at = None
+            drain_at = None
+            pipe_incomplete = False
             next_capacity = time.monotonic()
             next_sample = next_capacity + 30
             deadline = next_capacity + intent["config"]["limits"]["timeoutSeconds"]
-            while selector.get_map() or child.poll() is None:
-                if time.monotonic() >= deadline and stop_at is None:
-                    reason = "client deadline; remote solve termination unobserved"
-                    child.terminate()
-                    stop_at = time.monotonic() + 10
-                if time.monotonic() >= next_capacity and stop_at is None:
-                    next_capacity = time.monotonic() + 2
-                    try:
-                        observed = capacity(op, intent["config"]["limits"])
-                        if time.monotonic() >= next_sample:
-                            record_resources(op, "periodic", observed)
-                            next_sample = time.monotonic() + 30
-                    except (OSError, ValueError, release.Refusal) as error:
-                        reason = str(error)
-                        record_resources(op, "reserve-failed")
+            try:
+                while selector.get_map() or child.poll() is None:
+                    if time.monotonic() >= deadline and stop_at is None:
+                        reason = "client deadline; remote solve termination unobserved"
                         child.terminate()
-                        stop_at = time.monotonic() + 10
-                if signal_received and stop_at is None:
-                    reason = "service cancellation; remote solve termination unobserved"
-                    stop_at = time.monotonic() + 10
-                if stop_at is not None and time.monotonic() >= stop_at and child.poll() is None:
-                    child.kill()  # Only this client's PID; never a daemon/container.
-                for key, _ in selector.select(timeout=0.25):
-                    data = os.read(key.fd, 65536)
-                    if not data:
-                        selector.unregister(key.fileobj)
-                        continue
-                    # Prefix each received native output chunk; preserve its bytes.
-                    stamped = now().encode() + b" " + data
-                    log.write(stamped)
-                    sys.stdout.buffer.write(stamped)
-                    sys.stdout.buffer.flush()
-            selector.close()
-            child.stdout.close()
-            result = child.wait()
-            native_exit = result if result >= 0 else 128 - result
-            exit_code = native_exit
+                        stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
+                    if time.monotonic() >= next_capacity and stop_at is None:
+                        next_capacity = time.monotonic() + 2
+                        try:
+                            observed = capacity(op, intent["config"]["limits"])
+                            if time.monotonic() >= next_sample:
+                                record_resources(op, "periodic", observed)
+                                next_sample = time.monotonic() + 30
+                        except (OSError, ValueError, release.Refusal) as error:
+                            reason = str(error)
+                            record_resources(op, "reserve-failed")
+                            child.terminate()
+                            stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
+                    if signal_received and stop_at is None:
+                        reason = "service cancellation; remote solve termination unobserved"
+                        stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
+                    if stop_at is not None and time.monotonic() >= stop_at:
+                        if child.poll() is None:
+                            child.kill()  # Only this client's PID; never a daemon/container.
+                        break  # Descendants may still hold the inherited output pipe.
+                    if child.poll() is not None:
+                        if drain_at is None:
+                            drain_at = time.monotonic() + CLIENT_PIPE_DRAIN_SECONDS
+                        if time.monotonic() >= drain_at:
+                            pipe_incomplete = bool(selector.get_map())
+                            break
+                    for key, _ in selector.select(timeout=0.25):
+                        data = os.read(key.fd, 65536)
+                        if not data:
+                            selector.unregister(key.fileobj)
+                            continue
+                        # Prefix each received native output chunk; preserve its bytes.
+                        stamped = now().encode() + b" " + data
+                        log.write(stamped)
+                        sys.stdout.buffer.write(stamped)
+                        sys.stdout.buffer.flush()
+            finally:
+                selector.close()
+                child.stdout.close()
+            join_attempted = True
+            try:
+                result = child.wait(timeout=CLIENT_JOIN_SECONDS)
+                native_exit = result if result >= 0 else 128 - result
+            except subprocess.TimeoutExpired:
+                native_exit = None
+            exit_code = native_exit if native_exit is not None else 75
             if stop_at is not None:
                 exit_code = exit_code or 75
+            elif pipe_incomplete:
+                exit_code = exit_code or 75
+                reason = "client exited with output pipe still open; remote solve termination unobserved"
             else:
-                reason = "client exited; remote solve termination unobserved" if result else "client succeeded"
+                reason = "client exited; remote solve termination unobserved" if exit_code else "client succeeded"
             os.fsync(log.fileno())
         if exit_code == 0:
             # Sudo Buildx may atomically replace a precreated file; do not assume
@@ -551,19 +578,24 @@ def run_child(op, intent):
             take_metadata(op, intent)
     except BaseException:
         exit_code = 1
-        reason = "supervisor failed; retain native output and reconcile"
+        if stop_at is None:
+            reason = "supervisor failed; retain native output and reconcile"
         raise
     finally:
         try:
             if child is not None:
-                if child.poll() is None:
+                if child.poll() is None and not join_attempted:
                     child.terminate()
                     try:
-                        child.wait(timeout=10)
+                        child.wait(timeout=CLIENT_TERM_GRACE_SECONDS)
                     except subprocess.TimeoutExpired:
                         child.kill()
-                        child.wait(timeout=5)
-                native_exit = child.returncode if child.returncode >= 0 else 128 - child.returncode
+                        try:
+                            child.wait(timeout=CLIENT_JOIN_SECONDS)
+                        except subprocess.TimeoutExpired:
+                            pass  # No observed exit means no native success evidence.
+                if child.returncode is not None:
+                    native_exit = child.returncode if child.returncode >= 0 else 128 - child.returncode
             if native_exit is not None:
                 write_once(op / "build.exit", f"{native_exit}\n".encode())
             write_once(op / "completed.json", encode({

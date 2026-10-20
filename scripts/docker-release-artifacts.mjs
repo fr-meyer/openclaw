@@ -146,17 +146,28 @@ export function validateDockerReleaseIdentity({
   return { ...policy, baseTag };
 }
 
-/** Verify the OCI closure before smoke testing or registry writes. */
+/** Verify the OCI closure before smoke testing or registry writes.
+ * An explicit sourceRepository also binds native Git provenance to sourceSha.
+ */
 export async function verifyDockerReleaseLayout({
   directory,
   architecture,
   sourceSha,
+  sourceRepository = undefined,
   version,
   builtAt,
   expectedDigest,
 }) {
   requireValue(ARCHITECTURES.includes(architecture), "Unsupported Docker release architecture.");
   requireValue(DIGEST.test(expectedDigest), "Missing BuildKit image digest.");
+  if (sourceRepository !== undefined) {
+    requireValue(
+      typeof sourceRepository === "string" &&
+        /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(sourceRepository) &&
+        SHA.test(sourceSha),
+      "Provenance source requires a repository and full lowercase commit SHA.",
+    );
+  }
   requireValue(
     readJson(path.join(directory, "oci-layout")).imageLayoutVersion === "1.0.0",
     "Unsupported OCI layout.",
@@ -220,6 +231,46 @@ export async function verifyDockerReleaseLayout({
     inspectAttestation: (digest) => manifests.get(digest),
   });
   requireValue(errors.length === 0, errors.join("\n"));
+  if (sourceRepository !== undefined) {
+    const sourceUri = `https://github.com/${sourceRepository}.git#${sourceSha}`;
+    const sourceMatches = (source) =>
+      source?.uri === sourceUri && source.digest?.sha1 === sourceSha;
+    let provenanceCount = 0;
+    for (const descriptor of index.manifests) {
+      if (
+        descriptor.annotations?.["vnd.docker.reference.type"] !== "attestation-manifest" ||
+        descriptor.annotations?.["vnd.docker.reference.digest"] !== images[0].digest
+      ) {
+        continue;
+      }
+      for (const layer of manifests.get(descriptor.digest).layers) {
+        if (layer.annotations?.["in-toto.io/predicate-type"] !== "https://slsa.dev/provenance/v1") {
+          continue;
+        }
+        // Descriptor annotations alone do not bind the statement to this image or source.
+        const statement = await blob(layer, true);
+        requireValue(
+          statement?.predicateType === "https://slsa.dev/provenance/v1" &&
+            Array.isArray(statement.subject) &&
+            statement.subject.length === 1 &&
+            statement.subject[0]?.digest?.sha256 === images[0].digest.slice(7),
+          "Docker provenance statement does not identify the selected image manifest.",
+        );
+        const definition = statement.predicate?.buildDefinition;
+        requireValue(
+          sourceMatches(definition?.externalParameters?.configSource) &&
+            Array.isArray(definition?.resolvedDependencies) &&
+            definition.resolvedDependencies.some(sourceMatches),
+          "Docker provenance Git source does not match the pinned repository and commit.",
+        );
+        provenanceCount += 1;
+      }
+    }
+    requireValue(
+      provenanceCount > 0,
+      "Missing Docker provenance statement for the selected image.",
+    );
+  }
   const image = manifests.get(images[0].digest);
   const config = await blob(image.config, true);
   const labels = config.config?.Labels;

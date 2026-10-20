@@ -1,7 +1,8 @@
 # Fork release pipeline (staged)
 
-This lane belongs only to `fr-meyer/openclaw`. It is independent of the active
-9.8 deployment and does not modify its candidate, release workflows, or server.
+This lane belongs only to `fr-meyer/openclaw`. The selected grouped target is
+production 9.4 directly to 2026.10.5. The failed 9.8 rehearsal remains evidence,
+not an admitted migration input or a prerequisite production deployment.
 The checked-in manifest pins a **source-only seed** at fork main `8b1f5c8`; it
 has `productionEligible: false`. A future candidate needs its own reviewed,
 complete ordered patch chain, focused test selection, and explicit decision to
@@ -213,6 +214,32 @@ reserve breach stops only this operation's client. It does not establish that
 the remote BuildKit solve has settled. Cancellation requires the private
 started receipt to match the live unit invocation. No uncertain operation can
 produce a success receipt or automatically release the reservation.
+
+The native Git context uses the full commit as both checksum and fragment,
+with BuildKit's `fetch-by-commit=true` shallow, no-tags transport. The pinned
+Buildx/BuildKit pair must support that query; do not replace it with an
+unbounded raw-SHA fetch or disable native policy checks when it fails.
+GCP sealing verifies the hash-checked SLSA statement's selected image subject,
+Git configuration source and resolved dependency against that same repository
+and commit. Hosted local-checkout builds retain their existing producer checks.
+
+The supervisor bounds inherited stdout draining after client exit and applies
+a five-second termination grace plus a two-second join. An open pipe or an
+unobserved exit cannot produce success. This settles the client supervisor;
+native daemon cancellation and absence of an active solve still need owner
+reconciliation before a retry.
+
+Resource reserves are explicit operation inputs, not performance guarantees.
+The first candidate attempt used a 12 GiB available-memory floor and stopped
+with 11.59 GiB available; that was conservative, not evidence of imminent host
+OOM. The user's acceptance of production impact supersedes that reserve.
+For the existing 10 GiB worker and 512 MiB client, the revised build proposal
+uses a configured 2 GiB host floor and an operator admission check for at least
+12.5 GiB available, with no concurrent migration. The adapter enforces the
+configured floor at start and during execution; it does not enforce the
+additional operator admission budget. This is operational headroom, not a measured 10.5 peak
+or a guarantee against a sudden allocation. Recheck host totals, current
+allocation and pressure before dispatch; migration has its own reviewed budget.
 
 Keep the operation directory owned and `0700`. The Buildx child uses `0022`
 inside that private parent so root-created OCI exports can be read by the
@@ -460,7 +487,7 @@ separate publication/settings plan.
 The seed's manifest-bound `patch-inventory.json` records its two ordered patches
 and every affected path. It is not the full 9.8/9.9/10.1–10.5 inventory.
 
-The post-9.8 grouped target and its source and migration facts are tracked in
+The direct 9.4-to-10.5 grouped target and its source and migration facts are tracked in
 [`GROUPED-2026.10.5.md`](GROUPED-2026.10.5.md). It is preparation evidence, not
 an eligible candidate manifest.
 Copy `patch-inventory.template.json` for a new reviewed candidate; nulls and

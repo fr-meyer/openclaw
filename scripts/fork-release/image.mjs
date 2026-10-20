@@ -88,18 +88,19 @@ export function inspectLoadedPlugins(manifest, version, imageReference) {
   );
 }
 
-async function checkedLayout({ manifest, receipt, ociDir }) {
-  const result = await verifyDockerReleaseLayout({
+export async function verifyImageLayout({ manifest, receipt, ociDir }) {
+  validateProducer(receipt.producer);
+  return verifyDockerReleaseLayout({
     directory: ociDir,
     architecture: manifest.image.architecture,
     sourceSha: manifest.source.commit,
+    // GCP uses an immutable remote Git context. Hosted preparation retains its
+    // existing local-checkout context and producer checks.
+    sourceRepository: receipt.producer.kind === "gcp" ? manifest.repository : undefined,
     version: receipt.version,
     builtAt: receipt.builtAt,
     expectedDigest: receipt.indexDigest,
   });
-  need(result.imageDigest === receipt.imageDigest, "Image manifest digest changed");
-  need(result.configDigest === receipt.configDigest, "Image config digest changed");
-  return result;
 }
 
 async function main() {
@@ -181,7 +182,9 @@ async function main() {
         );
       }
     }
-    await checkedLayout({ manifest, receipt, ociDir: fourth });
+    const image = await verifyImageLayout({ manifest, receipt, ociDir: fourth });
+    need(image.imageDigest === receipt.imageDigest, "Image manifest digest changed");
+    need(image.configDigest === receipt.configDigest, "Image config digest changed");
     console.log(`Verified ${receipt.indexDigest} for ${receipt.sourceSha}`);
     return;
   }
@@ -292,14 +295,7 @@ async function main() {
     artifactName: producerArtifactName(sourceSha, producer),
     ...(manifest.review ? { review: { ...manifest.review, headSha: reviewHead } } : {}),
   };
-  const image = await verifyDockerReleaseLayout({
-    directory: ociDir,
-    architecture: receipt.architecture,
-    sourceSha,
-    version,
-    builtAt: receipt.builtAt,
-    expectedDigest,
-  });
+  const image = await verifyImageLayout({ manifest, receipt, ociDir });
   const smoke = smokeDockerReleaseImage(
     ociDir,
     receipt.architecture,
