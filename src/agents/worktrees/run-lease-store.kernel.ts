@@ -20,10 +20,33 @@ export function admitWorktreeRunLeaseInDatabase(
   db: DatabaseSync,
   params: WorktreeRunLeaseRowInput,
 ): void {
+  const k = getNodeSqliteKysely<Pick<DB, "worktrees" | "state_leases">>(db);
   if (params.observed) {
     assertWorktreeRegistryPredicates(db, [{ kind: "binding", record: params.observed }]);
+    const observed = params.observed;
+    let owners = k
+      .selectFrom("worktrees")
+      .select(["id", "created_at"])
+      .where("owner_kind", "=", observed.ownerKind)
+      .where("repo_fingerprint", "=", observed.repoFingerprint)
+      .where("path", "=", observed.path)
+      .where("removed_at", "is", null);
+    owners =
+      observed.ownerId === undefined
+        ? owners.where("owner_id", "is", null)
+        : owners.where("owner_id", "=", observed.ownerId);
+    const currentOwners = executeSqliteQuerySync(
+      db,
+      owners.orderBy("created_at", "desc").limit(2),
+    ).rows;
+    const latestOwner = currentOwners[0];
+    if (
+      latestOwner?.id !== observed.id ||
+      (currentOwners[1] && currentOwners[1].created_at === latestOwner?.created_at)
+    ) {
+      throw new Error(`managed worktree is no longer authoritative: ${observed.path}`);
+    }
   }
-  const k = getNodeSqliteKysely<Pick<DB, "worktrees" | "state_leases">>(db);
   const scope = worktreeRunLeaseScope(params.worktreeId);
   const record = executeSqliteQuerySync(
     db,

@@ -13,10 +13,10 @@
       "UPSTREAM_UNCHANGED": 6
     },
     "dispositions": {
-      "ADAPTED_SOURCE_ONLY": 10,
+      "ADAPTED_SOURCE_ONLY": 13,
       "CARRIED_INERT_SOURCE_ONLY": 12,
       "CARRIED_SOURCE_ONLY": 2,
-      "PENDING_SEMANTIC_REVIEW": 68
+      "PENDING_SEMANTIC_REVIEW": 65
     },
     "upstreamedExact": 0,
     "retiredReviewed": 0
@@ -313,7 +313,7 @@
     {
       "path": "src/agents/worktrees/run-lease-store.kernel.ts",
       "treeRelation": "UPSTREAM_CHANGED",
-      "disposition": "PENDING_SEMANTIC_REVIEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
       "v99BaseBlob": "af44682679f7710b3bb4eeba53f3dce9758b5eb5",
       "v99ForkBlob": "7003ffb5fa52f2e80e778efa304154b1a5b345dd",
       "v105UpstreamBlob": "2cddcb1bf3fc222d11b8b61654439025a19db32e"
@@ -321,7 +321,7 @@
     {
       "path": "src/agents/worktrees/run-lease.test.ts",
       "treeRelation": "UPSTREAM_CHANGED",
-      "disposition": "PENDING_SEMANTIC_REVIEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
       "v99BaseBlob": "127e8aad2dd99b37c40655850d8cdfb283c7c934",
       "v99ForkBlob": "ed85fb4744b555b8d7ca1231cb37d6c0da63e8ab",
       "v105UpstreamBlob": "fa20807feb1cbdca65b14b234bbf86a20fad9382"
@@ -329,7 +329,7 @@
     {
       "path": "src/agents/worktrees/run-lease.ts",
       "treeRelation": "UPSTREAM_CHANGED",
-      "disposition": "PENDING_SEMANTIC_REVIEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
       "v99BaseBlob": "3454f90e24308542b29e2bf147a78d4ab2243e91",
       "v99ForkBlob": "3e5bdc53db31d0975db4fe26739859943b030fca",
       "v105UpstreamBlob": "48d7f6a6e98d4f07f2e74e4206da185b4703532b"
