@@ -12,7 +12,7 @@
     "src/secrets/egress-proxy/response-headers.test.ts",
     "src/secrets/egress-proxy/response-headers.ts"
   ],
-  "semanticLedgerSha256": "7a6cee45289e9e1f8c281cf61166dfcf790ad2b8600a80003df95e1abc4c5e2d",
+  "semanticLedgerSha256": "9191faeb284d81353e461743e8365a0158760025669ecbf02e5c026032283776",
   "verbatimSemanticDecisions": [
     {
       "path": "src/secrets/egress-proxy/proxy-forward.test.ts",

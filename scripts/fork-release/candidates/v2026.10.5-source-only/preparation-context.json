@@ -1,18 +1,18 @@
 {
   "schema": "openclaw.local-source-seal-preparation.v1",
-  "sourceSha": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
-  "sourceTree": "9dd42d178010367e153b73f42f1f7d14370b579f",
-  "toolingSha": "1b699d153fd474fec2136a245db6a407cf38050c",
+  "sourceSha": "cb80407b3d01111996ec6abb803fd00417b535a0",
+  "sourceTree": "9bb03f9cd6f8221f42a1c1701824a154d6f87d55",
+  "toolingSha": "e0df548f6b89372f84e156ea80a64b2a53dd20d7",
   "review": {
     "prNumber": 18,
     "baseSha": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
-    "changedDiffSha256": "04d2714b03fc9a1f29b7319cd41dbc777df219badbf08d2e50e52b83959a678d"
+    "changedDiffSha256": "fb8096d411c59bb23ac702ef11e1f495514f780a32b3ba662d85abf9dd7437e3"
   },
   "cachedPrObservation": {
-    "sha256": "677f9cb6eee998bf2bdc9e5df4f341fc0664669333b91ce789f00709a8ed293c",
-    "updatedAt": "2026-10-20T15:00:55Z",
+    "sha256": "41d2bd685ea1dbe9afd7730a8fd80b504161b3ce3e8d88b07ee5418f5b17f144",
+    "updatedAt": "2026-10-20T15:50:20Z",
     "kind": "public-identity-projection",
-    "headSha": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+    "headSha": "cb80407b3d01111996ec6abb803fd00417b535a0",
     "headRef": "prep/v2026.10.5-source-only",
     "baseSha": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
     "baseRef": "prep/v2026.10.5-upstream-base",
@@ -37,7 +37,7 @@
     "CARRIED_INERT_SOURCE_ONLY": 6,
     "CARRIED_SOURCE_ONLY": 2
   },
-  "candidateChangedPaths": 113,
+  "candidateChangedPaths": 115,
   "introducedPaths": [
     "custom-patches/reconciliation-2026.10.5.json",
     "docs/plugins/sdk-migration.md",
@@ -54,6 +54,7 @@
     "src/agents/subagents/registry/subagent-registry.store.worker.ts",
     "src/agents/subagents/registry/subagent-registry.types.ts",
     "src/cli/gateway-rpc.runtime.test.ts",
+    "src/dockerfile.test.ts",
     "src/gateway/agent-turn/agent-run-subagent.ts",
     "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
     "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
@@ -71,17 +72,18 @@
     "src/tasks/managed-task-flow-kill-claim.worker.ts",
     "src/tasks/managed-task-flow.test-helpers.ts",
     "src/tasks/managed-task-flow.worker.integration.test.ts",
+    "test/scripts/docker-build-helper.test.ts",
     "test/vitest/vitest.database-worker-core-paths.mjs",
     "test/vitest/vitest.gateway-server-paths.mjs"
   ],
-  "coveredDistinctPaths": 126,
-  "appliedCommitCount": 9,
+  "coveredDistinctPaths": 128,
+  "appliedCommitCount": 10,
   "nonAppliedDecisionCount": 7,
-  "referencedTestCount": 33,
+  "referencedTestCount": 35,
   "separateNativePrerequisites": [
     {
       "file": "native-nowistay-prerequisite.json",
-      "sha256": "c51a8f28b0830e6725b9f3d5ac3ce45ec6adf8a6351261b589aaaf265fb1f499",
+      "sha256": "1b650beb9e9e1d616d8a7505cbbe7e2a6fa6f10d471d7f97d9786ec8e93f5167",
       "required": true
     }
   ],

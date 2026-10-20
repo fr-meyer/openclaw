@@ -4,24 +4,24 @@ This proposal binds [source PR18](https://github.com/fr-meyer/openclaw/pull/18) 
 
 | Identity | Exact value |
 | --- | --- |
-| Source commit / PR head | `2743fe2853a90b7f52f298734c9f7ad5e1b4ca59` |
-| Source tree | `9dd42d178010367e153b73f42f1f7d14370b579f` |
+| Source commit / PR head | `cb80407b3d01111996ec6abb803fd00417b535a0` |
+| Source tree | `9bb03f9cd6f8221f42a1c1701824a154d6f87d55` |
 | Upstream 10.5 commit / PR base | `1b58cb9a1b4f4353e1add63c8506db4d890962e8` |
 | Upstream annotated tag object | `9171d0a427738902efd811c648325cf54116743c` |
 | Historical fork source | `c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6` |
-| Derivation tooling commit | `1b699d153fd474fec2136a245db6a407cf38050c` |
-| Manifest SHA256 | `d7f224d24d9ddf196e9696916b3f66304b28d2e23646e5b5b9bd2720da43b702` |
-| Inventory SHA256 | `7f455ece134f6bd6da64594e860ea8def00cb0c896ee1e1552df254606997e4e` |
+| Derivation tooling commit | `e0df548f6b89372f84e156ea80a64b2a53dd20d7` |
+| Manifest SHA256 | `6cf4d847d8e8bf13a3dceda2eadbca5ebd21edac44ae95313317dcfcfd173319` |
+| Inventory SHA256 | `b25cea61c9b22a9402ee14b8179fa9504c9dcb9d82bedb043cd79217f76ff5d7` |
 
 ## Evidence and scope
 
-The manifest contains all nine applied commits in their actual linear order. The inventory covers the original 92 semantic paths and 34 additional paths, including all 113 paths changed against upstream. Four retired and three upstream-equivalent decisions remain separate. Per-commit evidence preserves the ledger's original reasons; additional support paths bind exact committed blobs without inventing historical decisions.
+The manifest contains all ten applied commits in their actual linear order. The inventory covers the original 92 semantic paths and 36 additional paths, including all 115 paths changed against upstream. Four retired and three upstream-equivalent decisions remain separate. Per-commit evidence preserves the ledger's original reasons; additional support paths bind exact committed blobs without inventing historical decisions.
 
 `source-preparation-manifest.json` and `semantic-reconciliation.json` retain committed source evidence unchanged. `pr18-observation.json` retains the supplied native GitHub CLI **public identity projection** unchanged; it is selected API fields, not a full raw API response. Its `updated_at` is the PR update time, not a fetch timestamp.
 
 `upstream-verification.json` retains the supplied official annotated-tag receipt: GitHub reports `verified: true`, `reason: valid`, and verification time `2026-10-18T20:11:18Z`. Its payload and signature byte-match `upstream-tag.txt`. `upstream-local-object-binding.json` records the separate local binding. No new signature or API query is asserted.
 
-`sha256.json` covers the 26 generated input/evidence files. Existing metadata validation passed, and a second generation reproduced them byte for byte. The local full source preflight refused `source.partial_clone.unsupported`. The same full preflight then passed against a separate ordinary exact-source GCP checkout on October 20, 2026, from 15:12:53 to 15:13:01 UTC, with networking disabled and no candidate code execution. Its native result was `passed: true`, `errors: []`, `deploymentAuthorized: false`. The historical seed remains unchanged.
+`sha256.json` covers the 27 generated input/evidence files. The existing metadata owner validated these generated bindings. The historical source `2743fe2853a90b7f52f298734c9f7ad5e1b4ca59` passed full source preflight in an ordinary GCP checkout at 15:12:53–15:13:01 UTC on October 20, 2026. That receipt is not proof of the newer source head. Full preflight of the current head then passed on the ordinary exact-source GCP checkout from 16:05:34 to 16:05:40 UTC, with networking disabled and no candidate code execution: `passed: true`, `errors: []`, `deploymentAuthorized: false`. The historical seed remains unchanged.
 
 ## Existing verification commands
 
@@ -61,11 +61,11 @@ Use clean source and derivation-tooling checkouts at the exact commits above. Th
 python3 "$PROPOSAL/generate.py" \
   --source "$SOURCE_CHECKOUT" \
   --tooling "$DERIVATION_TOOLING_CHECKOUT" \
-  --head 2743fe2853a90b7f52f298734c9f7ad5e1b4ca59 \
+  --head cb80407b3d01111996ec6abb803fd00417b535a0 \
   --pr-json "$PROPOSAL/pr18-observation.json" \
   --pr-observation-kind public-identity-projection \
   --upstream-verification-json "$PROPOSAL/upstream-verification.json" \
-  --output /tmp/openclaw-v105-seal-prep/2743fe2853a9
+  --output /tmp/openclaw-v105-seal-prep/cb80407b3d01
 ```
 
 The preparation context's tooling SHA identifies derivation. A later image receipt must bind the actual executing tooling checkout and producer evidence.
@@ -74,4 +74,4 @@ The preparation context's tooling SHA identifies derivation. A later image recei
 
 Exact image dependency closure, native OCI build and sealing, selected `codex,workboard` plugin checks, native Doctor on an isolated test database, startup/readiness, and rollback proof remain separate qualification. The source preflight does not prove those operations. Recheck live PR head/base at admission and bind the native Nowistay execution evidence before treating that prerequisite as satisfied.
 
-The [existing GCP sealing contract](../../README.md#seal-an-image-produced-on-the-existing-gcp-host) owns image evidence and isolation. Credentials, configuration, and databases remain outside the image. The active 9.8 rehearsal and production remain under their deployment owner's control.
+The [existing GCP sealing contract](../../README.md#seal-an-image-produced-on-the-existing-gcp-host) owns image evidence and isolation. Credentials, configuration, and databases remain outside the image. The 9.8 rehearsal resources and production remain under their deployment owner's control.

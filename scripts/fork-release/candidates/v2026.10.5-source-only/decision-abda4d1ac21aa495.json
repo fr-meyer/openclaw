@@ -1,6 +1,6 @@
 {
   "schema": "openclaw.local-semantic-decision-evidence.v1",
-  "semanticLedgerSha256": "7a6cee45289e9e1f8c281cf61166dfcf790ad2b8600a80003df95e1abc4c5e2d",
+  "semanticLedgerSha256": "9191faeb284d81353e461743e8365a0158760025669ecbf02e5c026032283776",
   "verbatimSemanticDecision": {
     "path": "apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift",
     "treeRelation": "PATH_REMOVED",
@@ -10,7 +10,7 @@
     "v105UpstreamBlob": null,
     "reason": "10.5 removed this tracked generated file. Current prepare-native-protocol.mjs generates the request/result models from ProtocolSchemas into the ignored Swift build directory; do not restore the old generated owner."
   },
-  "candidateCommit": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+  "candidateCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
   "pathBinding": {
     "path": "apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift",
     "boundary": "host",

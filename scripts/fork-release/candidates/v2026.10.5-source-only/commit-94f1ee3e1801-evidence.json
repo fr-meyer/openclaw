@@ -30,7 +30,7 @@
     "src/config/io.write.ts",
     "src/plugin-sdk/config-mutation.ts"
   ],
-  "semanticLedgerSha256": "7a6cee45289e9e1f8c281cf61166dfcf790ad2b8600a80003df95e1abc4c5e2d",
+  "semanticLedgerSha256": "9191faeb284d81353e461743e8365a0158760025669ecbf02e5c026032283776",
   "verbatimSemanticDecisions": [
     {
       "path": "Dockerfile",
@@ -40,7 +40,7 @@
       "v99ForkBlob": "4455a73c0dcd8111e90dd542892b47d6730420e8",
       "v105UpstreamBlob": "79c30caaf1963efe8e6eca18da2386c67b6f0455",
       "semanticOwner": "image-packaging",
-      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof. Separate reviewed manifest-only Corepack/pnpm acquisition and pre-payload Debian/npm security acquisition from network-disabled candidate execution. Preserve frozen lockfile, patch/integrity and release-age policy; disable hooks only during acquisition, retain native offline install lifecycles and native-addon checks, and copy the pinned Corepack cache into the runtime."
     },
     {
       "path": "custom-patches/manifest.json",
