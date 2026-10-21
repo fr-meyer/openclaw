@@ -104,11 +104,13 @@ describe("version resolution", () => {
     let startupCommit = "aaaaaaa";
     vi.doMock("./infra/git-commit.js", () => ({
       resolveLoadedCommitHash: () => startupCommit,
+      resolveLoadedFullCommitHash: () => "a".repeat(40),
     }));
     vi.resetModules();
     try {
       const runtimeVersion = await import("./version.js");
       expect(runtimeVersion.resolveRuntimeServiceCommit()).toBe("aaaaaaa");
+      expect(runtimeVersion.resolveRuntimeServiceFullCommit()).toBe("a".repeat(40));
       startupCommit = "bbbbbbb";
       expect(runtimeVersion.resolveRuntimeServiceCommit()).toBe("aaaaaaa");
     } finally {

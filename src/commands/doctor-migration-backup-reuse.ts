@@ -11,7 +11,7 @@ import {
   resolveSessionSqliteMigrationRunsDir,
 } from "../infra/session-sqlite-migration-manifest.js";
 import { DoctorMaintenanceRefusalError } from "../infra/update-doctor-result.js";
-import { resolveRuntimeServiceCommit, VERSION } from "../version.js";
+import { resolveRuntimeServiceFullCommit, VERSION } from "../version.js";
 
 export const DOCTOR_BACKUP_REUSE_ENV = "OPENCLAW_DOCTOR_BACKUP_REUSE_PROOF";
 
@@ -95,7 +95,7 @@ export function parseReviewedDoctorBackupReuse(
   }
   if (
     VERSION !== "2026.10.5" ||
-    resolveRuntimeServiceCommit() !== candidate.targetSourceSha ||
+    resolveRuntimeServiceFullCommit() !== candidate.targetSourceSha ||
     candidate.targetSourceSha === candidate.originSourceSha ||
     !REVIEWED_ORIGINS.some(
       (origin) =>

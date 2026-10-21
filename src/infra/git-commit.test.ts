@@ -89,6 +89,7 @@ function limitPositionalReads(maxBytes: number) {
 describe("git commit resolution", () => {
   let resolveCommitHash: (typeof import("./git-commit.js"))["resolveCommitHash"];
   let resolveLoadedCommitHash: (typeof import("./git-commit.js"))["resolveLoadedCommitHash"];
+  let resolveLoadedFullCommitHash: (typeof import("./git-commit.js"))["resolveLoadedFullCommitHash"];
 
   // Unique fixture paths isolate cache entries without reloading the owner for each case.
   beforeAll(async () => {
@@ -96,7 +97,8 @@ describe("git commit resolution", () => {
     vi.doUnmock("node:fs");
     vi.doUnmock("node:module");
     vi.resetModules();
-    ({ resolveCommitHash, resolveLoadedCommitHash } = await import("./git-commit.js"));
+    ({ resolveCommitHash, resolveLoadedCommitHash, resolveLoadedFullCommitHash } =
+      await import("./git-commit.js"));
   });
 
   afterEach(async () => {
@@ -195,6 +197,30 @@ describe("git commit resolution", () => {
         moduleUrl: pathToFileURL(path.join(dist, "version-chunk.js")).href,
       }),
     ).toBe("0123456");
+  });
+
+  it("reads an exact full loaded commit from build metadata, not env or checkout", async () => {
+    const root = await makeTempDir("git-full-loaded-build");
+    const dist = path.join(root, "dist");
+    const built = "abcdef0123456789abcdef0123456789abcdef01";
+    const other = "abcdef0fedcba9876543210fedcba9876543210f";
+    await makeFakeGitRepo(root, { head: `${other}\n` });
+    await fs.mkdir(dist, { recursive: true });
+    await fs.writeFile(path.join(dist, "build-info.json"), JSON.stringify({ commit: built }));
+    for (const name of [".buildstamp", ".runtime-postbuildstamp"]) {
+      await fs.writeFile(path.join(dist, name), JSON.stringify({ head: built }));
+    }
+    const moduleUrl = pathToFileURL(path.join(dist, "version-chunk.js")).href;
+    expect(resolveLoadedFullCommitHash({ moduleUrl })).toBe(built);
+    expect(resolveLoadedCommitHash({ moduleUrl, env: { GIT_COMMIT: other } })).toBe("abcdef0");
+    await fs.writeFile(path.join(dist, ".runtime-postbuildstamp"), JSON.stringify({ head: other }));
+    expect(resolveLoadedFullCommitHash({ moduleUrl })).toBeNull();
+    await fs.rm(path.join(dist, ".runtime-postbuildstamp"));
+    expect(resolveLoadedFullCommitHash({ moduleUrl })).toBeNull();
+    await fs.rm(path.join(dist, ".buildstamp"));
+    expect(resolveLoadedFullCommitHash({ moduleUrl })).toBe(built);
+    await fs.writeFile(path.join(dist, "build-info.json"), JSON.stringify({ commit: built.slice(0, 7) }));
+    expect(resolveLoadedFullCommitHash({ moduleUrl })).toBeNull();
   });
 
   it("does not guess when commitless build stamps lack build info", async () => {

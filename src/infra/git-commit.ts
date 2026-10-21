@@ -13,6 +13,11 @@ const formatCommit = (value?: string | null) => {
   return match ? normalizeLowercaseStringOrEmpty(match[0].slice(0, 7)) : null;
 };
 
+const formatFullCommit = (value?: string | null): string | null => {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && /^[0-9a-f]{40}$/u.test(normalized) ? normalized : null;
+};
+
 export function gitCommitPrefixesMatch(left: string, right: string): boolean {
   const normalizedLeft = normalizeLowercaseStringOrEmpty(left);
   const normalizedRight = normalizeLowercaseStringOrEmpty(right);
@@ -93,6 +98,7 @@ const readCommitProbe = (
   moduleUrl: string,
   candidates: readonly string[],
   field: "commit" | "head",
+  format: (value: string) => string | null = formatCommit,
 ): string | null | undefined => {
   try {
     for (const candidate of candidates) {
@@ -108,7 +114,7 @@ const readCommitProbe = (
       }
       try {
         const value = asNullableRecord(JSON.parse(raw))?.[field];
-        return typeof value === "string" ? formatCommit(value) : null;
+        return typeof value === "string" ? format(value) : null;
       } catch {
         return null;
       }
@@ -196,4 +202,37 @@ export function resolveLoadedCommitHash(
   return loaded === undefined
     ? resolveCommitHash({ moduleUrl, ...(options.env ? { env: options.env } : {}) })
     : loaded;
+}
+
+/** Exact producer identity from the loaded artifact; never infer it from cwd or env. */
+export function resolveLoadedFullCommitHash(options: { moduleUrl?: string } = {}): string | null {
+  const moduleUrl = options.moduleUrl ?? import.meta.url;
+  const buildInfo = readCommitProbe(
+    moduleUrl,
+    ["../build-info.json", "./build-info.json"],
+    "commit",
+    formatFullCommit,
+  );
+  if (!buildInfo) {
+    return null;
+  }
+  const buildStamp = readCommitProbe(
+    moduleUrl,
+    ["../.buildstamp", "./.buildstamp"],
+    "head",
+    formatFullCommit,
+  );
+  const runtimeStamp = readCommitProbe(
+    moduleUrl,
+    ["../.runtime-postbuildstamp", "./.runtime-postbuildstamp"],
+    "head",
+    formatFullCommit,
+  );
+  // Published packages may omit both local stamps. If either is present,
+  // both must bind the same full commit as the packaged build information.
+  return buildStamp === undefined && runtimeStamp === undefined
+    ? buildInfo
+    : buildStamp === buildInfo && runtimeStamp === buildInfo
+      ? buildInfo
+      : null;
 }

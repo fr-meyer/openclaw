@@ -105,12 +105,29 @@ async function backup(
 }
 
 describe("Doctor migration backup retries", () => {
+  it("rejects a different loaded full commit even when its seven-character prefix matches", async () => {
+    const fixture = createFixture();
+    await backup(fixture);
+    const old = prepareCrossBuildGroup(fixture);
+    const other = `${old.targetSourceSha.slice(0, 7)}${"c".repeat(33)}`;
+    const commit = vi.spyOn(version, "resolveRuntimeServiceFullCommit").mockReturnValue(other);
+    try {
+      await expect(backup(fixture)).rejects.toMatchObject({
+        refusal: { kind: "data-at-risk", reason: "incomplete-migration" },
+      });
+      expect([fixture.shared, fixture.agent].flatMap(listBackups)).toEqual(old.original);
+      expect(fs.readFileSync(old.manifest)).toEqual(old.originalManifest);
+    } finally {
+      commit.mockRestore();
+    }
+  });
+
   it("reuses a reviewed earlier-build group and completes only the successor manifest", async () => {
     const fixture = createFixture();
     await backup(fixture);
     const old = prepareCrossBuildGroup(fixture);
     const commit = vi
-      .spyOn(version, "resolveRuntimeServiceCommit")
+      .spyOn(version, "resolveRuntimeServiceFullCommit")
       .mockReturnValue(old.targetSourceSha);
     const build = vi
       .spyOn(version, "resolveRuntimeServiceBuildId")
@@ -172,7 +189,7 @@ describe("Doctor migration backup retries", () => {
       await backup(fixture);
       const old = prepareCrossBuildGroup(fixture);
       const commit = vi
-        .spyOn(version, "resolveRuntimeServiceCommit")
+        .spyOn(version, "resolveRuntimeServiceFullCommit")
         .mockReturnValue(old.targetSourceSha);
       const build = vi
         .spyOn(version, "resolveRuntimeServiceBuildId")
@@ -218,7 +235,7 @@ describe("Doctor migration backup retries", () => {
       await backup(fixture);
       const old = prepareCrossBuildGroup(fixture);
       const commit = vi
-        .spyOn(version, "resolveRuntimeServiceCommit")
+        .spyOn(version, "resolveRuntimeServiceFullCommit")
         .mockReturnValue(old.targetSourceSha);
       const build = vi
         .spyOn(version, "resolveRuntimeServiceBuildId")
@@ -253,7 +270,7 @@ describe("Doctor migration backup retries", () => {
     await backup(fixture);
     const old = prepareCrossBuildGroup(fixture);
     const commit = vi
-      .spyOn(version, "resolveRuntimeServiceCommit")
+      .spyOn(version, "resolveRuntimeServiceFullCommit")
       .mockReturnValue(old.targetSourceSha);
     const build = vi
       .spyOn(version, "resolveRuntimeServiceBuildId")
@@ -297,7 +314,7 @@ describe("Doctor migration backup retries", () => {
     await backup(fixture);
     const old = prepareCrossBuildGroup(fixture);
     const commit = vi
-      .spyOn(version, "resolveRuntimeServiceCommit")
+      .spyOn(version, "resolveRuntimeServiceFullCommit")
       .mockReturnValue(old.targetSourceSha);
     const build = vi
       .spyOn(version, "resolveRuntimeServiceBuildId")

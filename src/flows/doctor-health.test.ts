@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { readWorkspaceStateSnapshot } from "../agents/workspace-state-store.js";
 import { runCommandWithRuntime } from "../cli/cli-utils.js";
+import { DOCTOR_BACKUP_REUSE_ENV } from "../commands/doctor-migration-backup-reuse.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveGatewayStateOwnerPath } from "../infra/gateway-state-owner.js";
 import { migrateLegacyMediaPersistence } from "../infra/state-migrations.media-persistence.js";
@@ -39,6 +40,22 @@ vi.mock("../commands/doctor-update-refusal.js", async (importOriginal) => ({
 
 describe("runDoctorHealthFlow", () => {
   const { openHistoricalAgentDatabase } = useDoctorHealthFixture();
+
+  it("refuses invalid backup reuse proof before Doctor preflight allocates SQLite copies", async () => {
+    const prior = process.env[DOCTOR_BACKUP_REUSE_ENV];
+    process.env[DOCTOR_BACKUP_REUSE_ENV] = "{}";
+    try {
+      await expect(runDoctorHealthFlow()).rejects.toThrow(
+        "proof fields or syntax differ from the reviewed contract",
+      );
+    } finally {
+      if (prior === undefined) {
+        delete process.env[DOCTOR_BACKUP_REUSE_ENV];
+      } else {
+        process.env[DOCTOR_BACKUP_REUSE_ENV] = prior;
+      }
+    }
+  });
 
   it.each(
     support.doctorServiceInspectionCases.filter(
