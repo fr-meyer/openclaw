@@ -221,6 +221,17 @@ class DailySnapshotTests(unittest.TestCase):
         self.assertFalse(value['fullDiskSnapshotCreated'])
         return value
 
+    def test_daily_entry_admits_only_explicit_reviewed_io_pairs(self):
+        daily.validate_plan(self.plan)
+        self.plan['resources'].update(readBps=256 << 20, writeBps=64 << 20)
+        daily.validate_plan(self.plan)
+        for key, value in (('readBps', 512 << 20), ('writeBps', 32 << 20), ('memoryBytes', 32 << 30)):
+            changed = copy.deepcopy(self.plan)
+            changed['resources'][key] = value
+            with self.assertRaisesRegex(release.Refusal, 'trial.limits.unreviewed_envelope'):
+                daily.validate_plan(changed)
+        self.assertFalse(self.cloud.mutations)
+
     def test_full_snapshot_lifecycle_uses_distinct_sequential_candidate_and_rollback_disks(self):
         protected = copy.deepcopy(self.cloud.vm['disks'])
         snapshot = copy.deepcopy(self.cloud.snapshot)

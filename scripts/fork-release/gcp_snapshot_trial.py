@@ -52,6 +52,8 @@ QUALIFIED_IMAGE = {
     "selectedExtensions": "codex,workboard", "bundledCodexVersion": "0.160.0",
 }
 QUALIFIED_PRODUCER = "1507a29361d335283f1f4a55d8c037505892f94c"
+IO_PROFILES = {(128 << 20, 32 << 20): "read128-write32",
+               (256 << 20, 64 << 20): "read256-write64"}
 need = release.need
 
 
@@ -136,6 +138,16 @@ def native_phase(plan):
     return {"startup": "candidate-startup", "rollback": "rollback-startup"}[phase(plan)]
 
 
+def resource_profile(limits):
+    """One explicit fixed profile per operation; no implicit escalation."""
+    need(all(type(limits.get(k)) is int for k in ("memoryBytes", "cpus", "readBps", "writeBps")) and
+         limits["memoryBytes"] == 24 << 30 and limits["cpus"] == 4 and
+         (limits["readBps"], limits["writeBps"]) in IO_PROFILES,
+         "trial.limits.unreviewed_envelope")
+    return {"id": IO_PROFILES[(limits["readBps"], limits["writeBps"])], "mode": "fixed",
+            **{k: limits[k] for k in ("memoryBytes", "cpus", "readBps", "writeBps")}, "swapBytes": 0}
+
+
 def validate(plan, image, clean, check=None):
     v2 = plan.get("schema") == "openclaw.snapshot-trial-plan.v2"
     exact(plan, "schema operationId toolingSha imageReceiptSha256 cleanInputSha256 limits" +
@@ -163,9 +175,7 @@ def validate(plan, image, clean, check=None):
     exact(limits, "memoryBytes cpus readBps writeBps minMemoryAvailableBytes minRootFreeBytes "
           "minDataFreeBytes timeoutSeconds", "trial.limits.fields")
     need(all(type(v) is int and v > 0 for v in limits.values()), "trial.limits.integer")
-    need(limits["memoryBytes"] == 24 << 30 and limits["cpus"] == 4 and
-         limits["readBps"] == 128 << 20 and limits["writeBps"] == 32 << 20,
-         "trial.limits.unreviewed_envelope")
+    resource_profile(limits)
     need(limits["minMemoryAvailableBytes"] >= limits["memoryBytes"] and
          600 <= limits["timeoutSeconds"] <= 86400, "trial.limits.admission")
     need(image.get("schema") == ("openclaw.rehearsal-baseline-image.v1" if selected == "rollback" else
@@ -795,10 +805,58 @@ def admit_cgroup(root, intent, devices):
          (root / "pids.max").read_text().strip() == "512", "trial.cgroup.memory")
     cpu = (root / "cpu.max").read_text().split()
     need(len(cpu) == 2 and int(cpu[0]) == limits["cpus"] * int(cpu[1]), "trial.cgroup.cpu")
-    io = {row[0]: dict(pair.split("=", 1) for pair in row[1:])
-          for row in (line.split() for line in (root / "io.max").read_text().splitlines())}
+    io = io_rows(root / "io.max")
     need(io.get(devices["ioMajorMinor"], {}).get("rbps") == str(limits["readBps"]) and
-         io[devices["ioMajorMinor"]].get("wbps") == str(limits["writeBps"]), "trial.cgroup.io")
+         io[devices["ioMajorMinor"]].get("wbps") == str(limits["writeBps"]) and
+         all(io[devices["ioMajorMinor"]].get(key, "max") == "max" for key in ("riops", "wiops")),
+         "trial.cgroup.io")
+
+
+def io_rows(file):
+    raw = file.read_text()
+    need(len(raw) <= 65536, "trial.cgroup.io_size")
+    rows = {}
+    for line in raw.splitlines():
+        row = line.split()
+        need(len(row) > 1 and re.fullmatch(r"[0-9]+:[0-9]+", row[0]) and row[0] not in rows,
+             "trial.cgroup.io_rows")
+        values = {}
+        for pair in row[1:]:
+            need(pair.count("=") == 1, "trial.cgroup.io_fields")
+            key, value = pair.split("=")
+            need(key not in values and (value == "max" or re.fullmatch(r"[0-9]+", value)),
+                 "trial.cgroup.io_fields")
+            values[key] = value
+        rows[row[0]] = values
+    return rows
+
+
+def io_sample(root, intent, devices, previous=None):
+    """Bounded cgroup counters, not a database scan or a migration progress claim."""
+    admit_cgroup(root, intent, devices)
+    counters = io_rows(root / "io.stat").get(devices["ioMajorMinor"])
+    present = counters is not None
+    need(present or previous is None or not previous["deviceObserved"], "trial.cgroup.io_counter_lost")
+    if present:
+        need(all(k in counters and counters[k].isdigit() for k in ("rbytes", "wbytes")),
+             "trial.cgroup.io_counters")
+    counts = {k: int(counters[k]) if present else 0 for k in ("rbytes", "wbytes")}
+    stamp = time.monotonic_ns()
+    limits = intent["plan"]["limits"]
+    sample = {"device": devices["ioMajorMinor"], "deviceObserved": present,
+              "monotonicNs": stamp, **counts, "readCapBps": limits["readBps"], "writeCapBps": limits["writeBps"],
+              "intervalSeconds": None, "readBps": None, "writeBps": None,
+              "readCapRatio": None, "writeCapRatio": None}
+    if previous is not None:
+        need(previous["device"] == sample["device"] and stamp > previous["monotonicNs"] and
+             all(counts[k] >= previous[k] for k in counts), "trial.cgroup.io_counter_changed")
+        elapsed = (stamp - previous["monotonicNs"]) / 10**9
+        sample["intervalSeconds"] = elapsed
+        for prefix, key, cap in (("read", "rbytes", "readBps"), ("write", "wbytes", "writeBps")):
+            rate = (counts[key] - previous[key]) / elapsed
+            sample[prefix + "Bps"] = rate
+            sample[prefix + "CapRatio"] = rate / limits[cap]
+    return sample
 
 
 def successful(state, attach_exit, complete, oom_kills):
@@ -847,6 +905,7 @@ def serve(op):
     need(OP.fullmatch(invocation), "trial.service.invocation")
     durable.write_once(op / "started.json", durable.encode({"invocationId": invocation, "at": durable.now()}))
     cid, child, cg, initial, final, reason = None, None, None, None, None, None
+    first_io, last_io, io_samples = None, None, 0
     complete, oom_kills, child_exit, settled = False, 0, None, False
     selected = phase(intent["plan"])
     native_check, check_buffer, check_count = None, b"", 0
@@ -907,6 +966,9 @@ def serve(op):
                         need(len(baseline_processes) == 2 and value["State"]["Pid"] in baseline_processes,
                              "trial.cgroup.gate_processes")
                         initial = cgroup_sample(cg)
+                        first_io = last_io = io_sample(cg, intent, devices)
+                        io_samples += 1
+                        initial["io"] = first_io
                         durable.write_once(op / "cgroup-admission.json", durable.encode({"path": str(cg),
                             "containerStart": container_start, "sample": initial, "processes": baseline_processes}))
                         durable.reserve_heavy_workload(op, "doctor", started["intentSha256"])
@@ -914,6 +976,9 @@ def serve(op):
                         os.chmod(op / "gate/go", 0o444)
                     if cg is not None:
                         sample = cgroup_sample(cg)
+                        last_io = io_sample(cg, intent, devices, last_io)
+                        io_samples += 1
+                        sample["io"] = last_io
                         oom_kills = sample["events"]["oom_kill"] - initial["events"]["oom_kill"]
                         logs["resources.jsonl"].append(json.dumps(sample).encode() + b"\n")
                         need(oom_kills == 0, "trial.cgroup.oom_kill")
@@ -926,6 +991,9 @@ def serve(op):
                             # after this point, so no native descendant can OOM
                             # between this final sample and normal cgroup removal.
                             sample = cgroup_sample(cg)
+                            last_io = io_sample(cg, intent, devices, last_io)
+                            io_samples += 1
+                            sample["io"] = last_io
                             oom_kills = sample["events"]["oom_kill"] - initial["events"]["oom_kill"]
                             logs["resources.jsonl"].append(json.dumps(sample).encode() + b"\n")
                             need(oom_kills == 0, "trial.cgroup.oom_kill")
@@ -978,6 +1046,9 @@ def serve(op):
         # retained quiescent settlement proof; a surviving cgroup adds evidence.
         if cg.exists():
             last = cgroup_sample(cg)
+            last_io = io_sample(cg, intent, devices, last_io)
+            io_samples += 1
+            last["io"] = last_io
             oom_kills = max(oom_kills, last["events"].get("oom_kill", 0) - initial["events"].get("oom_kill", 0))
             logs["resources.jsonl"].append(json.dumps(last).encode() + b"\n")
         need(successful(final["State"], child.returncode, complete, oom_kills), "trial.doctor.not_successful")
@@ -1020,6 +1091,8 @@ def serve(op):
                   "nativeExitCode": child_exit, "cgroupSettlementObserved": settled,
                   "imageReceiptSha256": intent["plan"]["imageReceiptSha256"],
                   "cleanInputSha256": intent["plan"]["cleanInputSha256"],
+                  "resourceProfile": resource_profile(intent["plan"]["limits"]),
+                  "ioObservation": {"samples": io_samples, "first": first_io, "last": last_io},
                   "promotionAuthorized": False}
         if "checkInputSha256" in intent["plan"]:
             result["checkInputSha256"] = intent["plan"]["checkInputSha256"]
@@ -1030,7 +1103,8 @@ def serve(op):
 def status(op):
     op, intent = load(op)
     output = {"nativeOutput": {}, "operationId": op.name, "phase": phase(intent["plan"]),
-              "state": "prepared", "promotionAuthorized": False}
+              "state": "prepared", "promotionAuthorized": False,
+              "resourceProfile": resource_profile(intent["plan"]["limits"])}
     newest = None
     for name in ("stdout.log", "stderr.log"):
         file = op / name
@@ -1082,6 +1156,10 @@ def status(op):
                  result["invocationId"] == started["invocationId"] == service.get("InvocationID") and
                  result["imageReceiptSha256"] == intent["plan"]["imageReceiptSha256"] and
                  result["cleanInputSha256"] == intent["plan"]["cleanInputSha256"], "trial.result.binding")
+            # Older frozen supervisors have no additive profile receipt. Their
+            # original intent remains authority; never rewrite their evidence.
+            if "resourceProfile" in result:
+                need(result["resourceProfile"] == output["resourceProfile"], "trial.result.profile")
             if "checkInputSha256" in intent["plan"]:
                 need(result.get("phase") == phase(intent["plan"]) and
                      result.get("checkInputSha256") == intent["plan"]["checkInputSha256"], "trial.result.phase_binding")

@@ -262,13 +262,48 @@ is checked through native block nodes and sysfs at admission, before container
 creation and before releasing the native gate. Prior settled phase validation
 uses its retained mapping, so rollback does not require a deleted candidate disk.
 
-The current reviewed envelope is 24 GiB, no container swap, 4 CPUs, 128 MiB/s
-reads and 32 MiB/s writes. Fresh admission limits in the private plan must cover
+The reviewed envelopes retain 24 GiB, no container swap and 4 CPUs. Select one
+explicit read/write pair in the private plan (`limits` for the trial executor,
+`resources` for the daily lifecycle):
+
+| Profile           | `readBps` | `writeBps` |
+| ----------------- | --------- | ---------- |
+| `read128-write32`  | 134217728 | 33554432   |
+| `read256-write64`  | 268435456 | 67108864   |
+
+There is no default escalation or unlimited profile. The second pair doubles
+the caps for a separately selected successor; it is not a benchmark result or
+a promise of doubled throughput. Fresh admission limits in the plan must cover
 the measured clean input, native backup set, WAL/temp growth and host headroom.
 This fixed 24 GiB/4 CPU envelope incorporates the failed 8 GiB rehearsal's
 lesson; it is not a measurement of peak demand or proof of sufficient memory.
 The executor verifies effective Docker and cgroup limits before releasing the
-native gate. `/usr/bin/timeout` in each selected image must be verified
+native gate, during the run and at quiescent settlement. Each new result records
+its fixed profile and first/last I/O samples; the intent retains the original
+selected limits. Bounded resource logs include parent-device `io.stat` counters,
+monotonic interval durations, read/write byte rates and rate-to-cap ratios.
+Confirm that the host reports counters on the retained parent device before
+dispatch. Missing counters before first I/O mean no observed device I/O yet;
+disappearing or regressing counters fail qualification. These are block I/O
+observations, not SQL progress, logical database bytes or physical disk capacity.
+Use counter deltas across comparable 30–60 second windows and native stages;
+single short intervals can exceed a cap because of allowed bursts. Repeated
+rates near a cap suggest throttling but do not establish whole-run speedup.
+
+Profiles remain immutable within an operation; this executor has no live-adjust
+command. Never update a running supervisor, its plan/receipts, Docker limits or
+`io.max`. For a successor, retain the prior operation, original intent/result
+hashes, selected profile and terminal/uncertain state. The sole rehearsal owner
+settles the previous writer and reconciles dataset ownership and admissible
+input before preparing a fresh operation with the new explicit limits. Record
+both operation IDs and intent hashes in the operator handoff, retaining the
+complete profile sequence even when bounded rate logs rotate. Do not relabel
+partially migrated input as clean, clear an uncertain lease, or automatically
+retry a migration. Old receipts remain unchanged; success qualifies only the
+profile used by that operation. Live adjustment requires a separately reviewed
+transition protocol with intent-before-effect, readback and uncertainty recovery.
+
+`/usr/bin/timeout` in each selected image must be verified
 before activation. Do not infer its availability from the image's base distro.
 
 Start intent precedes systemd dispatch; repeating `start` observes the retained

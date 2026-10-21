@@ -98,6 +98,18 @@ class SnapshotTrialTests(unittest.TestCase):
                 "configDigest": "sha256:" + "6" * 64, "gatewayProbeContract": "healthz-readyz-v1"}
             self.intent["image"] = self.image
 
+    def test_explicit_higher_profile_preserves_memory_and_refuses_implicit_escalation(self):
+        self.plan["limits"].update(readBps=256 << 20, writeBps=64 << 20)
+        trial.validate(self.plan, self.image, self.clean)
+        self.select_phase("doctor")
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        for key, value in (("readBps", 512 << 20), ("writeBps", 32 << 20),
+                           ("readBps", 0), ("cpus", 8), ("memoryBytes", 32 << 30)):
+            changed = copy.deepcopy(self.plan)
+            changed["limits"][key] = value
+            with self.assertRaises(release.Refusal):
+                trial.validate(changed, self.image, self.clean, self.intent["check"])
+
     def native_result(self, selected="startup"):
         return {"schema": "openclaw.rehearsal-native-check.v1",
             "phase": "candidate-startup" if selected == "startup" else "rollback-startup",
@@ -918,6 +930,42 @@ class SnapshotTrialTests(unittest.TestCase):
         with self.assertRaises(release.Refusal):
             trial.admit_cgroup(cg, self.intent, self.devices)
 
+    def test_io_observation_counts_rates_absent_device_and_counter_loss(self):
+        cg = self.root / "cgroup-io"
+        cg.mkdir()
+        for name, value in {"memory.max": str(24 << 30), "memory.swap.max": "0", "pids.max": "512",
+                            "cpu.max": "400000 100000", "io.max": "8:16 rbps=134217728 wbps=33554432",
+                            "io.stat": ""}.items():
+            (cg / name).write_text(value)
+        with patch.object(trial.time, "monotonic_ns", side_effect=[10**9, 3 * 10**9, 4 * 10**9]):
+            first = trial.io_sample(cg, self.intent, self.devices)
+            self.assertFalse(first["deviceObserved"])
+            self.assertIsNone(first["readBps"])
+            (cg / "io.stat").write_text(f"8:16 rbytes={256 << 20} wbytes={64 << 20} rios=1 wios=1\n")
+            second = trial.io_sample(cg, self.intent, self.devices, first)
+            self.assertEqual(second["intervalSeconds"], 2)
+            self.assertEqual((second["readBps"], second["writeBps"]), (128 << 20, 32 << 20))
+            self.assertEqual((second["readCapRatio"], second["writeCapRatio"]), (1, 1))
+            (cg / "io.stat").write_text("")
+            with self.assertRaisesRegex(release.Refusal, "io_counter_lost"):
+                trial.io_sample(cg, self.intent, self.devices, second)
+            (cg / "io.stat").write_text("8:16 rbytes=0 wbytes=0")
+            with self.assertRaisesRegex(release.Refusal, "io_counter_changed"):
+                trial.io_sample(cg, self.intent, self.devices, second)
+
+    def test_io_admission_refuses_ambiguous_rows_fields_and_hidden_iops_limit(self):
+        cg = self.root / "cgroup-io"
+        cg.mkdir()
+        for name, value in {"memory.max": str(24 << 30), "memory.swap.max": "0", "pids.max": "512",
+                            "cpu.max": "400000 100000"}.items():
+            (cg / name).write_text(value)
+        good = "8:16 rbps=134217728 wbps=33554432"
+        for raw in (good + "\n" + good, good + " rbps=134217728", good + " riops=100",
+                    good.replace("wbps=33554432", "wbps=max"), good + " invalid"):
+            (cg / "io.max").write_text(raw)
+            with self.subTest(raw=raw), self.assertRaises(release.Refusal):
+                trial.admit_cgroup(cg, self.intent, self.devices)
+
     def test_unknown_service_is_not_not_found(self):
         (self.op / "start-intent.json").write_text("{}")
         with patch.object(trial, "load", return_value=(self.op, self.intent)), \
@@ -949,6 +997,7 @@ class SnapshotTrialTests(unittest.TestCase):
 
     def exercise_serve(self, *, oom_after_native_exit=False, lost_before_settlement=False, policy_drift=False,
                        readonly_drift=False, io_partition_drift=False, devices_changed=False,
+                       kernel_io_drift=False,
                        leftover_descendant=False, remove_cgroup_on_exit=False,
                        stdout=b"Doctor complete.\n", stderr=b""):
         """Run the actual supervisor loop with synthetic daemon/process/cgroup boundaries."""
@@ -956,7 +1005,9 @@ class SnapshotTrialTests(unittest.TestCase):
         cg.mkdir()
         for name, value in {
             "memory.max": str(24 << 30), "memory.swap.max": "0", "pids.max": "512",
-            "cpu.max": "400000 100000", "io.max": "8:16 rbps=134217728 wbps=33554432",
+            "cpu.max": "400000 100000",
+            "io.max": f"8:16 rbps={self.plan['limits']['readBps']} wbps={self.plan['limits']['writeBps']}",
+            "io.stat": "8:16 rbytes=0 wbytes=0 rios=0 wios=0",
             "memory.current": "4096", "memory.peak": "8192", "memory.swap.current": "0",
             "memory.events": "oom 0\noom_kill 0\n", "memory.stat": "anon 4096\nfile 0\nkernel 0\n",
             "cgroup.procs": "123\n124\n",
@@ -1049,8 +1100,8 @@ class SnapshotTrialTests(unittest.TestCase):
                 "Init": True, "Privileged": False, "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges"],
                 "Memory": 24 << 30, "MemorySwap": 24 << 30, "NanoCpus": 4 * 10**9, "PidsLimit": 512,
                 "RestartPolicy": {"Name": "no"}, "LogConfig": {"Type": "none"},
-                "BlkioDeviceReadBps": [{"Path": "/dev/sdb", "Rate": 128 << 20}],
-                "BlkioDeviceWriteBps": [{"Path": "/dev/sdb", "Rate": 32 << 20}]},
+                "BlkioDeviceReadBps": [{"Path": "/dev/sdb", "Rate": self.plan['limits']['readBps']}],
+                "BlkioDeviceWriteBps": [{"Path": "/dev/sdb", "Rate": self.plan['limits']['writeBps']}]},
             "Mounts": [{"Type": "bind", "Source": m["source"], "Destination": m["target"], "RW": not m["readOnly"]}
                        for m in self.clean["mounts"]] +
                       [{"Type": "bind", "Source": str(op / "gate"), "Destination": trial.ADMISSION, "RW": False}],
@@ -1077,6 +1128,8 @@ class SnapshotTrialTests(unittest.TestCase):
                 value["HostConfig"]["Memory"] = 8 << 30
             if io_partition_drift:
                 value["HostConfig"]["BlkioDeviceReadBps"][0]["Path"] = "/dev/sdb1"
+            if kernel_io_drift and state["sent"] and cg.exists():
+                (cg / "io.max").write_text("8:16 rbps=max wbps=max")
             if readonly_drift and state["sent"]:
                 next(m for m in value["Mounts"] if m["Destination"].startswith(trial.STATE_TARGET + "/workspace"))["RW"] = True
             return value
@@ -1130,6 +1183,28 @@ class SnapshotTrialTests(unittest.TestCase):
         self.assertEqual(result["nativeExitCode"], 0)
         self.assertTrue((self.op / "gate/settled").exists())
         self.assertEqual(stops, [])
+
+    def test_serve_higher_profile_is_applied_observed_and_retained_at_settlement(self):
+        self.plan["limits"].update(readBps=256 << 20, writeBps=64 << 20)
+        code, result, stops = self.exercise_serve()
+        self.assertEqual(code, 0, result)
+        args = trial.durable.read_private(self.op / "create-intent.json")["argv"]
+        self.assertEqual(args[args.index("--device-read-bps") + 1], f"/dev/sdb:{256 << 20}")
+        self.assertEqual(args[args.index("--device-write-bps") + 1], f"/dev/sdb:{64 << 20}")
+        self.assertEqual(result["resourceProfile"]["id"], "read256-write64")
+        self.assertEqual(result["resourceProfile"]["mode"], "fixed")
+        self.assertGreaterEqual(result["ioObservation"]["samples"], 3)
+        self.assertEqual(result["ioObservation"]["last"]["writeCapBps"], 64 << 20)
+        settlement = trial.durable.read_private(self.op / "native-settlement.json")
+        self.assertEqual(settlement["cgroup"]["io"]["device"], "8:16")
+        self.assertEqual(stops, [])
+
+    def test_serve_refuses_kernel_io_drift_even_when_docker_configuration_is_unchanged(self):
+        code, result, stops = self.exercise_serve(kernel_io_drift=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.cgroup.io")
+        self.assertFalse((self.op / "gate/settled").exists())
+        self.assertEqual(stops, [["stop", "--time", "30", "9" * 64]])
 
     def test_serve_partition_receipt_uses_retained_whole_disk_docker_and_cgroup_limits(self):
         self.clean.update(devicePath="/dev/disk/by-id/google-synthetic-part1", deviceMajorMinor="8:17")

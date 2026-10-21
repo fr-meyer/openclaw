@@ -92,8 +92,8 @@ def validate_plan(plan):
     fields(r, 'diskType maxDiskGiB estimatedCostMicrousd approvedCostMicrousd memoryBytes cpus readBps writeBps minMemoryAvailableBytes minRootFreeBytes minDataFreeBytes timeoutSeconds', 'daily.resources.fields')
     need(r['diskType'] in ('pd-standard', 'pd-balanced') and all(type(v) is int and v > 0 for k, v in r.items() if k != 'diskType'), 'daily.resources.values')
     need(r['maxDiskGiB'] <= 1024 and r['estimatedCostMicrousd'] <= r['approvedCostMicrousd'] <= 1_000_000_000, 'daily.resources.cost')
-    need(r['memoryBytes'] == 24 << 30 and r['cpus'] == 4 and r['readBps'] == 128 << 20 and r['writeBps'] == 32 << 20 and
-         r['minMemoryAvailableBytes'] >= r['memoryBytes'] and 960 <= r['timeoutSeconds'] <= 86400, 'daily.resources.native')
+    trial.resource_profile(r)
+    need(r['minMemoryAvailableBytes'] >= r['memoryBytes'] and 960 <= r['timeoutSeconds'] <= 86400, 'daily.resources.native')
 
 
 def disk_name(run, generation):
