@@ -690,6 +690,17 @@ same operation; it cannot dispatch again. An existing reservation is retained
 for reconciliation. This excludes competing operations through this adapter,
 not independent users of Docker; coordinate ownership before dispatch.
 
+For a successor on the same builder, run `gcp_builder_handoff.py OLD_OPERATION
+NEW_OPERATION` only after the old build has a validated successful execution
+receipt and the new operation has been prepared but never started. The handoff
+requires the same exact builder identity, the old service's terminal invocation,
+and the old lease bytes. It writes an intent before atomically replacing the
+lease and a completion receipt afterward. A lost reply can be reconciled by
+repeating the same handoff; another lease owner or an incomplete prior build is
+refused. The handoff does not dispatch a build or establish that a failed or
+cancelled remote solve has stopped. Keep both operation directories and their
+evidence. Start the successor only after its handoff receipt is durable.
+
 The existing builder remains unchanged. The client has its own systemd limits;
 the recorded builder limits govern compilation separately. Native output is
 timestamped and shown before status. Resource observations describe measured
