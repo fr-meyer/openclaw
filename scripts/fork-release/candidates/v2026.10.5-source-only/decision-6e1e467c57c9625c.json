@@ -1,6 +1,6 @@
 {
   "schema": "openclaw.local-semantic-decision-evidence.v1",
-  "semanticLedgerSha256": "9191faeb284d81353e461743e8365a0158760025669ecbf02e5c026032283776",
+  "semanticLedgerSha256": "bca0d0fe58e758e12800f639aea057716fc08c555d4539dcc615964b73308fab",
   "verbatimSemanticDecision": {
     "path": "scripts/check-codex-app-server-protocol.ts",
     "treeRelation": "UPSTREAM_CHANGED",
@@ -10,7 +10,7 @@
     "v105UpstreamBlob": "90393b0d7ba59855a898308f16bdfdba35043f92",
     "reason": "10.5 already derives the config edit type from CodexAppServerRequestParams<\"config/batchWrite\">[\"edits\"][number], which is the old fork patch intent."
   },
-  "candidateCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+  "candidateCommit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
   "pathBinding": {
     "path": "scripts/check-codex-app-server-protocol.ts",
     "boundary": "tooling",

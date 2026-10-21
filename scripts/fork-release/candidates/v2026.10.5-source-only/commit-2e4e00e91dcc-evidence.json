@@ -16,7 +16,7 @@
     "test/vitest/vitest.tasks.config.ts",
     "test/vitest/vitest.test-shards.mjs"
   ],
-  "semanticLedgerSha256": "9191faeb284d81353e461743e8365a0158760025669ecbf02e5c026032283776",
+  "semanticLedgerSha256": "bca0d0fe58e758e12800f639aea057716fc08c555d4539dcc615964b73308fab",
   "verbatimSemanticDecisions": [
     {
       "path": "scripts/lib/ci-node-test-inventory.mts",

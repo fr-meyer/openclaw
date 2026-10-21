@@ -4,24 +4,24 @@ This proposal binds [source PR18](https://github.com/fr-meyer/openclaw/pull/18) 
 
 | Identity | Exact value |
 | --- | --- |
-| Source commit / PR head | `cb80407b3d01111996ec6abb803fd00417b535a0` |
-| Source tree | `9bb03f9cd6f8221f42a1c1701824a154d6f87d55` |
+| Source commit / PR head | `ff8fba59b4fc6409db627f0199f8b037c2ee4817` |
+| Source tree | `fdbf31f86fa714b4f58c065e38d61fdece659902` |
 | Upstream 10.5 commit / PR base | `1b58cb9a1b4f4353e1add63c8506db4d890962e8` |
 | Upstream annotated tag object | `9171d0a427738902efd811c648325cf54116743c` |
 | Historical fork source | `c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6` |
-| Derivation tooling commit | `e0df548f6b89372f84e156ea80a64b2a53dd20d7` |
-| Manifest SHA256 | `6cf4d847d8e8bf13a3dceda2eadbca5ebd21edac44ae95313317dcfcfd173319` |
-| Inventory SHA256 | `b25cea61c9b22a9402ee14b8179fa9504c9dcb9d82bedb043cd79217f76ff5d7` |
+| Derivation tooling commit | `2be226dd55e270907d77499e752beac616765948` |
+| Manifest SHA256 | `56085efb11ac960f08ba46a51284365b446af9e15952101e3caa8e6cb94d4c04` |
+| Inventory SHA256 | `5437c826df4ce6aae65a1f90d3cca3dc0a4e32283253255993498bfa039f83b0` |
 
 ## Evidence and scope
 
-The manifest contains all ten applied commits in their actual linear order. The inventory covers the original 92 semantic paths and 36 additional paths, including all 115 paths changed against upstream. Four retired and three upstream-equivalent decisions remain separate. Per-commit evidence preserves the ledger's original reasons; additional support paths bind exact committed blobs without inventing historical decisions.
+The manifest contains all eleven applied commits in their actual linear order. The inventory covers the original 92 semantic paths and 36 additional paths, including all 115 paths changed against upstream. Four retired and three upstream-equivalent decisions remain separate. Per-commit evidence preserves the ledger's original reasons; additional support paths bind exact committed blobs without inventing historical decisions.
 
 `source-preparation-manifest.json` and `semantic-reconciliation.json` retain committed source evidence unchanged. `pr18-observation.json` retains the supplied native GitHub CLI **public identity projection** unchanged; it is selected API fields, not a full raw API response. Its `updated_at` is the PR update time, not a fetch timestamp.
 
 `upstream-verification.json` retains the supplied official annotated-tag receipt: GitHub reports `verified: true`, `reason: valid`, and verification time `2026-10-18T20:11:18Z`. Its payload and signature byte-match `upstream-tag.txt`. `upstream-local-object-binding.json` records the separate local binding. No new signature or API query is asserted.
 
-`sha256.json` covers the 27 generated input/evidence files. The existing metadata owner validated these generated bindings. The historical source `2743fe2853a90b7f52f298734c9f7ad5e1b4ca59` passed full source preflight in an ordinary GCP checkout at 15:12:53–15:13:01 UTC on October 20, 2026. That receipt is not proof of the newer source head. Full preflight of the current head then passed on the ordinary exact-source GCP checkout from 16:05:34 to 16:05:40 UTC, with networking disabled and no candidate code execution: `passed: true`, `errors: []`, `deploymentAuthorized: false`. The historical seed remains unchanged.
+`sha256.json` covers the 28 generated input/evidence files. The existing metadata owner validated these generated bindings. The historical source `2743fe2853a90b7f52f298734c9f7ad5e1b4ca59` passed full source preflight in an ordinary GCP checkout at 15:12:53–15:13:01 UTC on October 20, 2026. That receipt is not proof of the newer source head. Full preflight of the prior `cb80407b3d01111996ec6abb803fd00417b535a0` head then passed on the ordinary exact-source GCP checkout from 16:05:34 to 16:05:40 UTC, with networking disabled and no candidate code execution: `passed: true`, `errors: []`, `deploymentAuthorized: false`. The historical seed remains unchanged. The newer head adds explicit network modes to every Dockerfile RUN and aligns the inert image planner with the native acquisition policy; its refreshed GCP source binding is checked again before the next build.
 
 ## Existing verification commands
 
@@ -61,11 +61,11 @@ Use clean source and derivation-tooling checkouts at the exact commits above. Th
 python3 "$PROPOSAL/generate.py" \
   --source "$SOURCE_CHECKOUT" \
   --tooling "$DERIVATION_TOOLING_CHECKOUT" \
-  --head cb80407b3d01111996ec6abb803fd00417b535a0 \
+  --head ff8fba59b4fc6409db627f0199f8b037c2ee4817 \
   --pr-json "$PROPOSAL/pr18-observation.json" \
   --pr-observation-kind public-identity-projection \
   --upstream-verification-json "$PROPOSAL/upstream-verification.json" \
-  --output /tmp/openclaw-v105-seal-prep/cb80407b3d01
+  --output /tmp/openclaw-v105-seal-prep/ff8fba59b4fc
 ```
 
 The preparation context's tooling SHA identifies derivation. A later image receipt must bind the actual executing tooling checkout and producer evidence.

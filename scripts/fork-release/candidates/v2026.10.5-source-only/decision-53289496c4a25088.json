@@ -1,6 +1,6 @@
 {
   "schema": "openclaw.local-semantic-decision-evidence.v1",
-  "semanticLedgerSha256": "9191faeb284d81353e461743e8365a0158760025669ecbf02e5c026032283776",
+  "semanticLedgerSha256": "bca0d0fe58e758e12800f639aea057716fc08c555d4539dcc615964b73308fab",
   "verbatimSemanticDecision": {
     "path": "src/plugins/loader.runtime-metadata.test.ts",
     "treeRelation": "PATH_REMOVED",
@@ -11,7 +11,7 @@
     "reason": "10.5 removed this test owner. Replace its lazy TaskFlow facet coverage in src/plugins/loader.gateway-bindings.test.ts; do not restore the retired test file.",
     "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
   },
-  "candidateCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+  "candidateCommit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
   "pathBinding": {
     "path": "src/plugins/loader.runtime-metadata.test.ts",
     "boundary": "tooling",

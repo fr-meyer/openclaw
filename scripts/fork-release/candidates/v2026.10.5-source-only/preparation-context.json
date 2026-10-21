@@ -1,18 +1,18 @@
 {
   "schema": "openclaw.local-source-seal-preparation.v1",
-  "sourceSha": "cb80407b3d01111996ec6abb803fd00417b535a0",
-  "sourceTree": "9bb03f9cd6f8221f42a1c1701824a154d6f87d55",
-  "toolingSha": "e0df548f6b89372f84e156ea80a64b2a53dd20d7",
+  "sourceSha": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+  "sourceTree": "fdbf31f86fa714b4f58c065e38d61fdece659902",
+  "toolingSha": "2be226dd55e270907d77499e752beac616765948",
   "review": {
     "prNumber": 18,
     "baseSha": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
-    "changedDiffSha256": "fb8096d411c59bb23ac702ef11e1f495514f780a32b3ba662d85abf9dd7437e3"
+    "changedDiffSha256": "4e669f62204c6bc2b40e20a5473228e837a19468744e6100ed1ddc77443c14cd"
   },
   "cachedPrObservation": {
-    "sha256": "41d2bd685ea1dbe9afd7730a8fd80b504161b3ce3e8d88b07ee5418f5b17f144",
-    "updatedAt": "2026-10-20T15:50:20Z",
+    "sha256": "018e3c0e91773da512f495dd4292e48c85fd82c4309cdaf3934e9e4dcbb6c3d8",
+    "updatedAt": "2026-10-21T00:38:58Z",
     "kind": "public-identity-projection",
-    "headSha": "cb80407b3d01111996ec6abb803fd00417b535a0",
+    "headSha": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
     "headRef": "prep/v2026.10.5-source-only",
     "baseSha": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
     "baseRef": "prep/v2026.10.5-upstream-base",
@@ -77,13 +77,13 @@
     "test/vitest/vitest.gateway-server-paths.mjs"
   ],
   "coveredDistinctPaths": 128,
-  "appliedCommitCount": 10,
+  "appliedCommitCount": 11,
   "nonAppliedDecisionCount": 7,
   "referencedTestCount": 35,
   "separateNativePrerequisites": [
     {
       "file": "native-nowistay-prerequisite.json",
-      "sha256": "1b650beb9e9e1d616d8a7505cbbe7e2a6fa6f10d471d7f97d9786ec8e93f5167",
+      "sha256": "c3a1a4dab7b1080cfd36dae2d26511e8a33faa3b169a67ea0c71ef91d1a536b7",
       "required": true
     }
   ],
