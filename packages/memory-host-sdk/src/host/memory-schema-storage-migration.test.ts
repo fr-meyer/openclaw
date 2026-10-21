@@ -109,17 +109,21 @@ describe("memory storage migration", () => {
   it("converts the deployed STRICT ANY JSON shape and retains its known cache index", () => {
     const db = legacyDatabase("ANY");
     migrateMemoryIndexStorage(db);
-    expect(decodeMemoryEmbedding(db.prepare("SELECT embedding FROM memory_index_chunks").get()!.embedding as Uint8Array)).toEqual([
-      1.0000000000000002,
-      0.1,
-    ]);
-    expect(decodeMemoryEmbedding(db.prepare("SELECT embedding FROM memory_embedding_cache").get()!.embedding as Uint8Array)).toEqual([
-      1.0000000000000002,
-      0.1,
-    ]);
-    expect(db.prepare("SELECT name FROM sqlite_schema WHERE name = 'idx_memory_embedding_cache_model_hash'").get()).toEqual({
-      name: "idx_memory_embedding_cache_model_hash",
-    });
+    expect(
+      decodeMemoryEmbedding(
+        db.prepare("SELECT embedding FROM memory_index_chunks").get()!.embedding as Uint8Array,
+      ),
+    ).toEqual([1.0000000000000002, 0.1]);
+    expect(
+      decodeMemoryEmbedding(
+        db.prepare("SELECT embedding FROM memory_embedding_cache").get()!.embedding as Uint8Array,
+      ),
+    ).toEqual([1.0000000000000002, 0.1]);
+    expect(
+      db
+        .prepare("SELECT name FROM sqlite_schema WHERE name = 'idx_memory_embedding_cache_model_hash'")
+        .get(),
+    ).toEqual({ name: "idx_memory_embedding_cache_model_hash" });
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
@@ -129,9 +133,15 @@ describe("memory storage migration", () => {
     db.prepare("UPDATE memory_embedding_cache SET embedding = ?").run(Uint8Array.of(1, 2, 3));
     const warnings: string[] = [];
     migrateMemoryIndexStorage(db, { onWarning: (warning) => warnings.push(warning) });
-    expect(decodeMemoryEmbedding(db.prepare("SELECT embedding FROM memory_index_chunks").get()!.embedding as Uint8Array)).toEqual([]);
+    expect(
+      decodeMemoryEmbedding(
+        db.prepare("SELECT embedding FROM memory_index_chunks").get()!.embedding as Uint8Array,
+      ),
+    ).toEqual([]);
     expect(db.prepare("SELECT hash FROM memory_index_sources").get()).toEqual({ hash: "" });
-    expect(db.prepare("SELECT value FROM memory_index_meta WHERE key = 'memory_vector_rebuild_v1'").get()).toEqual({ value: "1" });
+    expect(
+      db.prepare("SELECT value FROM memory_index_meta WHERE key = 'memory_vector_rebuild_v1'").get(),
+    ).toEqual({ value: "1" });
     expect(db.prepare("SELECT COUNT(*) AS count FROM memory_embedding_cache").get()).toEqual({ count: 0 });
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatch(/Skipped 1 memory_embedding_cache rows with invalid embeddings/);
