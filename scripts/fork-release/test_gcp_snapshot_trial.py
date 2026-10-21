@@ -110,6 +110,53 @@ class SnapshotTrialTests(unittest.TestCase):
             with self.assertRaises(release.Refusal):
                 trial.validate(changed, self.image, self.clean, self.intent["check"])
 
+    def test_explicit_16g_profile_retains_host_reserve_and_native_limits(self):
+        limits = self.plan["limits"]
+        limits.update(memoryBytes=16 << 30, minMemoryAvailableBytes=20 << 30,
+                      readBps=256 << 20, writeBps=64 << 20)
+        self.select_continuation()
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        self.assertEqual(trial.resource_profile(limits)["id"], "memory16-read256-write64")
+        args = trial.create_argv(self.op, self.intent, self.devices)
+        self.assertEqual(args[args.index("--memory") + 1], str(16 << 30))
+        self.assertEqual(args[args.index("--memory-swap") + 1], str(16 << 30))
+        self.assertEqual(args[args.index("--cpus") + 1], "4")
+        self.assertIn(f"/dev/sdb:{256 << 20}", args)
+        self.assertIn(f"/dev/sdb:{64 << 20}", args)
+        cg = self.root / "low-memory-cgroup"
+        cg.mkdir()
+        for name, value in {"memory.max": str(16 << 30), "memory.swap.max": "0", "pids.max": "512",
+                            "cpu.max": "400000 100000", "io.max": f"8:16 rbps={256 << 20} wbps={64 << 20}"}.items():
+            (cg / name).write_text(value)
+        trial.admit_cgroup(cg, self.intent, self.devices)
+        (cg / "memory.max").write_text(str(24 << 30))
+        with self.assertRaisesRegex(release.Refusal, "trial.cgroup.memory"):
+            trial.admit_cgroup(cg, self.intent, self.devices)
+        for key, value in (("minMemoryAvailableBytes", 19 << 30),
+                           ("minMemoryAvailableBytes", 21 << 30),
+                           ("memoryBytes", 17 << 30), ("readBps", 128 << 20),
+                           ("writeBps", 32 << 20), ("cpus", 5)):
+            original = limits[key]
+            limits[key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(release.Refusal):
+                trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+            limits[key] = original
+
+    def test_16g_profile_admission_checks_20g_host_available(self):
+        self.plan["limits"].update(memoryBytes=16 << 30, minMemoryAvailableBytes=20 << 30,
+                                   readBps=256 << 20, writeBps=64 << 20)
+        fs = SimpleNamespace(f_bavail=200 << 30, f_frsize=1)
+        with patch.object(trial.os, "statvfs", return_value=fs):
+            for available, accepted in (((20 << 30) - 1024, False), (20 << 30, True)):
+                meminfo = f"MemAvailable: {available // 1024} kB\n"
+                with patch.object(trial.Path, "read_text", return_value=meminfo):
+                    if accepted:
+                        self.assertEqual(trial.capacity(self.plan, self.clean, True)["memoryAvailableBytes"],
+                                         available)
+                    else:
+                        with self.assertRaisesRegex(release.Refusal, "trial.capacity.memory"):
+                            trial.capacity(self.plan, self.clean, True)
+
     def select_continuation(self):
         self.select_phase("doctor")
         self.clean["restorationState"] = "doctor-interrupted"
@@ -1516,7 +1563,7 @@ class SnapshotTrialTests(unittest.TestCase):
         cg = self.root / "live-cgroup"
         cg.mkdir()
         for name, value in {
-            "memory.max": str(24 << 30), "memory.swap.max": "0", "pids.max": "512",
+            "memory.max": str(self.plan["limits"]["memoryBytes"]), "memory.swap.max": "0", "pids.max": "512",
             "cpu.max": "400000 100000",
             "io.max": f"8:16 rbps={self.plan['limits']['readBps']} wbps={self.plan['limits']['writeBps']}",
             "io.stat": "8:16 rbytes=0 wbytes=0 rios=0 wios=0",
@@ -1622,7 +1669,9 @@ class SnapshotTrialTests(unittest.TestCase):
                 "Labels": {"openclaw.snapshot-trial.operation": op.name}, "Healthcheck": {"Test": ["NONE"]}},
             "HostConfig": {"NetworkMode": "none", "IpcMode": "none", "ReadonlyRootfs": True,
                 "Init": True, "Privileged": False, "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges"],
-                "Memory": 24 << 30, "MemorySwap": 24 << 30, "NanoCpus": 4 * 10**9, "PidsLimit": 512,
+                "Memory": self.plan["limits"]["memoryBytes"],
+                "MemorySwap": self.plan["limits"]["memoryBytes"],
+                "NanoCpus": 4 * 10**9, "PidsLimit": 512,
                 "RestartPolicy": {"Name": "no"}, "LogConfig": {"Type": "none"},
                 "BlkioDeviceReadBps": [{"Path": "/dev/sdb", "Rate": self.plan['limits']['readBps']}],
                 "BlkioDeviceWriteBps": [{"Path": "/dev/sdb", "Rate": self.plan['limits']['writeBps']}]},
@@ -1712,6 +1761,30 @@ class SnapshotTrialTests(unittest.TestCase):
         self.assertEqual(result["nativeExitCode"], 0)
         self.assertTrue((self.op / "gate/settled").exists())
         self.assertEqual(stops, [])
+
+    def test_serve_16g_profile_keeps_native_settlement_and_exact_result(self):
+        self.plan["limits"].update(memoryBytes=16 << 30, minMemoryAvailableBytes=20 << 30,
+                                   readBps=256 << 20, writeBps=64 << 20)
+        self.select_phase("doctor")
+        code, result, stops = self.exercise_serve()
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["resourceProfile"]["id"], "memory16-read256-write64")
+        self.assertEqual(result["resourceProfile"]["memoryBytes"], 16 << 30)
+        self.assertEqual(result["resourceProfile"]["swapBytes"], 0)
+        self.assertTrue(result["cgroupSettlementObserved"])
+        self.assertEqual(result["oomKillDelta"], 0)
+        self.assertEqual(stops, [])
+
+    def test_serve_16g_profile_fails_closed_on_late_cgroup_oom(self):
+        self.plan["limits"].update(memoryBytes=16 << 30, minMemoryAvailableBytes=20 << 30,
+                                   readBps=256 << 20, writeBps=64 << 20)
+        self.select_phase("doctor")
+        code, result, _ = self.exercise_serve(oom_after_native_exit=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["state"], "failed")
+        self.assertGreater(result["oomKillDelta"], 0)
+        self.assertFalse(result["promotionAuthorized"])
+        self.assertEqual(result["resourceProfile"]["id"], "memory16-read256-write64")
 
     def test_serve_continuation_preserves_prior_reference_on_success(self):
         self.select_continuation()

@@ -67,6 +67,8 @@ HISTORICAL_IMAGE_RECEIPT_SHA256 = "98ba31371e306b4e8878161ebf2dce0d021f1be2a3ae5
 BACKUP_REUSE = "openclaw.doctor-backup-reuse.v1"
 IO_PROFILES = {(128 << 20, 32 << 20): "read128-write32",
                (256 << 20, 64 << 20): "read256-write64"}
+LOW_MEMORY_BYTES = 16 << 30
+LOW_MEMORY_ADMISSION_BYTES = 20 << 30
 CONTINUATION = "openclaw.snapshot-doctor-continuation.v1"
 LEGACY_DEVICE_SHA = "a9b6526bbde15c2f9eeb3385e2fa00aa4cadfa39"
 LEGACY_CONTINUATION_SHA = "4c57b5269dc882c4c15f4b26fbdbb05a89b2df2d"
@@ -319,10 +321,16 @@ def continuation_capacity(resources, plan, check):
 def resource_profile(limits):
     """One explicit fixed profile per operation; no implicit escalation."""
     need(all(type(limits.get(k)) is int for k in ("memoryBytes", "cpus", "readBps", "writeBps")) and
-         limits["memoryBytes"] == 24 << 30 and limits["cpus"] == 4 and
-         (limits["readBps"], limits["writeBps"]) in IO_PROFILES,
+         limits["cpus"] == 4 and
+         ((limits["memoryBytes"] == 24 << 30 and
+           (limits["readBps"], limits["writeBps"]) in IO_PROFILES) or
+          (limits["memoryBytes"] == LOW_MEMORY_BYTES and
+           (limits["readBps"], limits["writeBps"]) == (256 << 20, 64 << 20))),
          "trial.limits.unreviewed_envelope")
-    return {"id": IO_PROFILES[(limits["readBps"], limits["writeBps"])], "mode": "fixed",
+    profile = IO_PROFILES[(limits["readBps"], limits["writeBps"])]
+    if limits["memoryBytes"] == LOW_MEMORY_BYTES:
+        profile = "memory16-" + profile
+    return {"id": profile, "mode": "fixed",
             **{k: limits[k] for k in ("memoryBytes", "cpus", "readBps", "writeBps")}, "swapBytes": 0}
 
 
@@ -359,7 +367,9 @@ def validate(plan, image, clean, check=None, *, retained=False):
           "minDataFreeBytes timeoutSeconds", "trial.limits.fields")
     need(all(type(v) is int and v > 0 for v in limits.values()), "trial.limits.integer")
     resource_profile(limits)
-    need(limits["minMemoryAvailableBytes"] >= limits["memoryBytes"] and
+    need((limits["minMemoryAvailableBytes"] == LOW_MEMORY_ADMISSION_BYTES
+          if limits["memoryBytes"] == LOW_MEMORY_BYTES else
+          limits["minMemoryAvailableBytes"] >= limits["memoryBytes"]) and
          600 <= limits["timeoutSeconds"] <= 86400, "trial.limits.admission")
     need(image.get("schema") == ("openclaw.rehearsal-baseline-image.v1" if selected == "rollback" else
                                  "openclaw.fork-release-image.v2") and

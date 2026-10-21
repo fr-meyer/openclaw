@@ -262,21 +262,39 @@ is checked through native block nodes and sysfs at admission, before container
 creation and before releasing the native gate. Prior settled phase validation
 uses its retained mapping, so rollback does not require a deleted candidate disk.
 
-The reviewed envelopes retain 24 GiB, no container swap and 4 CPUs. Select one
-explicit read/write pair in the private plan (`limits` for the trial executor,
-`resources` for the daily lifecycle):
+The original reviewed envelope retains 24 GiB, no container swap and 4 CPUs.
+An explicit lower-memory rehearsal profile uses 16 GiB, no container swap,
+4 CPUs, 256 MiB/s read and 64 MiB/s write, with a 20 GiB host
+`MemAvailable` admission floor. The 4 GiB difference bounds host headroom
+against a fully anonymous 16 GiB test allocation at admission; it is not a
+reservation against unrelated later host growth. The lower profile is a new
+test operation with its own exact plan and result, not a live change to a
+running Doctor. Select one explicit read/write pair in the private plan
+(`limits` for the trial executor, `resources` for the daily lifecycle):
 
 | Profile           | `readBps` | `writeBps` |
 | ----------------- | --------- | ---------- |
 | `read128-write32`  | 134217728 | 33554432   |
 | `read256-write64`  | 268435456 | 67108864   |
 
-There is no default escalation or unlimited profile. The second pair doubles
+The 16 GiB profile requires `read256-write64`; it rejects either smaller I/O
+pair or an unreviewed memory/admission value. There is no default escalation
+or unlimited profile. The second pair doubles
 the caps for a separately selected successor; it is not a benchmark result or
 a promise of doubled throughput. Fresh admission limits in the plan must cover
 the measured clean input, native backup set, WAL/temp growth and host headroom.
-This fixed 24 GiB/4 CPU envelope incorporates the failed 8 GiB rehearsal's
-lesson; it is not a measurement of peak demand or proof of sufficient memory.
+The original fixed 24 GiB/4 CPU envelope incorporates the failed 8 GiB
+rehearsal's lesson; it is not a measurement of peak demand or proof of
+sufficient memory. The lower 16 GiB cap is twice that failed 8 GiB cap and
+leaves host headroom under the observed approximately 21.7 GiB availability.
+The previous 10.5 Doctor's 20.21 GiB cgroup peak was predominantly file cache,
+so it does not prove 20 GiB of anonymous demand. Its corrected later migration
+stages are unmeasured; 16 GiB may still cause a cgroup OOM. Such a failure
+must retain its native logs, OOM counters, stopped copy and original backup
+group, without claiming qualification or automatically retrying. SQLite's
+existing disposable maintenance-connection page-cache policy is 64 MiB per
+connection; this profile does not alter it, native integrity or migration
+semantics.
 The executor verifies effective Docker and cgroup limits before releasing the
 native gate, during the run and at quiescent settlement. Each new result records
 its fixed profile and first/last I/O samples; the intent retains the original
