@@ -1,8 +1,20 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   verifyDockerReleaseLayout,
@@ -52,78 +64,103 @@ function validateManifest(path) {
 export function inspectLoadedPlugins(manifest, version, imageReference, codexVersion) {
   need(DIGEST.test(imageReference), "Plugin inspection requires an immutable image digest");
   need(/^\d+\.\d+\.\d+$/u.test(codexVersion), "Missing exact source-pinned Codex version");
-  const verifier = fileURLToPath(new URL("verify-image-plugins.mjs", import.meta.url));
-  const container = execFileSync(
-    "docker",
-    [
-      "create",
-      "--pull",
-      "never",
-      "--platform",
-      `linux/${manifest.image.architecture}`,
-      "--network",
-      "none",
-      "--read-only",
-      "--cap-drop",
-      "ALL",
-      "--security-opt",
-      "no-new-privileges",
-      "--pids-limit",
-      "64",
-      "--memory",
-      "1g",
-      "--memory-swap",
-      "1g",
-      "--cpus",
-      "1",
-      "--init",
-      "--tmpfs",
-      "/tmp:rw,nosuid,nodev,size=256m,mode=1777",
-      "--mount",
-      `type=bind,source=${verifier},target=/tmp/verify-image-plugins.mjs,readonly`,
-      "--entrypoint",
-      "node",
-      imageReference,
-      "/tmp/verify-image-plugins.mjs",
-      "/app",
-      manifest.image.extensions,
-      version,
-      codexVersion,
-    ],
-    { encoding: "utf8", timeout: 30_000, maxBuffer: 256 * 1024, killSignal: "SIGKILL" },
-  ).trim();
-  need(/^[0-9a-f]{64}$/u.test(container), "Invalid owned plugin-check container identity");
+  const verifierSource = fileURLToPath(new URL("verify-image-plugins.mjs", import.meta.url));
+  const verifierRoot = mkdtempSync(join(tmpdir(), "openclaw-image-verifier-"));
   try {
-    const output = execFileSync("docker", ["start", "--attach", container], {
-      encoding: "utf8",
-      timeout: 120_000,
-      maxBuffer: 256 * 1024,
-      killSignal: "SIGKILL",
-    });
+    chmodSync(verifierRoot, 0o700);
+    // Private checkouts can make this script 0600. Stage its exact bytes for the
+    // image's normal user without exposing the checkout or changing its mode.
+    const source = openSync(verifierSource, constants.O_RDONLY | constants.O_NOFOLLOW);
+    let verifierBytes;
+    try {
+      need(fstatSync(source).isFile(), "Image verifier must be a regular file");
+      verifierBytes = readFileSync(source);
+    } finally {
+      closeSync(source);
+    }
+    const verifier = join(verifierRoot, "verify-image-plugins.mjs");
+    writeFileSync(verifier, verifierBytes, { flag: "wx", mode: 0o600 });
+    chmodSync(verifier, 0o444);
     need(
-      execFileSync(
-        "docker",
-        [
-          "inspect",
-          "--format",
-          "{{.State.Running}} {{.State.ExitCode}} {{.State.OOMKilled}}",
-          container,
-        ],
-        {
-          encoding: "utf8",
-          timeout: 30_000,
-          killSignal: "SIGKILL",
-        },
-      ).trim() === "false 0 false",
-      "Plugin check did not complete successfully",
+      lstatSync(verifier).isFile() &&
+        hash(verifier) === createHash("sha256").update(verifierBytes).digest("hex"),
+      "Staged image verifier differs from the source bytes",
     );
-    return JSON.parse(output);
+    const container = execFileSync(
+      "docker",
+      [
+        "create",
+        "--pull",
+        "never",
+        "--platform",
+        `linux/${manifest.image.architecture}`,
+        "--network",
+        "none",
+        "--read-only",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--pids-limit",
+        "64",
+        "--memory",
+        "1g",
+        "--memory-swap",
+        "1g",
+        "--cpus",
+        "1",
+        "--init",
+        "--tmpfs",
+        "/tmp:rw,nosuid,nodev,size=256m,mode=1777",
+        "--mount",
+        `type=bind,source=${verifier},target=/tmp/verify-image-plugins.mjs,readonly`,
+        "--entrypoint",
+        "node",
+        imageReference,
+        "/tmp/verify-image-plugins.mjs",
+        "/app",
+        manifest.image.extensions,
+        version,
+        codexVersion,
+      ],
+      { encoding: "utf8", timeout: 30_000, maxBuffer: 256 * 1024, killSignal: "SIGKILL" },
+    ).trim();
+    need(/^[0-9a-f]{64}$/u.test(container), "Invalid owned plugin-check container identity");
+    try {
+      const output = execFileSync("docker", ["start", "--attach", container], {
+        encoding: "utf8",
+        timeout: 120_000,
+        maxBuffer: 256 * 1024,
+        killSignal: "SIGKILL",
+      });
+      need(
+        execFileSync(
+          "docker",
+          [
+            "inspect",
+            "--format",
+            "{{.State.Running}} {{.State.ExitCode}} {{.State.OOMKilled}}",
+            container,
+          ],
+          {
+            encoding: "utf8",
+            timeout: 30_000,
+            killSignal: "SIGKILL",
+          },
+        ).trim() === "false 0 false",
+        "Plugin check did not complete successfully",
+      );
+      return JSON.parse(output);
+    } finally {
+      // The create response grants authority over this exact test container only.
+      execFileSync("docker", ["rm", "--force", container], {
+        timeout: 30_000,
+        killSignal: "SIGKILL",
+      });
+    }
   } finally {
-    // The create response grants authority over this exact test container only.
-    execFileSync("docker", ["rm", "--force", container], {
-      timeout: 30_000,
-      killSignal: "SIGKILL",
-    });
+    // This unique directory is owned by this invocation, including create errors.
+    rmSync(verifierRoot, { recursive: true, force: true });
   }
 }
 

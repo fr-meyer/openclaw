@@ -106,6 +106,8 @@ class BuildTests(unittest.TestCase):
                                              hashlib.sha256(self.dockerfile).hexdigest()))
         self.stack.enter_context(patch.object(build, "PRIVATE_ROOT", self.root / "private"))
         self.stack.enter_context(patch.object(build, "tooling_bytes", return_value=self.helpers))
+        self.stack.enter_context(patch.object(build, "reserve_heavy_workload",
+            side_effect=lambda *args, reserve_resource=None: reserve_resource() if reserve_resource else None))
         self.stack.enter_context(patch.object(build, "observe_builder", return_value=self.config["builder"]))
         self.stack.enter_context(patch.object(build, "capacity", return_value={
             "freeBytes": 1 << 40, "memoryAvailableBytes": 1 << 40}))
@@ -302,6 +304,17 @@ class BuildTests(unittest.TestCase):
             with self.assertRaisesRegex(release.Refusal, "reserved_by_other_operation"):
                 build.start(other)
         self.assertEqual(len(dispatches), 1)
+
+    def test_busy_workload_refuses_before_retaining_builder_or_dispatch(self):
+        self.prepare()
+        with patch.object(build, "native", side_effect=self.fake_native), \
+                patch.object(build, "reserve_heavy_workload", side_effect=release.Refusal("workload.owned")), \
+                self.assertRaisesRegex(release.Refusal, "workload.owned"):
+            build.start(self.op)
+        lease = self.op.parent / f"builder-{self.config['builder']['containerId']}.json"
+        self.assertFalse(lease.exists())
+        self.assertFalse((self.op / "start-intent.json").exists())
+        self.assertFalse((self.op / "dispatch.json").exists())
 
     def test_partial_and_nonzero_service_cannot_finalize(self):
         self.prepare()

@@ -4,6 +4,13 @@ Status: **proposal and offline contracts; not activated**. This extends the
 existing fork-release owner. It does not deploy 9.8, change production, enable
 identity federation, or create resources. Source PR #18 remains unqualified.
 
+The existing-VM CLI route in [README.md](README.md#existing-vm-execution-route)
+can build, verify and prepare execution without activating this infrastructure
+proposal. Its fixed Doctor executor consumes an already restored clean input;
+the deployment owner still owns restore, readiness, rollback and promotion.
+The OIDC plan validator below does not launch that executor or grant authority
+to create a VM, change IAM, or run a migration.
+
 ## What exists
 
 Read-only CLI inspection on 2026-10-20 established:

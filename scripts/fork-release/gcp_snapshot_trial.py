@@ -1,0 +1,817 @@
+#!/usr/bin/env python3
+"""One native Doctor invocation on an already restored, isolated existing disk.
+
+The deployment owner supplies a private clean-input receipt and owns restore,
+readiness, rollback and production. This executor never provisions, copies,
+deletes, repairs a dataset in prepare, or retries a migration. prepare is inert;
+start is a separately authorized mutation. An uncertain start is status-only.
+The receipt is a private, caller-owned restore-owner attestation, not a database
+integrity scan. That owner must establish coherent unmigrated input and disabled
+integrations before prepare. A checksum alone does not establish those facts.
+The current resource envelope is deliberately specific to the reviewed 10.5 run.
+"""
+
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import selectors
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+import gcp_build as durable
+import release
+
+PRIVATE_ROOT = Path("/var/tmp/openclaw-fork-snapshot-trial")
+HELPERS = ("gcp_snapshot_trial.py", *durable.HELPERS)
+DOCTOR = ["node", "/app/openclaw.mjs", "doctor", "--fix", "--non-interactive",
+          "--no-workspace-suggestions"]
+DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
+HEX = re.compile(r"[0-9a-f]{64}\Z")
+SHA = re.compile(r"[0-9a-f]{40}\Z")
+OP = re.compile(r"[0-9a-f]{32}\Z")
+STATE_TARGET = "/home/node/.openclaw"
+ADMISSION = "/run/openclaw-trial-admission"
+CAP = 4 * 1024 * 1024
+QUALIFIED_IMAGE = {
+    "repository": "fr-meyer/openclaw", "version": "2026.10.5", "architecture": "amd64",
+    "sourceSha": "ae85778296da373dfe7d80101931bafac1acc9dd",
+    "sourceTree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab",
+    "manifestSha256": "4dfce05ac50a38c7667aeaa3b88f8f60e9c6046bb48a1d361785e77ee5d4ccd2",
+    "inventorySha256": "cc4298057d4c61b6e1a488f06fdac93a0ea9263f87811700c0179a470cc495a8",
+    "indexDigest": "sha256:f41c7a7762f7a051636b899dac54110c482fb91352431ba6957343b9828f2e9c",
+    "imageDigest": "sha256:e4901df74f92d4abeebae37982ff2ef631943446c0cfe37394f86e5351cc6280",
+    "configDigest": "sha256:b6eaa3f6594c677f7795b68cda3adc4a34236af242d1a5257642e57574c6527d",
+    "selectedExtensions": "codex,workboard", "bundledCodexVersion": "0.160.0",
+}
+QUALIFIED_PRODUCER = "1507a29361d335283f1f4a55d8c037505892f94c"
+need = release.need
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+RUNNING_HELPERS = {
+    "gcp_snapshot_trial.py": Path(__file__).resolve(), "gcp_build.py": Path(durable.__file__).resolve(),
+    "release.py": Path(release.__file__).resolve(), "preflight.py": Path(durable.preflight.__file__).resolve(),
+    "pr.py": Path(durable.pr.__file__).resolve(),
+}
+LOADED_HELPER_HASHES = {name: digest(file.read_bytes()) for name, file in RUNNING_HELPERS.items()}
+
+
+def verify_running_helpers(expected):
+    need(set(expected) == set(HELPERS) == set(RUNNING_HELPERS), "trial.running_helper.fields")
+    for name, hashed in expected.items():
+        need(LOADED_HELPER_HASHES[name] == hashed and digest(RUNNING_HELPERS[name].read_bytes()) == hashed,
+             "trial.running_helper.changed")
+
+
+def qualified_image(image):
+    need(all(image.get(key) == value for key, value in QUALIFIED_IMAGE.items()) and
+         image.get("producer", {}).get("kind") == "gcp" and
+         image["producer"].get("toolingSha") == QUALIFIED_PRODUCER, "trial.image.not_qualified")
+
+
+def private_json(path):
+    raw = durable.private_bytes(path)
+    need(len(raw) <= 1024 * 1024, "trial.input.too_large")
+    return json.loads(raw), digest(raw)
+
+
+def exact(value, keys, code):
+    durable.fields(value, keys, code)
+
+
+def path(value):
+    need(type(value) is str and value.startswith("/") and value != "/"
+         and not any(c in value for c in ",\n\r\0"), "trial.path.invalid")
+    p = Path(value)
+    need(str(p) == value and p.resolve() == p, "trial.path.noncanonical")
+    return p
+
+
+def overlaps(a, b):
+    return a == b or a in b.parents or b in a.parents
+
+
+def project_target(target):
+    text = str(target)
+    if text.startswith(("/home/node/workspace/", "/data/")):
+        return True
+    state = Path(STATE_TARGET)
+    if state in target.parents:
+        parts = target.relative_to(state).parts
+        return len(parts) >= 2 and re.fullmatch(r"workspace(?:-[A-Za-z0-9_.-]+)?", parts[0]) is not None
+    return False
+
+
+def validate(plan, image, clean):
+    exact(plan, "schema operationId toolingSha imageReceiptSha256 cleanInputSha256 limits",
+          "trial.plan.fields")
+    need(plan["schema"] == "openclaw.snapshot-trial-plan.v1" and
+         OP.fullmatch(plan["operationId"]) and SHA.fullmatch(plan["toolingSha"]),
+         "trial.plan.identity")
+    need(all(HEX.fullmatch(plan[k]) for k in ("imageReceiptSha256", "cleanInputSha256")),
+         "trial.plan.hash")
+    limits = plan["limits"]
+    exact(limits, "memoryBytes cpus readBps writeBps minMemoryAvailableBytes minRootFreeBytes "
+          "minDataFreeBytes timeoutSeconds", "trial.limits.fields")
+    need(all(type(v) is int and v > 0 for v in limits.values()), "trial.limits.integer")
+    need(limits["memoryBytes"] == 24 << 30 and limits["cpus"] == 4 and
+         limits["readBps"] == 128 << 20 and limits["writeBps"] == 32 << 20,
+         "trial.limits.unreviewed_envelope")
+    need(limits["minMemoryAvailableBytes"] >= limits["memoryBytes"] and
+         600 <= limits["timeoutSeconds"] <= 86400, "trial.limits.admission")
+    need(image.get("schema") == "openclaw.fork-release-image.v2" and
+         image.get("architecture") == "amd64" and SHA.fullmatch(image.get("sourceSha", "")),
+         "trial.image.receipt")
+    qualified_image(image)
+    need(all(DIGEST.fullmatch(image.get(k, "")) for k in
+             ("indexDigest", "imageDigest", "configDigest")), "trial.image.digests")
+    need(image.get("producer", {}).get("kind") == "gcp" and
+         SHA.fullmatch(image["producer"].get("toolingSha", "")), "trial.image.producer")
+    payload = {item["id"]: item for item in image.get("pluginPayload", [])}
+    codex = payload.get("codex", {}).get("codexRuntime", {})
+    board = payload.get("workboard", {}).get("workboardRuntime", {})
+    need(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", image.get("bundledCodexVersion", "")) and
+         all(codex.get(key) == image.get("bundledCodexVersion") for key in
+             ("packageVersion", "cliVersion", "initializeVersion")) and
+         codex.get("initialized") is True and codex.get("shutdown") == "exited" and
+         board == {"worker": "sqlite", "roundTrip": True, "closed": True},
+         "trial.image.native_proof")
+    exact(clean, "schema receiptId restorationState restoreReceiptSha256 baselineSourceSha "
+          "baselineImageDigest snapshotIdentity mountRoot filesystemDevice devicePath "
+          "deviceMajorMinor mounts configSha256 integrationsDisabled", "trial.clean.fields")
+    need(clean["schema"] == "openclaw.snapshot-clean-input.v1" and
+         clean["restorationState"] == "unmigrated" and
+         release.IDENT.fullmatch(clean["receiptId"]) and
+         release.IDENT.fullmatch(clean["snapshotIdentity"]) and
+         HEX.fullmatch(clean["restoreReceiptSha256"]) and
+         SHA.fullmatch(clean["baselineSourceSha"]) and DIGEST.fullmatch(clean["baselineImageDigest"]) and
+         HEX.fullmatch(clean["configSha256"]) and clean["integrationsDisabled"] is True,
+         "trial.clean.identity")
+    root = path(clean["mountRoot"])
+    need(type(clean["filesystemDevice"]) is int and clean["filesystemDevice"] > 0 and
+         re.fullmatch(r"[0-9]+:[0-9]+", clean["deviceMajorMinor"]), "trial.clean.device")
+    device = path(clean["devicePath"])
+    need(str(device).startswith("/dev/"), "trial.clean.device_path")
+    mounts = clean["mounts"]
+    need(type(mounts) is list and 3 <= len(mounts) <= 16, "trial.mounts.count")
+    targets, sources = {}, []
+    for mount in mounts:
+        exact(mount, "source target readOnly", "trial.mount.fields")
+        need(type(mount["readOnly"]) is bool, "trial.mount.read_only")
+        source, target = path(mount["source"]), Path(mount["target"])
+        need(root in source.parents, "trial.mount.outside_dataset")
+        need(str(target) == mount["target"] and str(target).startswith("/") and
+             not any(c in str(target) for c in ",\n\r\0") and ".." not in target.parts,
+             "trial.mount.target")
+        need(str(target) in (STATE_TARGET, "/tmp", "/rehearsal/cache", "/srv/openkb") or
+             str(target).startswith(("/home/node/workspace/", "/data/")) or
+             (mount["readOnly"] and project_target(target)), "trial.mount.target_scope")
+        need(target not in targets, "trial.mount.duplicate_target")
+        need(not any(overlaps(source, previous) for previous in sources), "trial.mount.source_overlap")
+        targets[target] = mount
+        sources.append(source)
+    need({Path(STATE_TARGET), Path("/tmp"), Path("/rehearsal/cache")}.issubset(targets),
+         "trial.mount.required")
+    need(all(not targets[Path(target)]["readOnly"] for target in (STATE_TARGET, "/tmp", "/rehearsal/cache")),
+         "trial.mount.required_writable")
+    for target, child in targets.items():
+        for ancestor in target.parents:
+            if ancestor in targets:
+                parent = targets[ancestor]
+                need(child["readOnly"] and not parent["readOnly"] and project_target(target) and
+                     (str(ancestor) == STATE_TARGET or project_target(ancestor)), "trial.mount.nested_scope")
+
+
+def source_identities(clean):
+    """Stat only listed roots and their ancestors, never directory contents."""
+    root, result, lineages = path(clean["mountRoot"]), {}, []
+    for mount in clean["mounts"]:
+        source = path(mount["source"])
+        need(root in source.parents, "trial.mount.outside_dataset")
+        lineage, current = set(), source
+        while current != root:
+            info = current.stat()
+            need(stat.S_ISDIR(info.st_mode) and info.st_dev == clean["filesystemDevice"], "trial.dataset.bind")
+            lineage.add((info.st_dev, info.st_ino))
+            if current == source:
+                identity = (info.st_dev, info.st_ino)
+                result[str(source)] = {"device": info.st_dev, "inode": info.st_ino}
+            current = current.parent
+        need(not any(identity in previous_lineage or previous in lineage
+                     for previous, previous_lineage in lineages), "trial.mount.physical_alias")
+        lineages.append((identity, lineage))
+    return result
+
+
+def snapshot_paths(clean):
+    root = path(clean["mountRoot"])
+    need(root.is_mount() and root.stat().st_dev == clean["filesystemDevice"] and
+         root.stat().st_dev != Path("/").stat().st_dev, "trial.dataset.mount")
+    device = path(clean["devicePath"])
+    info = device.stat()
+    need(stat.S_ISBLK(info.st_mode) and
+         f"{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}" == clean["deviceMajorMinor"],
+         "trial.dataset.device")
+    mounted = root.stat().st_dev
+    partition = Path(f"/sys/dev/block/{os.major(mounted)}:{os.minor(mounted)}").resolve()
+    device_sys = Path("/sys/dev/block", clean["deviceMajorMinor"]).resolve()
+    need(partition == device_sys or partition.parent == device_sys, "trial.dataset.device_parent")
+    result = source_identities(clean)
+    state = next(Path(m["source"]) for m in clean["mounts"] if m["target"] == STATE_TARGET)
+    config = state / "openclaw.json"
+    need(config.resolve() == config and config.is_file() and config.stat().st_size <= 1024 * 1024,
+         "trial.config.path")
+    need(digest(config.read_bytes()) == clean["configSha256"], "trial.config.changed")
+    return result
+
+
+def native(args, timeout=30):
+    result = subprocess.run(args, capture_output=True, timeout=timeout, env=durable.SAFE_ENV)
+    need(len(result.stdout) <= 1024 * 1024 and len(result.stderr) <= 64 * 1024,
+         "trial.native.output_limit")
+    need(result.returncode == 0, "trial.native.failed")
+    return result.stdout
+
+
+def docker(args, timeout=30):
+    return native([*durable.DOCKER, "--host", durable.ENDPOINT, *args], timeout)
+
+
+def inspect_container(cid):
+    need(HEX.fullmatch(cid), "trial.container.id")
+    return json.loads(docker(["inspect", cid]))[0]
+
+
+def capacity(plan, clean, admission=False):
+    mem = dict(line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines())
+    result = {"at": durable.now(), "memoryAvailableBytes": int(mem["MemAvailable"].split()[0]) * 1024}
+    for key, location in (("rootFreeBytes", "/"), ("dataFreeBytes", clean["mountRoot"])):
+        fs = os.statvfs(location)
+        result[key] = fs.f_bavail * fs.f_frsize
+    limits = plan["limits"]
+    need(result["rootFreeBytes"] >= limits["minRootFreeBytes"] and
+         result["dataFreeBytes"] >= limits["minDataFreeBytes"], "trial.capacity.disk")
+    if admission:
+        need(result["memoryAvailableBytes"] >= limits["minMemoryAvailableBytes"],
+             "trial.capacity.memory")
+    return result
+
+
+def observe_image(image):
+    qualified_image(image)
+    value = json.loads(docker(["image", "inspect", image["indexDigest"]]))[0]
+    ids = {image[k] for k in ("indexDigest", "imageDigest", "configDigest")}
+    cfg = value["Config"]
+    need(value["Id"] in ids and value["Os"] == "linux" and value["Architecture"] == "amd64"
+         and cfg.get("Labels", {}).get("org.opencontainers.image.revision") == image["sourceSha"]
+         and cfg.get("Labels", {}).get("org.opencontainers.image.version") == image["version"]
+         and not cfg.get("Volumes"), "trial.image.loaded_binding")
+    return {"loadedId": value["Id"], "env": cfg.get("Env", [])}
+
+
+def no_other_writer(clean):
+    ids = docker(["ps", "--quiet", "--no-trunc"]).decode().split()
+    need(len(ids) <= 64 and all(HEX.fullmatch(cid) for cid in ids), "trial.active_container_count")
+    if ids:
+        rows = docker(["inspect", "--format", "{{json .Mounts}}", *ids]).decode().splitlines()
+        sources = [path(m["source"]) for m in clean["mounts"]]
+        for row in rows:
+            for mount in json.loads(row):
+                if mount.get("RW") and mount.get("Source"):
+                    need(not any(overlaps(source, Path(mount["Source"]).resolve()) for source in sources),
+                         "trial.dataset.active_writer")
+
+
+def gate_script(op):
+    # Node timers keep a stable process set; shell sleep would add transient PIDs
+    # and make native-descendant quiescence indistinguishable from gate polling.
+    return ("const directory = " + json.dumps(ADMISSION) + ";\n" +
+            "const prefix = " + json.dumps("OPENCLAW_TRIAL_" + op.name + "_") + ";\n" + r"""
+const fs = require('node:fs');
+const {spawn} = require('node:child_process');
+const {constants} = require('node:os');
+async function waitFor(name, exitCode) {
+  const deadline = Date.now() + 60000;
+  while (!fs.existsSync(directory + '/' + name)) {
+    if (Date.now() >= deadline) throw Object.assign(new Error('gate timeout: ' + name), {exitCode});
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+function emit(text) {
+  return new Promise((resolve, reject) => process.stdout.write(text, error => error ? reject(error) : resolve()));
+}
+(async () => {
+  await emit(prefix + 'READY\n');
+  await waitFor('go', 70);
+  const args = process.argv.slice(1);
+  const code = await new Promise(resolve => {
+    const child = spawn(args[0], args.slice(1), {stdio: 'inherit'});
+    child.once('error', () => resolve(127));
+    child.once('exit', (code, signal) => resolve(code === null ? 128 + (constants.signals[signal] || 1) : code));
+  });
+  await emit('\n' + prefix + 'EXIT=' + code + '\n');
+  await waitFor('settled', 71);
+  process.exitCode = code;
+})().catch(error => {
+  process.stderr.write(String(error.message) + '\n');
+  process.exitCode = error.exitCode || 70;
+});
+""")
+
+
+def create_argv(op, intent):
+    plan, clean, image = intent["plan"], intent["clean"], intent["image"]
+    limits = plan["limits"]
+    args = ["create", "--pull=never", "--platform", "linux/amd64", "--name", "openclaw-doctor-" + op.name,
+            "--label", "openclaw.snapshot-trial.operation=" + op.name,
+            "--network", "none", "--ipc", "none", "--user", "1000:1000", "--init",
+            "--cpus", str(limits["cpus"]), "--memory", str(limits["memoryBytes"]),
+            "--memory-swap", str(limits["memoryBytes"]), "--pids-limit", "512", "--read-only",
+            "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--restart", "no",
+            "--no-healthcheck", "--log-driver", "none", "--stop-timeout", "30",
+            "--device-read-bps", f"{clean['devicePath']}:{limits['readBps']}",
+            "--device-write-bps", f"{clean['devicePath']}:{limits['writeBps']}"]
+    for mount in sorted(clean["mounts"], key=lambda item: (len(Path(item["target"]).parts), item["target"])):
+        args += ["--mount", f"type=bind,src={mount['source']},dst={mount['target']}" +
+                 (",readonly" if mount["readOnly"] else "")]
+    args += ["--mount", f"type=bind,src={op / 'gate'},dst={ADMISSION},readonly"]
+    env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/home/node", "TMPDIR": "/tmp",
+           "SQLITE_TMPDIR": "/tmp", "XDG_CACHE_HOME": "/rehearsal/cache", "OPENCLAW_STATE_DIR": STATE_TARGET,
+           "OPENCLAW_CONFIG_PATH": STATE_TARGET + "/openclaw.json", "OPENCLAW_SERVICE_REPAIR_POLICY": "external",
+           "OPENCLAW_NO_AUTO_UPDATE": "1", "NODE_DISABLE_COMPILE_CACHE": "1"}
+    for name in ("CHANNELS", "PROVIDERS", "CRON", "GMAIL_WATCHER", "CANVAS_HOST",
+                 "BROWSER_CONTROL_SERVER", "STARTUP_MODEL_PREWARM"):
+        env["OPENCLAW_SKIP_" + name] = "1"
+    return [*args, "--entrypoint", "/usr/bin/env", image["indexDigest"], "-i",
+            *(f"{k}={v}" for k, v in env.items()), "node", "-e", gate_script(op), "--",
+            "/usr/bin/timeout", "--signal=TERM", "--kill-after=30",
+            str(limits["timeoutSeconds"]) + "s", *DOCTOR]
+
+
+def service_argv(op):
+    return [*durable.SYSTEMD_RUN, "--unit=openclaw-snapshot-doctor-" + op.name, "--service-type=exec",
+            "--uid=" + str(os.getuid()), "--gid=" + str(os.getgid()), "--property=Restart=no",
+            "--property=RemainAfterExit=yes", "--property=UMask=0077", "--property=MemoryMax=512M",
+            "--property=CPUQuota=50%", "--property=KillMode=control-group", "--property=TimeoutStopSec=90",
+            "--property=StandardOutput=journal", "--property=StandardError=journal",
+            "--", sys.executable, "-B", str(op / "supervisor/gcp_snapshot_trial.py"), "_serve", str(op)]
+
+
+def prepare(plan_path, image_path, clean_path, tooling):
+    plan, _ = private_json(plan_path)
+    image, image_hash = private_json(image_path)
+    clean, clean_hash = private_json(clean_path)
+    validate(plan, image, clean)
+    need(image_hash == plan["imageReceiptSha256"] and clean_hash == plan["cleanInputSha256"], "trial.input.hash")
+    tooling = Path(tooling).resolve()
+    durable.clean_checkout(tooling, plan["toolingSha"])
+    files = {name: subprocess.check_output(["git", "-C", str(tooling), "show",
+             f"{plan['toolingSha']}:scripts/fork-release/{name}"]) for name in HELPERS}
+    verify_running_helpers({name: digest(data) for name, data in files.items()})
+    root = release.private_root(PRIVATE_ROOT)
+    need(not overlaps(root.resolve(), path(clean["mountRoot"])), "trial.control.overlap")
+    op = root / plan["operationId"]
+    op.mkdir(mode=0o700)
+    (op / "supervisor").mkdir(mode=0o700)
+    for name, data in files.items():
+        durable.write_once(op / "supervisor" / name, data)
+    for name, source in (("image-receipt.json", image_path), ("clean-input.json", clean_path)):
+        durable.write_once(op / name, durable.private_bytes(source))
+    intent = {"schema": "openclaw.snapshot-trial-intent.v1", "plan": plan, "image": image, "clean": clean,
+              "ownerUid": os.getuid(), "ownerGid": os.getgid(), "preparedAt": durable.now(),
+              "helpers": {name: digest(data) for name, data in files.items()}}
+    durable.write_once(op / "intent.json", durable.encode(intent))
+    return op
+
+
+def load(op):
+    op = Path(op).absolute()
+    need(op.resolve() == op and op.parent == PRIVATE_ROOT.resolve(), "trial.operation.path")
+    info = op.stat()
+    need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700, "trial.operation.owner")
+    intent, _ = private_json(op / "intent.json")
+    need(intent["ownerUid"] == os.getuid() and intent["ownerGid"] == os.getgid() and
+         intent["plan"]["operationId"] == op.name, "trial.intent.owner")
+    validate(intent["plan"], intent["image"], intent["clean"])
+    for name, key in (("image-receipt.json", "imageReceiptSha256"), ("clean-input.json", "cleanInputSha256")):
+        value, hashed = private_json(op / name)
+        need(hashed == intent["plan"][key] and value == intent["image" if key.startswith("image") else "clean"],
+             "trial.input.changed")
+    need(set(intent["helpers"]) == set(HELPERS), "trial.helpers.fields")
+    for name, hashed in intent["helpers"].items():
+        need(digest(durable.private_bytes(op / "supervisor" / name)) == hashed, "trial.helper.changed")
+    verify_running_helpers(intent["helpers"])
+    return op, intent
+
+
+def start(op):
+    need(sys.platform == "linux", "trial.requires_linux")
+    op, intent = load(op)
+    with durable.operation_lock(op):
+        if (op / "start-intent.json").exists():
+            return status(op)
+        clean = intent["clean"]
+        mounts = snapshot_paths(clean)
+        no_other_writer(clean)
+        image = observe_image(intent["image"])
+        resources = capacity(intent["plan"], clean, True)
+        intent_hash = digest(durable.private_bytes(op / "intent.json"))
+        lease = op.parent / ("dataset-" + digest(clean["mountRoot"].encode()) + ".json")
+        reservation = {"operationId": op.name, "intentSha256": intent_hash}
+        def reserve_dataset():
+            try:
+                durable.write_once(lease, durable.encode(reservation))
+            except FileExistsError:
+                need(durable.read_private(lease) == reservation, "trial.dataset.reserved")
+        # The common lock checks its current owner, then reserves the dataset,
+        # then publishes this global owner. Exact pre-dispatch claims can resume.
+        durable.reserve_heavy_workload(op, "doctor", intent_hash, reserve_resource=reserve_dataset)
+        durable.write_once(op / "start-intent.json", durable.encode({"intentSha256": intent_hash,
+            "requestedAt": durable.now(), "bootId": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+            "mounts": mounts, "image": image, "resources": resources, "serviceArgv": service_argv(op)}))
+        try:
+            result = subprocess.run(service_argv(op), capture_output=True, timeout=30, env=durable.SAFE_ENV)
+            record = {"returnCode": result.returncode, "observedAt": durable.now()}
+        except (OSError, subprocess.TimeoutExpired):
+            record = {"returnCode": None, "observedAt": durable.now()}
+        durable.write_once(op / "dispatch.json", durable.encode(record))
+    return status(op)
+
+
+def validate_container(value, op, intent, expected_env):
+    h, cfg = value["HostConfig"], value["Config"]
+    image, clean, limits = intent["image"], intent["clean"], intent["plan"]["limits"]
+    args = create_argv(op, intent)
+    entry = args.index("--entrypoint")
+    need(value["Image"] in {image[k] for k in ("indexDigest", "imageDigest", "configDigest")} and
+         cfg["Image"] == image["indexDigest"] and cfg["User"] == "1000:1000" and
+         cfg["Entrypoint"] == [args[entry + 1]] and cfg["Cmd"] == args[entry + 3:] and
+         cfg.get("Env", []) == expected_env and value["RestartCount"] == 0 and
+         cfg.get("Labels", {}).get("openclaw.snapshot-trial.operation") == op.name, "trial.container.binding")
+    need(h["NetworkMode"] == "none" and h["IpcMode"] == "none" and h["ReadonlyRootfs"] and
+         h.get("Init") is True and not h["Privileged"] and h["CapDrop"] == ["ALL"] and not h.get("CapAdd") and
+         h["SecurityOpt"] in (["no-new-privileges"], ["no-new-privileges=true"]) and
+         h["Memory"] == limits["memoryBytes"] and h["MemorySwap"] == limits["memoryBytes"] and
+         h["NanoCpus"] == limits["cpus"] * 10**9 and h["PidsLimit"] == 512 and
+         h["RestartPolicy"]["Name"] == "no" and h["LogConfig"]["Type"] == "none" and
+         cfg["Healthcheck"]["Test"] == ["NONE"], "trial.container.isolation")
+    need(not any(h.get(k) for k in ("Devices", "DeviceRequests", "PortBindings", "PublishAllPorts",
+         "VolumesFrom", "Binds", "Tmpfs", "Links", "PidMode", "UTSMode")), "trial.container.extra_access")
+    expected = {(m["source"], m["target"], not m["readOnly"]) for m in clean["mounts"]}
+    expected.add((str(op / "gate"), ADMISSION, False))
+    need(len(value["Mounts"]) == len(expected) and
+         {(m["Source"], m["Destination"], m["RW"]) for m in value["Mounts"] if m["Type"] == "bind"} == expected,
+         "trial.container.mounts")
+    for field, limit in (("BlkioDeviceReadBps", "readBps"), ("BlkioDeviceWriteBps", "writeBps")):
+        need(h[field] == [{"Path": clean["devicePath"], "Rate": limits[limit]}], "trial.container.io")
+
+
+def cgroup_path(value):
+    pid = value["State"]["Pid"]
+    need(type(pid) is int and pid > 0, "trial.cgroup.pid")
+    entry = Path(f"/proc/{pid}/cgroup").read_text().strip()
+    need(entry.startswith("0::/") and "\n" not in entry and ".." not in entry.split("/"), "trial.cgroup.v2")
+    root = Path("/sys/fs/cgroup")
+    resolved = (root / entry[4:]).resolve()
+    need(root in resolved.parents, "trial.cgroup.path")
+    return resolved
+
+
+def cgroup_sample(root):
+    def values(name):
+        return {k: int(v) for k, v in (line.split() for line in (root / name).read_text().splitlines())}
+    memory = values("memory.stat")
+    events = values("memory.events")
+    need("oom_kill" in events, "trial.cgroup.events_unavailable")
+    return {"at": durable.now(), "current": int((root / "memory.current").read_text()),
+            "peak": int((root / "memory.peak").read_text()), "events": events,
+            "swap": int((root / "memory.swap.current").read_text()),
+            "anon": memory.get("anon"), "file": memory.get("file"), "kernel": memory.get("kernel")}
+
+
+def cgroup_processes(root):
+    with (root / "cgroup.procs").open("rb") as stream:
+        raw = stream.read(8193)
+    need(len(raw) <= 8192, "trial.cgroup.process_limit")
+    pids = sorted({int(pid) for pid in raw.split()})
+    need(0 < len(pids) <= 512 and all(pid > 0 for pid in pids), "trial.cgroup.processes_unavailable")
+    return pids
+
+
+def admit_cgroup(root, intent):
+    limits, clean = intent["plan"]["limits"], intent["clean"]
+    need(int((root / "memory.max").read_text()) == limits["memoryBytes"] and
+         (root / "memory.swap.max").read_text().strip() == "0" and
+         (root / "pids.max").read_text().strip() == "512", "trial.cgroup.memory")
+    cpu = (root / "cpu.max").read_text().split()
+    need(len(cpu) == 2 and int(cpu[0]) == limits["cpus"] * int(cpu[1]), "trial.cgroup.cpu")
+    io = {row[0]: dict(pair.split("=", 1) for pair in row[1:])
+          for row in (line.split() for line in (root / "io.max").read_text().splitlines())}
+    need(io.get(clean["deviceMajorMinor"], {}).get("rbps") == str(limits["readBps"]) and
+         io[clean["deviceMajorMinor"]].get("wbps") == str(limits["writeBps"]), "trial.cgroup.io")
+
+
+def successful(state, attach_exit, complete, oom_kills):
+    return (state.get("Running") is False and state.get("Pid") == 0 and
+            state.get("ExitCode") == 0 and state.get("OOMKilled") is False and
+            attach_exit == 0 and complete and oom_kills == 0)
+
+
+def validate_owned_container(value, cid, op):
+    # Policy drift is a reason to stop, never a reason to leave an owned writer
+    # running. Stop authority is the exact create ID plus its operation identity.
+    need(value["Id"] == cid and value["Name"] == "/openclaw-doctor-" + op.name and
+         value["Config"].get("Labels", {}).get("openclaw.snapshot-trial.operation") == op.name,
+         "trial.container.stop_ownership")
+
+
+class RollingLog:
+    """Retain the latest two bounded segments; counters/markers are independent."""
+    def __init__(self, path):
+        self.path, self.size, self.total = path, 0, 0
+        self.stream = self._open()
+
+    def _open(self):
+        return os.fdopen(os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb", buffering=0)
+
+    def append(self, data):
+        if self.size + len(data) > CAP:
+            self.stream.close()
+            os.replace(self.path, self.path.with_suffix(self.path.suffix + ".previous"))
+            self.stream = self._open()
+            self.size = 0
+        self.stream.write(data)
+        self.size += len(data)
+        self.total += len(data)
+
+    def close(self):
+        os.fsync(self.stream.fileno())
+        self.stream.close()
+
+
+def serve(op):
+    op, intent = load(op)
+    started = durable.read_private(op / "start-intent.json")
+    need(started["intentSha256"] == digest(durable.private_bytes(op / "intent.json")), "trial.intent.changed")
+    invocation = os.environ.get("INVOCATION_ID", "")
+    need(OP.fullmatch(invocation), "trial.service.invocation")
+    durable.write_once(op / "started.json", durable.encode({"invocationId": invocation, "at": durable.now()}))
+    cid, child, cg, initial, final, reason = None, None, None, None, None, None
+    complete, oom_kills, child_exit, settled = False, 0, None, False
+    gate_ready, baseline_processes = False, None
+    tails = {"stdout.log": b"", "stderr.log": b""}
+    logs = {}
+    end = time.monotonic() + intent["plan"]["limits"]["timeoutSeconds"]
+    interrupted = []
+    def stop(signum, _frame):
+        interrupted.append(signum)
+    old = {sig: signal.signal(sig, stop) for sig in (signal.SIGTERM, signal.SIGINT)}
+    selector = selectors.DefaultSelector()
+    try:
+        need(started["bootId"] == Path("/proc/sys/kernel/random/boot_id").read_text().strip(), "trial.boot.changed")
+        need(snapshot_paths(intent["clean"]) == started["mounts"], "trial.mount.changed")
+        no_other_writer(intent["clean"])
+        need(observe_image(intent["image"]) == started["image"], "trial.image.changed")
+        capacity(intent["plan"], intent["clean"], True)
+        durable.reserve_heavy_workload(op, "doctor", started["intentSha256"])
+        (op / "gate").mkdir(mode=0o755)
+        os.chmod(op / "gate", 0o755)
+        args = create_argv(op, intent)
+        durable.write_once(op / "create-intent.json", durable.encode({"at": durable.now(), "argv": args}))
+        cid = docker(args).decode().strip()
+        need(HEX.fullmatch(cid), "trial.create.uncertain")
+        durable.write_once(op / "container.json", durable.encode({"id": cid, "at": durable.now()}))
+        value = inspect_container(cid)
+        validate_container(value, op, intent, started["image"]["env"])
+        need(value["State"]["Status"] == "created", "trial.container.not_fresh")
+        durable.write_once(op / "container-start-intent.json", durable.encode({"id": cid, "at": durable.now()}))
+        logs = {name: RollingLog(op / name) for name in ("stdout.log", "stderr.log", "resources.jsonl")}
+        child = subprocess.Popen([*durable.DOCKER, "--host", durable.ENDPOINT, "start", "--attach", cid],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=durable.SAFE_ENV)
+        for name, stream in (("stdout.log", child.stdout), ("stderr.log", child.stderr)):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, name)
+        next_check = 0
+        container_start = None
+        while selector.get_map() or child.poll() is None:
+            need(not interrupted and time.monotonic() < end, "trial.deadline_or_signal")
+            if time.monotonic() >= next_check:
+                value = inspect_container(cid)
+                validate_container(value, op, intent, started["image"]["env"])
+                need(not value["State"]["OOMKilled"], "trial.container.oom")
+                if value["State"]["Running"]:
+                    if container_start is None:
+                        container_start = value["State"]["StartedAt"]
+                    need(value["State"]["StartedAt"] == container_start, "trial.container.restarted")
+                    if cg is None and gate_ready:
+                        cg = cgroup_path(value)
+                        admit_cgroup(cg, intent)
+                        baseline_processes = cgroup_processes(cg)
+                        need(len(baseline_processes) == 2 and value["State"]["Pid"] in baseline_processes,
+                             "trial.cgroup.gate_processes")
+                        initial = cgroup_sample(cg)
+                        durable.write_once(op / "cgroup-admission.json", durable.encode({"path": str(cg),
+                            "containerStart": container_start, "sample": initial, "processes": baseline_processes}))
+                        durable.reserve_heavy_workload(op, "doctor", started["intentSha256"])
+                        durable.write_once(op / "gate/go", b"admitted\n")
+                        os.chmod(op / "gate/go", 0o444)
+                    if cg is not None:
+                        sample = cgroup_sample(cg)
+                        oom_kills = sample["events"]["oom_kill"] - initial["events"]["oom_kill"]
+                        logs["resources.jsonl"].append(json.dumps(sample).encode() + b"\n")
+                        need(oom_kills == 0, "trial.cgroup.oom_kill")
+                        if child_exit is not None and not settled:
+                            processes = cgroup_processes(cg)
+                            durable.write_once(op / "native-quiescence.json", durable.encode({
+                                "at": durable.now(), "baselineProcesses": baseline_processes, "processes": processes}))
+                            need(processes == baseline_processes, "trial.native.descendants_remain")
+                            # Only the trusted gate and init remain. Neither forks
+                            # after this point, so no native descendant can OOM
+                            # between this final sample and normal cgroup removal.
+                            sample = cgroup_sample(cg)
+                            oom_kills = sample["events"]["oom_kill"] - initial["events"]["oom_kill"]
+                            logs["resources.jsonl"].append(json.dumps(sample).encode() + b"\n")
+                            need(oom_kills == 0, "trial.cgroup.oom_kill")
+                            durable.write_once(op / "native-settlement.json", durable.encode({
+                                "at": durable.now(), "nativeExitCode": child_exit, "processes": processes, "cgroup": sample}))
+                            durable.write_once(op / "gate/settled", b"observed\n")
+                            os.chmod(op / "gate/settled", 0o444)
+                            settled = True
+                capacity(intent["plan"], intent["clean"])
+                next_check = time.monotonic() + 1
+            for key, _ in selector.select(.1):
+                data = os.read(key.fd, 65536)
+                if not data:
+                    selector.unregister(key.fileobj)
+                    continue
+                logs[key.data].append(durable.now().encode() + b" " + data)
+                window = tails[key.data] + data
+                complete |= b"Doctor complete." in window
+                gate_ready |= b"OPENCLAW_TRIAL_" + op.name.encode() + b"_READY\n" in window
+                match = re.search(rb"OPENCLAW_TRIAL_" + op.name.encode() + rb"_EXIT=([0-9]{1,3})\n", window)
+                if match:
+                    child_exit = int(match[1])
+                need(b"Startup migration refused" not in window, "trial.doctor.refused")
+                tails[key.data] = window[-256:]
+        final = inspect_container(cid)
+        validate_container(final, op, intent, started["image"]["env"])
+        need(final["State"]["StartedAt"] == container_start, "trial.container.final_start_changed")
+        need(cg is not None and settled, "trial.exit.before_settlement")
+        need(child_exit == 0, "trial.doctor.native_exit")
+        # Docker normally removes this cgroup on exit. Success may use the
+        # retained quiescent settlement proof; a surviving cgroup adds evidence.
+        if cg.exists():
+            last = cgroup_sample(cg)
+            oom_kills = max(oom_kills, last["events"].get("oom_kill", 0) - initial["events"].get("oom_kill", 0))
+            logs["resources.jsonl"].append(json.dumps(last).encode() + b"\n")
+        need(successful(final["State"], child.returncode, complete, oom_kills), "trial.doctor.not_successful")
+    except Exception as error:
+        reason = str(error) if isinstance(error, release.Refusal) else type(error).__name__
+    finally:
+        cleanup = "not_started"
+        if cid and HEX.fullmatch(cid):
+            try:
+                value = inspect_container(cid)
+                validate_owned_container(value, cid, op)
+                if value["State"]["Running"]:
+                    docker(["stop", "--time", "30", cid], timeout=45)
+                final = inspect_container(cid)
+                validate_owned_container(final, cid, op)
+                need(not final["State"]["Running"] and final["State"]["Pid"] == 0, "trial.stop.unsettled")
+                cleanup = "owned_container_stopped_retained"
+            except Exception:
+                cleanup = "unknown_reconcile_required"
+                reason = reason or "trial.stop.unknown"
+        if child is not None:
+            if child.poll() is None:
+                child.kill()
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                reason = reason or "trial.attach.unsettled"
+            child.stdout.close()
+            child.stderr.close()
+        selector.close()
+        for log in logs.values():
+            log.close()
+        for sig, handler in old.items():
+            signal.signal(sig, handler)
+        result = {"operationId": op.name, "at": durable.now(), "invocationId": invocation,
+                  "state": "failed" if reason else "succeeded", "reason": reason,
+                  "containerId": cid, "nativeState": final["State"] if final else None,
+                  "doctorComplete": complete, "oomKillDelta": oom_kills, "cleanup": cleanup,
+                  "nativeExitCode": child_exit, "cgroupSettlementObserved": settled,
+                  "imageReceiptSha256": intent["plan"]["imageReceiptSha256"],
+                  "cleanInputSha256": intent["plan"]["cleanInputSha256"],
+                  "promotionAuthorized": False}
+        durable.write_once(op / "result.json", durable.encode(result))
+    return 0 if reason is None else 1
+
+
+def status(op):
+    op, intent = load(op)
+    output = {"nativeOutput": {}, "operationId": op.name, "state": "prepared", "promotionAuthorized": False}
+    newest = None
+    for name in ("stdout.log", "stderr.log"):
+        file = op / name
+        if file.is_file():
+            info = file.stat()
+            with file.open("rb") as stream:
+                stream.seek(max(0, info.st_size - 4096))
+                tail = stream.read(4096).decode(errors="replace")
+            output["nativeOutput"][name] = {"path": str(file), "bytes": info.st_size,
+                "modifiedAt": datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat(), "tail": tail}
+            if info.st_size:
+                newest = max(newest or 0, info.st_mtime)
+    output["nativeQuietSeconds"] = max(0, round(time.time() - newest, 1)) if newest else None
+    output["stageProgress"] = "unproven"
+    resources = op / "resources.jsonl"
+    if resources.is_file():
+        with resources.open("rb") as stream:
+            stream.seek(max(0, resources.stat().st_size - 4096))
+            lines = stream.read(4096).split(b"\n")
+        # Ignore an in-flight partial write. A resource sample proves liveness,
+        # not that a migration stage has made progress.
+        if len(lines) > 1 and lines[-2]:
+            try:
+                output["lastResourceSample"] = json.loads(lines[-2])
+            except ValueError:
+                pass
+    if not (op / "start-intent.json").exists():
+        return output
+    output["state"] = "unknown"
+    unit = "openclaw-snapshot-doctor-" + op.name + ".service"
+    try:
+        raw = native([*durable.SYSTEMCTL, "show", unit, "--property=" + ",".join(durable.SHOW_FIELDS)])
+        service = dict(line.split("=", 1) for line in raw.decode().splitlines() if "=" in line)
+        output["service"] = service
+        if (op / "started.json").exists():
+            started = durable.read_private(op / "started.json")
+            need(service.get("InvocationID") == started["invocationId"],
+                 "trial.service.changed")
+            output["elapsedSeconds"] = max(0, round(time.time() - datetime.fromisoformat(started["at"].replace("Z", "+00:00")).timestamp(), 1))
+        if (op / "native-settlement.json").exists():
+            output["lastNativeStage"] = durable.read_private(op / "native-settlement.json")
+            output["stageProgress"] = "native-exit-observed"
+        if service.get("ActiveState") == "active" and service.get("SubState") == "running":
+            output["state"] = "running"
+        if (op / "result.json").exists():
+            result = durable.read_private(op / "result.json")
+            output["result"] = result
+            need((op / "started.json").exists() and result["operationId"] == op.name and
+                 result["invocationId"] == started["invocationId"] == service.get("InvocationID") and
+                 result["imageReceiptSha256"] == intent["plan"]["imageReceiptSha256"] and
+                 result["cleanInputSha256"] == intent["plan"]["cleanInputSha256"], "trial.result.binding")
+            need(service.get("LoadState") == "loaded" and service.get("MainPID") == "0" and
+                 service.get("ExecMainCode") == "1", "trial.service.not_settled")
+            succeeded = result["state"] == "succeeded"
+            need(result["state"] in ("succeeded", "failed") and
+                 service.get("ExecMainStatus") == ("0" if succeeded else "1") and
+                 service.get("Result") == ("success" if succeeded else "exit-code") and
+                 (service.get("ActiveState"), service.get("SubState")) ==
+                 (("active", "exited") if succeeded else ("failed", "failed")), "trial.service.result_conflict")
+            output["state"] = result["state"]
+            if output["state"] == "succeeded":
+                output["stageProgress"] = "doctor-completed"
+    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired, release.Refusal):
+        output["state"] = "unknown"
+    return output
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    prep = commands.add_parser("prepare")
+    for name in ("plan", "image-receipt", "clean-input", "tooling"):
+        prep.add_argument("--" + name, type=Path, required=True)
+    for name in ("start", "status", "_serve"):
+        command = commands.add_parser(name)
+        command.add_argument("operation", type=Path)
+        if name == "status":
+            command.add_argument("--json", action="store_true", help="Structured adapter output; default shows native tails first")
+    args = parser.parse_args()
+    if args.command == "prepare":
+        print(prepare(args.plan, args.image_receipt, args.clean_input, args.tooling))
+    elif args.command == "_serve":
+        return serve(args.operation)
+    else:
+        result = {"start": start, "status": status}[args.command](args.operation)
+        if args.command == "status" and not args.json:
+            for name, observation in result["nativeOutput"].items():
+                print(f"{observation['modifiedAt']} {name}\n{observation['tail']}")
+        print(json.dumps(result))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

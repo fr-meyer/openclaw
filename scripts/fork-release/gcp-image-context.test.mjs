@@ -8,10 +8,11 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { smokeDockerReleaseImage } from "../docker-release-artifacts.mjs";
@@ -342,19 +343,44 @@ test("loaded index smoke requires an exact digest and the explicit loaded transp
 test("loaded OCI index remains immutable through smoke and platform-pinned plugin inspection", () => {
   const root = mkdtempSync(join(tmpdir(), "fork-index-smoke-"));
   const capture = join(root, "calls.jsonl");
+  const verifierCapture = join(root, "verifiers.jsonl");
+  const verifierSource = fileURLToPath(new URL("./verify-image-plugins.mjs", import.meta.url));
+  const sourceHash = hash(readFileSync(verifierSource));
+  const sourceMode = statSync(verifierSource).mode & 0o777;
+  const unrelated = join(root, "unrelated-file");
   const indexDigest = `sha256:${"c".repeat(64)}`;
   const previous = Object.fromEntries(
-    ["PATH", "SMOKE_CAPTURE", "SMOKE_DIGEST", "SMOKE_FAIL_START"].map((key) => [
-      key,
-      process.env[key],
-    ]),
+    [
+      "PATH",
+      "TMPDIR",
+      "SMOKE_CAPTURE",
+      "SMOKE_DIGEST",
+      "SMOKE_FAIL_START",
+      "SMOKE_VERIFIER_CAPTURE",
+      "SMOKE_PLUGIN_FAILURE",
+    ].map((key) => [key, process.env[key]]),
   );
   const fake = `#!${process.execPath}
-import { appendFileSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, readFileSync, statSync } from "node:fs";
+import { dirname } from "node:path";
 const args = process.argv.slice(2);
 appendFileSync(process.env.SMOKE_CAPTURE, JSON.stringify(args) + "\\n");
 if (args[0] === "image") console.log(process.env.SMOKE_DIGEST);
-if (args[0] === "create") console.log("2".repeat(64));
+if (args[0] === "create" && args.includes("/tmp/verify-image-plugins.mjs")) {
+  const mount = args[args.indexOf("--mount") + 1];
+  const prefix = "type=bind,source=";
+  const suffix = ",target=/tmp/verify-image-plugins.mjs,readonly";
+  if (!mount.startsWith(prefix) || !mount.endsWith(suffix)) throw Error("Unexpected verifier mount");
+  const path = mount.slice(prefix.length, -suffix.length);
+  appendFileSync(process.env.SMOKE_VERIFIER_CAPTURE, JSON.stringify({
+    path, mode: statSync(path).mode & 0o777, directoryMode: statSync(dirname(path)).mode & 0o777,
+    sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
+  }) + "\\n");
+  if (process.env.SMOKE_PLUGIN_FAILURE === "create") process.exit(19);
+}
+if (args[0] === "create") console.log(process.env.SMOKE_PLUGIN_FAILURE === "identity" ? "invalid" : "2".repeat(64));
+if (args[0] === "rm" && process.env.SMOKE_PLUGIN_FAILURE === "cleanup") process.exit(23);
 if (args[0] === "inspect") console.log(args.includes("{{.State.Running}} {{.State.ExitCode}} {{.State.OOMKilled}}") ? "false 0 false" : "false 0");
 if (args[0] === "start" && readFileSync(process.env.SMOKE_CAPTURE, "utf8").includes("/tmp/verify-image-plugins.mjs")) console.log("[]");
 if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17);
@@ -364,6 +390,23 @@ if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
+  const verifiers = () =>
+    readFileSync(verifierCapture, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+  const assertVerifierCleaned = () => {
+    const verifier = verifiers().at(-1);
+    assert.notEqual(verifier.path, verifierSource);
+    assert.equal(dirname(dirname(verifier.path)), root);
+    assert.equal(verifier.mode, 0o444);
+    assert.equal(verifier.directoryMode, 0o700);
+    assert.equal(verifier.sha256, sourceHash);
+    assert.equal(existsSync(dirname(verifier.path)), false);
+    assert.equal(hash(readFileSync(verifierSource)), sourceHash);
+    assert.equal(statSync(verifierSource).mode & 0o777, sourceMode);
+    assert.equal(readFileSync(unrelated, "utf8"), "preserved");
+  };
   const options = {
     isolation: "secretless",
     transport: "loaded",
@@ -371,7 +414,11 @@ if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17
   };
   try {
     writeFileSync(join(root, "docker"), fake, { mode: 0o700 });
+    writeFileSync(unrelated, "preserved");
     process.env.PATH = `${root}:${previous.PATH}`;
+    process.env.TMPDIR = root;
+    process.env.SMOKE_VERIFIER_CAPTURE = verifierCapture;
+    delete process.env.SMOKE_PLUGIN_FAILURE;
     process.env.SMOKE_CAPTURE = capture;
     process.env.SMOKE_DIGEST = indexDigest;
     delete process.env.SMOKE_FAIL_START;
@@ -405,6 +452,10 @@ if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17
     assert.equal(plugins[plugins.indexOf("--entrypoint") + 2], indexDigest);
     assert.equal(plugins[plugins.indexOf("--network") + 1], "none");
     assert.ok(plugins.includes("--read-only"));
+    assert.ok(!plugins.includes("--user"));
+    assert.equal(plugins[plugins.indexOf("--cap-drop") + 1], "ALL");
+    assert.equal(plugins[plugins.indexOf("--security-opt") + 1], "no-new-privileges");
+    assertVerifierCleaned();
     assert.ok(!plugins.includes(digest));
     assert.equal(plugins.at(-1), "0.160.0");
     assert.equal(plugins[plugins.indexOf("--memory") + 1], "1g");
@@ -422,7 +473,31 @@ if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17
       ),
     );
     assert.deepEqual(calls().at(-1), ["rm", "--force", "2".repeat(64)]);
+    assertVerifierCleaned();
     delete process.env.SMOKE_FAIL_START;
+
+    for (const phase of ["create", "identity", "cleanup"]) {
+      writeFileSync(capture, "");
+      process.env.SMOKE_PLUGIN_FAILURE = phase;
+      assert.throws(() =>
+        inspectLoadedPlugins(
+          { image: { architecture: "amd64", extensions: "codex,workboard" } },
+          "2026.10.5",
+          indexDigest,
+          "0.160.0",
+        ),
+      );
+      assertVerifierCleaned();
+      if (phase === "cleanup") {
+        assert.deepEqual(calls().at(-1), ["rm", "--force", "2".repeat(64)]);
+      } else {
+        assert.deepEqual(
+          calls().map((args) => args[0]),
+          ["create"],
+        );
+      }
+    }
+    delete process.env.SMOKE_PLUGIN_FAILURE;
 
     writeFileSync(capture, "");
     process.env.SMOKE_DIGEST = digest;

@@ -8,6 +8,139 @@ has `productionEligible: false`. A future candidate needs its own reviewed,
 complete ordered patch chain, focused test selection, and explicit decision to
 set that field to `true`. Never change this seed merely to match a moving branch.
 
+## Existing-VM execution route
+
+The current operational route uses the existing GCP VM and storage, reached
+through the operator's CLI. Keep one deployment owner for dataset preparation,
+rehearsal, readiness, rollback and eventual promotion. The separate
+`GITHUB-GCP-DESIGN.md` VM/WIF proposal is not a prerequisite for this route and
+does not authorize new infrastructure or identity changes.
+
+Build and qualify an immutable image once with `gcp_build.py` and `image.mjs`.
+Reuse the resulting image receipt for rehearsal. A later tooling improvement
+does not rewrite that receipt's historical producer SHA or require rebuilding
+unchanged product source. New execution evidence records its own tooling
+revision alongside the original receipt hash and image digest tuple.
+
+The image verifier stages a hash-matched readable script in a private temporary
+directory, preserving the checkout's permissions and the image's normal user.
+The pipeline no longer needs a host-specific Docker wrapper to handle a private
+`0600` verifier checkout. Its owned temporary staging is removed after the
+check, including failures; image/data/previous-operation evidence is retained.
+
+Source tests use an isolated workspace with the source-pinned pnpm and Vitest
+dependencies. Runtime images retain their production dependency selection.
+Missing or stale test dependencies mean preparation is needed, not that the
+production image should gain development tools. Reuse focused proof only while
+its source, dependency and test-command bindings remain valid.
+
+No successful build or image check establishes native migration, gateway
+readiness, rollback or production approval. The failed 9.8 run remains useful
+OOM evidence; a new Doctor needs a clean admitted input and a freshly measured
+memory/disk allowance. Keep heavy builds and migrations serialized.
+
+### Pinned source tests
+
+On the existing GCP host, use a clean source checkout and a separately prepared
+dependency workspace with matching package manifests and lockfile:
+
+```sh
+python3 scripts/fork-release/source_tests.py \
+  --source "$SOURCE_CHECKOUT" --source-sha "$SOURCE_SHA" \
+  --dependencies "$PREPARED_DEPENDENCY_WORKSPACE" \
+  --pnpm-dir "$PREPARED_PINNED_PNPM_PACKAGE" \
+  --image "$PINNED_TEST_TOOLCHAIN_DIGEST" --output "$NEW_TEST_OUTPUT" \
+  --workers 1 --memory-mib 1024 --timeout 300 \
+  path/to/selected.test.ts
+```
+
+This synchronous step exports tracked source without private-shaped files or
+Git metadata, compares dependency manifests and pnpm 12's project-lock document,
+then checks actual pnpm/Vitest/SDK versions inside a non-root, network-disabled
+container. The existing pnpm package is mounted read-only and invoked directly,
+so a Corepack shim cannot trigger acquisition. It runs the repository's explicit
+Vitest entrypoint. Dependency
+packages and source mounts are read-only; fixtures and caches use private
+temporary storage. Its native timeout also bounds the container if the client
+disconnects. The receipt records the source, dependency metadata, installed lock,
+command, pnpm launcher hashes, native exit/OOM status and bounded log hash. This is metadata/version
+proof, not an audit of every installed package byte. Missing compiled artifacts
+or dependencies require their existing preparation step; no install or implicit
+build is performed. Native Node suites retain their existing runner.
+
+The adapter's dependency-free Python tests run in ordinary test discovery. Its
+five native entry fixtures additionally require Linux, the prepared `yaml`
+dependency and `OPENCLAW_SOURCE_TEST_PNPM_DIR` pointing to the read-only pinned
+pnpm package. Set that variable when qualifying the isolated test toolchain;
+without it those native fixtures are explicitly reported as skipped.
+
+### One native Doctor execution
+
+`gcp_snapshot_trial.py` is the execution adapter for the already prepared test
+disk. It owns one Doctor invocation; the existing deployment owner owns the
+workflow around it. It never creates/restores disks, copies databases, performs
+production cutover, or retries migration. A clean-input receipt comes from the
+restore owner after reconciliation and sanitization. Its hash binds the snapshot
+lineage, unmigrated baseline, isolated config and exact mount permissions; a JSON
+attestation alone does not establish native integrity.
+
+```sh
+python3 scripts/fork-release/gcp_snapshot_trial.py prepare \
+  --plan "$PRIVATE_DOCTOR_PLAN" --image-receipt "$SEALED_IMAGE_RECEIPT" \
+  --clean-input "$CLEAN_INPUT_RECEIPT" --tooling "$COMMITTED_TOOLING_CHECKOUT"
+# After the deployment owner admits the concrete input/resource/failure plan:
+python3 scripts/fork-release/gcp_snapshot_trial.py start "$PREPARED_OPERATION"
+python3 scripts/fork-release/gcp_snapshot_trial.py status "$PREPARED_OPERATION"
+```
+
+Use the exact committed tooling checkout for preparation. The running adapter
+and its shared helpers must match that revision; the retained supervisor must
+match again on dispatch. This executor admits only the reviewed 2026.10.5 source
+and immutable image identities. It does not replace the image receipt's original
+producer revision with the newer executor revision.
+
+Each clean-input mount has `source`, `target`, and an explicit Boolean
+`readOnly`. State, `/tmp`, and `/rehearsal/cache` must be writable. Workspace
+files, sessions and mutable state remain writable because Doctor may rename or
+archive them. Independent project directories may be read-only submounts below
+workspace targets, including a workspace inside `/home/node/.openclaw`.
+Parent mounts precede child mounts. All source directories must be physically
+disjoint on the attested test filesystem; the adapter checks listed roots and
+their ancestor metadata without walking their contents. It verifies the
+effective Docker read/write flags before releasing Doctor. The restore owner
+must finish copy coverage and plugin/config isolation before attesting input;
+an old snapshot plugin must not override the selected image package.
+
+The current reviewed envelope is 24 GiB, no container swap, 4 CPUs, 128 MiB/s
+reads and 32 MiB/s writes. Fresh admission limits in the private plan must cover
+the measured clean input, native backup set, WAL/temp growth and host headroom.
+The executor verifies effective Docker and cgroup limits before releasing the
+native Doctor gate. `/usr/bin/timeout` in the sealed image must be verified
+before activation. Do not infer its availability from the image's base distro.
+
+Start intent precedes systemd dispatch; repeating `start` observes the retained
+operation. A missing unit or lost reply after intent stays `unknown`. Status
+prints bounded timestamped native output first, then elapsed/quiet time and
+service observations. Process liveness, output and completed native stages are
+separate facts. The fixed wrapper keeps the cgroup alive until final memory/OOM
+counters are captured and only the original init and gate processes remain;
+wrapper exit zero cannot hide a killed native child. The gate uses Node timers,
+so its own polling adds no transient child processes to that observation.
+Failure stops only the exact owned container and preserves data, WAL, backups
+and logs. Startup/readiness and rollback are subsequent work owned by the
+deployment coordinator, not conclusions inferred from Doctor.
+
+Build and Doctor adapters share a durable heavyweight-workload reservation.
+Resource-specific reservations are admitted under the same lock, so a workload
+conflict cannot leave an unrelated builder or dataset reserved before dispatch.
+It advances only after matching terminal service/native evidence; a canceled
+build client cannot establish that its daemon-side solve ended. Unknown or
+failed-build ownership remains for operator reconciliation. This cooperative
+reservation covers these adapters, not older/native commands: before adopting
+it, reconcile legacy work with its existing owner. Do not erase an uncertain
+reservation to start another job. A disjoint idle builder cache on the test
+disk is preserved and is not a conflicting database writer.
+
 ## Parallel work through draft PRs
 
 Use one task-specific branch and one draft PR per independent change. Name task

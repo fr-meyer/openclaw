@@ -40,6 +40,8 @@ SYSTEMCTL = ("/usr/bin/sudo", "-n", "/usr/bin/systemctl")
 CHOWN = ("/usr/bin/sudo", "-n", "/usr/bin/chown")
 ENDPOINT = "unix:///var/run/docker.sock"
 PRIVATE_ROOT = Path("/var/tmp/openclaw-fork-gcp-build")
+HEAVY_ROOT = Path("/var/tmp/openclaw-fork-heavy-workload")
+TRIAL_ROOT = Path("/var/tmp/openclaw-fork-snapshot-trial")
 CLIENT_TERM_GRACE_SECONDS = 5
 CLIENT_JOIN_SECONDS = 2
 CLIENT_PIPE_DRAIN_SECONDS = 1
@@ -350,6 +352,95 @@ def operation_lock(op):
         yield
 
 
+def heavy_workload_settled(owner):
+    """Release a cooperative reservation only from retained native terminal proof.
+
+    Build client cancellation is deliberately insufficient: its BuildKit solve
+    may outlive it. Legacy/native callers still need operator coordination.
+    """
+    fields(owner, "kind operationPath intentSha256", "workload.owner.fields")
+    kind = owner["kind"]
+    need(kind in ("build", "doctor"), "workload.owner.kind")
+    op = Path(owner["operationPath"])
+    root = PRIVATE_ROOT if kind == "build" else TRIAL_ROOT
+    need(op.is_dir() and op.parent == root and op.resolve() == op and
+         release.matches(re.compile(r"[0-9a-f]{32}\Z"), op.name), "workload.owner.path")
+    release.private_root(op)
+    need(preflight.digest(op / "intent.json") == owner["intentSha256"], "workload.owner.changed")
+    started = read_private(op / "started.json")
+    completed = read_private(op / ("completed.json" if kind == "build" else "result.json"))
+    invocation = started["invocationId"]
+    need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), invocation) and
+         completed["invocationId"] == invocation, "workload.invocation.changed")
+    prefix = "openclaw-image-build-" if kind == "build" else "openclaw-snapshot-doctor-"
+    result = native([*SYSTEMCTL, "show", prefix + op.name + ".service",
+                     "--property=" + ",".join(SHOW_FIELDS)])
+    service = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+    need(result.returncode == 0 and service.get("LoadState") == "loaded" and
+         service.get("InvocationID") == invocation and service.get("MainPID") == "0" and
+         service.get("SubState") in ("exited", "dead", "failed") and
+         service.get("ExecMainCode") == "1", "workload.service.unsettled")
+    if kind == "build":
+        need(completed.get("exitCode") == 0 and completed.get("nativeExitCode") == 0 and
+             service.get("Result") == "success" and service.get("ExecMainStatus") == "0",
+             "workload.build.solve_unsettled")
+    else:
+        state = completed.get("nativeState") or {}
+        need(completed.get("state") in ("succeeded", "failed") and
+             completed.get("cleanup") == "owned_container_stopped_retained" and
+             state.get("Running") is False and state.get("Pid") == 0 and
+             service.get("Result") in ("success", "exit-code") and
+             service.get("ExecMainStatus") == ("0" if completed["state"] == "succeeded" else "1"),
+             "workload.doctor.unsettled")
+        cid = completed.get("containerId")
+        need(release.matches(preflight.HEX256, cid), "workload.doctor.container")
+        observed = native([*DOCKER, "--host", ENDPOINT, "inspect", "--format", "{{json .State}}", cid])
+        need(observed.returncode == 0, "workload.doctor.observation_failed")
+        current = json.loads(observed.stdout)
+        need(current.get("Running") is False and current.get("Pid") == 0 and
+             current.get("StartedAt") == state.get("StartedAt") and
+             current.get("FinishedAt") == state.get("FinishedAt"), "workload.doctor.container_changed")
+
+
+def reserve_heavy_workload(op, kind, intent_sha256, *, reserve_resource=None):
+    """Claim a resource and the shared slot under one admission lock.
+
+    The idempotent resource claim runs after checking other workload ownership
+    and before publishing this owner. A conflict on either side cannot strand
+    a newly claimed slot on the other. Elapsed time never releases ownership.
+    """
+    op = Path(op)
+    need(kind in ("build", "doctor") and
+         release.matches(preflight.HEX256, intent_sha256), "workload.reservation.identity")
+    expected_root = PRIVATE_ROOT if kind == "build" else TRIAL_ROOT
+    need(op.parent == expected_root and op.resolve() == op and
+         release.matches(re.compile(r"[0-9a-f]{32}\Z"), op.name) and
+         preflight.digest(op / "intent.json") == intent_sha256, "workload.reservation.path")
+    need(HEAVY_ROOT.resolve() == HEAVY_ROOT and not HEAVY_ROOT.is_symlink(), "workload.root.changed")
+    root = release.private_root(HEAVY_ROOT)
+    requested = {"kind": kind, "operationPath": str(op), "intentSha256": intent_sha256}
+    with operation_lock(root):
+        path = root / "owner.json"
+        previous = None
+        if path.exists():
+            previous = read_private(path)
+            if previous != requested:
+                try:
+                    heavy_workload_settled(previous)
+                except (OSError, ValueError, KeyError, subprocess.SubprocessError, release.Refusal) as error:
+                    raise release.Refusal("workload.owned_or_uncertain; inspect retained owner before continuing") from error
+        if reserve_resource is not None:
+            reserve_resource()
+        if previous == requested:
+            return
+        if previous is not None:
+            # Keep prior ownership facts even when the live slot advances.
+            history = root / ("settled-" + release.sha256(encode(previous)) + ".json")
+            if not history.exists():
+                write_once(history, encode(previous))
+        release.atomic_json(path, requested)
+
+
 def native(argv):
     return subprocess.run(argv, capture_output=True, text=True, timeout=30, env=SAFE_ENV)
 
@@ -544,7 +635,8 @@ def start(op):
         observe_builder(config["builder"], config.get("cache"))
         reserve = capacity(op, config["limits"], config.get("cache"))
         metadata_handoff_capability(op, intent)
-        reserve_builder(op, intent)
+        reserve_heavy_workload(op, "build", preflight.digest(op / "intent.json"),
+                               reserve_resource=lambda: reserve_builder(op, intent))
         write_once(op / "start-intent.json", encode({
             "intentSha256": preflight.digest(op / "intent.json"), "requestedAt": now(),
             "unitName": intent["unitName"], "capacity": reserve}))
@@ -587,6 +679,7 @@ def run_child(op, intent):
     native_exit, exit_code, reason = None, 1, "client failed before launch"
     cache = intent["config"].get("cache")
     try:
+        reserve_heavy_workload(op, "build", preflight.digest(op / "intent.json"))
         observe_builder(intent["config"]["builder"], cache)
         record_resources(op, "start", capacity(op, intent["config"]["limits"], cache))
         need(not signal_received, "build.cancelled_before_launch")
