@@ -320,10 +320,11 @@ Supply `--check-input` with this private, hash-bound check structure:
   "doctorResultSha256": "SHA256_OF_ORIGINAL_TERMINAL_RESULT_BYTES",
   "reconciliation": {
     "observedAt": "POST_STOP_UTC_TIMESTAMP",
-    "artifactDisposition": "incomplete-survivors-preserved",
+    "artifactDisposition": "incomplete-group-reconciled",
     "artifactReceiptSha256": "SHA256_OF_OWNER_ARTIFACT_RECONCILIATION",
-    "preservedBytes": 0,
+    "artifacts": [],
     "recaptureBytes": 1,
+    "originalCaptureBytes": 1,
     "additionalReserveBytes": 1
   }
 }
@@ -332,20 +333,102 @@ Supply `--check-input` with this private, hash-bound check structure:
 The numbers above are schema placeholders, not capacity recommendations. The
 sole rehearsal owner must settle the original job, then reconcile the exact
 surviving artifacts. That private reconciliation records the original operation
-and terminal result, bounded pre/post-stop metadata, surviving paths and sizes,
-preservation destination, and capacity basis. Preserve incomplete artifacts
-without overwriting, deleting or moving live files; any preservation directory
-must remain outside successor mounts. Canonical databases, sidecars and the
-native capture marker stay in place. If the native group completed, retain it
-and select `completed-group-retained` with `recaptureBytes: 0`; native validation
-decides reuse. The check is an owner attestation with an evidence hash, not a
-database-integrity proof or an automatic file-management operation.
+and terminal result, bounded pre/post-stop metadata, exact source/build/group
+identity, manifest status, classifications, and capacity basis. `artifacts` must
+enumerate the observed backup/staging artifacts; an empty list is valid only
+when the owner has established their absence. This remains an owner attestation,
+not a database scan, native integrity proof, or cleanup authorization.
 
-For an incomplete group, `recaptureBytes` must cover a new whole-group capture,
-and `additionalReserveBytes` is an explicit positive estimate for further work.
+Classify the two native backup families separately for the sealed 10.5 source:
+
+- **Migration group:** the deterministic ID binds version, runtime build/commit,
+  target schemas, and the full sorted source path/device/inode inventory. It does
+  not bind current content generations or timestamps: retaining the original
+  generation after in-place migration is intentional. No `.capturing` marker and
+  every expected final present means a reuse candidate; native code must still
+  integrity-validate every backup. Missing a member of a completed group refuses
+  continuation. A missing cleanup-registration manifest alone does not prove an
+  incomplete group, since registration failure is a native warning.
+- **Incomplete group/staging:** a surviving `.capturing` marker makes native code
+  discard existing group finals and recapture the whole inventory. A partial
+  staging file is not a resumable snapshot. After the exact owner stops, classify
+  these for an explicit cleanup decision; do not preserve large obsolete files
+  by default. Keep the marker, canonical databases and sidecars in place.
+- **Original pre-repair capture:** a standalone `doctor --fix` attempts a fresh
+  random run ID; older standalone captures are not a retry cache. Sealing checks
+  stable source content generations around each snapshot and across the final
+  inventory, then publishes `manifest.json` last. An admitted updater continuation
+  has a separate manifest/driver/installation lineage contract. A valid original
+  capture can remain essential recovery evidence even when it is not reusable.
+
+If the migration group completed, retain it and select
+`completed-group-retained` with `recaptureBytes: 0`; native validation decides
+reuse. Otherwise select `incomplete-group-reconciled`. Unknown ownership,
+production, active files and required rollback originals are protected. Changes
+to current database content alone never justify deleting a completed group.
+
+Each artifact entry has these fields (all names are exact):
+
+```json
+{
+  "path": "/mnt/isolated-test/state/example.sqlite.pre-startup-migration-GROUP.bak",
+  "kind": "migration-backup",
+  "classification": "not-reusable",
+  "disposition": "deletion-pending",
+  "reason": "Exact stopped owner's incomplete group; not needed for rollback",
+  "ownerOperationId": "EXACT_PREVIOUS_OPERATION_ID",
+  "device": 1,
+  "inode": 2,
+  "links": 1,
+  "sizeBytes": 4096,
+  "allocatedBytes": 4096,
+  "evidenceSha256": "SHA256_OF_COMPACT_IDENTITY_AND_CLASSIFICATION_EVIDENCE",
+  "nativeDiscardOnRetry": true,
+  "removal": null
+}
+```
+
+Kinds are `migration-backup`, `snapshot-staging`, `standalone-capture`, or
+`protected`; classifications are `native-revalidation-required`, `not-reusable`,
+`protected`, or `unknown`. Dispositions are `retain`, `preserve-outside-mounts`,
+`deletion-pending`, or `removed`. Entries refer to exact files, never recursive
+directory deletion targets. The executor rejects outside-dataset paths, duplicate
+paths/inodes, overlapping entries, and disposal of reusable/protected/unknown
+artifacts. Disposals require the exact predecessor owner and one hard link.
+`nativeDiscardOnRetry` records membership in the current incomplete group's
+native deletion set: `true`, `false`, or `null` when unresolved. Unknown membership
+blocks start. A current-group final must be settled as removed or preserved
+outside mounts before admission; labeling it protected or reusable does not
+permit native deletion. Unrelated historical groups can remain protected with
+confirmed `false` membership.
+
+For each proposed removal, the sole cleanup owner presents the exact file
+manifest, allocated bytes, ownership/inactivity proof, and consequences for
+**per-action irreversible deletion approval**. Preserve compact manifests,
+logs, identities and results outside successor mounts. Approval for an older
+batch or general permission to retry does not approve a new batch. After
+approved cleanup, reconcile actual results, including uncertain operations,
+and record `removal` as `{ "manifestSha256": "...", "approvalSha256": "...",
+"resultSha256": "..." }`. Those hashes reference evidence; they do not grant
+authority. `deletion-pending` can be prepared but blocks start before lease
+transfer. If retaining an unusable file for a specific diagnosis, record that
+reason and preserve it outside successor mounts; do not move a live file.
+This executor never dispatches deletion or authorizes native deletion of
+unreconciled incomplete finals. The owner must clear that conflict first.
+
+For an incomplete group, `recaptureBytes` must cover a new whole-group capture.
+Separately estimate `originalCaptureBytes` for the standalone pre-repair path;
+reuse of a migration group does not remove that possible allocation. Document
+the native log and layout evidence for a zero estimate. The capture root is a
+sibling of the state directory; do not assume it is writable merely because
+state is writable, or alter mounts to suppress a required capture.
+`additionalReserveBytes` is an explicit positive estimate for further work.
 Admission requires freshly observed free space at least equal to **the selected
-runtime floor + recapture bytes + additional reserve**. Preserved bytes already
-consume that measured free space; do not count them twice. The former floor is
+runtime floor + migration recapture + original capture + additional reserve**.
+Accounting uses allocated bytes, with logical sizes also retained. Retained and
+preserved bytes already consume measured free space; do not count them twice.
+Neither pending nor reported removal bytes are credited to admission: only a
+fresh free-space observation counts. The former floor is
 retained in predecessor evidence, while the new plan explicitly selects its
 own positive floor. Neither an old floor nor an estimate proves the maximum
 space needed by every migration stage. The runtime floor remains enforced;
@@ -356,7 +439,10 @@ terminal, and binds their original intent/result hashes, image, snapshot,
 restore receipt, filesystem, mounts and process start/finish facts. A completed
 successful Doctor goes to startup instead of this continuation path. Historical
 supervisor helpers are read only against reviewed hashes; they are never
-executed or replaced. Reconciliation must postdate the terminal result.
+executed or replaced. The earlier qualified `4c57b5269d` preservation-only
+reconciliation can still be read against its pinned helper manifest; new
+prepare/load/start require explicit artifact accounting. Reconciliation must
+postdate the terminal result.
 
 Under the shared workload lock, continuation rechecks predecessor settlement,
 requires its exact existing dataset lease, preserves its original bytes, and

@@ -56,11 +56,13 @@ IO_PROFILES = {(128 << 20, 32 << 20): "read128-write32",
                (256 << 20, 64 << 20): "read256-write64"}
 CONTINUATION = "openclaw.snapshot-doctor-continuation.v1"
 LEGACY_DEVICE_SHA = "a9b6526bbde15c2f9eeb3385e2fa00aa4cadfa39"
-# Read-only compatibility for these reviewed, already dispatched supervisors.
+LEGACY_CONTINUATION_SHA = "4c57b5269dc882c4c15f4b26fbdbb05a89b2df2d"
+# Read-only compatibility for these reviewed or qualified historical supervisors.
 # Digest of the sorted compact JSON helper-hash map; never execute old helpers.
 RETAINED_HELPERS = {
     LEGACY_DEVICE_SHA: "872b6966330c2bb127ae007cf936bffc6e6d7704d9d0ed1a0b7be5de57e8da0d",
     "ad0c1a62300f77e616b1a373c92c967c3cba95b8": "af5caa6316e15bec85b501ff2f8839835546b1e1e5313810a314741479343156",
+    LEGACY_CONTINUATION_SHA: "0de004053ed692ae2dc0cbf2d70f336dda72c02c21ba65a893ccac37a4719f97",
 }
 need = release.need
 
@@ -157,31 +159,116 @@ def timestamp(value):
     return parsed
 
 
-def validate_continuation(check):
+def validate_continuation(check, *, legacy=False):
     exact(check, "schema phase doctorOperationId doctorIntentSha256 doctorResultSha256 reconciliation",
           "trial.continuation.fields")
     need(check["phase"] == "doctor" and HEX.fullmatch(check["doctorIntentSha256"]),
          "trial.continuation.identity")
     record = check["reconciliation"]
-    exact(record, "observedAt artifactDisposition artifactReceiptSha256 preservedBytes recaptureBytes additionalReserveBytes",
+    if legacy:
+        # Read-only interpretation of the already qualified 4c57 receipt dialect.
+        exact(record, "observedAt artifactDisposition artifactReceiptSha256 preservedBytes recaptureBytes additionalReserveBytes",
+              "trial.continuation.legacy_fields")
+        timestamp(record["observedAt"])
+        need(HEX.fullmatch(record["artifactReceiptSha256"]) and
+             record["artifactDisposition"] in ("completed-group-retained", "incomplete-survivors-preserved") and
+             all(type(record[k]) is int and record[k] >= 0 for k in ("preservedBytes", "recaptureBytes")) and
+             type(record["additionalReserveBytes"]) is int and record["additionalReserveBytes"] > 0 and
+             (record["recaptureBytes"] > 0) == (record["artifactDisposition"] == "incomplete-survivors-preserved"),
+             "trial.continuation.legacy_reconciliation")
+        return
+    exact(record, "observedAt artifactDisposition artifactReceiptSha256 artifacts recaptureBytes originalCaptureBytes additionalReserveBytes",
           "trial.continuation.reconciliation_fields")
     timestamp(record["observedAt"])
     need(HEX.fullmatch(record["artifactReceiptSha256"]) and
-         record["artifactDisposition"] in ("completed-group-retained", "incomplete-survivors-preserved") and
-         all(type(record[k]) is int and record[k] >= 0 for k in ("preservedBytes", "recaptureBytes")) and
+         record["artifactDisposition"] in ("completed-group-retained", "incomplete-group-reconciled") and
+         all(type(record[k]) is int and record[k] >= 0 for k in ("recaptureBytes", "originalCaptureBytes")) and
          type(record["additionalReserveBytes"]) is int and record["additionalReserveBytes"] > 0,
          "trial.continuation.reconciliation")
-    need((record["recaptureBytes"] > 0) == (record["artifactDisposition"] == "incomplete-survivors-preserved"),
+    need((record["recaptureBytes"] > 0) == (record["artifactDisposition"] == "incomplete-group-reconciled"),
          "trial.continuation.recapture")
+    artifact_accounting(check)
+
+
+def artifact_accounting(check, clean=None):
+    """Bounded owner attestations, never a filesystem scan or cleanup authority."""
+    rows = check["reconciliation"]["artifacts"]
+    need(type(rows) is list and len(rows) <= 1024, "trial.artifacts.bound")
+    totals = {key: 0 for key in ("retainedBytes", "preservedBytes", "pendingDeletionBytes", "removedBytes")}
+    keys = {"retain": "retainedBytes", "preserve-outside-mounts": "preservedBytes",
+            "deletion-pending": "pendingDeletionBytes", "removed": "removedBytes"}
+    paths, identities = set(), set()
+    pending, unreconciled = [], []
+    for item in rows:
+        exact(item, "path kind classification disposition reason ownerOperationId device inode links sizeBytes "
+              "allocatedBytes evidenceSha256 nativeDiscardOnRetry removal", "trial.artifacts.fields")
+        pathname = path(item["path"], canonical=False)
+        need(item["path"] not in paths and not any(overlaps(pathname, Path(p)) for p in paths),
+             "trial.artifacts.overlap")
+        paths.add(item["path"])
+        need(item["kind"] in ("migration-backup", "snapshot-staging", "standalone-capture", "protected") and
+             item["classification"] in ("native-revalidation-required", "not-reusable", "protected", "unknown") and
+             item["disposition"] in keys and type(item["reason"]) is str and 0 < len(item["reason"]) <= 500 and
+             HEX.fullmatch(item["evidenceSha256"]) and
+             all(type(item[k]) is int and item[k] >= 0 for k in ("sizeBytes", "allocatedBytes")) and
+             all(type(item[k]) is int and item[k] > 0 for k in ("device", "inode", "links")),
+             "trial.artifacts.metadata")
+        identity = (item["device"], item["inode"])
+        need(identity not in identities, "trial.artifacts.duplicate_identity")
+        identities.add(identity)
+        if clean is not None:
+            need(Path(clean["mountRoot"]) in pathname.parents and item["device"] == clean["filesystemDevice"],
+                 "trial.artifacts.dataset")
+        disposition = item["disposition"]
+        discard = item["nativeDiscardOnRetry"]
+        need(discard is None or type(discard) is bool, "trial.artifacts.native_discard")
+        if discard is True:
+            need(item["kind"] == "migration-backup" and
+                 check["reconciliation"]["artifactDisposition"] == "incomplete-group-reconciled",
+                 "trial.artifacts.native_discard_scope")
+        if discard is None or (discard is True and disposition == "retain"):
+            unreconciled.append(item["path"])
+        if item["classification"] == "native-revalidation-required":
+            need(item["kind"] == "migration-backup" and disposition == "retain", "trial.artifacts.reuse")
+        if item["kind"] == "protected" or item["classification"] in ("protected", "unknown"):
+            need(disposition == "retain", "trial.artifacts.protected")
+        if disposition != "retain":
+            need(item["classification"] == "not-reusable" and
+                 item["ownerOperationId"] == check["doctorOperationId"] and item["links"] == 1,
+                 "trial.artifacts.disposable_owner")
+        else:
+            need(item["ownerOperationId"] is None or OP.fullmatch(item["ownerOperationId"]),
+                 "trial.artifacts.owner")
+        removal = item["removal"]
+        if disposition == "removed":
+            exact(removal, "manifestSha256 approvalSha256 resultSha256", "trial.artifacts.removal_fields")
+            need(all(type(v) is str and HEX.fullmatch(v) for v in removal.values()),
+                 "trial.artifacts.removal_proof")
+        else:
+            need(removal is None, "trial.artifacts.unsettled_removal")
+        totals[keys[disposition]] += item["allocatedBytes"]
+        if disposition == "deletion-pending":
+            pending.append(item["path"])
+        if (check["reconciliation"]["artifactDisposition"] == "incomplete-group-reconciled" and
+                item["kind"] in ("migration-backup", "snapshot-staging") and
+                item["classification"] == "not-reusable"):
+            need(disposition != "retain", "trial.artifacts.incomplete_survivor")
+    return {**totals, "pendingDeletionPaths": pending, "unreconciledNativeDiscardPaths": unreconciled,
+            "inventorySha256": digest(durable.encode(rows))}
 
 
 def continuation_capacity(resources, plan, check):
     if continuing(check):
         record = check["reconciliation"]
-        required = plan["limits"]["minDataFreeBytes"] + record["recaptureBytes"] + record["additionalReserveBytes"]
+        accounting = artifact_accounting(check)
+        need(not accounting["pendingDeletionPaths"], "trial.artifacts.deletion_pending")
+        need(not accounting["unreconciledNativeDiscardPaths"], "trial.artifacts.native_discard_unreconciled")
+        required = (plan["limits"]["minDataFreeBytes"] + record["recaptureBytes"] +
+                    record["originalCaptureBytes"] + record["additionalReserveBytes"])
         need(resources["dataFreeBytes"] >= required, "trial.continuation.capacity")
         resources["continuationAdmission"] = {"requiredFreeBytes": required,
-            "recaptureBytes": record["recaptureBytes"], "additionalReserveBytes": record["additionalReserveBytes"],
+            "recaptureBytes": record["recaptureBytes"], "originalCaptureBytes": record["originalCaptureBytes"],
+            "additionalReserveBytes": record["additionalReserveBytes"], "artifacts": accounting,
             "basis": "owner-estimate-plus-runtime-floor; not an all-stage upper bound"}
 
 
@@ -195,7 +282,7 @@ def resource_profile(limits):
             **{k: limits[k] for k in ("memoryBytes", "cpus", "readBps", "writeBps")}, "swapBytes": 0}
 
 
-def validate(plan, image, clean, check=None):
+def validate(plan, image, clean, check=None, *, retained=False):
     v2 = plan.get("schema") == "openclaw.snapshot-trial-plan.v2"
     exact(plan, "schema operationId toolingSha imageReceiptSha256 cleanInputSha256 limits" +
           (" phase checkInputSha256" if v2 else ""),
@@ -204,11 +291,12 @@ def validate(plan, image, clean, check=None):
          OP.fullmatch(plan["operationId"]) and SHA.fullmatch(plan["toolingSha"]),
          "trial.plan.identity")
     selected = phase(plan)
+    legacy_continuation = retained and plan["toolingSha"] == LEGACY_CONTINUATION_SHA
     need(selected in ("doctor", "startup", "rollback"), "trial.plan.phase")
     if v2:
         need(HEX.fullmatch(plan["checkInputSha256"]), "trial.check.hash")
         if continuing(check):
-            validate_continuation(check)
+            validate_continuation(check, legacy=legacy_continuation)
             need(selected == "doctor", "trial.continuation.phase")
         else:
             exact(check, "schema phase" + (" doctorOperationId doctorResultSha256" if selected != "doctor" else ""),
@@ -264,6 +352,8 @@ def validate(plan, image, clean, check=None):
     root = path(clean["mountRoot"])
     need(type(clean["filesystemDevice"]) is int and clean["filesystemDevice"] > 0 and
          re.fullmatch(r"[0-9]+:[0-9]+", clean["deviceMajorMinor"]), "trial.clean.device")
+    if continuing(check) and not legacy_continuation:
+        artifact_accounting(check, clean)
     device = path(clean["devicePath"], canonical=False)
     need(str(device).startswith("/dev/"), "trial.clean.device_path")
     mounts = clean["mounts"]
@@ -661,7 +751,7 @@ def prepare(plan_path, image_path, clean_path, tooling, check_path=None):
     return op
 
 
-def read_operation(op):
+def read_operation(op, *, retained=False):
     op = Path(op).absolute()
     need(op.resolve() == op and op.parent == PRIVATE_ROOT.resolve(), "trial.operation.path")
     info = op.stat()
@@ -669,7 +759,7 @@ def read_operation(op):
     intent, _ = private_json(op / "intent.json")
     need(intent["ownerUid"] == os.getuid() and intent["ownerGid"] == os.getgid() and
          intent["plan"]["operationId"] == op.name, "trial.intent.owner")
-    validate(intent["plan"], intent["image"], intent["clean"], intent.get("check"))
+    validate(intent["plan"], intent["image"], intent["clean"], intent.get("check"), retained=retained)
     if "checkInputSha256" in intent["plan"]:
         value, hashed = private_json(op / "check-input.json")
         need(hashed == intent["plan"]["checkInputSha256"] and value == intent["check"], "trial.check.changed")
@@ -690,7 +780,7 @@ def load(op):
 
 
 def read_retained(op):
-    op, intent = read_operation(op)
+    op, intent = read_operation(op, retained=True)
     manifest = digest(json.dumps(intent["helpers"], sort_keys=True, separators=(",", ":")).encode())
     need(intent["helpers"] == LOADED_HELPER_HASHES or
          RETAINED_HELPERS.get(intent["plan"]["toolingSha"]) == manifest,
@@ -1237,6 +1327,8 @@ def status(op, *, retained=False):
     output = {"nativeOutput": {}, "operationId": op.name, "phase": phase(intent["plan"]),
               "state": "prepared", "promotionAuthorized": False,
               "resourceProfile": resource_profile(intent["plan"]["limits"])}
+    if continuing(intent.get("check")) and "artifacts" in intent["check"]["reconciliation"]:
+        output["artifactAccounting"] = artifact_accounting(intent["check"], intent["clean"])
     newest = None
     for name in ("stdout.log", "stderr.log"):
         file = op / name

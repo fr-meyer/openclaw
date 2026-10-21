@@ -116,8 +116,17 @@ class SnapshotTrialTests(unittest.TestCase):
         self.intent["check"] = {"schema": trial.CONTINUATION, "phase": "doctor",
             "doctorOperationId": "b" * 32, "doctorIntentSha256": "c" * 64, "doctorResultSha256": "d" * 64,
             "reconciliation": {"observedAt": "2000-01-01T00:00:01Z",
-                "artifactDisposition": "incomplete-survivors-preserved", "artifactReceiptSha256": "e" * 64,
-                "preservedBytes": 23 << 30, "recaptureBytes": 47 << 30, "additionalReserveBytes": 8 << 30}}
+                "artifactDisposition": "incomplete-group-reconciled", "artifactReceiptSha256": "e" * 64,
+                "artifacts": [self.artifact()], "recaptureBytes": 47 << 30, "originalCaptureBytes": 4 << 30,
+                "additionalReserveBytes": 8 << 30}}
+
+    def artifact(self, **changes):
+        return {"path": str(self.dataset / "state/db.sqlite.pre-startup-migration-synthetic.bak"),
+                "kind": "migration-backup", "classification": "not-reusable",
+                "disposition": "preserve-outside-mounts", "reason": "Synthetic incomplete group; exact owner retained for diagnosis",
+                "ownerOperationId": "b" * 32, "device": 2065, "inode": 42, "links": 1,
+                "sizeBytes": 24 << 30, "allocatedBytes": 23 << 30, "evidenceSha256": "f" * 64,
+                "nativeDiscardOnRetry": True, "removal": None, **changes}
 
     def test_continuation_requires_truthful_input_and_explicit_recapture_budget(self):
         self.select_continuation()
@@ -127,7 +136,7 @@ class SnapshotTrialTests(unittest.TestCase):
         ordinary = {"schema": "openclaw.snapshot-trial-check.v1", "phase": "doctor"}
         with self.assertRaisesRegex(release.Refusal, "trial.clean.identity"):
             trial.validate(self.plan, self.image, self.clean, ordinary)
-        required = self.plan["limits"]["minDataFreeBytes"] + (55 << 30)
+        required = self.plan["limits"]["minDataFreeBytes"] + (59 << 30)
         with self.assertRaisesRegex(release.Refusal, "trial.continuation.capacity"):
             trial.continuation_capacity({"dataFreeBytes": required - 1}, self.plan, self.intent["check"])
         resource = {"dataFreeBytes": required}
@@ -136,6 +145,93 @@ class SnapshotTrialTests(unittest.TestCase):
         self.intent["check"]["reconciliation"]["recaptureBytes"] = 0
         with self.assertRaisesRegex(release.Refusal, "trial.continuation.recapture"):
             trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+
+    def test_completed_migration_reuse_still_budgets_fresh_original_capture(self):
+        self.select_continuation()
+        record = self.intent["check"]["reconciliation"]
+        record.update(artifactDisposition="completed-group-retained", recaptureBytes=0,
+                      artifacts=[self.artifact(classification="native-revalidation-required", disposition="retain",
+                                               nativeDiscardOnRetry=False)])
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        required = self.plan["limits"]["minDataFreeBytes"] + (12 << 30)
+        with self.assertRaisesRegex(release.Refusal, "trial.continuation.capacity"):
+            trial.continuation_capacity({"dataFreeBytes": required - 1}, self.plan, self.intent["check"])
+        resources = {"dataFreeBytes": required}
+        trial.continuation_capacity(resources, self.plan, self.intent["check"])
+        self.assertEqual(resources["continuationAdmission"]["artifacts"]["retainedBytes"], 23 << 30)
+
+    def test_artifact_accounting_refuses_disposal_of_protected_unknown_or_reusable_files(self):
+        self.select_continuation()
+        record = self.intent["check"]["reconciliation"]
+        for classification in ("protected", "unknown", "native-revalidation-required"):
+            record["artifacts"] = [self.artifact(classification=classification, disposition="deletion-pending")]
+            with self.assertRaises(release.Refusal):
+                trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        for changes in ({"ownerOperationId": "c" * 32}, {"links": 2},
+                        {"path": "/production/db.bak"}, {"device": 2066}, {"allocatedBytes": -1}):
+            record["artifacts"] = [self.artifact(**changes)]
+            with self.assertRaises(release.Refusal):
+                trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        record["artifacts"] = [self.artifact(disposition="retain")]
+        with self.assertRaisesRegex(release.Refusal, "trial.artifacts.incomplete_survivor"):
+            trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+
+    def test_artifact_accounting_does_not_credit_pending_or_reported_removed_bytes(self):
+        self.select_continuation()
+        record = self.intent["check"]["reconciliation"]
+        record["artifacts"] = [self.artifact(disposition="deletion-pending")]
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        with self.assertRaisesRegex(release.Refusal, "trial.artifacts.deletion_pending"):
+            trial.continuation_capacity({"dataFreeBytes": 1000 << 30}, self.plan, self.intent["check"])
+        record["artifacts"][0]["disposition"] = "removed"
+        with self.assertRaises(release.Refusal):
+            trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        record["artifacts"][0]["removal"] = {
+            "manifestSha256": "1" * 64, "approvalSha256": "2" * 64, "resultSha256": "3" * 64}
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        required = self.plan["limits"]["minDataFreeBytes"] + (59 << 30)
+        with self.assertRaisesRegex(release.Refusal, "trial.continuation.capacity"):
+            trial.continuation_capacity({"dataFreeBytes": required - 1}, self.plan, self.intent["check"])
+        resource = {"dataFreeBytes": required}
+        trial.continuation_capacity(resource, self.plan, self.intent["check"])
+        self.assertEqual(resource["continuationAdmission"]["artifacts"]["removedBytes"], 23 << 30)
+
+    def test_artifact_inventory_rejects_overlapping_paths_and_duplicate_allocations(self):
+        self.select_continuation()
+        record = self.intent["check"]["reconciliation"]
+        first = self.artifact()
+        for second in (self.artifact(), self.artifact(path=first["path"] + "/nested", inode=43),
+                       self.artifact(path=str(self.dataset / "another.bak"))):
+            record["artifacts"] = [first, second]
+            with self.assertRaises(release.Refusal):
+                trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+
+    def test_pending_artifact_disposal_blocks_start_before_claim_or_dispatch(self):
+        self.select_continuation()
+        self.intent["check"]["reconciliation"]["artifacts"][0]["disposition"] = "deletion-pending"
+        with self.start_boundaries() as (_, dispatch), patch.object(trial, "phase_prerequisites", return_value={}):
+            with self.assertRaisesRegex(release.Refusal, "trial.artifacts.deletion_pending"):
+                trial.start(self.op)
+            dispatch.assert_not_called()
+        self.assertFalse((self.op / "dataset-transfer.json").exists())
+        self.assertFalse((self.op / "start-intent.json").exists())
+
+    def test_unresolved_native_deletion_set_blocks_start_even_for_protected_files(self):
+        self.select_continuation()
+        record = self.intent["check"]["reconciliation"]
+        for classification in ("unknown", "protected", "native-revalidation-required"):
+            for membership in (True, None):
+                record["artifacts"] = [self.artifact(classification=classification, disposition="retain",
+                                                    nativeDiscardOnRetry=membership)]
+                trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+                with self.start_boundaries() as (_, dispatch), patch.object(trial, "phase_prerequisites", return_value={}):
+                    with self.assertRaisesRegex(release.Refusal, "trial.artifacts.native_discard_unreconciled"):
+                        trial.start(self.op)
+                    dispatch.assert_not_called()
+                self.assertFalse((self.op / "dataset-transfer.json").exists())
+        record["artifacts"] = [self.artifact(classification="protected", disposition="retain",
+                                            nativeDiscardOnRetry=False)]
+        trial.continuation_capacity({"dataFreeBytes": 200 << 30}, self.plan, self.intent["check"])
 
     def native_result(self, selected="startup"):
         return {"schema": "openclaw.rehearsal-native-check.v1",
@@ -890,17 +986,32 @@ class SnapshotTrialTests(unittest.TestCase):
                 trial.read_retained(self.op)
 
     def test_continuation_private_records_status_binds_terminal_result_to_prior_hashes(self):
+        self.private_continuation_records()
+
+    def test_qualified_4c57_records_remain_read_only_without_new_cleanup_attestation(self):
+        self.private_continuation_records(legacy=True)
+
+    def private_continuation_records(self, legacy=False):
         self.select_continuation()
+        if legacy:
+            self.plan["toolingSha"] = trial.LEGACY_CONTINUATION_SHA
+            self.intent["check"]["reconciliation"] = {
+                "observedAt": "2000-01-01T00:00:01Z", "artifactDisposition": "incomplete-survivors-preserved",
+                "artifactReceiptSha256": "e" * 64, "preservedBytes": 23 << 30,
+                "recaptureBytes": 47 << 30, "additionalReserveBytes": 8 << 30}
         (self.op / "supervisor").mkdir(mode=0o700)
+        hashes = {}
         for name, file in trial.RUNNING_HELPERS.items():
-            trial.durable.write_once(self.op / "supervisor" / name, file.read_bytes())
+            raw = ("# retained, never imported: " + name).encode() if legacy else file.read_bytes()
+            trial.durable.write_once(self.op / "supervisor" / name, raw)
+            hashes[name] = trial.digest(raw)
         for name, value, key in (("image-receipt.json", self.image, "imageReceiptSha256"),
                 ("clean-input.json", self.clean, "cleanInputSha256"),
                 ("check-input.json", self.intent["check"], "checkInputSha256")):
             raw = trial.durable.encode(value)
             trial.durable.write_once(self.op / name, raw)
             self.plan[key] = trial.digest(raw)
-        self.intent.update(ownerUid=os.getuid(), ownerGid=os.getgid(), helpers=dict(trial.LOADED_HELPER_HASHES))
+        self.intent.update(ownerUid=os.getuid(), ownerGid=os.getgid(), helpers=hashes)
         (self.op / "intent.json").write_bytes(trial.durable.encode(self.intent))
         prior = {"operationId": "b" * 32, "intentSha256": "c" * 64, "resultSha256": "d" * 64}
         result = {"operationId": self.op.name, "invocationId": "f" * 32, "state": "failed", "phase": "doctor",
@@ -910,10 +1021,28 @@ class SnapshotTrialTests(unittest.TestCase):
             trial.durable.write_once(self.op / name, trial.durable.encode(value))
         service = {"LoadState": "loaded", "ActiveState": "failed", "SubState": "failed", "MainPID": "0",
             "Result": "exit-code", "ExecMainCode": "1", "ExecMainStatus": "1", "InvocationID": "f" * 32}
-        with patch.object(trial, "PRIVATE_ROOT", self.root), patch.object(trial, "native",
+        manifest = trial.digest(json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode())
+        with ExitStack() as stack, patch.object(trial, "PRIVATE_ROOT", self.root), patch.object(trial, "native",
                 return_value="\n".join(f"{k}={v}" for k, v in service.items()).encode()):
+            if legacy:
+                stack.enter_context(patch.dict(trial.RETAINED_HELPERS, {trial.LEGACY_CONTINUATION_SHA: manifest}))
             self.assertEqual(trial.read_retained(self.op)[1]["clean"]["restorationState"], "doctor-interrupted")
             self.assertEqual(trial.status(self.op, retained=True)["state"], "failed")
+            if legacy:
+                self.assertNotIn("artifactAccounting", trial.status(self.op, retained=True))
+                with patch.object(trial.sys, "platform", "linux"), patch.object(trial.subprocess, "run") as dispatch:
+                    with self.assertRaisesRegex(release.Refusal, "trial.continuation.reconciliation_fields"):
+                        trial.load(self.op)
+                    with self.assertRaises(release.Refusal):
+                        trial.start(self.op)
+                    dispatch.assert_not_called()
+                with patch.dict(trial.RETAINED_HELPERS, {trial.LEGACY_CONTINUATION_SHA: "0" * 64}):
+                    with self.assertRaisesRegex(release.Refusal, "trial.prior.unreviewed_helpers"):
+                        trial.read_retained(self.op)
+                wrong = copy.deepcopy(self.plan)
+                wrong["toolingSha"] = "0" * 40
+                with self.assertRaisesRegex(release.Refusal, "trial.continuation.reconciliation_fields"):
+                    trial.validate(wrong, self.image, self.clean, self.intent["check"], retained=True)
             result["continuedFrom"] = {**prior, "resultSha256": "0" * 64}
             (self.op / "result.json").write_bytes(trial.durable.encode(result))
             self.assertEqual(trial.status(self.op, retained=True)["state"], "unknown")
