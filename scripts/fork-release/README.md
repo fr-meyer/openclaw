@@ -699,7 +699,10 @@ lease and a completion receipt afterward. A lost reply can be reconciled by
 repeating the same handoff; another lease owner or an incomplete prior build is
 refused. The handoff does not dispatch a build or establish that a failed or
 cancelled remote solve has stopped. Keep both operation directories and their
-evidence. Start the successor only after its handoff receipt is durable.
+evidence. The successor's updated start command requires the completed handoff
+receipt and fsyncs the lease before dispatch, including after a crashed
+transfer. A previously prepared operation with older tooling cannot use this
+path; prepare a fresh successor from the reviewed tooling revision.
 
 The existing builder remains unchanged. The client has its own systemd limits;
 the recorded builder limits govern compilation separately. Native output is

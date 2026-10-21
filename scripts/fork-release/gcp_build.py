@@ -643,6 +643,37 @@ def reserve_builder(op, intent):
         need(read_private(lease) == value, "build.builder.reserved_by_other_operation")
 
 
+def verify_builder_handoff(op, intent):
+    """Fence start until a successor lease transfer is durably complete."""
+    path = op / "builder-handoff-intent.json"
+    if not path.exists():
+        return
+    proposed = read_private(path)
+    fields(proposed, """schema originOperationId targetOperationId originIntentSha256
+           targetIntentSha256 originExecutionSha256 originLeaseSha256""",
+           "build.handoff.intent.fields")
+    need(proposed["schema"] == "openclaw.gcp-builder-handoff.v1" and
+         proposed["targetOperationId"] == op.name and
+         proposed["targetIntentSha256"] == preflight.digest(op / "intent.json"),
+         "build.handoff.intent.changed")
+    receipt = read_private(op / "builder-handoff.json")
+    fields(receipt, """schema originOperationId targetOperationId originIntentSha256
+           targetIntentSha256 originExecutionSha256 originLeaseSha256 targetLeaseSha256""",
+           "build.handoff.receipt.fields")
+    value = {"operationId": op.name,
+             "intentSha256": preflight.digest(op / "intent.json")}
+    lease = op.parent / f"builder-{intent['config']['builder']['containerId']}.json"
+    need(receipt == {**proposed, "targetLeaseSha256": release.sha256(encode(value))} and
+         private_bytes(lease) == encode(value), "build.handoff.incomplete")
+    for item in (path, op / "builder-handoff.json", lease):
+        fd = os.open(item, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        sync_directory(item.parent)
+
+
 def metadata_handoff_capability(op, intent):
     result = native(["/usr/bin/sudo", "-n", "-l", "/usr/bin/chown",
                      f"{intent['uid']}:{intent['gid']}", str(op / "build-metadata.json")])
@@ -682,6 +713,7 @@ def start(op):
         if (op / "start-intent.json").exists():
             return status(op)
         config = intent["config"]
+        verify_builder_handoff(op, intent)
         source_binding(config, op / "manifest.json", op / "patch-inventory.json",
                        intent["sourceDir"])
         need(tooling_bytes(intent["toolingDir"], config["toolingSha"]) ==

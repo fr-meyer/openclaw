@@ -54,13 +54,26 @@ def replace_lease(path, value):
             os.unlink(temporary)
 
 
+def sync_existing(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(descriptor)
+        release.need(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+                     and stat.S_IMODE(info.st_mode) == 0o600,
+                     "handoff.evidence.unsafe")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    build.sync_directory(path.parent)
+
+
 def handoff(old_path, new_path):
     old, origin = build.load_intent(old_path)
     new, target = build.load_intent(new_path)
     release.need(old != new and old.parent == new.parent == build.PRIVATE_ROOT.resolve(),
                  "handoff.operations.invalid")
     root = old.parent
-    with handoff_lock(root):
+    with handoff_lock(root), build.operation_lock(new):
         release.need(not (new / "start-intent.json").exists(), "handoff.target.started")
         release.need(origin["config"]["builder"] == target["config"]["builder"],
                      "handoff.builder.changed")
@@ -92,10 +105,12 @@ def handoff(old_path, new_path):
             build.write_once(path, build.encode(intent))
         except FileExistsError:
             release.need(build.read_private(path) == intent, "handoff.intent.changed")
+            sync_existing(path)
         if current == build.encode(old_value):
             replace_lease(lease, build.encode(new_value))
         else:
             release.need(current == build.encode(new_value), "handoff.lease.other_owner")
+            sync_existing(lease)
         release.need(build.private_bytes(lease) == build.encode(new_value),
                      "handoff.lease.changed")
         receipt = {**intent, "targetLeaseSha256": digest(build.encode(new_value))}
@@ -104,6 +119,7 @@ def handoff(old_path, new_path):
         except FileExistsError:
             release.need(build.read_private(new / "builder-handoff.json") == receipt,
                          "handoff.receipt.changed")
+            sync_existing(new / "builder-handoff.json")
         return receipt
 
 

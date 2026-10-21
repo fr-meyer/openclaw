@@ -1,5 +1,6 @@
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -82,6 +83,49 @@ class BuilderHandoffTest(unittest.TestCase):
         self.target["config"]["sourceSha"] = self.origin["config"]["sourceSha"]
         with self.assertRaisesRegex(release.Refusal, "source.unchanged"):
             subject.handoff(self.old, self.new)
+
+    def test_crash_after_replace_requires_retry_before_start(self):
+        original = build.sync_directory
+        failed = False
+
+        def interrupt(path):
+            nonlocal failed
+            if Path(path) == self.root and not failed:
+                failed = True
+                raise OSError("injected directory sync failure")
+            return original(path)
+
+        with patch.object(build, "sync_directory", side_effect=interrupt):
+            with self.assertRaisesRegex(OSError, "injected directory sync failure"):
+                subject.handoff(self.old, self.new)
+        self.assertEqual(build.read_private(self.lease)["operationId"], self.new.name)
+        self.assertFalse((self.new / "builder-handoff.json").exists())
+        with self.assertRaises(OSError):
+            build.verify_builder_handoff(self.new, self.target)
+        subject.handoff(self.old, self.new)
+        build.verify_builder_handoff(self.new, self.target)
+
+    def test_target_operation_lock_serializes_transfer(self):
+        finished = threading.Event()
+        errors = []
+
+        def run():
+            try:
+                subject.handoff(self.old, self.new)
+            except Exception as error:
+                errors.append(error)
+            finally:
+                finished.set()
+
+        with build.operation_lock(self.new):
+            thread = threading.Thread(target=run)
+            thread.start()
+            self.assertFalse(finished.wait(0.05))
+            self.assertEqual(build.read_private(self.lease)["operationId"], self.old.name)
+        thread.join(timeout=2)
+        self.assertTrue(finished.is_set())
+        self.assertEqual(errors, [])
+        build.verify_builder_handoff(self.new, self.target)
 
 
 if __name__ == "__main__":
