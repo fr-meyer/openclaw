@@ -1137,13 +1137,14 @@ def admit_cgroup(root, intent, devices):
          "trial.cgroup.io")
 
 
-def io_rows(file):
+def io_rows(file, *, allow_counterless=False):
     raw = file.read_text()
     need(len(raw) <= 65536, "trial.cgroup.io_size")
     rows = {}
     for line in raw.splitlines():
         row = line.split()
-        need(len(row) > 1 and re.fullmatch(r"[0-9]+:[0-9]+", row[0]) and row[0] not in rows,
+        need(row and (allow_counterless or len(row) > 1) and
+             re.fullmatch(r"[0-9]+:[0-9]+", row[0]) and row[0] not in rows,
              "trial.cgroup.io_rows")
         values = {}
         for pair in row[1:]:
@@ -1159,8 +1160,10 @@ def io_rows(file):
 def io_sample(root, intent, devices, previous=None):
     """Bounded cgroup counters, not a database scan or a migration progress claim."""
     admit_cgroup(root, intent, devices)
-    counters = io_rows(root / "io.stat").get(devices["ioMajorMinor"])
-    present = counters is not None
+    # cgroup v2 may list idle devices as a bare major:minor row. An idle
+    # target has no counters yet; other idle devices must not fail admission.
+    counters = io_rows(root / "io.stat", allow_counterless=True).get(devices["ioMajorMinor"])
+    present = bool(counters)
     need(present or previous is None or not previous["deviceObserved"], "trial.cgroup.io_counter_lost")
     if present:
         need(all(k in counters and counters[k].isdigit() for k in ("rbytes", "wbytes")),

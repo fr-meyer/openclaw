@@ -1512,6 +1512,27 @@ class SnapshotTrialTests(unittest.TestCase):
             with self.assertRaisesRegex(release.Refusal, "io_counter_changed"):
                 trial.io_sample(cg, self.intent, self.devices, second)
 
+    def test_io_stat_counterless_idle_devices_do_not_block_admission(self):
+        cg = self.root / "cgroup-idle-io"
+        cg.mkdir()
+        for name, value in {"memory.max": str(24 << 30), "memory.swap.max": "0", "pids.max": "512",
+                            "cpu.max": "400000 100000", "io.max": "8:16 rbps=134217728 wbps=33554432",
+                            "io.stat": "7:7\n7:6\n8:16\n"}.items():
+            (cg / name).write_text(value)
+        first = trial.io_sample(cg, self.intent, self.devices)
+        self.assertFalse(first["deviceObserved"])
+        self.assertEqual((first["rbytes"], first["wbytes"]), (0, 0))
+        (cg / "io.stat").write_text("7:7\n8:16 rbytes=4096 wbytes=1024 rios=1 wios=1\n")
+        second = trial.io_sample(cg, self.intent, self.devices, first)
+        self.assertTrue(second["deviceObserved"])
+        self.assertEqual((second["rbytes"], second["wbytes"]), (4096, 1024))
+        (cg / "io.stat").write_text("7:7\n8:16\n")
+        with self.assertRaisesRegex(release.Refusal, "io_counter_lost"):
+            trial.io_sample(cg, self.intent, self.devices, second)
+        (cg / "io.max").write_text("8:16")
+        with self.assertRaisesRegex(release.Refusal, "io_rows"):
+            trial.admit_cgroup(cg, self.intent, self.devices)
+
     def test_io_admission_refuses_ambiguous_rows_fields_and_hidden_iops_limit(self):
         cg = self.root / "cgroup-io"
         cg.mkdir()
