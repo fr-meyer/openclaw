@@ -59,6 +59,10 @@ class SnapshotTrialTests(unittest.TestCase):
                 "minRootFreeBytes": 2 << 30, "minDataFreeBytes": 8 << 30, "timeoutSeconds": 86400},
         }
         self.intent = {"plan": self.plan, "image": self.image, "clean": self.clean}
+        self.devices = {"filesystemPath": "/dev/sdb1", "filesystemMajorMinor": "8:17",
+            "devicePath": "/dev/sdb", "deviceMajorMinor": "8:16", "ioPath": "/dev/sdb",
+            "ioMajorMinor": "8:16", "filesystemSysfs": "/sys/devices/synthetic/block/sdb/sdb1",
+            "ioSysfs": "/sys/devices/synthetic/block/sdb"}
         (self.op / "intent.json").write_text(json.dumps(self.intent))
         (self.op / "intent.json").chmod(0o600)
 
@@ -109,7 +113,7 @@ class SnapshotTrialTests(unittest.TestCase):
     def test_v2_doctor_preserves_native_command_and_requires_bound_check(self):
         self.select_phase("doctor")
         trial.validate(self.plan, self.image, self.clean, self.intent["check"])
-        self.assertEqual(trial.create_argv(self.op, self.intent)[-len(trial.DOCTOR):], trial.DOCTOR)
+        self.assertEqual(trial.create_argv(self.op, self.intent, self.devices)[-len(trial.DOCTOR):], trial.DOCTOR)
         with self.assertRaises(release.Refusal):
             trial.validate(self.plan, self.image, self.clean)
         self.intent["check"]["command"] = "anything"
@@ -119,7 +123,7 @@ class SnapshotTrialTests(unittest.TestCase):
     def test_startup_requires_postdoctor_receipt_and_fixed_bounded_native_check(self):
         self.select_phase("startup")
         trial.validate(self.plan, self.image, self.clean, self.intent["check"])
-        args = trial.create_argv(self.op, self.intent)
+        args = trial.create_argv(self.op, self.intent, self.devices)
         self.assertEqual(args[-3:-1], ["node", "-e"])
         self.assertIn("gateway", args[-1])
         self.assertNotEqual(args[-len(trial.DOCTOR):], trial.DOCTOR)
@@ -169,7 +173,8 @@ class SnapshotTrialTests(unittest.TestCase):
         raw = trial.durable.encode(prior)
         records = {"intent.json": prior, "result.json": result,
                    "started.json": {"invocationId": result["invocationId"]},
-                   "start-intent.json": {"intentSha256": trial.digest(raw), "mounts": {}, "image": {"env": []}}}
+                   "start-intent.json": {"intentSha256": trial.digest(raw), "mounts": {}, "image": {"env": []},
+                                         "devices": self.devices}}
         if not no_create:
             records["container.json"] = {"id": result["containerId"]}
         for name, value in records.items():
@@ -189,6 +194,7 @@ class SnapshotTrialTests(unittest.TestCase):
              patch.object(trial, "status", return_value={"state": doctor_state, "result": result}) as observe, \
              patch.object(trial, "inspect_container", return_value=actual), \
              patch.object(trial, "validate_container") as policy, \
+             patch.object(trial, "block_devices", return_value=self.devices), \
              patch.object(trial, "snapshot_paths", return_value={}):
             yield prior, result, actual, observe, policy
 
@@ -233,6 +239,12 @@ class SnapshotTrialTests(unittest.TestCase):
             self.clean["mounts"][0]["source"] = prior["clean"]["mounts"][0]["source"]
             with self.assertRaisesRegex(release.Refusal, "trial.prior.rollback_not_fresh"):
                 trial.phase_prerequisites(self.op, self.intent)
+
+    def test_prior_stopped_container_validation_uses_retained_devices_after_detach(self):
+        with self.prior_boundaries("rollback", "failed") as (_, _, _, _, policy), \
+             patch.object(trial, "block_devices", side_effect=AssertionError("prior device has been detached")):
+            trial.phase_prerequisites(self.op, self.intent)
+            self.assertEqual(policy.call_args.args[-1], self.devices)
 
     def test_rollback_accepts_authoritative_no_create_failure_without_inspecting_null_cid(self):
         with self.prior_boundaries("rollback", "failed", no_create=True), \
@@ -354,34 +366,106 @@ class SnapshotTrialTests(unittest.TestCase):
         with self.assertRaisesRegex(release.Refusal, "trial.mount.physical_alias"):
             trial.source_identities(self.clean, changed)
 
-    def test_partition_device_alias_requires_exact_native_device_and_sysfs_binding(self):
-        alias, resolved = Path("/dev/disk/by-id/google-synthetic-part1"), Path("/dev/sdb1")
-        self.clean.update(devicePath=str(alias), deviceMajorMinor="8:17", filesystemDevice=os.makedev(8, 17))
-        trial.validate(self.plan, self.image, self.clean)
-        original_resolve, original_stat = Path.resolve, Path.stat
+    @contextmanager
+    def block_device_fixture(self, whole_receipt=False):
+        self.clean.update(devicePath="/dev/disk/by-id/google-synthetic" + ("" if whole_receipt else "-part1"),
+                          deviceMajorMinor="8:16" if whole_receipt else "8:17", filesystemDevice=os.makedev(8, 17))
+        fs = Path(self.devices["filesystemSysfs"])
+        io = Path(self.devices["ioSysfs"])
+        observed = {
+            "links": {self.clean["devicePath"]: Path("/dev/sdb" if whole_receipt else "/dev/sdb1"),
+                      "/sys/dev/block/8:17": fs, "/sys/dev/block/8:16": io},
+            "files": {str(fs / "partition"): "1\n", str(fs / "dev"): "8:17\n", str(io / "dev"): "8:16\n",
+                      str(fs / "uevent"): "MAJOR=8\nMINOR=17\nDEVNAME=sdb1\nDEVTYPE=partition\n",
+                      str(io / "uevent"): "MAJOR=8\nMINOR=16\nDEVNAME=sdb\nDEVTYPE=disk\n"},
+            "nodes": {"/dev/sdb1": os.makedev(8, 17), "/dev/sdb": os.makedev(8, 16)},
+            "modes": {},
+        }
+        original_resolve, original_stat, original_read, original_exists = Path.resolve, Path.stat, Path.read_text, Path.exists
         def resolve(file, *args, **kwargs):
-            if file == alias:
-                return resolved
-            if str(file) == "/sys/dev/block/8:17":
-                return Path("/sys/devices/synthetic/block/sdb/sdb1")
+            if str(file) in observed["links"]:
+                return observed["links"][str(file)]
+            if str(file) in observed["nodes"] or str(file).startswith("/sys/devices/synthetic/"):
+                return file
             return original_resolve(file, *args, **kwargs)
         def observed_stat(file, *args, **kwargs):
-            if file == resolved:
-                return SimpleNamespace(st_mode=stat.S_IFBLK, st_rdev=os.makedev(8, 17))
+            if str(file) in observed["nodes"]:
+                return SimpleNamespace(st_mode=observed["modes"].get(str(file), stat.S_IFBLK), st_rdev=observed["nodes"][str(file)])
+            if file in (fs, io):
+                return SimpleNamespace(st_mode=stat.S_IFDIR)
+            if str(file) in observed["files"]:
+                return SimpleNamespace(st_mode=stat.S_IFREG)
             if file == self.dataset:
-                return SimpleNamespace(st_dev=os.makedev(8, 17))
+                return SimpleNamespace(st_mode=stat.S_IFDIR, st_dev=os.makedev(8, 17))
             if file == Path("/"):
-                return SimpleNamespace(st_dev=os.makedev(8, 1))
+                return SimpleNamespace(st_mode=stat.S_IFDIR, st_dev=os.makedev(8, 1))
             return original_stat(file, *args, **kwargs)
+        def read(file, *args, **kwargs):
+            return observed["files"][str(file)] if str(file) in observed["files"] else original_read(file, *args, **kwargs)
+        def exists(file):
+            if str(file).startswith("/sys/devices/synthetic/"):
+                return str(file) in observed["files"] or file in (fs, io)
+            return original_exists(file)
         with patch.object(Path, "resolve", resolve), patch.object(Path, "stat", observed_stat), \
-             patch.object(Path, "is_mount", return_value=True), \
-             patch.object(trial, "data_owner_metadata", return_value={}) as probe, \
-             patch.object(trial, "source_identities", return_value={"safe": {}}):
-            self.assertEqual(trial.snapshot_paths(self.clean), {"safe": {}})
-            probe.assert_called_once_with(self.clean)
-            self.clean["deviceMajorMinor"] = "8:16"
-            with self.assertRaisesRegex(release.Refusal, "trial.dataset.device"):
-                trial.snapshot_paths(self.clean)
+             patch.object(Path, "read_text", read), patch.object(Path, "exists", exists), \
+             patch.object(Path, "is_mount", return_value=True):
+            yield observed
+
+    def test_partition_receipt_maps_filesystem_to_verified_whole_disk_for_io(self):
+        with self.block_device_fixture():
+            trial.validate(self.plan, self.image, self.clean)
+            devices = trial.block_devices(self.clean)
+            self.assertEqual(devices, {**self.devices, "devicePath": "/dev/sdb1", "deviceMajorMinor": "8:17"})
+            args = trial.create_argv(self.op, self.intent, devices)
+            self.assertEqual(args[args.index("--device-read-bps") + 1], "/dev/sdb:134217728")
+            self.assertEqual(args[args.index("--device-write-bps") + 1], "/dev/sdb:33554432")
+            with patch.object(trial, "data_owner_metadata", return_value={}) as probe, \
+                 patch.object(trial, "source_identities", return_value={"safe": {}}):
+                self.assertEqual(trial.snapshot_paths(self.clean), {"safe": {}})
+                probe.assert_called_once_with(self.clean)
+
+    def test_whole_disk_receipt_accepts_its_mounted_partition(self):
+        with self.block_device_fixture(whole_receipt=True):
+            self.assertEqual(trial.block_devices(self.clean), self.devices)
+
+    def test_block_mapping_rejects_partition_parent_bad_sysfs_node_and_receipt(self):
+        changes = (
+            ("files", self.devices["ioSysfs"] + "/partition", "1\n"),
+            ("files", self.devices["ioSysfs"] + "/dev", "8:17\n"),
+            ("files", self.devices["ioSysfs"] + "/dev", "ambiguous\n"),
+            ("links", "/sys/dev/block/8:16", Path("/sys/devices/synthetic/block/other")),
+            ("nodes", "/dev/sdb", os.makedev(8, 32)),
+            ("nodes", "/dev/sdb1", os.makedev(8, 18)),
+            ("modes", "/dev/sdb", stat.S_IFREG),
+        )
+        for section, key, value in changes:
+            with self.subTest(section=section, key=key), self.block_device_fixture() as observed:
+                observed[section][key] = value
+                with self.assertRaises((release.Refusal, OSError)):
+                    trial.block_devices(self.clean)
+        with self.block_device_fixture():
+            self.clean["deviceMajorMinor"] = "8:32"
+            with self.assertRaises(release.Refusal):
+                trial.block_devices(self.clean)
+        with self.block_device_fixture() as observed:
+            del observed["nodes"]["/dev/sdb"]
+            with self.assertRaises((release.Refusal, OSError)):
+                trial.block_devices(self.clean)
+
+    def test_unrelated_valid_receipt_disk_cannot_throttle_mounted_filesystem(self):
+        with self.block_device_fixture() as observed:
+            self.clean["deviceMajorMinor"] = "8:32"
+            unrelated = Path("/sys/devices/synthetic/block/sdc")
+            observed["links"][self.clean["devicePath"]] = Path("/dev/sdc")
+            observed["links"]["/sys/dev/block/8:32"] = unrelated
+            observed["nodes"]["/dev/sdc"] = os.makedev(8, 32)
+            observed["files"][str(unrelated / "dev")] = "8:32\n"
+            original_stat = Path.stat
+            def stat_unrelated(file, *args, **kwargs):
+                return SimpleNamespace(st_mode=stat.S_IFDIR) if file == unrelated else original_stat(file, *args, **kwargs)
+            with patch.object(Path, "stat", stat_unrelated):
+                with self.assertRaisesRegex(release.Refusal, "trial.dataset.device_parent"):
+                    trial.block_devices(self.clean)
 
     @unittest.skipUnless(sys.platform == "linux" and os.geteuid() == 1000, "native probe fixture requires Linux UID1000")
     def test_native_data_owner_probe_private_directory_and_config_hash_only(self):
@@ -416,7 +500,7 @@ class SnapshotTrialTests(unittest.TestCase):
                 trial.validate(self.plan, self.image, ordered)
                 with patch.object(Path, "iterdir", side_effect=AssertionError("tree walk forbidden")):
                     self.assertEqual(len(trial.source_identities(ordered)), len(mounts))
-                args = trial.create_argv(self.op, {**self.intent, "clean": ordered})
+                args = trial.create_argv(self.op, {**self.intent, "clean": ordered}, self.devices)
                 binds = [args[i + 1] for i, arg in enumerate(args) if arg == "--mount"]
                 state = next(i for i, bind in enumerate(binds) if bind.endswith("dst=" + trial.STATE_TARGET))
                 for mount in clean["mounts"][:2]:
@@ -490,7 +574,7 @@ class SnapshotTrialTests(unittest.TestCase):
     def test_readonly_projects_override_writable_state_parent_first(self):
         clean = self.readonly_layout()
         trial.validate(self.plan, self.image, clean)
-        args = trial.create_argv(self.op, {**self.intent, "clean": clean})
+        args = trial.create_argv(self.op, {**self.intent, "clean": clean}, self.devices)
         binds = [args[i + 1] for i, arg in enumerate(args) if arg == "--mount"]
         state = next(i for i, bind in enumerate(binds) if bind.endswith("dst=" + trial.STATE_TARGET))
         for mount in clean["mounts"][:2]:
@@ -670,7 +754,7 @@ class SnapshotTrialTests(unittest.TestCase):
                 trial.observe_image(self.image)
 
     def test_fixed_native_command_and_isolation(self):
-        args = trial.create_argv(self.op, self.intent)
+        args = trial.create_argv(self.op, self.intent, self.devices)
         self.assertEqual(args[-len(trial.DOCTOR):], trial.DOCTOR)
         self.assertEqual(args[args.index("--memory-swap") + 1], str(24 << 30))
         self.assertEqual(args[args.index("--network") + 1], "none")
@@ -700,6 +784,7 @@ class SnapshotTrialTests(unittest.TestCase):
         with patch.object(trial, "load", return_value=(self.op, self.intent)), \
              patch.object(trial.sys, "platform", "linux"), \
              patch.object(trial, "snapshot_paths", return_value={}), \
+             patch.object(trial, "block_devices", return_value=self.devices), \
              patch.object(trial, "no_other_writer"), \
              patch.object(trial, "observe_image", return_value={"loadedId": self.image["indexDigest"], "env": []}), \
              patch.object(trial, "capacity", return_value={}), \
@@ -725,6 +810,7 @@ class SnapshotTrialTests(unittest.TestCase):
         with patch.object(trial, "load", return_value=(self.op, self.intent)), \
              patch.object(trial.sys, "platform", "linux"), \
              patch.object(trial, "snapshot_paths", return_value={}), \
+             patch.object(trial, "block_devices", return_value=self.devices), \
              patch.object(trial, "no_other_writer"), \
              patch.object(trial, "observe_image", return_value={"loadedId": self.image["indexDigest"], "env": []}), \
              patch.object(trial, "capacity", return_value={}), \
@@ -772,6 +858,8 @@ class SnapshotTrialTests(unittest.TestCase):
             dispatch.assert_called_once()
         self.assertEqual(lease.read_bytes(), retained_bytes)
         self.assertEqual(lease.stat().st_ino, retained_inode)
+        retained = trial.durable.read_private(self.op / "start-intent.json")
+        self.assertEqual(retained["devices"], self.devices)
 
     def test_startup_transfers_only_exact_prior_dataset_lease_and_resumes_once(self):
         self.select_phase("startup")
@@ -815,15 +903,20 @@ class SnapshotTrialTests(unittest.TestCase):
         self.assertFalse(trial.successful(state, 1, True, 0))
 
     def test_live_cgroup_admission_checks_actual_limits(self):
+        self.clean.update(devicePath="/dev/sdb1", deviceMajorMinor="8:17")
         cg = self.root / "cgroup"
         cg.mkdir()
         for name, value in {"memory.max": str(24 << 30), "memory.swap.max": "0", "pids.max": "512",
                             "cpu.max": "400000 100000", "io.max": "8:16 rbps=134217728 wbps=33554432"}.items():
             (cg / name).write_text(value)
-        trial.admit_cgroup(cg, self.intent)
+        trial.admit_cgroup(cg, self.intent, self.devices)
+        (cg / "io.max").write_text("8:17 rbps=134217728 wbps=33554432")
+        with self.assertRaisesRegex(release.Refusal, "trial.cgroup.io"):
+            trial.admit_cgroup(cg, self.intent, self.devices)
+        (cg / "io.max").write_text("8:16 rbps=134217728 wbps=33554432")
         (cg / "memory.max").write_text(str(8 << 30))
         with self.assertRaises(release.Refusal):
-            trial.admit_cgroup(cg, self.intent)
+            trial.admit_cgroup(cg, self.intent, self.devices)
 
     def test_unknown_service_is_not_not_found(self):
         (self.op / "start-intent.json").write_text("{}")
@@ -855,7 +948,7 @@ class SnapshotTrialTests(unittest.TestCase):
                     self.assertEqual(trial.status(self.op)["state"], "unknown", key)
 
     def exercise_serve(self, *, oom_after_native_exit=False, lost_before_settlement=False, policy_drift=False,
-                       readonly_drift=False,
+                       readonly_drift=False, io_partition_drift=False, devices_changed=False,
                        leftover_descendant=False, remove_cgroup_on_exit=False,
                        stdout=b"Doctor complete.\n", stderr=b""):
         """Run the actual supervisor loop with synthetic daemon/process/cgroup boundaries."""
@@ -871,7 +964,7 @@ class SnapshotTrialTests(unittest.TestCase):
             (cg / name).write_text(value)
         started = {"intentSha256": trial.digest((self.op / "intent.json").read_bytes()),
                    "bootId": "synthetic-boot", "mounts": {},
-                   "image": {"loadedId": self.image["indexDigest"], "env": []}}
+                   "image": {"loadedId": self.image["indexDigest"], "env": []}, "devices": self.devices}
         trial.durable.write_once(self.op / "start-intent.json", trial.durable.encode(started))
         state = {"child": None, "ready": False, "sent": False, "stopped": False, "closed": False}
         stop_calls = []
@@ -945,7 +1038,7 @@ class SnapshotTrialTests(unittest.TestCase):
             def close(selector):
                 selector.keys.clear()
 
-        args = trial.create_argv(op, self.intent)
+        args = trial.create_argv(op, self.intent, self.devices)
         entry = args.index("--entrypoint")
         fixture = {"Id": "9" * 64, "Name": "/openclaw-doctor-" + op.name,
             "Image": self.image["indexDigest"], "RestartCount": 0,
@@ -982,6 +1075,8 @@ class SnapshotTrialTests(unittest.TestCase):
                 shutil.rmtree(cg)
             if policy_drift and state["sent"]:
                 value["HostConfig"]["Memory"] = 8 << 30
+            if io_partition_drift:
+                value["HostConfig"]["BlkioDeviceReadBps"][0]["Path"] = "/dev/sdb1"
             if readonly_drift and state["sent"]:
                 next(m for m in value["Mounts"] if m["Destination"].startswith(trial.STATE_TARGET + "/workspace"))["RW"] = True
             return value
@@ -1003,8 +1098,16 @@ class SnapshotTrialTests(unittest.TestCase):
         def read_text(file, *args, **kwargs):
             return "synthetic-boot" if str(file) == "/proc/sys/kernel/random/boot_id" else original_read(file, *args, **kwargs)
 
+        device_reads = []
+        def devices(_):
+            device_reads.append(True)
+            if devices_changed and len(device_reads) >= int(devices_changed):
+                return {**self.devices, "ioMajorMinor": "8:32"}
+            return self.devices
+
         with ExitStack() as stack:
             for name, value in (("load", lambda _: (op, self.intent)), ("snapshot_paths", lambda _: {}),
+                                ("block_devices", devices),
                                 ("no_other_writer", lambda _: None), ("observe_image", lambda *args: started["image"]),
                                 ("phase_prerequisites", lambda *args: None),
                                 ("capacity", lambda *args: {}), ("docker", docker),
@@ -1027,6 +1130,45 @@ class SnapshotTrialTests(unittest.TestCase):
         self.assertEqual(result["nativeExitCode"], 0)
         self.assertTrue((self.op / "gate/settled").exists())
         self.assertEqual(stops, [])
+
+    def test_serve_partition_receipt_uses_retained_whole_disk_docker_and_cgroup_limits(self):
+        self.clean.update(devicePath="/dev/disk/by-id/google-synthetic-part1", deviceMajorMinor="8:17")
+        self.devices.update(devicePath="/dev/sdb1", deviceMajorMinor="8:17")
+        code, result, stops = self.exercise_serve()
+        self.assertEqual(code, 0, result)
+        args = trial.durable.read_private(self.op / "create-intent.json")["argv"]
+        self.assertEqual(args[args.index("--device-read-bps") + 1], "/dev/sdb:134217728")
+        self.assertEqual(stops, [])
+
+    def test_serve_refuses_mapping_change_before_any_container_create(self):
+        code, result, stops = self.exercise_serve(devices_changed=True)
+        self.assertEqual(code, 1)
+        self.assertIsNone(result["containerId"])
+        self.assertEqual(result["cleanup"], "not_started")
+        self.assertFalse((self.op / "create-intent.json").exists())
+        self.assertFalse((self.op / "container.json").exists())
+        self.assertEqual(stops, [])
+
+    def test_serve_rechecks_mapping_immediately_before_create(self):
+        code, result, stops = self.exercise_serve(devices_changed=2)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.devices.changed")
+        self.assertFalse((self.op / "create-intent.json").exists())
+        self.assertEqual(stops, [])
+
+    def test_serve_rechecks_mapping_before_releasing_native_gate(self):
+        code, result, stops = self.exercise_serve(devices_changed=3)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.devices.changed")
+        self.assertTrue((self.op / "container-start-intent.json").exists())
+        self.assertFalse((self.op / "gate/go").exists())
+        self.assertEqual(len(stops), 1)
+
+    def test_effective_docker_partition_io_path_is_rejected_before_native_start(self):
+        code, result, stops = self.exercise_serve(io_partition_drift=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.container.io")
+        self.assertFalse((self.op / "container-start-intent.json").exists())
 
     def test_startup_serve_requires_success_receipt_and_quiescent_oom_free_exit(self):
         self.select_phase("startup")

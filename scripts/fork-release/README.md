@@ -255,6 +255,12 @@ does not walk directory contents, and does not change ownership or permissions.
 Exact read-only `state/repos` and workspace `.git` overlays are supported.
 Device aliases under `/dev` must resolve to the attested block device and
 mounted filesystem; accepting an alias does not relax device identity checks.
+The executor records the exact filesystem partition separately from its
+verified whole-disk I/O target. Docker throttling and cgroup `io.max` validation
+use that whole disk; they must not use a partition device number. The mapping
+is checked through native block nodes and sysfs at admission, before container
+creation and before releasing the native gate. Prior settled phase validation
+uses its retained mapping, so rollback does not require a deleted candidate disk.
 
 The current reviewed envelope is 24 GiB, no container swap, 4 CPUs, 128 MiB/s
 reads and 32 MiB/s writes. Fresh admission limits in the private plan must cover

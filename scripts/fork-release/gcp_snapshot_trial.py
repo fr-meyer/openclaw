@@ -372,7 +372,8 @@ def source_identities(clean, metadata=None):
     return result
 
 
-def snapshot_paths(clean):
+def block_devices(clean):
+    """Bind the exact mounted filesystem and its whole-disk throttle target."""
     root = path(clean["mountRoot"])
     need(root.is_mount() and root.stat().st_dev == clean["filesystemDevice"] and
          root.stat().st_dev != Path("/").stat().st_dev, "trial.dataset.mount")
@@ -384,9 +385,49 @@ def snapshot_paths(clean):
          f"{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}" == clean["deviceMajorMinor"],
          "trial.dataset.device")
     mounted = root.stat().st_dev
-    partition = Path(f"/sys/dev/block/{os.major(mounted)}:{os.minor(mounted)}").resolve()
-    device_sys = Path("/sys/dev/block", clean["deviceMajorMinor"]).resolve()
-    need(partition == device_sys or partition.parent == device_sys, "trial.dataset.device_parent")
+    filesystem_major_minor = f"{os.major(mounted)}:{os.minor(mounted)}"
+
+    def sysfs(major_minor):
+        location = (Path("/sys/dev/block") / major_minor).resolve(strict=True)
+        need(Path("/sys/devices") in location.parents and location.is_dir() and
+             (location / "dev").read_text().strip() == major_minor, "trial.dataset.sysfs_device")
+        return location
+
+    def node(location, major_minor):
+        need(re.fullmatch(r"[A-Za-z0-9_.!-]+", location.name), "trial.dataset.device_name")
+        result = Path("/dev") / location.name
+        need(result.resolve(strict=True) == result, "trial.dataset.device_node_alias")
+        native = result.stat()
+        need(stat.S_ISBLK(native.st_mode) and
+             f"{os.major(native.st_rdev)}:{os.minor(native.st_rdev)}" == major_minor,
+             "trial.dataset.device_node")
+        return result
+
+    filesystem_sys = sysfs(filesystem_major_minor)
+    filesystem_path = node(filesystem_sys, filesystem_major_minor)
+    marker = filesystem_sys / "partition"
+    if marker.exists():
+        need(re.fullmatch(r"[1-9][0-9]*", marker.read_text().strip()), "trial.dataset.partition")
+        io_sys = filesystem_sys.parent
+        io_major_minor = (io_sys / "dev").read_text().strip()
+        need(re.fullmatch(r"[0-9]+:[0-9]+", io_major_minor) and
+             io_major_minor != filesystem_major_minor and sysfs(io_major_minor) == io_sys,
+             "trial.dataset.io_parent")
+    else:
+        io_sys, io_major_minor = filesystem_sys, filesystem_major_minor
+    need(not (io_sys / "partition").exists(), "trial.dataset.io_not_whole_disk")
+    io_path = node(io_sys, io_major_minor)
+    device_sys = sysfs(clean["deviceMajorMinor"])
+    need((device_sys == filesystem_sys and resolved == filesystem_path) or
+         (device_sys == io_sys and resolved == io_path), "trial.dataset.device_parent")
+    return {"filesystemPath": str(filesystem_path), "filesystemMajorMinor": filesystem_major_minor,
+            "devicePath": str(resolved), "deviceMajorMinor": clean["deviceMajorMinor"],
+            "ioPath": str(io_path), "ioMajorMinor": io_major_minor,
+            "filesystemSysfs": str(filesystem_sys), "ioSysfs": str(io_sys)}
+
+
+def snapshot_paths(clean):
+    block_devices(clean)
     return source_identities(clean, data_owner_metadata(clean))
 
 
@@ -485,7 +526,7 @@ function emit(text) {
 """)
 
 
-def create_argv(op, intent):
+def create_argv(op, intent, devices):
     plan, clean, image = intent["plan"], intent["clean"], intent["image"]
     limits = plan["limits"]
     args = ["create", "--pull=never", "--platform", "linux/amd64", "--name", "openclaw-doctor-" + op.name,
@@ -495,8 +536,8 @@ def create_argv(op, intent):
             "--memory-swap", str(limits["memoryBytes"]), "--pids-limit", "512", "--read-only",
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--restart", "no",
             "--no-healthcheck", "--log-driver", "none", "--stop-timeout", "30",
-            "--device-read-bps", f"{clean['devicePath']}:{limits['readBps']}",
-            "--device-write-bps", f"{clean['devicePath']}:{limits['writeBps']}"]
+            "--device-read-bps", f"{devices['ioPath']}:{limits['readBps']}",
+            "--device-write-bps", f"{devices['ioPath']}:{limits['writeBps']}"]
     for mount in sorted(clean["mounts"], key=lambda item: (len(Path(item["target"]).parts), item["target"])):
         args += ["--mount", f"type=bind,src={mount['source']},dst={mount['target']}" +
                  (",readonly" if mount["readOnly"] else "")]
@@ -612,7 +653,7 @@ def phase_prerequisites(op, intent):
         need(state["Running"] is False and state["Pid"] == 0 and
              all(state[key] == before[key] for key in ("StartedAt", "FinishedAt", "ExitCode", "OOMKilled")),
              "trial.prior.container_changed")
-        validate_container(actual, previous, prior, start_record["image"]["env"])
+        validate_container(actual, previous, prior, start_record["image"]["env"], start_record["devices"])
     clean, old = intent["clean"], prior["clean"]
     common = ("snapshotIdentity", "baselineSourceSha", "baselineImageDigest")
     need(all(clean[key] == old[key] for key in common), "trial.prior.snapshot_binding")
@@ -622,6 +663,7 @@ def phase_prerequisites(op, intent):
              intent["plan"]["imageReceiptSha256"] == prior["plan"]["imageReceiptSha256"],
              "trial.prior.startup_binding")
         need(snapshot_paths(clean) == start_record["mounts"], "trial.prior.startup_mount_changed")
+        need(block_devices(clean) == start_record["devices"], "trial.prior.startup_device_changed")
         helper_check = {"imageReceiptSha256": prior["plan"]["imageReceiptSha256"],
                         "cleanInputSha256": prior["plan"]["cleanInputSha256"], "doctorResult": result}
     else:
@@ -647,6 +689,7 @@ def start(op):
         clean = intent["clean"]
         prior = phase_prerequisites(op, intent)
         mounts = snapshot_paths(clean)
+        devices = block_devices(clean)
         no_other_writer(clean)
         image = observe_image(intent["image"], phase(intent["plan"]))
         resources = capacity(intent["plan"], clean, True)
@@ -674,7 +717,7 @@ def start(op):
         durable.reserve_heavy_workload(op, "doctor", intent_hash, reserve_resource=reserve_dataset)
         durable.write_once(op / "start-intent.json", durable.encode({"intentSha256": intent_hash,
             "requestedAt": durable.now(), "bootId": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
-            "mounts": mounts, "image": image, "resources": resources, "serviceArgv": service_argv(op),
+            "mounts": mounts, "devices": devices, "image": image, "resources": resources, "serviceArgv": service_argv(op),
             "priorDoctor": prior}))
         try:
             result = subprocess.run(service_argv(op), capture_output=True, timeout=30, env=durable.SAFE_ENV)
@@ -685,10 +728,10 @@ def start(op):
     return status(op)
 
 
-def validate_container(value, op, intent, expected_env):
+def validate_container(value, op, intent, expected_env, devices):
     h, cfg = value["HostConfig"], value["Config"]
     image, clean, limits = intent["image"], intent["clean"], intent["plan"]["limits"]
-    args = create_argv(op, intent)
+    args = create_argv(op, intent, devices)
     entry = args.index("--entrypoint")
     need(value["Image"] in {image[k] for k in ("indexDigest", "imageDigest", "configDigest")} and
          cfg["Image"] == image["indexDigest"] and cfg["User"] == "1000:1000" and
@@ -710,7 +753,7 @@ def validate_container(value, op, intent, expected_env):
          {(m["Source"], m["Destination"], m["RW"]) for m in value["Mounts"] if m["Type"] == "bind"} == expected,
          "trial.container.mounts")
     for field, limit in (("BlkioDeviceReadBps", "readBps"), ("BlkioDeviceWriteBps", "writeBps")):
-        need(h[field] == [{"Path": clean["devicePath"], "Rate": limits[limit]}], "trial.container.io")
+        need(h[field] == [{"Path": devices["ioPath"], "Rate": limits[limit]}], "trial.container.io")
 
 
 def cgroup_path(value):
@@ -745,8 +788,8 @@ def cgroup_processes(root):
     return pids
 
 
-def admit_cgroup(root, intent):
-    limits, clean = intent["plan"]["limits"], intent["clean"]
+def admit_cgroup(root, intent, devices):
+    limits = intent["plan"]["limits"]
     need(int((root / "memory.max").read_text()) == limits["memoryBytes"] and
          (root / "memory.swap.max").read_text().strip() == "0" and
          (root / "pids.max").read_text().strip() == "512", "trial.cgroup.memory")
@@ -754,8 +797,8 @@ def admit_cgroup(root, intent):
     need(len(cpu) == 2 and int(cpu[0]) == limits["cpus"] * int(cpu[1]), "trial.cgroup.cpu")
     io = {row[0]: dict(pair.split("=", 1) for pair in row[1:])
           for row in (line.split() for line in (root / "io.max").read_text().splitlines())}
-    need(io.get(clean["deviceMajorMinor"], {}).get("rbps") == str(limits["readBps"]) and
-         io[clean["deviceMajorMinor"]].get("wbps") == str(limits["writeBps"]), "trial.cgroup.io")
+    need(io.get(devices["ioMajorMinor"], {}).get("rbps") == str(limits["readBps"]) and
+         io[devices["ioMajorMinor"]].get("wbps") == str(limits["writeBps"]), "trial.cgroup.io")
 
 
 def successful(state, attach_exit, complete, oom_kills):
@@ -820,19 +863,22 @@ def serve(op):
         need(started["bootId"] == Path("/proc/sys/kernel/random/boot_id").read_text().strip(), "trial.boot.changed")
         need(phase_prerequisites(op, intent) == started.get("priorDoctor"), "trial.prior.changed")
         need(snapshot_paths(intent["clean"]) == started["mounts"], "trial.mount.changed")
+        devices = block_devices(intent["clean"])
+        need(devices == started["devices"], "trial.devices.changed")
         no_other_writer(intent["clean"])
         need(observe_image(intent["image"], selected) == started["image"], "trial.image.changed")
         capacity(intent["plan"], intent["clean"], True)
         durable.reserve_heavy_workload(op, "doctor", started["intentSha256"])
         (op / "gate").mkdir(mode=0o755)
         os.chmod(op / "gate", 0o755)
-        args = create_argv(op, intent)
+        args = create_argv(op, intent, devices)
+        need(block_devices(intent["clean"]) == devices, "trial.devices.changed")
         durable.write_once(op / "create-intent.json", durable.encode({"at": durable.now(), "argv": args}))
         cid = docker(args).decode().strip()
         need(HEX.fullmatch(cid), "trial.create.uncertain")
         durable.write_once(op / "container.json", durable.encode({"id": cid, "at": durable.now()}))
         value = inspect_container(cid)
-        validate_container(value, op, intent, started["image"]["env"])
+        validate_container(value, op, intent, started["image"]["env"], devices)
         need(value["State"]["Status"] == "created", "trial.container.not_fresh")
         durable.write_once(op / "container-start-intent.json", durable.encode({"id": cid, "at": durable.now()}))
         logs = {name: RollingLog(op / name) for name in ("stdout.log", "stderr.log", "resources.jsonl")}
@@ -847,7 +893,7 @@ def serve(op):
             need(not interrupted and time.monotonic() < end, "trial.deadline_or_signal")
             if time.monotonic() >= next_check:
                 value = inspect_container(cid)
-                validate_container(value, op, intent, started["image"]["env"])
+                validate_container(value, op, intent, started["image"]["env"], devices)
                 need(not value["State"]["OOMKilled"], "trial.container.oom")
                 if value["State"]["Running"]:
                     if container_start is None:
@@ -855,7 +901,8 @@ def serve(op):
                     need(value["State"]["StartedAt"] == container_start, "trial.container.restarted")
                     if cg is None and gate_ready:
                         cg = cgroup_path(value)
-                        admit_cgroup(cg, intent)
+                        need(block_devices(intent["clean"]) == devices, "trial.devices.changed")
+                        admit_cgroup(cg, intent, devices)
                         baseline_processes = cgroup_processes(cg)
                         need(len(baseline_processes) == 2 and value["State"]["Pid"] in baseline_processes,
                              "trial.cgroup.gate_processes")
@@ -918,7 +965,7 @@ def serve(op):
                 need(b"Startup migration refused" not in window, "trial.doctor.refused")
                 tails[key.data] = window[-256:]
         final = inspect_container(cid)
-        validate_container(final, op, intent, started["image"]["env"])
+        validate_container(final, op, intent, started["image"]["env"], devices)
         need(final["State"]["StartedAt"] == container_start, "trial.container.final_start_changed")
         need(cg is not None and settled, "trial.exit.before_settlement")
         need(child_exit == 0, "trial.doctor.native_exit")
