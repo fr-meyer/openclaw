@@ -15,6 +15,13 @@ export async function prepareDoctorCliStartup(
       return { handled: true };
     }
   }
+  // Update-mode bootstrap can inspect SQLite before runDoctorHealthFlow starts.
+  // Reject an invalid successor proof here as well, before that preflight.
+  if (process.env.OPENCLAW_DOCTOR_BACKUP_REUSE_PROOF !== undefined) {
+    const { parseReviewedDoctorBackupReuse } =
+      await import("../commands/doctor-migration-backup-reuse.js");
+    parseReviewedDoctorBackupReuse(process.env);
+  }
   // Debug capture can migrate shared state before Commander reaches Doctor.
   // Resolve the update guard after selectors settle, before any bootstrap writer.
   const { preflightUpdateDoctorCli } = await import("../commands/doctor-update-schema-guard.js");

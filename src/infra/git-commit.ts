@@ -204,6 +204,54 @@ export function resolveLoadedCommitHash(
     : loaded;
 }
 
+type FullLoadedStamp = string | "headless" | null | undefined;
+
+function readFullLoadedStamp(
+  moduleUrl: string,
+  candidates: readonly string[],
+  kind: "build" | "runtime",
+): FullLoadedStamp {
+  try {
+    for (const candidate of candidates) {
+      let raw: string;
+      try {
+        raw = readGitMetadataPrefix(fileURLToPath(new URL(candidate, moduleUrl)), 1024);
+      } catch (error) {
+        if (isMissingPathError(error)) {
+          continue;
+        }
+        return null;
+      }
+      try {
+        const stamp = asNullableRecord(JSON.parse(raw));
+        if (!stamp) {
+          return null;
+        }
+        if (typeof stamp.head === "string") {
+          return formatFullCommit(stamp.head);
+        }
+        const headless =
+          kind === "build"
+            ? stamp.head === null &&
+              typeof stamp.builtAt === "number" &&
+              Number.isSafeInteger(stamp.builtAt) &&
+              (stamp.inputsClean === null || typeof stamp.inputsClean === "boolean")
+            : !Object.hasOwn(stamp, "head") &&
+              typeof stamp.syncedAt === "number" &&
+              Number.isSafeInteger(stamp.syncedAt) &&
+              (stamp.inputsClean === null || typeof stamp.inputsClean === "boolean") &&
+              typeof stamp.staticAssets === "boolean";
+        return headless ? "headless" : null;
+      } catch {
+        return null;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return undefined;
+}
+
 /** Exact producer identity from the loaded artifact; never infer it from cwd or env. */
 export function resolveLoadedFullCommitHash(options: { moduleUrl?: string } = {}): string | null {
   const moduleUrl = options.moduleUrl ?? import.meta.url;
@@ -216,23 +264,25 @@ export function resolveLoadedFullCommitHash(options: { moduleUrl?: string } = {}
   if (!buildInfo) {
     return null;
   }
-  const buildStamp = readCommitProbe(
+  const buildStamp = readFullLoadedStamp(
     moduleUrl,
     ["../.buildstamp", "./.buildstamp"],
-    "head",
-    formatFullCommit,
+    "build",
   );
-  const runtimeStamp = readCommitProbe(
+  const runtimeStamp = readFullLoadedStamp(
     moduleUrl,
     ["../.runtime-postbuildstamp", "./.runtime-postbuildstamp"],
-    "head",
-    formatFullCommit,
+    "runtime",
   );
-  // Published packages may omit both local stamps. If either is present,
-  // both must bind the same full commit as the packaged build information.
-  return buildStamp === undefined && runtimeStamp === undefined
-    ? buildInfo
-    : buildStamp === buildInfo && runtimeStamp === buildInfo
-      ? buildInfo
-      : null;
+  // Source-archive Docker builds have no .git: both well-formed local stamps
+  // are headless while build-info carries the explicit full source commit.
+  // Never accept a malformed, missing partner, mixed, or conflicting stamp.
+  if (
+    (buildStamp === undefined && runtimeStamp === undefined) ||
+    (buildStamp === "headless" && runtimeStamp === "headless") ||
+    (buildStamp === buildInfo && runtimeStamp === buildInfo)
+  ) {
+    return buildInfo;
+  }
+  return null;
 }

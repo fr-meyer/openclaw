@@ -184,19 +184,31 @@ describe("git commit resolution", () => {
     const root = await makeTempDir("git-commit-headless-build");
     const dist = path.join(root, "dist");
     await fs.mkdir(dist, { recursive: true });
-    await fs.writeFile(path.join(dist, ".buildstamp"), JSON.stringify({ head: null }));
-    await fs.writeFile(path.join(dist, ".runtime-postbuildstamp"), JSON.stringify({}));
+    await fs.writeFile(
+      path.join(dist, ".buildstamp"),
+      JSON.stringify({ builtAt: 1, head: null, inputsClean: null }),
+    );
+    await fs.writeFile(
+      path.join(dist, ".runtime-postbuildstamp"),
+      JSON.stringify({ syncedAt: 2, inputsClean: null, staticAssets: true }),
+    );
     await fs.writeFile(
       path.join(dist, "build-info.json"),
       JSON.stringify({ commit: "0123456789abcdef0123456789abcdef01234567" }),
     );
 
+    const moduleUrl = pathToFileURL(path.join(dist, "version-chunk.js")).href;
     expect(
       resolveLoadedCommitHash({
         env: {},
-        moduleUrl: pathToFileURL(path.join(dist, "version-chunk.js")).href,
+        moduleUrl,
       }),
     ).toBe("0123456");
+    expect(resolveLoadedFullCommitHash({ moduleUrl })).toBe(
+      "0123456789abcdef0123456789abcdef01234567",
+    );
+    await fs.writeFile(path.join(dist, ".runtime-postbuildstamp"), JSON.stringify({}));
+    expect(resolveLoadedFullCommitHash({ moduleUrl })).toBeNull();
   });
 
   it("reads an exact full loaded commit from build metadata, not env or checkout", async () => {
