@@ -78,6 +78,8 @@ RETAINED_HELPERS = {
     LEGACY_DEVICE_SHA: "872b6966330c2bb127ae007cf936bffc6e6d7704d9d0ed1a0b7be5de57e8da0d",
     "ad0c1a62300f77e616b1a373c92c967c3cba95b8": "af5caa6316e15bec85b501ff2f8839835546b1e1e5313810a314741479343156",
     LEGACY_CONTINUATION_SHA: "0de004053ed692ae2dc0cbf2d70f336dda72c02c21ba65a893ccac37a4719f97",
+    # Actual stopped 16 GiB predecessor; read-only interpretation only.
+    "4ad784b4c78d7109c719c22d80c0e927a3299e11": "d36a0a552c5db304b92f915e43f78997bcb58132fc9364eb9afcc0bc8596f556",
 }
 need = release.need
 

@@ -1098,6 +1098,27 @@ class SnapshotTrialTests(unittest.TestCase):
             with self.assertRaisesRegex(release.Refusal, "trial.prior.unreviewed_helpers"):
                 trial.read_retained(self.op)
 
+    def test_stopped_16g_predecessor_manifest_is_readable_but_not_executable(self):
+        hashes = {
+            "gcp_build.py": "7aa4980c430fd7d3fd9e9c429517c5126487810b59033cce1e807472d77e93b6",
+            "gcp_rehearsal_checks.py": "e8e3b0a328715bf3b1dd783a81412f306fccf4aebec612719c4eec0dc44ccb28",
+            "gcp_snapshot_trial.py": "21c0f7d958a3872505ed620f2c94ce0b127033c16431c6929e6a84abc77dbb84",
+            "pr.py": "351f2a1855959346e41a682a9a8a01bcef84b8fdbf3866b697ddd996502b6a3f",
+            "preflight.py": "ea9ff84927b40e0808ffb83426264b267299ee1237908548439c136b8d306f2b",
+            "release.py": "7bf6bf8b9d8885694f0bce3644f4cedc41c1ac99623c6460c81c0c6a3cc53f12",
+        }
+        self.assertEqual(trial.digest(json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode()),
+                         trial.RETAINED_HELPERS["4ad784b4c78d7109c719c22d80c0e927a3299e11"])
+        self.intent["helpers"] = hashes
+        self.plan["toolingSha"] = "4ad784b4c78d7109c719c22d80c0e927a3299e11"
+        with patch.object(trial, "read_operation", return_value=(self.op, self.intent)):
+            self.assertEqual(trial.read_retained(self.op)[1], self.intent)
+            with self.assertRaisesRegex(release.Refusal, "trial.running_helper.changed"):
+                trial.load(self.op)
+            hashes["gcp_snapshot_trial.py"] = "0" * 64
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.unreviewed_helpers"):
+                trial.read_retained(self.op)
+
     def test_historical_private_files_and_terminal_status_without_executing_old_helpers(self):
         frozen = {name: ("# retained, never imported: " + name).encode() for name in trial.HELPERS}
         (self.op / "supervisor").mkdir(mode=0o700)
