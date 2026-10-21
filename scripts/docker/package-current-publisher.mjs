@@ -187,7 +187,7 @@ async function planImage() {
     "--platform",
     "<observed-target-platform>",
     "--network",
-    "none",
+    "default",
     "--progress",
     "plain",
     "--build-arg",
@@ -220,7 +220,7 @@ async function planImage() {
     "type=oci,dest=<operator-selected-oci-directory>,tar=false,compression=gzip,compression-level=1",
     "--tag",
     `openclaw-v105-prep:${head.slice(0, 12)}`,
-    `https://github.com/fr-meyer/openclaw.git#${head}`,
+    `https://github.com/fr-meyer/openclaw.git?fetch-by-commit=true&checksum=${head}#${head}`,
   ];
   process.stdout.write(
     `${JSON.stringify(

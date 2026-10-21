@@ -56,6 +56,8 @@ RUN --network=none mkdir -p /out/packages /out/examples "/out/${OPENCLAW_BUNDLED
     node /tmp/docker-plugin-selection.mjs "/tmp/${OPENCLAW_BUNDLED_PLUGIN_DIR}" "$OPENCLAW_EXTENSIONS" \
       --required-bundled /tmp/package.json > /out/openclaw-workspace-plugin-dirs
 
+# Every RUN declares its network mode. Build with --network=default so the
+# three acquisition steps can connect; all other RUNs explicitly use none.
 # Networked acquisition sees manifests and patches, never candidate scripts.
 # Keep the lockfile, integrity hashes, cooldown policy and platform selection intact.
 FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS dependency-acquisition
@@ -178,11 +180,11 @@ RUN --network=none if [ "$OPENCLAW_PARITY_IMAGE" = "1" ]; then \
 
 # The build stage also backs non-root live-test containers. Build contexts preserve
 # host modes, so normalize copied source readability without re-walking installed deps.
-RUN find /app -path /app/node_modules -prune -o -exec chmod a+rX {} +
+RUN --network=none find /app -path /app/node_modules -prune -o -exec chmod a+rX {} +
 
 # Normalize extension paths now so runtime COPY preserves safe modes
 # without adding a second full extensions layer.
-RUN for dir in /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} /app/.agent /app/.agents; do \
+RUN --network=none for dir in /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} /app/.agent /app/.agents; do \
       if [ -d "$dir" ]; then \
         find "$dir" -type d -exec chmod 755 {} +; \
         find "$dir" -type f -exec chmod 644 {} +; \
@@ -227,7 +229,7 @@ RUN --network=none if grep -qx 'qa-lab' /tmp/openclaw-selected-plugin-dirs; then
 # dependency trees before merging the build output into the production install.
 FROM build AS runtime-build-output
 ARG OPENCLAW_BUNDLED_PLUGIN_DIR
-RUN rm -rf node_modules ui/node_modules && \
+RUN --network=none rm -rf node_modules ui/node_modules && \
     find packages "${OPENCLAW_BUNDLED_PLUGIN_DIR}" -name node_modules -prune -exec rm -rf {} +
 
 # Inherit production dependencies instead of copying their full tree again.
@@ -314,7 +316,7 @@ RUN --network=default npm install --global npm@latest --ignore-scripts && \
     mv /tmp/npm-package.json "$npm_dir/package.json" && \
     npm cache clean --force
 
-RUN chown node:node /app
+RUN --network=none chown node:node /app
 
 # Reuse the integrity-pinned pnpm distribution before copying candidate payload.
 # The non-root runtime must not need a first-run toolchain download.
@@ -370,7 +372,7 @@ RUN --network=none \
 ARG OPENCLAW_IMAGE_APT_PACKAGES
 ARG OPENCLAW_DOCKER_APT_PACKAGES=""
 ENV PATH="/home/node/.local/bin:${PATH}"
-RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
+RUN --network=none --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     packages="${OPENCLAW_IMAGE_APT_PACKAGES:-$OPENCLAW_DOCKER_APT_PACKAGES}"; \
     if [ -n "$packages" ]; then \
@@ -381,7 +383,7 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
 # Install additional Python packages needed by your plugins or skills.
 # Example: docker build --build-arg OPENCLAW_IMAGE_PIP_PACKAGES="requests humanize" .
 ARG OPENCLAW_IMAGE_PIP_PACKAGES=""
-RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
+RUN --network=none --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     if [ -n "$OPENCLAW_IMAGE_PIP_PACKAGES" ]; then \
       if ! python3 -m pip --version >/dev/null 2>&1; then \
@@ -397,7 +399,7 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
 # Must run after node_modules COPY so playwright-core is available.
 ARG OPENCLAW_INSTALL_BROWSER=""
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
-RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
+RUN --network=none --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
       apt-get update && \
@@ -414,7 +416,7 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
 # Required for agents.defaults.sandbox to function in Docker deployments.
 ARG OPENCLAW_INSTALL_DOCKER_CLI=""
 ARG OPENCLAW_DOCKER_GPG_FINGERPRINT="9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
-RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
+RUN --network=none --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     if [ -n "$OPENCLAW_INSTALL_DOCKER_CLI" ]; then \
       apt-get update && \
@@ -449,7 +451,7 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     fi
 
 # Expose the CLI binary without requiring npm global writes as non-root.
-RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
+RUN --network=none ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
  && chmod 755 /app/openclaw.mjs
 
 # Pre-create default named-volume mount points so first-run Docker volumes copy
@@ -457,7 +459,7 @@ RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
 # NOTE: /home/node/.config must be created with node ownership first so that
 # the leaf /home/node/.config/openclaw inherits the correct parent permissions.
 # Without this, install -d leaves /home/node/.config as root:root (issue #85968).
-RUN install -d -m 0755 -o node -g node /home/node/.config && \
+RUN --network=none install -d -m 0755 -o node -g node /home/node/.config && \
     install -d -m 0700 -o node -g node \
       /home/node/.openclaw \
       /home/node/.openclaw/workspace \
@@ -475,7 +477,7 @@ ENV NODE_ENV=production
 USER node
 
 # Verify the shipped toolchain needs no privileged writes or first-run downloads.
-RUN COREPACK_ENABLE_NETWORK=0 PNPM_CONFIG_OFFLINE=true pnpm --version
+RUN --network=none COREPACK_ENABLE_NETWORK=0 PNPM_CONFIG_OFFLINE=true pnpm --version
 
 # Start gateway server with default config.
 # Binds to loopback (127.0.0.1) by default for security.

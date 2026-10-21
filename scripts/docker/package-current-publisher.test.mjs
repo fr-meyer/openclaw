@@ -151,7 +151,7 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
       body.command.includes("org.opencontainers.image.created=<operator-selected-utc-timestamp>"),
     );
     const option = (flag) => body.command[body.command.indexOf(flag) + 1];
-    assert.equal(option("--network"), "none");
+    assert.equal(option("--network"), "default");
     assert.equal(option("--progress"), "plain");
     assert.equal(option("--provenance"), "mode=max");
     assert.equal(option("--sbom"), "true");
@@ -162,7 +162,10 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
     );
     assert.equal(body.command.includes("--load"), false);
     assert.equal(body.command.includes("--push"), false);
-    assert.equal(body.command.at(-1), `https://github.com/fr-meyer/openclaw.git#${head}`);
+    assert.equal(
+      body.command.at(-1),
+      `https://github.com/fr-meyer/openclaw.git?fetch-by-commit=true&checksum=${head}#${head}`,
+    );
 
     cut.carryForward.reconciliation = "IN_PROGRESS";
     await writeFile(manifestPath, JSON.stringify(cut));

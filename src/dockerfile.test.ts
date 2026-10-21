@@ -164,7 +164,9 @@ describe("Dockerfile", () => {
     expect(acquisitionEnd).toBeGreaterThan(acquisitionStart);
     const acquisition = dockerfile.slice(acquisitionStart, acquisitionEnd);
     const instructions = collapseDockerContinuations(dockerfile).split("\n");
-    const networked = instructions.filter((line) => /^RUN .*--network=default/u.test(line));
+    const runs = instructions.filter((line) => /^RUN /u.test(line));
+    expect(runs.every((line) => /^RUN --network=(?:none|default) /u.test(line))).toBe(true);
+    const networked = runs.filter((line) => /^RUN --network=default /u.test(line));
     expect(networked).toHaveLength(3);
     expect(networked[0]).toContain("pnpm fetch --ignore-pnpmfile --config.ignoreScripts=true");
     expect(networked[0]).not.toContain("--frozen-lockfile");
@@ -244,7 +246,9 @@ describe("Dockerfile", () => {
 
     expect(runtimeIndex).toBeGreaterThan(-1);
     expect(pythonInstallIndex).toBeGreaterThan(runtimeIndex);
-    expect(pythonInstallIndex).toBeLessThan(dockerfile.indexOf("RUN chown node:node /app"));
+    expect(pythonInstallIndex).toBeLessThan(
+      dockerfile.indexOf("RUN --network=none chown node:node /app"),
+    );
     expect(dockerfile).toContain(
       "ca-certificates curl git hostname libgomp1 lsof openssh-client openssl procps python3 tini",
     );
@@ -658,7 +662,9 @@ describe("Dockerfile", () => {
       const buildCopy = runtime.match(/^COPY --from=(\S+) \/app\/ \.\/$/m);
       const buildOutput = stages.get(buildCopy?.[1]);
       expect(buildOutput?.parent).toBe("build");
-      const cleanCommand = buildOutput?.body?.match(/^RUN (rm -rf node_modules[^\n]+)/m)?.[1];
+      const cleanCommand = buildOutput?.body?.match(
+        /^RUN --network=none (rm -rf node_modules[^\n]+)/m,
+      )?.[1];
       if (!cleanCommand) {
         throw new Error(
           "Runtime assembly must remove development dependencies before copying build output",
@@ -731,7 +737,7 @@ describe("Dockerfile", () => {
     const dockerfile = await readFile(dockerfilePath, "utf8");
     const sourceCopyIndex = dockerfile.indexOf("COPY . .");
     const readabilityIndex = dockerfile.indexOf(
-      "RUN find /app -path /app/node_modules -prune -o -exec chmod a+rX {} +",
+      "RUN --network=none find /app -path /app/node_modules -prune -o -exec chmod a+rX {} +",
     );
     const buildIndex = dockerfile.indexOf("pnpm build:docker");
 
@@ -851,7 +857,7 @@ describe("Dockerfile", () => {
   it("normalizes plugin and agent paths permissions in image layers", async () => {
     const dockerfile = await readFile(dockerfilePath, "utf8");
     expect(dockerfile).toContain(
-      "RUN for dir in /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} /app/.agent /app/.agents; do \\",
+      "RUN --network=none for dir in /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} /app/.agent /app/.agents; do \\",
     );
     expect(dockerfile).toContain('find "$dir" -type d -exec chmod 755 {} +');
     expect(dockerfile).toContain('find "$dir" -type f -exec chmod 644 {} +');
@@ -897,7 +903,7 @@ describe("Dockerfile", () => {
     const dockerfile = await readFile(dockerfilePath, "utf8");
     const runtimeStageIndex = dockerfile.lastIndexOf("FROM base-runtime");
     const parentConfigDirIndex = dockerfile.indexOf(
-      "RUN install -d -m 0755 -o node -g node /home/node/.config",
+      "RUN --network=none install -d -m 0755 -o node -g node /home/node/.config",
       runtimeStageIndex,
     );
     const stateDirIndex = dockerfile.indexOf(
