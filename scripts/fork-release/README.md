@@ -342,11 +342,15 @@ installs, lifecycle execution, addon checks, security updates, and integrity
 checks remain required; an acquisition cache alone is not a qualified image.
 
 Sealing verifies the private evidence bindings, every OCI blob and attestation,
-native workspace smoke and selected plugin payload. Smoke and plugin inspection
-use the verified config digest, network disabled, a read-only root and bounded
-resources. Native smoke creates one container, retains its returned immutable
-ID, verifies terminal success and removes only that container on success,
-failure or an attached-client timeout. The GCP producer in the public image receipt contains only `kind`,
+native workspace smoke and selected plugin payload. Codex checks bind the actual
+CLI and platform package to the source dependency and require a bounded native
+app-server handshake and clean shutdown. Workboard exercises its SQLite worker
+with a synthetic write/read/close. These checks prove offline startup, not an
+authenticated model turn or a migration. Smoke and plugin inspection use the
+verified immutable image digest, network disabled, a read-only root and bounded
+resources. Each creates one container, retains its returned immutable ID,
+verifies terminal success and removes only that container on success, failure
+or an attached-client timeout. The GCP producer in the public image receipt contains only `kind`,
 `toolingSha`, `operationId`, `attempt` and `executionSha256`; cloud identifiers,
 paths and raw logs remain private. It is a trusted supervisor attestation, not a
 cloud identity signature or permission to deploy. The existing coordinator

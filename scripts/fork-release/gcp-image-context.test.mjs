@@ -350,13 +350,13 @@ test("loaded OCI index remains immutable through smoke and platform-pinned plugi
     ]),
   );
   const fake = `#!${process.execPath}
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 const args = process.argv.slice(2);
 appendFileSync(process.env.SMOKE_CAPTURE, JSON.stringify(args) + "\\n");
 if (args[0] === "image") console.log(process.env.SMOKE_DIGEST);
 if (args[0] === "create") console.log("2".repeat(64));
-if (args[0] === "inspect") console.log("false 0");
-if (args[0] === "run" && args.includes("/tmp/verify-image-plugins.mjs")) console.log("[]");
+if (args[0] === "inspect") console.log(args.includes("{{.State.Running}} {{.State.ExitCode}} {{.State.OOMKilled}}") ? "false 0 false" : "false 0");
+if (args[0] === "start" && readFileSync(process.env.SMOKE_CAPTURE, "utf8").includes("/tmp/verify-image-plugins.mjs")) console.log("[]");
 if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17);
 `;
   const calls = () =>
@@ -393,16 +393,36 @@ if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17
         { image: { architecture: "amd64", extensions: "codex,workboard" } },
         "2026.10.5",
         smoke.imageReference,
+        "0.160.0",
       ),
       [],
     );
-    const plugins = calls().at(-1);
-    assert.equal(plugins[0], "run");
+    const plugins = calls().find(
+      (args) => args[0] === "create" && args.includes("/tmp/verify-image-plugins.mjs"),
+    );
+    assert.equal(plugins[0], "create");
     assert.equal(plugins[plugins.indexOf("--platform") + 1], "linux/amd64");
     assert.equal(plugins[plugins.indexOf("--entrypoint") + 2], indexDigest);
     assert.equal(plugins[plugins.indexOf("--network") + 1], "none");
     assert.ok(plugins.includes("--read-only"));
     assert.ok(!plugins.includes(digest));
+    assert.equal(plugins.at(-1), "0.160.0");
+    assert.equal(plugins[plugins.indexOf("--memory") + 1], "1g");
+    assert.equal(plugins[plugins.indexOf("--memory-swap") + 1], "1g");
+    assert.deepEqual(calls().at(-1), ["rm", "--force", "2".repeat(64)]);
+
+    writeFileSync(capture, "");
+    process.env.SMOKE_FAIL_START = "1";
+    assert.throws(() =>
+      inspectLoadedPlugins(
+        { image: { architecture: "amd64", extensions: "codex,workboard" } },
+        "2026.10.5",
+        indexDigest,
+        "0.160.0",
+      ),
+    );
+    assert.deepEqual(calls().at(-1), ["rm", "--force", "2".repeat(64)]);
+    delete process.env.SMOKE_FAIL_START;
 
     writeFileSync(capture, "");
     process.env.SMOKE_DIGEST = digest;

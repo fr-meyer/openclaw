@@ -1,16 +1,20 @@
-# Grouped post-9.8 stable candidate through 2026.10.5
+# Grouped stable candidate: production 9.4 to 2026.10.5
 
 The image seal inspects the loaded OCI image with the network disabled. It
-requires the selected plugin descriptors and compiled entries, and checks the
-Codex package version, host API compatibility, and Doctor migration contract
-against the image host version. The resulting plugin evidence is retained in
-the image receipt. This catches an image that contains a Codex CLI executable
-but omits the OpenClaw Codex plugin. A native Doctor rehearsal still provides
-the runtime migration proof.
+requires selected plugin descriptors and compiled entries, checks Codex plugin
+host/API and Doctor contracts, and verifies the actual bundled CLI against the
+exact source dependency: **Codex 0.160.0** for this candidate. The bounded native
+app-server initialize/initialized handshake must report that version and exit
+cleanly. This integration uses the app-server protocol, without a separate
+Codex SDK dependency. The external-binary compatibility floor of 0.149.0 does
+not replace the exact bundled version. Workboard's packaged SQLite worker must
+write/read synthetic data and close through its native broker. Results stay in
+the image receipt. These offline checks do not prove an authenticated model turn
+or a data migration; the native Doctor rehearsal supplies migration proof.
 
-Source-only preparation, October 20, 2026. The active 9.8 rehearsal and the
-separate production owner are outside this lane. This file does not select a
-deployable source, publish an image, or authorize production.
+Source-only preparation, updated October 21, 2026. The failed 9.8 rehearsal is
+retained evidence only; production remains under its separate owner. This file
+does not select a deployable source, publish an image, or authorize production.
 
 ## Existing owners and source anchor
 
@@ -44,14 +48,14 @@ exact official 10.5 base. They retain the listed stable-release behavior.
 This is a scoped content check, not a claim that every divergent commit is
 equivalent. The fork patch ledger separately records each custom behavior.
 
-| Stable release | Behavior retained in the 10.5 base | Source owner and remaining qualification |
-| --- | --- | --- |
-| 9.9 | Snapshot timestamp drift is admitted only after file identity and content checks. Read-only opening of corrupt agent databases preserves quarantine recovery. | `src/infra/sqlite-snapshot-file.ts`; `src/state/openclaw-agent-db-readonly-open.ts`. Native backup/restore remains required. |
-| 10.1 | State schema 20 defaults historical delivery attempts to unknown; interrupted one-shot recovery requires proof that delivery never started. | `src/state/openclaw-state-db-cron-delivery-migration.ts`; `src/cron/store/run-recovery.kernel.ts`. Restart and rollback must not replay uncertain sends. |
-| 10.2 | Unsupported native cloning supports a guarded byte-copy fallback; owners supplying `beforeByteCopy` admit space before that fallback. Built-in credential redaction scans complete text across old chunk boundaries. | `src/infra/sqlite-file-copy.ts`; `src/logging/redact.ts`. Preserve native copy guards; check representative installed-provider compaction behavior separately. |
-| 10.3 | Prepared update rehearsals defer bookkeeping version stamps while retaining real config migrations. pnpm service entrypoints prefer the verified stable package link. | `src/config/io.meta.ts`; `src/daemon/program-args.ts`. Qualify the installed updater against the candidate; candidate fixes cannot change an already-running old updater. |
-| 10.4 | Doctor can admit an already prepared private disposable copy. Tlon distinguishes group-DM claims from privileged sender identity. | `src/commands/doctor-update-rehearsal-inventory.ts`; `extensions/tlon/src/monitor/index.ts`. Check configured policy plugins; older pending Tlon DMs without recorded sender provenance require the documented resend procedure. |
-| 10.5 | Agent schema 25 moves canonical-session validation to its writer contract. EmbeddingGemma format changes trigger a one-time rebuild only for affected indexes. | `src/state/openclaw-agent-canonical-validation-migration.ts`; `extensions/memory-core/src/memory/manager-reindex-state.ts`. Doctor, startup and applicable memory rebuild still need runtime proof. |
+| Stable release | Behavior retained in the 10.5 base                                                                                                                                                                                   | Source owner and remaining qualification                                                                                                                                                                                         |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 9.9            | Snapshot timestamp drift is admitted only after file identity and content checks. Read-only opening of corrupt agent databases preserves quarantine recovery.                                                        | `src/infra/sqlite-snapshot-file.ts`; `src/state/openclaw-agent-db-readonly-open.ts`. Native backup/restore remains required.                                                                                                     |
+| 10.1           | State schema 20 defaults historical delivery attempts to unknown; interrupted one-shot recovery requires proof that delivery never started.                                                                          | `src/state/openclaw-state-db-cron-delivery-migration.ts`; `src/cron/store/run-recovery.kernel.ts`. Restart and rollback must not replay uncertain sends.                                                                         |
+| 10.2           | Unsupported native cloning supports a guarded byte-copy fallback; owners supplying `beforeByteCopy` admit space before that fallback. Built-in credential redaction scans complete text across old chunk boundaries. | `src/infra/sqlite-file-copy.ts`; `src/logging/redact.ts`. Preserve native copy guards; check representative installed-provider compaction behavior separately.                                                                   |
+| 10.3           | Prepared update rehearsals defer bookkeeping version stamps while retaining real config migrations. pnpm service entrypoints prefer the verified stable package link.                                                | `src/config/io.meta.ts`; `src/daemon/program-args.ts`. Qualify the installed updater against the candidate; candidate fixes cannot change an already-running old updater.                                                        |
+| 10.4           | Doctor can admit an already prepared private disposable copy. Tlon distinguishes group-DM claims from privileged sender identity.                                                                                    | `src/commands/doctor-update-rehearsal-inventory.ts`; `extensions/tlon/src/monitor/index.ts`. Check configured policy plugins; older pending Tlon DMs without recorded sender provenance require the documented resend procedure. |
+| 10.5           | Agent schema 25 moves canonical-session validation to its writer contract. EmbeddingGemma format changes trigger a one-time rebuild only for affected indexes.                                                       | `src/state/openclaw-agent-canonical-validation-migration.ts`; `extensions/memory-core/src/memory/manager-reindex-state.ts`. Doctor, startup and applicable memory rebuild still need runtime proof.                              |
 
 The stable schema progression is 9.9 state 19/agent 24, 10.1 state 20,
 10.4 agent 24, and 10.5 agent 25. A history entry first naming a beta is
@@ -63,17 +67,19 @@ do not silently import or discard older plugin data.
 
 ## Migration and qualification boundaries
 
-- The 9.8-to-10.5 database transition is shared state schema 19 to 20 and
-  agent schema 24 to 25. Native Doctor and startup must validate the complete
-  migration on a disposable copy of a **fresh current-production backup**.
+- The direct 9.4-to-10.5 transition must admit the actual input schemas and
+  migrate to shared state schema 20 and agent schema 25. Native Doctor and
+  startup must validate the complete migration on a disposable copy of a
+  **fresh current-production backup**.
   Schema 20's cron delivery-attempt fence leaves uncertain sends unknown;
   never replay them merely because a rehearsal or rollback restarted. Rollback
   needs the matching pre-upgrade data and build, and must account for writes
   accepted after capture.
 - If EmbeddingGemma is configured, the 10.5 formatting change requires its
   documented one-time vector rebuild. Do not apply that work to installations
-  that do not use it. Check installed Codex runtime compatibility with the
-  official 2026.9.7 minimum and inspect policy plugins before activation.
+  that do not use it. Check the installed OpenClaw Codex plugin against the
+  official 2026.9.7 minimum, verify the separately pinned CLI version as above,
+  and inspect policy plugins before activation.
 - Build the product from the exact official base plus a reviewed ordered fork
   patch queue. Reconcile each retained 9.8/9.9 behavior against 10.5's source,
   including migration, state ownership, host compatibility, Workboard, backup,
@@ -107,11 +113,11 @@ observation must not become a permanent admission rule.
    from the host root; a small emergency floor is not a forecast of native
    backup space. Reuse a retained restore only after its owner has released it
    and its receipt matches the intended starting data.
-3. **Distinguish the upgrade path.** While production is still 9.4, a daily
-   production snapshot proves a 9.4 starting point. The intended post-9.8 cell
-   needs a completed, identified 9.8 data/build pair, or an explicit native
-   9.4 → 9.8 → 10.5 rehearsal. The active 9.8 clone remains under its current
-   owner. Successful 9.8 Doctor output does not qualify 10.5.
+3. **Distinguish the upgrade path.** Rehearse directly from current production
+   9.4 to grouped 10.5, using an identified fresh 9.4 snapshot and its actual
+   starting schemas. Skip 9.8 as an intermediate release. Preserve its failed,
+   partially migrated copy as evidence; do not reuse it as rehearsal input or
+   treat it as qualification of the direct path.
 4. **Run durably.** A GCP-owned supervisor holds the operation lease and
    records phase, exact process/container identity, timestamps and exit
    receipts. The Mac submits or observes the operation; its connection does
@@ -129,8 +135,8 @@ observation must not become a permanent admission rule.
 
 Bounded source tests may use a separate secretless container and synthetic
 state on existing approved capacity. They do not mount production data or the
-active 9.8 clone. A full restored-data rehearsal is a separate operation with
-an exact resource plan and owner; new paid resources or persistent access
+retained failed 9.8 copy. A full restored-data rehearsal is a separate operation
+with an exact resource plan and owner; new paid resources or persistent access
 require their own approval.
 
 ## Current disposition

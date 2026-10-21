@@ -8,6 +8,33 @@ import preflight
 HERE = Path(__file__).parent
 
 class ImageBoundaryTests(unittest.TestCase):
+    def test_actual_verifier_refuses_metadata_only_codex_evidence_before_oci(self):
+        manifest = json.loads((HERE / "manifest.json").read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "receipt.json"
+            receipt.write_text(json.dumps({
+                "schema": "openclaw.fork-release-image.v2",
+                "manifestSha256": preflight.digest(HERE / "manifest.json"),
+                "inventorySha256": preflight.digest(HERE / "patch-inventory.json"),
+                "repository": manifest["repository"],
+                "sourceSha": manifest["source"]["commit"],
+                "sourceTree": manifest["source"]["tree"],
+                "architecture": manifest["image"]["architecture"],
+                "selectedExtensions": manifest["image"]["extensions"],
+                "version": "2026.10.5",
+                "bundledCodexVersion": "0.160.0",
+                "pluginPayload": [{"id": name, "package": "@openclaw/" + name,
+                                   "version": "2026.10.5"}
+                                  for name in manifest["image"]["extensions"].split(",")],
+            }))
+            result = subprocess.run(["node", str(HERE / "image.mjs"), "verify",
+                                     str(HERE / "manifest.json"), str(HERE / "patch-inventory.json"),
+                                     str(receipt), str(Path(directory) / "missing-oci")],
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Exact bundled Codex runtime evidence missing", result.stderr)
+            self.assertNotIn("ENOENT", result.stderr)
+
     def test_actual_node_consumer_refuses_old_and_wrong_inventory_receipts_before_oci(self):
         with tempfile.TemporaryDirectory() as directory:
             receipt = Path(directory) / "receipt.json"

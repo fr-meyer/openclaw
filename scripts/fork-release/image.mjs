@@ -49,43 +49,82 @@ function validateManifest(path) {
   return manifest;
 }
 
-export function inspectLoadedPlugins(manifest, version, imageReference) {
+export function inspectLoadedPlugins(manifest, version, imageReference, codexVersion) {
   need(DIGEST.test(imageReference), "Plugin inspection requires an immutable image digest");
+  need(/^\d+\.\d+\.\d+$/u.test(codexVersion), "Missing exact source-pinned Codex version");
   const verifier = fileURLToPath(new URL("verify-image-plugins.mjs", import.meta.url));
-  return JSON.parse(
-    execFileSync(
-      "docker",
-      [
-        "run",
-        "--rm",
-        "--platform",
-        `linux/${manifest.image.architecture}`,
-        "--network",
-        "none",
-        "--read-only",
-        "--cap-drop",
-        "ALL",
-        "--security-opt",
-        "no-new-privileges",
-        "--pids-limit",
-        "64",
-        "--memory",
-        "256m",
-        "--cpus",
-        "1",
-        "--mount",
-        `type=bind,source=${verifier},target=/tmp/verify-image-plugins.mjs,readonly`,
-        "--entrypoint",
-        "node",
-        imageReference,
-        "/tmp/verify-image-plugins.mjs",
-        "/app",
-        manifest.image.extensions,
-        version,
-      ],
-      { encoding: "utf8", timeout: 120_000 },
-    ),
-  );
+  const container = execFileSync(
+    "docker",
+    [
+      "create",
+      "--pull",
+      "never",
+      "--platform",
+      `linux/${manifest.image.architecture}`,
+      "--network",
+      "none",
+      "--read-only",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--pids-limit",
+      "64",
+      "--memory",
+      "1g",
+      "--memory-swap",
+      "1g",
+      "--cpus",
+      "1",
+      "--init",
+      "--tmpfs",
+      "/tmp:rw,nosuid,nodev,size=256m,mode=1777",
+      "--mount",
+      `type=bind,source=${verifier},target=/tmp/verify-image-plugins.mjs,readonly`,
+      "--entrypoint",
+      "node",
+      imageReference,
+      "/tmp/verify-image-plugins.mjs",
+      "/app",
+      manifest.image.extensions,
+      version,
+      codexVersion,
+    ],
+    { encoding: "utf8", timeout: 30_000, maxBuffer: 256 * 1024, killSignal: "SIGKILL" },
+  ).trim();
+  need(/^[0-9a-f]{64}$/u.test(container), "Invalid owned plugin-check container identity");
+  try {
+    const output = execFileSync("docker", ["start", "--attach", container], {
+      encoding: "utf8",
+      timeout: 120_000,
+      maxBuffer: 256 * 1024,
+      killSignal: "SIGKILL",
+    });
+    need(
+      execFileSync(
+        "docker",
+        [
+          "inspect",
+          "--format",
+          "{{.State.Running}} {{.State.ExitCode}} {{.State.OOMKilled}}",
+          container,
+        ],
+        {
+          encoding: "utf8",
+          timeout: 30_000,
+          killSignal: "SIGKILL",
+        },
+      ).trim() === "false 0 false",
+      "Plugin check did not complete successfully",
+    );
+    return JSON.parse(output);
+  } finally {
+    // The create response grants authority over this exact test container only.
+    execFileSync("docker", ["rm", "--force", container], {
+      timeout: 30_000,
+      killSignal: "SIGKILL",
+    });
+  }
 }
 
 export async function verifyImageLayout({ manifest, receipt, ociDir }) {
@@ -159,6 +198,27 @@ async function main() {
       ),
       "Codex plugin evidence differs from image host",
     );
+    const codexRuntime = receipt.pluginPayload.find((entry) => entry.id === "codex")?.codexRuntime;
+    need(
+      /^\d+\.\d+\.\d+$/u.test(receipt.bundledCodexVersion) &&
+        codexRuntime?.cliVersion === receipt.bundledCodexVersion &&
+        codexRuntime?.packageVersion === receipt.bundledCodexVersion &&
+        codexRuntime?.initializeVersion === receipt.bundledCodexVersion &&
+        codexRuntime?.initialized === true &&
+        codexRuntime?.shutdown === "exited",
+      "Exact bundled Codex runtime evidence missing",
+    );
+    if (manifest.image.extensions.split(",").includes("workboard")) {
+      const workboardRuntime = receipt.pluginPayload.find(
+        (entry) => entry.id === "workboard",
+      )?.workboardRuntime;
+      need(
+        workboardRuntime?.worker === "sqlite" &&
+          workboardRuntime.roundTrip === true &&
+          workboardRuntime.closed === true,
+        "Workboard native runtime evidence missing",
+      );
+    }
     need(
       [receipt.indexDigest, receipt.imageDigest, receipt.configDigest].every((value) =>
         DIGEST.test(value),
@@ -242,6 +302,10 @@ async function main() {
     }
   }
   const version = json(`${sourceDir}/package.json`).version;
+  const codexVersion = json(`${sourceDir}/extensions/codex/package.json`).dependencies?.[
+    "@openai/codex"
+  ];
+  need(/^\d+\.\d+\.\d+$/u.test(codexVersion), "Source must pin an exact bundled Codex version");
   let producer;
   let builtAt;
   if (command === "seal-gcp") {
@@ -289,6 +353,7 @@ async function main() {
     architecture: manifest.image.architecture,
     selectedExtensions: manifest.image.extensions,
     version,
+    bundledCodexVersion: codexVersion,
     builtAt,
     indexDigest: expectedDigest,
     producer,
@@ -307,7 +372,12 @@ async function main() {
       ...(smokeTransport === "loaded" ? { loadedIndexDigest: image.indexDigest } : {}),
     },
   );
-  receipt.pluginPayload = inspectLoadedPlugins(manifest, version, smoke.imageReference);
+  receipt.pluginPayload = inspectLoadedPlugins(
+    manifest,
+    version,
+    smoke.imageReference,
+    codexVersion,
+  );
   receipt.imageDigest = image.imageDigest;
   receipt.configDigest = image.configDigest;
   writeFileSync(outputPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx", mode: 0o600 });
