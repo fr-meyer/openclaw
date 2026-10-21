@@ -232,6 +232,17 @@ class DailySnapshotTests(unittest.TestCase):
                 daily.validate_plan(changed)
         self.assertFalse(self.cloud.mutations)
 
+    def test_daily_entry_matches_trial_low_memory_admission_before_restore(self):
+        self.plan['resources'].update(memoryBytes=16 << 30, readBps=256 << 20,
+                                      writeBps=64 << 20, minMemoryAvailableBytes=20 << 30)
+        daily.validate_plan(self.plan)
+        for gib in (16, 19, 21):
+            changed = copy.deepcopy(self.plan)
+            changed['resources']['minMemoryAvailableBytes'] = gib << 30
+            with self.assertRaisesRegex(release.Refusal, 'daily.resources.native'):
+                daily.validate_plan(changed)
+        self.assertFalse(self.cloud.mutations)
+
     def test_full_snapshot_lifecycle_uses_distinct_sequential_candidate_and_rollback_disks(self):
         protected = copy.deepcopy(self.cloud.vm['disks'])
         snapshot = copy.deepcopy(self.cloud.snapshot)

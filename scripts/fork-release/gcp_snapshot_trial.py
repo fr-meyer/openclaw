@@ -334,6 +334,13 @@ def resource_profile(limits):
             **{k: limits[k] for k in ("memoryBytes", "cpus", "readBps", "writeBps")}, "swapBytes": 0}
 
 
+def memory_admission(limits):
+    """Keep the daily lifecycle and direct trial on the same admission contract."""
+    return (limits["minMemoryAvailableBytes"] == LOW_MEMORY_ADMISSION_BYTES
+            if limits["memoryBytes"] == LOW_MEMORY_BYTES else
+            limits["minMemoryAvailableBytes"] >= limits["memoryBytes"])
+
+
 def validate(plan, image, clean, check=None, *, retained=False):
     v2 = plan.get("schema") == "openclaw.snapshot-trial-plan.v2"
     exact(plan, "schema operationId toolingSha imageReceiptSha256 cleanInputSha256 limits" +
@@ -367,10 +374,8 @@ def validate(plan, image, clean, check=None, *, retained=False):
           "minDataFreeBytes timeoutSeconds", "trial.limits.fields")
     need(all(type(v) is int and v > 0 for v in limits.values()), "trial.limits.integer")
     resource_profile(limits)
-    need((limits["minMemoryAvailableBytes"] == LOW_MEMORY_ADMISSION_BYTES
-          if limits["memoryBytes"] == LOW_MEMORY_BYTES else
-          limits["minMemoryAvailableBytes"] >= limits["memoryBytes"]) and
-         600 <= limits["timeoutSeconds"] <= 86400, "trial.limits.admission")
+    need(memory_admission(limits) and 600 <= limits["timeoutSeconds"] <= 86400,
+         "trial.limits.admission")
     need(image.get("schema") == ("openclaw.rehearsal-baseline-image.v1" if selected == "rollback" else
                                  "openclaw.fork-release-image.v2") and
          image.get("architecture") == "amd64" and SHA.fullmatch(image.get("sourceSha", "")),
