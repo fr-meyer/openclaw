@@ -18,6 +18,8 @@ class BuilderHandoffTest(unittest.TestCase):
         self.new = self.root / ("b" * 32)
         self.old.mkdir(mode=0o700)
         self.new.mkdir(mode=0o700)
+        (self.new / "supervisor").mkdir(mode=0o700)
+        build.write_once(self.new / "supervisor/gcp_build.py", Path(build.__file__).read_bytes())
         self.builder = {"containerId": "c" * 64}
         self.origin = {"config": {"builder": self.builder, "sourceSha": "d" * 40}}
         self.target = {"config": {"builder": self.builder, "sourceSha": "e" * 40}}
@@ -74,6 +76,14 @@ class BuilderHandoffTest(unittest.TestCase):
         build.write_once(self.new / "start-intent.json", b"started")
         with self.assertRaisesRegex(release.Refusal, "target.started"):
             subject.handoff(self.old, self.new)
+
+    def test_refuses_legacy_target_without_start_fence(self):
+        (self.new / "supervisor/gcp_build.py").unlink()
+        build.write_once(self.new / "supervisor/gcp_build.py", b"legacy start")
+        with self.assertRaisesRegex(release.Refusal, "tooling_lacks_start_fence"):
+            subject.handoff(self.old, self.new)
+        self.assertEqual(build.read_private(self.lease)["operationId"], self.old.name)
+        self.assertFalse((self.new / "builder-handoff-intent.json").exists())
 
     def test_refuses_changed_builder_or_source(self):
         self.target["config"]["builder"] = {"containerId": "1" * 64}

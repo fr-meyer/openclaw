@@ -20,6 +20,8 @@ import tempfile
 import gcp_build as build
 import release
 
+CAPABLE_BUILD_SHA256 = "7aa4980c430fd7d3fd9e9c429517c5126487810b59033cce1e807472d77e93b6"
+
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
@@ -75,6 +77,9 @@ def handoff(old_path, new_path):
     root = old.parent
     with handoff_lock(root), build.operation_lock(new):
         release.need(not (new / "start-intent.json").exists(), "handoff.target.started")
+        release.need(digest(Path(build.__file__).read_bytes()) == CAPABLE_BUILD_SHA256 and
+                     digest(build.private_bytes(new / "supervisor/gcp_build.py")) ==
+                     CAPABLE_BUILD_SHA256, "handoff.target.tooling_lacks_start_fence")
         release.need(origin["config"]["builder"] == target["config"]["builder"],
                      "handoff.builder.changed")
         release.need(origin["config"]["sourceSha"] != target["config"]["sourceSha"],
