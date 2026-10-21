@@ -1,6 +1,6 @@
 {
   "schema": "openclaw.local-semantic-decision-evidence.v1",
-  "semanticLedgerSha256": "bca0d0fe58e758e12800f639aea057716fc08c555d4539dcc615964b73308fab",
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
   "verbatimSemanticDecision": {
     "path": "src/plugins/loader.runtime-registry.test.ts",
     "treeRelation": "UPSTREAM_CHANGED",
@@ -11,7 +11,7 @@
     "reason": "Retire the old fork hunk in this file. Current src/plugins/loader.gateway-bindings.test.ts proves that identical TaskFlow runtime owners share a load cache key and distinct owners do not; loader-load-context.ts owns the corresponding runtime identity input.",
     "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
   },
-  "candidateCommit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+  "candidateCommit": "ae85778296da373dfe7d80101931bafac1acc9dd",
   "pathBinding": {
     "path": "src/plugins/loader.runtime-registry.test.ts",
     "boundary": "tooling",

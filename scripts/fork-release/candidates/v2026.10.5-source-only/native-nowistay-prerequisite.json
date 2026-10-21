@@ -2,8 +2,8 @@
   "schema": "openclaw.local-native-test-prerequisite.v1",
   "name": "Nowistay native Node SDK 1.32 compatibility",
   "required": true,
-  "sourceSha": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
-  "sourceTree": "fdbf31f86fa714b4f58c065e38d61fdece659902",
+  "sourceSha": "ae85778296da373dfe7d80101931bafac1acc9dd",
+  "sourceTree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab",
   "testPath": "test/mcp-nowistay-sdk-regression.test.mjs",
   "testBlob": "6fcdfdc08e3a16aef4f29c1a02e7509bba5a077c",
   "command": [
@@ -19,7 +19,7 @@
     "optionalRootOverride": "NOWISTAY_COMPAT_SDK_ROOT"
   },
   "runnerRouting": {
-    "toolingSha": "2be226dd55e270907d77499e752beac616765948",
+    "toolingSha": "367ccf6d2d12a8cb7cfb9e06ff5f128e2238eca8",
     "workflowPath": ".github/workflows/fork-release-pipeline.yml",
     "workflowBlob": "d0453f257597e4469ed8c27c8abbd228c97b079f",
     "gateOwnerPath": "scripts/fork-release/release.py",

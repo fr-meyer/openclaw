@@ -1,6 +1,6 @@
 {
   "schema": "openclaw.local-semantic-decision-evidence.v1",
-  "semanticLedgerSha256": "bca0d0fe58e758e12800f639aea057716fc08c555d4539dcc615964b73308fab",
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
   "verbatimSemanticDecision": {
     "path": "apps/android/app/src/main/java/ai/openclaw/app/gateway/GatewayProtocol.kt",
     "treeRelation": "PATH_REMOVED",
@@ -10,7 +10,7 @@
     "v105UpstreamBlob": null,
     "reason": "10.5 removed this tracked generated file. Current prepare-native-protocol.mjs generates the same method enum from core descriptors into the ignored Android build directory; do not restore the old generated owner."
   },
-  "candidateCommit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+  "candidateCommit": "ae85778296da373dfe7d80101931bafac1acc9dd",
   "pathBinding": {
     "path": "apps/android/app/src/main/java/ai/openclaw/app/gateway/GatewayProtocol.kt",
     "boundary": "host",
