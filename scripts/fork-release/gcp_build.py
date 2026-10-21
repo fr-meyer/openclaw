@@ -46,6 +46,11 @@ CLIENT_PIPE_DRAIN_SECONDS = 1
 HELPERS = ("gcp_build.py", "release.py", "preflight.py", "pr.py")
 SAFE_ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1"}
+# This complete reviewed Dockerfile gives every RUN an explicit network mode:
+# only three pre-payload acquisition steps use default; all others use none.
+# Review the whole file, including stage/COPY/ENV/SHELL policy, before changing
+# this pin. A partial Dockerfile parser cannot establish that boundary.
+REVIEWED_DOCKERFILE_SHA256 = "38cd8a70af035e8bd8d710669e1cf0bea3db253b41bd9cde695ff24d330768ca"
 CONFIG_FIELDS = """schema operationId attempt projectNumber instanceId toolingSha
 sourceSha sourceTree manifestSha256 inventorySha256 builtAt builder limits dockerExport"""
 BUILDER_FIELDS = """name node endpoint containerId imageId memoryBytes memorySwapBytes
@@ -210,6 +215,9 @@ def source_binding(config, manifest_path, inventory_path, source):
     release.check_source(manifest, source)
     inventory, _ = preflight.inventory_at(inventory_path, manifest, manifest_hash, source)
     pr.validate_binding(manifest_path, source)
+    dockerfile = pr.git(source, "show", f"{config['sourceSha']}:Dockerfile", binary=True)
+    need(release.sha256(dockerfile) == REVIEWED_DOCKERFILE_SHA256,
+         "build.dockerfile.network_policy_unreviewed")
     version = json.loads(pr.git(source, "show", f"{config['sourceSha']}:package.json"))["version"]
     need(release.matches(re.compile(r"2026\.[1-9][0-9]*\.(?:0|[1-9][0-9]*)\Z"), version),
          "build.version.not_stable")
@@ -235,7 +243,7 @@ def build_argv(op, config, version):
     sha = config["sourceSha"]
     command = [*DOCKER, "--host", ENDPOINT, "buildx", "build",
                "--builder", config["builder"]["name"], "--platform", "linux/amd64",
-               "--network", "none", "--progress", "plain",
+               "--network", "default", "--progress", "plain",
                "--build-arg", "GITHUB_ACTIONS=true",
                "--build-arg", f"GIT_COMMIT={sha}",
                "--build-arg", "OPENCLAW_PARITY_IMAGE=1",

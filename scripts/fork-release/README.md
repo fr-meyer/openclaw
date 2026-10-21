@@ -228,6 +228,18 @@ The native Git context uses the full commit as both checksum and fragment,
 with BuildKit's `fetch-by-commit=true` shallow, no-tags transport. The pinned
 Buildx/BuildKit pair must support that query; do not replace it with an
 unbounded raw-SHA fetch or disable native policy checks when it fails.
+
+Before preparation and again before dispatch, the executor reads `Dockerfile`
+from the exact Git source commit and requires its complete SHA-256 to match
+the tooling-owned `REVIEWED_DOCKERFILE_SHA256` policy pin. That reviewed file
+gives every `RUN` an explicit network mode: only the three existing acquisition
+steps before candidate payload use `default`; every other step uses `none`.
+Buildx therefore uses global `--network default`: BuildKit 0.32.2 treats a
+Dockerfile `--network=default` as inheriting that global setting. A global
+`none` would also disable those acquisition steps. Any Dockerfile byte change
+requires whole-file policy review and an updated pin before another build;
+instruction counts or a partial parser do not authorize the change.
+
 GCP sealing verifies the hash-checked SLSA statement's selected image subject,
 Git configuration source and resolved dependency against that same repository
 and commit. Hosted local-checkout builds retain their existing producer checks.

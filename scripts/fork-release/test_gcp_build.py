@@ -38,6 +38,8 @@ class BuildTests(unittest.TestCase):
         (self.source / "package.json").write_text('{"version":"2026.10.5"}\n')
         (self.source / "first.test.ts").write_text("export const fixture = 1;\n")
         (self.source / "second.test.ts").write_text("export const fixture = 2;\n")
+        self.dockerfile = b"FROM scratch\nRUN --network=none true\n"
+        (self.source / "Dockerfile").write_bytes(self.dockerfile)
         self.git("add", ".")
         self.git("commit", "--quiet", "-m", "fixture base")
         base = self.git("rev-parse", "HEAD")
@@ -100,6 +102,8 @@ class BuildTests(unittest.TestCase):
         self.resource_sample_impl = build.resource_sample
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
+        self.stack.enter_context(patch.object(build, "REVIEWED_DOCKERFILE_SHA256",
+                                             hashlib.sha256(self.dockerfile).hexdigest()))
         self.stack.enter_context(patch.object(build, "PRIVATE_ROOT", self.root / "private"))
         self.stack.enter_context(patch.object(build, "tooling_bytes", return_value=self.helpers))
         self.stack.enter_context(patch.object(build, "observe_builder", return_value=self.config["builder"]))
@@ -164,11 +168,14 @@ class BuildTests(unittest.TestCase):
         return rows, container
 
     def test_bound_command_and_closed_configuration(self):
-        op = self.prepare()
+        with patch.object(build.pr, "git", wraps=build.pr.git) as source_read:
+            op = self.prepare()
+            source_read.assert_any_call(self.source, "show",
+                                        f"{self.config['sourceSha']}:Dockerfile", binary=True)
         _, intent = build.load_intent(op)
         command = intent["buildArgv"]
         self.assertEqual(command[:3], list(build.DOCKER))
-        self.assertEqual(command[command.index("--network") + 1], "none")
+        self.assertEqual(command[command.index("--network") + 1], "default")
         sha = self.config["sourceSha"]
         self.assertEqual(command[-1], "https://github.com/fr-meyer/openclaw.git"
                          f"?fetch-by-commit=true&checksum={sha}#{sha}")
@@ -198,6 +205,43 @@ class BuildTests(unittest.TestCase):
             build.validate_config(changed)
         with self.assertRaisesRegex(release.Refusal, "export.unqualified_transport"):
             build.build_argv(op, changed, "2026.10.5")
+
+    def test_changed_dockerfile_policy_refuses_preparation_and_rechecks_before_dispatch(self):
+        native_git = build.pr.git
+        changed_bytes = self.dockerfile
+
+        def read_source(root, *args, **kwargs):
+            if args == ("show", f"{self.config['sourceSha']}:Dockerfile"):
+                self.assertTrue(kwargs.get("binary"))
+                return changed_bytes
+            return native_git(root, *args, **kwargs)
+
+        # Complete bytes are policy: instruction counts alone cannot authorize
+        # directives, stage inheritance, payload copies or even a changed RUN.
+        changes = [self.dockerfile.replace(b"--network=none", b"--network=default"),
+                   b"# escape=`\n" + self.dockerfile,
+                   self.dockerfile + b"COPY . /candidate\nRUN --network=default true\n",
+                   self.dockerfile + b"ENV NODE_OPTIONS=--require=/candidate/hook.mjs\n",
+                   self.dockerfile + b"SHELL [\"/candidate/shell\", \"-c\"]\n",
+                   self.dockerfile + b"ONBUILD RUN true\n",
+                   self.dockerfile + b"\n"]
+        with patch.object(build.pr, "git", side_effect=read_source):
+            for changed_bytes in changes:
+                with self.subTest(dockerfile=changed_bytes), patch.object(build, "build_argv") as argv:
+                    with self.assertRaisesRegex(release.Refusal, "dockerfile.network_policy_unreviewed"):
+                        self.prepare()
+                    argv.assert_not_called()
+                    self.assertFalse((self.root / "private").exists())
+            changed_bytes = self.dockerfile
+            self.prepare()
+            changed_bytes = changes[0]
+            with patch.object(build, "native") as native:
+                with self.assertRaisesRegex(release.Refusal, "dockerfile.network_policy_unreviewed"):
+                    build.start(self.op)
+                native.assert_not_called()
+        self.assertFalse((self.op / "start-intent.json").exists())
+        self.assertFalse((self.op.parent /
+                          f"builder-{self.config['builder']['containerId']}.json").exists())
 
     def test_wrong_source_binding_and_evidence_overlap_refused_before_preparation(self):
         for key, value in (("sourceSha", "0" * 40), ("sourceTree", "0" * 40),
