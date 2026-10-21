@@ -303,6 +303,72 @@ retry a migration. Old receipts remain unchanged; success qualifies only the
 profile used by that operation. Live adjustment requires a separately reviewed
 transition protocol with intent-before-effect, readback and uncertainty recovery.
 
+#### Controlled Doctor continuation on the same test copy
+
+A failed, stopped Doctor can have modified its input. Do not call that copy
+`unmigrated`. For an explicitly authorized continuation, use the existing v2
+trial plan with `phase: "doctor"`, a new operation ID and the same sealed image
+receipt. Set the new input receipt's `restorationState` to `doctor-interrupted`.
+Supply `--check-input` with this private, hash-bound check structure:
+
+```json
+{
+  "schema": "openclaw.snapshot-doctor-continuation.v1",
+  "phase": "doctor",
+  "doctorOperationId": "EXACT_PREVIOUS_OPERATION_ID",
+  "doctorIntentSha256": "SHA256_OF_ORIGINAL_INTENT_BYTES",
+  "doctorResultSha256": "SHA256_OF_ORIGINAL_TERMINAL_RESULT_BYTES",
+  "reconciliation": {
+    "observedAt": "POST_STOP_UTC_TIMESTAMP",
+    "artifactDisposition": "incomplete-survivors-preserved",
+    "artifactReceiptSha256": "SHA256_OF_OWNER_ARTIFACT_RECONCILIATION",
+    "preservedBytes": 0,
+    "recaptureBytes": 1,
+    "additionalReserveBytes": 1
+  }
+}
+```
+
+The numbers above are schema placeholders, not capacity recommendations. The
+sole rehearsal owner must settle the original job, then reconcile the exact
+surviving artifacts. That private reconciliation records the original operation
+and terminal result, bounded pre/post-stop metadata, surviving paths and sizes,
+preservation destination, and capacity basis. Preserve incomplete artifacts
+without overwriting, deleting or moving live files; any preservation directory
+must remain outside successor mounts. Canonical databases, sidecars and the
+native capture marker stay in place. If the native group completed, retain it
+and select `completed-group-retained` with `recaptureBytes: 0`; native validation
+decides reuse. The check is an owner attestation with an evidence hash, not a
+database-integrity proof or an automatic file-management operation.
+
+For an incomplete group, `recaptureBytes` must cover a new whole-group capture,
+and `additionalReserveBytes` is an explicit positive estimate for further work.
+Admission requires freshly observed free space at least equal to **the selected
+runtime floor + recapture bytes + additional reserve**. Preserved bytes already
+consume that measured free space; do not count them twice. The former floor is
+retained in predecessor evidence, while the new plan explicitly selects its
+own positive floor. Neither an old floor nor an estimate proves the maximum
+space needed by every migration stage. The runtime floor remains enforced;
+there is no automatic lowering or retry after a space failure.
+
+The executor verifies the old service invocation and exact owned container are
+terminal, and binds their original intent/result hashes, image, snapshot,
+restore receipt, filesystem, mounts and process start/finish facts. A completed
+successful Doctor goes to startup instead of this continuation path. Historical
+supervisor helpers are read only against reviewed hashes; they are never
+executed or replaced. Reconciliation must postdate the terminal result.
+
+Under the shared workload lock, continuation rechecks predecessor settlement,
+requires its exact existing dataset lease, preserves its original bytes, and
+records a transfer intent before installing the successor claim. A missing,
+conflicting or uncertain lease is refused. An interruption can resume only the
+exact recorded transfer; dispatch uncertainty stays status-only. The native
+gate rechecks the predecessor and successor claim before releasing Doctor.
+The result retains `continuedFrom`, including old limits and provenance; startup
+must reference the successful successor, and rollback still requires a separate
+unmigrated generation and matching baseline build. No old receipt is rewritten,
+and the executor does not restore, copy, move or delete database artifacts.
+
 `/usr/bin/timeout` in each selected image must be verified
 before activation. Do not infer its availability from the image's base distro.
 

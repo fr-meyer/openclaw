@@ -54,6 +54,14 @@ QUALIFIED_IMAGE = {
 QUALIFIED_PRODUCER = "1507a29361d335283f1f4a55d8c037505892f94c"
 IO_PROFILES = {(128 << 20, 32 << 20): "read128-write32",
                (256 << 20, 64 << 20): "read256-write64"}
+CONTINUATION = "openclaw.snapshot-doctor-continuation.v1"
+LEGACY_DEVICE_SHA = "a9b6526bbde15c2f9eeb3385e2fa00aa4cadfa39"
+# Read-only compatibility for these reviewed, already dispatched supervisors.
+# Digest of the sorted compact JSON helper-hash map; never execute old helpers.
+RETAINED_HELPERS = {
+    LEGACY_DEVICE_SHA: "872b6966330c2bb127ae007cf936bffc6e6d7704d9d0ed1a0b7be5de57e8da0d",
+    "ad0c1a62300f77e616b1a373c92c967c3cba95b8": "af5caa6316e15bec85b501ff2f8839835546b1e1e5313810a314741479343156",
+}
 need = release.need
 
 
@@ -138,6 +146,45 @@ def native_phase(plan):
     return {"startup": "candidate-startup", "rollback": "rollback-startup"}[phase(plan)]
 
 
+def continuing(check):
+    return isinstance(check, dict) and check.get("schema") == CONTINUATION
+
+
+def timestamp(value):
+    need(type(value) is str, "trial.continuation.timestamp")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    need(parsed.tzinfo is not None, "trial.continuation.timestamp")
+    return parsed
+
+
+def validate_continuation(check):
+    exact(check, "schema phase doctorOperationId doctorIntentSha256 doctorResultSha256 reconciliation",
+          "trial.continuation.fields")
+    need(check["phase"] == "doctor" and HEX.fullmatch(check["doctorIntentSha256"]),
+         "trial.continuation.identity")
+    record = check["reconciliation"]
+    exact(record, "observedAt artifactDisposition artifactReceiptSha256 preservedBytes recaptureBytes additionalReserveBytes",
+          "trial.continuation.reconciliation_fields")
+    timestamp(record["observedAt"])
+    need(HEX.fullmatch(record["artifactReceiptSha256"]) and
+         record["artifactDisposition"] in ("completed-group-retained", "incomplete-survivors-preserved") and
+         all(type(record[k]) is int and record[k] >= 0 for k in ("preservedBytes", "recaptureBytes")) and
+         type(record["additionalReserveBytes"]) is int and record["additionalReserveBytes"] > 0,
+         "trial.continuation.reconciliation")
+    need((record["recaptureBytes"] > 0) == (record["artifactDisposition"] == "incomplete-survivors-preserved"),
+         "trial.continuation.recapture")
+
+
+def continuation_capacity(resources, plan, check):
+    if continuing(check):
+        record = check["reconciliation"]
+        required = plan["limits"]["minDataFreeBytes"] + record["recaptureBytes"] + record["additionalReserveBytes"]
+        need(resources["dataFreeBytes"] >= required, "trial.continuation.capacity")
+        resources["continuationAdmission"] = {"requiredFreeBytes": required,
+            "recaptureBytes": record["recaptureBytes"], "additionalReserveBytes": record["additionalReserveBytes"],
+            "basis": "owner-estimate-plus-runtime-floor; not an all-stage upper bound"}
+
+
 def resource_profile(limits):
     """One explicit fixed profile per operation; no implicit escalation."""
     need(all(type(limits.get(k)) is int for k in ("memoryBytes", "cpus", "readBps", "writeBps")) and
@@ -160,11 +207,15 @@ def validate(plan, image, clean, check=None):
     need(selected in ("doctor", "startup", "rollback"), "trial.plan.phase")
     if v2:
         need(HEX.fullmatch(plan["checkInputSha256"]), "trial.check.hash")
-        exact(check, "schema phase" + (" doctorOperationId doctorResultSha256" if selected != "doctor" else ""),
-              "trial.check.fields")
-        need(check["schema"] == "openclaw.snapshot-trial-check.v1" and check["phase"] == selected,
-             "trial.check.phase")
-        if selected != "doctor":
+        if continuing(check):
+            validate_continuation(check)
+            need(selected == "doctor", "trial.continuation.phase")
+        else:
+            exact(check, "schema phase" + (" doctorOperationId doctorResultSha256" if selected != "doctor" else ""),
+                  "trial.check.fields")
+            need(check["schema"] == "openclaw.snapshot-trial-check.v1" and check["phase"] == selected,
+                 "trial.check.phase")
+        if selected != "doctor" or continuing(check):
             need(OP.fullmatch(check["doctorOperationId"]) and check["doctorOperationId"] != plan["operationId"] and
                  HEX.fullmatch(check["doctorResultSha256"]), "trial.check.doctor_reference")
     else:
@@ -201,8 +252,9 @@ def validate(plan, image, clean, check=None):
     exact(clean, "schema receiptId restorationState restoreReceiptSha256 baselineSourceSha "
           "baselineImageDigest snapshotIdentity mountRoot filesystemDevice devicePath "
           "deviceMajorMinor mounts configSha256 integrationsDisabled", "trial.clean.fields")
+    expected_state = "doctor-interrupted" if continuing(check) else ("doctor-complete" if selected == "startup" else "unmigrated")
     need(clean["schema"] == "openclaw.snapshot-clean-input.v1" and
-         clean["restorationState"] == ("doctor-complete" if selected == "startup" else "unmigrated") and
+         clean["restorationState"] == expected_state and
          release.IDENT.fullmatch(clean["receiptId"]) and
          release.IDENT.fullmatch(clean["snapshotIdentity"]) and
          HEX.fullmatch(clean["restoreReceiptSha256"]) and
@@ -609,7 +661,7 @@ def prepare(plan_path, image_path, clean_path, tooling, check_path=None):
     return op
 
 
-def load(op):
+def read_operation(op):
     op = Path(op).absolute()
     need(op.resolve() == op and op.parent == PRIVATE_ROOT.resolve(), "trial.operation.path")
     info = op.stat()
@@ -628,26 +680,53 @@ def load(op):
     need(set(intent["helpers"]) == set(HELPERS), "trial.helpers.fields")
     for name, hashed in intent["helpers"].items():
         need(digest(durable.private_bytes(op / "supervisor" / name)) == hashed, "trial.helper.changed")
+    return op, intent
+
+
+def load(op):
+    op, intent = read_operation(op)
     verify_running_helpers(intent["helpers"])
     return op, intent
+
+
+def read_retained(op):
+    op, intent = read_operation(op)
+    manifest = digest(json.dumps(intent["helpers"], sort_keys=True, separators=(",", ":")).encode())
+    need(intent["helpers"] == LOADED_HELPER_HASHES or
+         RETAINED_HELPERS.get(intent["plan"]["toolingSha"]) == manifest,
+         "trial.prior.unreviewed_helpers")
+    return op, intent
+
+
+def retained_devices(prior, start_record):
+    if prior["plan"]["toolingSha"] == LEGACY_DEVICE_SHA:
+        need("devices" not in start_record, "trial.prior.legacy_devices")
+        return {"ioPath": prior["clean"]["devicePath"]}
+    need("devices" in start_record, "trial.prior.devices_missing")
+    return start_record["devices"]
 
 
 def phase_prerequisites(op, intent):
     """Resolve private prior authority; caller-embedded result JSON is not proof."""
     selected = phase(intent["plan"])
-    if selected == "doctor":
+    continuation = continuing(intent.get("check"))
+    if selected == "doctor" and not continuation:
         return None
     check = intent["check"]
-    previous, prior = load(PRIVATE_ROOT / check["doctorOperationId"])
+    previous, prior = read_retained(PRIVATE_ROOT / check["doctorOperationId"])
     need(phase(prior["plan"]) == "doctor", "trial.prior.not_doctor")
     result, hashed = private_json(previous / "result.json")
     need(hashed == check["doctorResultSha256"], "trial.prior.result_hash")
-    observed = status(previous)
-    accepted = ("succeeded",) if selected == "startup" else ("succeeded", "failed")
+    observed = status(previous, retained=True)
+    accepted = ("failed",) if continuation else (("succeeded",) if selected == "startup" else ("succeeded", "failed"))
     need(observed["state"] in accepted and observed.get("result") == result, "trial.prior.not_settled")
     start_record = durable.read_private(previous / "start-intent.json")
     prior_hash = digest(durable.private_bytes(previous / "intent.json"))
     need(start_record["intentSha256"] == prior_hash, "trial.prior.intent_hash")
+    if continuation:
+        need(check["doctorIntentSha256"] == prior_hash, "trial.continuation.intent_hash")
+        need(timestamp(result["at"]) <= timestamp(check["reconciliation"]["observedAt"]) <= datetime.now(timezone.utc),
+             "trial.continuation.reconciliation_time")
     if selected == "rollback" and result.get("cleanup") == "not_started":
         need(durable.prove_trial_no_create_failure(previous, prior_hash) == result,
              "trial.prior.no_create_changed")
@@ -663,17 +742,22 @@ def phase_prerequisites(op, intent):
         need(state["Running"] is False and state["Pid"] == 0 and
              all(state[key] == before[key] for key in ("StartedAt", "FinishedAt", "ExitCode", "OOMKilled")),
              "trial.prior.container_changed")
-        validate_container(actual, previous, prior, start_record["image"]["env"], start_record["devices"])
+        validate_container(actual, previous, prior, start_record["image"]["env"], retained_devices(prior, start_record))
     clean, old = intent["clean"], prior["clean"]
     common = ("snapshotIdentity", "baselineSourceSha", "baselineImageDigest")
     need(all(clean[key] == old[key] for key in common), "trial.prior.snapshot_binding")
-    if selected == "startup":
+    if selected == "startup" or continuation:
         same = ("restoreReceiptSha256", "mountRoot", "filesystemDevice", "devicePath", "deviceMajorMinor", "mounts")
         need(all(clean[key] == old[key] for key in same) and
              intent["plan"]["imageReceiptSha256"] == prior["plan"]["imageReceiptSha256"],
              "trial.prior.startup_binding")
         need(snapshot_paths(clean) == start_record["mounts"], "trial.prior.startup_mount_changed")
-        need(block_devices(clean) == start_record["devices"], "trial.prior.startup_device_changed")
+        current_devices = block_devices(clean)
+        if prior["plan"]["toolingSha"] == LEGACY_DEVICE_SHA:
+            need(current_devices["deviceMajorMinor"] == old["deviceMajorMinor"] and
+                 current_devices["ioMajorMinor"] == old["deviceMajorMinor"], "trial.prior.legacy_parent_changed")
+        else:
+            need(current_devices == start_record["devices"], "trial.prior.startup_device_changed")
         helper_check = {"imageReceiptSha256": prior["plan"]["imageReceiptSha256"],
                         "cleanInputSha256": prior["plan"]["cleanInputSha256"], "doctorResult": result}
     else:
@@ -684,10 +768,29 @@ def phase_prerequisites(op, intent):
         # A sequential detach/delete/restore may reuse the same device numbers.
         # The restore owner binds the distinct receipt to the new cloud disk ID.
         helper_check = {key: intent["plan"][key] for key in ("imageReceiptSha256", "cleanInputSha256")}
-    contract = checks.validate_phase(native_phase(intent["plan"]), intent["image"], clean, helper_check)
-    return {"operationId": previous.name, "intentSha256": prior_hash, "resultSha256": hashed,
+    contract = None if continuation else checks.validate_phase(native_phase(intent["plan"]), intent["image"], clean, helper_check)
+    proof = {"operationId": previous.name, "intentSha256": prior_hash, "resultSha256": hashed,
             "containerId": result["containerId"], "startedAt": state["StartedAt"],
             "finishedAt": state["FinishedAt"], "probeContract": contract}
+    if continuation:
+        proof.update(invocationId=result["invocationId"], priorResourceProfile=resource_profile(prior["plan"]["limits"]),
+                     priorLimits=prior["plan"]["limits"],
+                     reconciliationSha256=digest(durable.encode(check["reconciliation"])))
+    if "continuedFrom" in result:
+        proof["continuedFrom"] = result["continuedFrom"]
+    return proof
+
+
+def verify_continuation_claim(op, intent, prior):
+    lease = op.parent / ("dataset-" + digest(intent["clean"]["mountRoot"].encode()) + ".json")
+    requested = {"operationId": op.name, "intentSha256": digest(durable.private_bytes(op / "intent.json"))}
+    need(durable.read_private(lease) == requested, "trial.continuation.claim_changed")
+    raw = durable.private_bytes(op / "dataset-previous.json")
+    need(json.loads(raw) == {"operationId": prior["operationId"], "intentSha256": prior["intentSha256"]},
+         "trial.continuation.previous_claim")
+    need(durable.read_private(op / "dataset-transfer.json") == {
+        "previousLeaseSha256": digest(raw), "successor": requested, "priorDoctor": prior,
+        "checkInputSha256": intent["plan"]["checkInputSha256"]}, "trial.continuation.transfer_changed")
 
 
 def start(op):
@@ -703,24 +806,44 @@ def start(op):
         no_other_writer(clean)
         image = observe_image(intent["image"], phase(intent["plan"]))
         resources = capacity(intent["plan"], clean, True)
+        continuation_capacity(resources, intent["plan"], intent.get("check"))
         intent_hash = digest(durable.private_bytes(op / "intent.json"))
         lease = op.parent / ("dataset-" + digest(clean["mountRoot"].encode()) + ".json")
         reservation = {"operationId": op.name, "intentSha256": intent_hash}
         def reserve_dataset():
+            continuation = continuing(intent.get("check"))
+            if continuation:
+                # This callback runs inside the global workload lock. Repeat
+                # live prior proof at the actual ownership transition boundary.
+                need(phase_prerequisites(op, intent) == prior, "trial.prior.changed")
+                need(lease.exists(), "trial.continuation.missing_claim")
             try:
+                if continuation:
+                    raise FileExistsError()
                 durable.write_once(lease, durable.encode(reservation))
             except FileExistsError:
-                current = durable.read_private(lease)
+                original = durable.private_bytes(lease)
+                current = json.loads(original)
                 if current == reservation:
+                    if continuation:
+                        verify_continuation_claim(op, intent, prior)
                     return
-                need(phase(intent["plan"]) == "startup" and current == {
+                need((phase(intent["plan"]) == "startup" or continuation) and current == {
                     "operationId": prior["operationId"], "intentSha256": prior["intentSha256"]},
                     "trial.dataset.reserved")
                 previous_lease = op / "dataset-previous.json"
                 if previous_lease.exists():
-                    need(durable.read_private(previous_lease) == current, "trial.dataset.previous_changed")
+                    need(durable.private_bytes(previous_lease) == original, "trial.dataset.previous_changed")
                 else:
-                    durable.write_once(previous_lease, durable.encode(current))
+                    durable.write_once(previous_lease, original)
+                if continuation:
+                    transfer = {"previousLeaseSha256": digest(original), "successor": reservation,
+                                "priorDoctor": prior, "checkInputSha256": intent["plan"]["checkInputSha256"]}
+                    if (op / "dataset-transfer.json").exists():
+                        need(durable.read_private(op / "dataset-transfer.json") == transfer,
+                             "trial.continuation.transfer_changed")
+                    else:
+                        durable.write_once(op / "dataset-transfer.json", durable.encode(transfer))
                 release.atomic_json(lease, reservation)
         # The common lock checks its current owner, then reserves the dataset,
         # then publishes this global owner. Exact pre-dispatch claims can resume.
@@ -926,8 +1049,11 @@ def serve(op):
         need(devices == started["devices"], "trial.devices.changed")
         no_other_writer(intent["clean"])
         need(observe_image(intent["image"], selected) == started["image"], "trial.image.changed")
-        capacity(intent["plan"], intent["clean"], True)
+        admission = capacity(intent["plan"], intent["clean"], True)
+        continuation_capacity(admission, intent["plan"], intent.get("check"))
         durable.reserve_heavy_workload(op, "doctor", started["intentSha256"])
+        if continuing(intent.get("check")):
+            verify_continuation_claim(op, intent, started["priorDoctor"])
         (op / "gate").mkdir(mode=0o755)
         os.chmod(op / "gate", 0o755)
         args = create_argv(op, intent, devices)
@@ -972,6 +1098,10 @@ def serve(op):
                         durable.write_once(op / "cgroup-admission.json", durable.encode({"path": str(cg),
                             "containerStart": container_start, "sample": initial, "processes": baseline_processes}))
                         durable.reserve_heavy_workload(op, "doctor", started["intentSha256"])
+                        if continuing(intent.get("check")):
+                            need(phase_prerequisites(op, intent) == started["priorDoctor"], "trial.prior.changed")
+                            verify_continuation_claim(op, intent, started["priorDoctor"])
+                            continuation_capacity(capacity(intent["plan"], intent["clean"]), intent["plan"], intent["check"])
                         durable.write_once(op / "gate/go", b"admitted\n")
                         os.chmod(op / "gate/go", 0o444)
                     if cg is not None:
@@ -1096,12 +1226,14 @@ def serve(op):
                   "promotionAuthorized": False}
         if "checkInputSha256" in intent["plan"]:
             result["checkInputSha256"] = intent["plan"]["checkInputSha256"]
+        if continuing(intent.get("check")):
+            result["continuedFrom"] = started["priorDoctor"]
         durable.write_once(op / "result.json", durable.encode(result))
     return 0 if reason is None else 1
 
 
-def status(op):
-    op, intent = load(op)
+def status(op, *, retained=False):
+    op, intent = read_retained(op) if retained else load(op)
     output = {"nativeOutput": {}, "operationId": op.name, "phase": phase(intent["plan"]),
               "state": "prepared", "promotionAuthorized": False,
               "resourceProfile": resource_profile(intent["plan"]["limits"])}
@@ -1160,6 +1292,12 @@ def status(op):
             # original intent remains authority; never rewrite their evidence.
             if "resourceProfile" in result:
                 need(result["resourceProfile"] == output["resourceProfile"], "trial.result.profile")
+            if continuing(intent.get("check")):
+                prior = durable.read_private(op / "start-intent.json")["priorDoctor"]
+                need(result.get("continuedFrom") == prior and
+                     prior["operationId"] == intent["check"]["doctorOperationId"] and
+                     prior["intentSha256"] == intent["check"]["doctorIntentSha256"] and
+                     prior["resultSha256"] == intent["check"]["doctorResultSha256"], "trial.result.continuation")
             if "checkInputSha256" in intent["plan"]:
                 need(result.get("phase") == phase(intent["plan"]) and
                      result.get("checkInputSha256") == intent["plan"]["checkInputSha256"], "trial.result.phase_binding")

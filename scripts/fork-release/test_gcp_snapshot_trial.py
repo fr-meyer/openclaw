@@ -110,6 +110,33 @@ class SnapshotTrialTests(unittest.TestCase):
             with self.assertRaises(release.Refusal):
                 trial.validate(changed, self.image, self.clean, self.intent["check"])
 
+    def select_continuation(self):
+        self.select_phase("doctor")
+        self.clean["restorationState"] = "doctor-interrupted"
+        self.intent["check"] = {"schema": trial.CONTINUATION, "phase": "doctor",
+            "doctorOperationId": "b" * 32, "doctorIntentSha256": "c" * 64, "doctorResultSha256": "d" * 64,
+            "reconciliation": {"observedAt": "2000-01-01T00:00:01Z",
+                "artifactDisposition": "incomplete-survivors-preserved", "artifactReceiptSha256": "e" * 64,
+                "preservedBytes": 23 << 30, "recaptureBytes": 47 << 30, "additionalReserveBytes": 8 << 30}}
+
+    def test_continuation_requires_truthful_input_and_explicit_recapture_budget(self):
+        self.select_continuation()
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        with self.assertRaisesRegex(release.Refusal, "trial.clean.identity"):
+            trial.validate(self.plan, self.image, {**self.clean, "restorationState": "unmigrated"}, self.intent["check"])
+        ordinary = {"schema": "openclaw.snapshot-trial-check.v1", "phase": "doctor"}
+        with self.assertRaisesRegex(release.Refusal, "trial.clean.identity"):
+            trial.validate(self.plan, self.image, self.clean, ordinary)
+        required = self.plan["limits"]["minDataFreeBytes"] + (55 << 30)
+        with self.assertRaisesRegex(release.Refusal, "trial.continuation.capacity"):
+            trial.continuation_capacity({"dataFreeBytes": required - 1}, self.plan, self.intent["check"])
+        resource = {"dataFreeBytes": required}
+        trial.continuation_capacity(resource, self.plan, self.intent["check"])
+        self.assertEqual(resource["continuationAdmission"]["requiredFreeBytes"], required)
+        self.intent["check"]["reconciliation"]["recaptureBytes"] = 0
+        with self.assertRaisesRegex(release.Refusal, "trial.continuation.recapture"):
+            trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+
     def native_result(self, selected="startup"):
         return {"schema": "openclaw.rehearsal-native-check.v1",
             "phase": "candidate-startup" if selected == "startup" else "rollback-startup",
@@ -165,6 +192,8 @@ class SnapshotTrialTests(unittest.TestCase):
         previous.mkdir(mode=0o700)
         prior["plan"]["operationId"] = previous.name
         self.select_phase(selected)
+        if selected == "doctor":
+            self.select_continuation()
         if selected == "rollback":
             self.clean["mountRoot"] = str(self.root / "rollback-dataset")
             self.clean["mounts"] = [{**m, "source": m["source"].replace(str(self.dataset), self.clean["mountRoot"])}
@@ -173,6 +202,7 @@ class SnapshotTrialTests(unittest.TestCase):
         state = {"Running": False, "Pid": 0, "ExitCode": 0 if doctor_state == "succeeded" else 1,
                  "OOMKilled": False, "StartedAt": "start", "FinishedAt": "finish"}
         result = {"operationId": previous.name, "invocationId": "f" * 32, "state": doctor_state,
+                  "at": "2000-01-01T00:00:00Z",
                   "doctorComplete": doctor_state == "succeeded", "nativeExitCode": state["ExitCode"],
                   "oomKillDelta": 0, "cgroupSettlementObserved": True,
                   "cleanup": "owned_container_stopped_retained", "nativeState": state,
@@ -192,6 +222,8 @@ class SnapshotTrialTests(unittest.TestCase):
         for name, value in records.items():
             trial.durable.write_once(previous / name, trial.durable.encode(value))
         self.intent["check"]["doctorResultSha256"] = trial.digest((previous / "result.json").read_bytes())
+        if selected == "doctor":
+            self.intent["check"]["doctorIntentSha256"] = trial.digest(raw)
         actual = {"Id": result["containerId"], "Name": "/openclaw-doctor-" + previous.name,
                   "Config": {"Labels": {"openclaw.snapshot-trial.operation": previous.name}},
                   "State": copy.deepcopy(state)}
@@ -202,13 +234,55 @@ class SnapshotTrialTests(unittest.TestCase):
         with patch.object(trial, "PRIVATE_ROOT", self.root), \
              patch.object(trial.durable, "TRIAL_ROOT", self.root), \
              patch.object(trial.durable, "native", return_value=native), \
-             patch.object(trial, "load", return_value=(previous, prior)), \
+             patch.object(trial, "read_retained", return_value=(previous, prior)), \
              patch.object(trial, "status", return_value={"state": doctor_state, "result": result}) as observe, \
              patch.object(trial, "inspect_container", return_value=actual), \
              patch.object(trial, "validate_container") as policy, \
              patch.object(trial, "block_devices", return_value=self.devices), \
              patch.object(trial, "snapshot_paths", return_value={}):
             yield prior, result, actual, observe, policy
+
+    def test_continuation_requires_exact_stopped_failed_predecessor_and_same_dataset_image(self):
+        with self.prior_boundaries("doctor", "failed") as (prior, result, actual, observe, policy):
+            proof = trial.phase_prerequisites(self.op, self.intent)
+            self.assertEqual(proof["invocationId"], "f" * 32)
+            self.assertEqual(proof["priorResourceProfile"]["id"], "read128-write32")
+            for key, value in (("Running", True), ("Pid", 123), ("StartedAt", "other"),
+                               ("FinishedAt", "other"), ("ExitCode", 2), ("OOMKilled", True)):
+                original = actual["State"][key]
+                actual["State"][key] = value
+                with self.subTest(key=key), self.assertRaisesRegex(release.Refusal, "trial.prior.container_changed"):
+                    trial.phase_prerequisites(self.op, self.intent)
+                actual["State"][key] = original
+            for owner, key, value in ((self.plan, "imageReceiptSha256", "0" * 64),
+                    (self.clean, "restoreReceiptSha256", "0" * 64), (self.clean, "snapshotIdentity", "another"),
+                    (self.intent["check"], "doctorIntentSha256", "0" * 64)):
+                original = owner[key]
+                owner[key] = value
+                with self.subTest(key=key), self.assertRaises(release.Refusal):
+                    trial.phase_prerequisites(self.op, self.intent)
+                owner[key] = original
+            observe.return_value = {"state": "unknown", "result": result}
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.not_settled"):
+                trial.phase_prerequisites(self.op, self.intent)
+
+    def test_continuation_refuses_completed_predecessor_use_startup_instead(self):
+        with self.prior_boundaries("doctor", "succeeded"):
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.not_settled"):
+                trial.phase_prerequisites(self.op, self.intent)
+
+    def test_a9_continuation_validates_old_parent_path_without_inventing_old_device_receipt(self):
+        with self.prior_boundaries("doctor", "failed") as (prior, result, actual, observe, policy):
+            prior["plan"]["toolingSha"] = trial.LEGACY_DEVICE_SHA
+            old = self.root / ("b" * 32) / "start-intent.json"
+            start_record = trial.durable.read_private(old)
+            del start_record["devices"]
+            old.write_bytes(trial.durable.encode(start_record))
+            trial.phase_prerequisites(self.op, self.intent)
+            self.assertEqual(policy.call_args.args[-1], {"ioPath": prior["clean"]["devicePath"]})
+            with patch.object(trial, "block_devices", return_value={**self.devices, "ioMajorMinor": "8:32"}):
+                with self.assertRaisesRegex(release.Refusal, "trial.prior.legacy_parent_changed"):
+                    trial.phase_prerequisites(self.op, self.intent)
 
     def test_startup_resolves_private_doctor_and_fresh_container_not_embedded_result(self):
         with self.prior_boundaries() as (prior, result, actual, observe, policy):
@@ -273,6 +347,23 @@ class SnapshotTrialTests(unittest.TestCase):
         with self.prior_boundaries("startup", "failed", no_create=True):
             with self.assertRaisesRegex(release.Refusal, "trial.prior.not_settled"):
                 trial.phase_prerequisites(self.op, self.intent)
+
+    def continued_phase_proof(self, selected, state):
+        with self.prior_boundaries(selected, state) as (prior, result, actual, observe, policy):
+            prior["clean"]["restorationState"] = "doctor-interrupted"
+            ancestor = {"operationId": "c" * 32, "intentSha256": "d" * 64, "resultSha256": "e" * 64}
+            result["continuedFrom"] = ancestor
+            raw = trial.durable.encode(result)
+            (self.root / ("b" * 32) / "result.json").write_bytes(raw)
+            self.intent["check"]["doctorResultSha256"] = trial.digest(raw)
+            proof = trial.phase_prerequisites(self.op, self.intent)
+            self.assertEqual(proof["continuedFrom"], ancestor)
+
+    def test_startup_keeps_successful_continued_doctor_provenance(self):
+        self.continued_phase_proof("startup", "succeeded")
+
+    def test_rollback_keeps_failed_continued_doctor_provenance(self):
+        self.continued_phase_proof("rollback", "failed")
 
     def test_overlapping_or_external_mounts_refused(self):
         for source in (str(self.root / "production"), self.clean["mounts"][0]["source"] + "/child"):
@@ -740,6 +831,93 @@ class SnapshotTrialTests(unittest.TestCase):
                     reserve.assert_not_called()
                     dispatch.assert_not_called()
 
+    def test_historical_reader_pins_a9_manifest_without_admitting_its_execution(self):
+        hashes = {
+            "gcp_build.py": "54871a4d6b40b55eceb48c0a503052f1369b5a63585406554599e0312eca7f41",
+            "gcp_rehearsal_checks.py": "e8e3b0a328715bf3b1dd783a81412f306fccf4aebec612719c4eec0dc44ccb28",
+            "gcp_snapshot_trial.py": "6000ac10e70dbf07c495338d07fffe24c24cc340cfb040feb360479fedd69731",
+            "pr.py": "351f2a1855959346e41a682a9a8a01bcef84b8fdbf3866b697ddd996502b6a3f",
+            "preflight.py": "ea9ff84927b40e0808ffb83426264b267299ee1237908548439c136b8d306f2b",
+            "release.py": "7bf6bf8b9d8885694f0bce3644f4cedc41c1ac99623c6460c81c0c6a3cc53f12"}
+        self.intent["helpers"] = hashes
+        self.plan["toolingSha"] = trial.LEGACY_DEVICE_SHA
+        with patch.object(trial, "read_operation", return_value=(self.op, self.intent)):
+            self.assertEqual(trial.read_retained(self.op)[1], self.intent)
+            with self.assertRaisesRegex(release.Refusal, "trial.running_helper.changed"):
+                trial.load(self.op)
+            self.plan["toolingSha"] = "0" * 40
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.unreviewed_helpers"):
+                trial.read_retained(self.op)
+            self.plan["toolingSha"] = trial.LEGACY_DEVICE_SHA
+            hashes["gcp_snapshot_trial.py"] = "0" * 64
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.unreviewed_helpers"):
+                trial.read_retained(self.op)
+
+    def test_historical_private_files_and_terminal_status_without_executing_old_helpers(self):
+        frozen = {name: ("# retained, never imported: " + name).encode() for name in trial.HELPERS}
+        (self.op / "supervisor").mkdir(mode=0o700)
+        for name, raw in frozen.items():
+            trial.durable.write_once(self.op / "supervisor" / name, raw)
+        self.intent.update(ownerUid=os.getuid(), ownerGid=os.getgid(),
+                           helpers={name: trial.digest(raw) for name, raw in frozen.items()})
+        for name, value, key in (("image-receipt.json", self.image, "imageReceiptSha256"),
+                                 ("clean-input.json", self.clean, "cleanInputSha256")):
+            raw = trial.durable.encode(value)
+            trial.durable.write_once(self.op / name, raw)
+            self.plan[key] = trial.digest(raw)
+        manifest = trial.digest(json.dumps(self.intent["helpers"], sort_keys=True, separators=(",", ":")).encode())
+        (self.op / "intent.json").write_bytes(trial.durable.encode(self.intent))
+        invocation = "f" * 32
+        records = {"start-intent.json": {}, "started.json": {"invocationId": invocation, "at": "2000-01-01T00:00:00Z"},
+            "result.json": {"operationId": self.op.name, "invocationId": invocation, "state": "failed",
+                "imageReceiptSha256": self.plan["imageReceiptSha256"], "cleanInputSha256": self.plan["cleanInputSha256"]}}
+        for name, value in records.items():
+            trial.durable.write_once(self.op / name, trial.durable.encode(value))
+        service = {"LoadState": "loaded", "ActiveState": "failed", "SubState": "failed", "MainPID": "0",
+            "Result": "exit-code", "ExecMainCode": "1", "ExecMainStatus": "1", "InvocationID": invocation}
+        with patch.object(trial, "PRIVATE_ROOT", self.root), \
+             patch.dict(trial.RETAINED_HELPERS, {self.plan["toolingSha"]: manifest}), \
+             patch.object(trial, "native", side_effect=lambda *args: "\n".join(f"{k}={v}" for k, v in service.items()).encode()):
+            self.assertEqual(trial.read_retained(self.op)[1], self.intent)
+            self.assertEqual(trial.status(self.op, retained=True)["state"], "failed")
+            service["InvocationID"] = "0" * 32
+            self.assertEqual(trial.status(self.op, retained=True)["state"], "unknown")
+            with self.assertRaisesRegex(release.Refusal, "trial.running_helper.changed"):
+                trial.load(self.op)
+            file = self.op / "supervisor/gcp_snapshot_trial.py"
+            file.write_bytes(b"# changed")
+            with self.assertRaisesRegex(release.Refusal, "trial.helper.changed"):
+                trial.read_retained(self.op)
+
+    def test_continuation_private_records_status_binds_terminal_result_to_prior_hashes(self):
+        self.select_continuation()
+        (self.op / "supervisor").mkdir(mode=0o700)
+        for name, file in trial.RUNNING_HELPERS.items():
+            trial.durable.write_once(self.op / "supervisor" / name, file.read_bytes())
+        for name, value, key in (("image-receipt.json", self.image, "imageReceiptSha256"),
+                ("clean-input.json", self.clean, "cleanInputSha256"),
+                ("check-input.json", self.intent["check"], "checkInputSha256")):
+            raw = trial.durable.encode(value)
+            trial.durable.write_once(self.op / name, raw)
+            self.plan[key] = trial.digest(raw)
+        self.intent.update(ownerUid=os.getuid(), ownerGid=os.getgid(), helpers=dict(trial.LOADED_HELPER_HASHES))
+        (self.op / "intent.json").write_bytes(trial.durable.encode(self.intent))
+        prior = {"operationId": "b" * 32, "intentSha256": "c" * 64, "resultSha256": "d" * 64}
+        result = {"operationId": self.op.name, "invocationId": "f" * 32, "state": "failed", "phase": "doctor",
+            "continuedFrom": prior, **{k: self.plan[k] for k in ("imageReceiptSha256", "cleanInputSha256", "checkInputSha256")}}
+        for name, value in (("start-intent.json", {"priorDoctor": prior}),
+                ("started.json", {"invocationId": "f" * 32, "at": "2000-01-01T00:00:00Z"}), ("result.json", result)):
+            trial.durable.write_once(self.op / name, trial.durable.encode(value))
+        service = {"LoadState": "loaded", "ActiveState": "failed", "SubState": "failed", "MainPID": "0",
+            "Result": "exit-code", "ExecMainCode": "1", "ExecMainStatus": "1", "InvocationID": "f" * 32}
+        with patch.object(trial, "PRIVATE_ROOT", self.root), patch.object(trial, "native",
+                return_value="\n".join(f"{k}={v}" for k, v in service.items()).encode()):
+            self.assertEqual(trial.read_retained(self.op)[1]["clean"]["restorationState"], "doctor-interrupted")
+            self.assertEqual(trial.status(self.op, retained=True)["state"], "failed")
+            result["continuedFrom"] = {**prior, "resultSha256": "0" * 64}
+            (self.op / "result.json").write_bytes(trial.durable.encode(result))
+            self.assertEqual(trial.status(self.op, retained=True)["state"], "unknown")
+
     def test_dataset_writer_check_allows_disjoint_builder_cache(self):
         calls = []
         def fake(args, timeout=30):
@@ -799,7 +977,7 @@ class SnapshotTrialTests(unittest.TestCase):
              patch.object(trial, "block_devices", return_value=self.devices), \
              patch.object(trial, "no_other_writer"), \
              patch.object(trial, "observe_image", return_value={"loadedId": self.image["indexDigest"], "env": []}), \
-             patch.object(trial, "capacity", return_value={}), \
+             patch.object(trial, "capacity", return_value={"dataFreeBytes": 200 << 30}), \
              patch.object(trial.durable, "reserve_heavy_workload", side_effect=lambda *args, **kwargs:
                           kwargs.get("reserve_resource", lambda: None)()), \
              patch.object(trial.Path, "read_text", return_value="synthetic-boot"), \
@@ -825,7 +1003,7 @@ class SnapshotTrialTests(unittest.TestCase):
              patch.object(trial, "block_devices", return_value=self.devices), \
              patch.object(trial, "no_other_writer"), \
              patch.object(trial, "observe_image", return_value={"loadedId": self.image["indexDigest"], "env": []}), \
-             patch.object(trial, "capacity", return_value={}), \
+             patch.object(trial, "capacity", return_value={"dataFreeBytes": 200 << 30}), \
              patch.object(trial.durable, "reserve_heavy_workload", side_effect=reserve_then_publish) as reserve, \
              patch.object(trial.Path, "read_text", return_value="synthetic-boot"), \
              patch.object(trial, "status", return_value={"state": "unknown"}), \
@@ -904,6 +1082,59 @@ class SnapshotTrialTests(unittest.TestCase):
             with self.assertRaisesRegex(release.Refusal, "trial.dataset.reserved"):
                 trial.start(self.op)
             self.assertFalse((self.root / "global-owner.json").exists())
+            dispatch.assert_not_called()
+
+    def test_continuation_exact_transfer_preserves_raw_lease_and_recovers_before_dispatch(self):
+        self.select_continuation()
+        prior = {"operationId": "b" * 32, "intentSha256": "c" * 64, "resultSha256": "d" * 64}
+        lease = self.root / ("dataset-" + trial.digest(self.clean["mountRoot"].encode()) + ".json")
+        original = ('{ "intentSha256" : "' + "c" * 64 + '", "operationId" : "' + "b" * 32 + '" }\n').encode()
+        trial.durable.write_once(lease, original)
+        write_once = trial.durable.write_once
+        def interrupt(file, raw):
+            if file.name == "start-intent.json":
+                raise OSError("synthetic pre-dispatch interruption")
+            write_once(file, raw)
+        with self.start_boundaries() as (_, dispatch), patch.object(trial, "phase_prerequisites", return_value=prior):
+            with patch.object(trial.durable, "write_once", side_effect=interrupt):
+                with self.assertRaises(OSError):
+                    trial.start(self.op)
+            dispatch.assert_not_called()
+            self.assertEqual((self.op / "dataset-previous.json").read_bytes(), original)
+            trial.verify_continuation_claim(self.op, self.intent, prior)
+            trial.start(self.op)
+            trial.start(self.op)
+            dispatch.assert_called_once()
+
+    def test_continuation_missing_or_unrelated_lease_never_claims_or_dispatches(self):
+        self.select_continuation()
+        prior = {"operationId": "b" * 32, "intentSha256": "c" * 64, "resultSha256": "d" * 64}
+        lease = self.root / ("dataset-" + trial.digest(self.clean["mountRoot"].encode()) + ".json")
+        with self.start_boundaries() as (_, dispatch), patch.object(trial, "phase_prerequisites", return_value=prior):
+            with self.assertRaisesRegex(release.Refusal, "trial.continuation.missing_claim"):
+                trial.start(self.op)
+            self.assertFalse(lease.exists())
+            trial.durable.write_once(lease, trial.durable.encode({"operationId": "e" * 32, "intentSha256": "f" * 64}))
+            original = lease.read_bytes()
+            with self.assertRaisesRegex(release.Refusal, "trial.dataset.reserved"):
+                trial.start(self.op)
+            self.assertEqual(lease.read_bytes(), original)
+            self.assertFalse((self.root / "global-owner.json").exists())
+            dispatch.assert_not_called()
+
+    def test_continuation_reproves_predecessor_inside_global_lock_before_transfer(self):
+        self.select_continuation()
+        prior = {"operationId": "b" * 32, "intentSha256": "c" * 64, "resultSha256": "d" * 64}
+        lease = self.root / ("dataset-" + trial.digest(self.clean["mountRoot"].encode()) + ".json")
+        original = trial.durable.encode({k: prior[k] for k in ("operationId", "intentSha256")})
+        trial.durable.write_once(lease, original)
+        with self.start_boundaries() as (_, dispatch), patch.object(trial, "phase_prerequisites",
+                side_effect=[prior, {**prior, "resultSha256": "e" * 64}]):
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.changed"):
+                trial.start(self.op)
+            self.assertEqual(lease.read_bytes(), original)
+            self.assertFalse((self.root / "global-owner.json").exists())
+            self.assertFalse((self.op / "dataset-transfer.json").exists())
             dispatch.assert_not_called()
 
     def test_exit_zero_does_not_hide_child_oom_or_missing_completion(self):
@@ -997,7 +1228,7 @@ class SnapshotTrialTests(unittest.TestCase):
 
     def exercise_serve(self, *, oom_after_native_exit=False, lost_before_settlement=False, policy_drift=False,
                        readonly_drift=False, io_partition_drift=False, devices_changed=False,
-                       kernel_io_drift=False,
+                       kernel_io_drift=False, prior_changed_at_gate=False,
                        leftover_descendant=False, remove_cgroup_on_exit=False,
                        stdout=b"Doctor complete.\n", stderr=b""):
         """Run the actual supervisor loop with synthetic daemon/process/cgroup boundaries."""
@@ -1016,6 +1247,18 @@ class SnapshotTrialTests(unittest.TestCase):
         started = {"intentSha256": trial.digest((self.op / "intent.json").read_bytes()),
                    "bootId": "synthetic-boot", "mounts": {},
                    "image": {"loadedId": self.image["indexDigest"], "env": []}, "devices": self.devices}
+        prior = None
+        if trial.continuing(self.intent.get("check")):
+            prior = {"operationId": "b" * 32, "intentSha256": "c" * 64, "resultSha256": "d" * 64}
+            started["priorDoctor"] = prior
+            previous = trial.durable.encode({k: prior[k] for k in ("operationId", "intentSha256")})
+            requested = {"operationId": self.op.name, "intentSha256": started["intentSha256"]}
+            lease = self.root / ("dataset-" + trial.digest(self.clean["mountRoot"].encode()) + ".json")
+            trial.durable.write_once(lease, trial.durable.encode(requested))
+            trial.durable.write_once(self.op / "dataset-previous.json", previous)
+            trial.durable.write_once(self.op / "dataset-transfer.json", trial.durable.encode({
+                "previousLeaseSha256": trial.digest(previous), "successor": requested,
+                "priorDoctor": prior, "checkInputSha256": self.plan["checkInputSha256"]}))
         trial.durable.write_once(self.op / "start-intent.json", trial.durable.encode(started))
         state = {"child": None, "ready": False, "sent": False, "stopped": False, "closed": False}
         stop_calls = []
@@ -1158,12 +1401,17 @@ class SnapshotTrialTests(unittest.TestCase):
                 return {**self.devices, "ioMajorMinor": "8:32"}
             return self.devices
 
+        prior_reads = []
+        def phase_prerequisites(*args):
+            prior_reads.append(True)
+            return {**prior, "resultSha256": "e" * 64} if prior_changed_at_gate and len(prior_reads) > 1 else prior
+
         with ExitStack() as stack:
             for name, value in (("load", lambda _: (op, self.intent)), ("snapshot_paths", lambda _: {}),
                                 ("block_devices", devices),
                                 ("no_other_writer", lambda _: None), ("observe_image", lambda *args: started["image"]),
-                                ("phase_prerequisites", lambda *args: None),
-                                ("capacity", lambda *args: {}), ("docker", docker),
+                                ("phase_prerequisites", phase_prerequisites),
+                                ("capacity", lambda *args: {"dataFreeBytes": 200 << 30}), ("docker", docker),
                                 ("inspect_container", inspect), ("cgroup_path", lambda _: cg)):
                 stack.enter_context(patch.object(trial, name, side_effect=value))
             stack.enter_context(patch.object(trial.durable, "reserve_heavy_workload", create=True))
@@ -1183,6 +1431,23 @@ class SnapshotTrialTests(unittest.TestCase):
         self.assertEqual(result["nativeExitCode"], 0)
         self.assertTrue((self.op / "gate/settled").exists())
         self.assertEqual(stops, [])
+
+    def test_serve_continuation_preserves_prior_reference_on_success(self):
+        self.select_continuation()
+        code, result, stops = self.exercise_serve()
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["continuedFrom"]["operationId"], "b" * 32)
+        self.assertEqual(result["checkInputSha256"], self.plan["checkInputSha256"])
+        self.assertTrue(result["doctorComplete"])
+        self.assertEqual(stops, [])
+
+    def test_serve_continuation_rechecks_prior_before_native_gate(self):
+        self.select_continuation()
+        code, result, stops = self.exercise_serve(prior_changed_at_gate=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.prior.changed")
+        self.assertFalse((self.op / "gate/go").exists())
+        self.assertEqual(stops, [["stop", "--time", "30", "9" * 64]])
 
     def test_serve_higher_profile_is_applied_observed_and_retained_at_settlement(self):
         self.plan["limits"].update(readBps=256 << 20, writeBps=64 << 20)
