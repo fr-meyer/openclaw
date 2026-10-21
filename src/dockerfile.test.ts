@@ -177,6 +177,18 @@ describe("Dockerfile", () => {
     expect(hashInputs).toBeGreaterThanOrEqual(0);
     expect(hashInputs).toBeLessThan(fetch);
     expect(verifyInputs).toBeGreaterThan(fetch);
+    expect(networked[0]).toContain(
+      "https://github.com/matrix-org/matrix-rust-sdk-crypto-nodejs/releases/download/v0.6.6/$matrix_asset",
+    );
+    expect(networked[0]).toContain(
+      "aeb21029ac6bb29cd06493f67b19a5a75b3d0371a1ab452fe59f78249350f0f7",
+    );
+    expect(networked[0]).toContain(
+      "c43c347f39786ee9f2d11b5ae3088d182c1a81636f2b68dc2297fe6716be2891",
+    );
+    expect(networked[0]).toContain(
+      '"$matrix_sha256" "/opt/openclaw-native-assets/$matrix_asset" | sha256sum -c -',
+    );
     expect(networked[1]).toContain("apt-get dist-upgrade -y");
     expect(networked[2]).toContain("npm install --global npm@latest --ignore-scripts");
     expect(networked[2]).toContain("npm update");
@@ -213,6 +225,7 @@ describe("Dockerfile", () => {
     expect(installs).toHaveLength(2);
     for (const install of installs) {
       expect(install).toContain("--network=none");
+      expect(install).toContain("node scripts/docker/run-with-matrix-crypto-cache.mjs");
       expect(install).toContain("pnpm install --frozen-lockfile --offline");
       expect(install).not.toContain("--ignore-scripts");
       expect(install).not.toContain("--ignore-pnpmfile");

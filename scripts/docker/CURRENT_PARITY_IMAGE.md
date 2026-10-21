@@ -51,6 +51,14 @@ final nonroot offline pnpm check. Candidate scripts, compilation and payload
 verification explicitly use `--network=none`. Optional post-payload package
 install hooks also remain offline and are disabled for this candidate.
 
+Matrix crypto 0.6.6 downloads its native library from outside the npm tarball.
+Acquisition also fetches the Linux x64 or arm64 glibc asset, pinned to the
+[official release asset digest](https://github.com/matrix-org/matrix-rust-sdk-crypto-nodejs/releases/tag/v0.6.6).
+The offline install helper verifies those bytes again and exposes only that
+asset on loopback through the downloader's supported base-URL setting. The
+normal postinstall and native-addon checks still run; no dependency scripts,
+package integrity checks, or frozen-install requirements are disabled.
+
 The package cache and each acquisition stage must complete before the image
 can qualify; an offline miss remains a prerequisite failure. Do not remove
 native integrity or security checks to make a build pass.

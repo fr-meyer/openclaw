@@ -95,6 +95,18 @@ RUN --network=default --mount=type=cache,id=openclaw-pnpm-store,target=/root/.lo
       --config.supportedArchitectures.cpu="$(node -p 'process.arch')" \
       --config.supportedArchitectures.libc=glibc; \
     sha256sum -c /tmp/openclaw-fetch-inputs.sha256; \
+    matrix_arch="$(node -p 'process.arch')"; \
+    case "$matrix_arch" in \
+      x64) matrix_sha256=aeb21029ac6bb29cd06493f67b19a5a75b3d0371a1ab452fe59f78249350f0f7 ;; \
+      arm64) matrix_sha256=c43c347f39786ee9f2d11b5ae3088d182c1a81636f2b68dc2297fe6716be2891 ;; \
+      *) echo "Unsupported Matrix crypto acquisition architecture: $matrix_arch" >&2; exit 1 ;; \
+    esac; \
+    matrix_asset="matrix-sdk-crypto.linux-${matrix_arch}-gnu.node"; \
+    install -d -m 0755 /opt/openclaw-native-assets; \
+    curl --fail --location --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 120 --retry 3 \
+      "https://github.com/matrix-org/matrix-rust-sdk-crypto-nodejs/releases/download/v0.6.6/$matrix_asset" \
+      --output "/opt/openclaw-native-assets/$matrix_asset"; \
+    printf '%s  %s\n' "$matrix_sha256" "/opt/openclaw-native-assets/$matrix_asset" | sha256sum -c -; \
     rm -rf node_modules; \
     chmod -R a+rX "$COREPACK_HOME"
 
@@ -120,6 +132,7 @@ COPY scripts/lib/package-lifecycle-marker.mjs ./scripts/lib/package-lifecycle-ma
 COPY scripts/lib/fs-safe-prebuild.mjs ./scripts/lib/fs-safe-prebuild.mjs
 COPY scripts/docker/verify-fs-safe-native.mjs ./scripts/docker/verify-fs-safe-native.mjs
 COPY scripts/docker/verify-native-addons.sh ./scripts/docker/verify-native-addons.sh
+COPY scripts/docker/run-with-matrix-crypto-cache.mjs ./scripts/docker/run-with-matrix-crypto-cache.mjs
 
 # ── Production dependencies ────────────────────────────────────
 FROM dependency-inputs AS production-deps
@@ -128,7 +141,9 @@ RUN --network=none --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local
     while IFS= read -r ext; do \
       set -- "$@" --filter "./${OPENCLAW_BUNDLED_PLUGIN_DIR}/$ext"; \
     done < /tmp/openclaw-workspace-plugin-dirs; \
-    NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile --offline --prod "$@" \
+    NODE_OPTIONS=--max-old-space-size=2048 node scripts/docker/run-with-matrix-crypto-cache.mjs \
+      "/opt/openclaw-native-assets/matrix-sdk-crypto.linux-$(node -p 'process.arch')-gnu.node" -- \
+      pnpm install --frozen-lockfile --offline --prod "$@" \
       --config.supportedArchitectures.os=linux \
       --config.supportedArchitectures.cpu="$(node -p 'process.arch')" \
       --config.supportedArchitectures.libc=glibc
@@ -151,7 +166,9 @@ COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
 # Source asset preparation builds external plugins before runtime pruning.
 # Its build dependencies stay in this disposable stage; production remains filtered.
 RUN --network=none --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
-    NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile --offline \
+    NODE_OPTIONS=--max-old-space-size=2048 node scripts/docker/run-with-matrix-crypto-cache.mjs \
+      "/opt/openclaw-native-assets/matrix-sdk-crypto.linux-$(node -p 'process.arch')-gnu.node" -- \
+      pnpm install --frozen-lockfile --offline \
       --config.supportedArchitectures.os=linux \
       --config.supportedArchitectures.cpu="$(node -p 'process.arch')" \
       --config.supportedArchitectures.libc=glibc
