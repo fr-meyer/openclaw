@@ -74,15 +74,148 @@ dependency and `OPENCLAW_SOURCE_TEST_PNPM_DIR` pointing to the read-only pinned
 pnpm package. Set that variable when qualifying the isolated test toolchain;
 without it those native fixtures are explicitly reported as skipped.
 
-### One native Doctor execution
+### Daily snapshot rehearsal lifecycle
 
-`gcp_snapshot_trial.py` is the execution adapter for the already prepared test
-disk. It owns one Doctor invocation; the existing deployment owner owns the
-workflow around it. It never creates/restores disks, copies databases, performs
-production cutover, or retries migration. A clean-input receipt comes from the
-restore owner after reconciliation and sanitization. Its hash binds the snapshot
-lineage, unmigrated baseline, isolated config and exact mount permissions; a JSON
-attestation alone does not establish native integrity.
+`gcp_rehearsal.py daily` is the normal lifecycle for a new rehearsal on the
+existing GCP VM. It selects one eligible daily snapshot by its immutable ID,
+restores the complete disk, and records separate `candidate` and `rollback`
+generations from that same snapshot. It delegates native checks to
+`gcp_snapshot_trial.py`; there is one native supervisor and one workload
+reservation. It does not promote production.
+
+The existing manually prepared disk stays with its current deployment owner.
+This lifecycle does not adopt a manually named disk, create a second owner for
+that operation, or replace its evidence. Trial plan v1 remains available for
+an existing owner-admitted clean input, as described below.
+
+Prepare a private `openclaw.gcp-daily-snapshot.v1` plan with exact VM/source-disk
+names and numeric IDs, the existing daily snapshot policy, an explicit maximum
+snapshot age, disk/cost limits, measured resource admission limits, and the
+committed tooling SHA. Its independently observed baseline descriptor binds
+the original source SHA, version, index/image/config digests and supported
+gateway probe contract. Do not infer baseline identity from the candidate image
+or from a tag. Keep the sealed candidate image, its receipt, the tooling and
+private control directory outside the disposable disk.
+
+```sh
+python3 scripts/fork-release/gcp_rehearsal.py daily prepare \
+  --plan "$PRIVATE_DAILY_PLAN" --image-receipt "$SEALED_IMAGE_RECEIPT" \
+  --tooling "$COMMITTED_TOOLING_CHECKOUT"
+python3 scripts/fork-release/gcp_rehearsal.py daily status "$OP"
+```
+
+`OP` is the returned private operation directory. Preparation observes cloud
+identities and retains the plan and selected snapshot; it does not create,
+attach or mount a disk. Each cloud or mount change has a separate exact action
+challenge. Inspect the target, identity, consequences and cost before approving
+the printed SHA. Each challenge binds one action. The operator may apply these
+actions under an existing approval that covers their exact scope; a challenge
+does not require another human confirmation when that authorization exists.
+
+```sh
+python3 scripts/fork-release/gcp_rehearsal.py daily action "$OP" restore candidate
+python3 scripts/fork-release/gcp_rehearsal.py daily apply "$OP" restore candidate \
+  --approve "$REVIEWED_ACTION_SHA"
+```
+
+Use that same `action OP VERB GENERATION` / `apply OP VERB GENERATION --approve
+SHA` pair for each step below. The verbs are `restore`, `attach`, `mount`,
+`unmount`, `detach` and `delete`; generations are `candidate` and `rollback`.
+There is no automatic mutation loop.
+
+| Stage              | Required sequence                                                                                                                                                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Candidate disk     | Approve `restore candidate`, then `attach candidate`, then `mount candidate`; observe each terminal result.                                                                                                                                         |
+| Candidate input    | The restore owner isolates config/plugins/integrations on the direct clone and attests the complete input and mount layout. Preserve the coherent restored database groups; do not reconstruct selected files or reuse a partly migrated test copy. |
+| Candidate checks   | Prepare and separately approve `doctor`; after successful settled Doctor, attest the current config with `restorationState: doctor-complete`, then prepare and approve `startup`.                                                                   |
+| Candidate teardown | Archive compact diagnostics, verify every native check is stopped, then separately approve `unmount candidate`, `detach candidate`, and `delete candidate`.                                                                                         |
+| Rollback disk      | After candidate deletion is verified, separately approve `restore rollback`, `attach rollback`, and `mount rollback`. This is a fresh unmigrated clone of the same selected snapshot.                                                               |
+| Baseline check     | Attest the fresh isolated rollback input, then prepare and approve `rollback` using the original independently bound baseline build.                                                                                                                |
+| Finish             | Archive rollback diagnostics, approve its unmount/detach/delete actions, verify deletion, then close the operation.                                                                                                                                 |
+
+Prepare a check without launching it, inspect its separate challenge, and only
+then dispatch that exact phase:
+
+```sh
+python3 scripts/fork-release/gcp_rehearsal.py daily prepare-check "$OP" doctor \
+  --clean-input "$CANDIDATE_CLEAN_INPUT" --tooling "$COMMITTED_TOOLING_CHECKOUT"
+python3 scripts/fork-release/gcp_rehearsal.py daily check-action "$OP" doctor
+python3 scripts/fork-release/gcp_rehearsal.py daily run-check "$OP" doctor \
+  --approve "$REVIEWED_CHECK_SHA"
+python3 scripts/fork-release/gcp_rehearsal.py daily status "$OP"
+```
+
+Repeat the three check commands with phase `startup` and its post-Doctor input,
+then phase `rollback` and its fresh baseline input at the corresponding stages.
+Startup binds the retained successful Doctor result and the same actual image,
+device and mounts. Rollback binds the prior operation, original snapshot and
+baseline build to a distinct restore receipt and disjoint fresh mounts. It
+does not apply the candidate's Codex/version qualification to the older build.
+
+Candidate startup checks native `/healthz`, `/startupz` and `/readyz` from
+inside a network-disabled container, with loopback binding, integrations
+disabled and no published ports. The baseline uses its explicitly verified
+probe contract. A passing check also requires graceful native shutdown,
+exit/OOM evidence and cgroup settlement; HTTP liveness alone cannot pass it.
+The native checker allows 600 seconds for startup and 330 seconds for shutdown.
+The daily plan requires an outer timeout of at least 960 seconds. These are
+bounded checks, not a benchmark or a claim of optimal performance.
+
+```sh
+python3 scripts/fork-release/gcp_rehearsal.py daily archive "$OP" candidate
+# Approve and observe candidate teardown before restoring rollback.
+python3 scripts/fork-release/gcp_rehearsal.py daily archive "$OP" rollback
+# Approve and observe rollback teardown before close.
+python3 scripts/fork-release/gcp_rehearsal.py daily close "$OP"
+```
+
+`archive` retains bounded native logs, resource samples, intents and results in
+the private operation directory outside the test disk. It does not copy
+databases or create a full-disk backup. Scratch data and optional caches on a
+disposable disk are rebuildable; its source snapshot, sealed image and compact
+diagnostics survive its approved deletion. `close` verifies disk removal and
+settled checks, and records qualification only when all three native phases succeeded. Closing
+a failed rehearsal is not deployment approval.
+
+Intent and cloud request IDs are retained before dispatch. A lost response,
+unsettled native service or unproven deletion stays `unknown`; use `status` and
+the same operation to reconcile it. Do not retry by creating another run or
+erasing ownership files. Compute disk/attachment mutations address resource
+names and do not provide a disk-ID compare-and-swap precondition. Immediate
+identity rechecks and one cooperative owner narrow that race; they cannot
+exclude an unrelated actor replacing a resource between observation and the
+API call. Reconcile with the existing disk owner before any action, and keep
+external mutations serialized for the entire operation.
+
+If attachment succeeded but mounting did not, `detach` can prove that the exact
+owned device is unmounted after a settled host failure; an uncertain mount
+dispatch still blocks it. A terminal native failure before container creation
+uses the shared reservation owner's proof to release the workload slot. Any
+create intent without a proven outcome remains fenced.
+
+After a definitively failed `unmount`, `detach` or `delete`, prepare a new
+teardown attempt with `daily retry-prepare "$OP" VERB GENERATION`. This records
+the previous failure and returns a fresh action challenge without dispatching
+anything. Inspect it, then use `daily apply` with that new challenge. Prior
+attempts and request IDs remain retained; uncertain or running operations
+cannot take this path. There are at most eight separately approved teardown
+attempts per action. Doctor, restore and mount are never retried by this command.
+
+Production promotion remains a separate decision and must capture the fresh
+current production database and its matching pre-upgrade build for backup and
+rollback. Run the qualified migration on that current capture. Never replace
+live production state with either rehearsal generation.
+
+### Native checks on an existing admitted input
+
+`gcp_snapshot_trial.py` runs one native phase on an already prepared test disk.
+It never creates/restores disks, copies databases, performs production cutover,
+or retries migration. Plan v1 owns one Doctor invocation; plan v2 adds the
+`doctor`, `startup` and `rollback` phases used by the daily lifecycle. A
+clean-input receipt comes from the restore owner after reconciliation and
+sanitization. Its hash binds snapshot lineage, the appropriate baseline/state,
+isolated config and exact mount permissions; a JSON attestation alone does not
+establish native integrity.
 
 ```sh
 python3 scripts/fork-release/gcp_snapshot_trial.py prepare \
@@ -95,27 +228,41 @@ python3 scripts/fork-release/gcp_snapshot_trial.py status "$PREPARED_OPERATION"
 
 Use the exact committed tooling checkout for preparation. The running adapter
 and its shared helpers must match that revision; the retained supervisor must
-match again on dispatch. This executor admits only the reviewed 2026.10.5 source
-and immutable image identities. It does not replace the image receipt's original
-producer revision with the newer executor revision.
+match again on dispatch. Candidate phases admit only the reviewed 2026.10.5
+source and immutable image identities; rollback separately admits the bound
+baseline receipt. Neither replaces an image receipt's original producer
+revision with the newer executor revision.
 
 Each clean-input mount has `source`, `target`, and an explicit Boolean
 `readOnly`. State, `/tmp`, and `/rehearsal/cache` must be writable. Workspace
 files, sessions and mutable state remain writable because Doctor may rename or
 archive them. Independent project directories may be read-only submounts below
 workspace targets, including a workspace inside `/home/node/.openclaw`.
-Parent mounts precede child mounts. All source directories must be physically
-disjoint on the attested test filesystem; the adapter checks listed roots and
-their ancestor metadata without walking their contents. It verifies the
-effective Docker read/write flags before releasing Doctor. The restore owner
-must finish copy coverage and plugin/config isolation before attesting input;
-an old snapshot plugin must not override the selected image package.
+Parent mounts precede child mounts. Independent sources must be physically
+disjoint on the attested test filesystem. A read-only project overlay within a
+writable clone subtree must cover that subtree's own matching relative path.
+The adapter checks listed roots and ancestor metadata without walking their
+contents, and verifies effective Docker read/write flags before releasing the
+native gate. The restore owner must establish complete input coverage and
+plugin/config isolation before attesting input; an old snapshot plugin must
+not override the selected image package.
+
+The established operator retains private control receipts and the shared
+workload lease. A fixed isolated Python probe uses the existing
+`sudo -n -u frmeyer` route to read listed directory metadata and hash the
+UID1000-owned config, including private `0700` state. It returns no config body,
+does not walk directory contents, and does not change ownership or permissions.
+Exact read-only `state/repos` and workspace `.git` overlays are supported.
+Device aliases under `/dev` must resolve to the attested block device and
+mounted filesystem; accepting an alias does not relax device identity checks.
 
 The current reviewed envelope is 24 GiB, no container swap, 4 CPUs, 128 MiB/s
 reads and 32 MiB/s writes. Fresh admission limits in the private plan must cover
 the measured clean input, native backup set, WAL/temp growth and host headroom.
+This fixed 24 GiB/4 CPU envelope incorporates the failed 8 GiB rehearsal's
+lesson; it is not a measurement of peak demand or proof of sufficient memory.
 The executor verifies effective Docker and cgroup limits before releasing the
-native Doctor gate. `/usr/bin/timeout` in the sealed image must be verified
+native gate. `/usr/bin/timeout` in each selected image must be verified
 before activation. Do not infer its availability from the image's base distro.
 
 Start intent precedes systemd dispatch; repeating `start` observes the retained
@@ -127,10 +274,12 @@ counters are captured and only the original init and gate processes remain;
 wrapper exit zero cannot hide a killed native child. The gate uses Node timers,
 so its own polling adds no transient child processes to that observation.
 Failure stops only the exact owned container and preserves data, WAL, backups
-and logs. Startup/readiness and rollback are subsequent work owned by the
-deployment coordinator, not conclusions inferred from Doctor.
+and logs pending the owner's explicit teardown. Startup/readiness and rollback
+have separate phase results; Doctor success does not establish them. Trial v2
+retains a hash-bound private prior-Doctor reference, checks its settled native
+container, and validates the appropriate candidate or baseline image binding.
 
-Build and Doctor adapters share a durable heavyweight-workload reservation.
+Build and native trial phases share a durable heavyweight-workload reservation.
 Resource-specific reservations are admitted under the same lock, so a workload
 conflict cannot leave an unrelated builder or dataset reserved before dispatch.
 It advances only after matching terminal service/native evidence; a canceled

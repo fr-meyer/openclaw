@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Offline design contracts only. No cloud client, token verifier, or executor."""
+"""Rehearsal entry point: daily snapshot lifecycle or legacy offline WIF plan."""
 
 import argparse
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+import sys
 import uuid
 
 REPOSITORY_ID = "1309456040"
@@ -131,6 +132,9 @@ def public_receipt(binding, observation):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == 'daily':
+        import gcp_daily_snapshot
+        return gcp_daily_snapshot.main(sys.argv[2:])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("plan", type=Path, help="Private proposed plan JSON; never uploaded")
     args = parser.parse_args()
