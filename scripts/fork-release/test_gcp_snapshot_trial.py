@@ -282,14 +282,26 @@ class SnapshotTrialTests(unittest.TestCase):
             trial.validate(self.plan, self.image, {**self.clean, "baselineSourceSha": "0" * 40}, self.intent["check"])
 
     @contextmanager
-    def prior_boundaries(self, selected="startup", doctor_state="succeeded", no_create=False):
+    def prior_boundaries(self, selected="startup", doctor_state="succeeded", no_create=False,
+                         historical=False):
+        successor_check = copy.deepcopy(self.intent.get("check")) if historical and selected == "doctor" else None
         prior = copy.deepcopy(self.intent)
+        if historical:
+            prior["image"].update(trial.HISTORICAL_IMAGE)
+            prior["image"]["producer"]["toolingSha"] = trial.HISTORICAL_PRODUCER
+            prior["plan"]["imageReceiptSha256"] = trial.HISTORICAL_IMAGE_RECEIPT_SHA256
+            prior["clean"]["restorationState"] = "unmigrated"
+            if prior["plan"]["schema"] == "openclaw.snapshot-trial-plan.v2":
+                prior["check"] = {"schema": "openclaw.snapshot-trial-check.v1", "phase": "doctor"}
         previous = self.root / ("b" * 32)
         previous.mkdir(mode=0o700)
         prior["plan"]["operationId"] = previous.name
         self.select_phase(selected)
         if selected == "doctor":
             self.select_continuation()
+            if successor_check and "backupReuse" in successor_check:
+                self.intent["check"]["backupReuse"] = successor_check["backupReuse"]
+                self.intent["check"]["reconciliation"] = successor_check["reconciliation"]
         if selected == "rollback":
             self.clean["mountRoot"] = str(self.root / "rollback-dataset")
             self.clean["mounts"] = [{**m, "source": m["source"].replace(str(self.dataset), self.clean["mountRoot"])}
@@ -361,6 +373,67 @@ class SnapshotTrialTests(unittest.TestCase):
             observe.return_value = {"state": "unknown", "result": result}
             with self.assertRaisesRegex(release.Refusal, "trial.prior.not_settled"):
                 trial.phase_prerequisites(self.op, self.intent)
+
+    def test_cross_build_reuse_binds_old_and_new_images_group_and_native_proof(self):
+        group = "f8c55592-a39a-8e8c-87cd-40cb5ad53f22"
+        self.select_continuation()
+        record = self.intent["check"]["reconciliation"]
+        record.update(artifactDisposition="completed-group-retained", recaptureBytes=0,
+                      artifacts=[self.artifact(
+                          path=str(self.dataset / ("state/db.sqlite.pre-startup-migration-" + group + ".bak")),
+                          classification="native-revalidation-required", disposition="retain",
+                          nativeDiscardOnRetry=False)])
+        reuse = {"schema": trial.BACKUP_REUSE,
+                 "originSourceSha": trial.HISTORICAL_IMAGE["sourceSha"],
+                 "originImageDigest": trial.HISTORICAL_IMAGE["indexDigest"],
+                 "originImageReceiptSha256": trial.HISTORICAL_IMAGE_RECEIPT_SHA256,
+                 "targetSourceSha": self.image["sourceSha"],
+                 "targetImageReceiptSha256": self.plan["imageReceiptSha256"],
+                 "backupId": group, "manifestSha256": "a" * 64, "backupCount": 1}
+        self.intent["check"]["backupReuse"] = reuse
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        args = trial.create_argv(self.op, self.intent, self.devices)
+        proof = [value.split("=", 1)[1] for value in args
+                 if value.startswith("OPENCLAW_DOCTOR_BACKUP_REUSE_PROOF=")]
+        self.assertEqual(len(proof), 1)
+        self.assertEqual(json.loads(proof[0])["backupId"], group)
+        self.assertNotIn("backupCount", json.loads(proof[0]))
+        with self.prior_boundaries("doctor", "failed", historical=True) as (prior, result, actual, observe, policy):
+            reuse = self.intent["check"]["backupReuse"]
+            binding = trial.phase_prerequisites(self.op, self.intent)
+            self.assertEqual(binding["priorImageReceiptSha256"], trial.HISTORICAL_IMAGE_RECEIPT_SHA256)
+            self.assertEqual(binding["successorImageReceiptSha256"], self.plan["imageReceiptSha256"])
+            for key, value in (("originImageReceiptSha256", "f" * 64),
+                               ("originSourceSha", "f" * 40), ("targetSourceSha", "f" * 40),
+                               ("manifestSha256", "bad"), ("backupId", "bad")):
+                original = reuse[key]
+                reuse[key] = value
+                with self.subTest(key=key), self.assertRaises(release.Refusal):
+                    trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+                reuse[key] = original
+            prior["image"]["indexDigest"] = "sha256:" + "0" * 64
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.startup_binding"):
+                trial.phase_prerequisites(self.op, self.intent)
+
+    def test_cross_build_reuse_refuses_incomplete_group_and_unqualified_image(self):
+        self.select_continuation()
+        self.intent["check"]["backupReuse"] = {"schema": trial.BACKUP_REUSE,
+            "originSourceSha": trial.HISTORICAL_IMAGE["sourceSha"],
+            "originImageDigest": trial.HISTORICAL_IMAGE["indexDigest"],
+            "originImageReceiptSha256": trial.HISTORICAL_IMAGE_RECEIPT_SHA256,
+            "targetSourceSha": self.image["sourceSha"],
+            "targetImageReceiptSha256": self.plan["imageReceiptSha256"],
+            "backupId": "f8c55592-a39a-8e8c-87cd-40cb5ad53f22",
+            "manifestSha256": "a" * 64, "backupCount": 1}
+        with self.assertRaisesRegex(release.Refusal, "trial.reuse.group"):
+            trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        self.assertIsNone(trial.backup_reuse(None))
+        old = copy.deepcopy(self.image)
+        old.update(trial.HISTORICAL_IMAGE)
+        old["producer"]["toolingSha"] = trial.HISTORICAL_PRODUCER
+        with self.assertRaisesRegex(release.Refusal, "trial.image.not_qualified"):
+            trial.qualified_image(old)
+        trial.qualified_image(old, retained=True)
 
     def test_continuation_refuses_completed_predecessor_use_startup_instead(self):
         with self.prior_boundaries("doctor", "succeeded"):

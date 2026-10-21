@@ -367,6 +367,23 @@ reuse. Otherwise select `incomplete-group-reconciled`. Unknown ownership,
 production, active files and required rollback originals are protected. Changes
 to current database content alone never justify deleting a completed group.
 
+For a **reviewed cross-build continuation** on the same stopped test copy,
+the check also includes `backupReuse` with schema
+`openclaw.doctor-backup-reuse.v1`, the exact historical source SHA, image index
+digest and receipt SHA, the successor source SHA and image receipt SHA, the
+original backup group UUID, its manifest SHA-256 and the expected backup count.
+Every enumerated artifact must be a retained `migration-backup` from that
+group, classified `native-revalidation-required`, with zero recapture bytes.
+The runner accepts only its pinned historical image and the newly qualified
+successor image; it passes a narrower proof to the native Doctor. The native
+code rechecks the full physical database inventory, original manifest and
+backup identities, then performs its normal SQLite integrity and foreign-key
+validation before treating the old group as reusable. The old manifest and
+receipts remain unchanged; the successor writes distinct recovery evidence.
+An incomplete, replaced, aliased or mismatched group is refused. This path
+does not treat the interrupted working copy as an unmigrated snapshot and does
+not skip the remaining Doctor migration or startup qualification.
+
 Each artifact entry has these fields (all names are exact):
 
 ```json

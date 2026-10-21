@@ -42,6 +42,17 @@ ADMISSION = "/run/openclaw-trial-admission"
 CAP = 4 * 1024 * 1024
 QUALIFIED_IMAGE = {
     "repository": "fr-meyer/openclaw", "version": "2026.10.5", "architecture": "amd64",
+    "sourceSha": "4bcf8902e1eeb2fa5e84d0c4bf55572382ca61e4",
+    "sourceTree": "bd6a3b130536a5bfcbdb2b97a7319db5d389dc33",
+    "manifestSha256": "ec8c26e1480a7236667520ba3b32bd39413a466db3eba5a3091411a2e1bfeec1",
+    "inventorySha256": "bc3f130cea66991ffc33c060b0de906cf2bddaca65b8480a57b0b4519d6facf7",
+    "indexDigest": "sha256:0829e7490ce910da86fc374a627d1282fd0586d9f4abf61f9492899c0964ad5e",
+    "imageDigest": "sha256:a5a97b480d1d813755a26c1a858c28261cba55e685d8813b6b57919ab3edb5ec",
+    "configDigest": "sha256:8e7c58d98fea62abc2e97d2cde96a4549cbdd4c9b7488d6bcaf277341781e960",
+    "selectedExtensions": "codex,workboard", "bundledCodexVersion": "0.160.0",
+}
+HISTORICAL_IMAGE = {
+    **QUALIFIED_IMAGE,
     "sourceSha": "ae85778296da373dfe7d80101931bafac1acc9dd",
     "sourceTree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab",
     "manifestSha256": "4dfce05ac50a38c7667aeaa3b88f8f60e9c6046bb48a1d361785e77ee5d4ccd2",
@@ -49,9 +60,11 @@ QUALIFIED_IMAGE = {
     "indexDigest": "sha256:f41c7a7762f7a051636b899dac54110c482fb91352431ba6957343b9828f2e9c",
     "imageDigest": "sha256:e4901df74f92d4abeebae37982ff2ef631943446c0cfe37394f86e5351cc6280",
     "configDigest": "sha256:b6eaa3f6594c677f7795b68cda3adc4a34236af242d1a5257642e57574c6527d",
-    "selectedExtensions": "codex,workboard", "bundledCodexVersion": "0.160.0",
 }
-QUALIFIED_PRODUCER = "1507a29361d335283f1f4a55d8c037505892f94c"
+QUALIFIED_PRODUCER = "672f8a182cea6219d680bacd400923bf84ec9876"
+HISTORICAL_PRODUCER = "1507a29361d335283f1f4a55d8c037505892f94c"
+HISTORICAL_IMAGE_RECEIPT_SHA256 = "98ba31371e306b4e8878161ebf2dce0d021f1be2a3ae5e10384e238fdc9e6178"
+BACKUP_REUSE = "openclaw.doctor-backup-reuse.v1"
 IO_PROFILES = {(128 << 20, 32 << 20): "read128-write32",
                (256 << 20, 64 << 20): "read256-write64"}
 CONTINUATION = "openclaw.snapshot-doctor-continuation.v1"
@@ -87,10 +100,14 @@ def verify_running_helpers(expected):
              "trial.running_helper.changed")
 
 
-def qualified_image(image):
-    need(all(image.get(key) == value for key, value in QUALIFIED_IMAGE.items()) and
-         image.get("producer", {}).get("kind") == "gcp" and
-         image["producer"].get("toolingSha") == QUALIFIED_PRODUCER, "trial.image.not_qualified")
+def qualified_image(image, *, retained=False):
+    candidates = ((QUALIFIED_IMAGE, QUALIFIED_PRODUCER),)
+    if retained:
+        candidates += ((HISTORICAL_IMAGE, HISTORICAL_PRODUCER),)
+    need(image.get("producer", {}).get("kind") == "gcp" and any(
+         all(image.get(key) == value for key, value in candidate.items()) and
+         image["producer"].get("toolingSha") == producer for candidate, producer in candidates),
+         "trial.image.not_qualified")
 
 
 def private_json(path):
@@ -152,6 +169,10 @@ def continuing(check):
     return isinstance(check, dict) and check.get("schema") == CONTINUATION
 
 
+def backup_reuse(check):
+    return check.get("backupReuse") if continuing(check) else None
+
+
 def timestamp(value):
     need(type(value) is str, "trial.continuation.timestamp")
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -160,12 +181,15 @@ def timestamp(value):
 
 
 def validate_continuation(check, *, legacy=False):
-    exact(check, "schema phase doctorOperationId doctorIntentSha256 doctorResultSha256 reconciliation",
+    reuse = backup_reuse(check)
+    exact(check, "schema phase doctorOperationId doctorIntentSha256 doctorResultSha256 reconciliation" +
+          (" backupReuse" if reuse is not None else ""),
           "trial.continuation.fields")
     need(check["phase"] == "doctor" and HEX.fullmatch(check["doctorIntentSha256"]),
          "trial.continuation.identity")
     record = check["reconciliation"]
     if legacy:
+        need(reuse is None, "trial.continuation.legacy_reuse")
         # Read-only interpretation of the already qualified 4c57 receipt dialect.
         exact(record, "observedAt artifactDisposition artifactReceiptSha256 preservedBytes recaptureBytes additionalReserveBytes",
               "trial.continuation.legacy_fields")
@@ -188,6 +212,26 @@ def validate_continuation(check, *, legacy=False):
     need((record["recaptureBytes"] > 0) == (record["artifactDisposition"] == "incomplete-group-reconciled"),
          "trial.continuation.recapture")
     artifact_accounting(check)
+    if reuse is not None:
+        exact(reuse, "schema originSourceSha originImageDigest originImageReceiptSha256 targetSourceSha "
+              "targetImageReceiptSha256 backupId manifestSha256 backupCount", "trial.reuse.fields")
+        need(reuse["schema"] == BACKUP_REUSE and
+             reuse["originSourceSha"] == HISTORICAL_IMAGE["sourceSha"] and
+             reuse["originImageDigest"] == HISTORICAL_IMAGE["indexDigest"] and
+             reuse["originImageReceiptSha256"] == HISTORICAL_IMAGE_RECEIPT_SHA256 and
+             SHA.fullmatch(reuse["targetSourceSha"]) and
+             HEX.fullmatch(reuse["targetImageReceiptSha256"]) and
+             re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-8[a-f0-9]{3}-8[a-f0-9]{3}-[a-f0-9]{12}",
+                          reuse["backupId"]) and HEX.fullmatch(reuse["manifestSha256"]) and
+             type(reuse["backupCount"]) is int and 1 <= reuse["backupCount"] <= 1024 and
+             record["artifactDisposition"] == "completed-group-retained" and
+             record["recaptureBytes"] == 0 and
+             len(record["artifacts"]) == reuse["backupCount"] and
+             all(item["kind"] == "migration-backup" and
+                 item["classification"] == "native-revalidation-required" and
+                 item["disposition"] == "retain" and item["nativeDiscardOnRetry"] is False and
+                 item["path"].endswith(".pre-startup-migration-" + reuse["backupId"] + ".bak")
+                 for item in record["artifacts"]), "trial.reuse.group")
 
 
 def artifact_accounting(check, clean=None):
@@ -322,7 +366,7 @@ def validate(plan, image, clean, check=None, *, retained=False):
          image.get("architecture") == "amd64" and SHA.fullmatch(image.get("sourceSha", "")),
          "trial.image.receipt")
     if selected != "rollback":
-        qualified_image(image)
+        qualified_image(image, retained=retained)
     need(all(DIGEST.fullmatch(image.get(k, "")) for k in
              ("indexDigest", "imageDigest", "configDigest")), "trial.image.digests")
     if selected != "rollback":
@@ -354,6 +398,11 @@ def validate(plan, image, clean, check=None, *, retained=False):
          re.fullmatch(r"[0-9]+:[0-9]+", clean["deviceMajorMinor"]), "trial.clean.device")
     if continuing(check) and not legacy_continuation:
         artifact_accounting(check, clean)
+    reuse = backup_reuse(check)
+    if reuse is not None:
+        need(reuse["targetSourceSha"] == image["sourceSha"] and
+             reuse["targetImageReceiptSha256"] == plan["imageReceiptSha256"] and
+             image["sourceSha"] != reuse["originSourceSha"], "trial.reuse.target")
     device = path(clean["devicePath"], canonical=False)
     need(str(device).startswith("/dev/"), "trial.clean.device_path")
     mounts = clean["mounts"]
@@ -701,6 +750,11 @@ def create_argv(op, intent, devices):
     for name in ("CHANNELS", "PROVIDERS", "CRON", "GMAIL_WATCHER", "CANVAS_HOST",
                  "BROWSER_CONTROL_SERVER", "STARTUP_MODEL_PREWARM"):
         env["OPENCLAW_SKIP_" + name] = "1"
+    reuse = backup_reuse(intent.get("check"))
+    if reuse is not None:
+        native = {key: reuse[key] for key in ("schema", "originSourceSha", "originImageDigest",
+                  "originImageReceiptSha256", "targetSourceSha", "backupId", "manifestSha256")}
+        env["OPENCLAW_DOCTOR_BACKUP_REUSE_PROOF"] = json.dumps(native, sort_keys=True, separators=(",", ":"))
     command = DOCTOR if phase(plan) == "doctor" else checks.command(
         native_phase(plan), limits["timeoutSeconds"], image.get("gatewayProbeContract"))
     return [*args, "--entrypoint", "/usr/bin/env", image["indexDigest"], "-i",
@@ -834,12 +888,20 @@ def phase_prerequisites(op, intent):
              "trial.prior.container_changed")
         validate_container(actual, previous, prior, start_record["image"]["env"], retained_devices(prior, start_record))
     clean, old = intent["clean"], prior["clean"]
+    reuse = backup_reuse(check)
     common = ("snapshotIdentity", "baselineSourceSha", "baselineImageDigest")
     need(all(clean[key] == old[key] for key in common), "trial.prior.snapshot_binding")
     if selected == "startup" or continuation:
         same = ("restoreReceiptSha256", "mountRoot", "filesystemDevice", "devicePath", "deviceMajorMinor", "mounts")
+        image_same = intent["plan"]["imageReceiptSha256"] == prior["plan"]["imageReceiptSha256"]
+        cross_build = (continuation and reuse is not None and not image_same and
+                       prior["plan"]["imageReceiptSha256"] == reuse["originImageReceiptSha256"] and
+                       all(prior["image"].get(key) == value for key, value in HISTORICAL_IMAGE.items()) and
+                       prior["image"].get("producer", {}).get("toolingSha") == HISTORICAL_PRODUCER and
+                       intent["image"]["sourceSha"] == reuse["targetSourceSha"] and
+                       intent["plan"]["imageReceiptSha256"] == reuse["targetImageReceiptSha256"])
         need(all(clean[key] == old[key] for key in same) and
-             intent["plan"]["imageReceiptSha256"] == prior["plan"]["imageReceiptSha256"],
+             ((image_same and reuse is None) or cross_build),
              "trial.prior.startup_binding")
         need(snapshot_paths(clean) == start_record["mounts"], "trial.prior.startup_mount_changed")
         current_devices = block_devices(clean)
@@ -866,6 +928,10 @@ def phase_prerequisites(op, intent):
         proof.update(invocationId=result["invocationId"], priorResourceProfile=resource_profile(prior["plan"]["limits"]),
                      priorLimits=prior["plan"]["limits"],
                      reconciliationSha256=digest(durable.encode(check["reconciliation"])))
+        if reuse is not None:
+            proof.update(priorImageReceiptSha256=prior["plan"]["imageReceiptSha256"],
+                         successorImageReceiptSha256=intent["plan"]["imageReceiptSha256"],
+                         backupReuseSha256=digest(durable.encode(reuse)))
     if "continuedFrom" in result:
         proof["continuedFrom"] = result["continuedFrom"]
     return proof
