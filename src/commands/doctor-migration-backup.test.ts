@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -5,9 +6,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as sqliteVec from "../../packages/memory-host-sdk/src/host/sqlite-vec.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as directoryDurability from "../infra/directory-durability.js";
+import { readMigrationArtifactIdentity } from "../infra/session-sqlite-migration-artifact.js";
 import * as sqliteSnapshot from "../infra/sqlite-snapshot.js";
 import { createOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
 import * as version from "../version.js";
+import {
+  completeDoctorMigrationBackups,
+  recordDoctorMigrationBackups,
+} from "./doctor-migration-backup-artifacts.js";
+import { DOCTOR_BACKUP_REUSE_ENV } from "./doctor-migration-backup-reuse.js";
 import { backupDoctorMigrationDatabases } from "./doctor-migration-backup.js";
 import { inspectSessionSqliteRecovery } from "./doctor-session-sqlite-recovery-inventory.js";
 
@@ -53,6 +60,32 @@ function createFixture() {
   return { shared, agent, env: { ...process.env, OPENCLAW_STATE_DIR: stateDir } };
 }
 
+function prepareCrossBuildGroup(fixture: ReturnType<typeof createFixture>) {
+  const original = [fixture.shared, fixture.agent].map((source) => listBackups(source)[0]!);
+  const group = /\.pre-startup-migration-([a-f0-9-]{36})\.bak$/u.exec(original[0]!)?.[1];
+  if (!group) {
+    throw new Error("synthetic old group missing");
+  }
+  const manifest = path.join(
+    fixture.env.OPENCLAW_STATE_DIR,
+    "session-sqlite-migration-runs",
+    `startup-migration-${group}.json`,
+  );
+  const originalManifest = fs.readFileSync(manifest);
+  const targetSourceSha = "b".repeat(40);
+  const proof = {
+    schema: "openclaw.doctor-backup-reuse.v1",
+    originSourceSha: "ae85778296da373dfe7d80101931bafac1acc9dd",
+    originImageDigest: "sha256:f41c7a7762f7a051636b899dac54110c482fb91352431ba6957343b9828f2e9c",
+    originImageReceiptSha256: "98ba31371e306b4e8878161ebf2dce0d021f1be2a3ae5e10384e238fdc9e6178",
+    targetSourceSha,
+    backupId: group,
+    manifestSha256: createHash("sha256").update(originalManifest).digest("hex"),
+  };
+  fixture.env[DOCTOR_BACKUP_REUSE_ENV] = JSON.stringify(proof);
+  return { original, group, manifest, originalManifest, proof, targetSourceSha };
+}
+
 async function backup(
   fixture: ReturnType<typeof createFixture>,
   pendingDatabasePaths = [fixture.agent],
@@ -72,6 +105,236 @@ async function backup(
 }
 
 describe("Doctor migration backup retries", () => {
+  it("reuses a reviewed earlier-build group and completes only the successor manifest", async () => {
+    const fixture = createFixture();
+    await backup(fixture);
+    const old = prepareCrossBuildGroup(fixture);
+    const commit = vi
+      .spyOn(version, "resolveRuntimeServiceCommit")
+      .mockReturnValue(old.targetSourceSha);
+    const build = vi
+      .spyOn(version, "resolveRuntimeServiceBuildId")
+      .mockReturnValue("successor-build");
+    try {
+      const agent = new DatabaseSync(fixture.agent);
+      try {
+        agent.exec("UPDATE preserved SET value = 'partly migrated';");
+      } finally {
+        agent.close();
+      }
+      await backup(fixture);
+      await backup(fixture);
+      expect([fixture.shared, fixture.agent].map((source) => listBackups(source)[0])).toEqual(
+        old.original,
+      );
+      expect([fixture.shared, fixture.agent].flatMap(listBackups)).toHaveLength(2);
+      expect(readPreservedValue(old.original[1]!)).toBe("agent before migration");
+      const successor = fs
+        .readdirSync(path.dirname(old.manifest))
+        .filter((name) => name.startsWith("startup-migration-") && !name.includes(old.group));
+      expect(successor).toHaveLength(1);
+      const successorPath = path.join(path.dirname(old.manifest), successor[0]!);
+      const recorded = JSON.parse(fs.readFileSync(successorPath, "utf8"));
+      expect(
+        recorded.targets
+          .map(
+            (target: { completedMoves: Array<{ archivePath: string }> }) =>
+              target.completedMoves[0]?.archivePath,
+          )
+          .toSorted(),
+      ).toEqual(old.original.toSorted());
+      expect(recorded.targets[0]?.completedMoves[0]?.artifact?.verification).toContain(
+        `cross-build-reuse:startup-migration-${old.group}:`,
+      );
+      const maintenance = createOpenClawDatabaseMaintenanceScope({
+        schemaMaintenance: true,
+        assertOwnerCurrent: () => {},
+      });
+      try {
+        await maintenance.run(() =>
+          completeDoctorMigrationBackups(fixture.env, [fixture.shared, fixture.agent]),
+        );
+      } finally {
+        await maintenance.close();
+      }
+      expect(fs.readFileSync(old.manifest)).toEqual(old.originalManifest);
+      expect(JSON.parse(fs.readFileSync(successorPath, "utf8")).completedAt).toBeTruthy();
+    } finally {
+      commit.mockRestore();
+      build.mockRestore();
+    }
+  });
+
+  it.each(["manifest", "missing", "aliased", "changed", "source", "capture"] as const)(
+    "refuses cross-build reuse when the %s proof or artifact changes without recapture",
+    async (damage) => {
+      const fixture = createFixture();
+      await backup(fixture);
+      const old = prepareCrossBuildGroup(fixture);
+      const commit = vi
+        .spyOn(version, "resolveRuntimeServiceCommit")
+        .mockReturnValue(old.targetSourceSha);
+      const build = vi
+        .spyOn(version, "resolveRuntimeServiceBuildId")
+        .mockReturnValue("successor-build");
+      try {
+        if (damage === "manifest") {
+          old.proof.manifestSha256 = "0".repeat(64);
+          fixture.env[DOCTOR_BACKUP_REUSE_ENV] = JSON.stringify(old.proof);
+        } else if (damage === "missing") {
+          fs.unlinkSync(old.original[1]!);
+        } else if (damage === "aliased") {
+          fs.linkSync(old.original[1]!, `${old.original[1]!}.alias`);
+        } else if (damage === "changed") {
+          const database = new DatabaseSync(old.original[1]!);
+          try {
+            database.exec("UPDATE preserved SET value = 'changed original';");
+          } finally {
+            database.close();
+          }
+        } else if (damage === "source") {
+          const replacement = `${fixture.agent}.replacement`;
+          seedDatabase(replacement, "different source");
+          fs.renameSync(replacement, fixture.agent);
+        } else if (damage === "capture") {
+          fs.writeFileSync(`${old.original[0]}.capturing`, "");
+        }
+        await expect(backup(fixture)).rejects.toMatchObject({
+          refusal: { kind: "data-at-risk", reason: "incomplete-migration" },
+        });
+        expect(fs.readFileSync(old.manifest)).toEqual(old.originalManifest);
+        const currentBackups = [fixture.shared, fixture.agent].flatMap(listBackups);
+        expect(currentBackups).toEqual(damage === "missing" ? [old.original[0]] : old.original);
+      } finally {
+        commit.mockRestore();
+        build.mockRestore();
+      }
+    },
+  );
+  it.each(["completed", "source-identity"] as const)(
+    "refuses a %s successor receipt while preserving the origin group",
+    async (damage) => {
+      const fixture = createFixture();
+      await backup(fixture);
+      const old = prepareCrossBuildGroup(fixture);
+      const commit = vi
+        .spyOn(version, "resolveRuntimeServiceCommit")
+        .mockReturnValue(old.targetSourceSha);
+      const build = vi
+        .spyOn(version, "resolveRuntimeServiceBuildId")
+        .mockReturnValue("successor-build");
+      try {
+        await backup(fixture);
+        const successorName = fs
+          .readdirSync(path.dirname(old.manifest))
+          .find((name) => name.startsWith("startup-migration-") && !name.includes(old.group));
+        expect(successorName).toBeTruthy();
+        const successorPath = path.join(path.dirname(old.manifest), successorName!);
+        const successor = JSON.parse(fs.readFileSync(successorPath, "utf8"));
+        if (damage === "completed") {
+          successor.completedAt = new Date().toISOString();
+        } else {
+          successor.targets[0].databaseIdentity.ino = "0";
+        }
+        fs.writeFileSync(successorPath, JSON.stringify(successor));
+        await expect(backup(fixture)).rejects.toMatchObject({
+          refusal: { kind: "data-at-risk", reason: "incomplete-migration" },
+        });
+        expect(fs.readFileSync(old.manifest)).toEqual(old.originalManifest);
+        expect([fixture.shared, fixture.agent].flatMap(listBackups)).toEqual(old.original);
+      } finally {
+        commit.mockRestore();
+        build.mockRestore();
+      }
+    },
+  );
+  it("requires a durable successor receipt on retry after publication sync failure", async () => {
+    const fixture = createFixture();
+    await backup(fixture);
+    const old = prepareCrossBuildGroup(fixture);
+    const commit = vi
+      .spyOn(version, "resolveRuntimeServiceCommit")
+      .mockReturnValue(old.targetSourceSha);
+    const build = vi
+      .spyOn(version, "resolveRuntimeServiceBuildId")
+      .mockReturnValue("successor-build");
+    const actualSync = directoryDurability.syncDirectorySync;
+    const manifestDirectory = path.dirname(old.manifest);
+    let failedSyncs = 0;
+    const sync = vi
+      .spyOn(directoryDurability, "syncDirectorySync")
+      .mockImplementation((directory) => {
+        if (directory === manifestDirectory && failedSyncs++ < 2) {
+          throw new Error("synthetic successor directory sync failure");
+        }
+        return actualSync(directory);
+      });
+    try {
+      await expect(backup(fixture)).rejects.toMatchObject({
+        refusal: { kind: "data-at-risk", reason: "incomplete-migration" },
+      });
+      const successor = fs
+        .readdirSync(manifestDirectory)
+        .filter((name) => name.startsWith("startup-migration-") && !name.includes(old.group));
+      expect(successor).toHaveLength(1);
+      await expect(backup(fixture)).rejects.toMatchObject({
+        refusal: { kind: "data-at-risk", reason: "incomplete-migration" },
+      });
+      expect(failedSyncs).toBe(2);
+      await backup(fixture);
+      expect(failedSyncs).toBe(3);
+      expect(fs.readFileSync(old.manifest)).toEqual(old.originalManifest);
+      expect([fixture.shared, fixture.agent].flatMap(listBackups)).toEqual(old.original);
+    } finally {
+      sync.mockRestore();
+      commit.mockRestore();
+      build.mockRestore();
+    }
+  });
+
+  it("refuses a replaced backup while resuming an existing successor receipt", async () => {
+    const fixture = createFixture();
+    await backup(fixture);
+    const old = prepareCrossBuildGroup(fixture);
+    const commit = vi
+      .spyOn(version, "resolveRuntimeServiceCommit")
+      .mockReturnValue(old.targetSourceSha);
+    const build = vi
+      .spyOn(version, "resolveRuntimeServiceBuildId")
+      .mockReturnValue("successor-build");
+    try {
+      await backup(fixture);
+      const successorName = fs
+        .readdirSync(path.dirname(old.manifest))
+        .find((name) => name.startsWith("startup-migration-") && !name.includes(old.group));
+      expect(successorName).toBeTruthy();
+      const successorId = /startup-migration-([a-f0-9-]{36})\.json$/u.exec(successorName!)?.[1];
+      expect(successorId).toBeTruthy();
+      const inventory = [fixture.shared, fixture.agent].map((source) => ({
+        path: source,
+        identity: fs.statSync(source, { bigint: true }),
+      }));
+      const verifiedBackupIdentities = new Map(
+        inventory.map(({ path: source }) => [
+          source,
+          readMigrationArtifactIdentity(`${source}.pre-startup-migration-${old.group}.bak`),
+        ]),
+      );
+      fs.renameSync(old.original[1]!, `${old.original[1]!}.retained`);
+      fs.copyFileSync(`${old.original[1]!}.retained`, old.original[1]!);
+      expect(() =>
+        recordDoctorMigrationBackups(fixture.env, successorId!, inventory, {
+          archiveBackupId: old.group,
+          originManifestSha256: old.proof.manifestSha256,
+          verifiedBackupIdentities,
+        }),
+      ).toThrow("Cross-build backup changed after validation");
+      expect(fs.readFileSync(old.manifest)).toEqual(old.originalManifest);
+    } finally {
+      commit.mockRestore();
+      build.mockRestore();
+    }
+  });
   it("backs up the full inventory when only the shared database has a pending migration", async () => {
     const fixture = createFixture();
     await backup(fixture, [fixture.shared]);
