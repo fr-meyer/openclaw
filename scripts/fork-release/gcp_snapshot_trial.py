@@ -42,6 +42,17 @@ ADMISSION = "/run/openclaw-trial-admission"
 CAP = 4 * 1024 * 1024
 QUALIFIED_IMAGE = {
     "repository": "fr-meyer/openclaw", "version": "2026.10.5", "architecture": "amd64",
+    "sourceSha": "cc69ab4e786706c0f835427ba5fe884528f302ff",
+    "sourceTree": "67b692219f51cb243efbbdf3bd907d3d77a454fd",
+    "manifestSha256": "096105a899102e4ebb0d990c9761d80bd14690c97c0cee25b29ef88c2f588cec",
+    "inventorySha256": "95a0b9cc23844320daae0fc852fff0e862e6c862f90df77c4182b5d049a18037",
+    "indexDigest": "sha256:74e412b6602117b59ce7ea3b000275eacda606df83b3171105fd19f7bd43e5a3",
+    "imageDigest": "sha256:aa4006612a6f35503247286066138108108008d3d8d16136cc750ec47e5701a3",
+    "configDigest": "sha256:4e84c302e0c075e12b5a4f9b47c4ec32374b7212c3a32ba5eadadf6e16dd2ca3",
+    "selectedExtensions": "codex,workboard", "bundledCodexVersion": "0.160.0",
+}
+PREVIOUS_IMAGE = {
+    **QUALIFIED_IMAGE,
     "sourceSha": "4bcf8902e1eeb2fa5e84d0c4bf55572382ca61e4",
     "sourceTree": "bd6a3b130536a5bfcbdb2b97a7319db5d389dc33",
     "manifestSha256": "ec8c26e1480a7236667520ba3b32bd39413a466db3eba5a3091411a2e1bfeec1",
@@ -52,7 +63,7 @@ QUALIFIED_IMAGE = {
     "selectedExtensions": "codex,workboard", "bundledCodexVersion": "0.160.0",
 }
 HISTORICAL_IMAGE = {
-    **QUALIFIED_IMAGE,
+    **PREVIOUS_IMAGE,
     "sourceSha": "ae85778296da373dfe7d80101931bafac1acc9dd",
     "sourceTree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab",
     "manifestSha256": "4dfce05ac50a38c7667aeaa3b88f8f60e9c6046bb48a1d361785e77ee5d4ccd2",
@@ -62,6 +73,9 @@ HISTORICAL_IMAGE = {
     "configDigest": "sha256:b6eaa3f6594c677f7795b68cda3adc4a34236af242d1a5257642e57574c6527d",
 }
 QUALIFIED_PRODUCER = "672f8a182cea6219d680bacd400923bf84ec9876"
+PREVIOUS_IMAGE_RECEIPT_SHA256 = "b2dbfc302ebeb0cb2ee1fc31d35977905d662a5c1fe5b46e7faeec4c3191af71"
+PREVIOUS_PIPELINE_SHA = "ba225c30515c6b4dd8d0c96c67c066b7f8f1d1dc"
+CORRECTED_REBUILD_PRIOR = "bc97e00e81908f609cb55d61b109cefe"
 HISTORICAL_PRODUCER = "1507a29361d335283f1f4a55d8c037505892f94c"
 HISTORICAL_IMAGE_RECEIPT_SHA256 = "98ba31371e306b4e8878161ebf2dce0d021f1be2a3ae5e10384e238fdc9e6178"
 BACKUP_REUSE = "openclaw.doctor-backup-reuse.v1"
@@ -80,6 +94,8 @@ RETAINED_HELPERS = {
     LEGACY_CONTINUATION_SHA: "0de004053ed692ae2dc0cbf2d70f336dda72c02c21ba65a893ccac37a4719f97",
     # Actual stopped 16 GiB predecessor; read-only interpretation only.
     "4ad784b4c78d7109c719c22d80c0e927a3299e11": "d36a0a552c5db304b92f915e43f78997bcb58132fc9364eb9afcc0bc8596f556",
+    # Exact stopped 4bcf890 Doctor; retain only its reviewed helper manifest.
+    PREVIOUS_PIPELINE_SHA: "969db0156d9dfc0480288a913f637a8252dc7ed93988873b7399ae02922a5fb0",
 }
 need = release.need
 
@@ -107,7 +123,8 @@ def verify_running_helpers(expected):
 def qualified_image(image, *, retained=False):
     candidates = ((QUALIFIED_IMAGE, QUALIFIED_PRODUCER),)
     if retained:
-        candidates += ((HISTORICAL_IMAGE, HISTORICAL_PRODUCER),)
+        candidates += ((PREVIOUS_IMAGE, QUALIFIED_PRODUCER),
+                       (HISTORICAL_IMAGE, HISTORICAL_PRODUCER))
     need(image.get("producer", {}).get("kind") == "gcp" and any(
          all(image.get(key) == value for key, value in candidate.items()) and
          image["producer"].get("toolingSha") == producer for candidate, producer in candidates),
@@ -915,15 +932,26 @@ def phase_prerequisites(op, intent):
         # A later Doctor continuation must keep the original group's proof.
         # Dropping it would recapture from the already modified test copy.
         same_build = image_same and (not continuation or reuse == prior_reuse)
-        cross_build = (continuation and reuse is not None and not image_same and
-                       prior_reuse is None and
-                       prior["plan"]["imageReceiptSha256"] == reuse["originImageReceiptSha256"] and
-                       all(prior["image"].get(key) == value for key, value in HISTORICAL_IMAGE.items()) and
-                       prior["image"].get("producer", {}).get("toolingSha") == HISTORICAL_PRODUCER and
-                       intent["image"]["sourceSha"] == reuse["targetSourceSha"] and
-                       intent["plan"]["imageReceiptSha256"] == reuse["targetImageReceiptSha256"])
+        # The original ae85778 -> 4bcf890 transition is retained history, not
+        # a new direct ae85778 -> cc69ab4 route. Admit only the exact failed
+        # 4bcf890 Doctor with its original group still intact.
+        same_group = (reuse is not None and prior_reuse is not None and
+                      all(reuse[key] == prior_reuse[key] for key in
+                          ("schema", "originSourceSha", "originImageDigest",
+                           "originImageReceiptSha256", "backupId", "manifestSha256", "backupCount")))
+        corrected_rebuild = (continuation and not image_same and same_group and
+                             check["doctorOperationId"] == CORRECTED_REBUILD_PRIOR and
+                             prior["plan"]["toolingSha"] == PREVIOUS_PIPELINE_SHA and
+                             prior["plan"]["imageReceiptSha256"] == PREVIOUS_IMAGE_RECEIPT_SHA256 and
+                             all(prior["image"].get(key) == value for key, value in PREVIOUS_IMAGE.items()) and
+                             prior["image"].get("producer", {}).get("toolingSha") == QUALIFIED_PRODUCER and
+                             prior_reuse["targetSourceSha"] == PREVIOUS_IMAGE["sourceSha"] and
+                             prior_reuse["targetImageReceiptSha256"] == PREVIOUS_IMAGE_RECEIPT_SHA256 and
+                             intent["image"]["sourceSha"] == QUALIFIED_IMAGE["sourceSha"] and
+                             reuse["targetSourceSha"] == QUALIFIED_IMAGE["sourceSha"] and
+                             intent["plan"]["imageReceiptSha256"] == reuse["targetImageReceiptSha256"])
         need(all(clean[key] == old[key] for key in same) and
-             (same_build or cross_build),
+             (same_build or corrected_rebuild),
              "trial.prior.startup_binding")
         need(snapshot_paths(clean) == start_record["mounts"], "trial.prior.startup_mount_changed")
         current_devices = block_devices(clean)
