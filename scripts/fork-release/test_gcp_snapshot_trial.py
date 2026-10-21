@@ -435,6 +435,35 @@ class SnapshotTrialTests(unittest.TestCase):
             trial.qualified_image(old)
         trial.qualified_image(old, retained=True)
 
+    def test_later_continuation_keeps_exact_backup_reuse_proof(self):
+        self.select_continuation()
+        group = "f8c55592-a39a-8e8c-87cd-40cb5ad53f22"
+        self.intent["check"]["reconciliation"].update(
+            artifactDisposition="completed-group-retained", recaptureBytes=0,
+            artifacts=[self.artifact(
+                path=str(self.dataset / ("state/db.sqlite.pre-startup-migration-" + group + ".bak")),
+                classification="native-revalidation-required", disposition="retain",
+                nativeDiscardOnRetry=False)])
+        self.intent["check"]["backupReuse"] = {
+            "schema": trial.BACKUP_REUSE,
+            "originSourceSha": trial.HISTORICAL_IMAGE["sourceSha"],
+            "originImageDigest": trial.HISTORICAL_IMAGE["indexDigest"],
+            "originImageReceiptSha256": trial.HISTORICAL_IMAGE_RECEIPT_SHA256,
+            "targetSourceSha": self.image["sourceSha"],
+            "targetImageReceiptSha256": self.plan["imageReceiptSha256"],
+            "backupId": group, "manifestSha256": "a" * 64, "backupCount": 1}
+        with self.prior_boundaries("doctor", "failed") as (prior, *_):
+            self.intent["check"]["backupReuse"] = copy.deepcopy(prior["check"]["backupReuse"])
+            proof = trial.phase_prerequisites(self.op, self.intent)
+            self.assertEqual(proof["backupReuseSha256"],
+                             trial.digest(trial.durable.encode(self.intent["check"]["backupReuse"])))
+            retained = self.intent["check"].pop("backupReuse")
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.startup_binding"):
+                trial.phase_prerequisites(self.op, self.intent)
+            self.intent["check"]["backupReuse"] = {**retained, "manifestSha256": "b" * 64}
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.startup_binding"):
+                trial.phase_prerequisites(self.op, self.intent)
+
     def test_continuation_refuses_completed_predecessor_use_startup_instead(self):
         with self.prior_boundaries("doctor", "succeeded"):
             with self.assertRaisesRegex(release.Refusal, "trial.prior.not_settled"):
@@ -1306,6 +1335,56 @@ class SnapshotTrialTests(unittest.TestCase):
             trial.verify_continuation_claim(self.op, self.intent, prior)
             trial.start(self.op)
             trial.start(self.op)
+            dispatch.assert_called_once()
+
+    def test_continuation_renamed_lease_retry_resyncs_claims_before_dispatch(self):
+        self.select_continuation()
+        prior = {"operationId": "b" * 32, "intentSha256": "c" * 64, "resultSha256": "d" * 64}
+        lease = self.root / ("dataset-" + trial.digest(self.clean["mountRoot"].encode()) + ".json")
+        trial.durable.write_once(lease, trial.durable.encode({key: prior[key]
+                                                              for key in ("operationId", "intentSha256")}))
+        atomic = release.atomic_json
+        def renamed_without_directory_sync(file, value):
+            atomic(file, value)
+            raise OSError("synthetic post-rename interruption")
+        with self.start_boundaries() as (_, dispatch), patch.object(trial, "phase_prerequisites", return_value=prior):
+            with patch.object(release, "atomic_json", side_effect=renamed_without_directory_sync):
+                with self.assertRaisesRegex(OSError, "post-rename interruption"):
+                    trial.start(self.op)
+            self.assertEqual(trial.durable.read_private(lease)["operationId"], self.op.name)
+            self.assertFalse((self.op / "start-intent.json").exists())
+            dispatch.assert_not_called()
+            with patch.object(trial.durable, "sync_directory", side_effect=OSError("synthetic sync failure")):
+                with self.assertRaisesRegex(OSError, "synthetic sync failure"):
+                    trial.start(self.op)
+            dispatch.assert_not_called()
+            with patch.object(trial.durable, "sync_directory", wraps=trial.durable.sync_directory) as sync:
+                trial.start(self.op)
+                self.assertEqual([call.args[0] for call in sync.call_args_list[:3]],
+                                 [self.op, self.op, self.root])
+            trial.start(self.op)
+            dispatch.assert_called_once()
+
+    def test_continuation_existing_transfer_is_synced_before_lease_replacement(self):
+        self.select_continuation()
+        prior = {"operationId": "b" * 32, "intentSha256": "c" * 64, "resultSha256": "d" * 64}
+        lease = self.root / ("dataset-" + trial.digest(self.clean["mountRoot"].encode()) + ".json")
+        original = trial.durable.encode({key: prior[key] for key in ("operationId", "intentSha256")})
+        trial.durable.write_once(lease, original)
+        with self.start_boundaries() as (_, dispatch), patch.object(trial, "phase_prerequisites", return_value=prior):
+            with patch.object(release, "atomic_json", side_effect=OSError("synthetic before-rename interruption")):
+                with self.assertRaisesRegex(OSError, "before-rename interruption"):
+                    trial.start(self.op)
+            self.assertEqual(lease.read_bytes(), original)
+            self.assertTrue((self.op / "dataset-transfer.json").exists())
+            dispatch.assert_not_called()
+            with patch.object(trial, "sync_private_claim", side_effect=OSError("synthetic receipt sync failure")):
+                with self.assertRaisesRegex(OSError, "receipt sync failure"):
+                    trial.start(self.op)
+            self.assertEqual(lease.read_bytes(), original)
+            dispatch.assert_not_called()
+            trial.start(self.op)
+            self.assertEqual(trial.durable.read_private(lease)["operationId"], self.op.name)
             dispatch.assert_called_once()
 
     def test_continuation_missing_or_unrelated_lease_never_claims_or_dispatches(self):

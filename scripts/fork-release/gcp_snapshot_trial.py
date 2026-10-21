@@ -894,14 +894,19 @@ def phase_prerequisites(op, intent):
     if selected == "startup" or continuation:
         same = ("restoreReceiptSha256", "mountRoot", "filesystemDevice", "devicePath", "deviceMajorMinor", "mounts")
         image_same = intent["plan"]["imageReceiptSha256"] == prior["plan"]["imageReceiptSha256"]
+        prior_reuse = backup_reuse(prior.get("check"))
+        # A later Doctor continuation must keep the original group's proof.
+        # Dropping it would recapture from the already modified test copy.
+        same_build = image_same and (not continuation or reuse == prior_reuse)
         cross_build = (continuation and reuse is not None and not image_same and
+                       prior_reuse is None and
                        prior["plan"]["imageReceiptSha256"] == reuse["originImageReceiptSha256"] and
                        all(prior["image"].get(key) == value for key, value in HISTORICAL_IMAGE.items()) and
                        prior["image"].get("producer", {}).get("toolingSha") == HISTORICAL_PRODUCER and
                        intent["image"]["sourceSha"] == reuse["targetSourceSha"] and
                        intent["plan"]["imageReceiptSha256"] == reuse["targetImageReceiptSha256"])
         need(all(clean[key] == old[key] for key in same) and
-             ((image_same and reuse is None) or cross_build),
+             (same_build or cross_build),
              "trial.prior.startup_binding")
         need(snapshot_paths(clean) == start_record["mounts"], "trial.prior.startup_mount_changed")
         current_devices = block_devices(clean)
@@ -937,16 +942,38 @@ def phase_prerequisites(op, intent):
     return proof
 
 
+def sync_private_claim(claim, expected):
+    """Make an exact, already validated private claim durable on retry."""
+    descriptor = os.open(claim, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        metadata = os.fstat(descriptor)
+        need(stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.getuid() and
+             metadata.st_mode & 0o077 == 0, "trial.continuation.claim_not_private")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            need(stream.read(CAP + 1) == expected, "trial.continuation.claim_changed")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    durable.sync_directory(claim.parent)
+
+
 def verify_continuation_claim(op, intent, prior):
     lease = op.parent / ("dataset-" + digest(intent["clean"]["mountRoot"].encode()) + ".json")
     requested = {"operationId": op.name, "intentSha256": digest(durable.private_bytes(op / "intent.json"))}
-    need(durable.read_private(lease) == requested, "trial.continuation.claim_changed")
+    lease_raw = durable.private_bytes(lease)
+    need(json.loads(lease_raw) == requested, "trial.continuation.claim_changed")
     raw = durable.private_bytes(op / "dataset-previous.json")
     need(json.loads(raw) == {"operationId": prior["operationId"], "intentSha256": prior["intentSha256"]},
          "trial.continuation.previous_claim")
-    need(durable.read_private(op / "dataset-transfer.json") == {
+    transfer_raw = durable.private_bytes(op / "dataset-transfer.json")
+    need(json.loads(transfer_raw) == {
         "previousLeaseSha256": digest(raw), "successor": requested, "priorDoctor": prior,
         "checkInputSha256": intent["plan"]["checkInputSha256"]}, "trial.continuation.transfer_changed")
+    # A previous attempt may have renamed the lease and then failed to sync
+    # its parent. Re-durable all three exact claims before dispatching.
+    for claim, value in ((op / "dataset-previous.json", raw),
+                         (op / "dataset-transfer.json", transfer_raw), (lease, lease_raw)):
+        sync_private_claim(claim, value)
 
 
 def start(op):
@@ -983,6 +1010,8 @@ def start(op):
                 if current == reservation:
                     if continuation:
                         verify_continuation_claim(op, intent, prior)
+                    else:
+                        sync_private_claim(lease, original)
                     return
                 need((phase(intent["plan"]) == "startup" or continuation) and current == {
                     "operationId": prior["operationId"], "intentSha256": prior["intentSha256"]},
@@ -990,6 +1019,7 @@ def start(op):
                 previous_lease = op / "dataset-previous.json"
                 if previous_lease.exists():
                     need(durable.private_bytes(previous_lease) == original, "trial.dataset.previous_changed")
+                    sync_private_claim(previous_lease, original)
                 else:
                     durable.write_once(previous_lease, original)
                 if continuation:
@@ -998,6 +1028,7 @@ def start(op):
                     if (op / "dataset-transfer.json").exists():
                         need(durable.read_private(op / "dataset-transfer.json") == transfer,
                              "trial.continuation.transfer_changed")
+                        sync_private_claim(op / "dataset-transfer.json", durable.encode(transfer))
                     else:
                         durable.write_once(op / "dataset-transfer.json", durable.encode(transfer))
                 release.atomic_json(lease, reservation)
