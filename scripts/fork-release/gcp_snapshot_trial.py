@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""One native Doctor invocation on an already restored, isolated existing disk.
+"""One bounded native rehearsal phase on an already restored, isolated disk.
 
 The deployment owner supplies a private clean-input receipt and owns restore,
-readiness, rollback and production. This executor never provisions, copies,
+phase sequencing and production. This executor never provisions, copies,
 deletes, repairs a dataset in prepare, or retries a migration. prepare is inert;
 start is a separately authorized mutation. An uncertain start is status-only.
 The receipt is a private, caller-owned restore-owner attestation, not a database
@@ -26,10 +26,11 @@ import sys
 import time
 
 import gcp_build as durable
+import gcp_rehearsal_checks as checks
 import release
 
 PRIVATE_ROOT = Path("/var/tmp/openclaw-fork-snapshot-trial")
-HELPERS = ("gcp_snapshot_trial.py", *durable.HELPERS)
+HELPERS = ("gcp_snapshot_trial.py", "gcp_rehearsal_checks.py", *durable.HELPERS)
 DOCTOR = ["node", "/app/openclaw.mjs", "doctor", "--fix", "--non-interactive",
           "--no-workspace-suggestions"]
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -60,6 +61,7 @@ def digest(data):
 
 RUNNING_HELPERS = {
     "gcp_snapshot_trial.py": Path(__file__).resolve(), "gcp_build.py": Path(durable.__file__).resolve(),
+    "gcp_rehearsal_checks.py": Path(checks.__file__).resolve(),
     "release.py": Path(release.__file__).resolve(), "preflight.py": Path(durable.preflight.__file__).resolve(),
     "pr.py": Path(durable.pr.__file__).resolve(),
 }
@@ -89,11 +91,12 @@ def exact(value, keys, code):
     durable.fields(value, keys, code)
 
 
-def path(value):
+def path(value, canonical=True):
     need(type(value) is str and value.startswith("/") and value != "/"
          and not any(c in value for c in ",\n\r\0"), "trial.path.invalid")
     p = Path(value)
-    need(str(p) == value and p.resolve() == p, "trial.path.noncanonical")
+    need(str(p) == value and ".." not in p.parts and len(p.parts) <= 128 and
+         (not canonical or p.resolve() == p), "trial.path.noncanonical")
     return p
 
 
@@ -106,18 +109,54 @@ def project_target(target):
     if text.startswith(("/home/node/workspace/", "/data/")):
         return True
     state = Path(STATE_TARGET)
+    if target == state / "repos":
+        return True
     if state in target.parents:
         parts = target.relative_to(state).parts
         return len(parts) >= 2 and re.fullmatch(r"workspace(?:-[A-Za-z0-9_.-]+)?", parts[0]) is not None
     return False
 
 
-def validate(plan, image, clean):
-    exact(plan, "schema operationId toolingSha imageReceiptSha256 cleanInputSha256 limits",
+def direct_source_overlay(parent, child):
+    """A clone subtree may only cover its own path with a read-only bind."""
+    parent_source, child_source = Path(parent["source"]), Path(child["source"])
+    parent_target, child_target = Path(parent["target"]), Path(child["target"])
+    return (parent["readOnly"] is False and child["readOnly"] is True and
+            parent_source in child_source.parents and parent_target in child_target.parents and
+            project_target(child_target) and
+            (str(parent_target) == STATE_TARGET or project_target(parent_target)) and
+            child_source.relative_to(parent_source) == child_target.relative_to(parent_target))
+
+
+def phase(plan):
+    return plan["phase"] if plan["schema"] == "openclaw.snapshot-trial-plan.v2" else "doctor"
+
+
+def native_phase(plan):
+    return {"startup": "candidate-startup", "rollback": "rollback-startup"}[phase(plan)]
+
+
+def validate(plan, image, clean, check=None):
+    v2 = plan.get("schema") == "openclaw.snapshot-trial-plan.v2"
+    exact(plan, "schema operationId toolingSha imageReceiptSha256 cleanInputSha256 limits" +
+          (" phase checkInputSha256" if v2 else ""),
           "trial.plan.fields")
-    need(plan["schema"] == "openclaw.snapshot-trial-plan.v1" and
+    need(plan["schema"] in ("openclaw.snapshot-trial-plan.v1", "openclaw.snapshot-trial-plan.v2") and
          OP.fullmatch(plan["operationId"]) and SHA.fullmatch(plan["toolingSha"]),
          "trial.plan.identity")
+    selected = phase(plan)
+    need(selected in ("doctor", "startup", "rollback"), "trial.plan.phase")
+    if v2:
+        need(HEX.fullmatch(plan["checkInputSha256"]), "trial.check.hash")
+        exact(check, "schema phase" + (" doctorOperationId doctorResultSha256" if selected != "doctor" else ""),
+              "trial.check.fields")
+        need(check["schema"] == "openclaw.snapshot-trial-check.v1" and check["phase"] == selected,
+             "trial.check.phase")
+        if selected != "doctor":
+            need(OP.fullmatch(check["doctorOperationId"]) and check["doctorOperationId"] != plan["operationId"] and
+                 HEX.fullmatch(check["doctorResultSha256"]), "trial.check.doctor_reference")
+    else:
+        need(check is None, "trial.check.unexpected")
     need(all(HEX.fullmatch(plan[k]) for k in ("imageReceiptSha256", "cleanInputSha256")),
          "trial.plan.hash")
     limits = plan["limits"]
@@ -129,28 +168,31 @@ def validate(plan, image, clean):
          "trial.limits.unreviewed_envelope")
     need(limits["minMemoryAvailableBytes"] >= limits["memoryBytes"] and
          600 <= limits["timeoutSeconds"] <= 86400, "trial.limits.admission")
-    need(image.get("schema") == "openclaw.fork-release-image.v2" and
+    need(image.get("schema") == ("openclaw.rehearsal-baseline-image.v1" if selected == "rollback" else
+                                 "openclaw.fork-release-image.v2") and
          image.get("architecture") == "amd64" and SHA.fullmatch(image.get("sourceSha", "")),
          "trial.image.receipt")
-    qualified_image(image)
+    if selected != "rollback":
+        qualified_image(image)
     need(all(DIGEST.fullmatch(image.get(k, "")) for k in
              ("indexDigest", "imageDigest", "configDigest")), "trial.image.digests")
-    need(image.get("producer", {}).get("kind") == "gcp" and
-         SHA.fullmatch(image["producer"].get("toolingSha", "")), "trial.image.producer")
-    payload = {item["id"]: item for item in image.get("pluginPayload", [])}
-    codex = payload.get("codex", {}).get("codexRuntime", {})
-    board = payload.get("workboard", {}).get("workboardRuntime", {})
-    need(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", image.get("bundledCodexVersion", "")) and
-         all(codex.get(key) == image.get("bundledCodexVersion") for key in
-             ("packageVersion", "cliVersion", "initializeVersion")) and
-         codex.get("initialized") is True and codex.get("shutdown") == "exited" and
-         board == {"worker": "sqlite", "roundTrip": True, "closed": True},
-         "trial.image.native_proof")
+    if selected != "rollback":
+        need(image.get("producer", {}).get("kind") == "gcp" and
+             SHA.fullmatch(image["producer"].get("toolingSha", "")), "trial.image.producer")
+        payload = {item["id"]: item for item in image.get("pluginPayload", [])}
+        codex = payload.get("codex", {}).get("codexRuntime", {})
+        board = payload.get("workboard", {}).get("workboardRuntime", {})
+        need(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", image.get("bundledCodexVersion", "")) and
+             all(codex.get(key) == image.get("bundledCodexVersion") for key in
+                 ("packageVersion", "cliVersion", "initializeVersion")) and
+             codex.get("initialized") is True and codex.get("shutdown") == "exited" and
+             board == {"worker": "sqlite", "roundTrip": True, "closed": True},
+             "trial.image.native_proof")
     exact(clean, "schema receiptId restorationState restoreReceiptSha256 baselineSourceSha "
           "baselineImageDigest snapshotIdentity mountRoot filesystemDevice devicePath "
           "deviceMajorMinor mounts configSha256 integrationsDisabled", "trial.clean.fields")
     need(clean["schema"] == "openclaw.snapshot-clean-input.v1" and
-         clean["restorationState"] == "unmigrated" and
+         clean["restorationState"] == ("doctor-complete" if selected == "startup" else "unmigrated") and
          release.IDENT.fullmatch(clean["receiptId"]) and
          release.IDENT.fullmatch(clean["snapshotIdentity"]) and
          HEX.fullmatch(clean["restoreReceiptSha256"]) and
@@ -160,7 +202,7 @@ def validate(plan, image, clean):
     root = path(clean["mountRoot"])
     need(type(clean["filesystemDevice"]) is int and clean["filesystemDevice"] > 0 and
          re.fullmatch(r"[0-9]+:[0-9]+", clean["deviceMajorMinor"]), "trial.clean.device")
-    device = path(clean["devicePath"])
+    device = path(clean["devicePath"], canonical=False)
     need(str(device).startswith("/dev/"), "trial.clean.device_path")
     mounts = clean["mounts"]
     need(type(mounts) is list and 3 <= len(mounts) <= 16, "trial.mounts.count")
@@ -168,7 +210,9 @@ def validate(plan, image, clean):
     for mount in mounts:
         exact(mount, "source target readOnly", "trial.mount.fields")
         need(type(mount["readOnly"]) is bool, "trial.mount.read_only")
-        source, target = path(mount["source"]), Path(mount["target"])
+        # UID1000 owns private snapshot state. The fixed owner probe validates
+        # physical canonical paths before admission; parsing cannot stat them.
+        source, target = path(mount["source"], canonical=False), Path(mount["target"])
         need(root in source.parents, "trial.mount.outside_dataset")
         need(str(target) == mount["target"] and str(target).startswith("/") and
              not any(c in str(target) for c in ",\n\r\0") and ".." not in target.parts,
@@ -177,9 +221,12 @@ def validate(plan, image, clean):
              str(target).startswith(("/home/node/workspace/", "/data/")) or
              (mount["readOnly"] and project_target(target)), "trial.mount.target_scope")
         need(target not in targets, "trial.mount.duplicate_target")
-        need(not any(overlaps(source, previous) for previous in sources), "trial.mount.source_overlap")
+        for previous in sources:
+            if overlaps(source, Path(previous["source"])):
+                need(direct_source_overlay(previous, mount) or direct_source_overlay(mount, previous),
+                     "trial.mount.source_overlap")
         targets[target] = mount
-        sources.append(source)
+        sources.append(mount)
     need({Path(STATE_TARGET), Path("/tmp"), Path("/rehearsal/cache")}.issubset(targets),
          "trial.mount.required")
     need(all(not targets[Path(target)]["readOnly"] for target in (STATE_TARGET, "/tmp", "/rehearsal/cache")),
@@ -190,26 +237,138 @@ def validate(plan, image, clean):
                 parent = targets[ancestor]
                 need(child["readOnly"] and not parent["readOnly"] and project_target(target) and
                      (str(ancestor) == STATE_TARGET or project_target(ancestor)), "trial.mount.nested_scope")
+    if selected != "doctor":
+        contract = None
+        if selected == "rollback":
+            contract = checks.validate_phase(native_phase(plan), image, clean,
+                {key: plan[key] for key in ("imageReceiptSha256", "cleanInputSha256")})
+        checks.command(native_phase(plan), limits["timeoutSeconds"], contract)
 
 
-def source_identities(clean):
+DATA_OWNER_PROBE = r'''
+import hashlib, json, os, stat, sys
+from pathlib import Path
+def require(value):
+    if not value:
+        raise ValueError("data-owner-probe refused")
+try:
+    require(os.geteuid() == 1000)
+    raw = sys.stdin.buffer.read(65537)
+    require(len(raw) <= 65536)
+    request = json.loads(raw)
+    require(type(request) is dict and set(request) == {"root", "sources", "config"})
+    def canonical(value):
+        require(type(value) is str and value.startswith("/") and value != "/")
+        p = Path(value)
+        require(str(p) == value and ".." not in p.parts and len(p.parts) <= 128 and p.resolve(strict=True) == p)
+        return p
+    root = canonical(request["root"])
+    sources = request["sources"]
+    require(type(sources) is list and 3 <= len(sources) <= 16 and len(set(sources)) == len(sources))
+    directories = {}
+    for value in sources:
+        source = canonical(value)
+        require(root in source.parents)
+        for current in (source, *source.parents):
+            info = current.lstat()
+            require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode))
+            directories[str(current)] = {"device": info.st_dev, "inode": info.st_ino,
+                                         "mode": info.st_mode, "uid": info.st_uid}
+            if current == root:
+                break
+    config = canonical(request["config"])
+    require(config.name == "openclaw.json" and str(config.parent) in sources)
+    descriptor = os.open(config, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        require(stat.S_ISREG(before.st_mode) and before.st_uid == 1000 and before.st_size <= 1048576)
+        content = stream.read(1048577)
+        after = os.fstat(stream.fileno())
+        require(len(content) <= 1048576 and len(content) == before.st_size and
+                (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) ==
+                (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns))
+    print(json.dumps({"schema": "openclaw.snapshot-owner-metadata.v1", "uid": os.geteuid(),
+                      "directories": directories, "configSha256": hashlib.sha256(content).hexdigest()},
+                     sort_keys=True, separators=(",", ":")))
+except Exception:
+    sys.exit("data-owner-probe refused")
+'''
+
+
+def data_owner_metadata(clean):
+    """Read only listed metadata/config hash using the established UID1000 route."""
+    root = path(clean["mountRoot"])
+    sources = [path(m["source"], canonical=False) for m in clean["mounts"]]
+    state = next(Path(m["source"]) for m in clean["mounts"] if m["target"] == STATE_TARGET)
+    request = durable.encode({"root": str(root), "sources": [str(p) for p in sources],
+                              "config": str(state / "openclaw.json")})
+    need(len(request) <= 65536, "trial.owner_probe.input_limit")
+    args = ["/usr/bin/python3", "-I", "-c", DATA_OWNER_PROBE]
+    if os.geteuid() != 1000:
+        args = ["/usr/bin/sudo", "-n", "-u", "frmeyer", "--", *args]
+    result = subprocess.run(args, input=request, capture_output=True, timeout=30, env=durable.SAFE_ENV)
+    need(result.returncode == 0 and len(result.stdout) <= 1024 * 1024 and len(result.stderr) <= 65536,
+         "trial.owner_probe.failed")
+    metadata = json.loads(result.stdout)
+    exact(metadata, "schema uid directories configSha256", "trial.owner_probe.fields")
+    need(metadata["schema"] == "openclaw.snapshot-owner-metadata.v1" and metadata["uid"] == 1000 and
+         metadata["configSha256"] == clean["configSha256"], "trial.owner_probe.binding")
+    expected = {str(root)}
+    for source in sources:
+        need(root in source.parents, "trial.mount.outside_dataset")
+        current = source
+        while current != root:
+            expected.add(str(current))
+            current = current.parent
+    need(type(metadata["directories"]) is dict and set(metadata["directories"]) == expected,
+         "trial.owner_probe.paths")
+    for info in metadata["directories"].values():
+        exact(info, "device inode mode uid", "trial.owner_probe.stat_fields")
+        need(all(type(v) is int for v in info.values()) and info["device"] > 0 and info["inode"] > 0 and
+             info["uid"] >= 0 and stat.S_ISDIR(info["mode"]), "trial.owner_probe.stat")
+    observed = root.stat()
+    need(metadata["directories"][str(root)]["device"] == observed.st_dev == clean["filesystemDevice"] and
+         metadata["directories"][str(root)]["inode"] == observed.st_ino, "trial.owner_probe.root_changed")
+    return metadata["directories"]
+
+
+def source_identities(clean, metadata=None):
     """Stat only listed roots and their ancestors, never directory contents."""
     root, result, lineages = path(clean["mountRoot"]), {}, []
     for mount in clean["mounts"]:
-        source = path(mount["source"])
+        source = path(mount["source"], canonical=metadata is None)
         need(root in source.parents, "trial.mount.outside_dataset")
-        lineage, current = set(), source
+        lineage, current = {}, source
         while current != root:
-            info = current.stat()
-            need(stat.S_ISDIR(info.st_mode) and info.st_dev == clean["filesystemDevice"], "trial.dataset.bind")
-            lineage.add((info.st_dev, info.st_ino))
+            if metadata is None:
+                info = current.stat()
+                entry = {"mode": info.st_mode, "device": info.st_dev, "inode": info.st_ino}
+            else:
+                entry = metadata[str(current)]
+            need(stat.S_ISDIR(entry["mode"]) and entry["device"] == clean["filesystemDevice"], "trial.dataset.bind")
+            lineage[current] = (entry["device"], entry["inode"])
             if current == source:
-                identity = (info.st_dev, info.st_ino)
-                result[str(source)] = {"device": info.st_dev, "inode": info.st_ino}
+                identity = lineage[current]
+                result[str(source)] = {"device": entry["device"], "inode": entry["inode"]}
             current = current.parent
-        need(not any(identity in previous_lineage or previous in lineage
-                     for previous, previous_lineage in lineages), "trial.mount.physical_alias")
-        lineages.append((identity, lineage))
+        for previous, previous_lineage, previous_mount in lineages:
+            if direct_source_overlay(previous_mount, mount):
+                parent, parent_id, parent_lineage = previous_mount, previous, previous_lineage
+                child_id, child_lineage = identity, lineage
+            elif direct_source_overlay(mount, previous_mount):
+                parent, parent_id, parent_lineage = mount, identity, lineage
+                child_id, child_lineage = previous, previous_lineage
+            else:
+                need(not overlaps(source, Path(previous_mount["source"])) and
+                     identity not in previous_lineage.values() and previous not in lineage.values(),
+                     "trial.mount.physical_alias")
+                continue
+            # The allowed textual nesting must also be the observed physical
+            # ancestry, with no duplicate root or alternate ancestor alias.
+            need(parent_id != child_id and child_lineage.get(Path(parent["source"])) == parent_id and
+                 list(child_lineage.values()).count(parent_id) == 1 and child_id not in parent_lineage.values(),
+                 "trial.mount.physical_alias")
+        lineages.append((identity, lineage, mount))
     return result
 
 
@@ -217,8 +376,10 @@ def snapshot_paths(clean):
     root = path(clean["mountRoot"])
     need(root.is_mount() and root.stat().st_dev == clean["filesystemDevice"] and
          root.stat().st_dev != Path("/").stat().st_dev, "trial.dataset.mount")
-    device = path(clean["devicePath"])
-    info = device.stat()
+    device = path(clean["devicePath"], canonical=False)
+    resolved = device.resolve(strict=True)
+    need(str(resolved).startswith("/dev/"), "trial.dataset.device_target")
+    info = resolved.stat()
     need(stat.S_ISBLK(info.st_mode) and
          f"{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}" == clean["deviceMajorMinor"],
          "trial.dataset.device")
@@ -226,13 +387,7 @@ def snapshot_paths(clean):
     partition = Path(f"/sys/dev/block/{os.major(mounted)}:{os.minor(mounted)}").resolve()
     device_sys = Path("/sys/dev/block", clean["deviceMajorMinor"]).resolve()
     need(partition == device_sys or partition.parent == device_sys, "trial.dataset.device_parent")
-    result = source_identities(clean)
-    state = next(Path(m["source"]) for m in clean["mounts"] if m["target"] == STATE_TARGET)
-    config = state / "openclaw.json"
-    need(config.resolve() == config and config.is_file() and config.stat().st_size <= 1024 * 1024,
-         "trial.config.path")
-    need(digest(config.read_bytes()) == clean["configSha256"], "trial.config.changed")
-    return result
+    return source_identities(clean, data_owner_metadata(clean))
 
 
 def native(args, timeout=30):
@@ -267,8 +422,9 @@ def capacity(plan, clean, admission=False):
     return result
 
 
-def observe_image(image):
-    qualified_image(image)
+def observe_image(image, selected="doctor"):
+    if selected != "rollback":
+        qualified_image(image)
     value = json.loads(docker(["image", "inspect", image["indexDigest"]]))[0]
     ids = {image[k] for k in ("indexDigest", "imageDigest", "configDigest")}
     cfg = value["Config"]
@@ -284,7 +440,7 @@ def no_other_writer(clean):
     need(len(ids) <= 64 and all(HEX.fullmatch(cid) for cid in ids), "trial.active_container_count")
     if ids:
         rows = docker(["inspect", "--format", "{{json .Mounts}}", *ids]).decode().splitlines()
-        sources = [path(m["source"]) for m in clean["mounts"]]
+        sources = [path(m["source"], canonical=False) for m in clean["mounts"]]
         for row in rows:
             for mount in json.loads(row):
                 if mount.get("RW") and mount.get("Source"):
@@ -352,10 +508,12 @@ def create_argv(op, intent):
     for name in ("CHANNELS", "PROVIDERS", "CRON", "GMAIL_WATCHER", "CANVAS_HOST",
                  "BROWSER_CONTROL_SERVER", "STARTUP_MODEL_PREWARM"):
         env["OPENCLAW_SKIP_" + name] = "1"
+    command = DOCTOR if phase(plan) == "doctor" else checks.command(
+        native_phase(plan), limits["timeoutSeconds"], image.get("gatewayProbeContract"))
     return [*args, "--entrypoint", "/usr/bin/env", image["indexDigest"], "-i",
             *(f"{k}={v}" for k, v in env.items()), "node", "-e", gate_script(op), "--",
             "/usr/bin/timeout", "--signal=TERM", "--kill-after=30",
-            str(limits["timeoutSeconds"]) + "s", *DOCTOR]
+            str(limits["timeoutSeconds"]) + "s", *command]
 
 
 def service_argv(op):
@@ -367,11 +525,13 @@ def service_argv(op):
             "--", sys.executable, "-B", str(op / "supervisor/gcp_snapshot_trial.py"), "_serve", str(op)]
 
 
-def prepare(plan_path, image_path, clean_path, tooling):
+def prepare(plan_path, image_path, clean_path, tooling, check_path=None):
     plan, _ = private_json(plan_path)
     image, image_hash = private_json(image_path)
     clean, clean_hash = private_json(clean_path)
-    validate(plan, image, clean)
+    check, check_hash = private_json(check_path) if check_path is not None else (None, None)
+    validate(plan, image, clean, check)
+    need(check_hash == plan.get("checkInputSha256"), "trial.check.input_hash")
     need(image_hash == plan["imageReceiptSha256"] and clean_hash == plan["cleanInputSha256"], "trial.input.hash")
     tooling = Path(tooling).resolve()
     durable.clean_checkout(tooling, plan["toolingSha"])
@@ -387,9 +547,13 @@ def prepare(plan_path, image_path, clean_path, tooling):
         durable.write_once(op / "supervisor" / name, data)
     for name, source in (("image-receipt.json", image_path), ("clean-input.json", clean_path)):
         durable.write_once(op / name, durable.private_bytes(source))
+    if check_path is not None:
+        durable.write_once(op / "check-input.json", durable.private_bytes(check_path))
     intent = {"schema": "openclaw.snapshot-trial-intent.v1", "plan": plan, "image": image, "clean": clean,
               "ownerUid": os.getuid(), "ownerGid": os.getgid(), "preparedAt": durable.now(),
               "helpers": {name: digest(data) for name, data in files.items()}}
+    if check is not None:
+        intent["check"] = check
     durable.write_once(op / "intent.json", durable.encode(intent))
     return op
 
@@ -402,7 +566,10 @@ def load(op):
     intent, _ = private_json(op / "intent.json")
     need(intent["ownerUid"] == os.getuid() and intent["ownerGid"] == os.getgid() and
          intent["plan"]["operationId"] == op.name, "trial.intent.owner")
-    validate(intent["plan"], intent["image"], intent["clean"])
+    validate(intent["plan"], intent["image"], intent["clean"], intent.get("check"))
+    if "checkInputSha256" in intent["plan"]:
+        value, hashed = private_json(op / "check-input.json")
+        need(hashed == intent["plan"]["checkInputSha256"] and value == intent["check"], "trial.check.changed")
     for name, key in (("image-receipt.json", "imageReceiptSha256"), ("clean-input.json", "cleanInputSha256")):
         value, hashed = private_json(op / name)
         need(hashed == intent["plan"][key] and value == intent["image" if key.startswith("image") else "clean"],
@@ -414,6 +581,63 @@ def load(op):
     return op, intent
 
 
+def phase_prerequisites(op, intent):
+    """Resolve private prior authority; caller-embedded result JSON is not proof."""
+    selected = phase(intent["plan"])
+    if selected == "doctor":
+        return None
+    check = intent["check"]
+    previous, prior = load(PRIVATE_ROOT / check["doctorOperationId"])
+    need(phase(prior["plan"]) == "doctor", "trial.prior.not_doctor")
+    result, hashed = private_json(previous / "result.json")
+    need(hashed == check["doctorResultSha256"], "trial.prior.result_hash")
+    observed = status(previous)
+    accepted = ("succeeded",) if selected == "startup" else ("succeeded", "failed")
+    need(observed["state"] in accepted and observed.get("result") == result, "trial.prior.not_settled")
+    start_record = durable.read_private(previous / "start-intent.json")
+    prior_hash = digest(durable.private_bytes(previous / "intent.json"))
+    need(start_record["intentSha256"] == prior_hash, "trial.prior.intent_hash")
+    if selected == "rollback" and result.get("cleanup") == "not_started":
+        need(durable.prove_trial_no_create_failure(previous, prior_hash) == result,
+             "trial.prior.no_create_changed")
+        state = {"StartedAt": None, "FinishedAt": None}
+    else:
+        need(result["cleanup"] == "owned_container_stopped_retained", "trial.prior.not_settled")
+        retained = durable.read_private(previous / "container.json")
+        need(retained["id"] == result["containerId"], "trial.prior.container_receipt")
+        actual = inspect_container(result["containerId"])
+        validate_owned_container(actual, result["containerId"], previous)
+        before = result["nativeState"]
+        state = actual["State"]
+        need(state["Running"] is False and state["Pid"] == 0 and
+             all(state[key] == before[key] for key in ("StartedAt", "FinishedAt", "ExitCode", "OOMKilled")),
+             "trial.prior.container_changed")
+        validate_container(actual, previous, prior, start_record["image"]["env"])
+    clean, old = intent["clean"], prior["clean"]
+    common = ("snapshotIdentity", "baselineSourceSha", "baselineImageDigest")
+    need(all(clean[key] == old[key] for key in common), "trial.prior.snapshot_binding")
+    if selected == "startup":
+        same = ("restoreReceiptSha256", "mountRoot", "filesystemDevice", "devicePath", "deviceMajorMinor", "mounts")
+        need(all(clean[key] == old[key] for key in same) and
+             intent["plan"]["imageReceiptSha256"] == prior["plan"]["imageReceiptSha256"],
+             "trial.prior.startup_binding")
+        need(snapshot_paths(clean) == start_record["mounts"], "trial.prior.startup_mount_changed")
+        helper_check = {"imageReceiptSha256": prior["plan"]["imageReceiptSha256"],
+                        "cleanInputSha256": prior["plan"]["cleanInputSha256"], "doctorResult": result}
+    else:
+        need(clean["restoreReceiptSha256"] != old["restoreReceiptSha256"] and
+             not overlaps(path(clean["mountRoot"]), path(old["mountRoot"])) and
+             all(not overlaps(path(a["source"], canonical=False), path(b["source"], canonical=False))
+                 for a in clean["mounts"] for b in old["mounts"]), "trial.prior.rollback_not_fresh")
+        # A sequential detach/delete/restore may reuse the same device numbers.
+        # The restore owner binds the distinct receipt to the new cloud disk ID.
+        helper_check = {key: intent["plan"][key] for key in ("imageReceiptSha256", "cleanInputSha256")}
+    contract = checks.validate_phase(native_phase(intent["plan"]), intent["image"], clean, helper_check)
+    return {"operationId": previous.name, "intentSha256": prior_hash, "resultSha256": hashed,
+            "containerId": result["containerId"], "startedAt": state["StartedAt"],
+            "finishedAt": state["FinishedAt"], "probeContract": contract}
+
+
 def start(op):
     need(sys.platform == "linux", "trial.requires_linux")
     op, intent = load(op)
@@ -421,9 +645,10 @@ def start(op):
         if (op / "start-intent.json").exists():
             return status(op)
         clean = intent["clean"]
+        prior = phase_prerequisites(op, intent)
         mounts = snapshot_paths(clean)
         no_other_writer(clean)
-        image = observe_image(intent["image"])
+        image = observe_image(intent["image"], phase(intent["plan"]))
         resources = capacity(intent["plan"], clean, True)
         intent_hash = digest(durable.private_bytes(op / "intent.json"))
         lease = op.parent / ("dataset-" + digest(clean["mountRoot"].encode()) + ".json")
@@ -432,13 +657,25 @@ def start(op):
             try:
                 durable.write_once(lease, durable.encode(reservation))
             except FileExistsError:
-                need(durable.read_private(lease) == reservation, "trial.dataset.reserved")
+                current = durable.read_private(lease)
+                if current == reservation:
+                    return
+                need(phase(intent["plan"]) == "startup" and current == {
+                    "operationId": prior["operationId"], "intentSha256": prior["intentSha256"]},
+                    "trial.dataset.reserved")
+                previous_lease = op / "dataset-previous.json"
+                if previous_lease.exists():
+                    need(durable.read_private(previous_lease) == current, "trial.dataset.previous_changed")
+                else:
+                    durable.write_once(previous_lease, durable.encode(current))
+                release.atomic_json(lease, reservation)
         # The common lock checks its current owner, then reserves the dataset,
         # then publishes this global owner. Exact pre-dispatch claims can resume.
         durable.reserve_heavy_workload(op, "doctor", intent_hash, reserve_resource=reserve_dataset)
         durable.write_once(op / "start-intent.json", durable.encode({"intentSha256": intent_hash,
             "requestedAt": durable.now(), "bootId": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
-            "mounts": mounts, "image": image, "resources": resources, "serviceArgv": service_argv(op)}))
+            "mounts": mounts, "image": image, "resources": resources, "serviceArgv": service_argv(op),
+            "priorDoctor": prior}))
         try:
             result = subprocess.run(service_argv(op), capture_output=True, timeout=30, env=durable.SAFE_ENV)
             record = {"returnCode": result.returncode, "observedAt": durable.now()}
@@ -568,6 +805,8 @@ def serve(op):
     durable.write_once(op / "started.json", durable.encode({"invocationId": invocation, "at": durable.now()}))
     cid, child, cg, initial, final, reason = None, None, None, None, None, None
     complete, oom_kills, child_exit, settled = False, 0, None, False
+    selected = phase(intent["plan"])
+    native_check, check_buffer, check_count = None, b"", 0
     gate_ready, baseline_processes = False, None
     tails = {"stdout.log": b"", "stderr.log": b""}
     logs = {}
@@ -579,9 +818,10 @@ def serve(op):
     selector = selectors.DefaultSelector()
     try:
         need(started["bootId"] == Path("/proc/sys/kernel/random/boot_id").read_text().strip(), "trial.boot.changed")
+        need(phase_prerequisites(op, intent) == started.get("priorDoctor"), "trial.prior.changed")
         need(snapshot_paths(intent["clean"]) == started["mounts"], "trial.mount.changed")
         no_other_writer(intent["clean"])
-        need(observe_image(intent["image"]) == started["image"], "trial.image.changed")
+        need(observe_image(intent["image"], selected) == started["image"], "trial.image.changed")
         capacity(intent["plan"], intent["clean"], True)
         durable.reserve_heavy_workload(op, "doctor", started["intentSha256"])
         (op / "gate").mkdir(mode=0o755)
@@ -656,7 +896,21 @@ def serve(op):
                     continue
                 logs[key.data].append(durable.now().encode() + b" " + data)
                 window = tails[key.data] + data
-                complete |= b"Doctor complete." in window
+                if selected == "doctor":
+                    complete |= b"Doctor complete." in window
+                elif key.data == "stdout.log":
+                    # Only the trusted checker's stdout carries receipts; native
+                    # gateway output is inherited stderr. Parse complete bounded
+                    # lines once, including markers split across attach chunks.
+                    lines = (check_buffer + data).split(b"\n")
+                    check_buffer = lines.pop()
+                    need(len(check_buffer) <= 4096 and all(len(line) <= 4096 for line in lines),
+                         "trial.check.output_limit")
+                    for line in lines:
+                        if line.startswith(checks.RESULT_PREFIX.encode()):
+                            check_count += 1
+                            need(check_count == 1, "trial.check.duplicate_result")
+                            native_check = checks.parse_result(line.decode("utf-8"))
                 gate_ready |= b"OPENCLAW_TRIAL_" + op.name.encode() + b"_READY\n" in window
                 match = re.search(rb"OPENCLAW_TRIAL_" + op.name.encode() + rb"_EXIT=([0-9]{1,3})\n", window)
                 if match:
@@ -668,6 +922,11 @@ def serve(op):
         need(final["State"]["StartedAt"] == container_start, "trial.container.final_start_changed")
         need(cg is not None and settled, "trial.exit.before_settlement")
         need(child_exit == 0, "trial.doctor.native_exit")
+        if selected != "doctor":
+            need(check_count == 1 and not check_buffer, "trial.check.missing_result")
+            checks.validate_result(native_check, native_phase(intent["plan"]),
+                                   intent["image"].get("gatewayProbeContract"))
+            complete = True
         # Docker normally removes this cgroup on exit. Success may use the
         # retained quiescent settlement proof; a surviving cgroup adds evidence.
         if cg.exists():
@@ -709,18 +968,22 @@ def serve(op):
         result = {"operationId": op.name, "at": durable.now(), "invocationId": invocation,
                   "state": "failed" if reason else "succeeded", "reason": reason,
                   "containerId": cid, "nativeState": final["State"] if final else None,
-                  "doctorComplete": complete, "oomKillDelta": oom_kills, "cleanup": cleanup,
+                  "phase": selected, "doctorComplete": complete if selected == "doctor" else False,
+                  "nativeCheck": native_check, "oomKillDelta": oom_kills, "cleanup": cleanup,
                   "nativeExitCode": child_exit, "cgroupSettlementObserved": settled,
                   "imageReceiptSha256": intent["plan"]["imageReceiptSha256"],
                   "cleanInputSha256": intent["plan"]["cleanInputSha256"],
                   "promotionAuthorized": False}
+        if "checkInputSha256" in intent["plan"]:
+            result["checkInputSha256"] = intent["plan"]["checkInputSha256"]
         durable.write_once(op / "result.json", durable.encode(result))
     return 0 if reason is None else 1
 
 
 def status(op):
     op, intent = load(op)
-    output = {"nativeOutput": {}, "operationId": op.name, "state": "prepared", "promotionAuthorized": False}
+    output = {"nativeOutput": {}, "operationId": op.name, "phase": phase(intent["plan"]),
+              "state": "prepared", "promotionAuthorized": False}
     newest = None
     for name in ("stdout.log", "stderr.log"):
         file = op / name
@@ -772,6 +1035,16 @@ def status(op):
                  result["invocationId"] == started["invocationId"] == service.get("InvocationID") and
                  result["imageReceiptSha256"] == intent["plan"]["imageReceiptSha256"] and
                  result["cleanInputSha256"] == intent["plan"]["cleanInputSha256"], "trial.result.binding")
+            if "checkInputSha256" in intent["plan"]:
+                need(result.get("phase") == phase(intent["plan"]) and
+                     result.get("checkInputSha256") == intent["plan"]["checkInputSha256"], "trial.result.phase_binding")
+                if result["state"] == "succeeded" and phase(intent["plan"]) != "doctor":
+                    checks.validate_result(result.get("nativeCheck"), native_phase(intent["plan"]),
+                                           intent["image"].get("gatewayProbeContract"))
+                    need(result.get("cgroupSettlementObserved") is True and result.get("nativeExitCode") == 0 and
+                         result.get("cleanup") == "owned_container_stopped_retained" and
+                         successful(result.get("nativeState") or {}, 0, True, result.get("oomKillDelta")),
+                         "trial.result.native_proof")
             need(service.get("LoadState") == "loaded" and service.get("MainPID") == "0" and
                  service.get("ExecMainCode") == "1", "trial.service.not_settled")
             succeeded = result["state"] == "succeeded"
@@ -782,7 +1055,7 @@ def status(op):
                  (("active", "exited") if succeeded else ("failed", "failed")), "trial.service.result_conflict")
             output["state"] = result["state"]
             if output["state"] == "succeeded":
-                output["stageProgress"] = "doctor-completed"
+                output["stageProgress"] = phase(intent["plan"]) + "-completed"
     except (OSError, ValueError, KeyError, subprocess.TimeoutExpired, release.Refusal):
         output["state"] = "unknown"
     return output
@@ -794,6 +1067,7 @@ def main():
     prep = commands.add_parser("prepare")
     for name in ("plan", "image-receipt", "clean-input", "tooling"):
         prep.add_argument("--" + name, type=Path, required=True)
+    prep.add_argument("--check-input", type=Path, help="Required private phase evidence reference for v2 plans")
     for name in ("start", "status", "_serve"):
         command = commands.add_parser(name)
         command.add_argument("operation", type=Path)
@@ -801,7 +1075,7 @@ def main():
             command.add_argument("--json", action="store_true", help="Structured adapter output; default shows native tails first")
     args = parser.parse_args()
     if args.command == "prepare":
-        print(prepare(args.plan, args.image_receipt, args.clean_input, args.tooling))
+        print(prepare(args.plan, args.image_receipt, args.clean_input, args.tooling, args.check_input))
     elif args.command == "_serve":
         return serve(args.operation)
     else:

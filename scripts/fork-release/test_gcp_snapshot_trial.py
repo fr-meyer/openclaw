@@ -5,7 +5,9 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -77,6 +79,177 @@ class SnapshotTrialTests(unittest.TestCase):
         with self.assertRaises(release.Refusal):
             trial.validate(plan, self.image, self.clean)
 
+    def select_phase(self, selected):
+        self.plan.update({"schema": "openclaw.snapshot-trial-plan.v2", "phase": selected,
+                          "checkInputSha256": "e" * 64})
+        self.intent["check"] = {"schema": "openclaw.snapshot-trial-check.v1", "phase": selected}
+        if selected != "doctor":
+            self.intent["check"].update({"doctorOperationId": "b" * 32, "doctorResultSha256": "a" * 64})
+        if selected == "startup":
+            self.clean["restorationState"] = "doctor-complete"
+        if selected == "rollback":
+            self.image = {"schema": "openclaw.rehearsal-baseline-image.v1", "version": "2026.9.4",
+                "architecture": "amd64", "sourceSha": self.clean["baselineSourceSha"],
+                "indexDigest": self.clean["baselineImageDigest"], "imageDigest": "sha256:" + "5" * 64,
+                "configDigest": "sha256:" + "6" * 64, "gatewayProbeContract": "healthz-readyz-v1"}
+            self.intent["image"] = self.image
+
+    def native_result(self, selected="startup"):
+        return {"schema": "openclaw.rehearsal-native-check.v1",
+            "phase": "candidate-startup" if selected == "startup" else "rollback-startup",
+            "probeContract": "healthz-startupz-readyz-v1" if selected == "startup" else "healthz-readyz-v1",
+            "healthz": {"status": 200, "ok": True}, "readyz": {"status": 200, "ready": True},
+            "startupz": {"status": 200, "ok": True, "statusText": "started"} if selected == "startup" else None,
+            "ready": True, "nativeExitCode": 0, "nativeSignal": None,
+            "shutdown": "exited", "escalated": False, "failure": None}
+
+    def marker(self, result):
+        return (trial.checks.RESULT_PREFIX + json.dumps(result) + "\n").encode()
+
+    def test_v2_doctor_preserves_native_command_and_requires_bound_check(self):
+        self.select_phase("doctor")
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        self.assertEqual(trial.create_argv(self.op, self.intent)[-len(trial.DOCTOR):], trial.DOCTOR)
+        with self.assertRaises(release.Refusal):
+            trial.validate(self.plan, self.image, self.clean)
+        self.intent["check"]["command"] = "anything"
+        with self.assertRaises(release.Refusal):
+            trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+
+    def test_startup_requires_postdoctor_receipt_and_fixed_bounded_native_check(self):
+        self.select_phase("startup")
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        args = trial.create_argv(self.op, self.intent)
+        self.assertEqual(args[-3:-1], ["node", "-e"])
+        self.assertIn("gateway", args[-1])
+        self.assertNotEqual(args[-len(trial.DOCTOR):], trial.DOCTOR)
+        with self.assertRaises(release.Refusal):
+            trial.validate(self.plan, self.image, {**self.clean, "restorationState": "unmigrated"}, self.intent["check"])
+        self.plan["limits"]["timeoutSeconds"] = 600
+        with self.assertRaisesRegex(release.Refusal, "check.timeout"):
+            trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+
+    def test_rollback_admits_separate_bound_baseline_without_candidate_codex_proof(self):
+        self.select_phase("rollback")
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        loaded = {"Id": self.image["indexDigest"], "Os": "linux", "Architecture": "amd64",
+            "Config": {"Env": [], "Labels": {"org.opencontainers.image.revision": self.image["sourceSha"],
+                       "org.opencontainers.image.version": self.image["version"]}}}
+        with patch.object(trial, "docker", return_value=json.dumps([loaded]).encode()):
+            self.assertEqual(trial.observe_image(self.image, "rollback")["loadedId"], self.image["indexDigest"])
+        with self.assertRaisesRegex(release.Refusal, "trial.image.not_qualified"):
+            trial.observe_image(self.image)
+        with self.assertRaises(release.Refusal):
+            trial.validate(self.plan, self.image, {**self.clean, "baselineSourceSha": "0" * 40}, self.intent["check"])
+
+    @contextmanager
+    def prior_boundaries(self, selected="startup", doctor_state="succeeded", no_create=False):
+        prior = copy.deepcopy(self.intent)
+        previous = self.root / ("b" * 32)
+        previous.mkdir(mode=0o700)
+        prior["plan"]["operationId"] = previous.name
+        self.select_phase(selected)
+        if selected == "rollback":
+            self.clean["mountRoot"] = str(self.root / "rollback-dataset")
+            self.clean["mounts"] = [{**m, "source": m["source"].replace(str(self.dataset), self.clean["mountRoot"])}
+                                    for m in self.clean["mounts"]]
+            self.clean["restoreReceiptSha256"] = "0" * 64
+        state = {"Running": False, "Pid": 0, "ExitCode": 0 if doctor_state == "succeeded" else 1,
+                 "OOMKilled": False, "StartedAt": "start", "FinishedAt": "finish"}
+        result = {"operationId": previous.name, "invocationId": "f" * 32, "state": doctor_state,
+                  "doctorComplete": doctor_state == "succeeded", "nativeExitCode": state["ExitCode"],
+                  "oomKillDelta": 0, "cgroupSettlementObserved": True,
+                  "cleanup": "owned_container_stopped_retained", "nativeState": state,
+                  "containerId": "9" * 64,
+                  "imageReceiptSha256": prior["plan"]["imageReceiptSha256"],
+                  "cleanInputSha256": prior["plan"]["cleanInputSha256"]}
+        if no_create:
+            result.update(cleanup="not_started", containerId=None, nativeState=None,
+                          nativeExitCode=None, cgroupSettlementObserved=False, doctorComplete=False)
+        raw = trial.durable.encode(prior)
+        records = {"intent.json": prior, "result.json": result,
+                   "started.json": {"invocationId": result["invocationId"]},
+                   "start-intent.json": {"intentSha256": trial.digest(raw), "mounts": {}, "image": {"env": []}}}
+        if not no_create:
+            records["container.json"] = {"id": result["containerId"]}
+        for name, value in records.items():
+            trial.durable.write_once(previous / name, trial.durable.encode(value))
+        self.intent["check"]["doctorResultSha256"] = trial.digest((previous / "result.json").read_bytes())
+        actual = {"Id": result["containerId"], "Name": "/openclaw-doctor-" + previous.name,
+                  "Config": {"Labels": {"openclaw.snapshot-trial.operation": previous.name}},
+                  "State": copy.deepcopy(state)}
+        service = {"LoadState": "loaded", "InvocationID": "f" * 32, "MainPID": "0",
+                   "ExecMainCode": "1", "ExecMainStatus": "1", "Result": "exit-code",
+                   "ActiveState": "failed", "SubState": "failed"}
+        native = subprocess.CompletedProcess([], 0, "\n".join(f"{k}={v}" for k, v in service.items()), "")
+        with patch.object(trial, "PRIVATE_ROOT", self.root), \
+             patch.object(trial.durable, "TRIAL_ROOT", self.root), \
+             patch.object(trial.durable, "native", return_value=native), \
+             patch.object(trial, "load", return_value=(previous, prior)), \
+             patch.object(trial, "status", return_value={"state": doctor_state, "result": result}) as observe, \
+             patch.object(trial, "inspect_container", return_value=actual), \
+             patch.object(trial, "validate_container") as policy, \
+             patch.object(trial, "snapshot_paths", return_value={}):
+            yield prior, result, actual, observe, policy
+
+    def test_startup_resolves_private_doctor_and_fresh_container_not_embedded_result(self):
+        with self.prior_boundaries() as (prior, result, actual, observe, policy):
+            self.plan["cleanInputSha256"] = "0" * 64  # post-Doctor config receipt may change
+            proof = trial.phase_prerequisites(self.op, self.intent)
+            self.assertEqual(proof["operationId"], "b" * 32)
+            policy.assert_called_once()
+            actual["State"]["StartedAt"] = "another-start"
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.container_changed"):
+                trial.phase_prerequisites(self.op, self.intent)
+            actual["State"]["StartedAt"] = "start"
+            observe.return_value = {"state": "unknown", "result": result}
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.not_settled"):
+                trial.phase_prerequisites(self.op, self.intent)
+
+    def test_startup_rejects_failed_doctor_and_changed_mount_identity(self):
+        with self.prior_boundaries(doctor_state="failed"):
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.not_settled"):
+                trial.phase_prerequisites(self.op, self.intent)
+
+    def test_startup_rejects_wrong_result_or_remounted_dataset(self):
+        with self.prior_boundaries():
+            original = self.intent["check"]["doctorResultSha256"]
+            self.intent["check"]["doctorResultSha256"] = "0" * 64
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.result_hash"):
+                trial.phase_prerequisites(self.op, self.intent)
+            self.intent["check"]["doctorResultSha256"] = original
+            with patch.object(trial, "snapshot_paths", return_value={"replacement": {}}):
+                with self.assertRaisesRegex(release.Refusal, "trial.prior.startup_mount_changed"):
+                    trial.phase_prerequisites(self.op, self.intent)
+
+    def test_rollback_accepts_settled_failure_and_reused_device_but_not_old_generation(self):
+        with self.prior_boundaries("rollback", "failed") as (prior, result, actual, observe, policy):
+            self.assertEqual(self.clean["filesystemDevice"], prior["clean"]["filesystemDevice"])
+            trial.phase_prerequisites(self.op, self.intent)
+            self.clean["restoreReceiptSha256"] = prior["clean"]["restoreReceiptSha256"]
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.rollback_not_fresh"):
+                trial.phase_prerequisites(self.op, self.intent)
+            self.clean["restoreReceiptSha256"] = "0" * 64
+            self.clean["mounts"][0]["source"] = prior["clean"]["mounts"][0]["source"]
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.rollback_not_fresh"):
+                trial.phase_prerequisites(self.op, self.intent)
+
+    def test_rollback_accepts_authoritative_no_create_failure_without_inspecting_null_cid(self):
+        with self.prior_boundaries("rollback", "failed", no_create=True), \
+             patch.object(trial, "inspect_container") as inspect:
+            proof = trial.phase_prerequisites(self.op, self.intent)
+            self.assertIsNone(proof["containerId"])
+            self.assertIsNone(proof["startedAt"])
+            inspect.assert_not_called()
+            trial.durable.write_once(self.root / ("b" * 32) / "create-intent.json", b"{}\n")
+            with self.assertRaisesRegex(release.Refusal, "workload.no_create.dispatch_uncertain"):
+                trial.phase_prerequisites(self.op, self.intent)
+
+    def test_startup_still_requires_success_after_proven_no_create_doctor_failure(self):
+        with self.prior_boundaries("startup", "failed", no_create=True):
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.not_settled"):
+                trial.phase_prerequisites(self.op, self.intent)
+
     def test_overlapping_or_external_mounts_refused(self):
         for source in (str(self.root / "production"), self.clean["mounts"][0]["source"] + "/child"):
             clean = copy.deepcopy(self.clean)
@@ -94,6 +267,225 @@ class SnapshotTrialTests(unittest.TestCase):
             *clean["mounts"],
         ]
         return clean
+
+
+    def direct_clone_layout(self):
+        clean = self.readonly_layout()
+        state = next(m for m in clean["mounts"] if m["target"] == trial.STATE_TARGET)
+        for mount in clean["mounts"][:2]:
+            relative = Path(mount["target"]).relative_to(state["target"])
+            mount["source"] = str(Path(state["source"]) / relative)
+        return clean
+
+    def exact_owner_layout(self):
+        clean = copy.deepcopy(self.clean)
+        for suffix in ("repos", "workspace/.git", "workspace-automation/.git"):
+            clean["mounts"].append({"source": str(self.dataset / "state" / suffix),
+                                    "target": trial.STATE_TARGET + "/" + suffix, "readOnly": True})
+        return clean
+
+    def test_exact_repos_and_workspace_git_overlays_require_matching_relative_readonly_paths(self):
+        clean = self.exact_owner_layout()
+        trial.validate(self.plan, self.image, clean)
+        for index in range(3, 6):
+            for key, value in (("readOnly", False), ("source", clean["mounts"][index]["source"] + "-other")):
+                with self.subTest(index=index, key=key):
+                    changed = copy.deepcopy(clean)
+                    changed["mounts"][index][key] = value
+                    with self.assertRaises(release.Refusal):
+                        trial.validate(self.plan, self.image, changed)
+
+    def owner_metadata_fixture(self):
+        self.clean = self.exact_owner_layout()
+        self.clean["filesystemDevice"] = self.dataset.stat().st_dev
+        directories = {}
+        for mount in self.clean["mounts"]:
+            source = Path(mount["source"])
+            source.mkdir(parents=True, exist_ok=True)
+            current = source
+            while True:
+                info = current.stat()
+                directories[str(current)] = {"device": info.st_dev, "inode": info.st_ino,
+                                             "mode": info.st_mode, "uid": info.st_uid}
+                if current == self.dataset:
+                    break
+                current = current.parent
+        return {"schema": "openclaw.snapshot-owner-metadata.v1", "uid": 1000,
+                "directories": directories, "configSha256": self.clean["configSha256"]}
+
+    def test_data_owner_probe_fixed_command_stdin_and_no_controller_state_reads(self):
+        metadata = self.owner_metadata_fixture()
+        original_stat = Path.stat
+        def private_stat(file, *args, **kwargs):
+            if self.dataset / "state" in (file, *file.parents):
+                raise PermissionError("controller cannot inspect private state")
+            return original_stat(file, *args, **kwargs)
+        response = subprocess.CompletedProcess([], 0, json.dumps(metadata).encode(), b"")
+        for uid in (328620973, 1000):
+            with self.subTest(uid=uid), patch.object(trial.os, "geteuid", return_value=uid), \
+                 patch.object(trial.subprocess, "run", return_value=response) as run, \
+                 patch.object(Path, "stat", private_stat), \
+                 patch.object(Path, "read_bytes", side_effect=AssertionError("controller config read forbidden")):
+                trial.validate(self.plan, self.image, self.clean)
+                observed = trial.data_owner_metadata(self.clean)
+                self.assertEqual(len(trial.source_identities(self.clean, observed)), 6)
+                args = run.call_args.args[0]
+                prefix = [] if uid == 1000 else ["/usr/bin/sudo", "-n", "-u", "frmeyer", "--"]
+                self.assertEqual(args, [*prefix, "/usr/bin/python3", "-I", "-c", trial.DATA_OWNER_PROBE])
+                request = json.loads(run.call_args.kwargs["input"])
+                self.assertEqual(set(request), {"root", "sources", "config"})
+                self.assertEqual(request["config"], str(self.dataset / "state/openclaw.json"))
+                self.assertEqual(run.call_args.kwargs["timeout"], 30)
+                self.assertEqual(run.call_args.kwargs["env"], trial.durable.SAFE_ENV)
+
+    def test_owner_probe_rejects_wrong_identity_hash_paths_and_physical_alias(self):
+        metadata = self.owner_metadata_fixture()
+        changed_root = copy.deepcopy(metadata)
+        changed_root["directories"][str(self.dataset)]["inode"] += 1
+        wrong_paths = copy.deepcopy(metadata)
+        wrong_paths["directories"]["/unexpected"] = wrong_paths["directories"][str(self.dataset)]
+        for changed in ({**metadata, "uid": 0}, {**metadata, "configSha256": "0" * 64}, changed_root, wrong_paths):
+            with self.subTest(value=changed), patch.object(trial.subprocess, "run", return_value=
+                    subprocess.CompletedProcess([], 0, json.dumps(changed).encode(), b"")):
+                with self.assertRaises(release.Refusal):
+                    trial.data_owner_metadata(self.clean)
+        changed = copy.deepcopy(metadata["directories"])
+        changed[str(self.dataset / "tmp")] = changed[str(self.dataset / "state")]
+        with self.assertRaisesRegex(release.Refusal, "trial.mount.physical_alias"):
+            trial.source_identities(self.clean, changed)
+
+    def test_partition_device_alias_requires_exact_native_device_and_sysfs_binding(self):
+        alias, resolved = Path("/dev/disk/by-id/google-synthetic-part1"), Path("/dev/sdb1")
+        self.clean.update(devicePath=str(alias), deviceMajorMinor="8:17", filesystemDevice=os.makedev(8, 17))
+        trial.validate(self.plan, self.image, self.clean)
+        original_resolve, original_stat = Path.resolve, Path.stat
+        def resolve(file, *args, **kwargs):
+            if file == alias:
+                return resolved
+            if str(file) == "/sys/dev/block/8:17":
+                return Path("/sys/devices/synthetic/block/sdb/sdb1")
+            return original_resolve(file, *args, **kwargs)
+        def observed_stat(file, *args, **kwargs):
+            if file == resolved:
+                return SimpleNamespace(st_mode=stat.S_IFBLK, st_rdev=os.makedev(8, 17))
+            if file == self.dataset:
+                return SimpleNamespace(st_dev=os.makedev(8, 17))
+            if file == Path("/"):
+                return SimpleNamespace(st_dev=os.makedev(8, 1))
+            return original_stat(file, *args, **kwargs)
+        with patch.object(Path, "resolve", resolve), patch.object(Path, "stat", observed_stat), \
+             patch.object(Path, "is_mount", return_value=True), \
+             patch.object(trial, "data_owner_metadata", return_value={}) as probe, \
+             patch.object(trial, "source_identities", return_value={"safe": {}}):
+            self.assertEqual(trial.snapshot_paths(self.clean), {"safe": {}})
+            probe.assert_called_once_with(self.clean)
+            self.clean["deviceMajorMinor"] = "8:16"
+            with self.assertRaisesRegex(release.Refusal, "trial.dataset.device"):
+                trial.snapshot_paths(self.clean)
+
+    @unittest.skipUnless(sys.platform == "linux" and os.geteuid() == 1000, "native probe fixture requires Linux UID1000")
+    def test_native_data_owner_probe_private_directory_and_config_hash_only(self):
+        self.owner_metadata_fixture()
+        state = self.dataset / "state"
+        state.chmod(0o700)
+        config = state / "openclaw.json"
+        payload = b'{"fixture":"private-config-body-must-not-appear"}\n'
+        config.write_bytes(payload)
+        config.chmod(0o600)
+        self.clean["configSha256"] = trial.digest(payload)
+        before = config.stat()
+        result = trial.data_owner_metadata(self.clean)
+        self.assertEqual(result[str(state)]["uid"], 1000)
+        self.assertNotIn(payload.decode().strip(), json.dumps(result))
+        self.assertEqual((before.st_ino, before.st_mode, before.st_mtime_ns),
+                         (config.stat().st_ino, config.stat().st_mode, config.stat().st_mtime_ns))
+        config.unlink()
+        config.symlink_to(self.dataset / "tmp/other-config.json")
+        (self.dataset / "tmp/other-config.json").write_bytes(payload)
+        with self.assertRaisesRegex(release.Refusal, "trial.owner_probe.failed"):
+            trial.data_owner_metadata(self.clean)
+
+    def test_direct_clone_ro_sources_cover_only_their_matching_rw_parent_path(self):
+        clean = self.direct_clone_layout()
+        clean["filesystemDevice"] = self.dataset.stat().st_dev
+        for mount in clean["mounts"]:
+            Path(mount["source"]).mkdir(parents=True, exist_ok=True)
+        for mounts in (clean["mounts"], list(reversed(clean["mounts"]))):
+            with self.subTest(order=[m["target"] for m in mounts]):
+                ordered = {**clean, "mounts": mounts}
+                trial.validate(self.plan, self.image, ordered)
+                with patch.object(Path, "iterdir", side_effect=AssertionError("tree walk forbidden")):
+                    self.assertEqual(len(trial.source_identities(ordered)), len(mounts))
+                args = trial.create_argv(self.op, {**self.intent, "clean": ordered})
+                binds = [args[i + 1] for i, arg in enumerate(args) if arg == "--mount"]
+                state = next(i for i, bind in enumerate(binds) if bind.endswith("dst=" + trial.STATE_TARGET))
+                for mount in clean["mounts"][:2]:
+                    child = f"type=bind,src={mount['source']},dst={mount['target']},readonly"
+                    self.assertGreater(binds.index(child), state)
+
+    def test_direct_clone_rejects_mismatched_paths_rw_child_duplicate_and_root_sources(self):
+        original = self.direct_clone_layout()
+        mutations = [
+            (0, "source", str(self.dataset / "state/workspace-franck/another-project")),
+            (0, "target", trial.STATE_TARGET + "/workspace-franck/another-project"),
+            (0, "target", "/data/relocated-project"),
+            (0, "readOnly", False),
+            (0, "source", str(self.dataset)),
+            (0, "source", str(self.dataset / "state")),
+            (1, "source", original["mounts"][0]["source"]),
+        ]
+        for index, key, value in mutations:
+            with self.subTest(index=index, key=key, value=value):
+                clean = copy.deepcopy(original)
+                clean["mounts"][index][key] = value
+                with self.assertRaises(release.Refusal):
+                    trial.validate(self.plan, self.image, clean)
+        clean = copy.deepcopy(original)
+        clean["mounts"].append({"source": clean["mounts"][0]["source"],
+                                "target": "/data/writable-alias", "readOnly": False})
+        with self.assertRaisesRegex(release.Refusal, "trial.mount.source_overlap"):
+            trial.validate(self.plan, self.image, clean)
+
+    def test_direct_clone_rejects_physical_rw_alias_and_duplicate_ro_alias(self):
+        clean = self.direct_clone_layout()
+        clean["filesystemDevice"] = self.dataset.stat().st_dev
+        for mount in clean["mounts"]:
+            Path(mount["source"]).mkdir(parents=True, exist_ok=True)
+        alias = self.dataset / "writable-alias"
+        alias.mkdir()
+        original_stat = Path.stat
+        project_info = original_stat(Path(clean["mounts"][0]["source"]))
+        for alias_path in (alias, Path(clean["mounts"][1]["source"])):
+            with self.subTest(alias=str(alias_path)):
+                changed = copy.deepcopy(clean)
+                if alias_path == alias:
+                    changed["mounts"].append({"source": str(alias), "target": "/data/writable-alias", "readOnly": False})
+                trial.validate(self.plan, self.image, changed)
+                def stat_alias(file, *args, **kwargs):
+                    return project_info if file == alias_path else original_stat(file, *args, **kwargs)
+                with patch.object(Path, "stat", stat_alias), \
+                     patch.object(Path, "iterdir", side_effect=AssertionError("tree walk forbidden")):
+                    with self.assertRaisesRegex(release.Refusal, "trial.mount.physical_alias"):
+                        trial.source_identities(changed)
+
+    def test_direct_clone_rejects_physical_parent_identity_mismatch(self):
+        clean = self.direct_clone_layout()
+        clean["filesystemDevice"] = self.dataset.stat().st_dev
+        for mount in clean["mounts"]:
+            Path(mount["source"]).mkdir(parents=True, exist_ok=True)
+        state_path = self.dataset / "state"
+        original_stat = Path.stat
+        replacement = original_stat(self.dataset / "tmp")
+        calls = []
+        def changed_parent(file, *args, **kwargs):
+            if file == state_path:
+                calls.append(file)
+                if len(calls) > 2:
+                    return replacement
+            return original_stat(file, *args, **kwargs)
+        with patch.object(Path, "stat", changed_parent):
+            with self.assertRaisesRegex(release.Refusal, "trial.mount.physical_alias"):
+                trial.source_identities(clean)
 
     def test_readonly_projects_override_writable_state_parent_first(self):
         clean = self.readonly_layout()
@@ -170,8 +562,9 @@ class SnapshotTrialTests(unittest.TestCase):
         link.symlink_to(self.dataset / "state", target_is_directory=True)
         changed = copy.deepcopy(clean)
         changed["mounts"][0]["source"] = str(link)
+        trial.validate(self.plan, self.image, changed)  # physical checks run as data owner at admission
         with self.assertRaisesRegex(release.Refusal, "trial.path.noncanonical"):
-            trial.validate(self.plan, self.image, changed)
+            trial.source_identities(changed)
 
     def test_only_exact_qualified_image_and_historical_producer_are_admitted(self):
         for key, original in trial.QUALIFIED_IMAGE.items():
@@ -188,7 +581,7 @@ class SnapshotTrialTests(unittest.TestCase):
 
     def test_prepare_rejects_running_adapter_or_shared_helper_mismatch_before_writes(self):
         files = {name: file.read_bytes() for name, file in trial.RUNNING_HELPERS.items()}
-        for changed in ("gcp_snapshot_trial.py", "gcp_build.py"):
+        for changed in ("gcp_snapshot_trial.py", "gcp_build.py", "gcp_rehearsal_checks.py"):
             pinned = {**files, changed: files[changed] + b"\n# another revision\n"}
             with patch.object(trial, "private_json", side_effect=[(self.plan, "unused"),
                     (self.image, self.plan["imageReceiptSha256"]), (self.clean, self.plan["cleanInputSha256"])]), \
@@ -198,6 +591,35 @@ class SnapshotTrialTests(unittest.TestCase):
                 with self.assertRaisesRegex(release.Refusal, "trial.running_helper.changed"):
                     trial.prepare("plan", "image", "clean", self.root)
                 root.assert_not_called()
+
+    def test_v2_prepare_rejects_check_hash_mismatch_before_writes(self):
+        self.select_phase("startup")
+        with patch.object(trial, "private_json", side_effect=[(self.plan, "unused"),
+                (self.image, self.plan["imageReceiptSha256"]), (self.clean, self.plan["cleanInputSha256"]),
+                (self.intent["check"], "0" * 64)]), patch.object(trial.release, "private_root") as root:
+            with self.assertRaisesRegex(release.Refusal, "trial.check.input_hash"):
+                trial.prepare("plan", "image", "clean", self.root, "check")
+            root.assert_not_called()
+
+    def test_v2_load_rechecks_frozen_check_bytes(self):
+        self.select_phase("startup")
+        (self.op / "supervisor").mkdir(mode=0o700)
+        for name, file in trial.RUNNING_HELPERS.items():
+            trial.durable.write_once(self.op / "supervisor" / name, file.read_bytes())
+        for name, value, key in (("image-receipt.json", self.image, "imageReceiptSha256"),
+                                 ("clean-input.json", self.clean, "cleanInputSha256"),
+                                 ("check-input.json", self.intent["check"], "checkInputSha256")):
+            raw = trial.durable.encode(value)
+            trial.durable.write_once(self.op / name, raw)
+            self.plan[key] = trial.digest(raw)
+        self.intent.update({"ownerUid": os.getuid(), "ownerGid": os.getgid(),
+                            "helpers": dict(trial.LOADED_HELPER_HASHES)})
+        (self.op / "intent.json").write_bytes(trial.durable.encode(self.intent))
+        with patch.object(trial, "PRIVATE_ROOT", self.root):
+            self.assertEqual(trial.load(self.op)[1]["check"], self.intent["check"])
+            (self.op / "check-input.json").write_bytes(b"{}\n")
+            with self.assertRaisesRegex(release.Refusal, "trial.check.changed"):
+                trial.load(self.op)
 
     def test_load_and_start_bind_executing_helpers_to_frozen_pinned_bytes(self):
         (self.op / "supervisor").mkdir(mode=0o700)
@@ -213,7 +635,7 @@ class SnapshotTrialTests(unittest.TestCase):
         (self.op / "intent.json").write_bytes(trial.durable.encode(self.intent))
         with patch.object(trial, "PRIVATE_ROOT", self.root), patch.object(trial.sys, "platform", "linux"):
             self.assertEqual(trial.load(self.op)[1]["helpers"], trial.LOADED_HELPER_HASHES)
-            for name in ("gcp_snapshot_trial.py", "gcp_build.py"):
+            for name in ("gcp_snapshot_trial.py", "gcp_build.py", "gcp_rehearsal_checks.py"):
                 with patch.dict(trial.LOADED_HELPER_HASHES, {name: "0" * 64}), \
                      patch.object(trial.durable, "reserve_heavy_workload") as reserve, \
                      patch.object(trial.subprocess, "run") as dispatch:
@@ -350,6 +772,39 @@ class SnapshotTrialTests(unittest.TestCase):
             dispatch.assert_called_once()
         self.assertEqual(lease.read_bytes(), retained_bytes)
         self.assertEqual(lease.stat().st_ino, retained_inode)
+
+    def test_startup_transfers_only_exact_prior_dataset_lease_and_resumes_once(self):
+        self.select_phase("startup")
+        prior = {"operationId": "b" * 32, "intentSha256": "c" * 64}
+        lease = self.root / ("dataset-" + trial.digest(self.clean["mountRoot"].encode()) + ".json")
+        trial.durable.write_once(lease, trial.durable.encode(prior))
+        write_once = trial.durable.write_once
+        def interrupt(file, raw):
+            if file.name == "start-intent.json":
+                raise OSError("synthetic pre-dispatch interruption")
+            write_once(file, raw)
+        with self.start_boundaries() as (_, dispatch), \
+             patch.object(trial, "phase_prerequisites", return_value=prior):
+            with patch.object(trial.durable, "write_once", side_effect=interrupt):
+                with self.assertRaises(OSError):
+                    trial.start(self.op)
+            dispatch.assert_not_called()
+            self.assertEqual(trial.durable.read_private(self.op / "dataset-previous.json"), prior)
+            self.assertEqual(trial.durable.read_private(lease)["operationId"], self.op.name)
+            trial.start(self.op)
+            trial.start(self.op)
+            dispatch.assert_called_once()
+
+    def test_startup_conflicting_dataset_lease_refused_before_global_claim(self):
+        self.select_phase("startup")
+        lease = self.root / ("dataset-" + trial.digest(self.clean["mountRoot"].encode()) + ".json")
+        trial.durable.write_once(lease, trial.durable.encode({"operationId": "c" * 32, "intentSha256": "d" * 64}))
+        with self.start_boundaries() as (_, dispatch), \
+             patch.object(trial, "phase_prerequisites", return_value={"operationId": "b" * 32, "intentSha256": "c" * 64}):
+            with self.assertRaisesRegex(release.Refusal, "trial.dataset.reserved"):
+                trial.start(self.op)
+            self.assertFalse((self.root / "global-owner.json").exists())
+            dispatch.assert_not_called()
 
     def test_exit_zero_does_not_hide_child_oom_or_missing_completion(self):
         state = {"Running": False, "Pid": 0, "ExitCode": 0, "OOMKilled": False}
@@ -550,7 +1005,8 @@ class SnapshotTrialTests(unittest.TestCase):
 
         with ExitStack() as stack:
             for name, value in (("load", lambda _: (op, self.intent)), ("snapshot_paths", lambda _: {}),
-                                ("no_other_writer", lambda _: None), ("observe_image", lambda _: started["image"]),
+                                ("no_other_writer", lambda _: None), ("observe_image", lambda *args: started["image"]),
+                                ("phase_prerequisites", lambda *args: None),
                                 ("capacity", lambda *args: {}), ("docker", docker),
                                 ("inspect_container", inspect), ("cgroup_path", lambda _: cg)):
                 stack.enter_context(patch.object(trial, name, side_effect=value))
@@ -571,6 +1027,59 @@ class SnapshotTrialTests(unittest.TestCase):
         self.assertEqual(result["nativeExitCode"], 0)
         self.assertTrue((self.op / "gate/settled").exists())
         self.assertEqual(stops, [])
+
+    def test_startup_serve_requires_success_receipt_and_quiescent_oom_free_exit(self):
+        self.select_phase("startup")
+        expected = self.native_result()
+        code, result, stops = self.exercise_serve(stdout=self.marker(expected), remove_cgroup_on_exit=True)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["phase"], "startup")
+        self.assertEqual(result["nativeCheck"], expected)
+        self.assertFalse(result["doctorComplete"])
+        self.assertTrue(result["cgroupSettlementObserved"])
+        self.assertEqual(stops, [])
+
+    def test_rollback_serve_runs_baseline_check_and_retains_receipt(self):
+        self.select_phase("rollback")
+        expected = self.native_result("rollback")
+        code, result, _ = self.exercise_serve(stdout=self.marker(expected))
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["phase"], "rollback")
+        self.assertEqual(result["nativeCheck"], expected)
+
+    def test_startup_exit_zero_without_result_is_not_success(self):
+        self.select_phase("startup")
+        code, result, _ = self.exercise_serve()
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.check.missing_result")
+
+    def test_startup_rejects_duplicate_stdout_receipts(self):
+        self.select_phase("startup")
+        marker = self.marker(self.native_result())
+        code, result, stops = self.exercise_serve(stdout=marker + marker)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.check.duplicate_result")
+        self.assertEqual(len(stops), 1)
+
+    def test_startup_native_stderr_cannot_supply_check_receipt(self):
+        self.select_phase("startup")
+        code, result, _ = self.exercise_serve(stdout=b"native stdout\n", stderr=self.marker(self.native_result()))
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.check.missing_result")
+
+    def test_startup_ready_receipt_without_clean_gateway_shutdown_is_failure(self):
+        self.select_phase("startup")
+        marker = self.marker({**self.native_result(), "nativeSignal": "SIGKILL", "escalated": True})
+        code, result, _ = self.exercise_serve(stdout=marker)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "check.result.native")
+
+    def test_startup_success_receipt_cannot_hide_oom(self):
+        self.select_phase("startup")
+        code, result, _ = self.exercise_serve(stdout=self.marker(self.native_result()), oom_after_native_exit=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.cgroup.oom_kill")
+        self.assertEqual(result["oomKillDelta"], 1)
 
     def test_serve_removed_cgroup_requires_retained_quiescence(self):
         code, result, stops = self.exercise_serve(remove_cgroup_on_exit=True)

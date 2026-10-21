@@ -352,6 +352,57 @@ def operation_lock(op):
         yield
 
 
+def prove_trial_no_create_failure(op, intent_sha256):
+    """Prove a native supervisor failed before it could dispatch Docker create.
+
+    A missing container reply is never sufficient: the durable create intent
+    precedes that dispatch and excludes this recovery path. Re-read the private
+    records and exact terminal service here so callers cannot supply a weaker
+    assertion to release the shared slot or admit rollback.
+    """
+    op = Path(op)
+    need(op.is_dir() and op.parent == TRIAL_ROOT and op.resolve() == op and
+         release.matches(re.compile(r"[0-9a-f]{32}\Z"), op.name), "workload.no_create.path")
+    release.private_root(op)
+    need(release.matches(preflight.HEX256, intent_sha256) and
+         preflight.digest(op / "intent.json") == intent_sha256, "workload.no_create.intent")
+    intent = read_private(op / "intent.json")
+    requested = read_private(op / "start-intent.json")
+    started = read_private(op / "started.json")
+    completed = read_private(op / "result.json")
+    plan = intent["plan"]
+    invocation = started["invocationId"]
+    need(plan["operationId"] == op.name and requested["intentSha256"] == intent_sha256 and
+         release.matches(re.compile(r"[0-9a-f]{32}\Z"), invocation) and
+         completed.get("operationId") == op.name and completed.get("invocationId") == invocation and
+         all(completed.get(key) == plan[key] for key in ("imageReceiptSha256", "cleanInputSha256")),
+         "workload.no_create.binding")
+    if "checkInputSha256" in plan:
+        need(completed.get("checkInputSha256") == plan["checkInputSha256"] and
+             completed.get("phase") == plan["phase"], "workload.no_create.phase")
+    need(completed.get("state") == "failed" and completed.get("cleanup") == "not_started" and
+         "containerId" in completed and completed["containerId"] is None and
+         "nativeState" in completed and completed["nativeState"] is None and
+         "nativeExitCode" in completed and completed["nativeExitCode"] is None and
+         completed.get("cgroupSettlementObserved") is False and completed.get("doctorComplete") is False and
+         type(completed.get("oomKillDelta")) is int and completed["oomKillDelta"] == 0,
+         "workload.no_create.result")
+    markers = ("create-intent.json", "container.json", "container-start-intent.json")
+    need(not any(os.path.lexists(op / name) for name in markers), "workload.no_create.dispatch_uncertain")
+    observed = native([*SYSTEMCTL, "show", "openclaw-snapshot-doctor-" + op.name + ".service",
+                       "--property=" + ",".join(SHOW_FIELDS)])
+    service = dict(line.split("=", 1) for line in observed.stdout.splitlines() if "=" in line)
+    need(observed.returncode == 0 and service.get("LoadState") == "loaded" and
+         service.get("InvocationID") == invocation and service.get("MainPID") == "0" and
+         service.get("ExecMainCode") == "1" and service.get("ExecMainStatus") == "1" and
+         service.get("Result") == "exit-code" and service.get("ActiveState") == "failed" and
+         service.get("SubState") == "failed", "workload.no_create.service_unsettled")
+    # Recheck after observing terminal service; never release a slot if a
+    # create intent appeared while the native service observation was pending.
+    need(not any(os.path.lexists(op / name) for name in markers), "workload.no_create.dispatch_uncertain")
+    return completed
+
+
 def heavy_workload_settled(owner):
     """Release a cooperative reservation only from retained native terminal proof.
 
@@ -385,6 +436,10 @@ def heavy_workload_settled(owner):
              service.get("Result") == "success" and service.get("ExecMainStatus") == "0",
              "workload.build.solve_unsettled")
     else:
+        if completed.get("cleanup") == "not_started":
+            need(prove_trial_no_create_failure(op, owner["intentSha256"]) == completed,
+                 "workload.no_create.result_changed")
+            return
         state = completed.get("nativeState") or {}
         need(completed.get("state") in ("succeeded", "failed") and
              completed.get("cleanup") == "owned_container_stopped_retained" and

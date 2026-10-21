@@ -874,5 +874,106 @@ class BuildTests(unittest.TestCase):
         self.assertFalse((self.op / "execution.json").exists())
 
 
+class NoCreateSettlementTests(unittest.TestCase):
+    """Real private receipts/reservation; only the native service is synthetic."""
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name).resolve()
+        self.trials, self.builds, self.heavy = (self.root / name for name in ("trials", "builds", "heavy"))
+        for root in (self.trials, self.builds, self.heavy):
+            root.mkdir(mode=0o700)
+        self.op = self.trials / ("a" * 32)
+        self.op.mkdir(mode=0o700)
+        plan = {"operationId": self.op.name, "imageReceiptSha256": "b" * 64,
+                "cleanInputSha256": "c" * 64, "phase": "doctor", "checkInputSha256": "d" * 64}
+        self.invocation = "e" * 32
+        self.completed = {"operationId": self.op.name, "invocationId": self.invocation,
+            "state": "failed", "cleanup": "not_started", "containerId": None, "nativeState": None,
+            "nativeExitCode": None, "cgroupSettlementObserved": False, "doctorComplete": False,
+            "oomKillDelta": 0, "imageReceiptSha256": plan["imageReceiptSha256"],
+            "cleanInputSha256": plan["cleanInputSha256"], "phase": "doctor",
+            "checkInputSha256": plan["checkInputSha256"]}
+        build.write_once(self.op / "intent.json", build.encode({"plan": plan}))
+        self.hashed = build.preflight.digest(self.op / "intent.json")
+        for name, value in (("start-intent.json", {"intentSha256": self.hashed}),
+                            ("started.json", {"invocationId": self.invocation}), ("result.json", self.completed)):
+            build.write_once(self.op / name, build.encode(value))
+        self.owner = {"kind": "doctor", "operationPath": str(self.op), "intentSha256": self.hashed}
+        self.service = {"LoadState": "loaded", "InvocationID": self.invocation, "MainPID": "0",
+            "ExecMainCode": "1", "ExecMainStatus": "1", "Result": "exit-code",
+            "ActiveState": "failed", "SubState": "failed"}
+        self.stack = ExitStack()
+        self.addCleanup(self.stack.close)
+        for name, value in (("TRIAL_ROOT", self.trials), ("PRIVATE_ROOT", self.builds), ("HEAVY_ROOT", self.heavy)):
+            self.stack.enter_context(patch.object(build, name, value))
+        self.native = self.stack.enter_context(patch.object(build, "native", side_effect=self.observe_service))
+
+    def observe_service(self, argv):
+        self.assertIn("show", argv)
+        self.assertIn("openclaw-snapshot-doctor-" + self.op.name + ".service", argv)
+        return subprocess.CompletedProcess(argv, 0, "\n".join(f"{k}={v}" for k, v in self.service.items()), "")
+
+    def test_proven_no_create_failure_releases_shared_slot_for_build_or_trial(self):
+        self.assertEqual(build.prove_trial_no_create_failure(self.op, self.hashed), self.completed)
+        for kind, root in (("build", self.builds), ("doctor", self.trials)):
+            with self.subTest(kind=kind):
+                release.atomic_json(self.heavy / "owner.json", self.owner)
+                next_op = root / ("f" * 32)
+                next_op.mkdir(mode=0o700)
+                build.write_once(next_op / "intent.json", b"{}\n")
+                build.reserve_heavy_workload(next_op, kind, build.preflight.digest(next_op / "intent.json"))
+                self.assertEqual(build.read_private(self.heavy / "owner.json")["operationPath"], str(next_op))
+                self.assertEqual(len(list(self.heavy.glob("settled-*.json"))), 1)
+
+    def test_create_markers_and_dangling_marker_never_release_shared_slot(self):
+        release.atomic_json(self.heavy / "owner.json", self.owner)
+        next_op = self.builds / ("f" * 32)
+        next_op.mkdir(mode=0o700)
+        build.write_once(next_op / "intent.json", b"{}\n")
+        for name in ("create-intent.json", "container.json", "container-start-intent.json"):
+            for dangling in (False, True):
+                with self.subTest(name=name, dangling=dangling):
+                    marker = self.op / name
+                    if dangling:
+                        marker.symlink_to(self.op / "missing")
+                    else:
+                        build.write_once(marker, b"{}\n")
+                    with self.assertRaisesRegex(release.Refusal, "workload.owned_or_uncertain"):
+                        build.reserve_heavy_workload(next_op, "build", build.preflight.digest(next_op / "intent.json"))
+                    self.assertEqual(build.read_private(self.heavy / "owner.json"), self.owner)
+                    marker.unlink()
+
+    def test_exact_terminal_service_and_result_binding_are_required(self):
+        for key, value in (("InvocationID", "f" * 32), ("MainPID", "12"), ("Result", "timeout"),
+                           ("ExecMainStatus", "0"), ("ExecMainCode", "2"), ("SubState", "running"),
+                           ("ActiveState", "active"), ("LoadState", "not-found")):
+            with self.subTest(service=key):
+                original = self.service[key]
+                self.service[key] = value
+                with self.assertRaisesRegex(release.Refusal, "workload.no_create.service_unsettled"):
+                    build.prove_trial_no_create_failure(self.op, self.hashed)
+                self.service[key] = original
+        for key, value in (("invocationId", "f" * 32), ("imageReceiptSha256", "0" * 64),
+                           ("checkInputSha256", "0" * 64), ("state", "succeeded"), ("containerId", "1" * 64),
+                           ("nativeState", {}), ("nativeExitCode", 0), ("cgroupSettlementObserved", True)):
+            with self.subTest(result=key):
+                release.atomic_json(self.op / "result.json", {**self.completed, key: value})
+                with self.assertRaises(release.Refusal):
+                    build.prove_trial_no_create_failure(self.op, self.hashed)
+        release.atomic_json(self.op / "result.json", self.completed)
+        release.atomic_json(self.op / "start-intent.json", {"intentSha256": "0" * 64})
+        with self.assertRaisesRegex(release.Refusal, "workload.no_create.binding"):
+            build.prove_trial_no_create_failure(self.op, self.hashed)
+
+    def test_marker_appearing_during_service_observation_remains_uncertain(self):
+        def observe(argv):
+            build.write_once(self.op / "create-intent.json", b"{}\n")
+            return self.observe_service(argv)
+        with patch.object(build, "native", side_effect=observe):
+            with self.assertRaisesRegex(release.Refusal, "workload.no_create.dispatch_uncertain"):
+                build.prove_trial_no_create_failure(self.op, self.hashed)
+
+
 if __name__ == "__main__":
     unittest.main()
