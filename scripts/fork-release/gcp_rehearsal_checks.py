@@ -44,7 +44,7 @@ def probe_contract(phase, contract=None):
     return contract
 
 
-def validate_phase(phase, image, clean, check):
+def validate_phase(phase, image, clean, check, *, dd_final_startup=False):
     """Validate already observed evidence; caller owns its file/live binding.
 
     Candidate check.cleanInputSha256 identifies the original Doctor input.
@@ -62,7 +62,7 @@ def validate_phase(phase, image, clean, check):
     if phase == PHASES[0]:
         # Lazy import keeps the trial's single supervisor/helper bundle owner.
         import gcp_snapshot_trial as trial
-        trial.qualified_image(image)
+        trial.qualified_image(image, dd_final_startup=dd_final_startup)
         need(clean.get("restorationState") == "doctor-complete", "check.candidate.data_state")
         result = check["doctorResult"]
         need(type(result) is dict and matches(OP, result.get("operationId")) and

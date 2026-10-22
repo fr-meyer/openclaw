@@ -67,6 +67,38 @@ LEASE_PATCH_RECEIPT_SHA256 = "2004c0f3d6100a5677e565d1fbb8f8c2760de70e75717340f8
 LEASE_PATCH_PRIOR = "25102903106f3d34082d5f703a7e758c"
 LEASE_PATCH_PRIOR_PIPELINE_SHA = "e18ff4483ddb5a6c2b07332723112ff97b6d630f"
 LEASE_PATCH_PRIOR_IMAGE_RECEIPT_SHA256 = "7c71d34de8e2f7f7bae6ad131fcc913b3160f66016e79edb6a900ecea13e2164"
+# Distinct successful-Doctor cross-image startup. The historical Doctor and
+# startup receipts are immutable; final-image bindings remain deliberately
+# absent until one exact public commit, seal and independent review exist.
+DD_DOCTOR = "dd3702b5bc99e4da5fd0062910f935f3"
+DD_DOCTOR_PIPELINE_SHA = "719ce41e29f8e0e16d346bc6fcd439c7fed67f88"
+DD_DOCTOR_RESULT_SHA256 = "f544f12bf791a822bf20ec413aef481996f5cf172a43d53c2ad6d7b02a922619"
+DD_PRIOR_STARTUP = "f2e0c37b2d0544af9220ad23fd277383"
+DD_PRIOR_STARTUP_RESULT_SHA256 = "099435c9bbea92c482e1a0d015549923d1d59a618c338c7167de8d1a5b7e556f"
+DD_BACKUP_ID = "f8c55592-a39a-8e8c-87cd-40cb5ad53f22"
+DD_STARTUP_CHECK = "openclaw.snapshot-trial-check.dd3702-startup.v1"
+DD_EQUIVALENCE_SCHEMA = "openclaw.dd3702-startup-image-equivalence.v1"
+DD_FINAL_IMAGE = None
+DD_FINAL_PRODUCER = None
+DD_FINAL_IMAGE_RECEIPT_SHA256 = None
+DD_FINAL_RUNTIME_SHA256 = "31377ee1c1873d1496e75973e25fc3b0f85c1ff4a83943da23955fada02ecaf9"
+DD_FINAL_SOURCE_BOUNDARY_SHA256 = "bee603181a4e6250bcc55f023fe1b6e2f01e874caed87327352c004060bca73c"
+DD_FINAL_EQUIVALENCE_SHA256 = None
+DD_FINAL_CHANGED_PATHS = (
+    "custom-patches/manifest.json",
+    "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
+    "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs",
+    "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/capture-integrity.test.mjs",
+    "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+    "src/gateway/server-managed-task-flow-runtime.mergeguez-parity.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.mergeguez-recovery.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.ts",
+    "src/plugins/registry-runtime-task-flow.ts",
+    "src/plugins/registry-runtime.ts",
+    "src/tasks/managed-task-flow-contract.ts",
+    "src/tasks/managed-task-flow-host.ts",
+    "test/vitest/vitest.gateway-server-paths.mjs",
+)
 PREVIOUS_IMAGE = {
     **QUALIFIED_IMAGE,
     "sourceSha": "4bcf8902e1eeb2fa5e84d0c4bf55572382ca61e4",
@@ -111,6 +143,8 @@ LEGACY_CONTINUATION_SHA = "4c57b5269dc882c4c15f4b26fbdbb05a89b2df2d"
 # Digest of the sorted compact JSON helper-hash map; never execute old helpers.
 RETAINED_HELPERS = {
     LEASE_PATCH_PRIOR_PIPELINE_SHA: "bedac832d1ab2f95b9c813e95db9e41d548c2c25f381f723699dce470281a47d",
+    # The settled dd3702 Doctor and f2e0 startup share this exact helper map.
+    DD_DOCTOR_PIPELINE_SHA: "2483e1d4a5686553f3bf142bc1fb971abded41c27c09d7f8b72f9af5c441dd7d",
     LEGACY_DEVICE_SHA: "872b6966330c2bb127ae007cf936bffc6e6d7704d9d0ed1a0b7be5de57e8da0d",
     "ad0c1a62300f77e616b1a373c92c967c3cba95b8": "af5caa6316e15bec85b501ff2f8839835546b1e1e5313810a314741479343156",
     LEGACY_CONTINUATION_SHA: "0de004053ed692ae2dc0cbf2d70f336dda72c02c21ba65a893ccac37a4719f97",
@@ -142,9 +176,13 @@ def verify_running_helpers(expected):
              "trial.running_helper.changed")
 
 
-def qualified_image(image, *, retained=False):
+def qualified_image(image, *, retained=False, dd_final_startup=False):
     candidates = ((QUALIFIED_IMAGE, QUALIFIED_PRODUCER),
                   (LEASE_PATCH_IMAGE, LEASE_PATCH_PRODUCER))
+    if dd_final_startup:
+        need(DD_FINAL_IMAGE is not None and DD_FINAL_PRODUCER is not None,
+             "trial.dd_final.image_unbound")
+        candidates += ((DD_FINAL_IMAGE, DD_FINAL_PRODUCER),)
     if retained:
         candidates += ((PREVIOUS_IMAGE, QUALIFIED_PRODUCER),
                        (HISTORICAL_IMAGE, HISTORICAL_PRODUCER))
@@ -215,6 +253,173 @@ def continuing(check):
 
 def backup_reuse(check):
     return check.get("backupReuse") if continuing(check) else None
+
+
+def dd_final_startup_check(check):
+    return type(check) is dict and check.get("schema") == DD_STARTUP_CHECK
+
+
+def validate_dd_original_backup_files(prior, receipt):
+    """Stat only the eleven pinned originals; never scan database contents."""
+    reuse = backup_reuse(prior.get("check"))
+    need(reuse is not None and reuse["backupId"] == receipt["backupId"] == DD_BACKUP_ID and
+         reuse["backupCount"] == 11 and reuse["manifestSha256"] == receipt["backupManifestSha256"] and
+         reuse["targetSourceSha"] == LEASE_PATCH_IMAGE["sourceSha"] and
+         reuse["targetImageReceiptSha256"] == LEASE_PATCH_RECEIPT_SHA256,
+         "trial.dd_final.backup_group")
+    rows = prior["check"]["reconciliation"]["artifacts"]
+    files = receipt["backupFiles"]
+    need(type(rows) is list and len(rows) == 11 and type(files) is list and len(files) == 11 and
+         [entry.get("path") for entry in files] == sorted(row["path"] for row in rows),
+         "trial.dd_final.backup_inventory")
+    by_path = {entry["path"]: entry for entry in files}
+    need(len(by_path) == 11, "trial.dd_final.backup_duplicate")
+    root = path(prior["clean"]["mountRoot"])
+    for row in rows:
+        pinned = by_path[row["path"]]
+        exact(pinned, "path device inode links sizeBytes allocatedBytes modifiedNs "
+              "changedNs ownerUid mode", "trial.dd_final.backup_file_fields")
+        file = path(row["path"])
+        need(root in file.parents and row["kind"] == "migration-backup" and
+             row["classification"] == "native-revalidation-required" and
+             row["disposition"] == "retain" and row["nativeDiscardOnRetry"] is False and
+             file.name.endswith(".pre-startup-migration-" + DD_BACKUP_ID + ".bak") and
+             all(type(pinned[key]) is int and pinned[key] >= 0 for key in
+                 ("device", "inode", "links", "sizeBytes", "allocatedBytes", "modifiedNs",
+                  "changedNs", "ownerUid", "mode")) and
+             all(pinned[key] == row[key] for key in
+                 ("device", "inode", "links", "sizeBytes", "allocatedBytes")),
+             "trial.dd_final.backup_file_scope")
+        info = file.lstat()
+        need(stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode) and
+             info.st_nlink == pinned["links"] == 1 and
+             info.st_dev == pinned["device"] and info.st_ino == pinned["inode"] and
+             info.st_size == pinned["sizeBytes"] and info.st_blocks * 512 == pinned["allocatedBytes"] and
+             info.st_mtime_ns == pinned["modifiedNs"] and info.st_ctime_ns == pinned["changedNs"] and
+             info.st_uid == pinned["ownerUid"] and stat.S_IMODE(info.st_mode) == pinned["mode"],
+             "trial.dd_final.backup_changed")
+
+
+def validate_dd_prior_startup(receipt, prior):
+    """Use the genuine private f2e0 result and settled native container."""
+    need(DD_PRIOR_STARTUP_RESULT_SHA256 is not None, "trial.dd_final.prior_startup_unbound")
+    previous, intent = read_retained(PRIVATE_ROOT / DD_PRIOR_STARTUP)
+    result, hashed = private_json(previous / "result.json")
+    observed = status(previous, retained=True)
+    need(phase(intent["plan"]) == "startup" and
+         hashed == receipt["priorStartupResultSha256"] == DD_PRIOR_STARTUP_RESULT_SHA256 and
+         observed["state"] == "succeeded" and observed.get("result") == result and
+         intent["check"]["doctorOperationId"] == DD_DOCTOR and
+         intent["check"]["doctorResultSha256"] == DD_DOCTOR_RESULT_SHA256 and
+         intent["plan"]["imageReceiptSha256"] == LEASE_PATCH_RECEIPT_SHA256 and
+         all(intent["image"].get(key) == value for key, value in LEASE_PATCH_IMAGE.items()) and
+         all(intent["clean"][key] == prior["clean"][key] for key in
+             ("snapshotIdentity", "restoreReceiptSha256", "mountRoot", "filesystemDevice",
+              "devicePath", "deviceMajorMinor", "mounts")) and
+         intent["clean"]["configSha256"] == receipt["beforeConfigSha256"] and
+         result.get("state") == "succeeded" and result.get("nativeExitCode") == 0 and
+         result.get("oomKillDelta") == 0 and result.get("cgroupSettlementObserved") is True and
+         result.get("cleanup") == "owned_container_stopped_retained",
+         "trial.dd_final.prior_startup")
+    native_check = result.get("nativeCheck")
+    need(type(native_check) is dict and native_check.get("ready") is True and
+         native_check.get("nativeExitCode") == 0 and native_check.get("shutdown") == "exited" and
+         native_check.get("healthz", {}).get("status") == 200 and
+         native_check.get("startupz", {}).get("status") == 200 and
+         native_check.get("readyz", {}).get("status") == 200,
+         "trial.dd_final.prior_startup_probe")
+    retained = durable.read_private(previous / "container.json")
+    need(retained["id"] == result["containerId"], "trial.dd_final.prior_container_receipt")
+    actual = inspect_container(result["containerId"])
+    validate_owned_container(actual, result["containerId"], previous)
+    state = actual["State"]
+    old_state = result["nativeState"]
+    need(state["Running"] is False and state["Pid"] == 0 and
+         all(state[key] == old_state[key] for key in
+             ("StartedAt", "FinishedAt", "ExitCode", "OOMKilled")),
+         "trial.dd_final.prior_container_changed")
+    started = durable.read_private(previous / "start-intent.json")
+    intent_hash = digest(durable.private_bytes(previous / "intent.json"))
+    need(started["intentSha256"] == intent_hash, "trial.dd_final.prior_intent_hash")
+    validate_container(actual, previous, intent, started["image"]["env"],
+                       retained_devices(intent, started))
+    return {"operationId": DD_PRIOR_STARTUP, "intentSha256": intent_hash}
+
+
+def validate_dd_final_equivalence(check, image, plan, clean, prior):
+    """A fixed reviewed source/image boundary, never a caller's assertion."""
+    need(all(value is not None for value in
+             (DD_FINAL_IMAGE, DD_FINAL_PRODUCER, DD_FINAL_IMAGE_RECEIPT_SHA256,
+              DD_FINAL_RUNTIME_SHA256, DD_FINAL_SOURCE_BOUNDARY_SHA256,
+              DD_FINAL_EQUIVALENCE_SHA256, DD_FINAL_CHANGED_PATHS,
+              DD_PRIOR_STARTUP_RESULT_SHA256)), "trial.dd_final.unbound")
+    receipt = check["equivalence"]
+    exact(receipt, "schema doctorOperationId doctorResultSha256 priorStartupOperationId "
+          "priorStartupResultSha256 doctorImageReceiptSha256 finalImageReceiptSha256 "
+          "finalImageIndexDigest sourceBoundary backupId backupManifestSha256 backupFiles "
+          "beforeConfigSha256 afterConfigSha256 configTransitionReceiptSha256 "
+          "runtimeSha256 catalogPostcheck controllerDisabled externalEffectsDisabled "
+          "reviewReceiptSha256", "trial.dd_final.equivalence_fields")
+    need(receipt["schema"] == DD_EQUIVALENCE_SCHEMA and
+         digest(durable.encode(receipt)) == DD_FINAL_EQUIVALENCE_SHA256 and
+         check["equivalenceReceiptSha256"] == DD_FINAL_EQUIVALENCE_SHA256 and
+         receipt["doctorOperationId"] == DD_DOCTOR and
+         receipt["doctorResultSha256"] == DD_DOCTOR_RESULT_SHA256 and
+         receipt["priorStartupOperationId"] == DD_PRIOR_STARTUP and
+         receipt["priorStartupResultSha256"] == check["priorStartupResultSha256"] ==
+             DD_PRIOR_STARTUP_RESULT_SHA256 and
+         receipt["doctorImageReceiptSha256"] == LEASE_PATCH_RECEIPT_SHA256 and
+         receipt["finalImageReceiptSha256"] == plan["imageReceiptSha256"] ==
+             DD_FINAL_IMAGE_RECEIPT_SHA256 and
+         receipt["finalImageIndexDigest"] == image.get("indexDigest") ==
+             DD_FINAL_IMAGE["indexDigest"] and
+         all(image.get(key) == value for key, value in DD_FINAL_IMAGE.items()) and
+         image.get("producer", {}).get("toolingSha") == DD_FINAL_PRODUCER and
+         receipt["runtimeSha256"] == DD_FINAL_RUNTIME_SHA256 and
+         receipt["catalogPostcheck"] == "not_established" and
+         receipt["controllerDisabled"] is True and
+         receipt["externalEffectsDisabled"] is True and
+         all(type(receipt[key]) is str and HEX.fullmatch(receipt[key]) for key in
+             ("beforeConfigSha256", "afterConfigSha256", "configTransitionReceiptSha256",
+              "backupManifestSha256", "reviewReceiptSha256")),
+         "trial.dd_final.equivalence_identity")
+    source = receipt["sourceBoundary"]
+    exact(source, "schema status baseSourceSha baseTree successorSourceSha successorTree "
+          "changedPaths sourceDiffSha256 runtimeSha256 noChangedGitPathsOutsideExactSet "
+          "manifestOnlyRuntimePinChanged", "trial.dd_final.source_fields")
+    need(source["schema"] == "openclaw.dd3702.source-diff-boundary.v1" and
+         source["status"] == "SOURCE_DIFF_BOUNDARY_ONLY" and
+         digest(durable.encode(source)) == DD_FINAL_SOURCE_BOUNDARY_SHA256 and
+         source["baseSourceSha"] == LEASE_PATCH_IMAGE["sourceSha"] and
+         source["baseTree"] == LEASE_PATCH_IMAGE["sourceTree"] and
+         source["successorSourceSha"] == image["sourceSha"] and
+         source["successorTree"] == image["sourceTree"] and
+         source["changedPaths"] == sorted(DD_FINAL_CHANGED_PATHS) and
+         source["runtimeSha256"] == DD_FINAL_RUNTIME_SHA256 and
+         source["noChangedGitPathsOutsideExactSet"] is True and
+         source["manifestOnlyRuntimePinChanged"] is True and
+         HEX.fullmatch(source["sourceDiffSha256"]),
+         "trial.dd_final.source_boundary")
+    transition, hashed = private_json(PRIVATE_ROOT / ("dd3702-final-startup-" + DD_DOCTOR) /
+                                      "config-transition.json")
+    need(hashed == receipt["configTransitionReceiptSha256"] and
+         type(transition) is dict and transition.get("beforeConfigSha256") ==
+             receipt["beforeConfigSha256"] and
+         transition.get("afterConfigSha256") == receipt["afterConfigSha256"] ==
+             clean["configSha256"] and
+         transition.get("changedFields") ==
+             ["plugins.entries.mergeguez-pr-lifecycle.config.expectedRuntimeSha256"] and
+         transition.get("controllerDisabled") is True and
+         transition.get("externalEffectsDisabled") is True and
+         transition.get("runtimeSha256") == DD_FINAL_RUNTIME_SHA256 and
+         transition.get("doctorOperationId") == DD_DOCTOR and
+         transition.get("mountRoot") == clean["mountRoot"] and
+         transition.get("filesystemDevice") == clean["filesystemDevice"] and
+         transition.get("ownerUid") == 1000,
+         "trial.dd_final.config_transition")
+    lease_predecessor = validate_dd_prior_startup(receipt, prior)
+    validate_dd_original_backup_files(prior, receipt)
+    return receipt, lease_predecessor
 
 
 def timestamp(value):
@@ -420,6 +625,18 @@ def validate(plan, image, clean, check=None, *, retained=False):
         if continuing(check):
             validate_continuation(check, legacy=legacy_continuation)
             need(selected == "doctor", "trial.continuation.phase")
+        elif dd_final_startup_check(check):
+            exact(check, "schema phase doctorOperationId doctorResultSha256 "
+                  "priorStartupResultSha256 equivalenceReceiptSha256 equivalence",
+                  "trial.dd_final.check_fields")
+            need(selected == check["phase"] == "startup" and
+                 check["doctorOperationId"] == DD_DOCTOR and
+                 check["doctorResultSha256"] == DD_DOCTOR_RESULT_SHA256 and
+                 DD_PRIOR_STARTUP_RESULT_SHA256 is not None and
+                 check["priorStartupResultSha256"] == DD_PRIOR_STARTUP_RESULT_SHA256 and
+                 DD_FINAL_EQUIVALENCE_SHA256 is not None and
+                 check["equivalenceReceiptSha256"] == DD_FINAL_EQUIVALENCE_SHA256,
+                 "trial.dd_final.check_identity")
         else:
             exact(check, "schema phase" + (" doctorOperationId doctorResultSha256" if selected != "doctor" else ""),
                   "trial.check.fields")
@@ -446,7 +663,8 @@ def validate(plan, image, clean, check=None, *, retained=False):
          image.get("architecture") == "amd64" and SHA.fullmatch(image.get("sourceSha", "")),
          "trial.image.receipt")
     if selected != "rollback":
-        qualified_image(image, retained=retained)
+        qualified_image(image, retained=retained,
+                        dd_final_startup=dd_final_startup_check(check))
     need(all(DIGEST.fullmatch(image.get(k, "")) for k in
              ("indexDigest", "imageDigest", "configDigest")), "trial.image.digests")
     if selected != "rollback":
@@ -801,9 +1019,10 @@ def host_pressure_gate(state, *, admission=False, now=None):
     return observed
 
 
-def observe_image(image, selected="doctor"):
+def observe_image(image, selected="doctor", check=None):
     if selected != "rollback":
-        qualified_image(image)
+        qualified_image(image, dd_final_startup=selected == "startup" and
+                        dd_final_startup_check(check))
     value = json.loads(docker(["image", "inspect", image["indexDigest"]]))[0]
     ids = {image[k] for k in ("indexDigest", "imageDigest", "configDigest")}
     cfg = value["Config"]
@@ -1031,6 +1250,10 @@ def phase_prerequisites(op, intent):
     if selected == "startup" or continuation:
         same = ("restoreReceiptSha256", "mountRoot", "filesystemDevice", "devicePath", "deviceMajorMinor", "mounts")
         image_same = intent["plan"]["imageReceiptSha256"] == prior["plan"]["imageReceiptSha256"]
+        dd_final_startup = dd_final_startup_check(check)
+        if dd_final_startup:
+            need(selected == "startup" and not continuation and not image_same,
+                 "trial.dd_final.not_cross_image_startup")
         prior_reuse = backup_reuse(prior.get("check"))
         # A later Doctor continuation must keep the original group's proof.
         # Dropping it would recapture from the already modified test copy.
@@ -1068,8 +1291,24 @@ def phase_prerequisites(op, intent):
                                reuse["targetSourceSha"] == LEASE_PATCH_IMAGE["sourceSha"] and
                                reuse["targetImageReceiptSha256"] == LEASE_PATCH_RECEIPT_SHA256 and
                                resource_profile(intent["plan"]["limits"])["id"] == "memory16-read320-write128")
+        dd_final, lease_predecessor = False, None
+        if dd_final_startup:
+            receipt, lease_predecessor = validate_dd_final_equivalence(
+                check, intent["image"], intent["plan"], clean, prior)
+            need(check["doctorOperationId"] == DD_DOCTOR and
+                 prior["plan"]["toolingSha"] == DD_DOCTOR_PIPELINE_SHA and
+                 prior["plan"]["imageReceiptSha256"] == LEASE_PATCH_RECEIPT_SHA256 and
+                 all(prior["image"].get(key) == value for key, value in LEASE_PATCH_IMAGE.items()) and
+                 prior["image"].get("producer", {}).get("toolingSha") == LEASE_PATCH_PRODUCER and
+                 result.get("operationId") == DD_DOCTOR and
+                 hashed == DD_DOCTOR_RESULT_SHA256 and result.get("state") == "succeeded" and
+                 result.get("doctorComplete") is True and result.get("nativeExitCode") == 0 and
+                 result.get("oomKillDelta") == 0 and result.get("cgroupSettlementObserved") is True and
+                 clean["configSha256"] == receipt["afterConfigSha256"] and reuse is None,
+                 "trial.dd_final.prior_and_config")
+            dd_final = True
         need(all(clean[key] == old[key] for key in same) and
-             (same_build or corrected_rebuild or lease_patch_rebuild),
+             (same_build or corrected_rebuild or lease_patch_rebuild or dd_final),
              "trial.prior.startup_binding")
         need(snapshot_paths(clean) == start_record["mounts"], "trial.prior.startup_mount_changed")
         current_devices = block_devices(clean)
@@ -1088,10 +1327,14 @@ def phase_prerequisites(op, intent):
         # A sequential detach/delete/restore may reuse the same device numbers.
         # The restore owner binds the distinct receipt to the new cloud disk ID.
         helper_check = {key: intent["plan"][key] for key in ("imageReceiptSha256", "cleanInputSha256")}
-    contract = None if continuation else checks.validate_phase(native_phase(intent["plan"]), intent["image"], clean, helper_check)
+    contract = None if continuation else checks.validate_phase(
+        native_phase(intent["plan"]), intent["image"], clean, helper_check,
+        dd_final_startup=dd_final if selected == "startup" else False)
     proof = {"operationId": previous.name, "intentSha256": prior_hash, "resultSha256": hashed,
             "containerId": result["containerId"], "startedAt": state["StartedAt"],
             "finishedAt": state["FinishedAt"], "probeContract": contract}
+    if selected == "startup" and dd_final:
+        proof["datasetLeasePredecessor"] = lease_predecessor
     if continuation:
         proof.update(invocationId=result["invocationId"], priorResourceProfile=resource_profile(prior["plan"]["limits"]),
                      priorLimits=prior["plan"]["limits"],
@@ -1139,6 +1382,21 @@ def verify_continuation_claim(op, intent, prior):
         sync_private_claim(claim, value)
 
 
+def verify_dd_startup_claim(op, intent, prior):
+    """Require the exact f2e0 -> new-startup lease transfer before native work."""
+    need(dd_final_startup_check(intent.get("check")) and
+         prior.get("datasetLeasePredecessor", {}).get("operationId") == DD_PRIOR_STARTUP,
+         "trial.dd_final.lease_predecessor")
+    lease = op.parent / ("dataset-" + digest(intent["clean"]["mountRoot"].encode()) + ".json")
+    previous = op / "dataset-previous.json"
+    need(lease.exists() and previous.exists(), "trial.dd_final.lease_changed")
+    requested = {"operationId": op.name,
+                 "intentSha256": digest(durable.private_bytes(op / "intent.json"))}
+    need(durable.read_private(lease) == requested and
+         durable.read_private(previous) == prior["datasetLeasePredecessor"],
+         "trial.dd_final.lease_changed")
+
+
 def start(op):
     need(sys.platform == "linux", "trial.requires_linux")
     op, intent = load(op)
@@ -1150,7 +1408,7 @@ def start(op):
         mounts = snapshot_paths(clean)
         devices = block_devices(clean)
         no_other_writer(clean)
-        image = observe_image(intent["image"], phase(intent["plan"]))
+        image = observe_image(intent["image"], phase(intent["plan"]), intent.get("check"))
         resources = capacity(intent["plan"], clean, True)
         continuation_capacity(resources, intent["plan"], intent.get("check"))
         intent_hash = digest(durable.private_bytes(op / "intent.json"))
@@ -1158,13 +1416,17 @@ def start(op):
         reservation = {"operationId": op.name, "intentSha256": intent_hash}
         def reserve_dataset():
             continuation = continuing(intent.get("check"))
-            if continuation:
+            dd_startup = dd_final_startup_check(intent.get("check"))
+            if continuation or dd_startup:
                 # This callback runs inside the global workload lock. Repeat
                 # live prior proof at the actual ownership transition boundary.
                 need(phase_prerequisites(op, intent) == prior, "trial.prior.changed")
+            if continuation:
                 need(lease.exists(), "trial.continuation.missing_claim")
+            if dd_startup:
+                need(lease.exists(), "trial.dd_final.missing_predecessor_claim")
             try:
-                if continuation:
+                if continuation or dd_startup:
                     raise FileExistsError()
                 durable.write_once(lease, durable.encode(reservation))
             except FileExistsError:
@@ -1173,12 +1435,16 @@ def start(op):
                 if current == reservation:
                     if continuation:
                         verify_continuation_claim(op, intent, prior)
+                    elif dd_startup:
+                        verify_dd_startup_claim(op, intent, prior)
                     else:
                         sync_private_claim(lease, original)
                     return
-                need((phase(intent["plan"]) == "startup" or continuation) and current == {
-                    "operationId": prior["operationId"], "intentSha256": prior["intentSha256"]},
-                    "trial.dataset.reserved")
+                need(phase(intent["plan"]) == "startup" or continuation,
+                     "trial.dataset.reserved")
+                predecessor = prior.get("datasetLeasePredecessor", {
+                    "operationId": prior["operationId"], "intentSha256": prior["intentSha256"]})
+                need(current == predecessor, "trial.dataset.reserved")
                 previous_lease = op / "dataset-previous.json"
                 if previous_lease.exists():
                     need(durable.private_bytes(previous_lease) == original, "trial.dataset.previous_changed")
@@ -1402,7 +1668,8 @@ def serve(op):
         devices = block_devices(intent["clean"])
         need(devices == started["devices"], "trial.devices.changed")
         no_other_writer(intent["clean"])
-        need(observe_image(intent["image"], selected) == started["image"], "trial.image.changed")
+        need(observe_image(intent["image"], selected, intent.get("check")) == started["image"],
+             "trial.image.changed")
         admission = capacity(intent["plan"], intent["clean"], True)
         continuation_capacity(admission, intent["plan"], intent.get("check"))
         if lease_patch_pressure_profile(intent["plan"], intent["image"], intent.get("check")):
@@ -1413,6 +1680,8 @@ def serve(op):
         durable.reserve_heavy_workload(op, "doctor", started["intentSha256"])
         if continuing(intent.get("check")):
             verify_continuation_claim(op, intent, started["priorDoctor"])
+        elif dd_final_startup_check(intent.get("check")):
+            verify_dd_startup_claim(op, intent, started["priorDoctor"])
         (op / "gate").mkdir(mode=0o755)
         os.chmod(op / "gate", 0o755)
         args = create_argv(op, intent, devices)
@@ -1463,6 +1732,10 @@ def serve(op):
                             need(phase_prerequisites(op, intent) == started["priorDoctor"], "trial.prior.changed")
                             verify_continuation_claim(op, intent, started["priorDoctor"])
                             continuation_capacity(capacity(intent["plan"], intent["clean"]), intent["plan"], intent["check"])
+                        elif dd_final_startup_check(intent.get("check")):
+                            need(phase_prerequisites(op, intent) == started["priorDoctor"],
+                                 "trial.prior.changed")
+                            verify_dd_startup_claim(op, intent, started["priorDoctor"])
                         if pressure is not None:
                             host_pressure_gate(pressure, admission=True)
                             durable.write_once(op / "host-pressure-admission.json",
