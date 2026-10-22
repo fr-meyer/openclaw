@@ -48,6 +48,9 @@ PRODUCTION_GATEWAY_NAME = "openclaw-openclaw-gateway-1"
 # source, not a general lower-memory promise for future Dockerfiles.
 QUALIFICATION_SOURCE_SHA = "1d5ab20bea4cccce0b80b60a9ba5d5020cf08038"
 QUALIFICATION_PROFILE_ID = "qualification-8g"
+QUALIFICATION_START_BYTES = 10 << 30
+QUALIFICATION_RUNNING_FLOOR_BYTES = 2 << 30
+QUALIFICATION_PRESSURE_RISK_BYTES = 4 << 30
 SYSTEMD_RUN = ("/usr/bin/sudo", "-n", "/usr/bin/systemd-run")
 SYSTEMCTL = ("/usr/bin/sudo", "-n", "/usr/bin/systemctl")
 CHOWN = ("/usr/bin/sudo", "-n", "/usr/bin/chown")
@@ -206,17 +209,20 @@ def valid_pressure_sample(sample, state):
     return True
 
 
-def pressure_guard_evaluate(sample, state):
+def pressure_guard_evaluate(sample, state, *, hard_floor_bytes=10 << 30,
+                            risk_floor_bytes=PRESSURE_HEADROOM_RISK_BYTES):
     """Bound runtime PSI by time and independent health/headroom signals.
 
     A single host full-PSI avg10 crossing is an observation, not proof of build
     causality. All current hard capacity/health/OOM gates remain separate.
     """
-    if not valid_pressure_sample(sample, state):
+    if (type(hard_floor_bytes) is not int or type(risk_floor_bytes) is not int or
+            not 0 < hard_floor_bytes < risk_floor_bytes or
+            not valid_pressure_sample(sample, state)):
         return PressureDecision("stop", "build.pressure.telemetry_invalid"), state
     if not sample.gateway_healthy or sample.gateway_oom or sample.worker_oom:
         return PressureDecision("stop", "build.pressure.critical_health_or_oom"), state
-    if sample.available_bytes < 10 << 30:
+    if sample.available_bytes < hard_floor_bytes:
         return PressureDecision("stop", "build.pressure.critical_headroom"), state
 
     timestamp = sample.at_seconds
@@ -231,7 +237,7 @@ def pressure_guard_evaluate(sample, state):
         if elapsed >= PRESSURE_STOP_SECONDS:
             return PressureDecision("stop", "build.pressure.sustained"), updated
         if (elapsed >= PRESSURE_HEADROOM_RISK_SECONDS and
-                sample.available_bytes < PRESSURE_HEADROOM_RISK_BYTES):
+                sample.available_bytes < risk_floor_bytes):
             return PressureDecision("stop", "build.pressure.headroom"), updated
         if (elapsed >= PRESSURE_LATENCY_RISK_SECONDS and
                 sample.last_health_check_ms is not None and
@@ -491,9 +497,10 @@ def validate_profile(profile, config):
                 "minFreeBytes", "minCacheFreeBytes"):
         integer(profile[key], 1, 1 << 50, "build.adaptive.profile_floor")
     qualification = profile["id"] == QUALIFICATION_PROFILE_ID
-    minimum_start = 18 << 30 if qualification else 21 << 30
+    minimum_start = QUALIFICATION_START_BYTES if qualification else 21 << 30
+    minimum_running = QUALIFICATION_RUNNING_FLOOR_BYTES if qualification else 10 << 30
     need(profile["minStartMemoryAvailableBytes"] >= profile["minMemoryAvailableBytes"]
-         >= 10 << 30 and profile["minStartMemoryAvailableBytes"] >= minimum_start,
+         >= minimum_running and profile["minStartMemoryAvailableBytes"] >= minimum_start,
          "build.adaptive.profile_reserve")
     if qualification:
         builder = config["builder"]
@@ -501,7 +508,7 @@ def validate_profile(profile, config):
              builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
              builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000 and
              profile["tsdownMaxOldSpaceMb"] == 6144 and
-             profile["minMemoryAvailableBytes"] == 10 << 30 and
+             profile["minMemoryAvailableBytes"] == QUALIFICATION_RUNNING_FLOOR_BYTES and
              profile["maxFullMemoryPressureAvg10"] <= 5.0,
              "build.adaptive.qualification_identity")
     need(profile["minFreeBytes"] >= 16 << 30 and
@@ -523,32 +530,37 @@ def profile_fits(profile, samples):
                for sample in samples)
 
 
+def is_qualification_worker(config):
+    builder = config["builder"]
+    return (config["sourceSha"] == QUALIFICATION_SOURCE_SHA and
+            builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
+            builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000)
+
+
 def adaptive_profiles(config):
     """Two unqualified, source-bound candidates; no inferred Doctor/build minimum."""
     need("cache" in config, "build.adaptive.cache_required")
+    qualification = is_qualification_worker(config)
     common = {"qualification": "candidate-unqualified",
               "sourceSha": config["sourceSha"], "sourceTree": config["sourceTree"],
               "builderContainerId": config["builder"]["containerId"],
               "builderSha256": release.sha256(encode(config["builder"])),
               "minMemoryAvailableBytes": max(
-                  10 << 30, config["limits"]["minMemoryAvailableBytes"]),
+                  QUALIFICATION_RUNNING_FLOOR_BYTES if qualification else 10 << 30,
+                  config["limits"]["minMemoryAvailableBytes"]),
               "maxFullMemoryPressureAvg10": min(
                   5.0, config["limits"].get("maxFullMemoryPressureAvg10", 5.0)),
               "minFreeBytes": max(16 << 30, config["limits"]["minFreeBytes"]),
               "minCacheFreeBytes": max(44 << 30, config["cache"]["minFreeBytes"])}
-    if (config["sourceSha"] == QUALIFICATION_SOURCE_SHA and
-            config["builder"]["memoryBytes"] ==
-            config["builder"]["memorySwapBytes"] == 8 << 30 and
-            config["builder"]["cpuPeriod"] == 100000 and
-            config["builder"]["cpuQuota"] == 400000):
-        # 18 GiB = the 8 GiB hard worker cap plus the retained 10 GiB host
-        # stop floor. This removes an unmeasured 1 GiB start margin but never
-        # lowers the running floor. It is an experimental admission, not a
-        # measured full-image minimum. No automatic retry follows.
+    if qualification:
+        # User-selected 10 GiB start = 8 GiB hard worker cap plus 2 GiB
+        # nominal residual. Stopped-builder availability moved 5.15 GiB in
+        # 15 seconds, so this is a risky qualification, not a safe minimum.
         profile = {**common, "id": QUALIFICATION_PROFILE_ID,
                    "tsdownMaxOldSpaceMb": 6144,
                    "minStartMemoryAvailableBytes": max(
-                       18 << 30, config["limits"].get("minStartMemoryAvailableBytes", 0),
+                       QUALIFICATION_START_BYTES,
+                       config["limits"].get("minStartMemoryAvailableBytes", 0),
                        common["minMemoryAvailableBytes"])}
         validate_profile(profile, config)
         return [profile]
@@ -691,6 +703,9 @@ def service_argv(op, intent):
 
 def prepare(private_root, config, manifest, inventory, source, tooling):
     validate_config(config)
+    need(not is_qualification_worker(config) or
+         config.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
+         QUALIFICATION_PROFILE_ID, "build.qualification.profile_required")
     source, tooling = Path(source).resolve(), Path(tooling).resolve()
     root = Path(private_root).absolute()
     need(root == PRIVATE_ROOT and root.resolve() == PRIVATE_ROOT.resolve()
@@ -1188,11 +1203,15 @@ def running_pressure_sample(observed, at_seconds, completed_at_seconds):
         gateway["lastHealthCheckDurationMs"], age)
 
 
-def evaluate_pressure_observation(observed, started_at, completed_at, state):
+def evaluate_pressure_observation(observed, started_at, completed_at, state, *,
+                                  hard_floor_bytes=10 << 30,
+                                  risk_floor_bytes=PRESSURE_HEADROOM_RISK_BYTES):
     """Evaluate one completed probe before the output-forwarding loop can block."""
     try:
         sample = running_pressure_sample(observed, started_at, completed_at)
-        return pressure_guard_evaluate(sample, state)
+        return pressure_guard_evaluate(sample, state,
+                                       hard_floor_bytes=hard_floor_bytes,
+                                       risk_floor_bytes=risk_floor_bytes)
     except Exception as error:
         if type(observed) is dict:
             observed["pressureError"] = type(error).__name__
@@ -1213,8 +1232,14 @@ def running_capacity_probe(op, config, gateway_id, output, lock, shared):
         old_state = shared["state"]
         decision = None
         if result[0]:
+            qualification = (config.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
+                             QUALIFICATION_PROFILE_ID)
             decision, shared["state"] = evaluate_pressure_observation(
-                result[1], shared["probe_started"], sampled_at, old_state)
+                result[1], shared["probe_started"], sampled_at, old_state,
+                hard_floor_bytes=(QUALIFICATION_RUNNING_FLOOR_BYTES if qualification
+                                  else 10 << 30),
+                risk_floor_bytes=(QUALIFICATION_PRESSURE_RISK_BYTES if qualification
+                                  else PRESSURE_HEADROOM_RISK_BYTES))
             shared["last_observation"] = copy.deepcopy(result[1])
             if decision.action == "stop":
                 result[1]["pressureDecision"] = {
@@ -1641,6 +1666,9 @@ def start(op):
         if (op / "start-intent.json").exists():
             return status(op)
         config = intent["config"]
+        need(not is_qualification_worker(config) or
+             config.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
+             QUALIFICATION_PROFILE_ID, "build.qualification.profile_required")
         verify_builder_handoff(op, intent)
         source_binding(config, op / "manifest.json", op / "patch-inventory.json",
                        intent["sourceDir"])
@@ -1724,6 +1752,8 @@ def run_child(op, intent):
     config = intent["config"]
     qualification = (config.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
                      QUALIFICATION_PROFILE_ID)
+    need(not is_qualification_worker(config) or qualification,
+         "build.qualification.profile_required")
     gateway_id = (config["adaptiveSelection"]["gatewayContainerId"]
                   if qualification else None)
     try:

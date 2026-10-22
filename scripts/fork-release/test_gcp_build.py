@@ -334,12 +334,12 @@ class BuildTests(unittest.TestCase):
         bound = build.bind_adaptive_selection(self.config, samples)
         build.validate_config(bound)
 
-    def qualification_fixture(self, gib=18):
+    def qualification_fixture(self, gib=10):
         samples = self.adaptive_fixture(gib=gib)
         self.config["builder"].update({"memoryBytes": 8 << 30,
                                        "memorySwapBytes": 8 << 30,
                                        "cpuQuota": 400000})
-        self.config["limits"]["minMemoryAvailableBytes"] = 10 << 30
+        self.config["limits"]["minMemoryAvailableBytes"] = 2 << 30
         return samples
 
     def test_qualification_profile_is_exact_source_worker_and_no_swap(self):
@@ -348,12 +348,16 @@ class BuildTests(unittest.TestCase):
             bound = build.bind_adaptive_selection(self.config, samples)
             self.assertEqual(bound["adaptiveSelection"]["profile"]["id"],
                              build.QUALIFICATION_PROFILE_ID)
-            self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 18 << 30)
-            self.assertEqual(bound["limits"]["minMemoryAvailableBytes"], 10 << 30)
+            self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 10 << 30)
+            self.assertEqual(bound["limits"]["minMemoryAvailableBytes"], 2 << 30)
             self.assertEqual(bound["buildTuning"], {"tsdownMaxOldSpaceMb": 6144})
             build.validate_config(bound)
-            samples[1]["memoryAvailableBytes"] = (18 << 30) - 1
+            samples[1]["memoryAvailableBytes"] = (10 << 30) - 1
             self.assertIsNone(build.select_profile(self.config, samples))
+            samples[1]["memoryAvailableBytes"] = 10 << 30
+            samples[1]["fullMemoryPressureAvg10"] = 5.01
+            self.assertIsNone(build.select_profile(self.config, samples))
+            samples[1]["fullMemoryPressureAvg10"] = 0.1
             changed = copy.deepcopy(bound)
             changed["builder"]["memorySwapBytes"] = 10 << 30
             with self.assertRaises(release.Refusal):
@@ -362,9 +366,83 @@ class BuildTests(unittest.TestCase):
             changed["builder"]["cpuQuota"] = 700000
             with self.assertRaises(release.Refusal):
                 build.validate_config(changed)
+            self.config["limits"]["minMemoryAvailableBytes"] = 10 << 30
+            with self.assertRaisesRegex(release.Refusal, "qualification_identity"):
+                build.select_profile(self.config, samples)
         # A similar small worker on another source gets no special profile.
-        samples[1]["memoryAvailableBytes"] = 18 << 30
+        samples[1]["memoryAvailableBytes"] = 10 << 30
         self.assertIsNone(build.select_profile(self.config, samples))
+
+    def test_qualification_ten_gib_start_and_two_gib_runtime_boundaries(self):
+        samples = self.qualification_fixture()
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]):
+            selected = build.bind_adaptive_selection(self.config, samples)
+        self.assertEqual(selected["limits"]["minStartMemoryAvailableBytes"], 10 << 30)
+        self.assertEqual(selected["limits"]["minMemoryAvailableBytes"], 2 << 30)
+        observed = {"freeBytes": 30 << 30, "memoryAvailableBytes": 10 << 30,
+                    "memoryPressure": {"full": {"avg10": 0.1}}}
+        gateway = {"gatewayHealthy": True, "gatewayOomKilled": False,
+                   "oom": 0, "oomKill": 0}
+        worker = {"oom": 0, "oomKill": 0}
+        with patch.object(build, "resource_sample", return_value=observed), \
+             patch.object(build, "gateway_runtime_sample", return_value=gateway), \
+             patch.object(build, "builder_sample", return_value=worker):
+            self.capacity_impl(self.root, selected["limits"], starting=True,
+                               gateway_container_id="d" * 64,
+                               builder=selected["builder"])
+            observed["memoryAvailableBytes"] = (10 << 30) - 1
+            with self.assertRaisesRegex(release.Refusal, "start_memory_reserve"):
+                self.capacity_impl(self.root, selected["limits"], starting=True)
+            observed["memoryAvailableBytes"] = 2 << 30
+            self.capacity_impl(self.root, selected["limits"])
+            observed["memoryAvailableBytes"] -= 1
+            with self.assertRaisesRegex(release.Refusal, "memory_reserve"):
+                self.capacity_impl(self.root, selected["limits"])
+
+    def test_qualification_pressure_guard_uses_two_and_four_gib_floors(self):
+        floor = {"hard_floor_bytes": build.QUALIFICATION_RUNNING_FLOOR_BYTES,
+                 "risk_floor_bytes": build.QUALIFICATION_PRESSURE_RISK_BYTES}
+        healthy = build.PressureSample(1, 0, 2 << 30, True, False, False)
+        decision, _ = build.pressure_guard_evaluate(
+            healthy, build.PressureState(), **floor)
+        self.assertEqual(decision.action, "clear")
+        below = build.PressureSample(1, 0, (2 << 30) - 1, True, False, False)
+        decision, _ = build.pressure_guard_evaluate(
+            below, build.PressureState(), **floor)
+        self.assertEqual(decision.reason, "build.pressure.critical_headroom")
+        watched = build.PressureState(True, 0, None, 0, 0)
+        for available, expected in (((4 << 30) - 1, "build.pressure.headroom"),
+                                    (4 << 30, "build.pressure.observed")):
+            sample = build.PressureSample(30, 6, available, True, False, False)
+            decision, _ = build.pressure_guard_evaluate(sample, watched, **floor)
+            self.assertEqual(decision.reason, expected)
+        bad = build.PressureSample(1, 0, 10 << 30, False, False, False)
+        decision, _ = build.pressure_guard_evaluate(bad, build.PressureState(), **floor)
+        self.assertEqual(decision.reason, "build.pressure.critical_health_or_oom")
+
+    def test_qualification_running_probe_binds_lower_pressure_floors(self):
+        samples = self.qualification_fixture()
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]):
+            selected = build.bind_adaptive_selection(self.config, samples)
+        stamp = time.monotonic()
+        shared = {"state": build.PressureState(True, stamp - 30, None,
+                                                stamp - 0.01, stamp - 30),
+                  "probe_started": stamp, "probe_completed_at": None,
+                  "published_stop_reason": None, "stop_at_monotonic": None,
+                  "stop_observation": None}
+        observed = {"memoryPressure": {"full": {"avg10": 6.0}},
+                    "memoryAvailableBytes": 3 << 30,
+                    "gateway": {"gatewayHealthy": True, "gatewayOomKilled": False,
+                                "oom": 0, "oomKill": 0,
+                                "lastHealthCheckDurationMs": None,
+                                "lastHealthCheckAgeSeconds": None},
+                    "builder": {"oom": 0, "oomKill": 0}}
+        output = SimpleQueue()
+        with patch.object(build, "capacity", return_value=observed):
+            build.running_capacity_probe(self.root, selected, "d" * 64,
+                                         output, threading.Lock(), shared)
+        self.assertEqual(shared["published_stop_reason"], "build.pressure.headroom")
+        self.assertEqual(output.get_nowait()[3].reason, "build.pressure.headroom")
 
     def test_qualification_capacity_fails_closed_on_gateway_or_worker_oom(self):
         limits = {"minFreeBytes": 16 << 30, "minMemoryAvailableBytes": 10 << 30,
@@ -450,6 +528,21 @@ class BuildTests(unittest.TestCase):
                     build.start(op)
                 native.assert_not_called()
             self.assertFalse((op / "start-intent.json").exists())
+
+    def test_exact_qualification_requires_adaptive_profile_before_prepare_or_start(self):
+        self.qualification_fixture()
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]):
+            with self.assertRaisesRegex(release.Refusal, "profile_required"):
+                self.prepare(self.config)
+        # Model a retained intent prepared by older tooling. The new start
+        # must not silently dispatch it without the 2 GiB guard and cgroup proof.
+        op = self.prepare(self.config)
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]), \
+             patch.object(build, "native") as native:
+            with self.assertRaisesRegex(release.Refusal, "profile_required"):
+                build.start(op)
+            native.assert_not_called()
+        self.assertFalse((op / "start-intent.json").exists())
 
     def test_adaptive_rejects_identity_and_receipt_changes(self):
         samples = self.adaptive_fixture()

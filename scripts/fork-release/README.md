@@ -788,11 +788,14 @@ fresh admission, not a lower ad hoc threshold or automatic retry.
 One controlled qualification for source
 `1d5ab20bea4cccce0b80b60a9ba5d5020cf08038` selects an 8 GiB aggregate
 BuildKit memory and memory-plus-swap cap (no container swap), 4 CPUs, a 6 GiB
-compiler heap, at least 18 GiB MemAvailable before dispatch, and the retained
-10 GiB running floor. The start floor is the hard 8 GiB worker cap plus the
-10 GiB stop floor, with no extra margin for other host growth. This is an
-experimental admission budget, not a proven
-build minimum. It requires fresh Gateway health, memory-pressure and OOM
+compiler heap, at least 10 GiB MemAvailable before dispatch, and a 2 GiB
+running floor. The start budget leaves only 2 GiB nominal host availability
+after a fully used 8 GiB builder if no other demand changes. The stopped-builder
+baseline had a 5.15 GiB host availability fall in 15 seconds, so this
+user-selected qualification can suffer host pressure or a guarded abort; it is
+not a proven safe build minimum. `MemAvailable` already reflects production
+usage and estimated reclaimable cache. It requires fresh Gateway health,
+memory-pressure and OOM
 checks; it stops on a worker OOM or failed resource guard and has no automatic
 retry. The worker's own cgroup and its ancestors must prove the effective
 8 GiB, zero-swap, 4-CPU limits before the solve. A successful compile alone
@@ -804,21 +807,24 @@ reached 39.44% without this builder, while one 6.18% sample stopped the first
 controlled build. The admission gate and other profiles still require every
 fresh sample at or below 5%. During the qualification solve, one above-5%
 sample records a watch. Stop on 120 seconds of continuing high pressure; or
-after 30 seconds with under 12 GiB host availability; or after 60 seconds with
+after 30 seconds with under 4 GiB host availability; or after 60 seconds with
 a fresh Gateway health check lasting at least 4 seconds. The low-headroom rule
-requires 30 seconds of high pressure and a then-current reading below 12 GiB;
+requires 30 seconds of high pressure and a then-current reading below 4 GiB;
 the low reading itself need not persist for 30 seconds. Below-3% pressure for
-30 seconds clears the watch. The 120-second/12-GiB/4-second values are bounded
+30 seconds clears the watch. The 120-second/4-GiB/4-second values are bounded
 engineering choices, not demonstrated safe minima or proof of build causality.
 An active watch also stops after 180 seconds without a full clear, including
 alternating above-5% readings and 3–5% dips. This bounds a pattern that would
 otherwise repeatedly reset the continuous-high timer. The 180-second limit is
 an engineering choice; the independent timer enforces it between samples.
-The hard 10 GiB host floor, Gateway health/OOM, worker OOM, disk/cache,
+The hard 2 GiB host floor, Gateway health/OOM, worker OOM, disk/cache,
 ownership, cgroup and timeout stops remain immediate on observation. A pinned
 read-only probe taking over 10 seconds to publish its result, or sample silence
 lasting over 30 seconds, stops
-the owned client, using a watchdog independent of output forwarding. A separate
+the owned client, using a watchdog independent of output forwarding. Running
+resource probes begin about every two seconds, but any probe taking over ten
+seconds stops the client; neither interval guarantees host availability cannot
+change faster than the stop can settle. A separate
 supervisor timer enforces the 120- and 180-second deadlines between samples;
 completion checks the final clock too. Every stop retains remote-solve uncertainty until the
 owned builder is reconciled; no failed build retries automatically.
