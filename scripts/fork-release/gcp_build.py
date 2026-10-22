@@ -666,25 +666,16 @@ def heavy_workload_settled(owner, successor=None):
                  "workload.build.solve_unsettled")
             proposed = read_private(successor / "builder-handoff-intent.json")
             need(type(proposed) is dict, "workload.build.recovery_fields")
+            successor_intent = read_private(successor / "intent.json")
             if proposed.get("schema") == "openclaw.gcp-builder-prepared-handoff.v1":
-                intermediate_id = proposed.get("originOperationId")
-                need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), intermediate_id),
-                     "workload.build.prepared_origin_id")
-                intermediate = PRIVATE_ROOT / intermediate_id
-                need(intermediate.is_dir() and intermediate.resolve() == intermediate and
-                     not (intermediate / "start-intent.json").exists() and
-                     proposed.get("originHandoffSha256") ==
-                     preflight.digest(intermediate / "builder-handoff.json"),
-                     "workload.build.prepared_origin_changed")
-                proposed = read_private(intermediate / "builder-handoff-intent.json")
-                need(type(proposed) is dict, "workload.build.recovery_fields")
+                proposed = prepared_recovery_proposal(successor, proposed,
+                                                     successor_intent)
             need(proposed.get("schema") == "openclaw.gcp-builder-recovery.v1" and
                  proposed.get("originOperationId") == op.name and
                  proposed.get("originIntentSha256") == owner["intentSha256"] and
                  proposed.get("originCompletedSha256") ==
                  preflight.digest(op / "completed.json"),
                  "workload.build.recovery_changed")
-            successor_intent = read_private(successor / "intent.json")
             verify_builder_handoff(successor, successor_intent)
     else:
         if completed.get("cleanup") == "not_started":
@@ -1100,6 +1091,100 @@ def reserve_builder(op, intent):
         need(read_private(lease) == value, "build.builder.reserved_by_other_operation")
 
 
+def prepared_recovery_proposal(op, proposed, intent, *, max_handoffs=4):
+    """Verify at most four never-dispatched handoffs back to one failed recovery."""
+    need(type(max_handoffs) is int and 1 <= max_handoffs <= 4,
+         "build.handoff.prepared_depth_limit")
+    seen = {op.name}
+    for _ in range(max_handoffs):
+        fields(proposed, """schema originOperationId targetOperationId
+               originIntentSha256 targetIntentSha256 originHandoffSha256
+               originLeaseSha256""", "build.handoff.prepared_fields")
+        old_id = proposed["originOperationId"]
+        need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), old_id) and
+             old_id not in seen, "build.handoff.prepared_cycle")
+        seen.add(old_id)
+        old = op.parent / old_id
+        need(old.is_dir() and old.resolve() == old and
+             all(not (old / name).exists() for name in
+                 ("start-intent.json", "started.json", "execution.json", "completed.json")),
+             "build.handoff.prepared_dispatched")
+        origin = read_private(old / "intent.json")
+        old_proposal = read_private(old / "builder-handoff-intent.json")
+        old_receipt = read_private(old / "builder-handoff.json")
+        need(all(type(item) is dict for item in (origin, old_proposal, old_receipt)),
+             "build.handoff.prepared_origin_fields")
+        old_lease = {"operationId": old.name,
+                     "intentSha256": preflight.digest(old / "intent.json")}
+        need(proposed["targetOperationId"] == op.name and
+             proposed["originIntentSha256"] == old_lease["intentSha256"] and
+             proposed["originHandoffSha256"] ==
+             preflight.digest(old / "builder-handoff.json") and
+             proposed["originLeaseSha256"] == release.sha256(encode(old_lease)) and
+             old_proposal.get("targetOperationId") == old.name and
+             old_receipt == {**old_proposal,
+                             "targetLeaseSha256": release.sha256(encode(old_lease))} and
+             all(origin["config"].get(key) == intent["config"].get(key)
+                 for key in ("sourceSha", "sourceTree", "manifestSha256",
+                             "inventorySha256", "builder", "cache")),
+             "build.handoff.prepared_origin_changed")
+        if old_proposal.get("schema") == "openclaw.gcp-builder-recovery.v1":
+            failed_id = old_proposal["originOperationId"]
+            need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), failed_id),
+                 "build.handoff.recovery_origin_id")
+            failed = op.parent / failed_id
+            failed_intent = read_private(failed / "intent.json")
+            need(type(failed_intent) is dict,
+                 "build.handoff.recovery_origin_fields")
+            failed_lease = {"operationId": failed.name,
+                            "intentSha256": preflight.digest(failed / "intent.json")}
+            need(old_proposal.get("originIntentSha256") == failed_lease["intentSha256"] and
+                 old_proposal.get("originLeaseSha256") ==
+                 release.sha256(encode(failed_lease)) and
+                 old_proposal.get("originCompletedSha256") ==
+                 preflight.digest(failed / "completed.json") and
+                 old_proposal.get("builderStoppedSha256") ==
+                 preflight.digest(old / "builder-stopped.json"),
+                 "build.handoff.prepared_recovery_changed")
+            transition_path = old / "resource-transition.json"
+            repair_path = old / "resource-transition-repair-intent.json"
+            if "resourceTransitionSha256" in old_proposal:
+                transition = read_private(transition_path)
+                need(type(transition) is dict and
+                     old_proposal["resourceTransitionSha256"] ==
+                     preflight.digest(transition_path) and
+                     transition.get("originOperationId") == failed.name and
+                     transition.get("targetOperationId") == old.name and
+                     transition.get("originIntentSha256") == failed_lease["intentSha256"] and
+                     transition.get("targetIntentSha256") == old_lease["intentSha256"] and
+                     transition.get("builderStoppedSha256") ==
+                     old_proposal["builderStoppedSha256"] and
+                     transition.get("originBuilderSha256") ==
+                     release.sha256(encode(failed_intent["config"]["builder"])) and
+                     transition.get("targetBuilderSha256") ==
+                     transition.get("observedBuilderSha256") ==
+                     release.sha256(encode(intent["config"]["builder"])) and
+                     repair_path.exists() == ("repairIntentSha256" in transition) and
+                     (not repair_path.exists() or
+                      preflight.digest(repair_path) == transition["repairIntentSha256"]) and
+                     preflight.digest(old / "resource-transition-intent.json") ==
+                     release.sha256(encode({key: value for key, value in transition.items()
+                                            if key not in ("observedBuilderSha256",
+                                                           "repairIntentSha256")})),
+                     "build.handoff.prepared_recovery_changed")
+            else:
+                need(failed_intent["config"]["builder"] == intent["config"]["builder"] and
+                     not any((old / name).exists() for name in
+                             ("resource-transition-intent.json", "resource-transition.json",
+                              "resource-transition-repair-intent.json")),
+                     "build.handoff.prepared_recovery_changed")
+            return old_proposal
+        need(old_proposal.get("schema") == "openclaw.gcp-builder-prepared-handoff.v1",
+             "build.handoff.prepared_origin_schema")
+        op, proposed = old, old_proposal
+    need(False, "build.handoff.prepared_depth")
+
+
 def verify_builder_handoff(op, intent):
     """Fence start until a successor lease transfer is durably complete."""
     path = op / "builder-handoff-intent.json"
@@ -1154,41 +1239,7 @@ def verify_builder_handoff(op, intent):
                  proposed["resourceTransitionSha256"],
                  "build.handoff.resource_transition_changed")
     elif proposed.get("schema") == "openclaw.gcp-builder-prepared-handoff.v1":
-        fields(proposed, """schema originOperationId targetOperationId
-               originIntentSha256 targetIntentSha256 originHandoffSha256
-               originLeaseSha256""", "build.handoff.intent.fields")
-        need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), proposed["originOperationId"]),
-             "build.handoff.prepared_origin_id")
-        old = op.parent / proposed["originOperationId"]
-        origin = read_private(old / "intent.json")
-        old_proposal = read_private(old / "builder-handoff-intent.json")
-        old_receipt = read_private(old / "builder-handoff.json")
-        transition = read_private(old / "resource-transition.json")
-        need(all(type(item) is dict for item in
-                 (origin, old_proposal, old_receipt, transition)),
-             "build.handoff.prepared_origin_fields")
-        old_lease = {"operationId": old.name,
-                     "intentSha256": preflight.digest(old / "intent.json")}
-        need(not (old / "start-intent.json").exists() and
-             proposed["originIntentSha256"] == old_lease["intentSha256"] and
-             proposed["originLeaseSha256"] == release.sha256(encode(old_lease)) and
-             proposed["originHandoffSha256"] ==
-             preflight.digest(old / "builder-handoff.json") and
-             old_proposal.get("schema") == "openclaw.gcp-builder-recovery.v1" and
-             old_proposal.get("resourceTransitionSha256") ==
-             preflight.digest(old / "resource-transition.json") and
-             old_proposal.get("builderStoppedSha256") ==
-             preflight.digest(old / "builder-stopped.json") and
-             old_receipt == {**old_proposal,
-                             "targetLeaseSha256": release.sha256(encode(old_lease))} and
-             transition.get("targetBuilderSha256") ==
-             transition.get("observedBuilderSha256") ==
-             release.sha256(encode(intent["config"]["builder"])) and
-             transition.get("targetIntentSha256") == old_lease["intentSha256"] and
-             all(origin["config"].get(key) == intent["config"].get(key)
-                 for key in ("sourceSha", "sourceTree", "manifestSha256",
-                             "inventorySha256", "builder", "cache")),
-             "build.handoff.prepared_origin_changed")
+        prepared_recovery_proposal(op, proposed, intent)
     else:
         need(False, "build.handoff.intent.schema")
     need(proposed["targetOperationId"] == op.name and

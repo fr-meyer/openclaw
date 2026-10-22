@@ -290,10 +290,17 @@ def transfer_prepared(old_path, new_path):
         if current == build.encode(old_value):
             build.verify_builder_handoff(old, origin)
         old_handoff = build.read_private(old / "builder-handoff.json")
-        release.need(old_handoff["schema"] == "openclaw.gcp-builder-recovery.v1" and
-                     old_handoff.get("resourceTransitionSha256") is not None and
+        release.need(old_handoff["schema"] in
+                     ("openclaw.gcp-builder-recovery.v1",
+                      "openclaw.gcp-builder-prepared-handoff.v1") and
                      old_handoff["targetOperationId"] == old.name,
                      "prepared.origin.transition_unproven")
+        if old_handoff["schema"] == "openclaw.gcp-builder-prepared-handoff.v1":
+            # The successor adds one hop; refuse before touching the lease if
+            # that would exceed the verifier's four-handoff limit.
+            build.prepared_recovery_proposal(
+                old, build.read_private(old / "builder-handoff-intent.json"),
+                origin, max_handoffs=3)
         intent = {"schema": "openclaw.gcp-builder-prepared-handoff.v1",
                   "originOperationId": old.name, "targetOperationId": new.name,
                   "originIntentSha256": origin_sha, "targetIntentSha256": target_sha,

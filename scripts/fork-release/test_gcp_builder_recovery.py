@@ -312,11 +312,11 @@ class BuilderRecoveryTest(unittest.TestCase):
         transition_path = self.new / "resource-transition.json"
         original_transition = transition_path.read_bytes()
         transition_path.write_text("{}\n")
-        with self.assertRaisesRegex(release.Refusal, "prepared_origin_changed"):
+        with self.assertRaisesRegex(release.Refusal, "prepared_recovery_changed"):
             build.verify_builder_handoff(third, self.target)
         transition_path.write_bytes(original_transition)
         (self.new / "start-intent.json").write_text("{}\n")
-        with self.assertRaisesRegex(release.Refusal, "prepared_origin_changed"):
+        with self.assertRaisesRegex(release.Refusal, "prepared_dispatched"):
             build.verify_builder_handoff(third, self.target)
 
     def test_prepared_handoff_refuses_dispatched_origin(self):
@@ -344,6 +344,67 @@ class BuilderRecoveryTest(unittest.TestCase):
             subject.transfer_prepared(self.new, third)
         self.assertEqual(build.read_private(self.lease)["operationId"], self.new.name)
         self.assertFalse((third / "builder-handoff-intent.json").exists())
+
+    def test_two_prepared_handoffs_preserve_failed_workload_proof(self):
+        before, after = self.qualification_resources()
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(subject, "stopped_resources", side_effect=[before, after]):
+            subject.recover(self.old, self.new)
+        for ident in ("3", "4"):
+            op = self.root / (ident * 32)
+            op.mkdir(mode=0o700)
+            (op / "supervisor").mkdir(mode=0o700)
+            build.write_once(op / "supervisor/gcp_build.py", Path(build.__file__).read_bytes())
+            build.write_once(op / "intent.json", build.encode(self.target))
+        third, fourth = self.root / ("3" * 32), self.root / ("4" * 32)
+        subject.transfer_prepared(self.new, third)
+        subject.transfer_prepared(third, fourth)
+        self.assertEqual(build.read_private(self.lease)["operationId"], fourth.name)
+        build.verify_builder_handoff(fourth, self.target)
+        build.write_once(self.old / "started.json", build.encode({"invocationId": "f" * 32}))
+        owner = {"kind": "build", "operationPath": str(self.old),
+                 "intentSha256": build.preflight.digest(self.old / "intent.json")}
+
+        def service(_):
+            return subprocess.CompletedProcess([], 0,
+                "\n".join(f"{key}={value}" for key, value in self.status["service"].items()), "")
+
+        with patch.object(build, "native", side_effect=service):
+            build.heavy_workload_settled(owner, successor=fourth)
+
+    def test_prepared_handoff_accepts_same_builder_recovery_without_transition(self):
+        subject.recover(self.old, self.new)
+        third = self.root / ("3" * 32)
+        third.mkdir(mode=0o700)
+        (third / "supervisor").mkdir(mode=0o700)
+        build.write_once(third / "supervisor/gcp_build.py", Path(build.__file__).read_bytes())
+        build.write_once(third / "intent.json", build.encode(self.target))
+        subject.transfer_prepared(self.new, third)
+        self.assertFalse((self.new / "resource-transition.json").exists())
+        self.assertEqual(build.read_private(self.lease)["operationId"], third.name)
+        build.verify_builder_handoff(third, self.target)
+
+    def test_prepared_handoff_depth_refuses_before_lease_transfer(self):
+        before, after = self.qualification_resources()
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(subject, "stopped_resources", side_effect=[before, after]):
+            subject.recover(self.old, self.new)
+        previous = self.new
+        for ident in ("3", "4", "5", "6", "7"):
+            op = self.root / (ident * 32)
+            op.mkdir(mode=0o700)
+            (op / "supervisor").mkdir(mode=0o700)
+            build.write_once(op / "supervisor/gcp_build.py", Path(build.__file__).read_bytes())
+            build.write_once(op / "intent.json", build.encode(self.target))
+            if ident == "7":
+                with self.assertRaisesRegex(release.Refusal, "prepared_depth"):
+                    subject.transfer_prepared(previous, op)
+                self.assertEqual(build.read_private(self.lease)["operationId"], previous.name)
+                self.assertFalse((op / "builder-handoff-intent.json").exists())
+            else:
+                subject.transfer_prepared(previous, op)
+                build.verify_builder_handoff(op, self.target)
+                previous = op
 
 
 if __name__ == "__main__":

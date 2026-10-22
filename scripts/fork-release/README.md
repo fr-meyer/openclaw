@@ -869,6 +869,11 @@ successor still needs fresh admission and effective cgroup checks at start.
 The shared heavy-workload guard recognizes this single prepared handoff only
 through the original failed build's stopped-worker recovery receipt; it does
 not clear an unrelated or uncertain workload owner.
+If a second preparation also refuses before dispatch, the same prepared-only
+transfer can follow a short chain. Start verifies every never-dispatched
+operation and receipt back to the original stopped-worker recovery, with a
+four-handoff cap and cycle refusal. It never treats a prepared receipt as a
+successful image build.
 The heavy-workload slot advances only to that exact successor. Start the
 retained builder after the recovery receipt is durable, then run the normal
 successor `gcp_build.py start` with a fresh capacity check. A changed worker,
