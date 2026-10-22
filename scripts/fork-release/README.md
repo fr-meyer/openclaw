@@ -760,7 +760,9 @@ python3 -B scripts/fork-release/gcp_build.py status "$OPERATION_DIRECTORY"
 For the adaptive candidate build, add `--adaptive-gateway-id` with the full
 production Gateway container ID to `prepare`. It samples host memory, full
 memory pressure, root/cache free space, and that container's native health
-three times over ten seconds. It selects one source and builder bound profile,
+three times over ten seconds. Each sample resolves the fixed production Docker
+name `openclaw-openclaw-gateway-1` and requires its full ID to match the input.
+It selects one source and builder bound profile,
 or prints `no_fit` and exits 2 without creating an operation. The resulting
 private intent records all samples and the selected profile. `start` and the
 durable service each repeat the three-sample admission before dispatch. The

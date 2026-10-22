@@ -35,6 +35,7 @@ import pr
 import release
 
 DOCKER = ("/usr/bin/sudo", "-n", "/usr/bin/docker")
+PRODUCTION_GATEWAY_NAME = "openclaw-openclaw-gateway-1"
 SYSTEMD_RUN = ("/usr/bin/sudo", "-n", "/usr/bin/systemd-run")
 SYSTEMCTL = ("/usr/bin/sudo", "-n", "/usr/bin/systemctl")
 CHOWN = ("/usr/bin/sudo", "-n", "/usr/bin/chown")
@@ -340,9 +341,13 @@ def adaptive_profiles(config):
                 {**common, "id": "roomy-26g", "tsdownMaxOldSpaceMb": 12288,
                  "minStartMemoryAvailableBytes": max(
                      26 << 30, prior_start, common["minMemoryAvailableBytes"])}]
+    eligible = []
     for profile in profiles:
+        if (profile["tsdownMaxOldSpaceMb"] + 768) << 20 >= config["builder"]["memoryBytes"]:
+            continue
         validate_profile(profile, config)
-    return profiles
+        eligible.append(profile)
+    return eligible
 
 
 def select_profile(config, samples):
@@ -823,9 +828,14 @@ def gateway_sample(container_id):
     need(release.matches(preflight.HEX256, container_id),
          "build.adaptive.gateway_identity")
     result = native([*DOCKER, "inspect", "--format",
-                     '{{json .State}}', container_id])
+                     '{"Id":{{json .Id}},"Name":{{json .Name}},'
+                     '"State":{{json .State}}}', PRODUCTION_GATEWAY_NAME])
     need(result.returncode == 0, "build.adaptive.gateway_inspect")
-    state = json.loads(result.stdout)
+    observed = json.loads(result.stdout)
+    need(type(observed) is dict and observed.get("Id") == container_id and
+         observed.get("Name") == "/" + PRODUCTION_GATEWAY_NAME,
+         "build.adaptive.gateway_identity_changed")
+    state = observed.get("State")
     need(type(state) is dict and type(state.get("Running")) is bool and
          type(state.get("OOMKilled")) is bool and
          type(state.get("Health")) is dict and
@@ -1353,7 +1363,7 @@ def main():
                 config = bind_adaptive_selection(config, samples)
                 if config is None:
                     print(json.dumps({"status": "no_fit", "operationCreated": False,
-                                      "samples": samples}, sort_keys=True))
+                                      "reason": "profile_capacity_or_health"}, sort_keys=True))
                     return 2
             print(prepare(args.private_root, config, args.manifest,
                           args.inventory, args.source_dir, args.tooling_dir))

@@ -293,6 +293,15 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 24 << 30)
         self.assertEqual(bound["limits"]["maxFullMemoryPressureAvg10"], 2.0)
 
+    def test_adaptive_smaller_candidate_survives_incompatible_larger_heap(self):
+        samples = self.adaptive_fixture(gib=27)
+        self.config["builder"]["memoryBytes"] = 8 << 30
+        self.config["builder"]["memorySwapBytes"] = 10 << 30
+        self.assertEqual(build.select_profile(self.config, samples)["id"],
+                         "constrained-21g")
+        bound = build.bind_adaptive_selection(self.config, samples)
+        build.validate_config(bound)
+
     def test_adaptive_rejects_identity_and_receipt_changes(self):
         samples = self.adaptive_fixture()
         bound = build.bind_adaptive_selection(self.config, samples)
@@ -336,14 +345,27 @@ class BuildTests(unittest.TestCase):
 
     def test_adaptive_gateway_inspection_requires_healthy_exact_container(self):
         state = {"Running": True, "OOMKilled": False, "Health": {"Status": "healthy"}}
+        observed = {"Id": "d" * 64, "Name": "/" + build.PRODUCTION_GATEWAY_NAME,
+                    "State": state}
         with patch.object(build, "native", return_value=subprocess.CompletedProcess(
-                [], 0, json.dumps(state), "")) as observed:
+                [], 0, json.dumps(observed), "")) as native:
             self.assertTrue(build.gateway_sample("d" * 64)["gatewayHealthy"])
-            self.assertEqual(observed.call_args.args[0][-1], "d" * 64)
+            self.assertEqual(native.call_args.args[0][-1], build.PRODUCTION_GATEWAY_NAME)
         state["Health"]["Status"] = "unhealthy"
         with patch.object(build, "native", return_value=subprocess.CompletedProcess(
-                [], 0, json.dumps(state), "")):
+                [], 0, json.dumps(observed), "")):
             self.assertFalse(build.gateway_sample("d" * 64)["gatewayHealthy"])
+        observed["Name"] = "/unrelated-healthy-container"
+        with patch.object(build, "native", return_value=subprocess.CompletedProcess(
+                [], 0, json.dumps(observed), "")):
+            with self.assertRaisesRegex(release.Refusal, "gateway_identity_changed"):
+                build.gateway_sample("d" * 64)
+        observed["Name"] = "/" + build.PRODUCTION_GATEWAY_NAME
+        observed["Id"] = "e" * 64
+        with patch.object(build, "native", return_value=subprocess.CompletedProcess(
+                [], 0, json.dumps(observed), "")):
+            with self.assertRaisesRegex(release.Refusal, "gateway_identity_changed"):
+                build.gateway_sample("d" * 64)
         with self.assertRaisesRegex(release.Refusal, "gateway_identity"):
             build.gateway_sample("d" * 7)
 
@@ -363,7 +385,10 @@ class BuildTests(unittest.TestCase):
              patch.object(build, "prepare") as prepared:
             self.assertEqual(build.main(), 2)
             prepared.assert_not_called()
-        self.assertEqual(json.loads(output.getvalue())["status"], "no_fit")
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["status"], "no_fit")
+        self.assertNotIn("samples", result)
+        self.assertNotIn("d" * 64, output.getvalue())
 
     def test_adaptive_service_rechecks_before_native_child(self):
         samples = self.adaptive_fixture()
