@@ -263,5 +263,10 @@ export type BoundManagedTaskRuns = {
   close(): Promise<void>;
   get(taskId: string): Promise<ManagedTaskRunRecord | undefined>;
   list(): Promise<ManagedTaskRunRecord[]>;
-  cancel(input: { taskId: string; cfg?: unknown }): Promise<unknown>;
+  /** Reject cancellation if the controller flow has changed since its decision. */
+  cancel(input: {
+    taskId: string;
+    expectedFlow: { flowId: string; revision: number };
+    cfg?: unknown;
+  }): Promise<unknown>;
 };

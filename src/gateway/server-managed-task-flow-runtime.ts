@@ -724,7 +724,7 @@ export function createGatewayManagedTaskFlowRuntime(
         },
       }),
       execute,
-      cancel: async (authority, taskId) => {
+      cancel: async (authority, { taskId, expectedFlow }) => {
         if (statusOnly || workerCandidate) {
           throw new Error("Configured status agent cannot cancel a native run");
         }
@@ -741,16 +741,6 @@ export function createGatewayManagedTaskFlowRuntime(
               legacyOwnerObservation: Boolean(client),
             },
           });
-          const claimedFlows = foreignRunObserver
-            ? (
-                await executeRead({
-                  type: "tasks.managedFlows.list",
-                  input: { ownerKey: actor!.sessionKey, controllerId },
-                })
-              ).filter((flow) =>
-                isClaimedManagedFlowNativeRun(task, [flow], actor!.sessionKey, controllerId),
-              )
-            : [];
           assertCurrent();
           authority.assertCurrent();
           if (
@@ -768,13 +758,34 @@ export function createGatewayManagedTaskFlowRuntime(
               "Cancellation requires an exact current native publisher run observation",
             );
           }
+          const claimOwnerKey = foreignRunObserver ? actor!.sessionKey : sessionKey;
+          const claimedFlows = (
+            await executeRead({
+              type: "tasks.managedFlows.list",
+              input: { ownerKey: claimOwnerKey, controllerId },
+            })
+          ).filter((flow) =>
+            isClaimedManagedFlowNativeRun(task, [flow], claimOwnerKey, controllerId),
+          );
           if (
-            foreignRunObserver &&
-            (claimedFlows.length !== 1 || (task.status !== "running" && task.status !== "queued"))
+            claimedFlows.length !== 1 ||
+            !expectedFlow ||
+            typeof expectedFlow.flowId !== "string" ||
+            !expectedFlow.flowId.trim() ||
+            !Number.isSafeInteger(expectedFlow.revision) ||
+            expectedFlow.revision < 0 ||
+            (task.status !== "running" && task.status !== "queued") ||
+            !Number.isSafeInteger(claimedFlows[0]?.revision)
           ) {
             throw new Error("Controller owner no longer claims the exact live native worker");
           }
-          const claimedFlow = claimedFlows[0];
+          const claimedFlow = claimedFlows[0]!;
+          if (
+            claimedFlow.flowId !== expectedFlow.flowId ||
+            claimedFlow.revision !== expectedFlow.revision
+          ) {
+            throw new Error("Controller flow changed since native cancellation was requested");
+          }
           const cfg = context.getRuntimeConfig();
           const { killSubagentRunAdmin } =
             await import("../agents/subagents/registry/subagent-control-kill.js");
@@ -798,20 +809,16 @@ export function createGatewayManagedTaskFlowRuntime(
             },
             {
               assertCurrent: checkCancellationCurrent,
-              ...(claimedFlow
-                ? {
-                    managedFlowKillClaim: {
-                      ownerKey: actor!.sessionKey,
-                      controllerId,
-                      flowId: claimedFlow.flowId,
-                      revision: claimedFlow.revision,
-                      childSessionKey: task.childSessionKey,
-                      runId: task.runId,
-                      taskId: task.id,
-                      generation: task.generation,
-                    },
-                  }
-                : {}),
+              managedFlowKillClaim: {
+                ownerKey: claimOwnerKey,
+                controllerId,
+                flowId: claimedFlow.flowId,
+                revision: claimedFlow.revision,
+                childSessionKey: task.childSessionKey,
+                runId: task.runId,
+                taskId: task.id,
+                generation: task.generation,
+              },
             },
           );
           if (

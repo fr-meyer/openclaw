@@ -1503,7 +1503,7 @@ async function dispatchWorker(api, config, boundFlows, flow) {
     return workingFlow;
   }
   if (state.orphanedWorker) {
-    const orphan = await reconcileOrphanedWorker(api, workingFlow.ownerKey, state.orphanedWorker);
+    const orphan = await reconcileOrphanedWorker(api, workingFlow, state.orphanedWorker);
     if (!orphan.safe) {
       await scheduleWake(api, config, workingFlow, "recover");
       return workingFlow;
@@ -2335,7 +2335,7 @@ function canInspectStatus(config, ctx, ownerSessionKey, state) {
   return Boolean(agentId && config.statusAgentIds.includes(agentId));
 }
 
-function workerTaskMatches(worker, task) {
+function workerTaskMatches(worker, task, ownerSessionKey) {
   if (!worker || !task) {
     return false;
   }
@@ -2346,6 +2346,17 @@ function workerTaskMatches(worker, task) {
   }
   if (task.agentId && agentId && task.agentId !== agentId) {
     return false;
+  }
+  if (worker.taskId != null && task.id !== worker.taskId) {
+    return false;
+  }
+  if (task.observationSource === "native-subagent") {
+    if (
+      task.requesterSessionKey !== ownerSessionKey ||
+      (worker.nativeGeneration != null && task.generation !== worker.nativeGeneration)
+    ) {
+      return false;
+    }
   }
   if (worker.runId) {
     return task.runId === worker.runId;
@@ -2408,7 +2419,7 @@ async function taskForWorker(api, ownerSessionKey, worker) {
     if (worker.taskId) {
       for (const runs of ledgers) {
         const exact = await runs.get(worker.taskId);
-        if (workerTaskMatches(worker, exact)) {
+        if (workerTaskMatches(worker, exact, ownerSessionKey)) {
           return exact;
         }
       }
@@ -2420,7 +2431,7 @@ async function taskForWorker(api, ownerSessionKey, worker) {
           continue;
         }
         seenTaskIds.add(task.id);
-        if (workerTaskMatches(worker, task)) {
+        if (workerTaskMatches(worker, task, ownerSessionKey)) {
           return task;
         }
       }
@@ -2532,7 +2543,8 @@ async function reconcileTerminalWorkerEvent(api, config, event) {
 const ACTIVE_TASK_STATUSES = new Set(["queued", "running"]);
 const TERMINAL_TASK_STATUSES = new Set(["succeeded", "failed", "timed_out", "cancelled", "lost"]);
 
-async function reconcileOrphanedWorker(api, ownerSessionKey, orphanedWorker) {
+async function reconcileOrphanedWorker(api, flow, orphanedWorker) {
+  const ownerSessionKey = flow.ownerKey;
   if (!orphanedWorker) {
     return { safe: true, reason: "no_orphan" };
   }
@@ -2580,11 +2592,18 @@ async function reconcileOrphanedWorker(api, ownerSessionKey, orphanedWorker) {
     const cancelledTask = await withTaskBindingClosure(api, ledgers, async () => {
       for (const runs of ledgers) {
         const exact = await runs.get(task.id);
-        if (!workerTaskMatches(orphanedWorker, exact) || typeof runs.cancel !== "function") {
+        if (
+          !workerTaskMatches(orphanedWorker, exact, ownerSessionKey) ||
+          typeof runs.cancel !== "function"
+        ) {
           continue;
         }
         try {
-          const cancelled = await runs.cancel({ taskId: task.id, cfg: api.config });
+          const cancelled = await runs.cancel({
+            taskId: task.id,
+            cfg: api.config,
+            expectedFlow: { flowId: flow.flowId, revision: flow.revision },
+          });
           if (
             !cancelled?.error &&
             (cancelled?.cancelled === true || TERMINAL_TASK_STATUSES.has(cancelled?.task?.status))
@@ -2627,7 +2646,7 @@ async function reconcileHeldOrphan(api, boundFlows, flow) {
   if (!new Set([PHASE.BLOCKED, PHASE.MERGE_READY]).has(state?.phase) || !state.orphanedWorker) {
     return flow;
   }
-  const orphan = await reconcileOrphanedWorker(api, flow.ownerKey, state.orphanedWorker);
+  const orphan = await reconcileOrphanedWorker(api, flow, state.orphanedWorker);
   if (!orphan.safe) {
     return flow;
   }

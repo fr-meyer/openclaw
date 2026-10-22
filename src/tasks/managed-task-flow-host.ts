@@ -30,7 +30,10 @@ export function createManagedTaskFlowHost(options: {
     agentId?: string;
   }): ManagedTaskFlowSessionAuthority;
   execute: ManagedTaskFlowExecute;
-  cancel: (authority: ManagedTaskFlowSessionAuthority, taskId: string) => Promise<unknown>;
+  cancel: (
+    authority: ManagedTaskFlowSessionAuthority,
+    input: { taskId: string; expectedFlow: { flowId: string; revision: number } },
+  ) => Promise<unknown>;
   captureNativeLaunch?: (
     authority: ManagedTaskFlowSessionAuthority,
     input: { flowId: string; expectedRevision: number; childSessionKey: string },
@@ -188,11 +191,11 @@ export function createManagedTaskFlowHost(options: {
               legacyOwnerObservation: authority.legacyOwnerObservation,
             },
           }),
-        cancel: async ({ taskId }) => {
+        cancel: async ({ taskId, expectedFlow }) => {
           assertCurrent();
           const operation = Promise.resolve().then(() => {
             assertCurrent();
-            return options.cancel(authority, taskId);
+            return options.cancel(authority, { taskId, expectedFlow });
           });
           pending.add(operation);
           void operation.then(

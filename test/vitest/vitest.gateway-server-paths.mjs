@@ -194,6 +194,7 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/server-methods/worktrees.authorization.test.ts",
   "src/gateway/server-methods/worktrees.test.ts",
   "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+  "src/gateway/server-managed-task-flow-runtime.mergeguez-parity.test.ts",
   "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
   "src/gateway/server-startup-restart-sentinel.test.ts",
   "src/gateway/server-worker-environment-startup.test.ts",

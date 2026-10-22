@@ -40,7 +40,7 @@ export const INSTALLED_PUBLISHER_PIN_PAIR = Object.freeze({
       ...SOURCE_QUALIFIED_CANDIDATE.files,
       "src/controller.mjs": "378c1a80618b93c0c6721bd71a6fe846d5b08d21eb90b6eeeac53621cae2a648",
       "src/http.mjs": "4561d649093cb3ba50f0e971c908eb949a4e1671bba1b12a550b689b17276498",
-      "src/runtime.mjs": "c96ee2ee390ea1f5366c6e0c8eb184e4cf30f76bfb50121c1623f1172ef01c54",
+      "src/runtime.mjs": "2c43937b48d46dd00837966690348aebc549431a34d0d0cbcf1172e83d3d947f",
     }),
   }),
 });

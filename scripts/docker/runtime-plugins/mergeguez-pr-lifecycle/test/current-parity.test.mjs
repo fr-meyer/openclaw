@@ -381,10 +381,14 @@ void test("blocked ingress retains orphan custody when every run ledger is unava
 void test("new-head orphan with unknown launch stays held without a task", async () => {
   const f = fixture();
   const worker = { sessionKey: "agent:reviewer:subagent:unknown", runId: null, taskId: null };
-  const result = await __testing.reconcileOrphanedWorker(f.api, OWNER, {
-    ...worker,
-    launchOutcome: { status: "unknown" },
-  });
+  const result = await __testing.reconcileOrphanedWorker(
+    f.api,
+    { ownerKey: OWNER, flowId: "unknown-launch-flow", revision: 0 },
+    {
+      ...worker,
+      launchOutcome: { status: "unknown" },
+    },
+  );
   assert.equal(result.safe, false);
   assert.equal(result.reason, "orphan_launch_outcome_unknown");
   assertAllClosed(assert, f.calls);
@@ -392,11 +396,15 @@ void test("new-head orphan with unknown launch stays held without a task", async
 
 void test("absent session cannot settle an unobserved native orphan", async () => {
   const f = fixture();
-  const result = await __testing.reconcileOrphanedWorker(f.api, OWNER, {
-    sessionKey: "agent:reviewer:subagent:missing-task",
-    runId: "accepted-native-run",
-    taskId: "missing-task",
-  });
+  const result = await __testing.reconcileOrphanedWorker(
+    f.api,
+    { ownerKey: OWNER, flowId: "absent-native-flow", revision: 0 },
+    {
+      sessionKey: "agent:reviewer:subagent:missing-task",
+      runId: "accepted-native-run",
+      taskId: "missing-task",
+    },
+  );
   assert.equal(result.safe, false);
   assert.equal(result.reason, "orphan_run_observation_missing");
   assertAllClosed(assert, f.calls);
@@ -1396,7 +1404,11 @@ void test("denied run ledgers hold recovery and orphan reconciliation when no ex
   assert.equal(recovery.effect, "hold");
   assert.equal(recovery.reason, "worker_observation_unavailable");
   assert.equal(recovery.state.activeWorker.runId, worker.runId);
-  const orphan = await __testing.reconcileOrphanedWorker(f.api, OWNER, worker);
+  const orphan = await __testing.reconcileOrphanedWorker(
+    f.api,
+    { ownerKey: OWNER, flowId: "denied-ledgers-flow", revision: 0 },
+    worker,
+  );
   assert.equal(orphan.safe, false);
   assert.equal(orphan.reason, "orphan_run_observation_unavailable");
   assertAllClosed(assert, f.calls);
@@ -1443,7 +1455,11 @@ void test("native unknown orphan remains held even when session is absent", asyn
     runId: worker.runId,
     status: "unknown",
   });
-  const result = await __testing.reconcileOrphanedWorker(f.api, OWNER, worker);
+  const result = await __testing.reconcileOrphanedWorker(
+    f.api,
+    { ownerKey: OWNER, flowId: "native-unknown-flow", revision: 0 },
+    worker,
+  );
   assert.equal(result.safe, false);
   assert.equal(result.reason, "orphan_native_outcome_unknown");
   assert.equal(f.calls.cancels.length, 0);
@@ -1467,7 +1483,11 @@ void test("native orphan cancellation awaits the existing owner and closes ephem
     runId: worker.runId,
     status: "running",
   });
-  const result = await __testing.reconcileOrphanedWorker(f.api, OWNER, worker);
+  const result = await __testing.reconcileOrphanedWorker(
+    f.api,
+    { ownerKey: OWNER, flowId: "native-orphan-flow", revision: 0 },
+    worker,
+  );
   assert.equal(result.safe, true);
   assert.equal(result.reason, "orphan_task_cancelled");
   assert.equal(f.calls.cancels.length, 1);
@@ -1503,7 +1523,11 @@ void test("native cancellation error, nonacknowledgement and throw remain held d
       }
       return outcome;
     };
-    const result = await __testing.reconcileOrphanedWorker(f.api, OWNER, worker);
+    const result = await __testing.reconcileOrphanedWorker(
+      f.api,
+      { ownerKey: OWNER, flowId: "native-cancel-flow", revision: 0 },
+      worker,
+    );
     assert.equal(result.safe, false);
     assert.equal(result.reason, "orphan_native_cancellation_unknown");
     assert.equal(f.calls.cancels.length, 1);
@@ -1527,7 +1551,11 @@ void test("legacy active orphan cannot be adopted or declared cancelled from abs
     runId: worker.runId,
     status: "running",
   });
-  const result = await __testing.reconcileOrphanedWorker(f.api, OWNER, worker);
+  const result = await __testing.reconcileOrphanedWorker(
+    f.api,
+    { ownerKey: OWNER, flowId: "legacy-orphan-flow", revision: 0 },
+    worker,
+  );
   assert.equal(result.safe, false);
   assert.equal(result.reason, "orphan_legacy_cancellation_unavailable");
   assert.equal(f.calls.cancels.length, 0);
