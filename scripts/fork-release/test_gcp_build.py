@@ -2,15 +2,18 @@
 
 from contextlib import ExitStack
 import copy
+from datetime import datetime, timedelta, timezone
 import hashlib
 import io
 import json
 import os
 from pathlib import Path
+from queue import SimpleQueue
 import subprocess
 import stat
 import sys
 import tempfile
+import threading
 import time
 from types import SimpleNamespace
 import unittest
@@ -20,6 +23,26 @@ import gcp_build as build
 import release
 
 HERE = Path(__file__).resolve().parent
+
+
+def emit_probe(output, lock, shared, succeeded, result):
+    with lock:
+        sampled_at = time.monotonic()
+        old_state = shared["state"]
+        decision = None
+        if succeeded:
+            decision, shared["state"] = build.evaluate_pressure_observation(
+                result, shared["probe_started"], sampled_at, old_state)
+            shared["last_observation"] = copy.deepcopy(result)
+            if decision.action == "stop":
+                result["pressureDecision"] = {"action": decision.action,
+                                              "reason": decision.reason}
+                build.publish_pressure_stop(shared, decision.reason, result)
+        else:
+            build.publish_pressure_stop(shared, result)
+        completed_at = time.monotonic()
+        shared["probe_completed_at"] = completed_at
+    output.put((succeeded, result, completed_at, decision, old_state))
 
 
 class BuildTests(unittest.TestCase):
@@ -495,6 +518,42 @@ class BuildTests(unittest.TestCase):
         with self.assertRaisesRegex(release.Refusal, "gateway_identity"):
             build.gateway_sample("d" * 7)
 
+    def test_real_gateway_telemetry_flows_to_pressure_decision(self):
+        identity = "d" * 64
+        end = datetime.now(timezone.utc) - timedelta(seconds=5)
+        start = end - timedelta(milliseconds=4500)
+        payload = {"Id": identity, "Name": "/" + build.PRODUCTION_GATEWAY_NAME,
+                   "State": {"Running": True, "OOMKilled": False,
+                             "Health": {"Status": "healthy", "Log": [{
+                                 "Start": start.isoformat(), "End": end.isoformat()}]}}}
+        scope = self.root / f"docker-{identity}.scope"
+        scope.mkdir()
+        (scope / "memory.stat").write_text("anon 100\nfile 200\n")
+        (scope / "memory.events").write_text("oom 0\noom_kill 0\n")
+        (scope / "memory.pressure").write_text(
+            "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+            "full avg10=6.18 avg60=0.00 avg300=0.00 total=0\n")
+        (scope / "memory.current").write_text("300\n")
+        resource = {"observedAt": build.now(), "freeBytes": 30 << 30,
+                    "memoryAvailableBytes": 18 << 30,
+                    "memoryPressure": {"full": {"avg10": 6.18}}}
+        with patch.object(build, "native", return_value=subprocess.CompletedProcess(
+                [], 0, json.dumps(payload), "")), \
+             patch.object(build, "CGROUP_SLICE", self.root), \
+             patch.object(build, "resource_sample", return_value=resource), \
+             patch.object(build, "builder_sample", return_value={"oom": 0, "oomKill": 0}):
+            before = time.monotonic()
+            observed = self.capacity_impl(
+                self.root, self.config["limits"], gateway_container_id=identity,
+                builder=self.config["builder"], defer_pressure=True)
+            sample = build.running_pressure_sample(observed, before, time.monotonic())
+        self.assertGreaterEqual(sample.last_health_check_ms, 4500)
+        self.assertLess(sample.last_health_check_age_seconds, 30)
+        previous = build.PressureState(True, before - 60, None, before - 0.01,
+                                       before - 60)
+        decision, _ = build.pressure_guard_evaluate(sample, previous)
+        self.assertEqual(decision.reason, "build.pressure.gateway_latency")
+
     def test_adaptive_cli_no_fit_creates_no_operation(self):
         samples = self.adaptive_fixture(gib=20)
         config_path = self.root / "config.json"
@@ -549,6 +608,666 @@ class BuildTests(unittest.TestCase):
                     release.Refusal, "build.pressure_limit"):
                 build.validate_config({**self.config, "limits": {**limits,
                                        "maxFullMemoryPressureAvg10": value}})
+
+    def test_running_pressure_guard_replays_stopped_baseline_and_build_crossing(self):
+        state = build.PressureState()
+        first = [19.41, 18.95, 22.49, 10.18, 23.69, 19.31, 19.84]
+        second = [9.62, 15.72, 27.17, 39.44, 33.38, 14.9, 14.26]
+        sequence = [(i * 15, value) for i, value in enumerate(first)]
+        sequence += [(105 + i * 15, 0.5) for i in range(4)]
+        sequence += [(165 + i * 15, value) for i, value in enumerate(second)]
+        for second, value in sequence:
+            decision, state = build.pressure_guard_evaluate(build.PressureSample(
+                second, value, 19 << 30, True, False, False, 3186.9, 5), state)
+            self.assertNotEqual(decision.action, "stop")
+        state = build.PressureState()
+        for second, value in ((0, 0.24), (15, 1.26), (30, 6.18)):
+            decision, state = build.pressure_guard_evaluate(build.PressureSample(
+                second, value, 18 << 30, True, False, False, 503.0, 5), state)
+        self.assertEqual((decision.action, decision.reason),
+                         ("watch", "build.pressure.observed"))
+
+    def test_pressure_guard_hard_stops_sustained_clock_and_hysteresis(self):
+        state = build.PressureState()
+        for second in (0, 29, 58, 87, 116):
+            decision, state = build.pressure_guard_evaluate(build.PressureSample(
+                second, 6, 18 << 30, True, False, False), state)
+            self.assertEqual(decision.action, "watch")
+        self.assertEqual(build.pressure_watchdog(120, state).reason,
+                         "build.pressure.sustained")
+        _, clearing = build.pressure_guard_evaluate(build.PressureSample(
+            119, 4, 18 << 30, True, False, False), state)
+        self.assertEqual(build.pressure_watchdog(120, clearing).action, "watch")
+        state = build.PressureState()
+        for second in range(0, 180, 15):
+            pressure = 6 if (second // 15) % 2 == 0 else 4
+            decision, state = build.pressure_guard_evaluate(build.PressureSample(
+                second, pressure, 18 << 30, True, False, False), state)
+            self.assertEqual(decision.action, "watch")
+        self.assertEqual(build.pressure_watchdog(180, state).reason,
+                         "build.pressure.watch_timeout")
+        decision, _ = build.pressure_guard_evaluate(build.PressureSample(
+            180, 6, 18 << 30, True, False, False), state)
+        self.assertEqual(decision.reason, "build.pressure.watch_timeout")
+        for sample, reason in (
+            (build.PressureSample(0, 0, 9 << 30, True, False, False),
+             "build.pressure.critical_headroom"),
+            (build.PressureSample(0, 0, 18 << 30, False, False, False),
+             "build.pressure.critical_health_or_oom"),
+            (build.PressureSample(0, 0, 18 << 30, True, True, False),
+             "build.pressure.critical_health_or_oom"),
+            (build.PressureSample(0, 0, 18 << 30, True, False, True),
+             "build.pressure.critical_health_or_oom"),
+            (build.PressureSample(0, None, 18 << 30, True, False, False),
+             "build.pressure.telemetry_invalid"),
+        ):
+            with self.subTest(reason=reason):
+                decision, _ = build.pressure_guard_evaluate(sample, build.PressureState())
+                self.assertEqual(decision.reason, reason)
+        self.assertEqual(build.pressure_watchdog(31, build.PressureState(last_at=0)).reason,
+                         "build.pressure.telemetry_silent")
+
+    def test_pressure_guard_requires_fresh_health_latency_and_low_headroom(self):
+        state = build.PressureState()
+        for second in (0, 15, 30):
+            decision, state = build.pressure_guard_evaluate(build.PressureSample(
+                second, 6, 11 << 30, True, False, False), state)
+        self.assertEqual(decision.reason, "build.pressure.headroom")
+        state = build.PressureState()
+        for second, available in ((0, 18 << 30), (15, 18 << 30), (30, 11 << 30)):
+            decision, state = build.pressure_guard_evaluate(build.PressureSample(
+                second, 6, available, True, False, False), state)
+        self.assertEqual(decision.reason, "build.pressure.headroom")
+        state = build.PressureState()
+        for second in (0, 15, 30, 45, 60):
+            decision, state = build.pressure_guard_evaluate(build.PressureSample(
+                second, 6, 18 << 30, True, False, False, 4500, 40), state)
+        self.assertEqual(decision.action, "watch")
+        decision, _ = build.pressure_guard_evaluate(build.PressureSample(
+            75, 6, 18 << 30, True, False, False, 4500, 5), state)
+        self.assertEqual(decision.reason, "build.pressure.gateway_latency")
+
+    def test_health_age_is_conservatively_advanced_through_probe_delay(self):
+        observed = {"memoryPressure": {"full": {"avg10": 6.0}},
+                    "memoryAvailableBytes": 18 << 30,
+                    "gateway": {"gatewayHealthy": True, "gatewayOomKilled": False,
+                                "oom": 0, "oomKill": 0,
+                                "lastHealthCheckDurationMs": 4500.0,
+                                "lastHealthCheckAgeSeconds": 29.0,
+                                "lastHealthCheckAgeMeasuredAtMonotonicSeconds": 108.0},
+                    "builder": {"oom": 0, "oomKill": 0}}
+        sample = build.running_pressure_sample(observed, 100.0, 110.0)
+        self.assertEqual(sample.last_health_check_age_seconds, 31.0)
+        decision, _ = build.pressure_guard_evaluate(sample, build.PressureState(
+            True, 0.0, None, 99.0, 0.0))
+        self.assertEqual(decision.action, "watch")
+        observed["gateway"]["lastHealthCheckAgeSeconds"] = 26.0
+        sample = build.running_pressure_sample(observed, 100.0, 110.0)
+        self.assertEqual(sample.last_health_check_age_seconds, 28.0)
+        decision, _ = build.pressure_guard_evaluate(sample, build.PressureState(
+            True, 0.0, None, 99.0, 0.0))
+        self.assertEqual(decision.reason, "build.pressure.gateway_latency")
+        observed["gateway"]["lastHealthCheckAgeSeconds"] = 1.0
+        sample = build.running_pressure_sample(observed, 100.0, 110.0)
+        decision, _ = build.pressure_guard_evaluate(sample, build.PressureState(
+            True, 0.0, None, 99.0, 0.0))
+        self.assertEqual(decision.reason, "build.pressure.gateway_latency")
+
+    def test_qualification_runtime_can_defer_only_pressure_threshold(self):
+        limits = {**self.config["limits"], "minMemoryAvailableBytes": 10 << 30,
+                  "maxFullMemoryPressureAvg10": 5.0}
+        sample = {"freeBytes": 30 << 30, "memoryAvailableBytes": 18 << 30,
+                  "memoryPressure": {"full": {"avg10": 6.18}}}
+        gateway = {"gatewayHealthy": True, "gatewayOomKilled": False,
+                   "oom": 0, "oomKill": 0}
+        worker = {"oom": 0, "oomKill": 0}
+        with patch.object(build, "resource_sample", return_value=sample), patch.object(
+                build, "gateway_runtime_sample", return_value=gateway), patch.object(
+                build, "builder_sample", return_value=worker):
+            with self.assertRaisesRegex(release.Refusal, "memory_pressure"):
+                self.capacity_impl(self.root, limits, gateway_container_id="d" * 64,
+                                   builder=self.config["builder"])
+            self.assertEqual(self.capacity_impl(
+                self.root, limits, gateway_container_id="d" * 64,
+                builder=self.config["builder"], defer_pressure=True)["gateway"], gateway)
+            sample["memoryAvailableBytes"] = (10 << 30) - 1
+            with self.assertRaisesRegex(release.Refusal, "memory_reserve"):
+                self.capacity_impl(self.root, limits, gateway_container_id="d" * 64,
+                                   builder=self.config["builder"], defer_pressure=True)
+            sample["memoryAvailableBytes"] = 18 << 30
+            gateway["gatewayHealthy"] = False
+            with self.assertRaisesRegex(release.Refusal, "gateway_health"):
+                self.capacity_impl(self.root, limits, gateway_container_id="d" * 64,
+                                   builder=self.config["builder"], defer_pressure=True)
+            gateway["gatewayHealthy"] = True
+            worker["oomKill"] = 1
+            with self.assertRaisesRegex(release.Refusal, "worker_oom"):
+                self.capacity_impl(self.root, limits, gateway_container_id="d" * 64,
+                                   builder=self.config["builder"], defer_pressure=True)
+
+    def test_independent_watchdog_terminates_only_its_owned_client_on_silence(self):
+        owned = SimpleNamespace(poll=lambda: None)
+        terminated = threading.Event()
+        owned.terminate = terminated.set
+        stopped = threading.Event()
+        lock = threading.Lock()
+        shared = {"state": build.PressureState(last_at=time.monotonic() - 31),
+                  "reason": None, "probe_started": None, "probe_completed_at": None}
+        thread = threading.Thread(target=build.running_pressure_watchdog,
+                                  args=(stopped, lock, shared, owned), daemon=True)
+        thread.start()
+        self.assertTrue(terminated.wait(2))
+        stopped.set()
+        thread.join(timeout=2)
+        self.assertEqual(shared["reason"], "build.pressure.telemetry_silent")
+
+    def test_independent_watchdog_stops_stale_probe_even_if_main_loop_blocks(self):
+        owned = SimpleNamespace(poll=lambda: None)
+        terminated = threading.Event()
+        owned.terminate = terminated.set
+        stopped = threading.Event()
+        lock = threading.Lock()
+        stamp = time.monotonic()
+        shared = {"state": build.PressureState(last_at=stamp), "reason": None,
+                  "probe_started": stamp - 2, "probe_completed_at": None}
+        with patch.object(build, "PRESSURE_PROBE_MAX_SECONDS", 1):
+            thread = threading.Thread(target=build.running_pressure_watchdog,
+                                      args=(stopped, lock, shared, owned), daemon=True)
+            thread.start()
+            self.assertTrue(terminated.wait(2))
+            stopped.set()
+            thread.join(timeout=2)
+        self.assertEqual(shared["reason"], "build.pressure.telemetry_stale")
+
+    def test_independent_watchdog_stops_completed_hard_probe_failure(self):
+        owned = SimpleNamespace(poll=lambda: None)
+        terminated = threading.Event()
+        owned.terminate = terminated.set
+        stopped = threading.Event()
+        lock = threading.Lock()
+        stamp = time.monotonic()
+        shared = {"state": build.PressureState(last_at=stamp), "reason": None,
+                  "probe_started": stamp, "probe_completed_at": stamp,
+                  "published_stop_reason": "build.capacity.gateway_health"}
+        thread = threading.Thread(target=build.running_pressure_watchdog,
+                                  args=(stopped, lock, shared, owned), daemon=True)
+        thread.start()
+        self.assertTrue(terminated.wait(2))
+        stopped.set()
+        thread.join(timeout=2)
+        self.assertEqual(shared["reason"], "build.capacity.gateway_health")
+
+    def test_watchdog_escalates_owned_client_if_main_loop_is_blocked(self):
+        owned = SimpleNamespace(poll=lambda: None)
+        terminated = threading.Event()
+        killed = threading.Event()
+        owned.terminate = terminated.set
+        owned.kill = killed.set
+        stopped = threading.Event()
+        lock = threading.Lock()
+        stamp = time.monotonic()
+        shared = {"state": build.PressureState(last_at=stamp), "reason": None,
+                  "probe_started": stamp, "probe_completed_at": stamp,
+                  "published_stop_reason": "build.capacity.gateway_health"}
+        with patch.object(build, "CLIENT_TERM_GRACE_SECONDS", 0.05):
+            thread = threading.Thread(target=build.running_pressure_watchdog,
+                                      args=(stopped, lock, shared, owned), daemon=True)
+            thread.start()
+            self.assertTrue(terminated.wait(2))
+            self.assertTrue(killed.wait(2))
+            thread.join(timeout=2)
+        self.assertEqual(shared["reason"], "build.capacity.gateway_health")
+
+    def test_capacity_probe_publishes_failure_before_output_is_read(self):
+        output = SimpleQueue()
+        lock = threading.Lock()
+        shared = {"state": build.PressureState(last_at=time.monotonic() - 0.01),
+                  "probe_started": time.monotonic(),
+                  "probe_completed_at": None, "published_stop_reason": None}
+        with patch.object(build, "capacity", side_effect=release.Refusal(
+                "build.capacity.gateway_health")):
+            build.running_capacity_probe(self.root, self.config, "d" * 64,
+                                         output, lock, shared)
+        self.assertEqual(shared["published_stop_reason"], "build.capacity.gateway_health")
+        self.assertEqual(output.get_nowait()[1], "build.capacity.gateway_health")
+
+    def test_pressure_probe_publishes_stop_before_output_is_read(self):
+        stamp = time.monotonic()
+        shared = {"state": build.PressureState(True, stamp - 30, None,
+                                               stamp - 0.01, stamp - 30),
+                  "probe_started": stamp, "probe_completed_at": None,
+                  "published_stop_reason": None, "reason": None}
+        observed = {"memoryPressure": {"full": {"avg10": 6.0}},
+                    "memoryAvailableBytes": 11 << 30,
+                    "gateway": {"gatewayHealthy": True, "gatewayOomKilled": False,
+                                "oom": 0, "oomKill": 0,
+                                "lastHealthCheckDurationMs": None,
+                                "lastHealthCheckAgeSeconds": None},
+                    "builder": {"oom": 0, "oomKill": 0}}
+        output = SimpleQueue()
+        lock = threading.Lock()
+        with patch.object(build, "capacity", return_value=observed):
+            build.running_capacity_probe(self.root, self.config, "d" * 64,
+                                         output, lock, shared)
+        self.assertEqual(shared["published_stop_reason"], "build.pressure.headroom")
+        self.assertEqual(shared["stop_observation"]["pressureDecision"]["reason"],
+                         "build.pressure.headroom")
+        owned = SimpleNamespace(poll=lambda: None)
+        terminated = threading.Event()
+        owned.terminate = terminated.set
+        stopped = threading.Event()
+        thread = threading.Thread(target=build.running_pressure_watchdog,
+                                  args=(stopped, lock, shared, owned), daemon=True)
+        thread.start()
+        self.assertTrue(terminated.wait(2))
+        stopped.set()
+        thread.join(timeout=2)
+        self.assertEqual(shared["reason"], "build.pressure.headroom")
+        self.assertEqual(output.get_nowait()[3].reason, "build.pressure.headroom")
+
+    def test_watchdog_timer_freezes_matching_sample_and_reason(self):
+        stamp = time.monotonic()
+        sample = {"observedAt": build.now(), "memoryAvailableBytes": 18 << 30,
+                  "memoryPressure": {"full": {"avg10": 6.0}}}
+        shared = {"state": build.PressureState(True, stamp - 120, None,
+                                               stamp - 0.01, stamp - 120),
+                  "last_observation": sample, "stop_observation": None,
+                  "probe_started": None, "probe_completed_at": None,
+                  "published_stop_reason": None, "reason": None}
+        owned = SimpleNamespace(poll=lambda: None)
+        terminated = threading.Event()
+        owned.terminate = terminated.set
+        stopped = threading.Event()
+        lock = threading.Lock()
+        thread = threading.Thread(target=build.running_pressure_watchdog,
+                                  args=(stopped, lock, shared, owned), daemon=True)
+        thread.start()
+        self.assertTrue(terminated.wait(2))
+        stopped.set()
+        thread.join(timeout=2)
+        self.assertEqual(shared["reason"], "build.pressure.sustained")
+        self.assertEqual(shared["stop_observation"]["memoryPressure"],
+                         sample["memoryPressure"])
+        self.assertEqual(shared["stop_observation"]["pressureDecision"]["reason"],
+                         shared["reason"])
+        self.assertGreaterEqual(
+            shared["stop_observation"]["pressureDecision"]["publishedAtMonotonicSeconds"],
+            stamp)
+        self.assertNotIn("pressureDecision", sample)
+
+    def test_probe_timeout_uses_completion_clock_not_queue_read_time(self):
+        self.assertFalse(build.probe_timed_out(111, 100, 109.9))
+        self.assertTrue(build.probe_timed_out(111, 100, 110.1))
+        self.assertTrue(build.probe_timed_out(111, 100, None))
+        timely = {"probe_completed_at": 109.9, "published_stop_reason": None}
+        self.assertFalse(build.publish_stale_probe_if_needed(timely, 100, 111))
+        self.assertIsNone(timely["published_stop_reason"])
+        late = {"probe_completed_at": None, "published_stop_reason": None,
+                "stop_observation": None, "last_observation": None}
+        with patch.object(build.time, "monotonic", return_value=111):
+            self.assertTrue(build.publish_stale_probe_if_needed(late, 100, 111))
+        self.assertEqual(late["published_stop_reason"], "build.pressure.telemetry_stale")
+        self.assertEqual(late["stop_at_monotonic"], 111)
+
+    def test_measured_guard_stop_precedes_later_client_deadline(self):
+        deadline = 120.0
+        current = "client deadline; remote solve termination unobserved"
+        self.assertEqual(build.prefer_published_stop(
+            current, "build.pressure.headroom", 119.9, deadline),
+            "build.pressure.headroom")
+        self.assertEqual(build.prefer_published_stop(
+            current, "build.pressure.headroom", 120.1, deadline), current)
+        self.assertEqual(build.prefer_published_stop(
+            current, "build.pressure.headroom", None, deadline), current)
+        self.assertEqual(build.stop_cause_at_deadline(
+            "build.pressure.headroom", 119.9, deadline, 120.1),
+            "build.pressure.headroom")
+        self.assertEqual(build.stop_cause_at_deadline(
+            "build.pressure.headroom", 120.1, deadline, 120.2), current)
+        self.assertEqual(build.stop_cause_at_deadline(
+            "build.pressure.headroom", None, deadline, 120.2), current)
+
+    def test_probe_publication_time_governs_deadline_cause(self):
+        observed = {"memoryPressure": {"full": {"avg10": 6.0}},
+                    "memoryAvailableBytes": 11 << 30,
+                    "gateway": {"gatewayHealthy": True, "gatewayOomKilled": False,
+                                "oom": 0, "oomKill": 0,
+                                "lastHealthCheckDurationMs": None,
+                                "lastHealthCheckAgeSeconds": None},
+                    "builder": {"oom": 0, "oomKill": 0}}
+        shared = {"state": build.PressureState(True, 70.0, None, 99.0, 70.0),
+                  "probe_started": 100.0, "reason": None,
+                  "stop_at_monotonic": None, "stop_observation": None,
+                  "published_stop_reason": None}
+        output = SimpleQueue()
+        with patch.object(build, "capacity", return_value=observed), \
+             patch.object(build.time, "monotonic", side_effect=[119.0, 121.0, 122.0]):
+            build.running_capacity_probe(self.root, self.config, "d" * 64,
+                                         output, threading.Lock(), shared)
+        self.assertEqual(output.get_nowait()[2], 122.0)
+        self.assertEqual(shared["stop_at_monotonic"], 121.0)
+        deadline_reason = "client deadline; remote solve termination unobserved"
+        self.assertEqual(build.prefer_published_stop(
+            deadline_reason, shared["published_stop_reason"],
+            shared["stop_at_monotonic"], 120.0), deadline_reason)
+
+    def test_probe_budget_includes_result_evaluation_before_publication(self):
+        shared = {"state": build.PressureState(last_at=99.0),
+                  "probe_started": 100.0, "probe_completed_at": None,
+                  "published_stop_reason": None}
+        output = SimpleQueue()
+        with patch.object(build, "capacity", return_value={"observedAt": build.now()}), \
+             patch.object(build, "evaluate_pressure_observation", return_value=(
+                 build.PressureDecision("clear", "build.pressure.clear"),
+                 build.PressureState(last_at=100.0))), \
+             patch.object(build.time, "monotonic", side_effect=[109.9, 110.1]):
+            build.running_capacity_probe(self.root, self.config, "d" * 64,
+                                         output, threading.Lock(), shared)
+        self.assertEqual(shared["probe_completed_at"], 110.1)
+        self.assertTrue(build.probe_timed_out(111, 100, shared["probe_completed_at"]))
+
+    def test_first_published_guard_keeps_reason_time_and_sample(self):
+        sample = {"observedAt": build.now(), "memoryAvailableBytes": 11 << 30,
+                  "memoryPressure": {"full": {"avg10": 6.0}}}
+        shared = {"published_stop_reason": None, "stop_at_monotonic": None,
+                  "stop_observation": None, "last_observation": sample}
+        self.assertEqual(build.publish_pressure_stop(
+            shared, "build.pressure.headroom", sample, published_at=119.0),
+            "build.pressure.headroom")
+        self.assertEqual(build.publish_pressure_stop(
+            shared, "build.pressure.telemetry_stale", published_at=121.0),
+            "build.pressure.headroom")
+        self.assertEqual(shared["stop_at_monotonic"], 119.0)
+        self.assertEqual(shared["stop_observation"]["pressureDecision"], {
+            "action": "stop", "reason": "build.pressure.headroom",
+            "publishedAtMonotonicSeconds": 119.0})
+        self.assertEqual(build.stop_cause_at_deadline(
+            shared["published_stop_reason"], shared["stop_at_monotonic"],
+            120.0, 122.0), "build.pressure.headroom")
+
+    def test_stop_publication_clock_follows_evidence_copy(self):
+        events = []
+        sample = {"observedAt": build.now(), "memoryAvailableBytes": 11 << 30}
+        shared = {"published_stop_reason": None}
+
+        def copied(value):
+            events.append("copy")
+            return dict(value)
+
+        def clock():
+            events.append("clock")
+            return 121.0
+
+        with patch.object(build.copy, "deepcopy", side_effect=copied), \
+             patch.object(build.time, "monotonic", side_effect=clock):
+            build.publish_pressure_stop(shared, "build.pressure.headroom", sample)
+        self.assertEqual(events, ["copy", "clock"])
+        self.assertEqual(shared["stop_at_monotonic"], 121.0)
+        self.assertEqual(shared["stop_observation"]["pressureDecision"]
+                         ["publishedAtMonotonicSeconds"], 121.0)
+
+    def test_stop_resource_row_separates_event_first_stop_and_receipt(self):
+        first = {"observedAt": build.now(),
+                 "memoryPressure": {"full": {"avg10": 6.0}},
+                 "pressureDecision": {"action": "stop", "reason": "build.pressure.headroom",
+                                      "publishedAtMonotonicSeconds": 121.0}}
+        row = build.stop_resource_evidence(
+            "build.pressure.headroom", 121.0, first,
+            build.CLIENT_DEADLINE_REASON, "build.pressure.telemetry_stale")
+        self.assertEqual(row["firstPublishedStop"], {
+            "reason": "build.pressure.headroom", "publishedAtMonotonicSeconds": 121.0})
+        self.assertEqual(row["eventReason"], "build.pressure.telemetry_stale")
+        self.assertEqual(row["receiptCause"], build.CLIENT_DEADLINE_REASON)
+        self.assertEqual(row["pressureDecision"], first["pressureDecision"])
+        self.assertNotIn("firstPublishedStop", first)
+
+    def test_qualification_service_stops_owned_client_from_async_pressure_sample(self):
+        samples = self.qualification_fixture()
+        fixture = self.root / "inert-build-client.py"
+        fixture.write_text("import time\nprint('inert build client', flush=True)\n"
+                           "while True: time.sleep(0.01)\n")
+        self.stack.enter_context(patch.object(build, "DOCKER", (sys.executable, str(fixture))))
+        observed = {"observedAt": build.now(), "freeBytes": 30 << 30,
+                    "memoryAvailableBytes": 18 << 30, "cacheFreeBytes": 60 << 30,
+                    "memoryPressure": {"full": {"avg10": 6.18}},
+                    "gateway": {"gatewayHealthy": True, "gatewayOomKilled": False,
+                                "oom": 0, "oomKill": 0,
+                                "lastHealthCheckDurationMs": 503.0,
+                                "lastHealthCheckAgeSeconds": 5.0},
+                    "builder": {"oom": 0, "oomKill": 0}}
+
+        def sample(_op, _config, _gateway_id, output, lock, shared):
+            observed["gateway"]["lastHealthCheckAgeMeasuredAtMonotonicSeconds"] = time.monotonic()
+            emit_probe(output, lock, shared, True, observed)
+
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]), \
+             patch.object(build, "verify_builder_cgroup_limits", return_value={"proof": "fixture"}), \
+             patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "running_capacity_probe", side_effect=sample), \
+             patch.object(build, "builder_sample", return_value=observed["builder"]), \
+             patch.object(build, "PRESSURE_STOP_SECONDS", 0):
+            op = self.prepare(build.bind_adaptive_selection(self.config, samples))
+            with patch.object(build, "native", side_effect=self.fake_native):
+                build.start(op)
+            _, intent = build.load_intent(op)
+            output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+            with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), \
+                 patch.object(build.sys, "stdout", output):
+                self.assertNotEqual(build.run_child(op, intent), 0)
+        receipt = build.read_private(op / "completed.json")
+        self.assertEqual(receipt["reason"], "build.pressure.sustained")
+        self.assertFalse(receipt["remoteSolveTerminationObserved"])
+        self.assertFalse((op / "execution.json").exists())
+        resources = [json.loads(line) for line in
+                     build.private_bytes(op / "resources.jsonl").splitlines()]
+        stops = [row for row in resources if row["phase"] in
+                 ("pressure-stop", "pressure-watchdog-stop")]
+        self.assertTrue(stops)
+        self.assertTrue(all(row["resources"]["pressureDecision"]["reason"] ==
+                            "build.pressure.sustained" for row in stops))
+
+    def test_invalid_health_clock_stops_owned_client_and_records_failure(self):
+        samples = self.qualification_fixture()
+        fixture = self.root / "inert-build-client.py"
+        fixture.write_text("import time\nwhile True: time.sleep(0.01)\n")
+        self.stack.enter_context(patch.object(build, "DOCKER", (sys.executable, str(fixture))))
+        observed = {"observedAt": build.now(), "freeBytes": 30 << 30,
+                    "memoryAvailableBytes": 18 << 30, "cacheFreeBytes": 60 << 30,
+                    "memoryPressure": {"full": {"avg10": 6.18}},
+                    "gateway": {"gatewayHealthy": True, "gatewayOomKilled": False,
+                                "oom": 0, "oomKill": 0,
+                                "lastHealthCheckDurationMs": 4500.0,
+                                "lastHealthCheckAgeSeconds": 5.0,
+                                "lastHealthCheckAgeMeasuredAtMonotonicSeconds": -1.0},
+                    "builder": {"oom": 0, "oomKill": 0}}
+
+        def sample(_op, _config, _gateway_id, output, lock, shared):
+            emit_probe(output, lock, shared, True, observed)
+
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]), \
+             patch.object(build, "verify_builder_cgroup_limits", return_value={"proof": "fixture"}), \
+             patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "running_capacity_probe", side_effect=sample), \
+             patch.object(build, "builder_sample", return_value=observed["builder"]):
+            op = self.prepare(build.bind_adaptive_selection(self.config, samples))
+            with patch.object(build, "native", side_effect=self.fake_native):
+                build.start(op)
+            _, intent = build.load_intent(op)
+            output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+            with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), \
+                 patch.object(build.sys, "stdout", output):
+                self.assertNotEqual(build.run_child(op, intent), 0)
+        receipt = build.read_private(op / "completed.json")
+        self.assertEqual(receipt["reason"], "build.pressure.telemetry_invalid")
+        self.assertFalse((op / "execution.json").exists())
+        rows = [json.loads(line) for line in
+                build.private_bytes(op / "resources.jsonl").splitlines()]
+        stops = [row for row in rows if row["phase"] in
+                 ("pressure-stop", "pressure-watchdog-stop")]
+        self.assertTrue(stops)
+        self.assertTrue(all(row["resources"]["pressureDecision"]["reason"] ==
+                            "build.pressure.telemetry_invalid" for row in stops))
+
+    def test_output_forwarding_error_still_kills_only_owned_client(self):
+        samples = self.qualification_fixture()
+        fixture = self.root / "ignores-term-client.py"
+        fixture.write_text(
+            "import os, signal, time\nfrom pathlib import Path\n"
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            "Path('owned.pid').write_text(str(os.getpid()))\n"
+            "print('fixture ready', flush=True)\n"
+            "while True: time.sleep(0.01)\n")
+        self.stack.enter_context(patch.object(build, "DOCKER", (sys.executable, str(fixture))))
+
+        class BrokenOutput:
+            def write(self, _data):
+                raise OSError("injected output failure")
+
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]), \
+             patch.object(build, "verify_builder_cgroup_limits", return_value={"proof": "fixture"}), \
+             patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "running_capacity_probe", side_effect=lambda *_: None), \
+             patch.object(build, "builder_sample", return_value={"oom": 0, "oomKill": 0}), \
+             patch.object(build, "CLIENT_TERM_GRACE_SECONDS", 0.1):
+            op = self.prepare(build.bind_adaptive_selection(self.config, samples))
+            with patch.object(build, "native", side_effect=self.fake_native):
+                build.start(op)
+            _, intent = build.load_intent(op)
+            with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), \
+                 patch.object(build.sys, "stdout", SimpleNamespace(buffer=BrokenOutput())):
+                with self.assertRaisesRegex(OSError, "injected output failure"):
+                    build.run_child(op, intent)
+        receipt = build.read_private(op / "completed.json")
+        self.assertEqual(receipt["nativeExitCode"], 137)
+        self.assertFalse((op / "execution.json").exists())
+
+    def test_qualification_service_watchdog_stops_blocked_probe(self):
+        samples = self.qualification_fixture()
+        fixture = self.root / "inert-build-client.py"
+        fixture.write_text("import time\nprint('inert build client', flush=True)\n"
+                           "while True: time.sleep(0.01)\n")
+        self.stack.enter_context(patch.object(build, "DOCKER", (sys.executable, str(fixture))))
+        blocked = threading.Event()
+
+        def never_returns(_op, _config, _gateway_id, _output, _lock, _shared):
+            blocked.wait(2)
+
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]), \
+             patch.object(build, "verify_builder_cgroup_limits", return_value={"proof": "fixture"}), \
+             patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "running_capacity_probe", side_effect=never_returns), \
+             patch.object(build, "builder_sample", return_value={"oom": 0, "oomKill": 0}), \
+             patch.object(build, "PRESSURE_MAX_SAMPLE_GAP_SECONDS", 0.25):
+            op = self.prepare(build.bind_adaptive_selection(self.config, samples))
+            with patch.object(build, "native", side_effect=self.fake_native):
+                build.start(op)
+            _, intent = build.load_intent(op)
+            output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+            try:
+                with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), \
+                     patch.object(build.sys, "stdout", output):
+                    self.assertNotEqual(build.run_child(op, intent), 0)
+            finally:
+                blocked.set()
+        receipt = build.read_private(op / "completed.json")
+        self.assertEqual(receipt["reason"], "build.pressure.telemetry_silent")
+        self.assertFalse(receipt["remoteSolveTerminationObserved"])
+        self.assertFalse((op / "execution.json").exists())
+
+    def test_qualification_service_stops_stale_probe_before_next_sample(self):
+        samples = self.qualification_fixture()
+        fixture = self.root / "inert-build-client.py"
+        fixture.write_text("import time\nprint('inert build client', flush=True)\n"
+                           "while True: time.sleep(0.01)\n")
+        self.stack.enter_context(patch.object(build, "DOCKER", (sys.executable, str(fixture))))
+        blocked = threading.Event()
+
+        def never_returns(_op, _config, _gateway_id, _output, _lock, _shared):
+            blocked.wait(2)
+
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]), \
+             patch.object(build, "verify_builder_cgroup_limits", return_value={"proof": "fixture"}), \
+             patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "running_capacity_probe", side_effect=never_returns), \
+             patch.object(build, "builder_sample", return_value={"oom": 0, "oomKill": 0}), \
+             patch.object(build, "PRESSURE_PROBE_MAX_SECONDS", 0.25):
+            op = self.prepare(build.bind_adaptive_selection(self.config, samples))
+            with patch.object(build, "native", side_effect=self.fake_native):
+                build.start(op)
+            _, intent = build.load_intent(op)
+            output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+            try:
+                with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), \
+                     patch.object(build.sys, "stdout", output):
+                    self.assertNotEqual(build.run_child(op, intent), 0)
+            finally:
+                blocked.set()
+        self.assertEqual(build.read_private(op / "completed.json")["reason"],
+                         "build.pressure.telemetry_stale")
+
+    def test_client_exit_waits_for_inflight_hard_guard_result(self):
+        samples = self.qualification_fixture()
+        self.child_fixture(exit_code=0)
+
+        def delayed_failure(_op, _config, _gateway_id, output, lock, shared):
+            time.sleep(0.3)
+            emit_probe(output, lock, shared, False, "build.capacity.gateway_health")
+
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]), \
+             patch.object(build, "verify_builder_cgroup_limits", return_value={"proof": "fixture"}), \
+             patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "running_capacity_probe", side_effect=delayed_failure), \
+             patch.object(build, "builder_sample", return_value={"oom": 0, "oomKill": 0}):
+            op = self.prepare(build.bind_adaptive_selection(self.config, samples))
+            with patch.object(build, "native", side_effect=self.fake_native):
+                build.start(op)
+            _, intent = build.load_intent(op)
+            output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+            with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), \
+                 patch.object(build.sys, "stdout", output):
+                self.assertNotEqual(build.run_child(op, intent), 0)
+        receipt = build.read_private(op / "completed.json")
+        self.assertEqual(receipt["reason"], "build.capacity.gateway_health")
+        self.assertEqual(receipt["nativeExitCode"], 0)
+        self.assertFalse((op / "execution.json").exists())
+
+    def test_client_exit_cannot_win_final_pressure_deadline(self):
+        samples = self.qualification_fixture()
+        fixture = self.root / "short-build-client.py"
+        fixture.write_text("import time\ntime.sleep(0.5)\n")
+        self.stack.enter_context(patch.object(build, "DOCKER", (sys.executable, str(fixture))))
+        observed = {"observedAt": build.now(), "freeBytes": 30 << 30,
+                    "memoryAvailableBytes": 18 << 30, "cacheFreeBytes": 60 << 30,
+                    "memoryPressure": {"full": {"avg10": 6.18}},
+                    "gateway": {"gatewayHealthy": True, "gatewayOomKilled": False,
+                                "oom": 0, "oomKill": 0,
+                                "lastHealthCheckDurationMs": 503.0,
+                                "lastHealthCheckAgeSeconds": 5.0},
+                    "builder": {"oom": 0, "oomKill": 0}}
+
+        def sample(_op, _config, _gateway_id, output, lock, shared):
+            observed["gateway"]["lastHealthCheckAgeMeasuredAtMonotonicSeconds"] = time.monotonic()
+            emit_probe(output, lock, shared, True, observed)
+
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]), \
+             patch.object(build, "verify_builder_cgroup_limits", return_value={"proof": "fixture"}), \
+             patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "running_capacity_probe", side_effect=sample), \
+             patch.object(build, "running_pressure_watchdog", side_effect=lambda stopped, *_: stopped.wait(2)), \
+             patch.object(build, "builder_sample", return_value=observed["builder"]), \
+             patch.object(build, "PRESSURE_STOP_SECONDS", 0.1):
+            op = self.prepare(build.bind_adaptive_selection(self.config, samples))
+            with patch.object(build, "native", side_effect=self.fake_native):
+                build.start(op)
+            _, intent = build.load_intent(op)
+            output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+            with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), \
+                 patch.object(build.sys, "stdout", output):
+                self.assertNotEqual(build.run_child(op, intent), 0)
+        receipt = build.read_private(op / "completed.json")
+        self.assertEqual(receipt["nativeExitCode"], 0)
+        self.assertEqual(receipt["reason"], "build.pressure.sustained")
+        self.assertFalse((op / "execution.json").exists())
 
     def test_host_memory_pressure_parser_requires_both_kernel_rows(self):
         pressure = ("some avg10=2.25 avg60=1.10 avg300=0.80 total=100\n"

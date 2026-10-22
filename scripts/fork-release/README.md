@@ -798,6 +798,31 @@ retry. The worker's own cgroup and its ancestors must prove the effective
 8 GiB, zero-swap, 4-CPU limits before the solve. A successful compile alone
 does not qualify export, load, image verification or sealing.
 
+For this exact qualification profile only, the **running** pressure guard uses
+the retained healthy stopped-builder baseline: host full-memory PSI `avg10`
+reached 39.44% without this builder, while one 6.18% sample stopped the first
+controlled build. The admission gate and other profiles still require every
+fresh sample at or below 5%. During the qualification solve, one above-5%
+sample records a watch. Stop on 120 seconds of continuing high pressure; or
+after 30 seconds with under 12 GiB host availability; or after 60 seconds with
+a fresh Gateway health check lasting at least 4 seconds. The low-headroom rule
+requires 30 seconds of high pressure and a then-current reading below 12 GiB;
+the low reading itself need not persist for 30 seconds. Below-3% pressure for
+30 seconds clears the watch. The 120-second/12-GiB/4-second values are bounded
+engineering choices, not demonstrated safe minima or proof of build causality.
+An active watch also stops after 180 seconds without a full clear, including
+alternating above-5% readings and 3–5% dips. This bounds a pattern that would
+otherwise repeatedly reset the continuous-high timer. The 180-second limit is
+an engineering choice; the independent timer enforces it between samples.
+The hard 10 GiB host floor, Gateway health/OOM, worker OOM, disk/cache,
+ownership, cgroup and timeout stops remain immediate on observation. A pinned
+read-only probe taking over 10 seconds to publish its result, or sample silence
+lasting over 30 seconds, stops
+the owned client, using a watchdog independent of output forwarding. A separate
+supervisor timer enforces the 120- and 180-second deadlines between samples;
+completion checks the final clock too. Every stop retains remote-solve uncertainty until the
+owned builder is reconciled; no failed build retries automatically.
+
 The closed configuration binds the exact source/tree/tooling and metadata
 hashes, stable release version, private cloud identity, existing builder
 container/image/resource limits, build timestamp, timeout, and free disk/memory

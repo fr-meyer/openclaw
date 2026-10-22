@@ -14,14 +14,20 @@ serializes users of this adapter, not other native Docker callers. Those still
 require ownership coordination and fresh builder inspection.
 """
 
+from __future__ import annotations
+
 import argparse
+import copy
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import fcntl
 from fractions import Fraction
 import json
+from math import isfinite
 import os
 from pathlib import Path
+import queue
 import re
 import selectors
 import shutil
@@ -29,6 +35,7 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 
 import preflight
@@ -53,6 +60,19 @@ TRIAL_ROOT = Path("/var/tmp/openclaw-fork-snapshot-trial")
 CLIENT_TERM_GRACE_SECONDS = 5
 CLIENT_JOIN_SECONDS = 2
 CLIENT_PIPE_DRAIN_SECONDS = 1
+CLIENT_DEADLINE_REASON = "client deadline; remote solve termination unobserved"
+PRESSURE_ENTER = 5.0
+PRESSURE_CLEAR = 3.0
+PRESSURE_CLEAR_SECONDS = 30.0
+PRESSURE_MAX_SAMPLE_GAP_SECONDS = 30.0
+PRESSURE_HEADROOM_RISK_BYTES = 12 << 30
+PRESSURE_HEADROOM_RISK_SECONDS = 30.0
+PRESSURE_HEALTH_LATENCY_MS = 4000.0
+PRESSURE_HEALTH_MAX_AGE_SECONDS = 30.0
+PRESSURE_LATENCY_RISK_SECONDS = 60.0
+PRESSURE_STOP_SECONDS = 120.0
+PRESSURE_WATCH_MAX_SECONDS = 180.0
+PRESSURE_PROBE_MAX_SECONDS = 10.0
 HELPERS = ("gcp_build.py", "release.py", "preflight.py", "pr.py")
 SAFE_ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1"}
@@ -101,6 +121,174 @@ CACHE_MOUNT_FORMAT = (
     '"Destination":{{json .Destination}},"Driver":{{json .Driver}},"RW":{{json .RW}}}'
     '{{println}}{{end}}{{end}}')
 need = release.need
+
+
+@dataclass(frozen=True)
+class PressureSample:
+    at_seconds: float
+    host_full_avg10_pct: float
+    available_bytes: int
+    gateway_healthy: bool
+    gateway_oom: bool
+    worker_oom: bool
+    last_health_check_ms: float | None = None
+    last_health_check_age_seconds: float | None = None
+
+
+@dataclass(frozen=True)
+class PressureState:
+    active: bool = False
+    high_since: float | None = None
+    clear_since: float | None = None
+    last_at: float | None = None
+    watch_since: float | None = None
+
+
+@dataclass(frozen=True)
+class PressureDecision:
+    action: str
+    reason: str
+
+
+def finite_number(value):
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except OverflowError:
+        return False
+
+
+def valid_pressure_state(state):
+    if type(state) is not PressureState or type(state.active) is not bool:
+        return False
+    if any(value is not None and not finite_number(value) for value in
+           (state.high_since, state.clear_since, state.last_at, state.watch_since)):
+        return False
+    if state.high_since is not None and state.clear_since is not None:
+        return False
+    if state.last_at is None and (state.active or state.high_since is not None or
+                                  state.clear_since is not None or state.watch_since is not None):
+        return False
+    if state.active != (state.watch_since is not None):
+        return False
+    if state.last_at is not None and any(value is not None and value > state.last_at
+                                         for value in (state.high_since, state.clear_since,
+                                                       state.watch_since)):
+        return False
+    if not state.active and (state.high_since is not None or state.clear_since is not None):
+        return False
+    return True
+
+
+def valid_pressure_sample(sample, state):
+    if type(sample) is not PressureSample or not valid_pressure_state(state):
+        return False
+    if (not finite_number(sample.at_seconds) or
+            not finite_number(sample.host_full_avg10_pct) or
+            not 0 <= sample.host_full_avg10_pct <= 100 or
+            type(sample.available_bytes) is not int or sample.available_bytes < 0 or
+            any(type(value) is not bool for value in
+                (sample.gateway_healthy, sample.gateway_oom, sample.worker_oom))):
+        return False
+    if state.last_at is not None and not (
+        state.last_at < sample.at_seconds <= state.last_at + PRESSURE_MAX_SAMPLE_GAP_SECONDS
+    ):
+        return False
+    duration = sample.last_health_check_ms
+    age = sample.last_health_check_age_seconds
+    if (duration is None) != (age is None):
+        return False
+    if duration is not None and not (
+        finite_number(duration) and finite_number(age) and duration >= 0 and age >= 0
+    ):
+        return False
+    return True
+
+
+def pressure_guard_evaluate(sample, state):
+    """Bound runtime PSI by time and independent health/headroom signals.
+
+    A single host full-PSI avg10 crossing is an observation, not proof of build
+    causality. All current hard capacity/health/OOM gates remain separate.
+    """
+    if not valid_pressure_sample(sample, state):
+        return PressureDecision("stop", "build.pressure.telemetry_invalid"), state
+    if not sample.gateway_healthy or sample.gateway_oom or sample.worker_oom:
+        return PressureDecision("stop", "build.pressure.critical_health_or_oom"), state
+    if sample.available_bytes < 10 << 30:
+        return PressureDecision("stop", "build.pressure.critical_headroom"), state
+
+    timestamp = sample.at_seconds
+    if (state.active and state.watch_since is not None and
+            timestamp - state.watch_since >= PRESSURE_WATCH_MAX_SECONDS):
+        return PressureDecision("stop", "build.pressure.watch_timeout"), state
+    if sample.host_full_avg10_pct > PRESSURE_ENTER:
+        high_since = state.high_since if state.high_since is not None else timestamp
+        elapsed = timestamp - high_since
+        watch_since = state.watch_since if state.watch_since is not None else timestamp
+        updated = PressureState(True, high_since, None, timestamp, watch_since)
+        if elapsed >= PRESSURE_STOP_SECONDS:
+            return PressureDecision("stop", "build.pressure.sustained"), updated
+        if (elapsed >= PRESSURE_HEADROOM_RISK_SECONDS and
+                sample.available_bytes < PRESSURE_HEADROOM_RISK_BYTES):
+            return PressureDecision("stop", "build.pressure.headroom"), updated
+        if (elapsed >= PRESSURE_LATENCY_RISK_SECONDS and
+                sample.last_health_check_ms is not None and
+                sample.last_health_check_age_seconds <= PRESSURE_HEALTH_MAX_AGE_SECONDS and
+                sample.last_health_check_ms >= PRESSURE_HEALTH_LATENCY_MS):
+            return PressureDecision("stop", "build.pressure.gateway_latency"), updated
+        return PressureDecision("watch", "build.pressure.observed"), updated
+
+    if not state.active:
+        return PressureDecision("clear", "build.pressure.clear"), PressureState(last_at=timestamp)
+    if sample.host_full_avg10_pct < PRESSURE_CLEAR:
+        clear_since = state.clear_since if state.clear_since is not None else timestamp
+        if timestamp - clear_since >= PRESSURE_CLEAR_SECONDS:
+            return PressureDecision("clear", "build.pressure.cleared"), PressureState(
+                last_at=timestamp)
+        return PressureDecision("watch", "build.pressure.clearing"), PressureState(
+            True, None, clear_since, timestamp, state.watch_since)
+    return PressureDecision("watch", "build.pressure.below_entry"), PressureState(
+        True, None, None, timestamp, state.watch_since)
+
+
+def pressure_watchdog(now_seconds, state):
+    """An independent timed caller detects silence and enforces the stop clock."""
+    if (not valid_pressure_state(state) or not finite_number(now_seconds) or
+            state.last_at is None or now_seconds < state.last_at or
+            now_seconds - state.last_at > PRESSURE_MAX_SAMPLE_GAP_SECONDS):
+        return PressureDecision("stop", "build.pressure.telemetry_silent")
+    if state.high_since is not None and now_seconds - state.high_since >= PRESSURE_STOP_SECONDS:
+        return PressureDecision("stop", "build.pressure.sustained")
+    if state.watch_since is not None and now_seconds - state.watch_since >= PRESSURE_WATCH_MAX_SECONDS:
+        return PressureDecision("stop", "build.pressure.watch_timeout")
+    return PressureDecision("watch" if state.active else "clear", "build.pressure.current")
+
+
+def probe_timed_out(now_seconds, started_at, completed_at):
+    """Judge the probe's work time, not when a busy supervisor reads its result."""
+    return (started_at is not None and now_seconds - started_at > PRESSURE_PROBE_MAX_SECONDS
+            and (completed_at is None or
+                 completed_at - started_at > PRESSURE_PROBE_MAX_SECONDS))
+
+
+def prefer_published_stop(current_reason, candidate_reason, candidate_at, deadline):
+    """An earlier measured guard stop outranks a later client deadline."""
+    if candidate_reason is None:
+        return current_reason
+    if (current_reason.startswith("client deadline") and finite_number(candidate_at) and
+            candidate_at <= deadline):
+        return candidate_reason
+    return current_reason
+
+
+def stop_cause_at_deadline(candidate_reason, published_at, deadline, checked_at):
+    """Resolve a deadline crossed between the loop check and a stop branch."""
+    if (checked_at >= deadline and
+            (not finite_number(published_at) or published_at > deadline)):
+        return CLIENT_DEADLINE_REASON
+    return candidate_reason
 
 
 def fields(value, names, code):
@@ -880,6 +1068,8 @@ def gateway_sample(container_id):
          "build.adaptive.gateway_observation")
     health = state["Health"]
     duration_ms = None
+    age_seconds = None
+    age_measured_at = None
     logs = health.get("Log", [])
     if type(logs) is list and logs and type(logs[-1]) is dict:
         try:
@@ -887,13 +1077,18 @@ def gateway_sample(container_id):
             end = datetime.fromisoformat(logs[-1]["End"].replace("Z", "+00:00"))
             need(end >= start, "build.gateway.health_time")
             duration_ms = round((end - start).total_seconds() * 1000, 1)
+            age_seconds = (datetime.now(timezone.utc) - end).total_seconds()
+            age_measured_at = time.monotonic()
+            need(0 <= age_seconds <= 86400, "build.gateway.health_time")
         except (KeyError, TypeError, ValueError):
             need(False, "build.gateway.health_time")
     return {"gatewayContainerId": container_id,
             "gatewayHealthy": state["Running"] and
             state["Health"]["Status"] == "healthy",
             "gatewayOomKilled": state["OOMKilled"],
-            "lastHealthCheckDurationMs": duration_ms}
+            "lastHealthCheckDurationMs": duration_ms,
+            "lastHealthCheckAgeSeconds": age_seconds,
+            "lastHealthCheckAgeMeasuredAtMonotonicSeconds": age_measured_at}
 
 
 def gateway_runtime_sample(container_id):
@@ -935,13 +1130,18 @@ def collect_adaptive_samples(op, cache, gateway_container_id):
                         observed["memoryPressure"]["full"]["avg10"],
                         **{key: value for key, value in
                            gateway_sample(gateway_container_id).items()
-                           if key != "lastHealthCheckDurationMs"}})
+                           if key not in ("lastHealthCheckDurationMs",
+                                          "lastHealthCheckAgeSeconds",
+                                          "lastHealthCheckAgeMeasuredAtMonotonicSeconds")}})
     validate_adaptive_samples(samples, now())
     return samples
 
 
 def capacity(op, limits, cache=None, *, starting=False,
-             gateway_container_id=None, builder=None):
+             gateway_container_id=None, builder=None, defer_pressure=False):
+    need(defer_pressure is False or
+         (defer_pressure is True and gateway_container_id is not None and builder is not None),
+         "build.pressure.defer_unscoped")
     observed = resource_sample(op, cache)
     need(observed["freeBytes"] >= limits["minFreeBytes"], "build.capacity.disk_reserve")
     need(observed["memoryAvailableBytes"] >= limits["minMemoryAvailableBytes"],
@@ -951,8 +1151,9 @@ def capacity(op, limits, cache=None, *, starting=False,
              "build.capacity.start_memory_reserve")
     if "maxFullMemoryPressureAvg10" in limits:
         need("memoryPressure" in observed, "build.capacity.pressure_unavailable")
-        need(observed["memoryPressure"]["full"]["avg10"] <=
-             limits["maxFullMemoryPressureAvg10"], "build.capacity.memory_pressure")
+        if not defer_pressure:
+            need(observed["memoryPressure"]["full"]["avg10"] <=
+                 limits["maxFullMemoryPressureAvg10"], "build.capacity.memory_pressure")
     if cache is not None:
         need(observed["cacheFreeBytes"] >= cache["minFreeBytes"], "build.capacity.cache_reserve")
     if gateway_container_id is not None:
@@ -967,6 +1168,137 @@ def capacity(op, limits, cache=None, *, starting=False,
              "build.capacity.worker_oom")
         observed["builder"] = worker
     return observed
+
+
+def running_pressure_sample(observed, at_seconds, completed_at_seconds):
+    """Translate the already checked pinned Gateway/worker observation."""
+    gateway, worker = observed["gateway"], observed["builder"]
+    age = gateway["lastHealthCheckAgeSeconds"]
+    if age is not None:
+        measured_at = gateway["lastHealthCheckAgeMeasuredAtMonotonicSeconds"]
+        need(finite_number(measured_at) and
+             at_seconds <= measured_at <= completed_at_seconds,
+             "build.pressure.health_clock_invalid")
+        age += completed_at_seconds - measured_at
+    return PressureSample(
+        at_seconds, observed["memoryPressure"]["full"]["avg10"],
+        observed["memoryAvailableBytes"], gateway["gatewayHealthy"],
+        gateway["gatewayOomKilled"] or gateway["oom"] != 0 or gateway["oomKill"] != 0,
+        worker["oom"] != 0 or worker["oomKill"] != 0,
+        gateway["lastHealthCheckDurationMs"], age)
+
+
+def evaluate_pressure_observation(observed, started_at, completed_at, state):
+    """Evaluate one completed probe before the output-forwarding loop can block."""
+    try:
+        sample = running_pressure_sample(observed, started_at, completed_at)
+        return pressure_guard_evaluate(sample, state)
+    except Exception as error:
+        if type(observed) is dict:
+            observed["pressureError"] = type(error).__name__
+        return PressureDecision("stop", "build.pressure.telemetry_invalid"), state
+
+
+def running_capacity_probe(op, config, gateway_id, output, lock, shared):
+    """One read-only sample in a daemon thread; the supervisor owns the clock."""
+    try:
+        observed = capacity(op, config["limits"], config.get("cache"),
+                            gateway_container_id=gateway_id, builder=config["builder"],
+                            defer_pressure=True)
+        result = (True, observed)
+    except Exception as error:
+        result = (False, str(error))
+    with lock:
+        sampled_at = time.monotonic()
+        old_state = shared["state"]
+        decision = None
+        if result[0]:
+            decision, shared["state"] = evaluate_pressure_observation(
+                result[1], shared["probe_started"], sampled_at, old_state)
+            shared["last_observation"] = copy.deepcopy(result[1])
+            if decision.action == "stop":
+                result[1]["pressureDecision"] = {
+                    "action": decision.action, "reason": decision.reason}
+                publish_pressure_stop(shared, decision.reason, result[1])
+        else:
+            publish_pressure_stop(shared, result[1] or "build.capacity.probe_failed")
+        # Completion means the full result is available in shared state.
+        # Include evaluation/copy work, but exclude later queue-read delay.
+        shared["probe_completed_at"] = time.monotonic()
+        completed_at = shared["probe_completed_at"]
+    output.put((*result, completed_at, decision, old_state))
+
+
+def publish_pressure_stop(shared, reason, observation=None, *, published_at=None):
+    """Keep the first guard cause, its time, and its evidence together."""
+    if shared.get("published_stop_reason") is None:
+        if observation is None:
+            basis = shared.get("stop_observation")
+            if (basis is not None and
+                    basis.get("pressureDecision", {}).get("reason") != reason):
+                basis = None
+            if basis is None and reason.startswith("build.pressure."):
+                basis = shared.get("last_observation")
+            evidence = copy.deepcopy(basis) if basis is not None else {"observedAt": now()}
+        else:
+            evidence = copy.deepcopy(observation)
+        evidence["pressureDecision"] = {"action": "stop", "reason": reason}
+        # No potentially slow evidence work follows the publication clock.
+        if published_at is None:
+            published_at = time.monotonic()
+        evidence["pressureDecision"]["publishedAtMonotonicSeconds"] = published_at
+        shared["stop_observation"] = evidence
+        shared["stop_at_monotonic"] = published_at
+        shared["published_stop_reason"] = reason
+    return shared["published_stop_reason"]
+
+
+def publish_stale_probe_if_needed(shared, started_at, checked_at):
+    """Caller holds the pressure lock across completion check and publication."""
+    if not probe_timed_out(checked_at, started_at, shared["probe_completed_at"]):
+        return False
+    publish_pressure_stop(shared, "build.pressure.telemetry_stale")
+    return True
+
+
+def stop_resource_evidence(first_reason, first_at, first_observation,
+                           receipt_cause, event_reason):
+    """Keep first-stop provenance distinct from a later event or deadline."""
+    evidence = (copy.deepcopy(first_observation) if first_observation is not None
+                else {"observedAt": now()})
+    evidence["firstPublishedStop"] = {
+        "reason": first_reason, "publishedAtMonotonicSeconds": first_at}
+    evidence["eventReason"] = event_reason
+    evidence["receiptCause"] = receipt_cause
+    return evidence
+
+
+def running_pressure_watchdog(stop_event, lock, shared, child):
+    """Cancel only the owned client if samples or the probe clock outlive bounds."""
+    while not stop_event.wait(0.25):
+        if child.poll() is not None:
+            return
+        with lock:
+            now_seconds = time.monotonic()
+            decision = pressure_watchdog(now_seconds, shared["state"])
+            probe_started = shared["probe_started"]
+            if shared.get("published_stop_reason") is not None:
+                decision = PressureDecision("stop", shared["published_stop_reason"])
+            elif probe_timed_out(now_seconds, probe_started, shared["probe_completed_at"]):
+                decision = PressureDecision("stop", "build.pressure.telemetry_stale")
+            if decision.action == "stop":
+                if child.poll() is None:
+                    child.terminate()
+                if shared["reason"] is None:
+                    shared["reason"] = publish_pressure_stop(
+                        shared, decision.reason)
+        if decision.action == "stop":
+            # Output forwarding may block the main loop. Own escalation here
+            # too, and target only this client PID after its normal grace.
+            if (not stop_event.wait(CLIENT_TERM_GRACE_SECONDS) and
+                    child.poll() is None):
+                child.kill()
+            return
 
 
 def cgroup_text(path):
@@ -1368,6 +1700,17 @@ def run_child(op, intent):
     stop_at = None
     join_attempted = False
     previous = {}
+    pressure_stop = threading.Event()
+    pressure_lock = threading.Lock()
+    pressure_shared = {"state": None, "reason": None, "probe_started": None,
+                       "probe_completed_at": None, "published_stop_reason": None,
+                       "stop_observation": None, "last_observation": None,
+                       "stop_at_monotonic": None}
+    pressure_thread = None
+    pressure_reported = False
+    probe_thread = None
+    probe_output = None
+    probe_started = None
 
     def cancel(signum, _frame):
         signal_received.append(signum)
@@ -1412,13 +1755,152 @@ def run_child(op, intent):
             next_capacity = time.monotonic()
             next_sample = next_capacity + 30
             deadline = next_capacity + intent["config"]["limits"]["timeoutSeconds"]
+            if qualification:
+                pressure_shared["state"] = PressureState(last_at=next_capacity)
+                pressure_thread = threading.Thread(
+                    target=running_pressure_watchdog,
+                    args=(pressure_stop, pressure_lock, pressure_shared, child),
+                    name="build-pressure-watchdog", daemon=True)
+                pressure_thread.start()
             try:
-                while selector.get_map() or child.poll() is None:
+                while (selector.get_map() or child.poll() is None or
+                       (qualification and probe_thread is not None and stop_at is None)):
                     if time.monotonic() >= deadline and stop_at is None:
-                        reason = "client deadline; remote solve termination unobserved"
+                        reason = CLIENT_DEADLINE_REASON
                         child.terminate()
                         stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
-                    if time.monotonic() >= next_capacity and stop_at is None:
+                    if qualification and not pressure_reported:
+                        with pressure_lock:
+                            watchdog_reason = pressure_shared["published_stop_reason"]
+                            stop_observation = pressure_shared["stop_observation"]
+                            published_at = pressure_shared["stop_at_monotonic"]
+                        if watchdog_reason is not None:
+                            if stop_at is None:
+                                reason = stop_cause_at_deadline(
+                                    watchdog_reason, published_at, deadline,
+                                    time.monotonic())
+                                if child.poll() is None:
+                                    child.terminate()
+                                stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
+                            else:
+                                reason = prefer_published_stop(
+                                    reason, watchdog_reason, published_at, deadline)
+                            record_resources(op, "pressure-watchdog-stop",
+                                             stop_resource_evidence(
+                                                 watchdog_reason, published_at,
+                                                 stop_observation, reason, watchdog_reason),
+                                             builder=config["builder"])
+                            pressure_reported = True
+                    if qualification and stop_at is None:
+                        if stop_at is None and probe_thread is None and time.monotonic() >= next_capacity:
+                            probe_output = queue.SimpleQueue()
+                            probe_thread = threading.Thread(
+                                target=running_capacity_probe,
+                                args=(op, config, gateway_id, probe_output,
+                                      pressure_lock, pressure_shared),
+                                name="build-capacity-probe", daemon=True)
+                            probe_started = time.monotonic()
+                            with pressure_lock:
+                                pressure_shared["probe_started"] = probe_started
+                                pressure_shared["probe_completed_at"] = None
+                            probe_thread.start()
+                            next_capacity = probe_started + 2
+                        stale_stop = False
+                        if stop_at is None and probe_thread is not None:
+                            with pressure_lock:
+                                stale_at = time.monotonic()
+                                stale_stop = publish_stale_probe_if_needed(
+                                    pressure_shared, probe_started, stale_at)
+                                if stale_stop:
+                                    published_reason = pressure_shared["published_stop_reason"]
+                                    published_at = pressure_shared["stop_at_monotonic"]
+                                    stop_observation = pressure_shared["stop_observation"]
+                        if stale_stop:
+                            reason = stop_cause_at_deadline(
+                                published_reason, published_at,
+                                deadline, time.monotonic())
+                            if child.poll() is None:
+                                child.terminate()
+                            stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
+                            record_resources(op, "probe-stale",
+                                             stop_resource_evidence(
+                                                 published_reason, published_at,
+                                                 stop_observation, reason,
+                                                 "build.pressure.telemetry_stale"),
+                                             builder=config["builder"])
+                        if stop_at is None and probe_thread is not None:
+                            try:
+                                succeeded, result, completed_at, decision, old_state = (
+                                    probe_output.get_nowait())
+                            except queue.Empty:
+                                pass
+                            else:
+                                probe_thread = None
+                                with pressure_lock:
+                                    pressure_shared["probe_started"] = None
+                                    pressure_shared["probe_completed_at"] = None
+                                if not (finite_number(completed_at) and
+                                        probe_started <= completed_at <= time.monotonic()):
+                                    succeeded, result = False, "build.pressure.probe_clock_invalid"
+                                if succeeded and (type(decision) is not PressureDecision or
+                                                  type(old_state) is not PressureState):
+                                    succeeded, result = False, "build.pressure.probe_decision_invalid"
+                                if not succeeded:
+                                    with pressure_lock:
+                                        published_reason = pressure_shared["published_stop_reason"]
+                                        published_at = pressure_shared["stop_at_monotonic"]
+                                        if published_reason is None:
+                                            published_reason = publish_pressure_stop(
+                                                pressure_shared,
+                                                result or "build.capacity.probe_failed")
+                                            published_at = pressure_shared["stop_at_monotonic"]
+                                        stop_observation = pressure_shared["stop_observation"]
+                                    reason = stop_cause_at_deadline(
+                                        published_reason or result or "build.capacity.probe_failed",
+                                        published_at, deadline, time.monotonic())
+                                    if child.poll() is None:
+                                        child.terminate()
+                                    stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
+                                    record_resources(op, "reserve-failed",
+                                                     stop_resource_evidence(
+                                                         published_reason, published_at,
+                                                         stop_observation, reason,
+                                                         result or "build.capacity.probe_failed"),
+                                                     builder=config["builder"])
+                                else:
+                                    observed = result
+                                    sampled_at = time.monotonic()
+                                    observed["pressureDecision"] = {
+                                        "action": decision.action, "reason": decision.reason}
+                                    if decision.action == "stop":
+                                        with pressure_lock:
+                                            published_reason = pressure_shared["published_stop_reason"]
+                                            published_at = pressure_shared["stop_at_monotonic"]
+                                            stop_observation = pressure_shared["stop_observation"]
+                                        reason = stop_cause_at_deadline(
+                                            published_reason or decision.reason, published_at,
+                                            deadline, time.monotonic())
+                                        if child.poll() is None:
+                                            child.terminate()
+                                        stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
+                                        record_resources(op, "pressure-stop",
+                                                         stop_resource_evidence(
+                                                             published_reason, published_at,
+                                                             stop_observation, reason,
+                                                             decision.reason),
+                                                         builder=config["builder"])
+                                    else:
+                                        if (not old_state.active and decision.action == "watch") or (
+                                            old_state.active and decision.action == "clear"
+                                        ):
+                                            record_resources(op, "pressure-transition", observed,
+                                                             builder=config["builder"])
+                                        if sampled_at >= next_sample:
+                                            record_resources(op, "periodic", observed,
+                                                             builder=config["builder"])
+                                            next_sample = sampled_at + 30
+                                probe_started = None
+                    elif time.monotonic() >= next_capacity and stop_at is None:
                         next_capacity = time.monotonic() + 2
                         try:
                             observed = capacity(op, config["limits"], cache,
@@ -1458,8 +1940,50 @@ def run_child(op, intent):
                         sys.stdout.buffer.write(stamped)
                         sys.stdout.buffer.flush()
             finally:
-                selector.close()
-                child.stdout.close()
+                # The outer fallback also owns this PID. Finish the same
+                # termination here before stopping its independent watchdog,
+                # including when output forwarding raises.
+                try:
+                    if child.poll() is None:
+                        child.terminate()
+                        try:
+                            child.wait(timeout=CLIENT_TERM_GRACE_SECONDS)
+                        except subprocess.TimeoutExpired:
+                            child.kill()
+                finally:
+                    pressure_stop.set()
+                    if pressure_thread is not None:
+                        pressure_thread.join(timeout=1)
+                    selector.close()
+                    child.stdout.close()
+            if qualification:
+                with pressure_lock:
+                    watchdog_reason = pressure_shared["published_stop_reason"]
+                    stop_observation = pressure_shared["stop_observation"]
+                    published_at = pressure_shared["stop_at_monotonic"]
+                    final_decision = pressure_watchdog(time.monotonic(),
+                                                       pressure_shared["state"])
+                    if watchdog_reason is None and final_decision.action == "stop":
+                        watchdog_reason = publish_pressure_stop(
+                            pressure_shared, final_decision.reason)
+                        published_at = pressure_shared["stop_at_monotonic"]
+                        stop_observation = pressure_shared["stop_observation"]
+                final_reason = watchdog_reason or (
+                    final_decision.reason if final_decision.action == "stop" else None)
+                if final_reason is not None and not pressure_reported:
+                    if stop_at is None:
+                        reason = stop_cause_at_deadline(
+                            final_reason, published_at, deadline, time.monotonic())
+                        stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
+                    else:
+                        reason = prefer_published_stop(
+                            reason, final_reason, published_at, deadline)
+                    record_resources(op, "pressure-final-stop",
+                                     stop_resource_evidence(
+                                         watchdog_reason, published_at,
+                                         stop_observation, reason, final_reason),
+                                     builder=config["builder"])
+                    pressure_reported = True
             join_attempted = True
             try:
                 result = child.wait(timeout=CLIENT_JOIN_SECONDS)

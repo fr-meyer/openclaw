@@ -10,6 +10,10 @@ import release
 
 
 class BuilderHandoffTest(unittest.TestCase):
+    def test_capable_hash_matches_exact_supervisor(self):
+        self.assertEqual(subject.digest(Path(build.__file__).read_bytes()),
+                         subject.CAPABLE_BUILD_SHA256)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
