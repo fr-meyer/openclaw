@@ -243,6 +243,19 @@ class DailySnapshotTests(unittest.TestCase):
                 daily.validate_plan(changed)
         self.assertFalse(self.cloud.mutations)
 
+    def test_daily_entry_requires_explicit_read320_write128_pair(self):
+        resources = self.plan['resources']
+        resources.update(memoryBytes=16 << 30, readBps=320 << 20,
+                         writeBps=128 << 20, minMemoryAvailableBytes=20 << 30)
+        daily.validate_plan(self.plan)
+        for read, write in ((512, 128), (320, 64), (256, 128)):
+            changed = copy.deepcopy(self.plan)
+            changed['resources'].update(readBps=read << 20, writeBps=write << 20)
+            with self.subTest(read=read, write=write), self.assertRaisesRegex(
+                    release.Refusal, 'trial.limits.unreviewed_envelope'):
+                daily.validate_plan(changed)
+        self.assertFalse(self.cloud.mutations)
+
     def test_full_snapshot_lifecycle_uses_distinct_sequential_candidate_and_rollback_disks(self):
         protected = copy.deepcopy(self.cloud.vm['disks'])
         snapshot = copy.deepcopy(self.cloud.snapshot)

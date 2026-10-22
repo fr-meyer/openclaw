@@ -103,6 +103,10 @@ class SnapshotTrialTests(unittest.TestCase):
         trial.validate(self.plan, self.image, self.clean)
         self.select_phase("doctor")
         trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        self.plan["limits"].update(readBps=320 << 20, writeBps=128 << 20)
+        with self.assertRaisesRegex(release.Refusal, "trial.limits.unreviewed_envelope"):
+            trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        self.plan["limits"].update(readBps=256 << 20, writeBps=64 << 20)
         for key, value in (("readBps", 512 << 20), ("writeBps", 32 << 20),
                            ("readBps", 0), ("cpus", 8), ("memoryBytes", 32 << 30)):
             changed = copy.deepcopy(self.plan)
@@ -141,6 +145,42 @@ class SnapshotTrialTests(unittest.TestCase):
             with self.subTest(key=key, value=value), self.assertRaises(release.Refusal):
                 trial.validate(self.plan, self.image, self.clean, self.intent["check"])
             limits[key] = original
+
+    def test_explicit_16g_read320_write128_enforces_actual_io_and_reports_rates(self):
+        limits = self.plan["limits"]
+        limits.update(memoryBytes=16 << 30, minMemoryAvailableBytes=20 << 30,
+                      readBps=320 << 20, writeBps=128 << 20)
+        self.select_continuation()
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        self.assertEqual(trial.resource_profile(limits)["id"], "memory16-read320-write128")
+        args = trial.create_argv(self.op, self.intent, self.devices)
+        self.assertEqual(args[args.index("--memory") + 1], str(16 << 30))
+        self.assertEqual(args[args.index("--memory-swap") + 1], str(16 << 30))
+        self.assertEqual(args[args.index("--cpus") + 1], "4")
+        self.assertEqual(args[args.index("--device-read-bps") + 1], f"/dev/sdb:{320 << 20}")
+        self.assertEqual(args[args.index("--device-write-bps") + 1], f"/dev/sdb:{128 << 20}")
+        cg = self.root / "higher-io-cgroup"
+        cg.mkdir()
+        for name, value in {"memory.max": str(16 << 30), "memory.swap.max": "0", "pids.max": "512",
+                            "cpu.max": "400000 100000",
+                            "io.max": f"8:16 rbps={320 << 20} wbps={128 << 20}",
+                            "io.stat": "8:16 rbytes=0 wbytes=0 rios=0 wios=0"}.items():
+            (cg / name).write_text(value)
+        with patch.object(trial.time, "monotonic_ns", side_effect=[10**9, 3 * 10**9]):
+            first = trial.io_sample(cg, self.intent, self.devices)
+            (cg / "io.stat").write_text(
+                f"8:16 rbytes={640 << 20} wbytes={256 << 20} rios=1000 wios=1000")
+            second = trial.io_sample(cg, self.intent, self.devices, first)
+        self.assertEqual((second["readBps"], second["writeBps"]), (320 << 20, 128 << 20))
+        self.assertEqual((second["readCapRatio"], second["writeCapRatio"]), (1, 1))
+        (cg / "io.max").write_text(f"8:16 rbps={256 << 20} wbps={64 << 20}")
+        with self.assertRaisesRegex(release.Refusal, "trial.cgroup.io"):
+            trial.admit_cgroup(cg, self.intent, self.devices)
+        for read, write in ((512, 128), (320, 64), (256, 128)):
+            limits.update(readBps=read << 20, writeBps=write << 20)
+            with self.subTest(read=read, write=write), self.assertRaisesRegex(
+                    release.Refusal, "trial.limits.unreviewed_envelope"):
+                trial.validate(self.plan, self.image, self.clean, self.intent["check"])
 
     def test_16g_profile_admission_checks_20g_host_available(self):
         self.plan["limits"].update(memoryBytes=16 << 30, minMemoryAvailableBytes=20 << 30,

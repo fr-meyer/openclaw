@@ -80,7 +80,8 @@ HISTORICAL_PRODUCER = "1507a29361d335283f1f4a55d8c037505892f94c"
 HISTORICAL_IMAGE_RECEIPT_SHA256 = "98ba31371e306b4e8878161ebf2dce0d021f1be2a3ae5e10384e238fdc9e6178"
 BACKUP_REUSE = "openclaw.doctor-backup-reuse.v1"
 IO_PROFILES = {(128 << 20, 32 << 20): "read128-write32",
-               (256 << 20, 64 << 20): "read256-write64"}
+               (256 << 20, 64 << 20): "read256-write64",
+               (320 << 20, 128 << 20): "read320-write128"}
 LOW_MEMORY_BYTES = 16 << 30
 LOW_MEMORY_ADMISSION_BYTES = 20 << 30
 CONTINUATION = "openclaw.snapshot-doctor-continuation.v1"
@@ -342,9 +343,11 @@ def resource_profile(limits):
     need(all(type(limits.get(k)) is int for k in ("memoryBytes", "cpus", "readBps", "writeBps")) and
          limits["cpus"] == 4 and
          ((limits["memoryBytes"] == 24 << 30 and
-           (limits["readBps"], limits["writeBps"]) in IO_PROFILES) or
+           (limits["readBps"], limits["writeBps"]) in
+           ((128 << 20, 32 << 20), (256 << 20, 64 << 20))) or
           (limits["memoryBytes"] == LOW_MEMORY_BYTES and
-           (limits["readBps"], limits["writeBps"]) == (256 << 20, 64 << 20))),
+           (limits["readBps"], limits["writeBps"]) in
+           ((256 << 20, 64 << 20), (320 << 20, 128 << 20)))),
          "trial.limits.unreviewed_envelope")
     profile = IO_PROFILES[(limits["readBps"], limits["writeBps"])]
     if limits["memoryBytes"] == LOW_MEMORY_BYTES:

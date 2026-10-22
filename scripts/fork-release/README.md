@@ -264,7 +264,7 @@ uses its retained mapping, so rollback does not require a deleted candidate disk
 
 The original reviewed envelope retains 24 GiB, no container swap and 4 CPUs.
 An explicit lower-memory rehearsal profile uses 16 GiB, no container swap,
-4 CPUs, 256 MiB/s read and 64 MiB/s write, with a 20 GiB host
+4 CPUs and a 20 GiB host
 `MemAvailable` admission floor. The 4 GiB difference bounds host headroom
 against a fully anonymous 16 GiB test allocation at admission; it is not a
 reservation against unrelated later host growth. The lower profile is a new
@@ -276,12 +276,17 @@ running Doctor. Select one explicit read/write pair in the private plan
 | ----------------- | --------- | ---------- |
 | `read128-write32`  | 134217728 | 33554432   |
 | `read256-write64`  | 268435456 | 67108864   |
+| `read320-write128` | 335544320 | 134217728  |
 
-The 16 GiB profile requires `read256-write64`; it rejects either smaller I/O
-pair or an unreviewed memory/admission value. There is no default escalation
-or unlimited profile. The second pair doubles
-the caps for a separately selected successor; it is not a benchmark result or
-a promise of doubled throughput. Fresh admission limits in the plan must cover
+The 16 GiB profile accepts explicitly selected `read256-write64` or
+`read320-write128`; the 24 GiB profile retains its original first two pairs.
+Other combinations and unreviewed memory/admission values are refused. There
+is no default escalation or unlimited profile. The higher pair is an I/O cap,
+not measured disk throughput or a promise of faster completion. The current
+GCP balanced-disk allocation estimates a combined throughput ceiling close to
+320 MiB/s, shared with production and other disks. Recheck attachment,
+available bandwidth and production contention before selecting it for a new
+operation. Fresh admission limits in the plan must cover
 the measured clean input, native backup set, WAL/temp growth and host headroom.
 The original fixed 24 GiB/4 CPU envelope incorporates the failed 8 GiB
 rehearsal's lesson; it is not a measurement of peak demand or proof of
