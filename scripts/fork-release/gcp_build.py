@@ -504,11 +504,15 @@ def validate_profile(profile, config):
          "build.adaptive.profile_reserve")
     if qualification:
         builder = config["builder"]
+        current_floor = (profile["minMemoryAvailableBytes"] ==
+                         QUALIFICATION_RUNNING_FLOOR_BYTES)
+        retained_floor = (profile["minMemoryAvailableBytes"] == 10 << 30 and
+                          profile["minStartMemoryAvailableBytes"] >= 18 << 30)
         need(profile["sourceSha"] == QUALIFICATION_SOURCE_SHA and
              builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
              builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000 and
              profile["tsdownMaxOldSpaceMb"] == 6144 and
-             profile["minMemoryAvailableBytes"] == QUALIFICATION_RUNNING_FLOOR_BYTES and
+             (current_floor or retained_floor) and
              profile["maxFullMemoryPressureAvg10"] <= 5.0,
              "build.adaptive.qualification_identity")
     need(profile["minFreeBytes"] >= 16 << 30 and
@@ -535,6 +539,13 @@ def is_qualification_worker(config):
     return (config["sourceSha"] == QUALIFICATION_SOURCE_SHA and
             builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
             builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000)
+
+
+def has_current_qualification_profile(config):
+    profile = config.get("adaptiveSelection", {}).get("profile", {})
+    return (profile.get("id") == QUALIFICATION_PROFILE_ID and
+            profile.get("minStartMemoryAvailableBytes") == QUALIFICATION_START_BYTES and
+            profile.get("minMemoryAvailableBytes") == QUALIFICATION_RUNNING_FLOOR_BYTES)
 
 
 def adaptive_profiles(config):
@@ -703,9 +714,8 @@ def service_argv(op, intent):
 
 def prepare(private_root, config, manifest, inventory, source, tooling):
     validate_config(config)
-    need(not is_qualification_worker(config) or
-         config.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
-         QUALIFICATION_PROFILE_ID, "build.qualification.profile_required")
+    need(not is_qualification_worker(config) or has_current_qualification_profile(config),
+         "build.qualification.current_profile_required")
     source, tooling = Path(source).resolve(), Path(tooling).resolve()
     root = Path(private_root).absolute()
     need(root == PRIVATE_ROOT and root.resolve() == PRIVATE_ROOT.resolve()
@@ -1666,9 +1676,8 @@ def start(op):
         if (op / "start-intent.json").exists():
             return status(op)
         config = intent["config"]
-        need(not is_qualification_worker(config) or
-             config.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
-             QUALIFICATION_PROFILE_ID, "build.qualification.profile_required")
+        need(not is_qualification_worker(config) or has_current_qualification_profile(config),
+             "build.qualification.current_profile_required")
         verify_builder_handoff(op, intent)
         source_binding(config, op / "manifest.json", op / "patch-inventory.json",
                        intent["sourceDir"])
@@ -1752,8 +1761,8 @@ def run_child(op, intent):
     config = intent["config"]
     qualification = (config.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
                      QUALIFICATION_PROFILE_ID)
-    need(not is_qualification_worker(config) or qualification,
-         "build.qualification.profile_required")
+    need(not is_qualification_worker(config) or has_current_qualification_profile(config),
+         "build.qualification.current_profile_required")
     gateway_id = (config["adaptiveSelection"]["gatewayContainerId"]
                   if qualification else None)
     try:

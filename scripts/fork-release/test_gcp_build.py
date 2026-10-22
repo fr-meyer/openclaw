@@ -544,6 +544,29 @@ class BuildTests(unittest.TestCase):
             native.assert_not_called()
         self.assertFalse((op / "start-intent.json").exists())
 
+    def test_retained_eighteen_gib_profile_is_readable_but_cannot_dispatch(self):
+        samples = self.qualification_fixture(gib=18)
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]):
+            retained = build.bind_adaptive_selection(self.config, samples)
+            profile = retained["adaptiveSelection"]["profile"]
+            profile["minStartMemoryAvailableBytes"] = 18 << 30
+            profile["minMemoryAvailableBytes"] = 10 << 30
+            retained["limits"]["minStartMemoryAvailableBytes"] = 18 << 30
+            retained["limits"]["minMemoryAvailableBytes"] = 10 << 30
+            retained["adaptiveSelection"]["profileSha256"] = release.sha256(build.encode(profile))
+            with patch.object(build, "QUALIFICATION_START_BYTES", 18 << 30), \
+                 patch.object(build, "QUALIFICATION_RUNNING_FLOOR_BYTES", 10 << 30):
+                op = self.prepare(retained)
+            self.assertEqual(build.load_intent(op)[1]["config"], retained)
+            with patch.object(build, "native", return_value=subprocess.CompletedProcess(
+                    [], 0, "LoadState=not-found\n", "")):
+                self.assertEqual(build.status(op)["state"], "unknown")
+            with patch.object(build, "native") as native:
+                with self.assertRaisesRegex(release.Refusal, "current_profile_required"):
+                    build.start(op)
+                native.assert_not_called()
+            self.assertFalse((op / "start-intent.json").exists())
+
     def test_adaptive_rejects_identity_and_receipt_changes(self):
         samples = self.adaptive_fixture()
         bound = build.bind_adaptive_selection(self.config, samples)
