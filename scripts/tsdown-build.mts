@@ -77,6 +77,7 @@ const GENERATED_SOURCE_DECLARATION_PATHSPEC = ":(glob)extensions/**/*.d.ts";
 export const TSDOWN_DECLARATION_EXTENSIONS = [".d.ts", ".d.mts", ".d.cts"];
 const SOURCE_DECLARATION_SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"];
 const RUN_NODE_SKIP_DTS_BUILD_ENV = "OPENCLAW_RUN_NODE_SKIP_DTS_BUILD";
+const SERIAL_DOCKER_RUNTIME_BUILDS_ENV = "OPENCLAW_TSDOWN_SERIAL_DOCKER_RUNTIME_BUILDS";
 
 export const TSDOWN_DECLARATION_TOOL_INPUTS = [
   "package.json",
@@ -840,6 +841,10 @@ export function resolveTsdownBuildInvocation(
     (!args.some(isConfigArg) || selectsMainConfig(args)) &&
     filters.length > 0 &&
     filters.every((filter) => filter === TSDOWN_UNIFIED_CONFIG_GROUP);
+  const serializeDockerRuntime =
+    env[SERIAL_DOCKER_RUNTIME_BUILDS_ENV] === "1" &&
+    !tsdownDeclarationsEnabled(args, env) &&
+    (!args.some(isConfigArg) || selectsMainConfig(args));
   const tsdownArgs = [
     "--config-loader",
     "unrun",
@@ -848,7 +853,8 @@ export function resolveTsdownBuildInvocation(
     "--no-clean",
     // Native declaration children retain entire compiler graphs. Let tsdown own
     // config admission so preparation and trace drainage cannot overlap unboundedly.
-    ...(!explicitConcurrency && !runtimeOnly && tsdownDeclarationsEnabled(args, env)
+    ...(!explicitConcurrency &&
+    (serializeDockerRuntime || (!runtimeOnly && tsdownDeclarationsEnabled(args, env)))
       ? ["--concurrency", "1"]
       : []),
     ...forwardedArgs,
