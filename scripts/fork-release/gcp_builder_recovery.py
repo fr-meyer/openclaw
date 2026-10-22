@@ -12,6 +12,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 import gcp_build as build
@@ -24,6 +25,7 @@ STOP_FORMAT = ('{"Id":{{json .Id}},"Image":{{json .Image}},"State":{'
                '"Restarting":{{json .State.Restarting}},'
                '"Pid":{{json .State.Pid}},'
                '"FinishedAt":{{json .State.FinishedAt}}}}')
+RESOURCE_FIELDS = ("memoryBytes", "memorySwapBytes", "cpuPeriod", "cpuQuota")
 
 
 def digest(data):
@@ -62,6 +64,111 @@ def stopped_proof(builder, cache, completed_at, origin):
             "originCompletedAt": completed_at}
 
 
+def qualification_transition(origin, target):
+    """Only the approved stopped-worker 16/18 GiB, 7 CPU -> 8/8 GiB, 4 CPU."""
+    old, new = origin["config"], target["config"]
+    before, after = old["builder"], new["builder"]
+    release.need(old["sourceSha"] == new["sourceSha"] ==
+                 build.QUALIFICATION_SOURCE_SHA and
+                 {k: v for k, v in before.items() if k not in RESOURCE_FIELDS} ==
+                 {k: v for k, v in after.items() if k not in RESOURCE_FIELDS} and
+                 {k: before[k] for k in RESOURCE_FIELDS} == {
+                     "memoryBytes": 16 << 30, "memorySwapBytes": 18 << 30,
+                     "cpuPeriod": 100000, "cpuQuota": 700000} and
+                 {k: after[k] for k in RESOURCE_FIELDS} == {
+                     "memoryBytes": 8 << 30, "memorySwapBytes": 8 << 30,
+                     "cpuPeriod": 100000, "cpuQuota": 400000} and
+                 new.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
+                 build.QUALIFICATION_PROFILE_ID and
+                 old.get("cache") == new.get("cache"),
+                 "recovery.resource_transition.unreviewed")
+
+
+def stopped_resources(builder):
+    result = build.native([*build.DOCKER, "--host", build.ENDPOINT, "inspect",
+                           "--format", build.CONTAINER_FORMAT, builder["containerId"]])
+    release.need(result.returncode == 0, "recovery.resource_transition.inspect")
+    row = json.loads(result.stdout)
+    release.need(row["Id"] == builder["containerId"] and
+                 row["Image"] == builder["imageId"] and
+                 row["State"]["Running"] is False,
+                 "recovery.resource_transition.not_stopped")
+    observed = {"name": builder["name"], "node": builder["node"],
+                "endpoint": builder["endpoint"], "containerId": row["Id"],
+                "imageId": row["Image"],
+                **{key: row["HostConfig"][native_key] for key, native_key in {
+                    "memoryBytes": "Memory", "memorySwapBytes": "MemorySwap",
+                    "cpuPeriod": "CpuPeriod", "cpuQuota": "CpuQuota",
+                    "cpuShares": "CpuShares", "nanoCpus": "NanoCpus",
+                    "pidsLimit": "PidsLimit", "readBps": "BlkioDeviceReadBps",
+                    "writeBps": "BlkioDeviceWriteBps"}.items()}}
+    return observed
+
+
+def transition_resources(old, new, origin, target, stopped):
+    """Intent-before-Docker-update; reconcile exact target if reply was lost."""
+    qualification_transition(origin, target)
+    before, after = origin["config"]["builder"], target["config"]["builder"]
+    proposal = {"schema": "openclaw.gcp-builder-resource-transition.v1",
+                "originOperationId": old.name, "targetOperationId": new.name,
+                "originIntentSha256": build.preflight.digest(old / "intent.json"),
+                "targetIntentSha256": build.preflight.digest(new / "intent.json"),
+                "builderStoppedSha256": digest(build.encode(stopped)),
+                "originBuilderSha256": digest(build.encode(before)),
+                "targetBuilderSha256": digest(build.encode(after))}
+    intent_path = new / "resource-transition-intent.json"
+    try:
+        build.write_once(intent_path, build.encode(proposal))
+    except FileExistsError:
+        release.need(build.read_private(intent_path) == proposal,
+                     "recovery.resource_transition.intent_changed")
+        handoff.sync_existing(intent_path)
+    observed = stopped_resources(before)
+    command = [*build.DOCKER, "--host", build.ENDPOINT, "update",
+               "--memory", str(8 << 30), "--memory-swap", str(8 << 30),
+               "--cpu-period", "100000", "--cpu-quota", "400000",
+               before["containerId"]]
+    if observed == before:
+        # Even a nonzero or lost CLI reply must be reconciled by exact native
+        # readback. Do not repeat Docker update if the target is already set.
+        try:
+            build.native(command)
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            pass
+        observed = stopped_resources(before)
+    repair_path = new / "resource-transition-repair-intent.json"
+    if observed != before and observed != after:
+        # Docker can apply only part of an update. Repair exactly once, only
+        # while stopped and only when every changed field is an intended value.
+        release.need(all(observed[key] == before[key] for key in before
+                         if key not in RESOURCE_FIELDS) and
+                     all(observed[key] in (before[key], after[key])
+                         for key in RESOURCE_FIELDS),
+                     "recovery.resource_transition.unrecognized_partial")
+        repair = {**proposal, "partialBuilderSha256": digest(build.encode(observed))}
+        try:
+            build.write_once(repair_path, build.encode(repair))
+        except FileExistsError:
+            release.need(False, "recovery.resource_transition.repair_exhausted")
+        try:
+            build.native(command)
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            pass
+        observed = stopped_resources(before)
+    release.need(observed == after, "recovery.resource_transition.readback")
+    receipt = {**proposal, "observedBuilderSha256": digest(build.encode(observed)),
+               **({"repairIntentSha256": build.preflight.digest(repair_path)}
+                  if repair_path.exists() else {})}
+    receipt_path = new / "resource-transition.json"
+    try:
+        build.write_once(receipt_path, build.encode(receipt))
+    except FileExistsError:
+        release.need(build.read_private(receipt_path) == receipt,
+                     "recovery.resource_transition.receipt_changed")
+        handoff.sync_existing(receipt_path)
+    return receipt
+
+
 def recover(old_path, new_path):
     old, origin = build.load_intent(old_path)
     new, target = build.load_intent(new_path)
@@ -72,8 +179,9 @@ def recover(old_path, new_path):
         release.need(not (new / "start-intent.json").exists(), "recovery.target.started")
         release.need(build.private_bytes(new / "supervisor/gcp_build.py") ==
                      Path(build.__file__).read_bytes(), "recovery.target.tooling_changed")
-        release.need(origin["config"]["builder"] == target["config"]["builder"],
-                     "recovery.builder.changed")
+        resource_transition = origin["config"]["builder"] != target["config"]["builder"]
+        if resource_transition:
+            qualification_transition(origin, target)
         # A failed solve may retry the exact same source under a new operation.
         observed = build.status(old)
         completed_bytes = build.private_bytes(old / "completed.json")
@@ -114,12 +222,18 @@ def recover(old_path, new_path):
                 handoff.sync_existing(proof_path)
         else:
             proof_bytes = build.private_bytes(proof_path)
+        transition = None
+        if resource_transition:
+            transition = transition_resources(old, new, origin, target,
+                                             json.loads(proof_bytes))
         intent = {"schema": "openclaw.gcp-builder-recovery.v1",
                   "originOperationId": old.name, "targetOperationId": new.name,
                   "originIntentSha256": origin_sha, "targetIntentSha256": target_sha,
                   "originCompletedSha256": digest(completed_bytes),
                   "builderStoppedSha256": digest(proof_bytes),
-                  "originLeaseSha256": digest(build.encode(old_value))}
+                  "originLeaseSha256": digest(build.encode(old_value)),
+                  **({"resourceTransitionSha256": digest(build.encode(transition))}
+                     if transition is not None else {})}
         intent_path = new / "builder-handoff-intent.json"
         try:
             build.write_once(intent_path, build.encode(intent))

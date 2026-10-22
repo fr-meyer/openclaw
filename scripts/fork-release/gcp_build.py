@@ -18,6 +18,7 @@ import argparse
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import fcntl
+from fractions import Fraction
 import json
 import os
 from pathlib import Path
@@ -36,12 +37,17 @@ import release
 
 DOCKER = ("/usr/bin/sudo", "-n", "/usr/bin/docker")
 PRODUCTION_GATEWAY_NAME = "openclaw-openclaw-gateway-1"
+# This profile is a single controlled qualification of the reviewed 10.5
+# source, not a general lower-memory promise for future Dockerfiles.
+QUALIFICATION_SOURCE_SHA = "1d5ab20bea4cccce0b80b60a9ba5d5020cf08038"
+QUALIFICATION_PROFILE_ID = "qualification-8g"
 SYSTEMD_RUN = ("/usr/bin/sudo", "-n", "/usr/bin/systemd-run")
 SYSTEMCTL = ("/usr/bin/sudo", "-n", "/usr/bin/systemctl")
 CHOWN = ("/usr/bin/sudo", "-n", "/usr/bin/chown")
 ENDPOINT = "unix:///var/run/docker.sock"
 PRIVATE_ROOT = Path("/var/tmp/openclaw-fork-gcp-build")
-CGROUP_SLICE = Path("/sys/fs/cgroup/system.slice")
+CGROUP_ROOT = Path("/sys/fs/cgroup")
+CGROUP_SLICE = CGROUP_ROOT / "system.slice"
 HEAVY_ROOT = Path("/var/tmp/openclaw-fork-heavy-workload")
 TRIAL_ROOT = Path("/var/tmp/openclaw-fork-snapshot-trial")
 CLIENT_TERM_GRACE_SECONDS = 5
@@ -296,9 +302,20 @@ def validate_profile(profile, config):
     for key in ("minStartMemoryAvailableBytes", "minMemoryAvailableBytes",
                 "minFreeBytes", "minCacheFreeBytes"):
         integer(profile[key], 1, 1 << 50, "build.adaptive.profile_floor")
+    qualification = profile["id"] == QUALIFICATION_PROFILE_ID
+    minimum_start = 19 << 30 if qualification else 21 << 30
     need(profile["minStartMemoryAvailableBytes"] >= profile["minMemoryAvailableBytes"]
-         >= 10 << 30 and profile["minStartMemoryAvailableBytes"] >= 21 << 30,
+         >= 10 << 30 and profile["minStartMemoryAvailableBytes"] >= minimum_start,
          "build.adaptive.profile_reserve")
+    if qualification:
+        builder = config["builder"]
+        need(profile["sourceSha"] == QUALIFICATION_SOURCE_SHA and
+             builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
+             builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000 and
+             profile["tsdownMaxOldSpaceMb"] == 6144 and
+             profile["minMemoryAvailableBytes"] == 10 << 30 and
+             profile["maxFullMemoryPressureAvg10"] <= 5.0,
+             "build.adaptive.qualification_identity")
     need(profile["minFreeBytes"] >= 16 << 30 and
          profile["minCacheFreeBytes"] >= 44 << 30,
          "build.adaptive.profile_disk_reserve")
@@ -331,6 +348,22 @@ def adaptive_profiles(config):
                   5.0, config["limits"].get("maxFullMemoryPressureAvg10", 5.0)),
               "minFreeBytes": max(16 << 30, config["limits"]["minFreeBytes"]),
               "minCacheFreeBytes": max(44 << 30, config["cache"]["minFreeBytes"])}
+    if (config["sourceSha"] == QUALIFICATION_SOURCE_SHA and
+            config["builder"]["memoryBytes"] ==
+            config["builder"]["memorySwapBytes"] == 8 << 30 and
+            config["builder"]["cpuPeriod"] == 100000 and
+            config["builder"]["cpuQuota"] == 400000):
+        # 19 GiB = an 8 GiB hard worker cap, the retained 10 GiB host stop
+        # floor, and 1 GiB dispatch headroom. It is an experimental admission,
+        # not a measured full-image minimum or a guarantee against the observed
+        # stopped-builder production variability. No automatic retry follows.
+        profile = {**common, "id": QUALIFICATION_PROFILE_ID,
+                   "tsdownMaxOldSpaceMb": 6144,
+                   "minStartMemoryAvailableBytes": max(
+                       19 << 30, config["limits"].get("minStartMemoryAvailableBytes", 0),
+                       common["minMemoryAvailableBytes"])}
+        validate_profile(profile, config)
+        return [profile]
     # 21 GiB is a qualification candidate: a prior complete image build started
     # at 20.53 GiB, while the failed solve lost 8.19 GiB of host availability.
     # Neither measurement establishes a whole-build minimum or peak.
@@ -841,10 +874,44 @@ def gateway_sample(container_id):
          type(state.get("Health")) is dict and
          type(state["Health"].get("Status")) is str,
          "build.adaptive.gateway_observation")
+    health = state["Health"]
+    duration_ms = None
+    logs = health.get("Log", [])
+    if type(logs) is list and logs and type(logs[-1]) is dict:
+        try:
+            start = datetime.fromisoformat(logs[-1]["Start"].replace("Z", "+00:00"))
+            end = datetime.fromisoformat(logs[-1]["End"].replace("Z", "+00:00"))
+            need(end >= start, "build.gateway.health_time")
+            duration_ms = round((end - start).total_seconds() * 1000, 1)
+        except (KeyError, TypeError, ValueError):
+            need(False, "build.gateway.health_time")
     return {"gatewayContainerId": container_id,
             "gatewayHealthy": state["Running"] and
             state["Health"]["Status"] == "healthy",
-            "gatewayOomKilled": state["OOMKilled"]}
+            "gatewayOomKilled": state["OOMKilled"],
+            "lastHealthCheckDurationMs": duration_ms}
+
+
+def gateway_runtime_sample(container_id):
+    """Only counters and health timing; never persist health output or secrets."""
+    state = gateway_sample(container_id)
+    path = CGROUP_SLICE / f"docker-{container_id}.scope"
+    need(path.is_dir() and not path.is_symlink(), "build.gateway.cgroup_unavailable")
+    memory = dict(line.split(None, 1) for line in
+                  cgroup_text(path / "memory.stat").splitlines())
+    events = dict(line.split(None, 1) for line in
+                  cgroup_text(path / "memory.events").splitlines())
+    pressure = {}
+    for line in cgroup_text(path / "memory.pressure").splitlines():
+        name, _, rest = line.partition(" ")
+        if name in ("some", "full"):
+            values = dict(part.split("=", 1) for part in rest.split())
+            pressure[name] = float(values["avg10"])
+    need("full" in pressure, "build.gateway.pressure_unavailable")
+    return {**state, "memoryCurrentBytes": int(cgroup_text(path / "memory.current")),
+            "anonBytes": int(memory["anon"]), "fileBytes": int(memory["file"]),
+            "oom": int(events["oom"]), "oomKill": int(events["oom_kill"]),
+            "fullMemoryPressureAvg10": pressure["full"]}
 
 
 def collect_adaptive_samples(op, cache, gateway_container_id):
@@ -862,12 +929,15 @@ def collect_adaptive_samples(op, cache, gateway_container_id):
                         "cacheFreeBytes": observed["cacheFreeBytes"],
                         "fullMemoryPressureAvg10":
                         observed["memoryPressure"]["full"]["avg10"],
-                        **gateway_sample(gateway_container_id)})
+                        **{key: value for key, value in
+                           gateway_sample(gateway_container_id).items()
+                           if key != "lastHealthCheckDurationMs"}})
     validate_adaptive_samples(samples, now())
     return samples
 
 
-def capacity(op, limits, cache=None, *, starting=False):
+def capacity(op, limits, cache=None, *, starting=False,
+             gateway_container_id=None, builder=None):
     observed = resource_sample(op, cache)
     need(observed["freeBytes"] >= limits["minFreeBytes"], "build.capacity.disk_reserve")
     need(observed["memoryAvailableBytes"] >= limits["minMemoryAvailableBytes"],
@@ -881,6 +951,17 @@ def capacity(op, limits, cache=None, *, starting=False):
              limits["maxFullMemoryPressureAvg10"], "build.capacity.memory_pressure")
     if cache is not None:
         need(observed["cacheFreeBytes"] >= cache["minFreeBytes"], "build.capacity.cache_reserve")
+    if gateway_container_id is not None:
+        gateway = gateway_runtime_sample(gateway_container_id)
+        need(gateway["gatewayHealthy"] and not gateway["gatewayOomKilled"] and
+             gateway["oom"] == 0 and gateway["oomKill"] == 0,
+             "build.capacity.gateway_health")
+        observed["gateway"] = gateway
+    if builder is not None:
+        worker = builder_sample(builder)
+        need(worker["oom"] == worker["oomKill"] == 0,
+             "build.capacity.worker_oom")
+        observed["builder"] = worker
     return observed
 
 
@@ -890,6 +971,62 @@ def cgroup_text(path):
         need(stat.S_ISREG(os.fstat(stream.fileno()).st_mode),
              "build.telemetry.not_regular")
         return stream.read(16384)
+
+
+def verify_builder_cgroup_limits(builder):
+    """Verify the effective v2 ancestors before the experimental 8 GiB solve."""
+    result = native([*DOCKER, "inspect", "--format",
+                     '{"Id":{{json .Id}},"State":{"Running":{{json .State.Running}},'
+                     '"Pid":{{json .State.Pid}}}}', builder["containerId"]])
+    need(result.returncode == 0, "build.qualification.builder_inspect")
+    row = json.loads(result.stdout)
+    need(row["Id"] == builder["containerId"] and
+         row["State"]["Running"] is True and
+         type(row["State"]["Pid"]) is int and row["State"]["Pid"] > 0,
+         "build.qualification.builder_identity")
+    relative = cgroup_text(Path("/proc") / str(row["State"]["Pid"]) / "cgroup")
+    lines = [line.split("::", 1)[1] for line in relative.splitlines()
+             if line.startswith("0::/")]
+    need(len(lines) == 1, "build.qualification.cgroup_path")
+    root = CGROUP_ROOT
+    path = (root / lines[0].lstrip("/")).resolve(strict=True)
+    need(root in path.parents and f"docker-{builder['containerId']}.scope" in path.parts,
+         "build.qualification.cgroup_identity")
+    hierarchy = []
+    for ancestor in (path, *path.parents):
+        if ancestor == root.parent:
+            break
+        memory = cgroup_text(ancestor / "memory.max").strip()
+        swap = cgroup_text(ancestor / "memory.swap.max").strip()
+        cpu = cgroup_text(ancestor / "cpu.max").split()
+        need(len(cpu) == 2, "build.qualification.cpu_limit")
+        hierarchy.append({"path": str(ancestor), "memoryMax": memory,
+                          "memorySwapMax": swap, "cpuMax": " ".join(cpu)})
+        if ancestor == root:
+            break
+    finite_memory = [int(item["memoryMax"]) for item in hierarchy
+                     if item["memoryMax"] != "max"]
+    finite_swap = [int(item["memorySwapMax"]) for item in hierarchy
+                   if item["memorySwapMax"] != "max"]
+    finite_cpu = [Fraction(int(item["cpuMax"].split()[0]),
+                           int(item["cpuMax"].split()[1])) for item in hierarchy
+                  if not item["cpuMax"].startswith("max ")]
+    scope = next((item for item in hierarchy if Path(item["path"]).name ==
+                  f"docker-{builder['containerId']}.scope"), None)
+    need(scope is not None and
+         scope["memoryMax"] == str(builder["memoryBytes"]) and
+         scope["memorySwapMax"] == "0" and
+         scope["cpuMax"].split()[0] != "max" and
+         Fraction(*map(int, scope["cpuMax"].split())) == Fraction(4, 1),
+         "build.qualification.worker_scope_limits")
+    need(finite_memory and min(finite_memory) == builder["memoryBytes"] and
+         finite_swap and min(finite_swap) == 0 and
+         finite_cpu and min(finite_cpu) == Fraction(4, 1),
+         "build.qualification.effective_limits")
+    return {"containerId": builder["containerId"], "pid": row["State"]["Pid"],
+            "effectiveMemoryBytes": min(finite_memory),
+            "effectiveSwapBytes": min(finite_swap),
+            "effectiveCpuQuota": "4/1", "hierarchy": hierarchy}
 
 
 def builder_sample(builder):
@@ -963,11 +1100,47 @@ def verify_builder_handoff(op, intent):
                targetIntentSha256 originExecutionSha256 originLeaseSha256""",
                "build.handoff.intent.fields")
     elif proposed.get("schema") == "openclaw.gcp-builder-recovery.v1":
+        optional = (" resourceTransitionSha256" if
+                    "resourceTransitionSha256" in proposed else "")
         fields(proposed, """schema originOperationId targetOperationId originIntentSha256
-               targetIntentSha256 originCompletedSha256 builderStoppedSha256 originLeaseSha256""",
+               targetIntentSha256 originCompletedSha256 builderStoppedSha256 originLeaseSha256"""
+               + optional,
                "build.handoff.intent.fields")
         need(preflight.digest(op / "builder-stopped.json") == proposed["builderStoppedSha256"],
              "build.handoff.stop_proof.changed")
+        old = op.parent / proposed["originOperationId"]
+        origin = read_private(old / "intent.json")
+        need((origin["config"]["builder"] != intent["config"]["builder"]) ==
+             bool(optional), "build.handoff.resource_transition_required")
+        if optional:
+            transition = read_private(op / "resource-transition.json")
+            repair = (" repairIntentSha256" if "repairIntentSha256" in transition else "")
+            fields(transition, """schema originOperationId targetOperationId
+                   originIntentSha256 targetIntentSha256 builderStoppedSha256
+                   originBuilderSha256 targetBuilderSha256 observedBuilderSha256"""
+                   + repair,
+                   "build.handoff.resource_transition_fields")
+            need(transition["schema"] == "openclaw.gcp-builder-resource-transition.v1" and
+                 transition["originOperationId"] == old.name and
+                 transition["targetOperationId"] == op.name and
+                 transition["originIntentSha256"] == preflight.digest(old / "intent.json") and
+                 transition["targetIntentSha256"] == preflight.digest(op / "intent.json") and
+                 transition["builderStoppedSha256"] == proposed["builderStoppedSha256"] and
+                 transition["originBuilderSha256"] ==
+                 release.sha256(encode(origin["config"]["builder"])) and
+                 transition["targetBuilderSha256"] ==
+                 transition["observedBuilderSha256"] ==
+                 release.sha256(encode(intent["config"]["builder"])) and
+                 ((op / "resource-transition-repair-intent.json").exists() == bool(repair)) and
+                 (not repair or preflight.digest(op / "resource-transition-repair-intent.json") ==
+                  transition["repairIntentSha256"]) and
+                 preflight.digest(op / "resource-transition-intent.json") ==
+                 release.sha256(encode({key: value for key, value in transition.items()
+                                        if key not in ("observedBuilderSha256",
+                                                       "repairIntentSha256")})) and
+                 preflight.digest(op / "resource-transition.json") ==
+                 proposed["resourceTransitionSha256"],
+                 "build.handoff.resource_transition_changed")
     else:
         need(False, "build.handoff.intent.schema")
     need(proposed["targetOperationId"] == op.name and
@@ -984,6 +1157,11 @@ def verify_builder_handoff(op, intent):
     evidence = [path, op / "builder-handoff.json", lease]
     if proposed["schema"] == "openclaw.gcp-builder-recovery.v1":
         evidence.append(op / "builder-stopped.json")
+        if "resourceTransitionSha256" in proposed:
+            evidence.extend((op / "resource-transition-intent.json",
+                             op / "resource-transition.json"))
+            if (op / "resource-transition-repair-intent.json").exists():
+                evidence.append(op / "resource-transition-repair-intent.json")
     for item in evidence:
         fd = os.open(item, os.O_RDONLY | os.O_NOFOLLOW)
         try:
@@ -1040,20 +1218,29 @@ def start(op):
              "build.tooling.changed")
         observe_builder(config["builder"], config.get("cache"))
         adaptive_samples = None
+        qualification = (config.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
+                         QUALIFICATION_PROFILE_ID)
+        cgroup_proof = (verify_builder_cgroup_limits(config["builder"])
+                        if qualification else None)
         if "adaptiveSelection" in config:
             adaptive_samples = collect_adaptive_samples(
                 op, config["cache"],
                 config["adaptiveSelection"]["gatewayContainerId"])
             need(profile_fits(config["adaptiveSelection"]["profile"], adaptive_samples),
                  "build.adaptive.start_no_fit")
-        reserve = capacity(op, config["limits"], config.get("cache"), starting=True)
+        reserve = capacity(op, config["limits"], config.get("cache"), starting=True,
+                           gateway_container_id=(
+                               config["adaptiveSelection"]["gatewayContainerId"]
+                               if qualification else None),
+                           builder=config["builder"] if qualification else None)
         metadata_handoff_capability(op, intent)
         reserve_heavy_workload(op, "build", preflight.digest(op / "intent.json"),
                                reserve_resource=lambda: reserve_builder(op, intent))
         write_once(op / "start-intent.json", encode({
             "intentSha256": preflight.digest(op / "intent.json"), "requestedAt": now(),
             "unitName": intent["unitName"], "capacity": reserve,
-            **({"adaptiveSamples": adaptive_samples} if adaptive_samples is not None else {})}))
+            **({"adaptiveSamples": adaptive_samples} if adaptive_samples is not None else {}),
+            **({"builderCgroupLimits": cgroup_proof} if cgroup_proof is not None else {})}))
         # Any exception after the fsynced start intent is an uncertain dispatch.
         try:
             result = native(intent["serviceArgv"])
@@ -1092,17 +1279,27 @@ def run_child(op, intent):
         previous[signum] = signal.signal(signum, cancel)
     native_exit, exit_code, reason = None, 1, "client failed before launch"
     cache = intent["config"].get("cache")
+    config = intent["config"]
+    qualification = (config.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
+                     QUALIFICATION_PROFILE_ID)
+    gateway_id = (config["adaptiveSelection"]["gatewayContainerId"]
+                  if qualification else None)
     try:
         reserve_heavy_workload(op, "build", preflight.digest(op / "intent.json"))
         observe_builder(intent["config"]["builder"], cache)
+        if qualification:
+            need(verify_builder_cgroup_limits(config["builder"]) ==
+                 start_intent.get("builderCgroupLimits"),
+                 "build.qualification.cgroup_changed")
         if "adaptiveSelection" in intent["config"]:
             selection = intent["config"]["adaptiveSelection"]
             samples = collect_adaptive_samples(
                 op, cache, selection["gatewayContainerId"])
             need(profile_fits(selection["profile"], samples),
                  "build.adaptive.service_no_fit")
-        record_resources(op, "start", capacity(op, intent["config"]["limits"], cache,
-                                                starting=True),
+        record_resources(op, "start", capacity(op, config["limits"], cache,
+                                                starting=True, gateway_container_id=gateway_id,
+                                                builder=config["builder"] if qualification else None),
                          builder=intent["config"]["builder"])
         need(not signal_received, "build.cancelled_before_launch")
         with open(op / "build.log", "xb", buffering=0) as log:
@@ -1125,7 +1322,9 @@ def run_child(op, intent):
                     if time.monotonic() >= next_capacity and stop_at is None:
                         next_capacity = time.monotonic() + 2
                         try:
-                            observed = capacity(op, intent["config"]["limits"], cache)
+                            observed = capacity(op, config["limits"], cache,
+                                                gateway_container_id=gateway_id,
+                                                builder=config["builder"] if qualification else None)
                             if time.monotonic() >= next_sample:
                                 record_resources(op, "periodic", observed,
                                                  builder=intent["config"]["builder"])

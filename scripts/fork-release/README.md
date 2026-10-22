@@ -785,6 +785,17 @@ build with complete peak, pressure, Gateway health, and image-seal evidence is
 required before calling a profile qualified. A `no_fit` result calls for later
 fresh admission, not a lower ad hoc threshold or automatic retry.
 
+One controlled qualification for source
+`1d5ab20bea4cccce0b80b60a9ba5d5020cf08038` selects an 8 GiB aggregate
+BuildKit memory and memory-plus-swap cap (no container swap), 4 CPUs, a 6 GiB
+compiler heap, at least 19 GiB MemAvailable before dispatch, and the retained
+10 GiB running floor. This is an experimental admission budget, not a proven
+build minimum. It requires fresh Gateway health, memory-pressure and OOM
+checks; it stops on a worker OOM or failed resource guard and has no automatic
+retry. The worker's own cgroup and its ancestors must prove the effective
+8 GiB, zero-swap, 4-CPU limits before the solve. A successful compile alone
+does not qualify export, load, image verification or sealing.
+
 The closed configuration binds the exact source/tree/tooling and metadata
 hashes, stable release version, private cloud identity, existing builder
 container/image/resource limits, build timestamp, timeout, and free disk/memory
@@ -838,13 +849,23 @@ Recovery requires the failed invocation, nonzero native exit, absence of a
 successful execution receipt, exact builder identity and a Docker stop time
 after the failure. It records the stop proof, original completion hash and
 atomic lease transition without deleting or rewriting the failed evidence.
+For the single source-pinned qualification above, a stopped 16 GiB/18 GiB
+memory-plus-swap, 7-CPU worker may transition to 8 GiB/no-swap/4 CPUs. The
+transition records intent before Docker update and reconciles exact native
+readback; a partially applied update permits one recorded repair attempt,
+then refuses. A changed builder requires the transition proof at successor
+start. The build worker has no Docker byte-rate I/O caps in this qualification;
+the separate future 16 GiB Doctor rehearsal profile explicitly uses
+320 MiB/s read and 128 MiB/s write and must verify effective limits before
+its own launch.
 The heavy-workload slot advances only to that exact successor. Start the
 retained builder after the recovery receipt is durable, then run the normal
 successor `gcp_build.py start` with a fresh capacity check. A changed worker,
 other lease owner, live solve, missing stop proof or uncertain origin refuses.
 This route neither starts/stops Docker itself nor authorizes new capacity.
 
-The existing builder remains unchanged. The client has its own systemd limits;
+Except for the exact stopped-worker transition above, the existing builder
+remains unchanged. The client has its own systemd limits;
 the recorded builder limits govern compilation separately. Native output is
 timestamped and shown before status. Resource observations describe measured
 host headroom, not builder peak allocation or semantic progress. A deadline or

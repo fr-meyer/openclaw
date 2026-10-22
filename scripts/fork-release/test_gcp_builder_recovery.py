@@ -24,7 +24,7 @@ class BuilderRecoveryTest(unittest.TestCase):
         self.builder = {"containerId": "c" * 64, "imageId": "sha256:" + "d" * 64}
         self.origin = {"config": {"builder": self.builder, "sourceSha": "e" * 40}}
         self.target = {"config": {"builder": self.builder, "sourceSha": "e" * 40}}
-        build.write_once(self.old / "intent.json", b"origin\n")
+        build.write_once(self.old / "intent.json", build.encode(self.origin))
         build.write_once(self.new / "intent.json", build.encode(self.target))
         self.completed = {"completedAt": "2026-10-22T04:40:32Z", "exitCode": 130,
                           "nativeExitCode": 130, "reason": "build.capacity.memory_reserve",
@@ -122,6 +122,148 @@ class BuilderRecoveryTest(unittest.TestCase):
             (self.new / "builder-stopped.json").write_text("{}\n")
             with self.assertRaisesRegex(release.Refusal, "stop_proof.changed"):
                 build.heavy_workload_settled(owner, successor=self.new)
+
+    def qualification_resources(self):
+        before = {"name": "existing", "node": "existing0", "endpoint": build.ENDPOINT,
+                  "containerId": "c" * 64, "imageId": "sha256:" + "d" * 64,
+                  "memoryBytes": 16 << 30, "memorySwapBytes": 18 << 30,
+                  "cpuPeriod": 100000, "cpuQuota": 700000, "cpuShares": 128,
+                  "nanoCpus": 0, "pidsLimit": None, "readBps": None,
+                  "writeBps": None}
+        after = {**before, "memoryBytes": 8 << 30, "memorySwapBytes": 8 << 30,
+                 "cpuQuota": 400000}
+        self.origin["config"].update({"builder": before, "sourceSha": "e" * 40})
+        self.target["config"].update({"builder": after, "sourceSha": "e" * 40,
+                                      "adaptiveSelection": {"profile": {
+                                          "id": build.QUALIFICATION_PROFILE_ID}}})
+        (self.old / "intent.json").write_bytes(build.encode(self.origin))
+        (self.new / "intent.json").write_bytes(build.encode(self.target))
+        self.lease.write_bytes(build.encode({"operationId": self.old.name,
+            "intentSha256": build.preflight.digest(self.old / "intent.json")}))
+        build.write_once(self.new / "supervisor/other", b"unused")
+        return before, after
+
+    def test_exact_stopped_resource_transition_and_lost_reply_reconcile(self):
+        before, after = self.qualification_resources()
+        observed = dict(before)
+        updates = []
+
+        def native(argv):
+            if "update" in argv:
+                updates.append(argv)
+                observed.update({key: after[key] for key in subject.RESOURCE_FIELDS})
+                # The Docker reply is uncertain; exact readback proves outcome.
+                raise subprocess.TimeoutExpired(argv, 30)
+            if subject.STOP_FORMAT in argv:
+                return subprocess.CompletedProcess(argv, 0, json.dumps(self.stopped), "")
+            if build.CONTAINER_FORMAT in argv:
+                row = {"Id": observed["containerId"], "Image": observed["imageId"],
+                       "State": {"Running": False}, "HostConfig": {
+                           "Memory": observed["memoryBytes"],
+                           "MemorySwap": observed["memorySwapBytes"],
+                           "CpuPeriod": observed["cpuPeriod"],
+                           "CpuQuota": observed["cpuQuota"],
+                           "CpuShares": observed["cpuShares"],
+                           "NanoCpus": observed["nanoCpus"],
+                           "PidsLimit": observed["pidsLimit"],
+                           "BlkioDeviceReadBps": observed["readBps"],
+                           "BlkioDeviceWriteBps": observed["writeBps"]}}
+                return subprocess.CompletedProcess(argv, 0, json.dumps(row), "")
+            raise AssertionError(argv)
+
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(build, "native", side_effect=native):
+            first = subject.recover(self.old, self.new)
+            self.assertEqual(first, subject.recover(self.old, self.new))
+            self.assertEqual(len(updates), 1)
+            self.assertIn("--memory-swap", updates[0])
+            self.assertEqual(build.read_private(self.lease)["operationId"], self.new.name)
+            self.assertIn("resourceTransitionSha256", first)
+            build.verify_builder_handoff(self.new, self.target)
+            intent_path = self.new / "builder-handoff-intent.json"
+            original_intent = intent_path.read_bytes()
+            without_transition = build.read_private(intent_path)
+            del without_transition["resourceTransitionSha256"]
+            intent_path.write_bytes(build.encode(without_transition))
+            with self.assertRaisesRegex(release.Refusal, "resource_transition_required"):
+                build.verify_builder_handoff(self.new, self.target)
+            intent_path.write_bytes(original_intent)
+            (self.new / "resource-transition.json").write_text("{}\n")
+            with self.assertRaisesRegex(release.Refusal, "resource_transition"):
+                build.verify_builder_handoff(self.new, self.target)
+
+    def test_partial_resource_update_refuses_without_transferring_lease(self):
+        before, after = self.qualification_resources()
+        observed = dict(before)
+
+        def native(argv):
+            if "update" in argv:
+                observed["memoryBytes"] = after["memoryBytes"]
+                return subprocess.CompletedProcess(argv, 1, "", "partial")
+            if subject.STOP_FORMAT in argv:
+                return subprocess.CompletedProcess(argv, 0, json.dumps(self.stopped), "")
+            if build.CONTAINER_FORMAT in argv:
+                host = {"Memory": observed["memoryBytes"],
+                        "MemorySwap": observed["memorySwapBytes"],
+                        "CpuPeriod": observed["cpuPeriod"],
+                        "CpuQuota": observed["cpuQuota"],
+                        "CpuShares": observed["cpuShares"],
+                        "NanoCpus": observed["nanoCpus"],
+                        "PidsLimit": observed["pidsLimit"],
+                        "BlkioDeviceReadBps": observed["readBps"],
+                        "BlkioDeviceWriteBps": observed["writeBps"]}
+                return subprocess.CompletedProcess(argv, 0, json.dumps({
+                    "Id": observed["containerId"], "Image": observed["imageId"],
+                    "State": {"Running": False}, "HostConfig": host}), "")
+            raise AssertionError(argv)
+
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(build, "native", side_effect=native):
+            with self.assertRaisesRegex(release.Refusal, "resource_transition.readback"):
+                subject.recover(self.old, self.new)
+            self.assertEqual(build.read_private(self.lease)["operationId"], self.old.name)
+            self.assertTrue((self.new / "resource-transition-intent.json").exists())
+            self.assertTrue((self.new / "resource-transition-repair-intent.json").exists())
+            self.assertFalse((self.new / "resource-transition.json").exists())
+            with self.assertRaisesRegex(release.Refusal, "repair_exhausted"):
+                subject.recover(self.old, self.new)
+
+    def test_one_bounded_partial_resource_repair_reaches_exact_target(self):
+        before, after = self.qualification_resources()
+        partial = {**before, "memoryBytes": after["memoryBytes"]}
+        observed = dict(before)
+        updates = []
+
+        def native(argv):
+            if "update" in argv:
+                updates.append(argv)
+                observed.update(partial if len(updates) == 1 else after)
+            return subprocess.CompletedProcess(argv, 0, json.dumps(self.stopped), "")
+
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(build, "native", side_effect=native), \
+             patch.object(subject, "stopped_resources",
+                          side_effect=lambda _: dict(observed)):
+            result = subject.recover(self.old, self.new)
+        self.assertEqual(len(updates), 2)
+        self.assertIn("resourceTransitionSha256", result)
+        self.assertEqual(build.read_private(self.lease)["operationId"], self.new.name)
+        transition = build.read_private(self.new / "resource-transition.json")
+        self.assertEqual(transition["repairIntentSha256"], build.preflight.digest(
+            self.new / "resource-transition-repair-intent.json"))
+        build.verify_builder_handoff(self.new, self.target)
+
+    def test_resource_transition_refuses_unapproved_cpu_or_source(self):
+        before, after = self.qualification_resources()
+        self.target["config"]["builder"]["cpuQuota"] = 500000
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "e" * 40):
+            with self.assertRaisesRegex(release.Refusal, "resource_transition.unreviewed"):
+                subject.recover(self.old, self.new)
+        self.target["config"]["builder"]["cpuQuota"] = after["cpuQuota"]
+        self.target["config"]["sourceSha"] = "f" * 40
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "e" * 40):
+            with self.assertRaisesRegex(release.Refusal, "resource_transition.unreviewed"):
+                subject.recover(self.old, self.new)
 
 
 if __name__ == "__main__":

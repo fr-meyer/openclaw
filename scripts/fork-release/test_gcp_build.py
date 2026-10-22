@@ -311,6 +311,122 @@ class BuildTests(unittest.TestCase):
         bound = build.bind_adaptive_selection(self.config, samples)
         build.validate_config(bound)
 
+    def qualification_fixture(self, gib=19):
+        samples = self.adaptive_fixture(gib=gib)
+        self.config["builder"].update({"memoryBytes": 8 << 30,
+                                       "memorySwapBytes": 8 << 30,
+                                       "cpuQuota": 400000})
+        self.config["limits"]["minMemoryAvailableBytes"] = 10 << 30
+        return samples
+
+    def test_qualification_profile_is_exact_source_worker_and_no_swap(self):
+        samples = self.qualification_fixture()
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]):
+            bound = build.bind_adaptive_selection(self.config, samples)
+            self.assertEqual(bound["adaptiveSelection"]["profile"]["id"],
+                             build.QUALIFICATION_PROFILE_ID)
+            self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 19 << 30)
+            self.assertEqual(bound["limits"]["minMemoryAvailableBytes"], 10 << 30)
+            self.assertEqual(bound["buildTuning"], {"tsdownMaxOldSpaceMb": 6144})
+            build.validate_config(bound)
+            samples[1]["memoryAvailableBytes"] = (19 << 30) - 1
+            self.assertIsNone(build.select_profile(self.config, samples))
+            changed = copy.deepcopy(bound)
+            changed["builder"]["memorySwapBytes"] = 10 << 30
+            with self.assertRaises(release.Refusal):
+                build.validate_config(changed)
+            changed = copy.deepcopy(bound)
+            changed["builder"]["cpuQuota"] = 700000
+            with self.assertRaises(release.Refusal):
+                build.validate_config(changed)
+        # A similar small worker on another source gets no special profile.
+        samples[1]["memoryAvailableBytes"] = 19 << 30
+        self.assertIsNone(build.select_profile(self.config, samples))
+
+    def test_qualification_capacity_fails_closed_on_gateway_or_worker_oom(self):
+        limits = {"minFreeBytes": 16 << 30, "minMemoryAvailableBytes": 10 << 30,
+                  "maxFullMemoryPressureAvg10": 5.0}
+        observed = {"freeBytes": 30 << 30, "memoryAvailableBytes": 15 << 30,
+                    "memoryPressure": {"full": {"avg10": 0.0}}}
+        gateway = {"gatewayHealthy": True, "gatewayOomKilled": False,
+                   "oom": 0, "oomKill": 0}
+        worker = {"oom": 0, "oomKill": 0}
+        with patch.object(build, "resource_sample", return_value=observed), \
+             patch.object(build, "gateway_runtime_sample", return_value=gateway), \
+             patch.object(build, "builder_sample", return_value=worker):
+            self.assertEqual(self.capacity_impl(self.root, limits,
+                gateway_container_id="d" * 64, builder=self.config["builder"])["gateway"],
+                gateway)
+            gateway["gatewayHealthy"] = False
+            with self.assertRaisesRegex(release.Refusal, "gateway_health"):
+                self.capacity_impl(self.root, limits, gateway_container_id="d" * 64)
+            gateway["gatewayHealthy"] = True
+            gateway["oomKill"] = 1
+            with self.assertRaisesRegex(release.Refusal, "gateway_health"):
+                self.capacity_impl(self.root, limits, gateway_container_id="d" * 64)
+            gateway["oomKill"] = 0
+            worker["oom"] = 1
+            with self.assertRaisesRegex(release.Refusal, "worker_oom"):
+                self.capacity_impl(self.root, limits, gateway_container_id="d" * 64,
+                                   builder=self.config["builder"])
+
+    def test_qualification_cgroup_checks_effective_ancestor_and_no_swap(self):
+        cid = self.config["builder"]["containerId"]
+        root = self.root / "cgroup"
+        path = root / "system.slice" / f"docker-{cid}.scope" / "child"
+        path.mkdir(parents=True)
+        data = {
+            str(path / "memory.max"): "max\n",
+            str(path / "memory.swap.max"): "max\n",
+            str(path / "cpu.max"): "max 100000\n",
+            str(path.parent / "memory.max"): str(8 << 30) + "\n",
+            str(path.parent / "memory.swap.max"): "0\n",
+            str(path.parent / "cpu.max"): "400000 100000\n",
+        }
+        for ancestor in (root / "system.slice", root):
+            data[str(ancestor / "memory.max")] = "max\n"
+            data[str(ancestor / "memory.swap.max")] = "max\n"
+            data[str(ancestor / "cpu.max")] = "max 100000\n"
+
+        def fake_text(item):
+            if str(item).endswith("/cgroup"):
+                return f"0::/{path.relative_to(root)}\n"
+            return data[str(item)]
+
+        row = {"Id": cid, "State": {"Running": True, "Pid": 4321}}
+        with patch.object(build, "CGROUP_ROOT", root), \
+             patch.object(build, "cgroup_text", side_effect=fake_text), \
+             patch.object(build, "native", return_value=subprocess.CompletedProcess(
+                 [], 0, json.dumps(row), "")):
+            proof = build.verify_builder_cgroup_limits(
+                {**self.config["builder"], "memoryBytes": 8 << 30})
+            self.assertEqual(proof["effectiveMemoryBytes"], 8 << 30)
+            self.assertEqual(proof["effectiveSwapBytes"], 0)
+            data[str(path.parent / "memory.swap.max")] = str(2 << 30) + "\n"
+            with self.assertRaisesRegex(release.Refusal, "worker_scope_limits"):
+                build.verify_builder_cgroup_limits(self.config["builder"])
+            data[str(path.parent / "memory.swap.max")] = "max\n"
+            data[str(path.parent / "memory.max")] = "max\n"
+            data[str(path.parent / "cpu.max")] = "max 100000\n"
+            data[str(root / "system.slice" / "memory.max")] = str(8 << 30) + "\n"
+            data[str(root / "system.slice" / "memory.swap.max")] = "0\n"
+            data[str(root / "system.slice" / "cpu.max")] = "400000 100000\n"
+            with self.assertRaisesRegex(release.Refusal, "worker_scope_limits"):
+                build.verify_builder_cgroup_limits(self.config["builder"])
+
+    def test_qualification_start_refuses_before_dispatch_on_wrong_cgroup(self):
+        samples = self.qualification_fixture()
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]):
+            op = self.prepare(build.bind_adaptive_selection(self.config, samples))
+            with patch.object(build, "collect_adaptive_samples", return_value=samples), \
+                 patch.object(build, "verify_builder_cgroup_limits",
+                              side_effect=release.Refusal("wrong cgroup")), \
+                 patch.object(build, "native") as native:
+                with self.assertRaisesRegex(release.Refusal, "wrong cgroup"):
+                    build.start(op)
+                native.assert_not_called()
+            self.assertFalse((op / "start-intent.json").exists())
+
     def test_adaptive_rejects_identity_and_receipt_changes(self):
         samples = self.adaptive_fixture()
         bound = build.bind_adaptive_selection(self.config, samples)
