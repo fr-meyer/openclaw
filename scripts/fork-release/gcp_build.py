@@ -665,6 +665,19 @@ def heavy_workload_settled(owner, successor=None):
                  not (op / "execution.json").exists(),
                  "workload.build.solve_unsettled")
             proposed = read_private(successor / "builder-handoff-intent.json")
+            need(type(proposed) is dict, "workload.build.recovery_fields")
+            if proposed.get("schema") == "openclaw.gcp-builder-prepared-handoff.v1":
+                intermediate_id = proposed.get("originOperationId")
+                need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), intermediate_id),
+                     "workload.build.prepared_origin_id")
+                intermediate = PRIVATE_ROOT / intermediate_id
+                need(intermediate.is_dir() and intermediate.resolve() == intermediate and
+                     not (intermediate / "start-intent.json").exists() and
+                     proposed.get("originHandoffSha256") ==
+                     preflight.digest(intermediate / "builder-handoff.json"),
+                     "workload.build.prepared_origin_changed")
+                proposed = read_private(intermediate / "builder-handoff-intent.json")
+                need(type(proposed) is dict, "workload.build.recovery_fields")
             need(proposed.get("schema") == "openclaw.gcp-builder-recovery.v1" and
                  proposed.get("originOperationId") == op.name and
                  proposed.get("originIntentSha256") == owner["intentSha256"] and

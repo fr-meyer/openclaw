@@ -280,6 +280,35 @@ class BuilderRecoveryTest(unittest.TestCase):
         self.assertEqual(build.read_private(self.lease)["operationId"], third.name)
         build.verify_builder_handoff(third, self.target)
         self.assertFalse((third / "start-intent.json").exists())
+        build.write_once(self.old / "started.json", build.encode({"invocationId": "f" * 32}))
+        owner = {"kind": "build", "operationPath": str(self.old),
+                 "intentSha256": build.preflight.digest(self.old / "intent.json")}
+
+        def service(_):
+            return subprocess.CompletedProcess([], 0,
+                "\n".join(f"{key}={value}" for key, value in self.status["service"].items()), "")
+
+        with patch.object(build, "native", side_effect=service):
+            build.heavy_workload_settled(owner, successor=third)
+        intermediate_receipt = self.new / "builder-handoff.json"
+        successor_proposal = third / "builder-handoff-intent.json"
+        successor_receipt = third / "builder-handoff.json"
+        original = {path: path.read_bytes() for path in
+                    (intermediate_receipt, successor_proposal, successor_receipt)}
+        forged = build.read_private(intermediate_receipt)
+        forged["targetLeaseSha256"] = "0" * 64
+        intermediate_receipt.write_bytes(build.encode(forged))
+        proposal = build.read_private(successor_proposal)
+        proposal["originHandoffSha256"] = build.preflight.digest(intermediate_receipt)
+        successor_proposal.write_bytes(build.encode(proposal))
+        receipt = build.read_private(successor_receipt)
+        receipt["originHandoffSha256"] = proposal["originHandoffSha256"]
+        successor_receipt.write_bytes(build.encode(receipt))
+        with patch.object(build, "native", side_effect=service):
+            with self.assertRaisesRegex(release.Refusal, "prepared_origin_changed"):
+                build.heavy_workload_settled(owner, successor=third)
+        for path, data in original.items():
+            path.write_bytes(data)
         transition_path = self.new / "resource-transition.json"
         original_transition = transition_path.read_bytes()
         transition_path.write_text("{}\n")
