@@ -133,6 +133,56 @@ There is no automatic mutation loop.
 | Baseline check     | Attest the fresh isolated rollback input, then prepare and approve `rollback` using the original independently bound baseline build.                                                                                                                |
 | Finish             | Archive rollback diagnostics, approve its unmount/detach/delete actions, verify deletion, then close the operation.                                                                                                                                 |
 
+#### Release-triggered SQLite hygiene assessment
+
+The daily lifecycle records a bounded hygiene decision on the restored
+**candidate** generation. `daily prepare-check OP doctor` automatically creates
+`hygiene-baseline.json` before preparing native Doctor. After Doctor settles
+successfully, `daily prepare-check OP startup` creates
+`hygiene-post-doctor.json` before preparing startup. To inspect the decision
+before either native phase, use the same exact clean-input receipt:
+
+```sh
+python3 scripts/fork-release/gcp_rehearsal.py daily hygiene-assess "$OP" baseline \
+  --clean-input "$CANDIDATE_CLEAN_INPUT"
+python3 scripts/fork-release/gcp_rehearsal.py daily status "$OP"
+```
+
+For `post-doctor`, use the attested `doctor-complete` clean input after the
+native Doctor result is settled. The sole daily owner validates the restored
+disk, snapshot, source/image, config, mounted dataset and prior Doctor result
+before collecting metadata. Assessment lists at most 128 immediate agent
+directories and uses file `stat` on the conventional shared and per-agent
+SQLite paths and WAL sidecars. It does **not** open SQLite, read table content,
+invoke `memory status`, run Doctor, index, reset, compact, prune, check a
+provider, or dispatch a cloud/Docker mutation. Custom configured database
+locations are not silently counted: receipts say `default-layout-only`, so
+their coverage requires a separate scoped owner inventory before proposing
+maintenance. Unsupported or over-bound metadata records
+`bounded_metadata_unavailable`; native Doctor continues under its own checks.
+File metadata fingerprints are change detectors, not hashes of
+database contents or integrity proof.
+
+The default decision is `skipped` with a precise reason. A database or WAL
+above 1 GiB prompts only a *follow-up measurement proposal*, never an automatic
+checkpoint, scan or cleanup. Reset/reindex, retention deletion and compaction
+require their own exact scope, verified backup, free-space/time admission and
+approval. The source-version commands, conditional ordering and acceptance
+criteria are in [SQLITE-HYGIENE.md](SQLITE-HYGIENE.md). Doctor's native
+backup, migration and integrity requirements remain unchanged.
+
+The private receipt binds the exact run, snapshot, restore, clean-input,
+source/image and tooling identities, config, filesystem device, optional
+Doctor result and a bounded file-metadata fingerprint. Repeating assessment on
+an unchanged measured generation returns the original receipt. A changed
+measured database refuses dispatch. An unavailable assessment keeps its
+explicit skip and relies on native Doctor's own dataset checks. The prior
+evidence remains immutable. Post-Doctor
+records a new generation rather than rewriting baseline. `daily status` shows
+receipt hashes and skip decisions without reopening any database. The stage
+is tied to release rehearsal entry points, not a calendar schedule, and never
+changes an active supervisor or production data.
+
 Prepare a check without launching it, inspect its separate challenge, and only
 then dispatch that exact phase:
 

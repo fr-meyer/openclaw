@@ -19,6 +19,7 @@ import uuid
 
 import gcp_build as durable
 import gcp_rehearsal as contracts
+import gcp_sqlite_hygiene as hygiene
 import gcp_snapshot_trial as trial
 from gcp_snapshot_cloud import Cloud, inspect_operation, operation_receipt, select_snapshot, timestamp
 import release
@@ -31,7 +32,7 @@ ID = re.compile(r'[1-9][0-9]{0,19}\Z')
 HEX = re.compile(r'[0-9a-f]{64}\Z')
 GENERATIONS = ('candidate', 'rollback')
 VERBS = ('restore', 'attach', 'mount', 'unmount', 'detach', 'delete')
-HELPERS = ('gcp_daily_snapshot.py', 'gcp_snapshot_cloud.py', 'gcp_rehearsal.py',
+HELPERS = ('gcp_daily_snapshot.py', 'gcp_sqlite_hygiene.py', 'gcp_snapshot_cloud.py', 'gcp_rehearsal.py',
            'gcp_rehearsal_checks.py', *trial.HELPERS)
 HELPERS = tuple(dict.fromkeys(HELPERS))
 need = release.need
@@ -788,6 +789,116 @@ def clean_binding(op, run, phase, clean, cloud):
     trial.snapshot_paths(clean)
 
 
+def hygiene_assess_locked(op, run, raw, clean, phase):
+    """Caller holds the daily lock and already validated the clean dataset."""
+    need(phase in ('baseline', 'post-doctor'), 'daily.hygiene.phase')
+    need(clean.get('restorationState') == ('unmigrated' if phase == 'baseline' else 'doctor-complete') and
+         clean.get('integrationsDisabled') is True, 'daily.hygiene.clean_state')
+    no_container_users(Path(clean['mountRoot']))
+    doctor_sha = None
+    if phase == 'post-doctor':
+        previous, _ = trial_binding(op, 'doctor')
+        prior = settled_check(previous)
+        need(prior['state'] == 'succeeded', 'daily.hygiene.doctor_not_complete')
+        doctor_sha = hash_bytes(durable.private_bytes(previous / 'result.json'))
+    file = op / ('hygiene-' + phase + '.json')
+    if phase == 'baseline' and not file.exists():
+        need(not (op / 'doctor.trial.json').exists(), 'daily.hygiene.doctor_already_prepared')
+    native_phase_name = 'doctor' if phase == 'baseline' else 'startup'
+    native_binding = op / (native_phase_name + '.trial.json')
+    if native_binding.exists():
+        native_id = durable.read_private(native_binding).get('operationId')
+        need(type(native_id) is str and trial.OP.fullmatch(native_id),
+             'daily.hygiene.native_binding')
+        need(not (trial.PRIVATE_ROOT / native_id / 'start-intent.json').exists(),
+             'daily.hygiene.native_already_started')
+    run_sha = hash_bytes(durable.private_bytes(op / 'run.json'))
+    expected = hygiene.binding(run, run_sha, clean, hash_bytes(raw), phase, doctor_sha)
+    if file.exists():
+        existing = durable.read_private(file)
+        if existing.get('metrics', {}).get('scope') == 'unavailable':
+            need(all(existing.get(key) == value for key, value in expected.items()) and
+                 existing.get('decision', {}).get('reason') == 'bounded_metadata_unavailable' and
+                 existing['decision'].get('mutatingActionDispatched') is False,
+                 'daily.hygiene.generation_changed')
+            return existing
+    try:
+        assessment = hygiene.assess(run, run_sha, clean, hash_bytes(raw), phase, doctor_sha)
+    except release.Refusal as error:
+        if not str(error).startswith('hygiene.'):
+            raise
+        assessment = hygiene.unavailable(run, run_sha, clean, hash_bytes(raw), phase, doctor_sha)
+    except OSError:
+        assessment = hygiene.unavailable(run, run_sha, clean, hash_bytes(raw), phase, doctor_sha)
+    if file.exists():
+        existing = durable.read_private(file)
+        stable = ('runSha256', 'sourceSha', 'imageReceiptSha256', 'toolingSha',
+                  'snapshotId', 'restoreReceiptSha256', 'cleanInputSha256',
+                  'configSha256', 'filesystemDevice', 'doctorResultSha256')
+        need(existing.get('schema') == assessment['schema'] and
+             existing.get('phase') == phase and
+             all(existing.get(key) == assessment[key] for key in stable) and
+             existing.get('metrics', {}).get('fingerprint') == assessment['metrics']['fingerprint'] and
+             existing.get('decision') == assessment['decision'],
+             'daily.hygiene.generation_changed')
+        return existing
+    record(op, file.name, assessment)
+    return assessment
+
+
+def hygiene_assess(op, phase, clean_path, cloud):
+    """Explicit preview; prepare-check also calls this stage automatically."""
+    op, run = load(op)
+    need(phase in ('baseline', 'post-doctor'), 'daily.hygiene.phase')
+    selected = 'doctor' if phase == 'baseline' else 'startup'
+    with durable.operation_lock(op):
+        open_generation(op, 'candidate')
+        need(now() < contracts.utc(run['plan']['expiresAt']), 'daily.plan.expired')
+        observe_production(cloud, run['plan'], run['production'])
+        raw = durable.private_bytes(clean_path)
+        clean = json.loads(raw)
+        clean_binding(op, run, selected, clean, cloud)
+        result = hygiene_assess_locked(op, run, raw, clean, phase)
+        file = op / ('hygiene-' + phase + '.json')
+        return {'state': 'assessed', 'phase': phase,
+                'receiptSha256': hash_bytes(durable.private_bytes(file)),
+                'decision': {'state': result['decision']['state'],
+                             'reason': result['decision']['reason'],
+                             'followupCount': len(result['decision']['followup'])},
+                'promotionAuthorized': False}
+
+
+def hygiene_verify_current(op, run, intent, phase):
+    """Prepared native dispatch refuses a changed assessment generation."""
+    selected = {'doctor': 'baseline', 'startup': 'post-doctor'}.get(phase)
+    need(selected is not None, 'daily.hygiene.phase')
+    clean = intent['clean']
+    file = op / ('hygiene-' + selected + '.json')
+    receipt = durable.read_private(file)
+    need(receipt.get('schema') == 'openclaw.sqlite-hygiene-assessment.v1' and
+         receipt.get('phase') == selected and
+         receipt.get('runSha256') == hash_bytes(durable.private_bytes(op / 'run.json')) and
+         receipt.get('sourceSha') == run['image']['sourceSha'] and
+         receipt.get('imageReceiptSha256') == run['imageReceiptSha256'] and
+         receipt.get('toolingSha') == run['plan']['toolingSha'] and
+         receipt.get('snapshotId') == str(run['snapshot']['id']) and
+         receipt.get('restoreReceiptSha256') == clean['restoreReceiptSha256'] and
+         receipt.get('cleanInputSha256') == intent['plan']['cleanInputSha256'] and
+         receipt.get('configSha256') == clean['configSha256'] and
+         receipt.get('filesystemDevice') == clean['filesystemDevice'] and
+         receipt.get('doctorResultSha256') ==
+         (intent['check']['doctorResultSha256'] if phase == 'startup' else None) and
+         receipt.get('decision', {}).get('mutatingActionDispatched') is False,
+         'daily.hygiene.binding_changed')
+    no_container_users(Path(clean['mountRoot']))
+    if receipt.get('metrics', {}).get('scope') == 'unavailable':
+        need(receipt.get('decision', {}).get('reason') == 'bounded_metadata_unavailable',
+             'daily.hygiene.unavailable_changed')
+        return
+    need(hygiene.measure(clean)['fingerprint'] == receipt['metrics']['fingerprint'],
+         'daily.hygiene.generation_changed')
+
+
 def prepare_check(op, phase, clean_path, tooling, cloud):
     op, run = load(op)
     need(phase in ('doctor', 'startup', 'rollback'), 'daily.check.phase')
@@ -801,6 +912,11 @@ def prepare_check(op, phase, clean_path, tooling, cloud):
         clean_raw = durable.private_bytes(clean_path)
         clean = json.loads(clean_raw)
         clean_binding(op, run, phase, clean, cloud)
+        if phase in ('doctor', 'startup'):
+            # The stage owns no database write or native command. Record it
+            # before preparing the existing single-supervisor native phase.
+            hygiene_phase = 'baseline' if phase == 'doctor' else 'post-doctor'
+            hygiene_assess_locked(op, run, clean_raw, clean, hygiene_phase)
         check = {'schema': 'openclaw.snapshot-trial-check.v1', 'phase': phase}
         if phase != 'doctor':
             previous, _ = trial_binding(op, 'doctor')
@@ -840,6 +956,8 @@ def check_action(op, phase, cloud):
     need(now() < contracts.utc(run['plan']['expiresAt']), 'daily.plan.expired')
     observe_production(cloud, run['plan'], run['production'])
     clean_binding(op, run, phase, intent['clean'], cloud)
+    if phase in ('doctor', 'startup'):
+        hygiene_verify_current(op, run, intent, phase)
     trial.phase_prerequisites(location, intent)
     return {'action': 'native-' + phase, 'operationId': location.name,
             'intentSha256': hash_bytes(durable.private_bytes(location / 'intent.json')),
@@ -876,7 +994,26 @@ def _status(op, cloud):
         if file.exists():
             binding = durable.read_private(file)
             checks[phase] = trial.status(trial.PRIVATE_ROOT / binding['operationId'])
+    hygiene_receipts = {}
+    for phase in ('baseline', 'post-doctor'):
+        file = op / ('hygiene-' + phase + '.json')
+        if file.exists():
+            receipt = durable.read_private(file)
+            need(receipt.get('schema') == 'openclaw.sqlite-hygiene-assessment.v1' and
+                 receipt.get('phase') == phase and
+                 receipt.get('runSha256') == hash_bytes(durable.private_bytes(op / 'run.json')) and
+                 receipt.get('sourceSha') == run['image']['sourceSha'] and
+                 receipt.get('imageReceiptSha256') == run['imageReceiptSha256'] and
+                 receipt.get('snapshotId') == str(run['snapshot']['id']) and
+                 receipt.get('promotionAuthorized') is False,
+                 'daily.hygiene.receipt_changed')
+            hygiene_receipts[phase] = {'sha256': hash_bytes(durable.private_bytes(file)),
+                                       'decision': {'state': receipt['decision']['state'],
+                                                    'reason': receipt['decision']['reason'],
+                                                    'followupCount': len(receipt['decision']['followup'])},
+                                       'databaseFingerprint': receipt['metrics']['fingerprint']}
     return {'operationId': op.name, 'snapshotId': str(run['snapshot']['id']), 'actions': actions, 'checks': checks,
+            'hygiene': hygiene_receipts,
             'expired': now() >= contracts.utc(run['plan']['expiresAt']), 'promotionAuthorized': False,
             'cleanupAutomatic': False, 'productionActionAvailable': False}
 
@@ -914,7 +1051,8 @@ def main(argv=None):
     make = commands.add_parser('prepare')
     for name in ('plan', 'image-receipt', 'tooling'):
         make.add_argument('--' + name, type=Path, required=True)
-    for command in ('status', 'close', 'archive', 'action', 'apply', 'retry-prepare', 'prepare-check', 'check-action', 'run-check'):
+    for command in ('status', 'close', 'archive', 'action', 'apply', 'retry-prepare', 'prepare-check',
+                    'check-action', 'run-check', 'hygiene-assess'):
         item = commands.add_parser(command)
         item.add_argument('operation', type=Path)
         if command in ('action', 'apply', 'retry-prepare'):
@@ -928,6 +1066,9 @@ def main(argv=None):
         if command == 'prepare-check':
             item.add_argument('--clean-input', type=Path, required=True)
             item.add_argument('--tooling', type=Path, required=True)
+        if command == 'hygiene-assess':
+            item.add_argument('phase', choices=('baseline', 'post-doctor'))
+            item.add_argument('--clean-input', type=Path, required=True)
     args = parser.parse_args(argv)
     cloud = Cloud()
     try:
@@ -952,6 +1093,8 @@ def main(argv=None):
                 value = archive_diagnostics(op, args.generation)
         elif args.command == 'prepare-check':
             value = prepare_check(args.operation, args.phase, args.clean_input, args.tooling, cloud)
+        elif args.command == 'hygiene-assess':
+            value = hygiene_assess(args.operation, args.phase, args.clean_input, cloud)
         elif args.command == 'check-action':
             value = check_action(args.operation, args.phase, cloud)
             value = {'action': value, 'approvalChallenge': challenge(value)}
