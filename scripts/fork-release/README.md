@@ -757,6 +757,32 @@ python3 -B scripts/fork-release/gcp_build.py start "$OPERATION_DIRECTORY"
 python3 -B scripts/fork-release/gcp_build.py status "$OPERATION_DIRECTORY"
 ```
 
+For the adaptive candidate build, add `--adaptive-gateway-id` with the full
+production Gateway container ID to `prepare`. It samples host memory, full
+memory pressure, root/cache free space, and that container's native health
+three times over ten seconds. It selects one source and builder bound profile,
+or prints `no_fit` and exits 2 without creating an operation. The resulting
+private intent records all samples and the selected profile. `start` and the
+durable service each repeat the three-sample admission before dispatch. The
+existing continuous host reserve and pressure checks remain in force; the
+compiler heap is fixed for the selected attempt and no running worker limits
+are changed. Resume uses the recorded profile rather than selecting again.
+
+The current implemented candidates are 6 GiB compiler heap with at least a
+21 GiB MemAvailable start floor, and 12 GiB with at least a 26 GiB start floor.
+Both retain at least a 10 GiB running floor and at most a 5% full-memory PSI
+limit. Existing stricter config floors remain in force, including at least a
+16 GiB root floor and a 44 GiB cache floor. The 21 GiB floor is informed by a
+previous complete build that started at 20.53 GiB and a failed build that
+consumed 8.19 GiB of host availability before stopping. The full-build working set and
+peak under this exact source are **not measured**; these profiles are
+qualification candidates.
+Do not treat the Doctor's separate 16 GiB container limit or the compiler's
+4,352 MiB V8 minimum as a whole-image build minimum. One owned, isolated
+build with complete peak, pressure, Gateway health, and image-seal evidence is
+required before calling a profile qualified. A `no_fit` result calls for later
+fresh admission, not a lower ad hoc threshold or automatic retry.
+
 The closed configuration binds the exact source/tree/tooling and metadata
 hashes, stable release version, private cloud identity, existing builder
 container/image/resource limits, build timestamp, timeout, and free disk/memory

@@ -238,6 +238,150 @@ class BuildTests(unittest.TestCase):
             build.validate_config({**self.config, "limits": {**limits,
                                    "minStartMemoryAvailableBytes": 9 << 30}})
 
+    def adaptive_fixture(self, gib=22, pressure=0.1):
+        if "cache" not in self.config:
+            self.cache_fixture()
+        self.config["limits"]["minFreeBytes"] = 16 << 30
+        self.config["builder"]["memoryBytes"] = 16 << 30
+        self.config["builder"]["memorySwapBytes"] = 18 << 30
+        origin = build.datetime.now(build.timezone.utc).replace(microsecond=0)
+        return [{"observedAt": (origin + build.timedelta(seconds=offset)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"), "memoryAvailableBytes": gib << 30,
+                 "freeBytes": 40 << 30, "cacheFreeBytes": 60 << 30,
+                 "fullMemoryPressureAvg10": pressure,
+                 "gatewayContainerId": "d" * 64, "gatewayHealthy": True,
+                 "gatewayOomKilled": False} for offset in (-10, -5, 0)]
+
+    def test_adaptive_selects_only_sustained_fitting_profile_and_binds_intent(self):
+        samples = self.adaptive_fixture()
+        bound = build.bind_adaptive_selection(self.config, samples)
+        self.assertEqual(bound["adaptiveSelection"]["profile"]["id"], "constrained-21g")
+        self.assertEqual(bound["buildTuning"], {"tsdownMaxOldSpaceMb": 6144})
+        self.assertEqual(bound["limits"]["minMemoryAvailableBytes"], 10 << 30)
+        self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 21 << 30)
+        self.assertEqual(self.config["limits"]["minMemoryAvailableBytes"], 1024)
+        op = self.prepare(bound)
+        self.assertEqual(build.load_intent(op)[1]["config"], bound)
+        samples = self.adaptive_fixture(gib=27)
+        self.assertEqual(build.select_profile(self.config, samples)["id"], "roomy-26g")
+
+    def test_adaptive_no_fit_hysteresis_and_missing_or_stale_metrics(self):
+        samples = self.adaptive_fixture(gib=21)
+        samples[1]["memoryAvailableBytes"] = (21 << 30) - 1
+        self.assertIsNone(build.bind_adaptive_selection(self.config, samples))
+        self.assertEqual(list((self.root / "private").glob("*")), [])
+        samples = self.adaptive_fixture(gib=22)
+        for key, value in (("gatewayHealthy", False), ("gatewayOomKilled", True),
+                           ("fullMemoryPressureAvg10", 5.1), ("cacheFreeBytes", 1)):
+            changed = copy.deepcopy(samples)
+            changed[1][key] = value
+            self.assertIsNone(build.select_profile(self.config, changed), key)
+        for changed in (samples[:2], [{**sample, "fullMemoryPressureAvg10": None}
+                                      for sample in samples],
+                        [{**sample, "observedAt": "2000-01-01T00:00:00Z"}
+                         for sample in samples]):
+            with self.assertRaises(release.Refusal):
+                build.select_profile(self.config, changed)
+
+    def test_adaptive_does_not_relax_existing_reserves(self):
+        samples = self.adaptive_fixture(gib=25)
+        self.config["limits"]["minMemoryAvailableBytes"] = 12 << 30
+        self.config["limits"]["minStartMemoryAvailableBytes"] = 24 << 30
+        self.config["limits"]["maxFullMemoryPressureAvg10"] = 2.0
+        bound = build.bind_adaptive_selection(self.config, samples)
+        self.assertEqual(bound["limits"]["minMemoryAvailableBytes"], 12 << 30)
+        self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 24 << 30)
+        self.assertEqual(bound["limits"]["maxFullMemoryPressureAvg10"], 2.0)
+
+    def test_adaptive_rejects_identity_and_receipt_changes(self):
+        samples = self.adaptive_fixture()
+        bound = build.bind_adaptive_selection(self.config, samples)
+        for key, value in (("sourceSha", "f" * 40),
+                           ("builderContainerId", "e" * 64),
+                           ("minMemoryAvailableBytes", 1)):
+            changed = copy.deepcopy(bound)
+            changed["adaptiveSelection"]["profile"][key] = value
+            with self.assertRaises(release.Refusal):
+                build.validate_config(changed)
+        changed = copy.deepcopy(bound)
+        changed["adaptiveSelection"]["samples"][1]["gatewayContainerId"] = "e" * 64
+        with self.assertRaisesRegex(release.Refusal, "build.adaptive.binding"):
+            build.validate_config(changed)
+        changed = copy.deepcopy(bound)
+        changed["buildTuning"]["tsdownMaxOldSpaceMb"] = 8192
+        with self.assertRaisesRegex(release.Refusal, "build.adaptive.config_changed"):
+            build.validate_config(changed)
+        changed = copy.deepcopy(bound)
+        changed["builder"]["cpuQuota"] += 100000
+        with self.assertRaisesRegex(release.Refusal, "build.adaptive.profile_identity"):
+            build.validate_config(changed)
+        changed = copy.deepcopy(bound)
+        changed["adaptiveSelection"]["profile"]["tsdownMaxOldSpaceMb"] = 8192
+        changed["adaptiveSelection"]["profileSha256"] = release.sha256(
+            build.encode(changed["adaptiveSelection"]["profile"]))
+        with self.assertRaisesRegex(release.Refusal, "build.adaptive.profile_unreviewed"):
+            build.validate_config(changed)
+
+    def test_adaptive_start_refuses_new_no_fit_without_dispatch_or_reservation(self):
+        samples = self.adaptive_fixture()
+        op = self.prepare(build.bind_adaptive_selection(self.config, samples))
+        samples[1]["gatewayHealthy"] = False
+        with patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "native") as native:
+            with self.assertRaisesRegex(release.Refusal, "build.adaptive.start_no_fit"):
+                build.start(op)
+            native.assert_not_called()
+        self.assertFalse((op / "start-intent.json").exists())
+        self.assertFalse((op.parent / f"builder-{self.config['builder']['containerId']}.json").exists())
+
+    def test_adaptive_gateway_inspection_requires_healthy_exact_container(self):
+        state = {"Running": True, "OOMKilled": False, "Health": {"Status": "healthy"}}
+        with patch.object(build, "native", return_value=subprocess.CompletedProcess(
+                [], 0, json.dumps(state), "")) as observed:
+            self.assertTrue(build.gateway_sample("d" * 64)["gatewayHealthy"])
+            self.assertEqual(observed.call_args.args[0][-1], "d" * 64)
+        state["Health"]["Status"] = "unhealthy"
+        with patch.object(build, "native", return_value=subprocess.CompletedProcess(
+                [], 0, json.dumps(state), "")):
+            self.assertFalse(build.gateway_sample("d" * 64)["gatewayHealthy"])
+        with self.assertRaisesRegex(release.Refusal, "gateway_identity"):
+            build.gateway_sample("d" * 7)
+
+    def test_adaptive_cli_no_fit_creates_no_operation(self):
+        samples = self.adaptive_fixture(gib=20)
+        config_path = self.root / "config.json"
+        config_path.write_bytes(build.encode(self.config))
+        argv = ["gcp_build.py", "prepare", "--config", str(config_path),
+                "--private-root", str(self.root / "private"),
+                "--manifest", str(self.manifest), "--inventory", str(self.inventory),
+                "--source-dir", str(self.source), "--tooling-dir", str(self.tooling),
+                "--adaptive-gateway-id", "d" * 64]
+        output = io.StringIO()
+        with patch.object(build.sys, "argv", argv), \
+             patch.object(build.sys, "stdout", output), \
+             patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "prepare") as prepared:
+            self.assertEqual(build.main(), 2)
+            prepared.assert_not_called()
+        self.assertEqual(json.loads(output.getvalue())["status"], "no_fit")
+
+    def test_adaptive_service_rechecks_before_native_child(self):
+        samples = self.adaptive_fixture()
+        op = self.prepare(build.bind_adaptive_selection(self.config, samples))
+        with patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "native", side_effect=self.fake_native):
+            build.start(op)
+        _, intent = build.load_intent(op)
+        changed = copy.deepcopy(samples)
+        changed[2]["memoryAvailableBytes"] = 20 << 30
+        with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), \
+             patch.object(build, "collect_adaptive_samples", return_value=changed), \
+             patch.object(build.subprocess, "Popen") as launched:
+            with self.assertRaisesRegex(release.Refusal, "build.adaptive.service_no_fit"):
+                build.run_child(op, intent)
+            launched.assert_not_called()
+        self.assertEqual(build.read_private(op / "completed.json")["exitCode"], 1)
+
     def test_memory_full_stall_limit_cancels_before_lowering_host_reserve(self):
         limits = {**self.config["limits"], "minMemoryAvailableBytes": 10 << 30,
                   "maxFullMemoryPressureAvg10": 5.0}

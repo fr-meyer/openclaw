@@ -16,7 +16,7 @@ require ownership coordination and fresh builder inspection.
 
 import argparse
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import fcntl
 import json
 import os
@@ -62,6 +62,12 @@ cpuPeriod cpuQuota cpuShares nanoCpus pidsLimit readBps writeBps"""
 LIMIT_FIELDS = """timeoutSeconds clientMemoryBytes clientCpuQuotaPercent clientTasksMax
 minFreeBytes minMemoryAvailableBytes"""
 CACHE_FIELDS = "volumeName backingPath filesystemDevice minFreeBytes"
+PROFILE_FIELDS = """id qualification sourceSha sourceTree builderContainerId builderSha256
+ tsdownMaxOldSpaceMb minStartMemoryAvailableBytes minMemoryAvailableBytes
+ maxFullMemoryPressureAvg10 minFreeBytes minCacheFreeBytes"""
+ADAPTIVE_FIELDS = "schema profile profileSha256 gatewayContainerId samples selectedAt"
+ADAPTIVE_SAMPLE_FIELDS = """observedAt memoryAvailableBytes freeBytes cacheFreeBytes
+ fullMemoryPressureAvg10 gatewayContainerId gatewayHealthy gatewayOomKilled"""
 INTENT_FIELDS = """schema config sourceDir toolingDir uid gid version preparedAt
 supervisorSha256 buildArgv serviceArgv unitName"""
 SHOW_FIELDS = ("LoadState", "ActiveState", "SubState", "Result", "ExecMainCode",
@@ -148,6 +154,7 @@ def validate_config(config):
     # Older retained operations omit cache and keep their root-backed contract.
     optional = " cache" if type(config) is dict and "cache" in config else ""
     optional += " buildTuning" if type(config) is dict and "buildTuning" in config else ""
+    optional += " adaptiveSelection" if type(config) is dict and "adaptiveSelection" in config else ""
     fields(config, CONFIG_FIELDS + optional, "build.config.fields")
     need(config["schema"] == "openclaw.fork-gcp-build-config.v1", "build.config.schema")
     need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), config["operationId"]),
@@ -219,6 +226,154 @@ def validate_config(config):
              "build.cache.path")
         integer(cache["filesystemDevice"], 1, (1 << 64) - 1, "build.cache.device")
         integer(cache["minFreeBytes"], 1, 1 << 50, "build.cache.reserve")
+    if "adaptiveSelection" in config:
+        selection = config["adaptiveSelection"]
+        fields(selection, ADAPTIVE_FIELDS, "build.adaptive.fields")
+        need(selection["schema"] == "openclaw.gcp-build-adaptive-selection.v1",
+             "build.adaptive.schema")
+        profile = selection["profile"]
+        validate_profile(profile, config)
+        need(profile in adaptive_profiles(config), "build.adaptive.profile_unreviewed")
+        validate_adaptive_samples(selection["samples"], selection["selectedAt"])
+        need(selection["profileSha256"] == release.sha256(encode(profile)) and
+             all(sample["gatewayContainerId"] == selection["gatewayContainerId"]
+                 for sample in selection["samples"]), "build.adaptive.binding")
+        need(profile_fits(profile, selection["samples"]), "build.adaptive.selection_unfit")
+        need(config["limits"]["minMemoryAvailableBytes"] ==
+             profile["minMemoryAvailableBytes"] and
+             config["limits"].get("minStartMemoryAvailableBytes") ==
+             profile["minStartMemoryAvailableBytes"] and
+             config["limits"].get("maxFullMemoryPressureAvg10") ==
+             profile["maxFullMemoryPressureAvg10"] and
+             config["limits"]["minFreeBytes"] == profile["minFreeBytes"] and
+             config.get("buildTuning") ==
+             {"tsdownMaxOldSpaceMb": profile["tsdownMaxOldSpaceMb"]} and
+             cache is not None and cache["minFreeBytes"] == profile["minCacheFreeBytes"],
+             "build.adaptive.config_changed")
+
+
+def utc_time(value):
+    preflight.utc(value)
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+def validate_adaptive_samples(samples, selected_at):
+    need(type(samples) is list and len(samples) == 3, "build.adaptive.sample_count")
+    times = []
+    for sample in samples:
+        fields(sample, ADAPTIVE_SAMPLE_FIELDS, "build.adaptive.sample_fields")
+        times.append(utc_time(sample["observedAt"]))
+        for key in ("memoryAvailableBytes", "freeBytes", "cacheFreeBytes"):
+            integer(sample[key], 0, 1 << 60, "build.adaptive.sample_resource")
+        need(type(sample["fullMemoryPressureAvg10"]) in (int, float) and
+             0 <= sample["fullMemoryPressureAvg10"] <= 100,
+             "build.adaptive.sample_pressure")
+        need(release.matches(preflight.HEX256, sample["gatewayContainerId"])
+             and type(sample["gatewayHealthy"]) is bool
+             and type(sample["gatewayOomKilled"]) is bool,
+             "build.adaptive.gateway_state")
+    selected = utc_time(selected_at)
+    need(times == sorted(set(times)) and timedelta(seconds=10) <= times[-1] - times[0]
+         <= timedelta(seconds=60) and timedelta(0) <= selected - times[-1]
+         <= timedelta(seconds=30), "build.adaptive.sample_window")
+
+
+def validate_profile(profile, config):
+    fields(profile, PROFILE_FIELDS, "build.adaptive.profile_fields")
+    need(release.matches(re.compile(r"[a-z][a-z0-9-]{2,40}\Z"), profile["id"])
+         and profile["qualification"] == "candidate-unqualified",
+         "build.adaptive.profile_status")
+    need(profile["sourceSha"] == config["sourceSha"] and
+         profile["sourceTree"] == config["sourceTree"] and
+         profile["builderContainerId"] == config["builder"]["containerId"] and
+         profile["builderSha256"] == release.sha256(encode(config["builder"])),
+         "build.adaptive.profile_identity")
+    integer(profile["tsdownMaxOldSpaceMb"], 4352, 12288,
+            "build.adaptive.profile_heap")
+    need((profile["tsdownMaxOldSpaceMb"] + 768) << 20 <
+         config["builder"]["memoryBytes"], "build.adaptive.profile_worker_memory")
+    for key in ("minStartMemoryAvailableBytes", "minMemoryAvailableBytes",
+                "minFreeBytes", "minCacheFreeBytes"):
+        integer(profile[key], 1, 1 << 50, "build.adaptive.profile_floor")
+    need(profile["minStartMemoryAvailableBytes"] >= profile["minMemoryAvailableBytes"]
+         >= 10 << 30 and profile["minStartMemoryAvailableBytes"] >= 21 << 30,
+         "build.adaptive.profile_reserve")
+    need(profile["minFreeBytes"] >= 16 << 30 and
+         profile["minCacheFreeBytes"] >= 44 << 30,
+         "build.adaptive.profile_disk_reserve")
+    need(type(profile["maxFullMemoryPressureAvg10"]) in (int, float) and
+         0.1 <= profile["maxFullMemoryPressureAvg10"] <= 5.0,
+         "build.adaptive.profile_pressure")
+
+
+def profile_fits(profile, samples):
+    return all(sample["memoryAvailableBytes"] >=
+               profile["minStartMemoryAvailableBytes"] and
+               sample["freeBytes"] >= profile["minFreeBytes"] and
+               sample["cacheFreeBytes"] >= profile["minCacheFreeBytes"] and
+               sample["fullMemoryPressureAvg10"] <=
+               profile["maxFullMemoryPressureAvg10"] and
+               sample["gatewayHealthy"] and not sample["gatewayOomKilled"]
+               for sample in samples)
+
+
+def adaptive_profiles(config):
+    """Two unqualified, source-bound candidates; no inferred Doctor/build minimum."""
+    need("cache" in config, "build.adaptive.cache_required")
+    common = {"qualification": "candidate-unqualified",
+              "sourceSha": config["sourceSha"], "sourceTree": config["sourceTree"],
+              "builderContainerId": config["builder"]["containerId"],
+              "builderSha256": release.sha256(encode(config["builder"])),
+              "minMemoryAvailableBytes": max(
+                  10 << 30, config["limits"]["minMemoryAvailableBytes"]),
+              "maxFullMemoryPressureAvg10": min(
+                  5.0, config["limits"].get("maxFullMemoryPressureAvg10", 5.0)),
+              "minFreeBytes": config["limits"]["minFreeBytes"],
+              "minCacheFreeBytes": config["cache"]["minFreeBytes"]}
+    # 21 GiB is a qualification candidate: a prior complete image build started
+    # at 20.53 GiB, while the failed solve lost 8.19 GiB of host availability.
+    # Neither measurement establishes a whole-build minimum or peak.
+    prior_start = config["limits"].get("minStartMemoryAvailableBytes", 0)
+    profiles = [{**common, "id": "constrained-21g", "tsdownMaxOldSpaceMb": 6144,
+                 "minStartMemoryAvailableBytes": max(
+                     21 << 30, prior_start, common["minMemoryAvailableBytes"])},
+                {**common, "id": "roomy-26g", "tsdownMaxOldSpaceMb": 12288,
+                 "minStartMemoryAvailableBytes": max(
+                     26 << 30, prior_start, common["minMemoryAvailableBytes"])}]
+    for profile in profiles:
+        validate_profile(profile, config)
+    return profiles
+
+
+def select_profile(config, samples):
+    validate_adaptive_samples(samples, now())
+    fitting = [profile for profile in adaptive_profiles(config)
+               if profile_fits(profile, samples)]
+    if not fitting:
+        return None
+    # Spend spare headroom on the larger heap only when every fresh sample fits.
+    return max(fitting, key=lambda profile: profile["minStartMemoryAvailableBytes"])
+
+
+def bind_adaptive_selection(config, samples):
+    """Return a new immutable config, or None without reserving/creating a job."""
+    need("adaptiveSelection" not in config, "build.adaptive.already_selected")
+    profile = select_profile(config, samples)
+    if profile is None:
+        return None
+    bound = json.loads(json.dumps(config))
+    bound["limits"].update({key: profile[key] for key in (
+        "minStartMemoryAvailableBytes", "minMemoryAvailableBytes",
+        "maxFullMemoryPressureAvg10", "minFreeBytes")})
+    bound["cache"]["minFreeBytes"] = profile["minCacheFreeBytes"]
+    bound["buildTuning"] = {"tsdownMaxOldSpaceMb": profile["tsdownMaxOldSpaceMb"]}
+    bound["adaptiveSelection"] = {
+        "schema": "openclaw.gcp-build-adaptive-selection.v1", "profile": profile,
+        "profileSha256": release.sha256(encode(profile)),
+        "gatewayContainerId": samples[0]["gatewayContainerId"],
+        "samples": samples, "selectedAt": now()}
+    validate_config(bound)
+    return bound
 
 
 def clean_checkout(root, sha):
@@ -664,6 +819,44 @@ def resource_sample(op, cache=None):
             **(cache_sample(cache) if cache is not None else {})}
 
 
+def gateway_sample(container_id):
+    need(release.matches(preflight.HEX256, container_id),
+         "build.adaptive.gateway_identity")
+    result = native([*DOCKER, "inspect", "--format",
+                     '{{json .State}}', container_id])
+    need(result.returncode == 0, "build.adaptive.gateway_inspect")
+    state = json.loads(result.stdout)
+    need(type(state) is dict and type(state.get("Running")) is bool and
+         type(state.get("OOMKilled")) is bool and
+         type(state.get("Health")) is dict and
+         type(state["Health"].get("Status")) is str,
+         "build.adaptive.gateway_observation")
+    return {"gatewayContainerId": container_id,
+            "gatewayHealthy": state["Running"] and
+            state["Health"]["Status"] == "healthy",
+            "gatewayOomKilled": state["OOMKilled"]}
+
+
+def collect_adaptive_samples(op, cache, gateway_container_id):
+    need(cache is not None, "build.adaptive.cache_required")
+    samples = []
+    for index in range(3):
+        if index:
+            time.sleep(5)
+        observed = resource_sample(op, cache)
+        need("memoryPressure" in observed and "cacheFreeBytes" in observed,
+             "build.adaptive.metrics_unavailable")
+        samples.append({"observedAt": observed["observedAt"],
+                        "memoryAvailableBytes": observed["memoryAvailableBytes"],
+                        "freeBytes": observed["freeBytes"],
+                        "cacheFreeBytes": observed["cacheFreeBytes"],
+                        "fullMemoryPressureAvg10":
+                        observed["memoryPressure"]["full"]["avg10"],
+                        **gateway_sample(gateway_container_id)})
+    validate_adaptive_samples(samples, now())
+    return samples
+
+
 def capacity(op, limits, cache=None, *, starting=False):
     observed = resource_sample(op, cache)
     need(observed["freeBytes"] >= limits["minFreeBytes"], "build.capacity.disk_reserve")
@@ -836,13 +1029,21 @@ def start(op):
              {name: private_bytes(op / "supervisor" / name) for name in HELPERS},
              "build.tooling.changed")
         observe_builder(config["builder"], config.get("cache"))
+        adaptive_samples = None
+        if "adaptiveSelection" in config:
+            adaptive_samples = collect_adaptive_samples(
+                op, config["cache"],
+                config["adaptiveSelection"]["gatewayContainerId"])
+            need(profile_fits(config["adaptiveSelection"]["profile"], adaptive_samples),
+                 "build.adaptive.start_no_fit")
         reserve = capacity(op, config["limits"], config.get("cache"), starting=True)
         metadata_handoff_capability(op, intent)
         reserve_heavy_workload(op, "build", preflight.digest(op / "intent.json"),
                                reserve_resource=lambda: reserve_builder(op, intent))
         write_once(op / "start-intent.json", encode({
             "intentSha256": preflight.digest(op / "intent.json"), "requestedAt": now(),
-            "unitName": intent["unitName"], "capacity": reserve}))
+            "unitName": intent["unitName"], "capacity": reserve,
+            **({"adaptiveSamples": adaptive_samples} if adaptive_samples is not None else {})}))
         # Any exception after the fsynced start intent is an uncertain dispatch.
         try:
             result = native(intent["serviceArgv"])
@@ -884,6 +1085,12 @@ def run_child(op, intent):
     try:
         reserve_heavy_workload(op, "build", preflight.digest(op / "intent.json"))
         observe_builder(intent["config"]["builder"], cache)
+        if "adaptiveSelection" in intent["config"]:
+            selection = intent["config"]["adaptiveSelection"]
+            samples = collect_adaptive_samples(
+                op, cache, selection["gatewayContainerId"])
+            need(profile_fits(selection["profile"], samples),
+                 "build.adaptive.service_no_fit")
         record_resources(op, "start", capacity(op, intent["config"]["limits"], cache,
                                                 starting=True),
                          builder=intent["config"]["builder"])
@@ -1131,12 +1338,24 @@ def main():
     prep = sub.add_parser("prepare")
     for name in ("config", "private-root", "manifest", "inventory", "source-dir", "tooling-dir"):
         prep.add_argument("--" + name, required=True, type=Path)
+    prep.add_argument("--adaptive-gateway-id")
     for name in ("start", "status", "cancel", "_serve"):
         sub.add_parser(name).add_argument("operation", type=Path)
     args = parser.parse_args()
     try:
         if args.command == "prepare":
-            print(prepare(args.private_root, release.read_json(args.config), args.manifest,
+            config = release.read_json(args.config)
+            if args.adaptive_gateway_id is not None:
+                validate_config(config)
+                samples = collect_adaptive_samples(
+                    args.private_root.parent, config.get("cache"),
+                    args.adaptive_gateway_id)
+                config = bind_adaptive_selection(config, samples)
+                if config is None:
+                    print(json.dumps({"status": "no_fit", "operationCreated": False,
+                                      "samples": samples}, sort_keys=True))
+                    return 2
+            print(prepare(args.private_root, config, args.manifest,
                           args.inventory, args.source_dir, args.tooling_dir))
             return 0
         if args.command == "_serve":
