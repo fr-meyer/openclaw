@@ -858,6 +858,14 @@ start. The build worker has no Docker byte-rate I/O caps in this qualification;
 the separate future 16 GiB Doctor rehearsal profile explicitly uses
 320 MiB/s read and 128 MiB/s write and must verify effective limits before
 its own launch.
+If a pre-dispatch validation refuses before `start-intent.json` exists, keep
+that prepared operation and its transition receipt unchanged. After publishing
+and preparing corrected exact tooling, use `gcp_builder_recovery.py --prepared
+OLD_PREPARATION NEW_PREPARATION` to move only its builder lease. This checks
+both operations were never dispatched, binds the original transition receipt,
+and atomically records the new lease and handoff. It does not restart the
+worker, submit a solve or repeat the Docker resource update. The corrected
+successor still needs fresh admission and effective cgroup checks at start.
 The heavy-workload slot advances only to that exact successor. Start the
 retained builder after the recovery receipt is durable, then run the normal
 successor `gcp_build.py start` with a fresh capacity check. A changed worker,

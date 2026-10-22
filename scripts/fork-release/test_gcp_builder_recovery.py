@@ -265,6 +265,57 @@ class BuilderRecoveryTest(unittest.TestCase):
             with self.assertRaisesRegex(release.Refusal, "resource_transition.unreviewed"):
                 subject.recover(self.old, self.new)
 
+    def test_prepared_handoff_preserves_transition_without_dispatch(self):
+        before, after = self.qualification_resources()
+        third = self.root / ("3" * 32)
+        third.mkdir(mode=0o700)
+        (third / "supervisor").mkdir(mode=0o700)
+        build.write_once(third / "supervisor/gcp_build.py", Path(build.__file__).read_bytes())
+        build.write_once(third / "intent.json", build.encode(self.target))
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(subject, "stopped_resources", side_effect=[before, after]):
+            subject.recover(self.old, self.new)
+        first = subject.transfer_prepared(self.new, third)
+        self.assertEqual(first, subject.transfer_prepared(self.new, third))
+        self.assertEqual(build.read_private(self.lease)["operationId"], third.name)
+        build.verify_builder_handoff(third, self.target)
+        self.assertFalse((third / "start-intent.json").exists())
+        transition_path = self.new / "resource-transition.json"
+        original_transition = transition_path.read_bytes()
+        transition_path.write_text("{}\n")
+        with self.assertRaisesRegex(release.Refusal, "prepared_origin_changed"):
+            build.verify_builder_handoff(third, self.target)
+        transition_path.write_bytes(original_transition)
+        (self.new / "start-intent.json").write_text("{}\n")
+        with self.assertRaisesRegex(release.Refusal, "prepared_origin_changed"):
+            build.verify_builder_handoff(third, self.target)
+
+    def test_prepared_handoff_refuses_dispatched_origin(self):
+        before, after = self.qualification_resources()
+        third = self.root / ("3" * 32)
+        third.mkdir(mode=0o700)
+        (third / "supervisor").mkdir(mode=0o700)
+        build.write_once(third / "supervisor/gcp_build.py", Path(build.__file__).read_bytes())
+        build.write_once(third / "intent.json", build.encode(self.target))
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(subject, "stopped_resources", side_effect=[before, after]):
+            subject.recover(self.old, self.new)
+        (self.new / "start-intent.json").write_text("{}\n")
+        with self.assertRaisesRegex(release.Refusal, "origin_or_target_dispatched"):
+            subject.transfer_prepared(self.new, third)
+        self.assertEqual(build.read_private(self.lease)["operationId"], self.new.name)
+        (self.new / "start-intent.json").unlink()
+        (third / "completed.json").write_text("{}\n")
+        with self.assertRaisesRegex(release.Refusal, "origin_or_target_dispatched"):
+            subject.transfer_prepared(self.new, third)
+        self.assertEqual(build.read_private(self.lease)["operationId"], self.new.name)
+        (third / "completed.json").unlink()
+        build.write_once(third / "builder-handoff.json", b"{}\n")
+        with self.assertRaisesRegex(release.Refusal, "prepared.receipt.changed"):
+            subject.transfer_prepared(self.new, third)
+        self.assertEqual(build.read_private(self.lease)["operationId"], self.new.name)
+        self.assertFalse((third / "builder-handoff-intent.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

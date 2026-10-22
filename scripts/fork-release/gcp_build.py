@@ -994,7 +994,8 @@ def verify_builder_cgroup_limits(builder):
          "build.qualification.cgroup_identity")
     hierarchy = []
     for ancestor in (path, *path.parents):
-        if ancestor == root.parent:
+        # The cgroup v2 root has no resource-control files of its own.
+        if ancestor == root:
             break
         memory = cgroup_text(ancestor / "memory.max").strip()
         swap = cgroup_text(ancestor / "memory.swap.max").strip()
@@ -1002,8 +1003,6 @@ def verify_builder_cgroup_limits(builder):
         need(len(cpu) == 2, "build.qualification.cpu_limit")
         hierarchy.append({"path": str(ancestor), "memoryMax": memory,
                           "memorySwapMax": swap, "cpuMax": " ".join(cpu)})
-        if ancestor == root:
-            break
     finite_memory = [int(item["memoryMax"]) for item in hierarchy
                      if item["memoryMax"] != "max"]
     finite_swap = [int(item["memorySwapMax"]) for item in hierarchy
@@ -1141,6 +1140,42 @@ def verify_builder_handoff(op, intent):
                  preflight.digest(op / "resource-transition.json") ==
                  proposed["resourceTransitionSha256"],
                  "build.handoff.resource_transition_changed")
+    elif proposed.get("schema") == "openclaw.gcp-builder-prepared-handoff.v1":
+        fields(proposed, """schema originOperationId targetOperationId
+               originIntentSha256 targetIntentSha256 originHandoffSha256
+               originLeaseSha256""", "build.handoff.intent.fields")
+        need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), proposed["originOperationId"]),
+             "build.handoff.prepared_origin_id")
+        old = op.parent / proposed["originOperationId"]
+        origin = read_private(old / "intent.json")
+        old_proposal = read_private(old / "builder-handoff-intent.json")
+        old_receipt = read_private(old / "builder-handoff.json")
+        transition = read_private(old / "resource-transition.json")
+        need(all(type(item) is dict for item in
+                 (origin, old_proposal, old_receipt, transition)),
+             "build.handoff.prepared_origin_fields")
+        old_lease = {"operationId": old.name,
+                     "intentSha256": preflight.digest(old / "intent.json")}
+        need(not (old / "start-intent.json").exists() and
+             proposed["originIntentSha256"] == old_lease["intentSha256"] and
+             proposed["originLeaseSha256"] == release.sha256(encode(old_lease)) and
+             proposed["originHandoffSha256"] ==
+             preflight.digest(old / "builder-handoff.json") and
+             old_proposal.get("schema") == "openclaw.gcp-builder-recovery.v1" and
+             old_proposal.get("resourceTransitionSha256") ==
+             preflight.digest(old / "resource-transition.json") and
+             old_proposal.get("builderStoppedSha256") ==
+             preflight.digest(old / "builder-stopped.json") and
+             old_receipt == {**old_proposal,
+                             "targetLeaseSha256": release.sha256(encode(old_lease))} and
+             transition.get("targetBuilderSha256") ==
+             transition.get("observedBuilderSha256") ==
+             release.sha256(encode(intent["config"]["builder"])) and
+             transition.get("targetIntentSha256") == old_lease["intentSha256"] and
+             all(origin["config"].get(key) == intent["config"].get(key)
+                 for key in ("sourceSha", "sourceTree", "manifestSha256",
+                             "inventorySha256", "builder", "cache")),
+             "build.handoff.prepared_origin_changed")
     else:
         need(False, "build.handoff.intent.schema")
     need(proposed["targetOperationId"] == op.name and

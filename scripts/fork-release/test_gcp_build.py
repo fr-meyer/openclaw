@@ -383,7 +383,8 @@ class BuildTests(unittest.TestCase):
             str(path.parent / "memory.swap.max"): "0\n",
             str(path.parent / "cpu.max"): "400000 100000\n",
         }
-        for ancestor in (root / "system.slice", root):
+        # cgroup v2 roots omit controller files; only descendants have them.
+        for ancestor in (root / "system.slice",):
             data[str(ancestor / "memory.max")] = "max\n"
             data[str(ancestor / "memory.swap.max")] = "max\n"
             data[str(ancestor / "cpu.max")] = "max 100000\n"

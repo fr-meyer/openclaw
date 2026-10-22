@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Transfer a failed build's builder lease only after its worker is stopped.
+"""Transfer a failed build's builder lease or a never-dispatched preparation.
 
 Stopping the exact retained BuildKit container settles a solve whose client
 exited without proof of remote termination. This never stops a container,
 starts a build, or changes the cache. The operator owns the stop and its cost.
+The --prepared path only advances a lease from an operation with no start
+intent, preserving its exact stopped-worker transition evidence.
 """
 
 import argparse
@@ -259,13 +261,82 @@ def recover(old_path, new_path):
         return receipt
 
 
+def transfer_prepared(old_path, new_path):
+    """Move a lease from a never-dispatched preparation to corrected tooling."""
+    old, origin = build.load_intent(old_path)
+    new, target = build.load_intent(new_path)
+    release.need(old != new and old.parent == new.parent == build.PRIVATE_ROOT.resolve(),
+                 "prepared.operations.invalid")
+    with handoff.handoff_lock(old.parent), build.operation_lock(old), build.operation_lock(new):
+        release.need(all(not (operation / name).exists()
+                         for operation in (old, new)
+                         for name in ("start-intent.json", "started.json",
+                                      "execution.json", "completed.json")),
+                     "prepared.origin_or_target_dispatched")
+        release.need(build.private_bytes(new / "supervisor/gcp_build.py") ==
+                     Path(build.__file__).read_bytes(), "prepared.target.tooling_changed")
+        for key in ("sourceSha", "sourceTree", "manifestSha256", "inventorySha256",
+                    "builder", "cache"):
+            release.need(origin["config"].get(key) == target["config"].get(key),
+                         "prepared.binding_changed")
+        origin_sha = build.preflight.digest(old / "intent.json")
+        target_sha = build.preflight.digest(new / "intent.json")
+        old_value = {"operationId": old.name, "intentSha256": origin_sha}
+        new_value = {"operationId": new.name, "intentSha256": target_sha}
+        lease = old.parent / f"builder-{target['config']['builder']['containerId']}.json"
+        current = build.private_bytes(lease)
+        release.need(current in (build.encode(old_value), build.encode(new_value)),
+                     "prepared.lease.other_owner")
+        if current == build.encode(old_value):
+            build.verify_builder_handoff(old, origin)
+        old_handoff = build.read_private(old / "builder-handoff.json")
+        release.need(old_handoff["schema"] == "openclaw.gcp-builder-recovery.v1" and
+                     old_handoff.get("resourceTransitionSha256") is not None and
+                     old_handoff["targetOperationId"] == old.name,
+                     "prepared.origin.transition_unproven")
+        intent = {"schema": "openclaw.gcp-builder-prepared-handoff.v1",
+                  "originOperationId": old.name, "targetOperationId": new.name,
+                  "originIntentSha256": origin_sha, "targetIntentSha256": target_sha,
+                  "originHandoffSha256": build.preflight.digest(old / "builder-handoff.json"),
+                  "originLeaseSha256": digest(build.encode(old_value))}
+        receipt = {**intent, "targetLeaseSha256": digest(build.encode(new_value))}
+        receipt_path = new / "builder-handoff.json"
+        if receipt_path.exists():
+            release.need(build.private_bytes(receipt_path) == build.encode(receipt),
+                         "prepared.receipt.changed")
+            handoff.sync_existing(receipt_path)
+        path = new / "builder-handoff-intent.json"
+        try:
+            build.write_once(path, build.encode(intent))
+        except FileExistsError:
+            release.need(build.read_private(path) == intent, "prepared.intent.changed")
+            handoff.sync_existing(path)
+        if current == build.encode(old_value):
+            handoff.replace_lease(lease, build.encode(new_value))
+        else:
+            handoff.sync_existing(lease)
+        release.need(build.private_bytes(lease) == build.encode(new_value),
+                     "prepared.lease.changed")
+        try:
+            build.write_once(receipt_path, build.encode(receipt))
+        except FileExistsError:
+            release.need(build.read_private(receipt_path) == receipt,
+                         "prepared.receipt.changed")
+            handoff.sync_existing(receipt_path)
+        build.verify_builder_handoff(new, target)
+        return receipt
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--prepared", action="store_true",
+                        help="transfer an exact never-dispatched build preparation")
     parser.add_argument("origin", type=Path)
     parser.add_argument("target", type=Path)
     args = parser.parse_args()
     try:
-        print(json.dumps(recover(args.origin, args.target), sort_keys=True))
+        action = transfer_prepared if args.prepared else recover
+        print(json.dumps(action(args.origin, args.target), sort_keys=True))
         return 0
     except (OSError, ValueError, KeyError, release.Refusal) as error:
         print(f"GCP builder recovery refused: {error}", file=sys.stderr)
