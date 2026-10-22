@@ -40,6 +40,7 @@ SYSTEMCTL = ("/usr/bin/sudo", "-n", "/usr/bin/systemctl")
 CHOWN = ("/usr/bin/sudo", "-n", "/usr/bin/chown")
 ENDPOINT = "unix:///var/run/docker.sock"
 PRIVATE_ROOT = Path("/var/tmp/openclaw-fork-gcp-build")
+CGROUP_SLICE = Path("/sys/fs/cgroup/system.slice")
 HEAVY_ROOT = Path("/var/tmp/openclaw-fork-heavy-workload")
 TRIAL_ROOT = Path("/var/tmp/openclaw-fork-snapshot-trial")
 CLIENT_TERM_GRACE_SECONDS = 5
@@ -55,6 +56,7 @@ SAFE_ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bi
 REVIEWED_DOCKERFILE_SHA256 = "ad0d820a72747bd48c528ea5cad3df03bf213049afc5fc31f83904d98b7b917e"
 CONFIG_FIELDS = """schema operationId attempt projectNumber instanceId toolingSha
 sourceSha sourceTree manifestSha256 inventorySha256 builtAt builder limits dockerExport"""
+BUILD_TUNING_FIELDS = "tsdownMaxOldSpaceMb"
 BUILDER_FIELDS = """name node endpoint containerId imageId memoryBytes memorySwapBytes
 cpuPeriod cpuQuota cpuShares nanoCpus pidsLimit readBps writeBps"""
 LIMIT_FIELDS = """timeoutSeconds clientMemoryBytes clientCpuQuotaPercent clientTasksMax
@@ -145,6 +147,7 @@ def outside(left, right):
 def validate_config(config):
     # Older retained operations omit cache and keep their root-backed contract.
     optional = " cache" if type(config) is dict and "cache" in config else ""
+    optional += " buildTuning" if type(config) is dict and "buildTuning" in config else ""
     fields(config, CONFIG_FIELDS + optional, "build.config.fields")
     need(config["schema"] == "openclaw.fork-gcp-build-config.v1", "build.config.schema")
     need(release.matches(re.compile(r"[0-9a-f]{32}\Z"), config["operationId"]),
@@ -178,13 +181,33 @@ def validate_config(config):
          (type(builder["pidsLimit"]) is int and builder["pidsLimit"] > 0), "build.builder.pids")
     need(builder["readBps"] is None and builder["writeBps"] is None, "build.builder.io_contract")
     limits = config["limits"]
-    fields(limits, LIMIT_FIELDS, "build.limits.fields")
+    start_field = " minStartMemoryAvailableBytes" if type(limits) is dict and \
+        "minStartMemoryAvailableBytes" in limits else ""
+    pressure_field = " maxFullMemoryPressureAvg10" if type(limits) is dict and \
+        "maxFullMemoryPressureAvg10" in limits else ""
+    fields(limits, LIMIT_FIELDS + start_field + pressure_field, "build.limits.fields")
     integer(limits["timeoutSeconds"], 60, 86400, "build.timeout")
     integer(limits["clientMemoryBytes"], 64 << 20, 2 << 30, "build.client_memory")
     integer(limits["clientCpuQuotaPercent"], 1, 100, "build.client_cpu")
     integer(limits["clientTasksMax"], 8, 128, "build.client_tasks")
     for key in ("minFreeBytes", "minMemoryAvailableBytes"):
         integer(limits[key], 1, 1 << 50, "build.reserve")
+    if start_field:
+        integer(limits["minStartMemoryAvailableBytes"],
+                limits["minMemoryAvailableBytes"], 1 << 50, "build.start_reserve")
+    if pressure_field:
+        value = limits["maxFullMemoryPressureAvg10"]
+        need(type(value) in (int, float) and 0.1 <= value <= 100,
+             "build.pressure_limit")
+    if "buildTuning" in config:
+        tuning = config["buildTuning"]
+        fields(tuning, BUILD_TUNING_FIELDS, "build.tuning.fields")
+        # The reviewed source measures a 4,352 MiB minimum heap and defaults to
+        # 12 GiB. A lower unproven cap and an unbounded override are both refused.
+        integer(tuning["tsdownMaxOldSpaceMb"], 4352, 12288,
+                "build.tuning.tsdown_heap")
+        need((tuning["tsdownMaxOldSpaceMb"] + 768) << 20 < builder["memoryBytes"],
+             "build.tuning.builder_memory")
     cache = config.get("cache")
     if cache is not None:
         fields(cache, CACHE_FIELDS, "build.cache.fields")
@@ -260,6 +283,9 @@ def build_argv(op, config, version):
                "--provenance", "mode=max", "--sbom", "true",
                "--output", f"type=oci,dest={op / 'oci'},tar=false,compression=gzip,compression-level=1",
                "--tag", f"openclaw-v105-prep:{sha[:12]}"]
+    if "buildTuning" in config:
+        command.extend(["--build-arg", "OPENCLAW_DOCKER_BUILD_TSDOWN_MAX_OLD_SPACE_MB="
+                        f"{config['buildTuning']['tsdownMaxOldSpaceMb']}"])
     # BuildKit's default raw-SHA route fetches tags and can unshallow history.
     # The native commit-fetch route is shallow, while checksum still verifies
     # the exact requested commit. Keep the full ref for provenance capture.
@@ -606,6 +632,17 @@ def cache_sample(cache):
             "cacheFilesystemDevice": after.st_dev}
 
 
+def memory_pressure_sample():
+    pressure = {}
+    for line in Path("/proc/pressure/memory").read_text().splitlines():
+        name, _, rest = line.partition(" ")
+        if name in ("some", "full"):
+            values = dict(part.split("=", 1) for part in rest.split())
+            pressure[name] = {key: float(values[key]) for key in ("avg10", "avg60")}
+    need(set(pressure) == {"some", "full"}, "build.capacity.pressure_unavailable")
+    return pressure
+
+
 def resource_sample(op, cache=None):
     memory = {}
     for line in Path("/proc/meminfo").read_text().splitlines():
@@ -614,28 +651,77 @@ def resource_sample(op, cache=None):
             memory[key] = int(value.split()[0]) * 1024
     need("MemAvailable" in memory, "build.capacity.memory_unavailable")
     free = shutil.disk_usage(op).free
+    pressure = {}
+    try:
+        pressure["memoryPressure"] = memory_pressure_sample()
+    except (OSError, ValueError, KeyError, release.Refusal) as error:
+        # Retained configurations without a PSI limit keep their original
+        # admission contract. The configured pressure gate below still refuses.
+        pressure["memoryPressureObservationError"] = str(error)
     return {"observedAt": now(), "freeBytes": free,
             "memoryAvailableBytes": memory["MemAvailable"],
+            **pressure,
             **(cache_sample(cache) if cache is not None else {})}
 
 
-def capacity(op, limits, cache=None):
+def capacity(op, limits, cache=None, *, starting=False):
     observed = resource_sample(op, cache)
     need(observed["freeBytes"] >= limits["minFreeBytes"], "build.capacity.disk_reserve")
     need(observed["memoryAvailableBytes"] >= limits["minMemoryAvailableBytes"],
          "build.capacity.memory_reserve")
+    if starting and "minStartMemoryAvailableBytes" in limits:
+        need(observed["memoryAvailableBytes"] >= limits["minStartMemoryAvailableBytes"],
+             "build.capacity.start_memory_reserve")
+    if "maxFullMemoryPressureAvg10" in limits:
+        need("memoryPressure" in observed, "build.capacity.pressure_unavailable")
+        need(observed["memoryPressure"]["full"]["avg10"] <=
+             limits["maxFullMemoryPressureAvg10"], "build.capacity.memory_pressure")
     if cache is not None:
         need(observed["cacheFreeBytes"] >= cache["minFreeBytes"], "build.capacity.cache_reserve")
     return observed
 
 
-def record_resources(op, phase, observed=None, cache=None):
-    """Small host samples, never builder peak usage or evidence of phase progress."""
+def cgroup_text(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor) as stream:
+        need(stat.S_ISREG(os.fstat(stream.fileno()).st_mode),
+             "build.telemetry.not_regular")
+        return stream.read(16384)
+
+
+def builder_sample(builder):
+    """Read the exact pinned worker cgroup, including its persistent memory peak."""
+    path = CGROUP_SLICE / f"docker-{builder['containerId']}.scope"
+    need(path.is_dir() and not path.is_symlink(), "build.telemetry.cgroup_unavailable")
+    memory = dict(line.split(None, 1) for line in
+                  cgroup_text(path / "memory.stat").splitlines())
+    cpu = dict(line.split(None, 1) for line in cgroup_text(path / "cpu.stat").splitlines())
+    events = dict(line.split(None, 1) for line in
+                  cgroup_text(path / "memory.events").splitlines())
+    return {"containerId": builder["containerId"],
+            "memoryCurrentBytes": int(cgroup_text(path / "memory.current")),
+            "memoryPeakBytes": int(cgroup_text(path / "memory.peak")),
+            "anonBytes": int(memory["anon"]), "fileBytes": int(memory["file"]),
+            "slabBytes": int(memory["slab"]),
+            "cpuUsageUsec": int(cpu["usage_usec"]),
+            "cpuThrottledUsec": int(cpu["throttled_usec"]),
+            "cpuPeriods": int(cpu["nr_periods"]),
+            "cpuThrottledPeriods": int(cpu["nr_throttled"]),
+            "oom": int(events["oom"]), "oomKill": int(events["oom_kill"])}
+
+
+def record_resources(op, phase, observed=None, cache=None, builder=None):
+    """Small host and pinned-builder samples; neither proves phase progress."""
     record = {"observedAt": now(), "scope": "host", "phase": phase}
     try:
         record["resources"] = observed if observed is not None else resource_sample(op, cache)
     except (OSError, ValueError, release.Refusal) as error:
         record["observationError"] = str(error)
+    if builder is not None:
+        try:
+            record["builder"] = builder_sample(builder)
+        except (OSError, ValueError, KeyError, release.Refusal) as error:
+            record["builderObservationError"] = str(error)
     try:
         descriptor = os.open(op / "resources.jsonl", os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
         with os.fdopen(descriptor, "ab", buffering=0) as stream:
@@ -750,7 +836,7 @@ def start(op):
              {name: private_bytes(op / "supervisor" / name) for name in HELPERS},
              "build.tooling.changed")
         observe_builder(config["builder"], config.get("cache"))
-        reserve = capacity(op, config["limits"], config.get("cache"))
+        reserve = capacity(op, config["limits"], config.get("cache"), starting=True)
         metadata_handoff_capability(op, intent)
         reserve_heavy_workload(op, "build", preflight.digest(op / "intent.json"),
                                reserve_resource=lambda: reserve_builder(op, intent))
@@ -798,7 +884,9 @@ def run_child(op, intent):
     try:
         reserve_heavy_workload(op, "build", preflight.digest(op / "intent.json"))
         observe_builder(intent["config"]["builder"], cache)
-        record_resources(op, "start", capacity(op, intent["config"]["limits"], cache))
+        record_resources(op, "start", capacity(op, intent["config"]["limits"], cache,
+                                                starting=True),
+                         builder=intent["config"]["builder"])
         need(not signal_received, "build.cancelled_before_launch")
         with open(op / "build.log", "xb", buffering=0) as log:
             child = subprocess.Popen(intent["buildArgv"], cwd=op, env=SAFE_ENV,
@@ -822,11 +910,13 @@ def run_child(op, intent):
                         try:
                             observed = capacity(op, intent["config"]["limits"], cache)
                             if time.monotonic() >= next_sample:
-                                record_resources(op, "periodic", observed)
+                                record_resources(op, "periodic", observed,
+                                                 builder=intent["config"]["builder"])
                                 next_sample = time.monotonic() + 30
                         except (OSError, ValueError, release.Refusal) as error:
                             reason = str(error)
-                            record_resources(op, "reserve-failed", cache=cache)
+                            record_resources(op, "reserve-failed", cache=cache,
+                                             builder=intent["config"]["builder"])
                             child.terminate()
                             stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
                     if signal_received and stop_at is None:
@@ -900,7 +990,8 @@ def run_child(op, intent):
                 **started, "completedAt": now(), "exitCode": exit_code,
                 "nativeExitCode": native_exit, "reason": reason,
                 "remoteSolveTerminationObserved": False}))
-            record_resources(op, "end", cache=cache)
+            record_resources(op, "end", cache=cache,
+                             builder=intent["config"]["builder"])
         finally:
             try:
                 for signum, handler in previous.items():

@@ -208,6 +208,103 @@ class BuildTests(unittest.TestCase):
         with self.assertRaisesRegex(release.Refusal, "export.unqualified_transport"):
             build.build_argv(op, changed, "2026.10.5")
 
+    def test_bounded_docker_compiler_heap_is_exactly_bound_and_refuses_unsafe_values(self):
+        tuned = copy.deepcopy(self.config)
+        tuned["buildTuning"] = {"tsdownMaxOldSpaceMb": 6144}
+        op = self.prepare(tuned)
+        command = build.load_intent(op)[1]["buildArgv"]
+        self.assertEqual(command.count("OPENCLAW_DOCKER_BUILD_TSDOWN_MAX_OLD_SPACE_MB=6144"), 1)
+        self.assertEqual(command[-1].split("#")[-1], self.config["sourceSha"])
+        for value in (True, 4351, 12289, "6144"):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                    release.Refusal, "build.tuning.tsdown_heap"):
+                build.validate_config({**tuned, "buildTuning": {"tsdownMaxOldSpaceMb": value}})
+        with self.assertRaisesRegex(release.Refusal, "build.tuning.fields"):
+            build.validate_config({**tuned, "buildTuning": {"tsdownMaxOldSpaceMb": 6144,
+                                                            "unreviewed": True}})
+        with self.assertRaisesRegex(release.Refusal, "build.tuning.fields"):
+            build.validate_config({**tuned, "buildTuning": None})
+
+    def test_start_memory_reserve_is_stronger_than_continuous_reserve(self):
+        limits = {**self.config["limits"], "minMemoryAvailableBytes": 10 << 30,
+                  "minStartMemoryAvailableBytes": 22 << 30}
+        build.validate_config({**self.config, "limits": limits})
+        sample = {"freeBytes": 30 << 30, "memoryAvailableBytes": 20 << 30}
+        with patch.object(build, "resource_sample", return_value=sample):
+            self.assertEqual(self.capacity_impl(self.root, limits), sample)
+            with self.assertRaisesRegex(release.Refusal, "start_memory_reserve"):
+                self.capacity_impl(self.root, limits, starting=True)
+        with self.assertRaisesRegex(release.Refusal, "build.start_reserve"):
+            build.validate_config({**self.config, "limits": {**limits,
+                                   "minStartMemoryAvailableBytes": 9 << 30}})
+
+    def test_memory_full_stall_limit_cancels_before_lowering_host_reserve(self):
+        limits = {**self.config["limits"], "minMemoryAvailableBytes": 10 << 30,
+                  "maxFullMemoryPressureAvg10": 5.0}
+        build.validate_config({**self.config, "limits": limits})
+        sample = {"freeBytes": 30 << 30, "memoryAvailableBytes": 15 << 30,
+                  "memoryPressure": {"full": {"avg10": 4.9}}}
+        with patch.object(build, "resource_sample", return_value=sample):
+            self.assertEqual(self.capacity_impl(self.root, limits), sample)
+            sample["memoryPressure"]["full"]["avg10"] = 5.1
+            with self.assertRaisesRegex(release.Refusal, "memory_pressure"):
+                self.capacity_impl(self.root, limits)
+        for value in (True, -1, 101, "5"):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                    release.Refusal, "build.pressure_limit"):
+                build.validate_config({**self.config, "limits": {**limits,
+                                       "maxFullMemoryPressureAvg10": value}})
+
+    def test_host_memory_pressure_parser_requires_both_kernel_rows(self):
+        pressure = ("some avg10=2.25 avg60=1.10 avg300=0.80 total=100\n"
+                    "full avg10=0.75 avg60=0.25 avg300=0.10 total=50\n")
+        with patch.object(Path, "read_text", return_value=pressure):
+            self.assertEqual(build.memory_pressure_sample()["full"],
+                             {"avg10": 0.75, "avg60": 0.25})
+        with patch.object(Path, "read_text", return_value=pressure.splitlines()[0]):
+            with self.assertRaisesRegex(release.Refusal, "pressure_unavailable"):
+                build.memory_pressure_sample()
+
+    def test_missing_pressure_is_diagnostic_for_legacy_config_and_refusal_for_gated_build(self):
+        # Retained v1 operations did not request a pressure gate. Their resource
+        # admission must not change merely because diagnostics were added.
+        build.validate_config(self.config)
+        for failure in (OSError("PSI missing"), KeyError("avg10")):
+            with self.subTest(failure=failure), patch.object(
+                    build, "resource_sample", self.resource_sample_impl), patch.object(
+                    build, "memory_pressure_sample", side_effect=failure), patch.object(
+                    Path, "read_text", return_value=f"MemAvailable: {(16 << 30) // 1024} kB\n"):
+                sample = self.resource_sample_impl(self.root)
+                self.assertEqual(sample["memoryPressureObservationError"], str(failure))
+                accepted = self.capacity_impl(self.root, self.config["limits"])
+                self.assertEqual(accepted["memoryPressureObservationError"], str(failure))
+                gated = {**self.config["limits"], "maxFullMemoryPressureAvg10": 5.0}
+                with self.assertRaisesRegex(release.Refusal, "pressure_unavailable"):
+                    self.capacity_impl(self.root, gated)
+
+    def test_pinned_builder_cgroup_telemetry_records_peak_and_rejects_symlink(self):
+        slice_root = self.root / "system.slice"
+        slice_root.mkdir()
+        group = slice_root / f"docker-{self.config['builder']['containerId']}.scope"
+        group.mkdir()
+        contents = {"memory.current": "6442450944\n", "memory.peak": "8589934592\n",
+                    "memory.stat": "anon 4294967296\nfile 1610612736\nslab 536870912\n",
+                    "cpu.stat": "usage_usec 42000000\nnr_periods 100\n"
+                                "nr_throttled 12\nthrottled_usec 3000000\n",
+                    "memory.events": "oom 0\noom_kill 0\n"}
+        for name, value in contents.items():
+            (group / name).write_text(value)
+        with patch.object(build, "CGROUP_SLICE", slice_root):
+            sample = build.builder_sample(self.config["builder"])
+            self.assertEqual(sample["memoryPeakBytes"], 8589934592)
+            self.assertEqual(sample["anonBytes"], 4294967296)
+            self.assertEqual(sample["cpuThrottledUsec"], 3000000)
+            self.assertEqual(sample["oomKill"], 0)
+            group.rename(slice_root / "real")
+            group.symlink_to(slice_root / "real", target_is_directory=True)
+            with self.assertRaisesRegex(release.Refusal, "cgroup_unavailable"):
+                build.builder_sample(self.config["builder"])
+
     def test_changed_dockerfile_policy_refuses_preparation_and_rechecks_before_dispatch(self):
         native_git = build.pr.git
         changed_bytes = self.dockerfile
@@ -393,7 +490,7 @@ class BuildTests(unittest.TestCase):
         _, intent = build.load_intent(self.op)
         output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
 
-        def capacity_after_parent_ready(*_args):
+        def capacity_after_parent_ready(*_args, **_kwargs):
             if parent_behavior != "exit-zero" and ready.exists():
                 raise release.Refusal("build.capacity.memory_reserve")
             return {"freeBytes": 1 << 40, "memoryAvailableBytes": 1 << 40}
@@ -501,9 +598,9 @@ class BuildTests(unittest.TestCase):
         record_resources = build.record_resources
         persisted = []
 
-        def broken_diagnostic_sink(op, phase, observed=None, cache=None):
+        def broken_diagnostic_sink(op, phase, observed=None, cache=None, builder=None):
             with patch.object(build.os, failing_operation, side_effect=OSError("diagnostic sink failed")):
-                persisted.append(record_resources(op, phase, observed, cache))
+                persisted.append(record_resources(op, phase, observed, cache, builder))
 
         output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
         previous_umask = os.umask(0o027)
@@ -739,6 +836,10 @@ class BuildTests(unittest.TestCase):
                                                    else "root"])
 
         with patch.object(build, "resource_sample", self.resource_sample_impl), patch.object(
+                build, "memory_pressure_sample", return_value={"some": {"avg10": 0.0,
+                                                                          "avg60": 0.0},
+                                                                      "full": {"avg10": 0.0,
+                                                                               "avg60": 0.0}}), patch.object(
                 Path, "read_text", side_effect=lambda: f"MemAvailable: {available['memory'] // 1024} kB\n"
                 ), patch.object(build.shutil, "disk_usage", side_effect=disk_usage):
             sample = self.capacity_impl(self.root, limits, cache)
