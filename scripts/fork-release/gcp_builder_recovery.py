@@ -28,6 +28,9 @@ STOP_FORMAT = ('{"Id":{{json .Id}},"Image":{{json .Image}},"State":{'
                '"Pid":{{json .State.Pid}},'
                '"FinishedAt":{{json .State.FinishedAt}}}}')
 RESOURCE_FIELDS = ("memoryBytes", "memorySwapBytes", "cpuPeriod", "cpuQuota")
+# Pinned 45fd0ef supervisor, retained solely to settle an already recorded
+# old-source -> old-source resource transition; never used to start new work.
+RETAINED_BUILD_SHA256 = "5ab0156a14bb0703f9080dd6512427d5edde8840a23b558027409d75ee2a8c0a"
 
 
 def digest(data):
@@ -66,12 +69,18 @@ def stopped_proof(builder, cache, completed_at, origin):
             "originCompletedAt": completed_at}
 
 
-def qualification_transition(origin, target):
+def qualification_transition(origin, target, *, legacy_replay=False):
     """Only the approved stopped-worker 16/18 GiB, 7 CPU -> 8/8 GiB, 4 CPU."""
     old, new = origin["config"], target["config"]
     before, after = old["builder"], new["builder"]
-    release.need(old["sourceSha"] == new["sourceSha"] ==
-                 build.QUALIFICATION_SOURCE_SHA and
+    source_pair = (old["sourceSha"], new["sourceSha"])
+    reviewed_pairs = ((build.QUALIFICATION_SOURCE_SHA, build.QUALIFICATION_SOURCE_SHA),
+                      (build.RETAINED_QUALIFICATION_SOURCE_SHA,
+                       build.QUALIFICATION_SOURCE_SHA))
+    if legacy_replay:
+        reviewed_pairs += ((build.RETAINED_QUALIFICATION_SOURCE_SHA,
+                            build.RETAINED_QUALIFICATION_SOURCE_SHA),)
+    release.need(source_pair in reviewed_pairs and
                  {k: v for k, v in before.items() if k not in RESOURCE_FIELDS} ==
                  {k: v for k, v in after.items() if k not in RESOURCE_FIELDS} and
                  {k: before[k] for k in RESOURCE_FIELDS} == {
@@ -107,9 +116,9 @@ def stopped_resources(builder):
     return observed
 
 
-def transition_resources(old, new, origin, target, stopped):
+def transition_resources(old, new, origin, target, stopped, *, legacy_replay=False):
     """Intent-before-Docker-update; reconcile exact target if reply was lost."""
-    qualification_transition(origin, target)
+    qualification_transition(origin, target, legacy_replay=legacy_replay)
     before, after = origin["config"]["builder"], target["config"]["builder"]
     proposal = {"schema": "openclaw.gcp-builder-resource-transition.v1",
                 "originOperationId": old.name, "targetOperationId": new.name,
@@ -179,11 +188,19 @@ def recover(old_path, new_path):
     root = old.parent
     with handoff.handoff_lock(root), build.operation_lock(new):
         release.need(not (new / "start-intent.json").exists(), "recovery.target.started")
-        release.need(build.private_bytes(new / "supervisor/gcp_build.py") ==
-                     Path(build.__file__).read_bytes(), "recovery.target.tooling_changed")
         resource_transition = origin["config"]["builder"] != target["config"]["builder"]
+        legacy_replay = (resource_transition and
+            origin["config"]["sourceSha"] == target["config"]["sourceSha"] ==
+            build.RETAINED_QUALIFICATION_SOURCE_SHA)
+        if legacy_replay:
+            release.need((new / "resource-transition-intent.json").exists(),
+                         "recovery.legacy_transition.not_recorded")
+        frozen = build.private_bytes(new / "supervisor/gcp_build.py")
+        release.need(frozen == Path(build.__file__).read_bytes() or
+                     (legacy_replay and digest(frozen) == RETAINED_BUILD_SHA256),
+                     "recovery.target.tooling_changed")
         if resource_transition:
-            qualification_transition(origin, target)
+            qualification_transition(origin, target, legacy_replay=legacy_replay)
         # A failed solve may retry the exact same source under a new operation.
         observed = build.status(old)
         completed_bytes = build.private_bytes(old / "completed.json")
@@ -227,7 +244,8 @@ def recover(old_path, new_path):
         transition = None
         if resource_transition:
             transition = transition_resources(old, new, origin, target,
-                                             json.loads(proof_bytes))
+                                             json.loads(proof_bytes),
+                                             legacy_replay=legacy_replay)
         intent = {"schema": "openclaw.gcp-builder-recovery.v1",
                   "originOperationId": old.name, "targetOperationId": new.name,
                   "originIntentSha256": origin_sha, "targetIntentSha256": target_sha,
@@ -275,10 +293,8 @@ def transfer_prepared(old_path, new_path):
                      "prepared.origin_or_target_dispatched")
         release.need(build.private_bytes(new / "supervisor/gcp_build.py") ==
                      Path(build.__file__).read_bytes(), "prepared.target.tooling_changed")
-        for key in ("sourceSha", "sourceTree", "manifestSha256", "inventorySha256",
-                    "builder", "cache"):
-            release.need(origin["config"].get(key) == target["config"].get(key),
-                         "prepared.binding_changed")
+        release.need(build.prepared_binding_compatible(origin, target),
+                     "prepared.binding_changed")
         origin_sha = build.preflight.digest(old / "intent.json")
         target_sha = build.preflight.digest(new / "intent.json")
         old_value = {"operationId": old.name, "intentSha256": origin_sha}

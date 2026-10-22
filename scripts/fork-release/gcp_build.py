@@ -46,7 +46,8 @@ DOCKER = ("/usr/bin/sudo", "-n", "/usr/bin/docker")
 PRODUCTION_GATEWAY_NAME = "openclaw-openclaw-gateway-1"
 # This profile is a single controlled qualification of the reviewed 10.5
 # source, not a general lower-memory promise for future Dockerfiles.
-QUALIFICATION_SOURCE_SHA = "1d5ab20bea4cccce0b80b60a9ba5d5020cf08038"
+QUALIFICATION_SOURCE_SHA = "84d65b446d66cd5db5b9c533bd158e9062968692"
+RETAINED_QUALIFICATION_SOURCE_SHA = "1d5ab20bea4cccce0b80b60a9ba5d5020cf08038"
 QUALIFICATION_PROFILE_ID = "qualification-8g"
 QUALIFICATION_START_BYTES = 10 << 30
 QUALIFICATION_RUNNING_FLOOR_BYTES = 2 << 30
@@ -83,7 +84,7 @@ SAFE_ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bi
 # only three pre-payload acquisition steps use default; all others use none.
 # Review the whole file, including stage/COPY/ENV/SHELL policy, before changing
 # this pin. A partial Dockerfile parser cannot establish that boundary.
-REVIEWED_DOCKERFILE_SHA256 = "ad0d820a72747bd48c528ea5cad3df03bf213049afc5fc31f83904d98b7b917e"
+REVIEWED_DOCKERFILE_SHA256 = "10e784c10a826ac74457f5bc50a76861057671871735aa96ad176d9285b984c3"
 CONFIG_FIELDS = """schema operationId attempt projectNumber instanceId toolingSha
 sourceSha sourceTree manifestSha256 inventorySha256 builtAt builder limits dockerExport"""
 BUILD_TUNING_FIELDS = "tsdownMaxOldSpaceMb"
@@ -508,7 +509,8 @@ def validate_profile(profile, config):
                          QUALIFICATION_RUNNING_FLOOR_BYTES)
         retained_floor = (profile["minMemoryAvailableBytes"] == 10 << 30 and
                           profile["minStartMemoryAvailableBytes"] >= 18 << 30)
-        need(profile["sourceSha"] == QUALIFICATION_SOURCE_SHA and
+        need(profile["sourceSha"] in (QUALIFICATION_SOURCE_SHA,
+                                      RETAINED_QUALIFICATION_SOURCE_SHA) and
              builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
              builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000 and
              profile["tsdownMaxOldSpaceMb"] == 6144 and
@@ -536,7 +538,8 @@ def profile_fits(profile, samples):
 
 def is_qualification_worker(config):
     builder = config["builder"]
-    return (config["sourceSha"] == QUALIFICATION_SOURCE_SHA and
+    return (config["sourceSha"] in (QUALIFICATION_SOURCE_SHA,
+                                    RETAINED_QUALIFICATION_SOURCE_SHA) and
             builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
             builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000)
 
@@ -597,6 +600,9 @@ def adaptive_profiles(config):
 
 def select_profile(config, samples):
     validate_adaptive_samples(samples, now())
+    if (is_qualification_worker(config) and
+            config["sourceSha"] != QUALIFICATION_SOURCE_SHA):
+        return None  # Retained source is readable for recovery, not newly selectable.
     fitting = [profile for profile in adaptive_profiles(config)
                if profile_fits(profile, samples)]
     if not fitting:
@@ -715,6 +721,9 @@ def service_argv(op, intent):
 
 def prepare(private_root, config, manifest, inventory, source, tooling):
     validate_config(config)
+    need(not is_qualification_worker(config) or
+         config["sourceSha"] == QUALIFICATION_SOURCE_SHA,
+         "build.qualification.retained_source_only")
     need(not is_qualification_worker(config) or has_current_qualification_profile(config),
          "build.qualification.current_profile_required")
     source, tooling = Path(source).resolve(), Path(tooling).resolve()
@@ -1459,6 +1468,29 @@ def reserve_builder(op, intent):
         need(read_private(lease) == value, "build.builder.reserved_by_other_operation")
 
 
+def prepared_binding_compatible(origin, target):
+    """Permit one exact retained-source cutover on an already bound 8 GiB worker.
+
+    Each operation keeps its own immutable intent, manifest and inventory. This
+    exception changes neither the builder lease nor the cache ownership.
+    """
+    old, new = origin["config"], target["config"]
+    if old.get("builder") != new.get("builder") or old.get("cache") != new.get("cache"):
+        return False
+    bindings = ("sourceSha", "sourceTree", "manifestSha256", "inventorySha256")
+    if all(old.get(key) == new.get(key) for key in bindings):
+        return True
+    return (old.get("sourceSha") == RETAINED_QUALIFICATION_SOURCE_SHA and
+            new.get("sourceSha") == QUALIFICATION_SOURCE_SHA and
+            is_qualification_worker(new) and
+            has_current_qualification_profile(new) and
+            release.matches(release.SHA, old.get("sourceTree", "")) and
+            release.matches(release.SHA, new.get("sourceTree", "")) and
+            all(release.matches(preflight.HEX256, old.get(key, "")) and
+                release.matches(preflight.HEX256, new.get(key, ""))
+                for key in ("manifestSha256", "inventorySha256")))
+
+
 def prepared_recovery_proposal(op, proposed, intent, *, max_handoffs=4):
     """Verify at most four never-dispatched handoffs back to one failed recovery."""
     need(type(max_handoffs) is int and 1 <= max_handoffs <= 4,
@@ -1492,9 +1524,7 @@ def prepared_recovery_proposal(op, proposed, intent, *, max_handoffs=4):
              old_proposal.get("targetOperationId") == old.name and
              old_receipt == {**old_proposal,
                              "targetLeaseSha256": release.sha256(encode(old_lease))} and
-             all(origin["config"].get(key) == intent["config"].get(key)
-                 for key in ("sourceSha", "sourceTree", "manifestSha256",
-                             "inventorySha256", "builder", "cache")),
+             prepared_binding_compatible(origin, intent),
              "build.handoff.prepared_origin_changed")
         if old_proposal.get("schema") == "openclaw.gcp-builder-recovery.v1":
             failed_id = old_proposal["originOperationId"]
@@ -1677,6 +1707,9 @@ def start(op):
         if (op / "start-intent.json").exists():
             return status(op)
         config = intent["config"]
+        need(not is_qualification_worker(config) or
+             config["sourceSha"] == QUALIFICATION_SOURCE_SHA,
+             "build.qualification.retained_source_only")
         need(not is_qualification_worker(config) or has_current_qualification_profile(config),
              "build.qualification.current_profile_required")
         verify_builder_handoff(op, intent)

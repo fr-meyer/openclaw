@@ -786,7 +786,7 @@ required before calling a profile qualified. A `no_fit` result calls for later
 fresh admission, not a lower ad hoc threshold or automatic retry.
 
 One controlled qualification for source
-`1d5ab20bea4cccce0b80b60a9ba5d5020cf08038` selects an 8 GiB aggregate
+`84d65b446d66cd5db5b9c533bd158e9062968692` selects an 8 GiB aggregate
 BuildKit memory and memory-plus-swap cap (no container swap), 4 CPUs, a 6 GiB
 compiler heap, at least 10 GiB MemAvailable before dispatch, and a 2 GiB
 running floor. The start budget leaves only 2 GiB nominal host availability
@@ -800,6 +800,13 @@ checks; it stops on a worker OOM or failed resource guard and has no automatic
 retry. The worker's own cgroup and its ancestors must prove the effective
 8 GiB, zero-swap, 4-CPU limits before the solve. A successful compile alone
 does not qualify export, load, image verification or sealing.
+The preceding source `1d5ab20bea4cccce0b80b60a9ba5d5020cf08038`
+remains readable only for retained operation status and recovery. It cannot
+be selected, prepared, or newly dispatched under this qualification profile.
+An exact stopped-worker recovery or never-dispatched prepared lease may move
+from that retained source to the corrected source. Both operations retain
+their own source, manifest and inventory hashes, and the original receipts
+remain unchanged; the builder and cache must still match exactly.
 
 For this exact qualification profile only, the **running** pressure guard uses
 the retained healthy stopped-builder baseline: host full-memory PSI `avg10`

@@ -383,6 +383,26 @@ class BuildTests(unittest.TestCase):
         samples[1]["memoryAvailableBytes"] = 10 << 30
         self.assertIsNone(build.select_profile(self.config, samples))
 
+    def test_retained_qualification_remains_readable_but_cannot_start_new_work(self):
+        samples = self.qualification_fixture()
+        old_source = self.config["sourceSha"]
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", old_source):
+            bound = build.bind_adaptive_selection(self.config, samples)
+            op = self.prepare(bound)
+            build.write_once(op / "start-intent.json", build.encode({
+                "intentSha256": build.preflight.digest(op / "intent.json")}))
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "f" * 40), \
+             patch.object(build, "RETAINED_QUALIFICATION_SOURCE_SHA", old_source):
+            self.assertEqual(build.load_intent(op)[1]["config"], bound)
+            with patch.object(build, "native", side_effect=self.fake_native):
+                self.assertEqual(build.start(op)["operationId"], op.name)
+            self.assertIsNone(build.select_profile(self.config, samples))
+            fresh = copy.deepcopy(bound)
+            fresh["operationId"] = "d" * 32
+            with self.assertRaisesRegex(release.Refusal, "retained_source_only"):
+                build.prepare(self.root / "private", fresh, self.manifest,
+                              self.inventory, self.source, self.tooling)
+
     def test_qualification_ten_gib_start_and_two_gib_runtime_boundaries(self):
         samples = self.qualification_fixture()
         with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]):

@@ -1,4 +1,6 @@
 from pathlib import Path
+import copy
+import hashlib
 import json
 import subprocess
 import tempfile
@@ -8,6 +10,7 @@ from unittest.mock import patch
 import gcp_build as build
 import gcp_builder_recovery as subject
 import release
+import test_gcp_build as build_fixture
 
 
 class BuilderRecoveryTest(unittest.TestCase):
@@ -265,6 +268,92 @@ class BuilderRecoveryTest(unittest.TestCase):
             with self.assertRaisesRegex(release.Refusal, "resource_transition.unreviewed"):
                 subject.recover(self.old, self.new)
 
+    def test_retained_source_can_transition_resources_only_to_corrected_source(self):
+        before, after = self.qualification_resources()
+        self.origin["config"]["sourceSha"] = "e" * 40
+        self.target["config"]["sourceSha"] = "f" * 40
+        (self.old / "intent.json").write_bytes(build.encode(self.origin))
+        (self.new / "intent.json").write_bytes(build.encode(self.target))
+        self.lease.write_bytes(build.encode({"operationId": self.old.name,
+            "intentSha256": build.preflight.digest(self.old / "intent.json")}))
+        with patch.object(build, "RETAINED_QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(build, "QUALIFICATION_SOURCE_SHA", "f" * 40), \
+             patch.object(subject, "stopped_resources", side_effect=[before, after]):
+            subject.qualification_transition(self.origin, self.target)
+            receipt = subject.recover(self.old, self.new)
+            self.assertIn("resourceTransitionSha256", receipt)
+            build.verify_builder_handoff(self.new, self.target)
+            self.origin["config"]["sourceSha"] = "a" * 40
+            with self.assertRaisesRegex(release.Refusal, "resource_transition.unreviewed"):
+                subject.qualification_transition(self.origin, self.target)
+
+    def test_legacy_resource_transition_replays_only_recorded_intent(self):
+        before, after = self.qualification_resources()
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "f" * 40), \
+             patch.object(build, "RETAINED_QUALIFICATION_SOURCE_SHA", "e" * 40):
+            with self.assertRaisesRegex(release.Refusal, "legacy_transition.not_recorded"):
+                subject.recover(self.old, self.new)
+            self.assertEqual(build.read_private(self.lease)["operationId"], self.old.name)
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(subject, "stopped_resources", side_effect=[before, after]):
+            subject.recover(self.old, self.new)
+        (self.new / "builder-handoff.json").unlink()
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "f" * 40), \
+             patch.object(build, "RETAINED_QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(subject, "stopped_resources", return_value=after):
+            receipt = subject.recover(self.old, self.new)
+            self.assertIn("resourceTransitionSha256", receipt)
+            build.verify_builder_handoff(self.new, self.target)
+            self.assertEqual(build.read_private(self.lease)["operationId"], self.new.name)
+
+    def test_prepared_retained_source_cutover_preserves_original_receipt(self):
+        _, after = self.qualification_resources()
+        self.origin["config"]["builder"] = after
+        for intent in (self.origin, self.target):
+            intent["config"].update({"sourceTree": "1" * 40,
+                                      "manifestSha256": "2" * 64,
+                                      "inventorySha256": "3" * 64})
+        (self.old / "intent.json").write_bytes(build.encode(self.origin))
+        (self.new / "intent.json").write_bytes(build.encode(self.target))
+        self.lease.write_bytes(build.encode({"operationId": self.old.name,
+            "intentSha256": build.preflight.digest(self.old / "intent.json")}))
+        subject.recover(self.old, self.new)
+        old_receipt = (self.new / "builder-handoff.json").read_bytes()
+        third = self.root / ("3" * 32)
+        third.mkdir(mode=0o700)
+        (third / "supervisor").mkdir(mode=0o700)
+        build.write_once(third / "supervisor/gcp_build.py", Path(build.__file__).read_bytes())
+        corrected = json.loads(json.dumps(self.target))
+        corrected["config"].update({"sourceSha": "f" * 40,
+                                    "sourceTree": "4" * 40,
+                                    "manifestSha256": "5" * 64,
+                                    "inventorySha256": "6" * 64,
+                                    "adaptiveSelection": {"profile": {
+                                        "id": build.QUALIFICATION_PROFILE_ID,
+                                        "minStartMemoryAvailableBytes":
+                                        build.QUALIFICATION_START_BYTES,
+                                        "minMemoryAvailableBytes":
+                                        build.QUALIFICATION_RUNNING_FLOOR_BYTES}}})
+        build.write_once(third / "intent.json", build.encode(corrected))
+        original_load = build.load_intent
+
+        def load(path):
+            if Path(path) == third:
+                return third, corrected
+            return original_load(path)
+        with patch.object(build, "RETAINED_QUALIFICATION_SOURCE_SHA", "e" * 40), \
+             patch.object(build, "QUALIFICATION_SOURCE_SHA", "f" * 40), \
+             patch.object(build, "load_intent", side_effect=load):
+            subject.transfer_prepared(self.new, third)
+            build.verify_builder_handoff(third, corrected)
+            self.assertEqual((self.new / "builder-handoff.json").read_bytes(), old_receipt)
+            self.assertEqual(build.read_private(self.lease)["operationId"], third.name)
+            corrected["config"]["builder"] = {**after, "cpuQuota": 1}
+            self.assertFalse(build.prepared_binding_compatible(self.target, corrected))
+            corrected["config"]["builder"] = after
+            corrected["config"]["sourceSha"] = "a" * 40
+            self.assertFalse(build.prepared_binding_compatible(self.target, corrected))
+
     def test_prepared_handoff_preserves_transition_without_dispatch(self):
         before, after = self.qualification_resources()
         third = self.root / ("3" * 32)
@@ -405,6 +494,79 @@ class BuilderRecoveryTest(unittest.TestCase):
                 subject.transfer_prepared(previous, op)
                 build.verify_builder_handoff(op, self.target)
                 previous = op
+
+
+class FrozenLegacyReplayTest(unittest.TestCase):
+    def test_actual_prepared_snapshot_replays_after_lease_move(self):
+        fixture = build_fixture.BuildTests(methodName="runTest")
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        samples = fixture.qualification_fixture()
+        retained_sha = fixture.config["sourceSha"]
+        before = copy.deepcopy(fixture.config["builder"])
+        before.update({"memoryBytes": 16 << 30, "memorySwapBytes": 18 << 30,
+                       "cpuQuota": 700000})
+        origin_config = copy.deepcopy(fixture.config)
+        origin_config["builder"] = before
+        target_config = None
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", retained_sha):
+            target_config = build.bind_adaptive_selection(fixture.config, samples)
+            target_config["operationId"] = "b" * 32
+            old = fixture.prepare(origin_config)
+            frozen = b"# frozen legacy gcp_build supervisor fixture\n"
+            fixture.helpers["gcp_build.py"] = frozen
+            new = fixture.prepare(target_config)
+            self.assertEqual(build.load_intent(new)[1]["config"], target_config)
+        after = target_config["builder"]
+        completed = {"completedAt": "2026-10-22T04:40:32Z", "exitCode": 130,
+                     "nativeExitCode": 130, "reason": "build.capacity.memory_reserve",
+                     "remoteSolveTerminationObserved": False,
+                     "invocationId": "f" * 32}
+        build.write_once(old / "completed.json", build.encode(completed))
+        build.write_once(old / "build.exit", b"130\n")
+        lease = old.parent / f"builder-{after['containerId']}.json"
+        old_value = {"operationId": old.name,
+                     "intentSha256": build.preflight.digest(old / "intent.json")}
+        new_value = {"operationId": new.name,
+                     "intentSha256": build.preflight.digest(new / "intent.json")}
+        build.write_once(lease, build.encode(old_value))
+        proof = {"schema": "openclaw.gcp-builder-stopped.v1",
+                 "originOperationId": old.name, "builderId": after["containerId"],
+                 "builderImageId": after["imageId"],
+                 "finishedAt": "2026-10-22T04:42:47Z",
+                 "originCompletedAt": completed["completedAt"]}
+        build.write_once(new / "builder-stopped.json", build.encode(proof))
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", retained_sha), \
+             patch.object(subject, "stopped_resources", side_effect=[before, after]), \
+             patch.object(build, "native", return_value=subprocess.CompletedProcess(
+                 [], 0, "", "")):
+            subject.transition_resources(old, new, build.load_intent(old)[1],
+                                         build.load_intent(new)[1], proof)
+        lease.write_bytes(build.encode(new_value))  # Prior process lost its final reply.
+        status = {"state": "failed", "dispatchRecorded": True,
+                  "service": {"InvocationID": "f" * 32, "MainPID": "0",
+                              "ActiveState": "failed", "SubState": "failed",
+                              "Result": "exit-code"}}
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "f" * 40), \
+             patch.object(build, "RETAINED_QUALIFICATION_SOURCE_SHA", retained_sha), \
+             patch.object(subject, "RETAINED_BUILD_SHA256", "0" * 64):
+            with self.assertRaisesRegex(release.Refusal, "target.tooling_changed"):
+                subject.recover(old, new)
+        with patch.object(build, "QUALIFICATION_SOURCE_SHA", "f" * 40), \
+             patch.object(build, "RETAINED_QUALIFICATION_SOURCE_SHA", retained_sha), \
+             patch.object(subject, "RETAINED_BUILD_SHA256",
+                          hashlib.sha256(frozen).hexdigest()), \
+             patch.object(subject, "stopped_resources", return_value=after), \
+             patch.object(build, "status", return_value=status):
+            self.assertEqual(build.load_intent(new)[1]["config"], target_config)
+            receipt = subject.recover(old, new)
+            self.assertIn("resourceTransitionSha256", receipt)
+            self.assertEqual(build.read_private(lease), new_value)
+            self.assertEqual(receipt, subject.recover(old, new))
+            with patch.object(build, "native") as native:
+                with self.assertRaisesRegex(release.Refusal, "retained_source_only"):
+                    build.start(new)
+                native.assert_not_called()
 
 
 if __name__ == "__main__":
