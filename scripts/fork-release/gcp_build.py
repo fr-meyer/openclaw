@@ -46,8 +46,9 @@ DOCKER = ("/usr/bin/sudo", "-n", "/usr/bin/docker")
 PRODUCTION_GATEWAY_NAME = "openclaw-openclaw-gateway-1"
 # This profile is a single controlled qualification of the reviewed 10.5
 # source, not a general lower-memory promise for future Dockerfiles.
-QUALIFICATION_SOURCE_SHA = "84d65b446d66cd5db5b9c533bd158e9062968692"
-RETAINED_QUALIFICATION_SOURCE_SHA = "1d5ab20bea4cccce0b80b60a9ba5d5020cf08038"
+QUALIFICATION_SOURCE_SHA = "4cf5cb7e256c67a5c98097774cad2d05cd781c01"
+RETAINED_QUALIFICATION_SOURCE_SHA = "84d65b446d66cd5db5b9c533bd158e9062968692"
+HISTORICAL_QUALIFICATION_SOURCE_SHA = "1d5ab20bea4cccce0b80b60a9ba5d5020cf08038"
 QUALIFICATION_PROFILE_ID = "qualification-8g"
 QUALIFICATION_START_BYTES = 10 << 30
 QUALIFICATION_RUNNING_FLOOR_BYTES = 2 << 30
@@ -510,7 +511,8 @@ def validate_profile(profile, config):
         retained_floor = (profile["minMemoryAvailableBytes"] == 10 << 30 and
                           profile["minStartMemoryAvailableBytes"] >= 18 << 30)
         need(profile["sourceSha"] in (QUALIFICATION_SOURCE_SHA,
-                                      RETAINED_QUALIFICATION_SOURCE_SHA) and
+                                      RETAINED_QUALIFICATION_SOURCE_SHA,
+                                      HISTORICAL_QUALIFICATION_SOURCE_SHA) and
              builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
              builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000 and
              profile["tsdownMaxOldSpaceMb"] == 6144 and
@@ -539,7 +541,8 @@ def profile_fits(profile, samples):
 def is_qualification_worker(config):
     builder = config["builder"]
     return (config["sourceSha"] in (QUALIFICATION_SOURCE_SHA,
-                                    RETAINED_QUALIFICATION_SOURCE_SHA) and
+                                    RETAINED_QUALIFICATION_SOURCE_SHA,
+                                    HISTORICAL_QUALIFICATION_SOURCE_SHA) and
             builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
             builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000)
 
@@ -1480,8 +1483,10 @@ def prepared_binding_compatible(origin, target):
     bindings = ("sourceSha", "sourceTree", "manifestSha256", "inventorySha256")
     if all(old.get(key) == new.get(key) for key in bindings):
         return True
-    return (old.get("sourceSha") == RETAINED_QUALIFICATION_SOURCE_SHA and
-            new.get("sourceSha") == QUALIFICATION_SOURCE_SHA and
+    retained_pair = (old.get("sourceSha"), new.get("sourceSha")) in (
+        (HISTORICAL_QUALIFICATION_SOURCE_SHA, RETAINED_QUALIFICATION_SOURCE_SHA),
+        (RETAINED_QUALIFICATION_SOURCE_SHA, QUALIFICATION_SOURCE_SHA))
+    return (retained_pair and
             is_qualification_worker(new) and
             has_current_qualification_profile(new) and
             release.matches(release.SHA, old.get("sourceTree", "")) and
