@@ -51,6 +51,22 @@ QUALIFIED_IMAGE = {
     "configDigest": "sha256:4e84c302e0c075e12b5a4f9b47c4ec32374b7212c3a32ba5eadadf6e16dd2ca3",
     "selectedExtensions": "codex,workboard", "bundledCodexVersion": "0.160.0",
 }
+LEASE_PATCH_IMAGE = {
+    "repository": "fr-meyer/openclaw", "version": "2026.10.5", "architecture": "amd64",
+    "sourceSha": "84d65b446d66cd5db5b9c533bd158e9062968692",
+    "sourceTree": "f52ccc16baa27b0b83cd79b03c55a5faa273d9d9",
+    "manifestSha256": "99829ec0d78f42bbb28f34a94b30f46a68124c2851cb478c379da38bd60369be",
+    "inventorySha256": "cc70ef6eaad30e47e02859923c89b76743df6a6983b1e7056ae91d72d20caa39",
+    "indexDigest": "sha256:52a587bcf2e793dcff4ca70e3fe5ca2315fa41dcda6d4840a46c64d324d56ca1",
+    "imageDigest": "sha256:334dadd8e12ef60339cee139c07dd557d30dc9f082e98e23ace517c0e2c5a423",
+    "configDigest": "sha256:68f6400206d53ce43e299d2ffc4ff11fb6ae4d312879c1e2623db848d1780d3b",
+    "selectedExtensions": "codex,workboard", "bundledCodexVersion": "0.160.0",
+}
+LEASE_PATCH_PRODUCER = "d74c72bf32a55f73b0f8d395604892b39d6073c9"
+LEASE_PATCH_RECEIPT_SHA256 = "2004c0f3d6100a5677e565d1fbb8f8c2760de70e75717340f8c82d80281f03cc"
+LEASE_PATCH_PRIOR = "25102903106f3d34082d5f703a7e758c"
+LEASE_PATCH_PRIOR_PIPELINE_SHA = "e18ff4483ddb5a6c2b07332723112ff97b6d630f"
+LEASE_PATCH_PRIOR_IMAGE_RECEIPT_SHA256 = "7c71d34de8e2f7f7bae6ad131fcc913b3160f66016e79edb6a900ecea13e2164"
 PREVIOUS_IMAGE = {
     **QUALIFIED_IMAGE,
     "sourceSha": "4bcf8902e1eeb2fa5e84d0c4bf55572382ca61e4",
@@ -84,12 +100,17 @@ IO_PROFILES = {(128 << 20, 32 << 20): "read128-write32",
                (320 << 20, 128 << 20): "read320-write128"}
 LOW_MEMORY_BYTES = 16 << 30
 LOW_MEMORY_ADMISSION_BYTES = 20 << 30
+LEASE_PATCH_ADMISSION_BYTES = 12 << 30
+LEASE_PATCH_HOST_RESERVE_BYTES = 8 << 30
+LEASE_PATCH_FULL_PSI_LIMIT = 5.0
+LEASE_PATCH_FULL_PSI_SECONDS = 5
 CONTINUATION = "openclaw.snapshot-doctor-continuation.v1"
 LEGACY_DEVICE_SHA = "a9b6526bbde15c2f9eeb3385e2fa00aa4cadfa39"
 LEGACY_CONTINUATION_SHA = "4c57b5269dc882c4c15f4b26fbdbb05a89b2df2d"
 # Read-only compatibility for these reviewed or qualified historical supervisors.
 # Digest of the sorted compact JSON helper-hash map; never execute old helpers.
 RETAINED_HELPERS = {
+    LEASE_PATCH_PRIOR_PIPELINE_SHA: "bedac832d1ab2f95b9c813e95db9e41d548c2c25f381f723699dce470281a47d",
     LEGACY_DEVICE_SHA: "872b6966330c2bb127ae007cf936bffc6e6d7704d9d0ed1a0b7be5de57e8da0d",
     "ad0c1a62300f77e616b1a373c92c967c3cba95b8": "af5caa6316e15bec85b501ff2f8839835546b1e1e5313810a314741479343156",
     LEGACY_CONTINUATION_SHA: "0de004053ed692ae2dc0cbf2d70f336dda72c02c21ba65a893ccac37a4719f97",
@@ -122,7 +143,8 @@ def verify_running_helpers(expected):
 
 
 def qualified_image(image, *, retained=False):
-    candidates = ((QUALIFIED_IMAGE, QUALIFIED_PRODUCER),)
+    candidates = ((QUALIFIED_IMAGE, QUALIFIED_PRODUCER),
+                  (LEASE_PATCH_IMAGE, LEASE_PATCH_PRODUCER))
     if retained:
         candidates += ((PREVIOUS_IMAGE, QUALIFIED_PRODUCER),
                        (HISTORICAL_IMAGE, HISTORICAL_PRODUCER))
@@ -363,6 +385,25 @@ def memory_admission(limits):
             limits["minMemoryAvailableBytes"] >= limits["memoryBytes"])
 
 
+def lease_patch_pressure_profile(plan, image, check=None):
+    """The lower host admission is specific to the sealed lease-fix image."""
+    limits = plan["limits"]
+    if limits["minMemoryAvailableBytes"] != LEASE_PATCH_ADMISSION_BYTES:
+        return False
+    selected = phase(plan)
+    need(((selected == "doctor" and continuing(check) and
+           check.get("doctorOperationId") == LEASE_PATCH_PRIOR) or
+          (selected == "startup" and not continuing(check))) and
+         limits["memoryBytes"] == LOW_MEMORY_BYTES and limits["cpus"] == 4 and
+         limits["readBps"] == 320 << 20 and limits["writeBps"] == 128 << 20 and
+         plan["imageReceiptSha256"] == LEASE_PATCH_RECEIPT_SHA256 and
+         all(image.get(key) == value for key, value in LEASE_PATCH_IMAGE.items()) and
+         image.get("producer", {}).get("kind") == "gcp" and
+         image["producer"].get("toolingSha") == LEASE_PATCH_PRODUCER,
+         "trial.host_pressure.scope")
+    return True
+
+
 def validate(plan, image, clean, check=None, *, retained=False):
     v2 = plan.get("schema") == "openclaw.snapshot-trial-plan.v2"
     exact(plan, "schema operationId toolingSha imageReceiptSha256 cleanInputSha256 limits" +
@@ -396,7 +437,9 @@ def validate(plan, image, clean, check=None, *, retained=False):
           "minDataFreeBytes timeoutSeconds", "trial.limits.fields")
     need(all(type(v) is int and v > 0 for v in limits.values()), "trial.limits.integer")
     resource_profile(limits)
-    need(memory_admission(limits) and 600 <= limits["timeoutSeconds"] <= 86400,
+    pressure_profile = lease_patch_pressure_profile(plan, image, check)
+    need((memory_admission(limits) or pressure_profile) and
+         600 <= limits["timeoutSeconds"] <= 86400,
          "trial.limits.admission")
     need(image.get("schema") == ("openclaw.rehearsal-baseline-image.v1" if selected == "rollback" else
                                  "openclaw.fork-release-image.v2") and
@@ -701,6 +744,63 @@ def capacity(plan, clean, admission=False):
     return result
 
 
+def host_pressure_sample():
+    """Bounded host-wide observations for the lower-admission lease-patch trial."""
+    try:
+        mem_raw = Path("/proc/meminfo").read_text()
+        psi_raw = Path("/proc/pressure/memory").read_text()
+    except (OSError, UnicodeError) as error:
+        raise release.Refusal("trial.host_pressure.unavailable") from error
+    need(len(mem_raw) <= 4096 and len(psi_raw) <= 4096,
+         "trial.host_pressure.unavailable")
+    memory = re.findall(r"^MemAvailable:\s+([0-9]+) kB$", mem_raw, re.MULTILINE)
+    full = [line.split() for line in psi_raw.splitlines() if line.startswith("full ")]
+    need(len(memory) == 1 and len(full) == 1 and len(full[0]) == 5,
+         "trial.host_pressure.unavailable")
+    fields = {}
+    for pair in full[0][1:]:
+        need(pair.count("=") == 1, "trial.host_pressure.unavailable")
+        key, value = pair.split("=", 1)
+        need(key not in fields and re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", value),
+             "trial.host_pressure.unavailable")
+        fields[key] = value
+    need(set(fields) == {"avg10", "avg60", "avg300", "total"} and
+         0 <= float(fields["avg10"]) <= 100 and int(memory[0]) > 0,
+         "trial.host_pressure.unavailable")
+    return {"at": durable.now(), "availableBytes": int(memory[0]) * 1024,
+            "fullAvg10": float(fields["avg10"])}
+
+
+def host_pressure_gate(state, *, admission=False, now=None):
+    """Stop the owned test on material host pressure; never change production."""
+    observed = host_pressure_sample()
+    need(type(observed.get("availableBytes")) is int and
+         type(observed.get("fullAvg10")) is float and
+         observed["availableBytes"] >= 0 and 0 <= observed["fullAvg10"] <= 100,
+         "trial.host_pressure.unavailable")
+    now = time.monotonic() if now is None else now
+    state["samples"] += 1
+    state["last"] = observed
+    state["minimumAvailableBytes"] = min(state["minimumAvailableBytes"], observed["availableBytes"])
+    state["maximumFullAvg10"] = max(state["maximumFullAvg10"], observed["fullAvg10"])
+    if observed["fullAvg10"] > LEASE_PATCH_FULL_PSI_LIMIT:
+        if state["highPsiSince"] is None:
+            state["highPsiSince"] = now
+    else:
+        state["highPsiSince"] = None
+    need(observed["availableBytes"] >=
+         (LEASE_PATCH_ADMISSION_BYTES if admission else LEASE_PATCH_HOST_RESERVE_BYTES),
+         "trial.host_pressure.admission" if admission else "trial.host_pressure.memory")
+    if admission:
+        need(observed["fullAvg10"] <= LEASE_PATCH_FULL_PSI_LIMIT,
+             "trial.host_pressure.admission_psi")
+    else:
+        need(state["highPsiSince"] is None or
+             now - state["highPsiSince"] < LEASE_PATCH_FULL_PSI_SECONDS,
+             "trial.host_pressure.psi")
+    return observed
+
+
 def observe_image(image, selected="doctor"):
     if selected != "rollback":
         qualified_image(image)
@@ -953,8 +1053,23 @@ def phase_prerequisites(op, intent):
                              intent["image"]["sourceSha"] == QUALIFIED_IMAGE["sourceSha"] and
                              reuse["targetSourceSha"] == QUALIFIED_IMAGE["sourceSha"] and
                              intent["plan"]["imageReceiptSha256"] == reuse["targetImageReceiptSha256"])
+        lease_patch_rebuild = (continuation and not image_same and same_group and
+                               check["doctorOperationId"] == LEASE_PATCH_PRIOR and
+                               prior["plan"]["toolingSha"] == LEASE_PATCH_PRIOR_PIPELINE_SHA and
+                               prior["plan"]["imageReceiptSha256"] == LEASE_PATCH_PRIOR_IMAGE_RECEIPT_SHA256 and
+                               resource_profile(prior["plan"]["limits"])["id"] == "memory16-read256-write64" and
+                               all(prior["image"].get(key) == value for key, value in QUALIFIED_IMAGE.items()) and
+                               prior["image"].get("producer", {}).get("toolingSha") == QUALIFIED_PRODUCER and
+                               prior_reuse["targetSourceSha"] == QUALIFIED_IMAGE["sourceSha"] and
+                               prior_reuse["targetImageReceiptSha256"] == LEASE_PATCH_PRIOR_IMAGE_RECEIPT_SHA256 and
+                               all(intent["image"].get(key) == value for key, value in LEASE_PATCH_IMAGE.items()) and
+                               intent["image"].get("producer", {}).get("toolingSha") == LEASE_PATCH_PRODUCER and
+                               intent["plan"]["imageReceiptSha256"] == LEASE_PATCH_RECEIPT_SHA256 and
+                               reuse["targetSourceSha"] == LEASE_PATCH_IMAGE["sourceSha"] and
+                               reuse["targetImageReceiptSha256"] == LEASE_PATCH_RECEIPT_SHA256 and
+                               resource_profile(intent["plan"]["limits"])["id"] == "memory16-read320-write128")
         need(all(clean[key] == old[key] for key in same) and
-             (same_build or corrected_rebuild),
+             (same_build or corrected_rebuild or lease_patch_rebuild),
              "trial.prior.startup_binding")
         need(snapshot_paths(clean) == start_record["mounts"], "trial.prior.startup_mount_changed")
         current_devices = block_devices(clean)
@@ -1271,6 +1386,7 @@ def serve(op):
     selected = phase(intent["plan"])
     native_check, check_buffer, check_count = None, b"", 0
     gate_ready, baseline_processes = False, None
+    pressure, pressure_trip = None, False
     tails = {"stdout.log": b"", "stderr.log": b""}
     logs = {}
     end = time.monotonic() + intent["plan"]["limits"]["timeoutSeconds"]
@@ -1289,6 +1405,11 @@ def serve(op):
         need(observe_image(intent["image"], selected) == started["image"], "trial.image.changed")
         admission = capacity(intent["plan"], intent["clean"], True)
         continuation_capacity(admission, intent["plan"], intent.get("check"))
+        if lease_patch_pressure_profile(intent["plan"], intent["image"], intent.get("check")):
+            pressure = {"samples": 0, "last": None,
+                        "minimumAvailableBytes": admission["memoryAvailableBytes"],
+                        "maximumFullAvg10": 0.0, "highPsiSince": None}
+            host_pressure_gate(pressure, admission=True)
         durable.reserve_heavy_workload(op, "doctor", started["intentSha256"])
         if continuing(intent.get("check")):
             verify_continuation_claim(op, intent, started["priorDoctor"])
@@ -1315,6 +1436,8 @@ def serve(op):
         while selector.get_map() or child.poll() is None:
             need(not interrupted and time.monotonic() < end, "trial.deadline_or_signal")
             if time.monotonic() >= next_check:
+                if pressure is not None:
+                    host_pressure_gate(pressure)
                 value = inspect_container(cid)
                 validate_container(value, op, intent, started["image"]["env"], devices)
                 need(not value["State"]["OOMKilled"], "trial.container.oom")
@@ -1340,10 +1463,16 @@ def serve(op):
                             need(phase_prerequisites(op, intent) == started["priorDoctor"], "trial.prior.changed")
                             verify_continuation_claim(op, intent, started["priorDoctor"])
                             continuation_capacity(capacity(intent["plan"], intent["clean"]), intent["plan"], intent["check"])
+                        if pressure is not None:
+                            host_pressure_gate(pressure, admission=True)
+                            durable.write_once(op / "host-pressure-admission.json",
+                                               durable.encode(pressure))
                         durable.write_once(op / "gate/go", b"admitted\n")
                         os.chmod(op / "gate/go", 0o444)
                     if cg is not None:
                         sample = cgroup_sample(cg)
+                        if pressure is not None:
+                            sample["hostPressure"] = pressure["last"]
                         last_io = io_sample(cg, intent, devices, last_io)
                         io_samples += 1
                         sample["io"] = last_io
@@ -1359,6 +1488,8 @@ def serve(op):
                             # after this point, so no native descendant can OOM
                             # between this final sample and normal cgroup removal.
                             sample = cgroup_sample(cg)
+                            if pressure is not None:
+                                sample["hostPressure"] = pressure["last"]
                             last_io = io_sample(cg, intent, devices, last_io)
                             io_samples += 1
                             sample["io"] = last_io
@@ -1422,6 +1553,7 @@ def serve(op):
         need(successful(final["State"], child.returncode, complete, oom_kills), "trial.doctor.not_successful")
     except Exception as error:
         reason = str(error) if isinstance(error, release.Refusal) else type(error).__name__
+        pressure_trip = reason.startswith("trial.host_pressure.")
     finally:
         cleanup = "not_started"
         if cid and HEX.fullmatch(cid):
@@ -1429,7 +1561,8 @@ def serve(op):
                 value = inspect_container(cid)
                 validate_owned_container(value, cid, op)
                 if value["State"]["Running"]:
-                    docker(["stop", "--time", "30", cid], timeout=45)
+                    docker(["stop", "--time", "1" if pressure_trip else "30", cid],
+                           timeout=10 if pressure_trip else 45)
                 final = inspect_container(cid)
                 validate_owned_container(final, cid, op)
                 need(not final["State"]["Running"] and final["State"]["Pid"] == 0, "trial.stop.unsettled")
@@ -1462,6 +1595,8 @@ def serve(op):
                   "resourceProfile": resource_profile(intent["plan"]["limits"]),
                   "ioObservation": {"samples": io_samples, "first": first_io, "last": last_io},
                   "promotionAuthorized": False}
+        if pressure is not None:
+            result["hostPressure"] = pressure
         if "checkInputSha256" in intent["plan"]:
             result["checkInputSha256"] = intent["plan"]["checkInputSha256"]
         if continuing(intent.get("check")):

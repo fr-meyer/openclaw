@@ -248,6 +248,10 @@ class DailySnapshotTests(unittest.TestCase):
         resources.update(memoryBytes=16 << 30, readBps=320 << 20,
                          writeBps=128 << 20, minMemoryAvailableBytes=20 << 30)
         daily.validate_plan(self.plan)
+        lower = copy.deepcopy(self.plan)
+        lower['resources']['minMemoryAvailableBytes'] = 12 << 30
+        with self.assertRaisesRegex(release.Refusal, 'daily.resources.native'):
+            daily.validate_plan(lower)
         for read, write in ((512, 128), (320, 64), (256, 128)):
             changed = copy.deepcopy(self.plan)
             changed['resources'].update(readBps=read << 20, writeBps=write << 20)

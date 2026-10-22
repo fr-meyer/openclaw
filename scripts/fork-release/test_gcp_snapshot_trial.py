@@ -197,6 +197,103 @@ class SnapshotTrialTests(unittest.TestCase):
                         with self.assertRaisesRegex(release.Refusal, "trial.capacity.memory"):
                             trial.capacity(self.plan, self.clean, True)
 
+    def select_lease_patch_pressure(self):
+        self.image.update(trial.LEASE_PATCH_IMAGE)
+        self.image["producer"]["toolingSha"] = trial.LEASE_PATCH_PRODUCER
+        self.plan["imageReceiptSha256"] = trial.LEASE_PATCH_RECEIPT_SHA256
+        self.plan["limits"].update(memoryBytes=16 << 30, minMemoryAvailableBytes=12 << 30,
+                                   readBps=320 << 20, writeBps=128 << 20)
+        self.select_continuation()
+        self.intent["check"]["doctorOperationId"] = trial.LEASE_PATCH_PRIOR
+        for artifact in self.intent["check"]["reconciliation"]["artifacts"]:
+            artifact["ownerOperationId"] = trial.LEASE_PATCH_PRIOR
+
+    def test_12g_admission_is_exact_lease_patch_image_and_successor_only(self):
+        self.select_lease_patch_pressure()
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        self.assertTrue(trial.lease_patch_pressure_profile(self.plan, self.image,
+                                                           self.intent["check"]))
+        for owner, key, value in (
+                (self.image, "sourceSha", "f" * 40),
+                (self.image["producer"], "toolingSha", "e" * 40),
+                (self.plan, "imageReceiptSha256", "d" * 64),
+                (self.intent["check"], "doctorOperationId", "b" * 32)):
+            old = owner[key]
+            owner[key] = value
+            if key == "doctorOperationId":
+                self.intent["check"]["reconciliation"]["artifacts"][0]["ownerOperationId"] = value
+            with self.subTest(key=key), self.assertRaisesRegex(
+                    release.Refusal, "trial.host_pressure.scope"):
+                trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+            owner[key] = old
+            if key == "doctorOperationId":
+                self.intent["check"]["reconciliation"]["artifacts"][0]["ownerOperationId"] = old
+        self.plan["limits"]["writeBps"] = 64 << 20
+        with self.assertRaisesRegex(release.Refusal, "trial.limits.unreviewed_envelope"):
+            trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        self.plan["limits"].update(writeBps=128 << 20, minMemoryAvailableBytes=20 << 30)
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+
+    def test_12g_admission_allows_pinned_candidate_startup_after_doctor(self):
+        self.select_lease_patch_pressure()
+        self.select_phase("startup")
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        self.assertTrue(trial.lease_patch_pressure_profile(self.plan, self.image,
+                                                           self.intent["check"]))
+        self.plan["phase"] = "rollback"
+        with self.assertRaisesRegex(release.Refusal, "trial.host_pressure.scope"):
+            trial.lease_patch_pressure_profile(self.plan, self.image, self.intent["check"])
+
+    def test_12g_admission_capacity_boundary_and_host_sensor_parsing(self):
+        self.select_lease_patch_pressure()
+        fs = SimpleNamespace(f_bavail=200 << 30, f_frsize=1)
+        with patch.object(trial.os, "statvfs", return_value=fs):
+            for available, accepted in (((12 << 30) - 1024, False), (12 << 30, True)):
+                with patch.object(trial.Path, "read_text", return_value=(
+                        f"MemAvailable: {available // 1024} kB\n")):
+                    if accepted:
+                        self.assertEqual(trial.capacity(self.plan, self.clean, True)
+                                         ["memoryAvailableBytes"], available)
+                    else:
+                        with self.assertRaisesRegex(release.Refusal, "trial.capacity.memory"):
+                            trial.capacity(self.plan, self.clean, True)
+        with patch.object(trial.Path, "read_text", side_effect=[
+                "MemAvailable: 12582912 kB\n", "some avg10=0.0 avg60=0.0 avg300=0.0 total=0\n"
+                "full avg10=0.21 avg60=0.1 avg300=0.0 total=100\n"]):
+            self.assertEqual(trial.host_pressure_sample()["availableBytes"], 12 << 30)
+        with patch.object(trial.Path, "read_text", side_effect=[
+                "MemAvailable: 12582912 kB\n", "some avg10=0.0 avg60=0.0 avg300=0.0 total=0\n"]):
+            with self.assertRaisesRegex(release.Refusal, "trial.host_pressure.unavailable"):
+                trial.host_pressure_sample()
+
+    def test_host_pressure_gate_immediate_memory_and_sustained_psi_refusals(self):
+        def state():
+            return {"samples": 0, "last": None, "minimumAvailableBytes": 12 << 30,
+                    "maximumFullAvg10": 0.0, "highPsiSince": None}
+        watched = state()
+        with patch.object(trial, "host_pressure_sample", return_value={
+                "at": "synthetic", "availableBytes": (8 << 30) - 1, "fullAvg10": 0.0}):
+            with self.assertRaisesRegex(release.Refusal, "trial.host_pressure.memory"):
+                trial.host_pressure_gate(watched, now=0)
+        self.assertEqual(watched["minimumAvailableBytes"], (8 << 30) - 1)
+        with patch.object(trial, "host_pressure_sample", return_value={
+                "at": "synthetic", "availableBytes": (12 << 30) - 1, "fullAvg10": 0.0}):
+            with self.assertRaisesRegex(release.Refusal, "trial.host_pressure.admission"):
+                trial.host_pressure_gate(state(), admission=True, now=0)
+        watched = state()
+        with patch.object(trial, "host_pressure_sample", return_value={
+                "at": "synthetic", "availableBytes": 12 << 30, "fullAvg10": 6.0}):
+            with self.assertRaisesRegex(release.Refusal, "trial.host_pressure.admission_psi"):
+                trial.host_pressure_gate(state(), admission=True, now=0)
+            trial.host_pressure_gate(watched, now=0)
+            trial.host_pressure_gate(watched, now=4)
+            with self.assertRaisesRegex(release.Refusal, "trial.host_pressure.psi"):
+                trial.host_pressure_gate(watched, now=5)
+        with patch.object(trial, "host_pressure_sample", return_value={
+                "at": "synthetic", "availableBytes": 12 << 30, "fullAvg10": float("nan")}):
+            with self.assertRaisesRegex(release.Refusal, "trial.host_pressure.unavailable"):
+                trial.host_pressure_gate(state(), now=0)
+
     def select_continuation(self):
         self.select_phase("doctor")
         self.clean["restorationState"] = "doctor-interrupted"
@@ -370,9 +467,10 @@ class SnapshotTrialTests(unittest.TestCase):
 
     @contextmanager
     def prior_boundaries(self, selected="startup", doctor_state="succeeded", no_create=False,
-                         historical=False, previous_candidate=False):
+                         historical=False, previous_candidate=False, lease_patch_candidate=False):
         successor_check = (copy.deepcopy(self.intent.get("check"))
-                           if (historical or previous_candidate) and selected == "doctor" else None)
+                           if (historical or previous_candidate or lease_patch_candidate) and selected == "doctor"
+                           else None)
         prior = copy.deepcopy(self.intent)
         if historical:
             prior["image"].update(trial.HISTORICAL_IMAGE)
@@ -391,7 +489,20 @@ class SnapshotTrialTests(unittest.TestCase):
             old_reuse["targetSourceSha"] = trial.PREVIOUS_IMAGE["sourceSha"]
             old_reuse["targetImageReceiptSha256"] = trial.PREVIOUS_IMAGE_RECEIPT_SHA256
             prior["check"]["backupReuse"] = old_reuse
-        previous = self.root / (trial.CORRECTED_REBUILD_PRIOR if previous_candidate else "b" * 32)
+        if lease_patch_candidate:
+            prior["image"].update(trial.QUALIFIED_IMAGE)
+            prior["image"]["producer"]["toolingSha"] = trial.QUALIFIED_PRODUCER
+            prior["plan"]["imageReceiptSha256"] = trial.LEASE_PATCH_PRIOR_IMAGE_RECEIPT_SHA256
+            prior["plan"]["toolingSha"] = trial.LEASE_PATCH_PRIOR_PIPELINE_SHA
+            prior["plan"]["limits"].update(readBps=256 << 20, writeBps=64 << 20)
+            prior["clean"]["restorationState"] = "doctor-interrupted"
+            old_reuse = copy.deepcopy(successor_check["backupReuse"])
+            old_reuse["targetSourceSha"] = trial.QUALIFIED_IMAGE["sourceSha"]
+            old_reuse["targetImageReceiptSha256"] = trial.LEASE_PATCH_PRIOR_IMAGE_RECEIPT_SHA256
+            prior["check"]["backupReuse"] = old_reuse
+        previous_id = (trial.LEASE_PATCH_PRIOR if lease_patch_candidate else
+                       trial.CORRECTED_REBUILD_PRIOR if previous_candidate else "b" * 32)
+        previous = self.root / previous_id
         previous.mkdir(mode=0o700)
         prior["plan"]["operationId"] = previous.name
         self.select_phase(selected)
@@ -582,6 +693,63 @@ class SnapshotTrialTests(unittest.TestCase):
         trial.qualified_image(previous, retained=True)
         self.assertEqual(trial.RETAINED_HELPERS[trial.PREVIOUS_PIPELINE_SHA],
                          "969db0156d9dfc0480288a913f637a8252dc7ed93988873b7399ae02922a5fb0")
+
+    def test_lease_patch_image_preserves_exact_failed_predecessor_and_original_group(self):
+        self.image.update(trial.LEASE_PATCH_IMAGE)
+        self.image["producer"]["toolingSha"] = trial.LEASE_PATCH_PRODUCER
+        self.plan["imageReceiptSha256"] = trial.LEASE_PATCH_RECEIPT_SHA256
+        self.plan["limits"].update(memoryBytes=16 << 30, minMemoryAvailableBytes=20 << 30,
+                                   readBps=320 << 20, writeBps=128 << 20)
+        self.select_continuation()
+        group = "f8c55592-a39a-8e8c-87cd-40cb5ad53f22"
+        self.intent["check"]["reconciliation"].update(
+            artifactDisposition="completed-group-retained", recaptureBytes=0,
+            artifacts=[self.artifact(
+                path=str(self.dataset / ("state/db.sqlite.pre-startup-migration-" + group + ".bak")),
+                classification="native-revalidation-required", disposition="retain",
+                nativeDiscardOnRetry=False)])
+        self.intent["check"]["backupReuse"] = {
+            "schema": trial.BACKUP_REUSE,
+            "originSourceSha": trial.HISTORICAL_IMAGE["sourceSha"],
+            "originImageDigest": trial.HISTORICAL_IMAGE["indexDigest"],
+            "originImageReceiptSha256": trial.HISTORICAL_IMAGE_RECEIPT_SHA256,
+            "targetSourceSha": trial.LEASE_PATCH_IMAGE["sourceSha"],
+            "targetImageReceiptSha256": trial.LEASE_PATCH_RECEIPT_SHA256,
+            "backupId": group, "manifestSha256": "a" * 64, "backupCount": 1}
+        trial.validate(self.plan, self.image, self.clean, self.intent["check"])
+        with self.prior_boundaries("doctor", "failed", lease_patch_candidate=True) as (
+                prior, result, actual, observe, policy):
+            self.intent["check"]["doctorOperationId"] = trial.LEASE_PATCH_PRIOR
+            proof = trial.phase_prerequisites(self.op, self.intent)
+            self.assertEqual(proof["priorImageReceiptSha256"],
+                             trial.LEASE_PATCH_PRIOR_IMAGE_RECEIPT_SHA256)
+            self.assertEqual(proof["successorImageReceiptSha256"],
+                             trial.LEASE_PATCH_RECEIPT_SHA256)
+            self.assertEqual(proof["priorResourceProfile"]["id"], "memory16-read256-write64")
+            for owner, key, changed in (
+                (self.intent["check"], "doctorOperationId", "b" * 32),
+                (self.intent["check"]["backupReuse"], "backupId", "a" * 36),
+                (self.intent["check"]["backupReuse"], "manifestSha256", "b" * 64),
+                (self.intent["check"]["backupReuse"], "backupCount", 2),
+                (prior["check"]["backupReuse"], "targetSourceSha", "d" * 40),
+                (prior["plan"], "toolingSha", "e" * 40),
+                (prior["image"], "indexDigest", "sha256:" + "f" * 64),
+            ):
+                original = owner[key]
+                owner[key] = changed
+                with self.subTest(key=key), self.assertRaisesRegex(
+                        release.Refusal, "trial.prior.startup_binding"):
+                    trial.phase_prerequisites(self.op, self.intent)
+                owner[key] = original
+            self.plan["limits"].update(readBps=256 << 20, writeBps=64 << 20)
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.startup_binding"):
+                trial.phase_prerequisites(self.op, self.intent)
+            self.plan["limits"].update(readBps=320 << 20, writeBps=128 << 20)
+            actual["State"]["Running"] = True
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.container_changed"):
+                trial.phase_prerequisites(self.op, self.intent)
+        self.assertEqual(trial.RETAINED_HELPERS[trial.LEASE_PATCH_PRIOR_PIPELINE_SHA],
+                         "bedac832d1ab2f95b9c813e95db9e41d548c2c25f381f723699dce470281a47d")
 
     def test_later_continuation_keeps_exact_backup_reuse_proof(self):
         self.select_continuation()
@@ -1701,7 +1869,7 @@ class SnapshotTrialTests(unittest.TestCase):
                        readonly_drift=False, io_partition_drift=False, devices_changed=False,
                        kernel_io_drift=False, prior_changed_at_gate=False,
                        leftover_descendant=False, remove_cgroup_on_exit=False,
-                       stdout=b"Doctor complete.\n", stderr=b""):
+                       stdout=b"Doctor complete.\n", stderr=b"", host_pressure=None):
         """Run the actual supervisor loop with synthetic daemon/process/cgroup boundaries."""
         cg = self.root / "live-cgroup"
         cg.mkdir()
@@ -1853,7 +2021,8 @@ class SnapshotTrialTests(unittest.TestCase):
         def docker(args, timeout=30):
             if args[0] == "create":
                 return ("9" * 64).encode()
-            self.assertEqual(args[:3], ["stop", "--time", "30"])
+            self.assertEqual(args[:2], ["stop", "--time"])
+            self.assertIn(args[2], ("1", "30"))
             stop_calls.append(args)
             state["stopped"] = True
             return b""
@@ -1879,12 +2048,18 @@ class SnapshotTrialTests(unittest.TestCase):
             prior_reads.append(True)
             return {**prior, "resultSha256": "e" * 64} if prior_changed_at_gate and len(prior_reads) > 1 else prior
 
+        pressure_reads = []
+        def pressure_sample():
+            pressure_reads.append(True)
+            return host_pressure(len(pressure_reads))
+
         with ExitStack() as stack:
             for name, value in (("load", lambda _: (op, self.intent)), ("snapshot_paths", lambda _: {}),
                                 ("block_devices", devices),
                                 ("no_other_writer", lambda _: None), ("observe_image", lambda *args: started["image"]),
                                 ("phase_prerequisites", phase_prerequisites),
-                                ("capacity", lambda *args: {"dataFreeBytes": 200 << 30}), ("docker", docker),
+                                ("capacity", lambda *args: {"dataFreeBytes": 200 << 30,
+                                                             "memoryAvailableBytes": 12 << 30}), ("docker", docker),
                                 ("inspect_container", inspect), ("cgroup_path", lambda _: cg)):
                 stack.enter_context(patch.object(trial, name, side_effect=value))
             stack.enter_context(patch.object(trial.durable, "reserve_heavy_workload", create=True))
@@ -1892,6 +2067,8 @@ class SnapshotTrialTests(unittest.TestCase):
             stack.enter_context(patch.object(trial.selectors, "DefaultSelector", Selector))
             stack.enter_context(patch.object(trial.time, "monotonic", side_effect=tick))
             stack.enter_context(patch.object(Path, "read_text", read_text))
+            if host_pressure is not None:
+                stack.enter_context(patch.object(trial, "host_pressure_sample", side_effect=pressure_sample))
             stack.enter_context(patch.dict(os.environ, {"INVOCATION_ID": invocation}))
             code = trial.serve(op)
         return code, json.loads((op / "result.json").read_bytes()), stop_calls
@@ -1928,6 +2105,81 @@ class SnapshotTrialTests(unittest.TestCase):
         self.assertGreater(result["oomKillDelta"], 0)
         self.assertFalse(result["promotionAuthorized"])
         self.assertEqual(result["resourceProfile"]["id"], "memory16-read256-write64")
+
+    def test_serve_lease_patch_lower_admission_retains_host_samples(self):
+        self.select_lease_patch_pressure()
+        def sample(_):
+            return {"at": "synthetic", "availableBytes": 12 << 30, "fullAvg10": 0.1}
+        code, result, stops = self.exercise_serve(host_pressure=sample)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["state"], "succeeded")
+        self.assertGreaterEqual(result["hostPressure"]["samples"], 3)
+        self.assertEqual(result["hostPressure"]["minimumAvailableBytes"], 12 << 30)
+        self.assertTrue((self.op / "host-pressure-admission.json").exists())
+        self.assertEqual(stops, [])
+
+    def test_serve_lease_patch_host_pressure_stops_owned_test_after_gate(self):
+        self.select_lease_patch_pressure()
+        def sample(_):
+            return {"at": "synthetic", "availableBytes":
+                    (8 << 30) - 1 if (self.op / "gate/go").exists() else (12 << 30),
+                    "fullAvg10": 0.1}
+        code, result, stops = self.exercise_serve(host_pressure=sample)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.host_pressure.memory")
+        self.assertEqual(result["hostPressure"]["minimumAvailableBytes"], (8 << 30) - 1)
+        self.assertTrue((self.op / "gate/go").exists())
+        self.assertEqual(stops, [["stop", "--time", "1", "9" * 64]])
+
+    def test_serve_lease_patch_readmits_12g_just_before_native_gate(self):
+        self.select_lease_patch_pressure()
+        def sample(_):
+            at_gate = (self.op / "cgroup-admission.json").exists()
+            return {"at": "synthetic", "availableBytes":
+                    (11 << 30) if at_gate else (12 << 30), "fullAvg10": 0.1}
+        code, result, stops = self.exercise_serve(host_pressure=sample)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.host_pressure.admission")
+        self.assertTrue((self.op / "cgroup-admission.json").exists())
+        self.assertFalse((self.op / "gate/go").exists())
+        self.assertEqual(result["cleanup"], "owned_container_stopped_retained")
+        self.assertEqual(stops, [["stop", "--time", "1", "9" * 64]])
+
+    def test_serve_lease_patch_psi_stall_refuses_before_native_gate(self):
+        self.select_lease_patch_pressure()
+        def sample(_):
+            at_gate = (self.op / "cgroup-admission.json").exists()
+            return {"at": "synthetic", "availableBytes": 12 << 30,
+                    "fullAvg10": 6.0 if at_gate else 0.1}
+        code, result, stops = self.exercise_serve(host_pressure=sample)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.host_pressure.admission_psi")
+        self.assertFalse((self.op / "gate/go").exists())
+        self.assertEqual(result["cleanup"], "owned_container_stopped_retained")
+        self.assertEqual(stops, [["stop", "--time", "1", "9" * 64]])
+
+    def test_serve_lease_patch_sensor_loss_after_gate_stops_owned_test(self):
+        self.select_lease_patch_pressure()
+        def sample(_):
+            if (self.op / "gate/go").exists():
+                raise release.Refusal("trial.host_pressure.unavailable")
+            return {"at": "synthetic", "availableBytes": 12 << 30, "fullAvg10": 0.1}
+        code, result, stops = self.exercise_serve(host_pressure=sample)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.host_pressure.unavailable")
+        self.assertTrue((self.op / "gate/go").exists())
+        self.assertEqual(result["cleanup"], "owned_container_stopped_retained")
+        self.assertEqual(stops, [["stop", "--time", "1", "9" * 64]])
+
+    def test_serve_lease_patch_unavailable_host_sensor_refuses_before_create(self):
+        self.select_lease_patch_pressure()
+        def unavailable(_):
+            raise release.Refusal("trial.host_pressure.unavailable")
+        code, result, stops = self.exercise_serve(host_pressure=unavailable)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["reason"], "trial.host_pressure.unavailable")
+        self.assertFalse((self.op / "create-intent.json").exists())
+        self.assertEqual(stops, [])
 
     def test_serve_continuation_preserves_prior_reference_on_success(self):
         self.select_continuation()
