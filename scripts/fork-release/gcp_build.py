@@ -303,7 +303,7 @@ def validate_profile(profile, config):
                 "minFreeBytes", "minCacheFreeBytes"):
         integer(profile[key], 1, 1 << 50, "build.adaptive.profile_floor")
     qualification = profile["id"] == QUALIFICATION_PROFILE_ID
-    minimum_start = 19 << 30 if qualification else 21 << 30
+    minimum_start = 18 << 30 if qualification else 21 << 30
     need(profile["minStartMemoryAvailableBytes"] >= profile["minMemoryAvailableBytes"]
          >= 10 << 30 and profile["minStartMemoryAvailableBytes"] >= minimum_start,
          "build.adaptive.profile_reserve")
@@ -353,14 +353,14 @@ def adaptive_profiles(config):
             config["builder"]["memorySwapBytes"] == 8 << 30 and
             config["builder"]["cpuPeriod"] == 100000 and
             config["builder"]["cpuQuota"] == 400000):
-        # 19 GiB = an 8 GiB hard worker cap, the retained 10 GiB host stop
-        # floor, and 1 GiB dispatch headroom. It is an experimental admission,
-        # not a measured full-image minimum or a guarantee against the observed
-        # stopped-builder production variability. No automatic retry follows.
+        # 18 GiB = the 8 GiB hard worker cap plus the retained 10 GiB host
+        # stop floor. This removes an unmeasured 1 GiB start margin but never
+        # lowers the running floor. It is an experimental admission, not a
+        # measured full-image minimum. No automatic retry follows.
         profile = {**common, "id": QUALIFICATION_PROFILE_ID,
                    "tsdownMaxOldSpaceMb": 6144,
                    "minStartMemoryAvailableBytes": max(
-                       19 << 30, config["limits"].get("minStartMemoryAvailableBytes", 0),
+                       18 << 30, config["limits"].get("minStartMemoryAvailableBytes", 0),
                        common["minMemoryAvailableBytes"])}
         validate_profile(profile, config)
         return [profile]

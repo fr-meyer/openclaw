@@ -311,7 +311,7 @@ class BuildTests(unittest.TestCase):
         bound = build.bind_adaptive_selection(self.config, samples)
         build.validate_config(bound)
 
-    def qualification_fixture(self, gib=19):
+    def qualification_fixture(self, gib=18):
         samples = self.adaptive_fixture(gib=gib)
         self.config["builder"].update({"memoryBytes": 8 << 30,
                                        "memorySwapBytes": 8 << 30,
@@ -325,11 +325,11 @@ class BuildTests(unittest.TestCase):
             bound = build.bind_adaptive_selection(self.config, samples)
             self.assertEqual(bound["adaptiveSelection"]["profile"]["id"],
                              build.QUALIFICATION_PROFILE_ID)
-            self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 19 << 30)
+            self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 18 << 30)
             self.assertEqual(bound["limits"]["minMemoryAvailableBytes"], 10 << 30)
             self.assertEqual(bound["buildTuning"], {"tsdownMaxOldSpaceMb": 6144})
             build.validate_config(bound)
-            samples[1]["memoryAvailableBytes"] = (19 << 30) - 1
+            samples[1]["memoryAvailableBytes"] = (18 << 30) - 1
             self.assertIsNone(build.select_profile(self.config, samples))
             changed = copy.deepcopy(bound)
             changed["builder"]["memorySwapBytes"] = 10 << 30
@@ -340,7 +340,7 @@ class BuildTests(unittest.TestCase):
             with self.assertRaises(release.Refusal):
                 build.validate_config(changed)
         # A similar small worker on another source gets no special profile.
-        samples[1]["memoryAvailableBytes"] = 19 << 30
+        samples[1]["memoryAvailableBytes"] = 18 << 30
         self.assertIsNone(build.select_profile(self.config, samples))
 
     def test_qualification_capacity_fails_closed_on_gateway_or_worker_oom(self):

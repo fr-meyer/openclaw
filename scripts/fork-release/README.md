@@ -788,8 +788,10 @@ fresh admission, not a lower ad hoc threshold or automatic retry.
 One controlled qualification for source
 `1d5ab20bea4cccce0b80b60a9ba5d5020cf08038` selects an 8 GiB aggregate
 BuildKit memory and memory-plus-swap cap (no container swap), 4 CPUs, a 6 GiB
-compiler heap, at least 19 GiB MemAvailable before dispatch, and the retained
-10 GiB running floor. This is an experimental admission budget, not a proven
+compiler heap, at least 18 GiB MemAvailable before dispatch, and the retained
+10 GiB running floor. The start floor is the hard 8 GiB worker cap plus the
+10 GiB stop floor, with no extra margin for other host growth. This is an
+experimental admission budget, not a proven
 build minimum. It requires fresh Gateway health, memory-pressure and OOM
 checks; it stops on a worker OOM or failed resource guard and has no automatic
 retry. The worker's own cgroup and its ancestors must prove the effective
