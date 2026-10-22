@@ -403,7 +403,7 @@ def prove_trial_no_create_failure(op, intent_sha256):
     return completed
 
 
-def heavy_workload_settled(owner):
+def heavy_workload_settled(owner, successor=None):
     """Release a cooperative reservation only from retained native terminal proof.
 
     Build client cancellation is deliberately insufficient: its BuildKit solve
@@ -432,9 +432,28 @@ def heavy_workload_settled(owner):
          service.get("SubState") in ("exited", "dead", "failed") and
          service.get("ExecMainCode") == "1", "workload.service.unsettled")
     if kind == "build":
-        need(completed.get("exitCode") == 0 and completed.get("nativeExitCode") == 0 and
-             service.get("Result") == "success" and service.get("ExecMainStatus") == "0",
-             "workload.build.solve_unsettled")
+        if completed.get("exitCode") == 0 and completed.get("nativeExitCode") == 0:
+            need(service.get("Result") == "success" and service.get("ExecMainStatus") == "0",
+                 "workload.build.solve_unsettled")
+        else:
+            # A failed client alone cannot release its BuildKit solve. A
+            # successor may claim the slot only through the recorded stopped
+            # worker and exact lease recovery for this same failed operation.
+            need(successor is not None and successor.parent == PRIVATE_ROOT and
+                 service.get("Result") == "exit-code" and
+                 service.get("ExecMainStatus") != "0" and
+                 completed.get("remoteSolveTerminationObserved") is False and
+                 not (op / "execution.json").exists(),
+                 "workload.build.solve_unsettled")
+            proposed = read_private(successor / "builder-handoff-intent.json")
+            need(proposed.get("schema") == "openclaw.gcp-builder-recovery.v1" and
+                 proposed.get("originOperationId") == op.name and
+                 proposed.get("originIntentSha256") == owner["intentSha256"] and
+                 proposed.get("originCompletedSha256") ==
+                 preflight.digest(op / "completed.json"),
+                 "workload.build.recovery_changed")
+            successor_intent = read_private(successor / "intent.json")
+            verify_builder_handoff(successor, successor_intent)
     else:
         if completed.get("cleanup") == "not_started":
             need(prove_trial_no_create_failure(op, owner["intentSha256"]) == completed,
@@ -481,7 +500,7 @@ def reserve_heavy_workload(op, kind, intent_sha256, *, reserve_resource=None):
             previous = read_private(path)
             if previous != requested:
                 try:
-                    heavy_workload_settled(previous)
+                    heavy_workload_settled(previous, successor=op)
                 except (OSError, ValueError, KeyError, subprocess.SubprocessError, release.Refusal) as error:
                     raise release.Refusal("workload.owned_or_uncertain; inspect retained owner before continuing") from error
         if reserve_resource is not None:
@@ -649,23 +668,34 @@ def verify_builder_handoff(op, intent):
     if not path.exists():
         return
     proposed = read_private(path)
-    fields(proposed, """schema originOperationId targetOperationId originIntentSha256
-           targetIntentSha256 originExecutionSha256 originLeaseSha256""",
-           "build.handoff.intent.fields")
-    need(proposed["schema"] == "openclaw.gcp-builder-handoff.v1" and
-         proposed["targetOperationId"] == op.name and
+    need(type(proposed) is dict, "build.handoff.intent.fields")
+    if proposed.get("schema") == "openclaw.gcp-builder-handoff.v1":
+        fields(proposed, """schema originOperationId targetOperationId originIntentSha256
+               targetIntentSha256 originExecutionSha256 originLeaseSha256""",
+               "build.handoff.intent.fields")
+    elif proposed.get("schema") == "openclaw.gcp-builder-recovery.v1":
+        fields(proposed, """schema originOperationId targetOperationId originIntentSha256
+               targetIntentSha256 originCompletedSha256 builderStoppedSha256 originLeaseSha256""",
+               "build.handoff.intent.fields")
+        need(preflight.digest(op / "builder-stopped.json") == proposed["builderStoppedSha256"],
+             "build.handoff.stop_proof.changed")
+    else:
+        need(False, "build.handoff.intent.schema")
+    need(proposed["targetOperationId"] == op.name and
          proposed["targetIntentSha256"] == preflight.digest(op / "intent.json"),
          "build.handoff.intent.changed")
     receipt = read_private(op / "builder-handoff.json")
-    fields(receipt, """schema originOperationId targetOperationId originIntentSha256
-           targetIntentSha256 originExecutionSha256 originLeaseSha256 targetLeaseSha256""",
-           "build.handoff.receipt.fields")
+    need(type(receipt) is dict and set(receipt) == set(proposed) | {"targetLeaseSha256"},
+         "build.handoff.receipt.fields")
     value = {"operationId": op.name,
              "intentSha256": preflight.digest(op / "intent.json")}
     lease = op.parent / f"builder-{intent['config']['builder']['containerId']}.json"
     need(receipt == {**proposed, "targetLeaseSha256": release.sha256(encode(value))} and
          private_bytes(lease) == encode(value), "build.handoff.incomplete")
-    for item in (path, op / "builder-handoff.json", lease):
+    evidence = [path, op / "builder-handoff.json", lease]
+    if proposed["schema"] == "openclaw.gcp-builder-recovery.v1":
+        evidence.append(op / "builder-stopped.json")
+    for item in evidence:
         fd = os.open(item, os.O_RDONLY | os.O_NOFOLLOW)
         try:
             os.fsync(fd)

@@ -794,6 +794,28 @@ receipt and fsyncs the lease before dispatch, including after a crashed
 transfer. A previously prepared operation with older tooling cannot use this
 path; prepare a fresh successor from the reviewed tooling revision.
 
+When a build client fails or is cancelled, its BuildKit solve is **not**
+settled by that client exit. Preserve the failed operation, inspect its
+terminal service and resource records, and stop only the exact owned test
+builder after confirming no other solve uses it. Prepare a distinct successor
+operation with the corrected, measured admission profile. While the same
+builder is still stopped, transfer its lease with:
+
+```sh
+python3 -B scripts/fork-release/gcp_builder_recovery.py \
+  "$FAILED_OPERATION" "$NEW_OPERATION"
+```
+
+Recovery requires the failed invocation, nonzero native exit, absence of a
+successful execution receipt, exact builder identity and a Docker stop time
+after the failure. It records the stop proof, original completion hash and
+atomic lease transition without deleting or rewriting the failed evidence.
+The heavy-workload slot advances only to that exact successor. Start the
+retained builder after the recovery receipt is durable, then run the normal
+successor `gcp_build.py start` with a fresh capacity check. A changed worker,
+other lease owner, live solve, missing stop proof or uncertain origin refuses.
+This route neither starts/stops Docker itself nor authorizes new capacity.
+
 The existing builder remains unchanged. The client has its own systemd limits;
 the recorded builder limits govern compilation separately. Native output is
 timestamped and shown before status. Resource observations describe measured
