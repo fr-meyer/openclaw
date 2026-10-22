@@ -364,7 +364,10 @@ export function registerMemoryEmbeddingMigrationFunctions(
     const now = performance.now();
     if (now - renewedAt >= 1_000) {
       renewAuthority();
-      renewedAt = now;
+      // Renewal can itself block on the shared state database. Measure the next
+      // interval from completion so successive embedding rows do not immediately
+      // repeat a slow authority check.
+      renewedAt = performance.now();
     }
   };
   db.function("openclaw_memory_embedding_from_json", { deterministic: true }, (raw) => {

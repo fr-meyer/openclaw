@@ -54,7 +54,9 @@ function legacyDatabase(embeddingType: "TEXT" | "ANY" = "TEXT"): DatabaseSync {
       VALUES(99, 'saffronquasar', 'logical-id', 'memory/a.md', 'memory', 'model', 1, 2);
   `);
   if (embeddingType === "ANY") {
-    db.exec("CREATE INDEX idx_memory_embedding_cache_model_hash ON memory_embedding_cache(model, hash)");
+    db.exec(
+      "CREATE INDEX idx_memory_embedding_cache_model_hash ON memory_embedding_cache(model, hash)",
+    );
   }
   return db;
 }
@@ -121,7 +123,9 @@ describe("memory storage migration", () => {
     ).toEqual([1.0000000000000002, 0.1]);
     expect(
       db
-        .prepare("SELECT name FROM sqlite_schema WHERE name = 'idx_memory_embedding_cache_model_hash'")
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE name = 'idx_memory_embedding_cache_model_hash'",
+        )
         .get(),
     ).toEqual({ name: "idx_memory_embedding_cache_model_hash" });
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
@@ -140,9 +144,13 @@ describe("memory storage migration", () => {
     ).toEqual([]);
     expect(db.prepare("SELECT hash FROM memory_index_sources").get()).toEqual({ hash: "" });
     expect(
-      db.prepare("SELECT value FROM memory_index_meta WHERE key = 'memory_vector_rebuild_v1'").get(),
+      db
+        .prepare("SELECT value FROM memory_index_meta WHERE key = 'memory_vector_rebuild_v1'")
+        .get(),
     ).toEqual({ value: "1" });
-    expect(db.prepare("SELECT COUNT(*) AS count FROM memory_embedding_cache").get()).toEqual({ count: 0 });
+    expect(db.prepare("SELECT COUNT(*) AS count FROM memory_embedding_cache").get()).toEqual({
+      count: 0,
+    });
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatch(/Skipped 1 memory_embedding_cache rows with invalid embeddings/);
   });
@@ -413,6 +421,35 @@ describe("memory storage migration", () => {
     ).toBeUndefined();
     expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("waits a full interval after a slow authority renewal without changing converted embeddings", () => {
+    const db = legacyDatabase();
+    db.exec(`INSERT INTO memory_embedding_cache
+      (provider, model, provider_key, hash, embedding, dims, updated_at) VALUES
+      ('provider', 'model', 'provider-key', 'second', '[2,3]', 2, 122),
+      ('provider', 'model', 'provider-key', 'third', '[4,5]', 2, 123)`);
+    let clock = 0;
+    const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const renewAuthority = vi.fn(() => {
+      clock += 1_100;
+    });
+    try {
+      migrateMemoryIndexStorage(db, { renewAuthority });
+      expect(renewAuthority).toHaveBeenCalledTimes(1);
+      expect(
+        db.prepare("SELECT hash, embedding FROM memory_embedding_cache ORDER BY hash").all(),
+      ).toEqual([
+        { hash: "h", embedding: encodeMemoryEmbedding([1 + Number.EPSILON, 0.1]) },
+        { hash: "second", embedding: encodeMemoryEmbedding([2, 3]) },
+        { hash: "third", embedding: encodeMemoryEmbedding([4, 5]) },
+      ]);
+      expect(db.prepare("SELECT embedding FROM memory_index_chunks").get()).toEqual({
+        embedding: encodeMemoryEmbedding([1 + Number.EPSILON, 0.1]),
+      });
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("retains malformed-vector text and provenance while recording regeneration debt", () => {
