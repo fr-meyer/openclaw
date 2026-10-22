@@ -544,7 +544,8 @@ def is_qualification_worker(config):
 def has_current_qualification_profile(config):
     profile = config.get("adaptiveSelection", {}).get("profile", {})
     return (profile.get("id") == QUALIFICATION_PROFILE_ID and
-            profile.get("minStartMemoryAvailableBytes") == QUALIFICATION_START_BYTES and
+            type(profile.get("minStartMemoryAvailableBytes")) is int and
+            profile["minStartMemoryAvailableBytes"] >= QUALIFICATION_START_BYTES and
             profile.get("minMemoryAvailableBytes") == QUALIFICATION_RUNNING_FLOOR_BYTES)
 
 

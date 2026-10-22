@@ -352,6 +352,16 @@ class BuildTests(unittest.TestCase):
             self.assertEqual(bound["limits"]["minMemoryAvailableBytes"], 2 << 30)
             self.assertEqual(bound["buildTuning"], {"tsdownMaxOldSpaceMb": 6144})
             build.validate_config(bound)
+            strict = copy.deepcopy(bound)
+            strict_profile = strict["adaptiveSelection"]["profile"]
+            strict_profile["minStartMemoryAvailableBytes"] = 12 << 30
+            strict["limits"]["minStartMemoryAvailableBytes"] = 12 << 30
+            for sample in strict["adaptiveSelection"]["samples"]:
+                sample["memoryAvailableBytes"] = 12 << 30
+            strict["adaptiveSelection"]["profileSha256"] = release.sha256(
+                build.encode(strict_profile))
+            build.validate_config(strict)
+            self.prepare(strict)
             samples[1]["memoryAvailableBytes"] = (10 << 30) - 1
             self.assertIsNone(build.select_profile(self.config, samples))
             samples[1]["memoryAvailableBytes"] = 10 << 30
