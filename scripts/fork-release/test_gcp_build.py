@@ -293,6 +293,15 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 24 << 30)
         self.assertEqual(bound["limits"]["maxFullMemoryPressureAvg10"], 2.0)
 
+    def test_adaptive_raises_low_base_disk_floors_to_supported_minimum(self):
+        samples = self.adaptive_fixture(gib=22)
+        self.config["limits"]["minFreeBytes"] = 8 << 30
+        self.config["cache"]["minFreeBytes"] = 22 << 30
+        bound = build.bind_adaptive_selection(self.config, samples)
+        self.assertEqual(bound["limits"]["minFreeBytes"], 16 << 30)
+        self.assertEqual(bound["cache"]["minFreeBytes"], 44 << 30)
+        build.validate_config(bound)
+
     def test_adaptive_smaller_candidate_survives_incompatible_larger_heap(self):
         samples = self.adaptive_fixture(gib=27)
         self.config["builder"]["memoryBytes"] = 8 << 30

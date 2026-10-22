@@ -329,8 +329,8 @@ def adaptive_profiles(config):
                   10 << 30, config["limits"]["minMemoryAvailableBytes"]),
               "maxFullMemoryPressureAvg10": min(
                   5.0, config["limits"].get("maxFullMemoryPressureAvg10", 5.0)),
-              "minFreeBytes": config["limits"]["minFreeBytes"],
-              "minCacheFreeBytes": config["cache"]["minFreeBytes"]}
+              "minFreeBytes": max(16 << 30, config["limits"]["minFreeBytes"]),
+              "minCacheFreeBytes": max(44 << 30, config["cache"]["minFreeBytes"])}
     # 21 GiB is a qualification candidate: a prior complete image build started
     # at 20.53 GiB, while the failed solve lost 8.19 GiB of host availability.
     # Neither measurement establishes a whole-build minimum or peak.
