@@ -1,7 +1,15 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
@@ -381,23 +389,142 @@ function isDisposableRuntimePath(value) {
   return (
     normalizedPath.includes("/.openclaw/tmp/") ||
     normalizedPath.includes("/.openclaw/worktrees/") ||
+    normalizedPath.includes("/tmp/plugin-captures/") ||
     normalizedPath.startsWith("/tmp/")
   );
 }
 
+function sha256FileOrNull(path) {
+  try {
+    return createHash("sha256").update(readFileSync(path)).digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+function isInsideDirectory(directory, filePath) {
+  try {
+    const pathWithin = relative(realpathSync(directory), realpathSync(filePath));
+    return (
+      pathWithin !== "" &&
+      pathWithin !== ".." &&
+      !pathWithin.startsWith(`..${sep}`) &&
+      !isAbsolute(pathWithin)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function managedCaptureDirectory() {
+  const stateDir = process.env.OPENCLAW_STATE_DIR?.trim() || join(homedir(), ".openclaw");
+  return isAbsolute(stateDir) ? join(stateDir, "tmp", "plugin-captures") : null;
+}
+
+function identityPathViaExistingAncestor(path) {
+  const fallback = resolve(path);
+  const missing = [];
+  let cursor = fallback;
+  while (true) {
+    try {
+      return join(realpathSync(cursor), ...missing.reverse());
+    } catch {
+      const parent = dirname(cursor);
+      if (parent === cursor) {
+        return fallback;
+      }
+      missing.push(basename(cursor));
+      cursor = parent;
+    }
+  }
+}
+
+function isStateBoundFallbackCapture(stateDir, loadedPath) {
+  try {
+    const identity = identityPathViaExistingAncestor(stateDir);
+    const prefix = `openclaw-plugin-captures-${createHash("sha256")
+      .update(identity)
+      .digest("hex")
+      .slice(0, 32)}-`;
+    const withinTemp = relative(realpathSync(tmpdir()), realpathSync(loadedPath));
+    const segments = withinTemp.split(sep);
+    return (
+      segments.length >= 4 &&
+      segments[0].startsWith(prefix) &&
+      segments[0].length > prefix.length &&
+      segments[1] === "captures" &&
+      segments[2].startsWith("openclaw-plugin-build-") &&
+      segments[2].length > "openclaw-plugin-build-".length
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isCanonicalDurablePath(path) {
+  try {
+    const canonical = realpathSync(path);
+    const temporaryRoot = realpathSync(tmpdir());
+    return (
+      !isDisposableRuntimePath(canonical) &&
+      canonical !== temporaryRoot &&
+      !isInsideDirectory(temporaryRoot, canonical)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isCanonicalDurableOriginal(root, entry, runtime) {
+  try {
+    const canonicalRoot = realpathSync(root);
+    return (
+      isCanonicalDurablePath(root) &&
+      realpathSync(entry) === join(canonicalRoot, "index.mjs") &&
+      realpathSync(runtime) === join(canonicalRoot, "src", "runtime.mjs")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function runtimeSourceIntegrity(expectedPath, expectedSha256, options = {}) {
-  const actualSha256 = createHash("sha256").update(readFileSync(RUNTIME_SOURCE_PATH)).digest("hex");
-  const durable = !isDisposableRuntimePath(RUNTIME_SOURCE_PATH);
+  const loadedPath = options.loadedPath ?? RUNTIME_SOURCE_PATH;
+  const actualSha256 = sha256FileOrNull(loadedPath);
+  const durable = !isDisposableRuntimePath(loadedPath);
+  const validPin = typeof expectedSha256 === "string" && /^[0-9a-f]{64}$/.test(expectedSha256);
+  const direct =
+    expectedPath === loadedPath &&
+    ((durable && isCanonicalDurablePath(loadedPath)) || options.allowDisposable === true);
+
+  // The 10.5 loader executes a captured copy of the selected installed plugin.
+  // Bind both the durable original and the managed captured copy to the same pin.
+  const originalRoot = options.rootDir;
+  const originalEntry = typeof originalRoot === "string" ? join(originalRoot, "index.mjs") : null;
+  const originalRuntime =
+    typeof originalRoot === "string" ? join(originalRoot, "src", "runtime.mjs") : null;
+  const captureDir = managedCaptureDirectory();
+  const trustedOriginal =
+    typeof originalRoot === "string" &&
+    isAbsolute(originalRoot) &&
+    !isDisposableRuntimePath(originalRoot) &&
+    expectedPath === originalRuntime &&
+    options.source === originalEntry &&
+    options.runtimeSource === originalEntry &&
+    isCanonicalDurableOriginal(originalRoot, originalEntry, originalRuntime);
+  const captured =
+    captureDir !== null &&
+    (isInsideDirectory(captureDir, loadedPath) ||
+      isStateBoundFallbackCapture(dirname(dirname(captureDir)), loadedPath));
+  const originalSha256 = trustedOriginal ? sha256FileOrNull(originalRuntime) : null;
   return {
-    path: RUNTIME_SOURCE_PATH,
+    path: loadedPath,
     sha256: actualSha256,
     durable,
     verified:
-      typeof expectedPath === "string" &&
-      expectedPath === RUNTIME_SOURCE_PATH &&
-      typeof expectedSha256 === "string" &&
-      expectedSha256 === actualSha256 &&
-      (durable || options.allowDisposable === true),
+      validPin &&
+      actualSha256 === expectedSha256 &&
+      (direct || (trustedOriginal && captured && originalSha256 === expectedSha256)),
   };
 }
 
@@ -3006,7 +3133,12 @@ export function registerMergeguezPrLifecycle(api) {
   const sourceIntegrity = runtimeSourceIntegrity(
     requestedConfig.expectedRuntimePath,
     requestedConfig.expectedRuntimeSha256,
-    { allowDisposable: api.testAllowDisposableRuntime === true },
+    {
+      allowDisposable: api.testAllowDisposableRuntime === true,
+      source: api.source,
+      runtimeSource: api.runtimeSource,
+      rootDir: api.rootDir,
+    },
   );
   const parityOwnerReady =
     api.runtime?.tasks?.authorityVersion === 1 &&

@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import {
@@ -16,16 +17,29 @@ import { bindSubagentRunRecord } from "../agents/subagents/registry/subagent-reg
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { PluginInstance } from "../plugins/plugin-instance.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
-import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
+import { projectPackagedMergeguezTaskFlowRuntime } from "../plugins/registry-runtime-task-flow.js";
+import { createTestPluginRegistry } from "../plugins/registry-runtime.test-helpers.js";
+import {
+  withPluginRuntimeGatewayRequestScope,
+  withPluginRuntimePluginScope,
+} from "../plugins/runtime/gateway-request-scope.js";
+import type { PluginRuntime } from "../plugins/runtime/types.js";
 import { createPluginRecord } from "../plugins/status.test-helpers.js";
+import { executeExistingOpenClawStateRead } from "../state/openclaw-state-db-readonly.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { executeManagedTaskFlowFixtureWrite } from "../tasks/managed-task-flow.test-helpers.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
-import { createGatewayManagedTaskFlowRuntime } from "./server-managed-task-flow-runtime.js";
+import {
+  consumeGatewayManagedFlowNativeLaunch,
+  createGatewayManagedTaskFlowRuntime,
+} from "./server-managed-task-flow-runtime.js";
 import type { GatewayClient } from "./server-methods/client-types.js";
 
 const pluginId = "mergeguez-pr-lifecycle";
+const packagedRoot = "/app/runtime-plugins/mergeguez-pr-lifecycle";
+const packagedEntry = "/app/runtime-plugins/mergeguez-pr-lifecycle/index.mjs";
+const oldEntry = "/home/node/.openclaw/extensions/mergeguez-pr-lifecycle/index.mjs";
 const ownerKey = "agent:franck:main";
 const statusKey = "agent:status:main";
 const workerKey = "agent:reviewer:subagent:mergeguez-parity";
@@ -96,6 +110,11 @@ function clientFor(agentId: string, sessionKey: string, signal: AbortSignal, run
 function registeredApi(
   config: ReturnType<typeof pluginConfig>,
   tasks: ReturnType<typeof createGatewayManagedTaskFlowRuntime>,
+  options: {
+    launch?: (request: unknown) => Promise<unknown>;
+    readWorkspaceHead?: (workspace: string, expectedHeadSha: string) => Promise<string>;
+    pluginSource?: string;
+  } = {},
 ) {
   const tools: Array<{
     factory: (context: { sessionKey: string; agentId?: string }) => {
@@ -112,16 +131,26 @@ function registeredApi(
   const schedules: unknown[] = [];
   const unschedules: unknown[] = [];
   const launches: unknown[] = [];
+  const source = options.pluginSource ?? packagedEntry;
+  const projectedTasks = projectPackagedMergeguezTaskFlowRuntime(tasks, {
+    id: pluginId,
+    origin: "config",
+    rootDir: source.slice(0, source.lastIndexOf("/")),
+    source,
+  });
   const api = {
     config: { plugins: { entries: { [pluginId]: { config } } } },
     pluginConfig: config,
     logger: { info() {}, warn() {}, error() {} },
     runtime: {
-      tasks,
+      tasks: projectedTasks,
       agent: { session: { getSessionEntry: () => null } },
       subagent: {
         run: async (request: unknown) => {
           launches.push(request);
+          if (options.launch) {
+            return await options.launch(request);
+          }
           throw new Error("fixture_forbids_worker_launch");
         },
       },
@@ -141,25 +170,80 @@ function registeredApi(
         },
       },
     },
-    registerTool: (factory: (typeof tools)[number]["factory"], options: unknown) =>
-      tools.push({ factory, options }),
+    registerTool: (factory: (typeof tools)[number]["factory"], toolOptions: unknown) =>
+      tools.push({ factory, options: toolOptions }),
     registerHttpRoute: (route: unknown) => routes.push(route),
     registerService: (service: unknown) => services.push(service),
+    ...(options.readWorkspaceHead ? { testReadWorkspaceHead: options.readWorkspaceHead } : {}),
   };
-  registerMergeguezPrLifecycle(api);
+  withPluginRuntimePluginScope({ pluginId, pluginSource: source, pluginOrigin: "config" }, () =>
+    registerMergeguezPrLifecycle(api),
+  );
   return { tools, routes, subscriptions, services, schedules, unschedules, launches };
 }
 
-it("keeps the actual packaged controller inert until real Gateway parity, owner and source pin agree", async () => {
+it("projects controller parity through the loaded plugin record, without changing the shared runtime", () => {
+  const tasks = createGatewayManagedTaskFlowRuntime();
+  const builder = createTestPluginRegistry({ tasks } as PluginRuntime);
+  const availability = (
+    id: string,
+    source: string,
+    origin: "config" | "global",
+    rootDir: string,
+  ) => {
+    const record = createPluginRecord({ id, source, origin, rootDir });
+    builder.registry.plugins.push(record);
+    return builder.createApi(record, { config: {}, registrationMode: "full" }).runtime.tasks;
+  };
+  const packaged = availability(pluginId, packagedEntry, "config", packagedRoot);
+  expect(tasks.availability.controllerParity).toBe(false);
+  expect(packaged?.availability.controllerParity).toBe(true);
+  expect(packaged?.managedFlows.bindSession).toBe(tasks.managedFlows.bindSession);
+  expect(
+    availability(pluginId, oldEntry, "config", oldEntry.slice(0, oldEntry.lastIndexOf("/")))
+      ?.availability.controllerParity,
+  ).toBe(false);
+  expect(
+    availability(pluginId, packagedEntry, "global", packagedRoot)?.availability.controllerParity,
+  ).toBe(false);
+  expect(
+    availability(pluginId, packagedEntry, "config", "/tmp/forged")?.availability.controllerParity,
+  ).toBe(false);
+  expect(
+    availability("unrelated", packagedEntry, "config", packagedRoot)?.availability.controllerParity,
+  ).toBe(false);
+});
+
+it("activates the packaged controller only for the real Gateway owner and exact source pin", async () => {
   await withOpenClawTestState(
     { label: "mergeguez-parity-registration", layout: "state-only" },
     async () => {
       const tasks = createGatewayManagedTaskFlowRuntime();
-      const unavailable = {
-        ...tasks,
-        availability: { ...tasks.availability, controllerParity: false },
-      };
-      const inert = registeredApi(pluginConfig(), unavailable);
+      expect(tasks.availability.controllerParity).toBe(false);
+      const projected = (
+        source: string,
+        origin: "config" | "global",
+        rootDir: string,
+        id = pluginId,
+      ) => projectPackagedMergeguezTaskFlowRuntime(tasks, { id, origin, rootDir, source });
+      expect(projected(packagedEntry, "config", packagedRoot)?.availability.controllerParity).toBe(
+        true,
+      );
+      expect(
+        projected(oldEntry, "config", oldEntry.slice(0, oldEntry.lastIndexOf("/")))?.availability
+          .controllerParity,
+      ).toBe(false);
+      expect(projected(packagedEntry, "global", packagedRoot)?.availability.controllerParity).toBe(
+        false,
+      );
+      expect(projected(packagedEntry, "config", "/tmp/forged")?.availability.controllerParity).toBe(
+        false,
+      );
+      expect(
+        projected(packagedEntry, "config", packagedRoot, "unrelated")?.availability
+          .controllerParity,
+      ).toBe(false);
+      const inert = registeredApi(pluginConfig(), tasks, { pluginSource: oldEntry });
       expect(inert.tools).toHaveLength(1);
       expect(inert.routes).toHaveLength(0);
       expect(inert.subscriptions).toHaveLength(0);
@@ -171,7 +255,6 @@ it("keeps the actual packaged controller inert until real Gateway parity, owner 
         }),
       ).rejects.toThrow(/not_enabled/u);
 
-      expect(tasks.availability.controllerParity).toBe(true);
       const active = registeredApi(pluginConfig(), tasks);
       expect(active.routes).toHaveLength(2);
       expect(active.subscriptions).toHaveLength(1);
@@ -186,372 +269,6 @@ it("keeps the actual packaged controller inert until real Gateway parity, owner 
         expect(refused.routes).toHaveLength(0);
         expect(refused.subscriptions).toHaveLength(0);
         expect(refused.services).toHaveLength(0);
-      }
-    },
-  );
-});
-
-it("lets packaged recovery cancel only its exact native root and holds an unknown stop", async () => {
-  const [embeddedRuns, embeddedFixtures, registryMemory, registryStores, registryFixtures] =
-    await Promise.all([
-      import("../agents/embedded-agent-runner/runs.js"),
-      import("../agents/embedded-agent-runner/runs.test-support.js"),
-      import("../agents/subagents/registry/subagent-registry-memory.js"),
-      import("../agents/subagents/registry/subagent-registry.persistence.test-support.js"),
-      import("../agents/subagents/registry/subagent-registry.test-helpers.js"),
-    ]);
-  const { clearActiveEmbeddedRun, setActiveEmbeddedRun } = embeddedRuns;
-  const { createEmbeddedRunHandle } = embeddedFixtures;
-  const { subagentRuns } = registryMemory;
-  const { writeSubagentSessionEntry } = registryStores;
-  const { addSubagentRunForTests, resetSubagentRegistryForTests } = registryFixtures;
-  await withOpenClawTestState(
-    { label: "mergeguez-parity-root-cancel", layout: "state-only" },
-    async (state) => {
-      await resetSubagentRegistryForTests({ persist: false });
-      const config = pluginConfig();
-      const cfg = {
-        agents: { defaults: { workspace: state.stateDir } },
-        plugins: { entries: { [pluginId]: { config } } },
-      } as OpenClawConfig;
-      await state.writeConfig(cfg);
-      const context = createDirectChatContext({
-        getRuntimeConfig: () => cfg,
-        validateAgentRuntimeApprovalAuthority: () => true,
-      });
-      const resolveGatewayContext = () => context;
-      const registry = createEmptyPluginRegistry();
-      const record = createPluginRecord({ id: pluginId });
-      registry.plugins.push(record);
-      const instance = new PluginInstance(pluginId, { record, registry });
-      const gatewayTasks = createGatewayManagedTaskFlowRuntime(resolveGatewayContext);
-      // Exercise the real Gateway binding before the production availability flag is enabled.
-      const tasks = {
-        ...gatewayTasks,
-        availability: { ...gatewayTasks.availability, controllerParity: true },
-      };
-      const registered = registeredApi(config, tasks);
-      const nativeContext = captureOpenClawStateWorkerContext();
-      const policy = __testing.normalizeRuntimeConfig(config).repositories.get(repo);
-      const initial = createState(
-        {
-          eventId: "github:synthetic-cancel",
-          action: "opened",
-          repo,
-          prNumber: 320,
-          headSha,
-          baseSha,
-          baseRef: "dev",
-          headRepo: repo,
-        },
-        policy,
-      );
-      const rootKey = "agent:reviewer:subagent:mergeguez-cancel-root";
-      const rootRunId = "mergeguez-cancel-root-run";
-      const sessionId = "mergeguez-cancel-root-session";
-      await writeSubagentSessionEntry({
-        stateDir: state.stateDir,
-        agentId: "reviewer",
-        sessionKey: rootKey,
-        defaultSessionId: sessionId,
-      });
-      await addSubagentRunForTests({
-        runId: rootRunId,
-        childSessionKey: rootKey,
-        requesterSessionKey: ownerKey,
-        controllerSessionKey: ownerKey,
-        label: `plugin:${pluginId}`,
-        generation: 3,
-        expectsCompletionMessage: false,
-      });
-      const root = subagentRuns.get(rootRunId);
-      if (!root) {
-        throw new Error("Native root fixture was not registered");
-      }
-      const rootTaskId = root.taskRunId ?? rootRunId;
-      const descendantId = "mergeguez-cancel-descendant";
-      await addSubagentRunForTests({
-        runId: descendantId,
-        childSessionKey: "agent:reviewer:subagent:mergeguez-cancel-descendant",
-        requesterSessionKey: rootKey,
-        controllerSessionKey: rootKey,
-        generation: 3,
-        expectsCompletionMessage: false,
-      });
-      const unclaimedRunId = "mergeguez-cancel-unclaimed-run";
-      await addSubagentRunForTests({
-        runId: unclaimedRunId,
-        childSessionKey: "agent:reviewer:subagent:mergeguez-cancel-unclaimed",
-        requesterSessionKey: ownerKey,
-        controllerSessionKey: ownerKey,
-        label: `plugin:${pluginId}`,
-        generation: 3,
-        expectsCompletionMessage: false,
-      });
-      const foreignRunId = "mergeguez-cancel-foreign-requester";
-      await addSubagentRunForTests({
-        runId: foreignRunId,
-        childSessionKey: "agent:reviewer:subagent:mergeguez-cancel-foreign",
-        requesterSessionKey: "agent:other:main",
-        controllerSessionKey: "agent:other:main",
-        label: `plugin:${pluginId}`,
-        generation: 3,
-        expectsCompletionMessage: false,
-      });
-      const replacedRunId = "mergeguez-cancel-replaced-generation";
-      await addSubagentRunForTests({
-        runId: replacedRunId,
-        childSessionKey: "agent:reviewer:subagent:mergeguez-cancel-replaced",
-        requesterSessionKey: ownerKey,
-        controllerSessionKey: ownerKey,
-        label: `plugin:${pluginId}`,
-        generation: 4,
-        expectsCompletionMessage: false,
-      });
-      const blocked = (runId: string, sessionKey: string, taskId = runId) => ({
-        ...initial,
-        phase: PHASE.BLOCKED,
-        blocker: "synthetic_orphan_hold",
-        workerGeneration: 3,
-        activeWorker: null,
-        orphanedWorker: {
-          kind: "review",
-          sessionKey,
-          runId,
-          taskId,
-          headSha,
-          cycle: 0,
-          nativeGeneration: 3,
-          launchOutcome: null,
-        },
-      });
-      const rootFlow = await executeManagedTaskFlowFixtureWrite(nativeContext, {
-        type: "tasks.managedFlows.create",
-        input: {
-          ownerKey,
-          controllerId: CONTROLLER_ID,
-          goal: "Cancel one exact held native root",
-          status: "blocked",
-          stateJson: blocked(rootRunId, rootKey, rootTaskId),
-        },
-      });
-      const wrongTaskFlow = await executeManagedTaskFlowFixtureWrite(nativeContext, {
-        type: "tasks.managedFlows.create",
-        input: {
-          ownerKey,
-          controllerId: CONTROLLER_ID,
-          goal: "Hold a stale task claim",
-          status: "blocked",
-          stateJson: blocked(rootRunId, rootKey, "stale-task-id"),
-        },
-      });
-      const descendantFlow = await executeManagedTaskFlowFixtureWrite(nativeContext, {
-        type: "tasks.managedFlows.create",
-        input: {
-          ownerKey,
-          controllerId: CONTROLLER_ID,
-          goal: "Hold a descendant-only stop",
-          status: "blocked",
-          stateJson: blocked(descendantId, "agent:reviewer:subagent:mergeguez-cancel-descendant"),
-        },
-      });
-      const foreignFlow = await executeManagedTaskFlowFixtureWrite(nativeContext, {
-        type: "tasks.managedFlows.create",
-        input: {
-          ownerKey,
-          controllerId: CONTROLLER_ID,
-          goal: "Hold a foreign requester",
-          status: "blocked",
-          stateJson: blocked(foreignRunId, "agent:reviewer:subagent:mergeguez-cancel-foreign"),
-        },
-      });
-      const replacedFlow = await executeManagedTaskFlowFixtureWrite(nativeContext, {
-        type: "tasks.managedFlows.create",
-        input: {
-          ownerKey,
-          controllerId: CONTROLLER_ID,
-          goal: "Hold a replaced native generation",
-          status: "blocked",
-          stateJson: blocked(replacedRunId, "agent:reviewer:subagent:mergeguez-cancel-replaced"),
-        },
-      });
-      const unknownKey = "agent:reviewer:subagent:mergeguez-cancel-unknown";
-      const unknownRunId = "mergeguez-cancel-unknown-run";
-      const unknownRun = createSubagentRunRecord({
-        runId: unknownRunId,
-        childSessionKey: unknownKey,
-        requesterSessionKey: ownerKey,
-        controllerSessionKey: ownerKey,
-        label: `plugin:${pluginId}`,
-        generation: 3,
-        expectsCompletionMessage: false,
-      });
-      await executeManagedTaskFlowFixtureWrite(nativeContext, {
-        type: "subagents.persistChanges",
-        input: {
-          writeId: "mergeguez-cancel-unknown-native",
-          values: [bindSubagentRunRecord(unknownRun)],
-          deleteRunIds: [],
-          versions: [{ runId: unknownRunId, version: null }],
-        },
-      });
-      const unknownFlow = await executeManagedTaskFlowFixtureWrite(nativeContext, {
-        type: "tasks.managedFlows.create",
-        input: {
-          ownerKey,
-          controllerId: CONTROLLER_ID,
-          goal: "Hold an unresolved root stop",
-          status: "blocked",
-          stateJson: blocked(unknownRunId, unknownKey),
-        },
-      });
-      const callAs = async <T>(run: () => Promise<T>): Promise<T> =>
-        withPluginRuntimeGatewayRequestScope(
-          {
-            context,
-            resolveGatewayContext,
-            client: null,
-            isWebchatConnect: () => false,
-          },
-          () => instance.run(run),
-        );
-      const tool = registered.tools[0].factory({ sessionKey: ownerKey, agentId: "franck" });
-      let abortCalls = 0;
-      const handle = createEmbeddedRunHandle({
-        runId: rootRunId,
-        abort: () => {
-          abortCalls += 1;
-        },
-      });
-      setActiveEmbeddedRun(sessionId, handle, rootKey);
-      try {
-        await callAs(async () => {
-          const runs = tasks.runs.bindSession({ sessionKey: ownerKey });
-          try {
-            for (const [taskId, flow] of [
-              [unclaimedRunId, rootFlow],
-              [foreignRunId, foreignFlow],
-              [replacedRunId, replacedFlow],
-            ] as const) {
-              await expect(
-                runs.cancel({
-                  taskId,
-                  cfg,
-                  expectedFlow: { flowId: flow.flowId, revision: flow.revision },
-                }),
-              ).rejects.toThrow();
-            }
-          } finally {
-            await runs.close();
-          }
-        });
-        expect(subagentRuns.get(unclaimedRunId)?.killIntent).toBeUndefined();
-        expect(subagentRuns.get(foreignRunId)?.killIntent).toBeUndefined();
-        expect(subagentRuns.get(replacedRunId)?.killIntent).toBeUndefined();
-        for (const flowId of [
-          descendantFlow.flowId,
-          wrongTaskFlow.flowId,
-          foreignFlow.flowId,
-          replacedFlow.flowId,
-        ]) {
-          const rejected = await callAs(() => tool.execute("call", { action: "recover", flowId }));
-          expect(rejected.details, flowId).toMatchObject({
-            ok: true,
-            recovery: "blocked_orphan_still_unsettled",
-          });
-        }
-        expect(abortCalls).toBe(0);
-        let raced = false;
-        const raceTasks = {
-          ...tasks,
-          runs: {
-            ...tasks.runs,
-            bindSession(binding: Parameters<typeof tasks.runs.bindSession>[0]) {
-              const native = tasks.runs.bindSession(binding);
-              return {
-                ...native,
-                async cancel(request: Parameters<typeof native.cancel>[0]) {
-                  if (!raced && request.taskId === rootTaskId) {
-                    raced = true;
-                    const changed = await executeManagedTaskFlowFixtureWrite(nativeContext, {
-                      type: "tasks.managedFlows.mutate",
-                      input: {
-                        ownerKey,
-                        controllerId: CONTROLLER_ID,
-                        flowId: rootFlow.flowId,
-                        expectedRevision: rootFlow.revision,
-                        mutation: "setWaiting",
-                        stateJson: blocked(rootRunId, rootKey, rootTaskId),
-                      },
-                    });
-                    expect(changed).toMatchObject({
-                      applied: true,
-                      flow: { revision: rootFlow.revision + 1 },
-                    });
-                  }
-                  return native.cancel(request);
-                },
-              };
-            },
-          },
-        };
-        const racedTool = registeredApi(config, raceTasks).tools[0].factory({
-          sessionKey: ownerKey,
-          agentId: "franck",
-        });
-        const stale = await callAs(() =>
-          racedTool.execute("call", { action: "recover", flowId: rootFlow.flowId }),
-        );
-        expect(raced).toBe(true);
-        expect(stale.details).toMatchObject({
-          ok: true,
-          recovery: "blocked_orphan_still_unsettled",
-        });
-        expect(abortCalls).toBe(0);
-        const accepted = await callAs(() =>
-          tool.execute("call", { action: "recover", flowId: rootFlow.flowId }),
-        );
-        expect(accepted.details).toMatchObject({ ok: true, recovery: "blocked_orphan_reconciled" });
-        expect(abortCalls).toBe(1);
-        expect(subagentRuns.get(descendantId)?.killIntent).toBeUndefined();
-        const unresolved = await callAs(() =>
-          tool.execute("call", { action: "recover", flowId: unknownFlow.flowId }),
-        );
-        expect(unresolved.details).toMatchObject({
-          ok: true,
-          recovery: "blocked_orphan_still_unsettled",
-        });
-        await callAs(async () => {
-          const bound = tasks.managedFlows.bindSession({ sessionKey: ownerKey });
-          try {
-            expect(await bound.get(rootFlow.flowId)).toMatchObject({
-              revision: rootFlow.revision + 2,
-              stateJson: { orphanedWorker: null, lastGhostCleanup: { runId: rootRunId } },
-            });
-            expect(await bound.get(unknownFlow.flowId)).toMatchObject({
-              revision: unknownFlow.revision,
-              stateJson: { orphanedWorker: { runId: unknownRunId } },
-            });
-            for (const [candidate, runId] of [
-              [wrongTaskFlow, rootRunId],
-              [descendantFlow, descendantId],
-              [foreignFlow, foreignRunId],
-              [replacedFlow, replacedRunId],
-            ] as const) {
-              expect(await bound.get(candidate.flowId)).toMatchObject({
-                revision: candidate.revision,
-                stateJson: { orphanedWorker: { runId } },
-              });
-            }
-          } finally {
-            await bound.close();
-          }
-        });
-        expect(registered.launches).toHaveLength(0);
-      } finally {
-        clearActiveEmbeddedRun(sessionId, handle, rootKey);
-        await instance.dispose();
-        await resetSubagentRegistryForTests({ persist: false });
       }
     },
   );
@@ -572,12 +289,7 @@ it("binds packaged status and reviewer reports to the exact native SQLite flow a
       const record = createPluginRecord({ id: pluginId });
       registry.plugins.push(record);
       const instance = new PluginInstance(pluginId, { record, registry });
-      const gatewayTasks = createGatewayManagedTaskFlowRuntime(resolveGatewayContext);
-      // Exercise the real Gateway binding before the production availability flag is enabled.
-      const tasks = {
-        ...gatewayTasks,
-        availability: { ...gatewayTasks.availability, controllerParity: true },
-      };
+      const tasks = createGatewayManagedTaskFlowRuntime(resolveGatewayContext);
       const registered = registeredApi(config, tasks);
       const nativeContext = captureOpenClawStateWorkerContext();
       const policy = __testing.normalizeRuntimeConfig(config).repositories.get(repo);
@@ -843,6 +555,114 @@ it("binds packaged status and reviewer reports to the exact native SQLite flow a
         expect(registered.launches).toHaveLength(0);
         expect(registered.schedules).toHaveLength(1);
 
+        const recovery = registered.services[0] as { start: () => Promise<void> };
+        await callBackground(() => recovery.start());
+        await callBackground(async () => {
+          const bound = tasks.managedFlows.bindSession({ sessionKey: ownerKey });
+          try {
+            expect(await bound.get(flow.flowId)).toMatchObject({
+              status: "waiting",
+              stateJson: {
+                phase: PHASE.REVIEW_WAITING,
+                wait: { claimRef: "claim:synthetic-319" },
+              },
+            });
+          } finally {
+            await bound.close();
+          }
+        });
+        expect(registered.launches).toHaveLength(0);
+
+        const reviewRoute = registered.routes[1] as {
+          handler: (request: unknown, response: unknown) => Promise<boolean>;
+        };
+        expect(reviewRoute).toMatchObject({
+          path: "/plugins/mergeguez-pr-lifecycle/mergeguez",
+          auth: "plugin",
+          match: "exact",
+        });
+        const signedReview = async (
+          label: string,
+          claimRef: string,
+          reviewedBaseSha: string,
+          validSignature = true,
+        ) => {
+          const body = Buffer.from(
+            JSON.stringify({
+              repository: repo,
+              pullRequest: 319,
+              headSha,
+              baseSha: reviewedBaseSha,
+              claimRef,
+              outcome: "approved",
+              coverageComplete: true,
+              findings: [],
+            }),
+          );
+          const signature = createHmac("sha256", "synthetic-review-only")
+            .update(body)
+            .digest("hex");
+          const request = Object.assign(Readable.from([body]), {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-mergeguez-event": "review.completed",
+              "x-mergeguez-delivery": `synthetic-real-gateway-${label}`,
+              "x-mergeguez-signature-256": `sha256=${validSignature ? signature : "0".repeat(64)}`,
+            },
+            socket: { remoteAddress: "127.0.0.1" },
+          });
+          let payload: Record<string, unknown> | undefined;
+          const response = {
+            statusCode: 200,
+            setHeader() {},
+            end(value: string) {
+              payload = JSON.parse(value) as Record<string, unknown>;
+            },
+          };
+          await callBackground(() => reviewRoute.handler(request, response));
+          return { status: response.statusCode, payload };
+        };
+
+        expect(
+          await signedReview("wrong-signature", "claim:synthetic-319", baseSha, false),
+        ).toMatchObject({ status: 401 });
+        expect(await signedReview("stale-claim", "claim:old", baseSha)).toMatchObject({
+          status: 202,
+          payload: { reason: "stale_claim_result" },
+        });
+        expect(
+          await signedReview("stale-base", "claim:synthetic-319", "c".repeat(40)),
+        ).toMatchObject({ status: 202, payload: { reason: "stale_base_result" } });
+        await callBackground(async () => {
+          const bound = tasks.managedFlows.bindSession({ sessionKey: ownerKey });
+          try {
+            expect(await bound.get(flow.flowId)).toMatchObject({
+              revision: flow.revision + 1,
+              status: "waiting",
+              stateJson: { phase: PHASE.REVIEW_WAITING },
+            });
+          } finally {
+            await bound.close();
+          }
+        });
+        expect(await signedReview("matching", "claim:synthetic-319", baseSha)).toMatchObject({
+          status: 202,
+          payload: { accepted: true },
+        });
+        await callBackground(async () => {
+          const bound = tasks.managedFlows.bindSession({ sessionKey: ownerKey });
+          try {
+            expect(await bound.get(flow.flowId)).toMatchObject({
+              revision: flow.revision + 2,
+              stateJson: { phase: PHASE.MERGE_READY },
+            });
+          } finally {
+            await bound.close();
+          }
+        });
+        expect(registered.launches).toHaveLength(0);
+
         await callAs(workerClient, async () => {
           await expect(
             tool({ sessionKey: workerKey, agentId: "reviewer" }).execute("call", {
@@ -894,6 +714,184 @@ it("binds packaged status and reviewer reports to the exact native SQLite flow a
           },
         );
       } finally {
+        await instance.dispose();
+      }
+    },
+  );
+});
+
+it("admits one packaged native root and never relaunches after a lost acknowledgement", async () => {
+  await withOpenClawTestState(
+    { label: "mergeguez-parity-launch-race", layout: "state-only" },
+    async () => {
+      const config = pluginConfig();
+      const cfg = { plugins: { entries: { [pluginId]: { config } } } } as OpenClawConfig;
+      const context = createDirectChatContext({
+        getRuntimeConfig: () => cfg,
+        validateAgentRuntimeApprovalAuthority: () => true,
+      });
+      const resolveGatewayContext = () => context;
+      const registry = createEmptyPluginRegistry();
+      const record = createPluginRecord({ id: pluginId });
+      registry.plugins.push(record);
+      const instance = new PluginInstance(pluginId, { record, registry });
+      const nativeContext = captureOpenClawStateWorkerContext();
+      const tasks = createGatewayManagedTaskFlowRuntime(resolveGatewayContext);
+      const policy = __testing.normalizeRuntimeConfig(config).repositories.get(repo);
+      const initial = createState(
+        {
+          eventId: "github:synthetic-launch",
+          action: "opened",
+          repo,
+          prNumber: 321,
+          headSha,
+          baseSha,
+          baseRef: "dev",
+          headRepo: repo,
+        },
+        policy,
+      );
+      const flow = await executeManagedTaskFlowFixtureWrite(nativeContext, {
+        type: "tasks.managedFlows.create",
+        input: {
+          ownerKey,
+          controllerId: CONTROLLER_ID,
+          goal: "Launch one synthetic native review root",
+          status: "queued",
+          stateJson: initial,
+        },
+      });
+      const nativeRunId = "mergeguez-parity-launched-root";
+      const readPersistedRoot = async () => {
+        const reply = await executeExistingOpenClawStateRead(
+          { path: nativeContext.admission.databasePath, env: nativeContext.environment },
+          { type: "subagents.runs", scope: { kind: "ids", runIds: [nativeRunId] } },
+          { context: nativeContext, current: true },
+        );
+        if (!reply?.ok || reply.type !== "subagents.runs") {
+          throw new Error("Persisted native root observation unavailable");
+        }
+        return reply.runs.get(nativeRunId);
+      };
+      let enteredLaunch!: () => void;
+      let releaseLaunch!: () => void;
+      const launched = new Promise<void>((resolve) => {
+        enteredLaunch = resolve;
+      });
+      const release = new Promise<void>((resolve) => {
+        releaseLaunch = resolve;
+      });
+      const registered = registeredApi(config, tasks, {
+        readWorkspaceHead: async () => headSha,
+        launch: async (request) => {
+          const launch = request as { sessionKey: string; managedFlowLaunch: object };
+          const admitted = consumeGatewayManagedFlowNativeLaunch(
+            launch.managedFlowLaunch,
+            pluginId,
+            launch.sessionKey,
+          );
+          admitted.assertCurrent();
+          expect(() =>
+            consumeGatewayManagedFlowNativeLaunch(
+              launch.managedFlowLaunch,
+              pluginId,
+              launch.sessionKey,
+            ),
+          ).toThrow(/exact current managed-flow capability/u);
+          const native = createSubagentRunRecord({
+            runId: nativeRunId,
+            childSessionKey: launch.sessionKey,
+            requesterSessionKey: ownerKey,
+            controllerSessionKey: ownerKey,
+            label: `plugin:${pluginId}`,
+            generation: 1,
+            expectsCompletionMessage: false,
+          });
+          const row = bindSubagentRunRecord(native);
+          const saved = await executeManagedTaskFlowFixtureWrite(nativeContext, {
+            type: "subagents.persistChanges",
+            input: {
+              writeId: "mergeguez-parity-one-launch",
+              values: [row],
+              deleteRunIds: [],
+              versions: [{ runId: nativeRunId, version: null }],
+              managedFlowLaunchClaim: {
+                ownerKey: admitted.ownerKey,
+                controllerId: admitted.controllerId,
+                flowId: admitted.flowId,
+                revision: admitted.revision,
+                childSessionKey: admitted.childSessionKey,
+              },
+            },
+          });
+          expect(saved).toMatchObject({ writeId: "mergeguez-parity-one-launch" });
+          expect(await readPersistedRoot()).toMatchObject({
+            runId: nativeRunId,
+            childSessionKey: launch.sessionKey,
+            requesterSessionKey: ownerKey,
+            controllerSessionKey: ownerKey,
+            generation: 1,
+            label: `plugin:${pluginId}`,
+          });
+          enteredLaunch();
+          await release;
+          throw new Error("synthetic_acknowledgement_lost_after_native_admission");
+        },
+      });
+      const callBackground = async <T>(run: () => Promise<T>): Promise<T> =>
+        withPluginRuntimeGatewayRequestScope(
+          { context, resolveGatewayContext, client: null, isWebchatConnect: () => false },
+          () => instance.run(run),
+        );
+      const tool = registered.tools[0].factory({ sessionKey: ownerKey, agentId: "franck" });
+      try {
+        const first = callBackground(() =>
+          tool.execute("first", { action: "continue", flowId: flow.flowId }),
+        );
+        await Promise.race([
+          launched,
+          first.then(() => {
+            throw new Error("controller completed before entering the native launch stub");
+          }),
+        ]);
+        const concurrent = await callBackground(() =>
+          tool.execute("concurrent", { action: "continue", flowId: flow.flowId }),
+        );
+        expect(concurrent.details).toMatchObject({ ok: true });
+        expect(registered.launches).toHaveLength(1);
+        releaseLaunch();
+        const uncertain = await first;
+        expect(uncertain.details).toMatchObject({
+          ok: true,
+          flow: { blocker: "worker_launch_outcome_unknown" },
+        });
+        const recovery = registered.services[0] as { start: () => Promise<void> };
+        await callBackground(() => recovery.start());
+        expect(registered.launches).toHaveLength(1);
+        await callBackground(async () => {
+          const bound = tasks.managedFlows.bindSession({ sessionKey: ownerKey });
+          try {
+            expect(await bound.get(flow.flowId)).toMatchObject({
+              status: "blocked",
+              stateJson: {
+                phase: PHASE.BLOCKED,
+                blocker: "worker_launch_outcome_unknown",
+                activeWorker: { runId: nativeRunId },
+              },
+            });
+            expect(await readPersistedRoot()).toMatchObject({
+              runId: nativeRunId,
+              requesterSessionKey: ownerKey,
+              controllerSessionKey: ownerKey,
+              generation: 1,
+              label: `plugin:${pluginId}`,
+            });
+          } finally {
+            await bound.close();
+          }
+        });
+      } finally {
+        releaseLaunch();
         await instance.dispose();
       }
     },
