@@ -54,7 +54,7 @@ overrides:
   "@hono/node-server": 2.1.1
   axios: 1.20.0
   fast-uri: 4.1.5
-  follow-redirects: 1.16.0
+  follow-redirects: 1.16.1
   defu: 6.1.7
   fast-xml-parser: 5.11.1
   request: "npm:@cypress/request@4.0.1"
@@ -71,6 +71,8 @@ overrides:
   "mailauth@5.0.3>undici": 8.10.2
   minimatch: 10.2.6
   path-to-regexp: 8.4.2
+  # Keep indexed source-map parsing on the security-fixed patch release.
+  source-map-js: 1.2.2
   proxy-addr: 2.0.8
   qs: 6.16.0
   node-domexception: "npm:@nolyfill/domexception@1.0.28"
