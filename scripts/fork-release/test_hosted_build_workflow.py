@@ -3,9 +3,13 @@
 from contextlib import redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
+import sys
+import tempfile
 import textwrap
 from types import SimpleNamespace as NS
 import unittest
@@ -92,6 +96,74 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             self.assertIn('cd source', candidate_execution)
             self.assertIn('pnpm install --frozen-lockfile', candidate_execution)
             self.assertIn('node scripts/run-vitest.mjs', candidate_execution)
+
+    def run_focused_gate_dispatch(self, name, tests, *, native_exists=True,
+                                  vitest_exit=0, native_exit=0):
+        candidate_execution = step(self.workflow, name)
+        run = textwrap.dedent(candidate_execution.split('        run: |\n', 1)[1])
+        dispatch = run[run.index('OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs'):]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stub = root / 'node'
+            stub.write_text(f'#!{sys.executable}\n' + textwrap.dedent('''\
+                import json, os, sys
+                from pathlib import Path
+                args = sys.argv[1:]
+                with Path(os.environ['GATE_TRACE']).open('a') as trace:
+                    trace.write(json.dumps(args) + '\\n')
+                native = args[:1] == ['--test']
+                if native and not Path(args[1]).is_file():
+                    raise SystemExit(2)
+                raise SystemExit(int(os.environ['NATIVE_EXIT' if native else 'VITEST_EXIT']))
+                '''))
+            stub.chmod(0o755)
+            prerequisite = root / 'test/mcp-nowistay-sdk-regression.test.mjs'
+            if native_exists:
+                prerequisite.parent.mkdir()
+                prerequisite.write_text('// Synthetic native runner input.\n')
+            trace = root / 'calls.jsonl'
+            env = {**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
+                   'GATE_TRACE': str(trace), 'VITEST_EXIT': str(vitest_exit),
+                   'NATIVE_EXIT': str(native_exit)}
+            selection = 'tests=(' + ' '.join(shlex.quote(test) for test in tests) + ')\n'
+            result = subprocess.run(['/bin/bash', '-c', 'set -euo pipefail\n' + selection + dispatch],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10)
+            calls = [json.loads(line) for line in trace.read_text().splitlines()]
+        return result, calls
+
+    def test_selected_mcp_gate_runs_declared_native_nowistay_prerequisite(self):
+        descriptor = json.loads((WORKFLOW.parents[2] / 'scripts/fork-release/candidates/'
+                                 'v2026.10.5-source-only/native-nowistay-prerequisite.json').read_text())
+        self.assertTrue(descriptor['required'])
+        native = descriptor['command']
+        tests = ['src/other.test.ts', descriptor['runnerRouting']['vitestProducerGate']]
+        for name in ('Run focused candidate lifecycle and producer-consumer tests',
+                     'Run focused custom patch and producer-consumer gates'):
+            with self.subTest(step=name):
+                result, calls = self.run_focused_gate_dispatch(name, tests)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(calls, [['scripts/run-vitest.mjs', *tests], native[1:]])
+
+    def test_unrelated_gates_do_not_acquire_a_native_nowistay_requirement(self):
+        for name in ('Run focused candidate lifecycle and producer-consumer tests',
+                     'Run focused custom patch and producer-consumer gates'):
+            with self.subTest(step=name):
+                result, calls = self.run_focused_gate_dispatch(name, ['src/other.test.ts'],
+                                                              native_exists=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(calls, [['scripts/run-vitest.mjs', 'src/other.test.ts']])
+
+    def test_vitest_native_and_missing_native_failures_block_both_gate_steps(self):
+        tests = ['src/agents/mcp-http-transport.test.ts']
+        for name in ('Run focused candidate lifecycle and producer-consumer tests',
+                     'Run focused custom patch and producer-consumer gates'):
+            for change, expected, count in (({'vitest_exit': 17}, 17, 1),
+                                            ({'native_exit': 19}, 19, 2),
+                                            ({'native_exists': False}, 2, 2)):
+                with self.subTest(step=name, change=change):
+                    result, calls = self.run_focused_gate_dispatch(name, tests, **change)
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertEqual(len(calls), count)
 
     def test_release_pr_contracts_exclude_default_branch_dispatch(self):
         job = self.workflow.split('  release-pr-contracts:\n', 1)[1].split('\n  qualify-and-prepare:', 1)[0]

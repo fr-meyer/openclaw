@@ -713,6 +713,9 @@ def archive_diagnostics(op, generation):
         binding = durable.read_private(binding_path)
         operation = trial.PRIVATE_ROOT / binding['operationId']
         status = settled_check(operation)
+        # Prepared checks can still run and change their evidence. Never seal
+        # their intent-only diagnostics into an immutable teardown prerequisite.
+        need(status['state'] in ('succeeded', 'failed'), 'daily.diagnostics.check_not_terminal')
         target = op / ('diagnostics-' + phase)
         target.mkdir(mode=0o700, exist_ok=True)
         need(target.resolve() == target and stat.S_IMODE(target.stat().st_mode) == 0o700 and target.stat().st_uid == os.getuid(), 'daily.diagnostics.owner')
@@ -748,8 +751,9 @@ def verify_diagnostics(op, run, generation):
         retained = value['checks'].get(phase)
         need(retained is not None and retained['operationId'] == binding['operationId'], 'daily.diagnostics.missing_check')
         observed = settled_check(trial.PRIVATE_ROOT / binding['operationId'])
+        need(observed['state'] in ('succeeded', 'failed'), 'daily.diagnostics.check_not_terminal')
         need(observed['state'] == retained['state'], 'daily.native.not_settled')
-        need(('result.json' if observed['state'] != 'prepared' else 'intent.json') in retained['files'], 'daily.diagnostics.missing_result')
+        need('result.json' in retained['files'], 'daily.diagnostics.missing_result')
         for name, hashed in retained['files'].items():
             need(Path(name).name == name and HEX.fullmatch(hashed) and
                  hash_bytes(durable.private_bytes(op / ('diagnostics-' + phase) / name)) == hashed,
@@ -906,7 +910,9 @@ def prepare_check(op, phase, clean_path, tooling, cloud):
         if (op / (phase + '.trial.json')).exists():
             location, _ = trial_binding(op, phase)
             return {'operation': str(location), 'state': trial.status(location)['state']}
-        open_generation(op, 'rollback' if phase == 'rollback' else 'candidate')
+        generation = 'rollback' if phase == 'rollback' else 'candidate'
+        need(not (op / (generation + '.diagnostics.json')).exists(), 'daily.generation.archived')
+        open_generation(op, generation)
         need(now() < contracts.utc(run['plan']['expiresAt']), 'daily.plan.expired')
         observe_production(cloud, run['plan'], run['production'])
         clean_raw = durable.private_bytes(clean_path)
@@ -952,7 +958,9 @@ def prepare_check(op, phase, clean_path, tooling, cloud):
 def check_action(op, phase, cloud):
     op, run = load(op)
     location, intent = trial_binding(op, phase)
-    open_generation(op, 'rollback' if phase == 'rollback' else 'candidate')
+    generation = 'rollback' if phase == 'rollback' else 'candidate'
+    need(not (op / (generation + '.diagnostics.json')).exists(), 'daily.generation.archived')
+    open_generation(op, generation)
     need(now() < contracts.utc(run['plan']['expiresAt']), 'daily.plan.expired')
     observe_production(cloud, run['plan'], run['production'])
     clean_binding(op, run, phase, intent['clean'], cloud)

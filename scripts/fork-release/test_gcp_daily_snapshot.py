@@ -436,6 +436,126 @@ class DailySnapshotTests(unittest.TestCase):
             daily.perform(self.op, 'delete', 'candidate', 'cannot-approve-attached-disk', self.cloud)
         self.assertFalse(any(call['method'] == 'DELETE' for call in self.cloud.mutations))
 
+    def test_archive_refuses_prepared_checks_without_sealing_diagnostics(self):
+        for generation, phase in (('candidate', 'doctor'), ('rollback', 'rollback')):
+            with self.subTest(phase=phase):
+                location = self.base / ('trial-' + phase)
+                location.mkdir(mode=0o700)
+                daily.record(location, 'intent.json', {'phase': phase})
+                daily.record(self.op, phase + '.trial.json', {'operationId': location.name})
+                with patch.object(daily.trial, 'PRIVATE_ROOT', self.base), \
+                     patch.object(daily, 'settled_check', return_value={'state': 'prepared'}), \
+                     self.assertRaisesRegex(release.Refusal, 'daily.diagnostics.check_not_terminal'):
+                    daily.archive_diagnostics(self.op, generation)
+                self.assertFalse((self.op / (generation + '.diagnostics.json')).exists())
+                self.assertFalse((self.op / ('diagnostics-' + phase)).exists())
+        self.assertFalse(self.cloud.mutations)
+        self.assertFalse(self.host_calls)
+
+    def test_archive_can_resume_after_prepared_check_reaches_terminal_state(self):
+        location = self.base / 'trial-doctor'
+        location.mkdir(mode=0o700)
+        daily.record(location, 'intent.json', {'phase': 'doctor'})
+        daily.record(self.op, 'doctor.trial.json', {'operationId': location.name})
+        observed = {'state': 'prepared'}
+        with patch.object(daily.trial, 'PRIVATE_ROOT', self.base), \
+             patch.object(daily, 'settled_check', side_effect=lambda op: dict(observed)):
+            with self.assertRaisesRegex(release.Refusal, 'daily.diagnostics.check_not_terminal'):
+                self.archive()
+            daily.record(location, 'result.json', {'state': 'succeeded'})
+            observed['state'] = 'succeeded'
+            archived = self.archive()
+            self.assertEqual(archived['checks']['doctor']['state'], 'succeeded')
+            self.assertIn('result.json', archived['checks']['doctor']['files'])
+            original = daily.durable.private_bytes(self.op / 'candidate.diagnostics.json')
+            self.assertEqual(self.archive(), archived)
+            self.assertEqual(daily.durable.private_bytes(self.op / 'candidate.diagnostics.json'), original)
+        self.assertFalse(self.cloud.mutations)
+        self.assertFalse(self.host_calls)
+
+    def test_archive_retains_failed_check_and_refuses_prepared_legacy_receipt(self):
+        location = self.base / 'trial-doctor'
+        location.mkdir(mode=0o700)
+        daily.record(location, 'intent.json', {'phase': 'doctor'})
+        daily.record(location, 'result.json', {'state': 'failed'})
+        daily.record(self.op, 'doctor.trial.json', {'operationId': location.name})
+        with patch.object(daily.trial, 'PRIVATE_ROOT', self.base), \
+             patch.object(daily, 'settled_check', return_value={'state': 'failed'}):
+            archived = self.archive()
+            self.assertEqual(archived['checks']['doctor']['state'], 'failed')
+            self.assertIn('result.json', archived['checks']['doctor']['files'])
+            self.assertEqual(self.archive(), archived)
+        file = self.op / 'candidate.diagnostics.json'
+        archived['checks']['doctor']['state'] = 'prepared'
+        archived['checks']['doctor']['files'].pop('result.json')
+        raw = daily.durable.encode(archived)
+        file.write_bytes(raw)
+        with patch.object(daily.trial, 'PRIVATE_ROOT', self.base), \
+             patch.object(daily, 'settled_check', return_value={'state': 'prepared'}), \
+             self.assertRaisesRegex(release.Refusal, 'daily.diagnostics.check_not_terminal'):
+            self.archive()
+        self.assertEqual(daily.durable.private_bytes(file), raw)
+        self.assertFalse(self.cloud.mutations)
+        self.assertFalse(self.host_calls)
+
+    def test_archived_unused_generation_refuses_new_check_bindings(self):
+        originals = {}
+        for generation in ('candidate', 'rollback'):
+            self.assertEqual(self.archive(generation)['checks'], {})
+            originals[generation] = daily.durable.private_bytes(self.op / (generation + '.diagnostics.json'))
+        calls = copy.deepcopy(self.cloud.calls)
+        for phase in ('doctor', 'startup', 'rollback'):
+            with self.subTest(phase=phase), \
+                 self.assertRaisesRegex(release.Refusal, 'daily.generation.archived'):
+                daily.prepare_check(self.op, phase, self.base / 'unused-clean', 'unused-tooling', self.cloud)
+            self.assertFalse((self.op / (phase + '.trial.json')).exists())
+        for generation, raw in originals.items():
+            self.assertEqual(daily.durable.private_bytes(self.op / (generation + '.diagnostics.json')), raw)
+        self.assertEqual(self.cloud.calls, calls)
+        self.assertFalse(self.cloud.mutations)
+        self.assertFalse(self.host_calls)
+
+    def test_archived_doctor_refuses_late_startup_but_retains_terminal_status(self):
+        location = self.base / 'trial-doctor'
+        location.mkdir(mode=0o700)
+        daily.record(location, 'intent.json', {'phase': 'doctor'})
+        daily.record(location, 'start-intent.json', {'requested': True})
+        daily.record(location, 'result.json', {'state': 'succeeded'})
+        daily.record(self.op, 'doctor.trial.json', {'operationId': location.name})
+        observed = {'state': 'succeeded'}
+        with patch.object(daily.trial, 'PRIVATE_ROOT', self.base), \
+             patch.object(daily, 'settled_check', return_value=observed), \
+             patch.object(daily, 'trial_binding', return_value=(location, {})), \
+             patch.object(daily.trial, 'status', return_value=observed):
+            self.archive()
+            raw = daily.durable.private_bytes(self.op / 'candidate.diagnostics.json')
+            with self.assertRaisesRegex(release.Refusal, 'daily.generation.archived'):
+                daily.prepare_check(self.op, 'startup', self.base / 'unused-clean', 'unused-tooling', self.cloud)
+            self.assertEqual(daily.prepare_check(self.op, 'doctor', self.base / 'unused-clean', 'unused-tooling', self.cloud),
+                             {'operation': str(location), 'state': 'succeeded'})
+            self.assertEqual(daily.run_check(self.op, 'doctor', 'unused-approval', self.cloud), observed)
+            self.assertEqual(daily.durable.private_bytes(self.op / 'candidate.diagnostics.json'), raw)
+        self.assertFalse((self.op / 'startup.trial.json').exists())
+        self.assertFalse(self.cloud.mutations)
+        self.assertFalse(self.host_calls)
+
+    def test_archived_generation_refuses_starting_a_legacy_prepared_check(self):
+        self.archive()
+        raw = daily.durable.private_bytes(self.op / 'candidate.diagnostics.json')
+        location = self.base / 'trial-doctor'
+        location.mkdir(mode=0o700)
+        daily.record(location, 'intent.json', {'phase': 'doctor'})
+        daily.record(self.op, 'doctor.trial.json', {'operationId': location.name})
+        with patch.object(daily, 'trial_binding', return_value=(location, {})), \
+             patch.object(daily.trial, 'start') as start, \
+             self.assertRaisesRegex(release.Refusal, 'daily.generation.archived'):
+            daily.run_check(self.op, 'doctor', 'unused-approval', self.cloud)
+        start.assert_not_called()
+        self.assertFalse((location / 'start-intent.json').exists())
+        self.assertEqual(daily.durable.private_bytes(self.op / 'candidate.diagnostics.json'), raw)
+        self.assertFalse(self.cloud.mutations)
+        self.assertFalse(self.host_calls)
+
     def test_delete_rejects_malformed_and_wrong_run_diagnostics(self):
         self.perform('restore')
         file = self.op / 'candidate.diagnostics.json'

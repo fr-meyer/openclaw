@@ -253,6 +253,13 @@ jobs:
             --manifest ../candidate/scripts/fork-release/manifest.json \
             --inventory ../candidate/scripts/fork-release/patch-inventory.json)
           OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${tests[@]}"
+          # The MCP producer gate owns a separate native node:test SDK regression.
+          for test_path in "${tests[@]}"; do
+            if [[ "$test_path" == "src/agents/mcp-http-transport.test.ts" ]]; then
+              node --test test/mcp-nowistay-sdk-regression.test.mjs
+              break
+            fi
+          done
       - name: Retain passing exact-head contract evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -400,6 +407,13 @@ jobs:
             --manifest ../metadata/scripts/fork-release/manifest.json \
             --inventory ../metadata/scripts/fork-release/patch-inventory.json)
           OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${tests[@]}"
+          # The MCP producer gate owns a separate native node:test SDK regression.
+          for test_path in "${tests[@]}"; do
+            if [[ "$test_path" == "src/agents/mcp-http-transport.test.ts" ]]; then
+              node --test test/mcp-nowistay-sdk-regression.test.mjs
+              break
+            fi
+          done
       - name: Install reviewed OCI smoke transport
         run: |
           set -euo pipefail

@@ -328,6 +328,9 @@ class PrTests(unittest.TestCase):
                         "commit_id": evidence["headSha"]}]
             run = {"id": 91, "run_attempt": 1, "event": "pull_request",
                    "conclusion": "success", "head_branch": "candidate/test-release",
+                   "head_sha": evidence["headSha"],
+                   "pull_requests": [{"number": 7, "head": {"sha": evidence["headSha"]},
+                                      "base": {"sha": evidence["baseSha"]}}],
                    "repository": {"full_name": "fr-meyer/openclaw"},
                    "path": pr.WORKFLOW}
             jobs = [{"check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/101",
@@ -382,6 +385,48 @@ class PrTests(unittest.TestCase):
                             "commit_id": evidence["headSha"]})
             with self.assertRaisesRegex(pr.Refusal, "change request"):
                 pr.assess_current(evidence, current, reviews, run, jobs)
+
+    def test_run_is_bound_to_current_pr_and_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, event, run_context = fixture(root)
+            evidence = pr.release_seal(pr.intake(event, run_context), manifest_path, root)
+            current = {**copy.deepcopy(event["pull_request"]), "state": "open",
+                       "merge_commit_sha": "f" * 40}
+            reviews = [{"id": 1, "user": {"login": "reviewer"}, "state": "APPROVED",
+                        "commit_id": evidence["headSha"]}]
+            run = {"id": 91, "run_attempt": 1, "event": "pull_request",
+                   "conclusion": "success", "head_branch": evidence["headRef"],
+                   "head_sha": evidence["headSha"],
+                   "pull_requests": [{"number": 7, "head": {"sha": evidence["headSha"]},
+                                      "base": {"sha": evidence["baseSha"]}}],
+                   "repository": {"full_name": evidence["repository"]}, "path": pr.WORKFLOW}
+            jobs = [{"check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/101",
+                     "conclusion": "success"}]
+            for commit in (evidence["headSha"], current["merge_commit_sha"]):
+                with self.subTest(accepted_commit=commit):
+                    checked = {**run, "head_sha": commit}
+                    self.assertEqual(pr.assess_current(evidence, current, reviews, checked, jobs)["headSha"],
+                                     evidence["headSha"])
+
+            invalid = {}
+            invalid["stale_commit_same_branch"] = {**run, "head_sha": "e" * 40}
+            invalid["missing_commit"] = {key: value for key, value in run.items() if key != "head_sha"}
+            invalid["missing_pr_association"] = {key: value for key, value in run.items()
+                                                 if key != "pull_requests"}
+            invalid["empty_pr_association"] = {**run, "pull_requests": []}
+            invalid["wrong_pr"] = copy.deepcopy(run)
+            invalid["wrong_pr"]["pull_requests"][0]["number"] = 8
+            invalid["stale_pr_head"] = copy.deepcopy(run)
+            invalid["stale_pr_head"]["pull_requests"][0]["head"]["sha"] = "e" * 40
+            invalid["stale_pr_base"] = copy.deepcopy(run)
+            invalid["stale_pr_base"]["pull_requests"][0]["base"]["sha"] = "e" * 40
+            invalid["duplicate_pr_association"] = {**run, "pull_requests": run["pull_requests"] * 2}
+            invalid["malformed_pr_head"] = copy.deepcopy(run)
+            invalid["malformed_pr_head"]["pull_requests"][0]["head"] = None
+            for reason, changed in invalid.items():
+                with self.subTest(rejected=reason), self.assertRaisesRegex(pr.Refusal, "check run"):
+                    pr.assess_current(evidence, current, reviews, changed, jobs)
 
     def test_task_intent_requires_owner_and_declared_dependency(self):
         body = pr.template("task", "fr-meyer", "main", "Isolated work", ["12:" + "a" * 40])
@@ -440,6 +485,9 @@ class PrTests(unittest.TestCase):
             f"{prefix}/pulls/3": current(3, "d" * 40, pr.template("task", "fr-meyer", "main", "three", ["1:" + "a" * 40])),
             f"{prefix}/actions/runs/9": {"id": 9, "run_attempt": 1, "event": "pull_request",
                                               "conclusion": "success", "head_branch": "task/a",
+                                              "head_sha": "a" * 40,
+                                              "pull_requests": [{"number": 1, "head": {"sha": "a" * 40},
+                                                                 "base": {"sha": "b" * 40}}],
                                               "repository": {"full_name": "fr-meyer/openclaw"}, "path": pr.WORKFLOW},
             f"{prefix}/pulls/1/reviews?per_page=100&page=1": [
                 {"id": 1, "user": {"login": "reviewer"}, "state": "APPROVED", "commit_id": "a" * 40}],

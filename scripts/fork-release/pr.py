@@ -265,6 +265,19 @@ def assess_current(evidence, pr, reviews, run, jobs, dependencies=()):
     need(run.get("event") == "pull_request" and run.get("conclusion") == "success", "PR check run is not successful")
     need(run.get("repository", {}).get("full_name") == evidence["repository"], "check run repository changed")
     need(run.get("head_branch") == evidence["headRef"], "check run branch changed")
+    # PR runs may execute the current synthetic merge ref instead of the head.
+    run_sha = run.get("head_sha")
+    need(matches(SHA, run_sha) and run_sha in (evidence["headSha"], pr.get("merge_commit_sha")),
+         "check run commit changed")
+    associated = run.get("pull_requests")
+    need(type(associated) is list, "check run lacks PR association")
+    matching_prs = [item for item in associated if type(item) is dict and
+                    type(item.get("number")) is int and item["number"] == evidence["prNumber"]]
+    need(len(matching_prs) == 1 and type(matching_prs[0].get("head")) is dict and
+         type(matching_prs[0].get("base")) is dict and
+         matching_prs[0]["head"].get("sha") == evidence["headSha"] and
+         matching_prs[0]["base"].get("sha") == evidence["baseSha"],
+         "check run PR/head/base association changed")
     need(WORKFLOW in run.get("path", ""), "wrong PR check workflow")
     expected_url = f"https://api.github.com/repos/{evidence['repository']}/check-runs/{evidence['run']['checkRunId']}"
     matching = [job for job in jobs if job.get("check_run_url") == expected_url]
