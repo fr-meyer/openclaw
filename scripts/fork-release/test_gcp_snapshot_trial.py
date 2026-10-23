@@ -1806,6 +1806,30 @@ class SnapshotTrialTests(unittest.TestCase):
         self.assertFalse(trial.successful(state, 0, False, 0))
         self.assertFalse(trial.successful(state, 1, True, 0))
 
+    def test_owned_cgroup_cpu_counters_are_bounded_and_required(self):
+        cg = self.root / "cpu-cgroup"
+        cg.mkdir()
+        for name, value in {
+            "memory.current": "4096", "memory.peak": "8192", "memory.swap.current": "0",
+            "memory.events": "oom 0\noom_kill 0\n",
+            "memory.stat": "anon 4096\nfile 0\nkernel 0\n",
+            "cpu.stat": "usage_usec 5000000\nuser_usec 4000000\nsystem_usec 1000000\n"
+                        "nr_throttled 2\nthrottled_usec 30000\n",
+        }.items():
+            (cg / name).write_text(value)
+        sample = trial.cgroup_sample(cg)
+        self.assertEqual(sample["cpu"], {"usageUsec": 5000000, "userUsec": 4000000,
+                                          "systemUsec": 1000000, "nrThrottled": 2,
+                                          "throttledUsec": 30000})
+        self.assertEqual(sample["events"]["oom_kill"], 0)
+        for bad in ("usage_usec -1\nuser_usec 1\nsystem_usec 1\n",
+                    "usage_usec 1\nuser_usec 1\n",
+                    "usage_usec 1\nusage_usec 2\nuser_usec 1\nsystem_usec 1\n",
+                    "usage_usec 1\nuser_usec 1\nsystem_usec 1\n" + "x" * 4096):
+            (cg / "cpu.stat").write_text(bad)
+            with self.assertRaises(release.Refusal):
+                trial.cgroup_sample(cg)
+
     def test_live_cgroup_admission_checks_actual_limits(self):
         self.clean.update(devicePath="/dev/sdb1", deviceMajorMinor="8:17")
         cg = self.root / "cgroup"
@@ -1923,6 +1947,7 @@ class SnapshotTrialTests(unittest.TestCase):
             "io.stat": "8:16 rbytes=0 wbytes=0 rios=0 wios=0",
             "memory.current": "4096", "memory.peak": "8192", "memory.swap.current": "0",
             "memory.events": "oom 0\noom_kill 0\n", "memory.stat": "anon 4096\nfile 0\nkernel 0\n",
+            "cpu.stat": "usage_usec 0\nuser_usec 0\nsystem_usec 0\nnr_throttled 0\nthrottled_usec 0\n",
             "cgroup.procs": "123\n124\n",
         }.items():
             (cg / name).write_text(value)

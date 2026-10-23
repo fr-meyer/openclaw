@@ -1838,10 +1838,28 @@ def cgroup_sample(root):
     memory = values("memory.stat")
     events = values("memory.events")
     need("oom_kill" in events, "trial.cgroup.events_unavailable")
+    # Cumulative CPU counters let the retained, timestamped resource samples
+    # distinguish ongoing container work from an idle wait. They do not
+    # attribute the work to any particular database or plugin.
+    with (root / "cpu.stat").open("rb") as stream:
+        cpu_raw = stream.read(4097)
+    need(len(cpu_raw) <= 4096, "trial.cgroup.cpu_stat_size")
+    cpu = {}
+    for line in cpu_raw.splitlines():
+        pair = line.split()
+        need(len(pair) == 2 and pair[0] not in cpu and pair[1].isdigit(),
+             "trial.cgroup.cpu_stat")
+        cpu[pair[0]] = int(pair[1])
+    need(all(key in cpu for key in (b"usage_usec", b"user_usec", b"system_usec")),
+         "trial.cgroup.cpu_stat")
     return {"at": durable.now(), "current": int((root / "memory.current").read_text()),
             "peak": int((root / "memory.peak").read_text()), "events": events,
             "swap": int((root / "memory.swap.current").read_text()),
-            "anon": memory.get("anon"), "file": memory.get("file"), "kernel": memory.get("kernel")}
+            "anon": memory.get("anon"), "file": memory.get("file"), "kernel": memory.get("kernel"),
+            "cpu": {"usageUsec": cpu[b"usage_usec"], "userUsec": cpu[b"user_usec"],
+                    "systemUsec": cpu[b"system_usec"],
+                    "nrThrottled": cpu.get(b"nr_throttled"),
+                    "throttledUsec": cpu.get(b"throttled_usec")}}
 
 
 def cgroup_processes(root):
