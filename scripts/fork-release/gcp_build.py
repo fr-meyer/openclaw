@@ -85,7 +85,7 @@ SAFE_ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bi
 # only three pre-payload acquisition steps use default; all others use none.
 # Review the whole file, including stage/COPY/ENV/SHELL policy, before changing
 # this pin. A partial Dockerfile parser cannot establish that boundary.
-REVIEWED_DOCKERFILE_SHA256 = "10e784c10a826ac74457f5bc50a76861057671871735aa96ad176d9285b984c3"
+REVIEWED_DOCKERFILE_SHA256 = "01a32889ed1a3a86592f492ae2337c4c9591b9ba5fadca176b86afbc2efc4ad6"
 CONFIG_FIELDS = """schema operationId attempt projectNumber instanceId toolingSha
 sourceSha sourceTree manifestSha256 inventorySha256 builtAt builder limits dockerExport"""
 BUILD_TUNING_FIELDS = "tsdownMaxOldSpaceMb"
