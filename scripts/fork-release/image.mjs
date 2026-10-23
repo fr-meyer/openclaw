@@ -27,6 +27,7 @@ import {
   readGcpExecution,
   validateProducer,
 } from "./gcp-image-context.mjs";
+import { readRuntimeExpectations, validateImageRuntimeProof } from "./verify-image-plugins.mjs";
 
 const SHA = /^[0-9a-f]{40}$/u;
 const DIGEST = /^sha256:[0-9a-f]{64}$/u;
@@ -61,7 +62,13 @@ function validateManifest(path) {
   return manifest;
 }
 
-export function inspectLoadedPlugins(manifest, version, imageReference, codexVersion) {
+export function inspectLoadedPlugins(
+  manifest,
+  version,
+  imageReference,
+  codexVersion,
+  runtimeExpectations,
+) {
   need(DIGEST.test(imageReference), "Plugin inspection requires an immutable image digest");
   need(/^\d+\.\d+\.\d+$/u.test(codexVersion), "Missing exact source-pinned Codex version");
   const verifierSource = fileURLToPath(new URL("verify-image-plugins.mjs", import.meta.url));
@@ -122,6 +129,7 @@ export function inspectLoadedPlugins(manifest, version, imageReference, codexVer
         manifest.image.extensions,
         version,
         codexVersion,
+        ...(runtimeExpectations === undefined ? [] : [JSON.stringify(runtimeExpectations)]),
       ],
       { encoding: "utf8", timeout: 30_000, maxBuffer: 256 * 1024, killSignal: "SIGKILL" },
     ).trim();
@@ -150,7 +158,12 @@ export function inspectLoadedPlugins(manifest, version, imageReference, codexVer
         ).trim() === "false 0 false",
         "Plugin check did not complete successfully",
       );
-      return JSON.parse(output);
+      const proof = JSON.parse(output);
+      if (runtimeExpectations !== undefined) {
+        need(Array.isArray(proof?.plugins), "Image plugin proof missing");
+        validateImageRuntimeProof(proof.runtime, runtimeExpectations);
+      }
+      return proof;
     } finally {
       // The create response grants authority over this exact test container only.
       execFileSync("docker", ["rm", "--force", container], {
@@ -164,15 +177,42 @@ export function inspectLoadedPlugins(manifest, version, imageReference, codexVer
   }
 }
 
+export function hostedGitBuildContext(manifest) {
+  need(
+    manifest.repository === "fr-meyer/openclaw" && SHA.test(manifest.source?.commit),
+    "Invalid hosted Git source identity",
+  );
+  return {
+    kind: "git",
+    repository: `https://github.com/${manifest.repository}`,
+    sourceSha: manifest.source.commit,
+  };
+}
+
 export async function verifyImageLayout({ manifest, receipt, ociDir }) {
   validateProducer(receipt.producer);
+  let sourceRepository = receipt.producer.kind === "gcp" ? manifest.repository : undefined;
+  if (Object.hasOwn(receipt, "buildContext")) {
+    const context = receipt.buildContext;
+    const expected = hostedGitBuildContext(manifest);
+    need(
+      receipt.producer.kind !== "gcp" &&
+        context &&
+        typeof context === "object" &&
+        !Array.isArray(context) &&
+        Object.keys(context).sort().join(",") === "kind,repository,sourceSha" &&
+        Object.keys(expected).every((key) => context[key] === expected[key]),
+      "Hosted Git build context differs from the pinned source",
+    );
+    sourceRepository = manifest.repository;
+  }
+  // Legacy hosted v2 receipts without this marker retain their original local-
+  // context verification. They do not qualify for the new hosted export gate.
   return verifyDockerReleaseLayout({
     directory: ociDir,
     architecture: manifest.image.architecture,
     sourceSha: manifest.source.commit,
-    // GCP uses an immutable remote Git context. Hosted preparation retains its
-    // existing local-checkout context and producer checks.
-    sourceRepository: receipt.producer.kind === "gcp" ? manifest.repository : undefined,
+    sourceRepository,
     version: receipt.version,
     builtAt: receipt.builtAt,
     expectedDigest: receipt.indexDigest,
@@ -262,6 +302,18 @@ async function main() {
       ),
       "Invalid image digest",
     );
+    // Original v2/GCP receipts remain readable. Newly sealed hosted exports
+    // require this proof at their export gate and cannot strip it to qualify.
+    if (Object.hasOwn(receipt, "runtimeQualification")) {
+      const proof = receipt.runtimeQualification;
+      need(
+        proof?.sourceSha === receipt.sourceSha &&
+          proof.imageDigest === receipt.imageDigest &&
+          proof.configDigest === receipt.configDigest,
+        "Runtime proof image/source changed",
+      );
+      validateImageRuntimeProof(proof);
+    }
     validateProducer(receipt.producer);
     need(
       receipt.artifactName === producerArtifactName(receipt.sourceSha, receipt.producer),
@@ -343,6 +395,7 @@ async function main() {
     "@openai/codex"
   ];
   need(/^\d+\.\d+\.\d+$/u.test(codexVersion), "Source must pin an exact bundled Codex version");
+  const runtimeExpected = command === "seal" ? readRuntimeExpectations(sourceDir) : undefined;
   let producer;
   let builtAt;
   if (command === "seal-gcp") {
@@ -395,6 +448,7 @@ async function main() {
     indexDigest: expectedDigest,
     producer,
     artifactName: producerArtifactName(sourceSha, producer),
+    ...(producer.kind !== "gcp" ? { buildContext: hostedGitBuildContext(manifest) } : {}),
     ...(manifest.review ? { review: { ...manifest.review, headSha: reviewHead } } : {}),
   };
   const image = await verifyImageLayout({ manifest, receipt, ociDir });
@@ -409,12 +463,22 @@ async function main() {
       ...(smokeTransport === "loaded" ? { loadedIndexDigest: image.indexDigest } : {}),
     },
   );
-  receipt.pluginPayload = inspectLoadedPlugins(
+  const inspected = inspectLoadedPlugins(
     manifest,
     version,
     smoke.imageReference,
     codexVersion,
+    runtimeExpected,
   );
+  receipt.pluginPayload = producer.kind === "gcp" ? inspected : inspected.plugins;
+  if (producer.kind !== "gcp") {
+    receipt.runtimeQualification = {
+      ...inspected.runtime,
+      sourceSha,
+      imageDigest: image.imageDigest,
+      configDigest: image.configDigest,
+    };
+  }
   receipt.imageDigest = image.imageDigest;
   receipt.configDigest = image.configDigest;
   writeFileSync(outputPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx", mode: 0o600 });

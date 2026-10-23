@@ -26,6 +26,16 @@ on:
         description: Exact candidate metadata-seal commit (40 lowercase hex characters)
         required: true
         type: string
+      export_public_artifact:
+        description: Publish the verified OCI image and receipts as a public Actions artifact
+        required: false
+        default: false
+        type: boolean
+      artifact_storage_approved:
+        description: Confirm included storage allowance or separately approved artifact storage cost
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -38,6 +48,66 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  hosted-capacity-assessment:
+    if: >-
+      ${{ github.event_name == 'pull_request' && github.repository == 'fr-meyer/openclaw' &&
+          github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' &&
+          github.event.pull_request.head.ref == 'task/v106-merge-binding' &&
+          github.event.pull_request.number == 20 &&
+          (github.event.action == 'opened' || github.event.action == 'reopened' ||
+           github.event.action == 'synchronize' || github.event.action == 'ready_for_review') }}
+    runs-on: ubuntu-24.04
+    permissions: {}
+    timeout-minutes: 5
+    steps:
+      - name: Observe hosted runner capacity without a build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_CAPACITY'
+          from datetime import datetime, timezone
+          import json
+          import os
+          from pathlib import Path
+          import platform
+          import re
+          import subprocess
+
+          def version(argv):
+              try:
+                  result = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                          text=True, check=False, timeout=10)
+              except (OSError, subprocess.TimeoutExpired):
+                  return {"status": "unavailable"}
+              value = result.stdout.strip()
+              if result.returncode != 0 or not re.fullmatch(r"[A-Za-z0-9 .,_+:/()@-]{1,256}", value):
+                  return {"status": "unavailable"}
+              return {"status": "ok", "version": value}
+
+          memory = {}
+          for line in Path('/proc/meminfo').read_text().splitlines():
+              key, value = line.split(':', 1)
+              if key in ('MemTotal', 'MemAvailable'):
+                  memory[key + 'Bytes'] = int(value.split()[0]) * 1024
+          os_release = dict(line.split('=', 1) for line in Path('/etc/os-release').read_text().splitlines()
+                            if '=' in line and not line.startswith('#'))
+          operating_system = {key: os_release.get(key, '').strip('"') for key in ('ID', 'VERSION_ID')}
+          if any(not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", value) for value in operating_system.values()):
+              raise SystemExit('Unsupported OS metadata')
+          disks = {}
+          for name, path in (('root', '/'), ('tmp', '/tmp')):
+              stats = os.statvfs(path)
+              disks[name] = {"totalBytes": stats.f_blocks * stats.f_frsize,
+                             "availableBytes": stats.f_bavail * stats.f_frsize}
+          print(json.dumps({"schema": "openclaw.hosted-capacity.v1",
+                            "observedAt": datetime.now(timezone.utc).isoformat(),
+                            "os": operating_system, "architecture": platform.machine(),
+                            "logicalCpus": os.cpu_count(), "memory": memory, "filesystems": disks,
+                            "dockerCli": version(['docker', '--version']),
+                            "dockerServer": version(['docker', 'version', '--format', '{{.Server.Version}}']),
+                            "buildx": version(['docker', 'buildx', 'version'])}, sort_keys=True))
+          PY_CAPACITY
+
   pr-intake:
     if: >-
       ${{ github.event_name == 'pull_request' && github.repository == 'fr-meyer/openclaw' &&
@@ -130,6 +200,9 @@ jobs:
               git -C candidate fetch --no-tags --depth=1 origin "$COMMIT"
             fi
           done
+          python3 trusted/scripts/fork-release/source_ancestry.py \
+            --manifest candidate/scripts/fork-release/manifest.json \
+            --inventory candidate/scripts/fork-release/patch-inventory.json --source-dir candidate
           python3 trusted/scripts/fork-release/pr.py seal \
             --event "$GITHUB_EVENT_PATH" \
             --manifest candidate/scripts/fork-release/manifest.json \
@@ -145,7 +218,7 @@ jobs:
       - name: Setup supported Node runtime
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.21.0"
+          node-version: ${{ steps.candidate.outputs.node_version }}
           package-manager-cache: false
       - name: Verify source, manifest and offline PR regressions
         run: |
@@ -160,6 +233,9 @@ jobs:
               git -C source fetch --no-tags --depth=1 origin "$COMMIT"
             fi
           done
+          python3 trusted/scripts/fork-release/source_ancestry.py \
+            --manifest candidate/scripts/fork-release/manifest.json \
+            --inventory candidate/scripts/fork-release/patch-inventory.json --source-dir source
           python3 trusted/scripts/fork-release/preflight.py \
             --manifest candidate/scripts/fork-release/manifest.json \
             --inventory candidate/scripts/fork-release/patch-inventory.json --source-dir source
@@ -193,9 +269,15 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           CANDIDATE_HEAD_SHA: ${{ inputs.candidate_head_sha }}
+          PUBLIC_EXPORT: ${{ inputs.export_public_artifact }}
+          STORAGE_APPROVED: ${{ inputs.artifact_storage_approved }}
         run: |
           set -euo pipefail
           [[ "$CANDIDATE_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$PUBLIC_EXPORT" == true && "$STORAGE_APPROVED" != true ]]; then
+            echo 'Public image artifact storage must be explicitly approved before building.' >&2
+            exit 1
+          fi
       - name: Checkout trusted pipeline tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -242,6 +324,9 @@ jobs:
               git -C metadata fetch --no-tags --depth=1 origin "$COMMIT"
             fi
           done
+          python3 tooling/scripts/fork-release/source_ancestry.py \
+            --manifest metadata/scripts/fork-release/manifest.json \
+            --inventory metadata/scripts/fork-release/patch-inventory.json --source-dir metadata
           python3 tooling/scripts/fork-release/pr.py seal-offline \
             --manifest metadata/scripts/fork-release/manifest.json --checkout metadata
       - name: Confirm the exact candidate is the current PR head
@@ -278,7 +363,7 @@ jobs:
       - name: Setup supported Node runtime
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.21.0"
+          node-version: ${{ steps.identity.outputs.node_version }}
           package-manager-cache: false
       - name: Verify source and run offline pipeline regressions
         id: source
@@ -294,6 +379,9 @@ jobs:
               git -C source fetch --no-tags --depth=1 origin "$COMMIT"
             fi
           done
+          python3 tooling/scripts/fork-release/source_ancestry.py \
+            --manifest metadata/scripts/fork-release/manifest.json \
+            --inventory metadata/scripts/fork-release/patch-inventory.json --source-dir source
           python3 tooling/scripts/fork-release/preflight.py \
             --manifest metadata/scripts/fork-release/manifest.json \
             --inventory metadata/scripts/fork-release/patch-inventory.json --source-dir source
@@ -315,15 +403,40 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y skopeo
           skopeo --version | grep -Fx 'skopeo version 1.13.3'
-      - name: Set up Docker Buildx
+      - name: Set up bounded hosted Docker Buildx
+        id: builder
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker-container
+          driver-opts: |
+            memory=8589934592
+            memory-swap=8589934592
+            cpu-period=100000
+            cpu-quota=400000
+      - name: Verify hosted worker limits and begin bounded resource observation
+        id: resources
+        env:
+          BUILDER_NAME: ${{ steps.builder.outputs.name }}
+          BUILDER_DRIVER: ${{ steps.builder.outputs.driver }}
+          BUILDER_NODES: ${{ steps.builder.outputs.nodes }}
+          SOURCE_SHA: ${{ steps.identity.outputs.source_sha }}
+          TOOLING_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 -c 'import os,pathlib; pathlib.Path(os.environ["RUNNER_TEMP"], "fork-hosted-nodes.json").write_text(os.environ["BUILDER_NODES"])'
+          python3 tooling/scripts/fork-release/hosted_resources.py start \
+            --builder "$BUILDER_NAME" --driver "$BUILDER_DRIVER" --nodes-json "$RUNNER_TEMP/fork-hosted-nodes.json" --state-dir "$RUNNER_TEMP/fork-hosted-observation" \
+            --source-sha "$SOURCE_SHA" --tooling-sha "$TOOLING_SHA"
       - name: Prepare OCI directory
         run: mkdir -p "$RUNNER_TEMP/fork-release/oci"
       - name: Build exact candidate once into OCI
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+          DOCKER_BUILD_SUMMARY: "false"
         with:
-          context: source
+          context: ${{ format('https://github.com/fr-meyer/openclaw.git?fetch-by-commit=true&checksum={0}#{0}', steps.identity.outputs.source_sha) }}
           platforms: linux/amd64
           outputs: type=oci,dest=${{ runner.temp }}/fork-release/oci/default,tar=false,compression=gzip,compression-level=1
           build-args: |
@@ -332,6 +445,8 @@ jobs:
             OPENCLAW_BUILD_TIMESTAMP=${{ steps.identity.outputs.built_at }}
             OPENCLAW_DOCKER_BUILD_VERSION=${{ steps.source.outputs.version }}
             OPENCLAW_EXTENSIONS=${{ steps.identity.outputs.extensions }}
+            OPENCLAW_PARITY_IMAGE=1
+            OPENCLAW_DOCKER_BUILD_TSDOWN_MAX_OLD_SPACE_MB=6144
           labels: |
             org.opencontainers.image.revision=${{ steps.identity.outputs.source_sha }}
             org.opencontainers.image.version=${{ steps.source.outputs.version }}
@@ -339,6 +454,17 @@ jobs:
           sbom: true
           provenance: mode=max
           push: false
+      - name: Inspect all OCI layers and metadata before native smoke or publication
+        env:
+          OCI_DIGEST: ${{ steps.build.outputs.digest }}
+          SOURCE_SHA: ${{ steps.identity.outputs.source_sha }}
+          TOOLING_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 tooling/scripts/fork-release/hosted_privacy.py \
+            --oci-dir "$RUNNER_TEMP/fork-release/oci/default" \
+            --expected-index-digest "$OCI_DIGEST" --source-sha "$SOURCE_SHA" \
+            --tooling-sha "$TOOLING_SHA" --output "$RUNNER_TEMP/fork-release/privacy.json"
       - name: Verify OCI bytes and smoke that exact image
         env:
           BUILT_AT: ${{ steps.identity.outputs.built_at }}
@@ -351,11 +477,80 @@ jobs:
             metadata/scripts/fork-release/patch-inventory.json source \
             "$RUNNER_TEMP/fork-release/oci/default" "$BUILDKIT_DIGEST" \
             "$RUNNER_TEMP/fork-release/receipt.json"
+      - name: Finish resource observation through export load and native verification
+        if: always() && steps.resources.outcome == 'success'
+        env:
+          OCI_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          python3 tooling/scripts/fork-release/hosted_resources.py finish \
+            --state-dir "$RUNNER_TEMP/fork-hosted-observation" \
+            --index-digest "$OCI_DIGEST" --output "$RUNNER_TEMP/fork-release/resources.json"
+      - name: Bind hosted qualification receipts and export decision
+        env:
+          SOURCE_SHA: ${{ steps.identity.outputs.source_sha }}
+          TOOLING_SHA: ${{ github.sha }}
+          OCI_DIGEST: ${{ steps.build.outputs.digest }}
+          PUBLIC_EXPORT: ${{ inputs.export_public_artifact || false }}
+          STORAGE_APPROVED: ${{ inputs.artifact_storage_approved || false }}
+        run: |
+          set -euo pipefail
+          python3 tooling/scripts/fork-release/hosted_export.py \
+            --seal "$RUNNER_TEMP/fork-release/receipt.json" \
+            --privacy "$RUNNER_TEMP/fork-release/privacy.json" \
+            --resources "$RUNNER_TEMP/fork-release/resources.json" \
+            --source-sha "$SOURCE_SHA" --tooling-sha "$TOOLING_SHA" --index-digest "$OCI_DIGEST" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --public-export "$PUBLIC_EXPORT" --storage-approved "$STORAGE_APPROVED" \
+            --output "$RUNNER_TEMP/fork-release/hosted-qualification.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Prepare and verify the bounded public artifact
+        id: bundle
+        if: >-
+          ${{ github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
+              inputs.artifact_storage_approved }}
+        run: |
+          set -euo pipefail
+          python3 tooling/scripts/fork-release/hosted_bundle.py prepare \
+            --root "$RUNNER_TEMP/fork-release" --output-dir "$RUNNER_TEMP/fork-upload" \
+            --output "$RUNNER_TEMP/fork-hosted-bundle.json"
+          python3 tooling/scripts/fork-release/hosted_bundle.py verify \
+            --receipt "$RUNNER_TEMP/fork-hosted-bundle.json" --output-dir "$RUNNER_TEMP/fork-upload" \
+            > "$RUNNER_TEMP/fork-hosted-bundle-verified.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          bundle = json.loads(Path(os.environ["RUNNER_TEMP"], "fork-hosted-bundle-verified.json").read_text())
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print("path=" + bundle["bundlePath"], file=output)
+              print("sha256=" + bundle["sha256"], file=output)
+          PY
       - name: Retain the exact tested OCI payload and public receipt
+        id: image_artifact
+        if: >-
+          ${{ github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
+              inputs.artifact_storage_approved }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: fork-release-${{ steps.identity.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/fork-release/
-          compression-level: 0
-          retention-days: 14
+          # The pinned action streams one file unchanged and uses its basename.
+          # The prepared ZIP includes all overhead within the 2 GiB hard limit.
+          path: ${{ steps.bundle.outputs.path }}
+          archive: false
+          overwrite: false
+          retention-days: 1
           if-no-files-found: error
+      - name: Confirm uploaded bytes match the bounded artifact
+        if: steps.image_artifact.outcome == 'success'
+        env:
+          EXPECTED_SHA256: ${{ steps.bundle.outputs.sha256 }}
+          UPLOADED_SHA256: ${{ steps.image_artifact.outputs.artifact-digest }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+
+          expected = os.environ["EXPECTED_SHA256"]
+          if not re.fullmatch(r"[0-9a-f]{64}", expected) or expected != os.environ["UPLOADED_SHA256"]:
+              raise SystemExit("Uploaded artifact digest differs from the bounded local ZIP")
+          PY

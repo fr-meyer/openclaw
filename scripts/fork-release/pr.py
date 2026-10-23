@@ -27,7 +27,8 @@ FORK_DRAFT_GUARD = re.compile(
 
 
 def git(root, *args, binary=False):
-    result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, check=True)
+    result = subprocess.run(["git", "--no-replace-objects", "-C", str(root), *args], capture_output=True, check=True,
+                            env={**os.environ, "GIT_NO_LAZY_FETCH": "1"})
     return result.stdout if binary else result.stdout.decode().strip()
 
 
@@ -136,11 +137,18 @@ def offline_release_seal(manifest_path, checkout):
 
 
 def derived_binding(manifest, checkout, source_sha, base_sha):
-    """Derive the complete linear source chain and PR diff from local Git objects."""
+    """Verify the declared merge or derive the linear chain, and bind the full PR diff."""
     need(matches(SHA, source_sha) and matches(SHA, base_sha), "invalid source or PR base")
     source_base = manifest["source"]["baseCommit"]
     for commit in (source_base, source_sha, base_sha):
         need(git(checkout, "cat-file", "-t", commit) == "commit", "binding commit is unavailable")
+    if "merge" in manifest["source"]:
+        from release import check_source_graph
+        need(source_sha == manifest["source"]["commit"], "merge source cannot be silently rebound")
+        check_source_graph(manifest["source"], checkout)
+        product_diff = git(checkout, "diff", "--binary", "--full-index", "--no-ext-diff",
+                           base_sha, source_sha, binary=True)
+        return {"source": manifest["source"], "changedDiffSha256": sha256(product_diff)}
     chain = git(checkout, "rev-list", "--reverse", f"{source_base}..{source_sha}").splitlines()
     need(1 <= len(chain) <= 64, "binding patch chain is empty or exceeds 64 commits")
     parent = source_base

@@ -30,6 +30,15 @@ def state():
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_validation_runtime_preserves_retained_lane(self):
+        for upstream in (None, {"tag": "v2026.10.5"}, {"tag": "v2026.9.8"}):
+            self.assertEqual(release.validation_node_version({"upstream": upstream}), "24.21.0")
+        self.assertEqual(release.validation_node_version({"upstream": {"tag": "v2026.10.6"}}), "24.22.1")
+        workflow = (Path(__file__).resolve().parents[2] /
+                    ".github/workflows/fork-release-pipeline.yml").read_text()
+        self.assertIn("node-version: ${{ steps.candidate.outputs.node_version }}", workflow)
+        self.assertIn("node-version: ${{ steps.identity.outputs.node_version }}", workflow)
+
     def test_seed_manifest_is_exact_and_not_production_eligible(self):
         manifest, digest = release.manifest_at(Path(__file__).with_name("manifest.json"))
         self.assertEqual(len(digest), 64)
