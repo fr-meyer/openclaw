@@ -23,6 +23,36 @@ def need(condition, reason):
         raise Refusal(reason)
 
 
+def runtime_proof(seal):
+    """New hosted exports require measured image facts, not source test results."""
+    proof = seal.get("runtimeQualification")
+    need(isinstance(proof, dict), "actual image runtime proof missing")
+    expected = proof.get("expected")
+    need(isinstance(expected, dict) and set(expected) == {
+        "nodeVersion", "markdownVersion", "argparseVersion", "dockerfileSha256",
+        "consumerManifestSha256", "lockfileSha256"}, "invalid runtime expectations")
+    need(all(isinstance(expected[key], str) and re.fullmatch(r"\d+\.\d+\.\d+", expected[key])
+             for key in ("nodeVersion", "markdownVersion", "argparseVersion")), "invalid runtime version")
+    need(all(isinstance(expected[key], str) and re.fullmatch(r"[a-f0-9]{64}", expected[key])
+             for key in ("dockerfileSha256", "consumerManifestSha256", "lockfileSha256")), "invalid runtime source hash")
+    node, markdown, ui = (proof.get(key) for key in ("node", "markdown", "controlUi"))
+    need(all(isinstance(value, dict) for value in (node, markdown, ui)), "incomplete runtime proof")
+    need(proof.get("schema") == "openclaw.image-runtime.v1" and
+         all(proof.get(key) == seal.get(key) for key in ("sourceSha", "imageDigest", "configDigest")) and
+         node == {"version": expected["nodeVersion"], "platform": "linux", "architecture": "x64"} and
+         markdown.get("version") == expected["markdownVersion"] and
+         markdown.get("argparseVersion") == expected["argparseVersion"] and
+         markdown.get("resolution") == "pnpm-production-store" and
+         markdown.get("consumer") == "dist/plugin-sdk/text-chunking.js" and
+         markdown.get("render") is True and markdown.get("documentIsolation") is True,
+         "actual image runtime proof changed")
+    need(all(isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value) for value in
+             (markdown.get("consumerSha256"), ui.get("indexSha256"), ui.get("manifestSha256"), ui.get("generation"))) and
+         type(ui.get("assetCount")) is int and 0 < ui["assetCount"] <= 4096 and
+         type(ui.get("assetBytes")) is int and 0 < ui["assetBytes"] <= 96 * 1024 * 1024,
+         "incomplete built UI or consumer proof")
+
+
 def validate(seal, privacy, resources, *, source, tooling, index, run, attempt,
              public_export=False, storage_approved=False):
     need(re.fullmatch(r"[0-9a-f]{40}", source or "") is not None, "invalid source identity")
@@ -39,6 +69,7 @@ def validate(seal, privacy, resources, *, source, tooling, index, run, attempt,
          "image seal belongs to another execution")
     need(seal.get("buildContext") == {"kind": "git", "repository": "https://github.com/fr-meyer/openclaw",
                                       "sourceSha": source}, "hosted Git source proof missing or changed")
+    runtime_proof(seal)
     for receipt, schema in ((privacy, "openclaw.hosted-privacy.v1"),
                             (resources, "openclaw.hosted-resources.v1")):
         need(isinstance(receipt, dict) and receipt.get("schema") == schema and

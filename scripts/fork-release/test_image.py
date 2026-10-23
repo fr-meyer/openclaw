@@ -8,6 +8,40 @@ import preflight
 HERE = Path(__file__).parent
 
 class ImageBoundaryTests(unittest.TestCase):
+    def test_actual_receipt_verifier_rejects_malformed_present_runtime_proof_before_oci(self):
+        manifest = json.loads((HERE / "manifest.json").read_text())
+        value = {
+            "schema": "openclaw.fork-release-image.v2",
+            "manifestSha256": preflight.digest(HERE / "manifest.json"),
+            "inventorySha256": preflight.digest(HERE / "patch-inventory.json"),
+            "repository": manifest["repository"], "sourceSha": manifest["source"]["commit"],
+            "sourceTree": manifest["source"]["tree"], "architecture": manifest["image"]["architecture"],
+            "selectedExtensions": manifest["image"]["extensions"], "version": "2026.10.5",
+            "bundledCodexVersion": "0.160.0", "indexDigest": "sha256:" + "a" * 64,
+            "imageDigest": "sha256:" + "b" * 64, "configDigest": "sha256:" + "c" * 64,
+            "pluginPayload": [],
+        }
+        for name in manifest["image"]["extensions"].split(","):
+            entry = {"id": name, "package": "@openclaw/" + name, "version": "2026.10.5"}
+            if name == "codex":
+                entry["codexRuntime"] = {"cliVersion": "0.160.0", "packageVersion": "0.160.0",
+                                         "initializeVersion": "0.160.0", "initialized": True, "shutdown": "exited"}
+            if name == "workboard":
+                entry["workboardRuntime"] = {"worker": "sqlite", "roundTrip": True, "closed": True}
+            value["pluginPayload"].append(entry)
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "receipt.json"
+            for proof in (None, {}, {key: value[key] for key in ("sourceSha", "imageDigest", "configDigest")}):
+                value["runtimeQualification"] = proof
+                receipt.write_text(json.dumps(value))
+                result = subprocess.run(["node", str(HERE / "image.mjs"), "verify",
+                                         str(HERE / "manifest.json"), str(HERE / "patch-inventory.json"),
+                                         str(receipt), str(Path(directory) / "missing-oci")],
+                                        capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("ENOENT", result.stderr)
+                self.assertRegex(result.stderr, "Runtime proof|runtime expectations")
+
     def test_actual_verifier_refuses_metadata_only_codex_evidence_before_oci(self):
         manifest = json.loads((HERE / "manifest.json").read_text())
         with tempfile.TemporaryDirectory() as directory:

@@ -8,6 +8,22 @@ import unittest
 import hosted_export as export
 
 
+def runtime_fixture(common):
+    return {
+        **{key: common[key] for key in ("sourceSha", "imageDigest", "configDigest")},
+        "schema": "openclaw.image-runtime.v1",
+        "expected": {"nodeVersion": "24.22.1", "markdownVersion": "15.0.3", "argparseVersion": "3.0.3",
+                     "dockerfileSha256": "1" * 64, "consumerManifestSha256": "2" * 64,
+                     "lockfileSha256": "3" * 64},
+        "node": {"version": "24.22.1", "platform": "linux", "architecture": "x64"},
+        "markdown": {"version": "15.0.3", "argparseVersion": "3.0.3", "resolution": "pnpm-production-store",
+                     "consumer": "dist/plugin-sdk/text-chunking.js", "consumerSha256": "4" * 64,
+                     "render": True, "documentIsolation": True},
+        "controlUi": {"indexSha256": "5" * 64, "manifestSha256": "6" * 64, "generation": "7" * 64,
+                      "assetCount": 1, "assetBytes": 50},
+    }
+
+
 class HostedExportTests(unittest.TestCase):
     def setUp(self):
         self.args = dict(source="a" * 40, tooling="b" * 40, index="sha256:" + "c" * 64,
@@ -20,6 +36,7 @@ class HostedExportTests(unittest.TestCase):
                          buildContext={"kind": "git", "repository": "https://github.com/fr-meyer/openclaw",
                                        "sourceSha": self.args["source"]},
                          artifactName=f'fork-release-{self.args["source"]}-12-1')
+        self.seal["runtimeQualification"] = runtime_fixture(common)
         self.privacy = dict(common, schema="openclaw.hosted-privacy.v1", status="passed",
                             toolingSha=self.args["tooling"], findings=[], inspectionComplete=True)
         self.resources = dict(common, schema="openclaw.hosted-resources.v1", status="passed",
@@ -56,6 +73,29 @@ class HostedExportTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaisesRegex(export.Refusal, "Git source"):
                 export.validate({**self.seal, "buildContext": value}, self.privacy,
                                 self.resources, **self.args)
+
+    def test_new_export_refuses_missing_stripped_stale_or_incomplete_runtime_proof(self):
+        for value in (None, {}, [], "passed"):
+            with self.subTest(value=value), self.assertRaises(export.Refusal):
+                export.validate({**self.seal, "runtimeQualification": value}, self.privacy,
+                                self.resources, **self.args)
+        stripped = copy.deepcopy(self.seal)
+        del stripped["runtimeQualification"]
+        with self.assertRaises(export.Refusal):
+            export.validate(stripped, self.privacy, self.resources, **self.args)
+        for field, key, value in ((None, "sourceSha", "f" * 40), (None, "configDigest", "sha256:" + "f" * 64),
+                                  ("node", "version", "24.21.0"), ("node", "platform", "darwin"),
+                                  ("markdown", "version", "15.0.2"), ("markdown", "argparseVersion", "3.0.2"),
+                                  ("markdown", "render", False), ("markdown", "documentIsolation", False),
+                                  ("controlUi", "generation", "bad"), ("controlUi", "assetCount", 0),
+                                  ("controlUi", "assetBytes", True), ("expected", "lockfileSha256", "bad")):
+            seal = copy.deepcopy(self.seal)
+            target = seal["runtimeQualification"]
+            if field is not None:
+                target = target[field]
+            target[key] = value
+            with self.subTest(field=field, key=key), self.assertRaises(export.Refusal):
+                export.validate(seal, self.privacy, self.resources, **self.args)
 
     def test_cli_retains_hashes_and_refuses_overwrite_without_disclosing_bad_contents(self):
         with tempfile.TemporaryDirectory() as directory:

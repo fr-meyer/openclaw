@@ -15,6 +15,7 @@ import hosted_bundle as bundle
 import hosted_export as export
 import hosted_privacy as privacy
 from test_hosted_privacy import Layout, SOURCE, TOOLING
+from test_hosted_export import runtime_fixture
 
 
 class HostedBundleTests(unittest.TestCase):
@@ -31,6 +32,7 @@ class HostedBundleTests(unittest.TestCase):
                      "buildContext": {"kind": "git", "repository": "https://github.com/fr-meyer/openclaw", "sourceSha": SOURCE},
                      "sourceSha": SOURCE, "indexDigest": p["indexDigest"], "imageDigest": p["imageDigest"], "configDigest": p["configDigest"],
                      "artifactName": f"fork-release-{SOURCE}-12-1"}
+        self.seal["runtimeQualification"] = runtime_fixture(self.seal)
         resources = {"schema": "openclaw.hosted-resources.v1", "status": "passed", "sourceSha": SOURCE,
                      "toolingSha": TOOLING, "indexDigest": p["indexDigest"], "violations": []}
         values = [self.seal, p, resources]

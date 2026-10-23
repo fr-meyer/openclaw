@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   accessSync,
   constants,
@@ -7,6 +8,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
 } from "node:fs";
@@ -17,6 +19,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const OUTPUT_LIMIT = 64 * 1024;
 const SELF = fileURLToPath(import.meta.url);
+const EXACT_VERSION = /^\d+\.\d+\.\d+$/u;
+const HASH = /^[a-f0-9]{64}$/u;
+const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 function need(value, message) {
   if (!value) throw new Error(message);
@@ -59,6 +64,298 @@ function runtimeEnvironment(directory) {
   // Never inherit operator auth, config, NODE_OPTIONS, command overrides or proxies.
   env.OPENCLAW_CONFIG_PATH = join(directory, "absent-config.json");
   return env;
+}
+
+function validateRuntimeExpectations(expected) {
+  need(
+    expected &&
+      Object.keys(expected).sort().join(",") ===
+        "argparseVersion,consumerManifestSha256,dockerfileSha256,lockfileSha256,markdownVersion,nodeVersion" &&
+      [expected.nodeVersion, expected.markdownVersion, expected.argparseVersion].every((v) =>
+        EXACT_VERSION.test(v),
+      ) &&
+      [expected.dockerfileSha256, expected.consumerManifestSha256, expected.lockfileSha256].every(
+        (v) => HASH.test(v),
+      ),
+    "Invalid source-pinned runtime expectations",
+  );
+}
+
+// Read only the reviewed source's known Docker/pnpm contracts. Do not infer an
+// expected version from the built image we are supposed to be checking.
+export function readRuntimeExpectations(root) {
+  const dockerfile = regularFile(join(root, "Dockerfile"));
+  const pins = [
+    ...dockerfile
+      .toString("utf8")
+      .matchAll(
+        /^ARG OPENCLAW_NODE_BOOKWORM(_SLIM)?_IMAGE="docker\.io\/library\/node:(\d+\.\d+\.\d+)-bookworm(-slim)?@sha256:([a-f0-9]{64})"$/gmu,
+      ),
+  ];
+  need(
+    pins.length === 2 &&
+      pins.filter((p) => !p[1] && !p[3]).length === 1 &&
+      pins.filter((p) => p[1] === "_SLIM" && p[3] === "-slim").length === 1 &&
+      pins[0][2] === pins[1][2],
+    "Source must pin matching exact Node build/runtime images",
+  );
+  const consumer = regularFile(join(root, "packages/markdown-core/package.json"));
+  const metadata = JSON.parse(consumer);
+  const markdownVersion = metadata.dependencies?.["markdown-it"];
+  need(
+    metadata.name === "@openclaw/markdown-core" && EXACT_VERSION.test(markdownVersion),
+    "Source consumer must pin an exact Markdown version",
+  );
+  const lockfile = regularFile(join(root, "pnpm-lock.yaml"));
+  // pnpm 12 prepends a separate package-manager document to this lockfile.
+  const sections = lockfile
+    .toString("utf8")
+    .split(/^---\r?$/mu)
+    .map((document) => document.split(/^snapshots:\r?$/mu))
+    .filter((parts) => parts.length === 2)
+    .map((parts) => parts[1].split(/\r?\n/u))
+    .filter((lines) => lines.includes(`  markdown-it@${markdownVersion}:`));
+  need(sections.length === 1, "Missing unambiguous pnpm Markdown snapshot");
+  const lines = sections[0];
+  const starts = lines.flatMap((line, index) =>
+    line === `  markdown-it@${markdownVersion}:` ? [index] : [],
+  );
+  need(starts.length === 1, "Missing exact Markdown lock snapshot");
+  const block = [];
+  for (let i = starts[0] + 1; i < lines.length && !/^ {2}\S/u.test(lines[i]); i += 1)
+    block.push(lines[i]);
+  const pinsArgparse = block.filter((line) => /^ {6}argparse: \d+\.\d+\.\d+$/u.test(line));
+  need(
+    block.includes("    dependencies:") && pinsArgparse.length === 1,
+    "Missing exact Markdown argparse lock dependency",
+  );
+  const expected = {
+    nodeVersion: pins[0][2],
+    markdownVersion,
+    argparseVersion: pinsArgparse[0].trim().slice("argparse: ".length),
+    dockerfileSha256: hash(dockerfile),
+    consumerManifestSha256: hash(consumer),
+    lockfileSha256: hash(lockfile),
+  };
+  validateRuntimeExpectations(expected);
+  return expected;
+}
+
+function inspectControlUi(root) {
+  const directory = join(root, "dist/control-ui");
+  need(
+    !lstatSync(directory).isSymbolicLink() &&
+      !lstatSync(join(directory, "assets")).isSymbolicLink(),
+    "Symlinked UI asset directory",
+  );
+  const read = (name, limit) => {
+    need(
+      typeof name === "string" &&
+        !name.includes("\\") &&
+        name.split("/").every((part) => part && part !== "." && part !== ".."),
+      "Unsafe UI asset path",
+    );
+    let path = directory;
+    for (const part of name.split("/")) {
+      path = join(path, part);
+      need(!lstatSync(path).isSymbolicLink(), "Symlinked UI asset");
+    }
+    const actual = containedFile(root, path);
+    need(lstatSync(actual).size <= limit, "UI asset exceeds verification bound");
+    return regularFile(actual);
+  };
+  const index = read("index.html", 2 * 1024 * 1024);
+  need(index.length > 0, "Empty built UI document");
+  const bytes = read("asset-manifest.json", 2 * 1024 * 1024);
+  const manifest = JSON.parse(bytes);
+  need(
+    manifest.version === 1 &&
+      HASH.test(manifest.generation) &&
+      Array.isArray(manifest.assets) &&
+      manifest.assets.length > 0 &&
+      manifest.assets.length <= 4096,
+    "Unsupported or empty UI asset manifest",
+  );
+  const paths = new Set();
+  let total = 0;
+  const generation = createHash("sha256");
+  for (const entry of manifest.assets) {
+    need(
+      entry &&
+        typeof entry.path === "string" &&
+        entry.path.startsWith("assets/") &&
+        !entry.path.endsWith(".map") &&
+        !paths.has(entry.path) &&
+        Number.isSafeInteger(entry.size) &&
+        entry.size >= 0 &&
+        HASH.test(entry.sha256),
+      "Invalid or repeated UI asset entry",
+    );
+    total += entry.size;
+    need(total <= 96 * 1024 * 1024, "UI assets exceed retained-generation bound");
+    const asset = read(entry.path, entry.size);
+    need(
+      asset.length === entry.size && hash(asset) === entry.sha256,
+      "Built UI asset bytes changed",
+    );
+    paths.add(entry.path);
+    generation.update(`${entry.path}\0${entry.size}\0${entry.sha256}\n`);
+  }
+  need(generation.digest("hex") === manifest.generation, "UI asset generation changed");
+  // The producer covers all non-map files under assets/, including sidecars.
+  const actual = new Set();
+  let visited = 0;
+  const visit = (path) => {
+    for (const entry of readdirSync(join(directory, path), { withFileTypes: true })) {
+      visited += 1;
+      need(
+        visited <= 8192 && path.split("/").length <= 16,
+        "UI asset tree exceeds verification bound",
+      );
+      need(!entry.isSymbolicLink(), "Symlinked UI asset");
+      const child = `${path}/${entry.name}`;
+      if (entry.isDirectory()) visit(child);
+      else {
+        need(entry.isFile(), "Non-regular UI asset");
+        if (!entry.name.endsWith(".map")) actual.add(child);
+      }
+      need(actual.size <= 4096, "Too many UI assets");
+    }
+  };
+  visit("assets");
+  need(
+    actual.size === paths.size && [...actual].every((path) => paths.has(path)),
+    "UI asset coverage changed",
+  );
+  const references = [...index.toString("utf8").matchAll(/\b(?:src|href)=["']([^"']+)["']/gu)]
+    .map((match) => match[1].replace(/^(?:\.\/|\/)/u, "").split(/[?#]/u)[0])
+    .filter((path) => path.startsWith("assets/"));
+  need(
+    references.some((path) => path.endsWith(".js")) && references.every((path) => paths.has(path)),
+    "UI document does not reference the verified assets",
+  );
+  return {
+    indexSha256: hash(index),
+    manifestSha256: hash(bytes),
+    generation: manifest.generation,
+    assetCount: paths.size,
+    assetBytes: total,
+  };
+}
+
+export async function inspectImageRuntime(root, expected) {
+  validateRuntimeExpectations(expected);
+  need(process.versions.node === expected.nodeVersion, "Image Node differs from source pin");
+  need(
+    hash(regularFile(join(root, "pnpm-lock.yaml"))) === expected.lockfileSha256,
+    "Image lockfile differs from source",
+  );
+  // Isolated production installs retain markdown-core's runtime dependency in
+  // the pnpm store even when the root development symlink has been pruned.
+  const manifestPath = containedFile(
+    root,
+    join(
+      root,
+      "node_modules/.pnpm",
+      `markdown-it@${expected.markdownVersion}/node_modules/markdown-it/package.json`,
+    ),
+  );
+  const markdown = json(manifestPath);
+  need(
+    markdown.name === "markdown-it" &&
+      markdown.version === expected.markdownVersion &&
+      [expected.argparseVersion, `^${expected.argparseVersion}`].includes(
+        markdown.dependencies?.argparse,
+      ),
+    "Installed Markdown differs from source consumer",
+  );
+  const argparse = json(
+    containedFile(root, createRequire(manifestPath).resolve("argparse/package.json")),
+  );
+  need(
+    argparse.name === "argparse" && argparse.version === expected.argparseVersion,
+    "Installed Markdown argparse differs from source lock",
+  );
+  const consumerPath = containedFile(root, join(root, "dist/plugin-sdk/text-chunking.js"));
+  const { markdownToIR, renderMarkdownWithMarkers } = await import(
+    pathToFileURL(consumerPath).href
+  );
+  need(
+    typeof markdownToIR === "function" && typeof renderMarkdownWithMarkers === "function",
+    "Compiled Markdown consumer missing",
+  );
+  const ir = markdownToIR("**user[Thu 2026-07-02] continue**", {
+    assistantTranscriptRoleHeaders: true,
+  });
+  const rendered = renderMarkdownWithMarkers(ir, {
+    styleMarkers: { bold: { open: "*", close: "*" } },
+    escapeText: (text) => text,
+    annotationMarkers: {
+      assistant_transcript_role: { open: "`", close: "`", suppressNestedFormatting: true },
+    },
+  });
+  need(
+    rendered === "`user[Thu 2026-07-02]`* continue*",
+    "Compiled Markdown consumer render failed",
+  );
+  const seeded = markdownToIR("[label][proof]\n\n[proof]: https://example.invalid/");
+  need(
+    seeded.links.length === 1 && seeded.links[0].href === "https://example.invalid/",
+    "Compiled Markdown consumer reference parse failed",
+  );
+  need(
+    markdownToIR("[label][proof]").links.length === 0,
+    "Compiled Markdown consumer retained another document's links",
+  );
+  return {
+    schema: "openclaw.image-runtime.v1",
+    expected,
+    node: {
+      version: process.versions.node,
+      platform: process.platform,
+      architecture: process.arch,
+    },
+    markdown: {
+      version: markdown.version,
+      argparseVersion: argparse.version,
+      resolution: "pnpm-production-store",
+      consumer: "dist/plugin-sdk/text-chunking.js",
+      consumerSha256: hash(regularFile(consumerPath)),
+      render: true,
+      documentIsolation: true,
+    },
+    controlUi: inspectControlUi(root),
+  };
+}
+
+export function validateImageRuntimeProof(proof, expected = proof?.expected) {
+  validateRuntimeExpectations(expected);
+  need(
+    proof?.schema === "openclaw.image-runtime.v1" &&
+      Object.keys(expected).every((key) => proof.expected?.[key] === expected[key]) &&
+      proof.node?.version === expected.nodeVersion &&
+      proof.node.platform === "linux" &&
+      proof.node.architecture === "x64" &&
+      proof.markdown?.version === expected.markdownVersion &&
+      proof.markdown.argparseVersion === expected.argparseVersion &&
+      proof.markdown.resolution === "pnpm-production-store" &&
+      proof.markdown.consumer === "dist/plugin-sdk/text-chunking.js" &&
+      HASH.test(proof.markdown.consumerSha256) &&
+      proof.markdown.render === true &&
+      proof.markdown.documentIsolation === true &&
+      [
+        proof.controlUi?.indexSha256,
+        proof.controlUi?.manifestSha256,
+        proof.controlUi?.generation,
+      ].every((v) => HASH.test(v)) &&
+      Number.isSafeInteger(proof.controlUi.assetCount) &&
+      proof.controlUi.assetCount > 0 &&
+      proof.controlUi.assetCount <= 4096 &&
+      Number.isSafeInteger(proof.controlUi.assetBytes) &&
+      proof.controlUi.assetBytes > 0 &&
+      proof.controlUi.assetBytes <= 96 * 1024 * 1024,
+    "Actual image runtime proof missing or changed",
+  );
 }
 
 function inspectCodexExecutable(root, expectedVersion, env) {
@@ -383,11 +680,18 @@ export async function inspectImagePlugins(root, extensions, version, expectedCod
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const [root, extensions, version, expectedCodexVersion] = process.argv.slice(2);
-    const proof =
+    const [root, extensions, version, expectedCodexVersion, runtimeExpectations] =
+      process.argv.slice(2);
+    let proof =
       root === "--workboard"
         ? await smokeWorkboardWorker(extensions, version)
         : await inspectImagePlugins(root, extensions, version, expectedCodexVersion);
+    if (root !== "--workboard" && runtimeExpectations !== undefined) {
+      proof = {
+        plugins: proof,
+        runtime: await inspectImageRuntime(root, JSON.parse(runtimeExpectations)),
+      };
+    }
     process.stdout.write(`${JSON.stringify(proof)}\n`);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

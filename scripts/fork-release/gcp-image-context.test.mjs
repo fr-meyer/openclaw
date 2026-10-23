@@ -358,6 +358,7 @@ test("loaded OCI index remains immutable through smoke and platform-pinned plugi
       "SMOKE_FAIL_START",
       "SMOKE_VERIFIER_CAPTURE",
       "SMOKE_PLUGIN_FAILURE",
+      "SMOKE_RUNTIME_PROOF",
     ].map((key) => [key, process.env[key]]),
   );
   const fake = `#!${process.execPath}
@@ -382,7 +383,7 @@ if (args[0] === "create" && args.includes("/tmp/verify-image-plugins.mjs")) {
 if (args[0] === "create") console.log(process.env.SMOKE_PLUGIN_FAILURE === "identity" ? "invalid" : "2".repeat(64));
 if (args[0] === "rm" && process.env.SMOKE_PLUGIN_FAILURE === "cleanup") process.exit(23);
 if (args[0] === "inspect") console.log(args.includes("{{.State.Running}} {{.State.ExitCode}} {{.State.OOMKilled}}") ? "false 0 false" : "false 0");
-if (args[0] === "start" && readFileSync(process.env.SMOKE_CAPTURE, "utf8").includes("/tmp/verify-image-plugins.mjs")) console.log("[]");
+if (args[0] === "start" && readFileSync(process.env.SMOKE_CAPTURE, "utf8").includes("/tmp/verify-image-plugins.mjs")) console.log(process.env.SMOKE_RUNTIME_PROOF || "[]");
 if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17);
 `;
   const calls = () =>
@@ -419,6 +420,7 @@ if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17
     process.env.TMPDIR = root;
     process.env.SMOKE_VERIFIER_CAPTURE = verifierCapture;
     delete process.env.SMOKE_PLUGIN_FAILURE;
+    delete process.env.SMOKE_RUNTIME_PROOF;
     process.env.SMOKE_CAPTURE = capture;
     process.env.SMOKE_DIGEST = indexDigest;
     delete process.env.SMOKE_FAIL_START;
@@ -461,6 +463,69 @@ if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17
     assert.equal(plugins[plugins.indexOf("--memory") + 1], "1g");
     assert.equal(plugins[plugins.indexOf("--memory-swap") + 1], "1g");
     assert.deepEqual(calls().at(-1), ["rm", "--force", "2".repeat(64)]);
+
+    const expected = {
+      nodeVersion: "24.22.1",
+      markdownVersion: "15.0.3",
+      argparseVersion: "3.0.3",
+      dockerfileSha256: "1".repeat(64),
+      consumerManifestSha256: "2".repeat(64),
+      lockfileSha256: "3".repeat(64),
+    };
+    const runtime = {
+      schema: "openclaw.image-runtime.v1",
+      expected,
+      node: { version: "24.22.1", platform: "linux", architecture: "x64" },
+      markdown: {
+        version: "15.0.3",
+        argparseVersion: "3.0.3",
+        resolution: "pnpm-production-store",
+        consumer: "dist/plugin-sdk/text-chunking.js",
+        consumerSha256: "4".repeat(64),
+        render: true,
+        documentIsolation: true,
+      },
+      controlUi: {
+        indexSha256: "5".repeat(64),
+        manifestSha256: "6".repeat(64),
+        generation: "7".repeat(64),
+        assetCount: 1,
+        assetBytes: 50,
+      },
+    };
+    process.env.SMOKE_RUNTIME_PROOF = JSON.stringify({ plugins: [], runtime });
+    writeFileSync(capture, "");
+    const qualified = inspectLoadedPlugins(
+      { image: { architecture: "amd64", extensions: "codex,workboard" } },
+      "2026.10.5",
+      indexDigest,
+      "0.160.0",
+      expected,
+    );
+    assert.deepEqual(qualified.runtime, runtime);
+    const qualifiedCreate = calls().find((args) => args[0] === "create");
+    assert.deepEqual(JSON.parse(qualifiedCreate.at(-1)), expected);
+    assert.equal(qualifiedCreate[qualifiedCreate.indexOf("--entrypoint") + 2], indexDigest);
+    assertVerifierCleaned();
+    for (const wrong of [
+      [],
+      { plugins: [], runtime: { ...runtime, node: { ...runtime.node, version: "24.21.0" } } },
+    ]) {
+      process.env.SMOKE_RUNTIME_PROOF = JSON.stringify(wrong);
+      assert.throws(
+        () =>
+          inspectLoadedPlugins(
+            { image: { architecture: "amd64", extensions: "codex,workboard" } },
+            "2026.10.5",
+            indexDigest,
+            "0.160.0",
+            expected,
+          ),
+        /proof/u,
+      );
+      assertVerifierCleaned();
+    }
+    delete process.env.SMOKE_RUNTIME_PROOF;
 
     writeFileSync(capture, "");
     process.env.SMOKE_FAIL_START = "1";
