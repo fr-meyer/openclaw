@@ -52,7 +52,8 @@ def manifest_at(path):
     need(matches(IDENT, manifest.get("candidate")), "invalid candidate name")
     need(type(manifest.get("productionEligible")) is bool, "missing production decision")
     source = manifest.get("source", {})
-    need(type(source) is dict and set(source) == {"baseCommit", "baseTree", "patches", "commit", "tree"}, "invalid source fields")
+    source_fields = {"baseCommit", "baseTree", "patches", "commit", "tree"}
+    need(type(source) is dict and set(source) in (source_fields, source_fields | {"merge"}), "invalid source fields")
     for name in ("baseCommit", "baseTree", "commit", "tree"):
         need(matches(SHA, source.get(name)), f"invalid source {name}")
     patches = source.get("patches")
@@ -61,6 +62,8 @@ def manifest_at(path):
         need(type(patch) is dict and set(patch) == {"commit", "tree"}, "invalid patch entry")
         need(matches(SHA, patch["commit"]) and matches(SHA, patch["tree"]), "invalid patch identity")
     need(patches[-1] == {"commit": source["commit"], "tree": source["tree"]}, "final patch differs from source")
+    if "merge" in source:
+        validate_merge_shape(source)
     gates = manifest.get("gates", {})
     need(type(gates) is dict and set(gates) == {"patchLifecycle", "producerConsumer"}, "missing focused gate")
     all_tests = []
@@ -86,21 +89,143 @@ def manifest_at(path):
 
 
 def git(source_dir, *args):
-    result = subprocess.run(["git", "-C", str(source_dir), *args], capture_output=True, text=True, check=True)
+    result = subprocess.run(["git", "--no-replace-objects", "-C", str(source_dir), *args], capture_output=True, text=True, check=True,
+                            env={**os.environ, "GIT_NO_LAZY_FETCH": "1"})
     return result.stdout.strip()
+
+
+def validate_merge_shape(source):
+    """Only an explicitly pinned two-parent integration, never an implicit DAG."""
+    merge = source["merge"]
+    need(type(merge) is dict and set(merge) == {
+        "commonCommit", "commonTree", "forkCommit", "forkTree", "reconciliation"},
+        "invalid merge proof fields")
+    for name in ("commonCommit", "commonTree", "forkCommit", "forkTree"):
+        need(matches(SHA, merge[name]), "invalid merge " + name)
+    proof = merge["reconciliation"]
+    need(type(proof) is dict and set(proof) == {"path", "blob", "sha256"},
+         "invalid merge reconciliation fields")
+    path = proof["path"]
+    need(isinstance(path, str) and re.fullmatch(r"[A-Za-z0-9_./-]+\.json", path)
+         and not path.startswith("/") and not any(part in ("", ".", "..") for part in path.split("/")),
+         "invalid merge reconciliation path")
+    need(matches(SHA, proof["blob"]) and matches(re.compile(r"[0-9a-f]{64}\Z"), proof["sha256"]),
+         "invalid merge reconciliation identity")
+    need(source["patches"] == [{"commit": source["commit"], "tree": source["tree"]}],
+         "merge proof requires exactly one integration commit")
+
+
+def check_merge_reconciliation(source, source_dir):
+    """Verify the committed 10.6 carry ledger against all four exact Git trees.
+
+    Disposition reasons and conflict resolutions remain review judgments. Hashes,
+    complete path coverage, exact carries and derived counts are checked here.
+    """
+    merge, proof = source["merge"], source["merge"]["reconciliation"]
+    observed = git(source_dir, "ls-tree", source["commit"], "--", proof["path"])
+    need(observed.split("\t", 1)[0] == "100644 blob " + proof["blob"],
+         "merge reconciliation blob or mode changed")
+    raw = subprocess.run(["git", "--no-replace-objects", "-C", str(source_dir), "cat-file", "blob", proof["blob"]],
+                         capture_output=True, check=True, env={**os.environ, "GIT_NO_LAZY_FETCH": "1"}).stdout
+    need(sha256(raw) == proof["sha256"], "merge reconciliation digest changed")
+    ledger = json.loads(raw)
+    need(type(ledger) is dict and set(ledger) == {
+        "schema", "method", "upstream105", "fork105", "upstream106", "qualificationTransferred",
+        "summary", "carryForwardCommits", "conflictPaths", "paths"}, "invalid merge ledger fields")
+    need(isinstance(ledger["method"], str) and bool(ledger["method"].strip()), "invalid merge ledger method")
+    need(ledger["schema"] == "openclaw-v106-fork-patch-reconciliation-v1"
+         and ledger["qualificationTransferred"] is False, "unsupported merge ledger schema or qualification")
+    need(ledger["upstream105"] == merge["commonCommit"] and ledger["fork105"] == merge["forkCommit"]
+         and ledger["upstream106"] == source["baseCommit"], "merge ledger source binding changed")
+    history = git(source_dir, "rev-list", "--reverse",
+                  merge["commonCommit"] + ".." + merge["forkCommit"]).splitlines()
+    need(1 <= len(history) <= 64 and ledger["carryForwardCommits"] == history,
+         "merge carry history is incomplete")
+    parent = merge["commonCommit"]
+    for commit in history:
+        need(git(source_dir, "show", "-s", "--format=%P", commit) == parent,
+             "merge carry history is not linear")
+        parent = commit
+    need(parent == merge["forkCommit"], "merge carry history has wrong tip")
+    paths = ledger["paths"]
+    need(type(paths) is list and 1 <= len(paths) <= 4096, "invalid merge ledger paths")
+    names = []
+    for item in paths:
+        need(type(item) is dict and set(item) == {"path", "upstream105Blob", "fork105Blob",
+             "upstream106Blob", "resultBlob", "upstreamChanged", "disposition", "reason"},
+             "invalid merge ledger path fields")
+        name = item["path"]
+        need(isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_./@+-]+", name)
+             and not name.startswith("/") and not any(part in ("", ".", "..") for part in name.split("/")),
+             "invalid merge ledger path")
+        need(type(item["upstreamChanged"]) is bool and isinstance(item["reason"], str)
+             and bool(item["reason"].strip()), "invalid merge ledger decision")
+        names.append(name)
+    changed = git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                  merge["commonCommit"], merge["forkCommit"]).split("\0")
+    need(len(names) == len(set(names)) and set(names) == set(filter(None, changed)),
+         "merge ledger coverage differs from fork delta")
+    # Literal pathspecs prevent a ledger path from changing the selection. Compare
+    # mode/type too: matching blob bytes alone cannot prove an exact carry.
+    trees = {}
+    for key, commit in (("upstream105Blob", merge["commonCommit"]), ("fork105Blob", merge["forkCommit"]),
+                        ("upstream106Blob", source["baseCommit"]), ("resultBlob", source["commit"])):
+        entries = git(source_dir, "--literal-pathspecs", "ls-tree", "-r", "-z", commit, "--", *names)
+        trees[key] = dict((name, header.split()) for entry in entries.split("\0") if entry
+                          for header, name in [entry.split("\t", 1)])
+    dispositions, overlap = {}, 0
+    allowed = {"CARRIED_EXACT", "MERGED_SOURCE_REVIEWED", "ADAPTED_RELEASE_BINDING", "ADAPTED_COMPATIBILITY_TESTS"}
+    for item in paths:
+        name = item["path"]
+        for key, tree in trees.items():
+            entry = tree.get(name)
+            need((entry[2] if entry else None) == item[key], "merge ledger blob changed: " + name)
+        upstream_changed = trees["upstream105Blob"].get(name) != trees["upstream106Blob"].get(name)
+        need(item["upstreamChanged"] == upstream_changed, "merge upstream overlap changed: " + name)
+        overlap += upstream_changed
+        disposition = item["disposition"]
+        need(isinstance(disposition, str) and disposition in allowed, "unresolved merge disposition")
+        need(item["resultBlob"] is not None, "merge ledger cannot silently retire a path")
+        if disposition == "CARRIED_EXACT":
+            need(trees["fork105Blob"].get(name) == trees["resultBlob"].get(name),
+                 "merge exact carry changed: " + name)
+        dispositions[disposition] = dispositions.get(disposition, 0) + 1
+    conflicts = ledger["conflictPaths"]
+    need(type(conflicts) is list and all(isinstance(path, str) for path in conflicts)
+         and len(conflicts) == len(set(conflicts)) and set(conflicts) <= set(names),
+         "invalid merge conflict paths")
+    need(ledger["summary"] == {"paths": len(paths), "upstreamOverlap": overlap,
+         "textualConflictsResolved": len(conflicts), "dispositions": dispositions,
+         "upstreamedExact": 0, "retired": 0}, "merge ledger summary changed")
+
+
+def check_source_graph(source, source_dir):
+    chain = [(source["baseCommit"], source["baseTree"])] + [
+        (patch["commit"], patch["tree"]) for patch in source["patches"]
+    ]
+    for commit, tree in chain:
+        need(git(source_dir, "rev-parse", f"{commit}^{{tree}}") == tree, "source tree changed")
+    if "merge" in source:
+        validate_merge_shape(source)
+        merge = source["merge"]
+        for name in ("common", "fork"):
+            need(git(source_dir, "rev-parse", merge[name + "Commit"] + "^{tree}") == merge[name + "Tree"],
+                 "merge " + name + " tree changed")
+        need(git(source_dir, "show", "-s", "--format=%P", source["commit"]).split() ==
+             [merge["forkCommit"], source["baseCommit"]], "merge ordered parents changed")
+        need(git(source_dir, "merge-base", "--all", merge["forkCommit"], source["baseCommit"]).splitlines() ==
+             [merge["commonCommit"]], "merge common ancestor changed or unavailable")
+        check_merge_reconciliation(source, source_dir)
+    else:
+        for index, (commit, _) in enumerate(chain[1:], 1):
+            need(git(source_dir, "show", "-s", "--format=%P", commit) == chain[index - 1][0], "patch is a merge or parent changed")
+    return chain
 
 
 def check_source(manifest, source_dir):
     source = manifest["source"]
     need(git(source_dir, "rev-parse", "HEAD") == source["commit"], "checkout is not the pinned source commit")
-    chain = [(source["baseCommit"], source["baseTree"])] + [
-        (patch["commit"], patch["tree"]) for patch in source["patches"]
-    ]
-    for index, (commit, tree) in enumerate(chain):
-        need(git(source_dir, "rev-parse", f"{commit}^{{tree}}") == tree, "source tree changed")
-        if index:
-            need(git(source_dir, "rev-parse", f"{commit}^1") == chain[index - 1][0], "patch parent changed")
-            need(git(source_dir, "show", "-s", "--format=%P", commit) == chain[index - 1][0], "patch is a merge")
+    chain = check_source_graph(source, source_dir)
     for lane in ("patchLifecycle", "producerConsumer"):
         for test in manifest["gates"][lane]:
             need(git(source_dir, "cat-file", "-e", f"{source['commit']}:{test}") == "", f"missing pinned test: {test}")
@@ -463,7 +588,7 @@ def main():
         print(f"extensions={manifest['image']['extensions']}")
         print(f"manifest_sha256={manifest_hash}")
         print(f"inventory_sha256={inventory_hash}")
-        print("history_commits=" + " ".join(preflight.history_commits(inventory)))
+        print("history_commits=" + " ".join(preflight.history_commits(inventory, manifest)))
         print(f"upstream_tag={inventory['upstream']['tag'] if inventory['upstream'] else ''}")
         print(f"review_base_sha={manifest.get('review', {}).get('baseSha', '')}")
         print(f"review_pr_number={manifest.get('review', {}).get('prNumber', '')}")
@@ -472,7 +597,7 @@ def main():
         need(args.source_dir is not None, "source checkout required")
         preflight.inventory_at(args.inventory, manifest, manifest_hash, args.source_dir)
         check_source(manifest, args.source_dir)
-        print(f"Exact source and {len(manifest['source']['patches'])} ordered patches verified.")
+        print(f"Exact source and {len(manifest['source']['patches'])} declared integration/patch entries verified.")
         return
     if args.command == "gates":
         for lane in ("patchLifecycle", "producerConsumer"):

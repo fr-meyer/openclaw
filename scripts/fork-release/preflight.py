@@ -149,11 +149,10 @@ def source_checks(checks, manifest, source_dir, inventory_tests, ledger, upstrea
             checks.need(header.get("object") == source["baseCommit"] and header.get("type") == "commit" and header.get("tag") == upstream.get("tag"), "upstream.tag.binding")
     if check_head:
         checks.need(git_value("source.checkout.unavailable", "rev-parse", "HEAD") == source["commit"], "source.checkout")
-    chain = [(source["baseCommit"], source["baseTree"])] + [(p["commit"], p["tree"]) for p in source["patches"]]
-    for index, (commit, tree) in enumerate(chain):
-        checks.need(git_value(f"source.{index}.object", "rev-parse", f"{commit}^{{tree}}") == tree, f"source.{index}.tree")
-        if index:
-            checks.need(git_value(f"source.{index}.parents", "show", "-s", "--format=%P", commit) == chain[index - 1][0], f"source.{index}.linear_parent")
+    try:
+        release.check_source_graph(source, source_dir)
+    except (OSError, subprocess.CalledProcessError, release.Refusal, ValueError, KeyError, TypeError):
+        checks.need(False, "source.graph.refused")
     tests = inventory_tests + [test for lane in manifest["gates"].values() for test in lane]
     changed = git_value("source.coverage.unavailable", "diff", "--name-only", "--no-renames", source["baseCommit"], source["commit"])
     if changed is not None and ledger is not None:
@@ -180,10 +179,15 @@ def origin_commits(inventory):
     return [entry["originCommit"] for entry in (patches if type(patches) is list else [])
             if type(entry) is dict and release.matches(release.SHA, entry.get("originCommit"))]
 
-def history_commits(inventory):
+def history_commits(inventory, manifest=None):
     """Exact fork objects needed to verify historical origin/path identities."""
-    return sorted({entry["originCommit"] for entry in inventory["patches"]} |
-                  {item["sourceCommit"] for entry in inventory["patches"] for item in entry["paths"]})
+    identities = {entry["originCommit"] for entry in inventory["patches"]} | {
+        item["sourceCommit"] for entry in inventory["patches"] for item in entry["paths"]}
+    if manifest is not None and "merge" in manifest["source"]:
+        source = manifest["source"]
+        identities.update((source["baseCommit"], source["commit"],
+                           source["merge"]["forkCommit"], source["merge"]["commonCommit"]))
+    return sorted(identities)
 
 def inventory_at(path, manifest, manifest_hash, source_dir=None, check_head=True):
     """Fail closed on the reviewed ledger; optional local Git checks never fetch."""
