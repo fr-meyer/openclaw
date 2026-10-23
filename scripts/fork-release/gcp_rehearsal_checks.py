@@ -25,6 +25,12 @@ RESULT_PREFIX = "OPENCLAW_REHEARSAL_CHECK_RESULT="
 STARTUP_SECONDS = 600
 SHUTDOWN_SECONDS = 330
 MIN_TIMEOUT_SECONDS = STARTUP_SECONDS + SHUTDOWN_SECONDS + 10
+# An exact 50-minute outer plan selects the longer, isolated final-image
+# timeline diagnostic. Older retained timeline trials keep their native budgets.
+DIAGNOSTIC_LONG_TIMEOUT_SECONDS = 3000
+DIAGNOSTIC_LONG_STARTUP_SECONDS = 2400
+DIAGNOSTIC_LONG_UNMATCHED_SECONDS = 1800
+DIAGNOSTIC_LEGACY_UNMATCHED_SECONDS = 180
 GATEWAY = ["node", "/app/openclaw.mjs", "gateway", "run", "--bind", "loopback",
            "--port", "18789", "--tailscale", "off", "--auth", "token"]
 
@@ -376,7 +382,7 @@ function pollTimeline() {
     if (t.starts.size && result.healthz?.status === 200 &&
         result.startupz?.status === 503) {
       const oldest=Math.min(...Array.from(t.starts.values(), item => item.at));
-      if (performance.now()-oldest >= 180000) t.status='early-stop';
+      if (performance.now()-oldest >= settings.unmatchedMs) t.status='early-stop';
     }
     return t.status === 'observed' ? null : t.status;
   } catch {t.status='unavailable'; return t.status;}
@@ -451,10 +457,18 @@ def command(phase, timeout_seconds, contract=None, *, diagnostic_trace=False,
     need(diagnostic_timeline_op is None or
          (matches(OP, diagnostic_timeline_op) and phase == "candidate-startup" and not diagnostic_trace),
          "check.diagnostic_timeline_scope")
+    need(diagnostic_timeline_op is None or timeout_seconds <= DIAGNOSTIC_LONG_TIMEOUT_SECONDS,
+         "check.diagnostic_timeline_timeout")
+    long_timeline = (diagnostic_timeline_op is not None and
+                     timeout_seconds == DIAGNOSTIC_LONG_TIMEOUT_SECONDS)
     settings = {"phase": phase, "contract": contract, "gateway": GATEWAY,
-                "startupMs": STARTUP_SECONDS * 1000, "shutdownMs": SHUTDOWN_SECONDS * 1000}
+                "startupMs": (DIAGNOSTIC_LONG_STARTUP_SECONDS if long_timeline else
+                              STARTUP_SECONDS) * 1000,
+                "shutdownMs": SHUTDOWN_SECONDS * 1000}
     if diagnostic_timeline_op is not None:
         settings["timelineOp"] = diagnostic_timeline_op
+        settings["unmatchedMs"] = (DIAGNOSTIC_LONG_UNMATCHED_SECONDS if long_timeline else
+                                   DIAGNOSTIC_LEGACY_UNMATCHED_SECONDS) * 1000
     script = NATIVE_TIMELINE if diagnostic_timeline_op is not None else (NATIVE_TRACE if diagnostic_trace else NATIVE)
     return ["node", "-e", script.replace("SETTINGS", json.dumps(settings, separators=(",", ":")), 1)]
 

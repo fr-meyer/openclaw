@@ -84,6 +84,76 @@ class RehearsalCheckContracts(unittest.TestCase):
             with self.subTest(phase=phase, timeout=timeout, contract=contract), self.assertRaises(release.Refusal):
                 checks.command(phase, timeout, contract)
 
+    def test_exact_long_timeline_window_preserves_retained_and_ordinary_budgets(self):
+        def settings(argv):
+            return json.loads(argv[2].split("const settings = ", 1)[1].split(";", 1)[0])
+
+        operation = "a" * 32
+        ordinary = settings(checks.command("candidate-startup", 3000))
+        traced = settings(checks.command("candidate-startup", 3000, diagnostic_trace=True))
+        retained = settings(checks.command("candidate-startup", 1200,
+                                           diagnostic_timeline_op=operation))
+        long = settings(checks.command("candidate-startup", 3000,
+                                       diagnostic_timeline_op=operation))
+        self.assertEqual(ordinary["startupMs"], 600000)
+        self.assertEqual(traced["startupMs"], 600000)
+        self.assertNotIn("unmatchedMs", ordinary)
+        self.assertNotIn("unmatchedMs", traced)
+        self.assertEqual((retained["startupMs"], retained["unmatchedMs"]),
+                         (600000, 180000))
+        self.assertEqual((long["startupMs"], long["unmatchedMs"], long["shutdownMs"]),
+                         (2400000, 1800000, 330000))
+        self.assertLessEqual(long["startupMs"] + long["shutdownMs"] + 10000, 3000000)
+        with self.assertRaisesRegex(release.Refusal, "check.diagnostic_timeline_timeout"):
+            checks.command("candidate-startup", 3001, diagnostic_timeline_op=operation)
+
+    def test_timeline_unmatched_stop_remains_fatal_at_selected_bound(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node is unavailable")
+        for outer, expected in ((1200, 180000), (3000, 1800000)):
+            with self.subTest(outer=outer):
+                argv = checks.command("candidate-startup", outer,
+                                      diagnostic_timeline_op="a" * 32)
+                settings = json.loads(argv[2].split("const settings = ", 1)[1].split(";", 1)[0])
+                self.assertEqual(settings["unmatchedMs"], expected)
+                fixture = r"""
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const regular = {isFile:()=>true,nlink:1,uid:1000,mode:0o600,size:0};
+const exact = {...regular,dev:11n,ino:13n};
+const directory = {isDirectory:()=>true,uid:1000n,dev:11n,ino:12n};
+const fs = {fstatSync:(_fd,options)=>options?.bigint ? exact : regular,
+  lstatSync:(path,options)=>path === 'directory' ? directory :
+    options?.bigint ? exact : regular};
+const context = {settings:SETTINGS,result:{healthz:{status:200},
+  startupz:{status:503},failure:null},now:0,kills:0,Buffer,assert,
+  require:name=>name === 'node:fs' ? fs : crypto};
+context.performance = {now:()=>context.now};
+context.child = {kill:()=>{context.kills++;return true;}};
+context.exited = false;
+context.fail = reason=>{context.result.failure ||= reason;};
+vm.runInNewContext(RUNTIME + `
+timeline={status:'observed',fd:1,path:'file',dir:'directory',position:0,
+  directoryDevice:'11',directoryInode:'12',fileDevice:'11',fileInode:'13',
+  starts:new Map([['service',{at:0}]]),pending:Buffer.alloc(0)};
+now=settings.unmatchedMs-1;
+assert.equal(pollTimeline(),null);
+assert.equal(result.failure,null);
+now=settings.unmatchedMs;
+const status=pollTimeline();
+assert.equal(status,'early-stop');
+stopOnTimelineStatus(status);
+assert.equal(result.failure,'diagnostic_timeline_unmatched_service');
+assert.equal(kills,1);`, context);
+"""
+                script = fixture.replace("SETTINGS", json.dumps(settings), 1).replace(
+                    "RUNTIME", json.dumps(checks._TIMELINE_RUNTIME), 1)
+                observed = subprocess.run([node, "-"], input=script, text=True,
+                                          capture_output=True, timeout=5)
+                self.assertEqual(observed.returncode, 0, observed.stderr)
+
     def test_endpoint_success_cannot_hide_failed_or_forced_shutdown(self):
         for key, value in (("ready", False), ("nativeExitCode", 1), ("nativeExitCode", False),
                            ("nativeSignal", "SIGTERM"), ("shutdown", "killed"), ("escalated", True),
