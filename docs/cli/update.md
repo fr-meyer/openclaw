@@ -35,8 +35,22 @@ own 60-second cold-start limit, and each `schtasks` command has a 15-second limi
 a stalled operation names the check or command instead of using the update's full
 timeout.
 
+If Task Scheduler denies disabling autostart during update preparation, OpenClaw
+reports `windows-task-elevation-required` with the same elevated-terminal and
+manual-update guidance. A definite denial leaves the task unchanged, so no
+autostart restoration is attempted; the disable guard remains required before
+swapping the installation.
+
 Service-definition refresh recognizes Windows account aliases that resolve to the
 same SID. A different or unresolved account remains protected from automatic repair.
+
+If service inspection is unavailable, package updates refuse before replacement
+when a live Gateway lock identifies the same installation. On Windows, a live lock
+PID is enough when its command-line package identity cannot be read.
+The public reason is `gateway-stop-unverified`. Stop the Gateway through Task
+Scheduler, its original terminal, or `openclaw gateway stop`, then rerun
+`openclaw update`. Updates without a live lock still continue on all platforms.
+This admission check requires an updated installed updater.
 
 For a global npm installation, the manual recovery path is
 `npm i -g openclaw@<target> --allow-scripts=openclaw`, then
@@ -546,6 +560,44 @@ receipts use the full history budget.
 This handoff works only when the installed updater already supports it. An older
 updater that refuses before staging cannot use a newer candidate's judgment;
 follow the recovery guidance for that installed release first.
+
+## Runtime retention failures
+
+**Fix now:** `host-owned-plugin-link` means a dependency symlink reaches
+OpenClaw-owned files that the updater cannot safely retain as an independent
+plugin dependency. Retention protects the running updater and recovery workers
+when package replacement removes the old files. Do not skip this check.
+
+Inspect the link and target in the local failure output. Keep the source files
+and recovery backups. For a current installation, ask the plugin maintainer to
+replace the private host-file dependency with `openclaw/plugin-sdk/*` imports or
+a separately packaged dependency. If the link is unexpected, run
+`openclaw triage` with the same profile, service account, state, and configuration
+to diagnose its owner before moving or removing anything.
+
+Older installed updaters may instead encounter the historical package-backup or
+retired-workspace cases described above. The installed updater performs
+retention before replacement: selecting a corrected candidate cannot repair
+that first step. Only move an identified inactive historical backup link; do not
+move an active or unresolved update's backup or delete its source checkout.
+
+After repairing the link, retry the update. Use the report's verification and
+recovery results to determine whether the previous Gateway is still serving;
+a retention refusal alone does not establish service health or restoration.
+
+## Gateway recovery verification failures
+
+**Fix now:** a stopped service or failed readiness check means the update did not
+verify a serving Gateway. Check `openclaw gateway status --deep` using the same
+profile and account. The report identifies observed service status, version
+mismatches, readiness failures, and plugin or channel errors when available.
+A readiness deadline without those facts does not identify the startup cause.
+
+Keep recovery backups and inspect the restart log printed by the updater.
+Follow its recovery instructions; if it says restarting is unsafe, keep the
+Gateway stopped and run `openclaw triage` to repair the installation. Do not
+restore code alone after state migration. If the report says the Gateway is
+still starting, check its progress instead of repeatedly restarting it.
 
 ## Automation and SSH
 

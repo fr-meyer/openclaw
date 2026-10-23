@@ -58,8 +58,8 @@ void test("invalid source revision fails before producing a package", async () =
   }
 });
 
-void test("10.5 image plan requires reconciliation and binds the stable tag and publisher bytes", async () => {
-  const root = await mkdtemp(join(tmpdir(), "openclaw-v105-publisher-plan-"));
+void test("10.6 image plan requires reconciliation and binds the stable tag and publisher bytes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openclaw-v106-publisher-plan-"));
   const packagePath = "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle";
   const git = (...args) =>
     execFileSync("git", args, {
@@ -84,7 +84,7 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
   try {
     await mkdir(join(root, "scripts/docker/runtime-plugins"), { recursive: true });
     await cp(source, join(root, packagePath), { recursive: true });
-    await writeFile(join(root, "package.json"), '{"version":"2026.10.5"}\n');
+    await writeFile(join(root, "package.json"), '{"version":"2026.10.6"}\n');
     git("init", "-q");
     const upstream = commitFixture("synthetic stable source");
     git(
@@ -94,7 +94,7 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
       "user.email=fixture@example.invalid",
       "tag",
       "-a",
-      "v2026.10.5",
+      "v2026.10.6",
       "-m",
       "synthetic stable tag",
     );
@@ -104,12 +104,12 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
       .update(runtimeBytes)
       .digest("hex");
     const cut = {
-      schema: "openclaw-v105-source-preparation-v1",
+      schema: "openclaw-v106-source-preparation-v1",
       status: "SOURCE_ONLY_UNQUALIFIED",
       productionEligible: false,
       upstream: {
-        tag: "v2026.10.5",
-        tagObject: git("rev-parse", "v2026.10.5"),
+        tag: "v2026.10.6",
+        tagObject: git("rev-parse", "v2026.10.6"),
         commit: upstream,
         tree: git("rev-parse", `${upstream}^{tree}`),
       },
@@ -124,7 +124,7 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
     await mkdir(join(root, "custom-patches"));
     const manifestPath = join(root, "custom-patches/manifest.json");
     await writeFile(manifestPath, JSON.stringify(cut));
-    const head = commitFixture("synthetic 10.5 source candidate");
+    const head = commitFixture("synthetic 10.6 source candidate");
     const plan = () =>
       spawnSync(process.execPath, [script, "--plan-image", "true"], {
         cwd: root,
@@ -133,7 +133,7 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
     const accepted = plan();
     assert.equal(accepted.status, 0, accepted.stderr);
     const body = JSON.parse(accepted.stdout);
-    assert.equal(body.schema, "openclaw-v105-preparation-image-plan-v1");
+    assert.equal(body.schema, "openclaw-v106-preparation-image-plan-v1");
     assert.equal(body.sourceCommit, head);
     assert.equal(body.upstreamCommit, upstream);
     assert.equal(body.executed, false);
@@ -144,9 +144,9 @@ void test("10.5 image plan requires reconciliation and binds the stable tag and 
     assert.ok(body.command.includes("GITHUB_ACTIONS=true"));
     assert.ok(body.command.includes(`GIT_COMMIT=${head}`));
     assert.ok(body.command.includes("OPENCLAW_BUILD_TIMESTAMP=<operator-selected-utc-timestamp>"));
-    assert.ok(body.command.includes("OPENCLAW_DOCKER_BUILD_VERSION=2026.10.5"));
+    assert.ok(body.command.includes("OPENCLAW_DOCKER_BUILD_VERSION=2026.10.6"));
     assert.ok(body.command.includes(`org.opencontainers.image.revision=${head}`));
-    assert.ok(body.command.includes("org.opencontainers.image.version=2026.10.5"));
+    assert.ok(body.command.includes("org.opencontainers.image.version=2026.10.6"));
     assert.ok(
       body.command.includes("org.opencontainers.image.created=<operator-selected-utc-timestamp>"),
     );

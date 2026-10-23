@@ -43,6 +43,14 @@ The wait result also carries the run's `terminalReply` and, when available,
 reply reached the external source conversation. A2A announcements consume that
 fact instead of using display-history mirrors as delivery evidence.
 
+When a provider rejects a malformed tool call before dispatch, the built-in
+runner can continue once from the current transcript after earlier tools have
+settled. Earlier failed tools do not block this continuation when every failure
+carries host evidence that execution never started and its result already
+precedes the rejected response in the current turn. Failures that may have caused
+side effects, unfinished tools, and asynchronous work still block it; the
+continuation does not replay the original task or increase the retry budget.
+
 ## Queueing and concurrency
 
 Runs are serialized per session key (session lane) and optionally through a global lane, preventing tool/session races. Messaging channels choose a queue mode (steer/followup/collect/interrupt) that feeds this lane system; see [Command Queue](/concepts/queue).
@@ -259,6 +267,15 @@ controls rather than inheriting callbacks from the completed attempt.
 A terminal timeout is a failed turn, not a successful completion. Chat and
 command results retain its timeout explanation; earlier tool errors do not
 replace that explanation or restart an already-final timed-out turn.
+This includes a timeout during tool execution when no final payload or accepted
+continuation remains. A compaction failure label does not turn that unfinished
+tool timeout into a paused run; completed tool results remain in the transcript.
+Earlier tool warnings and reasoning output do not count as a completed reply.
+Quiet or collect-mode children do not suppress a timeout unless another
+continuation owns the reply; accepting a child alone does not promise delivery.
+Progress sends and messages to another conversation do not finish the current
+source reply. Deliberate yields retain their existing accepted-work semantics.
+Tool media stays in the result alongside the timeout; artifacts alone do not finish the reply.
 
 The model idle and provider HTTP rows describe the built-in OpenClaw model
 path. Codex owns its native stream deadlines and network retries. After exact
@@ -283,6 +300,12 @@ With diagnostics enabled, a built-in two-minute threshold classifies long `proce
 - `session.stuck` is reserved for recoverable stale session bookkeeping, including idle queued sessions with stale ownerless model/tool activity.
 
 The abort threshold is at least 5 minutes and 3x the warning threshold. Stale session bookkeeping releases the affected session lane immediately after recovery gates pass; stalled embedded runs are abort-drained only after the abort threshold, so queued work resumes without cutting off merely slow runs. Recovery emits structured requested/completed outcomes; diagnostic state is marked idle only if the same processing generation is still current, and repeated `session.stuck` diagnostics back off while the session stays unchanged.
+
+Pending Code Mode `exec` and `wait` calls remain active tool work until they
+settle, including `awaitResults: true` calls waiting for nested work. Nested tool
+completion does not retire the outer call. The normal blocked-tool recovery
+allowance and enforced run/tool deadlines still apply; after the outer call
+settles, an embedded run that stops making progress remains recoverable.
 
 Attention and recovery log lines read optional session context only when their
 log level is enabled. Transcript enrichment runs in the background read worker

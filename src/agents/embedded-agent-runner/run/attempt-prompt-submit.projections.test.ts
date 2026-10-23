@@ -286,6 +286,7 @@ describe("durable model prompt projection at provider dispatch", () => {
             appendContext: undefined,
             getUserTranscriptContexts: () => contexts.list(),
             withTranscriptWrite: (write) => withSessionManagerWrite(manager, write),
+            setNextUserMessagePersistence: manager.setNextUserMessagePersistence,
             promptActiveSession: (prompt, options) => session.prompt(prompt, options),
           });
           const outcome = session.messages.at(-1);
@@ -303,8 +304,13 @@ describe("durable model prompt projection at provider dispatch", () => {
         const users = (await readTranscriptMessages(target)).filter(
           (message) => message.role === "user",
         );
-        expect(users).toHaveLength(1);
+        expect(users).toHaveLength(2);
         expect(users[0]).toMatchObject({ content: original, idempotencyKey: "fallback:user" });
+        expect(users[1]).toMatchObject({
+          content: [{ type: "text", text: retry }],
+          display: false,
+          provenance: { kind: "internal_system" },
+        });
         if (enriched) {
           expect(users[0]).toHaveProperty("__openclaw.modelPromptProjection", {
             version: 1,

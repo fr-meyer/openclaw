@@ -11,7 +11,6 @@ import type { CronJob, CronRunStatus } from "../types.js";
 import { maybeAutoDisableCronJobAfterRunFailure } from "./auto-disable.js";
 import {
   finalizeCronFailureNotifications,
-  maybeEmitFailureAlert,
   resolveFailureIncident,
   resolveFailureAlert,
 } from "./failure-alerts.js";
@@ -23,7 +22,10 @@ import {
   recordScheduleComputeError,
   resolveNextRunAtMsOrDisable,
 } from "./jobs-scheduling.js";
-import { resolveManualOneShotOccurrenceAtMs } from "./one-shot-schedule.js";
+import {
+  isCronOneShotContinuationJob,
+  resolveManualOneShotOccurrenceAtMs,
+} from "./one-shot-schedule.js";
 import { recordQuietCronEvaluation } from "./run-history.js";
 import type { CronJobPolicyContext, CronServiceState, DeferredCronNotifications } from "./state.js";
 import {
@@ -169,7 +171,7 @@ export function applyJobResult(
     );
 
   // Track consecutive errors for backoff / auto-disable; skipped runs use a
-  // separate counter so opt-in skip alerts do not affect retry behavior.
+  // separate counter so skip alerts do not affect retry behavior.
   const previousConsecutiveErrors = job.state.consecutiveErrors ?? 0;
   const computeNaturalNext = (restartInterval: boolean) => {
     try {
@@ -201,17 +203,6 @@ export function applyJobResult(
   } else if (result.status === "skipped") {
     job.state.consecutiveErrors = 0;
     job.state.consecutiveSkipped = (job.state.consecutiveSkipped ?? 0) + 1;
-    if (alertConfig?.includeSkipped && !opts.replay) {
-      maybeEmitFailureAlert(state, {
-        job,
-        alertConfig,
-        status: "skipped",
-        error: result.error,
-        runAtMs: result.startedAt,
-        consecutiveCount: job.state.consecutiveSkipped,
-        deferredNotifications: opts.deferredNotifications,
-      });
-    }
   } else {
     job.state.consecutiveErrors = 0;
     job.state.consecutiveSkipped = 0;
@@ -229,11 +220,21 @@ export function applyJobResult(
     opts.scheduleMode === "preserve" && oneShotOccurrenceAtMs !== undefined;
   const ownsSchedule = opts.scheduleOwnership !== "stale";
   const isOneShotSchedule = job.schedule.kind === "at" || job.schedule.kind === "on-exit";
+  const oneShotNextCheck =
+    ownsSchedule &&
+    !preserveOneShotSchedule &&
+    !opts.replaySchedule &&
+    isJobEnabled(job) &&
+    isCronOneShotContinuationJob(job) &&
+    result.status === "ok"
+      ? result.nextCheck
+      : undefined;
   // Authored completion includes intentional silence and the admitted best-effort policy.
   const shouldDelete =
     ownsSchedule &&
     isOneShotSchedule &&
     !preserveOneShotSchedule &&
+    !oneShotNextCheck &&
     job.deleteAfterRun === true &&
     completionStatus === "succeeded";
   let autoDisableNotificationOwnsFailure = false;
@@ -279,6 +280,12 @@ export function applyJobResult(
     } else if (opts.replaySchedule && job.schedule.kind === "at") {
       applyReplaySchedule();
       job.enabled = job.state.nextRunAtMs !== undefined;
+    } else if (oneShotNextCheck) {
+      // The same definition, tool cap, and private source own the next occurrence;
+      // only its runtime deadline changes. Existing cadence provenance survives restart.
+      job.state.pacedNextRunAtMs = scheduleNextRun(
+        result.endedAt + Math.max(MIN_REFIRE_GAP_MS, oneShotNextCheck.delayMs),
+      );
     } else if (job.schedule.kind === "at" && isJobEnabled(job)) {
       if (shouldRetryDisabledHeartbeatOneShot(job, result)) {
         const retryDecision = resolveDisabledHeartbeatOneShotRetryDecision({

@@ -27,6 +27,16 @@ import {
 
 export const SQLITE_WORKER_ADMISSION_TIMEOUT_MS = 10_000;
 
+/** Cleanup-only custody replaces maintenance scope; other jobs bind the caller's scope. */
+export function captureSqliteWorkerJobCustody(cleanupAccess: Job["cleanupAccess"]) {
+  return (scope?: { maintenanceScope?: Job["maintenanceScope"] }) =>
+    cleanupAccess
+      ? { cleanupAccess }
+      : {
+          maintenanceScope: scope ? scope.maintenanceScope : getOpenClawDatabaseMaintenanceScope(),
+        };
+}
+
 export function createSqliteWorkerAdmissionWarning() {
   let nextWarning = 0;
   return (queueDepth: number, waitMs: number): void => {
@@ -93,7 +103,9 @@ export function captureSqliteWorkerOpen(
   const carrierUrl = options.runtimeGeneration?.resolve(carrier) ?? carrier;
   return {
     ...native,
-    maintenanceScope: custody.maintenanceScope ?? getOpenClawDatabaseMaintenanceScope(),
+    maintenanceScope: custody.cleanupAccess
+      ? undefined
+      : (custody.maintenanceScope ?? getOpenClawDatabaseMaintenanceScope()),
     ...(preparation !== undefined ? { preparation: serialize(preparation) } : {}),
     runtimeGeneration: options.runtimeGeneration,
     carrierUrl,
@@ -334,6 +346,7 @@ export function prepareSqliteWorkerActorContext(actor: Actor | undefined, job: J
   if (actor && !actor.target && request.type !== "close") {
     assertStateDatabaseAccessAllowed(actor.stateDatabasePath ?? actor.databasePath, {
       maintenanceScope: job.maintenanceScope,
+      schemaLease: job.cleanupAccess,
     });
   }
   if (actor && stateContext) {

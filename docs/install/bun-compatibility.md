@@ -12,6 +12,8 @@ Plugin resolution stays with Bun's native/Jiti loader and `Bun.plugin` on Bun, e
 
 ## Requirements
 
+Node fallback and build processes require Node **24.22.1+ or 26.12.1+** for the eMudhra compromised-key rejection fix. Updating Node does not change Bun's independent TLS verifier or its release qualification.
+
 OpenClaw requires **Bun 1.4.0+**, an available **`node:sqlite`** API, and the same [WAL-safe SQLite floor as Node](/install/node-compatibility#why-the-floors-exist).
 
 | Platform | SQLite library Bun uses                       | Extension loading              | What OpenClaw does                                   |
@@ -225,6 +227,12 @@ An early conservative broker keeps that policy even if the check later passes,
 with a one-time `SQLITE_EARLY_TOPOLOGY` warning explaining its retained layout. Workers inherit the
 decision at creation; those started before it completes remain conservative for
 their lifetime, while later workers inherit the completed result.
+
+On conservative runtimes, a successful service runtime-pin inspection can leave
+private snapshot files pending cleanup until process exit. OpenClaw records a
+cleanup warning and retains ownership of those files without failing the
+inspection. Read errors and required-cleanup failures still stop the operation;
+the original state database is unchanged.
 
 The result is never saved in config or state. Each new long-lived host checks its
 selected runtime and library again, including after an upgrade, downgrade, or rollback.

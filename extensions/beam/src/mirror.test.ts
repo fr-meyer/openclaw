@@ -829,7 +829,6 @@ describe("createBeamMirrorRunner", () => {
           token: { source: "env", provider: "default", id: "BEAM_MISSING_TOKEN" },
         }),
       ),
-      env: {},
       fetchFn: captureFetch(sent),
       listCatalogs: () => [createBeamTestCatalog()],
     });

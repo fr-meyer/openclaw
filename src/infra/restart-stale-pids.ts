@@ -2,6 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { formatErrorMessage as formatRawErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import { parseStrictPositiveInteger } from "@openclaw/normalization-core/number-coercion";
 import { uniqueValues } from "@openclaw/normalization-core/string-normalization";
 import { resolveGatewayPort } from "../config/paths.js";
@@ -597,7 +598,10 @@ export function cleanStaleGatewayProcessesSync(
     // Even an already-exited PID can leave its socket bound briefly; always join port release.
     waitForPortFreeSync(port);
     return killed;
-  } catch {
+  } catch (error) {
+    restartLog.warn(
+      `stale gateway process cleanup failed: ${formatRawErrorMessage(error, { redact: (text) => text })}`,
+    );
     return [];
   }
 }

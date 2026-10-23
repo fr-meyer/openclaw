@@ -273,10 +273,15 @@ until their dependent enforcement changes land.
   group + release profile + effective soak coverage. Stable/full always include
   soak. Distinct coverage profiles can run independently; concurrency does not
   cancel an older exact child automatically.
-- Parent cancellation or timeout leaves adopted identity-checked children
-  running. The operator must cancel an exact child explicitly when it is no
-  longer useful. Do not infer a child identity from branch, title prefix, or
-  latest-run order.
+- Parent cancellation or timeout does not settle independent descendants.
+  Preview `pnpm frv cancel --run <parent> --dry-run`, then run it without
+  `--dry-run` only for explicitly requested cancellation. The canonical owner
+  authenticates the sealed plan, exact dispatch logs, current attempts, artifact
+  producers, and recorded Telegram descendants; borrowed/reused children remain
+  untouched. Repeat an incomplete result with its next command. Use `--force`
+  only when an earlier cancellation is not settling. Never infer ownership from
+  branch, title prefix, or latest-run order, or dispatch a replacement before the
+  owned tree is terminal.
 - Recover one failed surface with one diagnosis, one fix when needed, and one
   narrow retry. Then reassess the release decision. Do not automatically
   dispatch `rerun_group=all`.
@@ -768,6 +773,14 @@ overrides), so a restart after a harness or Monitor timeout does not re-report.
 and `--json` prints NDJSON. It exits once the parent and every dispatched child
 are terminal; restart it after a later rerun. Do not hand-roll bash or `gh`
 watchers.
+
+Watch candidate events derive the frozen SHA and context ref from the sealed
+execution plan, not monitor scratch prose or the parent's tooling SHA. The tip
+is read freshly; a changed tip labels that candidate superseded without stopping
+observation or claiming qualification of the new tip. Missing evidence or a
+SHA-only context stays unknown. Resume a missing or exited watcher with the same
+command and state path: it performs reads only and suppresses already reported
+terminal and candidate events. Never redispatch merely to restore a watcher.
 
 For the parent's Release Decision, use the transition-only summary watcher:
 

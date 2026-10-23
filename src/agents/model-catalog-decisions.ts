@@ -3,7 +3,6 @@ import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/st
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { normalizePluginsConfig, type NormalizedPluginsConfig } from "../plugins/config-state.js";
 import { isManifestPluginAvailableForControlPlane } from "../plugins/manifest-contract-eligibility.js";
-import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import type { PluginRegistry } from "../plugins/registry.js";
 import { withPluginRuntimeRegistryScope } from "../plugins/runtime/gateway-request-scope.js";
 import {
@@ -14,18 +13,12 @@ import type { GatewayAgentRuntime } from "../shared/session-types.js";
 import { getActiveOpenClawStateDatabaseReadSnapshot } from "../state/openclaw-state-db-readonly.js";
 import { captureOpenClawStateReadWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { isUserModelAuthProfileId } from "../state/user-model-account-id.js";
-import type {
-  PersonalCatalogProfiles,
-  PersonalCatalogSelection,
-} from "../state/user-model-accounts.js";
+import type { PersonalCatalogSelection } from "../state/user-model-accounts.js";
 import { captureUserProfileModelAccountLinksAuthority } from "../state/user-profile-events.js";
-import type { PreparedAgentCredentialModes } from "./agent-auth-credential-modes.js";
 import { isDefaultAgentRuntimeId } from "./agent-runtime-id.js";
 import { resolveAgentDir, resolveAgentWorkspaceDir } from "./agent-scope.js";
 import { resolveExternalCliAuthScopeFromConfig } from "./auth-profiles/external-cli-scope.js";
 import { materializePreparedPersonalAuthProfile } from "./auth-profiles/personal-profiles.js";
-import type { RuntimeAuthMaterialization } from "./auth-profiles/runtime-materializations.js";
-import type { AuthProfileStore } from "./auth-profiles/types.js";
 import { listCliRuntimeModelBackendBindings } from "./cli-backends.js";
 import { resolveAgentHarnessAvailabilityDecision } from "./harness/availability.js";
 import { resolveAgentHarnessPolicy } from "./harness/policy.js";
@@ -36,6 +29,7 @@ import {
   type ModelAuthAvailabilityEvaluation,
 } from "./model-auth-availability.js";
 import { createUnlistedClaudeCliWildcardCheck } from "./model-catalog-cli-wildcard.js";
+import type { ModelCatalogDecisionParams } from "./model-catalog-decisions.types.js";
 import {
   createModelCatalogSnapshotView,
   listModelCatalogObservedRoutes,
@@ -43,10 +37,9 @@ import {
   selectModelCatalogRuntimeEntry,
 } from "./model-catalog-view.js";
 import { loadManifestModelCatalog } from "./model-catalog.js";
-import type { ModelCatalogEntry, ModelCatalogSnapshot } from "./model-catalog.types.js";
+import type { ModelCatalogEntry } from "./model-catalog.types.js";
 import { dedupeModelCatalogEntries } from "./model-selection-shared.js";
 import {
-  createOpenAIModelRoutesResolver,
   openAIModelCatalogRoutePolicy,
   resolveModelCatalogIdentityKey,
 } from "./openai-model-routes.js";
@@ -54,29 +47,7 @@ import { PreparedModelRuntimePublicationSupersededError } from "./prepared-model
 import { isPreparedModelCatalogFull } from "./prepared-model-runtime.full-catalog.js";
 import { resolveProviderIdForAuth } from "./provider-auth-aliases.js";
 
-export type ModelCatalogDecisionParams = {
-  cfg: OpenClawConfig;
-  agentId: string;
-  agentDir?: string;
-  workspaceDir?: string;
-  snapshot: ModelCatalogSnapshot;
-  metadataSnapshot: PluginMetadataSnapshot;
-  preparedAuthStore: AuthProfileStore;
-  preparedRuntimeAuthModes?: PreparedAgentCredentialModes;
-  preparedRuntimeAuthMaterializations?: readonly RuntimeAuthMaterialization[];
-  preparedSyntheticAuthComplete?: boolean;
-  requesterProfileId?: string;
-  pluginRegistry?: PluginRegistry;
-  observationConfig?: OpenClawConfig;
-  preferredProfileId?: string;
-  pinnedProfileId?: string;
-  profileProvider?: string;
-  runtimeOverride?: string;
-  accountCatalog?: import("./prepared-model-runtime-auth.js").PreparedAccountCatalogAccess;
-  routeResolverFactory?: typeof createOpenAIModelRoutesResolver;
-  isCurrent?: () => boolean;
-  preparedPersonalCatalog?: PersonalCatalogProfiles & { isCurrent: () => boolean };
-};
+export type { ModelCatalogDecisionParams } from "./model-catalog-decisions.types.js";
 
 /** Prepare private records once under the caller's retained credential authority. */
 export async function prepareModelCatalogDecisions(

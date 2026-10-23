@@ -2,6 +2,7 @@ import type { StreamFn } from "openclaw/plugin-sdk/agent-core";
 import type { ImageContent } from "../../../llm/types.js";
 import type { createTrajectoryRuntimeRecorder } from "../../../trajectory/runtime.js";
 import type { Agent, AgentMessage } from "../../runtime/index.js";
+import type { NextUserMessagePersistence } from "../../session-tool-result-guard.js";
 import { buildSessionsYieldContextMessage } from "../../sessions-yield-context.js";
 import { agentSessionQueuePromptContext } from "../../sessions/agent-session-prompting.js";
 import {
@@ -24,6 +25,7 @@ import {
   installModelPromptProjection,
   installRuntimeContextMessageForPrompt,
   normalizeMessagesForLlmBoundary,
+  resolveModelPromptText,
 } from "./attempt-llm-boundary.js";
 import {
   isSessionsYieldAbortError,
@@ -99,6 +101,7 @@ export async function submitEmbeddedAttemptPrompt(input: {
   promptActiveSession: PromptActiveSession;
   runtimeContextMessage?: RuntimeContextCustomMessage;
   runtimeOnly: boolean;
+  setNextUserMessagePersistence?: (mode: NextUserMessagePersistence) => void;
   systemPrompt: string;
   toolResultAggregateMaxChars: number;
   toolResultMaxChars: number;
@@ -276,22 +279,30 @@ export async function submitEmbeddedAttemptPrompt(input: {
     inFlightPrompt: input.transcriptPrompt,
   });
 
+  // An internal prompt has no transcript recorder to capture a model-facing projection,
+  // so it is submitted and persisted as the exact text the model receives.
+  const internalPrompt = attempt.skipPreparedUserTurnMessage === true;
+  const submittedPrompt = internalPrompt
+    ? resolveModelPromptText({ ...input, text: input.transcriptPrompt })
+    : input.transcriptPrompt;
   let captureCurrentPromptForModel = false;
-  const cleanupModelPromptTransform = installModelPromptProjection({
-    session: activeSession,
-    transcriptPrompt: input.transcriptPrompt,
-    modelPrompt: input.modelPrompt,
-    prependContext: input.prependContext,
-    appendContext: input.appendContext,
-    shouldCapturePrompt: () => captureCurrentPromptForModel,
-    recorder: projectionRecorder,
-    withTranscriptWrite: input.withTranscriptWrite,
-    getUserTranscriptContexts: input.getUserTranscriptContexts,
-    assertCurrent: () => {
-      assertSteeringCurrent();
-      input.assertHostActive?.();
-    },
-  });
+  const cleanupModelPromptTransform = internalPrompt
+    ? () => {}
+    : installModelPromptProjection({
+        session: activeSession,
+        transcriptPrompt: input.transcriptPrompt,
+        modelPrompt: input.modelPrompt,
+        prependContext: input.prependContext,
+        appendContext: input.appendContext,
+        shouldCapturePrompt: () => captureCurrentPromptForModel,
+        recorder: projectionRecorder,
+        withTranscriptWrite: input.withTranscriptWrite,
+        getUserTranscriptContexts: input.getUserTranscriptContexts,
+        assertCurrent: () => {
+          assertSteeringCurrent();
+          input.assertHostActive?.();
+        },
+      });
   const armModelPromptTransform = (submitted: boolean) => {
     captureCurrentPromptForModel ||= submitted;
   };
@@ -302,6 +313,12 @@ export async function submitEmbeddedAttemptPrompt(input: {
   };
   attachPromptCompactionRequestBudget(promptOptions, input.compactionRequestBudget);
   const cleanupProviderPromptHistoryTransform = installProviderPromptHistoryTransform();
+  // Retain the model prefix without attributing a synthetic or internal prompt to a human;
+  // suppressing it would orphan the runtime context persisted after it.
+  const modelOnlyPrompt = input.runtimeOnly || internalPrompt;
+  if (modelOnlyPrompt) {
+    input.setNextUserMessagePersistence?.("runtime");
+  }
   try {
     // Persist after the user (or synthetic runtime prompt), retiring unconsumed
     // context when preflight handles or rejects the prompt before the loop starts.
@@ -314,7 +331,7 @@ export async function submitEmbeddedAttemptPrompt(input: {
             persistedUserIdempotencyKey,
           });
     try {
-      await input.promptActiveSession(input.transcriptPrompt, promptOptions);
+      await input.promptActiveSession(submittedPrompt, promptOptions);
     } finally {
       cleanupRuntimeContextMessage();
     }
@@ -323,6 +340,10 @@ export async function submitEmbeddedAttemptPrompt(input: {
       input.onSteeringAcknowledged();
     }
   } finally {
+    if (modelOnlyPrompt) {
+      // Preflight can fail before consuming the one-shot persistence mode.
+      input.setNextUserMessagePersistence?.("normal");
+    }
     cleanupProviderPromptHistoryTransform();
     cleanupModelPromptTransform();
   }

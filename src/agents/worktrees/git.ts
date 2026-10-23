@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { hasErrnoCode } from "../../infra/errno.js";
 import {
   createGitCommandError,
   enqueueGitRefMutation,
@@ -16,6 +15,7 @@ import {
 } from "../../infra/git-exec.js";
 import { withGitRepositoryRepair } from "../../infra/git-repository-repair.js";
 import { hasGitWorkerContext, requestGitWorkerCommand } from "../../infra/git-worker-context.js";
+import { lstatIfExists } from "../../infra/path-existence.js";
 import { mergeProcessEnv, resolveEnvironmentValue } from "../../infra/process-env.js";
 import {
   decodeWindowsOutputBuffer,
@@ -414,20 +414,9 @@ export function insideGitCheckout(start: string): boolean {
 }
 
 export async function hasSelfContainedGitMetadata(checkoutRoot: string): Promise<boolean> {
-  return (await lstatIfExists(path.join(checkoutRoot, ".git")))?.isDirectory() ?? false;
+  return (await lstatIfExists(path.join(checkoutRoot, ".git"), "ENOENT"))?.isDirectory() ?? false;
 }
 
 export async function worktreePathExists(target: string): Promise<boolean> {
-  return (await lstatIfExists(target)) !== undefined;
-}
-
-export async function lstatIfExists(target: string) {
-  try {
-    return await fs.lstat(target);
-  } catch (error) {
-    if (hasErrnoCode(error, "ENOENT")) {
-      return undefined;
-    }
-    throw error;
-  }
+  return (await lstatIfExists(target, "ENOENT")) !== undefined;
 }

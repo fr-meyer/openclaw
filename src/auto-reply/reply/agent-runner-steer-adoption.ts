@@ -50,6 +50,7 @@ type ActiveReplySteerFallbackReason =
   | "model-fallback-changed";
 
 type ActiveReplySteerParams = {
+  assertSourceCurrent?: () => void;
   followupRun: RunReplyAgentParams["followupRun"];
   opts: RunReplyAgentParams["opts"];
   providedReplyOperation: ReplyOperation | undefined;
@@ -118,6 +119,7 @@ export async function runActiveReplySteer(
     resolveFollowupAbortSignal(followupRun)?.throwIfAborted();
     params.opts?.abortSignal?.throwIfAborted();
     followupRun.operatorAuthority?.assertCurrent();
+    params.assertSourceCurrent?.();
   };
   let steerSessionId = activeReplyOperation?.sessionId ?? followupRun.run.sessionId;
   const parked = parkSteerCandidate(queueKey, followupRun, resolvedQueue, runFollowup);
@@ -242,6 +244,7 @@ export async function runActiveReplySteer(
     const assertLegacyPolicyCurrent = () =>
       assertPolicy(resolveFollowupRunToolAuthorityFingerprint(followupRun, automaticFallbackRoute));
     const sourceBound = Boolean(
+      params.assertSourceCurrent ||
       automaticFallbackRoute ||
       followupRun.operatorAuthority ||
       followupRun.abortSignal ||
@@ -291,7 +294,19 @@ export async function runActiveReplySteer(
       waitForTranscriptCommit: true,
       queueIdentity: resolveAcceptedSteerRunId(params),
       abortSignal: resolveFollowupAbortSignal(followupRun),
-      onQueueAccepted: parked.accepted,
+      onQueueAccepted: (accepted) => {
+        if (!accepted) {
+          try {
+            assertReadCurrent();
+          } catch {
+            // Refusal can release deferred queue overflow synchronously. Retire
+            // revoked input before it can become a fallback or summary source.
+            parked.consume();
+            return;
+          }
+        }
+        parked.accepted(accepted);
+      },
       ...(resolvedQueue.debounceMs !== undefined ? { debounceMs: resolvedQueue.debounceMs } : {}),
       ...(followupRun.run.sourceReplyDeliveryMode
         ? { sourceReplyDeliveryMode: followupRun.run.sourceReplyDeliveryMode }
@@ -350,19 +365,20 @@ export async function runActiveReplySteer(
     return "handled";
   } finally {
     try {
-      if (followupRun.steerPending) {
-        if (isFollowupRunAborted(followupRun)) {
+      // A backend can report rejection before delivery settles, clearing
+      // steerPending while leaving the input queued for fallback. A revoked
+      // source must retire that queued input too.
+      if (isFollowupRunAborted(followupRun)) {
+        parked.consume();
+      } else {
+        try {
+          assertReadCurrent();
+        } catch {
           parked.consume();
-        } else {
-          try {
-            assertReadCurrent();
-          } catch {
-            parked.consume();
-          }
         }
-        if (followupRun.steerPending) {
-          parked.fallback();
-        }
+      }
+      if (followupRun.steerPending) {
+        parked.fallback();
       }
     } finally {
       typing.cleanup();

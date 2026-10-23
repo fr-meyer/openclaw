@@ -42,7 +42,7 @@ import {
   prepareOpenClawStateReadSource,
 } from "./openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "./openclaw-state-worker-context.types.js";
-import { getOpenClawStateWorkerOwner } from "./openclaw-state-worker-owner.js";
+import { getOpenClawStateWorkerOwner } from "./openclaw-state-worker-owner-get.js";
 import { runOpenClawStateWorkerOperation } from "./openclaw-state-worker-store.js";
 import { openExistingSqliteWorkerBackend } from "./openclaw-state.worker.js";
 

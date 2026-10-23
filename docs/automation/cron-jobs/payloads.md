@@ -95,6 +95,28 @@ jobs use the current operator read policy. Agent-created jobs retain their recor
 creator origin and account, and the channel's delegated read restrictions still
 apply. Delivery settings do not grant read access.
 
+An authenticated operator turn can schedule an `agentTurn` back into its exact
+existing conversation with `sessionTarget: "session:<same session key>"`. New
+jobs retain the original authenticated source privately, so the continuation can
+finish authorized work without another message from the operator. Each occurrence
+revalidates the original operator scopes, role, device, access grant, model
+restrictions, and exact session identity under current policy. This preserves the
+original operator scope ceiling; it is not a blanket grant to automations.
+The stored tool cap, sandbox, and current tool denials still apply. Scheduled
+automation management remains self-scoped.
+
+This source is not inferred for existing jobs, guests, isolated/current targets,
+scripts, or another conversation. Executable edits discard it unless an
+authenticated creator schedules a fresh continuation; display-only edits retain
+it. Disabling, removing, or replacing the job or session retires the active
+occurrence. Re-enabling the job does not revive a revoked occurrence.
+
+While an `at` agent-turn continuation in an explicitly named conversation waits
+for a result, it can call `automations` with `action: "next_check"` and `in: "3m"`
+to rearm that same job. It does not create a new job or change its task, target,
+or permissions. Without a next-check proposal, ordinary one-shot completion and
+`deleteAfterRun` behavior are unchanged.
+
 Manual runs use the same scheduled execution context as timer-fired runs after
 the request passes admission. Ending the chat turn or tool call that started a
 run does not expire the job's tool access. The job still uses its stored authority
@@ -181,7 +203,7 @@ When a runtime reports token usage without a cost, automation estimates use the 
 
 If a run hits a live model-switch handoff, the scheduler retries with the switched provider/model and persists that selection (and any new auth profile) for the active run. Retries are bounded: after the initial attempt plus 2 switch retries, the scheduler aborts instead of looping.
 
-Before an isolated run starts, OpenClaw checks reachable local endpoints for configured `api: "ollama"` and `api: "openai-completions"` providers whose `baseUrl` is loopback, private-network, or `.local`. This preflight walks the job's configured fallback chain and only marks the run `skipped` once every candidate is unreachable; `--fallbacks ""` keeps that walk strict to just the primary model. A down endpoint records the run as `skipped` with a clear error instead of starting a model call. The result is cached for 5 minutes per endpoint (not per job or model), so many due jobs sharing a dead local Ollama/vLLM/SGLang/LM Studio server cost one check instead of a request storm. Skipped preflight runs do not increment execution-error backoff; set `failureAlert.includeSkipped` to opt into repeated skip alerts.
+Before an isolated run starts, OpenClaw checks reachable local endpoints for configured `api: "ollama"` and `api: "openai-completions"` providers whose `baseUrl` is loopback, private-network, or `.local`. This preflight walks the job's configured fallback chain and only marks the run `skipped` once every candidate is unreachable; `--fallbacks ""` keeps that walk strict to just the primary model. A down endpoint records the run as `skipped` with a clear error instead of starting a model call. The result is cached for 5 minutes per endpoint (not per job or model), so many due jobs sharing a dead local Ollama/vLLM/SGLang/LM Studio server cost one check instead of a request storm. Skipped preflight runs do not increment execution-error backoff. They use the existing [failure-alert policy](/automation/cron-jobs/delivery#failure-notifications) without requiring `failureAlert.includeSkipped`; recurring jobs remain enabled and recover automatically when a later preflight finds the provider reachable.
 
 Client-side preflight timeouts are not cached. The next scheduled run checks the endpoint again instead of inheriting a timeout from another run.
 

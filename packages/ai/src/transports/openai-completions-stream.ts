@@ -112,10 +112,9 @@ export async function processCompletionsStream(
   const openAIModel = model as OpenAIModeModel;
   const compat = getCompat(openAIModel);
   const visibleReasoningDetailTypes = new Set(compat.visibleReasoningDetailTypes);
-  const shouldFilterDeepSeekDsmlText = compat.thinkingFormat === "deepseek";
-  const deepSeekTextFilter = shouldFilterDeepSeekDsmlText ? createDeepSeekTextFilter() : null;
+  const deepSeekTextFilter = compat.emitsDsmlToolCalls ? createDeepSeekTextFilter() : null;
   const deepSeekToolCallRecoverer =
-    !directMode && shouldFilterDeepSeekDsmlText ? createDsmlRecoverer() : null;
+    !directMode && compat.emitsDsmlToolCalls ? createDsmlRecoverer() : null;
   const gemmaToolCallRecoverer =
     !directMode && /gemma-?4/i.test(model.id) ? createGemmaToolCallRecoverer() : null;
   const reasoningTagTextPartitioner = createReasoningTagTextPartitioner();
@@ -135,7 +134,8 @@ export async function processCompletionsStream(
   const encryptedReasoning = createOpenAIEncryptedToolCallReasoningTracker();
   // Preview schedules are per active tool call; WeakMap keys die with the block.
   const toolArgumentPreviewSchedules = new WeakMap<ToolCallBlock, ToolArgumentPreviewSchedule>();
-  const provisionalCommentaryTags = directMode ? options.provisionalCommentaryTags : new Map();
+  const provisionalCommentaryTags =
+    directMode && options.provisionalCommentaryTags ? options.provisionalCommentaryTags : new Map();
   const blockIndices = new WeakMap<TextBlock | ThinkingBlock | ToolCallBlock, number>();
   let explicitVisibleTextBlocks: Set<TextBlock> | undefined;
   const normalizeToolCallDeltas = createOpenAICompletionsToolCallDeltaNormalizer();
@@ -272,6 +272,7 @@ export async function processCompletionsStream(
       );
     }
   };
+  const recoveredToolCallBlocks = new Set<ToolCall>();
   const appendRecoveredToolCall = (toolCall: RecoveredTextToolCall) => {
     if (currentBlock?.type === "toolCall") {
       currentBlock = null;
@@ -290,6 +291,7 @@ export async function processCompletionsStream(
       arguments: toolCall.arguments,
       partialArgs: toolCall.partialArgs,
     };
+    recoveredToolCallBlocks.add(block);
     currentBlock = block;
     appendToolCallBlock(block);
     pushStreamEvent({
@@ -620,6 +622,12 @@ export async function processCompletionsStream(
   }
   currentBlock = null;
   flushPendingPostToolCallDeltas();
+  // Native calls supersede recovered previews before any toolcall_end authorizes execution.
+  if (sawNativeToolCallDelta && recoveredToolCallBlocks.size > 0) {
+    output.content = output.content.filter(
+      (block) => block.type !== "toolCall" || !recoveredToolCallBlocks.has(block),
+    );
+  }
   // Only an explicit stop or observed SSE terminal may authorize silent tool calls.
   finalizeOpenAICompletionsToolCalls(output, {
     allowSilentToolCallPromotion:

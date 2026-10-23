@@ -12,6 +12,7 @@ import { withEnvAsync } from "../../../test-utils/env.js";
 import { withOpenClawTestState } from "../../../test-utils/openclaw-test-state.js";
 import { prepareSystemAgentRunAdmission } from "../../admitted-run-context.js";
 import { readBtwTranscriptMessages } from "../../btw-transcript.js";
+import { RUNTIME_EVENT_USER_PROMPT } from "../../internal-runtime-context.js";
 import type { AgentMessage } from "../../runtime/index.js";
 import { guardSessionManager } from "../../session-tool-result-guard-wrapper.js";
 import {
@@ -260,7 +261,7 @@ describe("submitEmbeddedAttemptPrompt", () => {
   });
 
   it.each(["handled", "rejected"] as const)(
-    "retires queued context when prompt preflight is %s",
+    "retires runtime-only context and preserves the next user when preflight is %s",
     async (outcome) => {
       let calls = 0;
       const handlers = new Map<string, Array<() => Promise<unknown>>>([
@@ -279,18 +280,22 @@ describe("submitEmbeddedAttemptPrompt", () => {
       streamMocks.streamSimple.mockImplementation((model) =>
         createAssistantResultStream(createAssistant(model, [{ type: "text", text: "done" }])),
       );
-      const { session, sessionManager, modelRegistry } = await createTestSession({
+      const sessionManager = guardSessionManager(SessionManager.inMemory());
+      const { session, modelRegistry } = await createTestSession({
+        sessionManager,
         resourceLoader: createResourceLoader(handlers),
       });
       const authCheck = vi.spyOn(modelRegistry, "hasConfiguredAuth");
       if (outcome === "rejected") {
         authCheck.mockReturnValueOnce(false);
       }
-      const submit = (text: string) =>
+      const submit = (text: string, runtimeOnly = false) =>
         submitEmbeddedAttemptPrompt({
           ...createBaseInput(),
           activeSession: session,
           appendOnlyRuntimeContext: true,
+          runtimeOnly,
+          setNextUserMessagePersistence: sessionManager.setNextUserMessagePersistence,
           transcriptPrompt: text,
           modelPrompt: text,
           compactionRequestBudget: createCompactionRequestBudget({
@@ -303,9 +308,9 @@ describe("submitEmbeddedAttemptPrompt", () => {
           promptActiveSession: (prompt, options) => session.prompt(prompt, options),
         });
       if (outcome === "rejected") {
-        await expect(submit("discarded")).rejects.toThrow("No API key");
+        await expect(submit(RUNTIME_EVENT_USER_PROMPT, true)).rejects.toThrow("No API key");
       } else {
-        await submit("discarded");
+        await submit(RUNTIME_EVENT_USER_PROMPT, true);
       }
       authCheck.mockRestore();
       await submit("accepted");
@@ -316,7 +321,17 @@ describe("submitEmbeddedAttemptPrompt", () => {
       expect(carriers[0]).toMatchObject({
         content: expect.stringContaining("context for accepted"),
       });
-      expect(JSON.stringify(session.messages)).not.toContain("context for discarded");
+      expect(JSON.stringify(session.messages)).not.toContain(RUNTIME_EVENT_USER_PROMPT);
+      const users = sessionManager
+        .getEntries()
+        .flatMap((entry) =>
+          entry.type === "message" && entry.message.role === "user" ? [entry.message] : [],
+        );
+      expect(users.map((message) => message.content)).toEqual([
+        [{ type: "text", text: "accepted" }],
+      ]);
+      expect(users[0]).not.toHaveProperty("display", false);
+      expect(users[0]).not.toHaveProperty("provenance");
     },
   );
 

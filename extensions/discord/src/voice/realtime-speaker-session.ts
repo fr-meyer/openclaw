@@ -37,7 +37,6 @@ import {
   logVoiceVerbose,
   type DiscordVoiceMode,
   type VoiceRealtimeAgentTurnParams,
-  type VoiceRealtimeSession,
   type VoiceRealtimeSpeakerContext,
   type VoiceRealtimeSpeakerTurn,
   type VoiceSessionEntry,
@@ -62,7 +61,7 @@ export type DiscordRealtimeSessionParams = {
   resolveSpeakerContext: (userId: string) => Promise<DiscordVoiceIngressContext | null>;
 };
 
-export class DiscordRealtimeSpeakerSession implements VoiceRealtimeSession {
+export class DiscordRealtimeSpeakerSession {
   private bridge: RealtimeVoiceBridgeSession | null = null;
   private readonly harness: RealtimeVoiceSessionHarness<AgentProxyConsultState>;
   private readonly playback: DiscordRealtimePlayback<AgentProxyConsultState>;

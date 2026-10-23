@@ -99,7 +99,11 @@ export async function backupDoctorSqliteDatabases(params: {
   authority: DoctorSqliteMaintenanceAuthority;
   repair?: { key: string; validate: (database: DatabaseSync) => void };
   verifiedSnapshots?: readonly BackupSqliteSnapshotFact[];
-}): Promise<MigrationMessages> {
+  migrationTables?: ReadonlyMap<string, readonly string[]>;
+  stateFamilyBackedUp?: true;
+  /** Recovery must retain its own verified originals, including on disposable rehearsals. */
+  requireSnapshots?: true;
+}): Promise<MigrationMessages & { snapshots?: readonly { sourcePath: string; path: string }[] }> {
   const pending = new Set(params.pendingDatabasePaths);
   if (pending.size === 0) {
     return { changes: [], warnings: [] };
@@ -118,7 +122,9 @@ export async function backupDoctorSqliteDatabases(params: {
       { kind: "data-at-risk", reason: "incomplete-migration" },
     );
   }
-  const disposable = createDoctorRehearsalDatabaseCoverage(params.env);
+  const disposable = params.requireSnapshots
+    ? undefined
+    : createDoctorRehearsalDatabaseCoverage(params.env);
   disposable?.admit([...pending, ...params.databasePaths]);
   const retainedPaths = [...new Set([...pending, ...params.databasePaths])].filter(
     (pathname) => !disposable?.excludes(pathname),
@@ -141,6 +147,7 @@ export async function backupDoctorSqliteDatabases(params: {
   ];
   if (
     !crossBuildReuse &&
+    !params.requireSnapshots &&
     sources.length > 0 &&
     sources.every((sourcePath) => {
       const { dev, ino } = statSync(sourcePath);
@@ -365,5 +372,12 @@ export async function backupDoctorSqliteDatabases(params: {
       `Migration backups remain protected; cleanup registration failed: ${formatErrorMessage(error)}`,
     );
   }
-  return { changes, warnings };
+  return {
+    changes,
+    warnings,
+    snapshots: inventory.map(({ path: sourcePath }) => ({
+      sourcePath,
+      path: targetFor(sourcePath),
+    })),
+  };
 }

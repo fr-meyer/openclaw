@@ -37,7 +37,7 @@ export async function prepareDoctorMigrationPlugins(params: {
     pending: readonly DeferredPluginMigration[],
     inspection?: PluginMigrationInspection,
   ) => Promise<void>;
-}): Promise<ConfigPreflightSnapshotRead> {
+}): Promise<{ snapshotRead: ConfigPreflightSnapshotRead; warnings: string[] }> {
   const convergence = await runDoctorPluginConvergence(params);
   setActiveDegradedPlugins(convergence.quarantinedPlugins);
   await params.onDeferredPlugins(
@@ -46,7 +46,10 @@ export async function prepareDoctorMigrationPlugins(params: {
   );
   const refreshed = await params.readRefreshedSnapshot();
   assertPreflightConfigUnchanged(params.snapshotRead.snapshot, refreshed.snapshot);
-  return refreshed;
+  return {
+    snapshotRead: refreshed,
+    warnings: convergence.warnings ?? [],
+  };
 }
 
 export async function assertDoctorPreflightMigrationsComplete(params: {

@@ -17,7 +17,6 @@ import { SESSION_TRANSCRIPT_FOREGROUND_WORKERS } from "../../infra/worker-pool-s
 import { WorkerTaskError, WorkerTaskPool } from "../../infra/worker-task-pool.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { runInDetachedAsyncContext } from "../../shared/detached-async-context.js";
-import type { OpenClawAgentDatabaseOptions } from "../../state/openclaw-agent-db-contract.js";
 import {
   matchesAgentDatabaseReadCandidatePath,
   registerOpenClawAgentDatabaseAsyncResource,
@@ -47,8 +46,22 @@ import {
   createSessionTranscriptHistoryPool,
   SESSION_TRANSCRIPT_WORKER_LIMITS,
 } from "./session-transcript-read-pools.js";
+import type {
+  HistoryDatabaseResource,
+  SessionDatabaseWorkerLane,
+  SessionHistoryDatabaseTarget,
+  SessionHistoryWorkerLane,
+} from "./session-transcript-worker-resource-types.js";
 import type { SessionHistoryWorkerInput } from "./session-transcript-worker.types.js";
 import { captureSessionTranscriptStorageEnvironment } from "./transcript-target-binding.js";
+
+export type {
+  HistoryDatabaseResource,
+  SessionCostWorkerLane,
+  SessionDatabaseCleanup,
+  SessionHistoryDatabaseTarget,
+  SessionHistoryWorkerLane,
+} from "./session-transcript-worker-resource-types.js";
 
 const workerUrl = resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.sessionTranscript);
 
@@ -71,45 +84,6 @@ function createUsageCostPool(kind: "read" | "refresh") {
     },
   });
 }
-
-type SessionDatabaseWorkerLane = {
-  name: string;
-  pool: { rotate: () => Promise<void> };
-  nativeSequence: number;
-  retiredSequence: number;
-  pending: number;
-  idleTimer?: NodeJS.Timeout;
-  rotation?: Promise<void>;
-};
-
-export type SessionCostWorkerLane = SessionDatabaseWorkerLane & {
-  pool: WorkerTaskPool<UsageCostWorkerInput, UsageCostWorkerReply>;
-};
-
-export type SessionHistoryWorkerLane = SessionDatabaseWorkerLane & {
-  pool: ReturnType<typeof createSessionTranscriptHistoryPool>;
-};
-
-export type SessionDatabaseCleanup = { run: () => Promise<void> };
-
-/** Physical path for work; callers' lexical paths select the same owner for cleanup. */
-export type SessionHistoryDatabaseTarget = OpenClawAgentDatabaseOptions & {
-  requestedPaths?: readonly string[];
-};
-
-export type HistoryDatabaseResource = {
-  database: { agentId: string; path: string };
-  generation: number;
-  pending: number;
-  revoked: boolean;
-  nativeSequences: Map<SessionDatabaseWorkerLane, number>;
-  hostEffects: Set<Promise<unknown>>;
-  cleanups: Set<SessionDatabaseCleanup>;
-  aborters: Set<() => void>;
-  closing?: Promise<void>;
-  unregister: () => void;
-  retainAlias: (alias: string) => void;
-};
 
 const historyDatabases = new Map<string, HistoryDatabaseResource>();
 const historySetTimeout = setTimeout;

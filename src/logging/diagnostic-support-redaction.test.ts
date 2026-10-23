@@ -44,6 +44,8 @@ function fakeRepeatedToken(chars: readonly string[], length = 40): string {
 
 describe("diagnostic support redaction", () => {
   const tempDir = path.join(os.tmpdir(), "openclaw-support-redaction-test");
+  const npmLayoutRefusal =
+    "The npm global install layout cannot stage a candidate. Reinstall with npm into its default global layout, then retry the update.";
 
   it.each([
     `'/synthetic/private owner/state.sqlite' private suffix`,
@@ -149,6 +151,28 @@ describe("diagnostic support redaction", () => {
   });
 
   it.each([
+    ["SQLite file generation changed while reading", ": /private/example/openclaw.sqlite"],
+    ["SQLite file generation did not stabilize", " during confirmation: /private/example/a.sqlite"],
+    [
+      "SQLite source did not stabilize",
+      " after 3 read-only inspection attempts: /private/x.sqlite",
+    ],
+    ["SQLite WAL commit header is unavailable or changing", ": /private/example/a.sqlite"],
+    ["SQLite WAL commit publication could not be verified", ": /private/example/a.sqlite"],
+    [
+      "SQLite snapshot hash mismatch",
+      ` for /private/example/a.sqlite-wal: expected ${"a".repeat(64)}, got ${"b".repeat(64)}`,
+    ],
+  ])("keeps the fixed concurrent-write cause %s without its path", (cause, suffix) => {
+    expect(
+      redactPublicSupportDiagnosticLine(`Warning: private-host.example\n${cause}${suffix}`, {
+        env: {},
+        stateDir: tempDir,
+      }),
+    ).toBe(cause);
+  });
+
+  it.each([
     "ERR_PNPM_PRIVATE_CUSTOMER",
     "ERR_OSSL_PRIVATE_CUSTOMER",
     "EPRIVATE_CUSTOMER",
@@ -159,16 +183,31 @@ describe("diagnostic support redaction", () => {
     ).toBe("[redacted-diagnostic]");
   });
 
-  it.each(["", " private-customer-text"])(
-    "recognizes only the fixed npm layout refusal (%s)",
-    (suffix) => {
-      const message =
-        "The npm global install layout cannot stage a candidate. Reinstall with npm into its default global layout, then retry the update.";
-      expect(
-        redactPublicSupportDiagnosticLine(message + suffix, { env: {}, stateDir: tempDir }),
-      ).toBe(suffix ? "[redacted-diagnostic]" : message);
-    },
-  );
+  it.each([
+    [npmLayoutRefusal, npmLayoutRefusal],
+    [`${npmLayoutRefusal} private-customer-text`, "[redacted-diagnostic]"],
+    [
+      "Gateway readiness was not verified; service status: running; startup phase: private-customer-text. Check openclaw --profile private-customer gateway status --deep.",
+      "Gateway readiness was not verified; service status: running. Check openclaw gateway status --deep.",
+    ],
+    [
+      "Gateway readiness was not verified; service status: stopped; startup phase: /private/customer/startup. Check openclaw gateway status --deep.",
+      "Gateway readiness was not verified; service status: stopped. Check openclaw gateway status --deep.",
+    ],
+    [
+      "Gateway readiness was not verified; service status: unknown; startup phase: waiting for managed service. Check openclaw gateway status --deep.",
+      "Gateway readiness was not verified; service status: unknown. Check openclaw gateway status --deep.",
+    ],
+    [
+      "Gateway readiness was not verified; service status: running-private-customer. Check openclaw gateway status --deep.",
+      "[redacted-diagnostic]",
+    ],
+    ["private-customer startup failed", "[redacted-diagnostic]"],
+  ])("publishes only closed repair facts (%s)", (message, expected) => {
+    expect(redactPublicSupportDiagnosticLine(message, { env: {}, stateDir: tempDir })).toBe(
+      expected,
+    );
+  });
 
   it("redacts numeric private fields in support snapshots and config", () => {
     const redaction = {

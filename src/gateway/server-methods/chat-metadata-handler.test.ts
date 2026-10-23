@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
+import { performance } from "node:perf_hooks";
 import { expectDefined } from "@openclaw/normalization-core";
 import { describe, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
@@ -24,6 +25,7 @@ import { ADMIN_SCOPE, READ_SCOPE, SESSION_READ_SCOPE } from "../operator-scopes.
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import * as sessionReads from "../session-utils-store.js";
+import { createWorkerSessionPlacementStore } from "../worker-environments/placement-store.js";
 import { chatHistoryHandlers } from "./chat-history-handler.js";
 import {
   connectChatMetadataAccount,
@@ -120,7 +122,40 @@ function createPersonalMetadataFixture(
     metadata,
     readChatMetadata,
     request,
+    saveSession(sessionKey: string, fields: Partial<SessionEntry> = {}, ownerId = owner.id) {
+      const agentId = expectDefined(sessionKey.split(":")[1], "session agent");
+      return upsertSessionEntryCore(
+        { agentId, sessionKey },
+        {
+          sessionId: sessionKey.split(":").slice(2).join(":"),
+          updatedAt: 1,
+          createdActor: { type: "human", source: "profile", id: ownerId },
+          ...fields,
+        },
+      );
+    },
+    dispatch(params: Record<string, unknown>, signal?: AbortSignal) {
+      const respond = vi.fn<RespondFn>();
+      const pending = handleGatewayRequest({
+        req: { type: "req", id: "metadata-dispatch", method: "chat.metadata", params },
+        client,
+        context,
+        respond,
+        signal,
+        isWebchatConnect: () => false,
+      });
+      return { pending, respond };
+    },
   };
+}
+
+function withMetadataFixture(
+  run: (fixture: ReturnType<typeof createPersonalMetadataFixture>) => Promise<void>,
+  scopes: GatewayOperatorRoleDefinition["scopes"] = [SESSION_READ_SCOPE],
+) {
+  return withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await run(createPersonalMetadataFixture(scopes));
+  });
 }
 
 function dispatchMetadata(
@@ -141,6 +176,78 @@ function dispatchMetadata(
 }
 
 describe("chat metadata ownership", () => {
+  it.for([
+    { includeModels: false, first: "response" },
+    { includeModels: true, first: "placement" },
+  ] as const)(
+    "keeps saved-session placement readiness scoped to includeModels=$includeModels",
+    async ({ includeModels, first }, { signal }) => {
+      await withMetadataFixture(async (fixture) => {
+        const sessionKey = "agent:main:placement-readiness";
+        await fixture.saveSession(sessionKey);
+        const harness = createChatMetadataHarness(fixture.config);
+        let placementPrepared = false;
+        fixture.context.readChatMetadata = (scope) => {
+          if (includeModels) {
+            expect(placementPrepared).toBe(true);
+          }
+          return harness.runtime.read(scope);
+        };
+        const placement = createWorkerSessionPlacementStore();
+        fixture.context.workerSessionPlacementService = placement;
+        const entered = createDeferred();
+        const release = createDeferred();
+        const getMany = placement.getManyAsync.bind(placement);
+        const read = vi.spyOn(placement, "getManyAsync").mockImplementation(async (ids) => {
+          entered.resolve();
+          await release.promise;
+          const result = await getMany(ids);
+          placementPrepared = true;
+          return result;
+        });
+        const abort = () => release.resolve();
+        signal.addEventListener("abort", abort, { once: true });
+        let request;
+        try {
+          await harness.runtime.refresh();
+          const started = performance.now();
+          request = fixture.dispatch({ sessionKey, includeModels }, signal);
+          const winner = await Promise.race([
+            request.pending.then(() => "response"),
+            entered.promise.then(() => "placement"),
+          ]);
+          console.info("chat metadata placement readiness", {
+            includeModels,
+            first: winner,
+            elapsedMs: performance.now() - started,
+          });
+          expect(winner).toBe(first);
+          if (includeModels) {
+            expect(request.respond).not.toHaveBeenCalled();
+          }
+          release.resolve();
+          await request.pending;
+          expect(request.respond).toHaveBeenCalledWith(
+            true,
+            expect.objectContaining({ commands: [{ name: "command-1-1" }], swarmEnabled: true }),
+          );
+          const result = request.respond.mock.calls[0]?.[1];
+          if (includeModels) {
+            expect(result).toHaveProperty("models");
+          } else {
+            expect(result).not.toHaveProperty("models");
+          }
+        } finally {
+          release.resolve();
+          await Promise.allSettled(request ? [request.pending] : []);
+          read.mockRestore();
+          signal.removeEventListener("abort", abort);
+          await harness.runtime.stop();
+        }
+      });
+    },
+  );
+
   it("serves commands without preparing a catalog when the client reads models separately", async () => {
     const config: OpenClawConfig = { agents: { entries: { main: {} } } };
     const harness = createChatMetadataHarness(config);

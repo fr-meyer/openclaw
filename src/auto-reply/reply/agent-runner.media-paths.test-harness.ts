@@ -180,9 +180,11 @@ vi.mock("./agent-runner-memory.js", () => ({
     sessionEntry,
 }));
 
-vi.mock("./queue.js", () => ({
+// mock-isolation: Keep the process-wide followup queue and drain registry outside media cases.
+vi.mock("./queue.js", async () => ({
   admitFollowupRunLifecycle: vi.fn(async () => {}),
   enqueueFollowupRun: enqueueFollowupRunMock,
+  isFollowupRunAborted: (await import("./queue/types.js")).isFollowupRunAborted,
   parkSteerCandidate: parkSteerCandidateMock,
   refreshQueuedFollowupSession: refreshQueuedFollowupSessionMock,
   resolveFollowupAbortSignal: vi.fn(() => undefined),

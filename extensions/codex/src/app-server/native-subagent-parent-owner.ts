@@ -223,7 +223,6 @@ export async function registerNativeSubagentParent(
     state.owners.set(ownerKey, owner);
     state.preparing = undefined;
     dependencies.deliverDetached(state);
-    dependencies.submissions.restore(state, owner);
   } catch (error) {
     releaseRootModelBinding();
     state.owners.delete(ownerKey);
@@ -238,7 +237,13 @@ export async function registerNativeSubagentParent(
     state.pendingRegistrations -= 1;
     dependencies.prune(registeredState);
   }
-  const ready = dependencies.assignments.restore(state, owner);
+  const ready = (async () => {
+    dependencies.submissions.restore(state, owner);
+    await dependencies.submissions.drain(registeredState);
+    await dependencies.assignments.restore(state, owner);
+    // Recovery can enqueue binding writes; settle them before the caller's effect guard.
+    await dependencies.assignments.drain(registeredState);
+  })();
   let registered = true;
   let settlement: Promise<void> | undefined;
   return {

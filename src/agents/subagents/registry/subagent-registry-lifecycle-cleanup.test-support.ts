@@ -12,7 +12,7 @@ import {
   resetGatewayWorkAdmission,
 } from "../../../process/gateway-work-admission.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
-import { getOpenClawStateWorkerOwner } from "../../../state/openclaw-state-worker-owner.js";
+import { getOpenClawStateWorkerOwner } from "../../../state/openclaw-state-worker-owner-get.js";
 import { createTestAdmittedRunContext } from "../../admitted-run-context.test-support.js";
 import { withGatewayToolCallerIdentity } from "../../tools/gateway-caller-context.js";
 import {

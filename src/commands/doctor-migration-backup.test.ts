@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as sqliteVec from "../../packages/memory-host-sdk/src/host/sqlite-vec.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as directoryDurability from "../infra/directory-durability.js";
@@ -15,10 +15,29 @@ import {
   recordDoctorMigrationBackups,
 } from "./doctor-migration-backup-artifacts.js";
 import { DOCTOR_BACKUP_REUSE_ENV } from "./doctor-migration-backup-reuse.js";
-import { backupDoctorMigrationDatabases } from "./doctor-migration-backup.js";
+import {
+  backupDoctorMigrationDatabases,
+  backupDoctorSqliteDatabases,
+} from "./doctor-migration-backup.js";
 import { inspectSessionSqliteRecovery } from "./doctor-session-sqlite-recovery-inventory.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+
+// The retained cross-build contract is qualified only for the original 10.5
+// transition. Test that contract explicitly without admitting this new release.
+const releaseFixture = vi.hoisted(() => ({ version: "2026.10.5" }));
+vi.mock("../version.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../version.js")>();
+  return {
+    ...actual,
+    get VERSION() {
+      return releaseFixture.version;
+    },
+  };
+});
+beforeEach(() => {
+  releaseFixture.version = "2026.10.5";
+});
 
 function seedDatabase(databasePath: string, value: string) {
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -105,6 +124,86 @@ async function backup(
 }
 
 describe("Doctor migration backup retries", () => {
+  it("retains required recovery snapshots despite already verified source identities", async () => {
+    releaseFixture.version = "2026.10.6";
+    const fixture = createFixture();
+    const maintenance = createOpenClawDatabaseMaintenanceScope({
+      schemaMaintenance: true,
+      assertOwnerCurrent: () => {},
+    });
+    try {
+      const result = await maintenance.run(() =>
+        backupDoctorSqliteDatabases({
+          env: fixture.env,
+          pendingDatabasePaths: [fixture.agent],
+          databasePaths: [fixture.agent],
+          authority: { assertCurrent: () => maintenance.assertAdmission() },
+          requireSnapshots: true,
+          verifiedSnapshots: [fixture.shared, fixture.agent].map((sourcePath) => {
+            const { dev, ino } = fs.statSync(sourcePath);
+            return {
+              sourcePath,
+              dev,
+              ino,
+              ...(sourcePath === fixture.shared
+                ? { role: "global" as const }
+                : { role: "agent" as const, agentId: "main" }),
+            };
+          }),
+        }),
+      );
+      expect(result.snapshots).toHaveLength(2);
+      expect(readPreservedValue(listBackups(fixture.agent)[0]!)).toBe("agent before migration");
+      expect(readPreservedValue(listBackups(fixture.shared)[0]!)).toBe("shared before migration");
+    } finally {
+      await maintenance.close();
+    }
+  });
+
+  it("refuses the earlier cross-build proof on the unqualified 10.6 release", async () => {
+    const fixture = createFixture();
+    await backup(fixture);
+    const old = prepareCrossBuildGroup(fixture);
+    const commit = vi
+      .spyOn(version, "resolveRuntimeServiceFullCommit")
+      .mockReturnValue(old.targetSourceSha);
+    releaseFixture.version = "2026.10.6";
+    try {
+      await expect(backup(fixture)).rejects.toThrow(
+        "the running build and reviewed origin image do not match",
+      );
+      expect([fixture.shared, fixture.agent].flatMap(listBackups)).toEqual(old.original);
+      expect(fs.readFileSync(old.manifest)).toEqual(old.originalManifest);
+    } finally {
+      commit.mockRestore();
+    }
+  });
+
+  it("does not use a migration reuse proof to authorize required same-schema recovery", async () => {
+    const fixture = createFixture();
+    await backup(fixture);
+    const old = prepareCrossBuildGroup(fixture);
+    const commit = vi
+      .spyOn(version, "resolveRuntimeServiceFullCommit")
+      .mockReturnValue(old.targetSourceSha);
+    try {
+      await expect(
+        backupDoctorSqliteDatabases({
+          env: fixture.env,
+          pendingDatabasePaths: [fixture.agent],
+          databasePaths: [fixture.agent],
+          authority: { assertCurrent: () => {} },
+          requireSnapshots: true,
+          repair: { key: "published-missing-agent-deletion-journal", validate: () => {} },
+        }),
+      ).rejects.toThrow("Cross-build migration backup reuse cannot authorize a same-schema repair");
+      expect([fixture.shared, fixture.agent].flatMap(listBackups)).toEqual(old.original);
+      expect(fs.readFileSync(old.manifest)).toEqual(old.originalManifest);
+    } finally {
+      commit.mockRestore();
+    }
+  });
+
   it("rejects a different loaded full commit even when its seven-character prefix matches", async () => {
     const fixture = createFixture();
     await backup(fixture);

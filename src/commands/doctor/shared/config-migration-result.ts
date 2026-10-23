@@ -34,6 +34,8 @@ export type DoctorConfigPreflightOptions = {
 export type DoctorConfigPreflightResult = {
   snapshot: ConfigFileSnapshot;
   baseConfig: OpenClawConfig;
+  /** Repair diagnostics retained for managed update parents, not only terminal notes. */
+  warnings?: string[];
   /** Original resolved roster retained until its config and data migrations finish. */
   rosterMigrationSource?: OpenClawConfig;
   rosterMigrationOwnerId?: string;

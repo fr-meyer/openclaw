@@ -674,9 +674,13 @@ describe("update-cli", () => {
       mockStoppedManagedGitGateway();
       setTty(true);
       setStdoutTty(true);
-      const cause = new Error("ENOSPC while replacing runtime files");
+      const cause = new Error(
+        json ? "The pipe is being closed (0x800700e8)" : "ENOSPC while replacing runtime files",
+      );
       const failure = new Error(
-        `updater interrupted after mutation: ${"replacement verification detail; ".repeat(12)}`,
+        json
+          ? `SQLite read-only worker failed to start for state.sqlite: ${cause.message}`
+          : `updater interrupted after mutation: ${"replacement verification detail; ".repeat(12)}`,
         { cause },
       );
       vi.mocked(updateGitCheckout).mockImplementationOnce(async ({ opts }) => {

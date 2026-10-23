@@ -27,6 +27,7 @@ import type { Model } from "../llm/types.js";
 import { createAssistantMessageEventStream } from "../llm/utils/event-stream.js";
 import { findCodeRegions } from "../shared/text/code-regions.js";
 import { assertProviderStreamEvent } from "./provider-stream-event-normalization.js";
+export { applyOpenAICompletionsToolReasoning } from "@openclaw/ai/internal/openai";
 export {
   isGoogleGemini3FlashModel,
   isGoogleGemini3ProModel,

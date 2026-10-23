@@ -15,7 +15,7 @@ import {
 } from "./openclaw-state-db-async-lifecycle.js";
 import type { OpenClawStateWorkerContext } from "./openclaw-state-worker-context.types.js";
 import type { OpenClawStateWorkerOperations } from "./openclaw-state-worker-contract.js";
-import { getOpenClawStateWorkerOwner } from "./openclaw-state-worker-owner.js";
+import { getOpenClawStateWorkerOwner } from "./openclaw-state-worker-owner-get.js";
 import {
   createOpenClawStateWorkerLease,
   runOpenClawStateWorkerOperation,
@@ -49,7 +49,10 @@ vi.mock("../shared/global-singleton.js", async (importOriginal) => {
   };
 });
 
+// mock-isolation: the synthetic physical database must not reach the real cache singleton lifecycle.
 vi.mock("./openclaw-state-db-cache.js", () => ({
+  // The synthetic cache is the only lifecycle this file publishes.
+  assertPublishedOpenClawStateDatabaseLifecycle: () => {},
   openClawStateDatabaseCache: {
     getKnownOpenClawStateDatabaseIdentity: () => physical.databaseAdmission?.identity,
   },

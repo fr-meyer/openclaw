@@ -190,14 +190,15 @@ describe.skipIf(process.platform === "win32")("MCP retained relay cleanup", () =
     const kill = vi.spyOn(fixture.relay, "kill").mockReturnValue(false);
     await expect(client.stop()).rejects.toMatchObject({
       message: "unavailable: proxy cleanup could not be confirmed",
-      cause: expect.objectContaining({
+      cause: {
         message: expect.stringContaining('"relayExit":true'),
-        cause: expect.objectContaining({
-          durationMs: expect.any(Number),
-          escalationAfterMs: expect.any(Number),
-          signalError: expect.any(Error),
-        }),
-      }),
+        cause: {
+          message: expect.stringMatching(
+            /service child cleanup owner: .*"durationMs":\d+.*"escalationAfterMs":\d+/,
+          ),
+          cause: expect.any(Error),
+        },
+      },
     });
     expect(kill).toHaveBeenCalledWith("SIGKILL");
   });
@@ -268,12 +269,14 @@ describe.skipIf(process.platform === "win32")("MCP retained relay cleanup", () =
     const exited = once(relay, "exit");
     try {
       await expect(client.stop()).rejects.toMatchObject({
-        cause: expect.objectContaining({
-          cause: expect.objectContaining({
-            escalationAfterMs: expect.any(Number),
-            signalError: expect.any(Error),
-          }),
-        }),
+        cause: {
+          cause: {
+            message: expect.stringMatching(
+              /service child cleanup owner: .*"escalationAfterMs":\d+/,
+            ),
+            cause: expect.any(Error),
+          },
+        },
       });
       expect(relay.connected).toBe(false);
       expect(client.cleanupResult).toBeUndefined();

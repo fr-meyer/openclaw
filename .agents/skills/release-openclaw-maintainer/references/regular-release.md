@@ -83,7 +83,25 @@ for a required-lane defect. A second cut (re-basing the candidate on newer
 merged `main` commits only for a confirmed release blocker and name each one in
 the handoff record.
 
-Run deterministic source preflight, then validate the exact Code SHA:
+After the final backport or release commit and before every release-branch push
+that can feed validation, run the integrated exact-HEAD gate:
+
+```bash
+pnpm release:push
+```
+
+This wrapper refreshes and pins `origin/main`, requires a clean canonical
+`release/YYYY.M.PATCH` worktree, captures `HEAD`, and runs changed
+static/type checks, production dead-code analysis, and changed tests from a
+fresh detached worktree with a frozen dependency install. It pushes that
+captured SHA itself only after every gate passes and the source branch,
+worktree, and HEAD remain unchanged. Do not use a separate `git push`:
+validation and push must stay one operation. A failed gate, concurrent commit,
+or non-fast-forward remote update blocks the push and FRV dispatch. Record the
+passing SHA and comparison base in the handoff; do not substitute
+`release:prepush`, a worker's partial check, or an earlier branch state.
+
+Then run deterministic source preflight and validate the same exact Code SHA:
 
 ```bash
 PUBLICATION_SELECTION='{"route":"normal","npmDistTag":"beta","publishOpenclawNpm":true,"pluginPublishScope":"all-publishable","plugins":[]}'
@@ -99,6 +117,9 @@ This example qualifies a final version for beta-first publication. Select
 for the prepared button. A beta prerelease uses the beta profile and soak policy.
 Keep that intended selection on later notes-only parents. This admits committed
 publication source, not registry eligibility or publication authority.
+Publish-purpose dispatches first run the `pnpm release:candidate` release-notes
+and contribution-record gates at the Code SHA and refuse to dispatch on failure.
+A record target lost to a squash merge needs a corrected record and a new Code SHA.
 
 Record and reuse C/Q and independently trusted P. The helper defaults Q=C;
 `--workflow-sha`, if explicit here, must equal C. P performs lightweight admission
@@ -144,8 +165,10 @@ Its exact npm/OCI descriptors must belong to that SHA and satisfy the selected
 release profile's required gates. No second commit or validation run is needed
 solely to name a Release SHA.
 
-If notes change after Code qualification, use `$openclaw-changelog-update`
-with current main for the canonical PR history and commit the selected
+If notes change after Code qualification, including the single refresh that
+credits validation-recovery backports once the final Code SHA is green, use
+`$openclaw-changelog-update` with current main for the canonical PR history and
+commit the selected
 `CHANGELOG/YYYY.M.PATCH.md`, with any matching record and root index updates.
 The complete Code-to-Release delta must include that entry and only those
 paths, without renames or deletions, to optionally use
@@ -348,14 +371,17 @@ If its summary reports the token unavailable,
 dispatch the sync by hand before the verify runs. For manual work, poll the
 registry yourself before the sync or verification. Run postpublish
 verification from a checkout of the Release SHA (a newer tooling checkout
-reports main-only bundled plugin files as missing), with the tooling identity
-exported, or it fails `SHA-pinned release-publish ref does not match`:
+reports main-only bundled plugin files as missing):
 
 ```bash
-OPENCLAW_NPM_EXPECTED_WORKFLOW_REF=refs/tags/release-publish/<tooling-sha12>-<epoch> \
-OPENCLAW_NPM_EXPECTED_WORKFLOW_SHA=<tooling-sha> \
 node --import tsx scripts/openclaw-npm-postpublish-verify.ts <version>
 ```
+
+Without `OPENCLAW_NPM_EXPECTED_WORKFLOW_REF`/`_SHA`, the verifier derives the
+publish tooling from the attested `release-publish/*` tag and accepts it only
+when GitHub still has that exact lightweight tag at the attested commit and the
+commit is reachable from `main` (requires `gh` auth). Set both variables only to
+pin an explicit identity; a partial override is rejected.
 
 If `Complete publish workflows` fails after core publication, inspect the
 original child and registry evidence before recovery. Core and every published

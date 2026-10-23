@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
@@ -272,6 +272,33 @@ describe("workshop library", () => {
       "Learning is off.",
     );
     expect(await readLive("deploy")).toContain("step 1");
+  });
+
+  it("retains the original live copy when restore publication and rollback both fail", async () => {
+    await createWorkshopSkill(ctx, { name: "deploy", content: skill("deploy", "step 0") });
+    await patchWorkshopSkill(ctx, { name: "deploy", oldText: "step 0", newText: "step 1" });
+    const live = path.join(resolveWorkshopSkillsDir({}, "main"), "deploy");
+    let previous = "";
+    const rename = fs.rename;
+    const publishing = vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      if (from === live) {
+        previous = String(to);
+      } else if (to === live) {
+        throw new Error(from === previous ? "rollback blocked" : "publication blocked");
+      }
+      await rename(from, to);
+    });
+    try {
+      await expect(restoreWorkshopSkill(ctx, { name: "deploy" })).rejects.toThrow(
+        "rollback blocked",
+      );
+    } finally {
+      publishing.mockRestore();
+    }
+    expect(previous).toContain(".restore-previous-");
+    expect(await fs.readFile(path.join(previous, "SKILL.md"), "utf8")).toBe(
+      skill("deploy", "step 1"),
+    );
   });
 
   it("keeps a longer legacy skill manageable while new names stay within 63 characters", async () => {

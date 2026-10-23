@@ -2192,17 +2192,12 @@ describe("qa suite runtime launcher", () => {
         result: { status: "blocked" },
       });
       expect(blocked?.execution?.channel?.driver).toBeUndefined();
+      expect(result.observedCells).not.toContainEqual({
+        scenarioId,
+        executionKind: "flow",
+        channel: "whatsapp",
+      });
     }
-    expect(result.observedCells).not.toEqual(
-      expect.arrayContaining([
-        { scenarioId: "whatsapp-status-command", executionKind: "flow", channel: "whatsapp" },
-        {
-          scenarioId: "whatsapp-access-control-dm-open",
-          executionKind: "flow",
-          channel: "whatsapp",
-        },
-      ]),
-    );
   });
 
   it("isolates flow scenarios that mutate shared runtime state", async () => {

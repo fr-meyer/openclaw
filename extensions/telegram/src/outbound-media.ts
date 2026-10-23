@@ -70,6 +70,7 @@ export function prepareTelegramOutboundMedia(params: {
         : renderTelegramHtmlText(trimmedText, {
             textMode: params.textMode ?? "markdown",
             tableMode: params.tableMode,
+            downgradeRichPromptTags: true,
           })
       : undefined;
   const { caption, followUpText } = isVideoNote

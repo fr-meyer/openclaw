@@ -25,6 +25,7 @@ import { resolveIncognitoOpenClawAgentSqlitePath } from "./openclaw-agent-db.pat
 import { prepareStateDatabaseInitialization } from "./openclaw-state-db-initialization.js";
 import {
   closeOpenClawStateDatabaseForTest,
+  initializeNativeOpenClawStateDatabase,
   openOpenClawStateDatabase,
   runOpenClawStateWriteTransaction,
   withOpenClawStateStartupMigrationCheckpointDatabase,
@@ -38,6 +39,51 @@ afterEach(() => {
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 describe("agent deletion journal initialization", () => {
+  it.each([
+    { entry: "runtime", existingAgent: false },
+    { entry: "runtime", existingAgent: true },
+    { entry: "native", existingAgent: false },
+    { entry: "native", existingAgent: true },
+  ])(
+    "initializes native-only state without inventing deletion history ($entry, existing agent=$existingAgent)",
+    ({ entry, existingAgent }) => {
+      const env = { OPENCLAW_STATE_DIR: tempDirs.make("journal-native-bootstrap-") };
+      if (existingAgent) {
+        createLegacyDatabaseFixture({ env, eventsBySession: {}, schemaVersion: 19 });
+        closeOpenClawStateDatabaseForTest();
+      }
+      const pathname = resolveOpenClawStateSqlitePath(env);
+      fs.mkdirSync(path.dirname(pathname), { recursive: true });
+      for (const file of resolveSqliteDatabaseFilePaths(pathname)) {
+        fs.rmSync(file, { force: true });
+      }
+      // The native app creates this schema-zero table before the first core writer.
+      using native = new DatabaseSync(pathname);
+      native.exec(`
+        CREATE TABLE macos_port_guardian_records (
+          pid INTEGER NOT NULL PRIMARY KEY, port INTEGER NOT NULL,
+          command TEXT NOT NULL, mode TEXT NOT NULL, timestamp REAL NOT NULL
+        ) STRICT;
+        CREATE INDEX idx_macos_port_guardian_records_port
+          ON macos_port_guardian_records(port, timestamp DESC);
+        INSERT INTO macos_port_guardian_records VALUES (4242, 18789, '/synthetic/ssh', 'remote', 42.5);
+      `);
+      native.close();
+      if (entry === "native") {
+        initializeNativeOpenClawStateDatabase({ env });
+      }
+      const state = openOpenClawStateDatabase({ env });
+      expect(
+        state.db
+          .prepare("SELECT name FROM sqlite_schema WHERE name = 'agent_deletion_journal'")
+          .get(),
+      ).toEqual(existingAgent ? undefined : { name: "agent_deletion_journal" });
+      expect(state.db.prepare("SELECT command FROM macos_port_guardian_records").get()).toEqual({
+        command: "/synthetic/ssh",
+      });
+    },
+  );
+
   it("preserves missing history for an on-disk incognito store without discovering its reindex lock", async () => {
     const env = { OPENCLAW_STATE_DIR: tempDirs.make("journal-incognito-artifact-") };
     const pathname = resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main", env });
@@ -477,7 +523,7 @@ describe("agent deletion journal initialization", () => {
     "unresolved-runtime-type-env",
     "invalid-roster",
     "invalid-agent-dir",
-  ] as const)("does not infer empty deletion history from %s", (source) => {
+  ] as const)("classifies deletion history from %s", (source) => {
     const env = { OPENCLAW_STATE_DIR: tempDirs.make("journal-unknown-") };
     if (source === "existing-empty-database") {
       const pathname = resolveOpenClawStateSqlitePath(env);
@@ -511,11 +557,11 @@ describe("agent deletion journal initialization", () => {
     }
     for (let operation = 0; operation < 2; operation += 1) {
       const opened = openOpenClawStateDatabase({ env });
-      expect(
-        opened.db
-          .prepare("SELECT name FROM sqlite_master WHERE name = 'agent_deletion_journal'")
-          .get(),
-      ).toBeUndefined();
+      const journal = opened.db
+        .prepare("SELECT name FROM sqlite_master WHERE name = 'agent_deletion_journal'")
+        .get();
+      const nativeBootstrap = source === "existing-empty-database" || source === "shared-wal";
+      expect(journal).toEqual(nativeBootstrap ? { name: "agent_deletion_journal" } : undefined);
       closeOpenClawStateDatabaseForTest();
     }
   });
