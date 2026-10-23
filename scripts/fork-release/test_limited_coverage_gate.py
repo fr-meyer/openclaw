@@ -28,18 +28,9 @@ class LimitedCoverageGate(unittest.TestCase):
         self.image = {**trial.DD_FINAL_IMAGE,
                       "producer": {"kind": "gcp", "toolingSha": trial.DD_FINAL_PRODUCER}}
         self.plan = {"imageReceiptSha256": trial.DD_FINAL_IMAGE_RECEIPT_SHA256}
-        self.clean = {"configSha256": "b" * 64, "mountRoot": "/mnt/synthetic-clone",
+        self.clean = {"configSha256": trial.DD_CLONE_CONFIG_SHA256, "mountRoot": "/mnt/synthetic-clone",
                       "filesystemDevice": 2065}
         self.prior = {"clean": self.clean}
-        self.transition = {
-            "beforeConfigSha256": "a" * 64, "afterConfigSha256": self.clean["configSha256"],
-            "changedFields": ["plugins.entries.mergeguez-pr-lifecycle.config.expectedRuntimeSha256"],
-            "controllerDisabled": True, "externalEffectsDisabled": True,
-            "runtimeSha256": trial.DD_FINAL_RUNTIME_SHA256,
-            "doctorOperationId": trial.DD_DOCTOR,
-            "mountRoot": self.clean["mountRoot"],
-            "filesystemDevice": self.clean["filesystemDevice"], "ownerUid": 1000,
-        }
         self.receipt = {
             "schema": trial.DD_COVERAGE_SCHEMA,
             "doctorOperationId": trial.DD_DOCTOR,
@@ -53,9 +44,10 @@ class LimitedCoverageGate(unittest.TestCase):
             "backupId": trial.DD_BACKUP_ID,
             "backupManifestSha256": "c" * 64,
             "backupFiles": [{} for _ in range(11)],
-            "beforeConfigSha256": self.transition["beforeConfigSha256"],
-            "afterConfigSha256": self.transition["afterConfigSha256"],
-            "configTransitionReceiptSha256": trial.digest(trial.durable.encode(self.transition)),
+            "configSha256": trial.DD_CLONE_CONFIG_SHA256,
+            "cloneRuntimeSha256": trial.DD_CLONE_RUNTIME_SHA256,
+            "finalRuntimeSha256": trial.DD_FINAL_RUNTIME_SHA256,
+            "pluginPinStatus": trial.DD_PLUGIN_PIN_STATUS,
             "runtimeSha256": trial.DD_FINAL_RUNTIME_SHA256,
             "catalogPostcheck": "not_established",
             "controllerDisabled": True,
@@ -73,8 +65,6 @@ class LimitedCoverageGate(unittest.TestCase):
         check = {"coverage": receipt, "coverageReceiptSha256": pin,
                  "priorStartupResultSha256": trial.DD_PRIOR_STARTUP_RESULT_SHA256}
         with patch.object(trial, "DD_FINAL_COVERAGE_SHA256", pin), \
-             patch.object(trial, "private_json", return_value=(self.transition,
-                   self.receipt["configTransitionReceiptSha256"])), \
              patch.object(trial, "validate_dd_prior_startup",
                           return_value={"operationId": trial.DD_PRIOR_STARTUP,
                                         "intentSha256": "d" * 64}), \
@@ -86,16 +76,28 @@ class LimitedCoverageGate(unittest.TestCase):
         receipt, predecessor = self.assess()
         self.assertEqual(receipt["doctorCoverage"], "LIMITED_CROSS_IMAGE_DOCTOR_COVERAGE")
         self.assertEqual(receipt["imageAssetBoundary"], "NOT_ESTABLISHED")
+        self.assertEqual(receipt["pluginPinStatus"],
+                         "EXPECTED_MISMATCH_CONTROLLER_DISABLED")
         self.assertEqual(predecessor["operationId"], trial.DD_PRIOR_STARTUP)
 
     def test_full_equivalence_or_missing_limitation_refused(self):
         for key, value in (("doctorCoverage", "FULL_DOCTOR_COVERAGE"),
                            ("imageAssetBoundary", "ESTABLISHED"),
                            ("doctorImageDifferent", False),
-                           ("catalogPostcheck", "PASS")):
+                           ("catalogPostcheck", "PASS"),
+                           ("controllerDisabled", False),
+                           ("pluginPinStatus", "MATCHED"),
+                           ("cloneRuntimeSha256", trial.DD_FINAL_RUNTIME_SHA256)):
             with self.subTest(key=key), self.assertRaisesRegex(
                     release.Refusal, "trial.dd_final.coverage_identity"):
                 self.assess(lambda receipt: receipt.__setitem__(key, value))
+
+    def test_changed_config_or_fabricated_pin_status_refused(self):
+        with self.assertRaisesRegex(release.Refusal, "trial.dd_final.coverage_identity"):
+            self.assess(lambda receipt: receipt.__setitem__("configSha256", "a" * 64))
+        self.clean["configSha256"] = "a" * 64
+        with self.assertRaisesRegex(release.Refusal, "trial.dd_final.coverage_identity"):
+            self.assess()
 
     def test_extra_source_path_refused(self):
         with self.assertRaisesRegex(release.Refusal, "trial.dd_final.source_boundary"):

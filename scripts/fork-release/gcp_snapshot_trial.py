@@ -75,10 +75,13 @@ DD_DOCTOR_RESULT_SHA256 = "f544f12bf791a822bf20ec413aef481996f5cf172a43d53c2ad6d
 DD_PRIOR_STARTUP = "f2e0c37b2d0544af9220ad23fd277383"
 DD_PRIOR_STARTUP_RESULT_SHA256 = "099435c9bbea92c482e1a0d015549923d1d59a618c338c7167de8d1a5b7e556f"
 DD_BACKUP_ID = "f8c55592-a39a-8e8c-87cd-40cb5ad53f22"
-DD_STARTUP_CHECK = "openclaw.snapshot-trial-check.dd3702-limited-final-startup.v1"
-DD_COVERAGE_SCHEMA = "openclaw.dd3702-final-image-startup-coverage.v1"
+DD_STARTUP_CHECK = "openclaw.snapshot-trial-check.dd3702-unchanged-config-startup.v1"
+DD_COVERAGE_SCHEMA = "openclaw.dd3702-unchanged-config-startup-coverage.v1"
 DD_COVERAGE_STATUS = "LIMITED_CROSS_IMAGE_DOCTOR_COVERAGE"
 DD_IMAGE_ASSET_BOUNDARY = "NOT_ESTABLISHED"
+DD_CLONE_CONFIG_SHA256 = "00310df6ae5dcd4c5a1b53eec93102521b4612198697607f939b1cfadca047b2"
+DD_CLONE_RUNTIME_SHA256 = "c96ee2ee390ea1f5366c6e0c8eb184e4cf30f76bfb50121c1623f1172ef01c54"
+DD_PLUGIN_PIN_STATUS = "EXPECTED_MISMATCH_CONTROLLER_DISABLED"
 DD_FINAL_IMAGE = {
     "repository": "fr-meyer/openclaw",
     "version": "2026.10.5",
@@ -97,7 +100,7 @@ DD_FINAL_PRODUCER = 'b2c3034a0e3f1fdb44f72a6d300e814af74c8f90'
 DD_FINAL_IMAGE_RECEIPT_SHA256 = '61fe55011a7a8bb0a845da0a640b20000ba61db05fcae35c5f0819336d705d01'
 DD_FINAL_RUNTIME_SHA256 = "31377ee1c1873d1496e75973e25fc3b0f85c1ff4a83943da23955fada02ecaf9"
 DD_FINAL_SOURCE_BOUNDARY_SHA256 = "bee603181a4e6250bcc55f023fe1b6e2f01e874caed87327352c004060bca73c"
-DD_FINAL_COVERAGE_SHA256 = None  # Bind the exact limited-coverage receipt after config CAS.
+DD_FINAL_COVERAGE_SHA256 = None  # Bind the unchanged-config receipt after fresh clone checks.
 DD_FINAL_CHANGED_PATHS = (
     "custom-patches/manifest.json",
     "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
@@ -330,7 +333,7 @@ def validate_dd_prior_startup(receipt, prior):
          all(intent["clean"][key] == prior["clean"][key] for key in
              ("snapshotIdentity", "restoreReceiptSha256", "mountRoot", "filesystemDevice",
               "devicePath", "deviceMajorMinor", "mounts")) and
-         intent["clean"]["configSha256"] == receipt["beforeConfigSha256"] and
+         intent["clean"]["configSha256"] == receipt["configSha256"] and
          result.get("state") == "succeeded" and result.get("nativeExitCode") == 0 and
          result.get("oomKillDelta") == 0 and result.get("cgroupSettlementObserved") is True and
          result.get("cleanup") == "owned_container_stopped_retained",
@@ -361,7 +364,7 @@ def validate_dd_prior_startup(receipt, prior):
 
 
 def validate_dd_final_coverage(check, image, plan, clean, prior):
-    """Bind the source boundary and disclose unverified compiled image assets."""
+    """Bind unchanged disabled config and disclose unverified compiled assets."""
     need(all(value is not None for value in
              (DD_FINAL_IMAGE, DD_FINAL_PRODUCER, DD_FINAL_IMAGE_RECEIPT_SHA256,
               DD_FINAL_RUNTIME_SHA256, DD_FINAL_SOURCE_BOUNDARY_SHA256,
@@ -371,7 +374,7 @@ def validate_dd_final_coverage(check, image, plan, clean, prior):
     exact(receipt, "schema doctorOperationId doctorResultSha256 priorStartupOperationId "
           "priorStartupResultSha256 doctorImageReceiptSha256 finalImageReceiptSha256 "
           "finalImageIndexDigest sourceBoundary backupId backupManifestSha256 backupFiles "
-          "beforeConfigSha256 afterConfigSha256 configTransitionReceiptSha256 "
+          "configSha256 cloneRuntimeSha256 finalRuntimeSha256 pluginPinStatus "
           "runtimeSha256 catalogPostcheck controllerDisabled externalEffectsDisabled "
           "doctorCoverage imageAssetBoundary doctorImageDifferent", "trial.dd_final.coverage_fields")
     need(receipt["schema"] == DD_COVERAGE_SCHEMA and
@@ -396,9 +399,13 @@ def validate_dd_final_coverage(check, image, plan, clean, prior):
          receipt["doctorImageDifferent"] is True and
          receipt["controllerDisabled"] is True and
          receipt["externalEffectsDisabled"] is True and
-         all(type(receipt[key]) is str and HEX.fullmatch(receipt[key]) for key in
-             ("beforeConfigSha256", "afterConfigSha256", "configTransitionReceiptSha256",
-              "backupManifestSha256")),
+         receipt["configSha256"] == DD_CLONE_CONFIG_SHA256 ==
+             clean["configSha256"] == prior["clean"]["configSha256"] and
+         receipt["cloneRuntimeSha256"] == DD_CLONE_RUNTIME_SHA256 and
+         receipt["finalRuntimeSha256"] == DD_FINAL_RUNTIME_SHA256 and
+         receipt["pluginPinStatus"] == DD_PLUGIN_PIN_STATUS and
+         type(receipt["backupManifestSha256"]) is str and
+         HEX.fullmatch(receipt["backupManifestSha256"]),
          "trial.dd_final.coverage_identity")
     source = receipt["sourceBoundary"]
     exact(source, "schema status baseSourceSha baseTree successorSourceSha successorTree "
@@ -417,23 +424,6 @@ def validate_dd_final_coverage(check, image, plan, clean, prior):
          source["manifestOnlyRuntimePinChanged"] is True and
          HEX.fullmatch(source["sourceDiffSha256"]),
          "trial.dd_final.source_boundary")
-    transition, hashed = private_json(PRIVATE_ROOT / ("dd3702-final-startup-" + DD_DOCTOR) /
-                                      "config-transition.json")
-    need(hashed == receipt["configTransitionReceiptSha256"] and
-         type(transition) is dict and transition.get("beforeConfigSha256") ==
-             receipt["beforeConfigSha256"] and
-         transition.get("afterConfigSha256") == receipt["afterConfigSha256"] ==
-             clean["configSha256"] and
-         transition.get("changedFields") ==
-             ["plugins.entries.mergeguez-pr-lifecycle.config.expectedRuntimeSha256"] and
-         transition.get("controllerDisabled") is True and
-         transition.get("externalEffectsDisabled") is True and
-         transition.get("runtimeSha256") == DD_FINAL_RUNTIME_SHA256 and
-         transition.get("doctorOperationId") == DD_DOCTOR and
-         transition.get("mountRoot") == clean["mountRoot"] and
-         transition.get("filesystemDevice") == clean["filesystemDevice"] and
-         transition.get("ownerUid") == 1000,
-         "trial.dd_final.config_transition")
     lease_predecessor = validate_dd_prior_startup(receipt, prior)
     validate_dd_original_backup_files(prior, receipt)
     return receipt, lease_predecessor
@@ -1321,7 +1311,7 @@ def phase_prerequisites(op, intent):
                  hashed == DD_DOCTOR_RESULT_SHA256 and result.get("state") == "succeeded" and
                  result.get("doctorComplete") is True and result.get("nativeExitCode") == 0 and
                  result.get("oomKillDelta") == 0 and result.get("cgroupSettlementObserved") is True and
-                 clean["configSha256"] == receipt["afterConfigSha256"] and reuse is None,
+                 clean["configSha256"] == receipt["configSha256"] and reuse is None,
                  "trial.dd_final.prior_and_config")
             dd_final = True
         need(all(clean[key] == old[key] for key in same) and
@@ -1897,6 +1887,7 @@ def serve(op):
             result["imageAssetBoundary"] = DD_IMAGE_ASSET_BOUNDARY
             result["doctorImageDifferent"] = True
             result["catalogPostcheck"] = "not_established"
+            result["pluginPinStatus"] = DD_PLUGIN_PIN_STATUS
         if continuing(intent.get("check")):
             result["continuedFrom"] = started["priorDoctor"]
         durable.write_once(op / "result.json", durable.encode(result))
@@ -1913,6 +1904,7 @@ def status(op, *, retained=False):
         output["imageAssetBoundary"] = DD_IMAGE_ASSET_BOUNDARY
         output["doctorImageDifferent"] = True
         output["catalogPostcheck"] = "not_established"
+        output["pluginPinStatus"] = DD_PLUGIN_PIN_STATUS
     if continuing(intent.get("check")) and "artifacts" in intent["check"]["reconciliation"]:
         output["artifactAccounting"] = artifact_accounting(intent["check"], intent["clean"])
     newest = None
@@ -1981,6 +1973,7 @@ def status(op, *, retained=False):
                      result.get("imageAssetBoundary") == DD_IMAGE_ASSET_BOUNDARY and
                      result.get("doctorImageDifferent") is True and
                      result.get("catalogPostcheck") == "not_established" and
+                     result.get("pluginPinStatus") == DD_PLUGIN_PIN_STATUS and
                      result.get("promotionAuthorized") is False,
                      "trial.result.limited_coverage")
             if "checkInputSha256" in intent["plan"]:

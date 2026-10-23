@@ -49,6 +49,15 @@ class Dd3702StartupOnly(unittest.TestCase):
             with self.assertRaisesRegex(release.Refusal, "trial.dd_final.image_unbound"):
                 trial.qualified_image(self.image, dd_final_startup=True)
 
+    def test_prepared_status_discloses_disabled_pin_mismatch(self):
+        self.fixture.intent["check"] = self.check
+        with patch.object(trial, "load", return_value=(self.fixture.op, self.fixture.intent)):
+            observed = trial.status(self.fixture.op)
+        self.assertEqual(observed["state"], "prepared")
+        self.assertEqual(observed["pluginPinStatus"],
+                         "EXPECTED_MISMATCH_CONTROLLER_DISABLED")
+        self.assertFalse(observed["promotionAuthorized"])
+
     def test_new_check_allows_only_new_image_and_exact_prior(self):
         with self.bound():
             trial.validate(self.plan, self.image, self.clean, self.check)
