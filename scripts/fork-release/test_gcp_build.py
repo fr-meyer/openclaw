@@ -790,11 +790,43 @@ class BuildTests(unittest.TestCase):
             decision, state = build.pressure_guard_evaluate(build.PressureSample(
                 second, pressure, 18 << 30, True, False, False), state)
             self.assertEqual(decision.action, "watch")
-        self.assertEqual(build.pressure_watchdog(180, state).reason,
-                         "build.pressure.watch_timeout")
-        decision, _ = build.pressure_guard_evaluate(build.PressureSample(
+        # Oscillatory PSI alone may not cancel an otherwise healthy build.
+        self.assertEqual(build.pressure_watchdog(180, state).action, "watch")
+        decision, state = build.pressure_guard_evaluate(build.PressureSample(
             180, 6, 18 << 30, True, False, False), state)
-        self.assertEqual(decision.reason, "build.pressure.watch_timeout")
+        self.assertEqual(decision.action, "watch")
+        self.assertEqual(state.watch_since, 180)
+        for second in range(195, 360, 15):
+            pressure = 6 if (second // 15) % 2 == 0 else 4
+            decision, state = build.pressure_guard_evaluate(build.PressureSample(
+                second, pressure, 18 << 30, True, False, False), state)
+            self.assertEqual(decision.action, "watch")
+        decision, state = build.pressure_guard_evaluate(build.PressureSample(
+            360, 6, 18 << 30, True, False, False), state)
+        self.assertEqual(decision.action, "watch")
+        self.assertEqual(state.watch_since, 360)
+        self.assertEqual(build.pressure_watchdog(360, state).action, "watch")
+        for sample, reason in (
+            (build.PressureSample(180, 4, 11 << 30, True, False, False),
+             "build.pressure.watch_headroom"),
+            (build.PressureSample(180, 4, 18 << 30, True, False, False, 4000, 5),
+             "build.pressure.watch_gateway_latency"),
+        ):
+            with self.subTest(reason=reason):
+                decision, _ = build.pressure_guard_evaluate(
+                    sample, build.PressureState(True, None, None, 165, 0))
+                self.assertEqual(decision.reason, reason)
+        decision, _ = build.pressure_guard_evaluate(
+            build.PressureSample(180, 4, 3 << 30, True, False, False),
+            build.PressureState(True, None, None, 165, 0),
+            hard_floor_bytes=2 << 30, risk_floor_bytes=4 << 30)
+        self.assertEqual(decision.reason, "build.pressure.watch_headroom")
+        decision, qualified = build.pressure_guard_evaluate(
+            build.PressureSample(180, 4, 10 << 30, True, False, False),
+            build.PressureState(True, None, None, 165, 0),
+            hard_floor_bytes=2 << 30, risk_floor_bytes=4 << 30)
+        self.assertEqual(decision.action, "watch")
+        self.assertEqual(qualified.watch_since, 180)
         for sample, reason in (
             (build.PressureSample(0, 0, 9 << 30, True, False, False),
              "build.pressure.critical_headroom"),

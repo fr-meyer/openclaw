@@ -76,7 +76,7 @@ PRESSURE_HEALTH_LATENCY_MS = 4000.0
 PRESSURE_HEALTH_MAX_AGE_SECONDS = 30.0
 PRESSURE_LATENCY_RISK_SECONDS = 60.0
 PRESSURE_STOP_SECONDS = 120.0
-PRESSURE_WATCH_MAX_SECONDS = 180.0
+PRESSURE_WATCH_REVIEW_SECONDS = 180.0
 PRESSURE_PROBE_MAX_SECONDS = 10.0
 HELPERS = ("gcp_build.py", "release.py", "preflight.py", "pr.py")
 SAFE_ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -228,13 +228,23 @@ def pressure_guard_evaluate(sample, state, *, hard_floor_bytes=10 << 30,
         return PressureDecision("stop", "build.pressure.critical_headroom"), state
 
     timestamp = sample.at_seconds
-    if (state.active and state.watch_since is not None and
-            timestamp - state.watch_since >= PRESSURE_WATCH_MAX_SECONDS):
-        return PressureDecision("stop", "build.pressure.watch_timeout"), state
+    watch_since = state.watch_since
+    if (state.active and watch_since is not None and
+            timestamp - watch_since >= PRESSURE_WATCH_REVIEW_SECONDS):
+        # A PSI watch without sustained pressure or corroborating resource
+        # impact is not itself a failure. Renew its clock only after this
+        # fresh sample passes the independent capacity and health gates.
+        if sample.available_bytes < risk_floor_bytes:
+            return PressureDecision("stop", "build.pressure.watch_headroom"), state
+        if (sample.last_health_check_ms is not None and
+                sample.last_health_check_age_seconds <= PRESSURE_HEALTH_MAX_AGE_SECONDS and
+                sample.last_health_check_ms >= PRESSURE_HEALTH_LATENCY_MS):
+            return PressureDecision("stop", "build.pressure.watch_gateway_latency"), state
+        watch_since = timestamp
     if sample.host_full_avg10_pct > PRESSURE_ENTER:
         high_since = state.high_since if state.high_since is not None else timestamp
         elapsed = timestamp - high_since
-        watch_since = state.watch_since if state.watch_since is not None else timestamp
+        watch_since = watch_since if watch_since is not None else timestamp
         updated = PressureState(True, high_since, None, timestamp, watch_since)
         if elapsed >= PRESSURE_STOP_SECONDS:
             return PressureDecision("stop", "build.pressure.sustained"), updated
@@ -256,21 +266,19 @@ def pressure_guard_evaluate(sample, state, *, hard_floor_bytes=10 << 30,
             return PressureDecision("clear", "build.pressure.cleared"), PressureState(
                 last_at=timestamp)
         return PressureDecision("watch", "build.pressure.clearing"), PressureState(
-            True, None, clear_since, timestamp, state.watch_since)
+            True, None, clear_since, timestamp, watch_since)
     return PressureDecision("watch", "build.pressure.below_entry"), PressureState(
-        True, None, None, timestamp, state.watch_since)
+        True, None, None, timestamp, watch_since)
 
 
 def pressure_watchdog(now_seconds, state):
-    """An independent timed caller detects silence and enforces the stop clock."""
+    """An independent timed caller detects silence and sustained high PSI."""
     if (not valid_pressure_state(state) or not finite_number(now_seconds) or
             state.last_at is None or now_seconds < state.last_at or
             now_seconds - state.last_at > PRESSURE_MAX_SAMPLE_GAP_SECONDS):
         return PressureDecision("stop", "build.pressure.telemetry_silent")
     if state.high_since is not None and now_seconds - state.high_since >= PRESSURE_STOP_SECONDS:
         return PressureDecision("stop", "build.pressure.sustained")
-    if state.watch_since is not None and now_seconds - state.watch_since >= PRESSURE_WATCH_MAX_SECONDS:
-        return PressureDecision("stop", "build.pressure.watch_timeout")
     return PressureDecision("watch" if state.active else "clear", "build.pressure.current")
 
 
