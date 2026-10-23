@@ -21,6 +21,10 @@ evidence fails admission. Importing a cached report is not a supported substitut
 
 The prepared independent review, CI gates and remote identity checks remain in
 force. Candidate drift invalidates the binding and requires fresh qualification.
+The fork accepts only immediate squash admission. Auto-merge, merge queues, admin
+and alternate merge methods are refused before review because a local review
+cannot bind a later deferred candidate. Existing expected-head dispatch and final
+authority rechecks remain; this policy adds no atomic expected-base guarantee.
 The local receipt is operator-attested evidence, not cryptographic proof from the
 review provider. It does not create or impersonate a GitHub review or approval.
 

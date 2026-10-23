@@ -145,10 +145,17 @@ require_initial_external_review() {
 }
 
 require_final_external_review() {
-  local pr="$1" head_sha="$2" base_sha="$3"
+  local pr="$1" head_sha="$2" base_sha="$3" route="$4" method="$5"
   MERGE_EXTERNAL_REVIEW_KIND="clawsweeperReview"
   MERGE_EXTERNAL_REVIEW_EVIDENCE=""
   if uses_fork_codex_review "$MERGE_REPO_NAME" "$MERGE_REPO_HOST"; then
+    # This local review cannot follow a deferred queue/auto-merge candidate.
+    # Immediate squash uses the existing expected-head dispatch and authority
+    # recheck; no admin or alternate merge route inherits this review policy.
+    if [ "$route" != immediate ] || [ "$method" != squash ]; then
+      merge_outcome_stop "Fork Codex review requires immediate squash; deferred or alternate routes need a fresh landing-time review contract"
+      return 1
+    fi
     MERGE_EXTERNAL_REVIEW_KIND="codexReview"
     MERGE_EXTERNAL_REVIEW_EVIDENCE=$(python3 -I "$script_parent_dir/pr-lib/fork-codex-review.py" \
       --checkout "$PWD" --repository "$MERGE_REPO_NAME" --host "$MERGE_REPO_HOST" \
@@ -929,7 +936,7 @@ merge_run() {
       merge_outcome_stop "main changed during final admin admission"; return 1;
     }
   fi
-  require_final_external_review "$pr" "$PREP_HEAD_SHA" "$observed_main" || return 1
+  require_final_external_review "$pr" "$PREP_HEAD_SHA" "$observed_main" "$route" "$merge_method" || return 1
   if [ -n "$recovery_artifact_head" ]; then
     if [ "$recovery_artifacts" != "$(pr_git hash-object --no-filters -- "${required_artifacts[@]}")" ]; then
       merge_outcome_stop "recovery artifacts changed during admission"

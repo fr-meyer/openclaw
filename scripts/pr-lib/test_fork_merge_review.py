@@ -9,7 +9,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 class MergeReviewTests(unittest.TestCase):
     def run_gate(self, repository="fr-meyer/openclaw", host="github.com", *,
-                 initial=False, reviewer_status=0, stable_status=0):
+                 initial=False, reviewer_status=0, stable_status=0,
+                 route="immediate", method="squash"):
         script = r'''
 set -e
 script_parent_dir="$PWD/scripts"
@@ -25,6 +26,7 @@ validate_clawsweeper_review_comments() {
 # Stable status is captured independently of the function's positional args.
 stable_code="$5"
 merge_outcome_stable() { echo stable; return "$stable_code"; }
+merge_outcome_stop() { echo "$*" >&2; }
 reviewer_code="$4"
 python3() {
   printf '%s\n' "$*" >&2
@@ -34,13 +36,14 @@ python3() {
 if [ "$3" = initial ]; then
   require_initial_external_review 42 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "$1" "$2"
 else
-  require_final_external_review 42 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  require_final_external_review 42 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb "$6" "$7"
   printf '%s\n%s\n' "$MERGE_EXTERNAL_REVIEW_KIND" "$MERGE_EXTERNAL_REVIEW_EVIDENCE"
 fi
 '''
         return subprocess.run(
             ["/bin/bash", "-c", script, "fixture", repository, host,
-             "initial" if initial else "final", str(reviewer_status), str(stable_status)],
+             "initial" if initial else "final", str(reviewer_status), str(stable_status),
+             route, method],
             cwd=ROOT, capture_output=True, text=True, check=False,
         )
 
@@ -78,6 +81,20 @@ fi
                 result = self.run_gate(reviewer_status=reviewer, stable_status=stable)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertNotIn("codexReview", result.stdout)
+
+    def test_deferred_and_alternate_fork_routes_refuse_before_review(self):
+        for route, method in [("auto", "squash"), ("queue", "squash"),
+                              ("admin", "squash"), ("immediate", "merge"),
+                              ("immediate", "rebase"), ("", "squash")]:
+            with self.subTest(route=route, method=method):
+                result = self.run_gate(route=route, method=method)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("requires immediate squash", result.stderr)
+                self.assertNotIn("fork-codex-review.py", result.stderr)
+                self.assertNotIn("stable", result.stdout)
+        result = self.run_gate("openclaw/openclaw", route="auto")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("clawsweeperReview", result.stdout)
 
 
 if __name__ == "__main__":
