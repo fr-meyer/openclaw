@@ -33,6 +33,8 @@ blockExoticSubdeps: true
 overrides:
   # GHSA-mrhx-c7xc-m3w5: retain v3 API boundaries; update all compatible v4 copies.
   "zod@>=4.0.0 <4.6.6": 4.6.6
+  # Preserve the converter's declared support for retained v3 schema peers.
+  "zod-to-json-schema@3.25.2>zod": "^3.25.28 || ^4"
   # Memory LanceDB supplies vectors; WhatsApp prepares thumbnails with Rastermill.
   "@lancedb/lancedb>@huggingface/transformers": "-"
   "baileys>sharp": "-"
