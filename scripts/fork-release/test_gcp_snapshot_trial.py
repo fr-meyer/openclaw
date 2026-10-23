@@ -126,6 +126,59 @@ class SnapshotTrialTests(unittest.TestCase):
         self.assertEqual(trial.DD_RETAINED_TIMELINE_SCRIPT_SHA256,
                          "c5b9369a11369d49770136a001e3bf90556505285df0f945a5298fae342e6e80")
 
+    def test_retained_final_timeline_preserves_exact_old_docker_command(self):
+        op = self.root / trial.DD_RETAINED_FINAL_TIMELINE
+        op.mkdir(mode=0o700)
+        prior = {
+            "plan": {"operationId": op.name, "toolingSha": trial.DD_RETAINED_FINAL_TIMELINE_TOOLING,
+                     "checkInputSha256": trial.DD_RETAINED_FINAL_TIMELINE_CHECK_SHA256,
+                     "imageReceiptSha256": trial.DD_FINAL_IMAGE_RECEIPT_SHA256},
+            "helpers": {"gcp_rehearsal_checks.py": trial.DD_RETAINED_FINAL_TIMELINE_CHECKS_SHA256},
+            "check": {"schema": trial.DD_STARTUP_CHECK, "diagnosticPluginServiceTimeline": True},
+        }
+        args = ["create", "--entrypoint", "/usr/bin/env", "sha256:" + "a" * 64,
+                "-i", "node", "-e", "new longer timeline script"]
+        old_script = "x" * 16012
+        old = [*args[:-1], old_script]
+        record = op / "create-intent.json"
+        trial.durable.write_once(record, trial.durable.encode({"at": "2026-10-23T00:00:00Z", "argv": old}))
+        with patch.object(trial, "DD_RETAINED_FINAL_TIMELINE_SCRIPT_SHA256",
+                          hashlib.sha256(old_script.encode()).hexdigest()):
+            self.assertEqual(trial.expected_container_cmd(op, prior, args), old[4:])
+            for changed in ([*old[:-1], "y" + old_script[1:]], ["other", *old[1:]]):
+                record.write_bytes(trial.durable.encode({"at": "2026-10-23T00:00:00Z", "argv": changed}))
+                with self.assertRaisesRegex(release.Refusal, "trial.container.historical_command"):
+                    trial.expected_container_cmd(op, prior, args)
+            record.write_bytes(trial.durable.encode({"at": "2026-10-23T00:00:00Z", "argv": old}))
+            for owner, key in ((prior["plan"], "toolingSha"),
+                               (prior["plan"], "checkInputSha256"),
+                               (prior["plan"], "imageReceiptSha256"),
+                               (prior["helpers"], "gcp_rehearsal_checks.py")):
+                original = owner[key]
+                owner[key] = "0" * len(original)
+                with self.assertRaisesRegex(release.Refusal, "trial.container.historical_command_identity"):
+                    trial.expected_container_cmd(op, prior, args)
+                owner[key] = original
+            self.assertEqual(trial.expected_container_cmd(self.root / ("f" * 32), prior, args), args[4:])
+        self.assertEqual(trial.DD_RETAINED_FINAL_TIMELINE_SCRIPT_SHA256,
+                         "4a8efd90b8032095c69af0be0852081419d4b61a65cb373bd308c6373f2caff6")
+
+    def test_retained_final_timeline_helper_manifest_is_exact_stage_manifest(self):
+        helpers = {
+            "gcp_build.py": "05d85444f2be56919499cd45c2dbe5cd9b821d5f2a1cbabc6c610eed9dfb0c73",
+            "gcp_rehearsal_checks.py": trial.DD_RETAINED_FINAL_TIMELINE_CHECKS_SHA256,
+            "gcp_snapshot_trial.py": "93320bce7a2df2926b5aecffad34072deb46ba8c9f0669142a38a01bcad0f535",
+            "pr.py": "351f2a1855959346e41a682a9a8a01bcef84b8fdbf3866b697ddd996502b6a3f",
+            "preflight.py": "ea9ff84927b40e0808ffb83426264b267299ee1237908548439c136b8d306f2b",
+            "release.py": "7bf6bf8b9d8885694f0bce3644f4cedc41c1ac99623c6460c81c0c6a3cc53f12",
+        }
+        prior = {"plan": {"toolingSha": trial.DD_RETAINED_FINAL_TIMELINE_TOOLING}, "helpers": helpers}
+        with patch.object(trial, "read_operation", return_value=(self.op, prior)):
+            self.assertEqual(trial.read_retained(self.op), (self.op, prior))
+            helpers["gcp_snapshot_trial.py"] = "0" * 64
+            with self.assertRaisesRegex(release.Refusal, "trial.prior.unreviewed_helpers"):
+                trial.read_retained(self.op)
+
     def select_phase(self, selected):
         self.plan.update({"schema": "openclaw.snapshot-trial-plan.v2", "phase": selected,
                           "checkInputSha256": "e" * 64})

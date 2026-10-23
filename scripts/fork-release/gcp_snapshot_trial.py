@@ -111,6 +111,14 @@ DD_RETAINED_TIMELINE_CHECKS_SHA256 = "3fa06dcf52d8cb91548867a46afac2e61107428733
 # The exact JS emitted by that helper for the pinned 92cf timeline check.
 # This preserves the historical command binding without executing old helpers.
 DD_RETAINED_TIMELINE_SCRIPT_SHA256 = "c5b9369a11369d49770136a001e3bf90556505285df0f945a5298fae342e6e80"
+# The settled final-image diagnostic used the 86c3 helper before the longer
+# diagnostic window was introduced. Verify its original Docker command when
+# it is read as the next isolated startup's lease predecessor.
+DD_RETAINED_FINAL_TIMELINE = "d7a5f7aaf4f24c1f9d3f929646b1a8d9"
+DD_RETAINED_FINAL_TIMELINE_TOOLING = "86c3c42fb67a5aafb2b3d77110a2865448453073"
+DD_RETAINED_FINAL_TIMELINE_CHECKS_SHA256 = "4b827a89d7e86cec5afffa695827524d5bda69fe99e6b5df21f8100ea7cb4015"
+DD_RETAINED_FINAL_TIMELINE_SCRIPT_SHA256 = "4a8efd90b8032095c69af0be0852081419d4b61a65cb373bd308c6373f2caff6"
+DD_RETAINED_FINAL_TIMELINE_CHECK_SHA256 = "c53dcf1192f37edbe7d7c038ecf0e8763fd92a5fd3482a58c00e503c49f1a0a5"
 DD_RETAINED_TIMELINE_CHECK_SHA256 = "a09288dd697ddacbafe04de5cab183ec39d9378b060ff6ac0903e97efa39e1c8"
 DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256 = "61fe55011a7a8bb0a845da0a640b20000ba61db05fcae35c5f0819336d705d01"
 DD_RETAINED_TIMELINE_COVERAGE_SHA256 = "b6f996dcbcc825a244a90c0eb22da464f5df33ca5fc2fb2e417ab19afc213568"
@@ -193,6 +201,7 @@ RETAINED_HELPERS = {
     # The failed first final-image startup is a retained, read-only lease predecessor.
     "f959359ee23744f5db55aace5609d77cd52c0609": "dc3b3951f13484b52ea26fb79c868acc5fd030e7cf969b4c58be7613e5b6a77d",
     DD_RETAINED_TIMELINE_TOOLING: "5832de863cbb8c85173fa7add1d43555696952537c0b70d3a81a44fdb18f2711",
+    DD_RETAINED_FINAL_TIMELINE_TOOLING: "b933abbf9daf1f91ddef088350b79c6e7eec928a2575cb23e9c87d56525c801c",
     LEGACY_DEVICE_SHA: "872b6966330c2bb127ae007cf936bffc6e6d7704d9d0ed1a0b7be5de57e8da0d",
     "ad0c1a62300f77e616b1a373c92c967c3cba95b8": "af5caa6316e15bec85b501ff2f8839835546b1e1e5313810a314741479343156",
     LEGACY_CONTINUATION_SHA: "0de004053ed692ae2dc0cbf2d70f336dda72c02c21ba65a893ccac37a4719f97",
@@ -1769,25 +1778,39 @@ def start(op):
 def expected_container_cmd(op, intent, args):
     entry = args.index("--entrypoint")
     current = args[entry + 3:]
-    if op.name != DD_RETAINED_TIMELINE:
+    historical = {
+        DD_RETAINED_TIMELINE: (DD_RETAINED_TIMELINE_TOOLING,
+                               DD_RETAINED_TIMELINE_CHECK_SHA256,
+                               DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256,
+                               DD_RETAINED_TIMELINE_CHECKS_SHA256,
+                               14103, DD_RETAINED_TIMELINE_SCRIPT_SHA256),
+        DD_RETAINED_FINAL_TIMELINE: (DD_RETAINED_FINAL_TIMELINE_TOOLING,
+                                     DD_RETAINED_FINAL_TIMELINE_CHECK_SHA256,
+                                     DD_FINAL_IMAGE_RECEIPT_SHA256,
+                                     DD_RETAINED_FINAL_TIMELINE_CHECKS_SHA256,
+                                     16012, DD_RETAINED_FINAL_TIMELINE_SCRIPT_SHA256),
+    }.get(op.name)
+    if historical is None:
         return current
     plan = intent["plan"]
-    need(plan.get("operationId") == DD_RETAINED_TIMELINE and
-         plan.get("toolingSha") == DD_RETAINED_TIMELINE_TOOLING and
-         plan.get("checkInputSha256") == DD_RETAINED_TIMELINE_CHECK_SHA256 and
-         plan.get("imageReceiptSha256") == DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256 and
-         intent.get("helpers", {}).get("gcp_rehearsal_checks.py") == DD_RETAINED_TIMELINE_CHECKS_SHA256 and
+    tooling, check_hash, image_hash, helper_hash, script_length, script_hash = historical
+    need(plan.get("operationId") == op.name and
+         plan.get("toolingSha") == tooling and
+         plan.get("checkInputSha256") == check_hash and
+         plan.get("imageReceiptSha256") == image_hash and
+         intent.get("helpers", {}).get("gcp_rehearsal_checks.py") == helper_hash and
          dd_diagnostic_timeline(intent.get("check")),
          "trial.container.historical_command_identity")
     # The old create intent is owner-protected and was written before Docker
     # creation. Its argv is accepted only where it equals a fresh argv in every
-    # element except the final JS, whose bytes are pinned to the b154 helper.
+    # element except the final JS, whose bytes are pinned to the exact
+    # historical helper selected above.
     recorded, _ = private_json(op / "create-intent.json")
     old = recorded.get("argv") if type(recorded) is dict else None
     need(type(recorded) is dict and set(recorded) == {"at", "argv"} and
          type(old) is list and len(old) == len(args) and old[:-1] == args[:-1] and
-         type(old[-1]) is str and len(old[-1].encode()) == 14103 and
-         digest(old[-1].encode()) == DD_RETAINED_TIMELINE_SCRIPT_SHA256,
+         type(old[-1]) is str and len(old[-1].encode()) == script_length and
+         digest(old[-1].encode()) == script_hash,
          "trial.container.historical_command")
     return old[entry + 3:]
 
