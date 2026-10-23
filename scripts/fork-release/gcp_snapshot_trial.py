@@ -107,6 +107,10 @@ DD_FINAL_COVERAGE_SHA256 = "760a35941f14ca6510a43733680e754908f1acc5ff77e193cbaf
 DD_RETAINED_TIMELINE = "92cfb12dcb504c65a6e84738219c4b69"
 DD_RETAINED_TIMELINE_RESULT_SHA256 = "ef88d874a86f7f3c6c67e0bba52eef7e841bbadc5f62cc394bb2a1fe8f92c534"
 DD_RETAINED_TIMELINE_TOOLING = "b1541530720a37b64a9726ad8b041c6cc588dd14"
+DD_RETAINED_TIMELINE_CHECKS_SHA256 = "3fa06dcf52d8cb91548867a46afac2e611074287338fb9e4252278482dfb1168"
+# The exact JS emitted by that helper for the pinned 92cf timeline check.
+# This preserves the historical command binding without executing old helpers.
+DD_RETAINED_TIMELINE_SCRIPT_SHA256 = "c5b9369a11369d49770136a001e3bf90556505285df0f945a5298fae342e6e80"
 DD_RETAINED_TIMELINE_CHECK_SHA256 = "a09288dd697ddacbafe04de5cab183ec39d9378b060ff6ac0903e97efa39e1c8"
 DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256 = "61fe55011a7a8bb0a845da0a640b20000ba61db05fcae35c5f0819336d705d01"
 DD_RETAINED_TIMELINE_COVERAGE_SHA256 = "b6f996dcbcc825a244a90c0eb22da464f5df33ca5fc2fb2e417ab19afc213568"
@@ -1762,14 +1766,41 @@ def start(op):
     return status(op)
 
 
+def expected_container_cmd(op, intent, args):
+    entry = args.index("--entrypoint")
+    current = args[entry + 3:]
+    if op.name != DD_RETAINED_TIMELINE:
+        return current
+    plan = intent["plan"]
+    need(plan.get("operationId") == DD_RETAINED_TIMELINE and
+         plan.get("toolingSha") == DD_RETAINED_TIMELINE_TOOLING and
+         plan.get("checkInputSha256") == DD_RETAINED_TIMELINE_CHECK_SHA256 and
+         plan.get("imageReceiptSha256") == DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256 and
+         intent.get("helpers", {}).get("gcp_rehearsal_checks.py") == DD_RETAINED_TIMELINE_CHECKS_SHA256 and
+         dd_diagnostic_timeline(intent.get("check")),
+         "trial.container.historical_command_identity")
+    # The old create intent is owner-protected and was written before Docker
+    # creation. Its argv is accepted only where it equals a fresh argv in every
+    # element except the final JS, whose bytes are pinned to the b154 helper.
+    recorded, _ = private_json(op / "create-intent.json")
+    old = recorded.get("argv") if type(recorded) is dict else None
+    need(type(recorded) is dict and set(recorded) == {"at", "argv"} and
+         type(old) is list and len(old) == len(args) and old[:-1] == args[:-1] and
+         type(old[-1]) is str and len(old[-1].encode()) == 14103 and
+         digest(old[-1].encode()) == DD_RETAINED_TIMELINE_SCRIPT_SHA256,
+         "trial.container.historical_command")
+    return old[entry + 3:]
+
+
 def validate_container(value, op, intent, expected_env, devices):
     h, cfg = value["HostConfig"], value["Config"]
     image, clean, limits = intent["image"], intent["clean"], intent["plan"]["limits"]
     args = create_argv(op, intent, devices)
     entry = args.index("--entrypoint")
+    expected_cmd = expected_container_cmd(op, intent, args)
     need(value["Image"] in {image[k] for k in ("indexDigest", "imageDigest", "configDigest")} and
          cfg["Image"] == image["indexDigest"] and cfg["User"] == "1000:1000" and
-         cfg["Entrypoint"] == [args[entry + 1]] and cfg["Cmd"] == args[entry + 3:] and
+         cfg["Entrypoint"] == [args[entry + 1]] and cfg["Cmd"] == expected_cmd and
          cfg.get("Env", []) == expected_env and value["RestartCount"] == 0 and
          cfg.get("Labels", {}).get("openclaw.snapshot-trial.operation") == op.name, "trial.container.binding")
     need(h["NetworkMode"] == "none" and h["IpcMode"] == "none" and h["ReadonlyRootfs"] and

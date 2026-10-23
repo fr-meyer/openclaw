@@ -1,6 +1,7 @@
 """Synthetic executor boundary tests. No Docker, systemd, database or cloud calls."""
 import copy
 from contextlib import ExitStack, contextmanager
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -82,6 +83,48 @@ class SnapshotTrialTests(unittest.TestCase):
         plan["limits"]["memoryBytes"] = 8 << 30
         with self.assertRaises(release.Refusal):
             trial.validate(plan, self.image, self.clean)
+
+    def test_retained_timeline_command_requires_pinned_old_script_and_exact_create_intent(self):
+        op = self.root / trial.DD_RETAINED_TIMELINE
+        op.mkdir(mode=0o700)
+        prior = {
+            "plan": {"operationId": op.name, "toolingSha": trial.DD_RETAINED_TIMELINE_TOOLING,
+                     "checkInputSha256": trial.DD_RETAINED_TIMELINE_CHECK_SHA256,
+                     "imageReceiptSha256": trial.DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256},
+            "helpers": {"gcp_rehearsal_checks.py": trial.DD_RETAINED_TIMELINE_CHECKS_SHA256},
+            "check": {"schema": trial.DD_STARTUP_CHECK, "diagnosticPluginServiceTimeline": True},
+        }
+        args = ["create", "--entrypoint", "/usr/bin/env", "sha256:" + "a" * 64,
+                "-i", "node", "-e", "new timeline script"]
+        old_script = "x" * 14103
+        old = [*args[:-1], old_script]
+        record = op / "create-intent.json"
+        trial.durable.write_once(record, trial.durable.encode({"at": "2026-10-22T00:00:00Z", "argv": old}))
+        with patch.object(trial, "DD_RETAINED_TIMELINE_SCRIPT_SHA256",
+                          hashlib.sha256(old_script.encode()).hexdigest()):
+            self.assertEqual(trial.expected_container_cmd(op, prior, args), old[4:])
+            def replace(argv):
+                record.write_bytes(trial.durable.encode({"at": "2026-10-22T00:00:00Z", "argv": argv}))
+            replace([*old[:-1], old_script[:-1] + "y"])
+            with self.assertRaisesRegex(release.Refusal, "trial.container.historical_command"):
+                trial.expected_container_cmd(op, prior, args)
+            replace(["other", *old[1:]])
+            with self.assertRaisesRegex(release.Refusal, "trial.container.historical_command"):
+                trial.expected_container_cmd(op, prior, args)
+            replace(old)
+            for owner, key, value in ((prior["plan"], "toolingSha", "0" * 40),
+                                      (prior["plan"], "checkInputSha256", "0" * 64),
+                                      (prior["plan"], "imageReceiptSha256", "0" * 64),
+                                      (prior["helpers"], "gcp_rehearsal_checks.py", "0" * 64)):
+                original = owner[key]
+                owner[key] = value
+                with self.assertRaisesRegex(release.Refusal, "trial.container.historical_command_identity"):
+                    trial.expected_container_cmd(op, prior, args)
+                owner[key] = original
+            other = self.root / ("f" * 32)
+            self.assertEqual(trial.expected_container_cmd(other, prior, args), args[4:])
+        self.assertEqual(trial.DD_RETAINED_TIMELINE_SCRIPT_SHA256,
+                         "c5b9369a11369d49770136a001e3bf90556505285df0f945a5298fae342e6e80")
 
     def select_phase(self, selected):
         self.plan.update({"schema": "openclaw.snapshot-trial-plan.v2", "phase": selected,
