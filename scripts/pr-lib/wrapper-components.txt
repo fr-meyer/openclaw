@@ -1,3 +1,4 @@
+.agents/skills/autoreview/scripts/autoreview
 .github/workflows/pr-crabbox-gate-publisher.yml
 cli-root-options.mjs
 node-compile-cache.mjs
