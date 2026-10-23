@@ -32,21 +32,22 @@ class Dd3702StartupOnly(unittest.TestCase):
                       "doctorOperationId": trial.DD_DOCTOR,
                       "doctorResultSha256": trial.DD_DOCTOR_RESULT_SHA256,
                       "priorStartupResultSha256": "5" * 64,
-                      "equivalenceReceiptSha256": "4" * 64,
-                      "equivalence": {}}
+                      "coverageReceiptSha256": "4" * 64,
+                      "coverage": {}}
 
     def bound(self):
         return patch.multiple(trial, DD_FINAL_IMAGE={key: self.image[key] for key in
                                    trial.LEASE_PATCH_IMAGE},
                               DD_FINAL_PRODUCER=self.image["producer"]["toolingSha"],
                               DD_PRIOR_STARTUP_RESULT_SHA256="5" * 64,
-                              DD_FINAL_EQUIVALENCE_SHA256="4" * 64)
+                              DD_FINAL_COVERAGE_SHA256="4" * 64)
 
     def test_final_pins_are_deliberately_unbound(self):
         with self.assertRaisesRegex(release.Refusal, "trial.dd_final.check_identity"):
             trial.validate(self.plan, self.image, self.clean, self.check)
-        with self.assertRaisesRegex(release.Refusal, "trial.dd_final.image_unbound"):
-            trial.qualified_image(self.image, dd_final_startup=True)
+        with patch.object(trial, "DD_FINAL_IMAGE", None):
+            with self.assertRaisesRegex(release.Refusal, "trial.dd_final.image_unbound"):
+                trial.qualified_image(self.image, dd_final_startup=True)
 
     def test_new_check_allows_only_new_image_and_exact_prior(self):
         with self.bound():

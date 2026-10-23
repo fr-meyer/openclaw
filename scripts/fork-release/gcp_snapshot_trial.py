@@ -67,23 +67,37 @@ LEASE_PATCH_RECEIPT_SHA256 = "2004c0f3d6100a5677e565d1fbb8f8c2760de70e75717340f8
 LEASE_PATCH_PRIOR = "25102903106f3d34082d5f703a7e758c"
 LEASE_PATCH_PRIOR_PIPELINE_SHA = "e18ff4483ddb5a6c2b07332723112ff97b6d630f"
 LEASE_PATCH_PRIOR_IMAGE_RECEIPT_SHA256 = "7c71d34de8e2f7f7bae6ad131fcc913b3160f66016e79edb6a900ecea13e2164"
-# Distinct successful-Doctor cross-image startup. The historical Doctor and
-# startup receipts are immutable; final-image bindings remain deliberately
-# absent until one exact public commit, seal and independent review exist.
+# Distinct final-image startup on the already migrated clone. The prior
+# Doctor ran in the older image; compiled image asset parity is unestablished.
 DD_DOCTOR = "dd3702b5bc99e4da5fd0062910f935f3"
 DD_DOCTOR_PIPELINE_SHA = "719ce41e29f8e0e16d346bc6fcd439c7fed67f88"
 DD_DOCTOR_RESULT_SHA256 = "f544f12bf791a822bf20ec413aef481996f5cf172a43d53c2ad6d7b02a922619"
 DD_PRIOR_STARTUP = "f2e0c37b2d0544af9220ad23fd277383"
 DD_PRIOR_STARTUP_RESULT_SHA256 = "099435c9bbea92c482e1a0d015549923d1d59a618c338c7167de8d1a5b7e556f"
 DD_BACKUP_ID = "f8c55592-a39a-8e8c-87cd-40cb5ad53f22"
-DD_STARTUP_CHECK = "openclaw.snapshot-trial-check.dd3702-startup.v1"
-DD_EQUIVALENCE_SCHEMA = "openclaw.dd3702-startup-image-equivalence.v1"
-DD_FINAL_IMAGE = None
-DD_FINAL_PRODUCER = None
-DD_FINAL_IMAGE_RECEIPT_SHA256 = None
+DD_STARTUP_CHECK = "openclaw.snapshot-trial-check.dd3702-limited-final-startup.v1"
+DD_COVERAGE_SCHEMA = "openclaw.dd3702-final-image-startup-coverage.v1"
+DD_COVERAGE_STATUS = "LIMITED_CROSS_IMAGE_DOCTOR_COVERAGE"
+DD_IMAGE_ASSET_BOUNDARY = "NOT_ESTABLISHED"
+DD_FINAL_IMAGE = {
+    "repository": "fr-meyer/openclaw",
+    "version": "2026.10.5",
+    "architecture": "amd64",
+    "sourceSha": "4cf5cb7e256c67a5c98097774cad2d05cd781c01",
+    "sourceTree": "e63f5bf2762a58bda6b2d8436830a03914f8704e",
+    "manifestSha256": "588ca44c39101e818c59ff3e88f64e19a28db47f819b2bd4f147c5c5869b9d1a",
+    "inventorySha256": "85202a5bb8ab3959a9af4669eda7b771e73bbc4f879873f1c517ea9b745dccd5",
+    "indexDigest": "sha256:09e12109fb283a0c9740b92c5fa618d69784c9cc6adf76d03d889553618c3ec2",
+    "imageDigest": "sha256:77b42d79c8b42502e873b2a3eb1d14a2591eca62b7848b52c622ef1063c21ac0",
+    "configDigest": "sha256:8f5f71efc2dbac3159eaba899ba2d0a686035ae0779362f6b6178c8657968946",
+    "selectedExtensions": "codex,workboard",
+    "bundledCodexVersion": "0.160.0",
+}
+DD_FINAL_PRODUCER = 'b2c3034a0e3f1fdb44f72a6d300e814af74c8f90'
+DD_FINAL_IMAGE_RECEIPT_SHA256 = '61fe55011a7a8bb0a845da0a640b20000ba61db05fcae35c5f0819336d705d01'
 DD_FINAL_RUNTIME_SHA256 = "31377ee1c1873d1496e75973e25fc3b0f85c1ff4a83943da23955fada02ecaf9"
 DD_FINAL_SOURCE_BOUNDARY_SHA256 = "bee603181a4e6250bcc55f023fe1b6e2f01e874caed87327352c004060bca73c"
-DD_FINAL_EQUIVALENCE_SHA256 = None
+DD_FINAL_COVERAGE_SHA256 = None  # Bind the exact limited-coverage receipt after config CAS.
 DD_FINAL_CHANGED_PATHS = (
     "custom-patches/manifest.json",
     "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
@@ -346,23 +360,23 @@ def validate_dd_prior_startup(receipt, prior):
     return {"operationId": DD_PRIOR_STARTUP, "intentSha256": intent_hash}
 
 
-def validate_dd_final_equivalence(check, image, plan, clean, prior):
-    """A fixed reviewed source/image boundary, never a caller's assertion."""
+def validate_dd_final_coverage(check, image, plan, clean, prior):
+    """Bind the source boundary and disclose unverified compiled image assets."""
     need(all(value is not None for value in
              (DD_FINAL_IMAGE, DD_FINAL_PRODUCER, DD_FINAL_IMAGE_RECEIPT_SHA256,
               DD_FINAL_RUNTIME_SHA256, DD_FINAL_SOURCE_BOUNDARY_SHA256,
-              DD_FINAL_EQUIVALENCE_SHA256, DD_FINAL_CHANGED_PATHS,
+              DD_FINAL_COVERAGE_SHA256, DD_FINAL_CHANGED_PATHS,
               DD_PRIOR_STARTUP_RESULT_SHA256)), "trial.dd_final.unbound")
-    receipt = check["equivalence"]
+    receipt = check["coverage"]
     exact(receipt, "schema doctorOperationId doctorResultSha256 priorStartupOperationId "
           "priorStartupResultSha256 doctorImageReceiptSha256 finalImageReceiptSha256 "
           "finalImageIndexDigest sourceBoundary backupId backupManifestSha256 backupFiles "
           "beforeConfigSha256 afterConfigSha256 configTransitionReceiptSha256 "
           "runtimeSha256 catalogPostcheck controllerDisabled externalEffectsDisabled "
-          "reviewReceiptSha256", "trial.dd_final.equivalence_fields")
-    need(receipt["schema"] == DD_EQUIVALENCE_SCHEMA and
-         digest(durable.encode(receipt)) == DD_FINAL_EQUIVALENCE_SHA256 and
-         check["equivalenceReceiptSha256"] == DD_FINAL_EQUIVALENCE_SHA256 and
+          "doctorCoverage imageAssetBoundary doctorImageDifferent", "trial.dd_final.coverage_fields")
+    need(receipt["schema"] == DD_COVERAGE_SCHEMA and
+         digest(durable.encode(receipt)) == DD_FINAL_COVERAGE_SHA256 and
+         check["coverageReceiptSha256"] == DD_FINAL_COVERAGE_SHA256 and
          receipt["doctorOperationId"] == DD_DOCTOR and
          receipt["doctorResultSha256"] == DD_DOCTOR_RESULT_SHA256 and
          receipt["priorStartupOperationId"] == DD_PRIOR_STARTUP and
@@ -377,12 +391,15 @@ def validate_dd_final_equivalence(check, image, plan, clean, prior):
          image.get("producer", {}).get("toolingSha") == DD_FINAL_PRODUCER and
          receipt["runtimeSha256"] == DD_FINAL_RUNTIME_SHA256 and
          receipt["catalogPostcheck"] == "not_established" and
+         receipt["doctorCoverage"] == DD_COVERAGE_STATUS and
+         receipt["imageAssetBoundary"] == DD_IMAGE_ASSET_BOUNDARY and
+         receipt["doctorImageDifferent"] is True and
          receipt["controllerDisabled"] is True and
          receipt["externalEffectsDisabled"] is True and
          all(type(receipt[key]) is str and HEX.fullmatch(receipt[key]) for key in
              ("beforeConfigSha256", "afterConfigSha256", "configTransitionReceiptSha256",
-              "backupManifestSha256", "reviewReceiptSha256")),
-         "trial.dd_final.equivalence_identity")
+              "backupManifestSha256")),
+         "trial.dd_final.coverage_identity")
     source = receipt["sourceBoundary"]
     exact(source, "schema status baseSourceSha baseTree successorSourceSha successorTree "
           "changedPaths sourceDiffSha256 runtimeSha256 noChangedGitPathsOutsideExactSet "
@@ -627,15 +644,15 @@ def validate(plan, image, clean, check=None, *, retained=False):
             need(selected == "doctor", "trial.continuation.phase")
         elif dd_final_startup_check(check):
             exact(check, "schema phase doctorOperationId doctorResultSha256 "
-                  "priorStartupResultSha256 equivalenceReceiptSha256 equivalence",
+                  "priorStartupResultSha256 coverageReceiptSha256 coverage",
                   "trial.dd_final.check_fields")
             need(selected == check["phase"] == "startup" and
                  check["doctorOperationId"] == DD_DOCTOR and
                  check["doctorResultSha256"] == DD_DOCTOR_RESULT_SHA256 and
                  DD_PRIOR_STARTUP_RESULT_SHA256 is not None and
                  check["priorStartupResultSha256"] == DD_PRIOR_STARTUP_RESULT_SHA256 and
-                 DD_FINAL_EQUIVALENCE_SHA256 is not None and
-                 check["equivalenceReceiptSha256"] == DD_FINAL_EQUIVALENCE_SHA256,
+                 DD_FINAL_COVERAGE_SHA256 is not None and
+                 check["coverageReceiptSha256"] == DD_FINAL_COVERAGE_SHA256,
                  "trial.dd_final.check_identity")
         else:
             exact(check, "schema phase" + (" doctorOperationId doctorResultSha256" if selected != "doctor" else ""),
@@ -1293,7 +1310,7 @@ def phase_prerequisites(op, intent):
                                resource_profile(intent["plan"]["limits"])["id"] == "memory16-read320-write128")
         dd_final, lease_predecessor = False, None
         if dd_final_startup:
-            receipt, lease_predecessor = validate_dd_final_equivalence(
+            receipt, lease_predecessor = validate_dd_final_coverage(
                 check, intent["image"], intent["plan"], clean, prior)
             need(check["doctorOperationId"] == DD_DOCTOR and
                  prior["plan"]["toolingSha"] == DD_DOCTOR_PIPELINE_SHA and
@@ -1824,6 +1841,9 @@ def serve(op):
             oom_kills = max(oom_kills, last["events"].get("oom_kill", 0) - initial["events"].get("oom_kill", 0))
             logs["resources.jsonl"].append(json.dumps(last).encode() + b"\n")
         need(successful(final["State"], child.returncode, complete, oom_kills), "trial.doctor.not_successful")
+        if dd_final_startup_check(intent.get("check")):
+            need(phase_prerequisites(op, intent) == started["priorDoctor"],
+                 "trial.dd_final.postrun_provenance")
     except Exception as error:
         reason = str(error) if isinstance(error, release.Refusal) else type(error).__name__
         pressure_trip = reason.startswith("trial.host_pressure.")
@@ -1872,6 +1892,11 @@ def serve(op):
             result["hostPressure"] = pressure
         if "checkInputSha256" in intent["plan"]:
             result["checkInputSha256"] = intent["plan"]["checkInputSha256"]
+        if dd_final_startup_check(intent.get("check")):
+            result["doctorCoverage"] = DD_COVERAGE_STATUS
+            result["imageAssetBoundary"] = DD_IMAGE_ASSET_BOUNDARY
+            result["doctorImageDifferent"] = True
+            result["catalogPostcheck"] = "not_established"
         if continuing(intent.get("check")):
             result["continuedFrom"] = started["priorDoctor"]
         durable.write_once(op / "result.json", durable.encode(result))
@@ -1883,6 +1908,11 @@ def status(op, *, retained=False):
     output = {"nativeOutput": {}, "operationId": op.name, "phase": phase(intent["plan"]),
               "state": "prepared", "promotionAuthorized": False,
               "resourceProfile": resource_profile(intent["plan"]["limits"])}
+    if dd_final_startup_check(intent.get("check")):
+        output["doctorCoverage"] = DD_COVERAGE_STATUS
+        output["imageAssetBoundary"] = DD_IMAGE_ASSET_BOUNDARY
+        output["doctorImageDifferent"] = True
+        output["catalogPostcheck"] = "not_established"
     if continuing(intent.get("check")) and "artifacts" in intent["check"]["reconciliation"]:
         output["artifactAccounting"] = artifact_accounting(intent["check"], intent["clean"])
     newest = None
@@ -1946,6 +1976,13 @@ def status(op, *, retained=False):
                      prior["operationId"] == intent["check"]["doctorOperationId"] and
                      prior["intentSha256"] == intent["check"]["doctorIntentSha256"] and
                      prior["resultSha256"] == intent["check"]["doctorResultSha256"], "trial.result.continuation")
+            if dd_final_startup_check(intent.get("check")):
+                need(result.get("doctorCoverage") == DD_COVERAGE_STATUS and
+                     result.get("imageAssetBoundary") == DD_IMAGE_ASSET_BOUNDARY and
+                     result.get("doctorImageDifferent") is True and
+                     result.get("catalogPostcheck") == "not_established" and
+                     result.get("promotionAuthorized") is False,
+                     "trial.result.limited_coverage")
             if "checkInputSha256" in intent["plan"]:
                 need(result.get("phase") == phase(intent["plan"]) and
                      result.get("checkInputSha256") == intent["plan"]["checkInputSha256"], "trial.result.phase_binding")
