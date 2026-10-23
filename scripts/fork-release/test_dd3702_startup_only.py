@@ -148,6 +148,88 @@ class Dd3702StartupOnly(unittest.TestCase):
         with self.assertRaisesRegex(release.Refusal, "check.result.timeline_binding"):
             trial.checks.validate_result(result, "candidate-startup", diagnostic_timeline=True)
 
+    def test_fixed_cron_mark_projection_is_bounded_and_excludes_private_attributes(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node is unavailable")
+        script = trial.checks._TIMELINE_RUNTIME + r"""
+const t={status:'observed',starts:new Map(),cronStages:emptyCronStages(),
+  cronResultStatus:null,startCount:0,endCount:0,errorCount:0};
+function mark(name,attributes) {
+  consumeTimelineLine(t,Buffer.from(JSON.stringify({schemaVersion:'openclaw.diagnostics.v1',
+    type:'mark',name,phase:'startup',attributes})));
+}
+mark(cronMark,{traceName:cronMark,phase:'get',event:'start',privateJobId:'do-not-export'});
+mark(cronMark,{traceName:cronMark,phase:'get',event:'done'});
+mark(cronMark,{traceName:cronMark,phase:'list',event:'start'});
+mark(cronResultMark,{traceName:cronResultMark,status:'doctor-required',privateConfig:'secret'});
+mark('sidecars.plugin-services.other.other.private',{traceName:'private',phase:'get',event:'start'});
+console.log(JSON.stringify({status:t.status,stages:t.cronStages,
+  result:t.cronResultStatus,spans:t.startCount}));
+"""
+        checked = subprocess.run([node, "-"], input=script, text=True,
+                                 capture_output=True, timeout=5)
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        parsed = json.loads(checked.stdout)
+        self.assertEqual(parsed["status"], "observed")
+        self.assertEqual(parsed["stages"]["get"], [1, 1, 0])
+        self.assertEqual(parsed["stages"]["list"], [1, 0, 0])
+        self.assertEqual(parsed["result"], "doctor-required")
+        self.assertEqual(parsed["spans"], 0)
+        self.assertNotIn("do-not-export", checked.stdout)
+        self.assertNotIn("secret", checked.stdout)
+
+        bad = trial.checks._TIMELINE_RUNTIME + r"""
+const t={status:'observed',starts:new Map(),cronStages:emptyCronStages(),
+  cronResultStatus:null};
+consumeTimelineLine(t,Buffer.from(JSON.stringify({schemaVersion:'openclaw.diagnostics.v1',
+  type:'mark',name:cronMark,phase:'startup',attributes:{traceName:cronMark,
+  phase:'get',event:'done'}})));
+console.log(t.status);
+"""
+        refused = subprocess.run([node, "-"], input=bad, text=True,
+                                 capture_output=True, timeout=5)
+        self.assertEqual(refused.returncode, 0, refused.stderr)
+        self.assertEqual(refused.stdout.strip(), "unavailable")
+
+    def test_v2_cron_projection_validates_fixed_counts_and_marker_size(self):
+        result = {"schema": "openclaw.rehearsal-native-check.v1", "phase": "candidate-startup",
+                  "probeContract": "healthz-startupz-readyz-v1",
+                  "healthz": {"status": 200, "ok": True},
+                  "startupz": {"status": 503, "ok": False, "statusText": "starting"},
+                  "readyz": {"status": 503, "ready": False}, "ready": False,
+                  "nativeExitCode": None, "nativeSignal": "SIGTERM", "shutdown": "exited",
+                  "escalated": False, "failure": "diagnostic_timeline_unmatched_service",
+                  "timeline": {"schema": "openclaw.rehearsal-plugin-service-timeline.v2",
+                               "status": "early-stop", "fileBytes": 500, "observedBytes": 500,
+                               "directoryDevice": "11", "directoryInode": "12",
+                               "fileDevice": "11", "fileInode": "13", "sha256": "a" * 64,
+                               "topLevelNameSha256": trial.checks.TOP_LEVEL_SHA256,
+                               "serviceNameSha256": "b" * 64,
+                               "startCount": 2, "endCount": 0, "errorCount": 0,
+                               "unmatchedCount": 2, "oldestUnmatchedSeconds": 180,
+                               "topLevelStartCount": 1, "topLevelEndCount": 0,
+                               "topLevelErrorCount": 0, "topLevelUnmatchedCount": 1,
+                               "cronStages": {name: [0, 0, 0] for name in
+                                              ("context", "get", "status", "list", "add",
+                                               "update", "remove", "reconcile")},
+                               "cronResultStatus": None, "rawRetained": True}}
+        result["timeline"]["cronStages"]["get"] = [1, 1, 0]
+        result["timeline"]["cronStages"]["reconcile"] = [1, 0, 0]
+        marker = trial.checks.RESULT_PREFIX + json.dumps(result, separators=(",", ":"))
+        self.assertLessEqual(len(marker.encode()), 4096)
+        parsed = trial.checks.parse_result(marker)
+        self.assertEqual(trial.checks.validate_diagnostic_timeline_failure(
+            parsed, "candidate-startup"), result["timeline"])
+        bad = copy.deepcopy(result)
+        bad["timeline"]["cronStages"]["get"] = [0, 1, 0]
+        with self.assertRaisesRegex(release.Refusal, "check.result.timeline_cron_binding"):
+            trial.checks.validate_diagnostic_timeline_failure(bad, "candidate-startup")
+        bad = copy.deepcopy(result)
+        bad["timeline"]["cronResultStatus"] = "private-job-id"
+        with self.assertRaisesRegex(release.Refusal, "check.result.timeline_cron_binding"):
+            trial.checks.validate_diagnostic_timeline_failure(bad, "candidate-startup")
+
     def test_failed_timeline_marker_retains_bounded_projection_before_success_gate(self):
         base = {"schema": "openclaw.rehearsal-native-check.v1", "phase": "candidate-startup",
                 "probeContract": "healthz-startupz-readyz-v1",
@@ -229,9 +311,17 @@ class Dd3702StartupOnly(unittest.TestCase):
             normal_argv = trial.create_argv(self.fixture.op, ordinary, self.fixture.devices)
             timeline_argv = trial.create_argv(self.fixture.op, diagnostic, self.fixture.devices)
         self.assertNotIn("OPENCLAW_DIAGNOSTICS_TIMELINE_PATH", normal_argv[-1])
+        self.assertNotIn("OPENCLAW_GATEWAY_STARTUP_TRACE", normal_argv[-1])
         self.assertIn(self.fixture.op.name, timeline_argv[-1])
         self.assertIn("OPENCLAW_DIAGNOSTICS_TIMELINE_PATH", timeline_argv[-1])
+        # The fixed memory-core marks are opt-in on this trace flag as well as
+        # on the timeline file; only the isolated diagnostic child receives it.
+        self.assertEqual(timeline_argv[-1].count("OPENCLAW_GATEWAY_STARTUP_TRACE:'1'"), 1)
         self.assertEqual(normal_argv[:-1], timeline_argv[:-1])
+        if node := shutil.which("node"):
+            checked = subprocess.run([node, "--check", "-"], input=timeline_argv[-1],
+                                     text=True, capture_output=True, timeout=5)
+            self.assertEqual(checked.returncode, 0, checked.stderr)
 
     def test_timeline_predecessor_requires_exact_failed_settled_startup(self):
         predecessor = "c" * 32

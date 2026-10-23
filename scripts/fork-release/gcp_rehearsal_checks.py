@@ -217,6 +217,15 @@ const topLevelSpan = 'sidecars.plugin-services';
 // Exactly two encoded registration segments. Plugin-supplied child spans have
 // additional segments and are deliberately excluded from this projection.
 const serviceSpan = /^sidecars\.plugin-services\.[A-Za-z0-9_~-]+\.[A-Za-z0-9_~-]+$/;
+// Only the memory-core source's constant scoped marks are projected. Never
+// copy plugin-supplied mark names, attributes, job IDs, or config into results.
+const cronMark = 'sidecars.plugin-services.memory-core.memory-core-dreaming.dreaming-cron';
+const cronResultMark = cronMark + '-result';
+const cronPhases = ['context','get','status','list','add','update','remove','reconcile'];
+const cronStatuses = ['unavailable','disabled','doctor-required','added','updated','noop'];
+function emptyCronStages() {
+  return Object.fromEntries(cronPhases.map(phase => [phase,[0,0,0]]));
+}
 let timeline, timelineTimer, diagnosticStop = null;
 function timelineProjection(status) {
   const t = timeline;
@@ -227,7 +236,7 @@ function timelineProjection(status) {
     .filter(Boolean).length;
   const oldest = starts.size ? Math.max(0, Math.floor((performance.now() -
     Math.min(...Array.from(starts.values(), item => item.at))) / 1000)) : null;
-  return {schema:'openclaw.rehearsal-plugin-service-timeline.v1', status,
+  return {schema:'openclaw.rehearsal-plugin-service-timeline.v2', status,
     directoryDevice:t?.directoryDevice ?? null, directoryInode:t?.directoryInode ?? null,
     fileDevice:t?.fileDevice ?? null, fileInode:t?.fileInode ?? null,
     fileBytes:t?.fileBytes ?? 0, observedBytes:t?.position ?? 0,
@@ -240,7 +249,8 @@ function timelineProjection(status) {
     topLevelEndCount:t?.topLevelEndCount ?? 0,
     topLevelErrorCount:t?.topLevelErrorCount ?? 0,
     topLevelUnmatchedCount,
-    oldestUnmatchedSeconds:oldest, rawRetained:true};
+    oldestUnmatchedSeconds:oldest, cronStages:t?.cronStages ?? emptyCronStages(),
+    cronResultStatus:t?.cronResultStatus ?? null, rawRetained:true};
 }
 function createTimeline(op) {
   if (!/^[0-9a-f]{32}$/.test(op) || process.getuid() !== 1000) throw Error('owner');
@@ -265,7 +275,8 @@ function createTimeline(op) {
     directoryInode:directoryExact.ino.toString(), fileDevice:fileExact.dev.toString(),
     fileInode:fileExact.ino.toString(), position:0, fileBytes:0,
     hash:createHash('sha256'), pending:Buffer.alloc(0), starts:new Map(),
-    topLevelHash:null, lastServiceHash:null, startCount:0, endCount:0,
+    topLevelHash:null, lastServiceHash:null, cronStages:emptyCronStages(),
+    cronResultStatus:null, startCount:0, endCount:0,
     errorCount:0, topLevelStartCount:0, topLevelEndCount:0,
     topLevelErrorCount:0, status:'observed'};
 }
@@ -273,6 +284,29 @@ function consumeTimelineLine(t, raw) {
   if (!raw.length || raw.length > 8192) {t.status='limit'; return;}
   let event;
   try {event=JSON.parse(raw.toString('utf8'));} catch {t.status='unavailable'; return;}
+  if (event?.name === cronMark || event?.name === cronResultMark) {
+    if (event.schemaVersion !== 'openclaw.diagnostics.v1' ||
+        event.type !== 'mark' || event.phase !== 'startup' ||
+        event.attributes?.traceName !== event.name) {t.status='unavailable'; return;}
+    if (event.name === cronMark) {
+      const phase=event.attributes.phase, kind=event.attributes.event;
+      if (!cronPhases.includes(phase) || !['start','done','error'].includes(kind)) {
+        t.status='unavailable'; return;
+      }
+      const counts=t.cronStages[phase];
+      if (counts[0]+counts[1]+counts[2] >= 100000) {t.status='limit'; return;}
+      if (kind === 'start') counts[0]++;
+      else if (counts[1]+counts[2] >= counts[0]) {t.status='unavailable'; return;}
+      else if (kind === 'done') counts[1]++;
+      else counts[2]++;
+    } else {
+      const status=event.attributes.status;
+      if (!cronStatuses.includes(status)) {t.status='unavailable'; return;}
+      if (t.cronResultStatus !== null) {t.status='limit'; return;}
+      t.cronResultStatus=status;
+    }
+    return;
+  }
   const topLevel = event?.name === topLevelSpan;
   if (!event || event.schemaVersion !== 'openclaw.diagnostics.v1' ||
       !['span.start','span.end','span.error'].includes(event.type) ||
@@ -367,6 +401,7 @@ def _timeline_script():
          "    child = spawn(argv[0], argv.slice(1), {shell:false, detached:false,"),
         (_TRACE_ENV_ANCHOR,
          "OPENCLAW_DISABLE_BONJOUR:'1', OPENCLAW_DIAGNOSTICS:'timeline', "
+         "OPENCLAW_GATEWAY_STARTUP_TRACE:'1', "
          "OPENCLAW_DIAGNOSTICS_TIMELINE_PATH:timeline.path}});"),
         ("      const health = result.healthz, startup = result.startupz, ready = result.readyz;",
          "      const health = result.healthz, startup = result.startupz, ready = result.readyz;\n"
@@ -385,14 +420,15 @@ def _timeline_script():
          "    }}\n"
          "    try {result.timeline = timelineProjection(timeline?.status ?? 'unavailable');}\n"
          "    catch {fail('diagnostic_timeline_unavailable');result.timeline={\n"
-         "      schema:'openclaw.rehearsal-plugin-service-timeline.v1',status:'unavailable',\n"
+         "      schema:'openclaw.rehearsal-plugin-service-timeline.v2',status:'unavailable',\n"
          "      directoryDevice:null,directoryInode:null,fileDevice:null,fileInode:null,\n"
          "      fileBytes:0,observedBytes:0,sha256:null,\n"
          "      topLevelNameSha256:null,serviceNameSha256:null,\n"
          "      startCount:0,endCount:0,errorCount:0,unmatchedCount:0,\n"
          "      topLevelStartCount:0,topLevelEndCount:0,topLevelErrorCount:0,\n"
          "      topLevelUnmatchedCount:0,\n"
-         "      oldestUnmatchedSeconds:null,rawRetained:true};}\n"
+         "      oldestUnmatchedSeconds:null,cronStages:emptyCronStages(),\n"
+         "      cronResultStatus:null,rawRetained:true};}\n"
          "    process.removeListener('SIGTERM', stopSignal); process.removeListener('SIGINT', stopSignal);"),
     )
     script = NATIVE
@@ -435,17 +471,32 @@ def parse_result(line):
 
 def validate_timeline_projection(timeline):
     """Validate the bounded, path-free projection, including failed checks."""
+    version = timeline.get("schema") if type(timeline) is dict else None
+    need(version in ("openclaw.rehearsal-plugin-service-timeline.v1",
+                     "openclaw.rehearsal-plugin-service-timeline.v2"),
+         "check.result.timeline_schema")
     fields(timeline, "schema status directoryDevice directoryInode fileDevice fileInode "
            "fileBytes observedBytes sha256 topLevelNameSha256 serviceNameSha256 "
            "startCount endCount errorCount unmatchedCount topLevelStartCount "
            "topLevelEndCount topLevelErrorCount topLevelUnmatchedCount "
-           "oldestUnmatchedSeconds rawRetained",
+           "oldestUnmatchedSeconds rawRetained" +
+           (" cronStages cronResultStatus" if version.endswith(".v2") else ""),
            "check.result.timeline_fields")
+    if version.endswith(".v2"):
+        stages = timeline["cronStages"]
+        need(type(stages) is dict and set(stages) ==
+             {"context", "get", "status", "list", "add", "update", "remove", "reconcile"} and
+             all(type(counts) is list and len(counts) == 3 and
+                 all(type(value) is int and 0 <= value <= 100000 for value in counts) and
+                 counts[1] + counts[2] <= counts[0] and
+                 sum(counts) <= 100000 for counts in stages.values()) and
+             timeline["cronResultStatus"] in
+             (None, "unavailable", "disabled", "doctor-required", "added", "updated", "noop"),
+             "check.result.timeline_cron_binding")
     counts = ("startCount", "endCount", "errorCount", "unmatchedCount",
               "topLevelStartCount", "topLevelEndCount", "topLevelErrorCount",
               "topLevelUnmatchedCount")
-    need(timeline["schema"] == "openclaw.rehearsal-plugin-service-timeline.v1" and
-         timeline["status"] in ("observed", "early-stop", "limit") and
+    need(timeline["status"] in ("observed", "early-stop", "limit") and
          timeline["rawRetained"] is True and
          all(matches(DECIMAL_ID, timeline[k]) for k in
              ("directoryDevice", "directoryInode", "fileDevice", "fileInode")) and
