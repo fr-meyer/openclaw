@@ -31,7 +31,7 @@ reclaimable-byte evidence, native command, required backup and integrity
 receipt, expected downtime, temporary-space and provider-cost budget, and
 approval. No optional action is implicit in Doctor success or this assessment.
 
-* **Free SQLite pages:** after the native migration, compare DB/WAL size and
+- **Free SQLite pages:** after the native migration, compare DB/WAL size and
   `freelist_count × page_size` on an exclusively owned, stopped disposable
   copy. A review is useful when estimated reclaim is at least the greater of
   1 GiB or 10% of that DB. For 2026.10.5, the supported offline commands are
@@ -40,17 +40,17 @@ approval. No optional action is implicit in Doctor success or this assessment.
   validate. Allow at least the candidate's `2 × DB bytes + 64 MiB` temporary
   volume admission, plus the operation's other disk reserves. These commands
   repack retained data; they do not select data for deletion.
-* **Derived memory problem:** `openclaw memory index --force --agent <id>`
+- **Derived memory problem:** `openclaw memory index --force --agent <id>`
   rebuilds derived search state. `openclaw memory reset --agent <id> --yes`
   discards only memory-owned derived tables/cache and requires a later rebuild.
   These need explicit selection, a verified backup and any embedding-provider
   cost/availability approval. Reset alone does not shrink the DB or delete
   canonical sessions.
-* **Retention pressure:** preview with `openclaw sessions cleanup --dry-run`
+- **Retention pressure:** preview with `openclaw sessions cleanup --dry-run`
   on a copy. `--enforce` can remove eligible history and has separate
   destructive authorization. Protected and cold archives follow their own
   rules; file size is not proof of eligibility.
-* **Extension/backend difference:** confirm the exact release's sqlite-vec
+- **Extension/backend difference:** confirm the exact release's sqlite-vec
   behavior and selected memory slot. LanceDB owns optional long-term memory,
   not the canonical agent session/transcript database.
 

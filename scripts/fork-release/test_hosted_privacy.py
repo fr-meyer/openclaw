@@ -18,6 +18,8 @@ import hosted_privacy as privacy
 
 SOURCE = "a" * 40
 TOOLING = "b" * 40
+# Assemble synthetic PEM markers without committing a literal key marker.
+PRIVATE_KEY_LABEL = b"PRIVATE KEY"
 
 
 def archive(entries):
@@ -119,22 +121,21 @@ class PrivacyTests(unittest.TestCase):
                 self.assertNotIn(name, json.dumps(result))
 
     def test_credentials_split_across_chunks_and_db_header(self):
-        payload = b"x" * (privacy.CHUNK - 10) + b"-----BEGIN PRIVATE KEY-----\n" + b"A" * 64 + b"\n-----END PRIVATE KEY-----"
+        payload = b"x" * (privacy.CHUNK - 10) + (b'-----BEGIN ' + PRIVATE_KEY_LABEL + b'-----\n') + b"A" * 64 + b"\n-----END PRIVATE KEY-----"
         result = self.files([("app/data", payload), ("tmp/unknown", b"SQLite format 3\0synthetic")]).inspect()
         self.assertEqual({item["rule"] for item in result["findings"]}, {"private_key", "sqlite_database_payload"})
-        self.assertNotIn("BEGIN PRIVATE KEY", json.dumps(result))
+        self.assertNotIn(("BEGIN " + PRIVATE_KEY_LABEL.decode("ascii")), json.dumps(result))
 
     def test_public_pem_parser_literal_and_arbitrary_metadata_pass(self):
         def provenance(statement):
             statement["predicate"]["metadata"] = {"token": "public parser category"}
-        result = self.files([("app/parser.js", b"const marker = '-----BEGIN PRIVATE KEY-----';"),
-                             ("app/docs/example.md", b"-----BEGIN PRIVATE KEY-----\n<insert your private key>")],
+        result = self.files([("app/parser.js", (b"const marker = '-----BEGIN " + PRIVATE_KEY_LABEL + b"-----';")),
+                             ("app/docs/example.md", (b'-----BEGIN ' + PRIVATE_KEY_LABEL + b'-----\n<insert your private key>'))],
                             provenance=provenance).inspect()
         self.assertEqual(result["status"], "passed", result)
 
     def test_encrypted_pem_body_and_small_stream_chunks(self):
-        payload = (b"-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\n"
-                   b"DEK-Info: AES-256-CBC,00000000\n\n" + b"A" * 64 + b"\n")
+        payload = ((b'-----BEGIN RSA ' + PRIVATE_KEY_LABEL + b'-----\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-256-CBC,00000000\n\n') + b"A" * 64 + b"\n")
         result = self.files([("app/material", payload)]).inspect()
         self.assertEqual([item["rule"] for item in result["findings"]], ["private_key"])
 

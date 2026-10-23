@@ -33,7 +33,9 @@ const SHA = /^[0-9a-f]{40}$/u;
 const DIGEST = /^sha256:[0-9a-f]{64}$/u;
 
 function need(value, message) {
-  if (!value) throw new Error(message);
+  if (!value) {
+    throw new Error(message);
+  }
 }
 
 function json(path) {
@@ -200,7 +202,7 @@ export async function verifyImageLayout({ manifest, receipt, ociDir }) {
         context &&
         typeof context === "object" &&
         !Array.isArray(context) &&
-        Object.keys(context).sort().join(",") === "kind,repository,sourceSha" &&
+        Object.keys(context).toSorted().join(",") === "kind,repository,sourceSha" &&
         Object.keys(expected).every((key) => context[key] === expected[key]),
       "Hosted Git build context differs from the pinned source",
     );
@@ -486,8 +488,10 @@ async function main() {
 }
 
 if (isDirectRunUrl(process.argv[1], import.meta.url)) {
-  main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
+  main().catch(
+    /** @param {unknown} error */ (error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    },
+  );
 }

@@ -148,12 +148,13 @@ export function validateDockerReleaseIdentity({
 
 /** Verify the OCI closure before smoke testing or registry writes.
  * An explicit sourceRepository also binds native Git provenance to sourceSha.
+ * @param {{ directory: string, architecture: string, sourceSha: string, sourceRepository?: string, version: string, builtAt: string, expectedDigest: string }} options
  */
 export async function verifyDockerReleaseLayout({
   directory,
   architecture,
   sourceSha,
-  sourceRepository = undefined,
+  sourceRepository,
   version,
   builtAt,
   expectedDigest,

@@ -6,17 +6,17 @@ generating inputs does not authorize an image build, rehearsal or production cut
 
 ## Frozen source
 
-| Identity | Exact value |
-| --- | --- |
-| Candidate merge | `a39cad2d97efae7d0c832af3d71e6ccc86f60e50` |
-| Candidate tree | `47a3c1321ce39b50d22ec092054e54fd0afaa03a` |
-| First parent / PR base: carried fork 10.5 | `7f3ac1fbfd3691546c5b1fd247680a3d00851c76` |
-| Second parent / official stable 10.6 | `fe06181dc5ecc01cf8904abbfc26925925efefbc` |
-| Official stable tree | `de35137f62064ebdfd93c7d146b78b05a0332ff1` |
-| Sole common upstream 10.5 base | `1b58cb9a1b4f4353e1add63c8506db4d890962e8` |
-| Official annotated tag object | `3494baecba2366a89fa703158a2c2b5c9edcd6ba` |
-| Reconciliation blob | `186abc747081b09b8f7af58a37513b170af1f4b4` |
-| Reconciliation SHA256 | `c323daa5425d329578a392313de7677618d4fe5150ee8af399b75bd229bcf516` |
+| Identity                                  | Exact value                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| Candidate merge                           | `a39cad2d97efae7d0c832af3d71e6ccc86f60e50`                         |
+| Candidate tree                            | `47a3c1321ce39b50d22ec092054e54fd0afaa03a`                         |
+| First parent / PR base: carried fork 10.5 | `7f3ac1fbfd3691546c5b1fd247680a3d00851c76`                         |
+| Second parent / official stable 10.6      | `fe06181dc5ecc01cf8904abbfc26925925efefbc`                         |
+| Official stable tree                      | `de35137f62064ebdfd93c7d146b78b05a0332ff1`                         |
+| Sole common upstream 10.5 base            | `1b58cb9a1b4f4353e1add63c8506db4d890962e8`                         |
+| Official annotated tag object             | `3494baecba2366a89fa703158a2c2b5c9edcd6ba`                         |
+| Reconciliation blob                       | `186abc747081b09b8f7af58a37513b170af1f4b4`                         |
+| Reconciliation SHA256                     | `c323daa5425d329578a392313de7677618d4fe5150ee8af399b75bd229bcf516` |
 
 The source contract keeps official 10.6 as `baseCommit`. Its explicit `merge`
 proof retains the common base, fork parent and reconciliation identity; the

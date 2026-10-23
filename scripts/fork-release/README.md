@@ -164,7 +164,7 @@ File metadata fingerprints are change detectors, not hashes of
 database contents or integrity proof.
 
 The default decision is `skipped` with a precise reason. A database or WAL
-above 1 GiB prompts only a *follow-up measurement proposal*, never an automatic
+above 1 GiB prompts only a _follow-up measurement proposal_, never an automatic
 checkpoint, scan or cleanup. Reset/reindex, retention deletion and compaction
 require their own exact scope, verified backup, free-space/time admission and
 approval. The source-version commands, conditional ordering and acceptance
@@ -322,8 +322,8 @@ test operation with its own exact plan and result, not a live change to a
 running Doctor. Select one explicit read/write pair in the private plan
 (`limits` for the trial executor, `resources` for the daily lifecycle):
 
-| Profile           | `readBps` | `writeBps` |
-| ----------------- | --------- | ---------- |
+| Profile            | `readBps` | `writeBps` |
+| ------------------ | --------- | ---------- |
 | `read128-write32`  | 134217728 | 33554432   |
 | `read256-write64`  | 268435456 | 67108864   |
 | `read320-write128` | 335544320 | 134217728  |

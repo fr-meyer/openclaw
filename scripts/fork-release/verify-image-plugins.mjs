@@ -24,7 +24,9 @@ const HASH = /^[a-f0-9]{64}$/u;
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 function need(value, message) {
-  if (!value) throw new Error(message);
+  if (!value) {
+    throw new Error(message);
+  }
 }
 
 function regularFile(path) {
@@ -69,7 +71,7 @@ function runtimeEnvironment(directory) {
 function validateRuntimeExpectations(expected) {
   need(
     expected &&
-      Object.keys(expected).sort().join(",") ===
+      Object.keys(expected).toSorted().join(",") ===
         "argparseVersion,consumerManifestSha256,dockerfileSha256,lockfileSha256,markdownVersion,nodeVersion" &&
       [expected.nodeVersion, expected.markdownVersion, expected.argparseVersion].every((v) =>
         EXACT_VERSION.test(v),
@@ -122,8 +124,9 @@ export function readRuntimeExpectations(root) {
   );
   need(starts.length === 1, "Missing exact Markdown lock snapshot");
   const block = [];
-  for (let i = starts[0] + 1; i < lines.length && !/^ {2}\S/u.test(lines[i]); i += 1)
+  for (let i = starts[0] + 1; i < lines.length && !/^ {2}\S/u.test(lines[i]); i += 1) {
     block.push(lines[i]);
+  }
   const pinsArgparse = block.filter((line) => /^ {6}argparse: \d+\.\d+\.\d+$/u.test(line));
   need(
     block.includes("    dependencies:") && pinsArgparse.length === 1,
@@ -214,10 +217,13 @@ function inspectControlUi(root) {
       );
       need(!entry.isSymbolicLink(), "Symlinked UI asset");
       const child = `${path}/${entry.name}`;
-      if (entry.isDirectory()) visit(child);
-      else {
+      if (entry.isDirectory()) {
+        visit(child);
+      } else {
         need(entry.isFile(), "Non-regular UI asset");
-        if (!entry.name.endsWith(".map")) actual.add(child);
+        if (!entry.name.endsWith(".map")) {
+          actual.add(child);
+        }
       }
       need(actual.size <= 4096, "Too many UI assets");
     }
@@ -442,6 +448,7 @@ export async function smokeCodexAppServer(
       env,
       stdio: ["pipe", "pipe", "pipe"],
     });
+    /** @type {Error | undefined} */
     let failure;
     let initialized = false;
     let outputBytes = 0;
@@ -463,20 +470,28 @@ export async function smokeCodexAppServer(
     );
     const count = (chunk) => {
       outputBytes += Buffer.byteLength(chunk);
-      if (outputBytes > OUTPUT_LIMIT) fail("Codex app-server output exceeded its bound");
+      if (outputBytes > OUTPUT_LIMIT) {
+        fail("Codex app-server output exceeded its bound");
+      }
       return !failure;
     };
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
-      if (!count(chunk)) return;
+      if (!count(chunk)) {
+        return;
+      }
       pending += chunk;
       for (let newline; (newline = pending.indexOf("\n")) >= 0;) {
         const line = pending.slice(0, newline);
         pending = pending.slice(newline + 1);
-        if (!line.trim()) continue;
+        if (!line.trim()) {
+          continue;
+        }
         try {
           const response = JSON.parse(line);
-          if (response.id !== 1) continue;
+          if (response.id !== 1) {
+            continue;
+          }
           need(
             !initialized && !response.error,
             "Codex initialize returned an error or duplicate response",
@@ -520,11 +535,13 @@ export async function smokeCodexAppServer(
     child.on("close", (code, signal) => {
       clearTimeout(timer);
       clearTimeout(drainTimer);
-      if (failure) reject(failure);
-      else if (!initialized || code !== 0 || signal)
+      if (failure) {
+        reject(failure);
+      } else if (!initialized || code !== 0 || signal) {
         reject(new Error("Codex app-server did not initialize and shut down cleanly"));
-      else
+      } else {
         resolveProof({ initializeVersion: expectedVersion, initialized: true, shutdown: "exited" });
+      }
     });
   });
 }
@@ -560,7 +577,9 @@ async function smokeWorkboardWorker(root, directory) {
     connection = undefined;
   } finally {
     try {
-      if (connection !== undefined) await execute("connection.close", { connection });
+      if (connection !== undefined) {
+        await execute("connection.close", { connection });
+      }
     } finally {
       await store.close();
     }
@@ -577,7 +596,9 @@ function atLeast(version, minimum) {
   const left = versionParts(version);
   const right = versionParts(minimum);
   for (let i = 0; i < left.length; i += 1) {
-    if (left[i] !== right[i]) return left[i] > right[i];
+    if (left[i] !== right[i]) {
+      return left[i] > right[i];
+    }
   }
   return true;
 }

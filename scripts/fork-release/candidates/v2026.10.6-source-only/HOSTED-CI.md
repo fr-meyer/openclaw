@@ -21,17 +21,17 @@ is `04e804c73ede79d4984167e50913710bfbc1b8b9`.
 
 ## Requirements versus measurements
 
-| Item | Evidence / requirement |
-| --- | --- |
-| Platform | Workflow uses Ubuntu 24.04 x64 and builds `linux/amd64`; no emulation is needed. |
-| Standard public runner | GitHub currently documents 4 CPUs, 16 GB RAM, 14 GB SSD. Actual free storage must be measured; documentation is not a cold-build disk measurement. |
-| Prepared worker profile | 8 GiB aggregate BuildKit memory, no container swap, 4 CPU and 6144 MiB tsdown old-space for exact 10.6. These are limits, not proven requirements. |
-| Measured related compilation | Serialized 10.5 source `84d65b446d66cd5db5b9c533bd158e9062968692` reached a whole-worker peak of 7,031,795,712 bytes (6.55 GiB), without OOM. Docker compiler step took 154.3 seconds. The run later stopped on production health; it did not finish the image. |
-| Successful cached build | A later same-source cached solve took 76 seconds plus 81 seconds for sealing, with recorded peak 1.82 GiB. Compiler layers were cached; this is not a cold-build requirement. |
-| Output sizes | Earlier OCI directories were about 0.70–0.71 GB compressed; one successful load streamed 2,015,573,504 uncompressed tar bytes. Loaded unique image layers were about 2.386 GB in an older inventory. |
-| Working disk | The retained GCP BuildKit cache was about 31.01 GB and included reusable historical work. It is neither a single-build requirement nor proof that 14 GB is sufficient. Full cold-build peak disk allocation is unmeasured. |
-| 10.6 measurements | Full-image RAM, disk peak and build duration remain unmeasured. The preserved 133 source tests do not qualify the image. |
-| Runtime/tooling | Node 24.22.1, source-pinned pnpm 12.15.0, Docker Engine/Buildx/BuildKit, Python 3 and OCI smoke transport. Managed Codex remains 0.160.0. Hosted workflow currently installs Skopeo and requires version 1.13.3; availability on the actual runner needs checking. |
+| Item                         | Evidence / requirement                                                                                                                                                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Platform                     | Workflow uses Ubuntu 24.04 x64 and builds `linux/amd64`; no emulation is needed.                                                                                                                                                                                   |
+| Standard public runner       | GitHub currently documents 4 CPUs, 16 GB RAM, 14 GB SSD. Actual free storage must be measured; documentation is not a cold-build disk measurement.                                                                                                                 |
+| Prepared worker profile      | 8 GiB aggregate BuildKit memory, no container swap, 4 CPU and 6144 MiB tsdown old-space for exact 10.6. These are limits, not proven requirements.                                                                                                                 |
+| Measured related compilation | Serialized 10.5 source `84d65b446d66cd5db5b9c533bd158e9062968692` reached a whole-worker peak of 7,031,795,712 bytes (6.55 GiB), without OOM. Docker compiler step took 154.3 seconds. The run later stopped on production health; it did not finish the image.    |
+| Successful cached build      | A later same-source cached solve took 76 seconds plus 81 seconds for sealing, with recorded peak 1.82 GiB. Compiler layers were cached; this is not a cold-build requirement.                                                                                      |
+| Output sizes                 | Earlier OCI directories were about 0.70–0.71 GB compressed; one successful load streamed 2,015,573,504 uncompressed tar bytes. Loaded unique image layers were about 2.386 GB in an older inventory.                                                               |
+| Working disk                 | The retained GCP BuildKit cache was about 31.01 GB and included reusable historical work. It is neither a single-build requirement nor proof that 14 GB is sufficient. Full cold-build peak disk allocation is unmeasured.                                         |
+| 10.6 measurements            | Full-image RAM, disk peak and build duration remain unmeasured. The preserved 133 source tests do not qualify the image.                                                                                                                                           |
+| Runtime/tooling              | Node 24.22.1, source-pinned pnpm 12.15.0, Docker Engine/Buildx/BuildKit, Python 3 and OCI smoke transport. Managed Codex remains 0.160.0. Hosted workflow currently installs Skopeo and requires version 1.13.3; availability on the actual runner needs checking. |
 
 The GCP 10 GiB available-memory admission, 16 GiB root-free and 44 GiB cache-free
 floors belong to the shared-VM policy. They are not empirical hosted-runner

@@ -54,7 +54,8 @@ jobs:
             const { matchesGlob } = require('node:path');
             const paths = ['.github/workflows/**', '.github/actions/**',
               '.github/actionlint*', '.github/zizmor.yml', '.pre-commit-config.yaml',
-              'scripts/check-composite-action-input-interpolation.py'];
+              'scripts/check-composite-action-input-interpolation.py', 'scripts/actionlint-cache-mode.patch',
+              'scripts/check-workflows.mts', 'test/scripts/check-workflows.test.ts'];
             let files;
             try {
               if (context.eventName === 'pull_request') {
@@ -219,14 +220,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # v1.7.12 writes ShellCheck stdin before starting it and deadlocks on large run blocks.
-          # Pin the upstream fix until a release includes rhysd/actionlint#651.
-          ACTIONLINT_REVISION="011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7"
+          # The maintained local checker owns exact source, parser patch and 18
+          # positive/negative parser fixtures for both CI and local fallback.
           export GOBIN="$RUNNER_TEMP/actionlint-bin"
-          go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_REVISION}"
-          version="$("$GOBIN/actionlint" -version)"
-          printf '%s\n' "$version"
-          grep -Fxq "v1.7.13-0.20260419144658-${ACTIONLINT_REVISION:0:12}" <<< "$version"
+          node scripts/check-workflows.mts --install-actionlint "$GOBIN"
           echo "$GOBIN" >> "$GITHUB_PATH"
 
       - name: Lint workflows

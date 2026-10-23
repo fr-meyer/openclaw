@@ -27,7 +27,7 @@ import { inspectLoadedPlugins } from "./image.mjs";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const digest = `sha256:${"a".repeat(64)}`;
 
-test("seal entry refuses dirty tracked and untracked source before reading working metadata", () => {
+void test("seal entry refuses dirty tracked and untracked source before reading working metadata", () => {
   const root = mkdtempSync(join(tmpdir(), "fork-image-source-"));
   const source = join(root, "source");
   mkdirSync(source);
@@ -114,8 +114,9 @@ function fixture() {
     ["build-metadata.json", metadata],
     ["build.log", log],
     ["build.exit", "0\n"],
-  ])
+  ]) {
     writeFileSync(join(evidence, name), bytes, { mode: 0o600 });
+  }
   const execution = {
     schema: "openclaw.fork-gcp-image-execution.v1",
     operationId: "1".repeat(32),
@@ -136,7 +137,7 @@ function fixture() {
   return { root, evidence, expected, execution, path, save };
 }
 
-test("GCP seal binds private execution and emits no cloud identifiers", () => {
+void test("GCP seal binds private execution and emits no cloud identifiers", () => {
   const f = fixture();
   try {
     const { producer, builtAt } = readGcpExecution(f.path, f.expected);
@@ -146,7 +147,7 @@ test("GCP seal binds private execution and emits no cloud identifiers", () => {
       producerArtifactName(f.expected.sourceSha, producer),
       `fork-release-${f.expected.sourceSha}-gcp-${f.execution.operationId}-1`,
     );
-    assert.deepEqual(Object.keys(producer).sort(), [
+    assert.deepEqual(Object.keys(producer).toSorted(), [
       "attempt",
       "executionSha256",
       "kind",
@@ -158,7 +159,7 @@ test("GCP seal binds private execution and emits no cloud identifiers", () => {
   }
 });
 
-test("GCP seal refuses changed bindings, incomplete runs and writable evidence", () => {
+void test("GCP seal refuses changed bindings, incomplete runs and writable evidence", () => {
   const f = fixture();
   try {
     for (const key of [
@@ -195,7 +196,7 @@ test("GCP seal refuses changed bindings, incomplete runs and writable evidence",
   }
 });
 
-test("producer kinds remain distinct and refuse extra fields", () => {
+void test("producer kinds remain distinct and refuse extra fields", () => {
   const github = { workflowSha: "a".repeat(40), runId: "42", attempt: "1" };
   validateProducer(github);
   assert.equal(producerArtifactName("b".repeat(40), github), `fork-release-${"b".repeat(40)}-42-1`);
@@ -206,7 +207,7 @@ test("producer kinds remain distinct and refuse extra fields", () => {
   );
 });
 
-test("native smoke retains its flow under bounded no-network Docker execution", () => {
+void test("native smoke retains its flow under bounded no-network Docker execution", () => {
   const root = mkdtempSync(join(tmpdir(), "fork-image-smoke-"));
   const capture = join(root, "calls.jsonl");
   const previous = Object.fromEntries(
@@ -227,8 +228,9 @@ if (command === "docker" && args[0] === "inspect") console.log("false 0");
 if (command === "docker" && args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17);
 `;
   try {
-    for (const command of ["docker", "skopeo"])
+    for (const command of ["docker", "skopeo"]) {
       writeFileSync(join(root, command), fake, { mode: 0o700 });
+    }
     process.env.PATH = `${root}:${previous.PATH}`;
     process.env.SMOKE_CAPTURE = capture;
     process.env.SMOKE_DIGEST = digest;
@@ -310,14 +312,17 @@ if (command === "docker" && args[0] === "start" && process.env.SMOKE_FAIL_START 
     assert.deepEqual(failure.at(-1).args, ["rm", "--force", "1".repeat(64)]);
   } finally {
     for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
     }
     rmSync(root, { recursive: true });
   }
 });
 
-test("loaded index smoke requires an exact digest and the explicit loaded transport", () => {
+void test("loaded index smoke requires an exact digest and the explicit loaded transport", () => {
   for (const options of [
     { loadedIndexDigest: digest },
     { transport: "skopeo", loadedIndexDigest: digest },
@@ -340,7 +345,7 @@ test("loaded index smoke requires an exact digest and the explicit loaded transp
   );
 });
 
-test("loaded OCI index remains immutable through smoke and platform-pinned plugin inspection", () => {
+void test("loaded OCI index remains immutable through smoke and platform-pinned plugin inspection", () => {
   const root = mkdtempSync(join(tmpdir(), "fork-index-smoke-"));
   const capture = join(root, "calls.jsonl");
   const verifierCapture = join(root, "verifiers.jsonl");
@@ -581,8 +586,11 @@ if (args[0] === "start" && process.env.SMOKE_FAIL_START === "1") process.exit(17
     assert.deepEqual(calls().at(-1), ["rm", "--force", "2".repeat(64)]);
   } finally {
     for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
     }
     rmSync(root, { recursive: true });
   }

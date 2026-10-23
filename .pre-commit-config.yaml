@@ -28,10 +28,15 @@ repos:
         exclude: "^(vendor/|scripts/e2e/)"
 
   # GitHub Actions linting
-  - repo: https://github.com/rhysd/actionlint
-    rev: 011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7 # ShellCheck stdin deadlock fix (#651)
+  - repo: local
     hooks:
       - id: actionlint
+        name: actionlint (pinned cache-mode parser)
+        entry: node scripts/check-workflows.mts --actionlint-only
+        language: system
+        types: [yaml]
+        files: '^\.github/workflows/.*\.ya?ml$'
+        require_serial: true
 
   # GitHub Actions security audit
   - repo: https://github.com/zizmorcore/zizmor-pre-commit

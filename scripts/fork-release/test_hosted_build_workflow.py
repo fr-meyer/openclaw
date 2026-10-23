@@ -24,7 +24,8 @@ def expression(value, **context):
     # Evaluate only the checked-in fixture's simple GitHub comparisons/selection.
     value = value.strip().removeprefix('${{').removesuffix('}}').strip()
     value = value.replace('&&', ' and ').replace('||', ' or ')
-    return eval(value, {'__builtins__': {}, 'format': lambda fmt, *args: fmt.format(*args)}, context)
+    return eval(value, {'__builtins__': {}, 'format': lambda fmt, *args: fmt.format(*args),
+                        'startsWith': lambda value, prefix: value.startswith(prefix)}, context)
 
 
 class HostedBuildWorkflowTests(unittest.TestCase):
@@ -77,6 +78,47 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                           'cache-to:', 'cache-from:', 'self-hosted'):
             self.assertNotIn(forbidden, self.workflow)
         self.assertIn('push: false', self.build)
+
+    def test_candidate_execution_has_no_native_actions_cache_authority(self):
+        header, jobs = self.workflow.split('\njobs:\n', 1)
+        self.assertEqual(re.findall(r'^cache-mode:[ \t]*(.*?)[ \t]*$', header, re.M), ['none'])
+        # Job overrides take precedence over the workflow grant. Automatic
+        # package-cache settings alone do not restrict the cache service token.
+        self.assertTrue(all(mode == 'none' for mode in
+                            re.findall(r'^    cache-mode:[ \t]*(.*?)[ \t]*$', jobs, re.M)))
+        for name in ('Run focused candidate lifecycle and producer-consumer tests',
+                     'Run focused custom patch and producer-consumer gates'):
+            candidate_execution = step(self.workflow, name)
+            self.assertIn('cd source', candidate_execution)
+            self.assertIn('pnpm install --frozen-lockfile', candidate_execution)
+            self.assertIn('node scripts/run-vitest.mjs', candidate_execution)
+
+    def test_release_pr_contracts_exclude_default_branch_dispatch(self):
+        job = self.workflow.split('  release-pr-contracts:\n', 1)[1].split('\n  qualify-and-prepare:', 1)[0]
+        condition = ' '.join(job.split('    if: >-\n', 1)[1].split('\n    needs:', 1)[0].split())
+        condition = condition.replace('needs.pr-intake', 'needs.pr_intake')
+        github = NS(event_name='pull_request', repository='fr-meyer/openclaw',
+                    event=NS(action='synchronize', pull_request=NS(head=NS(
+                        repo=NS(full_name='fr-meyer/openclaw'), ref='candidate/v105'))))
+        needs = NS(pr_intake=NS(result='success'))
+        self.assertTrue(expression(condition, github=github, needs=needs))
+        for event in ('workflow_dispatch', 'push', 'schedule'):
+            with self.subTest(event=event):
+                github.event_name = event
+                self.assertFalse(expression(condition, github=github, needs=needs))
+        github.event_name = 'pull_request'
+        needs.pr_intake.result = 'failure'
+        self.assertFalse(expression(condition, github=github, needs=needs))
+
+    def test_buildx_and_node_setup_do_not_request_automatic_cache_operations(self):
+        builder = step(self.workflow, 'Set up bounded hosted Docker Buildx')
+        self.assertIn('uses: docker/setup-buildx-action@', builder)
+        self.assertEqual(re.findall(r'^          cache-binary:\s*(\S+)\s*$', builder, re.M),
+                         ['false'])
+        node_setups = self.workflow.split('      - name: Setup supported Node runtime\n')[1:]
+        self.assertEqual(len(node_setups), 2)
+        for setup in node_setups:
+            self.assertIn('package-manager-cache: false', setup.split('\n      - name:', 1)[0])
 
     def test_hosted_builds_use_bounded_worker_and_immutable_context_by_default(self):
         new = step(self.workflow, 'Set up bounded hosted Docker Buildx')

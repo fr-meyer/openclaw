@@ -9,7 +9,9 @@ const positive = /^[1-9][0-9]*$/u;
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u;
 
 function need(value, message) {
-  if (!value) throw new Error(message);
+  if (!value) {
+    throw new Error(message);
+  }
 }
 
 function hash(bytes) {
@@ -50,7 +52,7 @@ export function validateProducer(producer) {
       ? ["kind", "toolingSha", "operationId", "attempt", "executionSha256"]
       : ["workflowSha", "runId", "attempt"];
   need(
-    Object.keys(producer).sort().join(",") === fields.sort().join(","),
+    Object.keys(producer).toSorted().join(",") === fields.toSorted().join(","),
     "Invalid producer fields",
   );
   need(positive.test(String(producer.attempt)), "Invalid producer attempt");
@@ -115,7 +117,7 @@ export function readGcpExecution(path, expected) {
     execution &&
       typeof execution === "object" &&
       !Array.isArray(execution) &&
-      Object.keys(execution).sort().join(",") === fields.sort().join(","),
+      Object.keys(execution).toSorted().join(",") === fields.toSorted().join(","),
     "Invalid GCP execution fields",
   );
   need(

@@ -40,6 +40,9 @@ on:
 permissions:
   contents: read
 
+# Candidate tests run on this runner; deny cross-run cache access at the token boundary.
+cache-mode: none
+
 concurrency:
   group: fork-release-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -408,6 +411,7 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           driver: docker-container
+          cache-binary: false
           driver-opts: |
             memory=8589934592
             memory-swap=8589934592

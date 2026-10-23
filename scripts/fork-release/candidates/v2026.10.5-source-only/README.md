@@ -2,16 +2,16 @@
 
 This proposal binds [source PR18](https://github.com/fr-meyer/openclaw/pull/18) for use with the existing [pipeline PR17](https://github.com/fr-meyer/openclaw/pull/17). `productionEligible` remains `false`. These files do not contain a sealed image or authorize deployment.
 
-| Identity | Exact value |
-| --- | --- |
-| Source commit / PR head | `ae85778296da373dfe7d80101931bafac1acc9dd` |
-| Source tree | `3efb0b6fdb4491462591e2f534161c2b8bab65ab` |
-| Upstream 10.5 commit / PR base | `1b58cb9a1b4f4353e1add63c8506db4d890962e8` |
-| Upstream annotated tag object | `9171d0a427738902efd811c648325cf54116743c` |
-| Historical fork source | `c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6` |
-| Derivation tooling commit | `367ccf6d2d12a8cb7cfb9e06ff5f128e2238eca8` |
-| Manifest SHA256 | `4dfce05ac50a38c7667aeaa3b88f8f60e9c6046bb48a1d361785e77ee5d4ccd2` |
-| Inventory SHA256 | `cc4298057d4c61b6e1a488f06fdac93a0ea9263f87811700c0179a470cc495a8` |
+| Identity                       | Exact value                                                        |
+| ------------------------------ | ------------------------------------------------------------------ |
+| Source commit / PR head        | `ae85778296da373dfe7d80101931bafac1acc9dd`                         |
+| Source tree                    | `3efb0b6fdb4491462591e2f534161c2b8bab65ab`                         |
+| Upstream 10.5 commit / PR base | `1b58cb9a1b4f4353e1add63c8506db4d890962e8`                         |
+| Upstream annotated tag object  | `9171d0a427738902efd811c648325cf54116743c`                         |
+| Historical fork source         | `c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6`                         |
+| Derivation tooling commit      | `367ccf6d2d12a8cb7cfb9e06ff5f128e2238eca8`                         |
+| Manifest SHA256                | `4dfce05ac50a38c7667aeaa3b88f8f60e9c6046bb48a1d361785e77ee5d4ccd2` |
+| Inventory SHA256               | `cc4298057d4c61b6e1a488f06fdac93a0ea9263f87811700c0179a470cc495a8` |
 
 ## Evidence and scope
 
