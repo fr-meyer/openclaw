@@ -5,7 +5,11 @@ import {
   resolveMemoryDeepDreamingConfig,
   resolveMemoryDreamingWorkspaces,
 } from "openclaw/plugin-sdk/memory-core-host-status";
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import type {
+  OpenClawPluginApi,
+  OpenClawPluginServiceContext,
+} from "openclaw/plugin-sdk/plugin-entry";
+import { isTruthyEnvValue } from "openclaw/plugin-sdk/runtime-env";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
@@ -33,6 +37,74 @@ const HEARTBEAT_ISOLATED_SESSION_SUFFIX = ":heartbeat";
 type Logger = Pick<OpenClawPluginApi["logger"], "info" | "warn" | "error">;
 
 type ShortTermPromotionDreamingConfig = ReturnType<typeof resolveMemoryDeepDreamingConfig>;
+type StartupTrace = OpenClawPluginServiceContext["startupTrace"];
+type CronTracePhase =
+  | "context"
+  | "get"
+  | "status"
+  | "list"
+  | "add"
+  | "update"
+  | "remove"
+  | "reconcile";
+type CronTraceEvent = "start" | "done" | "error";
+type CronTraceResultStatus = Awaited<
+  ReturnType<typeof reconcileShortTermDreamingCronJob>
+>["status"];
+
+function traceDreamingCron(
+  trace: StartupTrace,
+  phase: CronTracePhase,
+  event: CronTraceEvent,
+): void {
+  // This diagnostic is opt-in and records only fixed phase names, never cron rows or config.
+  if (!isTruthyEnvValue(process.env.OPENCLAW_GATEWAY_STARTUP_TRACE)) {
+    return;
+  }
+  try {
+    trace?.detail?.("dreaming-cron", [
+      ["phase", phase],
+      ["event", event],
+    ]);
+  } catch {
+    // Observation cannot change service startup or cron ownership.
+  }
+}
+
+function traceDreamingCronResult(trace: StartupTrace, status: CronTraceResultStatus): void {
+  if (!isTruthyEnvValue(process.env.OPENCLAW_GATEWAY_STARTUP_TRACE)) {
+    return;
+  }
+  try {
+    trace?.detail?.("dreaming-cron-result", [["status", status]]);
+  } catch {
+    // Observation cannot change service startup or cron ownership.
+  }
+}
+
+function traceDreamingCronService(cron: CronServiceLike, trace: StartupTrace): CronServiceLike {
+  if (!isTruthyEnvValue(process.env.OPENCLAW_GATEWAY_STARTUP_TRACE) || !trace?.detail) {
+    return cron;
+  }
+  const observe = async <T>(phase: CronTracePhase, run: () => Promise<T>): Promise<T> => {
+    traceDreamingCron(trace, phase, "start");
+    try {
+      const result = await run();
+      traceDreamingCron(trace, phase, "done");
+      return result;
+    } catch (error) {
+      traceDreamingCron(trace, phase, "error");
+      throw error;
+    }
+  };
+  return {
+    ...(cron.isEnabled ? { isEnabled: () => observe("status", () => cron.isEnabled!()) } : {}),
+    list: (opts) => observe("list", () => cron.list(opts)),
+    add: (input) => observe("add", () => cron.add(input)),
+    update: (id, patch) => observe("update", () => cron.update(id, patch)),
+    remove: (id) => observe("remove", () => cron.remove(id)),
+  };
+}
 
 function formatRepairSummary(repair: {
   rewroteStore: boolean;
@@ -383,6 +455,7 @@ export function registerShortTermPromotionDreaming(api: OpenClawPluginApi): void
   const reconcileManagedDreamingCron = async (params: {
     reason: "startup" | "runtime";
     startupConfig?: OpenClawConfig;
+    startupTrace?: StartupTrace;
   }): Promise<void> => {
     const startupCfg =
       params.reason === "startup" ? (params.startupConfig ?? api.config) : resolveCurrentConfig();
@@ -396,7 +469,16 @@ export function registerShortTermPromotionDreaming(api: OpenClawPluginApi): void
       pluginConfig,
       cfg: startupCfg,
     });
-    const cron = resolveServiceCron?.() ?? null;
+    traceDreamingCron(params.startupTrace, "get", "start");
+    let cron: CronServiceLike | null;
+    try {
+      const resolved = resolveServiceCron?.() ?? null;
+      cron = resolved ? traceDreamingCronService(resolved, params.startupTrace) : null;
+      traceDreamingCron(params.startupTrace, "get", "done");
+    } catch (error) {
+      traceDreamingCron(params.startupTrace, "get", "error");
+      throw error;
+    }
     // Pausing automatic scheduling preserves jobs; explicitly disabling dreaming
     // still reconciles their removal, and startup artifact cleanup stays independent.
     if (config.enabled && cron?.isEnabled && !(await cron.isEnabled())) {
@@ -419,11 +501,14 @@ export function registerShortTermPromotionDreaming(api: OpenClawPluginApi): void
     if (cron) {
       unavailableCronWarningEmitted = false;
     }
-    await reconcileShortTermDreamingCronJob({
+    const result = await reconcileShortTermDreamingCronJob({
       cron,
       config,
       logger: api.logger,
     });
+    if (params.reason === "startup") {
+      traceDreamingCronResult(params.startupTrace, result.status);
+    }
   };
 
   const startRuntimeCronReconcileTimer = (): void => {
@@ -530,19 +615,26 @@ export function registerShortTermPromotionDreaming(api: OpenClawPluginApi): void
   api.registerService({
     id: "memory-core-dreaming",
     async start(ctx) {
+      traceDreamingCron(ctx.startupTrace, "context", "start");
       if (!ctx.getCron) {
+        traceDreamingCron(ctx.startupTrace, "context", "done");
         return;
       }
       serviceStartedAtMs = Date.now();
       disposed = false;
       resolveServiceCron = () => resolveCronServiceFromGatewayContext(ctx);
       await trackDreamingTask(async () => {
+        traceDreamingCron(ctx.startupTrace, "context", "done");
+        traceDreamingCron(ctx.startupTrace, "reconcile", "start");
         try {
           await reconcileManagedDreamingCron({
             reason: "startup",
             startupConfig: ctx.config,
+            startupTrace: ctx.startupTrace,
           });
+          traceDreamingCron(ctx.startupTrace, "reconcile", "done");
         } catch (err) {
+          traceDreamingCron(ctx.startupTrace, "reconcile", "error");
           api.logger.error(
             `memory-core: dreaming startup reconciliation failed: ${formatErrorMessage(err)}`,
           );

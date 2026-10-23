@@ -47,6 +47,7 @@ afterEach(async () => {
   registeredServiceStops.clear();
   await Promise.all(stops.map((stop) => stop()));
   vi.useRealTimers();
+  vi.unstubAllEnvs();
   resetSystemEventsForTest();
 });
 
@@ -278,7 +279,12 @@ function getDreamingService(api: DreamingPluginApiTestDouble) {
 
 async function triggerDreamingServiceStart(
   api: DreamingPluginApiTestDouble,
-  ctx: { config: OpenClawConfig; workspaceDir?: string; getCron?: () => unknown },
+  ctx: {
+    config: OpenClawConfig;
+    workspaceDir?: string;
+    getCron?: () => unknown;
+    startupTrace?: OpenClawPluginServiceContext["startupTrace"];
+  },
 ): Promise<void> {
   const context = {
     ...ctx,
@@ -308,6 +314,60 @@ function registerShortTermPromotionDreamingForTest(api: DreamingPluginApiTestDou
 }
 
 describe("dreaming service reconciliation", () => {
+  it("traces the exact pending cron operation with constant-only diagnostic phases", async () => {
+    vi.stubEnv("OPENCLAW_GATEWAY_STARTUP_TRACE", "1");
+    let resolveList: (jobs: CronJobLike[]) => void = () => undefined;
+    const listResult = new Promise<CronJobLike[]>((resolve) => {
+      resolveList = resolve;
+    });
+    const { api } = createDreamingTestContext();
+    const trace = {
+      detail: vi.fn(),
+      measure: async <T>(_name: string, run: () => T | Promise<T>) => await run(),
+    };
+    const cron: CronParam & { isEnabled: () => Promise<boolean> } = {
+      isEnabled: async () => true,
+      list: async () => await listResult,
+      add: vi.fn(async () => ({})),
+      update: vi.fn(async () => ({})),
+      remove: vi.fn(async () => ({ removed: false })),
+    };
+    registerShortTermPromotionDreamingForTest(api);
+    try {
+      const startup = triggerDreamingServiceStart(api, {
+        config: api.config,
+        getCron: () => cron,
+        startupTrace: trace,
+      });
+      await vi.waitFor(() => {
+        expect(trace.detail).toHaveBeenCalledWith("dreaming-cron", [
+          ["phase", "list"],
+          ["event", "start"],
+        ]);
+      });
+      expect(trace.detail).not.toHaveBeenCalledWith("dreaming-cron", [
+        ["phase", "list"],
+        ["event", "done"],
+      ]);
+      resolveList([]);
+      await startup;
+      expect(cron.add).toHaveBeenCalledTimes(1);
+      expect(trace.detail).toHaveBeenCalledWith("dreaming-cron", [
+        ["phase", "list"],
+        ["event", "done"],
+      ]);
+      expect(trace.detail).toHaveBeenCalledWith("dreaming-cron", [
+        ["phase", "add"],
+        ["event", "done"],
+      ]);
+      expect(trace.detail).toHaveBeenCalledWith("dreaming-cron-result", [["status", "added"]]);
+      expect(JSON.stringify(trace.detail.mock.calls)).not.toContain("job-");
+    } finally {
+      resolveList([]);
+      await triggerDreamingServiceStop(api);
+    }
+  });
+
   it("drains pending reconciliation on service stop without arming runtime recovery", async () => {
     vi.useFakeTimers();
     let rejectStartupList: (reason?: unknown) => void = () => undefined;
