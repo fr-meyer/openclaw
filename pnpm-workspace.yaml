@@ -35,8 +35,13 @@ verifyDepsBeforeRun: false
 blockExoticSubdeps: true
 
 overrides:
-  # Repair native Zod v4 without changing legacy v3 dependency contracts.
+  # GHSA-mrhx-c7xc-m3w5: native v4 consumers and bounded SDK compatibility parsing.
   "zod@>=4.0.0 <4.6.6": 4.6.6
+  # These exact consumers are migrated by the versioned package patches below.
+  "@a2ui/lit@0.11.0>zod": 4.6.6
+  "@a2ui/web_core@0.11.0>zod": 4.6.6
+  "@a2ui/web_core@0.11.0>zod-to-json-schema": "-"
+  "@discord/embedded-app-sdk@2.5.0>zod": 4.6.6
   # Preserve the converter's declared support for retained v3 schema peers.
   "zod-to-json-schema@3.25.2>zod": "^3.25.28 || ^4"
   # Memory LanceDB supplies vectors; WhatsApp prepares thumbnails with Rastermill.
@@ -124,6 +129,10 @@ packageExtensions:
       typescript: 5.9.3
 
 patchedDependencies:
+  "@a2ui/lit@0.11.0": patches/@a2ui__lit@0.11.0.patch
+  "@a2ui/web_core@0.11.0": patches/@a2ui__web_core@0.11.0.patch
+  "@discord/embedded-app-sdk@2.5.0": patches/@discord__embedded-app-sdk@2.5.0.patch
+  "zod@4.6.6": patches/zod@4.6.6.patch
   "baileys@7.0.0-rc14": patches/baileys@7.0.0-rc14.patch
   "chrome-devtools-mcp@1.9.0": patches/chrome-devtools-mcp@1.9.0.patch
   "matrix-js-sdk@42.4.0": patches/matrix-js-sdk@42.4.0.patch

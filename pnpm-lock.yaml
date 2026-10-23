@@ -164,6 +164,10 @@ settings:
 
 overrides:
   zod@>=4.0.0 <4.6.6: 4.6.6
+  '@a2ui/lit@0.11.0>zod': 4.6.6
+  '@a2ui/web_core@0.11.0>zod': 4.6.6
+  '@a2ui/web_core@0.11.0>zod-to-json-schema': '-'
+  '@discord/embedded-app-sdk@2.5.0>zod': 4.6.6
   zod-to-json-schema@3.25.2>zod: ^3.25.28 || ^4
   '@lancedb/lancedb>@huggingface/transformers': '-'
   baileys>sharp: '-'
@@ -216,12 +220,16 @@ overrides:
 packageExtensionsChecksum: sha256-Y7vhONQzlz51oZN7TTGWCJABkDu/F4SuqtCdf5qYwZ0=
 
 patchedDependencies:
+  '@a2ui/lit@0.11.0': 9a47b40034e70009f23bd5378c746b188fc4afcf2ab420b7dab8f7d250ef032a
+  '@a2ui/web_core@0.11.0': 555d85c210337d79042004f55773030fbd9d9e1c1e28bee6698bedbfa71f77a4
   '@awesome.me/webawesome@3.13.0': b8ce280c2f477ef59002e971c5c6cb29a7103e607926e22453091946b719d588
+  '@discord/embedded-app-sdk@2.5.0': 571102cd0329706f1c9edf2dd5cd7f50bfcb8c4336809c961e0c12f43760ab87
   '@novnc/novnc@1.7.0': bfde0e1bda172da3525f9f5014d85ad28073325b74f09609084598a65d2f412d
   baileys@7.0.0-rc14: 03ae85550381d1bda7d014c9aa9f544ad421d35d745d1167fd5d33f7f715dafb
   chrome-devtools-mcp@1.9.0: 832ce1d2ff002b44edb93bae88858d6edd8bc833acc87dd0fe82454d8834e340
   matrix-js-sdk@42.4.0: 12d9bb9bdc53b7b96d8d887d0bea6b3072d1fef488b51102caec19fb651c8e92
   vitest@5.0.1: 90ba2969491e095cc2e92a4d38256dfcf64f85078ec29e1762b9429a00b35901
+  zod@4.6.6: 9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2
 
 importers:
 
@@ -229,10 +237,10 @@ importers:
     dependencies:
       '@agentclientprotocol/sdk':
         specifier: 1.4.0
-        version: 1.4.0(zod@4.6.6)
+        version: 1.4.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       '@anthropic-ai/sdk':
         specifier: 0.126.0
-        version: 0.126.0(zod@4.6.6)
+        version: 0.126.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       '@babel/generator':
         specifier: 8.0.5
         version: 8.0.5
@@ -253,7 +261,7 @@ importers:
         version: 0.85.1
       '@google/genai':
         specifier: 2.23.0
-        version: 2.23.0(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6))(supports-color@10.2.2)
+        version: 2.23.0(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))(supports-color@10.2.2)
       '@grammyjs/runner':
         specifier: 2.0.3
         version: 2.0.3(grammy@1.46.0(supports-color@10.2.2))
@@ -271,7 +279,7 @@ importers:
         version: 2.7.0(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
       '@modelcontextprotocol/sdk':
         specifier: 1.32.0
-        version: 1.32.0(supports-color@10.2.2)(zod@4.6.6)
+        version: 1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       '@mozilla/readability':
         specifier: 0.6.0
         version: 0.6.0
@@ -379,7 +387,7 @@ importers:
         version: 1.2.10(supports-color@10.2.2)
       openai:
         specifier: 7.17.0
-        version: 7.17.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.6.6)
+        version: 7.17.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       p-limit:
         specifier: 7.3.2
         version: 7.3.2
@@ -430,14 +438,14 @@ importers:
         version: 2.9.1
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@a2ui/lit':
         specifier: 0.11.0
-        version: 0.11.0(signal-polyfill@0.2.2)
+        version: 0.11.0(patch_hash=9a47b40034e70009f23bd5378c746b188fc4afcf2ab420b7dab8f7d250ef032a)(signal-polyfill@0.2.2)
       '@a2ui/web_core':
         specifier: 0.11.0
-        version: 0.11.0
+        version: 0.11.0(patch_hash=555d85c210337d79042004f55773030fbd9d9e1c1e28bee6698bedbfa71f77a4)
       '@babel/types':
         specifier: 8.0.5
         version: 8.0.5
@@ -636,7 +644,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -649,7 +657,7 @@ importers:
     dependencies:
       '@agentclientprotocol/claude-agent-acp':
         specifier: 0.78.0
-        version: 0.78.0(@anthropic-ai/sdk@0.126.0(zod@4.6.6))(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6))
+        version: 0.78.0(@anthropic-ai/sdk@0.126.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))
       '@agentclientprotocol/codex-acp':
         specifier: 1.12.0
         version: 1.12.0
@@ -664,7 +672,7 @@ importers:
         version: 1.8.0
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -680,10 +688,10 @@ importers:
     dependencies:
       openai:
         specifier: 7.17.0
-        version: 7.17.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.6.6)
+        version: 7.17.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -724,7 +732,7 @@ importers:
     dependencies:
       '@anthropic-ai/sdk':
         specifier: 0.126.0
-        version: 0.126.0(zod@4.6.6)
+        version: 0.126.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       '@aws/bedrock-token-generator':
         specifier: 1.1.0
         version: 1.1.0
@@ -743,7 +751,7 @@ importers:
     dependencies:
       '@anthropic-ai/vertex-sdk':
         specifier: 0.19.9
-        version: 0.19.9(supports-color@10.2.2)(zod@4.6.6)
+        version: 0.19.9(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       google-auth-library:
         specifier: 11.1.0
         version: 11.1.0(supports-color@10.2.2)
@@ -759,7 +767,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -809,7 +817,7 @@ importers:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.0
-        version: 1.32.0(supports-color@10.2.2)(zod@4.6.6)
+        version: 1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       chrome-devtools-mcp:
         specifier: 1.9.0
         version: 1.9.0(patch_hash=832ce1d2ff002b44edb93bae88858d6edd8bc833acc87dd0fe82454d8834e340)
@@ -827,7 +835,7 @@ importers:
         version: 22.0.0
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -846,7 +854,7 @@ importers:
         version: 2.25.2(typescript@7.0.2)
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -865,10 +873,10 @@ importers:
     dependencies:
       '@a2ui/lit':
         specifier: 0.11.0
-        version: 0.11.0(signal-polyfill@0.2.2)
+        version: 0.11.0(patch_hash=9a47b40034e70009f23bd5378c746b188fc4afcf2ab420b7dab8f7d250ef032a)(signal-polyfill@0.2.2)
       '@a2ui/web_core':
         specifier: 0.11.0
-        version: 0.11.0
+        version: 0.11.0(patch_hash=555d85c210337d79042004f55773030fbd9d9e1c1e28bee6698bedbfa71f77a4)
       '@lit/context':
         specifier: 1.1.6
         version: 1.1.6
@@ -908,7 +916,7 @@ importers:
         version: 8.21.3
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -955,7 +963,7 @@ importers:
         version: 8.21.3
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1008,7 +1016,7 @@ importers:
         version: 0.3.3
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1103,7 +1111,7 @@ importers:
         version: 1.3.33
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1119,7 +1127,7 @@ importers:
     dependencies:
       '@discord/embedded-app-sdk':
         specifier: 2.5.0
-        version: 2.5.0
+        version: 2.5.0(patch_hash=571102cd0329706f1c9edf2dd5cd7f50bfcb8c4336809c961e0c12f43760ab87)
       '@discordjs/voice':
         specifier: 0.19.2
         version: 0.19.2(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)
@@ -1143,7 +1151,7 @@ importers:
         version: 8.21.3
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1227,7 +1235,7 @@ importers:
         version: 1.3.33
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1259,7 +1267,7 @@ importers:
         version: 1.3.33
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1309,7 +1317,7 @@ importers:
     dependencies:
       '@google/genai':
         specifier: 2.23.0
-        version: 2.23.0(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6))(supports-color@10.2.2)
+        version: 2.23.0(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))(supports-color@10.2.2)
       dotenv:
         specifier: 17.4.2
         version: 17.4.2
@@ -1344,7 +1352,7 @@ importers:
         version: 11.1.0(supports-color@10.2.2)
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1403,7 +1411,7 @@ importers:
         version: 1.3.33
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1422,7 +1430,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1450,7 +1458,7 @@ importers:
         version: 1.3.33
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1463,7 +1471,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1553,7 +1561,7 @@ importers:
         version: 1.3.33
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1566,7 +1574,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1607,7 +1615,7 @@ importers:
         version: 21.2.0
       openai:
         specifier: 7.17.0
-        version: 7.17.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.6.6)
+        version: 7.17.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       typebox:
         specifier: 1.3.33
         version: 1.3.33
@@ -1654,7 +1662,7 @@ importers:
         version: 2.9.1
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/memory-core':
         specifier: workspace:*
@@ -1754,7 +1762,7 @@ importers:
         version: 1.3.33
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@microsoft/teams.common':
         specifier: 2.1.0
@@ -1776,7 +1784,7 @@ importers:
         version: 0.8.0
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1786,7 +1794,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1802,7 +1810,7 @@ importers:
         version: 2.25.2(typescript@7.0.2)
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1898,7 +1906,7 @@ importers:
         version: 8.21.3
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1932,7 +1940,7 @@ importers:
         version: 7.3.2
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1979,7 +1987,7 @@ importers:
         version: 1.3.33
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -1995,7 +2003,7 @@ importers:
         version: 1.42.0(vitest@5.0.1)
       '@modelcontextprotocol/sdk':
         specifier: 1.32.0
-        version: 1.32.0(supports-color@10.2.2)(zod@4.6.6)
+        version: 1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       '@openclaw/crabline':
         specifier: 0.1.27
         version: 0.1.27
@@ -2013,7 +2021,7 @@ importers:
         version: 2.9.1
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/crabbox-provider':
         specifier: workspace:*
@@ -2065,7 +2073,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2087,7 +2095,7 @@ importers:
         version: 2.4.0
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2133,7 +2141,7 @@ importers:
         version: 8.21.3
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2161,7 +2169,7 @@ importers:
         version: 8.10.2
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2174,7 +2182,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2190,7 +2198,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2216,7 +2224,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2260,7 +2268,7 @@ importers:
         version: 8.10.2
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2288,7 +2296,7 @@ importers:
         version: 3.0.0
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2335,7 +2343,7 @@ importers:
         version: 8.2.0(@twurple/auth@8.2.0)
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2376,7 +2384,7 @@ importers:
         version: 1.3.33
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2398,7 +2406,7 @@ importers:
         version: 8.21.3
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2442,7 +2450,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2483,7 +2491,7 @@ importers:
         version: 1.3.33
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/gateway-client':
         specifier: workspace:*
@@ -2527,7 +2535,7 @@ importers:
     dependencies:
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2546,7 +2554,7 @@ importers:
         version: 2.2.0
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -2593,16 +2601,16 @@ importers:
     dependencies:
       '@anthropic-ai/sdk':
         specifier: 0.126.0
-        version: 0.126.0(zod@4.6.6)
+        version: 0.126.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       '@google/genai':
         specifier: 2.23.0
-        version: 2.23.0(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6))(supports-color@10.2.2)
+        version: 2.23.0(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))(supports-color@10.2.2)
       '@mistralai/mistralai':
         specifier: 2.7.0
         version: 2.7.0(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
       openai:
         specifier: 7.17.0
-        version: 7.17.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.6.6)
+        version: 7.17.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       partial-json:
         specifier: 0.1.7
         version: 0.1.7
@@ -2729,7 +2737,7 @@ importers:
         version: link:../normalization-core
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
   packages/net-policy:
     dependencies:
@@ -2833,7 +2841,7 @@ importers:
         version: 2.2.0
       '@modelcontextprotocol/ext-apps':
         specifier: 2.0.0
-        version: 2.0.0(@modelcontextprotocol/client@2.2.0)(@modelcontextprotocol/core@2.2.0)(zod@4.6.6)
+        version: 2.0.0(@modelcontextprotocol/client@2.2.0)(@modelcontextprotocol/core@2.2.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       '@noble/ed25519':
         specifier: 3.2.0
         version: 3.2.0
@@ -2926,7 +2934,7 @@ importers:
         version: 1.3.1
       zod:
         specifier: 4.6.6
-        version: 4.6.6
+        version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     devDependencies:
       '@types/markdown-it':
         specifier: 14.2.0
@@ -10323,9 +10331,6 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
   zod@4.6.6:
     resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
 
@@ -10334,47 +10339,46 @@ packages:
 
 snapshots:
 
-  '@a2ui/lit@0.11.0(signal-polyfill@0.2.2)':
+  '@a2ui/lit@0.11.0(patch_hash=9a47b40034e70009f23bd5378c746b188fc4afcf2ab420b7dab8f7d250ef032a)(signal-polyfill@0.2.2)':
     dependencies:
-      '@a2ui/web_core': 0.11.0
+      '@a2ui/web_core': 0.11.0(patch_hash=555d85c210337d79042004f55773030fbd9d9e1c1e28bee6698bedbfa71f77a4)
       '@lit-labs/signals': 0.3.0
       '@lit/context': 1.1.6
       lit: 3.3.3
       signal-utils: 0.21.1(signal-polyfill@0.2.2)
-      zod: 3.25.76
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     transitivePeerDependencies:
       - signal-polyfill
 
-  '@a2ui/web_core@0.11.0':
+  '@a2ui/web_core@0.11.0(patch_hash=555d85c210337d79042004f55773030fbd9d9e1c1e28bee6698bedbfa71f77a4)':
     dependencies:
       '@lit/context': 1.1.6
       '@preact/signals-core': 1.14.4
       date-fns: 4.4.0
       lit: 3.3.3
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.2(zod@3.25.76)
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
-  '@agentclientprotocol/claude-agent-acp@0.78.0(@anthropic-ai/sdk@0.126.0(zod@4.6.6))(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6))':
+  '@agentclientprotocol/claude-agent-acp@0.78.0(@anthropic-ai/sdk@0.126.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))':
     dependencies:
-      '@agentclientprotocol/sdk': 1.4.0(zod@4.6.6)
-      '@anthropic-ai/claude-agent-sdk': 0.3.270(@anthropic-ai/sdk@0.126.0(zod@4.6.6))(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6))(zod@4.6.6)
-      zod: 4.6.6
+      '@agentclientprotocol/sdk': 1.4.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
+      '@anthropic-ai/claude-agent-sdk': 0.3.270(@anthropic-ai/sdk@0.126.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
       - '@modelcontextprotocol/sdk'
 
   '@agentclientprotocol/codex-acp@1.12.0':
     dependencies:
-      '@agentclientprotocol/sdk': 1.4.0(zod@4.6.6)
+      '@agentclientprotocol/sdk': 1.4.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       '@openai/codex': 0.155.1
       diff: 9.0.0
       open: 11.0.4
       vscode-jsonrpc: 9.0.2
-      zod: 4.6.6
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
-  '@agentclientprotocol/sdk@1.4.0(zod@4.6.6)':
+  '@agentclientprotocol/sdk@1.4.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))':
     dependencies:
-      zod: 4.6.6
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
   '@antfu/install-pkg@2.1.0':
     dependencies:
@@ -10405,11 +10409,11 @@ snapshots:
   '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.270':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk@0.3.270(@anthropic-ai/sdk@0.126.0(zod@4.6.6))(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6))(zod@4.6.6)':
+  '@anthropic-ai/claude-agent-sdk@0.3.270(@anthropic-ai/sdk@0.126.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))':
     dependencies:
-      '@anthropic-ai/sdk': 0.126.0(zod@4.6.6)
-      '@modelcontextprotocol/sdk': 1.32.0(supports-color@10.2.2)(zod@4.6.6)
-      zod: 4.6.6
+      '@anthropic-ai/sdk': 0.126.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
+      '@modelcontextprotocol/sdk': 1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     optionalDependencies:
       '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.3.270
       '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.3.270
@@ -10420,16 +10424,16 @@ snapshots:
       '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.270
       '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.270
 
-  '@anthropic-ai/sdk@0.126.0(zod@4.6.6)':
+  '@anthropic-ai/sdk@0.126.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))':
     dependencies:
       json-schema-to-ts: 3.1.1
       standardwebhooks: 1.1.1
     optionalDependencies:
-      zod: 4.6.6
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
-  '@anthropic-ai/vertex-sdk@0.19.9(supports-color@10.2.2)(zod@4.6.6)':
+  '@anthropic-ai/vertex-sdk@0.19.9(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))':
     dependencies:
-      '@anthropic-ai/sdk': 0.126.0(zod@4.6.6)
+      '@anthropic-ai/sdk': 0.126.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       google-auth-library: 11.1.0(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
@@ -11428,7 +11432,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@discord/embedded-app-sdk@2.5.0':
+  '@discord/embedded-app-sdk@2.5.0(patch_hash=571102cd0329706f1c9edf2dd5cd7f50bfcb8c4336809c961e0c12f43760ab87)':
     dependencies:
       '@types/lodash.transform': 4.6.9
       '@types/uuid': 10.0.0
@@ -11437,7 +11441,7 @@ snapshots:
       eventemitter3: 5.0.4
       lodash.transform: 4.6.0
       uuid: 14.0.2
-      zod: 3.25.76
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
   '@discordjs/voice@0.19.2(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)':
     dependencies:
@@ -11610,7 +11614,7 @@ snapshots:
     dependencies:
       koffi: 3.3.0
       vscode-jsonrpc: 8.2.1
-      zod: 4.6.6
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     optionalDependencies:
       '@github/copilot-sdk-darwin-arm64': 1.0.14
       '@github/copilot-sdk-darwin-x64': 1.0.14
@@ -11621,14 +11625,14 @@ snapshots:
       '@github/copilot-sdk-win32-arm64': 1.0.14
       '@github/copilot-sdk-win32-x64': 1.0.14
 
-  '@google/genai@2.23.0(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6))(supports-color@10.2.2)':
+  '@google/genai@2.23.0(@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)))(supports-color@10.2.2)':
     dependencies:
       google-auth-library: 10.9.1(supports-color@10.2.2)
       p-retry: 4.6.2
       protobufjs: 8.8.0
       ws: 8.21.3
     optionalDependencies:
-      '@modelcontextprotocol/sdk': 1.32.0(supports-color@10.2.2)(zod@4.6.6)
+      '@modelcontextprotocol/sdk': 1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -12121,8 +12125,8 @@ snapshots:
     dependencies:
       '@opentelemetry/semantic-conventions': 1.43.0
       ws: 8.21.3
-      zod: 4.6.6
-      zod-to-json-schema: 3.25.2(zod@4.6.6)
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
+      zod-to-json-schema: 3.25.2(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/resources': 2.11.0(@opentelemetry/api@1.9.1)
@@ -12139,20 +12143,20 @@ snapshots:
       eventsource-parser: 3.1.1
       jose: 6.2.12
       pkce-challenge: 5.0.1
-      zod: 4.6.6
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
   '@modelcontextprotocol/core@2.2.0':
     dependencies:
-      zod: 4.6.6
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
-  '@modelcontextprotocol/ext-apps@2.0.0(@modelcontextprotocol/client@2.2.0)(@modelcontextprotocol/core@2.2.0)(zod@4.6.6)':
+  '@modelcontextprotocol/ext-apps@2.0.0(@modelcontextprotocol/client@2.2.0)(@modelcontextprotocol/core@2.2.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))':
     dependencies:
       '@modelcontextprotocol/client': 2.2.0
       '@modelcontextprotocol/core': 2.2.0
       '@standard-schema/spec': 1.1.0
-      zod: 4.6.6
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
-  '@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6)':
+  '@modelcontextprotocol/sdk@1.32.0(supports-color@10.2.2)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))':
     dependencies:
       '@hono/node-server': 2.1.1(hono@4.13.8)
       ajv: 8.20.0
@@ -12169,8 +12173,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.6.6
-      zod-to-json-schema: 3.25.2(zod@4.6.6)
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
+      zod-to-json-schema: 3.25.2(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
     transitivePeerDependencies:
       - supports-color
 
@@ -12281,7 +12285,7 @@ snapshots:
       re2js: 2.8.6
       ws: 8.21.3
       yaml: 2.9.1
-      zod: 4.6.6
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -14058,12 +14062,12 @@ snapshots:
 
   acpx@0.19.1:
     dependencies:
-      '@agentclientprotocol/sdk': 1.4.0(zod@4.6.6)
+      '@agentclientprotocol/sdk': 1.4.0(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       '@openclaw/fs-safe': 0.12.0
       commander: 15.0.0
       skillflag: 0.2.1
       tsx: 4.23.13
-      zod: 4.6.6
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-buffer
@@ -16782,14 +16786,14 @@ snapshots:
       - encoding
     optional: true
 
-  openai@7.17.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.6.6):
+  openai@7.17.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)):
     optionalDependencies:
       '@aws-sdk/credential-provider-node': 3.972.83
       '@smithy/hash-node': 4.5.2
       '@smithy/signature-v4': 5.7.3
       undici: 8.10.2
       ws: 8.21.3
-      zod: 4.6.6
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
   oxfmt@0.68.0:
     dependencies:
@@ -18347,16 +18351,10 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  zod-to-json-schema@3.25.2(zod@3.25.76):
+  zod-to-json-schema@3.25.2(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)):
     dependencies:
-      zod: 3.25.76
+      zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
-  zod-to-json-schema@3.25.2(zod@4.6.6):
-    dependencies:
-      zod: 4.6.6
-
-  zod@3.25.76: {}
-
-  zod@4.6.6: {}
+  zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2): {}
 
   zwitch@2.0.4: {}
