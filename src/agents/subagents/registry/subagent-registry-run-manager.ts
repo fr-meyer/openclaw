@@ -7,6 +7,7 @@ import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { runWithGatewayIndependentRootWorkAdmission } from "../../../process/gateway-work-admission.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
+import type { ManagedFlowNativeKillClaim } from "../../../tasks/managed-task-flow-kill-claim.worker.js";
 import { withSubagentOutcomeTiming } from "../announce/subagent-announce-output.js";
 import {
   clearPublishedSwarmCollectorOutput,
@@ -91,6 +92,7 @@ class SubagentRunManager extends SubagentLaunchManager {
     suppressTaskDelivery?: boolean;
     assertCurrent?: () => void;
     context?: OpenClawStateWorkerContext;
+    managedFlowKillClaim?: ManagedFlowNativeKillClaim;
   }): Promise<SubagentRunRecord["killIntent"]> => {
     const runId = claimParams.runId.trim();
     const claim = {
@@ -128,6 +130,7 @@ class SubagentRunManager extends SubagentLaunchManager {
         runs: this.options.runs,
         context,
         pendingKillClaim: claimParams.expected,
+        managedFlowKillClaim: claimParams.managedFlowKillClaim,
         assertCurrent: assertClaimCurrent,
       },
     );

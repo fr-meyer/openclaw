@@ -32,8 +32,13 @@ import {
   createSessionEventSubscriberRegistry,
   createSessionMessageSubscriberRegistry,
 } from "./server-chat-state.js";
-import { handleGatewayRequest } from "./server-methods.js";
-import type { GatewayRequestContext, GatewayRequestHandler } from "./server-methods/types.js";
+import { coreGatewayHandlers, handleGatewayRequest } from "./server-methods.js";
+import type {
+  GatewayClient,
+  GatewayRequestContext,
+  GatewayRequestHandler,
+  GatewayRequestHandlerOptions,
+} from "./server-methods/types.js";
 import { createGatewayRequestContext } from "./server-request-context.js";
 import {
   makeContextParams,
@@ -60,6 +65,136 @@ function makeDeviceClient(connId: string, deviceId: string, role = "primary") {
 }
 
 describe("createGatewayRequestContext", () => {
+  function workerNamespaceRequest() {
+    const connection = new AbortController();
+    const client: GatewayClient = {
+      ...makeGatewayClient({
+        connId: "namespace-connection",
+        clientId: GATEWAY_CLIENT_IDS.CLI,
+        scopes: ["operator.read"],
+      }),
+      authenticatedMethod: "token",
+      gatewayBootId: "namespace-boot",
+      connectionSignal: connection.signal,
+      internal: { authenticatedOperator: true },
+    };
+    const respond = vi.fn();
+    const request: GatewayRequestHandlerOptions = {
+      req: { type: "req", id: "namespace", method: "gateway.workerNamespace.get" },
+      params: {},
+      client,
+      respond,
+      context: createGatewayRequestContext(
+        makeContextParams({ nodeWorkerGatewayNamespace: "gateway-owned-namespace" }),
+      ),
+      isWebchatConnect: () => false,
+      hasCurrentClientAuthority: () => true,
+    };
+    const handler = coreGatewayHandlers["gateway.workerNamespace.get"];
+    if (!handler) {
+      throw new Error("worker namespace handler is not registered");
+    }
+    return { request, client, respond, connection, handler };
+  }
+
+  it("carries the startup worker namespace into the registered authenticated read", async () => {
+    const { request, respond, handler } = workerNamespaceRequest();
+    await handler(request);
+    expect(respond).toHaveBeenCalledExactlyOnceWith(
+      true,
+      { bootId: "namespace-boot", namespace: "gateway-owned-namespace" },
+      undefined,
+    );
+  });
+
+  it.each([
+    "missing-client",
+    "node-role",
+    "unattested-operator",
+    "unauthenticated",
+    "missing-auth-method",
+    "missing-read-scope",
+    "missing-connection",
+    "missing-boot",
+    "missing-lifetime",
+    "retired-connection",
+    "invalidated-client",
+    "cancelled-request",
+    "lost-authority",
+    "missing-authority",
+  ] as const)("refuses worker namespace disclosure for %s", async (state) => {
+    const { request, client, respond, connection, handler } = workerNamespaceRequest();
+    switch (state) {
+      case "missing-client":
+        request.client = null;
+        break;
+      case "node-role":
+        client.connect.role = "node";
+        break;
+      case "unattested-operator":
+        client.internal = undefined;
+        break;
+      case "unauthenticated":
+        client.authenticatedMethod = "none";
+        break;
+      case "missing-auth-method":
+        client.authenticatedMethod = undefined;
+        break;
+      case "missing-read-scope":
+        client.connect.scopes = ["operator.admin"];
+        break;
+      case "missing-connection":
+        client.connId = undefined;
+        break;
+      case "missing-boot":
+        client.gatewayBootId = undefined;
+        break;
+      case "missing-lifetime":
+        client.connectionSignal = undefined;
+        break;
+      case "retired-connection":
+        connection.abort();
+        break;
+      case "invalidated-client":
+        client.invalidated = true;
+        break;
+      case "cancelled-request":
+        request.signal = AbortSignal.abort();
+        break;
+      case "lost-authority":
+        request.hasCurrentClientAuthority = () => false;
+        break;
+      case "missing-authority":
+        request.hasCurrentClientAuthority = undefined;
+        break;
+    }
+    await handler(request);
+    expect(respond).toHaveBeenCalledExactlyOnceWith(
+      false,
+      undefined,
+      expect.objectContaining({ code: "FORBIDDEN", message: "verified read unavailable" }),
+    );
+  });
+
+  it("refuses caller-selected namespace parameters and absent runtime ownership", async () => {
+    const { request, respond, handler } = workerNamespaceRequest();
+    request.params = { namespace: "caller-controlled" };
+    await handler(request);
+    expect(respond).toHaveBeenLastCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ code: "INVALID_REQUEST" }),
+    );
+    request.params = {};
+    request.context.nodeWorkerGatewayNamespace = undefined;
+    await handler(request);
+    expect(respond).toHaveBeenLastCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ code: "UNAVAILABLE", message: "worker namespace unavailable" }),
+    );
+  });
+
   it("keeps startup observation bound to copied contexts after transport context loss", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       vi.useFakeTimers();

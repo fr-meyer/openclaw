@@ -216,7 +216,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // -8: retired Skill Workshop proposal hook types.
       // +3: approved async session entry reads and typed incognito refusal on the existing subpath.
       // +1: deprecated createSessionHeaderLink retained from shipped 2026.10.1.
-      3645,
+      // +1: retain the fork's CONFIG_MUTATION_CAPABILITIES durable-backup contract.
+      3646,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(

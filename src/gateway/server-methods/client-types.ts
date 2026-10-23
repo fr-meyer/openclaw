@@ -31,6 +31,8 @@ export type GatewayNodeInvokeStream = {
 export type GatewayClient = Pick<
   GatewayWsClient,
   | "connect"
+  | "authenticatedMethod"
+  | "gatewayBootId"
   | "authPolicy"
   | "invalidated"
   | "connectionSignal"
@@ -70,6 +72,7 @@ export type GatewayClient = Pick<
     allowModelOverride?: boolean;
     cronRunContinuation?: boolean;
     pluginRuntimeOwnerId?: string;
+    managedFlowLaunch?: import("../../tasks/managed-task-flow-kill-claim.worker.js").ManagedFlowNativeLaunchAuthority;
     /** Host-attested session provenance for a trusted official plugin node invocation. */
     nodeInvokeApprovalSessionKey?: string;
     /** Plugin-owned in-process invoke hooks; never accepted from Gateway wire params. */

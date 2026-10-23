@@ -5,6 +5,15 @@ import { pathToFileURL } from "node:url";
 import { globSync as nativeGlobSync } from "tinyglobby";
 import { fullSuiteVitestShards } from "./vitest/vitest.test-shards.mjs";
 
+/** These node:test suites run directly rather than through Vitest discovery. */
+export const standaloneNodeTestFiles = [
+  "scripts/docker/package-current-publisher.test.mjs",
+  "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+  "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs",
+  "test/mcp-nowistay-schema-compatibility.test.mjs",
+  "test/mcp-nowistay-sdk-regression.test.mjs",
+] as const;
+
 type VitestTestConfig = {
   dir?: string;
   exclude?: string[];
@@ -110,6 +119,7 @@ async function listFullSuiteTestFileMatches(): Promise<Map<string, string[]>> {
 
 function listNormalFullSuiteTestFiles(): string[] {
   const e2eNamedIntegrationTests = new Set(["src/gateway/gateway.test.ts"]);
+  const standaloneNodeTests = new Set<string>(standaloneNodeTestFiles);
   return globSync(["**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"], {
     cwd: process.cwd(),
     exclude: ["**/.*/**", "**/dist/**", "**/node_modules/**", "**/vendor/**"],
@@ -120,6 +130,7 @@ function listNormalFullSuiteTestFiles(): string[] {
         !file.includes(".live.test.") &&
         !file.includes(".e2e.test.") &&
         !file.startsWith("test/fixtures/") &&
+        !standaloneNodeTests.has(file) &&
         !e2eNamedIntegrationTests.has(file),
     )
     .toSorted((left, right) => left.localeCompare(right));

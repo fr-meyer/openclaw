@@ -63,6 +63,7 @@ import type { SessionUpstreamLink } from "../sessions/session-upstream-links.ker
 import type { SessionUpstreamWorkerOperations } from "../sessions/session-upstream-links.worker-contract.js";
 import type { DeviceAuthEntry } from "../shared/device-auth.js";
 import type { SkillUploadWorkerOperations } from "../skills/lifecycle/upload-store.worker-contract.js";
+import type { ManagedTaskFlowWorkerOperations } from "../tasks/managed-task-flow-contract.js";
 import type { TranscriptReadOperations } from "../transcripts/store-worker-contract.js";
 import type { TuiLastSessionWorkerOperations } from "../tui/tui-last-session.contract.js";
 import type { AgentProvenance } from "./agent-provenance.types.js";
@@ -79,7 +80,8 @@ import type { UserPreferenceWorkerOperations } from "./user-preferences.types.js
 export type OpenClawStateWorkerOpenPreparation = { type: "deviceIdentity"; identityKey: string };
 
 /** Commands share one physical shared-state actor; bindings belong to commands, not open input. */
-export type OpenClawStateWorkerOperations = RegisteredStateWorkerOperations &
+export type OpenClawStateWorkerOperations = ManagedTaskFlowWorkerOperations &
+  RegisteredStateWorkerOperations &
   RestartLifecycleWorkerOperations &
   SandboxRegistryOperations &
   WorktreeTemplateWorkerOperations &

@@ -1,0 +1,30 @@
+{
+  "schema": "openclaw-v105-source-preparation-v1",
+  "status": "SOURCE_ONLY_UNQUALIFIED",
+  "productionEligible": false,
+  "upstream": {
+    "tag": "v2026.10.5",
+    "tagObject": "9171d0a427738902efd811c648325cf54116743c",
+    "commit": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "tree": "a138559698570e238395121723a773106ac33f8c"
+  },
+  "carryForward": {
+    "v99UpstreamBase": "bcfc88812a35243893585dbeca87ca41b48272ca",
+    "v99ForkSource": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+    "reconciliation": "COMPLETE_SOURCE",
+    "qualificationTransferred": false
+  },
+  "publisher": {
+    "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle",
+    "packageName": "@fr-meyer/openclaw-mergeguez-pr-lifecycle",
+    "packageVersion": "0.1.1",
+    "runtimeSha256": "31377ee1c1873d1496e75973e25fc3b0f85c1ff4a83943da23955fada02ecaf9",
+    "activation": "INERT_SOURCE_ONLY"
+  },
+  "deployment": {
+    "build": "NOT_RUN",
+    "runtime": "NOT_RUN",
+    "production": "UNCHANGED",
+    "rollback": "NOT_PROVEN_ON_10_5"
+  }
+}

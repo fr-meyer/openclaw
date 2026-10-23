@@ -160,6 +160,43 @@ describe("maintenance lease heartbeat", () => {
     });
   });
 
+  it("renews a process-bound maintenance lease while the parent is inside long agent work", async () => {
+    await withOpenClawTestState(
+      { label: "maintenance-process-bound-agent-work" },
+      async (state) => {
+        await withOpenClawStateLease(
+          { ...options(state.env), processBound: true, leaseMs: 1_500 },
+          async (lease) => {
+            const before = readLease(state.env);
+            block(2_600);
+            expect(() => lease.assertOwned()).not.toThrow();
+            expect(lease.signal.aborted).toBe(false);
+            expect(Number(readLease(state.env)?.expires_at)).toBeGreaterThan(
+              Number(before?.expires_at),
+            );
+          },
+        );
+      },
+    );
+  });
+
+  it("refuses a process-bound lease after shared-state write contention exceeds its expiry", async () => {
+    await withOpenClawTestState(
+      { label: "maintenance-process-bound-expired-lock" },
+      async (state) => {
+        await expect(
+          withOpenClawStateLease(
+            { ...options(state.env), processBound: true, leaseMs: 1_500 },
+            async (lease) => {
+              runOpenClawStateWriteTransaction(() => block(2_600), { env: state.env });
+              lease.assertOwned();
+            },
+          ),
+        ).rejects.toMatchObject({ code: "OPENCLAW_STATE_LEASE_LOST" });
+      },
+    );
+  });
+
   it("renews through transient state contention before the maintenance lease expires", async () => {
     await withOpenClawTestState({ label: "maintenance-lease-contention" }, async (state) => {
       const database = openOpenClawStateDatabase({ env: state.env });

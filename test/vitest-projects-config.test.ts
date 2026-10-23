@@ -1,4 +1,5 @@
 // Vitest project config tests validate aggregate Vitest project wiring.
+import { spawnSync } from "node:child_process";
 import { globSync } from "node:fs";
 import path from "node:path";
 import { afterEach, assert, describe, expect, it } from "vitest";
@@ -9,7 +10,10 @@ import { withEnv } from "../src/test-utils/env.js";
 import { spawnNodeEvalSync } from "../src/test-utils/node-process.js";
 import { createPatternFileHelper } from "./helpers/pattern-file.js";
 import { normalizeConfigPath, normalizeConfigPaths } from "./helpers/vitest-config-paths.js";
-import { auditFullSuiteTestFileOwnership } from "./vitest-projects-config.test-support.js";
+import {
+  auditFullSuiteTestFileOwnership,
+  standaloneNodeTestFiles,
+} from "./vitest-projects-config.test-support.js";
 import { createAgentsSupportVitestConfig } from "./vitest/vitest.agents-support.config.ts";
 import bundledConfig from "./vitest/vitest.bundled.config.ts";
 import baseConfig from "./vitest/vitest.config.ts";
@@ -96,6 +100,14 @@ afterEach(() => {
 });
 
 describe("projects vitest config", () => {
+  it("executes the standalone Node test suites", () => {
+    const result = spawnSync(
+      process.execPath,
+      ["--test", "--test-concurrency=1", ...standaloneNodeTestFiles],
+      { cwd: path.resolve("."), encoding: "utf8", timeout: 60_000 },
+    );
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+  }, 60_000);
   it("pins an explicit full-suite project worker limit", () => {
     withEnv({ OPENCLAW_VITEST_MAX_WORKERS: "8" }, () => {
       const config = requireTestConfig(

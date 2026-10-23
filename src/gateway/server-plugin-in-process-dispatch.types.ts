@@ -2,6 +2,7 @@ import type { AdmittedRunOperatorAuthority } from "../agents/admitted-run-contex
 import type { SubagentCompletionToolHandoffRegistration } from "../agents/subagents/announce/subagent-announce-handoff.js";
 import type { PluginSubagentRequesterContext } from "../plugins/runtime/subagent-requester-context.js";
 import type { RuntimePluginToolGrant } from "../plugins/runtime/tool-grant.js";
+import type { ManagedFlowNativeLaunchAuthority } from "../tasks/managed-task-flow-kill-claim.worker.js";
 import type { RequesterSettleWakeReplay } from "./agent-turn/internal-facade.types.js";
 import type { GatewayOperatorRoleActor } from "./server-methods/shared-types.js";
 import type {
@@ -38,6 +39,7 @@ export type DispatchGatewayMethodInProcessOptions = {
   onSignalAbort?: () => Promise<void> | void;
   operatorRoleActor?: GatewayOperatorRoleActor;
   pluginRuntimeOwnerId?: string;
+  managedFlowLaunch?: ManagedFlowNativeLaunchAuthority;
   pluginSubagentRequester?: PluginSubagentRequesterContext;
   runtimePluginToolGrant?: RuntimePluginToolGrant;
   pluginSubagentToolsAllow?: string[];

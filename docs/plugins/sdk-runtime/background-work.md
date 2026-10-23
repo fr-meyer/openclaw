@@ -98,6 +98,7 @@ Start agent work in the background: hook-dispatched turns for external content a
       promptMode: "minimal", // optional bounded subagent prompt
       provider: "openai", // optional override
       model: "gpt-6-astra", // optional override
+      runTimeoutSeconds: 180, // optional Gateway run deadline, not the wait deadline
       deliver: false,
       completionDelivery: "current-requester", // optional, before_dispatch hooks only
     });
@@ -120,6 +121,8 @@ Start agent work in the background: hook-dispatched turns for external content a
     Gateway-backed runs return the canonical accepted `sessionKey` alongside `runId`. The field is optional in the TypeScript result only so explicit custom runtimes remain compatible.
 
     `waitForRun(...)` returns the canonical Gateway wait result. `status` is `"ok"`, `"error"`, `"timeout"`, or `"pending"`; pending is a normal nonterminal observation, not an exception. Optional `error`, `startedAt`, `endedAt`, `stopReason`, `livenessState`, `yielded`, `pendingError`, `timeoutPhase`, `providerStarted`, and `terminalReply` metadata is preserved so callers can distinguish observation timeouts from terminal outcomes. `timeoutMs` bounds the wait call; it does not cancel the run.
+
+    `runTimeoutSeconds` sets the Gateway agent command's run deadline. It must be a nonnegative safe integer. It is independent of the `waitForRun` observation timeout.
 
     <Warning>
     Outside an authorized Gateway request, model overrides require operator opt-in via `plugins.entries.<id>.subagent.allowModelOverride: true` in config. Plugins without that opt-in can use the configured model, but override requests are rejected.
@@ -151,6 +154,44 @@ Start agent work in the background: hook-dispatched turns for external content a
   </Accordion>
 </AccordionGroup>
 
+## Released controller state compatibility
+
+`api.runtime.tasks` is a narrow compatibility capability for an installed
+controller using managed flows. Check `availability.managedFlows` and
+`availability.taskRuns`, then bind `managedFlows.bindSession({ sessionKey })` or
+`runs.bindSession({ sessionKey, agentId })` inside the original Gateway and
+plugin owner. Await `close()` when the bound work ends. Calls retain the
+original session and plugin authority; a saved session key or flow ID cannot
+recreate that authority after replacement.
+
+`availability.controllerParity` remains `false` while the installed controller's
+full caller and native run behavior is being qualified. An
+installed controller that requires full parity stays inert while this flag is
+false; owner-bound flow and run observations remain available for preparation.
+Configured status agents may inspect only that controller's flows for its exact
+configured owner roster. A reporting worker may mutate only its claimed flow
+while its original labeled native run and generation remain current; the shared
+state worker checks that proof in the same transaction as the flow revision.
+An owner may observe a worker session's native run only while its exact
+configured controller flow still claims that child, run, and task, and the
+native run names that owner as its requester. A native
+root cancellation also requires the unchanged flow revision and native run
+generation in the kill-intent transaction; it never extends to descendants.
+General foreign session reads and arbitrary foreign run cancellation remain
+unavailable.
+
+For new publisher launches, the bridge records the current flow owner as the
+native requester during one-use, revision-bound registration. A lost launch
+reply retains the unknown outcome and the atomic flow-to-run link for recovery.
+Older runs registered with the worker agent's main session as requester lack
+that link and remain unavailable for cross-owner recovery or cancellation.
+
+Managed flows read and mutate existing `flow_runs` rows through the shared-state
+worker. `runs.get` and `runs.list` observe existing task and native subagent
+runs; `runs.cancel` requires an exact current native run. The capability does
+not create canonical tasks or launch workers. Unknown or incomplete delivery
+observations remain observations and must not trigger a replayed send.
+
 ## Native harness completion delivery
 
 Bundled harnesses use `openclaw/plugin-sdk/agent-harness-completion` to route
@@ -160,7 +201,8 @@ and a live `isSourceSessionAdmissionAllowed` callback. Keep the callback bound
 to the exact native assignment and its current parent. Requester identity and
 admission are rechecked after awaited routing and before new effects.
 Native runtime history, cancellation, and submission receipts remain owned by
-the harness; there is no generic task registry or managed-flow API.
+the harness. The controller compatibility capability above does not replace
+those owners or supply a generic task registry.
 
 For detached native work, await `captureAgentHarnessCompletionCustody(scope)`
 during the admitting parent registration, before publishing the registration or

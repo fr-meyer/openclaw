@@ -6,6 +6,7 @@ import type { ChatAbortControllerEntry } from "../../../gateway/chat-abort.types
 import { formatErrorMessage } from "../../../infra/errors.js";
 import { hasSqliteWorkerOutcomeUnknown } from "../../../infra/sqlite-worker-contract.js";
 import { getGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
+import type { ManagedFlowNativeKillClaim } from "../../../tasks/managed-task-flow-kill-claim.worker.js";
 import { resolveSubagentRequesterAgentId } from "../../subagent-requester-owner.js";
 import { captureSubagentCommands } from "./subagent-control-commands.js";
 import { mutateSubagentRunForKill } from "./subagent-control-kill-runtime.js";
@@ -151,6 +152,7 @@ async function killLatestSubagentRun(params: {
   beforeSessionKill?: () => boolean;
   expectedGeneration?: number;
   expectedOwnerKey?: string;
+  managedFlowKillClaim?: ManagedFlowNativeKillClaim;
   commands?: ReturnType<typeof captureSubagentCommands>;
   onKilled?: (entry: SubagentRunRecord) => void;
 }): Promise<{
@@ -196,6 +198,7 @@ async function killLatestSubagentRun(params: {
         session,
         stateContext: scope.stateContext,
         cancellationControl,
+        managedFlowKillClaim: params.managedFlowKillClaim,
         isCurrent: (candidate, requirePreparedSession) =>
           tree.isCurrent(candidate, requirePreparedSession) && matchesExpected(candidate),
         withdrawQueuedReservation: () => tree.dispatchHold?.withdraw(),
@@ -428,7 +431,12 @@ async function killSubagentRoot(params: Parameters<typeof killLatestSubagentRun>
     for (let pending = params.tree.prepareRead(); pending; pending = params.tree.prepareRead()) {
       await pending;
     }
-    if (!stopped.result.superseded && !stopped.result.declined && params.tree.canTraverse()) {
+    if (
+      !params.managedFlowKillClaim &&
+      !stopped.result.superseded &&
+      !stopped.result.declined &&
+      params.tree.canTraverse()
+    ) {
       // Exact admin constraints belong only to its selected root, not each descendant.
       cascade = await killSubagentRunTree({
         suppressTaskDelivery: params.suppressTaskDelivery,
@@ -578,6 +586,7 @@ export async function killSubagentRunAdmin(
     prepareRead?: () => Promise<void> | undefined;
     beforeSessionKill?: () => boolean;
     preparePublication?: KillPublicationPreparation<SubagentAdminKillResult>;
+    managedFlowKillClaim?: ManagedFlowNativeKillClaim;
   },
 ): Promise<SubagentAdminKillResult> {
   const publish = (result: SubagentAdminKillResult): SubagentAdminKillResult => {
@@ -605,6 +614,19 @@ export async function killSubagentRunAdmin(
   ) {
     return publish({ found: false as const, killed: false as const });
   }
+  const flowClaim = control?.managedFlowKillClaim;
+  if (
+    flowClaim &&
+    (flowClaim.childSessionKey !== entry.childSessionKey ||
+      flowClaim.runId !== entry.runId ||
+      flowClaim.taskId !== (entry.taskRunId ?? entry.runId) ||
+      flowClaim.generation !== entry.generation ||
+      expectedRunId !== entry.runId ||
+      expectedTaskRunId !== (entry.taskRunId ?? entry.runId) ||
+      params.expectedGeneration !== entry.generation)
+  ) {
+    return publish({ found: false as const, killed: false as const });
+  }
 
   let rootStopSuperseded = false;
   return withSubagentKillScope<SubagentAdminKillResult>(
@@ -624,6 +646,7 @@ export async function killSubagentRunAdmin(
         beforeSessionKill: control?.beforeSessionKill,
         expectedGeneration: params.expectedGeneration,
         expectedOwnerKey: params.expectedOwnerKey?.trim() || undefined,
+        managedFlowKillClaim: control?.managedFlowKillClaim,
       });
       const { result: stopResult, cascade } = stopped;
       rootStopSuperseded = stopResult.superseded === true;

@@ -39,6 +39,8 @@ export type ConfigWriteAuditOrigin =
   | "cli";
 
 export type ConfigWriteOptions = {
+  /** Refuse publication unless an existing config has a durable prepared backup. */
+  requireBackup?: boolean;
   /** Candidate's source/runtime basis within its write snapshot; omitted inputs use active globals. */
   inputBase?: ConfigMutationBase;
   /** Semantic writer label recorded in the config audit journal. */

@@ -32,6 +32,10 @@ import type {
   OpenClawStateReadResult,
   OpenClawStateReadRequest,
 } from "../../../state/openclaw-state-read.types.js";
+import {
+  assertManagedFlowNativeKillClaimInWorker,
+  bindManagedFlowNativeLaunchInWorker,
+} from "../../../tasks/managed-task-flow-kill-claim.worker.js";
 import { rowToSubagentRunRecord } from "./subagent-registry.store.codec.js";
 import {
   conflictingSubagentRunVersions,
@@ -160,7 +164,15 @@ export function persistSubagentRunChangesInWorker(
   input: SubagentRegistryWrite,
   writeOptions: OpenClawStateDatabaseOptions & { database: OpenClawStateDatabase },
 ): SubagentRegistryWriteReceipt {
-  const { writeId, values, deleteRunIds, versions, terminalEvents = [] } = input;
+  const {
+    writeId,
+    values,
+    deleteRunIds,
+    versions,
+    terminalEvents = [],
+    managedFlowKillClaim,
+    managedFlowLaunchClaim,
+  } = input;
   const admittedRunIds = new Set(versions.map(({ runId }) => runId));
   if (
     [...values.map((row) => row.run_id), ...deleteRunIds].some(
@@ -176,6 +188,55 @@ export function persistSubagentRunChangesInWorker(
       const conflictRunIds = conflictingSubagentRunVersions(writer, versions);
       if (conflictRunIds.length > 0) {
         return { writeId, conflictRunIds };
+      }
+      if (managedFlowLaunchClaim) {
+        if (
+          values.length !== 1 ||
+          deleteRunIds.length !== 0 ||
+          versions.length !== 1 ||
+          versions[0]?.runId !== values[0]?.run_id ||
+          versions[0]?.version !== null
+        ) {
+          throw new Error("Managed flow launch admission must register one exact native run");
+        }
+        const proposed = rowToSubagentRunRecord(values[0]!);
+        if (
+          proposed?.childSessionKey !== managedFlowLaunchClaim.childSessionKey ||
+          proposed.requesterSessionKey !== managedFlowLaunchClaim.ownerKey ||
+          proposed.controllerSessionKey !== managedFlowLaunchClaim.ownerKey ||
+          proposed.label !== `plugin:${managedFlowLaunchClaim.controllerId.replace(/\/v1$/, "")}` ||
+          proposed.expectsCompletionMessage !== false
+        ) {
+          throw new Error("Managed flow launch admission does not own this native row");
+        }
+        bindManagedFlowNativeLaunchInWorker(
+          writer,
+          managedFlowLaunchClaim,
+          proposed.runId,
+          proposed.generation!,
+        );
+      }
+      if (managedFlowKillClaim) {
+        if (
+          values.length !== 1 ||
+          deleteRunIds.length !== 0 ||
+          values[0]?.run_id !== managedFlowKillClaim.runId ||
+          versions.length !== 1 ||
+          versions[0]?.runId !== managedFlowKillClaim.runId
+        ) {
+          throw new Error("Managed flow kill admission must write only its exact native root");
+        }
+        const proposed = rowToSubagentRunRecord(values[0]!);
+        if (
+          proposed?.killIntent?.reason !== "killed" ||
+          proposed.childSessionKey !== managedFlowKillClaim.childSessionKey ||
+          proposed.runId !== managedFlowKillClaim.runId ||
+          (proposed.taskRunId ?? proposed.runId) !== managedFlowKillClaim.taskId ||
+          proposed.generation !== managedFlowKillClaim.generation
+        ) {
+          throw new Error("Managed flow kill admission has no exact native kill intent");
+        }
+        assertManagedFlowNativeKillClaimInWorker(writer, managedFlowKillClaim);
       }
       const admitEvents = (stage: "transaction" | "commit") => {
         for (const [eventIndex, event] of terminalEvents.entries()) {

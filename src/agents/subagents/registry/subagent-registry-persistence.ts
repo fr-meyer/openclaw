@@ -404,6 +404,8 @@ function commitRows<T>(
       values,
       deleteRunIds: [...postimages].flatMap(([id, row]) => (row ? [] : [id])),
       versions: [...versions].map(([runId, version]) => ({ runId, version })),
+      managedFlowKillClaim: authority.managedFlowKillClaim,
+      managedFlowLaunchClaim: authority.managedFlowLaunchClaim,
       terminalEvents: planned.terminalEvents?.map(({ input }) => structuredClone(input)),
     };
     let acknowledged = false;
@@ -484,6 +486,8 @@ export async function mutateSubagentRuns<P extends SubagentRunMutation<unknown>>
   }
   pendingWrites.add(pending);
   const authority: SubagentRegistryWriteAuthority = {
+    managedFlowKillClaim: options.managedFlowKillClaim,
+    managedFlowLaunchClaim: options.managedFlowLaunchClaim,
     assertDatabase: () => assertSubagentRegistryWriteSourceCurrent(context),
     assertCurrent: () => {
       assertSubagentRegistryWriteSourceCurrent(context);

@@ -63,6 +63,7 @@ type GatewayRequestContextRuntime = Pick<
   | "nodeUnsubscribeAll"
   | "nodeRegistry"
   | "workerEnvironmentService"
+  | "nodeWorkerGatewayNamespace"
   | "hostDesktopService"
   | "gatewayComputerService"
   | "githubPublicationService"
@@ -512,6 +513,9 @@ export function createGatewayRequestContext(
       : {}),
     ...(runtime.workerEnvironmentService
       ? { workerEnvironmentService: runtime.workerEnvironmentService }
+      : {}),
+    ...(runtime.nodeWorkerGatewayNamespace
+      ? { nodeWorkerGatewayNamespace: runtime.nodeWorkerGatewayNamespace }
       : {}),
     ...(runtime.hostDesktopService ? { hostDesktopService: runtime.hostDesktopService } : {}),
     ...(runtime.gatewayComputerService

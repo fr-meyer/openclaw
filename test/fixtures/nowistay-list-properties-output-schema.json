@@ -1,0 +1,109 @@
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "Property summary objects.",
+      "items": {
+        "type": "object",
+        "description": "Privacy-minimized property operating data. Host contacts, access tokens, subscription internals, and ownership IDs are excluded.",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "propertyType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capacity": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "checkInTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkOutTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cutOffTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cutOffDays": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "defaultNightRatePrice": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultNightRateCurrency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultCleaningRate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "aiAssistantEnabled": {
+            "type": "boolean"
+          },
+          "nowistayPmsConnected": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "aiAssistantEnabled",
+          "nowistayPmsConnected"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination metadata for the returned collection.",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "items",
+    "pagination"
+  ],
+  "description": "Returns privacy-minimized eligible property summaries for the authenticated host.",
+  "additionalProperties": true
+}

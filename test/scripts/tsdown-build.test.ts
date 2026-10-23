@@ -585,6 +585,26 @@ describe("resolveTsdownBuildInvocation", () => {
     expect(result.invocations[1]?.args).not.toContain("--filter");
   });
 
+  it("serializes internal Rolldown builds only in the Docker main runtime invocation", () => {
+    expect(fs.readFileSync("Dockerfile", "utf8")).toContain(
+      "OPENCLAW_TSDOWN_SERIAL_DOCKER_RUNTIME_BUILDS=1",
+    );
+    const result = resolveTsdownBuildPlan({
+      args: [],
+      platform: "linux",
+      nodeExecPath: "/usr/bin/node",
+      env: {
+        OPENCLAW_RUN_NODE_SKIP_DTS_BUILD: "1",
+        OPENCLAW_TSDOWN_SERIAL_DOCKER_RUNTIME_BUILDS: "1",
+      },
+      cgroupMemoryLimitBytes: 8 * 1024 * 1024 * 1024,
+    });
+    expect(result.invocations).toHaveLength(2);
+    expect(result.invocations[0]?.args).not.toContain("--concurrency");
+    expect(result.invocations[1]?.args).toEqual(expect.arrayContaining(["--concurrency", "1"]));
+    expect(result.invocations[1]?.args).not.toContain("--filter");
+  });
+
   it("keeps the selected Windows runtime and literal compiler arguments", () => {
     const args = ["--format", "esm", "--concurrency", "2"];
     const result = resolveTsdownBuildInvocation({

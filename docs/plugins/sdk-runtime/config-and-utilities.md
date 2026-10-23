@@ -37,6 +37,15 @@ Use `current()`, a passed-in `cfg`, `mutateConfigFile(...)`, or
 
 For direct SDK imports, use `config-contracts` for types, `runtime-config-snapshot` for current process snapshots, and `config-mutation` for writes. The broad `openclaw/plugin-sdk/config-runtime` compatibility barrel has been removed. Read entry-scoped values from `api.pluginConfig`; use a supplied tool context only for its runtime-wide config snapshot, and keep plugin-specific merging at that boundary. Bundled plugin tests should mock these focused subpaths directly.
 
+`config-mutation` exports `CONFIG_MUTATION_CAPABILITIES.requireDurableBackup` as
+version `1` for feature negotiation. A plugin that requires a recoverable
+preimage can pass `writeOptions.requireBackup: true` to its config mutation.
+The writer then refuses publication if the current config is absent or a
+durable backup cannot be prepared and synced. Ordinary config writes retain
+their existing best-effort backup behavior. This capability flag does not
+grant write authority; the caller still needs its live owner and snapshot
+checks.
+
 When using the direct `config-mutation` import to replace a source snapshot, pass
 the edited config as `sourceConfig` to `replaceConfigFile`, retaining its `snapshot`,
 `baseHash`, `writeOptions`, and explicit `afterWrite` policy. Runtime-derived

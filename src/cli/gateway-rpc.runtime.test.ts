@@ -1,9 +1,13 @@
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { HelloOk } from "../../packages/gateway-protocol/src/schema/frames.js";
+import type { CallGatewayOptions } from "../gateway/call.js";
 import { addGatewayClientOptions } from "./gateway-rpc.js";
 import type { GatewayRpcOpts } from "./gateway-rpc.types.js";
 
-const callGatewayMock = vi.fn(async () => ({ ok: true }));
+const callGatewayMock = vi.fn(async (_opts: CallGatewayOptions): Promise<unknown> => ({
+  ok: true,
+}));
 const isImplicitLocalGatewayTargetMock = vi.fn(async () => true);
 vi.mock("../gateway/call.js", () => ({
   callGateway: callGatewayMock,
@@ -12,8 +16,11 @@ vi.mock("../gateway/call.js", () => ({
 vi.mock("./progress.js", () => ({
   withProgress: async (_options: unknown, action: () => Promise<unknown>) => await action(),
 }));
-const { callGatewayFromCliRuntime: call, isImplicitLocalGatewayTargetFromCliRuntime: classify } =
-  await import("./gateway-rpc.runtime.js");
+const {
+  callGatewayFromCliRuntime: call,
+  isImplicitLocalGatewayTargetFromCliRuntime: classify,
+  callGatewayVerifiedRead,
+} = await import("./gateway-rpc.runtime.js");
 
 beforeEach(() => {
   callGatewayMock.mockClear().mockResolvedValue({ ok: true });
@@ -120,6 +127,152 @@ describe("Gateway CLI transport", () => {
       localPortOverride: undefined,
     });
   });
+});
+
+describe("Gateway verified namespace read", () => {
+  const target = {
+    expectUrl: "wss://gateway.example/ws",
+    expectedBootId: "boot-1",
+    timeout: "12000",
+  };
+  const result = { bootId: "boot-1", namespace: "gateway-example" };
+  function hello(): HelloOk {
+    return {
+      type: "hello-ok",
+      protocol: 1,
+      server: { version: "test", bootId: "boot-1", connId: "conn-1" },
+      features: { methods: ["gateway.workerNamespace.get"], events: [] },
+      auth: { method: "token", role: "operator", scopes: ["operator.read"] },
+      snapshot: { presence: [], health: {}, stateVersion: { presence: 0, health: 0 }, uptimeMs: 0 },
+      policy: { maxPayload: 1_000_000, maxBufferedBytes: 1_000_000, tickIntervalMs: 60_000 },
+    };
+  }
+
+  it.each(["token", "password", "device-token", "tailscale", "trusted-proxy"] as const)(
+    "returns the admitted connection with %s authentication",
+    async (method) => {
+      const admitted = hello();
+      admitted.auth.method = method;
+      callGatewayMock.mockImplementationOnce(async (opts) => {
+        opts.onHelloOk?.(admitted);
+        opts.assertDispatchCurrent?.();
+        return result;
+      });
+      await expect(callGatewayVerifiedRead(target)).resolves.toEqual({
+        kind: "gateway-verified-read",
+        method: "gateway.workerNamespace.get",
+        connection: {
+          bootId: "boot-1",
+          connId: "conn-1",
+          authMethod: method,
+          role: "operator",
+          scopes: ["operator.read"],
+        },
+        result,
+      });
+      expect(callGatewayMock).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          method: "gateway.workerNamespace.get",
+          params: {},
+          expectUrl: target.expectUrl,
+          scopes: ["operator.read"],
+          requiredMethods: ["gateway.workerNamespace.get"],
+          allowLocalBackendAuthNone: false,
+          sharedStateMode: "read-only",
+          timeoutMs: 12000,
+        }),
+      );
+    },
+  );
+
+  it.each<{
+    name: string;
+    server?: Partial<HelloOk["server"]>;
+    auth?: Partial<HelloOk["auth"]>;
+  }>([
+    { name: "missing boot", server: { bootId: undefined } },
+    { name: "changed boot", server: { bootId: "boot-2" } },
+    { name: "missing connection", server: { connId: "" } },
+    { name: "non-operator role", auth: { role: "node" } },
+    { name: "missing read scope", auth: { scopes: ["operator.write"] } },
+    { name: "unauthenticated connection", auth: { method: "none" } },
+    { name: "bootstrap authentication", auth: { method: "bootstrap-token" } },
+    { name: "unattested authentication", auth: { method: undefined } },
+  ])("refuses $name before dispatch", async ({ server, auth }) => {
+    const admitted = hello();
+    const sent = vi.fn();
+    callGatewayMock.mockImplementationOnce(async (opts) => {
+      opts.onHelloOk?.({
+        ...admitted,
+        server: { ...admitted.server, ...server },
+        auth: { ...admitted.auth, ...auth },
+      });
+      opts.assertDispatchCurrent?.();
+      sent();
+      return result;
+    });
+    await expect(callGatewayVerifiedRead(target)).rejects.toThrow("admission changed");
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it("refuses replacement connection before dispatch", async () => {
+    const sent = vi.fn();
+    callGatewayMock.mockImplementationOnce(async (opts) => {
+      opts.onHelloOk?.(hello());
+      opts.onHelloOk?.({ ...hello(), server: { ...hello().server, connId: "conn-2" } });
+      opts.assertDispatchCurrent?.();
+      sent();
+      return result;
+    });
+    await expect(callGatewayVerifiedRead(target)).rejects.toThrow("connection changed");
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it.each(["before-dispatch", "before-return"] as const)(
+    "refuses cancellation %s",
+    async (when) => {
+      const controller = new AbortController();
+      const sent = vi.fn();
+      callGatewayMock.mockImplementationOnce(async (opts) => {
+        opts.onHelloOk?.(hello());
+        if (when === "before-dispatch") {
+          controller.abort();
+        }
+        opts.assertDispatchCurrent?.();
+        sent();
+        controller.abort();
+        return result;
+      });
+      await expect(
+        callGatewayVerifiedRead({ ...target, signal: controller.signal }),
+      ).rejects.toThrow("aborted");
+      expect(sent).toHaveBeenCalledTimes(when === "before-dispatch" ? 0 : 1);
+    },
+  );
+
+  it.each([
+    { bootId: "boot-2", namespace: "gateway-example" },
+    { bootId: "boot-1", namespace: "" },
+    { bootId: "boot-1", namespace: "gateway-example", extra: "not-admitted" },
+    null,
+  ])("rejects a response outside the admitted schema and boot: %j", async (payload) => {
+    callGatewayMock.mockImplementationOnce(async (opts) => {
+      opts.onHelloOk?.(hello());
+      opts.assertDispatchCurrent?.();
+      return payload;
+    });
+    await expect(callGatewayVerifiedRead(target)).rejects.toThrow("response does not match");
+  });
+
+  it.each(["", " boot-1", "x".repeat(97)])(
+    "rejects an invalid boot assertion %j",
+    async (bootId) => {
+      await expect(callGatewayVerifiedRead({ ...target, expectedBootId: bootId })).rejects.toThrow(
+        "URL and boot ID are required",
+      );
+      expect(callGatewayMock).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("agent exec session input", () => {

@@ -1,7 +1,7 @@
 /**
  * Gateway auth compatibility baseline tests.
  */
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
 import type { HelloOk } from "../../packages/gateway-protocol/src/schema/frames.js";
 import type { GatewayAuthConfig } from "../config/types.gateway.js";
@@ -89,7 +89,10 @@ async function expectLocalSharedAuthScopesPreserved(
   }
 }
 
-function useGateway(auth: GatewayAuthConfig, controlUiEnabled?: boolean) {
+function useGateway(
+  auth: GatewayAuthConfig,
+  options?: { controlUiEnabled?: boolean; workerNamespace?: string },
+) {
   const gateway = { port: 0 };
   let server: Awaited<ReturnType<typeof startTestGatewayServer>>;
   let previousToken: string | undefined;
@@ -103,7 +106,29 @@ function useGateway(auth: GatewayAuthConfig, controlUiEnabled?: boolean) {
     }
     const claim = await acquireTestPortBlock({ offsets: [0, 1, 2, 3, 4] });
     gateway.port = claim.port;
-    server = await startTestGatewayServer(claim, { controlUiEnabled });
+    const start = () =>
+      startTestGatewayServer(claim, { controlUiEnabled: options?.controlUiEnabled });
+    if (options?.workerNamespace) {
+      // The shared minimal Gateway omits worker startup. Supply its namespace
+      // fact while retaining the real context builder, auth, registry and transport.
+      const contextModule = await import("./server-request-context.js");
+      const createContext = contextModule.createGatewayRequestContext;
+      const contextFixture = vi
+        .spyOn(contextModule, "createGatewayRequestContext")
+        .mockImplementation((params) =>
+          createContext({
+            ...params,
+            runtime: { ...params.runtime, nodeWorkerGatewayNamespace: options.workerNamespace },
+          }),
+        );
+      try {
+        server = await start();
+      } finally {
+        contextFixture.mockRestore();
+      }
+    } else {
+      server = await start();
+    }
   });
   afterAll(async () => {
     await server.close();
@@ -114,7 +139,43 @@ function useGateway(auth: GatewayAuthConfig, controlUiEnabled?: boolean) {
 
 describe("gateway auth compatibility baseline", () => {
   describe("token mode", () => {
-    const gateway = useGateway({ mode: "token", token: "secret" });
+    const gateway = useGateway(
+      { mode: "token", token: "secret" },
+      { workerNamespace: "gateway-wire-namespace" },
+    );
+
+    test("reads the worker namespace on the exact authenticated WebSocket boot", async () => {
+      const ws = await openWs(gateway.port);
+      try {
+        const connected = await connectReq(ws, {
+          token: "secret",
+          client: { ...CLI_CLIENT },
+          scopes: ["operator.read"],
+          device: null,
+        });
+        expect(connected.ok, JSON.stringify(connected)).toBe(true);
+        const hello = connected.payload as HelloOk;
+        expect(hello.auth).toMatchObject({
+          method: "token",
+          role: "operator",
+          scopes: ["operator.read"],
+        });
+        expect(hello.server.bootId).toEqual(expect.any(String));
+        expect(hello.server.bootId).not.toBe("");
+        expect(hello.features.methods).toContain("gateway.workerNamespace.get");
+
+        const read = await rpcReq(ws, "gateway.workerNamespace.get", {});
+        expect(read).toMatchObject({
+          ok: true,
+          payload: {
+            bootId: hello.server.bootId,
+            namespace: "gateway-wire-namespace",
+          },
+        });
+      } finally {
+        ws.close();
+      }
+    });
 
     test("preserves scopes for direct-local backend shared-token connects without device identity", async () => {
       await expectLocalSharedAuthScopesPreserved(
@@ -205,7 +266,7 @@ describe("gateway auth compatibility baseline", () => {
   });
 
   describe("none mode", () => {
-    const gateway = useGateway({ mode: "none" }, true);
+    const gateway = useGateway({ mode: "none" }, { controlUiEnabled: true });
 
     test("allows auth-none local backend connects without device identity", async () => {
       await expectLocalSharedAuthScopesPreserved(

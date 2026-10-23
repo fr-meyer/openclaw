@@ -20,7 +20,11 @@ import { observeMainThreadSql } from "../../test-utils/main-thread-sql-spies.tes
 import * as gitLock from "./git-lock.js";
 import { lockState } from "./git-lock.js";
 import * as registryRead from "./registry-read.js";
-import { claimWorktreeRemovalRow, releaseWorktreeRunLeaseRow } from "./registry.js";
+import {
+  claimWorktreeRemovalRow,
+  insertRegistryWorktree,
+  releaseWorktreeRunLeaseRow,
+} from "./registry.js";
 import { getRegistryWorktree } from "./registry.test-support.js";
 import { prepareWorktreeRunEndClose } from "./run-end-lifecycle.js";
 import { releaseWorktreeRunLeaseRowAsync } from "./run-lease-store.js";
@@ -373,6 +377,59 @@ describe("worktree run lease", () => {
     );
     expect(hasLiveWorktreeRunLease(env, created.id)).toBe(false);
     expect(await lockState(created)).toEqual({ kind: "none" });
+  });
+
+  it.each([
+    ["tied", 0],
+    ["newer", 1],
+  ] as const)(
+    "rejects a %s live row for the selected owner and checkout",
+    async (_kind, offset) => {
+      const created = await createSessionWorktree();
+      const selected = await resolveWorktreeForPath({ candidatePaths: [created.path], env });
+      if (!selected) {
+        throw new Error("Expected a selected managed worktree");
+      }
+      const record = selected.record;
+      await insertRegistryWorktree(env, {
+        ...record,
+        id: `competing-${offset}`,
+        createdAt: record.createdAt + offset,
+        lastActiveAt: record.lastActiveAt + offset,
+      });
+
+      await expect(acquireWorktreeRunLease(created.id, { source: selected })).rejects.toThrow(
+        "no longer authoritative",
+      );
+      expect(hasLiveWorktreeRunLease(env, created.id)).toBe(false);
+    },
+  );
+
+  it("keeps the selected checkout authoritative when newer rows use other paths or repos", async () => {
+    const created = await createSessionWorktree();
+    const selected = await resolveWorktreeForPath({ candidatePaths: [created.path], env });
+    if (!selected) {
+      throw new Error("Expected a selected managed worktree");
+    }
+    const record = selected.record;
+    await insertRegistryWorktree(env, {
+      ...record,
+      id: "newer-other-path",
+      path: `${record.path}-other`,
+      createdAt: record.createdAt + 1,
+      lastActiveAt: record.lastActiveAt + 1,
+    });
+    await insertRegistryWorktree(env, {
+      ...record,
+      id: "newer-other-repo",
+      repoFingerprint: "another-repo",
+      createdAt: record.createdAt + 2,
+      lastActiveAt: record.lastActiveAt + 2,
+    });
+
+    const lease = await acquireWorktreeRunLease(created.id, { source: selected });
+    await lease.release();
+    expect(hasLiveWorktreeRunLease(env, created.id)).toBe(false);
   });
 
   it("prunes a dead owner lease so removal can proceed", async () => {

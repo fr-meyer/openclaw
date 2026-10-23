@@ -27,6 +27,8 @@ import {
   getActiveSessionLifecycleMutationCount,
   getActiveSessionWorkAdmissionCount,
 } from "../../../sessions/session-lifecycle-admission.js";
+import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
+import { executeManagedTaskFlowFixtureWrite } from "../../../tasks/managed-task-flow.test-helpers.js";
 import { clearActiveEmbeddedRun, setActiveEmbeddedRun } from "../../embedded-agent-runner/runs.js";
 import { createEmbeddedRunHandle } from "../../embedded-agent-runner/runs.test-support.js";
 import { isSubagentRegistryWriteCommand } from "../../subagent-test-fixtures.test-helpers.js";
@@ -40,7 +42,12 @@ import { resolveSubagentSessionStatus } from "./subagent-session-metrics.js";
 
 const fixture = useSubagentControlFixture();
 
-async function seedExecutionTarget(name: string, task: string) {
+async function seedExecutionTarget(
+  name: string,
+  task: string,
+  label?: string,
+  requesterSessionKey = "agent:main:main",
+) {
   const sessionKey = `agent:main:subagent:${name}`;
   const sessionId = `${name}-session`;
   const runId = `${name}-run`;
@@ -53,18 +60,91 @@ async function seedExecutionTarget(name: string, task: string) {
   await registerSubagentRun({
     runId,
     childSessionKey: sessionKey,
-    requesterSessionKey: "agent:main:main",
+    requesterSessionKey,
     requesterAgentId: "main",
     requesterDisplayKey: "main",
     task,
     cleanup: "keep",
     expectsCompletionMessage: false,
+    ...(label ? { label } : {}),
   });
   const context = createDirectChatContext({ getRuntimeConfig });
   const resolveGatewayContext = () => context;
   bindGatewayContextResolver(subagentRuns.get(runId)!, resolveGatewayContext);
   return { sessionKey, sessionId, runId, storePath, context, resolveGatewayContext };
 }
+
+it("accepts only the claimed native root cancellation without traversing descendants", async () => {
+  const { sessionKey, sessionId, runId } = await seedExecutionTarget(
+    "managed-flow-root",
+    "cancel the admitted flow worker",
+    "plugin:publisher",
+    "agent:main:publisher",
+  );
+  const ownerKey = "agent:main:publisher";
+  const controllerId = "publisher/v1";
+  const entry = subagentRuns.get(runId)!;
+  const flow = await executeManagedTaskFlowFixtureWrite(captureOpenClawStateWorkerContext(), {
+    type: "tasks.managedFlows.create",
+    input: {
+      ownerKey,
+      controllerId,
+      goal: "Cancel one exact native worker",
+      stateJson: {
+        activeWorker: {
+          sessionKey,
+          runId,
+          taskId: entry.taskRunId ?? runId,
+          nativeGeneration: entry.generation,
+        },
+      },
+    },
+  });
+  const descendantId = "managed-flow-descendant";
+  await registerSubagentRun({
+    runId: descendantId,
+    childSessionKey: `agent:main:subagent:${descendantId}`,
+    requesterSessionKey: sessionKey,
+    controllerSessionKey: sessionKey,
+    requesterDisplayKey: sessionKey,
+    task: "Unrelated descendant retained by root-only Stop",
+    cleanup: "keep",
+    expectsCompletionMessage: false,
+  });
+  const abort = vi.fn();
+  const handle = createEmbeddedRunHandle({ runId, abort });
+  setActiveEmbeddedRun(sessionId, handle, sessionKey);
+  try {
+    const result = await killSubagentRunAdmin(
+      {
+        cfg: getRuntimeConfig(),
+        sessionKey,
+        expectedRunId: runId,
+        expectedTaskRunId: entry.taskRunId ?? runId,
+        expectedGeneration: entry.generation,
+      },
+      {
+        assertCurrent: () => {},
+        managedFlowKillClaim: {
+          ownerKey,
+          controllerId,
+          flowId: flow.flowId,
+          revision: flow.revision,
+          childSessionKey: sessionKey,
+          runId,
+          taskId: entry.taskRunId ?? runId,
+          generation: entry.generation!,
+        },
+      },
+    );
+    expect(result).toMatchObject({ found: true, runId, cascadeKilled: 0 });
+    expect(abort).toHaveBeenCalled();
+    expect(subagentRuns.get(descendantId)?.killIntent).toBeUndefined();
+    expect(subagentRuns.get(descendantId)?.execution.endedAt).toBeUndefined();
+  } finally {
+    clearActiveEmbeddedRun(sessionId, handle, sessionKey);
+  }
+});
 
 function observeExecutionJoin(entry: ChatAbortControllerEntry, selected: () => void) {
   const settlement = entry.executionSettlement!;

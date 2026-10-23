@@ -113,6 +113,7 @@ import type {
 } from "../plugin-state/plugin-blob-worker-contract.js";
 import type { AsyncWorkScope } from "../shared/async-work-scope.js";
 import type { SkillLibraryReadOnlyOperations } from "../skills/library/selection-read.kernel.js";
+import type { ManagedTaskFlowReadOperations } from "../tasks/managed-task-flow-contract.js";
 import type {
   TranscriptExportCommand,
   TranscriptExportResult,
@@ -178,6 +179,7 @@ export type OpenClawStateReadAuthority = {
 };
 
 export type OpenClawStateReadCommand =
+  | SqliteWorkerCommand<ManagedTaskFlowReadOperations>
   | TranscriptExportCommand
   | RegisteredStateReadCommand
   | { type: "admit" }
@@ -321,6 +323,12 @@ export type OpenClawStateReadRequest = {
 type ReadResult<Reply> = Reply extends { ok: true } ? Omit<Reply, "ok" | "sourceAdmitted"> : never;
 
 export type OpenClawStateReadResult =
+  | {
+      [Kind in keyof ManagedTaskFlowReadOperations]: {
+        type: Kind;
+        value: ManagedTaskFlowReadOperations[Kind]["output"];
+      };
+    }[keyof ManagedTaskFlowReadOperations]
   | { type: "meetingTranscripts.export"; result: TranscriptExportResult }
   | RegisteredStateReadResult
   | { type: "backup.runs"; runs: BackupRunRecord[] }
