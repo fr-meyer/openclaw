@@ -101,6 +101,27 @@ DD_FINAL_IMAGE_RECEIPT_SHA256 = '61fe55011a7a8bb0a845da0a640b20000ba61db05fcae35
 DD_FINAL_RUNTIME_SHA256 = "31377ee1c1873d1496e75973e25fc3b0f85c1ff4a83943da23955fada02ecaf9"
 DD_FINAL_SOURCE_BOUNDARY_SHA256 = "bee603181a4e6250bcc55f023fe1b6e2f01e874caed87327352c004060bca73c"
 DD_FINAL_COVERAGE_SHA256 = "b6f996dcbcc825a244a90c0eb22da464f5df33ca5fc2fb2e417ab19afc213568"
+# Historical final-image timeline attempt. These pins are separate from the
+# current DD_FINAL_* candidate so a new sealed image cannot reinterpret its
+# retained check, image or dataset lease as current-image evidence.
+DD_RETAINED_TIMELINE = "92cfb12dcb504c65a6e84738219c4b69"
+DD_RETAINED_TIMELINE_RESULT_SHA256 = "ef88d874a86f7f3c6c67e0bba52eef7e841bbadc5f62cc394bb2a1fe8f92c534"
+DD_RETAINED_TIMELINE_TOOLING = "b1541530720a37b64a9726ad8b041c6cc588dd14"
+DD_RETAINED_TIMELINE_CHECK_SHA256 = "a09288dd697ddacbafe04de5cab183ec39d9378b060ff6ac0903e97efa39e1c8"
+DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256 = "61fe55011a7a8bb0a845da0a640b20000ba61db05fcae35c5f0819336d705d01"
+DD_RETAINED_TIMELINE_COVERAGE_SHA256 = "b6f996dcbcc825a244a90c0eb22da464f5df33ca5fc2fb2e417ab19afc213568"
+DD_RETAINED_TIMELINE_IMAGE = {
+    "repository": "fr-meyer/openclaw", "version": "2026.10.5", "architecture": "amd64",
+    "sourceSha": "4cf5cb7e256c67a5c98097774cad2d05cd781c01",
+    "sourceTree": "e63f5bf2762a58bda6b2d8436830a03914f8704e",
+    "manifestSha256": "588ca44c39101e818c59ff3e88f64e19a28db47f819b2bd4f147c5c5869b9d1a",
+    "inventorySha256": "85202a5bb8ab3959a9af4669eda7b771e73bbc4f879873f1c517ea9b745dccd5",
+    "indexDigest": "sha256:09e12109fb283a0c9740b92c5fa618d69784c9cc6adf76d03d889553618c3ec2",
+    "imageDigest": "sha256:77b42d79c8b42502e873b2a3eb1d14a2591eca62b7848b52c622ef1063c21ac0",
+    "configDigest": "sha256:8f5f71efc2dbac3159eaba899ba2d0a686035ae0779362f6b6178c8657968946",
+    "selectedExtensions": "codex,workboard", "bundledCodexVersion": "0.160.0",
+}
+DD_RETAINED_TIMELINE_PRODUCER = "b2c3034a0e3f1fdb44f72a6d300e814af74c8f90"
 DD_FINAL_CHANGED_PATHS = (
     "custom-patches/manifest.json",
     "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
@@ -164,6 +185,7 @@ RETAINED_HELPERS = {
     DD_DOCTOR_PIPELINE_SHA: "2483e1d4a5686553f3bf142bc1fb971abded41c27c09d7f8b72f9af5c441dd7d",
     # The failed first final-image startup is a retained, read-only lease predecessor.
     "f959359ee23744f5db55aace5609d77cd52c0609": "dc3b3951f13484b52ea26fb79c868acc5fd030e7cf969b4c58be7613e5b6a77d",
+    DD_RETAINED_TIMELINE_TOOLING: "5832de863cbb8c85173fa7add1d43555696952537c0b70d3a81a44fdb18f2711",
     LEGACY_DEVICE_SHA: "872b6966330c2bb127ae007cf936bffc6e6d7704d9d0ed1a0b7be5de57e8da0d",
     "ad0c1a62300f77e616b1a373c92c967c3cba95b8": "af5caa6316e15bec85b501ff2f8839835546b1e1e5313810a314741479343156",
     LEGACY_CONTINUATION_SHA: "0de004053ed692ae2dc0cbf2d70f336dda72c02c21ba65a893ccac37a4719f97",
@@ -204,7 +226,8 @@ def qualified_image(image, *, retained=False, dd_final_startup=False):
         candidates += ((DD_FINAL_IMAGE, DD_FINAL_PRODUCER),)
     if retained:
         candidates += ((PREVIOUS_IMAGE, QUALIFIED_PRODUCER),
-                       (HISTORICAL_IMAGE, HISTORICAL_PRODUCER))
+                       (HISTORICAL_IMAGE, HISTORICAL_PRODUCER),
+                       (DD_RETAINED_TIMELINE_IMAGE, DD_RETAINED_TIMELINE_PRODUCER))
     need(image.get("producer", {}).get("kind") == "gcp" and any(
          all(image.get(key) == value for key, value in candidate.items()) and
          image["producer"].get("toolingSha") == producer for candidate, producer in candidates),
@@ -783,6 +806,16 @@ def validate(plan, image, clean, check=None, *, retained=False):
             validate_continuation(check, legacy=legacy_continuation)
             need(selected == "doctor", "trial.continuation.phase")
         elif dd_final_startup_check(check):
+            historical_timeline = retained and plan["operationId"] == DD_RETAINED_TIMELINE
+            if historical_timeline:
+                need(plan["toolingSha"] == DD_RETAINED_TIMELINE_TOOLING and
+                     plan["checkInputSha256"] == DD_RETAINED_TIMELINE_CHECK_SHA256 and
+                     plan["imageReceiptSha256"] == DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256 and
+                     dd_diagnostic_timeline(check) and
+                     check["diagnosticPredecessorOperationId"] == "6c95c85497d64eaf97e2a7f0be4ea916" and
+                     check["diagnosticPredecessorResultSha256"] ==
+                         "9e5152f455cd025fa40706008e45812cc7828f36ba33caf15b94d406780240fc",
+                     "trial.dd_final.retained_timeline_identity")
             need(not (dd_diagnostic_trace(check) and dd_diagnostic_timeline(check)),
                  "trial.dd_final.diagnostic_exclusive")
             exact(check, "schema phase doctorOperationId doctorResultSha256 "
@@ -803,7 +836,9 @@ def validate(plan, image, clean, check=None, *, retained=False):
                  DD_PRIOR_STARTUP_RESULT_SHA256 is not None and
                  check["priorStartupResultSha256"] == DD_PRIOR_STARTUP_RESULT_SHA256 and
                  DD_FINAL_COVERAGE_SHA256 is not None and
-                 check["coverageReceiptSha256"] == DD_FINAL_COVERAGE_SHA256,
+                 check["coverageReceiptSha256"] ==
+                     (DD_RETAINED_TIMELINE_COVERAGE_SHA256 if historical_timeline else
+                      DD_FINAL_COVERAGE_SHA256),
                  "trial.dd_final.check_identity")
         else:
             exact(check, "schema phase" + (" doctorOperationId doctorResultSha256" if selected != "doctor" else ""),
@@ -1385,6 +1420,33 @@ def validate_dd_diagnostic_predecessor(check, intent):
     observed = status(previous, retained=True)
     prior_intent_sha = digest(durable.private_bytes(previous / "intent.json"))
     started = durable.read_private(previous / "start-intent.json")
+    same_image = (prior["plan"]["imageReceiptSha256"] ==
+                  intent["plan"]["imageReceiptSha256"] and
+                  prior["check"]["coverageReceiptSha256"] == check["coverageReceiptSha256"])
+    # The old sealed image cannot emit the new fixed cron marks. Admit exactly
+    # its settled diagnostic result as a lease predecessor for a different,
+    # freshly qualified candidate image; never reinterpret old coverage as new.
+    cross_image = (previous.name == DD_RETAINED_TIMELINE and
+                   hashed == DD_RETAINED_TIMELINE_RESULT_SHA256 and
+                   prior["plan"]["toolingSha"] == DD_RETAINED_TIMELINE_TOOLING and
+                   prior["plan"]["checkInputSha256"] == DD_RETAINED_TIMELINE_CHECK_SHA256 and
+                   prior["plan"]["imageReceiptSha256"] ==
+                       DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256 and
+                   prior["check"]["coverageReceiptSha256"] ==
+                       DD_RETAINED_TIMELINE_COVERAGE_SHA256 and
+                   dd_diagnostic_timeline(prior["check"]) and
+                   prior["check"]["diagnosticPredecessorOperationId"] ==
+                       "6c95c85497d64eaf97e2a7f0be4ea916" and
+                   prior["check"]["diagnosticPredecessorResultSha256"] ==
+                       "9e5152f455cd025fa40706008e45812cc7828f36ba33caf15b94d406780240fc" and
+                   all(prior["image"].get(key) == value for key, value in
+                       DD_RETAINED_TIMELINE_IMAGE.items()) and
+                   prior["image"].get("producer", {}).get("toolingSha") ==
+                       DD_RETAINED_TIMELINE_PRODUCER and
+                   intent["plan"]["imageReceiptSha256"] == DD_FINAL_IMAGE_RECEIPT_SHA256 and
+                   check["coverageReceiptSha256"] == DD_FINAL_COVERAGE_SHA256 and
+                   intent["plan"]["imageReceiptSha256"] !=
+                       DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256)
     need(previous.name != intent["plan"]["operationId"] and
          hashed == check["diagnosticPredecessorResultSha256"] and
          prior["plan"]["operationId"] == result.get("operationId") == previous.name and
@@ -1397,14 +1459,13 @@ def validate_dd_diagnostic_predecessor(check, intent):
          result.get("cleanInputSha256") == prior["plan"]["cleanInputSha256"] and
          started["intentSha256"] == prior_intent_sha and
          phase(prior["plan"]) == "startup" and
-         prior["plan"]["imageReceiptSha256"] == intent["plan"]["imageReceiptSha256"] and
          prior["plan"]["cleanInputSha256"] == intent["plan"]["cleanInputSha256"] and
          prior["clean"] == intent["clean"] and
          dd_final_startup_check(prior.get("check")) and
          prior["check"]["doctorOperationId"] == DD_DOCTOR and
          prior["check"]["doctorResultSha256"] == DD_DOCTOR_RESULT_SHA256 and
          prior["check"]["priorStartupResultSha256"] == DD_PRIOR_STARTUP_RESULT_SHA256 and
-         prior["check"]["coverageReceiptSha256"] == check["coverageReceiptSha256"],
+         (same_image or cross_image),
          "trial.dd_final.diagnostic_predecessor_changed")
     cid = result.get("containerId")
     need(type(cid) is str and HEX.fullmatch(cid), "trial.dd_final.diagnostic_predecessor_container")

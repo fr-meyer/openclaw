@@ -367,6 +367,119 @@ console.log(t.status);
             with self.assertRaisesRegex(release.Refusal, "diagnostic_predecessor_active"):
                 trial.validate_dd_diagnostic_predecessor(check, intent)
 
+    def test_old_timeline_pins_are_retained_only_after_new_image_binding(self):
+        old_image = copy.deepcopy(self.image)
+        old_image.update(trial.DD_RETAINED_TIMELINE_IMAGE)
+        old_image["producer"]["toolingSha"] = trial.DD_RETAINED_TIMELINE_PRODUCER
+        old_plan = copy.deepcopy(self.plan)
+        old_plan.update(operationId=trial.DD_RETAINED_TIMELINE,
+                        toolingSha=trial.DD_RETAINED_TIMELINE_TOOLING,
+                        checkInputSha256=trial.DD_RETAINED_TIMELINE_CHECK_SHA256,
+                        imageReceiptSha256=trial.DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256)
+        old_check = {**self.check,
+                     "priorStartupResultSha256": trial.DD_PRIOR_STARTUP_RESULT_SHA256,
+                     "coverageReceiptSha256": trial.DD_RETAINED_TIMELINE_COVERAGE_SHA256,
+                     "diagnosticPluginServiceTimeline": True,
+                     "diagnosticPredecessorOperationId": "6c95c85497d64eaf97e2a7f0be4ea916",
+                     "diagnosticPredecessorResultSha256":
+                         "9e5152f455cd025fa40706008e45812cc7828f36ba33caf15b94d406780240fc"}
+        with patch.object(trial, "DD_FINAL_IMAGE", {**self.image, "sourceSha": "e" * 40}), \
+             patch.object(trial, "DD_FINAL_PRODUCER", "f" * 40), \
+             patch.object(trial, "DD_FINAL_COVERAGE_SHA256", "d" * 64), \
+             patch.object(trial, "qualified_image"):
+            trial.validate(old_plan, old_image, self.clean, old_check, retained=True)
+            with self.assertRaisesRegex(release.Refusal, "trial.dd_final.check_identity"):
+                trial.validate(old_plan, old_image, self.clean, old_check)
+            old_plan["checkInputSha256"] = "f" * 64
+            with self.assertRaisesRegex(release.Refusal, "trial.dd_final.retained_timeline_identity"):
+                trial.validate(old_plan, old_image, self.clean, old_check, retained=True)
+        with patch.object(trial, "DD_FINAL_IMAGE", {**self.image, "sourceSha": "e" * 40}), \
+             patch.object(trial, "DD_FINAL_PRODUCER", "f" * 40):
+            trial.qualified_image(old_image, retained=True, dd_final_startup=True)
+            with self.assertRaisesRegex(release.Refusal, "trial.image.not_qualified"):
+                trial.qualified_image(old_image, dd_final_startup=True)
+
+    def test_exact_settled_old_timeline_can_precede_new_sealed_image_only(self):
+        old_op = trial.DD_RETAINED_TIMELINE
+        old_image_sha = trial.DD_RETAINED_TIMELINE_IMAGE_RECEIPT_SHA256
+        new_image_sha = "e" * 64
+        new_coverage_sha = "d" * 64
+        old_intent = {"plan": copy.deepcopy(self.plan), "clean": copy.deepcopy(self.clean),
+                      "check": copy.deepcopy(self.check),
+                      "image": {**trial.DD_RETAINED_TIMELINE_IMAGE,
+                                "producer": {"toolingSha": trial.DD_RETAINED_TIMELINE_PRODUCER}}}
+        old_intent["plan"].update(operationId=old_op,
+                                  toolingSha=trial.DD_RETAINED_TIMELINE_TOOLING,
+                                  checkInputSha256=trial.DD_RETAINED_TIMELINE_CHECK_SHA256,
+                                  imageReceiptSha256=old_image_sha)
+        old_intent["check"]["coverageReceiptSha256"] = trial.DD_RETAINED_TIMELINE_COVERAGE_SHA256
+        old_intent["check"]["priorStartupResultSha256"] = trial.DD_PRIOR_STARTUP_RESULT_SHA256
+        old_intent["check"].update(diagnosticPluginServiceTimeline=True,
+                                   diagnosticPredecessorOperationId="6c95c85497d64eaf97e2a7f0be4ea916",
+                                   diagnosticPredecessorResultSha256=
+                                       "9e5152f455cd025fa40706008e45812cc7828f36ba33caf15b94d406780240fc")
+        successor = {"plan": copy.deepcopy(self.plan), "clean": copy.deepcopy(self.clean),
+                     "check": copy.deepcopy(self.check)}
+        successor["plan"]["imageReceiptSha256"] = new_image_sha
+        successor["check"].update(coverageReceiptSha256=new_coverage_sha,
+                                  diagnosticPredecessorOperationId=old_op,
+                                  diagnosticPredecessorResultSha256=
+                                      trial.DD_RETAINED_TIMELINE_RESULT_SHA256)
+        result = {"state": "failed", "cleanup": "owned_container_stopped_retained",
+                  "operationId": old_op, "promotionAuthorized": False,
+                  "checkInputSha256": old_intent["plan"]["checkInputSha256"],
+                  "imageReceiptSha256": old_image_sha,
+                  "cleanInputSha256": old_intent["plan"]["cleanInputSha256"],
+                  "containerId": "c" * 64,
+                  "nativeState": {"Running": False, "Pid": 0, "StartedAt": "start",
+                                  "FinishedAt": "finish", "ExitCode": 1, "OOMKilled": False}}
+        container = {"State": copy.deepcopy(result["nativeState"])}
+        started = {"intentSha256": trial.digest(b"old intent"), "image": {"env": []}}
+        with patch.object(trial, "DD_FINAL_IMAGE_RECEIPT_SHA256", new_image_sha), \
+             patch.object(trial, "DD_FINAL_COVERAGE_SHA256", new_coverage_sha), \
+             patch.object(trial, "read_retained", return_value=(Path(self.fixture.op.parent) / old_op,
+                                                                old_intent)), \
+             patch.object(trial, "private_json", return_value=(result,
+                                                                trial.DD_RETAINED_TIMELINE_RESULT_SHA256)), \
+             patch.object(trial, "status", return_value={"state": "failed", "result": result}), \
+             patch.object(trial.durable, "private_bytes", return_value=b"old intent"), \
+             patch.object(trial.durable, "read_private", return_value=started), \
+             patch.object(trial, "inspect_container", return_value=container), \
+             patch.object(trial, "validate_owned_container"), \
+             patch.object(trial, "validate_container"), \
+             patch.object(trial, "retained_devices", return_value=self.fixture.devices), \
+             patch.object(trial.durable, "heavy_workload_settled") as settled:
+            self.assertEqual(trial.validate_dd_diagnostic_predecessor(successor["check"], successor),
+                             {"operationId": old_op, "intentSha256": trial.digest(b"old intent")})
+            settled.assert_called_once()
+            wrong = copy.deepcopy(successor)
+            wrong["check"]["diagnosticPredecessorResultSha256"] = "f" * 64
+            with self.assertRaisesRegex(release.Refusal, "diagnostic_predecessor_changed"):
+                trial.validate_dd_diagnostic_predecessor(wrong["check"], wrong)
+            wrong = copy.deepcopy(successor)
+            wrong["plan"]["imageReceiptSha256"] = "f" * 64
+            with self.assertRaisesRegex(release.Refusal, "diagnostic_predecessor_changed"):
+                trial.validate_dd_diagnostic_predecessor(wrong["check"], wrong)
+            wrong = copy.deepcopy(successor)
+            wrong["check"]["coverageReceiptSha256"] = "f" * 64
+            with self.assertRaisesRegex(release.Refusal, "diagnostic_predecessor_changed"):
+                trial.validate_dd_diagnostic_predecessor(wrong["check"], wrong)
+            wrong = copy.deepcopy(successor)
+            wrong["clean"]["configSha256"] = "e" * 64
+            with self.assertRaisesRegex(release.Refusal, "diagnostic_predecessor_changed"):
+                trial.validate_dd_diagnostic_predecessor(wrong["check"], wrong)
+            old_intent["check"]["coverageReceiptSha256"] = "f" * 64
+            with self.assertRaisesRegex(release.Refusal, "diagnostic_predecessor_changed"):
+                trial.validate_dd_diagnostic_predecessor(successor["check"], successor)
+            old_intent["check"]["coverageReceiptSha256"] = trial.DD_RETAINED_TIMELINE_COVERAGE_SHA256
+            old_intent["check"]["diagnosticPredecessorOperationId"] = "f" * 32
+            with self.assertRaisesRegex(release.Refusal, "diagnostic_predecessor_changed"):
+                trial.validate_dd_diagnostic_predecessor(successor["check"], successor)
+            old_intent["check"]["diagnosticPredecessorOperationId"] = "6c95c85497d64eaf97e2a7f0be4ea916"
+            container["State"]["Running"] = True
+            with self.assertRaisesRegex(release.Refusal, "diagnostic_predecessor_active"):
+                trial.validate_dd_diagnostic_predecessor(successor["check"], successor)
+
     def test_timeline_claim_requires_exact_settled_predecessor_transfer(self):
         op = self.fixture.op
         predecessor = {"operationId": "c" * 32, "intentSha256": "d" * 64}
