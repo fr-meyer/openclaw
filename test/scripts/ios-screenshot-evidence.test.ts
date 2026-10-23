@@ -116,7 +116,11 @@ function manifestPath(input: string, family: Family, targetSha = TARGET_SHA) {
   return path.join(familyDirectory(input, family, targetSha), "manifest.json");
 }
 
-function collectAll(root: string, targetSha = TARGET_SHA) {
+function collectAll(
+  root: string,
+  targetSha = TARGET_SHA,
+  runAttempts: Partial<Record<Family, number>> = {},
+) {
   const output = path.join(root, "collected");
   for (const family of ["iphone", "ipad-13", "watch"] as const) {
     const source = writeFamilySource(root, family);
@@ -125,7 +129,7 @@ function collectAll(root: string, targetSha = TARGET_SHA) {
       screenshotDirectory: source.screenshots,
       xcresultDirectory: source.xcresults,
       outputDirectory: path.join(output, containerName(family, targetSha)),
-      provenance: provenance(targetSha),
+      provenance: { ...provenance(targetSha), runAttempt: runAttempts[family] ?? 2 },
       readXcresultSummary: (resultPath) => {
         const result = fs.readFileSync(path.join(resultPath, "summary.txt"), "utf8");
         return result === "pass"
@@ -186,6 +190,60 @@ describe("iOS screenshot evidence", () => {
       9,
     );
     expect(fs.readdirSync(path.join(output, "apps/ios/build/SnapshotTestResults"))).toHaveLength(8);
+  });
+
+  it.each([
+    { iphone: 1, "ipad-13": 2, watch: 2 },
+    { iphone: 2, "ipad-13": 1, watch: 1 },
+    { iphone: 1, "ipad-13": 1, watch: 1 },
+  ])("retains successful same-run producer attempts after a failed-job rerun: %j", (attempts) => {
+    const root = tempDirs.make("ios-screenshot-retained-attempt-");
+    const input = collectAll(root, TARGET_SHA, attempts);
+    const families = ["iphone", "ipad-13", "watch"] as const;
+    const originals = families.map((family) =>
+      fs.readFileSync(manifestPath(input, family), "utf8"),
+    );
+    const output = path.join(root, "reduced");
+
+    const manifest = reduceAll(input, output);
+    const saved = JSON.parse(
+      fs.readFileSync(path.join(output, "apps/ios/build/ScreenshotEvidence/manifest.json"), "utf8"),
+    );
+
+    expect(manifest.runAttempt).toBe(2);
+    expect(saved.runAttempt).toBe(2);
+    expect(saved.families).toEqual(
+      originals
+        .map((text) => JSON.parse(text))
+        .toSorted((left, right) => left.family.localeCompare(right.family)),
+    );
+    for (const [index, family] of families.entries()) {
+      expect(fs.readFileSync(manifestPath(input, family), "utf8")).toBe(originals[index]);
+    }
+  });
+
+  it.each([0, -1, 1.5, "1", "2", true, null, undefined, 3])(
+    "rejects invalid or future producer attempt %j",
+    (attempt) => {
+      const root = tempDirs.make("ios-screenshot-invalid-attempt-");
+      const input = collectAll(root);
+      updateManifest(input, "iphone", (manifest) => {
+        manifest.runAttempt = attempt;
+      });
+
+      expect(() => reduceAll(input, path.join(root, "reduced"))).toThrow("workflow run attempt");
+      expect(fs.existsSync(path.join(root, "reduced"))).toBe(false);
+    },
+  );
+
+  it("rejects different producer attempts inside the shared iPad and Watch artifact", () => {
+    const root = tempDirs.make("ios-screenshot-mixed-container-attempt-");
+    const input = collectAll(root, TARGET_SHA, { "ipad-13": 1 });
+
+    expect(() => reduceAll(input, path.join(root, "reduced"))).toThrow(
+      "artifact contains different workflow run attempts",
+    );
+    expect(fs.existsSync(path.join(root, "reduced"))).toBe(false);
   });
 
   it.each([
@@ -293,56 +351,66 @@ describe("iOS screenshot evidence", () => {
     );
   });
 
-  it.each([
-    {
-      label: "workflow SHA",
-      mutate: (manifest: Record<string, any>) => {
-        manifest.workflowSha = "c".repeat(40);
+  it.each(
+    [
+      {
+        label: "workflow SHA",
+        mutate: (manifest: Record<string, any>) => {
+          manifest.workflowSha = "c".repeat(40);
+        },
+        error: "workflow SHA",
       },
-      error: "workflow SHA",
-    },
-    {
-      label: "run id",
-      mutate: (manifest: Record<string, any>) => {
-        manifest.runId = "99999";
+      {
+        label: "run id",
+        mutate: (manifest: Record<string, any>) => {
+          manifest.runId = "99999";
+        },
+        error: "workflow run id",
       },
-      error: "workflow run id",
-    },
-    {
-      label: "run attempt",
-      mutate: (manifest: Record<string, any>) => {
-        manifest.runAttempt = 3;
+      {
+        label: "run attempt",
+        mutate: (manifest: Record<string, any>) => {
+          manifest.runAttempt = 3;
+        },
+        error: "workflow run attempt",
       },
-      error: "workflow run attempt",
-    },
-    {
-      label: "Xcode version",
-      mutate: (manifest: Record<string, any>) => {
-        manifest.tooling.xcode = "Xcode 26.6 Build version forged";
+      {
+        label: "Xcode version",
+        mutate: (manifest: Record<string, any>) => {
+          manifest.tooling.xcode = "Xcode 26.6 Build version forged";
+        },
+        error: "xcode version",
       },
-      error: "xcode version",
-    },
-    {
-      label: "Fastlane version",
-      mutate: (manifest: Record<string, any>) => {
-        manifest.tooling.fastlane = "2.236.0";
+      {
+        label: "Fastlane version",
+        mutate: (manifest: Record<string, any>) => {
+          manifest.tooling.fastlane = "2.236.0";
+        },
+        error: "fastlane version",
       },
-      error: "fastlane version",
-    },
-    {
-      label: "Node version",
-      mutate: (manifest: Record<string, any>) => {
-        manifest.tooling.node = "v24.0.0";
+      {
+        label: "Node version",
+        mutate: (manifest: Record<string, any>) => {
+          manifest.tooling.node = "v24.0.0";
+        },
+        error: "node version",
       },
-      error: "node version",
-    },
-  ])("rejects self-consistent forged $label", ({ mutate, error }) => {
-    const root = tempDirs.make("ios-screenshot-forged-provenance-");
-    const input = collectAll(root);
-    updateAllManifests(input, mutate);
+    ].flatMap(({ label, mutate, error }) =>
+      [1, 2].map((runAttempt) => ({ label, mutate, error, runAttempt })),
+    ),
+  )(
+    "rejects self-consistent forged $label at producer attempt $runAttempt",
+    ({ mutate, error, runAttempt }) => {
+      const root = tempDirs.make("ios-screenshot-forged-provenance-");
+      const input = collectAll(root);
+      updateAllManifests(input, (manifest) => {
+        manifest.runAttempt = runAttempt;
+        mutate(manifest);
+      });
 
-    expect(() => reduceAll(input, path.join(root, "reduced"))).toThrow(error);
-  });
+      expect(() => reduceAll(input, path.join(root, "reduced"))).toThrow(error);
+    },
+  );
 
   it.each([
     {
