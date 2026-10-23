@@ -1,0 +1,84 @@
+import copy
+import json
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+import hosted_export as export
+
+
+class HostedExportTests(unittest.TestCase):
+    def setUp(self):
+        self.args = dict(source="a" * 40, tooling="b" * 40, index="sha256:" + "c" * 64,
+                         run="12", attempt="1")
+        common = dict(sourceSha=self.args["source"], indexDigest=self.args["index"],
+                      imageDigest="sha256:" + "d" * 64, configDigest="sha256:" + "e" * 64)
+        self.seal = dict(common, schema="openclaw.fork-release-image.v2",
+                         repository="fr-meyer/openclaw", architecture="amd64",
+                         producer={"workflowSha": self.args["tooling"], "runId": "12", "attempt": "1"},
+                         buildContext={"kind": "git", "repository": "https://github.com/fr-meyer/openclaw",
+                                       "sourceSha": self.args["source"]},
+                         artifactName=f'fork-release-{self.args["source"]}-12-1')
+        self.privacy = dict(common, schema="openclaw.hosted-privacy.v1", status="passed",
+                            toolingSha=self.args["tooling"], findings=[], inspectionComplete=True)
+        self.resources = dict(common, schema="openclaw.hosted-resources.v1", status="passed",
+                              toolingSha=self.args["tooling"], violations=[])
+
+    def test_default_is_ephemeral_and_public_export_requires_separate_storage_decision(self):
+        result = export.validate(self.seal, self.privacy, self.resources, **self.args)
+        self.assertEqual(result["export"], "none")
+        self.assertFalse(result["productionAuthorized"])
+        with self.assertRaisesRegex(export.Refusal, "storage"):
+            export.validate(self.seal, self.privacy, self.resources, **self.args, public_export=True)
+        self.assertEqual(export.validate(self.seal, self.privacy, self.resources, **self.args,
+                                        public_export=True, storage_approved=True)["export"],
+                         "public-actions-artifact")
+
+    def test_every_receipt_is_bound_to_same_source_image_tooling_and_run(self):
+        for i, key, value in ((0, "sourceSha", "d" * 40), (0, "indexDigest", "sha256:" + "d" * 64),
+                              (0, "producer", {"workflowSha": "b" * 40, "runId": "13", "attempt": "1"}),
+                              (0, "architecture", "arm64"), (0, "artifactName", "other"),
+                              (1, "sourceSha", "d" * 40), (1, "toolingSha", "d" * 40),
+                              (1, "indexDigest", "sha256:" + "d" * 64), (1, "status", "failed"),
+                              (1, "inspectionComplete", False), (1, "configDigest", "sha256:" + "f" * 64),
+                              (1, "findings", ["runtime-state"]), (2, "status", "running"),
+                              (2, "indexDigest", "sha256:" + "d" * 64), (2, "violations", ["oom"])):
+            receipts = copy.deepcopy([self.seal, self.privacy, self.resources])
+            receipts[i][key] = value
+            with self.subTest(receipt=i, key=key), self.assertRaises(export.Refusal):
+                export.validate(*receipts, **self.args)
+
+    def test_new_export_refuses_legacy_missing_or_changed_git_context(self):
+        for value in (None, {}, {**self.seal["buildContext"], "sourceSha": "d" * 40},
+                      {**self.seal["buildContext"], "repository": "https://example.invalid/fork"},
+                      {**self.seal["buildContext"], "extra": True}):
+            with self.subTest(value=value), self.assertRaisesRegex(export.Refusal, "Git source"):
+                export.validate({**self.seal, "buildContext": value}, self.privacy,
+                                self.resources, **self.args)
+
+    def test_cli_retains_hashes_and_refuses_overwrite_without_disclosing_bad_contents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command = ["python3", str(Path(export.__file__))]
+            for name, value in zip(("seal", "privacy", "resources"),
+                                   (self.seal, self.privacy, self.resources)):
+                path = root / f"{name}.json"
+                path.write_text(json.dumps(value))
+                command += ["--" + name, str(path)]
+            for name, value in (("source-sha", self.args["source"]), ("tooling-sha", self.args["tooling"]),
+                                ("index-digest", self.args["index"]), ("run-id", "12"),
+                                ("attempt", "1"), ("output", str(root / "result.json"))):
+                command += ["--" + name, value]
+            first = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(set(json.loads(first.stdout)["receiptSha256"]), {"seal", "privacy", "resources"})
+            self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            (root / "privacy.json").write_text('{"private": "never-print-this"}')
+            failed = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertNotIn("never-print-this", failed.stdout + failed.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

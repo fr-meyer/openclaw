@@ -2,6 +2,12 @@
 
 ## Recommendation and boundary
 
+The reusable implementation contract is now [HOSTED-BUILD.md](../../HOSTED-BUILD.md).
+The metadata-only hosted check on preparation revision
+`0f86e614d7e9e647a0add7f55b7841d07a33047d` observed 4 CPUs, 15.615 GiB RAM
+and 85.800 GiB free disk; no image was built. The assessment below distinguishes
+that evidence from the still unqualified full image.
+
 Prefer a GitHub-hosted build to avoid competing with the production Gateway.
 Use the resulting immutable image for the separately owned isolated GCP rehearsal,
 then promote those same verified bytes after the production decision. Do not run
@@ -41,10 +47,10 @@ receipt. It does not deploy production or use real databases. Its 90-minute job
 also installs source-test dependencies, so dependency workspace, BuildKit cache,
 OCI export and loaded image storage overlap on one runner.
 
-The bounded preparation change selects the exact committed Git context and
-matching compiler/worker limits only for this frozen 10.6 source. It explicitly
-disables the Docker action's implicit build-record upload. Other release lanes
-retain their prior settings. A PR-20-only, permission-free capacity check prints
+The reusable hosted stage uses the exact committed Git context, bounded
+compiler/worker limits, privacy inspection and resource evidence for future
+builds. It disables implicit build-record/summary uploads. Current 10.5 source,
+image and pinned active execution are unchanged; no rebuild is implied. A PR-20-only, permission-free capacity check prints
 runner/tool metadata; it performs no checkout, dependency install, container
 creation, build, cache upload or artifact upload.
 
@@ -73,8 +79,9 @@ Before a heavy hosted solve:
 
 The fork is **public**. Workflow logs and summaries are public, and signed-in
 GitHub users with repository read access can download its Actions artifacts.
-The existing explicit upload retains the entire OCI image, provenance and
-receipt for 14 days. `push: false` prevents registry push; it does not make an
+The explicit upload, disabled by default, retains the entire verified OCI
+image and receipts for one day only after the public-export and storage
+inputs are enabled. `push: false` prevents registry push; it does not make an
 Actions artifact private.
 
 Verified source controls include `contents: read`, non-persisted checkout

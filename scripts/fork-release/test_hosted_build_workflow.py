@@ -78,41 +78,61 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             self.assertNotIn(forbidden, self.workflow)
         self.assertIn('push: false', self.build)
 
-    def test_only_exact_source_gets_bounded_builder_and_retained_setup_is_unchanged(self):
-        old = step(self.workflow, 'Set up Docker Buildx')
-        new = step(self.workflow, 'Set up bounded 10.6 Docker Buildx')
-        for source in (SOURCE, '4cf5cb7e256c67a5c98097774cad2d05cd781c01', 'f' * 40):
-            context = self.source_context(source)
-            old_if = re.search(r'^        if: (.+)$', old, re.M).group(1)
-            new_if = re.search(r'^        if: (.+)$', new, re.M).group(1)
-            self.assertEqual(expression(old_if, **context), source != SOURCE)
-            self.assertEqual(expression(new_if, **context), source == SOURCE)
-        self.assertNotIn('with:', old)
+    def test_hosted_builds_use_bounded_worker_and_immutable_context_by_default(self):
+        new = step(self.workflow, 'Set up bounded hosted Docker Buildx')
+        self.assertNotIn('if:', new)
         self.assertIn('driver: docker-container', new)
         opts = dict(re.findall(r'^            ([a-z-]+)=([0-9]+)$', new, re.M))
         self.assertEqual(opts, {'memory': str(8 << 30), 'memory-swap': str(8 << 30),
                                 'cpu-period': '100000', 'cpu-quota': '400000'})
-        pin = 'docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069'
-        self.assertIn(pin, old)
-        self.assertIn(pin, new)
-
-    def test_exact_source_uses_frozen_git_context_heap_and_no_automatic_build_record(self):
         context = re.search(r'^          context: (.+)$', self.build, re.M).group(1)
-        upload = re.search(r'^          DOCKER_BUILD_RECORD_UPLOAD: (.+)$', self.build, re.M).group(1)
-        args = re.findall(r'^            (\$\{\{.*\}\})$', self.build, re.M)
-        self.assertEqual(len(args), 2)
-        for source in (SOURCE, '4cf5cb7e256c67a5c98097774cad2d05cd781c01', 'f' * 40):
-            values = self.source_context(source)
-            next_source = source == SOURCE
-            expected = ('https://github.com/fr-meyer/openclaw.git?fetch-by-commit=true&checksum='
-                        + SOURCE + '#' + SOURCE) if next_source else 'source'
-            self.assertEqual(expression(context, **values), expected)
-            self.assertEqual(expression(upload, **values), 'false' if next_source else 'true')
-            self.assertEqual([expression(arg, **values) for arg in args],
-                             ['OPENCLAW_PARITY_IMAGE=1', 'OPENCLAW_DOCKER_BUILD_TSDOWN_MAX_OLD_SPACE_MB=6144']
-                             if next_source else ['', ''])
-        self.assertIn('provenance: mode=max', self.build)
-        self.assertIn('sbom: true', self.build)
+        for source in (SOURCE, '7f3ac1fbfd3691546c5b1fd247680a3d00851c76'):
+            self.assertEqual(expression(context, **self.source_context(source)),
+                'https://github.com/fr-meyer/openclaw.git?fetch-by-commit=true&checksum=' + source + '#' + source)
+        for required in ('DOCKER_BUILD_RECORD_UPLOAD: "false"', 'DOCKER_BUILD_SUMMARY: "false"',
+                         'OPENCLAW_PARITY_IMAGE=1', 'OPENCLAW_DOCKER_BUILD_TSDOWN_MAX_OLD_SPACE_MB=6144',
+                         'platforms: linux/amd64', 'provenance: mode=max', 'sbom: true'):
+            self.assertIn(required, self.build)
+
+    def test_export_defaults_off_and_requires_manual_storage_decision(self):
+        dispatch = self.workflow.split('  workflow_dispatch:', 1)[1].split('\npermissions:', 1)[0]
+        for option in ('export_public_artifact', 'artifact_storage_approved'):
+            # YAML sibling indentation is checked separately by Actionlint.
+            self.assertIn('default: false', dispatch.split('      ' + option + ':', 1)[1].split('type: boolean', 1)[0])
+        upload = step(self.workflow, 'Retain the exact tested OCI payload and public receipt')
+        condition = ' '.join(upload.split('        if: >-\n', 1)[1].split('\n        uses:', 1)[0].split())
+        for event in ('pull_request', 'push', 'workflow_dispatch'):
+            for public in (False, True):
+                for cost in (False, True):
+                    actual = expression(condition, github=NS(event_name=event),
+                                        inputs=NS(export_public_artifact=public, artifact_storage_approved=cost))
+                    self.assertEqual(actual, event == 'workflow_dispatch' and public and cost)
+        self.assertNotIn('always()', upload)
+        self.assertIn('retention-days: 1', upload)
+        admission = step(self.workflow, 'Validate manual candidate identity before checkout')
+        self.assertIn('"$PUBLIC_EXPORT" == true && "$STORAGE_APPROVED" != true', admission)
+
+    def test_privacy_resources_and_native_seal_precede_receipt_gate_and_upload(self):
+        names = ('Verify hosted worker limits and begin bounded resource observation',
+                 'Build exact candidate once into OCI',
+                 'Inspect all OCI layers and metadata before native smoke or publication',
+                 'Verify OCI bytes and smoke that exact image',
+                 'Finish resource observation through export load and native verification',
+                 'Bind hosted qualification receipts and export decision',
+                 'Retain the exact tested OCI payload and public receipt')
+        positions = [self.workflow.index('      - name: ' + name) for name in names]
+        self.assertEqual(positions, sorted(positions))
+        resource_start = step(self.workflow, names[0])
+        self.assertIn('steps.builder.outputs.nodes', resource_start)
+        self.assertIn('--source-sha "$SOURCE_SHA" --tooling-sha "$TOOLING_SHA"', resource_start)
+        resource_finish = step(self.workflow, names[4])
+        self.assertIn("if: always() && steps.resources.outcome == 'success'", resource_finish)
+        gate = step(self.workflow, names[5])
+        for argument in ('--seal', '--privacy', '--resources', '--source-sha', '--tooling-sha',
+                         '--index-digest', '--run-id', '--attempt'):
+            self.assertIn(argument, gate)
+        self.assertIn('fork-hosted-observation', resource_start)
+        self.assertNotIn('fork-hosted-observation', step(self.workflow, names[6]))
 
     def run_probe(self, docker_results):
         raw = self.probe.split("          python3 - <<'PY_CAPACITY'\n", 1)[1].split('\n          PY_CAPACITY', 1)[0]

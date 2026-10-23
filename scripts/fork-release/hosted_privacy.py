@@ -1,0 +1,505 @@
+#!/usr/bin/env python3
+"""Bounded, non-executing privacy heuristic for the hosted OCI export boundary.
+
+Inspect the exact digest-addressed layout before loading or publishing it. All
+referenced image layers are inspected, including overwritten and whiteouted
+files. Nothing is extracted. Unsupported/incomplete inspection fails closed.
+The existing image.mjs sealer still owns release provenance/qualification; this
+receipt only binds this inspection to its inputs. toolingSha is caller-supplied
+pipeline identity, not an assertion derived from the application image.
+
+This is NOT a proof of absence of secrets: patterns can miss arbitrary passwords,
+encoded/encrypted data and nested archives, and can flag public test credentials.
+It does not audit source history, dependency trust, logs or registry visibility.
+Only fixed rule codes and hashed locations are emitted, never matched contents.
+"""
+
+import argparse
+import dataclasses
+import gzip
+import hashlib
+import json
+import os
+import re
+import stat
+import tarfile
+import zlib
+from pathlib import Path
+
+
+INDEX = "application/vnd.oci.image.index.v1+json"
+MANIFEST = "application/vnd.oci.image.manifest.v1+json"
+CONFIG = "application/vnd.oci.image.config.v1+json"
+TAR = "application/vnd.oci.image.layer.v1.tar"
+GZIP = TAR + "+gzip"
+ATTESTATION = "application/vnd.in-toto+json"
+PROVENANCE = "https://slsa.dev/provenance/v1"
+REPOSITORY = "fr-meyer/openclaw"
+DIGEST = re.compile(r"sha256:[a-f0-9]{64}\Z")
+SHA = re.compile(r"[a-f0-9]{40}\Z")
+CHUNK = 64 * 1024
+OVERLAP = 512
+SENSITIVE_KEY = re.compile(
+    r"(?:^|[:_./-])(?:password|passwd|token|secret|api[_-]?key|private[_-]?key|"
+    r"access[_-]?key|credentials)(?:$|[_-](?:id|value|secret)$)", re.I
+)
+PATTERNS = (
+    # A header literal is common in public crypto parsers/documentation. Require
+    # a plausible body, including the optional legacy encrypted-PEM headers.
+    ("private_key", re.compile(
+        rb"-----BEGIN (?:[A-Z0-9 ]{0,40} )?PRIVATE KEY-----\r?\n"
+        rb"(?:Proc-Type: [^\r\n]{1,80}\r?\nDEK-Info: [^\r\n]{1,160}\r?\n\r?\n)?"
+        rb"[A-Za-z0-9+/]{64}")),
+    ("github_token", re.compile(rb"(?:gh[pousr]_[A-Za-z0-9]{30,255}|github_pat_[A-Za-z0-9_]{30,255})")),
+    ("service_token", re.compile(rb"(?:sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,255}|xox[baprs]-[A-Za-z0-9-]{20,255})")),
+    ("aws_access_key", re.compile(rb"(?:AKIA|ASIA)[A-Z0-9]{16}")),
+    ("credential_url", re.compile(rb"https?://[^\s/:@\"']{1,100}:[^\s/@\"']{1,150}@")),
+)
+LIMITATIONS = [
+    "Heuristic detection is not proof that an image contains no secrets.",
+    "Arbitrary, encoded/encrypted credentials and nested archives may evade detection.",
+    "Public fixtures can cause refusals; no automatic exception or bypass is provided.",
+    "Source history, build logs, dependencies and publication visibility are outside this inspection.",
+    "Release qualification and complete provenance validation remain the image sealer's responsibility.",
+]
+
+
+@dataclasses.dataclass(frozen=True)
+class Limits:
+    blob_bytes: int = 8 * 1024**3
+    total_blob_bytes: int = 16 * 1024**3
+    json_bytes: int = 32 * 1024**2
+    expanded_layer_bytes: int = 12 * 1024**3
+    total_expanded_bytes: int = 32 * 1024**3
+    member_bytes: int = 4 * 1024**3
+    members: int = 500000
+    layers: int = 256
+    manifests: int = 16
+    blobs: int = 1024
+    path_bytes: int = 4096
+    tar_metadata_bytes: int = 64 * 1024
+    json_nodes: int = 1000000
+    findings: int = 64
+
+
+class Refusal(Exception):
+    """Fixed, safe rule identifier; never carry untrusted exception messages."""
+
+
+def require(condition, code):
+    if not condition:
+        raise Refusal(code)
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def object_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, "duplicate_json_key")
+        result[key] = value
+    return result
+
+
+class ExpandedReader:
+    """Budget decompression before tarfile can allocate a member/PAX payload."""
+
+    def __init__(self, stream, inspector):
+        self.stream, self.inspector, self.count = stream, inspector, 0
+        self.tail = b""
+
+    def read(self, size=-1):
+        require(0 <= size <= CHUNK, "unbounded_archive_read")
+        data = self.stream.read(size)
+        self.count += len(data)
+        self.tail = (self.tail + data)[-1024:]
+        self.inspector.counts["expandedBytes"] += len(data)
+        require(self.count <= self.inspector.limits.expanded_layer_bytes, "expanded_layer_limit")
+        require(self.inspector.counts["expandedBytes"] <= self.inspector.limits.total_expanded_bytes,
+                "expanded_total_limit")
+        return data
+
+
+class Inspector:
+    def __init__(self, directory, expected_index_digest, source_sha, tooling_sha, limits):
+        self.directory = Path(directory)
+        self.index_digest, self.source_sha, self.tooling_sha = expected_index_digest, source_sha, tooling_sha
+        self.limits = limits
+        self.findings = []
+        self.seen_findings = set()
+        self.blobs = {}
+        self.counts = {"blobBytes": 0, "expandedBytes": 0, "layers": 0, "members": 0,
+                       "files": 0, "fileBytes": 0, "jsonNodes": 0}
+        self.image_digest = self.config_digest = None
+
+    def finding(self, rule, location, blob_digest=None):
+        location_hash = sha256(location.encode("utf-8", "surrogatepass"))
+        identity = (rule, location_hash, blob_digest)
+        if identity in self.seen_findings:
+            return
+        require(len(self.findings) < self.limits.findings, "findings_limit")
+        self.seen_findings.add(identity)
+        finding = {"rule": rule, "locationSha256": location_hash}
+        if blob_digest:
+            finding["blobDigest"] = blob_digest
+        self.findings.append(finding)
+
+    def scan_bytes(self, data, location, blob_digest=None):
+        for rule, pattern in PATTERNS:
+            if pattern.search(data):
+                self.finding(rule, location, blob_digest)
+
+    def scan_json(self, value, location, blob_digest=None):
+        pending = [(value, location)]
+        while pending:
+            item, where = pending.pop()
+            self.counts["jsonNodes"] += 1
+            require(self.counts["jsonNodes"] <= self.limits.json_nodes, "json_node_limit")
+            if isinstance(item, str):
+                self.scan_bytes(item.encode("utf-8", "surrogatepass"), where, blob_digest)
+            elif isinstance(item, dict):
+                for key, child in item.items():
+                    self.scan_bytes(key.encode("utf-8", "surrogatepass"), where, blob_digest)
+                    # BuildKit's externalParameters.args includes build-arg:NAME.
+                    # Arbitrary SBOM properties named token/secret are not envs.
+                    if ("/externalParameters" in where and key.startswith("build-arg:") and
+                            SENSITIVE_KEY.search(key) and isinstance(child, str) and child):
+                        self.finding("sensitive_metadata_value", where + "/" + key, blob_digest)
+                    pending.append((child, where + "/" + key))
+            elif isinstance(item, list):
+                pending.extend((child, where + "/" + str(i)) for i, child in enumerate(item))
+
+    def open_regular(self, path, limit):
+        # O_NOFOLLOW also rejects a blob substituted by a symlink after lstat.
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            info = os.fstat(descriptor)
+            require(stat.S_ISREG(info.st_mode), "nonregular_input")
+            require(0 <= info.st_size <= limit, "input_size_limit")
+            return os.fdopen(descriptor, "rb"), info
+        except BaseException:
+            os.close(descriptor)
+            raise
+
+    def parse_json(self, data):
+        try:
+            result = json.loads(data, object_pairs_hook=object_pairs,
+                                parse_constant=lambda _: (_ for _ in ()).throw(Refusal("invalid_json_number")))
+        except (ValueError, UnicodeError, RecursionError):
+            raise Refusal("malformed_json") from None
+        require(isinstance(result, dict), "json_object_required")
+        return result
+
+    def local_json(self, name):
+        with self.open_regular(self.directory / name, self.limits.json_bytes)[0] as stream:
+            data = stream.read(self.limits.json_bytes + 1)
+        require(len(data) <= self.limits.json_bytes, "json_size_limit")
+        parsed = self.parse_json(data)
+        self.scan_json(parsed, name)
+        return parsed
+
+    def descriptor(self, descriptor):
+        require(isinstance(descriptor, dict), "descriptor_required")
+        digest, size = descriptor.get("digest"), descriptor.get("size")
+        require(isinstance(digest, str) and DIGEST.fullmatch(digest), "invalid_blob_digest")
+        require(type(size) is int and 0 <= size <= self.limits.blob_bytes, "invalid_blob_size")
+        require(not descriptor.get("urls") and "data" not in descriptor, "external_or_inline_blob")
+        self.scan_json(descriptor, "descriptor/" + digest, digest)
+        if digest in self.blobs:
+            require(self.blobs[digest] == size, "conflicting_blob_size")
+        else:
+            require(len(self.blobs) < self.limits.blobs, "blob_count_limit")
+            self.counts["blobBytes"] += size
+            require(self.counts["blobBytes"] <= self.limits.total_blob_bytes, "blob_total_limit")
+            self.blobs[digest] = size
+        return digest, size
+
+    def blob(self, descriptor, as_json=False):
+        digest, size = self.descriptor(descriptor)
+        require(not as_json or size <= self.limits.json_bytes, "json_size_limit")
+        stream, before = self.open_regular(self.directory / "blobs" / "sha256" / digest[7:], self.limits.blob_bytes)
+        try:
+            require(before.st_size == size, "blob_size_mismatch")
+            content, hashed, count = [], hashlib.sha256(), 0
+            while True:
+                chunk = stream.read(CHUNK)
+                if not chunk:
+                    break
+                count += len(chunk)
+                require(count <= size, "blob_changed")
+                hashed.update(chunk)
+                if as_json:
+                    content.append(chunk)
+            after = os.fstat(stream.fileno())
+            require(count == size and (before.st_mtime_ns, before.st_ctime_ns) ==
+                    (after.st_mtime_ns, after.st_ctime_ns), "blob_changed")
+            require("sha256:" + hashed.hexdigest() == digest, "blob_digest_mismatch")
+            if as_json:
+                value = self.parse_json(b"".join(content))
+                self.scan_json(value, digest, digest)
+                return value
+            stream.seek(0)
+            return stream, before
+        except BaseException:
+            stream.close()
+            raise
+        finally:
+            if as_json:
+                stream.close()
+
+    def safe_name(self, name, link=False, parent=""):
+        require(isinstance(name, str) and len(name.encode("utf-8", "surrogatepass")) <= self.limits.path_bytes,
+                "archive_path_limit")
+        require("\0" not in name and "\\" not in name, "unsafe_archive_path")
+        require(link or not name.startswith("/"), "absolute_archive_path")
+        parts = [] if name.startswith("/") else [p for p in parent.split("/") if p] if link else []
+        for part in name.split("/"):
+            if part in ("", "."):
+                continue
+            if part == "..":
+                require(link and parts, "archive_path_escape")
+                parts.pop()
+            else:
+                parts.append(part)
+        return "/".join(parts)
+
+    def scan_path(self, path, digest):
+        parts = path.lower().split("/")
+        leaf = parts[-1]
+        # Empty runtime directories are normal; this applies to files/links only.
+        if (leaf == ".env" or leaf.startswith(".env.") or ".openclaw" in parts or
+                ".ssh" in parts or ".aws" in parts or
+                leaf in ("id_rsa", "id_ed25519", "cookies", "cookies.txt", "cookies.sqlite",
+                         "auth-profiles.json", "application_default_credentials.json",
+                         "openclaw.sqlite", "openclaw-agent.sqlite") or
+                any(leaf.startswith(db + "-") for db in ("openclaw.sqlite", "openclaw-agent.sqlite")) or
+                ("gcloud" in parts and "credential" in leaf)):
+            self.finding("private_runtime_path", path, digest)
+
+    def scan_layer(self, descriptor):
+        media_type = descriptor.get("mediaType")
+        require(media_type in (TAR, GZIP), "unsupported_layer_format")
+        self.counts["layers"] += 1
+        require(self.counts["layers"] <= self.limits.layers, "layer_limit")
+        raw, before = self.blob(descriptor)
+        digest = descriptor["digest"]
+        limits = self.limits
+        class BoundedTarInfo(tarfile.TarInfo):
+            # tarfile consumes these pseudo-members internally before yielding a
+            # normal member. Bound them before its whole-header allocation.
+            def _proc_pax(self, archive):
+                require(0 <= self.size <= limits.tar_metadata_bytes, "tar_metadata_limit")
+                return super()._proc_pax(archive)
+
+            def _proc_gnulong(self, archive):
+                require(0 <= self.size <= limits.path_bytes + 1, "archive_path_limit")
+                return super()._proc_gnulong(archive)
+
+            def _proc_sparse(self, archive):
+                raise Refusal("unsupported_sparse_member")
+
+            def _proc_gnusparse_00(self, *args):
+                raise Refusal("unsupported_sparse_member")
+
+            def _proc_gnusparse_01(self, *args):
+                raise Refusal("unsupported_sparse_member")
+
+            def _proc_gnusparse_10(self, *args):
+                raise Refusal("unsupported_sparse_member")
+        try:
+            decoded = gzip.GzipFile(fileobj=raw, mode="rb") if media_type == GZIP else raw
+            bounded = ExpandedReader(decoded, self)
+            # Refuse non-padding data after the tar end marker (including a hidden
+            # second archive). Drain through tarfile's buffer, then the decompressor
+            # to check all padding, compressed EOF and CRC without losing read-ahead.
+            with tarfile.open(fileobj=bounded, mode="r|", bufsize=10240, tarinfo=BoundedTarInfo) as archive:
+                for member in archive:
+                    self.counts["members"] += 1
+                    require(self.counts["members"] <= self.limits.members, "member_count_limit")
+                    require(0 <= member.size <= self.limits.member_bytes, "member_size_limit")
+                    require(not member.sparse, "unsupported_sparse_member")
+                    name = self.safe_name(member.name)
+                    require(member.isfile() or member.isdir() or member.issym() or member.islnk(),
+                            "unsupported_member_type")
+                    self.scan_json(member.pax_headers, digest + "/pax/" + name, digest)
+                    if member.isdir():
+                        continue
+                    self.scan_path(name, digest)
+                    if member.issym() or member.islnk():
+                        target = self.safe_name(member.linkname, link=True,
+                                                parent=name.rpartition("/")[0] if member.issym() else "")
+                        self.scan_path(target, digest)
+                        self.scan_bytes(member.linkname.encode("utf-8", "surrogatepass"), name, digest)
+                        continue
+                    self.counts["files"] += 1
+                    file = archive.extractfile(member)  # A stream only: never extract to disk.
+                    require(file is not None, "missing_member_stream")
+                    total, tail = 0, b""
+                    while True:
+                        chunk = file.read(CHUNK)
+                        if not chunk:
+                            break
+                        if total == 0 and chunk.startswith(b"SQLite format 3\0"):
+                            self.finding("sqlite_database_payload", name, digest)
+                        total += len(chunk)
+                        self.counts["fileBytes"] += len(chunk)
+                        self.scan_bytes(tail + chunk, name, digest)
+                        tail = (tail + chunk)[-OVERLAP:]
+                    require(total == member.size, "truncated_member")
+                while True:
+                    padding = archive.fileobj.read(CHUNK)
+                    if not padding:
+                        break
+                    require(not any(padding), "trailing_archive_data")
+            while bounded.read(CHUNK):
+                pass
+            require(bounded.count >= 1024 and bounded.tail == bytes(1024), "missing_tar_end_marker")
+            after = os.fstat(raw.fileno())
+            require((before.st_size, before.st_mtime_ns, before.st_ctime_ns) ==
+                    (after.st_size, after.st_mtime_ns, after.st_ctime_ns), "blob_changed")
+        finally:
+            raw.close()
+
+    def verify_export_closure(self):
+        # The workflow exports the entire layout. Reject extras instead of
+        # silently approving uninspected files or orphaned blobs in that folder.
+        for directory, expected in (
+                (self.directory, {"oci-layout", "index.json", "blobs"}),
+                (self.directory / "blobs", {"sha256"}),
+                (self.directory / "blobs" / "sha256", {digest[7:] for digest in self.blobs})):
+            seen = set()
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    require(entry.name in expected and not entry.is_symlink(), "unexpected_export_entry")
+                    seen.add(entry.name)
+                    require(len(seen) <= self.limits.blobs + 3, "export_entry_limit")
+            require(seen == expected, "missing_export_entry")
+
+    def run(self):
+        require(isinstance(self.index_digest, str) and DIGEST.fullmatch(self.index_digest), "invalid_index_digest")
+        require(isinstance(self.source_sha, str) and SHA.fullmatch(self.source_sha), "invalid_source_sha")
+        require(isinstance(self.tooling_sha, str) and SHA.fullmatch(self.tooling_sha), "invalid_tooling_sha")
+        for directory in (self.directory, self.directory / "blobs", self.directory / "blobs" / "sha256"):
+            require(stat.S_ISDIR(directory.lstat().st_mode), "unsafe_layout_directory")
+        require(self.local_json("oci-layout").get("imageLayoutVersion") == "1.0.0", "unsupported_layout")
+        root = self.local_json("index.json")
+        require(isinstance(root.get("manifests"), list) and len(root["manifests"]) == 1, "ambiguous_root_index")
+        descriptor = root["manifests"][0]
+        require(descriptor.get("digest") == self.index_digest, "index_binding_mismatch")
+        index = self.blob(descriptor, as_json=True)
+        require(index.get("mediaType") == INDEX and isinstance(index.get("manifests"), list), "unsupported_index")
+        entries = index["manifests"]
+        require(1 <= len(entries) <= self.limits.manifests, "manifest_count_limit")
+        images = [item for item in entries if item.get("platform") == {"os": "linux", "architecture": "amd64"}]
+        require(len(images) == 1, "ambiguous_image_platform")
+        self.image_digest = images[0].get("digest")
+        provenance_count = 0
+        for entry in entries:
+            require(entry.get("mediaType") == MANIFEST, "unsupported_manifest_format")
+            manifest = self.blob(entry, as_json=True)
+            require(manifest.get("mediaType") == MANIFEST and manifest.get("schemaVersion") == 2,
+                    "unsupported_manifest")
+            require(isinstance(manifest.get("layers"), list), "missing_layers")
+            config_descriptor = manifest.get("config")
+            require(isinstance(config_descriptor, dict) and config_descriptor.get("mediaType") == CONFIG,
+                    "unsupported_config")
+            config = self.blob(config_descriptor, as_json=True)
+            if entry == images[0]:
+                self.config_digest = config_descriptor["digest"]
+                require(config.get("os") == "linux" and config.get("architecture") == "amd64", "config_platform_mismatch")
+                runtime = config.get("config", {})
+                require(runtime.get("Labels", {}).get("org.opencontainers.image.revision") == self.source_sha,
+                        "config_source_mismatch")
+                environment = runtime.get("Env", [])
+                require(isinstance(environment, list) and all(isinstance(item, str) for item in environment), "invalid_environment")
+                for value in environment:
+                    key, separator, content = value.partition("=")
+                    require(separator, "invalid_environment")
+                    if content and SENSITIVE_KEY.search(key):
+                        self.finding("sensitive_environment_value", "environment/" + key, self.config_digest)
+                require(manifest["layers"], "empty_image_layers")
+                for layer in manifest["layers"]:
+                    self.scan_layer(layer)
+            else:
+                annotations = entry.get("annotations", {})
+                require(annotations.get("vnd.docker.reference.type") == "attestation-manifest" and
+                        annotations.get("vnd.docker.reference.digest") == self.image_digest,
+                        "unsupported_extra_manifest")
+                for layer in manifest["layers"]:
+                    require(layer.get("mediaType") == ATTESTATION, "unsupported_attestation_format")
+                    statement = self.blob(layer, as_json=True)
+                    if statement.get("predicateType") == PROVENANCE:
+                        require(statement.get("subject") and len(statement["subject"]) == 1 and
+                                statement["subject"][0].get("digest", {}).get("sha256") == self.image_digest[7:],
+                                "provenance_subject_mismatch")
+                        definition = statement.get("predicate", {}).get("buildDefinition", {})
+                        expected = {"uri": "https://github.com/" + REPOSITORY + ".git#" + self.source_sha,
+                                    "digest": {"sha1": self.source_sha}}
+                        def matches(source):
+                            return isinstance(source, dict) and source.get("uri") == expected["uri"] and source.get("digest", {}).get("sha1") == self.source_sha
+                        require(matches(definition.get("externalParameters", {}).get("configSource")) and
+                                any(matches(source) for source in definition.get("resolvedDependencies", [])),
+                                "provenance_source_mismatch")
+                        provenance_count += 1
+        require(provenance_count > 0, "missing_source_provenance")
+        self.verify_export_closure()
+
+
+def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limits=None):
+    """Return sanitized receipt; callers must require passed AND inspectionComplete."""
+    inspector = Inspector(oci_dir, expected_index_digest, source_sha, tooling_sha, limits or Limits())
+    complete, error = False, None
+    try:
+        inspector.run()
+        complete = True
+    except Refusal as exc:
+        error = str(exc)
+    except (OSError, EOFError, tarfile.TarError, zlib.error, ValueError, TypeError, KeyError,
+            AttributeError, RecursionError, OverflowError):
+        error = "malformed_or_unreadable_layout"
+    receipt = {
+        "schema": "openclaw.hosted-privacy.v1",
+        "status": "passed" if complete and not inspector.findings else "failed",
+        "inspectionComplete": complete,
+        "indexDigest": expected_index_digest if isinstance(expected_index_digest, str) and DIGEST.fullmatch(expected_index_digest) else None,
+        "sourceSha": source_sha if isinstance(source_sha, str) and SHA.fullmatch(source_sha) else None,
+        "toolingSha": tooling_sha if isinstance(tooling_sha, str) and SHA.fullmatch(tooling_sha) else None,
+        "imageDigest": inspector.image_digest if isinstance(inspector.image_digest, str) and DIGEST.fullmatch(inspector.image_digest) else None,
+        "configDigest": inspector.config_digest,
+        "counts": inspector.counts,
+        "findings": inspector.findings,
+        "limits": dataclasses.asdict(inspector.limits),
+        "limitations": LIMITATIONS,
+        "heuristicOnly": True,
+    }
+    if error:
+        receipt["refusal"] = error
+    return receipt
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--oci-dir", required=True)
+    parser.add_argument("--expected-index-digest", required=True)
+    parser.add_argument("--source-sha", required=True)
+    parser.add_argument("--tooling-sha", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args()
+    result = inspect_layout(args.oci_dir, args.expected_index_digest, args.source_sha, args.tooling_sha)
+    # Exclusive creation avoids silently replacing prior inspection evidence.
+    try:
+        with open(args.output, "x", encoding="utf-8") as output:
+            json.dump(result, output, sort_keys=True, indent=2)
+            output.write("\n")
+    except OSError:
+        print('{"status":"failed","refusal":"receipt_write_failed"}')
+        return 1
+    print(json.dumps({"status": result["status"], "inspectionComplete": result["inspectionComplete"],
+                      "findings": len(result["findings"]), "refusal": result.get("refusal")}))
+    return 0 if result["status"] == "passed" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

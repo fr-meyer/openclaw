@@ -164,15 +164,42 @@ export function inspectLoadedPlugins(manifest, version, imageReference, codexVer
   }
 }
 
+export function hostedGitBuildContext(manifest) {
+  need(
+    manifest.repository === "fr-meyer/openclaw" && SHA.test(manifest.source?.commit),
+    "Invalid hosted Git source identity",
+  );
+  return {
+    kind: "git",
+    repository: `https://github.com/${manifest.repository}`,
+    sourceSha: manifest.source.commit,
+  };
+}
+
 export async function verifyImageLayout({ manifest, receipt, ociDir }) {
   validateProducer(receipt.producer);
+  let sourceRepository = receipt.producer.kind === "gcp" ? manifest.repository : undefined;
+  if (Object.hasOwn(receipt, "buildContext")) {
+    const context = receipt.buildContext;
+    const expected = hostedGitBuildContext(manifest);
+    need(
+      receipt.producer.kind !== "gcp" &&
+        context &&
+        typeof context === "object" &&
+        !Array.isArray(context) &&
+        Object.keys(context).sort().join(",") === "kind,repository,sourceSha" &&
+        Object.keys(expected).every((key) => context[key] === expected[key]),
+      "Hosted Git build context differs from the pinned source",
+    );
+    sourceRepository = manifest.repository;
+  }
+  // Legacy hosted v2 receipts without this marker retain their original local-
+  // context verification. They do not qualify for the new hosted export gate.
   return verifyDockerReleaseLayout({
     directory: ociDir,
     architecture: manifest.image.architecture,
     sourceSha: manifest.source.commit,
-    // GCP uses an immutable remote Git context. Hosted preparation retains its
-    // existing local-checkout context and producer checks.
-    sourceRepository: receipt.producer.kind === "gcp" ? manifest.repository : undefined,
+    sourceRepository,
     version: receipt.version,
     builtAt: receipt.builtAt,
     expectedDigest: receipt.indexDigest,
@@ -395,6 +422,7 @@ async function main() {
     indexDigest: expectedDigest,
     producer,
     artifactName: producerArtifactName(sourceSha, producer),
+    ...(producer.kind !== "gcp" ? { buildContext: hostedGitBuildContext(manifest) } : {}),
     ...(manifest.review ? { review: { ...manifest.review, headSha: reviewHead } } : {}),
   };
   const image = await verifyImageLayout({ manifest, receipt, ociDir });

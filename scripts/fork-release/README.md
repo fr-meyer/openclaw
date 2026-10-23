@@ -714,7 +714,9 @@ The manual job now reads trusted tooling from the dispatched `main` commit and
 metadata from the exact input commit. It checks the current open fork candidate
 PR's head and base before using the sealed source identity. The source checkout
 and OCI receipt remain bound to the manifest's exact product commit and image
-bytes. This separation needs hosted qualification after the tooling lands; it
+bytes. Hosted CI is the default future image-build stage; its bounded resources,
+privacy checks and controlled export are documented in [HOSTED-BUILD.md](HOSTED-BUILD.md).
+This separation needs hosted qualification after the tooling lands; it
 does not grant build, merge, backup, or deployment authority. Reconcile the
 9.9 owner's other hosted-qualified runner fixes before adopting a candidate.
 
@@ -729,9 +731,12 @@ in one hosted Linux process, then uses the same product checkout to build one
 OCI image. The separate immutable tooling selection above is a prerequisite for
 a new upstream-based candidate that does not contain those helpers. It uses the official Docker release
 preparation's OCI closure, attestation and smoke helpers; the smoke copy is
-checked against the prepared config digest. The OCI payload and `receipt.json`
-are uploaded together under a run/attempt-specific artifact name. No registry
-push or production action occurs in CI. CI gets `contents: read` only.
+checked against the prepared config digest. New hosted seals additionally bind
+Git-context provenance. The OCI payload and native/privacy/resource receipts
+are uploaded together only when the manual public-artifact and storage-decision
+inputs are both enabled, after the final binding gate. Defaults retain no image
+artifact. No registry push or production action occurs in CI. CI gets
+`contents: read` only.
 
 The earlier `mergeguez-d2ec-qualification.yml` proved a fixed old baseline with
 sealed patches and first-attempt branch/actor conditions. This lane retains
@@ -739,7 +744,11 @@ exact-source and offline contract gates, while allowing a reviewed manifest to
 select each future candidate. It does not copy that task's private companion
 inputs or its hosted build supervisor.
 
-### Build once on the existing GCP host
+### Existing GCP build adapter
+
+Hosted CI is the default for future builds after trusted adoption. This retained
+adapter supports already owned GCP operations and separately selected exceptions;
+it is not a reason to rebuild or disturb a qualified current image.
 
 `gcp_build.py` adapts the existing native Buildx builder to one durable systemd
 service. It builds an image only; it does not own rehearsal, migration,
