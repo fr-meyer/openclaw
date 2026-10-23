@@ -97,8 +97,21 @@ still requires an ordinary non-promisor checkout with every required object.
 No full-preflight success is claimed for a partial checkout. Recheck the live
 PR head/base and upstream identity at the later release admission boundary.
 The 294-commit official stable path exceeds a generic 65-commit shallow fetch;
-the full graph required by this merge proof must be available. A shallow or
-promisor checkout is not a reason to waive ancestry or source-preflight checks.
+the workflow now acquires that history with `source_ancestry.py`: one fixed-origin,
+depth-512 fetch with a 180-second timeout after the other shallow fetches. It
+preserves checkout HEAD, rejects promisor repositories and verifies all relevant
+ancestry. Missing history is refused, with no unbounded fetch fallback. An unrelated
+shallow boundary at or before the declared common base is allowed. For an existing
+ordinary checkout, the same normal entry point is:
+
+```sh
+python3 scripts/fork-release/source_ancestry.py \
+  --manifest "$PROPOSAL/manifest.json" \
+  --inventory "$PROPOSAL/patch-inventory.json" --source-dir "$SOURCE_CHECKOUT"
+```
+
+The hosted validation runtime is Node 24.22.1 for stable 10.6; retained lanes keep
+24.21.0. This source preparation does not dispatch a hosted build.
 
 Regression references retain the existing gate routing and the focused backup,
 recovery, CLI, managed-flow, lease, egress, Workboard and memory fixtures. A
@@ -109,9 +122,24 @@ against pinned MCP SDK 1.32.0; a Vitest gate does not satisfy that check.
 
 ## Remaining image and rehearsal gates
 
-This source proposal does not activate the existing 10.5 image-policy pins.
-Before a later 10.6 build, separately review the Dockerfile, exact source/build
-profile and native dependency closure. Seal the immutable image and verify
+The GCP preparation policy now admits only the exact 10.6 source/tree above,
+version `2026.10.6` and Dockerfile SHA256
+`e2fca2f75dc0739ee1943fafacae8773f14dc7a872cdcb9201ee665966c36575`.
+Its full Dockerfile differs from the accepted 10.5 file only in the OCI base-name
+label (`node:24.22.1-bookworm-slim`). Existing 10.5 pins remain unchanged. The
+new output tag uses `openclaw-v106-prep`; it is not an immutable image receipt.
+
+The next build profile is explicitly **candidate-unqualified**: 8 GiB aggregate
+builder memory with no container swap, 4 CPUs, 6 GiB compiler old-space, 10 GiB
+available-memory admission and 2 GiB runtime floor. Existing pressure, health,
+disk, ownership and cancellation checks remain. These are configured limits,
+not an empirical minimum or a demonstrated fit for the changed 10.6 dependency
+closure. Reconcile the current builder lease and coordinate resources with the
+current deployment owner before preparing/starting a new owned operation.
+
+The package/lock and plugin dependencies changed; the preserved 133-test source
+receipt does not prove the offline Docker install, native closure or image.
+A later authorized build must seal the immutable image and verify
 Node 24.22.1, pnpm 12.15.0, managed Codex 0.160.0, selected `codex,workboard`
 plugins and native tools in that image. Then qualify the exact image-bound
 rehearsal executor and resource profile; preserve the intended future

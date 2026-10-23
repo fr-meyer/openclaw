@@ -49,6 +49,10 @@ PRODUCTION_GATEWAY_NAME = "openclaw-openclaw-gateway-1"
 QUALIFICATION_SOURCE_SHA = "4cf5cb7e256c67a5c98097774cad2d05cd781c01"
 RETAINED_QUALIFICATION_SOURCE_SHA = "84d65b446d66cd5db5b9c533bd158e9062968692"
 HISTORICAL_QUALIFICATION_SOURCE_SHA = "1d5ab20bea4cccce0b80b60a9ba5d5020cf08038"
+# Separate next-release qualification; no 10.5 image or runtime proof transfers.
+NEXT_QUALIFICATION_SOURCE_SHA = "a39cad2d97efae7d0c832af3d71e6ccc86f60e50"
+NEXT_QUALIFICATION_SOURCE_TREE = "47a3c1321ce39b50d22ec092054e54fd0afaa03a"
+NEXT_QUALIFICATION_VERSION = "2026.10.6"
 QUALIFICATION_PROFILE_ID = "qualification-8g"
 QUALIFICATION_START_BYTES = 10 << 30
 QUALIFICATION_RUNNING_FLOOR_BYTES = 2 << 30
@@ -86,6 +90,9 @@ SAFE_ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bi
 # Review the whole file, including stage/COPY/ENV/SHELL policy, before changing
 # this pin. A partial Dockerfile parser cannot establish that boundary.
 REVIEWED_DOCKERFILE_SHA256 = "01a32889ed1a3a86592f492ae2337c4c9591b9ba5fadca176b86afbc2efc4ad6"
+# The complete next Dockerfile changes only the reviewed OCI base-name label.
+# Its exact source/tree binding is required; this is not a second global allowlist.
+NEXT_REVIEWED_DOCKERFILE_SHA256 = "e2fca2f75dc0739ee1943fafacae8773f14dc7a872cdcb9201ee665966c36575"
 CONFIG_FIELDS = """schema operationId attempt projectNumber instanceId toolingSha
 sourceSha sourceTree manifestSha256 inventorySha256 builtAt builder limits dockerExport"""
 BUILD_TUNING_FIELDS = "tsdownMaxOldSpaceMb"
@@ -398,6 +405,9 @@ def validate_config(config):
     need(builder["pidsLimit"] is None or
          (type(builder["pidsLimit"]) is int and builder["pidsLimit"] > 0), "build.builder.pids")
     need(builder["readBps"] is None and builder["writeBps"] is None, "build.builder.io_contract")
+    if config["sourceSha"] == NEXT_QUALIFICATION_SOURCE_SHA:
+        need(is_next_qualification_source(config) and is_qualification_worker(config),
+             "build.next_qualification.identity")
     limits = config["limits"]
     start_field = " minStartMemoryAvailableBytes" if type(limits) is dict and \
         "minStartMemoryAvailableBytes" in limits else ""
@@ -518,13 +528,11 @@ def validate_profile(profile, config):
                          QUALIFICATION_RUNNING_FLOOR_BYTES)
         retained_floor = (profile["minMemoryAvailableBytes"] == 10 << 30 and
                           profile["minStartMemoryAvailableBytes"] >= 18 << 30)
-        need(profile["sourceSha"] in (QUALIFICATION_SOURCE_SHA,
-                                      RETAINED_QUALIFICATION_SOURCE_SHA,
-                                      HISTORICAL_QUALIFICATION_SOURCE_SHA) and
+        need(is_qualification_source(config) and
              builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
              builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000 and
              profile["tsdownMaxOldSpaceMb"] == 6144 and
-             (current_floor or retained_floor) and
+             (current_floor or (retained_floor and not is_next_qualification_source(config))) and
              profile["maxFullMemoryPressureAvg10"] <= 5.0,
              "build.adaptive.qualification_identity")
     need(profile["minFreeBytes"] >= 16 << 30 and
@@ -546,11 +554,24 @@ def profile_fits(profile, samples):
                for sample in samples)
 
 
+def is_next_qualification_source(config):
+    return (config["sourceSha"] == NEXT_QUALIFICATION_SOURCE_SHA and
+            config["sourceTree"] == NEXT_QUALIFICATION_SOURCE_TREE)
+
+
+def is_selectable_qualification_source(config):
+    return (config["sourceSha"] == QUALIFICATION_SOURCE_SHA or
+            is_next_qualification_source(config))
+
+
+def is_qualification_source(config):
+    return (is_selectable_qualification_source(config) or config["sourceSha"] in (
+        RETAINED_QUALIFICATION_SOURCE_SHA, HISTORICAL_QUALIFICATION_SOURCE_SHA))
+
+
 def is_qualification_worker(config):
     builder = config["builder"]
-    return (config["sourceSha"] in (QUALIFICATION_SOURCE_SHA,
-                                    RETAINED_QUALIFICATION_SOURCE_SHA,
-                                    HISTORICAL_QUALIFICATION_SOURCE_SHA) and
+    return (is_qualification_source(config) and
             builder["memoryBytes"] == builder["memorySwapBytes"] == 8 << 30 and
             builder["cpuPeriod"] == 100000 and builder["cpuQuota"] == 400000)
 
@@ -582,6 +603,9 @@ def adaptive_profiles(config):
     """Two unqualified, source-bound candidates; no inferred Doctor/build minimum."""
     need("cache" in config, "build.adaptive.cache_required")
     qualification = is_qualification_worker(config)
+    if config["sourceSha"] == NEXT_QUALIFICATION_SOURCE_SHA:
+        need(is_next_qualification_source(config) and qualification,
+             "build.next_qualification.identity")
     common = {"qualification": "candidate-unqualified",
               "sourceSha": config["sourceSha"], "sourceTree": config["sourceTree"],
               "builderContainerId": config["builder"]["containerId"],
@@ -627,7 +651,7 @@ def adaptive_profiles(config):
 def select_profile(config, samples):
     validate_adaptive_samples(samples, now())
     if (is_qualification_worker(config) and
-            config["sourceSha"] != QUALIFICATION_SOURCE_SHA):
+            not is_selectable_qualification_source(config)):
         return None  # Retained source is readable for recovery, not newly selectable.
     fitting = [profile for profile in adaptive_profiles(config)
                if profile_fits(profile, samples)]
@@ -678,11 +702,15 @@ def source_binding(config, manifest_path, inventory_path, source):
     inventory, _ = preflight.inventory_at(inventory_path, manifest, manifest_hash, source)
     pr.validate_binding(manifest_path, source)
     dockerfile = pr.git(source, "show", f"{config['sourceSha']}:Dockerfile", binary=True)
-    need(release.sha256(dockerfile) == REVIEWED_DOCKERFILE_SHA256,
+    dockerfile_sha256 = (NEXT_REVIEWED_DOCKERFILE_SHA256 if is_next_qualification_source(config)
+                         else REVIEWED_DOCKERFILE_SHA256)
+    need(release.sha256(dockerfile) == dockerfile_sha256,
          "build.dockerfile.network_policy_unreviewed")
     version = json.loads(pr.git(source, "show", f"{config['sourceSha']}:package.json"))["version"]
     need(release.matches(re.compile(r"2026\.[1-9][0-9]*\.(?:0|[1-9][0-9]*)\Z"), version),
          "build.version.not_stable")
+    need((version == NEXT_QUALIFICATION_VERSION) == is_next_qualification_source(config),
+         "build.version.next_source_mismatch")
     need(type(inventory["upstream"]) is dict
          and inventory["upstream"]["tag"] == f"v{version}", "build.version.upstream_mismatch")
     return version
@@ -702,6 +730,10 @@ def tooling_bytes(root, sha):
 
 def build_argv(op, config, version):
     need(config["dockerExport"] is False, "build.export.unqualified_transport")
+    next_source = is_next_qualification_source(config)
+    need((version == NEXT_QUALIFICATION_VERSION) == next_source and
+         (config["sourceSha"] != NEXT_QUALIFICATION_SOURCE_SHA or next_source),
+         "build.version.next_source_mismatch")
     sha = config["sourceSha"]
     command = [*DOCKER, "--host", ENDPOINT, "buildx", "build",
                "--builder", config["builder"]["name"], "--platform", "linux/amd64",
@@ -719,7 +751,7 @@ def build_argv(op, config, version):
                "--metadata-file", str(op / "build-metadata.json"),
                "--provenance", "mode=max", "--sbom", "true",
                "--output", f"type=oci,dest={op / 'oci'},tar=false,compression=gzip,compression-level=1",
-               "--tag", f"openclaw-v105-prep:{sha[:12]}"]
+               "--tag", f"{'openclaw-v106-prep' if next_source else 'openclaw-v105-prep'}:{sha[:12]}"]
     if "buildTuning" in config:
         command.extend(["--build-arg", "OPENCLAW_DOCKER_BUILD_TSDOWN_MAX_OLD_SPACE_MB="
                         f"{config['buildTuning']['tsdownMaxOldSpaceMb']}"])
@@ -748,7 +780,7 @@ def service_argv(op, intent):
 def prepare(private_root, config, manifest, inventory, source, tooling):
     validate_config(config)
     need(not is_qualification_worker(config) or
-         config["sourceSha"] == QUALIFICATION_SOURCE_SHA,
+         is_selectable_qualification_source(config),
          "build.qualification.retained_source_only")
     need(not is_qualification_worker(config) or has_current_qualification_profile(config),
          "build.qualification.current_profile_required")
@@ -1736,7 +1768,7 @@ def start(op):
             return status(op)
         config = intent["config"]
         need(not is_qualification_worker(config) or
-             config["sourceSha"] == QUALIFICATION_SOURCE_SHA,
+             is_selectable_qualification_source(config),
              "build.qualification.retained_source_only")
         need(not is_qualification_worker(config) or has_current_qualification_profile(config),
              "build.qualification.current_profile_required")

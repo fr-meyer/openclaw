@@ -199,6 +199,16 @@ def check_merge_reconciliation(source, source_dir):
          "upstreamedExact": 0, "retired": 0}, "merge ledger summary changed")
 
 
+def check_merge_ancestry(source, source_dir):
+    """Missing shallow ancestry must not invent a unique common ancestor."""
+    common = source["merge"]["commonCommit"]
+    relevant = git(source_dir, "rev-list", "--max-count=4097", source["commit"], "^" + common).splitlines()
+    need(len(relevant) <= 4096, "merge ancestry exceeds bounded proof")
+    shallow = Path(git(source_dir, "rev-parse", "--path-format=absolute", "--git-path", "shallow"))
+    boundaries = set(shallow.read_text().splitlines()) if shallow.exists() else set()
+    need(not boundaries.intersection(relevant), "merge ancestry is shallow within required history")
+
+
 def check_source_graph(source, source_dir):
     chain = [(source["baseCommit"], source["baseTree"])] + [
         (patch["commit"], patch["tree"]) for patch in source["patches"]
@@ -208,6 +218,7 @@ def check_source_graph(source, source_dir):
     if "merge" in source:
         validate_merge_shape(source)
         merge = source["merge"]
+        check_merge_ancestry(source, source_dir)
         for name in ("common", "fork"):
             need(git(source_dir, "rev-parse", merge[name + "Commit"] + "^{tree}") == merge[name + "Tree"],
                  "merge " + name + " tree changed")
@@ -564,6 +575,12 @@ def human_status(state):
     return "\n".join(lines)
 
 
+def validation_node_version(inventory):
+    """Keep retained workflow runtime; pin the separate stable 10.6 lane."""
+    upstream = inventory.get("upstream")
+    return "24.22.1" if upstream and upstream["tag"] == "v2026.10.6" else "24.21.0"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("identity", "source-check", "gates", "status", "run", "approve"))
@@ -585,6 +602,7 @@ def main():
     inventory, inventory_hash = preflight.inventory_at(args.inventory, manifest, manifest_hash)
     if args.command == "identity":
         print(f"source_sha={manifest['source']['commit']}")
+        print(f"node_version={validation_node_version(inventory)}")
         print(f"extensions={manifest['image']['extensions']}")
         print(f"manifest_sha256={manifest_hash}")
         print(f"inventory_sha256={inventory_hash}")

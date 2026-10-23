@@ -130,6 +130,9 @@ jobs:
               git -C candidate fetch --no-tags --depth=1 origin "$COMMIT"
             fi
           done
+          python3 trusted/scripts/fork-release/source_ancestry.py \
+            --manifest candidate/scripts/fork-release/manifest.json \
+            --inventory candidate/scripts/fork-release/patch-inventory.json --source-dir candidate
           python3 trusted/scripts/fork-release/pr.py seal \
             --event "$GITHUB_EVENT_PATH" \
             --manifest candidate/scripts/fork-release/manifest.json \
@@ -145,7 +148,7 @@ jobs:
       - name: Setup supported Node runtime
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.21.0"
+          node-version: ${{ steps.candidate.outputs.node_version }}
           package-manager-cache: false
       - name: Verify source, manifest and offline PR regressions
         run: |
@@ -160,6 +163,9 @@ jobs:
               git -C source fetch --no-tags --depth=1 origin "$COMMIT"
             fi
           done
+          python3 trusted/scripts/fork-release/source_ancestry.py \
+            --manifest candidate/scripts/fork-release/manifest.json \
+            --inventory candidate/scripts/fork-release/patch-inventory.json --source-dir source
           python3 trusted/scripts/fork-release/preflight.py \
             --manifest candidate/scripts/fork-release/manifest.json \
             --inventory candidate/scripts/fork-release/patch-inventory.json --source-dir source
@@ -242,6 +248,9 @@ jobs:
               git -C metadata fetch --no-tags --depth=1 origin "$COMMIT"
             fi
           done
+          python3 tooling/scripts/fork-release/source_ancestry.py \
+            --manifest metadata/scripts/fork-release/manifest.json \
+            --inventory metadata/scripts/fork-release/patch-inventory.json --source-dir metadata
           python3 tooling/scripts/fork-release/pr.py seal-offline \
             --manifest metadata/scripts/fork-release/manifest.json --checkout metadata
       - name: Confirm the exact candidate is the current PR head
@@ -278,7 +287,7 @@ jobs:
       - name: Setup supported Node runtime
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.21.0"
+          node-version: ${{ steps.identity.outputs.node_version }}
           package-manager-cache: false
       - name: Verify source and run offline pipeline regressions
         id: source
@@ -294,6 +303,9 @@ jobs:
               git -C source fetch --no-tags --depth=1 origin "$COMMIT"
             fi
           done
+          python3 tooling/scripts/fork-release/source_ancestry.py \
+            --manifest metadata/scripts/fork-release/manifest.json \
+            --inventory metadata/scripts/fork-release/patch-inventory.json --source-dir source
           python3 tooling/scripts/fork-release/preflight.py \
             --manifest metadata/scripts/fork-release/manifest.json \
             --inventory metadata/scripts/fork-release/patch-inventory.json --source-dir source

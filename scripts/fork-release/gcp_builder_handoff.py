@@ -20,7 +20,7 @@ import tempfile
 import gcp_build as build
 import release
 
-CAPABLE_BUILD_SHA256 = "cb58ba2bf372d27330d4a66435b2bd4373cb95b0cb613cda6902d1d6a7d21e62"
+CAPABLE_BUILD_SHA256 = "13869598dcf657ff8c858666b9039039ae0b5a5eaa792fa593f2aa12c0bb4291"
 
 
 def digest(data):
