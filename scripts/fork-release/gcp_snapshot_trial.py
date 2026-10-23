@@ -162,6 +162,8 @@ RETAINED_HELPERS = {
     LEASE_PATCH_PRIOR_PIPELINE_SHA: "bedac832d1ab2f95b9c813e95db9e41d548c2c25f381f723699dce470281a47d",
     # The settled dd3702 Doctor and f2e0 startup share this exact helper map.
     DD_DOCTOR_PIPELINE_SHA: "2483e1d4a5686553f3bf142bc1fb971abded41c27c09d7f8b72f9af5c441dd7d",
+    # The failed first final-image startup is a retained, read-only lease predecessor.
+    "f959359ee23744f5db55aace5609d77cd52c0609": "dc3b3951f13484b52ea26fb79c868acc5fd030e7cf969b4c58be7613e5b6a77d",
     LEGACY_DEVICE_SHA: "872b6966330c2bb127ae007cf936bffc6e6d7704d9d0ed1a0b7be5de57e8da0d",
     "ad0c1a62300f77e616b1a373c92c967c3cba95b8": "af5caa6316e15bec85b501ff2f8839835546b1e1e5313810a314741479343156",
     LEGACY_CONTINUATION_SHA: "0de004053ed692ae2dc0cbf2d70f336dda72c02c21ba65a893ccac37a4719f97",
@@ -276,6 +278,16 @@ def dd_final_startup_check(check):
     return type(check) is dict and check.get("schema") == DD_STARTUP_CHECK
 
 
+def dd_diagnostic_trace(check):
+    """Opt in only on an explicitly pinned cross-image startup check."""
+    return dd_final_startup_check(check) and check.get("diagnosticPluginServiceTrace") is True
+
+
+def dd_diagnostic_timeline(check):
+    """Confine the sealed-image timeline to one pinned diagnostic startup."""
+    return dd_final_startup_check(check) and check.get("diagnosticPluginServiceTimeline") is True
+
+
 _BACKUP_OWNER_STAT_SCRIPT = r'''
 import json, os, stat, sys
 from pathlib import Path
@@ -335,6 +347,78 @@ def backup_owner_stats(paths):
          type(row) is dict and set(row) == keys and all(type(v) is int and v >= 0 for v in row.values())
          for row in rows), "trial.dd_final.backup_owner_stat_shape")
     return rows
+
+
+_TIMELINE_OWNER_CLEANUP = r'''
+import hashlib,json,os,stat,sys
+from pathlib import Path
+if os.getuid()!=1000 or os.geteuid()!=1000: raise SystemExit(2)
+raw=sys.stdin.buffer.read(2049)
+if len(raw)>2048: raise SystemExit(2)
+req=json.loads(raw)
+if set(req)!={'schema','cacheSource','operationId','timeline'} or req['schema']!='openclaw.timeline-owned-cleanup.v1': raise SystemExit(2)
+op=req['operationId'];t=req['timeline'];cache=req['cacheSource']
+if type(op) is not str or len(op)!=32 or any(c not in '0123456789abcdef' for c in op): raise SystemExit(2)
+if type(cache) is not str or not cache.startswith('/') or '..' in Path(cache).parts or os.path.realpath(cache)!=cache: raise SystemExit(2)
+required={'directoryDevice','directoryInode','fileDevice','fileInode','observedBytes','sha256'}
+if type(t) is not dict or set(t)!=required or any(type(t[k]) is not str or not t[k].isdigit() for k in ('directoryDevice','directoryInode','fileDevice','fileInode')): raise SystemExit(2)
+count=t['observedBytes']
+if type(count) is not int or count<0 or count>8388608 or type(t['sha256']) is not str or len(t['sha256'])!=64 or any(c not in '0123456789abcdef' for c in t['sha256']): raise SystemExit(2)
+flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC
+root=os.open(cache,flags)
+try:
+ directory=os.open('startup-timeline-'+op,flags,dir_fd=root)
+ try:
+  d=os.fstat(directory)
+  if not stat.S_ISDIR(d.st_mode) or d.st_uid!=1000 or stat.S_IMODE(d.st_mode)!=0o700 or d.st_dev!=int(t['directoryDevice']) or d.st_ino!=int(t['directoryInode']): raise SystemExit(2)
+  if os.listdir(directory)!=['events.jsonl']: raise SystemExit(2)
+  file=os.open('events.jsonl',os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=directory)
+  try:
+   first=os.fstat(file)
+   if not stat.S_ISREG(first.st_mode) or first.st_uid!=1000 or stat.S_IMODE(first.st_mode)!=0o600 or first.st_nlink!=1 or first.st_dev!=int(t['fileDevice']) or first.st_ino!=int(t['fileInode']) or first.st_size<count or first.st_size>16777216: raise SystemExit(2)
+   h=hashlib.sha256();remaining=count
+   while remaining:
+    piece=os.read(file,min(65536,remaining))
+    if not piece: raise SystemExit(2)
+    h.update(piece);remaining-=len(piece)
+   if h.hexdigest()!=t['sha256']: raise SystemExit(2)
+   second=os.fstat(file)
+   if (second.st_dev,second.st_ino,second.st_size,second.st_mtime_ns,second.st_ctime_ns)!=(first.st_dev,first.st_ino,first.st_size,first.st_mtime_ns,first.st_ctime_ns): raise SystemExit(2)
+   named=os.stat('events.jsonl',dir_fd=directory,follow_symlinks=False)
+   if (named.st_dev,named.st_ino,named.st_size,named.st_mtime_ns,named.st_ctime_ns)!=(first.st_dev,first.st_ino,first.st_size,first.st_mtime_ns,first.st_ctime_ns): raise SystemExit(2)
+   os.unlink('events.jsonl',dir_fd=directory);os.fsync(directory)
+  finally: os.close(file)
+  os.rmdir('startup-timeline-'+op,dir_fd=root);os.fsync(root)
+ finally: os.close(directory)
+finally: os.close(root)
+sys.stdout.write('{"status":"REMOVED"}')
+'''
+
+
+def cleanup_dd_timeline_raw(op, clean, projection, *, stopped, settled):
+    """Delete only this operation's private diagnostic JSONL after native settlement."""
+    if not stopped or not settled or projection is None:
+        return {"status": "RETAINED_UNSETTLED", "at": durable.now()}
+    mounts = [row for row in clean["mounts"] if row["target"] == "/rehearsal/cache"]
+    if len(mounts) != 1 or mounts[0]["readOnly"] is not False:
+        return {"status": "RETAINED_MOUNT_CHANGED", "at": durable.now()}
+    timeline = {key: projection[key] for key in
+                ("directoryDevice", "directoryInode", "fileDevice", "fileInode", "observedBytes", "sha256")}
+    request = durable.encode({"schema": "openclaw.timeline-owned-cleanup.v1",
+                              "cacheSource": mounts[0]["source"], "operationId": op.name,
+                              "timeline": timeline})
+    need(len(request) <= 2048, "trial.timeline.cleanup_request_cap")
+    command = ["/usr/bin/sudo", "-n", "-u", "frmeyer", "--", "/usr/bin/env", "-i",
+               "PATH=/usr/bin:/bin", "HOME=/nonexistent", "/usr/bin/python3", "-I", "-B", "-S",
+               "-c", _TIMELINE_OWNER_CLEANUP]
+    try:
+        output = subprocess.run(command, input=request, capture_output=True, timeout=15,
+                                env=durable.SAFE_ENV)
+    except (OSError, subprocess.TimeoutExpired):
+        return {"status": "RETAINED_CLEANUP_UNKNOWN", "at": durable.now()}
+    if output.returncode != 0 or output.stdout != b'{"status":"REMOVED"}' or output.stderr:
+        return {"status": "RETAINED_CLEANUP_UNKNOWN", "at": durable.now()}
+    return {"status": "REMOVED", "at": durable.now()}
 
 
 def validate_dd_original_backup_files(prior, receipt):
@@ -699,9 +783,20 @@ def validate(plan, image, clean, check=None, *, retained=False):
             validate_continuation(check, legacy=legacy_continuation)
             need(selected == "doctor", "trial.continuation.phase")
         elif dd_final_startup_check(check):
+            need(not (dd_diagnostic_trace(check) and dd_diagnostic_timeline(check)),
+                 "trial.dd_final.diagnostic_exclusive")
             exact(check, "schema phase doctorOperationId doctorResultSha256 "
-                  "priorStartupResultSha256 coverageReceiptSha256 coverage",
+                  "priorStartupResultSha256 coverageReceiptSha256 coverage" +
+                  (" diagnosticPluginServiceTrace" if dd_diagnostic_trace(check) else "") +
+                  (" diagnosticPluginServiceTimeline diagnosticPredecessorOperationId "
+                   "diagnosticPredecessorResultSha256" if dd_diagnostic_timeline(check) else ""),
                   "trial.dd_final.check_fields")
+            if dd_diagnostic_timeline(check):
+                need(OP.fullmatch(check["diagnosticPredecessorOperationId"]) and
+                     HEX.fullmatch(check["diagnosticPredecessorResultSha256"]) and
+                     check["diagnosticPredecessorOperationId"] not in
+                         (plan["operationId"], DD_DOCTOR, DD_PRIOR_STARTUP),
+                     "trial.dd_final.diagnostic_predecessor_fields")
             need(selected == check["phase"] == "startup" and
                  check["doctorOperationId"] == DD_DOCTOR and
                  check["doctorResultSha256"] == DD_DOCTOR_RESULT_SHA256 and
@@ -814,7 +909,9 @@ def validate(plan, image, clean, check=None, *, retained=False):
         if selected == "rollback":
             contract = checks.validate_phase(native_phase(plan), image, clean,
                 {key: plan[key] for key in ("imageReceiptSha256", "cleanInputSha256")})
-        checks.command(native_phase(plan), limits["timeoutSeconds"], contract)
+        checks.command(native_phase(plan), limits["timeoutSeconds"], contract,
+                       diagnostic_trace=dd_diagnostic_trace(check),
+                       diagnostic_timeline_op=plan["operationId"] if dd_diagnostic_timeline(check) else None)
 
 
 DATA_OWNER_PROBE = r'''
@@ -1185,7 +1282,9 @@ def create_argv(op, intent, devices):
                   "originImageReceiptSha256", "targetSourceSha", "backupId", "manifestSha256")}
         env["OPENCLAW_DOCTOR_BACKUP_REUSE_PROOF"] = json.dumps(native, sort_keys=True, separators=(",", ":"))
     command = DOCTOR if phase(plan) == "doctor" else checks.command(
-        native_phase(plan), limits["timeoutSeconds"], image.get("gatewayProbeContract"))
+        native_phase(plan), limits["timeoutSeconds"], image.get("gatewayProbeContract"),
+        diagnostic_trace=dd_diagnostic_trace(intent.get("check")),
+        diagnostic_timeline_op=op.name if dd_diagnostic_timeline(intent.get("check")) else None)
     return [*args, "--entrypoint", "/usr/bin/env", image["indexDigest"], "-i",
             *(f"{k}={v}" for k, v in env.items()), "node", "-e", gate_script(op), "--",
             "/usr/bin/timeout", "--signal=TERM", "--kill-after=30",
@@ -1279,6 +1378,50 @@ def retained_devices(prior, start_record):
     return start_record["devices"]
 
 
+def validate_dd_diagnostic_predecessor(check, intent):
+    """Prove a stopped, exact earlier final-image startup owns the next lease."""
+    previous, prior = read_retained(PRIVATE_ROOT / check["diagnosticPredecessorOperationId"])
+    result, hashed = private_json(previous / "result.json")
+    observed = status(previous, retained=True)
+    prior_intent_sha = digest(durable.private_bytes(previous / "intent.json"))
+    started = durable.read_private(previous / "start-intent.json")
+    need(previous.name != intent["plan"]["operationId"] and
+         hashed == check["diagnosticPredecessorResultSha256"] and
+         prior["plan"]["operationId"] == result.get("operationId") == previous.name and
+         observed["state"] == result["state"] == "failed" and
+         observed.get("result") == result and
+         result.get("cleanup") == "owned_container_stopped_retained" and
+         result.get("promotionAuthorized") is False and
+         result.get("checkInputSha256") == prior["plan"].get("checkInputSha256") and
+         result.get("imageReceiptSha256") == prior["plan"]["imageReceiptSha256"] and
+         result.get("cleanInputSha256") == prior["plan"]["cleanInputSha256"] and
+         started["intentSha256"] == prior_intent_sha and
+         phase(prior["plan"]) == "startup" and
+         prior["plan"]["imageReceiptSha256"] == intent["plan"]["imageReceiptSha256"] and
+         prior["plan"]["cleanInputSha256"] == intent["plan"]["cleanInputSha256"] and
+         prior["clean"] == intent["clean"] and
+         dd_final_startup_check(prior.get("check")) and
+         prior["check"]["doctorOperationId"] == DD_DOCTOR and
+         prior["check"]["doctorResultSha256"] == DD_DOCTOR_RESULT_SHA256 and
+         prior["check"]["priorStartupResultSha256"] == DD_PRIOR_STARTUP_RESULT_SHA256 and
+         prior["check"]["coverageReceiptSha256"] == check["coverageReceiptSha256"],
+         "trial.dd_final.diagnostic_predecessor_changed")
+    cid = result.get("containerId")
+    need(type(cid) is str and HEX.fullmatch(cid), "trial.dd_final.diagnostic_predecessor_container")
+    actual = inspect_container(cid)
+    validate_owned_container(actual, cid, previous)
+    state = actual["State"]
+    need(state["Running"] is False and state["Pid"] == 0 and
+         all(state[key] == result["nativeState"][key] for key in
+             ("StartedAt", "FinishedAt", "ExitCode", "OOMKilled")),
+         "trial.dd_final.diagnostic_predecessor_active")
+    validate_container(actual, previous, prior, started["image"]["env"],
+                       retained_devices(prior, started))
+    durable.heavy_workload_settled({"kind": "doctor", "operationPath": str(previous),
+                                    "intentSha256": prior_intent_sha})
+    return {"operationId": previous.name, "intentSha256": prior_intent_sha}
+
+
 def phase_prerequisites(op, intent):
     """Resolve private prior authority; caller-embedded result JSON is not proof."""
     selected = phase(intent["plan"])
@@ -1368,6 +1511,8 @@ def phase_prerequisites(op, intent):
         if dd_final_startup:
             receipt, lease_predecessor = validate_dd_final_coverage(
                 check, intent["image"], intent["plan"], clean, prior)
+            if dd_diagnostic_timeline(check):
+                lease_predecessor = validate_dd_diagnostic_predecessor(check, intent)
             need(check["doctorOperationId"] == DD_DOCTOR and
                  prior["plan"]["toolingSha"] == DD_DOCTOR_PIPELINE_SHA and
                  prior["plan"]["imageReceiptSha256"] == LEASE_PATCH_RECEIPT_SHA256 and
@@ -1456,9 +1601,12 @@ def verify_continuation_claim(op, intent, prior):
 
 
 def verify_dd_startup_claim(op, intent, prior):
-    """Require the exact f2e0 -> new-startup lease transfer before native work."""
+    """Require the proven current startup owner -> successor lease transfer."""
+    check = intent.get("check")
+    expected = (check["diagnosticPredecessorOperationId"] if dd_diagnostic_timeline(check)
+                else DD_PRIOR_STARTUP)
     need(dd_final_startup_check(intent.get("check")) and
-         prior.get("datasetLeasePredecessor", {}).get("operationId") == DD_PRIOR_STARTUP,
+         prior.get("datasetLeasePredecessor", {}).get("operationId") == expected,
          "trial.dd_final.lease_predecessor")
     lease = op.parent / ("dataset-" + digest(intent["clean"]["mountRoot"].encode()) + ".json")
     previous = op / "dataset-previous.json"
@@ -1723,7 +1871,7 @@ def serve(op):
     first_io, last_io, io_samples = None, None, 0
     complete, oom_kills, child_exit, settled = False, 0, None, False
     selected = phase(intent["plan"])
-    native_check, check_buffer, check_count = None, b"", 0
+    native_check, timeline_projection, check_buffer, check_count = None, None, b"", 0
     gate_ready, baseline_processes = False, None
     pressure, pressure_trip = None, False
     tails = {"stdout.log": b"", "stderr.log": b""}
@@ -1870,7 +2018,18 @@ def serve(op):
                         if line.startswith(checks.RESULT_PREFIX.encode()):
                             check_count += 1
                             need(check_count == 1, "trial.check.duplicate_result")
-                            native_check = checks.parse_result(line.decode("utf-8"))
+                            candidate = checks.parse_result(line.decode("utf-8"))
+                            if dd_diagnostic_timeline(intent.get("check")):
+                                if candidate.get("failure") is None:
+                                    checks.validate_result(candidate, native_phase(intent["plan"]),
+                                                           intent["image"].get("gatewayProbeContract"),
+                                                           diagnostic_timeline=True)
+                                    timeline_projection = candidate["timeline"]
+                                else:
+                                    timeline_projection = checks.validate_diagnostic_timeline_failure(
+                                        candidate, native_phase(intent["plan"]),
+                                        intent["image"].get("gatewayProbeContract"))
+                            native_check = candidate
                 gate_ready |= b"OPENCLAW_TRIAL_" + op.name.encode() + b"_READY\n" in window
                 match = re.search(rb"OPENCLAW_TRIAL_" + op.name.encode() + rb"_EXIT=([0-9]{1,3})\n", window)
                 if match:
@@ -1885,7 +2044,8 @@ def serve(op):
         if selected != "doctor":
             need(check_count == 1 and not check_buffer, "trial.check.missing_result")
             checks.validate_result(native_check, native_phase(intent["plan"]),
-                                   intent["image"].get("gatewayProbeContract"))
+                                   intent["image"].get("gatewayProbeContract"),
+                                   diagnostic_timeline=dd_diagnostic_timeline(intent.get("check")))
             complete = True
         # Docker normally removes this cgroup on exit. Success may use the
         # retained quiescent settlement proof; a surviving cgroup adds evidence.
@@ -1954,9 +2114,19 @@ def serve(op):
             result["doctorImageDifferent"] = True
             result["catalogPostcheck"] = "not_established"
             result["pluginPinStatus"] = DD_PLUGIN_PIN_STATUS
+            if dd_diagnostic_timeline(intent.get("check")):
+                result["diagnosticOnly"] = True
+                result["timelineProjection"] = timeline_projection
         if continuing(intent.get("check")):
             result["continuedFrom"] = started["priorDoctor"]
         durable.write_once(op / "result.json", durable.encode(result))
+        if dd_diagnostic_timeline(intent.get("check")):
+            stopped = (cleanup == "owned_container_stopped_retained" and
+                       child is not None and child.poll() is not None)
+            cgroup_gone = cg is not None and not cg.exists()
+            receipt = cleanup_dd_timeline_raw(op, intent["clean"], timeline_projection,
+                                              stopped=stopped, settled=settled or cgroup_gone)
+            durable.write_once(op / "timeline-cleanup.json", durable.encode(receipt))
     return 0 if reason is None else 1
 
 
@@ -1971,6 +2141,8 @@ def status(op, *, retained=False):
         output["doctorImageDifferent"] = True
         output["catalogPostcheck"] = "not_established"
         output["pluginPinStatus"] = DD_PLUGIN_PIN_STATUS
+        if dd_diagnostic_timeline(intent.get("check")):
+            output["diagnosticOnly"] = True
     if continuing(intent.get("check")) and "artifacts" in intent["check"]["reconciliation"]:
         output["artifactAccounting"] = artifact_accounting(intent["check"], intent["clean"])
     newest = None
@@ -2042,12 +2214,43 @@ def status(op, *, retained=False):
                      result.get("pluginPinStatus") == DD_PLUGIN_PIN_STATUS and
                      result.get("promotionAuthorized") is False,
                      "trial.result.limited_coverage")
+                if dd_diagnostic_timeline(intent.get("check")):
+                    need(result.get("diagnosticOnly") is True,
+                         "trial.result.diagnostic_binding")
+                    marker = result.get("nativeCheck")
+                    projection = result.get("timelineProjection")
+                    if marker is None:
+                        need(projection is None, "trial.result.diagnostic_projection_missing")
+                    elif marker.get("failure") is None:
+                        checks.validate_result(marker, native_phase(intent["plan"]),
+                                               intent["image"].get("gatewayProbeContract"),
+                                               diagnostic_timeline=True)
+                        need(projection == marker["timeline"],
+                             "trial.result.diagnostic_projection_changed")
+                    else:
+                        expected = checks.validate_diagnostic_timeline_failure(
+                            marker, native_phase(intent["plan"]),
+                            intent["image"].get("gatewayProbeContract"))
+                        need(projection == expected,
+                             "trial.result.diagnostic_projection_changed")
+                    cleanup_file = op / "timeline-cleanup.json"
+                    if cleanup_file.exists():
+                        timeline_cleanup = durable.read_private(cleanup_file)
+                        exact(timeline_cleanup, "status at", "trial.result.timeline_cleanup_fields")
+                        need(timeline_cleanup["status"] in
+                             ("REMOVED", "RETAINED_UNSETTLED", "RETAINED_MOUNT_CHANGED",
+                              "RETAINED_CLEANUP_UNKNOWN"),
+                             "trial.result.timeline_cleanup_status")
+                        output["timelineRawCleanup"] = timeline_cleanup["status"]
+                    else:
+                        output["timelineRawCleanup"] = "UNKNOWN_NOT_RECORDED"
             if "checkInputSha256" in intent["plan"]:
                 need(result.get("phase") == phase(intent["plan"]) and
                      result.get("checkInputSha256") == intent["plan"]["checkInputSha256"], "trial.result.phase_binding")
                 if result["state"] == "succeeded" and phase(intent["plan"]) != "doctor":
                     checks.validate_result(result.get("nativeCheck"), native_phase(intent["plan"]),
-                                           intent["image"].get("gatewayProbeContract"))
+                                           intent["image"].get("gatewayProbeContract"),
+                                           diagnostic_timeline=dd_diagnostic_timeline(intent.get("check")))
                     need(result.get("cgroupSettlementObserved") is True and result.get("nativeExitCode") == 0 and
                          result.get("cleanup") == "owned_container_stopped_retained" and
                          successful(result.get("nativeState") or {}, 0, True, result.get("oomKillDelta")),
