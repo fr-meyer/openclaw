@@ -118,7 +118,11 @@ class Dd3702StartupOnly(unittest.TestCase):
                  "manifestSha256": "a" * 64,
                  "targetSourceSha": trial.LEASE_PATCH_IMAGE["sourceSha"],
                  "targetImageReceiptSha256": trial.LEASE_PATCH_RECEIPT_SHA256}
-        with patch.object(trial, "backup_reuse", return_value=reuse):
+        by_path = {row["path"]: row for row in files}
+        observed = [{key: value for key, value in by_path[row["path"]].items() if key != "path"}
+                    for row in rows]
+        with patch.object(trial, "backup_reuse", return_value=reuse), \
+             patch.object(trial, "backup_owner_stats", return_value=observed):
             trial.validate_dd_original_backup_files(prior, receipt)
             files[0]["modifiedNs"] += 1
             with self.assertRaisesRegex(release.Refusal, "trial.dd_final.backup_changed"):

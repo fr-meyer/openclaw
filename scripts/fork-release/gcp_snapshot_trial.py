@@ -276,6 +276,67 @@ def dd_final_startup_check(check):
     return type(check) is dict and check.get("schema") == DD_STARTUP_CHECK
 
 
+_BACKUP_OWNER_STAT_SCRIPT = r'''
+import json, os, stat, sys
+from pathlib import Path
+if os.getuid() != 1000 or os.geteuid() != 1000:
+    raise SystemExit(2)
+raw = sys.stdin.buffer.read(16385)
+if len(raw) > 16384:
+    raise SystemExit(2)
+request = json.loads(raw)
+if set(request) != {"schema", "paths"} or request["schema"] != "openclaw.backup-owner-stat.v1":
+    raise SystemExit(2)
+paths = request["paths"]
+if type(paths) is not list or len(paths) != 11 or len(set(paths)) != 11:
+    raise SystemExit(2)
+result = []
+for value in paths:
+    if type(value) is not str or not value.startswith("/") or ".." in Path(value).parts:
+        raise SystemExit(2)
+    file = Path(value)
+    if file.resolve(strict=True) != file:
+        raise SystemExit(2)
+    info = file.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise SystemExit(2)
+    result.append({"device": info.st_dev, "inode": info.st_ino,
+                   "links": info.st_nlink, "sizeBytes": info.st_size,
+                   "allocatedBytes": info.st_blocks * 512,
+                   "modifiedNs": info.st_mtime_ns, "changedNs": info.st_ctime_ns,
+                   "ownerUid": info.st_uid, "mode": stat.S_IMODE(info.st_mode)})
+sys.stdout.write(json.dumps(result, separators=(",", ":")))
+'''
+
+
+def backup_owner_stats(paths):
+    """Stat exact backups as their existing owner; never read their contents."""
+    need(type(paths) is list and len(paths) == 11 and len(set(paths)) == 11,
+         "trial.dd_final.backup_owner_paths")
+    request = durable.encode({"schema": "openclaw.backup-owner-stat.v1", "paths": paths})
+    need(len(request) <= 16384, "trial.dd_final.backup_owner_input_cap")
+    command = ["/usr/bin/sudo", "-n", "-u", "frmeyer", "--", "/usr/bin/env", "-i",
+               "PATH=/usr/bin:/bin", "HOME=/nonexistent", "/usr/bin/python3", "-I", "-B", "-S",
+               "-c", _BACKUP_OWNER_STAT_SCRIPT]
+    try:
+        output = subprocess.run(command, input=request, capture_output=True, timeout=15,
+                                env=durable.SAFE_ENV)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise release.Refusal("trial.dd_final.backup_owner_stat_unavailable") from error
+    need(output.returncode == 0 and len(output.stdout) <= 16384 and not output.stderr,
+         "trial.dd_final.backup_owner_stat_failed")
+    try:
+        rows = json.loads(output.stdout)
+    except (UnicodeError, ValueError) as error:
+        raise release.Refusal("trial.dd_final.backup_owner_stat_malformed") from error
+    keys = {"device", "inode", "links", "sizeBytes", "allocatedBytes",
+            "modifiedNs", "changedNs", "ownerUid", "mode"}
+    need(type(rows) is list and len(rows) == 11 and all(
+         type(row) is dict and set(row) == keys and all(type(v) is int and v >= 0 for v in row.values())
+         for row in rows), "trial.dd_final.backup_owner_stat_shape")
+    return rows
+
+
 def validate_dd_original_backup_files(prior, receipt):
     """Stat only the eleven pinned originals; never scan database contents."""
     reuse = backup_reuse(prior.get("check"))
@@ -292,11 +353,15 @@ def validate_dd_original_backup_files(prior, receipt):
     by_path = {entry["path"]: entry for entry in files}
     need(len(by_path) == 11, "trial.dd_final.backup_duplicate")
     root = path(prior["clean"]["mountRoot"])
+    paths = []
     for row in rows:
         pinned = by_path[row["path"]]
         exact(pinned, "path device inode links sizeBytes allocatedBytes modifiedNs "
               "changedNs ownerUid mode", "trial.dd_final.backup_file_fields")
-        file = path(row["path"])
+        # The supervisor owns private trial receipts but cannot traverse the
+        # data owner's backup directories. Check syntax here and canonical
+        # identity in the narrowly scoped data-owner stat helper.
+        file = path(row["path"], canonical=False)
         need(root in file.parents and row["kind"] == "migration-backup" and
              row["classification"] == "native-revalidation-required" and
              row["disposition"] == "retain" and row["nativeDiscardOnRetry"] is False and
@@ -307,13 +372,14 @@ def validate_dd_original_backup_files(prior, receipt):
              all(pinned[key] == row[key] for key in
                  ("device", "inode", "links", "sizeBytes", "allocatedBytes")),
              "trial.dd_final.backup_file_scope")
-        info = file.lstat()
-        need(stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode) and
-             info.st_nlink == pinned["links"] == 1 and
-             info.st_dev == pinned["device"] and info.st_ino == pinned["inode"] and
-             info.st_size == pinned["sizeBytes"] and info.st_blocks * 512 == pinned["allocatedBytes"] and
-             info.st_mtime_ns == pinned["modifiedNs"] and info.st_ctime_ns == pinned["changedNs"] and
-             info.st_uid == pinned["ownerUid"] and stat.S_IMODE(info.st_mode) == pinned["mode"],
+        paths.append(str(file))
+    observed = backup_owner_stats(paths)
+    for row, info in zip(rows, observed):
+        pinned = by_path[row["path"]]
+        need(info["links"] == pinned["links"] == 1 and
+             all(info[key] == pinned[key] for key in
+                 ("device", "inode", "sizeBytes", "allocatedBytes", "modifiedNs",
+                  "changedNs", "ownerUid", "mode")),
              "trial.dd_final.backup_changed")
 
 
