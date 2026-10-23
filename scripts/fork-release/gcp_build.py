@@ -563,6 +563,21 @@ def has_current_qualification_profile(config):
             profile.get("minMemoryAvailableBytes") == QUALIFICATION_RUNNING_FLOOR_BYTES)
 
 
+def duration_aware_running_pressure(config):
+    """Use the existing watch only when its fixed PSI entry matches both pins.
+
+    A stricter generic adaptive profile still uses the immediate running
+    threshold. Qualification identity and cgroup proof remain separate.
+    """
+    selection = config.get("adaptiveSelection")
+    if not isinstance(selection, dict) or not isinstance(selection.get("profile"), dict):
+        return False
+    profile = selection["profile"]
+    return (profile.get("id") == QUALIFICATION_PROFILE_ID or
+            (config["limits"].get("maxFullMemoryPressureAvg10") == PRESSURE_ENTER and
+             profile.get("maxFullMemoryPressureAvg10") == PRESSURE_ENTER))
+
+
 def adaptive_profiles(config):
     """Two unqualified, source-bound candidates; no inferred Doctor/build minimum."""
     need("cache" in config, "build.adaptive.cache_required")
@@ -1808,10 +1823,11 @@ def run_child(op, intent):
     config = intent["config"]
     qualification = (config.get("adaptiveSelection", {}).get("profile", {}).get("id") ==
                      QUALIFICATION_PROFILE_ID)
+    pressure_watch = duration_aware_running_pressure(config)
     need(not is_qualification_worker(config) or has_current_qualification_profile(config),
          "build.qualification.current_profile_required")
     gateway_id = (config["adaptiveSelection"]["gatewayContainerId"]
-                  if qualification else None)
+                  if pressure_watch else None)
     try:
         reserve_heavy_workload(op, "build", preflight.digest(op / "intent.json"))
         observe_builder(intent["config"]["builder"], cache)
@@ -1827,7 +1843,7 @@ def run_child(op, intent):
                  "build.adaptive.service_no_fit")
         record_resources(op, "start", capacity(op, config["limits"], cache,
                                                 starting=True, gateway_container_id=gateway_id,
-                                                builder=config["builder"] if qualification else None),
+                                                builder=config["builder"] if pressure_watch else None),
                          builder=intent["config"]["builder"])
         need(not signal_received, "build.cancelled_before_launch")
         with open(op / "build.log", "xb", buffering=0) as log:
@@ -1841,7 +1857,7 @@ def run_child(op, intent):
             next_capacity = time.monotonic()
             next_sample = next_capacity + 30
             deadline = next_capacity + intent["config"]["limits"]["timeoutSeconds"]
-            if qualification:
+            if pressure_watch:
                 pressure_shared["state"] = PressureState(last_at=next_capacity)
                 pressure_thread = threading.Thread(
                     target=running_pressure_watchdog,
@@ -1850,12 +1866,12 @@ def run_child(op, intent):
                 pressure_thread.start()
             try:
                 while (selector.get_map() or child.poll() is None or
-                       (qualification and probe_thread is not None and stop_at is None)):
+                       (pressure_watch and probe_thread is not None and stop_at is None)):
                     if time.monotonic() >= deadline and stop_at is None:
                         reason = CLIENT_DEADLINE_REASON
                         child.terminate()
                         stop_at = time.monotonic() + CLIENT_TERM_GRACE_SECONDS
-                    if qualification and not pressure_reported:
+                    if pressure_watch and not pressure_reported:
                         with pressure_lock:
                             watchdog_reason = pressure_shared["published_stop_reason"]
                             stop_observation = pressure_shared["stop_observation"]
@@ -1877,7 +1893,7 @@ def run_child(op, intent):
                                                  stop_observation, reason, watchdog_reason),
                                              builder=config["builder"])
                             pressure_reported = True
-                    if qualification and stop_at is None:
+                    if pressure_watch and stop_at is None:
                         if stop_at is None and probe_thread is None and time.monotonic() >= next_capacity:
                             probe_output = queue.SimpleQueue()
                             probe_thread = threading.Thread(
@@ -2042,7 +2058,7 @@ def run_child(op, intent):
                         pressure_thread.join(timeout=1)
                     selector.close()
                     child.stdout.close()
-            if qualification:
+            if pressure_watch:
                 with pressure_lock:
                     watchdog_reason = pressure_shared["published_stop_reason"]
                     stop_observation = pressure_shared["stop_observation"]

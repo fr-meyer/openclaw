@@ -315,6 +315,20 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(bound["limits"]["minMemoryAvailableBytes"], 12 << 30)
         self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 24 << 30)
         self.assertEqual(bound["limits"]["maxFullMemoryPressureAvg10"], 2.0)
+        self.assertFalse(build.duration_aware_running_pressure(bound))
+
+    def test_generic_adaptive_watch_requires_matching_five_percent_pins(self):
+        samples = self.adaptive_fixture()
+        bound = build.bind_adaptive_selection(self.config, samples)
+        self.assertEqual(bound["adaptiveSelection"]["profile"]["id"], "constrained-21g")
+        self.assertTrue(build.duration_aware_running_pressure(bound))
+        self.assertFalse(build.duration_aware_running_pressure(self.config))
+        stricter_profile = copy.deepcopy(bound)
+        stricter_profile["adaptiveSelection"]["profile"]["maxFullMemoryPressureAvg10"] = 2.0
+        self.assertFalse(build.duration_aware_running_pressure(stricter_profile))
+        stricter_limits = copy.deepcopy(bound)
+        stricter_limits["limits"]["maxFullMemoryPressureAvg10"] = 2.0
+        self.assertFalse(build.duration_aware_running_pressure(stricter_limits))
 
     def test_adaptive_raises_low_base_disk_floors_to_supported_minimum(self):
         samples = self.adaptive_fixture(gib=22)
@@ -1198,6 +1212,47 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(row["receiptCause"], build.CLIENT_DEADLINE_REASON)
         self.assertEqual(row["pressureDecision"], first["pressureDecision"])
         self.assertNotIn("firstPublishedStop", first)
+
+    def test_generic_adaptive_service_watches_brief_psi_spike(self):
+        samples = self.adaptive_fixture()
+        bound = build.bind_adaptive_selection(self.config, samples)
+        fixture = self.root / "brief-build-client.py"
+        fixture.write_text("import time\nprint('inert build client', flush=True)\n"
+                           "time.sleep(0.3)\n")
+        self.stack.enter_context(patch.object(build, "DOCKER", (sys.executable, str(fixture))))
+        observed = {"observedAt": build.now(), "freeBytes": 30 << 30,
+                    "memoryAvailableBytes": 22 << 30, "cacheFreeBytes": 60 << 30,
+                    "memoryPressure": {"full": {"avg10": 7.03}},
+                    "gateway": {"gatewayHealthy": True, "gatewayOomKilled": False,
+                                "oom": 0, "oomKill": 0,
+                                "lastHealthCheckDurationMs": None,
+                                "lastHealthCheckAgeSeconds": None},
+                    "builder": {"oom": 0, "oomKill": 0}}
+        probe_calls = []
+
+        def sample(_op, _config, _gateway_id, output, lock, shared):
+            probe_calls.append(True)
+            emit_probe(output, lock, shared, True, copy.deepcopy(observed))
+
+        with patch.object(build, "collect_adaptive_samples", return_value=samples), \
+             patch.object(build, "running_capacity_probe", side_effect=sample), \
+             patch.object(build, "builder_sample", return_value=observed["builder"]), \
+             patch.object(build, "take_metadata", return_value=None):
+            op = self.prepare(bound)
+            with patch.object(build, "native", side_effect=self.fake_native):
+                build.start(op)
+            _, intent = build.load_intent(op)
+            output = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+            with patch.dict(os.environ, {"INVOCATION_ID": "f" * 32}), \
+                 patch.object(build.sys, "stdout", output):
+                self.assertEqual(build.run_child(op, intent), 0)
+        self.assertTrue(probe_calls)
+        receipt = build.read_private(op / "completed.json")
+        self.assertEqual(receipt["reason"], "client succeeded")
+        phases = [json.loads(row)["phase"] for row in
+                  build.private_bytes(op / "resources.jsonl").splitlines()]
+        self.assertIn("pressure-transition", phases)
+        self.assertNotIn("reserve-failed", phases)
 
     def test_qualification_service_stops_owned_client_from_async_pressure_sample(self):
         samples = self.qualification_fixture()
