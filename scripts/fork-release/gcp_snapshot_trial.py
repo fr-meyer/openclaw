@@ -100,7 +100,7 @@ DD_FINAL_PRODUCER = 'b2c3034a0e3f1fdb44f72a6d300e814af74c8f90'
 DD_FINAL_IMAGE_RECEIPT_SHA256 = '61fe55011a7a8bb0a845da0a640b20000ba61db05fcae35c5f0819336d705d01'
 DD_FINAL_RUNTIME_SHA256 = "31377ee1c1873d1496e75973e25fc3b0f85c1ff4a83943da23955fada02ecaf9"
 DD_FINAL_SOURCE_BOUNDARY_SHA256 = "bee603181a4e6250bcc55f023fe1b6e2f01e874caed87327352c004060bca73c"
-DD_FINAL_COVERAGE_SHA256 = None  # Bind the unchanged-config receipt after fresh clone checks.
+DD_FINAL_COVERAGE_SHA256 = "b6f996dcbcc825a244a90c0eb22da464f5df33ca5fc2fb2e417ab19afc213568"
 DD_FINAL_CHANGED_PATHS = (
     "custom-patches/manifest.json",
     "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
