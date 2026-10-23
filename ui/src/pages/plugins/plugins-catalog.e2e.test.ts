@@ -58,6 +58,7 @@ describeControlUiE2e("Control UI installed plugin catalog", () => {
       });
       try {
         await page.goto(`${server.baseUrl}chat`);
+        await page.locator(".shell").waitFor({ state: "visible" });
         await page.keyboard.press("ControlOrMeta+K");
         await page.locator(".cmd-palette__input").fill("Matrix");
         const result = page
