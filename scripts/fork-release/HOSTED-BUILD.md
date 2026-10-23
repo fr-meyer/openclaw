@@ -97,15 +97,45 @@ with one-day retention and no failed/incomplete artifact upload. It never
 pushes a registry image. Without export, results expire with the runner and
 cannot be used for later deployment; this is verification-only execution.
 
+Before upload, `hosted_bundle.py` revalidates the bound qualification and
+receipt hashes and prepares a ZIP containing only the OCI layout and its four
+required receipts. It checks the exact OCI closure and hashes each file while
+copying, rejects links/extras/changed files, and caps the complete archive at
+**2,147,483,648 bytes (2 GiB)**, including ZIP headers and receipts. Oversized
+or incomplete preparation produces no uploadable result. The fresh output
+directory contains one read-only ZIP, named exactly like the artifact (without
+a filename extension), and the helper checks its hash and size again before
+upload. The bundle receipt stays outside the uploaded file.
+
+The pinned `actions/upload-artifact` v7 supports `archive: false`: it sends
+that one file unchanged and uses its basename as the artifact name. There is
+no extra ZIP wrapper or estimated compression overhead. The workflow also
+compares the returned upload digest with the prepared ZIP hash; a mismatch
+fails the run, but this post-upload check cannot retract already disclosed
+bytes. The staging directory is owned by this job and no other writer is
+admitted between preparation and upload. This does not defend against a
+compromised runner administrator.
+
+The cap bounds this artifact's bytes, not the account's total invoice. At a
+storage rate of $0.25/GiB-month, two GiB for one day is about $0.01613–$0.01786
+for 28–31-day months before allowance. Retention processing, billing rate and
+other account use are not controlled by this code. A proposed $0.02 storage
+budget is therefore an approval decision, not a guaranteed bill ceiling. The
+public artifact audience and the storage decision remain separate from source
+review and main adoption; defaults stay off.
+
 Standard public hosted compute is free. Image artifact storage is a separate
 account allowance/cost decision; it has not been established for this account.
 No external BuildKit cache upload, paid runner, new credential or registry
 visibility change is part of this stage. Private registry delivery remains an
 unqualified alternative, not an automatic fallback.
 
-After authorized export, download the exact run/attempt artifact, check its
-receipt hashes and OCI/native verification again through the existing image
-consumer, then hand the immutable image to the sole rehearsal owner. Never
+After authorized export, download the exact run/attempt artifact and verify
+the ZIP digest against the run's prepared/uploaded digest. The direct artifact
+is ZIP content even though its artifact filename has no extension; extract it
+to a fresh isolated directory before checking its receipt hashes and OCI/native
+verification again through the existing image consumer. Then hand the immutable
+image to the sole rehearsal owner. Never
 substitute a rebuilt image, metadata-only proof or rehearsal database for the
 qualified artifact and current production data.
 

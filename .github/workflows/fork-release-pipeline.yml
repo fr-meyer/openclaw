@@ -503,14 +503,54 @@ jobs:
             --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
             --public-export "$PUBLIC_EXPORT" --storage-approved "$STORAGE_APPROVED" \
             --output "$RUNNER_TEMP/fork-release/hosted-qualification.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Prepare and verify the bounded public artifact
+        id: bundle
+        if: >-
+          ${{ github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
+              inputs.artifact_storage_approved }}
+        run: |
+          set -euo pipefail
+          python3 tooling/scripts/fork-release/hosted_bundle.py prepare \
+            --root "$RUNNER_TEMP/fork-release" --output-dir "$RUNNER_TEMP/fork-upload" \
+            --output "$RUNNER_TEMP/fork-hosted-bundle.json"
+          python3 tooling/scripts/fork-release/hosted_bundle.py verify \
+            --receipt "$RUNNER_TEMP/fork-hosted-bundle.json" --output-dir "$RUNNER_TEMP/fork-upload" \
+            > "$RUNNER_TEMP/fork-hosted-bundle-verified.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          bundle = json.loads(Path(os.environ["RUNNER_TEMP"], "fork-hosted-bundle-verified.json").read_text())
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print("path=" + bundle["bundlePath"], file=output)
+              print("sha256=" + bundle["sha256"], file=output)
+          PY
       - name: Retain the exact tested OCI payload and public receipt
+        id: image_artifact
         if: >-
           ${{ github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
               inputs.artifact_storage_approved }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: fork-release-${{ steps.identity.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/fork-release/
-          compression-level: 0
+          # The pinned action streams one file unchanged and uses its basename.
+          # The prepared ZIP includes all overhead within the 2 GiB hard limit.
+          path: ${{ steps.bundle.outputs.path }}
+          archive: false
+          overwrite: false
           retention-days: 1
           if-no-files-found: error
+      - name: Confirm uploaded bytes match the bounded artifact
+        if: steps.image_artifact.outcome == 'success'
+        env:
+          EXPECTED_SHA256: ${{ steps.bundle.outputs.sha256 }}
+          UPLOADED_SHA256: ${{ steps.image_artifact.outputs.artifact-digest }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+
+          expected = os.environ["EXPECTED_SHA256"]
+          if not re.fullmatch(r"[0-9a-f]{64}", expected) or expected != os.environ["UPLOADED_SHA256"]:
+              raise SystemExit("Uploaded artifact digest differs from the bounded local ZIP")
+          PY

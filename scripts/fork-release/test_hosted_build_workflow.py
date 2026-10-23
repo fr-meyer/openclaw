@@ -109,6 +109,20 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                     self.assertEqual(actual, event == 'workflow_dispatch' and public and cost)
         self.assertNotIn('always()', upload)
         self.assertIn('retention-days: 1', upload)
+        self.assertIn('archive: false', upload)
+        self.assertIn('overwrite: false', upload)
+        self.assertIn('path: ${{ steps.bundle.outputs.path }}', upload)
+        self.assertNotIn('path: ${{ runner.temp }}/fork-release/', upload)
+        bundle = step(self.workflow, 'Prepare and verify the bounded public artifact')
+        self.assertIn('hosted_bundle.py prepare', bundle)
+        self.assertIn('hosted_bundle.py verify', bundle)
+        self.assertIn('--output-dir "$RUNNER_TEMP/fork-upload"', bundle)
+        self.assertIn('inputs.export_public_artifact &&', bundle)
+        self.assertIn('inputs.artifact_storage_approved', bundle)
+        digest_check = step(self.workflow, 'Confirm uploaded bytes match the bounded artifact')
+        self.assertIn("if: steps.image_artifact.outcome == 'success'", digest_check)
+        self.assertIn('steps.image_artifact.outputs.artifact-digest', digest_check)
+        self.assertIn('expected != os.environ["UPLOADED_SHA256"]', digest_check)
         admission = step(self.workflow, 'Validate manual candidate identity before checkout')
         self.assertIn('"$PUBLIC_EXPORT" == true && "$STORAGE_APPROVED" != true', admission)
 
@@ -119,7 +133,9 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                  'Verify OCI bytes and smoke that exact image',
                  'Finish resource observation through export load and native verification',
                  'Bind hosted qualification receipts and export decision',
-                 'Retain the exact tested OCI payload and public receipt')
+                 'Prepare and verify the bounded public artifact',
+                 'Retain the exact tested OCI payload and public receipt',
+                 'Confirm uploaded bytes match the bounded artifact')
         positions = [self.workflow.index('      - name: ' + name) for name in names]
         self.assertEqual(positions, sorted(positions))
         resource_start = step(self.workflow, names[0])
@@ -132,7 +148,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                          '--index-digest', '--run-id', '--attempt'):
             self.assertIn(argument, gate)
         self.assertIn('fork-hosted-observation', resource_start)
-        self.assertNotIn('fork-hosted-observation', step(self.workflow, names[6]))
+        self.assertNotIn('fork-hosted-observation', step(self.workflow, names[7]))
 
     def run_probe(self, docker_results):
         raw = self.probe.split("          python3 - <<'PY_CAPACITY'\n", 1)[1].split('\n          PY_CAPACITY', 1)[0]
