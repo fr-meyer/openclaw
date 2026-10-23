@@ -220,6 +220,8 @@ const repositoryScriptEntries = [
   "scripts/run-swiftlint.mts",
   // Path-spawned test roots are development entries; `!` would audit dev tools as production.
   "scripts/run-vitest-child.mts",
+  // test/scripts/gcp-image-context.test.ts launches all seven native regressions by path.
+  "scripts/fork-release/gcp-image-context.node.mjs",
   // The isolated Vitest adapter executes this entry by path inside its container.
   "scripts/lib/vitest-isolated-entry.mts",
   "scripts/secrets/openclaw-bws-resolver.mjs!",
