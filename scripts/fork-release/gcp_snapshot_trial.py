@@ -86,21 +86,21 @@ DD_FINAL_IMAGE = {
     "repository": "fr-meyer/openclaw",
     "version": "2026.10.5",
     "architecture": "amd64",
-    "sourceSha": "4cf5cb7e256c67a5c98097774cad2d05cd781c01",
-    "sourceTree": "e63f5bf2762a58bda6b2d8436830a03914f8704e",
-    "manifestSha256": "588ca44c39101e818c59ff3e88f64e19a28db47f819b2bd4f147c5c5869b9d1a",
-    "inventorySha256": "85202a5bb8ab3959a9af4669eda7b771e73bbc4f879873f1c517ea9b745dccd5",
-    "indexDigest": "sha256:09e12109fb283a0c9740b92c5fa618d69784c9cc6adf76d03d889553618c3ec2",
-    "imageDigest": "sha256:77b42d79c8b42502e873b2a3eb1d14a2591eca62b7848b52c622ef1063c21ac0",
-    "configDigest": "sha256:8f5f71efc2dbac3159eaba899ba2d0a686035ae0779362f6b6178c8657968946",
+    "sourceSha": "7f3ac1fbfd3691546c5b1fd247680a3d00851c76",
+    "sourceTree": "ebd66baae19b34b604e166dff5075beec79592de",
+    "manifestSha256": "7c2fb3242aac99b123c8baad517915f8d16aa06936dd35613ad30b3075ded0f7",
+    "inventorySha256": "4d6860807c32f3b17e353e74b78032d0e3d06556091e8e282fa8f72c4edf788a",
+    "indexDigest": "sha256:01471666e50f49747f2eba7d906ba42defef429f652382ccd5a06758d1b710d0",
+    "imageDigest": "sha256:f18cc573086482a3aeadd441ea119bfe53e28f6475adc1cf09b626be3aeb6586",
+    "configDigest": "sha256:dbd5cac9fe459d649aebf2a8b4ec40c3e14ad86c4063540ba9a3a0579be48a4e",
     "selectedExtensions": "codex,workboard",
     "bundledCodexVersion": "0.160.0",
 }
-DD_FINAL_PRODUCER = 'b2c3034a0e3f1fdb44f72a6d300e814af74c8f90'
-DD_FINAL_IMAGE_RECEIPT_SHA256 = '61fe55011a7a8bb0a845da0a640b20000ba61db05fcae35c5f0819336d705d01'
+DD_FINAL_PRODUCER = 'a1ea8b7d1758f47a127531c8adcf32fcebb429a1'
+DD_FINAL_IMAGE_RECEIPT_SHA256 = 'ff59c90259f0271a4bcb6f443b87576a05da907318026a7f64cbf3994a10a7f4'
 DD_FINAL_RUNTIME_SHA256 = "31377ee1c1873d1496e75973e25fc3b0f85c1ff4a83943da23955fada02ecaf9"
-DD_FINAL_SOURCE_BOUNDARY_SHA256 = "bee603181a4e6250bcc55f023fe1b6e2f01e874caed87327352c004060bca73c"
-DD_FINAL_COVERAGE_SHA256 = "b6f996dcbcc825a244a90c0eb22da464f5df33ca5fc2fb2e417ab19afc213568"
+DD_FINAL_SOURCE_BOUNDARY_SHA256 = "b922f91354cbc99d815cd466f5c202d0f2e6752cd85a33e57d1c22fd8a9e98d7"
+DD_FINAL_COVERAGE_SHA256 = "760a35941f14ca6510a43733680e754908f1acc5ff77e193cbaf1a7558b4e73e"
 # Historical final-image timeline attempt. These pins are separate from the
 # current DD_FINAL_* candidate so a new sealed image cannot reinterpret its
 # retained check, image or dataset lease as current-image evidence.
@@ -123,7 +123,10 @@ DD_RETAINED_TIMELINE_IMAGE = {
 }
 DD_RETAINED_TIMELINE_PRODUCER = "b2c3034a0e3f1fdb44f72a6d300e814af74c8f90"
 DD_FINAL_CHANGED_PATHS = (
+    "Dockerfile",
     "custom-patches/manifest.json",
+    "extensions/memory-core/src/dreaming.test.ts",
+    "extensions/memory-core/src/dreaming.ts",
     "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
     "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs",
     "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/capture-integrity.test.mjs",

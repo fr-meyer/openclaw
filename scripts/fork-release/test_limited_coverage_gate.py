@@ -18,7 +18,7 @@ class LimitedCoverageGate(unittest.TestCase):
             "successorSourceSha": trial.DD_FINAL_IMAGE["sourceSha"],
             "successorTree": trial.DD_FINAL_IMAGE["sourceTree"],
             "changedPaths": sorted(trial.DD_FINAL_CHANGED_PATHS),
-            "sourceDiffSha256": "1eba9dc7066695a7f8fff0cc71acb60240e98cff82294d0fce9a75f5d682ef5d",
+            "sourceDiffSha256": "3052fca4e90ac40db8205f8ff744b10e1abb8b42ad40aaa4c289797d0f76aec3",
             "runtimeSha256": trial.DD_FINAL_RUNTIME_SHA256,
             "noChangedGitPathsOutsideExactSet": True,
             "manifestOnlyRuntimePinChanged": True,
