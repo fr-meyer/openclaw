@@ -1,36 +1,167 @@
 {
-  "schema": "openclaw.fork-release.v1",
-  "repository": "fr-meyer/openclaw",
-  "candidate": "fork-main-seed-20260929",
-  "productionEligible": false,
-  "source": {
-    "baseCommit": "a107b4f832937a4b63a5e4a1c6f2736967bf1c17",
-    "baseTree": "fcf58bfaed6682d9c0933a47ec4417c872a14cbf",
-    "patches": [
-      {
-        "commit": "747e432bd5540ff729c416f7d491c62c648046dd",
-        "tree": "80d22060e435a607490230ee87e5414064e04503"
-      },
-      {
-        "commit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
-        "tree": "35ddb02eb7235932012fca04474ae3c314df9aa3"
-      }
-    ],
-    "commit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
-    "tree": "35ddb02eb7235932012fca04474ae3c314df9aa3"
-  },
+  "candidate": "v2026.10.5-security-repair-5fa698a3",
   "gates": {
     "patchLifecycle": [
-      "src/gateway/server.worker-namespace-readback.test.ts",
-      "src/node-host/node-worker-turn-store.test.ts"
+      "src/agents/worktrees/run-lease.test.ts",
+      "src/secrets/egress-proxy/proxy-forward.test.ts",
+      "packages/markdown-core/src/ir.test.ts",
+      "packages/markdown-core/src/render.crossing.test.ts",
+      "packages/markdown-core/src/render.annotations.test.ts",
+      "packages/markdown-core/src/tables.test.ts",
+      "src/plugins/config-schema.test.ts",
+      "test/scripts/check-package-patches.test.ts",
+      "test/scripts/zod-legacy-closure.test.ts",
+      "test/scripts/native-security.test.ts",
+      "test/scripts/native-runner.test.ts",
+      "test/scripts/native-security-ownership.test.ts",
+      "test/scripts/generate-npm-package-lock.test.ts",
+      "test/vitest-projects-config.test.ts",
+      "test/scripts/eager-import-closure.test.ts"
     ],
     "producerConsumer": [
-      "src/infra/node-invoke-lifecycle-contract.test.ts",
-      "src/gateway/session-history-worker.integration.test.ts"
+      "src/tasks/managed-task-flow.worker.integration.test.ts",
+      "src/agents/mcp-http-transport.test.ts",
+      "ui/src/components/markdown.test.ts",
+      "ui/src/components/markdown-links.test.ts",
+      "ui/src/components/markdown-tables.test.ts",
+      "ui/src/components/markdown-cjk-html.test.ts",
+      "test/zod-container-bounds.test.mjs",
+      "test/a2ui-native-zod-regression.test.mjs",
+      "test/discord-native-zod-regression.test.mjs",
+      "test/body-parser-security.test.mjs",
+      "test/msal-parent-compat.test.mjs",
+      "test/undici-security.test.mjs"
     ]
   },
   "image": {
     "architecture": "amd64",
-    "extensions": "diagnostics-otel,codex"
+    "extensions": "codex,workboard"
+  },
+  "productionEligible": false,
+  "repository": "fr-meyer/openclaw",
+  "schema": "openclaw.fork-release.v1",
+  "source": {
+    "baseCommit": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "baseTree": "a138559698570e238395121723a773106ac33f8c",
+    "commit": "5fa698a3a14c1c753adff4b465d602ca1c5957b5",
+    "patches": [
+      {
+        "commit": "94f1ee3e18015055ab25d62f71ee090d43c32062",
+        "tree": "3c655a3dc4d7f0840e4ba29f325887ef7301edad"
+      },
+      {
+        "commit": "b97993184352e969a77f53b7d1b01519ac05465e",
+        "tree": "1e2087daa19df4d58f9def3d4aaf67b9ae7a4a5f"
+      },
+      {
+        "commit": "93db6739eb850f2a1d422074a8f04d74766af460",
+        "tree": "e1cdb0f12a7b9704fdc4d94d38feb769dfa10cfa"
+      },
+      {
+        "commit": "e0e821e26904fa0805f710226df44cfd50866654",
+        "tree": "9b6aefe50c20f75a4d6eb88f4a8f883606b12556"
+      },
+      {
+        "commit": "211387d11a79966d97c320978e2b8cd5130bed29",
+        "tree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f"
+      },
+      {
+        "commit": "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+        "tree": "ff857f53fd1125212a679237d577575263d52541"
+      },
+      {
+        "commit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+        "tree": "0a420e0b25e465bd3669574b0aaf087efbd455f6"
+      },
+      {
+        "commit": "e8796be056dc39a2cf39def8b08a71cd2286ad02",
+        "tree": "6101d8ec0139dd5c267106285ab8d1f74682276a"
+      },
+      {
+        "commit": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+        "tree": "9dd42d178010367e153b73f42f1f7d14370b579f"
+      },
+      {
+        "commit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+        "tree": "9bb03f9cd6f8221f42a1c1701824a154d6f87d55"
+      },
+      {
+        "commit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+        "tree": "fdbf31f86fa714b4f58c065e38d61fdece659902"
+      },
+      {
+        "commit": "ae85778296da373dfe7d80101931bafac1acc9dd",
+        "tree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab"
+      },
+      {
+        "commit": "99b7f90bc8edf32c3d98e0bf6602d5e7120a8fc7",
+        "tree": "5d7b46ee0d368ed199fb855854ab2f419ec74cce"
+      },
+      {
+        "commit": "9f58864517820b291e482c9e7ace8129d06b44e2",
+        "tree": "601a9c61586bd8fb6919529a8fce10ecf746f0a1"
+      },
+      {
+        "commit": "4bcf8902e1eeb2fa5e84d0c4bf55572382ca61e4",
+        "tree": "bd6a3b130536a5bfcbdb2b97a7319db5d389dc33"
+      },
+      {
+        "commit": "5b052d44ad170818ee274f9c8fd43b69ebd7a291",
+        "tree": "8ffb56b08aa79c83be0b698a564276750c1a450d"
+      },
+      {
+        "commit": "cc69ab4e786706c0f835427ba5fe884528f302ff",
+        "tree": "67b692219f51cb243efbbdf3bd907d3d77a454fd"
+      },
+      {
+        "commit": "1d5ab20bea4cccce0b80b60a9ba5d5020cf08038",
+        "tree": "a933c8bdcd8f62dd855f57aea4759120dfb2aa17"
+      },
+      {
+        "commit": "84d65b446d66cd5db5b9c533bd158e9062968692",
+        "tree": "f52ccc16baa27b0b83cd79b03c55a5faa273d9d9"
+      },
+      {
+        "commit": "cfc8f12382e9c73d20be7fd5d06d19b325bdac25",
+        "tree": "4ed50066a945acc2734d46173301ea247cdd4e7b"
+      },
+      {
+        "commit": "4cf5cb7e256c67a5c98097774cad2d05cd781c01",
+        "tree": "e63f5bf2762a58bda6b2d8436830a03914f8704e"
+      },
+      {
+        "commit": "7f3ac1fbfd3691546c5b1fd247680a3d00851c76",
+        "tree": "ebd66baae19b34b604e166dff5075beec79592de"
+      },
+      {
+        "commit": "851ffa0df884d1e688d210a17fb09f9d867cfcb8",
+        "tree": "a917f8018a641e697a8c2e76132bf8933429a06c"
+      },
+      {
+        "commit": "a1380a437e5f3f3011c6be854214b71d8dd749fd",
+        "tree": "61c71e1eeaa41b6575f57d535c340aeb7a8e1063"
+      },
+      {
+        "commit": "6fa253bb52d358d1bda312df5acbd68bbd6e799e",
+        "tree": "583f80a9ee590f36defee1645ad87577c55e0424"
+      },
+      {
+        "commit": "3bbc3ddf6063ef54407b12e1597c2c445a2b9ce6",
+        "tree": "f7f33236b5f51607cfa809412c670dc0c2c862c3"
+      },
+      {
+        "commit": "9af6d4fb4f98c4790a102c96bbd65a63fd3ee890",
+        "tree": "9538461071c41b4d6e238ef6ff29575df630b3e1"
+      },
+      {
+        "commit": "8e0e31d25a9e0166b47c3bf2ad21e15fdd544e2e",
+        "tree": "511da7787b4a42121312037f1f3074edcc05b773"
+      },
+      {
+        "commit": "5fa698a3a14c1c753adff4b465d602ca1c5957b5",
+        "tree": "af79a4294a5759271daae01d60261297ddbf0258"
+      }
+    ],
+    "tree": "af79a4294a5759271daae01d60261297ddbf0258"
   }
 }
