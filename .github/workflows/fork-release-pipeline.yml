@@ -292,7 +292,10 @@ jobs:
   qualify-and-prepare:
     if: >-
       ${{ github.event_name != 'pull_request' && github.repository == 'fr-meyer/openclaw' &&
-          (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') }}
+          (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') &&
+          (github.ref != 'refs/heads/release-pipeline/v105-image-only-20261024' ||
+           (github.event_name == 'push' && github.event.created &&
+            github.run_attempt == '1' && github.actor == 'fr-meyer')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -334,6 +337,62 @@ jobs:
         id: identity
         run: |
           set -euo pipefail
+          # This owned branch creation is one nonproduction image qualification,
+          # not main adoption or a fabricated reviewed metadata PR.
+          python3 - <<'PY_IMAGE_ONLY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          image_ref = 'refs/heads/release-pipeline/v105-image-only-20261024'
+          image_source = '5fa698a3a14c1c753adff4b465d602ca1c5957b5'
+          selected = os.environ['GITHUB_REF'] == image_ref
+          if selected:
+              event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+              manifest = json.loads(Path('metadata/scripts/fork-release/manifest.json').read_text())
+              if not (
+                  os.environ['GITHUB_EVENT_NAME'] == 'push' and
+                  os.environ['GITHUB_REPOSITORY'] == 'fr-meyer/openclaw' and
+                  os.environ['GITHUB_ACTOR'] == 'fr-meyer' and
+                  os.environ['GITHUB_RUN_ATTEMPT'] == '1' and
+                  event.get('created') is True and
+                  manifest.get('repository') == 'fr-meyer/openclaw' and
+                  manifest.get('productionEligible') is False and
+                  'review' not in manifest and
+                  manifest.get('source', {}).get('commit') == image_source and
+                  manifest.get('image') == {'architecture': 'amd64', 'extensions': 'codex,workboard'}
+              ):
+                  raise SystemExit('One-shot nonproduction image scope changed')
+              # A deleted/recreated branch is a new push, so creation alone is
+              # not a one-use authorization. Keep the first run as the durable
+              # claim; failed/incomplete public lookups cannot authorize work.
+              request = Request(
+                  'https://api.github.com/repos/fr-meyer/openclaw/actions/workflows/'
+                  'fork-release-pipeline.yml/runs?event=push&per_page=2&'
+                  'branch=release-pipeline%2Fv105-image-only-20261024',
+                  headers={'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28',
+                           'User-Agent': 'openclaw-owned-image-qualification'})
+              with urlopen(request, timeout=15) as response:
+                  raw = response.read(128 * 1024 + 1)
+              if len(raw) > 128 * 1024:
+                  raise SystemExit('One-shot image history exceeds bounded response')
+              history = json.loads(raw)
+              runs = history.get('workflow_runs')
+              if not (
+                  type(history.get('total_count')) is int and history['total_count'] == 1 and
+                  isinstance(runs, list) and len(runs) == 1 and
+                  type(runs[0].get('id')) is int and
+                  str(runs[0]['id']) == os.environ['GITHUB_RUN_ID'] and
+                  runs[0].get('head_sha') == os.environ['GITHUB_SHA'] and
+                  runs[0].get('head_branch') == image_ref.removeprefix('refs/heads/') and
+                  runs[0].get('event') == 'push'
+              ):
+                  raise SystemExit('One-shot image run already claimed or history incomplete')
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              print('image_only_export=' + ('true' if selected else 'false'), file=output)
+          PY_IMAGE_ONLY
           python3 tooling/scripts/fork-release/release.py identity \
             --manifest metadata/scripts/fork-release/manifest.json \
             --inventory metadata/scripts/fork-release/patch-inventory.json >> "$GITHUB_OUTPUT"
@@ -416,7 +475,17 @@ jobs:
           python3 tooling/scripts/fork-release/preflight.py \
             --manifest metadata/scripts/fork-release/manifest.json \
             --inventory metadata/scripts/fork-release/patch-inventory.json --source-dir source
-          python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_*.py'
+          if [[ '${{ steps.identity.outputs.image_only_export }}' == true ]]; then
+            # This job qualifies an image; GCP database/teardown lifecycle is
+            # separate. Keep all hosted/image and source-binding owners here.
+            python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_hosted_*.py'
+            python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_image*.py'
+            PYTHONPATH=tooling/scripts/fork-release python3 -m unittest \
+              test_preflight test_release test_source_ancestry test_source_tests \
+              test_merge_source test_limited_coverage_gate
+          else
+            python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_*.py'
+          fi
           python3 -c 'import json; print("version=" + json.load(open("source/package.json"))["version"])' >> "$GITHUB_OUTPUT"
       - name: Run focused custom patch and producer-consumer gates
         run: |
@@ -551,8 +620,8 @@ jobs:
           SOURCE_SHA: ${{ steps.identity.outputs.source_sha }}
           TOOLING_SHA: ${{ github.sha }}
           OCI_DIGEST: ${{ steps.build.outputs.digest }}
-          PUBLIC_EXPORT: ${{ inputs.export_public_artifact || false }}
-          STORAGE_APPROVED: ${{ inputs.artifact_storage_approved || false }}
+          PUBLIC_EXPORT: ${{ steps.identity.outputs.image_only_export == 'true' || inputs.export_public_artifact || false }}
+          STORAGE_APPROVED: ${{ steps.identity.outputs.image_only_export == 'true' || inputs.artifact_storage_approved || false }}
         run: |
           set -euo pipefail
           python3 tooling/scripts/fork-release/hosted_export.py \
@@ -566,8 +635,9 @@ jobs:
       - name: Prepare and verify the bounded public artifact
         id: bundle
         if: >-
-          ${{ github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
-              inputs.artifact_storage_approved }}
+          ${{ steps.identity.outputs.image_only_export == 'true' ||
+              (github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
+               inputs.artifact_storage_approved) }}
         run: |
           set -euo pipefail
           python3 tooling/scripts/fork-release/hosted_bundle.py prepare \
@@ -589,8 +659,9 @@ jobs:
       - name: Retain the exact tested OCI payload and public receipt
         id: image_artifact
         if: >-
-          ${{ github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
-              inputs.artifact_storage_approved }}
+          ${{ steps.identity.outputs.image_only_export == 'true' ||
+              (github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
+               inputs.artifact_storage_approved) }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           # The pinned action streams one file unchanged and uses its basename.

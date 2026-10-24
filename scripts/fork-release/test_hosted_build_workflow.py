@@ -28,7 +28,8 @@ def expression(value, **context):
     # Evaluate only the checked-in fixture's simple GitHub comparisons/selection.
     value = value.strip().removeprefix('${{').removesuffix('}}').strip()
     value = value.replace('&&', ' and ').replace('||', ' or ')
-    return eval(value, {'__builtins__': {}, 'format': lambda fmt, *args: fmt.format(*args),
+    return eval(value, {'__builtins__': {}, 'false': False, 'true': True,
+                        'format': lambda fmt, *args: fmt.format(*args),
                         'startsWith': lambda value, prefix: value.startswith(prefix)}, context)
 
 
@@ -280,6 +281,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             for public in (False, True):
                 for cost in (False, True):
                     actual = expression(condition, github=NS(event_name=event),
+                                        steps=NS(identity=NS(outputs=NS(image_only_export='false'))),
                                         inputs=NS(export_public_artifact=public, artifact_storage_approved=cost))
                     self.assertEqual(actual, event == 'workflow_dispatch' and public and cost)
         self.assertNotIn('always()', upload)
@@ -300,6 +302,165 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         self.assertIn('expected != os.environ["UPLOADED_SHA256"]', digest_check)
         admission = step(self.workflow, 'Validate manual candidate identity before checkout')
         self.assertIn('"$PUBLIC_EXPORT" == true && "$STORAGE_APPROVED" != true', admission)
+
+    def test_image_only_branch_job_is_creation_once_and_manual_main_guard_is_unchanged(self):
+        job = self.workflow.split('  qualify-and-prepare:\n', 1)[1]
+        condition = ' '.join(job.split('    if: >-\n', 1)[1].split('\n    runs-on:', 1)[0].split())
+
+        def selected(ref='refs/heads/release-pipeline/v105-image-only-20261024',
+                     event='push', created=True, attempt='1', actor='fr-meyer',
+                     repo='fr-meyer/openclaw'):
+            return expression(condition, github=NS(ref=ref, event_name=event,
+                event=NS(created=created), run_attempt=attempt, actor=actor, repository=repo))
+
+        self.assertTrue(selected())
+        for change in ({'created': False}, {'attempt': '2'}, {'actor': 'someone-else'},
+                       {'repo': 'other/openclaw'}, {'event': 'workflow_dispatch'},
+                       {'event': 'pull_request'}):
+            with self.subTest(change=change):
+                self.assertFalse(selected(**change))
+        self.assertTrue(selected(event='workflow_dispatch', ref='refs/heads/main'))
+        self.assertFalse(selected(event='workflow_dispatch', ref='refs/heads/other'))
+
+    def run_image_only_scope(self, *, environment=None, event=None, manifest=None,
+                             history=None, history_error=False, oversized=False):
+        identity = step(self.workflow, 'Resolve exact source identity')
+        raw = identity.split("          python3 - <<'PY_IMAGE_ONLY'\n", 1)[1].split(
+            '\n          PY_IMAGE_ONLY', 1)[0]
+        code = textwrap.dedent(raw)
+        run = {'id': 1234, 'head_sha': SOURCE,
+               'head_branch': 'release-pipeline/v105-image-only-20261024', 'event': 'push'}
+        payload = json.dumps(history if history is not None else {
+            'total_count': 1, 'workflow_runs': [run]})
+        wrapper = (
+            'import io, json\nfrom unittest.mock import patch\n'
+            'def fake_open(request, *, timeout):\n'
+            '    assert timeout == 15\n'
+            '    assert request.full_url == '
+            "'https://api.github.com/repos/fr-meyer/openclaw/actions/workflows/' "
+            "'fork-release-pipeline.yml/runs?event=push&per_page=2&' "
+            "'branch=release-pipeline%2Fv105-image-only-20261024'\n"
+            '    assert not request.has_header("Authorization")\n'
+            + ('    raise OSError("bounded lookup unavailable")\n' if history_error else
+               '    return io.BytesIO(' + repr(b'x' * (128 * 1024 + 1) if oversized else payload.encode()) + ')\n')
+            + 'with patch("urllib.request.urlopen", side_effect=fake_open):\n'
+            + '    exec(' + repr(code) + ')\n')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            metadata = root / 'metadata/scripts/fork-release/manifest.json'
+            metadata.parent.mkdir(parents=True)
+            value = {'repository': 'fr-meyer/openclaw', 'productionEligible': False,
+                     'source': {'commit': '5fa698a3a14c1c753adff4b465d602ca1c5957b5'},
+                     'image': {'architecture': 'amd64', 'extensions': 'codex,workboard'}}
+            value.update(manifest or {})
+            metadata.write_text(json.dumps(value))
+            event_file = root / 'event.json'
+            event_file.write_text(json.dumps({'created': True, **(event or {})}))
+            output = root / 'output'
+            env = {'PATH': os.environ.get('PATH', ''),
+                   'GITHUB_REF': 'refs/heads/release-pipeline/v105-image-only-20261024',
+                   'GITHUB_EVENT_NAME': 'push', 'GITHUB_REPOSITORY': 'fr-meyer/openclaw',
+                   'GITHUB_ACTOR': 'fr-meyer', 'GITHUB_RUN_ATTEMPT': '1',
+                   'GITHUB_RUN_ID': '1234', 'GITHUB_SHA': SOURCE,
+                   'GITHUB_EVENT_PATH': str(event_file), 'GITHUB_OUTPUT': str(output)}
+            env.update(environment or {})
+            result = subprocess.run([sys.executable, '-c', wrapper], cwd=root, env=env,
+                                    capture_output=True, text=True, timeout=5)
+            emitted = output.read_text() if output.exists() else ''
+        return result, emitted
+
+    def test_image_only_scope_binds_exact_source_nonproduction_and_absent_review(self):
+        result, emitted = self.run_image_only_scope()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(emitted, 'image_only_export=true\n')
+        negatives = (
+            {'environment': {'GITHUB_REPOSITORY': 'other/openclaw'}},
+            {'environment': {'GITHUB_ACTOR': 'someone-else'}},
+            {'environment': {'GITHUB_RUN_ATTEMPT': '2'}},
+            {'environment': {'GITHUB_EVENT_NAME': 'workflow_dispatch'}},
+            {'event': {'created': False}}, {'event': {'created': 1}},
+            {'manifest': {'productionEligible': True}},
+            {'manifest': {'productionEligible': 0}},
+            {'manifest': {'review': None}},
+            {'manifest': {'source': {'commit': SOURCE}}},
+            {'manifest': {'image': {'architecture': 'arm64', 'extensions': 'codex,workboard'}}},
+            {'manifest': {'image': {'architecture': 'amd64', 'extensions': 'codex'}}},
+            {'manifest': {'repository': 'other/openclaw'}},
+        )
+        for change in negatives:
+            with self.subTest(change=change):
+                result, emitted = self.run_image_only_scope(**change)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('One-shot nonproduction image scope changed', result.stderr)
+                self.assertEqual(emitted, '')
+
+    def test_image_only_rejects_recreation_other_run_and_unavailable_history(self):
+        run = {'id': 1234, 'head_sha': SOURCE,
+               'head_branch': 'release-pipeline/v105-image-only-20261024', 'event': 'push'}
+        for change in (
+            {'history': {'total_count': 2, 'workflow_runs': [run, {**run, 'id': 1233}]}},
+            {'history': {'total_count': 0, 'workflow_runs': []}},
+            {'history': {'total_count': 1, 'workflow_runs': []}},
+            {'history': {'total_count': True, 'workflow_runs': [run]}},
+            *({'history': {'total_count': 1, 'workflow_runs': [{**run, **field}]}}
+              for field in ({'id': 1233}, {'id': '1234'}, {'head_sha': 'b' * 40},
+                            {'head_branch': 'other'}, {'event': 'pull_request'})),
+            {'history_error': True}, {'oversized': True},
+        ):
+            with self.subTest(change=change):
+                result, emitted = self.run_image_only_scope(**change)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(emitted, '')
+
+    def test_other_refs_cannot_enable_image_only_export_and_both_export_stages_agree(self):
+        for ref in ('refs/heads/main', 'refs/heads/release-pipeline/other',
+                    'refs/heads/release-pipeline/v105-image-only-20261024-extra'):
+            result, emitted = self.run_image_only_scope(environment={'GITHUB_REF': ref})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(emitted, 'image_only_export=false\n')
+        bundle = step(self.workflow, 'Prepare and verify the bounded public artifact')
+        upload = step(self.workflow, 'Retain the exact tested OCI payload and public receipt')
+        conditions = []
+        for selected in (bundle, upload):
+            condition = ' '.join(selected.split('        if: >-\n', 1)[1].split(
+                '\n        ' + ('uses:' if selected == upload else 'run:'), 1)[0].split())
+            conditions.append(condition)
+            for event in ('push', 'pull_request', 'workflow_dispatch'):
+                for flag in ('false', 'true'):
+                    actual = expression(condition, github=NS(event_name=event),
+                        inputs=NS(export_public_artifact=False, artifact_storage_approved=False),
+                        steps=NS(identity=NS(outputs=NS(image_only_export=flag))))
+                    self.assertEqual(actual, flag == 'true')
+        self.assertEqual(conditions[0], conditions[1])
+        gate = step(self.workflow, 'Bind hosted qualification receipts and export decision')
+        for name in ('PUBLIC_EXPORT', 'STORAGE_APPROVED'):
+            value = re.search(r'^          ' + name + r': (.+)$', gate, re.M).group(1)
+            for flag in ('false', 'true'):
+                actual = expression(value,
+                    inputs=NS(export_public_artifact=False, artifact_storage_approved=False),
+                    steps=NS(identity=NS(outputs=NS(image_only_export=flag))))
+                self.assertEqual(actual, flag == 'true')
+
+    def test_one_shot_route_preserves_all_checks_and_real_execution_binding(self):
+        source = step(self.workflow, 'Verify source and run offline pipeline regressions')
+        self.assertIn("python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_*.py'", source)
+        self.assertIn('source_ancestry.py', source)
+        self.assertIn('preflight.py', source)
+        self.assertIn("if [[ '${{ steps.identity.outputs.image_only_export }}' == true ]]; then", source)
+        self.assertIn("-p 'test_hosted_*.py'", source)
+        self.assertIn("-p 'test_image*.py'", source)
+        self.assertIn('test_preflight test_release test_source_ancestry test_source_tests', source)
+        self.assertIn('test_merge_source test_limited_coverage_gate', source)
+        self.assertIn("else\n            python3 -m unittest discover", source)
+        self.assertIn('pnpm install --frozen-lockfile', step(
+            self.workflow, 'Run focused custom patch and producer-consumer gates'))
+        seal = step(self.workflow, 'Verify OCI bytes and smoke that exact image')
+        self.assertIn('GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}', seal)
+        gate = step(self.workflow, 'Bind hosted qualification receipts and export decision')
+        self.assertIn('TOOLING_SHA: ${{ github.sha }}', gate)
+        self.assertIn('--run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"', gate)
+        # Existing resource, native framework, privacy, ZIP and upload tests stay active.
+        self.assertNotIn('continue-on-error:', gate)
 
     def test_privacy_resources_and_native_seal_precede_receipt_gate_and_upload(self):
         names = ('Verify hosted worker limits and begin bounded resource observation',
