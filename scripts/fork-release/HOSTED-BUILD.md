@@ -61,16 +61,24 @@ that runner; every build checks its own current capacity. Related serialized
 
 Both source-test steps dispatch the inventory's TypeScript gates through the
 repository Vitest wrapper and native `.test.mjs`/`.e2e.mjs` gates through
+the trusted tooling's shared `native_tests.mjs` runner. That helper executes
 `node --test --test-concurrency=1`. An empty selection refuses qualification;
 native-only selections never start an unfiltered Vitest run. The older MCP
 producer keeps its declared native Nowistay companion when it is not already
 selected explicitly. Any runner or missing-file failure stops the step.
 
-When the native A2UI regression is selected, the workflow resolves Ajv from the
-frozen MCP SDK's declared dependency and requires version 8.20.0. It passes that
-existing package directory as the validator project; no extra package install,
-provider call or local developer path is used. These are source regressions,
-not proof of a real-data migration or production startup.
+The normal source suite owns these security regressions through its isolated
+`native-security.test.ts` adapter. The workflow reports completed Vitest selections
+only after they pass; the helper then avoids executing the adapter's members twice
+and retains unrelated native owners. Missing required members or an absent adapter
+cannot qualify as an empty success. The helper must be present in the exact trusted
+base/tooling tree before these callers run.
+
+Native children receive only the maintained platform/runtime environment allowlist,
+not inherited provider credentials, proxies or fixture project overrides. For A2UI,
+the helper resolves Ajv from the frozen MCP SDK's declared dependency and requires
+version 8.20.0. No extra install, provider call or local developer path is used.
+These source regressions do not establish real-data migration or production startup.
 
 ## Verification and privacy boundary
 
