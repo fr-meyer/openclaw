@@ -295,7 +295,7 @@ jobs:
           (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') &&
           (github.ref != 'refs/heads/release-pipeline/v105-image-only-20261024' ||
            (github.event_name == 'push' && github.event.created == false &&
-            github.event.before == 'a1c3837ba9d8e33a6964a8208ef74d339d6aa635' &&
+            github.event.before == 'b572943a2137c43afd433f7b782a54e12cf13902' &&
             github.run_attempt == '1' && github.actor == 'fr-meyer')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -371,7 +371,7 @@ jobs:
                   os.environ['GITHUB_ACTOR'] == 'fr-meyer' and
                   os.environ['GITHUB_RUN_ATTEMPT'] == '1' and
                   event.get('created') is False and
-                  event.get('before') == 'a1c3837ba9d8e33a6964a8208ef74d339d6aa635' and
+                  event.get('before') == 'b572943a2137c43afd433f7b782a54e12cf13902' and
                   event.get('after') == os.environ['GITHUB_SHA'] and
                   manifest.get('repository') == 'fr-meyer/openclaw' and
                   manifest.get('productionEligible') is False and
@@ -399,11 +399,11 @@ jobs:
               parents = current_commit.get('parents')
               if not (current_commit.get('sha') == approved and isinstance(parents, list) and
                       len(parents) == 1 and isinstance(parents[0], dict) and
-                      parents[0].get('sha') == 'e88b8997b29a2842127cc91a1cec3837b34dcc88'):
+                      parents[0].get('sha') == 'b572943a2137c43afd433f7b782a54e12cf13902'):
                   raise SystemExit('Private caller is not the exact reviewed preparation successor')
 
-              # Two pre-build failures and four built/privacy-refused runs are
-              # retained explicitly. No prior run may have uploaded an image.
+              # Preserve all six original runs plus one fixture-only preflight
+              # failure. It consumed no Docker build or private transfer.
               priors = {
                   40062126779: ('aee8475917dd29e0ee9a0b4059daf34990cfdbd5', 120777706110),
                   40062948481: ('9c2df877355c763ccd9b939250de4384ff80b586', 120780156996),
@@ -411,16 +411,18 @@ jobs:
                   40067322318: ('cf145a4c2afb999f06b3ced1f5a2b69e23929eae', 120793190410),
                   40070695622: ('0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1', 120803275519),
                   40075559894: ('a1c3837ba9d8e33a6964a8208ef74d339d6aa635', 120818019684),
+                  40098041073: ('b572943a2137c43afd433f7b782a54e12cf13902', 120884304655),
               }
               built_priors = {40063895699, 40067322318, 40070695622, 40075559894}
+              private_preflight_priors = {40098041073}
               history = public_json('/actions/workflows/fork-release-pipeline.yml/runs?'
-                  'event=push&per_page=7&branch=release-pipeline%2Fv105-image-only-20261024')
+                  'event=push&per_page=8&branch=release-pipeline%2Fv105-image-only-20261024')
               runs = history.get('workflow_runs')
               current = [r for r in runs or [] if isinstance(r, dict) and
                          type(r.get('id')) is int and str(r['id']) == os.environ['GITHUB_RUN_ID']]
               if not (
-                  type(history.get('total_count')) is int and history['total_count'] == 7 and
-                  isinstance(runs, list) and len(runs) == 7 and len(current) == 1 and
+                  type(history.get('total_count')) is int and history['total_count'] == 8 and
+                  isinstance(runs, list) and len(runs) == 8 and len(current) == 1 and
                   current[0]['id'] not in priors and
                   current[0].get('head_sha') == os.environ['GITHUB_SHA'] and
                   all(isinstance(r, dict) and type(r.get('id')) is int and
@@ -467,12 +469,17 @@ jobs:
                           job.get('conclusion') == 'failure' and isinstance(steps, list)):
                       raise SystemExit('Prior image job differs from its recorded terminal failure')
                   prior_expected = built_expected if prior_id in built_priors else expected
+                  if prior_id in private_preflight_priors:
+                      prior_expected = {**expected,
+                          'Run focused custom patch and producer-consumer gates': 'skipped',
+                          'Capture original hosted build metadata for private retention': 'skipped',
+                          'Retain private OCI archive': 'skipped'}
                   for name, conclusion in prior_expected.items():
                       matching = [s for s in steps if isinstance(s, dict) and s.get('name') == name]
                       if not (len(matching) == 1 and matching[0].get('status') == 'completed' and
                               matching[0].get('conclusion') == conclusion):
                           raise SystemExit('Prior image build or upload outcome changed or is uncertain')
-                  if prior_id in built_priors:
+                  if prior_id in built_priors or prior_id in private_preflight_priors:
                       artifacts = public_json('/actions/runs/' + str(prior_id) + '/artifacts?per_page=1')
                       if not (type(artifacts.get('total_count')) is int and artifacts['total_count'] == 0 and
                               artifacts.get('artifacts') == []):

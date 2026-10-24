@@ -382,7 +382,8 @@ class PrivacyTests(unittest.TestCase):
                         "--public-comparisons", str(path)]
                     if qualify:
                         command.append("--qualify-public-members")
-                    result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+                    result = subprocess.run(command, cwd=Path(privacy.__file__).resolve().parent,
+                                            capture_output=True, text=True, timeout=10)
                     self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
                     receipt = json.loads(output.read_text())
                     if expected == 0:
