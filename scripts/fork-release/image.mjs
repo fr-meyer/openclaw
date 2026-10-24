@@ -10,6 +10,7 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  readSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -47,7 +48,10 @@ function hash(path) {
 }
 
 function validateManifest(path) {
-  const manifest = json(path);
+  return validateManifestValue(json(path));
+}
+
+function validateManifestValue(manifest) {
   need(manifest.schema === "openclaw.fork-release.v1", "Wrong fork release manifest schema");
   need(manifest.repository === "fr-meyer/openclaw", "Wrong fork release repository");
   need(
@@ -221,7 +225,282 @@ export async function verifyImageLayout({ manifest, receipt, ociDir }) {
   });
 }
 
+function diagnosticJson(path) {
+  const descriptor = openSync(
+    path,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    const before = fstatSync(descriptor);
+    const limit = 1024 * 1024;
+    need(before.isFile() && before.size <= limit, "static.input_refused");
+    // A regular file can grow after fstat. Bound allocation and every read,
+    // including a one-byte overflow probe, instead of reading through EOF.
+    const buffer = Buffer.alloc(limit + 1);
+    let length = 0;
+    while (true) {
+      const count = readSync(
+        descriptor,
+        buffer,
+        length,
+        Math.min(64 * 1024, buffer.length - length),
+        null,
+      );
+      if (count === 0) {
+        break;
+      }
+      length += count;
+      need(length <= limit, "static.input_refused");
+    }
+    const bytes = buffer.subarray(0, length);
+    const after = fstatSync(descriptor);
+    need(
+      bytes.length === before.size &&
+        before.mtimeMs === after.mtimeMs &&
+        before.ctimeMs === after.ctimeMs,
+      "static.input_refused",
+    );
+    return {
+      value: JSON.parse(bytes.toString("utf8")),
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+// This is a non-executing diagnostic, not a build attestation or release seal.
+// Origin facts and inspection tooling are caller inputs; their hashes preserve
+// those assertions without turning them into authenticated producer evidence.
+export async function inspectLayoutStatic({
+  manifestPath,
+  inventoryPath,
+  sourceDir,
+  ociDir,
+  originalBuildPath,
+  privacyPath,
+  inspectionToolingSha,
+  performedAt,
+}) {
+  const report = {
+    schema: "openclaw.fork-release-static.v1",
+    status: "blocked",
+    sourceSha: null,
+    sourceTree: null,
+    manifestSha256: null,
+    inventorySha256: null,
+    indexDigest: null,
+    imageDigest: null,
+    configDigest: null,
+    builtAt: null,
+    originalBuildSha256: null,
+    privacyReceiptSha256: null,
+    inspectionToolingSha: null,
+    performedAt: null,
+    staticOnly: true,
+    nativeExecuted: false,
+    productionAuthorized: false,
+    promotable: false,
+    reason: "static.input_refused",
+  };
+  try {
+    need(SHA.test(inspectionToolingSha), "static.input_refused");
+    const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u;
+    const canonicalTime = (value) =>
+      typeof value === "string" &&
+      utc.test(value) &&
+      Number.isFinite(Date.parse(value)) &&
+      new Date(value).toISOString() === value.replace("Z", ".000Z");
+    need(
+      canonicalTime(performedAt) && Date.parse(performedAt) <= Date.now(),
+      "static.input_refused",
+    );
+    const manifestInput = diagnosticJson(manifestPath),
+      inventoryInput = diagnosticJson(inventoryPath);
+    const manifest = validateManifestValue(manifestInput.value);
+    const inventoryHash = inventoryInput.sha256,
+      manifestHash = manifestInput.sha256;
+    const origin = diagnosticJson(originalBuildPath),
+      privacy = diagnosticJson(privacyPath);
+    const build = origin.value,
+      scan = privacy.value;
+    const fields = [
+      "schema",
+      "repository",
+      "sourceSha",
+      "sourceTree",
+      "manifestSha256",
+      "inventorySha256",
+      "architecture",
+      "version",
+      "builtAt",
+      "indexDigest",
+      "imageDigest",
+      "configDigest",
+      "producer",
+      ...(build?.producer?.kind === "gcp" ? [] : ["buildContext"]),
+    ];
+    need(
+      build &&
+        typeof build === "object" &&
+        !Array.isArray(build) &&
+        Object.keys(build).toSorted().join(",") === fields.toSorted().join(",") &&
+        build.schema === "openclaw.fork-release-build-origin.v1" &&
+        build.repository === manifest.repository &&
+        build.sourceSha === manifest.source.commit &&
+        build.sourceTree === manifest.source.tree &&
+        build.manifestSha256 === manifestHash &&
+        build.inventorySha256 === inventoryHash &&
+        build.architecture === manifest.image.architecture &&
+        /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u.test(build.version) &&
+        canonicalTime(build.builtAt) &&
+        build.builtAt <= performedAt &&
+        [build.indexDigest, build.imageDigest, build.configDigest].every(
+          (value) => typeof value === "string" && DIGEST.test(value),
+        ),
+      "static.input_refused",
+    );
+    validateProducer(build.producer);
+    Object.assign(report, {
+      sourceSha: build.sourceSha,
+      sourceTree: build.sourceTree,
+      manifestSha256: manifestHash,
+      inventorySha256: inventoryHash,
+      indexDigest: build.indexDigest,
+      imageDigest: build.imageDigest,
+      configDigest: build.configDigest,
+      builtAt: build.builtAt,
+      originalBuildSha256: origin.sha256,
+      privacyReceiptSha256: privacy.sha256,
+      inspectionToolingSha,
+      performedAt,
+    });
+    report.reason = "static.privacy_structure_incomplete";
+    need(
+      scan?.schema === "openclaw.hosted-privacy.v2" &&
+        scan.inspectionComplete === true &&
+        ["passed", "failed"].includes(scan.status) &&
+        !Object.hasOwn(scan, "refusal") &&
+        scan.sourceSha === build.sourceSha &&
+        scan.toolingSha === inspectionToolingSha &&
+        ["indexDigest", "imageDigest", "configDigest"].every((key) => scan[key] === build[key]),
+      "static.privacy_structure_incomplete",
+    );
+    // The JS layout reader is safe to use only after the bound privacy owner
+    // completed structural traversal within these static-reader input budgets.
+    const caps = {
+      blob_bytes: 8 * 1024 ** 3,
+      total_blob_bytes: 16 * 1024 ** 3,
+      json_bytes: 32 * 1024 ** 2,
+      json_nodes: 1000000,
+      blobs: 1024,
+      manifests: 16,
+      layers: 256,
+    };
+    need(
+      Object.entries(caps).every(
+        ([key, cap]) =>
+          Number.isSafeInteger(scan.limits?.[key]) &&
+          scan.limits[key] > 0 &&
+          scan.limits[key] <= cap,
+      ) &&
+        [
+          ["blobBytes", "total_blob_bytes"],
+          ["jsonNodes", "json_nodes"],
+          ["layers", "layers"],
+        ].every(
+          ([key, limit]) =>
+            Number.isSafeInteger(scan.counts?.[key]) &&
+            scan.counts[key] >= 0 &&
+            scan.counts[key] <= scan.limits[limit],
+        ),
+      "static.privacy_structure_incomplete",
+    );
+    report.reason = "static.source_refused";
+    assertCleanSourceCheckout(sourceDir);
+    const preflightPath = fileURLToPath(new URL("preflight.py", import.meta.url));
+    execFileSync(
+      "python3",
+      [
+        preflightPath,
+        "--manifest",
+        manifestPath,
+        "--inventory",
+        inventoryPath,
+        "--source-dir",
+        sourceDir,
+      ],
+      { stdio: "pipe" },
+    );
+    need(json(join(sourceDir, "package.json")).version === build.version, "static.source_refused");
+    report.reason = "static.verification_failed";
+    report.status = "failed";
+    const image = await verifyImageLayout({ manifest, receipt: build, ociDir });
+    need(
+      image.imageDigest === build.imageDigest && image.configDigest === build.configDigest,
+      "static.verification_failed",
+    );
+    need(
+      diagnosticJson(manifestPath).sha256 === manifestHash &&
+        diagnosticJson(inventoryPath).sha256 === inventoryHash &&
+        diagnosticJson(originalBuildPath).sha256 === origin.sha256 &&
+        diagnosticJson(privacyPath).sha256 === privacy.sha256,
+      "static.verification_failed",
+    );
+    report.status = "passed";
+    report.reason = null;
+  } catch {
+    // Errors can include attacker-controlled JSON fields or private input paths.
+    // Only the fixed current-phase reason may enter the public diagnostic.
+  }
+  return report;
+}
+
 async function main() {
+  if (process.argv[2] === "inspect-layout") {
+    const args = process.argv.slice(3);
+    let report;
+    if (args.length === 9) {
+      const [
+        manifestPath,
+        inventoryPath,
+        sourceDir,
+        ociDir,
+        originalBuildPath,
+        privacyPath,
+        inspectionToolingSha,
+        performedAt,
+      ] = args;
+      report = await inspectLayoutStatic({
+        manifestPath,
+        inventoryPath,
+        sourceDir,
+        ociDir,
+        originalBuildPath,
+        privacyPath,
+        inspectionToolingSha,
+        performedAt,
+      });
+      try {
+        writeFileSync(args[8], `${JSON.stringify(report, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+      } catch {
+        report = { ...report, status: "failed", reason: "static.output_unavailable" };
+      }
+    } else {
+      report = {
+        schema: "openclaw.fork-release-static.v1",
+        status: "blocked",
+        staticOnly: true,
+        nativeExecuted: false,
+        productionAuthorized: false,
+        promotable: false,
+        reason: "static.arguments_refused",
+      };
+    }
+    console.log(JSON.stringify(report));
+    process.exitCode = report.status === "passed" ? 0 : 1;
+    return;
+  }
   const [
     command,
     manifestPath,

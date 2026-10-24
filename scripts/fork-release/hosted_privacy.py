@@ -27,6 +27,7 @@ import stat
 import tarfile
 import zlib
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 INDEX = "application/vnd.oci.image.index.v1+json"
@@ -68,6 +69,8 @@ MAX_REPRESENTATIVES = 64
 MAX_LOCATION_ROWS = 4096
 MAX_LOCATION_BYTES = 512 * 1024
 MAX_RECEIPT_BYTES = 1024 * 1024
+MAX_COMPARISON_ENTRIES = 128
+MAX_COMPARISON_PLAN_BYTES = 128 * 1024
 # All six complete PEMs in this exact public binary match GnuTLS 3.7.9's
 # lib/crypto-selftests-pk.c. This qualifies only private_key after reading and
 # hashing the complete member; it is not a path, dependency or layer allowlist.
@@ -88,6 +91,7 @@ LIMITATIONS = [
     "Overlapping chunks and path/link checks share their member unit; repeated members or layers count separately. PAX JSON has its own key/string units.",
     "Representatives use fixed per-rule quotas within 64 total; omitted representatives do not stop inspection. Counts are partial when inspectionComplete is false.",
     "The separate hashed-location index is capped at 4096 rows and 512 KiB of compact JSON; truncation does not count unique omitted locations or stop inspection.",
+    "Optional caller-reviewed public-member comparisons never remove findings or prove final overlay presence. Public provenance is caller-attested; missing records are inconclusive when inspectionComplete is false, and any differing/incomplete occurrence prevents a matched result.",
     "Source history, build logs, dependencies and publication visibility are outside this inspection.",
     "Release qualification and complete provenance validation remain the image sealer's responsibility.",
 ]
@@ -168,6 +172,84 @@ class Inspector:
         self.counts = {"blobBytes": 0, "expandedBytes": 0, "layers": 0, "members": 0,
                        "files": 0, "fileBytes": 0, "jsonNodes": 0}
         self.image_digest = self.config_digest = None
+        self.public_comparisons = None
+        self.comparisons_by_path = {}
+
+    def load_public_comparisons(self, path):
+        """Read a caller-reviewed public manifest, never image-controlled data."""
+        try:
+            with self.open_regular(path, MAX_COMPARISON_PLAN_BYTES)[0] as stream:
+                before = os.fstat(stream.fileno())
+                data = stream.read(MAX_COMPARISON_PLAN_BYTES + 1)
+                after = os.fstat(stream.fileno())
+            require(len(data) <= MAX_COMPARISON_PLAN_BYTES and len(data) == before.st_size and
+                    (before.st_size, before.st_mtime_ns, before.st_ctime_ns) ==
+                    (after.st_size, after.st_mtime_ns, after.st_ctime_ns), "invalid_public_comparison_plan")
+            plan = self.parse_json(data)
+            require(set(plan) == {"schema", "sourceSha", "entries"} and
+                    plan["schema"] == "openclaw.public-member-comparisons.v1" and
+                    isinstance(plan["sourceSha"], str) and SHA.fullmatch(plan["sourceSha"]) and
+                    plan["sourceSha"] == self.source_sha and isinstance(plan["entries"], list) and
+                    len(plan["entries"]) <= MAX_COMPARISON_ENTRIES, "invalid_public_comparison_plan")
+            identities, pairs, records, by_path = set(), set(), [], {}
+            for entry in plan["entries"]:
+                require(isinstance(entry, dict) and set(entry) ==
+                        {"id", "path", "memberSha256", "memberBytes", "rules", "evidence"},
+                        "invalid_public_comparison_plan")
+                identity, name, rules = entry["id"], entry["path"], entry["rules"]
+                require(isinstance(identity, str) and re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", identity) and
+                        identity not in identities and isinstance(name, str) and name and
+                        self.safe_name(name) == name and not any(ord(char) < 32 or ord(char) == 127 for char in name) and
+                        isinstance(entry["memberSha256"], str) and re.fullmatch(r"[a-f0-9]{64}", entry["memberSha256"]) and
+                        type(entry["memberBytes"]) is int and 0 <= entry["memberBytes"] <= self.limits.member_bytes and
+                        isinstance(rules, list) and 1 <= len(rules) <= len(FINDING_RULES) and
+                        all(isinstance(rule, str) and rule in FINDING_RULES for rule in rules) and
+                        len(set(rules)) == len(rules) and all((name, rule) not in pairs for rule in rules),
+                        "invalid_public_comparison_plan")
+                evidence = entry["evidence"]
+                require(isinstance(evidence, dict) and set(evidence) == {"reference", "sha256"} and
+                        isinstance(evidence["reference"], str) and len(evidence["reference"]) <= 2048 and
+                        isinstance(evidence["sha256"], str) and re.fullmatch(r"[a-f0-9]{64}", evidence["sha256"]),
+                        "invalid_public_comparison_plan")
+                reference = urlsplit(evidence["reference"])
+                require(reference.scheme == "https" and reference.hostname and
+                        re.fullmatch(r"[A-Za-z0-9.-]+", reference.hostname) and reference.port in (None, 443) and
+                        reference.username is None and reference.password is None and not reference.query and
+                        not reference.fragment and not any(ord(char) < 33 or ord(char) == 127 for char in evidence["reference"]),
+                        "invalid_public_comparison_plan")
+                identities.add(identity)
+                pairs.update((name, rule) for rule in rules)
+                record = {"id": identity, "locationSha256": sha256(name.encode("utf-8", "surrogatepass")),
+                          "memberSha256": entry["memberSha256"], "memberBytes": entry["memberBytes"],
+                          "rules": rules, "status": "missing", "observedMembers": 0,
+                          "matchedMembers": 0, "mismatchedMembers": 0}
+                records.append(record)
+                by_path.setdefault(name, []).append(record)
+            self.public_comparisons = {"schema": "openclaw.public-member-comparison-results.v1",
+                                       "sourceSha": self.source_sha, "planSha256": sha256(data),
+                                       "diagnosticOnly": True, "records": records}
+            self.comparisons_by_path = by_path
+        except (Refusal, OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError, OverflowError):
+            raise Refusal("invalid_public_comparison_plan") from None
+
+    def begin_public_comparisons(self, name, member):
+        pending = []
+        for record in self.comparisons_by_path.get(name, ()):
+            record["observedMembers"] += 1
+            # Provisional mismatch stays in place if a read cannot complete.
+            record["mismatchedMembers"] += 1
+            record["status"] = "mismatch"
+            if member.isfile() and member.size == record["memberBytes"]:
+                pending.append(record)
+        return pending
+
+    def finish_public_comparisons(self, pending, digest):
+        for record in pending:
+            matched = digest is not None and digest == record["memberSha256"]
+            if matched:
+                record["matchedMembers"] += 1
+                record["mismatchedMembers"] -= 1
+            record["status"] = "mismatch" if record["mismatchedMembers"] else "matched"
 
     @property
     def finding_total(self):
@@ -435,6 +517,7 @@ class Inspector:
                         require(member.isfile() or member.isdir() or member.issym() or member.islnk(),
                                 "unsupported_member_type")
                         self.scan_json(member.pax_headers, digest + "/pax/" + name, digest)
+                        comparisons = self.begin_public_comparisons(name, member)
                         if member.isdir():
                             continue
                         self.scan_path(name, digest)
@@ -451,7 +534,8 @@ class Inspector:
                         public = PUBLIC_GNUTLS_SELF_TEST
                         candidate = (public["rule"] == "private_key" and public["blobDigest"] == digest and
                                      public["path"] == name and public["memberBytes"] == member.size)
-                        member_hash = hashlib.sha256() if candidate else None
+                        member_hash = hashlib.sha256() if candidate or comparisons else None
+                        complete_member_digest = None
                         pending = []
                         try:
                             while True:
@@ -472,7 +556,8 @@ class Inspector:
                                 previous_byte = window[-OVERLAP - 1:-OVERLAP]
                                 tail = window[-OVERLAP:]
                             require(total == member.size, "truncated_member")
-                            if pending and member_hash.hexdigest() == public["memberSha256"]:
+                            complete_member_digest = member_hash.hexdigest() if member_hash is not None else None
+                            if pending and complete_member_digest == public["memberSha256"]:
                                 qualification = {key: public[key] for key in
                                     ("rule", "blobDigest", "memberSha256", "memberBytes", "publicSourceSha256")}
                                 qualification["locationSha256"] = sha256(name.encode("utf-8", "surrogatepass"))
@@ -480,6 +565,7 @@ class Inspector:
                                     self.qualified_public_fixtures.append(qualification)
                                 pending.clear()
                         finally:
+                            self.finish_public_comparisons(comparisons, complete_member_digest)
                             # An incomplete read or different byte hash never qualifies.
                             for finding in pending:
                                 self.finding(*finding)
@@ -610,11 +696,13 @@ class Inspector:
         self.verify_export_closure()
 
 
-def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limits=None):
+def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limits=None, public_comparisons=None):
     """Return sanitized receipt; callers must require passed AND inspectionComplete."""
     inspector = Inspector(oci_dir, expected_index_digest, source_sha, tooling_sha, limits or Limits())
     complete, error = False, None
     try:
+        if public_comparisons is not None:
+            inspector.load_public_comparisons(public_comparisons)
         inspector.run()
         complete = True
     except Refusal as exc:
@@ -647,6 +735,8 @@ def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limi
     }
     if error:
         receipt["refusal"] = error
+    if inspector.public_comparisons is not None:
+        receipt["publicMemberComparisons"] = {**inspector.public_comparisons, "inspectionComplete": complete}
     return receipt
 
 
@@ -657,8 +747,10 @@ def main():
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--tooling-sha", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--public-comparisons", help="Optional reviewed public-member comparison manifest; diagnostic only")
     args = parser.parse_args()
-    result = inspect_layout(args.oci_dir, args.expected_index_digest, args.source_sha, args.tooling_sha)
+    result = inspect_layout(args.oci_dir, args.expected_index_digest, args.source_sha, args.tooling_sha,
+                            public_comparisons=args.public_comparisons)
     encoded = json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n"
     if len(encoded.encode("utf-8")) > MAX_RECEIPT_BYTES:
         print('{"status":"failed","refusal":"receipt_size_limit"}')
@@ -700,6 +792,15 @@ def main():
                                      ("location_index", result["locationIndex"], 32)):
         for offset in range(0, len(values), batch_size):
             print(json.dumps({"recordType": kind, "offset": offset, "items": values[offset:offset + batch_size]}))
+    comparison = result.get("publicMemberComparisons")
+    if comparison is not None:
+        print(json.dumps({"recordType": "public_member_comparison_summary",
+                          **{key: value for key, value in comparison.items() if key != "records"},
+                          "recordCount": len(comparison["records"])}))
+        for offset in range(0, len(comparison["records"]), 16):
+            print(json.dumps({"recordType": "public_member_comparisons", "planSha256": comparison["planSha256"],
+                              "sourceSha": comparison["sourceSha"], "offset": offset,
+                              "items": comparison["records"][offset:offset + 16]}))
     return 0 if persisted and result["status"] == "passed" else 1
 
 

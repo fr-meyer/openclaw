@@ -1,5 +1,66 @@
 # Hosted image build stage
 
+## Inactive diagnostic and reinspection preparation
+
+These commands collect evidence; they do not activate another build, authenticate
+an asserted producer, create a release seal, grant export, or deploy production.
+The existing workflow still requires clean privacy before native execution and
+all qualification receipts before public upload. No private CI transfer is enabled.
+
+`hosted_privacy.py --public-comparisons public-member-comparisons-v105.json`
+adds exact, source-bound member comparisons to its normal OCI inspection. The
+checked-in plan names 60 reviewed public counterparts with exact paths, complete
+file hashes, byte counts and specific rules. A complete matching read produces
+diagnostic evidence only: findings and pass/fail decisions are unchanged. Changed,
+incomplete or repeated differing members never match. Reports contain expected
+public hashes and hashed locations, never unexpected content hashes or values.
+The plan excludes ambiguous content and the unresolved private-key/runtime-path
+observations. Matching a path or recognizing a dependency is insufficient.
+
+The non-executing layout entry point is:
+
+```text
+node scripts/fork-release/image.mjs inspect-layout MANIFEST INVENTORY SOURCE OCI ORIGIN PRIVACY INSPECTION_TOOLING_SHA PERFORMED_AT OUTPUT
+```
+
+It reuses the existing OCI/SBOM/provenance verifier without loading an image or
+running Docker, plugins or native smoke. The bound privacy receipt must have
+completed structural inspection within the reader's budgets; nonzero findings
+can remain. Malformed, incomplete or mismatched inputs block this diagnostic.
+Its fixed-reason receipt is explicitly non-promotable and is not a native seal.
+
+`hosted_reinspection.py` accepts independently pinned receipt hashes for the
+original build, original resources and later inspection reports. It preserves
+the original source/tree, image/config/index digests, producer, tooling and build
+time; later scanner revisions and execution times are separate fields. An old
+native seal alone cannot establish a new native execution. A separately pinned
+execution capture must bind its receipt, original build, verifier revision and
+time. Missing captures remain blocked. Even complete supplied evidence remains
+diagnostic with `export: none`; trusted origin capture/admission and promotion
+integration are not activated by this contract. Never rewrite old failed receipts.
+
+For a future reviewed workflow, privacy, safe static verification and resource
+collection should retain separate passed/failed/blocked outcomes. A privacy
+finding must not suppress safe static diagnostics; a structural refusal still
+blocks dependent readers. Native execution stays conditional on clean privacy
+and static verification, and export stays conditional on every required pass.
+This diagnostic fan-out is preparation, not a change to the active workflow.
+
+The existing GCP adapter retains OCI bytes under
+`/var/tmp/openclaw-fork-gcp-build/<operation>/oci` inside a private `0700` parent.
+That output is on root by default; the separately configurable builder cache is
+not an OCI retention destination. Current qualification source pins do not admit
+the dependency-security successor automatically. A future GCP selection needs
+exact-source/profile review and fresh host, production-health, builder-ownership
+and filesystem measurements. Moving the output to test storage or receiving a
+failed hosted image would be a separate reviewed change, not a symlink workaround.
+
+GitHub-hosted failed OCI output still expires with its runner. There is no
+configured private registry, GCP credential or private artifact delivery route.
+The approved public artifact is for qualified code-only output; it must not be
+used to retain an unqualified image. Private retention needs its own bounded
+destination, access, size and retention decision before another build.
+
 GitHub-hosted Ubuntu 24.04 x64 is the default location for future fork image
 builds. Build once, verify Linux amd64 bytes and provenance, then use that same
 immutable image in the separately owned GCP rehearsal. Production promotion is

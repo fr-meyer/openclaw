@@ -1,6 +1,7 @@
 """Synthetic OCI fixtures only; no application images, databases or credentials."""
 
 import dataclasses
+import copy
 import gzip
 import hashlib
 import io
@@ -126,6 +127,158 @@ class PrivacyTests(unittest.TestCase):
         data = archive(entries)
         return self.layout(layers=[(privacy.GZIP if compressed else privacy.TAR,
                                    gzip.compress(data) if compressed else data)], **kwargs)
+
+    def comparison_plan(self, path, payload, **changes):
+        entry = {"id": "public-sample", "path": path, "memberSha256": privacy.sha256(payload),
+                 "memberBytes": len(payload), "rules": ["service_token"],
+                 "evidence": {"reference": "https://example.org/public/source.js", "sha256": privacy.sha256(payload)}}
+        entry.update(changes)
+        return {"schema": "openclaw.public-member-comparisons.v1", "sourceSha": SOURCE, "entries": [entry]}
+
+    def compare(self, fixture, plan):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "public.json"
+            path.write_text(json.dumps(plan))
+            return fixture.inspect(public_comparisons=path)
+
+    def assert_diagnostic_only(self, baseline, compared):
+        actual = dict(compared)
+        actual.pop("publicMemberComparisons")
+        self.assertEqual(actual, baseline)
+
+    def test_public_comparison_is_diagnostic_only_for_matching_and_changed_bytes(self):
+        public = b"sk-" + b"S" * 30
+        for data, status in ((public, "matched"), (b"sk-" + b"X" * 30, "mismatch")):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/example.js", data)]))])
+                baseline = fixture.inspect()
+                compared = self.compare(fixture, self.comparison_plan("app/example.js", public))
+                self.assert_diagnostic_only(baseline, compared)
+                self.assertEqual(compared["status"], "failed")
+                self.assertEqual(compared["findingSummary"]["byRule"]["service_token"], 1)
+                report = compared["publicMemberComparisons"]
+                self.assertTrue(report["diagnosticOnly"])
+                self.assertTrue(report["inspectionComplete"])
+                self.assertEqual(report["sourceSha"], SOURCE)
+                record = report["records"][0]
+                self.assertEqual(record["status"], status)
+                self.assertEqual(record["observedMembers"], 1)
+                self.assertEqual(record["matchedMembers"], int(status == "matched"))
+                self.assertEqual(record["mismatchedMembers"], int(status == "mismatch"))
+                self.assertEqual(record["memberSha256"], privacy.sha256(public))
+                self.assertNotIn("app/example.js", json.dumps(report))
+                if data != public:
+                    self.assertNotIn(privacy.sha256(data), json.dumps(report))
+
+    def test_comparison_path_size_and_rule_never_expand_or_remove_detection(self):
+        payload = b"sk-" + b"S" * 30
+        fixture = self.files([("app/.env", payload)])
+        baseline = fixture.inspect()
+        for name, changes, status in (("app/absent", {}, "missing"),
+                                      ("app/.env", {"memberBytes": len(payload) + 1}, "mismatch"),
+                                      ("app/.env", {"rules": ["credential_url"]}, "matched")):
+            with self.subTest(name=name, changes=changes):
+                compared = self.compare(fixture, self.comparison_plan(name, payload, **changes))
+                self.assert_diagnostic_only(baseline, compared)
+                self.assertEqual(compared["publicMemberComparisons"]["records"][0]["status"], status)
+                self.assertEqual(compared["findingSummary"]["byRule"]["private_runtime_path"], 1)
+                self.assertEqual(compared["findingSummary"]["byRule"]["service_token"], 1)
+
+    def test_comparison_mismatch_is_sticky_across_layers_and_nonregular_members(self):
+        payload = b"sk-" + b"S" * 30
+        for entries in ((payload, b"sk-" + b"X" * 30), (b"sk-" + b"X" * 30, payload),
+                        (payload, (tarfile.SYMTYPE, "other")),
+                        (payload, (tarfile.DIRTYPE, ""))):
+            with self.subTest(entries=entries), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/example", data)])) for data in entries])
+                compared = self.compare(fixture, self.comparison_plan("app/example", payload))
+                self.assert_diagnostic_only(fixture.inspect(), compared)
+                record = compared["publicMemberComparisons"]["records"][0]
+                self.assertEqual((record["status"], record["observedMembers"], record["matchedMembers"],
+                                  record["mismatchedMembers"]), ("mismatch", 2, 1, 1))
+
+    def test_comparison_incomplete_read_and_late_archive_error_remain_incomplete(self):
+        payload = b"sk-" + b"S" * 30
+        fixture = self.files([("app/example", payload)])
+        with patch.object(tarfile.TarFile, "extractfile", side_effect=lambda *args: io.BytesIO(payload[:-1])):
+            baseline = fixture.inspect()
+            compared = self.compare(fixture, self.comparison_plan("app/example", payload))
+        self.assert_diagnostic_only(baseline, compared)
+        self.assertEqual(compared["refusal"], "truncated_member")
+        self.assertEqual(compared["publicMemberComparisons"]["records"][0]["status"], "mismatch")
+        self.assertFalse(compared["publicMemberComparisons"]["inspectionComplete"])
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/example", payload)]) + b"hidden")])
+            compared = self.compare(fixture, self.comparison_plan("app/example", payload))
+            self.assert_diagnostic_only(fixture.inspect(), compared)
+            self.assertEqual(compared["refusal"], "trailing_archive_data")
+            self.assertEqual(compared["publicMemberComparisons"]["records"][0]["status"], "matched")
+            self.assertFalse(compared["publicMemberComparisons"]["inspectionComplete"])
+
+    def test_comparison_plan_validation_is_closed_and_fail_closed(self):
+        fixture = self.layout()
+        original = self.comparison_plan("app/example", b"public")
+        mutations = [lambda plan: plan.update(extra="unknown"),
+                     lambda plan: plan.update(sourceSha="c" * 40),
+                     lambda plan: plan.update(schema="unknown"),
+                     lambda plan: plan.update(entries=[copy.deepcopy(plan["entries"][0])] * 129),
+                     lambda plan: plan["entries"].append(copy.deepcopy(plan["entries"][0])),
+                     lambda plan: plan["entries"].append({**plan["entries"][0], "id": "second-id"})]
+        for field, value in (("id", "bad id"), ("path", "/absolute"), ("path", "app/../escape"),
+                             ("path", "app//double"), ("path", "app/./dot"), ("path", "app/end/"),
+                             ("path", "app/\u0000bad"), ("memberSha256", "x" * 64), ("memberBytes", True),
+                             ("memberBytes", -1), ("memberBytes", 1.0), ("memberBytes", privacy.Limits().member_bytes + 1),
+                             ("rules", []), ("rules", ["unknown"]), ("rules", ["service_token"] * 2),
+                             ("evidence", {"reference": "https://user:pass@example.org/source", "sha256": "a" * 64}),
+                             ("evidence", {"reference": "https://example.org/source", "sha256": "bad"})):
+            mutations.append(lambda plan, key=field, item=value: plan["entries"][0].update({key: item}))
+        for mutate in mutations:
+            plan = copy.deepcopy(original)
+            mutate(plan)
+            with self.subTest(plan=plan):
+                result = self.compare(fixture, plan)
+                self.assertEqual(result["status"], "failed")
+                self.assertFalse(result["inspectionComplete"])
+                self.assertEqual(result["refusal"], "invalid_public_comparison_plan")
+                self.assertNotIn("publicMemberComparisons", result)
+        with tempfile.TemporaryDirectory() as directory:
+            plan_path = Path(directory) / "oversized.json"
+            plan_path.write_bytes(b" " * (privacy.MAX_COMPARISON_PLAN_BYTES + 1))
+            result = fixture.inspect(public_comparisons=plan_path)
+            self.assertEqual(result["refusal"], "invalid_public_comparison_plan")
+
+    def test_public_comparison_cli_hash_binding_and_safe_output(self):
+        payload = b"sk-" + b"S" * 30
+        fixture = self.files([("app/example", payload)])
+        for tampered in (False, True):
+            with self.subTest(tampered=tampered), tempfile.TemporaryDirectory() as directory:
+                plan = self.comparison_plan("app/example", payload)
+                if tampered:
+                    plan["sourceSha"] = "c" * 40
+                plan_path, output = Path(directory) / "public.json", Path(directory) / "receipt.json"
+                data = json.dumps(plan).encode()
+                plan_path.write_bytes(data)
+                result = subprocess.run([sys.executable, str(Path(privacy.__file__)),
+                    "--oci-dir", str(fixture.directory), "--expected-index-digest", fixture.index["digest"],
+                    "--source-sha", SOURCE, "--tooling-sha", TOOLING, "--output", str(output),
+                    "--public-comparisons", str(plan_path)], capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 1)
+                receipt = json.loads(output.read_text())
+                records = [json.loads(line) for line in result.stdout.splitlines()]
+                if tampered:
+                    self.assertEqual(receipt["refusal"], "invalid_public_comparison_plan")
+                else:
+                    comparison = receipt["publicMemberComparisons"]
+                    self.assertEqual(comparison["planSha256"], privacy.sha256(data))
+                    self.assertEqual(comparison["records"][0]["status"], "matched")
+                    self.assertEqual(receipt["findingSummary"]["byRule"]["service_token"], 1)
+                    summary = next(item for item in records if item["recordType"] == "public_member_comparison_summary")
+                    batch = next(item for item in records if item["recordType"] == "public_member_comparisons")
+                    self.assertEqual(summary["planSha256"], privacy.sha256(data))
+                    self.assertEqual(batch["items"], comparison["records"])
+                    self.assertEqual(batch["sourceSha"], SOURCE)
+                for private in ("app/example", payload.decode(), plan["entries"][0]["evidence"]["reference"]):
+                    self.assertNotIn(private, result.stdout + result.stderr + output.read_text())
 
     def test_public_image_passes_and_binds_identities(self):
         fixture = self.layout()
@@ -507,6 +660,17 @@ class PrivacyTests(unittest.TestCase):
         self.assertFalse(refused["inspectionComplete"])
         self.assertEqual(refused["qualifiedPublicFixtures"], [])
         self.assertIn("private_key", [f["rule"] for f in refused["findings"]])
+
+    def test_public_comparison_preserves_exact_gnutls_qualification_and_other_findings(self):
+        fixture, record, payload = self.public_self_test_fixture(b"ASIA" + b"A" * 16)
+        with patch.object(privacy, "PUBLIC_GNUTLS_SELF_TEST", record):
+            baseline = fixture.inspect()
+            compared = self.compare(fixture, self.comparison_plan(record["path"], payload, rules=["private_key"]))
+        self.assert_diagnostic_only(baseline, compared)
+        self.assertEqual(len(compared["qualifiedPublicFixtures"]), 1)
+        self.assertEqual(compared["status"], "failed")
+        self.assertEqual(compared["findingSummary"]["byRule"]["aws_access_key"], 1)
+        self.assertEqual(compared["publicMemberComparisons"]["records"][0]["status"], "matched")
 
     def test_deleted_and_overwritten_layer_is_still_inspected(self):
         older = archive([("app/leak", b"ghp_" + b"X" * 36)])
