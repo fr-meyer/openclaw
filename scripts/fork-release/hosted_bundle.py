@@ -149,7 +149,7 @@ def inspect_inputs(inputs):
     values = {name: parser.parse_json(inputs.data(name, RECEIPT_BYTES)) for name in RECEIPTS}
     for name, value in values.items():
         parser.scan_json(value, name)
-    need(not parser.findings, "receipt_privacy_findings")
+    need(parser.finding_total == 0, "receipt_privacy_findings")
     qualification = values["hosted-qualification.json"]
     producer = qualification.get("producer", {})
     expected = export.validate(values["receipt.json"], values["privacy.json"], values["resources.json"],
@@ -162,7 +162,7 @@ def inspect_inputs(inputs):
     need(NAME.fullmatch(qualification["artifactName"]) is not None, "artifact_name")
     closure = Closure(inputs, qualification)
     closure.run()
-    need(not closure.findings, "metadata_privacy_findings")
+    need(closure.finding_total == 0, "metadata_privacy_findings")
     seal = values["receipt.json"]
     need(closure.image_digest == seal["imageDigest"] and closure.config_digest == seal["configDigest"], "oci_image_binding_changed")
     specs = {name: {"size": info["size"], "sha256": inputs.hashes[name]} for name, info in inputs.snapshots.items()

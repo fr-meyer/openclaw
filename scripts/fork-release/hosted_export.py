@@ -13,6 +13,8 @@ import json
 from pathlib import Path
 import re
 
+import hosted_privacy as privacy_contract
+
 
 class Refusal(ValueError):
     pass
@@ -21,6 +23,33 @@ class Refusal(ValueError):
 def need(condition, reason):
     if not condition:
         raise Refusal(reason)
+
+
+def require_clean_privacy(receipt):
+    """V2 aggregates are authoritative; representatives may be empty/truncated."""
+    summary = receipt.get("findingSummary")
+    need(isinstance(summary, dict) and set(summary) == {"unit", "total", "byRule", "byUnit"} and
+         summary.get("unit") == privacy_contract.COUNT_UNIT, "privacy aggregate contract missing")
+    for key, catalog in (("byRule", privacy_contract.FINDING_RULES),
+                         ("byUnit", privacy_contract.FINDING_UNITS)):
+        counts = summary.get(key)
+        need(isinstance(counts, dict) and set(counts) == set(catalog) and
+             all(type(value) is int and value >= 0 for value in counts.values()),
+             "privacy aggregate catalog or count invalid")
+    total = summary.get("total")
+    need(type(total) is int and total == sum(summary["byRule"].values()) ==
+         sum(summary["byUnit"].values()) and total == 0, "privacy aggregate findings remain or disagree")
+    need(receipt.get("inspectionComplete") is True and receipt.get("findings") == [] and
+         receipt.get("representativesTruncated") is False and "refusal" not in receipt and
+         type(receipt.get("representativeLimit")) is int and
+         0 <= receipt["representativeLimit"] <= privacy_contract.MAX_REPRESENTATIVES,
+         "privacy inspection is incomplete or findings remain")
+    need(receipt.get("locationIndex") == [] and receipt.get("locationIndexTruncated") is False and
+         type(receipt.get("locationIndexLimit")) is int and
+         receipt["locationIndexLimit"] == privacy_contract.MAX_LOCATION_ROWS and
+         type(receipt.get("locationIndexByteLimit")) is int and
+         receipt["locationIndexByteLimit"] == privacy_contract.MAX_LOCATION_BYTES,
+         "privacy location index is missing, truncated or nonempty")
 
 
 def runtime_proof(seal):
@@ -70,7 +99,7 @@ def validate(seal, privacy, resources, *, source, tooling, index, run, attempt,
     need(seal.get("buildContext") == {"kind": "git", "repository": "https://github.com/fr-meyer/openclaw",
                                       "sourceSha": source}, "hosted Git source proof missing or changed")
     runtime_proof(seal)
-    for receipt, schema in ((privacy, "openclaw.hosted-privacy.v1"),
+    for receipt, schema in ((privacy, "openclaw.hosted-privacy.v2"),
                             (resources, "openclaw.hosted-resources.v1")):
         need(isinstance(receipt, dict) and receipt.get("schema") == schema and
              receipt.get("status") == "passed", "incomplete privacy or resource assessment")
@@ -79,8 +108,7 @@ def validate(seal, privacy, resources, *, source, tooling, index, run, attempt,
         need(receipt.get("sourceSha") == source and receipt.get("indexDigest") == index,
              "assessment source or image changed")
     need(resources.get("violations") == [], "resource violations remain")
-    need(privacy.get("inspectionComplete") is True and privacy.get("findings") == [],
-         "privacy inspection is incomplete or findings remain")
+    require_clean_privacy(privacy)
     for field in ("imageDigest", "configDigest"):
         need(re.fullmatch(r"sha256:[0-9a-f]{64}", seal.get(field, "")) is not None and
              privacy.get(field) == seal[field], "privacy selected another image")

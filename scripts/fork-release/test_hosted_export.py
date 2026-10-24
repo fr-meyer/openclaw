@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 import hosted_export as export
+import hosted_privacy as privacy
 
 
 def runtime_fixture(common):
@@ -37,8 +38,14 @@ class HostedExportTests(unittest.TestCase):
                                        "sourceSha": self.args["source"]},
                          artifactName=f'fork-release-{self.args["source"]}-12-1')
         self.seal["runtimeQualification"] = runtime_fixture(common)
-        self.privacy = dict(common, schema="openclaw.hosted-privacy.v1", status="passed",
-                            toolingSha=self.args["tooling"], findings=[], inspectionComplete=True)
+        self.privacy = dict(common, schema="openclaw.hosted-privacy.v2", status="passed",
+                            toolingSha=self.args["tooling"], findings=[], inspectionComplete=True,
+                            findingSummary={"unit": privacy.COUNT_UNIT, "total": 0,
+                                "byRule": dict.fromkeys(privacy.FINDING_RULES, 0),
+                                "byUnit": dict.fromkeys(privacy.FINDING_UNITS, 0)},
+                            representativeLimit=64, representativesTruncated=False,
+                            locationIndex=[], locationIndexTruncated=False,
+                            locationIndexLimit=4096, locationIndexByteLimit=512 * 1024)
         self.resources = dict(common, schema="openclaw.hosted-resources.v1", status="passed",
                               toolingSha=self.args["tooling"], violations=[])
 
@@ -73,6 +80,47 @@ class HostedExportTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaisesRegex(export.Refusal, "Git source"):
                 export.validate({**self.seal, "buildContext": value}, self.privacy,
                                 self.resources, **self.args)
+
+    def test_privacy_v2_requires_complete_consistent_zero_aggregates(self):
+        changes = [
+            {"schema": "openclaw.hosted-privacy.v1"}, {"findingSummary": None},
+            {"representativesTruncated": True}, {"representativesTruncated": 0},
+            {"representativeLimit": 65}, {"representativeLimit": False},
+            {"refusal": "trailing_archive_data"},
+            {"locationIndex": [{"rule": "service_token"}]}, {"locationIndexTruncated": True},
+            {"locationIndexTruncated": 0}, {"locationIndexLimit": False},
+            {"locationIndexByteLimit": 1024 * 1024},
+        ]
+        for field, value in (("total", 1), ("total", False), ("total", "0"),
+                             ("total", 0.0), ("unit", "unique-secrets"), ("extra", 0)):
+            summary = copy.deepcopy(self.privacy["findingSummary"])
+            summary[field] = value
+            changes.append({"findingSummary": summary})
+        for catalog, name in (("byRule", "service_token"), ("byUnit", "archive_member")):
+            for value in (1, -1, False, "0", 0.0, None):
+                summary = copy.deepcopy(self.privacy["findingSummary"])
+                summary[catalog][name] = value
+                changes.append({"findingSummary": summary})
+            for mutation in ("missing", "unknown"):
+                summary = copy.deepcopy(self.privacy["findingSummary"])
+                if mutation == "missing":
+                    del summary[catalog][name]
+                else:
+                    summary[catalog]["unrecognized"] = 0
+                changes.append({"findingSummary": summary})
+        # A consistent nonzero aggregate cannot pass with zero retained details.
+        summary = copy.deepcopy(self.privacy["findingSummary"])
+        summary.update(total=100)
+        summary["byRule"]["service_token"] = summary["byUnit"]["archive_member"] = 100
+        changes.append({"findingSummary": summary, "representativeLimit": 0})
+        for change in changes:
+            with self.subTest(change=change), self.assertRaises(export.Refusal):
+                export.validate(self.seal, {**self.privacy, **change}, self.resources, **self.args)
+        for omitted in ("findingSummary", "representativeLimit", "representativesTruncated",
+                        "locationIndex", "locationIndexTruncated", "locationIndexLimit", "locationIndexByteLimit"):
+            stripped = {k: v for k, v in self.privacy.items() if k != omitted}
+            with self.subTest(omitted=omitted), self.assertRaises(export.Refusal):
+                export.validate(self.seal, stripped, self.resources, **self.args)
 
     def test_new_export_refuses_missing_stripped_stale_or_incomplete_runtime_proof(self):
         for value in (None, {}, [], "passed"):

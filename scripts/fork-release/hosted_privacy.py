@@ -16,6 +16,7 @@ emitted, never matched contents or fingerprints of arbitrary matched values.
 """
 
 import argparse
+from contextlib import contextmanager
 import dataclasses
 import gzip
 import hashlib
@@ -56,6 +57,14 @@ PATTERNS = (
     ("aws_access_key", re.compile(rb"(?<![A-Za-z0-9_])(?:AKIA|ASIA)[A-Z0-9]{16}")),
     ("credential_url", re.compile(rb"https?://[^\s/:@?#\"']{1,100}:[^\s/@?#\"']{1,150}@")),
 )
+FINDING_RULES = tuple(rule for rule, _ in PATTERNS) + (
+    "private_runtime_path", "sqlite_database_payload", "sensitive_metadata_value", "sensitive_environment_value")
+FINDING_UNITS = ("archive_member", "json_key", "json_string", "metadata_value", "byte_input")
+COUNT_UNIT = "rule-per-scan-unit.v1"
+MAX_REPRESENTATIVES = 64
+MAX_LOCATION_ROWS = 4096
+MAX_LOCATION_BYTES = 512 * 1024
+MAX_RECEIPT_BYTES = 1024 * 1024
 # All six complete PEMs in this exact public binary match GnuTLS 3.7.9's
 # lib/crypto-selftests-pk.c. This qualifies only private_key after reading and
 # hashing the complete member; it is not a path, dependency or layer allowlist.
@@ -72,6 +81,10 @@ LIMITATIONS = [
     "Arbitrary, encoded/encrypted credentials and nested archives may evade detection.",
     "Only the exact hash-bound public GnuTLS self-test is qualified; other public fixtures can cause refusals.",
     "Match lengths and syntax flags describe the first retained scan-window match, which may be a bounded prefix.",
+    "Counts are rule/scan-unit pairs, not unique credentials: each TAR member occurrence, JSON key/string occurrence, explicit metadata value or standalone byte input is a unit.",
+    "Overlapping chunks and path/link checks share their member unit; repeated members or layers count separately. PAX JSON has its own key/string units.",
+    "Representatives use fixed per-rule quotas within 64 total; omitted representatives do not stop inspection. Counts are partial when inspectionComplete is false.",
+    "The separate hashed-location index is capped at 4096 rows and 512 KiB of compact JSON; truncation does not count unique omitted locations or stop inspection.",
     "Source history, build logs, dependencies and publication visibility are outside this inspection.",
     "Release qualification and complete provenance validation remain the image sealer's responsibility.",
 ]
@@ -142,20 +155,71 @@ class Inspector:
         self.limits = limits
         self.findings = []
         self.qualified_public_fixtures = []
-        self.seen_findings = set()
+        self.finding_counts = dict.fromkeys(FINDING_RULES, 0)
+        self.finding_unit_counts = dict.fromkeys(FINDING_UNITS, 0)
+        self.representative_counts = dict.fromkeys(FINDING_RULES, 0)
+        self.location_index, self.location_identities = [], set()
+        self.location_index_bytes, self.location_index_truncated = 2, False
+        self.unit_kind, self.unit_rules = None, set()
         self.blobs = {}
         self.counts = {"blobBytes": 0, "expandedBytes": 0, "layers": 0, "members": 0,
                        "files": 0, "fileBytes": 0, "jsonNodes": 0}
         self.image_digest = self.config_digest = None
 
+    @property
+    def finding_total(self):
+        return sum(self.finding_counts.values())
+
+    @contextmanager
+    def scan_unit(self, kind):
+        require(kind in FINDING_UNITS, "invalid_finding_unit")
+        previous = self.unit_kind, self.unit_rules
+        self.unit_kind, self.unit_rules = kind, set()
+        try:
+            yield
+        finally:
+            self.unit_kind, self.unit_rules = previous
+
+    def finding_summary(self):
+        return {"unit": COUNT_UNIT, "total": self.finding_total,
+                "byRule": dict(self.finding_counts), "byUnit": dict(self.finding_unit_counts)}
+
     def finding(self, rule, location, blob_digest=None, diagnostics=None):
+        if self.unit_kind is None:
+            with self.scan_unit("metadata_value"):
+                self.finding(rule, location, blob_digest, diagnostics)
+            return
+        require(rule in FINDING_RULES, "invalid_finding_rule")
+        # Location identity is independent of count identity: a symlink name
+        # and target can both match one rule within the same member unit.
         location_hash = sha256(location.encode("utf-8", "surrogatepass"))
         identity = (rule, location_hash, blob_digest)
-        if identity in self.seen_findings:
+        if identity not in self.location_identities:
+            row = {"rule": rule, "locationSha256": location_hash}
+            if blob_digest:
+                row["blobDigest"] = blob_digest
+            size = len(json.dumps(row, sort_keys=True, separators=(",", ":")).encode())
+            size += int(bool(self.location_index))
+            if (len(self.location_index) < MAX_LOCATION_ROWS and
+                    self.location_index_bytes + size <= MAX_LOCATION_BYTES):
+                self.location_index.append(row)
+                self.location_identities.add(identity)
+                self.location_index_bytes += size
+            else:
+                self.location_index_truncated = True
+        if rule in self.unit_rules:
             return
-        require(len(self.findings) < self.limits.findings, "findings_limit")
-        self.seen_findings.add(identity)
-        finding = {"rule": rule, "locationSha256": location_hash}
+        self.unit_rules.add(rule)
+        self.finding_counts[rule] += 1
+        self.finding_unit_counts[self.unit_kind] += 1
+        require(type(self.limits.findings) is int and 0 <= self.limits.findings <= MAX_REPRESENTATIVES,
+                "invalid_representative_limit")
+        quota, remainder = divmod(self.limits.findings, len(FINDING_RULES))
+        quota += int(FINDING_RULES.index(rule) < remainder)
+        if self.representative_counts[rule] >= quota:
+            return
+        self.representative_counts[rule] += 1
+        finding = {"rule": rule, "unit": self.unit_kind, "locationSha256": location_hash}
         if blob_digest:
             finding["blobDigest"] = blob_digest
         if diagnostics:
@@ -163,6 +227,11 @@ class Inspector:
         self.findings.append(finding)
 
     def scan_bytes(self, data, location, blob_digest=None, *, previous_byte=b"", pending_private_key=None):
+        if self.unit_kind is None:
+            with self.scan_unit("byte_input"):
+                self.scan_bytes(data, location, blob_digest, previous_byte=previous_byte,
+                                pending_private_key=pending_private_key)
+            return
         # Preserve the real predecessor for both sk- and AWS lookbehind. Search
         # after that byte so the context itself never becomes a new match start.
         window = previous_byte + data
@@ -193,15 +262,18 @@ class Inspector:
             self.counts["jsonNodes"] += 1
             require(self.counts["jsonNodes"] <= self.limits.json_nodes, "json_node_limit")
             if isinstance(item, str):
-                self.scan_bytes(item.encode("utf-8", "surrogatepass"), where, blob_digest)
+                with self.scan_unit("json_string"):
+                    self.scan_bytes(item.encode("utf-8", "surrogatepass"), where, blob_digest)
             elif isinstance(item, dict):
                 for key, child in item.items():
-                    self.scan_bytes(key.encode("utf-8", "surrogatepass"), where, blob_digest)
+                    with self.scan_unit("json_key"):
+                        self.scan_bytes(key.encode("utf-8", "surrogatepass"), where, blob_digest)
                     # BuildKit's externalParameters.args includes build-arg:NAME.
                     # Arbitrary SBOM properties named token/secret are not envs.
                     if ("/externalParameters" in where and key.startswith("build-arg:") and
                             SENSITIVE_KEY.search(key) and isinstance(child, str) and child):
-                        self.finding("sensitive_metadata_value", where + "/" + key, blob_digest)
+                        with self.scan_unit("metadata_value"):
+                            self.finding("sensitive_metadata_value", where + "/" + key, blob_digest)
                     pending.append((child, where + "/" + key))
             elif isinstance(item, list):
                 pending.extend((child, where + "/" + str(i)) for i, child in enumerate(item))
@@ -351,62 +423,63 @@ class Inspector:
             # to check all padding, compressed EOF and CRC without losing read-ahead.
             with tarfile.open(fileobj=bounded, mode="r|", bufsize=10240, tarinfo=BoundedTarInfo) as archive:
                 for member in archive:
-                    self.counts["members"] += 1
-                    require(self.counts["members"] <= self.limits.members, "member_count_limit")
-                    require(0 <= member.size <= self.limits.member_bytes, "member_size_limit")
-                    require(not member.sparse, "unsupported_sparse_member")
-                    name = self.safe_name(member.name)
-                    require(member.isfile() or member.isdir() or member.issym() or member.islnk(),
-                            "unsupported_member_type")
-                    self.scan_json(member.pax_headers, digest + "/pax/" + name, digest)
-                    if member.isdir():
-                        continue
-                    self.scan_path(name, digest)
-                    if member.issym() or member.islnk():
-                        target = self.safe_name(member.linkname, link=True,
-                                                parent=name.rpartition("/")[0] if member.issym() else "")
-                        self.scan_path(target, digest)
-                        self.scan_bytes(member.linkname.encode("utf-8", "surrogatepass"), name, digest)
-                        continue
-                    self.counts["files"] += 1
-                    file = archive.extractfile(member)  # A stream only: never extract to disk.
-                    require(file is not None, "missing_member_stream")
-                    total, tail, previous_byte = 0, b"", b""
-                    public = PUBLIC_GNUTLS_SELF_TEST
-                    candidate = (public["rule"] == "private_key" and public["blobDigest"] == digest and
-                                 public["path"] == name and public["memberBytes"] == member.size)
-                    member_hash = hashlib.sha256() if candidate else None
-                    pending = []
-                    try:
-                        while True:
-                            chunk = file.read(CHUNK)
-                            if not chunk:
-                                break
-                            if total == 0 and chunk.startswith(b"SQLite format 3\0"):
-                                self.finding("sqlite_database_payload", name, digest)
-                            total += len(chunk)
-                            self.counts["fileBytes"] += len(chunk)
-                            if member_hash is not None:
-                                member_hash.update(chunk)
-                            window = tail + chunk
-                            self.scan_bytes(window, name, digest, previous_byte=previous_byte,
-                                            pending_private_key=pending if candidate else None)
-                            # Preserve lookbehind at a clipped overlap boundary;
-                            # short reads retain file-start semantics until clipping.
-                            previous_byte = window[-OVERLAP - 1:-OVERLAP]
-                            tail = window[-OVERLAP:]
-                        require(total == member.size, "truncated_member")
-                        if pending and member_hash.hexdigest() == public["memberSha256"]:
-                            qualification = {key: public[key] for key in
-                                ("rule", "blobDigest", "memberSha256", "memberBytes", "publicSourceSha256")}
-                            qualification["locationSha256"] = sha256(name.encode("utf-8", "surrogatepass"))
-                            if qualification not in self.qualified_public_fixtures:
-                                self.qualified_public_fixtures.append(qualification)
-                            pending.clear()
-                    finally:
-                        # An incomplete read or different byte hash never qualifies.
-                        for finding in pending:
-                            self.finding(*finding)
+                    with self.scan_unit("archive_member"):
+                        self.counts["members"] += 1
+                        require(self.counts["members"] <= self.limits.members, "member_count_limit")
+                        require(0 <= member.size <= self.limits.member_bytes, "member_size_limit")
+                        require(not member.sparse, "unsupported_sparse_member")
+                        name = self.safe_name(member.name)
+                        require(member.isfile() or member.isdir() or member.issym() or member.islnk(),
+                                "unsupported_member_type")
+                        self.scan_json(member.pax_headers, digest + "/pax/" + name, digest)
+                        if member.isdir():
+                            continue
+                        self.scan_path(name, digest)
+                        if member.issym() or member.islnk():
+                            target = self.safe_name(member.linkname, link=True,
+                                                    parent=name.rpartition("/")[0] if member.issym() else "")
+                            self.scan_path(target, digest)
+                            self.scan_bytes(member.linkname.encode("utf-8", "surrogatepass"), name, digest)
+                            continue
+                        self.counts["files"] += 1
+                        file = archive.extractfile(member)  # A stream only: never extract to disk.
+                        require(file is not None, "missing_member_stream")
+                        total, tail, previous_byte = 0, b"", b""
+                        public = PUBLIC_GNUTLS_SELF_TEST
+                        candidate = (public["rule"] == "private_key" and public["blobDigest"] == digest and
+                                     public["path"] == name and public["memberBytes"] == member.size)
+                        member_hash = hashlib.sha256() if candidate else None
+                        pending = []
+                        try:
+                            while True:
+                                chunk = file.read(CHUNK)
+                                if not chunk:
+                                    break
+                                if total == 0 and chunk.startswith(b"SQLite format 3\0"):
+                                    self.finding("sqlite_database_payload", name, digest)
+                                total += len(chunk)
+                                self.counts["fileBytes"] += len(chunk)
+                                if member_hash is not None:
+                                    member_hash.update(chunk)
+                                window = tail + chunk
+                                self.scan_bytes(window, name, digest, previous_byte=previous_byte,
+                                                pending_private_key=pending if candidate else None)
+                                # Preserve lookbehind at a clipped overlap boundary;
+                                # short reads retain file-start semantics until clipping.
+                                previous_byte = window[-OVERLAP - 1:-OVERLAP]
+                                tail = window[-OVERLAP:]
+                            require(total == member.size, "truncated_member")
+                            if pending and member_hash.hexdigest() == public["memberSha256"]:
+                                qualification = {key: public[key] for key in
+                                    ("rule", "blobDigest", "memberSha256", "memberBytes", "publicSourceSha256")}
+                                qualification["locationSha256"] = sha256(name.encode("utf-8", "surrogatepass"))
+                                if qualification not in self.qualified_public_fixtures:
+                                    self.qualified_public_fixtures.append(qualification)
+                                pending.clear()
+                        finally:
+                            # An incomplete read or different byte hash never qualifies.
+                            for finding in pending:
+                                self.finding(*finding)
                 while True:
                     padding = archive.fileobj.read(CHUNK)
                     if not padding:
@@ -437,6 +510,8 @@ class Inspector:
             require(seen == expected, "missing_export_entry")
 
     def run(self):
+        require(type(self.limits.findings) is int and 0 <= self.limits.findings <= MAX_REPRESENTATIVES,
+                "invalid_representative_limit")
         require(isinstance(self.index_digest, str) and DIGEST.fullmatch(self.index_digest), "invalid_index_digest")
         require(isinstance(self.source_sha, str) and SHA.fullmatch(self.source_sha), "invalid_source_sha")
         require(isinstance(self.tooling_sha, str) and SHA.fullmatch(self.tooling_sha), "invalid_tooling_sha")
@@ -477,7 +552,8 @@ class Inspector:
                     key, separator, content = value.partition("=")
                     require(separator, "invalid_environment")
                     if content and SENSITIVE_KEY.search(key):
-                        self.finding("sensitive_environment_value", "environment/" + key, self.config_digest)
+                        with self.scan_unit("metadata_value"):
+                            self.finding("sensitive_environment_value", "environment/" + key, self.config_digest)
                 require(manifest["layers"], "empty_image_layers")
                 for layer in manifest["layers"]:
                     self.scan_layer(layer)
@@ -519,8 +595,8 @@ def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limi
             AttributeError, RecursionError, OverflowError):
         error = "malformed_or_unreadable_layout"
     receipt = {
-        "schema": "openclaw.hosted-privacy.v1",
-        "status": "passed" if complete and not inspector.findings else "failed",
+        "schema": "openclaw.hosted-privacy.v2",
+        "status": "passed" if complete and inspector.finding_total == 0 else "failed",
         "inspectionComplete": complete,
         "indexDigest": expected_index_digest if isinstance(expected_index_digest, str) and DIGEST.fullmatch(expected_index_digest) else None,
         "sourceSha": source_sha if isinstance(source_sha, str) and SHA.fullmatch(source_sha) else None,
@@ -529,6 +605,13 @@ def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limi
         "configDigest": inspector.config_digest,
         "counts": inspector.counts,
         "findings": inspector.findings,
+        "findingSummary": inspector.finding_summary(),
+        "representativeLimit": inspector.limits.findings,
+        "representativesTruncated": inspector.finding_total > len(inspector.findings),
+        "locationIndex": inspector.location_index,
+        "locationIndexLimit": MAX_LOCATION_ROWS,
+        "locationIndexByteLimit": MAX_LOCATION_BYTES,
+        "locationIndexTruncated": inspector.location_index_truncated,
         "qualifiedPublicFixtures": inspector.qualified_public_fixtures,
         "limits": dataclasses.asdict(inspector.limits),
         "limitations": LIMITATIONS,
@@ -548,26 +631,48 @@ def main():
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     result = inspect_layout(args.oci_dir, args.expected_index_digest, args.source_sha, args.tooling_sha)
+    encoded = json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n"
+    if len(encoded.encode("utf-8")) > MAX_RECEIPT_BYTES:
+        print('{"status":"failed","refusal":"receipt_size_limit"}')
+        return 1
     # Exclusive creation avoids silently replacing prior inspection evidence.
+    persisted = False
     try:
         with open(args.output, "x", encoding="utf-8") as output:
-            json.dump(result, output, sort_keys=True, indent=2)
-            output.write("\n")
+            output.write(encoded)
+        persisted = True
     except OSError:
-        print('{"status":"failed","refusal":"receipt_write_failed"}')
-        return 1
-    # These are retained, deduplicated findings, not credential occurrences or
-    # complete totals when inspection was refused. The existing limit bounds
-    # both counts and hashed locations; never emit raw paths or matched values.
-    finding_counts = {}
-    for finding in result["findings"]:
-        finding_counts[finding["rule"]] = finding_counts.get(finding["rule"], 0) + 1
-    print(json.dumps({"status": result["status"], "inspectionComplete": result["inspectionComplete"],
-                      "findings": len(result["findings"]), "findingCounts": finding_counts,
-                      "findingLocations": result["findings"],
+        # Preserve the newly computed sanitized evidence in logs even if its
+        # exclusive receipt cannot be written. Never overwrite prior evidence.
+        pass
+    # Aggregate counts continue after the bounded per-rule representatives fill.
+    # A structural refusal still makes all aggregates explicitly incomplete.
+    print(json.dumps({"recordType": "summary", "schema": result["schema"],
+                      "status": result["status"] if persisted else "failed",
+                      **{key: result[key] for key in ("sourceSha", "toolingSha", "indexDigest",
+                                                     "imageDigest", "configDigest")},
+                      "receiptPersisted": persisted,
+                      "persistenceRefusal": None if persisted else "receipt_write_failed",
+                      "inspectionComplete": result["inspectionComplete"],
+                      "findings": result["findingSummary"]["total"],
+                      "findingCounts": result["findingSummary"]["byRule"],
+                      "findingSummary": result["findingSummary"],
+                      "retainedFindings": len(result["findings"]),
+                      "representativeLimit": result["representativeLimit"],
+                      "representativesTruncated": result["representativesTruncated"],
+                      "indexedLocations": len(result["locationIndex"]),
+                      "locationIndexLimit": result["locationIndexLimit"],
+                      "locationIndexByteLimit": result["locationIndexByteLimit"],
+                      "locationIndexTruncated": result["locationIndexTruncated"],
                       "qualifiedPublicFixtures": result["qualifiedPublicFixtures"],
                       "refusal": result.get("refusal")}))
-    return 0 if result["status"] == "passed" else 1
+    # Bounded NDJSON batches avoid a single oversized Actions log line. These
+    # contain only the same sanitized fields already bound in the receipt.
+    for kind, values, batch_size in (("finding_details", result["findings"], 16),
+                                     ("location_index", result["locationIndex"], 32)):
+        for offset in range(0, len(values), batch_size):
+            print(json.dumps({"recordType": kind, "offset": offset, "items": values[offset:offset + batch_size]}))
+    return 0 if persisted and result["status"] == "passed" else 1
 
 
 if __name__ == "__main__":

@@ -83,17 +83,54 @@ These source regressions do not establish real-data migration or production star
 ## Verification and privacy boundary
 
 1. Verify source/patch contracts and focused dependency-backed tests.
-2. Build one Linux amd64 OCI directory with SBOM and maximum provenance.
+2. Build one Linux amd64 OCI directory with SBOM and maximum SLSA v1 provenance.
 3. Inspect every OCI layer and image metadata before native smoke or upload.
    `hosted_privacy.py` never extracts layer paths or executes image content.
    Unsupported/incomplete inspection and recognized private-state/credential
-   findings refuse publication. Findings contain rule identifiers/hashes,
-   never matching contents. Pattern checks are not proof that arbitrary
+   findings refuse publication. Reports contain rule identifiers, location/blob
+   hashes and fixed syntax flags, never matching contents or fingerprints of
+   arbitrary suspect values. Pattern checks are not proof that arbitrary
    committed data is non-sensitive; `.dockerignore` is not such proof either.
 4. `image.mjs` verifies OCI bytes, exact Git provenance and selected image,
    then performs secretless native/plugin/Codex/Workboard fixture smoke.
 5. Finish resource telemetry and bind all receipts to the same source,
    tooling, image index and run/attempt with `hosted_export.py`.
+
+### Complete detection with bounded diagnostics
+
+The `openclaw.hosted-privacy.v2` report separates complete traversal from retained
+diagnostic samples. Reaching a diagnostic cap does not stop detection. Counts
+describe rule-per-scan-unit observations: overlapping chunks and path/body checks
+share an archive member's rule set; JSON keys, strings and metadata values have
+their own units. They are not counts of credentials or globally unique paths.
+
+The report retains at most 64 rule-distributed detail samples. A separate index
+retains at most 4,096 unique rule/location/blob rows and at most 512 KiB of compact
+JSON. Both truncation states are explicit; counting and traversal continue after
+either cap. Identity sets stay bounded. Existing blob, expansion, member, JSON
+and layer budgets still apply. Unsupported or incomplete input remains a failed,
+incomplete inspection even when no finding has been observed yet.
+
+Any unqualified aggregate finding refuses publication, including when detail
+samples are empty or truncated. The CLI exit, export admission and both independent
+bundle inspections use the aggregate decision. Publication requires a complete
+scan, a consistent zero aggregate and matching identities. A v1 report is not
+silently reinterpreted as this proof; preserve historical reports under their
+original producer and schema.
+
+Only the exact public GnuTLS self-test qualification is currently supported. It
+requires the pinned layer, member path, complete member SHA and size, and applies
+only to the verified private-key test vectors. Other rules on that member still
+run. Generated assets and dependencies receive no blanket exemption.
+
+The on-disk receipt stays within 1 MiB. Standard output is bounded NDJSON: a
+summary followed by detail and location-index batches. Existing Actions logs
+retain these diagnostics even when the scanner exits unsuccessfully, so a future
+explicitly authorized diagnostic run can preserve its complete counts and capped
+location evidence without publishing its image. Keep the final record types and
+offsets when downloading those logs; do not treat a truncated index as a complete
+list of finding locations. No extra artifact upload or storage allowance is
+needed for this route. A failed scan still prevents native/seal/export steps.
 
 New hosted seals require a Git-context marker. Existing legacy receipts stay
 readable, but markerless receipts cannot pass the new hosted export gate.

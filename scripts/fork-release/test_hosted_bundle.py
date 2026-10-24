@@ -1,5 +1,6 @@
 """Small synthetic OCI fixtures; no remote upload, application images or DBs."""
 import hashlib
+import dataclasses
 import json
 import os
 from pathlib import Path
@@ -131,6 +132,18 @@ class HostedBundleTests(unittest.TestCase):
         self.qualification["receiptSha256"]["seal"] = hashlib.sha256(data).hexdigest()
         self.write_qualification()
         with self.assertRaisesRegex(bundle.Refusal, "receipt_privacy_findings"):
+            self.prepare()
+        self.assert_no_publishable_output()
+
+    def test_receipt_aggregate_refuses_even_when_details_and_index_are_empty(self):
+        path = self.root / "receipt.json"
+        value = json.loads(path.read_text())
+        value["unexpectedMetadata"] = "https://example:synthetic-password@example.invalid"
+        path.write_text(json.dumps(value))
+        empty_details = dataclasses.replace(privacy.Limits(), findings=0)
+        with patch.object(privacy, "Limits", return_value=empty_details), \
+                patch.object(privacy, "MAX_LOCATION_ROWS", 0), \
+                self.assertRaisesRegex(bundle.Refusal, "receipt_privacy_findings"):
             self.prepare()
         self.assert_no_publishable_output()
 
@@ -268,6 +281,17 @@ class HostedBundleTests(unittest.TestCase):
         data["annotation"] = "https://example:synthetic-password@example.invalid"
         path.write_text(json.dumps(data))
         with self.assertRaisesRegex(bundle.Refusal, "metadata_privacy_findings"):
+            self.prepare()
+        self.assert_no_publishable_output()
+
+    def test_closure_aggregate_refuses_even_without_retained_details(self):
+        path = self.root / "oci/default/index.json"
+        data = json.loads(path.read_text())
+        data["annotation"] = "https://example:synthetic-password@example.invalid"
+        path.write_text(json.dumps(data))
+        empty_details = dataclasses.replace(privacy.Limits(), findings=0)
+        with patch.object(privacy, "Limits", return_value=empty_details), \
+                self.assertRaisesRegex(bundle.Refusal, "metadata_privacy_findings"):
             self.prepare()
         self.assert_no_publishable_output()
 

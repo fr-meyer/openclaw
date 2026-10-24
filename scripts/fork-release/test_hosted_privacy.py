@@ -23,6 +23,15 @@ TOOLING = "b" * 40
 PRIVATE_KEY_LABEL = b"PRIVATE KEY"
 
 
+def cli_diagnostics(stdout):
+    records = [json.loads(line) for line in stdout.splitlines()]
+    details = [item for record in records if record.get("recordType") == "finding_details"
+               for item in record["items"]]
+    locations = [item for record in records if record.get("recordType") == "location_index"
+                 for item in record["items"]]
+    return records[0], details, locations
+
+
 def archive(entries):
     result = io.BytesIO()
     with tarfile.open(fileobj=result, mode="w", format=tarfile.PAX_FORMAT) as output:
@@ -110,12 +119,14 @@ class PrivacyTests(unittest.TestCase):
         receipt = fixture.inspect()
         self.assertEqual(receipt["status"], "passed", receipt)
         self.assertTrue(receipt["inspectionComplete"])
-        self.assertEqual(receipt["schema"], "openclaw.hosted-privacy.v1")
+        self.assertEqual(receipt["schema"], "openclaw.hosted-privacy.v2")
         self.assertEqual(receipt["indexDigest"], fixture.index["digest"])
         self.assertEqual(receipt["sourceSha"], SOURCE)
         self.assertEqual(receipt["toolingSha"], TOOLING)
         self.assertEqual(receipt["counts"]["files"], 1)
         self.assertTrue(receipt["heuristicOnly"])
+        self.assertEqual(receipt["findingSummary"]["total"], 0)
+        self.assertFalse(receipt["representativesTruncated"])
 
     def test_uncompressed_layer_and_normal_container_symlinks(self):
         result = self.files([("usr/bin/tool", b"public"),
@@ -133,6 +144,22 @@ class PrivacyTests(unittest.TestCase):
                 self.assertTrue(result["inspectionComplete"])
                 self.assertIn("private_runtime_path", [item["rule"] for item in result["findings"]])
                 self.assertNotIn(name, json.dumps(result))
+
+    def test_symlink_indexes_both_private_paths_but_counts_one_member_rule(self):
+        name, target = "app/.env", "/root/.aws/credentials"
+        result = self.files([(name, (tarfile.SYMTYPE, target))]).inspect()
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["findingSummary"]["total"], 1)
+        self.assertEqual(result["findingSummary"]["byRule"]["private_runtime_path"], 1)
+        self.assertEqual(len(result["findings"]), 1)
+        self.assertFalse(result["representativesTruncated"])
+        self.assertFalse(result["locationIndexTruncated"])
+        self.assertEqual({entry["locationSha256"] for entry in result["locationIndex"]},
+                         {privacy.sha256(name.encode()), privacy.sha256(b"root/.aws/credentials")})
+        self.assertEqual(len(result["locationIndex"]), 2)
+        self.assertEqual({entry["rule"] for entry in result["locationIndex"]}, {"private_runtime_path"})
+        self.assertNotIn(name, json.dumps(result))
+        self.assertNotIn(target, json.dumps(result))
 
     def test_credentials_split_across_chunks_and_db_header(self):
         payload = b"x" * (privacy.CHUNK - 10) + (b'-----BEGIN ' + PRIVATE_KEY_LABEL + b'-----\n') + b"A" * 64 + b"\n-----END PRIVATE KEY-----"
@@ -271,7 +298,9 @@ class PrivacyTests(unittest.TestCase):
     def test_match_diagnostics_are_bounded_syntax_not_value_fingerprints(self):
         token = b"ASIA" + b"A" * 16
         inspector = privacy.Inspector("unused", None, SOURCE, TOOLING, privacy.Limits())
-        inspector.scan_bytes(b'"' + token + b'"', "private-path")
+        with inspector.scan_unit("archive_member"):
+            inspector.scan_bytes(b'"' + token + b'"', "private-path")
+            inspector.scan_bytes(token, "private-path")
         finding = inspector.findings[0]
         self.assertEqual(finding["matchLength"], len(token))
         self.assertEqual(finding["syntaxFlags"], {
@@ -282,8 +311,7 @@ class PrivacyTests(unittest.TestCase):
         rendered = json.dumps(inspector.findings)
         for forbidden in (token.decode(), hashlib.sha256(token).hexdigest(), "private-path", "other-path"):
             self.assertNotIn(forbidden, rendered)
-        # Repeated windows retain the first diagnostic, not a count of matches.
-        inspector.scan_bytes(token, "private-path")
+        # Repeated windows in the member retained its first diagnostic only.
         self.assertEqual(len(inspector.findings), 2)
         self.assertEqual(inspector.findings[0], finding)
 
@@ -457,13 +485,20 @@ class PrivacyTests(unittest.TestCase):
             for value in ("synthetic-only-secret", "app/.env", "app/private-token-sentinel",
                           "app/other-token-sentinel", token.decode(), "ghp_" + "G" * 30):
                 self.assertNotIn(value, emitted)
-            summary = json.loads(result.stdout)
+            summary, details, locations = cli_diagnostics(result.stdout)
+            self.assertEqual(summary["recordType"], "summary")
             self.assertEqual(summary["findings"], 3)
-            self.assertEqual(summary["findingCounts"], {
-                "private_runtime_path": 1, "service_token": 1, "github_token": 1})
-            self.assertEqual(summary["findingLocations"], json.loads(output.read_text())["findings"])
-            for finding in summary["findingLocations"]:
-                expected = {"rule", "locationSha256", "blobDigest"}
+            counts = dict.fromkeys(privacy.FINDING_RULES, 0)
+            counts.update(private_runtime_path=1, service_token=1, github_token=1)
+            self.assertEqual(summary["findingCounts"], counts)
+            receipt = json.loads(output.read_text())
+            self.assertEqual(details, receipt["findings"])
+            self.assertEqual(locations, receipt["locationIndex"])
+            for key in ("sourceSha", "toolingSha", "indexDigest", "imageDigest", "configDigest"):
+                self.assertEqual(summary[key], receipt[key])
+            for finding in details:
+                expected = {"rule", "unit", "locationSha256", "blobDigest"}
+                self.assertIn(finding["unit"], privacy.FINDING_UNITS)
                 if finding["rule"] != "private_runtime_path":
                     expected |= {"matchLength", "syntaxFlags"}
                     self.assertIs(type(finding["matchLength"]), int)
@@ -476,8 +511,45 @@ class PrivacyTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertEqual(output.read_bytes(), before)
             self.assertIn("receipt_write_failed", result.stdout)
+            retry_summary, retry_details, retry_locations = cli_diagnostics(result.stdout)
+            self.assertTrue(summary["receiptPersisted"])
+            self.assertIsNone(summary["persistenceRefusal"])
+            self.assertFalse(retry_summary["receiptPersisted"])
+            self.assertEqual(retry_summary["persistenceRefusal"], "receipt_write_failed")
+            self.assertTrue(retry_summary["inspectionComplete"])
+            self.assertEqual(retry_summary["findingSummary"], summary["findingSummary"])
+            for key in ("sourceSha", "toolingSha", "indexDigest", "imageDigest", "configDigest"):
+                self.assertEqual(retry_summary[key], receipt[key])
+            self.assertEqual(retry_details, details)
+            self.assertEqual(retry_locations, locations)
 
-    def test_cli_diagnostics_remain_bounded_at_the_original_finding_limit(self):
+    def test_cli_clean_scan_write_error_keeps_diagnostics_and_fails(self):
+        fixture = self.layout()
+        with tempfile.TemporaryDirectory() as evidence:
+            output = Path(evidence) / "missing" / "receipt.json"
+            result = subprocess.run([sys.executable, str(Path(privacy.__file__)),
+                "--oci-dir", str(fixture.directory), "--expected-index-digest", fixture.index["digest"],
+                "--source-sha", SOURCE, "--tooling-sha", TOOLING, "--output", str(output)],
+                capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            summary, details, locations = cli_diagnostics(result.stdout)
+            self.assertEqual(summary["status"], "failed")
+            self.assertTrue(summary["inspectionComplete"])
+            self.assertEqual(summary["findings"], 0)
+            self.assertEqual(details, [])
+            self.assertEqual(locations, [])
+            self.assertFalse(summary["receiptPersisted"])
+            self.assertEqual(summary["persistenceRefusal"], "receipt_write_failed")
+            self.assertIsNone(summary["refusal"])
+            self.assertEqual(summary["sourceSha"], SOURCE)
+            self.assertEqual(summary["toolingSha"], TOOLING)
+            self.assertEqual(summary["indexDigest"], fixture.index["digest"])
+            self.assertEqual(summary["imageDigest"], fixture.runtime["digest"])
+            self.assertRegex(summary["configDigest"], r"^sha256:[a-f0-9]{64}$")
+            self.assertFalse(output.exists())
+            self.assertNotIn(str(output), result.stdout + result.stderr)
+
+    def test_cli_counts_continue_after_the_original_representative_limit(self):
         limit = privacy.Limits().findings
         self.assertEqual(limit, 64)
         fixture = self.files([(f"app/sentinel-{index}", b"sk-" + b"S" * 30)
@@ -489,14 +561,129 @@ class PrivacyTests(unittest.TestCase):
                 "--source-sha", SOURCE, "--tooling-sha", TOOLING, "--output", str(output)],
                 capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 1, result.stderr)
-            summary = json.loads(result.stdout)
-            self.assertEqual(summary["refusal"], "findings_limit")
-            self.assertFalse(summary["inspectionComplete"])
-            self.assertEqual(summary["findings"], limit)
-            self.assertEqual(summary["findingCounts"], {"service_token": limit})
-            self.assertEqual(len(summary["findingLocations"]), limit)
+            summary, details, locations = cli_diagnostics(result.stdout)
+            self.assertIsNone(summary["refusal"])
+            self.assertTrue(summary["inspectionComplete"])
+            self.assertEqual(summary["findings"], limit + 1)
+            counts = dict.fromkeys(privacy.FINDING_RULES, 0)
+            counts["service_token"] = limit + 1
+            self.assertEqual(summary["findingCounts"], counts)
+            self.assertTrue(summary["representativesTruncated"])
+            self.assertLess(summary["retainedFindings"], limit)
+            self.assertEqual(summary["retainedFindings"], len(details))
+            self.assertEqual(summary["indexedLocations"], limit + 1)
+            self.assertEqual(len(locations), limit + 1)
+            self.assertFalse(summary["locationIndexTruncated"])
             self.assertNotIn("app/sentinel-", result.stdout + result.stderr + output.read_text())
             self.assertNotIn("sk-" + "S" * 30, result.stdout + result.stderr + output.read_text())
+
+    def test_complete_multilayer_counts_and_later_rules_survive_sample_saturation(self):
+        token = b"sk-" + b"S" * 30
+        first = archive([(f"app/repeated-{i}", token) for i in range(70)])
+        last = archive([(f"app/url-{i}", b"https://user:pass@example.invalid") for i in range(70)] + [
+            ("app/rare", b"ASIA" + b"A" * 16),
+            ("app/stream", (token + b" ") * (privacy.CHUNK // 10)),
+            ("app/.env", (tarfile.SYMTYPE, "/root/.aws/credentials"))])
+        result = self.layout(layers=[(privacy.TAR, first), (privacy.TAR, first), (privacy.TAR, last)]).inspect()
+        self.assertTrue(result["inspectionComplete"], result)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["counts"]["layers"], 3)
+        counts = dict.fromkeys(privacy.FINDING_RULES, 0)
+        counts.update(service_token=141, credential_url=70, aws_access_key=1, private_runtime_path=1)
+        self.assertEqual(result["findingSummary"]["byRule"], counts)
+        self.assertEqual(result["findingSummary"]["total"], 213)
+        self.assertEqual(result["findingSummary"]["byUnit"]["archive_member"], 213)
+        self.assertLessEqual(len(result["findings"]), 64)
+        self.assertEqual({f["rule"] for f in result["findings"]},
+                         {"service_token", "credential_url", "aws_access_key", "private_runtime_path"})
+        self.assertTrue(result["representativesTruncated"])
+
+    def test_json_occurrence_units_and_member_context_are_independent_and_bounded(self):
+        inspector = privacy.Inspector("unused", None, SOURCE, TOOLING, privacy.Limits())
+        token = "sk-" + "S" * 30
+        with inspector.scan_unit("archive_member"):
+            inspector.scan_bytes(token.encode(), "member")
+            inspector.scan_json({token: token, "other": token}, "pax")
+            inspector.scan_bytes(token.encode(), "member")
+        summary = inspector.finding_summary()
+        self.assertEqual(summary["total"], 4)
+        self.assertEqual(summary["byRule"]["service_token"], 4)
+        self.assertEqual(summary["byUnit"], {
+            "archive_member": 1, "json_key": 1, "json_string": 2, "metadata_value": 0, "byte_input": 0})
+        self.assertIsNone(inspector.unit_kind)
+        self.assertEqual(inspector.unit_rules, set())
+        self.assertFalse(hasattr(inspector, "seen_findings"))
+
+    def test_zero_representatives_cannot_turn_findings_into_a_pass(self):
+        result = self.files([("app/data", b"sk-" + b"S" * 30)]).inspect(
+            limits=dataclasses.replace(privacy.Limits(), findings=0))
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["findings"], [])
+        self.assertEqual(result["findingSummary"]["total"], 1)
+        self.assertTrue(result["representativesTruncated"])
+        self.assertEqual(result["status"], "failed")
+
+    def test_saturated_samples_do_not_hide_later_structural_failures(self):
+        first = archive([(f"app/leak-{i}", b"sk-" + b"S" * 30) for i in range(70)])
+        for media, broken, refusal in ((privacy.TAR, b"broken tar", "malformed_or_unreadable_layout"),
+                                      (privacy.TAR + "+zstd", b"unsupported", "unsupported_layer_format"),
+                                      (privacy.TAR, archive([("app/last", b"ok")]) + b"hidden", "trailing_archive_data")):
+            with self.subTest(refusal=refusal), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(directory, layers=[(privacy.TAR, first), (media, broken)])
+                result = fixture.inspect()
+                self.assertFalse(result["inspectionComplete"])
+                self.assertEqual(result["status"], "failed")
+                self.assertEqual(result["refusal"], refusal)
+                self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 70)
+                self.assertTrue(result["representativesTruncated"])
+
+    def test_location_index_and_identity_set_remain_bounded_after_overflow(self):
+        inspector = privacy.Inspector("unused", None, SOURCE, TOOLING, privacy.Limits())
+        for index in range(7000):
+            inspector.scan_bytes(b"sk-" + b"S" * 30, f"app/location-{index}", "sha256:" + "c" * 64)
+        self.assertEqual(inspector.finding_total, 7000)
+        self.assertLessEqual(len(inspector.location_identities), 4096)
+        self.assertEqual(len(inspector.location_identities), len(inspector.location_index))
+        encoded = json.dumps(inspector.location_index, sort_keys=True, separators=(",", ":")).encode()
+        self.assertEqual(len(encoded), inspector.location_index_bytes)
+        self.assertLessEqual(len(encoded), 512 * 1024)
+        self.assertTrue(inspector.location_index_truncated)
+        self.assertLessEqual(len(inspector.findings), 64)
+        self.assertLessEqual(len(inspector.unit_rules), len(privacy.FINDING_RULES))
+        # Counts represent occurrences, while the bounded index deduplicates names.
+        inspector.scan_bytes(b"sk-" + b"S" * 30, "app/location-0", "sha256:" + "c" * 64)
+        self.assertEqual(inspector.finding_total, 7001)
+        self.assertEqual(len(encoded), inspector.location_index_bytes)
+
+    def test_large_complete_cli_report_stays_readable_and_chunked(self):
+        fixture = self.files([(f"app/location-{i}", b"sk-" + b"S" * 30) for i in range(7000)])
+        with tempfile.TemporaryDirectory() as evidence:
+            output = Path(evidence) / "receipt.json"
+            result = subprocess.run([sys.executable, str(Path(privacy.__file__)),
+                "--oci-dir", str(fixture.directory), "--expected-index-digest", fixture.index["digest"],
+                "--source-sha", SOURCE, "--tooling-sha", TOOLING, "--output", str(output)],
+                capture_output=True, text=True, timeout=20)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            summary, details, locations = cli_diagnostics(result.stdout)
+            disk = json.loads(output.read_text())
+            self.assertTrue(summary["inspectionComplete"])
+            self.assertEqual(summary["findings"], 7000)
+            self.assertTrue(summary["locationIndexTruncated"])
+            self.assertTrue(summary["representativesTruncated"])
+            self.assertEqual(details, disk["findings"])
+            self.assertEqual(locations, disk["locationIndex"])
+            self.assertLessEqual(output.stat().st_size, 1024 * 1024)
+            self.assertLessEqual(len(json.dumps(locations, sort_keys=True, separators=(",", ":")).encode()), 512 * 1024)
+            self.assertLess(max(len(line.encode()) for line in result.stdout.splitlines()), 16 * 1024)
+            for kind, maximum in (("finding_details", 16), ("location_index", 32)):
+                offset = 0
+                for record in map(json.loads, result.stdout.splitlines()):
+                    if record.get("recordType") == kind:
+                        self.assertEqual(record["offset"], offset)
+                        self.assertLessEqual(len(record["items"]), maximum)
+                        offset += len(record["items"])
+            self.assertNotIn("app/location-", result.stdout + output.read_text())
+            self.assertNotIn("sk-" + "S" * 30, result.stdout + output.read_text())
 
 
 if __name__ == "__main__":
