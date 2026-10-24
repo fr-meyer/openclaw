@@ -309,7 +309,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
 
         def selected(ref='refs/heads/release-pipeline/v105-image-only-20261024',
                      event='push', created=False, attempt='1', actor='fr-meyer',
-                     before='98a1a20386b1c0bd63bd6bc94bff329d945498c3',
+                     before='aee8475917dd29e0ee9a0b4059daf34990cfdbd5',
                      repo='fr-meyer/openclaw'):
             return expression(condition, github=NS(ref=ref, event_name=event,
                 event=NS(created=created, before=before), run_attempt=attempt, actor=actor, repository=repo))
@@ -324,28 +324,53 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         self.assertFalse(selected(event='workflow_dispatch', ref='refs/heads/other'))
 
     def run_image_only_scope(self, *, environment=None, event=None, manifest=None,
-                             history=None, history_error=False, oversized=False):
+                             history=None, history_error=False, oversized=False, previous_job=None):
         identity = step(self.workflow, 'Resolve exact source identity')
         raw = identity.split("          python3 - <<'PY_IMAGE_ONLY'\n", 1)[1].split(
             '\n          PY_IMAGE_ONLY', 1)[0]
         code = textwrap.dedent(raw)
-        run = {'id': 1234, 'head_sha': SOURCE,
+        run = {'id': 1234, 'head_sha': SOURCE, 'run_attempt': 1,
                'head_branch': 'release-pipeline/v105-image-only-20261024', 'event': 'push'}
+        prior = {**run, 'id': 40062126779, 'head_sha': 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5',
+                 'status': 'completed', 'conclusion': 'failure', 'run_attempt': 1}
         payload = json.dumps(history if history is not None else {
-            'total_count': 1, 'workflow_runs': [run]})
+            'total_count': 2, 'workflow_runs': [run, prior]})
+        job = {'id': 120777706110, 'run_id': 40062126779, 'name': 'qualify-and-prepare',
+               'head_sha': 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5',
+               'status': 'completed', 'conclusion': 'failure', 'steps': [
+                   {'name': name, 'status': 'completed', 'conclusion': conclusion} for name, conclusion in (
+                       ('Verify source and run offline pipeline regressions', 'failure'),
+                       ('Set up bounded hosted Docker Buildx', 'skipped'),
+                       ('Verify hosted worker limits and begin bounded resource observation', 'skipped'),
+                       ('Prepare OCI directory', 'skipped'),
+                       ('Build exact candidate once into OCI', 'skipped'),
+                       ('Inspect all OCI layers and metadata before native smoke or publication', 'skipped'),
+                       ('Verify OCI bytes and smoke that exact image', 'skipped'),
+                       ('Finish resource observation through export load and native verification', 'skipped'),
+                       ('Bind hosted qualification receipts and export decision', 'skipped'),
+                       ('Prepare and verify the bounded public artifact', 'skipped'),
+                       ('Retain the exact tested OCI payload and public receipt', 'skipped'),
+                       ('Confirm uploaded bytes match the bounded artifact', 'skipped'))]}
+        job.update(previous_job or {})
         wrapper = (
             'import io, json\nfrom unittest.mock import patch\n'
             'def fake_open(request, *, timeout):\n'
             '    assert timeout == 15\n'
-            '    assert request.full_url == '
+            '    history_url = '
             "'https://api.github.com/repos/fr-meyer/openclaw/actions/workflows/' "
             "'fork-release-pipeline.yml/runs?event=push&per_page=2&' "
             "'branch=release-pipeline%2Fv105-image-only-20261024'\n"
+            '    job_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120777706110"\n'
+            '    assert request.full_url in (history_url, job_url)\n'
             '    assert not request.has_header("Authorization")\n'
             + ('    raise OSError("bounded lookup unavailable")\n' if history_error else
-               '    return io.BytesIO(' + repr(b'x' * (128 * 1024 + 1) if oversized else payload.encode()) + ')\n')
+               '    if request.full_url == job_url: return io.BytesIO(' + repr(json.dumps(job).encode()) + ')\n'
+               + '    return io.BytesIO(' + ("b'x' * (128 * 1024 + 1)" if oversized else repr(payload.encode())) + ')\n')
             + 'with patch("urllib.request.urlopen", side_effect=fake_open):\n'
             + '    exec(' + repr(code) + ')\n')
+        # Linux limits each argv element to 128 KiB: generate oversized HTTP
+        # responses inside the child, while preserving the full response check.
+        self.assertLess(len(wrapper.encode()), 64 * 1024)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metadata = root / 'metadata/scripts/fork-release/manifest.json'
@@ -357,7 +382,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             metadata.write_text(json.dumps(value))
             event_file = root / 'event.json'
             event_file.write_text(json.dumps({'created': False,
-                'before': '98a1a20386b1c0bd63bd6bc94bff329d945498c3', **(event or {})}))
+                'before': 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5', **(event or {})}))
             output = root / 'output'
             env = {'PATH': os.environ.get('PATH', ''),
                    'GITHUB_REF': 'refs/heads/release-pipeline/v105-image-only-20261024',
@@ -412,6 +437,36 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         ):
             with self.subTest(change=change):
                 result, emitted = self.run_image_only_scope(**change)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(emitted, '')
+                if change.get('oversized'):
+                    self.assertIn('exceeds bounded response', result.stderr)
+
+    def test_prior_started_incomplete_or_other_job_never_grants_another_build(self):
+        # Copy the exact expected prior job captured from the completed public
+        # run; change one field/step at a time, preserving every other proof.
+        expected = (
+            ('Verify source and run offline pipeline regressions', 'failure'),
+            ('Set up bounded hosted Docker Buildx', 'skipped'),
+            ('Verify hosted worker limits and begin bounded resource observation', 'skipped'),
+            ('Prepare OCI directory', 'skipped'), ('Build exact candidate once into OCI', 'skipped'),
+            ('Inspect all OCI layers and metadata before native smoke or publication', 'skipped'),
+            ('Verify OCI bytes and smoke that exact image', 'skipped'),
+            ('Finish resource observation through export load and native verification', 'skipped'),
+            ('Bind hosted qualification receipts and export decision', 'skipped'),
+            ('Prepare and verify the bounded public artifact', 'skipped'),
+            ('Retain the exact tested OCI payload and public receipt', 'skipped'),
+            ('Confirm uploaded bytes match the bounded artifact', 'skipped'))
+        steps = [{'name': n, 'status': 'completed', 'conclusion': c} for n, c in expected]
+        for previous in ({'run_id': 42}, {'id': 42}, {'status': 'in_progress'},
+                         {'head_sha': 'b' * 40}, {'conclusion': 'success'}, {'steps': []},
+                         {'steps': steps + [steps[4]]},
+                         *({'steps': [dict(s, conclusion='success') if s['name'] == name else s
+                                      for s in steps]} for name, _ in expected),
+                         *({'steps': [s for s in steps if s['name'] != name]} for name, _ in expected),
+                         {'steps': [dict(s, status='in_progress') if s == steps[4] else s for s in steps]}):
+            with self.subTest(previous=previous):
+                result, emitted = self.run_image_only_scope(previous_job=previous)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(emitted, '')
 
