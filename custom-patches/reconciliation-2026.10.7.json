@@ -9,7 +9,7 @@
   "previousInventory": "custom-patches/reconciliation-2026.10.6.json",
   "qualificationTransferred": false,
   "summary": {
-    "paths": 220,
+    "paths": 223,
     "previousForkPaths": 152,
     "newUpstreamOverlapPaths": [
       "src/state/openclaw-state-worker-contract.ts",
@@ -18,13 +18,15 @@
     "securityCarryPaths": 76,
     "textualConflicts": 0,
     "dispositions": {
-      "CARRIED_EXACT": 137,
+      "CARRIED_EXACT": 136,
       "ADAPTED_RELEASE_BINDING": 4,
       "SECURITY_MERGED_SOURCE": 48,
       "SECURITY_CARRIED_EXACT": 24,
       "ADAPTED_DEV_DEPENDENCY_AND_TEST_BINDING": 4,
+      "ADDED_FOCUSED_CONTRACT_TEST": 2,
       "MERGED_SOURCE_REVIEWED": 2,
-      "ADDED_DEV_DEPENDENCY_COMPATIBILITY_TEST": 1
+      "ADDED_DEV_DEPENDENCY_COMPATIBILITY_TEST": 1,
+      "ADAPTED_FOCUSED_TEST_OWNERSHIP": 2
     },
     "upstreamedClaimed": 0,
     "retired": 0
@@ -1461,6 +1463,17 @@
       "reason": "Exact PR24 bytes preserved. Prior test evidence remains historical, not10.7 runtime qualification."
     },
     {
+      "path": "src/commands/doctor/shared/config-migration-result.provenance.test.ts",
+      "upstream106Blob": null,
+      "fork106SecurityBlob": null,
+      "upstream107Blob": null,
+      "approvedSecuritySourceBlob": null,
+      "resultBlob": "acd2959fb114ce5ea3bb88a8fd0f2c7568aecbb8",
+      "upstream107Changed": false,
+      "disposition": "ADDED_FOCUSED_CONTRACT_TEST",
+      "reason": "Test-only proof/routing of existing exited-lease ownership and Doctor provenance handoff; no runtime implementation or dependency change."
+    },
+    {
       "path": "src/config/backup-rotation.ts",
       "upstream106Blob": "e2ad143a33c1610e5aff02839242711e5d990bc7",
       "fork106SecurityBlob": "1661f9186998f53ce5948b52c4498e1b47a9c721",
@@ -1978,6 +1991,17 @@
       "reason": "Exact PR24 bytes preserved. Prior test evidence remains historical, not10.7 runtime qualification."
     },
     {
+      "path": "src/state/openclaw-agent-db-lease.exited-owner.test.ts",
+      "upstream106Blob": null,
+      "fork106SecurityBlob": null,
+      "upstream107Blob": null,
+      "approvedSecuritySourceBlob": null,
+      "resultBlob": "fca5a1d4f0d1778310f27b2ddb2877148a1cb7ed",
+      "upstream107Changed": false,
+      "disposition": "ADDED_FOCUSED_CONTRACT_TEST",
+      "reason": "Test-only proof/routing of existing exited-lease ownership and Doctor provenance handoff; no runtime implementation or dependency change."
+    },
+    {
       "path": "src/state/openclaw-state-lease-heartbeat.test.ts",
       "upstream106Blob": "0ddfa711df78973c3a3f9b9841ea8fb1ce49fc37",
       "fork106SecurityBlob": "5426070ac983b4c6899d3d450d5a0205862667bd",
@@ -2396,15 +2420,26 @@
       "reason": "Exact PR24 bytes preserved. Prior test evidence remains historical, not10.7 runtime qualification."
     },
     {
+      "path": "test/vitest/vitest.commands-light-paths.mjs",
+      "upstream106Blob": null,
+      "fork106SecurityBlob": null,
+      "upstream107Blob": "ab04965e653a125628615628269c4acee67c3e26",
+      "approvedSecuritySourceBlob": null,
+      "resultBlob": "c540d33b8339076656200f9ad13609ba8cbaaf9d",
+      "upstream107Changed": false,
+      "disposition": "ADAPTED_FOCUSED_TEST_OWNERSHIP",
+      "reason": "Test-only proof/routing of existing exited-lease ownership and Doctor provenance handoff; no runtime implementation or dependency change."
+    },
+    {
       "path": "test/vitest/vitest.database-worker-core-paths.mjs",
       "upstream106Blob": "cacccf148cbcdcdf855b5c57d42fa88acd1262d1",
       "fork106SecurityBlob": "d04c82cfb43e31e81abc07de22d6dc830cff7256",
       "upstream107Blob": "cacccf148cbcdcdf855b5c57d42fa88acd1262d1",
       "approvedSecuritySourceBlob": null,
-      "resultBlob": "d04c82cfb43e31e81abc07de22d6dc830cff7256",
+      "resultBlob": "838c9900ca64b50c03e48f56e056803cd5a3e37c",
       "upstream107Changed": false,
-      "disposition": "CARRIED_EXACT",
-      "reason": "Exact PR24 bytes preserved. Prior test evidence remains historical, not10.7 runtime qualification."
+      "disposition": "ADAPTED_FOCUSED_TEST_OWNERSHIP",
+      "reason": "Retain every prior database-worker route; add only the synthetic exited-lease database-owner test in the existing isolated owner."
     },
     {
       "path": "test/vitest/vitest.gateway-server-paths.mjs",
@@ -2461,5 +2496,14 @@
     "vendorDisputed": true,
     "causalVulnerabilityFixClaimed": false,
     "ageExceptionAdded": false
+  },
+  "focusedTestSuccessor": {
+    "base": "cfd2ae456c13effacfeff797a469c39437eeb092",
+    "runtimeChanged": false,
+    "dependenciesChanged": false,
+    "newContractCases": 13,
+    "existingManagedFlowCase": 1,
+    "fullDoctorColdTimeoutPreserved": true,
+    "platform": "Darwin ARM64; Linux native/image qualification remains pending"
   }
 }

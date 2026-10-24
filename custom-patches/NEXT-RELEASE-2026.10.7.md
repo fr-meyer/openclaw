@@ -21,7 +21,7 @@ transfer to this branch.
 Official 10.7 adds 73 commits without divergence from 10.6. The uncommitted merge
 needed no textual conflict resolution. The previous 142-path 10.5 carry inventory
 and PR #24's additional hardening remain included. The new
-`reconciliation-2026.10.7.json` records all 220 retained fork/security paths with
+`reconciliation-2026.10.7.json` records all 223 retained fork/security/test paths with
 exact original, upstream and result blob identities. The initial merge retained
 137 exact carries, 2 reviewed upstream overlaps, 4 release-binding adaptations
 and 76 security carry paths (26 exact, 50 merged). A subsequent scoped development
@@ -90,22 +90,50 @@ and image qualification; do not describe all upstream distribution as green.
 
 ## Evidence and remaining qualification
 
-The draft PR records exact-head checks. Supported Node 24.22.1 publisher tests
-cover tag/commit/tree, version and publisher bytes plus incomplete-reconciliation
-and tampered-package rejection. Pinned pnpm 12.15.0 frozen lockfile-only validation
-passed all 1,706 supply-chain policy entries with lifecycle scripts and pnpmfile
-hooks disabled; no full workspace install is implied.
+The original source cut retained189 focused fixture passes and the original exact
+review/CI evidence at `cfd2ae456c13effacfeff797a469c39437eeb092`. The later
+test-only successor changes no runtime implementation, manifest, dependency or
+lockfile. The original results remain historical at that head.
 
-Focused dependency fixtures may reuse existing isolated public package installs
-read-only after checking exact versions/patch bytes. Such fixture passes do not
-claim a complete 10.7 workspace or native runtime install. Retain PR #19's 133-test
-result and PR #24's 196-test result as historical results at their original heads.
+A private-inode frozen workspace was then reconciled with Node24.22.1 and
+pnpm12.15.0, lifecycle/pnpmfile hooks disabled. The exact fs-safe0.26 package
+and Darwin ARM64 helper match registry and frozen-lock SRI, with every installed
+package file verified. Source/workspace resolution stays within the owned10.7
+checkout; the baseline10.6 installation remains unchanged. This is Darwin
+source-test proof, not Linux image or all-native-addon qualification.
+
+Additional focused evidence:
+
+- 12 existing lease registration/cleanup cases pass.
+- 8 new native in-memory SQLite/Kysely owner cases protect refusal-before-open
+  verification retention, unknown-outcome invalidation, exact receipt identity,
+  idempotence and refusal ordering. Only the separate verification-store side
+  effect is mocked; actual lease rows are inspected within the original transaction.
+- 5 new actual Doctor provenance-handoff cases preserve proof only for unchanged
+  config without writes/plugin-generation changes, and refuse missing proof.
+- 3 selected native Doctor preflight cases pass (16 explicitly filtered), covering
+  restored legacy plugin refusal, real legacy-session repair/backups and unchanged
+  config/plugin reads. The original cold full-file command timed out at180seconds
+  after setup and5 observed passing cases; that attempt remains incomplete. The
+  case active at timeout later passed6.67seconds in the selected warm command.
+  Do not describe the selected pass as a full-file fix or full Doctor qualification.
+- 1 managed-flow worker integration case passes. 23 MCP/Nowistay cases also pass
+  through the maintained runner against the owned frozen install; these repeat
+  the earlier23 and are not additional unique coverage.
+- A separate exact-source capsule passes60 distinct Wiki cases:32 markdown,
+  6 importer,8 ingest,10 read-retry and4 malformed-notes/pruning cases.
+
+The full/core CI, testbox, Browser MCP, CodeQL and OpenGrep lanes remained skipped
+on the draft source cut. Supporting CI passes do not replace them. Retain PR #19's
+133-test and PR #24's196-test results at their original heads. No image,
+real-data migration, startup or production acceptance is claimed.
 
 Next steps, owned separately from the active 10.5 deployment:
 
-1. Complete a supported frozen workspace install and targeted lease cleanup,
-   managed-task, backup/recovery, CLI, plugin, Memory Wiki and security-owner
-   regressions. Keep actual native fixture ownership in the maintained test plan.
+1. Complete remaining full Doctor/backup/recovery, CLI/plugin and broader runtime
+   qualification where needed. Resolve the cold full-file timeout with measured
+   setup/test budgets before claiming full-file success. Qualify Linux amd64 native
+   acquisition separately from Darwin source tests; keep maintained test ownership.
 2. Bind the final reviewed source, Dockerfile, lockfile, plugins and a future
    exact pipeline revision. The two-parent merge source requires explicit
    ancestry validation; do not assume an old 10.6 or active 10.5 seal qualifies it.
