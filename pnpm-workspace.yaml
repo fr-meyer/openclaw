@@ -10,6 +10,8 @@ minimumReleaseAgeStrict: true
 
 # Trusted Codex runtimes are outside the dependency cooldown.
 minimumReleaseAgeExclude:
+  # Reviewed GHSA-27r3-jxmh-p828 fix; remove after 2026-10-29T11:39:38.614Z.
+  - "body-parser@2.4.0"
   # Reviewed ACPX release; remove after 2026-09-29T10:05:37.124Z.
   - acpx@0.19.1
   # Reviewed running-adapter evidence contract; remove after 2026-09-24T01:40:08.183Z.
@@ -35,6 +37,23 @@ verifyDepsBeforeRun: false
 blockExoticSubdeps: true
 
 overrides:
+  # GHSA-xcx6-jx8p-x3h5: reviewed real-parent compatibility for fixed MSAL.
+  "@azure/identity@4.13.3>@azure/msal-node": 7.1.0
+  "@microsoft/teams.apps@2.1.0>@azure/msal-node": 7.1.0
+  # GHSA-xjj6-f33q-929c: repair remaining vulnerable v8 transitive resolutions.
+  "undici@>=8.0.0 <8.12.2": 8.12.2
+  # Fix compressed-body trailing-byte DoS; qs meets this parser's declared range.
+  "express@5.2.1>body-parser": 2.4.0
+  "body-parser@2.4.0>qs": 6.16.1
+  # GHSA-mrhx-c7xc-m3w5: native v4 consumers and bounded SDK compatibility parsing.
+  "zod@>=4.0.0 <4.6.6": 4.6.6
+  # These exact consumers are migrated by the versioned package patches below.
+  "@a2ui/lit@0.11.0>zod": 4.6.6
+  "@a2ui/web_core@0.11.0>zod": 4.6.6
+  "@a2ui/web_core@0.11.0>zod-to-json-schema": "-"
+  "@discord/embedded-app-sdk@2.5.0>zod": 4.6.6
+  # Preserve the converter's declared support for retained v3 schema peers.
+  "zod-to-json-schema@3.25.2>zod": "^3.25.28 || ^4"
   # Memory LanceDB supplies vectors; WhatsApp prepares thumbnails with Rastermill.
   "@lancedb/lancedb>@huggingface/transformers": "-"
   "baileys>sharp": "-"
@@ -68,7 +87,7 @@ overrides:
   "mailauth@5.0.3>nodemailer": 10.0.10
   "mailauth@5.0.3>joi": 18.2.9
   # Mailauth pins vulnerable Undici; remove when its direct dependency is fixed.
-  "mailauth@5.0.3>undici": 8.10.2
+  "mailauth@5.0.3>undici": 8.12.2
   minimatch: 10.2.6
   path-to-regexp: 8.4.2
   # Keep indexed source-map parsing on the security-fixed patch release.
@@ -120,6 +139,10 @@ packageExtensions:
       typescript: 5.9.3
 
 patchedDependencies:
+  "@a2ui/lit@0.11.0": patches/@a2ui__lit@0.11.0.patch
+  "@a2ui/web_core@0.11.0": patches/@a2ui__web_core@0.11.0.patch
+  "@discord/embedded-app-sdk@2.5.0": patches/@discord__embedded-app-sdk@2.5.0.patch
+  "zod@4.6.6": patches/zod@4.6.6.patch
   "baileys@7.0.0-rc14": patches/baileys@7.0.0-rc14.patch
   "chrome-devtools-mcp@1.9.0": patches/chrome-devtools-mcp@1.9.0.patch
   "matrix-js-sdk@42.4.0": patches/matrix-js-sdk@42.4.0.patch

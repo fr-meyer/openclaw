@@ -408,6 +408,464 @@ describe("generate-npm-package-lock", () => {
     expect(parsePnpmPackageKey("invalid")).toBeNull();
   });
 
+  describe("scoped override validation", () => {
+    function fixture() {
+      return {
+        packages: {
+          "": { dependencies: { "body-parser": "2.4.0", qs: "6.16.0" } },
+          "node_modules/qs": { version: "6.16.0" },
+          "node_modules/body-parser": { version: "2.4.0", dependencies: { qs: "^6.14.0" } },
+          "node_modules/body-parser/node_modules/qs": { version: "6.16.1" },
+        },
+      };
+    }
+    const policy = { qs: "6.16.0", "body-parser@2.4.0>qs": "6.16.1" };
+
+    it.each(["5.6.0", "6.0.1", "7.1.0"])(
+      "validates both scoped MSAL policies when the target is hoisted (%s)",
+      (version) => {
+        const lock = {
+          packages: {
+            "": { dependencies: { "@azure/identity": "4.13.3", "@microsoft/teams.apps": "2.1.0" } },
+            "node_modules/@azure/identity": {
+              version: "4.13.3",
+              dependencies: { "@azure/msal-node": "^6.0.0" },
+            },
+            "node_modules/@microsoft/teams.apps": {
+              version: "2.1.0",
+              dependencies: { "@azure/msal-node": "^5.6.0" },
+            },
+            "node_modules/@azure/msal-node": { version },
+          },
+        };
+        const rules = exactOverrideRulesFromOverrides({
+          "@azure/identity@4.13.3>@azure/msal-node": "7.1.0",
+          "@microsoft/teams.apps@2.1.0>@azure/msal-node": "7.1.0",
+        });
+        const violations = collectOverrideViolations(lock, rules);
+        expect(violations).toHaveLength(version === "7.1.0" ? 0 : 1);
+        if (version !== "7.1.0") {
+          expect(violations[0]).toMatchObject({
+            path: "node_modules/@azure/msal-node",
+            expectedVersion: "7.1.0",
+          });
+        }
+      },
+    );
+
+    it.each(["6.16.0", "6.16.1"])(
+      "keeps scoped and global requirements separate for a shared hoisted target (%s)",
+      (version) => {
+        const lock = {
+          packages: {
+            "": { dependencies: { "body-parser": "2.4.0", qs: "6.16.0" } },
+            "node_modules/body-parser": { version: "2.4.0", dependencies: { qs: "^6.14.0" } },
+            "node_modules/qs": { version },
+          },
+        };
+        expect(collectOverrideViolations(lock, exactOverrideRulesFromOverrides(policy))).toEqual([
+          expect.objectContaining({
+            path: "node_modules/qs",
+            expectedVersion: version === "6.16.0" ? "6.16.1" : "6.16.0",
+          }),
+        ]);
+      },
+    );
+
+    it("accepts a hoisted scoped replacement with no conflicting global incoming edge", () => {
+      const lock = {
+        packages: {
+          "": { dependencies: { "body-parser": "2.4.0" } },
+          "node_modules/body-parser": { version: "2.4.0", dependencies: { qs: "^6.14.0" } },
+          "node_modules/qs": { version: "6.16.1" },
+        },
+      };
+      expect(collectOverrideViolations(lock, exactOverrideRulesFromOverrides(policy))).toEqual([]);
+    });
+
+    it("seeds a disconnected component before its child regardless of lock entry order", () => {
+      const lock = {
+        packages: {
+          "node_modules/qs": { version: "6.16.1" },
+          "node_modules/body-parser": { version: "2.4.0", dependencies: { qs: "^6.14.0" } },
+        },
+      };
+      expect(collectOverrideViolations(lock, exactOverrideRulesFromOverrides(policy))).toEqual([]);
+    });
+
+    it("inherits the nearest scoped policy through intermediates and dependency cycles", () => {
+      const lock = {
+        packages: {
+          "": { dependencies: { outer: "1.0.0" } },
+          "node_modules/outer": { version: "1.0.0", dependencies: { middle: "1.0.0" } },
+          "node_modules/middle": { version: "1.0.0", dependencies: { inner: "1.0.0" } },
+          "node_modules/inner": {
+            version: "1.0.0",
+            dependencies: { outer: "1.0.0", qs: "^6" },
+          },
+          "node_modules/qs": { version: "6.16.2" },
+        },
+      };
+      const rules = exactOverrideRulesFromOverrides({
+        qs: "6.16.0",
+        inner: { qs: "6.16.1" },
+        outer: { inner: { qs: "6.16.2" } },
+      });
+      expect(collectOverrideViolations(lock, rules)).toEqual([]);
+      lock.packages["node_modules/qs"].version = "6.16.1";
+      expect(collectOverrideViolations(lock, rules)).toEqual([
+        expect.objectContaining({ expectedVersion: "6.16.2" }),
+      ]);
+    });
+
+    it("proves rewritten parent identity before activating its child policy", () => {
+      const lock = {
+        packages: {
+          "": { dependencies: { parent: "^1.0.0" } },
+          "node_modules/parent": { version: "2.0.0", dependencies: { qs: "^6" } },
+          "node_modules/qs": { version: "6.16.1" },
+        },
+      };
+      const rules = exactOverrideRulesFromOverrides({
+        qs: "6.16.0",
+        "parent@^1": { ".": "2.0.0", qs: "6.16.1" },
+      });
+      expect(collectOverrideViolations(lock, rules)).toEqual([]);
+      lock.packages["node_modules/parent"].version = "3.0.0";
+      expect(collectOverrideViolations(lock, rules)).toEqual([
+        expect.objectContaining({ packageName: "parent", expectedVersion: "2.0.0" }),
+        expect.objectContaining({ packageName: "qs", expectedVersion: "6.16.0" }),
+      ]);
+    });
+
+    it("restores the nearest scoped context when a dependency cycle re-enters its parent", () => {
+      const lock = {
+        packages: {
+          "": { dependencies: { first: "1.0.0" } },
+          "node_modules/first": {
+            version: "1.0.0",
+            dependencies: { second: "1.0.0", qs: "^6" },
+          },
+          "node_modules/second": {
+            version: "1.0.0",
+            dependencies: { first: "1.0.0", qs: "^6" },
+          },
+          "node_modules/first/node_modules/qs": { version: "6.16.1" },
+          "node_modules/second/node_modules/qs": { version: "6.16.2" },
+        },
+      };
+      const rules = exactOverrideRulesFromOverrides({
+        first: { qs: "6.16.1" },
+        second: { qs: "6.16.2" },
+      });
+      expect(collectOverrideViolations(lock, rules)).toEqual([]);
+    });
+
+    it("does not let an unsupported scoped value erase an exact global ranged guard", () => {
+      const lock = {
+        packages: {
+          "": { dependencies: { carrier: "1.0.0" } },
+          "node_modules/carrier": { version: "1.0.0", dependencies: { undici: "^8.10.2" } },
+          "node_modules/undici": { version: "8.10.2" },
+        },
+      };
+      const rules = exactOverrideRulesFromOverrides({
+        "undici@>=8 <9": "8.12.2",
+        carrier: { undici: "^8.10.2" },
+      });
+      expect(collectOverrideViolations(lock, rules)).toEqual([
+        expect.objectContaining({ expectedVersion: "8.12.2" }),
+      ]);
+    });
+
+    it("accepts the exact body-parser child exception without changing the global pin", () => {
+      expect(collectOverrideViolations(fixture(), exactOverrideRulesFromOverrides(policy))).toEqual(
+        [],
+      );
+    });
+
+    it.each([
+      "child",
+      "root",
+      "parent",
+      "missing-parent",
+      "missing-version",
+      "missing-edge",
+      "unknown",
+    ])("refuses an unproven or wrong scoped version (%s)", (scenario) => {
+      const lock: { packages: Record<string, Record<string, unknown>> } = fixture();
+      const parent = lock.packages["node_modules/body-parser"];
+      const child = lock.packages["node_modules/body-parser/node_modules/qs"];
+      if (scenario === "child") {
+        child.version = "6.16.0";
+      }
+      if (scenario === "root") {
+        lock.packages["node_modules/qs"].version = "6.16.1";
+      }
+      if (scenario === "parent") {
+        parent.version = "2.3.0";
+      }
+      if (scenario === "missing-parent") {
+        delete lock.packages["node_modules/body-parser"];
+      }
+      if (scenario === "missing-version") {
+        delete parent.version;
+      }
+      if (scenario === "missing-edge") {
+        delete parent.dependencies;
+      }
+      if (scenario === "unknown") {
+        child.version = "9.9.9";
+      }
+      expect(collectOverrideViolations(lock, exactOverrideRulesFromOverrides(policy))).not.toEqual(
+        [],
+      );
+    });
+
+    it.each([undefined, "8.12.2"])(
+      "validates a hoisted ranged override through transitive edges (root pin=%s)",
+      (rootPin) => {
+        const lock = {
+          packages: {
+            "": { dependencies: { carrier: "1.0.0", ...(rootPin ? { undici: rootPin } : {}) } },
+            "node_modules/carrier": { version: "1.0.0", dependencies: { undici: "^8.10.2" } },
+            "node_modules/undici": { version: "8.10.2" },
+          },
+        };
+        const rules = exactOverrideRulesFromOverrides({ "undici@>=8 <8.12.2": "8.12.2" });
+        expect(collectOverrideViolations(lock, rules)).toEqual([
+          expect.objectContaining({
+            path: "node_modules/undici",
+            actualVersion: "8.10.2",
+            expectedVersion: "8.12.2",
+          }),
+        ]);
+      },
+    );
+
+    it.each(["optionalDependencies", "peerDependencies"])(
+      "validates hoisted ranged overrides through %s",
+      (dependencySet) => {
+        const lock = {
+          packages: {
+            "": { dependencies: { carrier: "1.0.0" } },
+            "node_modules/carrier": { version: "1.0.0", [dependencySet]: { undici: "^8.10.2" } },
+            "node_modules/undici": { version: "8.10.2" },
+          },
+        };
+        const rules = exactOverrideRulesFromOverrides({ "undici@>=8 <8.12.2": "8.12.2" });
+        expect(collectOverrideViolations(lock, rules)).toHaveLength(1);
+        lock.packages["node_modules/undici"].version = "8.12.2";
+        expect(collectOverrideViolations(lock, rules)).toEqual([]);
+      },
+    );
+
+    it("does not borrow an incoming edge that resolves to a nearer nested package", () => {
+      const lock = {
+        packages: {
+          "": { dependencies: { carrier: "1.0.0" } },
+          "node_modules/carrier": { version: "1.0.0", dependencies: { undici: "^8.10.2" } },
+          "node_modules/carrier/node_modules/undici": { version: "8.12.2" },
+          "node_modules/undici": { version: "8.10.2" },
+        },
+      };
+      const rules = exactOverrideRulesFromOverrides({ "undici@>=8 <8.12.2": "8.12.2" });
+      expect(collectOverrideViolations(lock, rules)).toEqual([]);
+    });
+
+    it("preserves first matching ranged selectors and ignores unrelated major versions", () => {
+      const lock = {
+        packages: {
+          "": { dependencies: { carrier: "1.0.0", legacy: "1.0.0" } },
+          "node_modules/carrier": { version: "1.0.0", dependencies: { undici: "^8.10.2" } },
+          "node_modules/undici": { version: "8.12.2" },
+          "node_modules/legacy": { version: "1.0.0", dependencies: { undici: "^7.0.0" } },
+          "node_modules/legacy/node_modules/undici": { version: "7.30.1" },
+        },
+      };
+      const rules = exactOverrideRulesFromOverrides({
+        "undici@^8.10.2": "8.12.2",
+        "undici@>=8": "8.99.0",
+      });
+      expect(collectOverrideViolations(lock, rules)).toEqual([]);
+    });
+
+    it.each([false, true])(
+      "does not hide conflicting incoming requirements on a shared hoisted entry (plain fallback=%s)",
+      (plainFallback) => {
+        const lock = {
+          packages: {
+            "": { dependencies: { first: "1.0.0", second: "1.0.0" } },
+            "node_modules/first": { version: "1.0.0", dependencies: { undici: "8.10.2" } },
+            "node_modules/second": { version: "1.0.0", dependencies: { undici: "8.11.0" } },
+            "node_modules/undici": { version: "8.12.2" },
+          },
+        };
+        const rules = exactOverrideRulesFromOverrides({
+          "undici@>=8 <8.11": "8.12.2",
+          [plainFallback ? "undici" : "undici@>=8.11 <9"]: "8.13.0",
+        });
+        expect(collectOverrideViolations(lock, rules)).toEqual([
+          expect.objectContaining({
+            path: "node_modules/undici",
+            actualVersion: "8.12.2",
+            expectedVersion: "8.13.0",
+          }),
+        ]);
+        lock.packages["node_modules/undici"].version = "8.13.0";
+        expect(collectOverrideViolations(lock, rules)).toEqual([
+          expect.objectContaining({ expectedVersion: "8.12.2" }),
+        ]);
+      },
+    );
+
+    it("retains proven scoped exceptions over a matching global ranged rule", () => {
+      const lock = fixture();
+      const rules = exactOverrideRulesFromOverrides({
+        "qs@>=6 <7": "6.16.0",
+        "body-parser@2.4.0>qs": "6.16.1",
+      });
+      expect(collectOverrideViolations(lock, rules)).toEqual([]);
+      lock.packages["node_modules/body-parser/node_modules/qs"].version = "6.16.0";
+      expect(collectOverrideViolations(lock, rules)).toEqual([
+        expect.objectContaining({
+          path: "node_modules/body-parser/node_modules/qs",
+          expectedVersion: "6.16.1",
+        }),
+      ]);
+    });
+
+    it("uses optional dependency edges and the original version selector", () => {
+      const lock = fixture();
+      const parent: Record<string, unknown> = lock.packages["node_modules/body-parser"];
+      parent.optionalDependencies = parent.dependencies;
+      delete parent.dependencies;
+      const rules = exactOverrideRulesFromOverrides({
+        qs: "6.16.0",
+        "body-parser@2.4.0>qs@^6.14.0": "6.16.1",
+      });
+      expect(collectOverrideViolations(lock, rules)).toEqual([]);
+      parent.optionalDependencies = { qs: "^5.0.0" };
+      expect(collectOverrideViolations(lock, rules)).toHaveLength(1);
+    });
+
+    it("prefers the nearest proven nested scope and enforces object self pins", () => {
+      const lock = {
+        packages: {
+          "node_modules/outer": {
+            version: "1.0.0",
+            dependencies: { inner: "2.0.0", qs: "^6.0.0" },
+          },
+          "node_modules/outer/node_modules/qs": { version: "6.16.1" },
+          "node_modules/outer/node_modules/inner": {
+            version: "2.0.0",
+            dependencies: { qs: "^6.0.0" },
+          },
+          "node_modules/outer/node_modules/inner/node_modules/qs": { version: "6.16.2" },
+        },
+      };
+      const rules = exactOverrideRulesFromOverrides({
+        qs: "6.16.0",
+        outer: { ".": "1.0.0", qs: "6.16.1", "inner@2.0.0": { ".": "2.0.0", qs: "6.16.2" } },
+      });
+      expect(collectOverrideViolations(lock, rules)).toEqual([]);
+      lock.packages["node_modules/outer"].version = "1.1.0";
+      expect(collectOverrideViolations(lock, rules)).toEqual([
+        expect.objectContaining({ packageName: "outer", expectedVersion: "1.0.0" }),
+      ]);
+    });
+
+    it("preserves first matching parent and child selectors instead of merging sibling contexts", () => {
+      const lock = fixture();
+      const parentFirst = exactOverrideRulesFromOverrides({
+        qs: "6.16.0",
+        "body-parser@^2": { unrelated: "1.0.0" },
+        "body-parser@2.4.0": { qs: "6.16.1" },
+      });
+      expect(collectOverrideViolations(lock, parentFirst)).toHaveLength(1);
+      const childFirst = exactOverrideRulesFromOverrides({
+        qs: "6.16.0",
+        "body-parser@2.4.0": { "qs@^6": "6.16.2", qs: "6.16.1" },
+      });
+      expect(collectOverrideViolations(lock, childFirst)).toEqual([
+        expect.objectContaining({ expectedVersion: "6.16.2" }),
+      ]);
+    });
+
+    it.each([false, true])(
+      "prefers inherited nested context over a global parent context (outerFirst=%s)",
+      (outerFirst) => {
+        const outer = { outer: { inner: { qs: "6.16.2" } } };
+        const inner = { inner: { qs: "6.16.1" } };
+        const rules = exactOverrideRulesFromOverrides({
+          qs: "6.16.0",
+          ...(outerFirst ? { ...outer, ...inner } : { ...inner, ...outer }),
+        });
+        const lock = {
+          packages: {
+            "node_modules/outer": { version: "1.0.0", dependencies: { inner: "1.0.0" } },
+            "node_modules/outer/node_modules/inner": {
+              version: "1.0.0",
+              dependencies: { qs: "^6.0.0" },
+            },
+            "node_modules/outer/node_modules/inner/node_modules/qs": { version: "6.16.2" },
+          },
+        };
+        expect(collectOverrideViolations(lock, rules)).toEqual([]);
+        lock.packages["node_modules/outer/node_modules/inner/node_modules/qs"].version = "6.16.1";
+        expect(collectOverrideViolations(lock, rules)).toHaveLength(1);
+      },
+    );
+
+    it("retains global exact validation when unsupported shadowing cannot prove a replacement", () => {
+      const rules = exactOverrideRulesFromOverrides({ "qs@^6": "^6.16.0", qs: "6.16.0" });
+      const lock = {
+        packages: {
+          "": { dependencies: { qs: "^6" } },
+          "node_modules/qs": { version: "6.16.0" },
+          "node_modules/constructor": { version: "1.0.0" },
+        },
+      };
+      expect(collectOverrideViolations(lock, rules)).toEqual([]);
+      lock.packages["node_modules/qs"].version = "9.9.9";
+      expect(collectOverrideViolations(lock, rules)).toHaveLength(1);
+    });
+
+    it("validates scoped alias target identity as well as its exact version", () => {
+      const lock = {
+        packages: {
+          "node_modules/parser": {
+            name: "body-parser",
+            version: "2.4.0",
+            dependencies: { query: "npm:qs@^6.0.0" },
+          },
+          "node_modules/parser/node_modules/query": { name: "@trusted/qs", version: "6.16.1" },
+        },
+      };
+      const rules = exactOverrideRulesFromOverrides({
+        query: "6.16.0",
+        parser: { ".": "npm:body-parser@2.4.0", query: "npm:@trusted/qs@6.16.1" },
+      });
+      expect(collectOverrideViolations(lock, rules)).toEqual([]);
+      lock.packages["node_modules/parser/node_modules/query"].name = "unrelated";
+      expect(collectOverrideViolations(lock, rules)).toHaveLength(1);
+      lock.packages["node_modules/parser/node_modules/query"].name = "@trusted/qs";
+      lock.packages["node_modules/parser/node_modules/query"].version = "6.16.0";
+      expect(collectOverrideViolations(lock, rules)).toHaveLength(1);
+    });
+
+    it("does not exempt an ambiguous hoisted child or invalidate valid shrinkwraps", () => {
+      const lock: { packages: Record<string, Record<string, unknown>> } = fixture();
+      lock.packages["node_modules/body-parser"].hasShrinkwrap = true;
+      const rules = exactOverrideRulesFromOverrides(policy);
+      expect(disableDependencyShrinkwrapOverrideConflictSources(lock, rules)).toEqual([]);
+      expect(lock.packages["node_modules/body-parser"].hasShrinkwrap).toBe(true);
+      delete lock.packages["node_modules/body-parser/node_modules/qs"];
+      lock.packages["node_modules/qs"].version = "6.16.1";
+      expect(collectOverrideViolations(lock, rules)).toHaveLength(1);
+    });
+  });
+
   it("disables embedded shrinkwraps that hide workspace overrides under npm 11", () => {
     const lockfile = {
       packages: {

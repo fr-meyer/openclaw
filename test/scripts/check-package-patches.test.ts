@@ -128,6 +128,10 @@ describe("check-package-patches", () => {
 
   it("allows approved pnpm patches together", () => {
     const approvedPatches = [
+      ["@a2ui/lit@0.11.0", "patches/@a2ui__lit@0.11.0.patch"],
+      ["@a2ui/web_core@0.11.0", "patches/@a2ui__web_core@0.11.0.patch"],
+      ["@discord/embedded-app-sdk@2.5.0", "patches/@discord__embedded-app-sdk@2.5.0.patch"],
+      ["zod@4.6.6", "patches/zod@4.6.6.patch"],
       ["@awesome.me/webawesome@3.13.0", "patches/@awesome.me__webawesome@3.13.0.patch"],
       ["baileys@7.0.0-rc12", "patches/baileys@7.0.0-rc12.patch"],
       ["baileys@7.0.0-rc13", "patches/baileys@7.0.0-rc13.patch"],
@@ -163,6 +167,10 @@ ${approvedPatches.map(([specifier]) => `  "${specifier}": a9aea1790d2c65b1ae543c
   });
 
   it.each([
+    ["@a2ui/web_core@0.99.0", "patches/@a2ui__web_core@0.99.0.patch"],
+    ["@discord/embedded-app-sdk@2.5.0", "patches/@discord__embedded-app-sdk@2.5.0-other.patch"],
+    ["zod@4.6.7", "patches/zod@4.6.7.patch"],
+    ["zod@4.6.6", "patches/zod@4.6.6-unreviewed.patch"],
     ["left-pad@1.3.0", "patches/left-pad@1.3.0.patch"],
     ["matrix-js-sdk@42.4.1", "patches/matrix-js-sdk@42.4.1.patch"],
     ["matrix-js-sdk@42.4.0", "patches/matrix-js-sdk@42.4.0-other.patch"],
