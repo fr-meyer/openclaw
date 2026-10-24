@@ -258,6 +258,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         new = step(self.workflow, 'Set up bounded hosted Docker Buildx')
         self.assertNotIn('if:', new)
         self.assertIn('driver: docker-container', new)
+        self.assertIn('version: v0.38.0', new)
+        self.assertIn('image=moby/buildkit@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea', new)
         opts = dict(re.findall(r'^            ([a-z-]+)=([0-9]+)$', new, re.M))
         self.assertEqual(opts, {'memory': str(8 << 30), 'memory-swap': str(8 << 30),
                                 'cpu-period': '100000', 'cpu-quota': '400000'})

@@ -114,21 +114,31 @@ sys.path.insert(0,os.environ['FIXTURE_OWNER'])
 import private_oci_transfer as owner
 configuration=json.loads(Path(os.environ['FIXTURE_PROVIDER']).read_bytes())
 class Response:
-    def __init__(self,status): self.status=status
-    def getheaders(self): return [('x-goog-generation','7'),('content-length','0')]
-    def read(self,size): return b''
+    def __init__(self,status,data=b''): self.status=status;self.data=data;self.offset=0
+    def getheaders(self): return [('x-goog-generation','7'),('content-length',str(len(self.data)))]
+    def read(self,size):
+        chunk=self.data[self.offset:self.offset+size];self.offset+=len(chunk);return chunk
 class Connection:
     def __init__(self): self.headers={};self.sent=bytearray();self.method=None
     def putrequest(self,method,target,**options):
-        if method!='PUT' or target!=configuration['target']: raise OSError('fixture scope refusal')
+        if method!=configuration.get('method','PUT') or target!=configuration['target']: raise OSError('fixture scope refusal')
         self.method=method
     def putheader(self,key,value): self.headers[key]=value
     def endheaders(self):
+        if self.method=='GET':
+            if self.headers!={'host':owner.HOST}: raise OSError('fixture get header refusal')
+            return
         if self.headers!={'host':owner.HOST,'content-type':'application/octet-stream',
             'x-goog-content-length-range':'1,2147483648','x-goog-if-generation-match':'0',
             'content-length':str(configuration['bytes'])}: raise OSError('fixture header refusal')
     def send(self,chunk): self.sent.extend(chunk)
     def getresponse(self):
+        if self.method=='GET':
+            raw=Path(configuration['object']).read_bytes()
+            Path(configuration['trace']).write_text(json.dumps({'method':self.method,'bytes':len(raw),
+                'sha256':hashlib.sha256(raw).hexdigest(),'mode':configuration['mode']}))
+            if configuration['mode']=='http_failure': return Response(503)
+            return Response(200,raw)
         raw=bytes(self.sent)
         if len(raw)!=configuration['bytes'] or hashlib.sha256(raw).hexdigest()!=configuration['sha256']:
             raise OSError('fixture byte refusal')
@@ -311,6 +321,53 @@ class FailureFlow:
                          FIXTURE_PRIVATE_CAPABILITY=capability),
             capture_output=True, text=True, timeout=10)
 
+    def download(self):
+        """Use the actual generation-pinned GET CLI against the same fixture object."""
+        from urllib.parse import urlencode, urlsplit
+        result = json.loads(self.f.receipt.read_bytes())
+        object_name = f"oci-quarantine/v2026.10.5/{packer.SOURCE}/fixture/retained-oci.tar"
+        query = {"X-Goog-Algorithm": "GOOG4-RSA-SHA256",
+            "X-Goog-Credential": "fixture-signer@fixture-project.iam.gserviceaccount.com/20261024/auto/storage/goog4_request",
+            "X-Goog-Date": "20261024T120000Z", "X-Goog-Expires": "600",
+            "X-Goog-SignedHeaders": "host", "X-Goog-Signature": "b" * 512, "generation": "7"}
+        url = f"https://{transfer.HOST}/fixture-private-bucket/{object_name}?{urlencode(query)}"
+        destination = self.root / "receiver-download"
+        destination.mkdir(mode=0o700)
+        self.downloaded_archive = destination / "retained-oci.tar"
+        plan = {"schema": "openclaw.private-oci-transfer-plan.v1", "sourceSha": packer.SOURCE,
+            "toolingSha": WORKFLOW, "runId": "123", "attempt": "1",
+            "archiveSha256": result["archiveSha256"], "archiveBytes": result["archiveBytes"],
+            "bucket": "fixture-private-bucket", "object": object_name,
+            "signer": "fixture-signer@fixture-project.iam.gserviceaccount.com", "generation": "7"}
+        plan_path = destination / "get-plan.json"
+        plan_path.write_bytes(packer.encoded(plan)); plan_path.chmod(0o600)
+        configuration = {"method": "GET", "target": urlsplit(url).path + "?" + urlsplit(url).query,
+            "bytes": result["archiveBytes"], "sha256": result["archiveSha256"], "mode": "ack",
+            "trace": str(destination / "provider-trace.json"), "object": str(self.provider_object),
+            "calls": str(destination / "provider-calls")}
+        control = destination / "provider.json"
+        control.write_bytes(packer.encoded(configuration)); control.chmod(0o600)
+        process = subprocess.run([sys.executable, "-B", str(self.transfer_adapter), "get",
+            "--plan", str(plan_path), "--plan-sha256", hashlib.sha256(plan_path.read_bytes()).hexdigest(),
+            "--capability-env", "FIXTURE_PRIVATE_CAPABILITY", "--archive", str(self.downloaded_archive),
+            "--receipt", str(destination / "get-receipt.json")], cwd=self.workspace,
+            env=self.env(FIXTURE_OWNER=str(OWNER), FIXTURE_PROVIDER=str(control), FIXTURE_PRIVATE_CAPABILITY=url),
+            capture_output=True, text=True, timeout=15)
+        self.trace.append(("private_download", process.returncode))
+        return process, json.loads(process.stdout)
+
+    def receive(self):
+        """Run the maintained extractor CLI; the fixture signature is not GitHub trust."""
+        retained = json.loads(self.f.receipt.read_bytes())
+        self.received = self.root / "received-export"
+        process = subprocess.run([sys.executable, "-B", str(OWNER / "private_oci_bundle.py"), "extract",
+            "--archive", str(self.downloaded_archive), "--archive-sha256", retained["archiveSha256"],
+            "--archive-bytes", str(retained["archiveBytes"]), "--output-dir", str(self.received),
+            "--output", str(self.root / "receiver-receipt.json")], cwd=self.workspace,
+            capture_output=True, text=True, timeout=15)
+        self.trace.append(("private_receiver", process.returncode))
+        return process, json.loads(process.stdout)
+
     def forbidden_stages(self):
         for name in ("Verify OCI bytes and smoke that exact image", "Bind hosted qualification receipts and export decision",
                      "Prepare and verify the bounded public artifact", "Retain the exact tested OCI payload and public receipt"):
@@ -372,6 +429,84 @@ class PrivateOciFailurePathTests(unittest.TestCase):
             self.assertEqual(flow.trace, [("privacy", 1), ("metadata", 0), ("scope", 0),
                 ("prepare", 0), ("fixture_attest", 0), ("private_offer", 0)])
 
+    def test_whole_export_round_trip_preserves_transport_directories_and_unqualified_unknown_bytes(self):
+        # The directory exporter uses a content store whose completed writes
+        # leave the ingest parent. The extra regular entries model unknown
+        # private diagnostic bytes, not an image-qualification allowlist.
+        for variant in ("bad-subject", "root-and-nested-files", "nonhex-regular-blob"):
+            options = self.rejected_subject() if variant == "bad-subject" else {}
+            with self.subTest(variant=variant), self.flow(**options) as flow:
+                (flow.f.oci / "ingest").mkdir()
+                if variant == "root-and-nested-files":
+                    (flow.f.oci / "fixture-private-name-KEEP-HIDDEN").write_bytes(b"fixture-private-value-KEEP-HIDDEN")
+                    nested = flow.f.oci / "fixture-directory"
+                    nested.mkdir()
+                    (nested / "empty").mkdir()
+                    (nested / "payload").write_bytes(b"opaque fixture nested bytes")
+                elif variant == "nonhex-regular-blob":
+                    (flow.f.oci / "blobs/sha256/fixture-not-a-digest").write_bytes(b"opaque nonhex fixture bytes")
+                original = {path.relative_to(flow.f.oci).as_posix():
+                    ("directory", None) if path.is_dir() else ("file", path.read_bytes())
+                    for path in flow.f.oci.rglob("*")}
+                process, refusal = flow.privacy()
+                self.assertEqual(process.returncode, 1)
+                expected = "provenance_subject_mismatch" if variant == "bad-subject" else "unexpected_export_entry"
+                self.assertEqual(refusal["refusal"], expected)
+                prepared = flow.prepare()
+                self.assertEqual(prepared.returncode, 0, prepared.stdout + prepared.stderr)
+                retained = json.loads(flow.f.receipt.read_bytes())
+                self.assertEqual(retained["schema"], "openclaw.private-oci-bundle.v2")
+                with tarfile.open(flow.f.out / "retained-oci.tar", "r:") as archive:
+                    inventory_raw = archive.extractfile("export-inventory.json").read()
+                    inventory = json.loads(inventory_raw)
+                    self.assertEqual(set(inventory), {"schema", "entries"})
+                    self.assertEqual(inventory["schema"], "openclaw.private-export-inventory.v1")
+                    self.assertEqual(hashlib.sha256(inventory_raw).hexdigest(), retained["exportInventorySha256"])
+                    entries = {entry["path"]: entry for entry in inventory["entries"]}
+                    self.assertEqual(set(entries), set(original))
+                    for name, (kind, data) in original.items():
+                        self.assertEqual(entries[name]["kind"], kind)
+                        if kind == "file":
+                            self.assertEqual(entries[name]["size"], len(data))
+                            self.assertEqual(entries[name]["sha256"], hashlib.sha256(data).hexdigest())
+                    self.assertEqual(entries["ingest"], {"path": "ingest", "kind": "directory"})
+                flow.attest()
+                offered, offered_result = flow.transfer()
+                self.assertEqual(offered.returncode, 0, offered.stdout + offered.stderr)
+                downloaded, downloaded_result = flow.download()
+                self.assertEqual(downloaded.returncode, 0, downloaded.stdout + downloaded.stderr)
+                self.assertEqual(downloaded_result["remoteOutcome"], "download_verified")
+                self.assertFalse(downloaded_result["imageQualified"])
+                self.assertEqual(flow.downloaded_archive.read_bytes(), flow.provider_object.read_bytes())
+                # Verify the same downloaded bytes with the independently
+                # generated public key before invoking the actual receiver.
+                verified = flow.node(VERIFY, flow.downloaded_archive, flow.proof, flow.public_key,
+                    flow.f.out / "origin/build-origin.json", "retained-oci.tar")
+                self.assertEqual(verified.returncode, 0, verified.stderr)
+                received, receipt = flow.receive()
+                self.assertEqual(received.returncode, 0, received.stdout + received.stderr)
+                self.assertEqual(receipt["status"], "extracted_unqualified")
+                self.assertFalse(receipt["qualified"])
+                self.assertFalse(receipt["originAuthenticated"])
+                self.assertFalse(receipt["nativeExecuted"])
+                restored = flow.received / "oci/default"
+                actual = {path.relative_to(restored).as_posix():
+                    ("directory", None) if path.is_dir() else ("file", path.read_bytes())
+                    for path in restored.rglob("*")}
+                self.assertEqual(actual, original)
+                restored_scan = packer.privacy.inspect_layout(restored, flow.f.index, packer.SOURCE, WORKFLOW)
+                self.assertEqual(restored_scan["refusal"], expected)
+                self.assertFalse(restored_scan["inspectionComplete"])
+                self.assertEqual(packer.verify_archive(flow.downloaded_archive, retained["archiveSha256"],
+                    oci_dir=restored, origin_path=flow.received / "origin/build-origin.json",
+                    metadata_path=flow.received / "origin/build-metadata.json", manifest_path=flow.received / "origin/manifest.json",
+                    inventory_path=flow.received / "origin/patch-inventory.json", resources_path=flow.received / "origin/resources.json"
+                )["ociClosureSha256"], retained["ociClosureSha256"])
+                visible = process.stdout + prepared.stdout + downloaded.stdout + received.stdout
+                self.assertNotIn("fixture-private-name-KEEP-HIDDEN", visible)
+                self.assertNotIn("fixture-private-value-KEEP-HIDDEN", visible)
+                self.assert_unqualified(flow, offered_result)
+
     def test_malformed_inner_index_is_retained_without_image_qualification(self):
         with self.flow() as flow:
             (flow.f.oci / "index.json").write_bytes(b"not JSON")
@@ -386,15 +521,13 @@ class PrivateOciFailurePathTests(unittest.TestCase):
                 self.assertEqual(archive.extractfile("oci/default/index.json").read(), b"not JSON")
             self.assert_unqualified(flow, result)
 
-    def test_non_oci_namespace_missing_root_and_links_never_reach_attestation_or_offer(self):
-        for mutation in ("missing-layout", "unexpected-name", "symlink"):
+    def test_missing_required_root_and_unsafe_links_never_reach_attestation_or_offer(self):
+        for mutation in ("missing-layout", "symlink"):
             with self.subTest(mutation=mutation), self.flow(**self.rejected_subject()) as flow:
                 marker = flow.root / "unrelated-owned-marker"
                 marker.write_bytes(b"preserve fixture")
                 if mutation == "missing-layout":
                     (flow.f.oci / "oci-layout").unlink()
-                elif mutation == "unexpected-name":
-                    (flow.f.oci / "unexpected-name").write_bytes(b"not OCI namespace")
                 else:
                     (flow.f.oci / "blobs/sha256" / ("e" * 64)).symlink_to(marker)
                 self.assertEqual(flow.privacy()[0].returncode, 1)

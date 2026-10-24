@@ -120,6 +120,8 @@ class Limits:
     tar_metadata_bytes: int = 64 * 1024
     json_nodes: int = 1000000
     findings: int = 64
+    export_entries: int = 2048
+    export_depth: int = 16
 
 
 class Refusal(Exception):
@@ -129,6 +131,182 @@ class Refusal(Exception):
 def require(condition, code):
     if not condition:
         raise Refusal(code)
+
+
+def _directory_fingerprint(info):
+    return tuple(getattr(info, key) for key in
+                 ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_size", "st_mtime_ns", "st_ctime_ns"))
+
+
+def _entry_type(info):
+    if stat.S_ISLNK(info.st_mode):
+        return "symlink"
+    if stat.S_ISDIR(info.st_mode):
+        return "directory"
+    if stat.S_ISREG(info.st_mode):
+        return "regular"
+    return "special"
+
+
+def capture_empty_ingest(directory):
+    """Snapshot only an absent or genuinely empty, nonlink root ingest store.
+
+    This is transport metadata, not a namespace or content allowlist. The token
+    stays private in the caller; no path, entry name or inode enters diagnostics.
+    """
+    root = Path(directory)
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(descriptor)
+        require(stat.S_ISDIR(before.st_mode), "unsafe_export_root")
+        try:
+            entry = os.stat("ingest", dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            entry = None
+        if entry is not None:
+            require(stat.S_ISDIR(entry.st_mode) and not stat.S_ISLNK(entry.st_mode), "unsafe_export_ingest")
+            child = os.open("ingest", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                            dir_fd=descriptor)
+            try:
+                current = os.fstat(child)
+                require(_directory_fingerprint(current) == _directory_fingerprint(entry), "export_transport_changed")
+                with os.scandir(child) as entries:
+                    require(next(entries, None) is None, "nonempty_export_ingest")
+                require(_directory_fingerprint(current) == _directory_fingerprint(os.fstat(child)) and
+                        _directory_fingerprint(current) == _directory_fingerprint(
+                            os.stat("ingest", dir_fd=descriptor, follow_symlinks=False)), "export_transport_changed")
+                token = _directory_fingerprint(current)
+            finally:
+                os.close(child)
+        else:
+            token = None
+        after = os.fstat(descriptor)
+        require(_directory_fingerprint(before) == _directory_fingerprint(after) and
+                _directory_fingerprint(after) == _directory_fingerprint(root.lstat()), "export_transport_changed")
+        return _directory_fingerprint(after), token
+    finally:
+        os.close(descriptor)
+
+
+def require_unchanged_empty_ingest(directory, snapshot):
+    require(capture_empty_ingest(directory) == snapshot, "export_transport_changed")
+
+
+def inspect_export_structure(directory, limits=None):
+    """Bounded metadata-only inventory; never follow links or expose names.
+
+    Complete traversal does not admit OCI graph/content semantics. Unsafe entry
+    types are counted without following them, and still refuse the structure.
+    Limits stop traversal with explicitly incomplete aggregate coverage.
+    """
+    selected = limits or Limits()
+    counts = dict.fromkeys(("entries", "directories", "regularFiles", "symlinks", "hardlinkedFiles",
+                            "specialFiles", "regularFileBytes", "allocatedFileBytes", "blobFiles", "blobBytes"), 0)
+    roots = {name: {"present": False, "type": "absent"}
+             for name in ("ociLayout", "indexJson", "blobs")}
+    roots["ingest"] = {"present": False, "type": "absent", "genuinelyEmpty": False}
+    known = {"oci-layout": "ociLayout", "index.json": "indexJson", "blobs": "blobs", "ingest": "ingest"}
+    result = {"schema": "openclaw.oci-export-structure.v1", "status": "refused", "reason": None,
+              "counts": counts,
+              "coverage": {"traversalComplete": False, "byteCountsComplete": False,
+                           "metadataOnly": True, "linksFollowed": False},
+              "limits": {"entries": 2048, "depth": 16, "blobs": Limits().blobs}, "knownRoot": roots}
+    reason, complete, root_fd = None, False, None
+
+    class StopTraversal(Exception):
+        pass
+
+    def note(code):
+        nonlocal reason
+        if reason is None:
+            reason = code
+
+    def visit(descriptor, depth, scope=None):
+        nonlocal reason
+        before = os.fstat(descriptor)
+        children = 0
+        with os.scandir(descriptor) as entries:
+            for entry in entries:
+                if counts["entries"] >= selected.export_entries:
+                    reason = "export_entry_limit"
+                    raise StopTraversal()
+                info = entry.stat(follow_symlinks=False)
+                kind = _entry_type(info)
+                counts["entries"] += 1
+                children += 1
+                if depth == 0 and entry.name in known:
+                    roots[known[entry.name]].update(present=True, type=kind)
+                if kind == "symlink":
+                    counts["symlinks"] += 1
+                    note("export_symlink")
+                    continue
+                if kind == "special":
+                    counts["specialFiles"] += 1
+                    note("export_special_type")
+                    continue
+                if kind == "regular":
+                    counts["regularFiles"] += 1
+                    counts["regularFileBytes"] += info.st_size
+                    counts["allocatedFileBytes"] += getattr(info, "st_blocks", 0) * 512
+                    if info.st_nlink != 1:
+                        counts["hardlinkedFiles"] += 1
+                        note("export_hardlink")
+                    if scope == "blobStore":
+                        counts["blobFiles"] += 1
+                        counts["blobBytes"] += info.st_size
+                    continue
+                counts["directories"] += 1
+                if depth >= selected.export_depth:
+                    reason = "export_depth_limit"
+                    raise StopTraversal()
+                child_scope = ("blobs" if depth == 0 and entry.name == "blobs" else
+                               "blobStore" if scope == "blobs" and entry.name == "sha256" else None)
+                child = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                                dir_fd=descriptor)
+                try:
+                    require(_directory_fingerprint(info) == _directory_fingerprint(os.fstat(child)),
+                            "export_structure_changed")
+                    child_count = visit(child, depth + 1, child_scope)
+                    require(_directory_fingerprint(info) == _directory_fingerprint(
+                        os.stat(entry.name, dir_fd=descriptor, follow_symlinks=False)), "export_structure_changed")
+                    if depth == 0 and entry.name == "ingest":
+                        roots["ingest"]["genuinelyEmpty"] = child_count == 0
+                finally:
+                    os.close(child)
+        require(_directory_fingerprint(before) == _directory_fingerprint(os.fstat(descriptor)),
+                "export_structure_changed")
+        return children
+
+    try:
+        require(type(selected.export_entries) is int and 0 < selected.export_entries <= 2048 and
+                type(selected.export_depth) is int and 0 < selected.export_depth <= 16 and
+                type(selected.blobs) is int and 0 <= selected.blobs <= Limits().blobs,
+                "invalid_export_structure_limits")
+        result["limits"] = {"entries": selected.export_entries, "depth": selected.export_depth, "blobs": selected.blobs}
+        root = Path(directory)
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        initial = os.fstat(root_fd)
+        require(stat.S_ISDIR(initial.st_mode), "unsafe_export_root")
+        visit(root_fd, 0)
+        require(_directory_fingerprint(initial) == _directory_fingerprint(root.lstat()), "export_structure_changed")
+        complete = True
+    except StopTraversal:
+        pass
+    except Refusal as error:
+        reason = str(error)
+    except (OSError, ValueError, TypeError, AttributeError, OverflowError):
+        reason = "export_structure_unreadable"
+    finally:
+        if root_fd is not None:
+            os.close(root_fd)
+    if not complete:
+        roots["ingest"]["genuinelyEmpty"] = False
+    result["status"] = "complete" if complete and reason is None else "refused"
+    result["reason"] = reason
+    result["coverage"]["traversalComplete"] = complete
+    result["coverage"]["byteCountsComplete"] = complete and not any(
+        counts[key] for key in ("symlinks", "specialFiles", "hardlinkedFiles"))
+    return result
 
 
 def sha256(data):
@@ -278,6 +456,7 @@ class Inspector:
         self.qualified_public_members = {}
         self.provenance_subjects_observed = 0
         self.provenance_subject_diagnostics = None
+        self.export_transport_snapshot = _MISSING
 
     def enable_public_member_qualification(self):
         plan, trusted = self.public_comparisons, PUBLIC_MEMBER_QUALIFICATION
@@ -722,8 +901,14 @@ class Inspector:
     def verify_export_closure(self):
         # The workflow exports the entire layout. Reject extras instead of
         # silently approving uninspected files or orphaned blobs in that folder.
+        if self.export_transport_snapshot is _MISSING:
+            self.export_transport_snapshot = capture_empty_ingest(self.directory)
+        require_unchanged_empty_ingest(self.directory, self.export_transport_snapshot)
+        expected_root = {"oci-layout", "index.json", "blobs"}
+        if self.export_transport_snapshot[1] is not None:
+            expected_root.add("ingest")
         for directory, expected in (
-                (self.directory, {"oci-layout", "index.json", "blobs"}),
+                (self.directory, expected_root),
                 (self.directory / "blobs", {"sha256"}),
                 (self.directory / "blobs" / "sha256", {digest[7:] for digest in self.blobs})):
             seen = set()
@@ -733,6 +918,7 @@ class Inspector:
                     seen.add(entry.name)
                     require(len(seen) <= self.limits.blobs + 3, "export_entry_limit")
             require(seen == expected, "missing_export_entry")
+        require_unchanged_empty_ingest(self.directory, self.export_transport_snapshot)
 
     def attestation_config(self, manifest, image):
         config = manifest.get("config")
@@ -759,6 +945,7 @@ class Inspector:
         return value
 
     def run(self):
+        self.export_transport_snapshot = capture_empty_ingest(self.directory)
         require(type(self.limits.findings) is int and 0 <= self.limits.findings <= MAX_REPRESENTATIVES,
                 "invalid_representative_limit")
         require(isinstance(self.index_digest, str) and DIGEST.fullmatch(self.index_digest), "invalid_index_digest")
@@ -839,8 +1026,10 @@ def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limi
                    qualify_public_members=False):
     """Return sanitized receipt; callers must require passed AND inspectionComplete."""
     inspector = Inspector(oci_dir, expected_index_digest, source_sha, tooling_sha, limits or Limits())
+    structure = inspect_export_structure(oci_dir, inspector.limits)
     complete, error = False, None
     try:
+        require(structure["status"] == "complete", structure["reason"] or "export_structure_refused")
         require(type(qualify_public_members) is bool, "invalid_public_member_qualification_mode")
         if public_comparisons is not None:
             inspector.load_public_comparisons(public_comparisons)
@@ -862,6 +1051,7 @@ def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limi
         "schema": "openclaw.hosted-privacy.v2",
         "status": "passed" if complete and inspector.finding_total == 0 and qualification_satisfied else "failed",
         "inspectionComplete": complete,
+        "exportStructure": structure,
         "indexDigest": expected_index_digest if isinstance(expected_index_digest, str) and DIGEST.fullmatch(expected_index_digest) else None,
         "sourceSha": source_sha if isinstance(source_sha, str) and SHA.fullmatch(source_sha) else None,
         "toolingSha": tooling_sha if isinstance(tooling_sha, str) and SHA.fullmatch(tooling_sha) else None,
@@ -906,6 +1096,10 @@ def main():
     parser.add_argument("--qualify-public-members", action="store_true",
                         help="Qualify only the code-pinned public manifest/source and permitted member-body rules")
     args = parser.parse_args()
+    # Persist a bounded safe namespace observation before any expensive parsing
+    # or decompression. The data-only owner independently binds a fresh view.
+    print(json.dumps({"recordType": "export_structure",
+                      **inspect_export_structure(args.oci_dir)}), flush=True)
     result = inspect_layout(args.oci_dir, args.expected_index_digest, args.source_sha, args.tooling_sha,
                             public_comparisons=args.public_comparisons, qualify_public_members=args.qualify_public_members)
     encoded = json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n"

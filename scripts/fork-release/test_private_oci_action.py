@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import shutil
 import unittest
 
 from test_private_oci_bundle import Fixture, WORKFLOW, BUILT
@@ -109,12 +110,19 @@ class PrivateOciActionTests(unittest.TestCase):
         helper = root / "scripts/fork-release/private_oci_bundle.py"
         helper.parent.mkdir(parents=True)
         helper.write_text("import json,sys\n" + body)
+        shutil.copyfile(Path(__file__).with_name("hosted_privacy.py"), helper.with_name("hosted_privacy.py"))
         return str(action)
 
     def assert_failed_preparation_is_closed(self, result, output, followup, *, code, reason):
         self.assertEqual(result.returncode, code, result.stdout + result.stderr)
-        self.assertEqual(json.loads(result.stdout), {
+        records = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(records[0]["recordType"], "export_structure")
+        self.assertNotIn("path", records[0])
+        diagnostic = records[-1]
+        self.assertEqual({key: diagnostic[key] for key in ("status", "reason", "stage")}, {
             "status": "failed", "reason": reason, "stage": "private_oci_prepare"})
+        if "refusalCode" in diagnostic:
+            self.assertIn(diagnostic["refusalCode"], __import__("private_oci_bundle").PUBLIC_REFUSAL_CODES)
         self.assertEqual(result.stderr, "")
         self.assertFalse(output.exists())
         self.assertFalse(followup.exists())
@@ -132,7 +140,9 @@ class PrivateOciActionTests(unittest.TestCase):
             self.assertTrue(Path(str(fixture.out) + "-retention.json").is_file())
             self.assertFalse((fixture.out / "retention.json").exists())
             self.assertIn("sha256=", output.read_text())
-            diagnostic = json.loads(result.stdout)
+            records = [json.loads(line) for line in result.stdout.splitlines()]
+            self.assertEqual(records[0]["recordType"], "export_structure")
+            diagnostic = records[-1]
             self.assertEqual(set(diagnostic), {"status", "stage", "archiveSha256", "archiveBytes"})
             self.assertEqual(diagnostic["status"], "prepared")
             self.assertEqual(diagnostic["stage"], "private_oci_prepare")

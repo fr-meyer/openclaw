@@ -84,6 +84,52 @@ class HostedBundleTests(unittest.TestCase):
             self.assertIsNone(archive.testzip())
         self.assertEqual(bundle.verify(self.receipt, self.output), result)
 
+    def test_actual_bundle_cli_accepts_only_empty_ingest_without_archiving_metadata_directory(self):
+        (self.layout.directory / "ingest").mkdir()
+        command = [sys.executable, "-B", str(Path(bundle.__file__).resolve()), "prepare",
+                   "--root", str(self.root), "--output-dir", str(self.output), "--output", str(self.receipt)]
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
+        result = json.loads(completed.stdout)
+        with zipfile.ZipFile(result["bundlePath"]) as archive:
+            self.assertNotIn("oci/default/ingest", archive.namelist())
+            self.assertTrue(all(not name.startswith("oci/default/ingest/") for name in archive.namelist()))
+        self.assertEqual(bundle.verify(self.receipt, self.output)["sha256"], result["sha256"])
+
+    def test_bundle_rejects_nonempty_regular_or_linked_ingest(self):
+        ingest = self.layout.directory / "ingest"
+        outside = self.base / "outside-ingest"
+        outside.mkdir()
+        for kind in ("nonempty", "regular", "symlink"):
+            if kind == "nonempty":
+                ingest.mkdir()
+                (ingest / "writer.lock").write_text("synthetic")
+            elif kind == "regular":
+                ingest.write_text("synthetic")
+            else:
+                ingest.symlink_to(outside, target_is_directory=True)
+            with self.subTest(kind=kind), self.assertRaises((bundle.Refusal, privacy.Refusal, OSError)):
+                self.prepare()
+            self.assert_no_publishable_output()
+            if kind == "nonempty":
+                (ingest / "writer.lock").unlink()
+                ingest.rmdir()
+            else:
+                ingest.unlink()
+
+    def test_bundle_rechecks_empty_ingest_identity_after_streaming(self):
+        ingest = self.layout.directory / "ingest"
+        ingest.mkdir()
+        original = bundle.write_zip
+        def replace_then_stream(inputs, specs, path, limit):
+            ingest.rename(self.base / "old-ingest")
+            ingest.mkdir()
+            return original(inputs, specs, path, limit)
+        with patch.object(bundle, "write_zip", side_effect=replace_then_stream), \
+                self.assertRaisesRegex(privacy.Refusal, "export_transport_changed"):
+            self.prepare()
+        self.assert_no_publishable_output()
+
     def test_complete_archive_boundary_inclusive_and_one_byte_over(self):
         first = self.prepare()
         size = first["sizeBytes"]

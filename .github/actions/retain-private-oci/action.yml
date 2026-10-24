@@ -120,12 +120,20 @@ runs:
         refusal = "private_bundle_invalid_changed_or_over_limit"
         unavailable = "private_prepare_diagnostic_unavailable"
 
-        def failed(reason):
-            print(json.dumps({"status": "failed", "reason": reason, "stage": stage}, sort_keys=True))
+        def failed(reason, code=None):
+            value = {"status": "failed", "reason": reason, "stage": stage}
+            if code is not None:
+                value["refusalCode"] = code
+            print(json.dumps(value, sort_keys=True))
 
         try:
             root = Path(os.environ["OUTPUT_DIRECTORY"])
             helper = Path(os.environ["GITHUB_ACTION_PATH"], "../../../scripts/fork-release/private_oci_bundle.py")
+            sys.path.insert(0, str(helper.resolve().parent))
+            import hosted_privacy
+            allowed_codes = frozenset(('output_identity_changed', 'archive_changed', 'archive_hash', 'archive_hash_changed', 'archive_hash_mismatch', 'archive_header_changed', 'archive_member_changed', 'archive_not_private_regular_or_size', 'archive_padding_changed', 'archive_permissions', 'archive_size_limit', 'archive_tail_changed', 'archive_truncated', 'archive_type_or_size', 'artifact_name', 'blob_count_limit', 'blob_digest_mismatch', 'blob_size_changed', 'build_time', 'bundle_changed', 'bundle_directory_permissions', 'bundle_directory_type', 'bundle_identity', 'bundle_permissions', 'bundle_receipt_changed', 'bundle_receipt_permissions', 'bundle_receipt_schema', 'bundle_size_limit', 'control_hash_changed', 'control_paths', 'control_size', 'docker_descriptor_binding', 'docker_metadata_binding', 'expected_hash', 'expected_identity', 'expected_producer_changed', 'expected_size', 'export_entry_limit', 'export_inventory_changed', 'export_inventory_invalid', 'export_inventory_parent', 'export_path_refused', 'export_qualification_changed_or_not_approved', 'export_type_or_link', 'incomplete_namespace', 'input_changed', 'input_count_limit', 'input_digest_changed', 'input_directory_type', 'input_hardlink', 'input_invalid', 'input_path', 'input_root_changed', 'input_root_symlink', 'input_type_or_size', 'invalid_arguments', 'invalid_header', 'invalid_size_limit', 'inventory_binding', 'inventory_member_hash', 'inventory_member_mismatch', 'inventory_parent_missing', 'io_refused', 'manifest_binding', 'member_namespace_refused', 'member_not_allowed', 'member_order_or_duplicate', 'member_size', 'metadata_privacy_findings', 'missing_input', 'missing_oci_entry', 'noncanonical_archive_size', 'noncanonical_or_nonregular_header', 'nonzero_archive_tail', 'nonzero_member_padding', 'oci_image_binding_changed', 'oci_inventory_changed', 'origin_binding', 'origin_hashes', 'original_control_changed', 'output_directory_not_fresh', 'output_exists', 'output_overlap', 'output_overlaps_input', 'output_owner', 'parent_not_private_owned', 'path_identity_changed', 'path_not_canonical', 'paths_overlap', 'producer_binding', 'read_bound_or_truncated', 'receipt_exists', 'receipt_overlaps_bundle_or_input', 'receipt_privacy_findings', 'receipt_short_write', 'resources_binding', 'unexpected_bundle_file', 'unexpected_control_file', 'unexpected_input'))
+            structure = hosted_privacy.inspect_export_structure(os.environ["OCI_DIRECTORY"])
+            print(json.dumps({"recordType": "export_structure", **structure}, sort_keys=True), flush=True)
             command = [sys.executable, "-B", str(helper), "prepare-from-build"]
             for name, value in (
                 ("manifest", os.environ["MANIFEST"]), ("inventory", os.environ["INVENTORY"]),
@@ -149,7 +157,8 @@ runs:
                 value = None
             if completed.returncode != 0:
                 reason = refusal if isinstance(value, dict) and value.get("status") == "failed" and value.get("reason") == refusal else unavailable
-                failed(reason)
+                code = value.get("refusalCode") if isinstance(value, dict) else None
+                failed(reason, code if isinstance(code, str) and code in allowed_codes else "input_invalid")
                 raise SystemExit(completed.returncode if completed.returncode > 0 else 128 - completed.returncode)
             result = json.loads(Path(str(root) + "-retention.json").read_bytes())
             digest, size = result.get("archiveSha256"), result.get("archiveBytes")

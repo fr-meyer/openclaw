@@ -246,8 +246,8 @@ class PrivateOciBundleTests(unittest.TestCase):
                 self.assertNotIn(str(f.base), result.stdout)
                 self.assertFalse(f.receipt.exists())
 
-    def test_extra_oci_symlink_hardlink_and_wrong_digest_are_refused(self):
-        for mutation in ("extra", "symlink", "hardlink", "digest"):
+    def test_oci_symlink_hardlink_and_wrong_digest_are_refused(self):
+        for mutation in ("symlink", "hardlink", "digest"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
                 f = Fixture(tmp)
                 blob = next((f.oci / "blobs/sha256").iterdir())
@@ -266,6 +266,30 @@ class PrivateOciBundleTests(unittest.TestCase):
                     f.prepare()
                 self.assertFalse(f.receipt.exists())
                 self.assertFalse((f.out / private.NAME).exists())
+
+    def test_complete_typed_inventory_keeps_empty_and_unknown_export_entries(self):
+        (self.f.oci / "ingest").mkdir()
+        (self.f.oci / "unexpected.env").write_bytes(b"synthetic unqualified bytes")
+        result = self.f.prepare()
+        raw = (self.f.out / "origin" / private.INVENTORY_FILE).read_bytes()
+        inventory = json.loads(raw)
+        by_path = {entry["path"]: entry for entry in inventory["entries"]}
+        self.assertEqual(by_path["ingest"], {"path": "ingest", "kind": "directory"})
+        self.assertEqual(by_path["unexpected.env"]["kind"], "file")
+        self.assertEqual(result["exportInventorySha256"], hashlib.sha256(raw).hexdigest())
+        self.assertFalse(result["qualified"])
+        self.assertEqual(self.f.verify(result)["ociClosureSha256"], result["ociClosureSha256"])
+        scan = private.privacy.inspect_layout(self.f.oci, self.f.index, private.SOURCE, WORKFLOW)
+        self.assertEqual(scan["refusal"], "unexpected_export_entry")
+
+    def test_directory_kind_and_empty_directories_are_bound_in_closure(self):
+        (self.f.oci / "ingest").mkdir()
+        first = self.f.prepare()
+        (self.f.oci / "ingest").rmdir()
+        self.f.out, self.f.receipt = self.f.base / "next", self.f.base / "next.json"
+        second = self.f.prepare()
+        self.assertNotEqual(first["ociClosureSha256"], second["ociClosureSha256"])
+        self.assertNotEqual(first["archiveSha256"], second["archiveSha256"])
 
     def test_metadata_descriptor_manifest_and_resources_cannot_disagree(self):
         for target in ("manifest", "descriptor", "resources"):

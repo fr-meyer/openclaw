@@ -97,7 +97,13 @@ class Inputs:
 
     def check_tree(self, files):
         expected = set(files)
+        oci_directory = self.root / "oci/default"
+        if not hasattr(self, "export_transport_snapshot"):
+            self.export_transport_snapshot = privacy.capture_empty_ingest(oci_directory)
+        privacy.require_unchanged_empty_ingest(oci_directory, self.export_transport_snapshot)
         directories = {"", "oci", "oci/default", "oci/default/blobs", "oci/default/blobs/sha256"}
+        if self.export_transport_snapshot[1] is not None:
+            directories.add("oci/default/ingest")
         need(len(expected) <= privacy.Limits().blobs + len(RECEIPTS) + 2, "input_count_limit")
         for name in directories:
             location = self.root / name
@@ -117,6 +123,7 @@ class Inputs:
         for name in expected:
             stream, _ = self.open(name, MAX_BYTES)
             stream.close()
+        privacy.require_unchanged_empty_ingest(oci_directory, self.export_transport_snapshot)
 
 
 class Closure(privacy.Inspector):

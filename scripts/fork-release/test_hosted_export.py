@@ -287,6 +287,35 @@ class HostedExportTests(unittest.TestCase):
                     with self.assertRaisesRegex(privacy.Refusal, "unexpected_export_entry"):
                         export.RetainedClosure(directory, fixture.index["digest"], SOURCE, TOOLING).closure_digest()
 
+    def test_actual_check_privacy_cli_accepts_empty_ingest_and_refuses_later_nonempty_or_lock(self):
+        for mutation in ("none", "nonempty", "lock"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(Path(directory) / "oci")
+                ingest = fixture.directory / "ingest"
+                ingest.mkdir()
+                receipt = fixture.inspect()
+                self.assertEqual(receipt["status"], "passed")
+                path = Path(directory) / "privacy.json"
+                raw = json.dumps(receipt).encode()
+                path.write_bytes(raw)
+                if mutation == "nonempty":
+                    (ingest / "writer.lock").write_text("synthetic")
+                elif mutation == "lock":
+                    (fixture.directory / "writer.lock").write_text("synthetic")
+                command = ["python3", str(Path(export.__file__).resolve()), "check-privacy",
+                           "--privacy", str(path), "--sha256", hashlib.sha256(raw).hexdigest(),
+                           "--source-sha", SOURCE, "--tooling-sha", TOOLING,
+                           "--index-digest", fixture.index["digest"], "--oci", str(fixture.directory)]
+                completed = subprocess.run(command, capture_output=True, text=True, timeout=10)
+                self.assertEqual(completed.returncode, 0 if mutation == "none" else 1,
+                                 completed.stderr + completed.stdout)
+                result = json.loads(completed.stdout)
+                if mutation == "none":
+                    self.assertEqual(result["status"], "passed")
+                    self.assertRegex(result["ociClosureSha256"], r"^[a-f0-9]{64}$")
+                else:
+                    self.assertEqual(result, {"status": "failed", "reason": "privacy_not_clean_or_bound"})
+
     def test_privacy_cli_revalidates_exact_oci_and_requires_source_specific_member_proof(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = Layout(Path(directory) / "oci")

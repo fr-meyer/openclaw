@@ -26,6 +26,7 @@ class HostedOriginTests(unittest.TestCase):
         self.oci = self.root / "oci"
         self.oci.mkdir()
         image, _ = layout(self.oci, source=owner.SOURCE, version_label="2026.10.5")
+        (self.oci / "ingest").mkdir()
         self.workflow = "a" * 40
         self.inspector = "c" * 40
         controls = self.root / "controls"
@@ -53,6 +54,7 @@ class HostedOriginTests(unittest.TestCase):
         self.write(self.paths["originPath"], self.origin)
         inputs = owner.private_oci_bundle.Inputs(controls, self.oci)
         try:
+            self.write(controls / owner.private_oci_bundle.INVENTORY_FILE, inputs.oci_inventory())
             _, specs = owner.private_oci_bundle.inspect_inputs(inputs)
             owner.private_oci_bundle.write_tar(inputs, specs, self.paths["archivePath"],
                                                owner.private_oci_bundle.MAX_BYTES)

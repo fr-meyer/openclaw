@@ -33,7 +33,7 @@ def cli_diagnostics(stdout):
                for item in record["items"]]
     locations = [item for record in records if record.get("recordType") == "location_index"
                  for item in record["items"]]
-    return records[0], details, locations
+    return next(record for record in records if record.get("recordType") == "summary"), details, locations
 
 
 def archive(entries):
@@ -715,7 +715,8 @@ class PrivacyTests(unittest.TestCase):
                 records = [json.loads(line) for line in completed.stdout.splitlines()]
                 emitted = [record for record in records if record.get("recordType") == "provenance_subject_diagnostics"]
                 self.assertEqual(emitted, [{"recordType": "provenance_subject_diagnostics", **diagnostic}])
-                self.assertEqual(records[0]["recordType"], "summary")
+                self.assertEqual(records[0]["recordType"], "export_structure")
+                self.assertTrue(any(record.get("recordType") == "summary" for record in records))
                 self.assertFalse(receipt["inspectionComplete"])
                 for raw in (canary, algorithm, name, "example.invalid"):
                     self.assertNotIn(raw, completed.stdout + completed.stderr + output.read_text())
@@ -1079,6 +1080,129 @@ class PrivacyTests(unittest.TestCase):
                 data = header.tobuf(format=tarfile.GNU_FORMAT) + bytes(1024)
                 result = Layout(directory, layers=[(privacy.TAR, data)]).inspect()
                 self.assertEqual(result["refusal"], rule)
+
+    def test_export_structure_is_closed_safe_metadata_and_empty_ingest_is_transport_only(self):
+        fixture = self.layout()
+        (fixture.directory / "ingest").mkdir()
+        result = privacy.inspect_export_structure(fixture.directory)
+        self.assertEqual(set(result), {"schema", "status", "reason", "counts", "coverage", "limits", "knownRoot"})
+        self.assertEqual(result["schema"], "openclaw.oci-export-structure.v1")
+        self.assertEqual(result["status"], "complete")
+        self.assertIsNone(result["reason"])
+        self.assertEqual(result["knownRoot"]["ingest"],
+                         {"present": True, "type": "directory", "genuinelyEmpty": True})
+        files = [entry for entry in fixture.directory.rglob("*") if entry.is_file()]
+        self.assertEqual(result["counts"]["regularFiles"], len(files))
+        self.assertEqual(result["counts"]["regularFileBytes"], sum(entry.stat().st_size for entry in files))
+        self.assertEqual(result["counts"]["blobFiles"], len(list((fixture.directory / "blobs/sha256").iterdir())))
+        self.assertTrue(result["coverage"]["traversalComplete"])
+        self.assertTrue(result["coverage"]["byteCountsComplete"])
+        self.assertFalse(result["coverage"]["linksFollowed"])
+        inspected = fixture.inspect()
+        self.assertEqual(inspected["status"], "passed")
+        self.assertEqual(inspected["exportStructure"], result)
+
+    def test_ingest_nonempty_regular_symlink_and_unrelated_lock_remain_refused(self):
+        canary = "unknown-private-canary-not-for-output"
+        for kind, refusal in (("nonempty", "nonempty_export_ingest"),
+                              ("regular", "unsafe_export_ingest"),
+                              ("symlink", "export_symlink"),
+                              ("lock", "unexpected_export_entry")):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(Path(directory) / "oci")
+                ingest = fixture.directory / "ingest"
+                if kind == "nonempty":
+                    ingest.mkdir()
+                    (ingest / canary).write_bytes(canary.encode())
+                elif kind == "regular":
+                    ingest.write_bytes(canary.encode())
+                elif kind == "symlink":
+                    target = Path(directory) / "target"
+                    target.mkdir()
+                    (target / canary).write_bytes(canary.encode())
+                    ingest.symlink_to(target, target_is_directory=True)
+                else:
+                    (fixture.directory / canary).write_bytes(canary.encode())
+                structure = privacy.inspect_export_structure(fixture.directory)
+                self.assertNotIn(canary, json.dumps(structure))
+                self.assertFalse(structure["knownRoot"]["ingest"]["genuinelyEmpty"])
+                if kind == "symlink":
+                    self.assertEqual(structure["counts"]["symlinks"], 1)
+                    self.assertFalse(structure["coverage"]["byteCountsComplete"])
+                result = fixture.inspect()
+                self.assertEqual(result["refusal"], refusal)
+                self.assertFalse(result["inspectionComplete"])
+                self.assertEqual(result["status"], "failed")
+                self.assertNotIn(canary, json.dumps(result))
+
+    def test_empty_ingest_replacement_or_content_change_during_graph_scan_refuses(self):
+        for mutation in ("replace", "write", "appear"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(Path(directory) / "oci")
+                ingest = fixture.directory / "ingest"
+                if mutation != "appear":
+                    ingest.mkdir()
+                original = privacy.Inspector.scan_layer
+                changed = False
+                def scan_and_change(inspector, descriptor):
+                    nonlocal changed
+                    original(inspector, descriptor)
+                    if changed:
+                        return
+                    changed = True
+                    if mutation == "replace":
+                        ingest.rename(Path(directory) / "old-ingest")
+                        ingest.mkdir()
+                    elif mutation == "write":
+                        (ingest / "writer.lock").write_text("synthetic")
+                    else:
+                        ingest.mkdir()
+                with patch.object(privacy.Inspector, "scan_layer", scan_and_change):
+                    result = fixture.inspect()
+                self.assertEqual(result["refusal"], "nonempty_export_ingest" if mutation == "write"
+                                 else "export_transport_changed")
+                self.assertFalse(result["inspectionComplete"])
+
+    def test_export_structure_limits_stop_with_honest_partial_coverage(self):
+        fixture = self.layout()
+        for changes, reason in (({"export_entries": 2}, "export_entry_limit"),
+                                ({"export_depth": 1}, "export_depth_limit"),
+                                ({"export_entries": 2049}, "invalid_export_structure_limits"),
+                                ({"export_depth": 17}, "invalid_export_structure_limits")):
+            with self.subTest(changes=changes):
+                result = privacy.inspect_export_structure(fixture.directory,
+                    dataclasses.replace(privacy.Limits(), **changes))
+                self.assertEqual(result["status"], "refused")
+                self.assertEqual(result["reason"], reason)
+                self.assertFalse(result["coverage"]["traversalComplete"])
+                self.assertFalse(result["coverage"]["byteCountsComplete"])
+                if "export_entries" in changes and changes["export_entries"] <= 2048:
+                    self.assertLessEqual(result["counts"]["entries"], changes["export_entries"])
+
+    def test_structure_no_follow_counts_links_special_files_and_survives_cli_refusal(self):
+        canary = "private-structure-canary"
+        fixture = self.layout()
+        blob = next((fixture.directory / "blobs/sha256").iterdir())
+        os.link(blob, fixture.directory / (canary + "-hardlink"))
+        os.mkfifo(fixture.directory / (canary + "-fifo"))
+        result = privacy.inspect_export_structure(fixture.directory)
+        self.assertEqual(result["status"], "refused")
+        self.assertGreaterEqual(result["counts"]["hardlinkedFiles"], 2)
+        self.assertEqual(result["counts"]["specialFiles"], 1)
+        self.assertTrue(result["coverage"]["traversalComplete"])
+        self.assertFalse(result["coverage"]["byteCountsComplete"])
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "receipt.json"
+            command = [sys.executable, "-B", str(Path(privacy.__file__).resolve()),
+                "--oci-dir", str(fixture.directory), "--expected-index-digest", fixture.index["digest"],
+                "--source-sha", SOURCE, "--tooling-sha", TOOLING, "--output", str(receipt)]
+            process = subprocess.run(command, capture_output=True, text=True, timeout=10)
+            self.assertEqual(process.returncode, 1)
+            records = [json.loads(line) for line in process.stdout.splitlines()]
+            self.assertEqual(records[0]["recordType"], "export_structure")
+            self.assertEqual(records[0]["status"], "refused")
+            self.assertIn("exportStructure", json.loads(receipt.read_bytes()))
+            self.assertNotIn(canary, process.stdout + process.stderr + receipt.read_text())
 
     def test_unreferenced_export_files_fail_closed_without_reading(self):
         fixture = self.layout()
