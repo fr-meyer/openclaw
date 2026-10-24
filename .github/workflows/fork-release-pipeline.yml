@@ -346,7 +346,7 @@ jobs:
           from urllib.request import Request, urlopen
 
           image_ref = 'refs/heads/release-pipeline/v105-image-only-20261024'
-          image_source = '5fa698a3a14c1c753adff4b465d602ca1c5957b5'
+          image_source = '85a9bdc1285c338f10f5ca818abc259f6d483b5b'
           selected = os.environ['GITHUB_REF'] == image_ref
           if selected:
               event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())

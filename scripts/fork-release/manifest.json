@@ -1,5 +1,5 @@
 {
-  "candidate": "v2026.10.5-security-repair-5fa698a3",
+  "candidate": "v2026.10.5-provider-fixture-85a9bdc1",
   "gates": {
     "patchLifecycle": [
       "src/agents/worktrees/run-lease.test.ts",
@@ -30,7 +30,8 @@
       "test/discord-native-zod-regression.test.mjs",
       "test/body-parser-security.test.mjs",
       "test/msal-parent-compat.test.mjs",
-      "test/undici-security.test.mjs"
+      "test/undici-security.test.mjs",
+      "src/agents/provider-local-service.test.ts"
     ]
   },
   "image": {
@@ -43,7 +44,7 @@
   "source": {
     "baseCommit": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
     "baseTree": "a138559698570e238395121723a773106ac33f8c",
-    "commit": "5fa698a3a14c1c753adff4b465d602ca1c5957b5",
+    "commit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
     "patches": [
       {
         "commit": "94f1ee3e18015055ab25d62f71ee090d43c32062",
@@ -160,8 +161,12 @@
       {
         "commit": "5fa698a3a14c1c753adff4b465d602ca1c5957b5",
         "tree": "af79a4294a5759271daae01d60261297ddbf0258"
+      },
+      {
+        "commit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+        "tree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
       }
     ],
-    "tree": "af79a4294a5759271daae01d60261297ddbf0258"
+    "tree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
   }
 }

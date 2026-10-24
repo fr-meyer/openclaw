@@ -1,6 +1,6 @@
 {
-  "candidate": "v2026.10.5-security-repair-5fa698a3",
-  "manifestSha256": "7b6b46c0281d9191db4a243f6907a90fabf6bbfdcc8f5ebcc15b14daa9f421b1",
+  "candidate": "v2026.10.5-provider-fixture-85a9bdc1",
+  "manifestSha256": "1ee24854a7ed6ffc741aed522521f0caf297904d99d55e8ddb7ddc01f13e0e17",
   "patches": [
     {
       "appliedCommit": "94f1ee3e18015055ab25d62f71ee090d43c32062",
@@ -4125,6 +4125,32 @@
       "regressionOwner": "fr-meyer",
       "regressionTests": [
         "test/scripts/eager-import-closure.test.ts"
+      ]
+    },
+    {
+      "appliedCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+      "dependsOn": [
+        "source-29-5fa698a3a14c"
+      ],
+      "disposition": "adapt",
+      "evidenceSha256": "051f889397c18babdaf2de548f61e8c40abee71c8126621b170136931b604ba5",
+      "id": "source-30-85a9bdc1285c",
+      "originCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+      "paths": [
+        {
+          "boundary": "tooling",
+          "candidateBlob": "8828342ac5171a8a71fe2648c419d50dcec9e542",
+          "path": "src/agents/provider-local-service.test.ts",
+          "sourceBlob": "8828342ac5171a8a71fe2648c419d50dcec9e542",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "upstreamBlob": "a2cf105695ece2d2fa143b7d83d24f6f57babb9c"
+        }
+      ],
+      "rationale": "Resume reads on the synthetic raw net.Server fixture socket so it actually consumes provider requests and observes body-cancellation/socket closure. Preserve product runtime, assertions and timeout contracts; the actual provider-local-service owner is a required pre-image gate. This ledger records exact fixture-only source scope, not passing execution or image readiness.",
+      "regressionOwner": "fr-meyer",
+      "regressionTests": [
+        "src/agents/provider-local-service.test.ts"
       ]
     }
   ],

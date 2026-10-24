@@ -350,7 +350,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             metadata = root / 'metadata/scripts/fork-release/manifest.json'
             metadata.parent.mkdir(parents=True)
             value = {'repository': 'fr-meyer/openclaw', 'productionEligible': False,
-                     'source': {'commit': '5fa698a3a14c1c753adff4b465d602ca1c5957b5'},
+                     'source': {'commit': '85a9bdc1285c338f10f5ca818abc259f6d483b5b'},
                      'image': {'architecture': 'amd64', 'extensions': 'codex,workboard'}}
             value.update(manifest or {})
             metadata.write_text(json.dumps(value))
