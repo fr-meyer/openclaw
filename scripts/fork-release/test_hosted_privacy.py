@@ -655,6 +655,96 @@ class PrivacyTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 1)
 
+    def test_provenance_subject_diagnostics_preserve_strict_decisions(self):
+        cases = [
+            (lambda s: s.pop("subject"), "missing", None, "provenance_subject_mismatch"),
+            (lambda s: s.update(subject=None), "null", None, "provenance_subject_mismatch"),
+            (lambda s: s.update(subject="not-an-array"), "string", None, "provenance_subject_mismatch"),
+            (lambda s: s.update(subject={"unexpected": 1}), "object", None, "malformed_or_unreadable_layout"),
+            (lambda s: s.update(subject=[]), "array", 0, "provenance_subject_mismatch"),
+            (lambda s: s.update(subject=s["subject"] * 2), "array", 2, "provenance_subject_mismatch"),
+            (lambda s: s["subject"][0]["digest"].update(sha256="0" * 64), "array", 1, "provenance_subject_mismatch"),
+            (lambda s: s["subject"][0]["digest"].update(sha256=123), "array", 1, "provenance_subject_mismatch"),
+            (lambda s: s.update(subject=[1]), "array", 1, "malformed_or_unreadable_layout"),
+            (lambda s: s.update(subject=[{"digest": []}]), "array", 1, "malformed_or_unreadable_layout"),
+            (lambda s: s.update(subject=[{"digest": {"sha512": "a" * 128}}]), "array", 1, "provenance_subject_mismatch"),
+            (None, "array", 1, None),
+        ]
+        for mutate, subject_type, count, refusal in cases:
+            with self.subTest(kind=subject_type, count=count, refusal=refusal), tempfile.TemporaryDirectory() as directory:
+                result = Layout(directory, provenance=mutate).inspect()
+                diagnostic = result["provenanceSubjectDiagnostics"]
+                self.assertEqual(diagnostic["subjectType"], subject_type)
+                self.assertEqual(diagnostic["subjectCount"], count)
+                self.assertEqual(diagnostic["statementsObserved"], 1)
+                self.assertEqual(diagnostic["statementSelection"], "last_observed")
+                self.assertEqual(diagnostic["retainedSubjects"], count or 0)
+                self.assertFalse(diagnostic["subjectsTruncated"])
+                self.assertEqual(result["inspectionComplete"], refusal is None)
+                self.assertEqual(result.get("refusal"), refusal)
+                if refusal is None:
+                    import hosted_export
+                    hosted_export.require_clean_privacy(result)
+                    digest = diagnostic["subjects"][0]
+                    self.assertEqual((digest["digestAlgorithmCount"], digest["knownAlgorithmCount"],
+                                      digest["unknownAlgorithmCount"]), (1, 1, 0))
+                    self.assertEqual(digest["digests"]["sha256"], {"present": True, "type": "string",
+                        "length": 64, "hex": True, "matchesExpectedPlatform": True})
+                    self.assertEqual(result["status"], "passed")
+
+    def test_provenance_subject_diagnostics_are_closed_bounded_and_redacted_in_cli(self):
+        canary = "sk-" + "Q" * 37
+        algorithm = "algorithm-" + canary
+        name = "https://operator:" + canary + "@example.invalid"
+        subject = {"name": name, "digest": {algorithm: canary, "sha256": canary,
+                                             "sha512": "a" * 128, "sha1": 123}}
+        for subjects in ([subject] * 9, {algorithm: subject}):
+            with self.subTest(subjects_type=type(subjects).__name__), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(Path(directory) / "oci", provenance=lambda s: s.update(subject=subjects))
+                output = Path(directory) / "receipt.json"
+                command = [sys.executable, str(Path(privacy.__file__).resolve()),
+                    "--oci-dir", str(fixture.directory), "--expected-index-digest", fixture.index["digest"],
+                    "--source-sha", SOURCE, "--tooling-sha", TOOLING, "--output", str(output)]
+                completed = subprocess.run(command, capture_output=True, text=True, timeout=10)
+                self.assertEqual(completed.returncode, 1)
+                receipt = json.loads(output.read_text())
+                diagnostic = receipt["provenanceSubjectDiagnostics"]
+                self.assertEqual(set(diagnostic), {"schema", "statementSelection", "statementsObserved",
+                    "subjectType", "subjectCount", "retainedSubjects", "subjectsTruncated", "subjects"})
+                self.assertLess(len(json.dumps(diagnostic)), 8192)
+                records = [json.loads(line) for line in completed.stdout.splitlines()]
+                emitted = [record for record in records if record.get("recordType") == "provenance_subject_diagnostics"]
+                self.assertEqual(emitted, [{"recordType": "provenance_subject_diagnostics", **diagnostic}])
+                self.assertEqual(records[0]["recordType"], "summary")
+                self.assertFalse(receipt["inspectionComplete"])
+                for raw in (canary, algorithm, name, "example.invalid"):
+                    self.assertNotIn(raw, completed.stdout + completed.stderr + output.read_text())
+                if isinstance(subjects, list):
+                    self.assertEqual((diagnostic["subjectCount"], diagnostic["retainedSubjects"]), (9, 4))
+                    self.assertTrue(diagnostic["subjectsTruncated"])
+                    digest = diagnostic["subjects"][0]
+                    self.assertEqual(set(digest), {"subjectType", "digestType", "digestAlgorithmCount",
+                                                  "knownAlgorithmCount", "unknownAlgorithmCount", "digests"})
+                    self.assertEqual((digest["digestAlgorithmCount"], digest["knownAlgorithmCount"],
+                                      digest["unknownAlgorithmCount"]), (4, 3, 1))
+                    self.assertEqual(set(digest["digests"]), {"sha256", "sha512", "sha1"})
+                    self.assertEqual(digest["digests"]["sha256"], {"present": True, "type": "string",
+                        "length": len(canary), "hex": False, "matchesExpectedPlatform": False})
+                    self.assertEqual(digest["digests"]["sha512"], {"present": True, "type": "string",
+                        "length": 128, "hex": True, "matchesExpectedPlatform": False})
+                    self.assertEqual(digest["digests"]["sha1"], {"present": True, "type": "number",
+                        "length": None, "hex": False, "matchesExpectedPlatform": False})
+
+    def test_provenance_subject_diagnostics_count_statements_without_changing_missing_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = Layout(directory, attestation=lambda m: m["layers"].append(m["layers"][0])).inspect()
+            self.assertTrue(result["inspectionComplete"])
+            self.assertEqual(result["provenanceSubjectDiagnostics"]["statementsObserved"], 2)
+        with tempfile.TemporaryDirectory() as directory:
+            result = Layout(directory, provenance=lambda s: s.update(predicateType="unknown")).inspect()
+            self.assertEqual(result["refusal"], "missing_source_provenance")
+            self.assertNotIn("provenanceSubjectDiagnostics", result)
+
     def test_bundle_closure_preserves_empty_attestation_blob_and_byte_budget(self):
         import hosted_bundle as bundle
         root = Path(self.temp.name).resolve()

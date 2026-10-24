@@ -1,4 +1,5 @@
 """Execute the actual composite scope gate; no build, network or credentials."""
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -81,26 +82,114 @@ class PrivateOciActionTests(unittest.TestCase):
         self.assertIn("create-storage-record: false", attest)
         self.assertNotIn("upload-capability", action.split("    - name: Check separately", 1)[1].split("    - name: Transfer", 1)[0])
 
-    def test_actual_prepare_action_and_receipt_paths_match_archive_owner(self):
-        action = ACTION.read_text().split("    - name: Prepare exact opaque private archive\n", 1)[1]
+    def prepare_boundary(self, fixture, *, action_text=None, **changed):
+        action = (action_text or ACTION.read_text()).split("    - name: Prepare exact opaque private archive\n", 1)[1]
         run = textwrap.dedent(action.split("      run: |\n", 1)[1].split("    - name: Attest", 1)[0])
+        output = fixture.base / "action-output"
+        followup = fixture.base / "followup-actions"
+        # The actual preparation Bash must abort before any following action.
+        # These sentinels perform no attestation or transfer.
+        run += "\npython3 - <<'PY_FOLLOWUP'\nimport os\nfrom pathlib import Path\nPath(os.environ['FOLLOWUP_TRACE']).write_text('attest transfer')\nPY_FOLLOWUP\n"
+        values = {**os.environ, "GITHUB_ACTION_PATH": str(ACTION.parent),
+                  "SOURCE_SHA": SOURCE, "SOURCE_TREE": TREE, "WORKFLOW_SHA": WORKFLOW,
+                  "BUILT_AT": BUILT, "MANIFEST": str(fixture.manifest),
+                  "INVENTORY": str(fixture.inventory), "BUILD_METADATA": str(fixture.metadata),
+                  "RESOURCES": str(fixture.resources), "OCI_DIRECTORY": str(fixture.oci),
+                  "OUTPUT_DIRECTORY": str(fixture.out), "RUNNER_TEMP": str(fixture.base),
+                  "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1", "GITHUB_OUTPUT": str(output),
+                  "FOLLOWUP_TRACE": str(followup), **changed}
+        result = subprocess.run(["/bin/bash", "-c", run], env=values,
+                                capture_output=True, text=True, timeout=10)
+        return result, output, followup
+
+    def fake_helper(self, fixture, body):
+        root = fixture.base / "fake-action-root"
+        action = root / ".github/actions/retain-private-oci"
+        action.mkdir(parents=True)
+        helper = root / "scripts/fork-release/private_oci_bundle.py"
+        helper.parent.mkdir(parents=True)
+        helper.write_text("import json,sys\n" + body)
+        return str(action)
+
+    def assert_failed_preparation_is_closed(self, result, output, followup, *, code, reason):
+        self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stdout), {
+            "status": "failed", "reason": reason, "stage": "private_oci_prepare"})
+        self.assertEqual(result.stderr, "")
+        self.assertFalse(output.exists())
+        self.assertFalse(followup.exists())
+        action = ACTION.read_text()
+        for name in ("Attest retained private OCI archive", "Transfer only the approved private object"):
+            section = action.split("    - name: " + name + "\n", 1)[1].split("    - name:", 1)[0]
+            self.assertIn("steps.prepare.outcome == 'success'", section)
+
+    def test_actual_prepare_action_and_receipt_paths_match_archive_owner(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = Fixture(directory)
-            output = fixture.base / "action-output"
-            values = {**os.environ, "GITHUB_ACTION_PATH": str(ACTION.parent),
-                      "SOURCE_SHA": SOURCE, "SOURCE_TREE": TREE, "WORKFLOW_SHA": WORKFLOW,
-                      "BUILT_AT": BUILT, "MANIFEST": str(fixture.manifest),
-                      "INVENTORY": str(fixture.inventory), "BUILD_METADATA": str(fixture.metadata),
-                      "RESOURCES": str(fixture.resources), "OCI_DIRECTORY": str(fixture.oci),
-                      "OUTPUT_DIRECTORY": str(fixture.out), "RUNNER_TEMP": str(fixture.base),
-                      "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1", "GITHUB_OUTPUT": str(output)}
-            result = subprocess.run(["/bin/bash", "-c", run], env=values,
-                                    capture_output=True, text=True, timeout=10)
+            result, output, followup = self.prepare_boundary(fixture)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertTrue((fixture.out / "retained-oci.tar").is_file())
             self.assertTrue(Path(str(fixture.out) + "-retention.json").is_file())
             self.assertFalse((fixture.out / "retention.json").exists())
             self.assertIn("sha256=", output.read_text())
+            diagnostic = json.loads(result.stdout)
+            self.assertEqual(set(diagnostic), {"status", "stage", "archiveSha256", "archiveBytes"})
+            self.assertEqual(diagnostic["status"], "prepared")
+            self.assertEqual(diagnostic["stage"], "private_oci_prepare")
+            self.assertIn("sha256=" + diagnostic["archiveSha256"], output.read_text())
+            self.assertIn("bytes=" + str(diagnostic["archiveBytes"]), output.read_text())
+            self.assertNotIn(str(fixture.base), result.stdout + result.stderr)
+            self.assertEqual(followup.read_text(), "attest transfer")
+
+    def test_actual_failed_prepare_emits_closed_reason_and_stops_following_actions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Fixture(directory)
+            result, output, followup = self.prepare_boundary(fixture, SOURCE_SHA="b" * 40)
+            self.assert_failed_preparation_is_closed(result, output, followup, code=1,
+                reason="private_bundle_invalid_changed_or_over_limit")
+            capture = Path(str(fixture.out) + "-prepare-output.json")
+            self.assertEqual(capture.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(Path(str(fixture.out) + "-prepare-error.log").stat().st_mode & 0o777, 0o600)
+            self.assertNotIn(str(fixture.base), result.stdout + result.stderr)
+
+    def test_failed_prepare_never_logs_unknown_reason_paths_headers_or_raw_errors(self):
+        secret = "private-" + "fixture-not-for-logs"
+        for malformed in (False, True):
+            with self.subTest(malformed=malformed), tempfile.TemporaryDirectory() as directory:
+                fixture = Fixture(directory)
+                value = {"status": "failed", "reason": secret, "archivePath": str(fixture.base),
+                         "url": "https://quarantine.invalid/upload?synthetic=" + secret,
+                         "headers": {"Authorization": secret}}
+                body = ("print(" + repr(secret if malformed else json.dumps(value)) + ")\n"
+                        "print(" + repr("raw-error:" + secret) + ",file=sys.stderr)\n"
+                        "raise SystemExit(7)\n")
+                result, output, followup = self.prepare_boundary(fixture,
+                    GITHUB_ACTION_PATH=self.fake_helper(fixture, body))
+                self.assert_failed_preparation_is_closed(result, output, followup, code=7,
+                    reason="private_prepare_diagnostic_unavailable")
+                public = result.stdout + result.stderr
+                for forbidden in (secret, str(fixture.base), value["url"], "Authorization", "raw-error"):
+                    self.assertNotIn(forbidden, public)
+                self.assertIn(secret, Path(str(fixture.out) + "-prepare-error.log").read_text())
+
+    def test_zero_exit_without_valid_receipt_still_blocks_attestation_and_transfer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Fixture(directory)
+            body = "print(json.dumps({'status':'prepared','archiveSha256':'a'*64,'archiveBytes':1}))\n"
+            result, output, followup = self.prepare_boundary(fixture,
+                GITHUB_ACTION_PATH=self.fake_helper(fixture, body))
+            self.assert_failed_preparation_is_closed(result, output, followup, code=1,
+                reason="private_prepare_diagnostic_unavailable")
+
+    def test_private_capture_never_overwrites_an_existing_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Fixture(directory)
+            capture = Path(str(fixture.out) + "-prepare-output.json")
+            capture.write_text("preserve-fixture")
+            result, output, followup = self.prepare_boundary(fixture)
+            self.assert_failed_preparation_is_closed(result, output, followup, code=1,
+                reason="private_prepare_diagnostic_unavailable")
+            self.assertEqual(capture.read_text(), "preserve-fixture")
 
 
 if __name__ == "__main__":

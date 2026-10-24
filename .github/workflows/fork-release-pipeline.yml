@@ -664,6 +664,8 @@ jobs:
         with:
           context: ${{ format('https://github.com/fr-meyer/openclaw.git?fetch-by-commit=true&checksum={0}#{0}', steps.identity.outputs.source_sha) }}
           platforms: linux/amd64
+          # One public source name produces one native provenance Self subject.
+          tags: ${{ format('openclaw-source:{0}', steps.identity.outputs.source_sha) }}
           outputs: type=oci,dest=${{ runner.temp }}/fork-release/oci/default,tar=false,compression=gzip,compression-level=1
           build-args: |
             GITHUB_ACTIONS=true

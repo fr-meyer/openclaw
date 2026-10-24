@@ -71,6 +71,8 @@ MAX_LOCATION_BYTES = 512 * 1024
 MAX_RECEIPT_BYTES = 1024 * 1024
 MAX_COMPARISON_ENTRIES = 128
 MAX_COMPARISON_PLAN_BYTES = 128 * 1024
+MAX_PROVENANCE_SUBJECT_DETAILS = 4
+_MISSING = object()
 PUBLIC_MEMBER_QUALIFICATION = {
     "sourceSha": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
     "planSha256": "ac474379f3b44a6ba04382037622927d855b0fe23ec4487c3405af5a9a631e0f",
@@ -131,6 +133,44 @@ def require(condition, code):
 
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def provenance_subject_summary(subject, image_digest, observed):
+    """Fixed shapes only; never disclose subject names, algorithm keys or values."""
+    def kind(value):
+        if value is _MISSING:
+            return "missing"
+        if value is None:
+            return "null"
+        return {dict: "object", list: "array", str: "string", bool: "boolean",
+                int: "number", float: "number"}.get(type(value), "other")
+
+    expected = image_digest[7:] if isinstance(image_digest, str) and DIGEST.fullmatch(image_digest) else None
+    records = []
+    values = subject if isinstance(subject, list) else []
+    for item in values[:MAX_PROVENANCE_SUBJECT_DETAILS]:
+        digest = item.get("digest", _MISSING) if isinstance(item, dict) else _MISSING
+        algorithms = ("sha256", "sha512", "sha1")
+        known = sum(key in digest for key in algorithms) if isinstance(digest, dict) else 0
+        shapes = {}
+        for algorithm in algorithms:
+            value = digest.get(algorithm, _MISSING) if isinstance(digest, dict) else _MISSING
+            shapes[algorithm] = {
+                "present": value is not _MISSING, "type": kind(value),
+                "length": len(value) if isinstance(value, str) else None,
+                "hex": isinstance(value, str) and bool(re.fullmatch(r"[0-9a-fA-F]+", value)),
+                "matchesExpectedPlatform": algorithm == "sha256" and expected is not None and value == expected,
+            }
+        records.append({"subjectType": kind(item), "digestType": kind(digest),
+                        "digestAlgorithmCount": len(digest) if isinstance(digest, dict) else None,
+                        "knownAlgorithmCount": known,
+                        "unknownAlgorithmCount": len(digest) - known if isinstance(digest, dict) else None,
+                        "digests": shapes})
+    return {"schema": "openclaw.provenance-subject-diagnostics.v1", "statementSelection": "last_observed",
+            "statementsObserved": observed, "subjectType": kind(subject),
+            "subjectCount": len(subject) if isinstance(subject, list) else None,
+            "retainedSubjects": len(records), "subjectsTruncated": len(values) > len(records),
+            "subjects": records}
 
 
 def object_pairs(pairs):
@@ -236,6 +276,8 @@ class Inspector:
         self.comparisons_by_path = {}
         self.qualify_public_members = False
         self.qualified_public_members = {}
+        self.provenance_subjects_observed = 0
+        self.provenance_subject_diagnostics = None
 
     def enable_public_member_qualification(self):
         plan, trusted = self.public_comparisons, PUBLIC_MEMBER_QUALIFICATION
@@ -774,6 +816,9 @@ class Inspector:
                     require(layer.get("mediaType") == ATTESTATION, "unsupported_attestation_format")
                     statement = self.blob(layer, as_json=True)
                     if statement.get("predicateType") == PROVENANCE:
+                        self.provenance_subjects_observed += 1
+                        self.provenance_subject_diagnostics = provenance_subject_summary(
+                            statement.get("subject", _MISSING), self.image_digest, self.provenance_subjects_observed)
                         require(statement.get("subject") and len(statement["subject"]) == 1 and
                                 statement["subject"][0].get("digest", {}).get("sha256") == self.image_digest[7:],
                                 "provenance_subject_mismatch")
@@ -838,6 +883,8 @@ def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limi
     }
     if error:
         receipt["refusal"] = error
+    if inspector.provenance_subject_diagnostics is not None:
+        receipt["provenanceSubjectDiagnostics"] = inspector.provenance_subject_diagnostics
     if inspector.public_comparisons is not None:
         receipt["publicMemberComparisons"] = {**inspector.public_comparisons, "inspectionComplete": complete}
     if inspector.qualify_public_members:
@@ -896,6 +943,9 @@ def main():
                       "locationIndexTruncated": result["locationIndexTruncated"],
                       "qualifiedPublicFixtures": result["qualifiedPublicFixtures"],
                       "refusal": result.get("refusal")}))
+    if "provenanceSubjectDiagnostics" in result:
+        print(json.dumps({"recordType": "provenance_subject_diagnostics",
+                          **result["provenanceSubjectDiagnostics"]}))
     # Bounded NDJSON batches avoid a single oversized Actions log line. These
     # contain only the same sanitized fields already bound in the receipt.
     for kind, values, batch_size in (("finding_details", result["findings"], 16),

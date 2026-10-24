@@ -92,7 +92,7 @@ class Inputs:
         except BaseException:
             self.control.close()
             raise
-        self.snapshots, self.hashes, self.closure = {}, {}, None
+        self.snapshots, self.hashes = {}, {}
 
     def close(self):
         self.control.close()
@@ -115,9 +115,66 @@ class Inputs:
 
     data = bundle.Inputs.data
 
+    def oci_names(self):
+        """Closed file namespace, without admitting the image's graph or claims."""
+        def children(descriptor, expected):
+            seen = set()
+            with os.scandir(descriptor) as entries:
+                for entry in entries:
+                    directory = entry.name in ("blobs", "sha256")
+                    need(entry.name in expected and not entry.is_symlink() and
+                         (entry.is_dir(follow_symlinks=False) if directory else
+                          entry.is_file(follow_symlinks=False)), "unexpected_oci_entry")
+                    seen.add(entry.name)
+            need(seen == expected, "missing_oci_entry")
+
+        children(self.oci.fd, {"index.json", "oci-layout", "blobs"})
+        blobs = os.open("blobs", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.oci.fd)
+        try:
+            children(blobs, {"sha256"})
+            digests = os.open("sha256", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=blobs)
+            try:
+                names, maximum = [], privacy.Limits().blobs
+                with os.scandir(digests) as entries:
+                    for entry in entries:
+                        need(len(names) < maximum, "blob_count_limit")
+                        need(HEX.fullmatch(entry.name) and not entry.is_symlink() and
+                             entry.is_file(follow_symlinks=False), "unexpected_oci_entry")
+                        names.append("blobs/sha256/" + entry.name)
+            finally:
+                os.close(digests)
+        finally:
+            os.close(blobs)
+        return ["index.json", "oci-layout", *sorted(names)]
+
+    def oci_specs(self):
+        specs, total = {}, 0
+        for relative in self.oci_names():
+            name = OCI + relative
+            stream, before = self.open(name, MAX_BYTES)
+            with stream:
+                total += before.st_size
+                need(total <= MAX_BYTES, "archive_size_limit")
+                if relative.startswith("blobs/sha256/"):
+                    # Check the named digest while streaming these opaque bytes
+                    # into the archive (or comparing them during verification).
+                    digest = relative.rsplit("/", 1)[1]
+                else:
+                    hashed, count = hashlib.sha256(), 0
+                    while chunk := stream.read(CHUNK):
+                        count += len(chunk)
+                        need(count <= before.st_size, "input_changed")
+                        hashed.update(chunk)
+                    need(count == before.st_size and
+                         bundle.fingerprint(before) == bundle.fingerprint(os.fstat(stream.fileno())), "input_changed")
+                    digest = hashed.hexdigest()
+                    need(self.hashes.setdefault(name, digest) == digest, "input_changed")
+                specs[name] = {"size": before.st_size, "sha256": digest}
+        return specs
+
     def check_tree(self, specs):
-        need(self.closure is not None, "closure_missing")
-        self.closure.verify_export_closure()
+        need(set(self.oci_names()) == {name[len(OCI):] for name in specs if name.startswith(OCI)},
+             "oci_inventory_changed")
         seen = set()
         with os.scandir(self.root) as entries:
             for entry in entries:
@@ -130,16 +187,6 @@ class Inputs:
         for name in specs:
             stream, _ = self.open(name, MAX_BYTES)
             stream.close()
-
-
-class Closure(bundle.Closure):
-    def __init__(self, inputs, origin):
-        super().__init__(inputs, {"indexDigest": origin["indexDigest"], "sourceSha": origin["sourceSha"],
-                                  "toolingSha": origin["producer"]["workflowSha"]})
-        self.directory = inputs.oci_root
-
-    def open_regular(self, path, limit):
-        return self.inputs.open(OCI + Path(path).relative_to(self.directory).as_posix(), limit)
 
 
 def inspect_inputs(inputs, expected=None):
@@ -177,21 +224,17 @@ def inspect_inputs(inputs, expected=None):
     need(isinstance(resources, dict) and resources.get("schema") == "openclaw.hosted-resources.v1" and
          resources.get("sourceSha") == SOURCE and resources.get("toolingSha") == producer["workflowSha"] and
          resources.get("indexDigest") == origin["indexDigest"], "resources_binding")
-    closure = inputs.closure = Closure(inputs, origin)
-    closure.run()  # Metadata/graph validation only; compressed layers stay opaque.
     specs = {name: {"size": info["size"], "sha256": inputs.hashes[name]} for name, info in inputs.snapshots.items()
-             if name in FILES or name in (OCI + "index.json", OCI + "oci-layout")}
-    for digest, size in closure.blobs.items():
-        name = OCI + "blobs/sha256/" + digest[7:]
-        stream, info = inputs.open(name, MAX_BYTES)
-        stream.close()
-        need(info.st_size == size, "blob_size_changed")
-        specs[name] = {"size": size, "sha256": digest[7:]}
+             if name in FILES}
+    # Retention authenticates an opaque byte inventory. Image structure,
+    # provenance subjects and privacy remain the unchanged qualifier's job.
+    specs.update(inputs.oci_specs())
     inputs.check_tree(specs)
     return origin, specs
 
 
 def closure_hash(specs):
+    """Bind every retained OCI file; this is not image graph qualification."""
     return sha(encoded([{ "path": name, **specs[name]} for name in sorted(specs) if name.startswith(OCI)]))
 
 
@@ -289,11 +332,13 @@ def prepare_from_build(manifest_path, inventory_path, metadata_path, resources_p
         need(all(read_control(path) == saved for path, saved in zip(original_paths, original_inputs)), "original_control_changed")
         archive_hash, info = bundle.hash_file(partial, limit)
         need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1, "archive_permissions")
+        inputs.check_tree(specs)
         os.link(partial, final, follow_symlinks=False)
         partial.unlink()
         sync_directory(directory)
         result = {"schema": "openclaw.private-oci-bundle.v1", "status": "prepared", "qualified": False,
                   "productionAuthorized": False, "publicExportAuthorized": False,
+                  "retentionValidation": "opaque_byte_inventory",
                   "originAuthority": "native_github_attestation_and_run_verification_required",
                   "format": "USTAR", "archivePath": str(final), "archiveSha256": archive_hash,
                   "archiveBytes": info.st_size, "maximumBytes": MAX_BYTES, "sourceSha": SOURCE,
@@ -358,7 +403,8 @@ def verify_archive(archive_path, archive_sha256, *, oci_dir, manifest_path, inve
         need(hashed.hexdigest() == archive_sha256, "archive_hash_changed")
         inputs.check_tree(specs)
         return {"archiveSha256": archive_sha256, "archiveBytes": count, "ociClosureSha256": closure_hash(specs),
-                "memberCount": len(specs), "qualified": False, "productionAuthorized": False}
+                "memberCount": len(specs), "retentionValidation": "opaque_byte_inventory",
+                "qualified": False, "productionAuthorized": False}
     finally:
         inputs.close()
 

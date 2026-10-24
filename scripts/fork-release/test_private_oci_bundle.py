@@ -1,4 +1,5 @@
 """Synthetic private archive tests; no network, real image or native execution."""
+import dataclasses
 import hashlib
 import json
 import os
@@ -25,13 +26,13 @@ def write(path, value):
 
 
 class Fixture:
-    def __init__(self, base):
+    def __init__(self, base, **layout_options):
         self.base = Path(base).resolve()
         self.inputs = self.base / "build"
         self.inputs.mkdir(mode=0o700)
         self.oci = self.inputs / "oci/default"
         with patch.object(layouts, "SOURCE", private.SOURCE):
-            self.layout = layouts.Layout(self.oci)
+            self.layout = layouts.Layout(self.oci, **layout_options)
         self.manifest, self.inventory, self.metadata, self.resources = (self.inputs / name for name in
             ("manifest.json", "patch-inventory.json", "build-metadata.json", "resources.json"))
         raw = write(self.manifest, {"schema": "openclaw.fork-release.v1", "repository": "fr-meyer/openclaw",
@@ -105,6 +106,106 @@ class PrivateOciBundleTests(unittest.TestCase):
         second = self.f.prepare()
         self.assertEqual(first["archiveSha256"], second["archiveSha256"])
         self.assertEqual(Path(first["archivePath"]).read_bytes(), Path(second["archivePath"]).read_bytes())
+
+    def test_bad_provenance_subject_is_retained_but_never_qualified(self):
+        for mode in ("wrong", "multiple", "missing"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                def provenance(statement):
+                    if mode == "wrong":
+                        statement["subject"][0]["digest"]["sha256"] = "f" * 64
+                    elif mode == "multiple":
+                        statement["subject"] *= 2
+                    else:
+                        statement.pop("subject")
+                fixture = Fixture(directory, provenance=provenance)
+                before = private.privacy.inspect_layout(fixture.oci, fixture.index, private.SOURCE, WORKFLOW)
+                self.assertFalse(before["inspectionComplete"])
+                self.assertEqual(before["refusal"], "provenance_subject_mismatch")
+                process = subprocess.run(fixture.command(), capture_output=True, text=True, check=False)
+                self.assertEqual(process.returncode, 0, process.stdout)
+                retained = json.loads(process.stdout)
+                self.assertEqual(retained["retentionValidation"], "opaque_byte_inventory")
+                self.assertFalse(retained["qualified"])
+                self.assertFalse(retained["publicExportAuthorized"])
+                self.assertFalse(fixture.verify(retained)["qualified"])
+                after = private.privacy.inspect_layout(fixture.oci, fixture.index, private.SOURCE, WORKFLOW)
+                self.assertEqual(after["refusal"], "provenance_subject_mismatch")
+
+    def test_orphan_blob_is_included_not_silently_omitted_or_qualified(self):
+        payload = b"public diagnostic bytes"
+        name = hashlib.sha256(payload).hexdigest()
+        (self.f.oci / "blobs/sha256" / name).write_bytes(payload)
+        result = self.f.prepare()
+        with tarfile.open(result["archivePath"], "r:") as archive:
+            self.assertEqual(archive.extractfile(private.OCI + "blobs/sha256/" + name).read(), payload)
+        self.assertEqual(self.f.verify(result)["retentionValidation"], "opaque_byte_inventory")
+        scan = private.privacy.inspect_layout(self.f.oci, self.f.index, private.SOURCE, WORKFLOW)
+        self.assertFalse(scan["inspectionComplete"])
+        self.assertEqual(scan["refusal"], "unexpected_export_entry")
+
+    def test_malformed_index_bytes_can_be_diagnosed_without_granting_qualification(self):
+        (self.f.oci / "index.json").write_bytes(b"not JSON")
+        result = self.f.prepare()
+        self.assertFalse(result["qualified"])
+        self.assertEqual(self.f.verify(result)["archiveSha256"], result["archiveSha256"])
+        scan = private.privacy.inspect_layout(self.f.oci, self.f.index, private.SOURCE, WORKFLOW)
+        self.assertEqual(scan["refusal"], "malformed_json")
+
+    def test_opaque_inventory_preserves_blob_count_and_required_root_files(self):
+        for mutation in ("count", "index.json", "oci-layout"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                fixture = Fixture(directory)
+                blobs = fixture.oci / "blobs/sha256"
+                bound = len(list(blobs.iterdir()))
+                if mutation == "count":
+                    payload = b"one excess diagnostic blob"
+                    (blobs / hashlib.sha256(payload).hexdigest()).write_bytes(payload)
+                else:
+                    (fixture.oci / mutation).unlink()
+                limits = dataclasses.replace(private.privacy.Limits(), blobs=bound)
+                with patch.object(private.privacy, "Limits", return_value=limits):
+                    with self.assertRaisesRegex(private.Refusal,
+                            "blob_count_limit" if mutation == "count" else "missing_oci_entry"):
+                        fixture.prepare()
+                self.assertFalse(fixture.receipt.exists())
+
+    def test_custody_digest_can_name_root_or_nested_index_without_format_admission(self):
+        for location in ("root", "nested"):
+            with self.subTest(location=location), tempfile.TemporaryDirectory() as directory:
+                fixture = Fixture(directory)
+                digest = ("sha256:" + hashlib.sha256((fixture.oci / "index.json").read_bytes()).hexdigest()
+                          if location == "root" else fixture.index)
+                metadata = json.loads(fixture.metadata.read_bytes())
+                metadata["containerimage.digest"] = metadata["containerimage.descriptor"]["digest"] = digest
+                write(fixture.metadata, metadata)
+                resources = json.loads(fixture.resources.read_bytes()); resources["indexDigest"] = digest
+                write(fixture.resources, resources)
+                retained = fixture.prepare()
+                self.assertEqual(retained["indexDigest"], digest)
+                self.assertFalse(fixture.verify(retained)["qualified"])
+
+    def test_missing_nested_blob_can_be_retained_without_passing_privacy(self):
+        (self.f.oci / "blobs/sha256" / self.f.index[7:]).unlink()
+        retained = self.f.prepare()
+        self.assertFalse(self.f.verify(retained)["qualified"])
+        scan = private.privacy.inspect_layout(self.f.oci, self.f.index, private.SOURCE, WORKFLOW)
+        self.assertFalse(scan["inspectionComplete"])
+        self.assertEqual(scan["refusal"], "malformed_or_unreadable_layout")
+
+    def test_oci_change_after_writing_prevents_a_complete_inventory_receipt(self):
+        original = private.bundle.hash_file
+
+        def add_blob(*args):
+            result = original(*args)
+            payload = b"new diagnostic blob after archive write"
+            (self.f.oci / "blobs/sha256" / hashlib.sha256(payload).hexdigest()).write_bytes(payload)
+            return result
+
+        with patch.object(private.bundle, "hash_file", side_effect=add_blob):
+            with self.assertRaisesRegex(private.Refusal, "oci_inventory_changed"):
+                self.f.prepare()
+        self.assertFalse(self.f.receipt.exists())
+        self.assertFalse((self.f.out / private.NAME).exists())
 
     def test_full_tar_budget_includes_headers_and_footer_without_large_allocation(self):
         first = self.f.prepare()

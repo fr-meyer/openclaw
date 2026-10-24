@@ -270,6 +270,19 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                          'platforms: linux/amd64', 'provenance: mode=max,version=v1', 'sbom: true'):
             self.assertIn(required, self.build)
 
+    def test_oci_provenance_has_one_public_source_name_without_registry_push(self):
+        tags = re.findall(r'^          tags: (.+)$', self.build, re.M)
+        self.assertEqual(len(tags), 1)
+        for source in (SOURCE, '85a9bdc1285c338f10f5ca818abc259f6d483b5b'):
+            with self.subTest(source=source):
+                name = expression(tags[0], **self.source_context(source))
+                self.assertEqual(name, 'openclaw-source:' + source)
+                self.assertRegex(name, r'^openclaw-source:[0-9a-f]{40}$')
+        self.assertEqual(re.findall(r'^          push:\s*(\S+)\s*$', self.build, re.M), ['false'])
+        self.assertNotIn('load: true', self.build)
+        self.assertEqual(re.findall(r'^          outputs: (.+)$', self.build, re.M),
+                         ['type=oci,dest=${{ runner.temp }}/fork-release/oci/default,tar=false,compression=gzip,compression-level=1'])
+
     def test_export_defaults_off_and_requires_manual_storage_decision(self):
         dispatch = self.workflow.split('  workflow_dispatch:', 1)[1].split('\npermissions:', 1)[0]
         for option in ('export_public_artifact', 'artifact_storage_approved'):
