@@ -98,21 +98,24 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             self.assertIn('node scripts/run-vitest.mjs', candidate_execution)
 
     def run_focused_gate_dispatch(self, name, tests, *, native_exists=True,
-                                  vitest_exit=0, native_exit=0):
+                                  vitest_exit=0, native_exit=0, validator_exit=0):
         candidate_execution = step(self.workflow, name)
         run = textwrap.dedent(candidate_execution.split('        run: |\n', 1)[1])
-        dispatch = run[run.index('OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs'):]
+        dispatch = run[run.index('if [[ -z "${tests[*]-}"'):]
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             stub = root / 'node'
             stub.write_text(f'#!{sys.executable}\n' + textwrap.dedent('''\
                 import json, os, sys
                 from pathlib import Path
                 args = sys.argv[1:]
                 with Path(os.environ['GATE_TRACE']).open('a') as trace:
-                    trace.write(json.dumps(args) + '\\n')
+                    trace.write(json.dumps({'args': args, 'validator': os.environ.get('A2UI_TEST_VALIDATOR_PROJECT')}) + '\\n')
+                if args[:2] == ['--input-type=module', '-e']:
+                    print(os.environ['VALIDATOR_PROJECT'])
+                    raise SystemExit(int(os.environ['VALIDATOR_EXIT']))
                 native = args[:1] == ['--test']
-                if native and not Path(args[1]).is_file():
+                if native and any(not Path(arg).is_file() for arg in args[1:] if not arg.startswith('--')):
                     raise SystemExit(2)
                 raise SystemExit(int(os.environ['NATIVE_EXIT' if native else 'VITEST_EXIT']))
                 '''))
@@ -121,14 +124,21 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             if native_exists:
                 prerequisite.parent.mkdir()
                 prerequisite.write_text('// Synthetic native runner input.\n')
+                for test_path in tests:
+                    if test_path.endswith(('.test.mjs', '.e2e.mjs')):
+                        selected = root / test_path
+                        selected.parent.mkdir(parents=True, exist_ok=True)
+                        selected.write_text('// Synthetic selected native input.\n')
             trace = root / 'calls.jsonl'
             env = {**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
                    'GATE_TRACE': str(trace), 'VITEST_EXIT': str(vitest_exit),
-                   'NATIVE_EXIT': str(native_exit)}
+                   'NATIVE_EXIT': str(native_exit), 'VALIDATOR_EXIT': str(validator_exit),
+                   'VALIDATOR_PROJECT': str(root / 'validator')}
             selection = 'tests=(' + ' '.join(shlex.quote(test) for test in tests) + ')\n'
             result = subprocess.run(['/bin/bash', '-c', 'set -euo pipefail\n' + selection + dispatch],
                                     cwd=root, env=env, capture_output=True, text=True, timeout=10)
-            calls = [json.loads(line) for line in trace.read_text().splitlines()]
+            self.last_gate_calls = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
+            calls = [call['args'] for call in self.last_gate_calls]
         return result, calls
 
     def test_selected_mcp_gate_runs_declared_native_nowistay_prerequisite(self):
@@ -142,7 +152,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             with self.subTest(step=name):
                 result, calls = self.run_focused_gate_dispatch(name, tests)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(calls, [['scripts/run-vitest.mjs', *tests], native[1:]])
+                self.assertEqual(calls, [['scripts/run-vitest.mjs', 'run', *tests],
+                                         [native[1], '--test-concurrency=1', *native[2:]]])
 
     def test_unrelated_gates_do_not_acquire_a_native_nowistay_requirement(self):
         for name in ('Run focused candidate lifecycle and producer-consumer tests',
@@ -151,7 +162,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                 result, calls = self.run_focused_gate_dispatch(name, ['src/other.test.ts'],
                                                               native_exists=False)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(calls, [['scripts/run-vitest.mjs', 'src/other.test.ts']])
+                self.assertEqual(calls, [['scripts/run-vitest.mjs', 'run', 'src/other.test.ts']])
 
     def test_vitest_native_and_missing_native_failures_block_both_gate_steps(self):
         tests = ['src/agents/mcp-http-transport.test.ts']
@@ -164,6 +175,71 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                     result, calls = self.run_focused_gate_dispatch(name, tests, **change)
                     self.assertEqual(result.returncode, expected, result.stderr)
                     self.assertEqual(len(calls), count)
+
+    def test_native_only_gates_never_start_empty_vitest_collection(self):
+        tests = ['test/body-parser-security.test.mjs', 'test/zod-container-bounds.test.mjs']
+        for name in ('Run focused candidate lifecycle and producer-consumer tests',
+                     'Run focused custom patch and producer-consumer gates'):
+            with self.subTest(step=name):
+                result, calls = self.run_focused_gate_dispatch(name, tests)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(calls, [['--test', '--test-concurrency=1', *tests]])
+
+    def test_mixed_gates_keep_native_files_out_of_vitest_and_bind_validator(self):
+        tests = ['src/example.test.ts', 'test/a2ui-native-zod-regression.test.mjs',
+                 'test/discord-native-zod-regression.test.mjs']
+        for name in ('Run focused candidate lifecycle and producer-consumer tests',
+                     'Run focused custom patch and producer-consumer gates'):
+            with self.subTest(step=name):
+                result, calls = self.run_focused_gate_dispatch(name, tests)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(calls[0], ['scripts/run-vitest.mjs', 'run', tests[0]])
+                self.assertEqual(calls[1][:2], ['--input-type=module', '-e'])
+                self.assertEqual(calls[2], ['--test', '--test-concurrency=1', *tests[1:]])
+                self.assertTrue(self.last_gate_calls[2]['validator'].endswith('/validator'))
+
+    def test_explicit_mcp_companion_is_not_added_twice(self):
+        tests = ['src/agents/mcp-http-transport.test.ts',
+                 'test/mcp-nowistay-sdk-regression.test.mjs']
+        result, calls = self.run_focused_gate_dispatch(
+            'Run focused custom patch and producer-consumer gates', tests)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls[-1], ['--test', '--test-concurrency=1', tests[1]])
+
+    def test_empty_selection_and_validator_failure_do_not_qualify(self):
+        name = 'Run focused custom patch and producer-consumer gates'
+        result, calls = self.run_focused_gate_dispatch(name, [])
+        self.assertEqual(result.returncode, 78)
+        self.assertEqual(calls, [])
+        result, calls = self.run_focused_gate_dispatch(
+            name, ['test/a2ui-native-zod-regression.test.mjs'], validator_exit=27)
+        self.assertEqual(result.returncode, 27, result.stderr)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][:2], ['--input-type=module', '-e'])
+
+    def test_validator_resolution_uses_frozen_sdk_dependency_and_refuses_drift(self):
+        selected = step(self.workflow, 'Run focused custom patch and producer-consumer gates')
+        code = selected.split("node --input-type=module -e '\n", 1)[1].split("\n              ')", 1)[0]
+        code = textwrap.dedent(code)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / 'package.json').write_text('{"type":"module"}')
+            sdk = root / 'node_modules/@modelcontextprotocol/sdk'
+            (sdk / 'client').mkdir(parents=True)
+            (sdk / 'client/index.js').write_text('export {};')
+            (sdk / 'package.json').write_text(json.dumps({
+                'name': '@modelcontextprotocol/sdk', 'type': 'module',
+                'exports': {'./client/index.js': './client/index.js'}}))
+            ajv = sdk / 'node_modules/ajv'
+            ajv.mkdir(parents=True)
+            for version, expected in [('8.20.0', 0), ('8.21.0', 1)]:
+                (ajv / 'package.json').write_text(json.dumps({'name': 'ajv', 'version': version}))
+                result = subprocess.run(['node', '--input-type=module', '-e', code], cwd=root,
+                    env={'PATH': os.environ['PATH'], 'LANG': 'C.UTF-8'},
+                    capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, expected, result.stderr)
+                if not expected:
+                    self.assertEqual(result.stdout.strip(), str(ajv))
 
     def test_release_pr_contracts_exclude_default_branch_dispatch(self):
         job = self.workflow.split('  release-pr-contracts:\n', 1)[1].split('\n  qualify-and-prepare:', 1)[0]

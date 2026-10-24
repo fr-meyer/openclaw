@@ -252,14 +252,45 @@ jobs:
           mapfile -t tests < <(python3 ../trusted/scripts/fork-release/release.py gates \
             --manifest ../candidate/scripts/fork-release/manifest.json \
             --inventory ../candidate/scripts/fork-release/patch-inventory.json)
-          OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${tests[@]}"
-          # The MCP producer gate owns a separate native node:test SDK regression.
+          if [[ -z "${tests[*]-}" ]]; then
+            echo "No source regression gates selected" >&2
+            exit 78
+          fi
+          vitest_tests=()
+          native_tests=()
           for test_path in "${tests[@]}"; do
-            if [[ "$test_path" == "src/agents/mcp-http-transport.test.ts" ]]; then
-              node --test test/mcp-nowistay-sdk-regression.test.mjs
-              break
+            case "$test_path" in
+              *.test.mjs|*.e2e.mjs) native_tests+=("$test_path") ;;
+              *) vitest_tests+=("$test_path") ;;
+            esac
+            # Preserve the older MCP producer's declared native prerequisite.
+            if [[ "$test_path" == "src/agents/mcp-http-transport.test.ts" &&
+                  " ${tests[*]} " != *" test/mcp-nowistay-sdk-regression.test.mjs "* ]]; then
+              native_tests+=(test/mcp-nowistay-sdk-regression.test.mjs)
             fi
           done
+          if [[ -n "${vitest_tests[*]-}" ]]; then
+            OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs run "${vitest_tests[@]}"
+          fi
+          if [[ -n "${native_tests[*]-}" ]]; then
+            if [[ " ${native_tests[*]} " == *" test/a2ui-native-zod-regression.test.mjs "* ]]; then
+              # Use the frozen MCP SDK's declared Ajv dependency; no extra install.
+              A2UI_TEST_VALIDATOR_PROJECT="$(node --input-type=module -e '
+                import { createRequire } from "node:module";
+                import { readFileSync } from "node:fs";
+                import path from "node:path";
+                const source = createRequire(path.resolve("package.json"));
+                const sdk = createRequire(source.resolve("@modelcontextprotocol/sdk/client/index.js"));
+                const ajv = sdk.resolve("ajv/package.json");
+                if (JSON.parse(readFileSync(ajv, "utf8")).version !== "8.20.0") {
+                  throw new Error("Native A2UI gate requires frozen Ajv 8.20.0");
+                }
+                console.log(path.dirname(ajv));
+              ')"
+              export A2UI_TEST_VALIDATOR_PROJECT
+            fi
+            node --test --test-concurrency=1 "${native_tests[@]}"
+          fi
       - name: Retain passing exact-head contract evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -406,14 +437,45 @@ jobs:
           mapfile -t tests < <(python3 ../tooling/scripts/fork-release/release.py gates \
             --manifest ../metadata/scripts/fork-release/manifest.json \
             --inventory ../metadata/scripts/fork-release/patch-inventory.json)
-          OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs "${tests[@]}"
-          # The MCP producer gate owns a separate native node:test SDK regression.
+          if [[ -z "${tests[*]-}" ]]; then
+            echo "No source regression gates selected" >&2
+            exit 78
+          fi
+          vitest_tests=()
+          native_tests=()
           for test_path in "${tests[@]}"; do
-            if [[ "$test_path" == "src/agents/mcp-http-transport.test.ts" ]]; then
-              node --test test/mcp-nowistay-sdk-regression.test.mjs
-              break
+            case "$test_path" in
+              *.test.mjs|*.e2e.mjs) native_tests+=("$test_path") ;;
+              *) vitest_tests+=("$test_path") ;;
+            esac
+            # Preserve the older MCP producer's declared native prerequisite.
+            if [[ "$test_path" == "src/agents/mcp-http-transport.test.ts" &&
+                  " ${tests[*]} " != *" test/mcp-nowistay-sdk-regression.test.mjs "* ]]; then
+              native_tests+=(test/mcp-nowistay-sdk-regression.test.mjs)
             fi
           done
+          if [[ -n "${vitest_tests[*]-}" ]]; then
+            OPENCLAW_VITEST_MAX_WORKERS=2 node scripts/run-vitest.mjs run "${vitest_tests[@]}"
+          fi
+          if [[ -n "${native_tests[*]-}" ]]; then
+            if [[ " ${native_tests[*]} " == *" test/a2ui-native-zod-regression.test.mjs "* ]]; then
+              # Use the frozen MCP SDK's declared Ajv dependency; no extra install.
+              A2UI_TEST_VALIDATOR_PROJECT="$(node --input-type=module -e '
+                import { createRequire } from "node:module";
+                import { readFileSync } from "node:fs";
+                import path from "node:path";
+                const source = createRequire(path.resolve("package.json"));
+                const sdk = createRequire(source.resolve("@modelcontextprotocol/sdk/client/index.js"));
+                const ajv = sdk.resolve("ajv/package.json");
+                if (JSON.parse(readFileSync(ajv, "utf8")).version !== "8.20.0") {
+                  throw new Error("Native A2UI gate requires frozen Ajv 8.20.0");
+                }
+                console.log(path.dirname(ajv));
+              ')"
+              export A2UI_TEST_VALIDATOR_PROJECT
+            fi
+            node --test --test-concurrency=1 "${native_tests[@]}"
+          fi
       - name: Install reviewed OCI smoke transport
         run: |
           set -euo pipefail

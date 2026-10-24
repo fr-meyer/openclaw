@@ -57,6 +57,21 @@ Docker client/server was 28.0.4 and Buildx 0.38.0. These observations belong to
 that runner; every build checks its own current capacity. Related serialized
 10.5 compilation peaked at 6.55 GiB, while full cold 10.6 usage remains unknown.
 
+## Focused source gates
+
+Both source-test steps dispatch the inventory's TypeScript gates through the
+repository Vitest wrapper and native `.test.mjs`/`.e2e.mjs` gates through
+`node --test --test-concurrency=1`. An empty selection refuses qualification;
+native-only selections never start an unfiltered Vitest run. The older MCP
+producer keeps its declared native Nowistay companion when it is not already
+selected explicitly. Any runner or missing-file failure stops the step.
+
+When the native A2UI regression is selected, the workflow resolves Ajv from the
+frozen MCP SDK's declared dependency and requires version 8.20.0. It passes that
+existing package directory as the validator project; no extra package install,
+provider call or local developer path is used. These are source regressions,
+not proof of a real-data migration or production startup.
+
 ## Verification and privacy boundary
 
 1. Verify source/patch contracts and focused dependency-backed tests.
