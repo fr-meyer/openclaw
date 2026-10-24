@@ -1,0 +1,69 @@
+{
+  "schema": "openclaw.local-source-commit-evidence.v1",
+  "commit": "93db6739eb850f2a1d422074a8f04d74766af460",
+  "tree": "e1cdb0f12a7b9704fdc4d94d38feb769dfa10cfa",
+  "parent": "b97993184352e969a77f53b7d1b01519ac05465e",
+  "commitObjectSha256": "b7237f3ca98b8380c7b8412a9adb82d69181bab06ba1fc0c356d30602ad1137d",
+  "subject": "fix(secrets): carry egress header guard to 10.5",
+  "changedPaths": [
+    "custom-patches/reconciliation-2026.10.5.json",
+    "src/secrets/egress-proxy/proxy-forward.test.ts",
+    "src/secrets/egress-proxy/proxy-forward.ts",
+    "src/secrets/egress-proxy/response-headers.test.ts",
+    "src/secrets/egress-proxy/response-headers.ts"
+  ],
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
+  "verbatimSemanticDecisions": [
+    {
+      "path": "src/secrets/egress-proxy/proxy-forward.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "80a3323b1b58aeb64ed5cc127e3e7e19e438996d",
+      "v99ForkBlob": "8ec0c9250836767d38d0e5e2d26f092330cfcdb2",
+      "v105UpstreamBlob": "becc0ec285ffd1b19a1d6d5d0d3d429a624e4030",
+      "semanticOwner": "egress-proxy",
+      "reason": "Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway."
+    },
+    {
+      "path": "src/secrets/egress-proxy/proxy-forward.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "9eba6e57944deb993fd444f63394fdf3b0f17ec9",
+      "v99ForkBlob": "aaa1d8f08081218aee16cc245b657e3f1693a489",
+      "v105UpstreamBlob": "45a596407fd2c53c23830db3fc7a71e36c5e95ac",
+      "semanticOwner": "egress-proxy",
+      "reason": "Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway."
+    },
+    {
+      "path": "src/secrets/egress-proxy/response-headers.ts",
+      "treeRelation": "UPSTREAM_UNCHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "11714002c31ebbb3400ce7effae8eab5be085785",
+      "v99ForkBlob": "57f397d09e5ce1defebda81332a2602e8a1d97d7",
+      "v105UpstreamBlob": "11714002c31ebbb3400ce7effae8eab5be085785",
+      "semanticOwner": "egress-proxy",
+      "reason": "Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway."
+    }
+  ],
+  "introducedOrUpdatedSupport": [
+    {
+      "path": "custom-patches/reconciliation-2026.10.5.json",
+      "sourceCommit": "93db6739eb850f2a1d422074a8f04d74766af460",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    },
+    {
+      "path": "src/secrets/egress-proxy/response-headers.test.ts",
+      "sourceCommit": "93db6739eb850f2a1d422074a8f04d74766af460",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    }
+  ],
+  "allChangedTestReferences": [
+    "src/secrets/egress-proxy/proxy-forward.test.ts",
+    "src/secrets/egress-proxy/response-headers.test.ts"
+  ],
+  "inventoryTestReferences": [
+    "src/secrets/egress-proxy/proxy-forward.test.ts",
+    "src/secrets/egress-proxy/response-headers.test.ts"
+  ],
+  "qualification": "References only; this generator executes no tests and transfers no qualification."
+}

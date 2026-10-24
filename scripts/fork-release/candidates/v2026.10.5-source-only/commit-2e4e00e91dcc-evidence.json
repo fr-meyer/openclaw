@@ -1,0 +1,111 @@
+{
+  "schema": "openclaw.local-source-commit-evidence.v1",
+  "commit": "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+  "tree": "ff857f53fd1125212a679237d577575263d52541",
+  "parent": "211387d11a79966d97c320978e2b8cd5130bed29",
+  "commitObjectSha256": "25b5197ebc90c35630e781d100b26d3295ce49419d805ea448b49959b827b1c6",
+  "subject": "fix(fork): resolve 10.5 source qualification findings",
+  "changedPaths": [
+    "custom-patches/reconciliation-2026.10.5.json",
+    "scripts/lib/ci-node-test-inventory.mts",
+    "scripts/lib/ci-node-test-plan.mts",
+    "scripts/plugin-sdk-surface-report.mts",
+    "src/agents/subagents/registry/subagent-registry.store.worker.ts",
+    "src/gateway/server-managed-task-flow-runtime.ts",
+    "test/scripts/ci-node-test-plan.test.ts",
+    "test/vitest/vitest.tasks.config.ts",
+    "test/vitest/vitest.test-shards.mjs"
+  ],
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
+  "verbatimSemanticDecisions": [
+    {
+      "path": "scripts/lib/ci-node-test-inventory.mts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "fd57199fbcc7cf4799a0c4e409c98366973fd047",
+      "v99ForkBlob": "da2aac18d2afa84c7a9e2907241d9531318445c6",
+      "v105UpstreamBlob": "2f602b4baa90ecf944841e4e7cf6bbb17230e02f",
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "scripts/lib/ci-node-test-plan.mts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "10b25ad45cb99494e1e3080dee7c5f9db2413f93",
+      "v99ForkBlob": "59be8483986fc48b24b88b41f9543a79000e985b",
+      "v105UpstreamBlob": "d0e4f65238430ddd3687e47321fc3a6cf4e01159",
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "scripts/plugin-sdk-surface-report.mts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "18f8444d9260ea993f171565ca33300de5eee62f",
+      "v99ForkBlob": "3a9b3da6d9254dd107b7d5492a0d78e0f5a68054",
+      "v105UpstreamBlob": "458050d7a8fc43be88f07540a8e1fc7193620c8c",
+      "reason": "Retarget the existing fork +1 export allowance to the measured 10.5 surface: 3646 public exports versus upstream 3645, solely for the unchanged CONFIG_MUTATION_CAPABILITIES durable-backup contract. Native measurement found 2115 callable exports and no unauthorized shipped-surface removals. Retain all callable, per-entrypoint, removal and other checks; no environment override or generated inventory change. Re-run the native gate with this exact source policy.",
+      "semanticOwner": "plugin-sdk-surface-budget"
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.ts",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "12993a03a614b59c4c23c5b98c029f933d12bf70",
+      "v105UpstreamBlob": null,
+      "reason": "Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.",
+      "semanticOwner": "gateway-plugin-instance-and-native-state-worker"
+    },
+    {
+      "path": "test/scripts/ci-node-test-plan.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "1c28754496ea314d8379edfb4b7d317fb8496079",
+      "v99ForkBlob": "bdeeca67c45f7078f74b1777c6b5373db50000e3",
+      "v105UpstreamBlob": "fd32d69a43fe775417c3e231fe73b4bf8bee44fd",
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "test/vitest/vitest.tasks.config.ts",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "7e0586d3e183bc42bdb3ff0270cab3394ac08bc2",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    },
+    {
+      "path": "test/vitest/vitest.test-shards.mjs",
+      "treeRelation": "UPSTREAM_UNCHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "3604a370b2f63fbb432469cea9c6c3869ee5c7c1",
+      "v99ForkBlob": "4974e0fc5b83f1d712d75e6c8df8e6b2f7e528a5",
+      "v105UpstreamBlob": "3604a370b2f63fbb432469cea9c6c3869ee5c7c1",
+      "semanticOwner": "test-routing",
+      "reason": "Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior."
+    }
+  ],
+  "introducedOrUpdatedSupport": [
+    {
+      "path": "custom-patches/reconciliation-2026.10.5.json",
+      "sourceCommit": "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry.store.worker.ts",
+      "sourceCommit": "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    }
+  ],
+  "allChangedTestReferences": [
+    "test/scripts/ci-node-test-plan.test.ts"
+  ],
+  "inventoryTestReferences": [
+    "test/scripts/ci-node-test-plan.test.ts"
+  ],
+  "qualification": "References only; this generator executes no tests and transfers no qualification."
+}

@@ -1,0 +1,81 @@
+{
+  "schema": "openclaw.fork-release.v1",
+  "repository": "fr-meyer/openclaw",
+  "candidate": "v2026.10.5-source-only",
+  "productionEligible": false,
+  "source": {
+    "baseCommit": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "baseTree": "a138559698570e238395121723a773106ac33f8c",
+    "patches": [
+      {
+        "commit": "94f1ee3e18015055ab25d62f71ee090d43c32062",
+        "tree": "3c655a3dc4d7f0840e4ba29f325887ef7301edad"
+      },
+      {
+        "commit": "b97993184352e969a77f53b7d1b01519ac05465e",
+        "tree": "1e2087daa19df4d58f9def3d4aaf67b9ae7a4a5f"
+      },
+      {
+        "commit": "93db6739eb850f2a1d422074a8f04d74766af460",
+        "tree": "e1cdb0f12a7b9704fdc4d94d38feb769dfa10cfa"
+      },
+      {
+        "commit": "e0e821e26904fa0805f710226df44cfd50866654",
+        "tree": "9b6aefe50c20f75a4d6eb88f4a8f883606b12556"
+      },
+      {
+        "commit": "211387d11a79966d97c320978e2b8cd5130bed29",
+        "tree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f"
+      },
+      {
+        "commit": "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+        "tree": "ff857f53fd1125212a679237d577575263d52541"
+      },
+      {
+        "commit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+        "tree": "0a420e0b25e465bd3669574b0aaf087efbd455f6"
+      },
+      {
+        "commit": "e8796be056dc39a2cf39def8b08a71cd2286ad02",
+        "tree": "6101d8ec0139dd5c267106285ab8d1f74682276a"
+      },
+      {
+        "commit": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+        "tree": "9dd42d178010367e153b73f42f1f7d14370b579f"
+      },
+      {
+        "commit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+        "tree": "9bb03f9cd6f8221f42a1c1701824a154d6f87d55"
+      },
+      {
+        "commit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+        "tree": "fdbf31f86fa714b4f58c065e38d61fdece659902"
+      },
+      {
+        "commit": "ae85778296da373dfe7d80101931bafac1acc9dd",
+        "tree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab"
+      }
+    ],
+    "commit": "ae85778296da373dfe7d80101931bafac1acc9dd",
+    "tree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab"
+  },
+  "gates": {
+    "patchLifecycle": [
+      "src/agents/worktrees/run-lease.test.ts",
+      "src/secrets/egress-proxy/proxy-forward.test.ts"
+    ],
+    "producerConsumer": [
+      "src/tasks/managed-task-flow.worker.integration.test.ts",
+      "src/agents/mcp-http-transport.test.ts"
+    ]
+  },
+  "image": {
+    "architecture": "amd64",
+    "extensions": "codex,workboard"
+  },
+  "review": {
+    "prNumber": 18,
+    "baseSha": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "changedDiffSha256": "15d12199973dc0be7ca518e6602a67c435759f6257a06314f97801c8368675dc"
+  }
+}

@@ -8023,20 +8023,44 @@ server.listen(0, "127.0.0.1", () => {
 
     expect(setupGo.with).toEqual({ "go-version": "1.25.0", cache: false });
     expect(steps.indexOf(setupGo)).toBeLessThan(steps.indexOf(install));
-    expect(install.run).toContain(`ACTIONLINT_REVISION="${revision}"`);
     expect(install.run).toContain('export GOBIN="$RUNNER_TEMP/actionlint-bin"');
-    expect(install.run).toContain(
-      'go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_REVISION}"',
-    );
-    expect(install.run).toContain('"$GOBIN/actionlint" -version');
-    expect(install.run).toContain("v1.7.13-0.20260419144658-${ACTIONLINT_REVISION:0:12}");
+    expect(install.run).toContain('node scripts/check-workflows.mts --install-actionlint "$GOBIN"');
     expect(install.run).toContain('echo "$GOBIN" >> "$GITHUB_PATH"');
+    const lint = expectDefined(
+      steps.find((step) => step.name === "Lint workflows"),
+      "workflow lint",
+    );
+    expect(steps.indexOf(install)).toBeLessThan(steps.indexOf(lint));
+    expect(lint.run).toBe("actionlint");
+
+    // Both entry points share exact upstream identity and the transparent parser
+    // extension; neither may fall back to an unpatched or diagnostic-filtered tool.
+    const checker = readFileSync("scripts/check-workflows.mts", "utf8");
+    expect(checker).toContain(`const ACTIONLINT_REVISION = "${revision}";`);
+    expect(checker).toContain('new URL("actionlint-cache-mode.patch", import.meta.url)');
+    expect(checker).toContain("identity.stdout.trim() !== ACTIONLINT_REVISION");
+    expect(checker).toContain(
+      "v1.7.13-0.20260419144658-${ACTIONLINT_REVISION.slice(0, 12)}+openclaw-cache-mode.${ACTIONLINT_PATCH_SHA.slice(0, 12)}",
+    );
+    expect(checker).toContain("return verifyActionlintParser(binary);");
+    expect(checker).toContain('run("actionlint", workflows);');
+    expect(readFileSync("scripts/actionlint-cache-mode.patch", "utf8")).toContain(
+      `Apply only to rhysd/actionlint ${revision}.`,
+    );
     const preCommit = parse(readFileSync(".pre-commit-config.yaml", "utf8"));
+    const actionlintOwners = preCommit.repos.filter((repo: { hooks: { id: string }[] }) =>
+      repo.hooks.some((hook) => hook.id === "actionlint"),
+    );
+    expect(actionlintOwners).toHaveLength(1);
+    expect(actionlintOwners[0].repo).toBe("local");
     expect(
-      preCommit.repos.find(
-        (repo: { repo: string }) => repo.repo === "https://github.com/rhysd/actionlint",
-      ).rev,
-    ).toBe(revision);
+      actionlintOwners[0].hooks.find((hook: { id: string }) => hook.id === "actionlint"),
+    ).toMatchObject({
+      entry: "node scripts/check-workflows.mts --actionlint-only",
+      language: "system",
+      files: "^\\.github/workflows/.*\\.ya?ml$",
+      require_serial: true,
+    });
   });
 
   it("runs committed generated baseline drift checks in workflow sanity", () => {

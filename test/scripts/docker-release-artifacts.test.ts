@@ -15,6 +15,7 @@ import {
   verifyDockerReleaseLayout,
   verifyDockerReleaseProducer,
 } from "../../scripts/docker-release-artifacts.mjs";
+import { verifyImageLayout } from "../../scripts/fork-release/image.mjs";
 
 const sourceSha = "a".repeat(40);
 const toolingSha = "b".repeat(40);
@@ -45,7 +46,12 @@ function writeJson(file: string, value: unknown) {
 function createLayout(
   directory: string,
   architecture: string,
-  options: { labelSha?: string; provenance?: boolean; version?: string } = {},
+  options: {
+    labelSha?: string;
+    provenance?: boolean;
+    provenanceStatement?: (imageDigest: string) => unknown;
+    version?: string;
+  } = {},
 ) {
   function blob(value: unknown) {
     const bytes = Buffer.from(JSON.stringify(value));
@@ -83,7 +89,11 @@ function createLayout(
     config: { mediaType: "application/vnd.oci.image.config.v1+json", ...blob({}) },
     layers: predicates.map((predicateType) =>
       Object.assign(
-        blob({ predicateType, subject: [{ digest: { sha256: image.digest.slice(7) } }] }),
+        blob(
+          predicateType === "https://slsa.dev/provenance/v1" && options.provenanceStatement
+            ? options.provenanceStatement(image.digest)
+            : { predicateType, subject: [{ digest: { sha256: image.digest.slice(7) } }] },
+        ),
         {
           mediaType: "application/vnd.in-toto+json",
           annotations: { "in-toto.io/predicate-type": predicateType },
@@ -114,6 +124,23 @@ function createLayout(
     imageDigest: image.digest,
     configDigest: config.digest,
     manifests,
+  };
+}
+
+function gitProvenanceStatement(imageDigest: string) {
+  const sourceUri = `https://github.com/fr-meyer/openclaw.git#${sourceSha}`;
+  return {
+    _type: "https://in-toto.io/Statement/v1",
+    predicateType: "https://slsa.dev/provenance/v1",
+    subject: [{ digest: { sha256: imageDigest.slice(7) } }],
+    predicate: {
+      buildDefinition: {
+        externalParameters: {
+          configSource: { uri: sourceUri, digest: { sha1: sourceSha }, path: "Dockerfile" },
+        },
+        resolvedDependencies: [{ uri: sourceUri, digest: { sha1: sourceSha } }],
+      },
+    },
   };
 }
 
@@ -412,6 +439,160 @@ describe("prepared Docker publication", () => {
           expectedDigest: image.indexDigest,
         }),
       ).rejects.toThrow(/missing predicate|labels/);
+    }
+  });
+
+  it("binds actual provenance statements to the image and pinned Git source when requested", async () => {
+    const sourceRepository = "fr-meyer/openclaw";
+    type Statement = ReturnType<typeof gitProvenanceStatement>;
+    const cases: Array<[string, (value: Statement) => unknown, RegExp | undefined]> = [
+      ["exact source", (value) => value, undefined],
+      [
+        "wrong subject",
+        (value) => {
+          value.subject[0]!.digest.sha256 = "0".repeat(64);
+          return value;
+        },
+        /selected image manifest/,
+      ],
+      ["missing subject", (value) => ({ ...value, subject: [] }), /selected image manifest/],
+      [
+        "annotation without provenance",
+        (value) => ({
+          ...value,
+          predicateType: "https://spdx.dev/Document",
+        }),
+        /selected image manifest/,
+      ],
+      ["missing source content", (value) => ({ ...value, predicate: {} }), /pinned repository/],
+      [
+        "wrong source repository",
+        (value) => {
+          value.predicate.buildDefinition.externalParameters.configSource.uri = `https://github.com/other/openclaw.git#${sourceSha}`;
+          return value;
+        },
+        /pinned repository/,
+      ],
+      [
+        "wrong source commit",
+        (value) => {
+          value.predicate.buildDefinition.externalParameters.configSource.digest.sha1 = toolingSha;
+          return value;
+        },
+        /pinned repository/,
+      ],
+      [
+        "truncated commit",
+        (value) => {
+          value.predicate.buildDefinition.externalParameters.configSource.digest.sha1 =
+            sourceSha.slice(0, 12);
+          return value;
+        },
+        /pinned repository/,
+      ],
+      [
+        "missing Git material",
+        (value) => {
+          value.predicate.buildDefinition.resolvedDependencies = [];
+          return value;
+        },
+        /pinned repository/,
+      ],
+      [
+        "wrong material repository",
+        (value) => {
+          value.predicate.buildDefinition.resolvedDependencies[0]!.uri = `https://github.com/other/openclaw.git#${sourceSha}`;
+          return value;
+        },
+        /pinned repository/,
+      ],
+      [
+        "wrong material commit",
+        (value) => {
+          value.predicate.buildDefinition.resolvedDependencies[0]!.digest.sha1 = toolingSha;
+          return value;
+        },
+        /pinned repository/,
+      ],
+    ];
+    for (const [name, change, error] of cases) {
+      const directory = temporaryDirectory();
+      const image = createLayout(directory, "amd64", {
+        provenanceStatement: (imageDigest) => change(gitProvenanceStatement(imageDigest)),
+      });
+      const result = verifyDockerReleaseLayout({
+        directory,
+        architecture: "amd64",
+        sourceSha,
+        sourceRepository,
+        version: "2026.8.1-beta.2",
+        builtAt: "2026-09-01T00:00:00.000Z",
+        expectedDigest: image.indexDigest,
+      });
+      if (error) {
+        await expect(result, name).rejects.toThrow(error);
+      } else {
+        await expect(result, name).resolves.toMatchObject({ imageDigest: image.imageDigest });
+      }
+    }
+  });
+
+  it("keeps hosted local-context preparation compatible and requires Git provenance for GCP", async () => {
+    const manifest = {
+      repository: "fr-meyer/openclaw",
+      source: { commit: sourceSha },
+      image: { architecture: "amd64" },
+    };
+    const github = { workflowSha: toolingSha, runId, attempt: runAttempt };
+    const gcp = {
+      kind: "gcp",
+      toolingSha,
+      operationId: "1".repeat(32),
+      attempt: "1",
+      executionSha256: "2".repeat(64),
+    };
+    const directory = temporaryDirectory();
+    const localImage = createLayout(directory, "amd64");
+    const receipt = {
+      version: "2026.8.1-beta.2",
+      builtAt: "2026-09-01T00:00:00.000Z",
+      indexDigest: localImage.indexDigest,
+      producer: github,
+    };
+    await expect(
+      verifyImageLayout({ manifest, receipt, ociDir: directory }),
+    ).resolves.toMatchObject({ imageDigest: localImage.imageDigest });
+    await expect(
+      verifyImageLayout({
+        manifest,
+        receipt: { ...receipt, producer: gcp },
+        ociDir: directory,
+      }),
+    ).rejects.toThrow(/pinned repository/);
+
+    const gitDirectory = temporaryDirectory();
+    const gitImage = createLayout(gitDirectory, "amd64", {
+      provenanceStatement: gitProvenanceStatement,
+    });
+    await expect(
+      verifyImageLayout({
+        manifest,
+        receipt: { ...receipt, indexDigest: gitImage.indexDigest, producer: gcp },
+        ociDir: gitDirectory,
+      }),
+    ).resolves.toMatchObject({ imageDigest: gitImage.imageDigest });
+
+    for (const producer of [
+      { ...github, kind: "gcp" },
+      { ...gcp, kind: "unknown" },
+    ]) {
+      await expect(
+        verifyImageLayout({
+          manifest,
+          receipt: { ...receipt, producer },
+          ociDir: path.join(directory, "must-not-be-read"),
+        }),
+      ).rejects.toThrow(/Invalid producer fields/);
     }
   });
 

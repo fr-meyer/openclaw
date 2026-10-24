@@ -10846,7 +10846,7 @@ printf '%s\\n' "$DEEPSEEK_API_KEY" "$DEEPINFRA_API_KEY"`,
     expect(checkTestboxSteps.indexOf(closeTestboxSshStep)).toBe(
       checkTestboxSteps.indexOf(runTestboxStep) + 1,
     );
-    expect(runArmTestboxStep.if).toBe("always()");
+    expect(runArmTestboxStep.if).toBe("github.event_name == 'workflow_dispatch' && always()");
     expect(runBuildArtifactsTestboxStep.if).toBe(
       "github.event_name == 'workflow_dispatch' && always()",
     );

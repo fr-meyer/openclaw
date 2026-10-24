@@ -1,0 +1,80 @@
+{
+  "schema": "openclaw.local-source-commit-evidence.v1",
+  "commit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+  "tree": "fdbf31f86fa714b4f58c065e38d61fdece659902",
+  "parent": "cb80407b3d01111996ec6abb803fd00417b535a0",
+  "commitObjectSha256": "153e0740f45fe20dad990d484c7be6adcdd4bbd2aaec517cbd348f3ce9b0a825",
+  "subject": "fix(docker): keep acquisition online and candidate RUNs offline",
+  "changedPaths": [
+    "Dockerfile",
+    "custom-patches/reconciliation-2026.10.5.json",
+    "scripts/docker/CURRENT_PARITY_IMAGE.md",
+    "scripts/docker/package-current-publisher.mjs",
+    "scripts/docker/package-current-publisher.test.mjs",
+    "src/dockerfile.test.ts"
+  ],
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
+  "verbatimSemanticDecisions": [
+    {
+      "path": "Dockerfile",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "1f29e266a14c12da42073fb9ce22d8e0753eb6c7",
+      "v99ForkBlob": "4455a73c0dcd8111e90dd542892b47d6730420e8",
+      "v105UpstreamBlob": "79c30caaf1963efe8e6eca18da2386c67b6f0455",
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof. Separate reviewed manifest-only Corepack/pnpm acquisition and pre-payload Debian/npm security acquisition from network-disabled candidate execution. Preserve frozen lockfile, patch/integrity and release-age policy; disable hooks only during acquisition, retain native offline install lifecycles and native-addon checks, and copy the pinned Corepack cache into the runtime. All RUN instructions declare their network mode; the three acquisition steps inherit the executor default while every other RUN stays explicitly offline. Acquire Matrix crypto native assets with official release SHA256 pins and use its supported loopback download mirror during native offline installation, preserving postinstall and native-addon checks."
+    },
+    {
+      "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "03039885c285316c7275f361eafbff0c2bbd6a89",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.test.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "b15896a768e53723433dbcc9c8b37e2cafc29eb6",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    }
+  ],
+  "introducedOrUpdatedSupport": [
+    {
+      "path": "custom-patches/reconciliation-2026.10.5.json",
+      "sourceCommit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    },
+    {
+      "path": "src/dockerfile.test.ts",
+      "sourceCommit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    }
+  ],
+  "allChangedTestReferences": [
+    "scripts/docker/package-current-publisher.test.mjs",
+    "src/dockerfile.test.ts"
+  ],
+  "inventoryTestReferences": [
+    "scripts/docker/package-current-publisher.test.mjs",
+    "src/dockerfile.test.ts"
+  ],
+  "qualification": "References only; this generator executes no tests and transfers no qualification."
+}

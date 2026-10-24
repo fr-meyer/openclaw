@@ -1,0 +1,28 @@
+{
+  "schema": "openclaw.local-semantic-decision-evidence.v1",
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
+  "verbatimSemanticDecision": {
+    "path": "scripts/check-codex-app-server-protocol.ts",
+    "treeRelation": "UPSTREAM_CHANGED",
+    "disposition": "UPSTREAM_EQUIVALENT_REVIEWED",
+    "v99BaseBlob": "caf7c72e8ebdf22263541df5bdadf9dd7f575492",
+    "v99ForkBlob": "8d8663105a0cbadd3299175071dd03247cde4b81",
+    "v105UpstreamBlob": "90393b0d7ba59855a898308f16bdfdba35043f92",
+    "reason": "10.5 already derives the config edit type from CodexAppServerRequestParams<\"config/batchWrite\">[\"edits\"][number], which is the old fork patch intent."
+  },
+  "candidateCommit": "ae85778296da373dfe7d80101931bafac1acc9dd",
+  "pathBinding": {
+    "path": "scripts/check-codex-app-server-protocol.ts",
+    "boundary": "tooling",
+    "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+    "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+    "sourceBlob": "8d8663105a0cbadd3299175071dd03247cde4b81",
+    "upstreamBlob": "90393b0d7ba59855a898308f16bdfdba35043f92",
+    "candidateBlob": "90393b0d7ba59855a898308f16bdfdba35043f92"
+  },
+  "scope": "Retained reviewed semantic decision, not an exact-upstreamed patch claim.",
+  "regressionReferences": [
+    "test/scripts/codex-app-server-protocol-source.test.ts"
+  ],
+  "qualification": "References only; no tests executed by this generator."
+}

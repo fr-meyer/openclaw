@@ -146,17 +146,29 @@ export function validateDockerReleaseIdentity({
   return { ...policy, baseTag };
 }
 
-/** Verify the OCI closure before smoke testing or registry writes. */
+/** Verify the OCI closure before smoke testing or registry writes.
+ * An explicit sourceRepository also binds native Git provenance to sourceSha.
+ * @param {{ directory: string, architecture: string, sourceSha: string, sourceRepository?: string, version: string, builtAt: string, expectedDigest: string }} options
+ */
 export async function verifyDockerReleaseLayout({
   directory,
   architecture,
   sourceSha,
+  sourceRepository,
   version,
   builtAt,
   expectedDigest,
 }) {
   requireValue(ARCHITECTURES.includes(architecture), "Unsupported Docker release architecture.");
   requireValue(DIGEST.test(expectedDigest), "Missing BuildKit image digest.");
+  if (sourceRepository !== undefined) {
+    requireValue(
+      typeof sourceRepository === "string" &&
+        /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(sourceRepository) &&
+        SHA.test(sourceSha),
+      "Provenance source requires a repository and full lowercase commit SHA.",
+    );
+  }
   requireValue(
     readJson(path.join(directory, "oci-layout")).imageLayoutVersion === "1.0.0",
     "Unsupported OCI layout.",
@@ -220,6 +232,46 @@ export async function verifyDockerReleaseLayout({
     inspectAttestation: (digest) => manifests.get(digest),
   });
   requireValue(errors.length === 0, errors.join("\n"));
+  if (sourceRepository !== undefined) {
+    const sourceUri = `https://github.com/${sourceRepository}.git#${sourceSha}`;
+    const sourceMatches = (source) =>
+      source?.uri === sourceUri && source.digest?.sha1 === sourceSha;
+    let provenanceCount = 0;
+    for (const descriptor of index.manifests) {
+      if (
+        descriptor.annotations?.["vnd.docker.reference.type"] !== "attestation-manifest" ||
+        descriptor.annotations?.["vnd.docker.reference.digest"] !== images[0].digest
+      ) {
+        continue;
+      }
+      for (const layer of manifests.get(descriptor.digest).layers) {
+        if (layer.annotations?.["in-toto.io/predicate-type"] !== "https://slsa.dev/provenance/v1") {
+          continue;
+        }
+        // Descriptor annotations alone do not bind the statement to this image or source.
+        const statement = await blob(layer, true);
+        requireValue(
+          statement?.predicateType === "https://slsa.dev/provenance/v1" &&
+            Array.isArray(statement.subject) &&
+            statement.subject.length === 1 &&
+            statement.subject[0]?.digest?.sha256 === images[0].digest.slice(7),
+          "Docker provenance statement does not identify the selected image manifest.",
+        );
+        const definition = statement.predicate?.buildDefinition;
+        requireValue(
+          sourceMatches(definition?.externalParameters?.configSource) &&
+            Array.isArray(definition?.resolvedDependencies) &&
+            definition.resolvedDependencies.some(sourceMatches),
+          "Docker provenance Git source does not match the pinned repository and commit.",
+        );
+        provenanceCount += 1;
+      }
+    }
+    requireValue(
+      provenanceCount > 0,
+      "Missing Docker provenance statement for the selected image.",
+    );
+  }
   const image = manifests.get(images[0].digest);
   const config = await blob(image.config, true);
   const labels = config.config?.Labels;
@@ -259,35 +311,138 @@ if printf '%s\\n' "$smoke_output" | grep -q "Missing workspace template:"; then 
 if [ "$smoke_status" -ne 0 ]; then echo "Agent exited $smoke_status after workspace bootstrap (provider credentials are intentionally absent)."; fi
 `;
 
-function smokeImage(directory, architecture, variant, configDigest) {
+function smokeImage(directory, architecture, variant, configDigest, options = {}) {
+  requireValue(
+    options.isolation === undefined || options.isolation === "secretless",
+    "Unsupported Docker smoke isolation.",
+  );
+  requireValue(
+    options.transport === undefined || ["skopeo", "loaded"].includes(options.transport),
+    "Unsupported Docker smoke transport.",
+  );
+  requireValue(DIGEST.test(configDigest), "Missing exact smoke config digest.");
+  requireValue(
+    options.loadedIndexDigest === undefined ||
+      (options.transport === "loaded" &&
+        typeof options.loadedIndexDigest === "string" &&
+        DIGEST.test(options.loadedIndexDigest)),
+    "Loaded smoke index requires loaded transport and an exact digest.",
+  );
+  const imageReference = options.loadedIndexDigest ?? configDigest;
+  const platform =
+    options.loadedIndexDigest === undefined ? [] : ["--platform", `linux/${architecture}`];
+  requireValue(
+    options.loadedIndexDigest === undefined || ARCHITECTURES.includes(architecture),
+    "Unsupported loaded smoke platform.",
+  );
   const image = `openclaw-release-smoke:${architecture}-${variant}`;
   // Only the smoke copy enters Docker's single-image store. The OCI artifact
   // retains the original index, SBOM, and provenance for digest-preserving promotion.
-  run(
-    "skopeo",
-    [
-      "--override-os",
-      "linux",
-      "--override-arch",
-      architecture,
-      "copy",
-      `oci:${directory}`,
-      `docker-daemon:${image}`,
-    ],
-    { timeout: 600_000, stdio: "inherit" },
-  );
+  if (options.transport !== "loaded") {
+    run(
+      "skopeo",
+      [
+        "--override-os",
+        "linux",
+        "--override-arch",
+        architecture,
+        "copy",
+        `oci:${directory}`,
+        `docker-daemon:${image}`,
+      ],
+      { timeout: 600_000, stdio: "inherit" },
+    );
+  }
   requireValue(
-    run("docker", ["image", "inspect", "--format", "{{.Id}}", image]).trim() === configDigest,
+    run("docker", [
+      "image",
+      "inspect",
+      "--format",
+      "{{.Id}}",
+      // Containerd's unqualified image identity is the loaded OCI index.
+      // Platform-qualified inspect reports the selected manifest instead.
+      options.transport === "loaded" ? imageReference : image,
+    ]).trim() === imageReference,
     "Smoke image does not match the prepared OCI image.",
   );
   const script =
     variant === "browser"
       ? String.raw`set -eu; browser="$(find /home/node/.cache/ms-playwright -maxdepth 5 -type f \( -name chrome -o -name chromium -o -name chrome-headless-shell \) -print | head -1)"; test -n "$browser"; "$browser" --version`
       : WORKSPACE_SMOKE;
-  run("docker", ["run", "--rm", "--entrypoint", "/bin/sh", image, "-lc", script], {
-    timeout: 120_000,
-    stdio: "inherit",
-  });
+  const isolation =
+    options.isolation === "secretless"
+      ? [
+          "--network",
+          "none",
+          "--read-only",
+          "--cap-drop",
+          "ALL",
+          "--security-opt",
+          "no-new-privileges",
+          "--pids-limit",
+          "128",
+          "--memory",
+          "2g",
+          "--cpus",
+          "1",
+          "--tmpfs",
+          "/tmp:rw,nosuid,nodev,size=536870912",
+        ]
+      : [];
+  // Keep the native workspace/browser smoke contract. Fork preparation on a
+  // shared host opts into isolation without replacing that contract.
+  if (options.isolation === "secretless") {
+    const container = run("docker", [
+      "create",
+      ...platform,
+      ...isolation,
+      "--entrypoint",
+      "/bin/sh",
+      imageReference,
+      "-lc",
+      script,
+    ]).trim();
+    requireValue(/^[0-9a-f]{64}$/u.test(container), "Invalid owned smoke container identity.");
+    try {
+      run("docker", ["start", "--attach", container], {
+        timeout: 120_000,
+        stdio: "inherit",
+      });
+      requireValue(
+        run("docker", [
+          "inspect",
+          "--format",
+          "{{.State.Running}} {{.State.ExitCode}}",
+          container,
+        ]).trim() === "false 0",
+        "Native smoke did not complete successfully.",
+      );
+    } finally {
+      // Only this create response grants cleanup authority. A failed native
+      // check or attached-client timeout cannot leave the test writer running.
+      run("docker", ["rm", "--force", container], { timeout: 30_000 });
+    }
+    return { imageReference };
+  }
+  run(
+    "docker",
+    [
+      "run",
+      "--rm",
+      ...platform,
+      ...isolation,
+      "--entrypoint",
+      "/bin/sh",
+      imageReference,
+      "-lc",
+      script,
+    ],
+    {
+      timeout: 120_000,
+      stdio: "inherit",
+    },
+  );
+  return { imageReference };
 }
 
 function releaseContext(env) {
@@ -868,3 +1023,5 @@ if (isDirectRunUrl(process.argv[1], import.meta.url)) {
     process.exitCode = 1;
   });
 }
+
+export { smokeImage as smokeDockerReleaseImage };

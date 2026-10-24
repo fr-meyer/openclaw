@@ -1,0 +1,27 @@
+{
+  "schema": "openclaw.local-source-commit-evidence.v1",
+  "commit": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+  "tree": "9dd42d178010367e153b73f42f1f7d14370b579f",
+  "parent": "e8796be056dc39a2cf39def8b08a71cd2286ad02",
+  "commitObjectSha256": "0b27bf401e1d337f560a04d4c4d430fab1a1259e3b625545c470438e263f3674",
+  "subject": "test(fork): narrow native worker replies before assertions",
+  "changedPaths": [
+    "src/tasks/managed-task-flow.worker.integration.test.ts"
+  ],
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
+  "verbatimSemanticDecisions": [],
+  "introducedOrUpdatedSupport": [
+    {
+      "path": "src/tasks/managed-task-flow.worker.integration.test.ts",
+      "sourceCommit": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    }
+  ],
+  "allChangedTestReferences": [
+    "src/tasks/managed-task-flow.worker.integration.test.ts"
+  ],
+  "inventoryTestReferences": [
+    "src/tasks/managed-task-flow.worker.integration.test.ts"
+  ],
+  "qualification": "References only; this generator executes no tests and transfers no qualification."
+}

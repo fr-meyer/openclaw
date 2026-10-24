@@ -1,0 +1,50 @@
+{
+  "schema": "openclaw.local-source-commit-evidence.v1",
+  "commit": "e0e821e26904fa0805f710226df44cfd50866654",
+  "tree": "9b6aefe50c20f75a4d6eb88f4a8f883606b12556",
+  "parent": "93db6739eb850f2a1d422074a8f04d74766af460",
+  "commitObjectSha256": "b3a43004d60e8d357f2d852c8238fab0439c1cf169afc94e21a27d4c1ca069b6",
+  "subject": "fix(worktrees): fence superseded 10.5 run leases",
+  "changedPaths": [
+    "custom-patches/reconciliation-2026.10.5.json",
+    "src/agents/worktrees/run-lease-store.kernel.ts",
+    "src/agents/worktrees/run-lease.test.ts"
+  ],
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
+  "verbatimSemanticDecisions": [
+    {
+      "path": "src/agents/worktrees/run-lease-store.kernel.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "af44682679f7710b3bb4eeba53f3dce9758b5eb5",
+      "v99ForkBlob": "7003ffb5fa52f2e80e778efa304154b1a5b345dd",
+      "v105UpstreamBlob": "2cddcb1bf3fc222d11b8b61654439025a19db32e",
+      "semanticOwner": "worktree-lease",
+      "reason": "Use 10.5 registry row identity plus latest same-path owner ordering within lease admission. Reject a superseded owner or tied latest rows; retain native filesystem, lifecycle and free-space guards."
+    },
+    {
+      "path": "src/agents/worktrees/run-lease.test.ts",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "127e8aad2dd99b37c40655850d8cdfb283c7c934",
+      "v99ForkBlob": "ed85fb4744b555b8d7ca1231cb37d6c0da63e8ab",
+      "v105UpstreamBlob": "fa20807feb1cbdca65b14b234bbf86a20fad9382",
+      "semanticOwner": "worktree-lease",
+      "reason": "Use 10.5 registry row identity plus latest same-path owner ordering within lease admission. Reject a superseded owner or tied latest rows; retain native filesystem, lifecycle and free-space guards."
+    }
+  ],
+  "introducedOrUpdatedSupport": [
+    {
+      "path": "custom-patches/reconciliation-2026.10.5.json",
+      "sourceCommit": "e0e821e26904fa0805f710226df44cfd50866654",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    }
+  ],
+  "allChangedTestReferences": [
+    "src/agents/worktrees/run-lease.test.ts"
+  ],
+  "inventoryTestReferences": [
+    "src/agents/worktrees/run-lease.test.ts"
+  ],
+  "qualification": "References only; this generator executes no tests and transfers no qualification."
+}

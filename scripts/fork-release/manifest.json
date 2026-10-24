@@ -1,0 +1,36 @@
+{
+  "schema": "openclaw.fork-release.v1",
+  "repository": "fr-meyer/openclaw",
+  "candidate": "fork-main-seed-20260929",
+  "productionEligible": false,
+  "source": {
+    "baseCommit": "a107b4f832937a4b63a5e4a1c6f2736967bf1c17",
+    "baseTree": "fcf58bfaed6682d9c0933a47ec4417c872a14cbf",
+    "patches": [
+      {
+        "commit": "747e432bd5540ff729c416f7d491c62c648046dd",
+        "tree": "80d22060e435a607490230ee87e5414064e04503"
+      },
+      {
+        "commit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+        "tree": "35ddb02eb7235932012fca04474ae3c314df9aa3"
+      }
+    ],
+    "commit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+    "tree": "35ddb02eb7235932012fca04474ae3c314df9aa3"
+  },
+  "gates": {
+    "patchLifecycle": [
+      "src/gateway/server.worker-namespace-readback.test.ts",
+      "src/node-host/node-worker-turn-store.test.ts"
+    ],
+    "producerConsumer": [
+      "src/infra/node-invoke-lifecycle-contract.test.ts",
+      "src/gateway/session-history-worker.integration.test.ts"
+    ]
+  },
+  "image": {
+    "architecture": "amd64",
+    "extensions": "diagnostics-otel,codex"
+  }
+}

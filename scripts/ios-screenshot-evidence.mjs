@@ -607,7 +607,8 @@ export function reduceIosScreenshotEvidence({ inputDirectory, outputRoot, expect
     );
   }
   const canonicalEntries = [];
-  for (const { manifestPath, manifest } of manifests) {
+  const containerAttempts = new Map();
+  for (const { containerName, manifestPath, manifest } of manifests) {
     if (manifest.schemaVersion !== 1) {
       fail(`unsupported screenshot manifest schema in ${manifestPath}`);
     }
@@ -622,9 +623,20 @@ export function reduceIosScreenshotEvidence({ inputDirectory, outputRoot, expect
     if (manifest.runId !== expected.runId) {
       fail(`${manifest.family} workflow run id does not match the reducer context`);
     }
-    if (manifest.runAttempt !== expected.runAttempt) {
-      fail(`${manifest.family} workflow run attempt does not match the reducer context`);
+    // Failed-job reruns retain successful same-run artifacts. Keep their producer
+    // attempts intact while binding them to this exact source/workflow/run.
+    if (
+      !Number.isSafeInteger(manifest.runAttempt) ||
+      manifest.runAttempt < 1 ||
+      manifest.runAttempt > expected.runAttempt
+    ) {
+      fail(`${manifest.family} workflow run attempt is invalid for the reducer context`);
     }
+    const containerAttempt = containerAttempts.get(containerName);
+    if (containerAttempt !== undefined && containerAttempt !== manifest.runAttempt) {
+      fail(`${containerName} artifact contains different workflow run attempts`);
+    }
+    containerAttempts.set(containerName, manifest.runAttempt);
     for (const tool of ["xcode", "fastlane", "node"]) {
       if (manifest.tooling?.[tool] !== expected.tooling[tool]) {
         fail(`${manifest.family} ${tool} version does not match the reducer context`);

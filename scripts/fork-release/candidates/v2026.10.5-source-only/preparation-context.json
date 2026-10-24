@@ -1,0 +1,99 @@
+{
+  "schema": "openclaw.local-source-seal-preparation.v1",
+  "sourceSha": "ae85778296da373dfe7d80101931bafac1acc9dd",
+  "sourceTree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab",
+  "toolingSha": "367ccf6d2d12a8cb7cfb9e06ff5f128e2238eca8",
+  "review": {
+    "prNumber": 18,
+    "baseSha": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "changedDiffSha256": "15d12199973dc0be7ca518e6602a67c435759f6257a06314f97801c8368675dc"
+  },
+  "cachedPrObservation": {
+    "sha256": "e97156293f161736f523c44e09dfe1b97e1fb2455d72c8d0b8d3ff9ded1d4acf",
+    "updatedAt": "2026-10-21T01:29:59Z",
+    "kind": "public-identity-projection",
+    "headSha": "ae85778296da373dfe7d80101931bafac1acc9dd",
+    "headRef": "prep/v2026.10.5-source-only",
+    "baseSha": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "baseRef": "prep/v2026.10.5-upstream-base",
+    "state": "open",
+    "draft": true
+  },
+  "cachedHeadMatchesCandidate": true,
+  "prObservationExactHeadVerified": true,
+  "observationProvenance": "Provided native GitHub CLI API public-identity-projection; the generator validates its exact identity and retains the provided bytes unchanged. A public identity projection is selected API fields, not the full raw response. updatedAt is the PR update time, not a fetch time. This generator makes no fresh API or signature-verification call.",
+  "upstreamVerification": {
+    "sha256": "365c9f12b7bb2b5fa2928f03bba0af15db4c764c2c1d0e5aeb2cc20cbb651f5d",
+    "verified": true,
+    "reason": "valid",
+    "verifiedAt": "2026-10-18T20:11:18Z",
+    "payloadAndSignatureMatchLocalTag": true
+  },
+  "originalSemanticPaths": 92,
+  "originalDispositionCounts": {
+    "ADAPTED_SOURCE_ONLY": 77,
+    "RETIRED_REVIEWED": 4,
+    "UPSTREAM_EQUIVALENT_REVIEWED": 3,
+    "CARRIED_INERT_SOURCE_ONLY": 6,
+    "CARRIED_SOURCE_ONLY": 2
+  },
+  "candidateChangedPaths": 117,
+  "introducedPaths": [
+    "custom-patches/reconciliation-2026.10.5.json",
+    "docs/plugins/sdk-migration.md",
+    "docs/plugins/sdk-runtime/config-and-utilities.md",
+    "extensions/memory-core/src/memory-search-tool-query.test.ts",
+    "scripts/docker/run-with-matrix-crypto-cache.mjs",
+    "scripts/docker/run-with-matrix-crypto-cache.test.mjs",
+    "src/agents/subagents/registry/subagent-control-kill-runtime.ts",
+    "src/agents/subagents/registry/subagent-control-kill.ts",
+    "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+    "src/agents/subagents/registry/subagent-registry-persistence.ts",
+    "src/agents/subagents/registry/subagent-registry-persistence.types.ts",
+    "src/agents/subagents/registry/subagent-registry-run-launch.ts",
+    "src/agents/subagents/registry/subagent-registry-run-manager.ts",
+    "src/agents/subagents/registry/subagent-registry.store.kernel.ts",
+    "src/agents/subagents/registry/subagent-registry.store.worker.ts",
+    "src/agents/subagents/registry/subagent-registry.types.ts",
+    "src/cli/gateway-rpc.runtime.test.ts",
+    "src/dockerfile.test.ts",
+    "src/gateway/agent-turn/agent-run-subagent.ts",
+    "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+    "src/gateway/server-methods/agent-subagent-registration.ts",
+    "src/gateway/server-plugin-in-process-authority.ts",
+    "src/gateway/server-plugin-in-process-dispatch.types.ts",
+    "src/gateway/server-plugin-runtime-client.ts",
+    "src/gateway/server-plugin-subagent-runtime.overrides.test.ts",
+    "src/gateway/server-request-context.test.ts",
+    "src/gateway/server.auth.compat-baseline.test.ts",
+    "src/plugins/loader.gateway-bindings.test.ts",
+    "src/secrets/egress-proxy/response-headers.test.ts",
+    "src/state/openclaw-state-read.validation.managed-task-flow.test.ts",
+    "src/tasks/managed-task-flow-host.test.ts",
+    "src/tasks/managed-task-flow-kill-claim.worker.ts",
+    "src/tasks/managed-task-flow.test-helpers.ts",
+    "src/tasks/managed-task-flow.worker.integration.test.ts",
+    "test/scripts/docker-build-helper.test.ts",
+    "test/vitest/vitest.database-worker-core-paths.mjs",
+    "test/vitest/vitest.gateway-server-paths.mjs"
+  ],
+  "coveredDistinctPaths": 130,
+  "appliedCommitCount": 12,
+  "nonAppliedDecisionCount": 7,
+  "referencedTestCount": 36,
+  "separateNativePrerequisites": [
+    {
+      "file": "native-nowistay-prerequisite.json",
+      "sha256": "3976d98a792aa734f271b5a3e1687421b32f76b6ff9d737dd5ed8d477214035e",
+      "required": true
+    }
+  ],
+  "execution": "No candidate code or tests executed; no fetch or cloud operation.",
+  "remaining": [
+    "Recheck PR18 exact head/base at the later release admission boundary.",
+    "Full existing source preflight must run on an ordinary non-promisor checkout.",
+    "Bind separate node --test Nowistay SDK 1.32 qualification evidence; Vitest gates do not satisfy it.",
+    "Image build, native Doctor, readiness, and rollback remain separate qualification."
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "schema": "openclaw.local-native-test-prerequisite.v1",
+  "name": "Nowistay native Node SDK 1.32 compatibility",
+  "required": true,
+  "sourceSha": "ae85778296da373dfe7d80101931bafac1acc9dd",
+  "sourceTree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab",
+  "testPath": "test/mcp-nowistay-sdk-regression.test.mjs",
+  "testBlob": "6fcdfdc08e3a16aef4f29c1a02e7509bba5a077c",
+  "command": [
+    "node",
+    "--test",
+    "test/mcp-nowistay-sdk-regression.test.mjs"
+  ],
+  "cwd": "Exact candidate source checkout",
+  "sdk": {
+    "package": "@modelcontextprotocol/sdk",
+    "version": "1.32.0",
+    "assertedByTest": true,
+    "optionalRootOverride": "NOWISTAY_COMPAT_SDK_ROOT"
+  },
+  "runnerRouting": {
+    "toolingSha": "367ccf6d2d12a8cb7cfb9e06ff5f128e2238eca8",
+    "workflowPath": ".github/workflows/fork-release-pipeline.yml",
+    "workflowBlob": "d0453f257597e4469ed8c27c8abbd228c97b079f",
+    "gateOwnerPath": "scripts/fork-release/release.py",
+    "gateOwnerBlob": "c3e155f35df22bde867ee7aaa09b4de3b980f23c",
+    "candidateVitestEntryBlob": "37731b701a959ae1ebfc65133f29d11fcab6aedf",
+    "candidateVitestImplementationBlob": "2913e4feb37cc885227d89c3fb71956f967615c2",
+    "finding": "Both hosted gate steps pass release.py gates output to node scripts/run-vitest.mjs. The source entry delegates to run-vitest.mts and Vitest; it does not dispatch node:test. The Nowistay file imports node:test and must run separately with node --test.",
+    "vitestProducerGate": "src/agents/mcp-http-transport.test.ts"
+  },
+  "executionEvidenceAttached": false,
+  "qualification": "Required separate native-node check, retained as an inventory regression reference. No execution or passing result is asserted by this preparation; bind actual qualification evidence before treating this prerequisite as satisfied."
+}

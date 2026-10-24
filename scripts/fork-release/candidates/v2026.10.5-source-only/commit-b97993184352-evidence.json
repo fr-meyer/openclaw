@@ -1,0 +1,54 @@
+{
+  "schema": "openclaw.local-source-commit-evidence.v1",
+  "commit": "b97993184352e969a77f53b7d1b01519ac05465e",
+  "tree": "1e2087daa19df4d58f9def3d4aaf67b9ae7a4a5f",
+  "parent": "94f1ee3e18015055ab25d62f71ee090d43c32062",
+  "commitObjectSha256": "117b054916a23065c17846c05330674ca845198f4def8647bff16b4c7e4d6ccb",
+  "subject": "fix(release): include Codex plugin in 10.5 image plan",
+  "changedPaths": [
+    "scripts/docker/CURRENT_PARITY_IMAGE.md",
+    "scripts/docker/package-current-publisher.mjs",
+    "scripts/docker/package-current-publisher.test.mjs"
+  ],
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
+  "verbatimSemanticDecisions": [
+    {
+      "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "03039885c285316c7275f361eafbff0c2bbd6a89",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.test.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "b15896a768e53723433dbcc9c8b37e2cafc29eb6",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    }
+  ],
+  "introducedOrUpdatedSupport": [],
+  "allChangedTestReferences": [
+    "scripts/docker/package-current-publisher.test.mjs"
+  ],
+  "inventoryTestReferences": [
+    "scripts/docker/package-current-publisher.test.mjs"
+  ],
+  "qualification": "References only; this generator executes no tests and transfers no qualification."
+}

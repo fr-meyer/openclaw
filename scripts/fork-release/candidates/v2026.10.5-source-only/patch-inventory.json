@@ -1,0 +1,2487 @@
+{
+  "schema": "openclaw.fork-patch-inventory.v1",
+  "repository": "fr-meyer/openclaw",
+  "candidate": "v2026.10.5-source-only",
+  "manifestSha256": "4dfce05ac50a38c7667aeaa3b88f8f60e9c6046bb48a1d361785e77ee5d4ccd2",
+  "upstream": {
+    "tag": "v2026.10.5",
+    "tagObject": "9171d0a427738902efd811c648325cf54116743c",
+    "commit": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "verificationSha256": "365c9f12b7bb2b5fa2928f03bba0af15db4c764c2c1d0e5aeb2cc20cbb651f5d"
+  },
+  "patches": [
+    {
+      "id": "source-01-94f1ee3e1801",
+      "originCommit": "94f1ee3e18015055ab25d62f71ee090d43c32062",
+      "disposition": "adapt",
+      "appliedCommit": "94f1ee3e18015055ab25d62f71ee090d43c32062",
+      "rationale": "Exact committed source adaptation: feat(release): start grouped 2026.10.5 source reconciliation.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nDockerfile [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof. Separate reviewed manifest-only Corepack/pnpm acquisition and pre-payload Debian/npm security acquisition from network-disabled candidate execution. Preserve frozen lockfile, patch/integrity and release-age policy; disable hooks only during acquisition, retain native offline install lifecycles and native-addon checks, and copy the pinned Corepack cache into the runtime. All RUN instructions declare their network mode; the three acquisition steps inherit the executor default while every other RUN stays explicitly offline. Acquire Matrix crypto native assets with official release SHA256 pins and use its supported loopback download mirror during native offline installation, preserving postinstall and native-addon checks.\ncustom-patches/manifest.json [ADAPTED_SOURCE_ONLY]: Replace the 9.9 preparation identity with the exact signed 10.5 tag/commit/tree and current publisher bytes; no prior runtime qualification or production eligibility transfers.\ndocs/cli/gateway/query.md [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\ndocs/plugins/sdk-migration/removed-surfaces.md [ADAPTED_SOURCE_ONLY]: Document the current narrow managed-flow bridge and owner boundaries; retain controllerParity=false, and leave old requester-mismatched rows unresolved rather than auto-replaying them.\ndocs/plugins/sdk-runtime.md [ADAPTED_SOURCE_ONLY]: Document the current narrow managed-flow bridge and owner boundaries; retain controllerParity=false, and leave old requester-mismatched rows unresolved rather than auto-replaying them.\ndocs/plugins/sdk-runtime/background-work.md [ADAPTED_SOURCE_ONLY]: Document the current narrow managed-flow bridge and owner boundaries; retain controllerParity=false, and leave old requester-mismatched rows unresolved rather than auto-replaying them.\nextensions/memory-core/src/memory-search-tool-query.ts [ADAPTED_SOURCE_ONLY]: Carry cancellation through 10.5 archive lookup, visibility preparation and reset-cutoff reads; preserve the exact caller abort reason and existing non-abort failures. Focused runtime qualification is recorded separately.\nextensions/memory-core/src/session-search-visibility.test.ts [ADAPTED_SOURCE_ONLY]: Carry cancellation through 10.5 archive lookup, visibility preparation and reset-cutoff reads; preserve the exact caller abort reason and existing non-abort failures. Focused runtime qualification is recorded separately.\nextensions/memory-core/src/session-search-visibility.ts [ADAPTED_SOURCE_ONLY]: Carry cancellation through 10.5 archive lookup, visibility preparation and reset-cutoff reads; preserve the exact caller abort reason and existing non-abort failures. Focused runtime qualification is recorded separately.\npackages/gateway-protocol/src/core-request-params.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\npackages/gateway-protocol/src/public-schema.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\npackages/gateway-protocol/src/schema/system-info.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\npackages/gateway-protocol/src/validator-registry.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nscripts/docker/CURRENT_PARITY_IMAGE.md [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\nscripts/docker/package-current-publisher.mjs [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\nscripts/docker/package-current-publisher.test.mjs [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md [ADAPTED_SOURCE_ONLY]: Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/index.mjs [CARRIED_INERT_SOURCE_ONLY]: Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/openclaw.plugin.json [CARRIED_INERT_SOURCE_ONLY]: Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/package.json [CARRIED_INERT_SOURCE_ONLY]: Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/controller.mjs [ADAPTED_SOURCE_ONLY]: Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/http.mjs [CARRIED_INERT_SOURCE_ONLY]: Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs [ADAPTED_SOURCE_ONLY]: Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs [ADAPTED_SOURCE_ONLY]: The status lookup prioritizes a caller session only when it is a configured controller owner; non-owner status agents search the configured roster and still pass their explicit visibility rule. Runtime remains inert pending complete 10.5 controller qualification and exact new source pin.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs [ADAPTED_SOURCE_ONLY]: The status lookup prioritizes a caller session only when it is a configured controller owner; non-owner status agents search the configured roster and still pass their explicit visibility rule. Runtime remains inert pending complete 10.5 controller qualification and exact new source pin.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/fixtures/predecessor-pin-package.json [CARRIED_INERT_SOURCE_ONLY]: Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/inert-parity-host.mjs [ADAPTED_SOURCE_ONLY]: Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs [CARRIED_INERT_SOURCE_ONLY]: Retain the installed publisher package contract as inert source. Native runtime binding and launch authority are reconciled separately; copying these bytes does not activate the plugin or qualify controller parity.\nscripts/lib/ci-node-test-inventory.mts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\nscripts/lib/ci-node-test-plan.mts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\nscripts/plugin-sdk-surface-report.mts [ADAPTED_SOURCE_ONLY]: Retarget the existing fork +1 export allowance to the measured 10.5 surface: 3646 public exports versus upstream 3645, solely for the unchanged CONFIG_MUTATION_CAPABILITIES durable-backup contract. Native measurement found 2115 callable exports and no unauthorized shipped-surface removals. Retain all callable, per-entrypoint, removal and other checks; no environment override or generated inventory change. Re-run the native gate with this exact source policy.\nsrc/agents/mcp-http-tool-schema-compatibility.ts [ADAPTED_SOURCE_ONLY]: Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version.\nsrc/agents/mcp-http-transport.ts [ADAPTED_SOURCE_ONLY]: Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version.\nsrc/agents/worktrees/run-lease-store.kernel.ts [ADAPTED_SOURCE_ONLY]: Use 10.5 registry row identity plus latest same-path owner ordering within lease admission. Reject a superseded owner or tied latest rows; retain native filesystem, lifecycle and free-space guards.\nsrc/agents/worktrees/run-lease.test.ts [ADAPTED_SOURCE_ONLY]: Use 10.5 registry row identity plus latest same-path owner ordering within lease admission. Reject a superseded owner or tied latest rows; retain native filesystem, lifecycle and free-space guards.\nsrc/agents/worktrees/run-lease.ts [ADAPTED_SOURCE_ONLY]: Retain the byte-identical upstream 10.5 source/observed admission boundary, which supersedes the old expectedAuthority passthrough. The fork authority ordering behavior is adapted in run-lease-store.kernel.ts, with tied and newer-row cases in run-lease.test.ts; this entry does not claim a local edit of run-lease.ts.\nsrc/cli/gateway-cli/gateway-call.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/cli/gateway-cli/register.option-collisions.test.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/cli/gateway-cli/register.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/cli/gateway-rpc.runtime.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/cli/gateway-rpc.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/config/backup-rotation.ts [CARRIED_SOURCE_ONLY]: Retain opt-in durable-backup publication for the installed publisher through the current 10.5 config writer. Required backup preparation/sync failures abort publication; ordinary best-effort callers retain their existing behavior. The SDK constant negotiates this contract only.\nsrc/config/io.types.ts [ADAPTED_SOURCE_ONLY]: Retain opt-in durable-backup publication for the installed publisher through the current 10.5 config writer. Required backup preparation/sync failures abort publication; ordinary best-effort callers retain their existing behavior. The SDK constant negotiates this contract only.\nsrc/config/io.write.ts [ADAPTED_SOURCE_ONLY]: Retain opt-in durable-backup publication for the installed publisher through the current 10.5 config writer. Required backup preparation/sync failures abort publication; ordinary best-effort callers retain their existing behavior. The SDK constant negotiates this contract only.\nsrc/gateway/methods/core-descriptors.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-managed-task-flow-runtime.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/gateway/server-methods-list.test.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-methods/client-types.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-methods/shared-types.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-methods/system.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-plugin-subagent-runtime.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/gateway/server-plugins.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/gateway/server-request-context.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-runtime-state-prepare.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server/ws-connection/connect-session.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server/ws-types.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/plugin-sdk/config-mutation.ts [CARRIED_SOURCE_ONLY]: Retain opt-in durable-backup publication for the installed publisher through the current 10.5 config writer. Required backup preparation/sync failures abort publication; ordinary best-effort callers retain their existing behavior. The SDK constant negotiates this contract only.\nsrc/plugins/loader-load-context.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/plugins/loader-module-runtime.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/plugins/runtime/index.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/plugins/runtime/types.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/process/supervisor/service-child-cleanup.test.ts [ADAPTED_SOURCE_ONLY]: Preserve authoritative child identity-loss failure when an error observer throws; adapt 10.5 cleanup assertions to that owner rather than replacing its failure with observer output.\nsrc/process/supervisor/service-child-relay-host.test.ts [ADAPTED_SOURCE_ONLY]: Preserve authoritative child identity-loss failure when an error observer throws; adapt 10.5 cleanup assertions to that owner rather than replacing its failure with observer output.\nsrc/process/supervisor/service-child-relay-host.ts [ADAPTED_SOURCE_ONLY]: Preserve authoritative child identity-loss failure when an error observer throws; adapt 10.5 cleanup assertions to that owner rather than replacing its failure with observer output.\nsrc/secrets/egress-proxy/proxy-forward.test.ts [ADAPTED_SOURCE_ONLY]: Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway.\nsrc/secrets/egress-proxy/proxy-forward.ts [ADAPTED_SOURCE_ONLY]: Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway.\nsrc/secrets/egress-proxy/response-headers.ts [ADAPTED_SOURCE_ONLY]: Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway.\nsrc/state/openclaw-state-read.types.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/state/openclaw-state-read.validation.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/state/openclaw-state-read.worker.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/state/openclaw-state-worker-contract.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/state/openclaw-state-worker-runtime.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/tasks/managed-task-flow-contract.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/tasks/managed-task-flow-host.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/tasks/managed-task-flow.worker.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\ntest/fixtures/nowistay-list-properties-output-schema.json [ADAPTED_SOURCE_ONLY]: Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version.\ntest/mcp-nowistay-schema-compatibility.test.mjs [ADAPTED_SOURCE_ONLY]: Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version.\ntest/mcp-nowistay-sdk-regression.test.mjs [ADAPTED_SOURCE_ONLY]: Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version.\ntest/scripts/ci-node-test-plan.test.ts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ntest/scripts/lint-suppressions.test.ts [ADAPTED_SOURCE_ONLY]: Carry only the three existing publisher suppression entries, each tied to its exact path/rule/count and retained implementation.\ntest/scripts/verify-stable-main-closeout.test.ts [ADAPTED_SOURCE_ONLY]: Pin the upstream repository identity for upstream release fixtures so ambient fork CI identity cannot change their provenance input.\ntest/vitest-projects-config.test-support.ts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ntest/vitest-projects-config.test.ts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ntest/vitest/vitest.tasks.config.ts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ntest/vitest/vitest.test-shards.mjs [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ncustom-patches/reconciliation-2026.10.5.json: Exact committed support change; no legacy disposition asserted.\ndocs/plugins/sdk-runtime/config-and-utilities.md: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "a9a087247a57b563d014f7b7e2f8a329fa8b2d6671615be25cd4d1b018bbdbab",
+      "regressionTests": [
+        "scripts/docker/package-current-publisher.test.mjs",
+        "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+        "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs"
+      ],
+      "dependsOn": [],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "Dockerfile",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4455a73c0dcd8111e90dd542892b47d6730420e8",
+          "upstreamBlob": "79c30caaf1963efe8e6eca18da2386c67b6f0455",
+          "candidateBlob": "c54e7aa05fc01ed6a1fad83e98481d17e95ddbea"
+        },
+        {
+          "path": "custom-patches/manifest.json",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "b879c4e0716f092cb970c508a72dc12a25db8d62",
+          "upstreamBlob": null,
+          "candidateBlob": "b4eb60b3e422a2fe9b1df9a03153162c752ec7ea"
+        },
+        {
+          "path": "custom-patches/reconciliation-2026.10.5.json",
+          "boundary": "tooling",
+          "sourceCommit": "94f1ee3e18015055ab25d62f71ee090d43c32062",
+          "sourceTree": "3c655a3dc4d7f0840e4ba29f325887ef7301edad",
+          "sourceBlob": "b2b63c903057e556430dbe27f162e20763fb823e",
+          "upstreamBlob": null,
+          "candidateBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+        },
+        {
+          "path": "docs/cli/gateway/query.md",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "6a717b426a220409ec7a33a2a23bf3e8f06c87f0",
+          "upstreamBlob": "4facce71043695558704c66f7b0606954352489e",
+          "candidateBlob": "5eee26341a91ae74f64ef3d75fe9a3167f655b99"
+        },
+        {
+          "path": "docs/plugins/sdk-migration/removed-surfaces.md",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4fb575b9285ee7b7c51753c72363cb5c00b3d852",
+          "upstreamBlob": "71e9da5accda24b35859e0f0c7f4bb2671ceb953",
+          "candidateBlob": "b4c7c57477a0a59464ad183950338b954d2ce775"
+        },
+        {
+          "path": "docs/plugins/sdk-runtime.md",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "c0b376cb6bf56637082d635e7ab603d120fa4521",
+          "upstreamBlob": "61ba6b00e9c8250cfd760ffb710628e064826c50",
+          "candidateBlob": "194d538c65fdc69f52aeda8d7afbb9f40cf9bfd1"
+        },
+        {
+          "path": "docs/plugins/sdk-runtime/background-work.md",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "bd8935969aad3366981d3c816a5998cf6bfa542e",
+          "upstreamBlob": "c62d762588ad1bdd87926919a978cad5932de41d",
+          "candidateBlob": "25946eb07ce82add5d94faca2f5c6c984bae39e3"
+        },
+        {
+          "path": "docs/plugins/sdk-runtime/config-and-utilities.md",
+          "boundary": "container",
+          "sourceCommit": "94f1ee3e18015055ab25d62f71ee090d43c32062",
+          "sourceTree": "3c655a3dc4d7f0840e4ba29f325887ef7301edad",
+          "sourceBlob": "18559190bb222fcd87f1c3cd38d914e42ff6a0c2",
+          "upstreamBlob": "33acc2d821a7a16e7fd4a6c931d1659a94a3756c",
+          "candidateBlob": "18559190bb222fcd87f1c3cd38d914e42ff6a0c2"
+        },
+        {
+          "path": "extensions/memory-core/src/memory-search-tool-query.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "f128423061c387be867f0c9bce4631a718356b85",
+          "upstreamBlob": "5950ca1a463dd2ec5f2f634c942201b743d0dce7",
+          "candidateBlob": "fec2401fc06a263993476f66965a33b08b5ac02d"
+        },
+        {
+          "path": "extensions/memory-core/src/session-search-visibility.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "e06dcd3b998722b6983c86444f56d5b9c80944ad",
+          "upstreamBlob": "1e06f50ceed330341aa3cb77dcf288a9e92f30e2",
+          "candidateBlob": "f53146fe2ee9499241503d982d3f4c565f88b90d"
+        },
+        {
+          "path": "extensions/memory-core/src/session-search-visibility.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "d9a6c5ec44529398f85ce652870fd2cb3b32acd7",
+          "upstreamBlob": "f0b00513849428971d76e3cdd7b14220e8f8e229",
+          "candidateBlob": "80d4c519be4d5461279d2bbc523d06a0be546a7a"
+        },
+        {
+          "path": "packages/gateway-protocol/src/core-request-params.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "725efbe791efe73d7d6c427b16f6f30f720d4559",
+          "upstreamBlob": "6b81e88afda0459be8b5f6f2e96825fe56179935",
+          "candidateBlob": "a16edc62eec150c0f40ae6d52baad17a3f24a2e8"
+        },
+        {
+          "path": "packages/gateway-protocol/src/public-schema.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "128f96e6ad3005b35dee5c8a73100770ecf210cc",
+          "upstreamBlob": "4a4794887273b5d1bc838eaf91f94fa1496d9fe6",
+          "candidateBlob": "312d0be7c4a09875f5229a6bf7d6420cd110e2df"
+        },
+        {
+          "path": "packages/gateway-protocol/src/schema/system-info.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8ca082f41c4c69dac05ec235714b79bf690f891e",
+          "upstreamBlob": "a0f4a81f35a35dca2f7c2714790f362661bdb776",
+          "candidateBlob": "71976357ed5307a6c00577ff433ebe9de9f03a74"
+        },
+        {
+          "path": "packages/gateway-protocol/src/validator-registry.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "d2b5e119525b2d457a766fb2b3e4c4226998a44f",
+          "upstreamBlob": "8857f8bcddbc320213b43fad5cc46c052a2af441",
+          "candidateBlob": "48843257decea86647fe3600df3bde81ff0d9c33"
+        },
+        {
+          "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+          "upstreamBlob": null,
+          "candidateBlob": "a2bcc7e60cf37c2f2b82d7e2185fbb0d2fcb7679"
+        },
+        {
+          "path": "scripts/docker/package-current-publisher.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "03039885c285316c7275f361eafbff0c2bbd6a89",
+          "upstreamBlob": null,
+          "candidateBlob": "a8a136ca1d451db238021674a4ec51e2fd998239"
+        },
+        {
+          "path": "scripts/docker/package-current-publisher.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "b15896a768e53723433dbcc9c8b37e2cafc29eb6",
+          "upstreamBlob": null,
+          "candidateBlob": "6d505402dfa74aa0d442c2c97974bd00c2e82f98"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8db3fc79e29defdcd8f2f25dbde1a0fc1f3a9e48",
+          "upstreamBlob": null,
+          "candidateBlob": "439be669dd7d338282fbd61799054f5de42b2762"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/index.mjs",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "85c442b5855163f07a76ea75941c8169ce589deb",
+          "upstreamBlob": null,
+          "candidateBlob": "85c442b5855163f07a76ea75941c8169ce589deb"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/openclaw.plugin.json",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "50fe1d9bb252488417f633510af5c15800b0cf78",
+          "upstreamBlob": null,
+          "candidateBlob": "50fe1d9bb252488417f633510af5c15800b0cf78"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/package.json",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "e0ba34f234511cb574f4ac1c16ec4efadcd7c532",
+          "upstreamBlob": null,
+          "candidateBlob": "e0ba34f234511cb574f4ac1c16ec4efadcd7c532"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/controller.mjs",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "c1132956d1ae5965674d9a56b8f0d2a42104b5eb",
+          "upstreamBlob": null,
+          "candidateBlob": "dcbe84772cae3da3e7cd69028260f9fccddd538a"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/http.mjs",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "5ec7ad7ad16541cbbc87798996ae959ee0ef11d3",
+          "upstreamBlob": null,
+          "candidateBlob": "5ec7ad7ad16541cbbc87798996ae959ee0ef11d3"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "72b7c67f4e4b624cb16ad96ee0ba7bc401f407d7",
+          "upstreamBlob": null,
+          "candidateBlob": "fba20061b061f1401a9b0a15a10f44f6d3675f21"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4171aa6598878bbb6b6459422d595aa94a77bde4",
+          "upstreamBlob": null,
+          "candidateBlob": "ca88f8e8f01f3e3cfa010eed97934150cf33a509"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "a86ee97a7d153b89a9f65b3bde31a8dd7e1cd80f",
+          "upstreamBlob": null,
+          "candidateBlob": "c82ffd791b9d28ffaf6ef23b19ac9329533e4d81"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/fixtures/predecessor-pin-package.json",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "6113b7e6265617d28dc767e13af166ec33444dec",
+          "upstreamBlob": null,
+          "candidateBlob": "6113b7e6265617d28dc767e13af166ec33444dec"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/inert-parity-host.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "6b26c273e7c7e058ae5dd912e37044b223c7a185",
+          "upstreamBlob": null,
+          "candidateBlob": "26b2985dcc325487ea682f0b1c671ae02eddef7d"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "e827634b3032ec387c22202ceca789baa5ad5874",
+          "upstreamBlob": null,
+          "candidateBlob": "e827634b3032ec387c22202ceca789baa5ad5874"
+        },
+        {
+          "path": "scripts/lib/ci-node-test-inventory.mts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "da2aac18d2afa84c7a9e2907241d9531318445c6",
+          "upstreamBlob": "2f602b4baa90ecf944841e4e7cf6bbb17230e02f",
+          "candidateBlob": "2f602b4baa90ecf944841e4e7cf6bbb17230e02f"
+        },
+        {
+          "path": "scripts/lib/ci-node-test-plan.mts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "59be8483986fc48b24b88b41f9543a79000e985b",
+          "upstreamBlob": "d0e4f65238430ddd3687e47321fc3a6cf4e01159",
+          "candidateBlob": "d0e4f65238430ddd3687e47321fc3a6cf4e01159"
+        },
+        {
+          "path": "scripts/plugin-sdk-surface-report.mts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "3a9b3da6d9254dd107b7d5492a0d78e0f5a68054",
+          "upstreamBlob": "458050d7a8fc43be88f07540a8e1fc7193620c8c",
+          "candidateBlob": "f9bb330b7e62423a073b64c974913a7718ae3200"
+        },
+        {
+          "path": "src/agents/mcp-http-tool-schema-compatibility.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "b067d3377b6b3b2dc871e798495cbcf5339c7a28",
+          "upstreamBlob": null,
+          "candidateBlob": "2b95c3d44b6f7e763f478f0f1ca3973ab6f941d0"
+        },
+        {
+          "path": "src/agents/mcp-http-transport.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "ceca4e04d722dba1f5c7a977c02ed8a1126fbfd9",
+          "upstreamBlob": "38bd95a7c96a67a261f17f1881034d2bacc7fd52",
+          "candidateBlob": "b92fc1eb916001fae0eae69c696143254a7f85c9"
+        },
+        {
+          "path": "src/agents/worktrees/run-lease-store.kernel.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7003ffb5fa52f2e80e778efa304154b1a5b345dd",
+          "upstreamBlob": "2cddcb1bf3fc222d11b8b61654439025a19db32e",
+          "candidateBlob": "87b6ed412672be92354ee76017ed89bedeb207cf"
+        },
+        {
+          "path": "src/agents/worktrees/run-lease.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "ed85fb4744b555b8d7ca1231cb37d6c0da63e8ab",
+          "upstreamBlob": "fa20807feb1cbdca65b14b234bbf86a20fad9382",
+          "candidateBlob": "3eb2ef9915a26ce723f064d1536585876a68f5f1"
+        },
+        {
+          "path": "src/agents/worktrees/run-lease.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "3e5bdc53db31d0975db4fe26739859943b030fca",
+          "upstreamBlob": "48d7f6a6e98d4f07f2e74e4206da185b4703532b",
+          "candidateBlob": "48d7f6a6e98d4f07f2e74e4206da185b4703532b"
+        },
+        {
+          "path": "src/cli/gateway-cli/gateway-call.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "3717147894ee9d37a1042aa85d87377627e48846",
+          "upstreamBlob": null,
+          "candidateBlob": "3717147894ee9d37a1042aa85d87377627e48846"
+        },
+        {
+          "path": "src/cli/gateway-cli/register.option-collisions.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "d8fc084230f39c8a27450d49f6cea7131253f932",
+          "upstreamBlob": "a4ab75913653b4fe4ffdd82a97272c61fc41d396",
+          "candidateBlob": "17d2d0cfe2a9e2cb526019f4b08ec8dbfcb8dcd0"
+        },
+        {
+          "path": "src/cli/gateway-cli/register.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "d73819424e8bdde8cd901dc94f49861ecefca484",
+          "upstreamBlob": "9cabdd5bda9f60e2512070427fd1d10fc7b1047c",
+          "candidateBlob": "2579d751c8b8098b808cf8ddccd0c028b2e46e53"
+        },
+        {
+          "path": "src/cli/gateway-rpc.runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "2318c2e49c5e8a0af5329897e0546d22a338d522",
+          "upstreamBlob": "7f0afbd625c9a6a62f11d92719978395f5c695c7",
+          "candidateBlob": "a1ab3a374abc71226dc61de41a7e55ad346cefac"
+        },
+        {
+          "path": "src/cli/gateway-rpc.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8a67b650aab561ca2ede0e7eff3a1d9846873a28",
+          "upstreamBlob": "d146725a5ee2a8ec9992e6714302bd56ae2b34d9",
+          "candidateBlob": "995b90f4ca867833d2a84e230d75ea71a924dc51"
+        },
+        {
+          "path": "src/config/backup-rotation.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "1661f9186998f53ce5948b52c4498e1b47a9c721",
+          "upstreamBlob": "e2ad143a33c1610e5aff02839242711e5d990bc7",
+          "candidateBlob": "1661f9186998f53ce5948b52c4498e1b47a9c721"
+        },
+        {
+          "path": "src/config/io.types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "1c31c146cf5080663cc1cf327ba13605c6c0e8f6",
+          "upstreamBlob": "2c1cd7161cd4c32b7afecdded47f0bfae792a01c",
+          "candidateBlob": "a4555f792b4794bfb1db70c7cfa7e7c67f30f2a1"
+        },
+        {
+          "path": "src/config/io.write.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "da964dfc7198f70c0993cc173fe1427527b7b3fc",
+          "upstreamBlob": "72828e07a305f670e8413466b2b653779374c05d",
+          "candidateBlob": "b137420035d80fa48acaf80f4e9e74c80e9ebf2e"
+        },
+        {
+          "path": "src/gateway/methods/core-descriptors.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "21c9f67a1d74a3067c2092469a84c5ad3c3ba39b",
+          "upstreamBlob": "48387a41305c56de5aad947b8f84da7c71845dc8",
+          "candidateBlob": "2886f3b527f5757913b95456dddc6f2d43845382"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "12993a03a614b59c4c23c5b98c029f933d12bf70",
+          "upstreamBlob": null,
+          "candidateBlob": "7585aaebcd4c01539d109cd22e0a2898db568210"
+        },
+        {
+          "path": "src/gateway/server-methods-list.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "37bbcaefdbd512325c28c3c8df0c12f3539a407b",
+          "upstreamBlob": "ec09961e8e6635b467fe448168885780ef2e591c",
+          "candidateBlob": "70b10d25a315b9bd8cd7a33f62a47bf946a5f2f5"
+        },
+        {
+          "path": "src/gateway/server-methods/client-types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8c7ae2a211e488bfc9e5c798cace284768641289",
+          "upstreamBlob": "786c47b8e2ed792a7ef829a4008062a9f62456b6",
+          "candidateBlob": "320e37b5c4c7e9d02b0fa082cec16e09e0a67752"
+        },
+        {
+          "path": "src/gateway/server-methods/shared-types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4f5bf934c69abfc942a562441def62f5efb2fce2",
+          "upstreamBlob": "175ba9ed3a7015e20a492b63fe6eae23859c4e70",
+          "candidateBlob": "473afd27dbbfe5ef6766c3bc48bc68d481fd0d9a"
+        },
+        {
+          "path": "src/gateway/server-methods/system.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "082534d3b94d4ffaff33c4591d36df2281b73c71",
+          "upstreamBlob": "fc317d26b63c8ffd95eedaed685d7c9db46b5ada",
+          "candidateBlob": "c477dcdfdc635fad483f9f28455c6fc399841afe"
+        },
+        {
+          "path": "src/gateway/server-plugin-subagent-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "c1d34dfbd0d9d8b9bdb22906b839dd6373885020",
+          "upstreamBlob": "6e4921e24b2160511374c82fa92a8c16f1408627",
+          "candidateBlob": "3be052dcfac1747f635844de7e32e9bf01f0d366"
+        },
+        {
+          "path": "src/gateway/server-plugins.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "43f21cdaa483c20e2846d1f70c3078680dc5d13c",
+          "upstreamBlob": "95f8aaf3587849602e3da10ceec008f51b3a0e3e",
+          "candidateBlob": "5b935d8336e266d4d3a501133bf4b2f4b01f6443"
+        },
+        {
+          "path": "src/gateway/server-request-context.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "37510600f55920fe502971c745d65c31b9d689ad",
+          "upstreamBlob": "8cd086dbe59f03de7b50d42a17364a1fb8f10889",
+          "candidateBlob": "b26245a6f8a64bebc81bea273dbceaeb1ccb9ae4"
+        },
+        {
+          "path": "src/gateway/server-runtime-state-prepare.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "85a7c563022a09a81f9b6c72b983e14ed54dcf33",
+          "upstreamBlob": "7535f333e53cd85e27935d6abc06119dc3237851",
+          "candidateBlob": "ee775db35664f26b04a2542f1685909933947c68"
+        },
+        {
+          "path": "src/gateway/server/ws-connection/connect-session.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "da331e8d09a261e83e022b636def31d61497ac26",
+          "upstreamBlob": "dcb33c5caf29b416a4ca74ad03b3d4c7658e105b",
+          "candidateBlob": "fd5f27d14a6ca1c978d8a613f02a5685fad806bf"
+        },
+        {
+          "path": "src/gateway/server/ws-types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "76b708c58c4ef12885f5887a208fe714b207738a",
+          "upstreamBlob": "db887564fae5c7986a592ab7b941cc8f986c97a5",
+          "candidateBlob": "8df2035864ca32aabff98113aed96abaf6595ddc"
+        },
+        {
+          "path": "src/plugin-sdk/config-mutation.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "b8ac3bd618cf6e6daeae98608155689f4b1d2e0d",
+          "upstreamBlob": "3caf4de38f6ed6f55b9eab26beb0ce8a114fed34",
+          "candidateBlob": "b8ac3bd618cf6e6daeae98608155689f4b1d2e0d"
+        },
+        {
+          "path": "src/plugins/loader-load-context.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "c5240ec8abb90f10cf12bdb9ac93a625a83c0efa",
+          "upstreamBlob": "e497a747b287d89576446041de3722da8369fede",
+          "candidateBlob": "5b0c4e883c30e4988bc6cb34e51dd1f774709126"
+        },
+        {
+          "path": "src/plugins/loader-module-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "0fbe06eafdaf6f2ce87f3bf9c5bab48a4815d857",
+          "upstreamBlob": "1c6692830856e313fcfb86fb424168fb7ddf30f6",
+          "candidateBlob": "f89d8671404c0b136445da43fd9960ee9067e63f"
+        },
+        {
+          "path": "src/plugins/runtime/index.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "e824d8c817f762e569b920e9e082b712406dded7",
+          "upstreamBlob": "02f217a7bf929c325d879479d6d0409a4f164d51",
+          "candidateBlob": "68149c26b0f92b1302e6d07c00a57fb0e6af937e"
+        },
+        {
+          "path": "src/plugins/runtime/types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "998fae23a7a9de3e50864d4808ae9745ff416de2",
+          "upstreamBlob": "1ba77516448680740207175aaea8a29e76ef2774",
+          "candidateBlob": "75b5604ac3ab9ef3f0a7b3752cf7a1d91bc6d7c2"
+        },
+        {
+          "path": "src/process/supervisor/service-child-cleanup.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "5bbd8943a20c203324afb8320b95e23eff7ec9f7",
+          "upstreamBlob": "d9c46d397e1a0f9ce2e4137d2bc04665f049b692",
+          "candidateBlob": "bf013b364e4f42e5f21ae838128b96c23652889f"
+        },
+        {
+          "path": "src/process/supervisor/service-child-relay-host.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "df25d5fe7b73e4e4d7efd3fc6095d29f8a708d89",
+          "upstreamBlob": "9dbc493107463cbfd5781c876d625162de0f3ee1",
+          "candidateBlob": "9796f982643e8f30fd4774d8f588b6a93123a719"
+        },
+        {
+          "path": "src/process/supervisor/service-child-relay-host.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7f71b19c89f54da914eb07ebda3615bded7f9ac3",
+          "upstreamBlob": "78916e7d113bc6df5a60d42e7189f3ad6cc7098f",
+          "candidateBlob": "9018397f9c7515264a4b89eb4bfb276513346673"
+        },
+        {
+          "path": "src/secrets/egress-proxy/proxy-forward.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8ec0c9250836767d38d0e5e2d26f092330cfcdb2",
+          "upstreamBlob": "becc0ec285ffd1b19a1d6d5d0d3d429a624e4030",
+          "candidateBlob": "f6fd912039fe03c212e3284572f8bb25dba51495"
+        },
+        {
+          "path": "src/secrets/egress-proxy/proxy-forward.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "aaa1d8f08081218aee16cc245b657e3f1693a489",
+          "upstreamBlob": "45a596407fd2c53c23830db3fc7a71e36c5e95ac",
+          "candidateBlob": "f4c6576a4c629bf4f8603746c8e0d90ca4c3a5f2"
+        },
+        {
+          "path": "src/secrets/egress-proxy/response-headers.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "57f397d09e5ce1defebda81332a2602e8a1d97d7",
+          "upstreamBlob": "11714002c31ebbb3400ce7effae8eab5be085785",
+          "candidateBlob": "57f397d09e5ce1defebda81332a2602e8a1d97d7"
+        },
+        {
+          "path": "src/state/openclaw-state-read.types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "6e482c44c3510429134e46e2ff5fadb7b34ec941",
+          "upstreamBlob": "5e1a58fb581cab14ddc93c93c465fa3080ace20f",
+          "candidateBlob": "f4ce3356b74d7046472c6fbeb82b0d6c14d756ca"
+        },
+        {
+          "path": "src/state/openclaw-state-read.validation.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "220e5fd47d000dcf9b2806302db184f0c4a2612a",
+          "upstreamBlob": "73f04124d2aa3b34bf14cf7a89e94a6e0e6c3618",
+          "candidateBlob": "95f6e0afa8de0317b98b5e9961715db39023556d"
+        },
+        {
+          "path": "src/state/openclaw-state-read.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "529b2ce487c38acea398e052cc52579fa714db6e",
+          "upstreamBlob": "69ad71dd27cb930bdf4858d3eca5de74aa646120",
+          "candidateBlob": "c1ee5c5ab69e1245454f300b20c6641101b36b24"
+        },
+        {
+          "path": "src/state/openclaw-state-worker-contract.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8f2cbd0d74dfb649cb3d432a08d55092d1bb10a0",
+          "upstreamBlob": "88e07e9f47578982eaa2d91db095ae147771d7cc",
+          "candidateBlob": "c4ee647c0930ded18788a94ef9a1517a1bcddec7"
+        },
+        {
+          "path": "src/state/openclaw-state-worker-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "961f889bec4db695867c930c67722f02663418a7",
+          "upstreamBlob": "dbe6c2883f0e4d22bd0fa87b35c2890da188ecf2",
+          "candidateBlob": "ebd27b5ec136378d94718549e3e68286f9232d61"
+        },
+        {
+          "path": "src/tasks/managed-task-flow-contract.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "55ebd42bbea9db7d904b945e26533ea5e37c8638",
+          "upstreamBlob": null,
+          "candidateBlob": "a414a377eb55c9760ea7683483f5652d8b7b3981"
+        },
+        {
+          "path": "src/tasks/managed-task-flow-host.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "d9e55ae86850c06a2f348ac5e6d4c1d790ea81ea",
+          "upstreamBlob": null,
+          "candidateBlob": "4ab99b3c4b7e4e13e63028cc6c8ec29342ec047e"
+        },
+        {
+          "path": "src/tasks/managed-task-flow.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "07cb39732be0d473abf40d5eccc8c8c0e038c2e5",
+          "upstreamBlob": null,
+          "candidateBlob": "403e6380e83e8ef0a1a91bb76ec8b8aa605064af"
+        },
+        {
+          "path": "test/fixtures/nowistay-list-properties-output-schema.json",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "a9bf78496de8874325791d7f35585d666e8fa88d",
+          "upstreamBlob": null,
+          "candidateBlob": "a9bf78496de8874325791d7f35585d666e8fa88d"
+        },
+        {
+          "path": "test/mcp-nowistay-schema-compatibility.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "5351fa504e8977b04494c19a64a33312b55b3a15",
+          "upstreamBlob": null,
+          "candidateBlob": "a219ddbd37df2b65e5b27b0f509793a61cc04132"
+        },
+        {
+          "path": "test/mcp-nowistay-sdk-regression.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4f4e6150e706aa2d810e3b310ebc0a7a32e7c4f3",
+          "upstreamBlob": null,
+          "candidateBlob": "6fcdfdc08e3a16aef4f29c1a02e7509bba5a077c"
+        },
+        {
+          "path": "test/scripts/ci-node-test-plan.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "bdeeca67c45f7078f74b1777c6b5373db50000e3",
+          "upstreamBlob": "fd32d69a43fe775417c3e231fe73b4bf8bee44fd",
+          "candidateBlob": "fd32d69a43fe775417c3e231fe73b4bf8bee44fd"
+        },
+        {
+          "path": "test/scripts/lint-suppressions.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "73bda6252a5397a055e24bdde54dc904146c4fac",
+          "upstreamBlob": "298ec1ed7976fda7fe61955e8c6c141a7a64b7fc",
+          "candidateBlob": "70f72425a2d91ea6ae4f25a17f494c652fe20ed8"
+        },
+        {
+          "path": "test/scripts/verify-stable-main-closeout.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "de1b5c30c30372caf296a55c6c465693ae34baee",
+          "upstreamBlob": "14a0a0b5036f6c1bda391de04bf35ab71c2d9ac9",
+          "candidateBlob": "ccfb7f739801a3b370d084aea42c04cc3b1e5cf3"
+        },
+        {
+          "path": "test/vitest-projects-config.test-support.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "79610114350a99ce4b4865209f57e3f6f02a7027",
+          "upstreamBlob": "a469228f45d511e0f05f64c42e6b7aa395385f9b",
+          "candidateBlob": "952ba5ed017214b3aed33fbbe2fb6c3d88eeca2a"
+        },
+        {
+          "path": "test/vitest-projects-config.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "cee177a5067ad6699a6b610188eab3c8e2e88801",
+          "upstreamBlob": "14d37b8fdcbcdf6bf8c48c7d84f145f1e88668bb",
+          "candidateBlob": "3c4708f4801ecb4d2575c9e28b15ac511f12f2a8"
+        },
+        {
+          "path": "test/vitest/vitest.tasks.config.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7e0586d3e183bc42bdb3ff0270cab3394ac08bc2",
+          "upstreamBlob": null,
+          "candidateBlob": null
+        },
+        {
+          "path": "test/vitest/vitest.test-shards.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4974e0fc5b83f1d712d75e6c8df8e6b2f7e528a5",
+          "upstreamBlob": "3604a370b2f63fbb432469cea9c6c3869ee5c7c1",
+          "candidateBlob": "3604a370b2f63fbb432469cea9c6c3869ee5c7c1"
+        }
+      ]
+    },
+    {
+      "id": "source-02-b97993184352",
+      "originCommit": "b97993184352e969a77f53b7d1b01519ac05465e",
+      "disposition": "adapt",
+      "appliedCommit": "b97993184352e969a77f53b7d1b01519ac05465e",
+      "rationale": "Exact committed source adaptation: fix(release): include Codex plugin in 10.5 image plan.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nscripts/docker/CURRENT_PARITY_IMAGE.md [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\nscripts/docker/package-current-publisher.mjs [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\nscripts/docker/package-current-publisher.test.mjs [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.",
+      "evidenceSha256": "b4dd8d6b0d5e01be0bdcd5d25f327105e046c786e75d017a17b62ba96d2794d0",
+      "regressionTests": [
+        "scripts/docker/package-current-publisher.test.mjs"
+      ],
+      "dependsOn": [
+        "source-01-94f1ee3e1801"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+          "upstreamBlob": null,
+          "candidateBlob": "a2bcc7e60cf37c2f2b82d7e2185fbb0d2fcb7679"
+        },
+        {
+          "path": "scripts/docker/package-current-publisher.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "03039885c285316c7275f361eafbff0c2bbd6a89",
+          "upstreamBlob": null,
+          "candidateBlob": "a8a136ca1d451db238021674a4ec51e2fd998239"
+        },
+        {
+          "path": "scripts/docker/package-current-publisher.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "b15896a768e53723433dbcc9c8b37e2cafc29eb6",
+          "upstreamBlob": null,
+          "candidateBlob": "6d505402dfa74aa0d442c2c97974bd00c2e82f98"
+        }
+      ]
+    },
+    {
+      "id": "source-03-93db6739eb85",
+      "originCommit": "93db6739eb850f2a1d422074a8f04d74766af460",
+      "disposition": "adapt",
+      "appliedCommit": "93db6739eb850f2a1d422074a8f04d74766af460",
+      "rationale": "Exact committed source adaptation: fix(secrets): carry egress header guard to 10.5.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nsrc/secrets/egress-proxy/proxy-forward.test.ts [ADAPTED_SOURCE_ONLY]: Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway.\nsrc/secrets/egress-proxy/proxy-forward.ts [ADAPTED_SOURCE_ONLY]: Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway.\nsrc/secrets/egress-proxy/response-headers.ts [ADAPTED_SOURCE_ONLY]: Preserve 10.5 content-disposition conversion and transport ownership while omitting only header metadata Node cannot encode. Handle failed normal/101 header writes within the request, audit refusal, and close the owned streams without crashing the Gateway.\ncustom-patches/reconciliation-2026.10.5.json: Exact committed support change; no legacy disposition asserted.\nsrc/secrets/egress-proxy/response-headers.test.ts: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "4d9709957205fea0396bdb89f45506e64509614bc048041bb62362228c2bed2b",
+      "regressionTests": [
+        "src/secrets/egress-proxy/proxy-forward.test.ts",
+        "src/secrets/egress-proxy/response-headers.test.ts"
+      ],
+      "dependsOn": [
+        "source-02-b97993184352"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "custom-patches/reconciliation-2026.10.5.json",
+          "boundary": "tooling",
+          "sourceCommit": "93db6739eb850f2a1d422074a8f04d74766af460",
+          "sourceTree": "e1cdb0f12a7b9704fdc4d94d38feb769dfa10cfa",
+          "sourceBlob": "5aa614a495429d4baeb35c8910c613dac5f7daad",
+          "upstreamBlob": null,
+          "candidateBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+        },
+        {
+          "path": "src/secrets/egress-proxy/proxy-forward.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8ec0c9250836767d38d0e5e2d26f092330cfcdb2",
+          "upstreamBlob": "becc0ec285ffd1b19a1d6d5d0d3d429a624e4030",
+          "candidateBlob": "f6fd912039fe03c212e3284572f8bb25dba51495"
+        },
+        {
+          "path": "src/secrets/egress-proxy/proxy-forward.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "aaa1d8f08081218aee16cc245b657e3f1693a489",
+          "upstreamBlob": "45a596407fd2c53c23830db3fc7a71e36c5e95ac",
+          "candidateBlob": "f4c6576a4c629bf4f8603746c8e0d90ca4c3a5f2"
+        },
+        {
+          "path": "src/secrets/egress-proxy/response-headers.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "93db6739eb850f2a1d422074a8f04d74766af460",
+          "sourceTree": "e1cdb0f12a7b9704fdc4d94d38feb769dfa10cfa",
+          "sourceBlob": "e3892282050e17737010bd6cccc764f2179144d2",
+          "upstreamBlob": "81e2151ab26c2dc4081b35d1db00901bda550c9d",
+          "candidateBlob": "e3892282050e17737010bd6cccc764f2179144d2"
+        },
+        {
+          "path": "src/secrets/egress-proxy/response-headers.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "57f397d09e5ce1defebda81332a2602e8a1d97d7",
+          "upstreamBlob": "11714002c31ebbb3400ce7effae8eab5be085785",
+          "candidateBlob": "57f397d09e5ce1defebda81332a2602e8a1d97d7"
+        }
+      ]
+    },
+    {
+      "id": "source-04-e0e821e26904",
+      "originCommit": "e0e821e26904fa0805f710226df44cfd50866654",
+      "disposition": "adapt",
+      "appliedCommit": "e0e821e26904fa0805f710226df44cfd50866654",
+      "rationale": "Exact committed source adaptation: fix(worktrees): fence superseded 10.5 run leases.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nsrc/agents/worktrees/run-lease-store.kernel.ts [ADAPTED_SOURCE_ONLY]: Use 10.5 registry row identity plus latest same-path owner ordering within lease admission. Reject a superseded owner or tied latest rows; retain native filesystem, lifecycle and free-space guards.\nsrc/agents/worktrees/run-lease.test.ts [ADAPTED_SOURCE_ONLY]: Use 10.5 registry row identity plus latest same-path owner ordering within lease admission. Reject a superseded owner or tied latest rows; retain native filesystem, lifecycle and free-space guards.\ncustom-patches/reconciliation-2026.10.5.json: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "861451e73866727c44130f228e1fe69f3d65174bdfd29a23abdb2c69a67fbf4a",
+      "regressionTests": [
+        "src/agents/worktrees/run-lease.test.ts"
+      ],
+      "dependsOn": [
+        "source-03-93db6739eb85"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "custom-patches/reconciliation-2026.10.5.json",
+          "boundary": "tooling",
+          "sourceCommit": "e0e821e26904fa0805f710226df44cfd50866654",
+          "sourceTree": "9b6aefe50c20f75a4d6eb88f4a8f883606b12556",
+          "sourceBlob": "08e9336cc9b9f98f9ab9ba6a474ee554fd947794",
+          "upstreamBlob": null,
+          "candidateBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+        },
+        {
+          "path": "src/agents/worktrees/run-lease-store.kernel.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7003ffb5fa52f2e80e778efa304154b1a5b345dd",
+          "upstreamBlob": "2cddcb1bf3fc222d11b8b61654439025a19db32e",
+          "candidateBlob": "87b6ed412672be92354ee76017ed89bedeb207cf"
+        },
+        {
+          "path": "src/agents/worktrees/run-lease.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "ed85fb4744b555b8d7ca1231cb37d6c0da63e8ab",
+          "upstreamBlob": "fa20807feb1cbdca65b14b234bbf86a20fad9382",
+          "candidateBlob": "3eb2ef9915a26ce723f064d1536585876a68f5f1"
+        }
+      ]
+    },
+    {
+      "id": "source-05-211387d11a79",
+      "originCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+      "disposition": "adapt",
+      "appliedCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+      "rationale": "Exact committed source adaptation: feat(fork): reconcile grouped 10.5 source and authority contracts.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\ncustom-patches/manifest.json [ADAPTED_SOURCE_ONLY]: Replace the 9.9 preparation identity with the exact signed 10.5 tag/commit/tree and current publisher bytes; no prior runtime qualification or production eligibility transfers.\ndocs/cli/gateway/query.md [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\ndocs/plugins/sdk-migration/removed-surfaces.md [ADAPTED_SOURCE_ONLY]: Document the current narrow managed-flow bridge and owner boundaries; retain controllerParity=false, and leave old requester-mismatched rows unresolved rather than auto-replaying them.\ndocs/plugins/sdk-runtime.md [ADAPTED_SOURCE_ONLY]: Document the current narrow managed-flow bridge and owner boundaries; retain controllerParity=false, and leave old requester-mismatched rows unresolved rather than auto-replaying them.\ndocs/plugins/sdk-runtime/background-work.md [ADAPTED_SOURCE_ONLY]: Document the current narrow managed-flow bridge and owner boundaries; retain controllerParity=false, and leave old requester-mismatched rows unresolved rather than auto-replaying them.\nextensions/memory-core/src/memory-search-tool-query.ts [ADAPTED_SOURCE_ONLY]: Carry cancellation through 10.5 archive lookup, visibility preparation and reset-cutoff reads; preserve the exact caller abort reason and existing non-abort failures. Focused runtime qualification is recorded separately.\nextensions/memory-core/src/session-search-visibility.test.ts [ADAPTED_SOURCE_ONLY]: Carry cancellation through 10.5 archive lookup, visibility preparation and reset-cutoff reads; preserve the exact caller abort reason and existing non-abort failures. Focused runtime qualification is recorded separately.\nextensions/memory-core/src/session-search-visibility.ts [ADAPTED_SOURCE_ONLY]: Carry cancellation through 10.5 archive lookup, visibility preparation and reset-cutoff reads; preserve the exact caller abort reason and existing non-abort failures. Focused runtime qualification is recorded separately.\npackages/gateway-protocol/src/core-request-params.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\npackages/gateway-protocol/src/public-schema.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\npackages/gateway-protocol/src/schema/system-info.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\npackages/gateway-protocol/src/validator-registry.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md [ADAPTED_SOURCE_ONLY]: Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/controller.mjs [ADAPTED_SOURCE_ONLY]: Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs [ADAPTED_SOURCE_ONLY]: Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs [ADAPTED_SOURCE_ONLY]: The status lookup prioritizes a caller session only when it is a configured controller owner; non-owner status agents search the configured roster and still pass their explicit visibility rule. Runtime remains inert pending complete 10.5 controller qualification and exact new source pin.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs [ADAPTED_SOURCE_ONLY]: The status lookup prioritizes a caller session only when it is a configured controller owner; non-owner status agents search the configured roster and still pass their explicit visibility rule. Runtime remains inert pending complete 10.5 controller qualification and exact new source pin.\nscripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/inert-parity-host.mjs [ADAPTED_SOURCE_ONLY]: Adapt publisher launch to the current one-use host backlink and reload its atomic flow revision; refresh exact candidate package hashes and matching fixtures. Activation remains disabled until packaged proof and the actual post-9.8 predecessor package/build/data are reconciled.\nscripts/lib/ci-node-test-inventory.mts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\nscripts/lib/ci-node-test-plan.mts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\nsrc/agents/mcp-http-tool-schema-compatibility.ts [ADAPTED_SOURCE_ONLY]: Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version.\nsrc/agents/mcp-http-transport.ts [ADAPTED_SOURCE_ONLY]: Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version.\nsrc/agents/worktrees/run-lease.test.ts [ADAPTED_SOURCE_ONLY]: Use 10.5 registry row identity plus latest same-path owner ordering within lease admission. Reject a superseded owner or tied latest rows; retain native filesystem, lifecycle and free-space guards.\nsrc/cli/gateway-cli/gateway-call.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/cli/gateway-cli/register.option-collisions.test.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/cli/gateway-cli/register.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/cli/gateway-rpc.runtime.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/cli/gateway-rpc.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/methods/core-descriptors.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-managed-task-flow-runtime.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/gateway/server-methods-list.test.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-methods/client-types.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-methods/shared-types.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-methods/system.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-plugin-subagent-runtime.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/gateway/server-plugins.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/gateway/server-request-context.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server-runtime-state-prepare.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server/ws-connection/connect-session.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/gateway/server/ws-types.ts [ADAPTED_SOURCE_ONLY]: Port worker namespace readback to 10.5 protocol descriptors and current authenticated connection authority, exact endpoint/boot binding and read-only CLI credential lookup. Method vintage is 2026.10; source-only 9.9 history does not establish a shipped restoration exception.\nsrc/plugins/loader-load-context.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/plugins/loader-module-runtime.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/plugins/runtime/index.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/plugins/runtime/types.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/process/supervisor/service-child-cleanup.test.ts [ADAPTED_SOURCE_ONLY]: Preserve authoritative child identity-loss failure when an error observer throws; adapt 10.5 cleanup assertions to that owner rather than replacing its failure with observer output.\nsrc/process/supervisor/service-child-relay-host.test.ts [ADAPTED_SOURCE_ONLY]: Preserve authoritative child identity-loss failure when an error observer throws; adapt 10.5 cleanup assertions to that owner rather than replacing its failure with observer output.\nsrc/process/supervisor/service-child-relay-host.ts [ADAPTED_SOURCE_ONLY]: Preserve authoritative child identity-loss failure when an error observer throws; adapt 10.5 cleanup assertions to that owner rather than replacing its failure with observer output.\nsrc/state/openclaw-state-read.types.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/state/openclaw-state-read.validation.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/state/openclaw-state-read.worker.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/state/openclaw-state-worker-contract.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/state/openclaw-state-worker-runtime.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/tasks/managed-task-flow-contract.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/tasks/managed-task-flow-host.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\nsrc/tasks/managed-task-flow.worker.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\ntest/fixtures/nowistay-list-properties-output-schema.json [ADAPTED_SOURCE_ONLY]: Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version.\ntest/mcp-nowistay-schema-compatibility.test.mjs [ADAPTED_SOURCE_ONLY]: Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version.\ntest/mcp-nowistay-sdk-regression.test.mjs [ADAPTED_SOURCE_ONLY]: Adapt the exact Nowistay endpoint/tool/schema fingerprint before SDK validation. SDK 1.32.0 regression retains strict unrelated schema checks and verifies the loaded SDK version.\ntest/scripts/ci-node-test-plan.test.ts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ntest/scripts/lint-suppressions.test.ts [ADAPTED_SOURCE_ONLY]: Carry only the three existing publisher suppression entries, each tied to its exact path/rule/count and retained implementation.\ntest/scripts/verify-stable-main-closeout.test.ts [ADAPTED_SOURCE_ONLY]: Pin the upstream repository identity for upstream release fixtures so ambient fork CI identity cannot change their provenance input.\ntest/vitest-projects-config.test-support.ts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ntest/vitest-projects-config.test.ts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ntest/vitest/vitest.tasks.config.ts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ntest/vitest/vitest.test-shards.mjs [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ncustom-patches/reconciliation-2026.10.5.json: Exact committed support change; no legacy disposition asserted.\ndocs/plugins/sdk-migration.md: Exact committed support change; no legacy disposition asserted.\nextensions/memory-core/src/memory-search-tool-query.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-control-kill-runtime.ts: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-control-kill.ts: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-control.accepted-stop.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-registry-persistence.ts: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-registry-persistence.types.ts: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-registry-run-launch.ts: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-registry-run-manager.ts: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-registry.store.kernel.ts: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-registry.store.worker.ts: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-registry.types.ts: Exact committed support change; no legacy disposition asserted.\nsrc/cli/gateway-rpc.runtime.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/agent-turn/agent-run-subagent.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server-managed-task-flow-runtime.client-scope.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server-managed-task-flow-runtime.owners.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server-methods/agent-subagent-registration.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server-plugin-in-process-authority.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server-plugin-in-process-dispatch.types.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server-plugin-runtime-client.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server-plugin-subagent-runtime.overrides.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server-request-context.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server.auth.compat-baseline.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/plugins/loader.gateway-bindings.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/state/openclaw-state-read.validation.managed-task-flow.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/tasks/managed-task-flow-host.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/tasks/managed-task-flow-kill-claim.worker.ts: Exact committed support change; no legacy disposition asserted.\nsrc/tasks/managed-task-flow.worker.integration.test.ts: Exact committed support change; no legacy disposition asserted.\ntest/vitest/vitest.database-worker-core-paths.mjs: Exact committed support change; no legacy disposition asserted.\ntest/vitest/vitest.gateway-server-paths.mjs: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "9c7df9c1956ed9f4e5762982c242a3788e84c4233d507a54addf91bcb54fd3e0",
+      "regressionTests": [
+        "extensions/memory-core/src/memory-search-tool-query.test.ts",
+        "extensions/memory-core/src/session-search-visibility.test.ts",
+        "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+        "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+        "src/agents/worktrees/run-lease.test.ts",
+        "src/cli/gateway-cli/register.option-collisions.test.ts",
+        "src/cli/gateway-rpc.runtime.test.ts",
+        "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+        "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+        "src/gateway/server-methods-list.test.ts",
+        "src/gateway/server-plugin-subagent-runtime.overrides.test.ts",
+        "src/gateway/server-request-context.test.ts",
+        "src/gateway/server.auth.compat-baseline.test.ts",
+        "src/plugins/loader.gateway-bindings.test.ts",
+        "src/process/supervisor/service-child-cleanup.test.ts",
+        "src/process/supervisor/service-child-relay-host.test.ts",
+        "src/state/openclaw-state-read.validation.managed-task-flow.test.ts",
+        "src/tasks/managed-task-flow-host.test.ts",
+        "src/tasks/managed-task-flow.worker.integration.test.ts",
+        "test/mcp-nowistay-schema-compatibility.test.mjs",
+        "test/mcp-nowistay-sdk-regression.test.mjs",
+        "test/scripts/ci-node-test-plan.test.ts",
+        "test/scripts/lint-suppressions.test.ts",
+        "test/scripts/verify-stable-main-closeout.test.ts"
+      ],
+      "dependsOn": [
+        "source-04-e0e821e26904"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "custom-patches/manifest.json",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "b879c4e0716f092cb970c508a72dc12a25db8d62",
+          "upstreamBlob": null,
+          "candidateBlob": "b4eb60b3e422a2fe9b1df9a03153162c752ec7ea"
+        },
+        {
+          "path": "custom-patches/reconciliation-2026.10.5.json",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "ce9ab68f3ebe9a965d27e031e37343016086b77f",
+          "upstreamBlob": null,
+          "candidateBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+        },
+        {
+          "path": "docs/cli/gateway/query.md",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "6a717b426a220409ec7a33a2a23bf3e8f06c87f0",
+          "upstreamBlob": "4facce71043695558704c66f7b0606954352489e",
+          "candidateBlob": "5eee26341a91ae74f64ef3d75fe9a3167f655b99"
+        },
+        {
+          "path": "docs/plugins/sdk-migration.md",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "29019b5f0c5c960603087aacf9db4b71b01aedd0",
+          "upstreamBlob": "06df1775faed742ec504d13d62fd4e7d50f2d7ce",
+          "candidateBlob": "29019b5f0c5c960603087aacf9db4b71b01aedd0"
+        },
+        {
+          "path": "docs/plugins/sdk-migration/removed-surfaces.md",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4fb575b9285ee7b7c51753c72363cb5c00b3d852",
+          "upstreamBlob": "71e9da5accda24b35859e0f0c7f4bb2671ceb953",
+          "candidateBlob": "b4c7c57477a0a59464ad183950338b954d2ce775"
+        },
+        {
+          "path": "docs/plugins/sdk-runtime.md",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "c0b376cb6bf56637082d635e7ab603d120fa4521",
+          "upstreamBlob": "61ba6b00e9c8250cfd760ffb710628e064826c50",
+          "candidateBlob": "194d538c65fdc69f52aeda8d7afbb9f40cf9bfd1"
+        },
+        {
+          "path": "docs/plugins/sdk-runtime/background-work.md",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "bd8935969aad3366981d3c816a5998cf6bfa542e",
+          "upstreamBlob": "c62d762588ad1bdd87926919a978cad5932de41d",
+          "candidateBlob": "25946eb07ce82add5d94faca2f5c6c984bae39e3"
+        },
+        {
+          "path": "extensions/memory-core/src/memory-search-tool-query.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "33a694d5edab4c4d7644931f1ceb0cf56a8f52bb",
+          "upstreamBlob": "a870eff5ccc9d30b17b60a503af07f55ffebdda0",
+          "candidateBlob": "33a694d5edab4c4d7644931f1ceb0cf56a8f52bb"
+        },
+        {
+          "path": "extensions/memory-core/src/memory-search-tool-query.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "f128423061c387be867f0c9bce4631a718356b85",
+          "upstreamBlob": "5950ca1a463dd2ec5f2f634c942201b743d0dce7",
+          "candidateBlob": "fec2401fc06a263993476f66965a33b08b5ac02d"
+        },
+        {
+          "path": "extensions/memory-core/src/session-search-visibility.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "e06dcd3b998722b6983c86444f56d5b9c80944ad",
+          "upstreamBlob": "1e06f50ceed330341aa3cb77dcf288a9e92f30e2",
+          "candidateBlob": "f53146fe2ee9499241503d982d3f4c565f88b90d"
+        },
+        {
+          "path": "extensions/memory-core/src/session-search-visibility.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "d9a6c5ec44529398f85ce652870fd2cb3b32acd7",
+          "upstreamBlob": "f0b00513849428971d76e3cdd7b14220e8f8e229",
+          "candidateBlob": "80d4c519be4d5461279d2bbc523d06a0be546a7a"
+        },
+        {
+          "path": "packages/gateway-protocol/src/core-request-params.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "725efbe791efe73d7d6c427b16f6f30f720d4559",
+          "upstreamBlob": "6b81e88afda0459be8b5f6f2e96825fe56179935",
+          "candidateBlob": "a16edc62eec150c0f40ae6d52baad17a3f24a2e8"
+        },
+        {
+          "path": "packages/gateway-protocol/src/public-schema.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "128f96e6ad3005b35dee5c8a73100770ecf210cc",
+          "upstreamBlob": "4a4794887273b5d1bc838eaf91f94fa1496d9fe6",
+          "candidateBlob": "312d0be7c4a09875f5229a6bf7d6420cd110e2df"
+        },
+        {
+          "path": "packages/gateway-protocol/src/schema/system-info.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8ca082f41c4c69dac05ec235714b79bf690f891e",
+          "upstreamBlob": "a0f4a81f35a35dca2f7c2714790f362661bdb776",
+          "candidateBlob": "71976357ed5307a6c00577ff433ebe9de9f03a74"
+        },
+        {
+          "path": "packages/gateway-protocol/src/validator-registry.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "d2b5e119525b2d457a766fb2b3e4c4226998a44f",
+          "upstreamBlob": "8857f8bcddbc320213b43fad5cc46c052a2af441",
+          "candidateBlob": "48843257decea86647fe3600df3bde81ff0d9c33"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8db3fc79e29defdcd8f2f25dbde1a0fc1f3a9e48",
+          "upstreamBlob": null,
+          "candidateBlob": "439be669dd7d338282fbd61799054f5de42b2762"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/controller.mjs",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "c1132956d1ae5965674d9a56b8f0d2a42104b5eb",
+          "upstreamBlob": null,
+          "candidateBlob": "dcbe84772cae3da3e7cd69028260f9fccddd538a"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "72b7c67f4e4b624cb16ad96ee0ba7bc401f407d7",
+          "upstreamBlob": null,
+          "candidateBlob": "fba20061b061f1401a9b0a15a10f44f6d3675f21"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4171aa6598878bbb6b6459422d595aa94a77bde4",
+          "upstreamBlob": null,
+          "candidateBlob": "ca88f8e8f01f3e3cfa010eed97934150cf33a509"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "a86ee97a7d153b89a9f65b3bde31a8dd7e1cd80f",
+          "upstreamBlob": null,
+          "candidateBlob": "c82ffd791b9d28ffaf6ef23b19ac9329533e4d81"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/inert-parity-host.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "6b26c273e7c7e058ae5dd912e37044b223c7a185",
+          "upstreamBlob": null,
+          "candidateBlob": "26b2985dcc325487ea682f0b1c671ae02eddef7d"
+        },
+        {
+          "path": "scripts/lib/ci-node-test-inventory.mts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "da2aac18d2afa84c7a9e2907241d9531318445c6",
+          "upstreamBlob": "2f602b4baa90ecf944841e4e7cf6bbb17230e02f",
+          "candidateBlob": "2f602b4baa90ecf944841e4e7cf6bbb17230e02f"
+        },
+        {
+          "path": "scripts/lib/ci-node-test-plan.mts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "59be8483986fc48b24b88b41f9543a79000e985b",
+          "upstreamBlob": "d0e4f65238430ddd3687e47321fc3a6cf4e01159",
+          "candidateBlob": "d0e4f65238430ddd3687e47321fc3a6cf4e01159"
+        },
+        {
+          "path": "src/agents/mcp-http-tool-schema-compatibility.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "b067d3377b6b3b2dc871e798495cbcf5339c7a28",
+          "upstreamBlob": null,
+          "candidateBlob": "2b95c3d44b6f7e763f478f0f1ca3973ab6f941d0"
+        },
+        {
+          "path": "src/agents/mcp-http-transport.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "ceca4e04d722dba1f5c7a977c02ed8a1126fbfd9",
+          "upstreamBlob": "38bd95a7c96a67a261f17f1881034d2bacc7fd52",
+          "candidateBlob": "b92fc1eb916001fae0eae69c696143254a7f85c9"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-control-kill-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "775ed2f61f2ebc38f8fdae454a820a05f338b0bc",
+          "upstreamBlob": "b644a8d316bab6148d25837119615c9d35b6dd0f",
+          "candidateBlob": "775ed2f61f2ebc38f8fdae454a820a05f338b0bc"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-control-kill.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "f83f8658b9c6b17a58dfc8fb52d1cc36dab625fd",
+          "upstreamBlob": "6b2f5994489388c7837c3e0dab530341bfec8c03",
+          "candidateBlob": "f83f8658b9c6b17a58dfc8fb52d1cc36dab625fd"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "8fe60081feec5f725fbd1a82829d1b8a28cc9980",
+          "upstreamBlob": "568293e5b9ca0f7e9920f4307fc212ce6266504e",
+          "candidateBlob": "9a920b423a0106e5781773d5e113e22b1b05f669"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry-persistence.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "c7db42623aa73ef6d07dfbcd317eed2a5a7b126c",
+          "upstreamBlob": "85bfb49a8eb84da147a40c44485e22aec95e5109",
+          "candidateBlob": "c7db42623aa73ef6d07dfbcd317eed2a5a7b126c"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry-persistence.types.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "7ee96bd12e5c327ecfd8620a4c6d28f737d6c231",
+          "upstreamBlob": "d02ffa6096d1274e1a32a9ce9ca0c4fde2e9822e",
+          "candidateBlob": "7ee96bd12e5c327ecfd8620a4c6d28f737d6c231"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry-run-launch.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "019bf1592bbb6ae8edfaed5d98c469338ffe2e4e",
+          "upstreamBlob": "c6f21dbb3852c0beac43f5ceb4a0550e1c6d411c",
+          "candidateBlob": "019bf1592bbb6ae8edfaed5d98c469338ffe2e4e"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry-run-manager.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "2bbd917734129c1a22aa8b161980dbbfaa440335",
+          "upstreamBlob": "3ca41047975ea151d7b30c1ac6a2687bc3112961",
+          "candidateBlob": "2bbd917734129c1a22aa8b161980dbbfaa440335"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry.store.kernel.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "0a0a90013be6761734f1161540e182a0688b8242",
+          "upstreamBlob": "9ff840ad2b24fa00207d0e1d2d819cfabb031def",
+          "candidateBlob": "0a0a90013be6761734f1161540e182a0688b8242"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry.store.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "15fb5be8573641e97143020196bfa0a3e0fbe0ca",
+          "upstreamBlob": "0c4d9cb4a51c3df460fe9e9c4ecbcc66ab504e7e",
+          "candidateBlob": "965a293d73c261f44948093f785ebda40c87a6e7"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry.types.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "21c16da5a557e1b0cba06e148b7b1cc8855410c8",
+          "upstreamBlob": "4b7a1cadb5489ff95521cb837cad19c0bafa89dc",
+          "candidateBlob": "21c16da5a557e1b0cba06e148b7b1cc8855410c8"
+        },
+        {
+          "path": "src/agents/worktrees/run-lease.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "ed85fb4744b555b8d7ca1231cb37d6c0da63e8ab",
+          "upstreamBlob": "fa20807feb1cbdca65b14b234bbf86a20fad9382",
+          "candidateBlob": "3eb2ef9915a26ce723f064d1536585876a68f5f1"
+        },
+        {
+          "path": "src/cli/gateway-cli/gateway-call.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "3717147894ee9d37a1042aa85d87377627e48846",
+          "upstreamBlob": null,
+          "candidateBlob": "3717147894ee9d37a1042aa85d87377627e48846"
+        },
+        {
+          "path": "src/cli/gateway-cli/register.option-collisions.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "d8fc084230f39c8a27450d49f6cea7131253f932",
+          "upstreamBlob": "a4ab75913653b4fe4ffdd82a97272c61fc41d396",
+          "candidateBlob": "17d2d0cfe2a9e2cb526019f4b08ec8dbfcb8dcd0"
+        },
+        {
+          "path": "src/cli/gateway-cli/register.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "d73819424e8bdde8cd901dc94f49861ecefca484",
+          "upstreamBlob": "9cabdd5bda9f60e2512070427fd1d10fc7b1047c",
+          "candidateBlob": "2579d751c8b8098b808cf8ddccd0c028b2e46e53"
+        },
+        {
+          "path": "src/cli/gateway-rpc.runtime.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "48f28212677ec2273734612eef02a5f1c9d5e6ab",
+          "upstreamBlob": "176e67fd9320a4960a9a0c37797176fec8c87358",
+          "candidateBlob": "48f28212677ec2273734612eef02a5f1c9d5e6ab"
+        },
+        {
+          "path": "src/cli/gateway-rpc.runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "2318c2e49c5e8a0af5329897e0546d22a338d522",
+          "upstreamBlob": "7f0afbd625c9a6a62f11d92719978395f5c695c7",
+          "candidateBlob": "a1ab3a374abc71226dc61de41a7e55ad346cefac"
+        },
+        {
+          "path": "src/cli/gateway-rpc.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8a67b650aab561ca2ede0e7eff3a1d9846873a28",
+          "upstreamBlob": "d146725a5ee2a8ec9992e6714302bd56ae2b34d9",
+          "candidateBlob": "995b90f4ca867833d2a84e230d75ea71a924dc51"
+        },
+        {
+          "path": "src/gateway/agent-turn/agent-run-subagent.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "f4f3dc65f581245d4f99646f5584d86596788656",
+          "upstreamBlob": "13be62094559a78b37c9e65b81e1a7c7e58b27c6",
+          "candidateBlob": "f4f3dc65f581245d4f99646f5584d86596788656"
+        },
+        {
+          "path": "src/gateway/methods/core-descriptors.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "21c9f67a1d74a3067c2092469a84c5ad3c3ba39b",
+          "upstreamBlob": "48387a41305c56de5aad947b8f84da7c71845dc8",
+          "candidateBlob": "2886f3b527f5757913b95456dddc6f2d43845382"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "227ab9c302c9a76adfcc000a1bb05455a1e1008b",
+          "upstreamBlob": null,
+          "candidateBlob": "5185ba9437e7879a4405028d1f15e64ec5a6bc40"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "2ec08098392dc8187623b98922a14ef721335db7",
+          "upstreamBlob": null,
+          "candidateBlob": "e1ed6650df2299c9c3eba4c2fcfaa565eef41e3e"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "12993a03a614b59c4c23c5b98c029f933d12bf70",
+          "upstreamBlob": null,
+          "candidateBlob": "7585aaebcd4c01539d109cd22e0a2898db568210"
+        },
+        {
+          "path": "src/gateway/server-methods-list.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "37bbcaefdbd512325c28c3c8df0c12f3539a407b",
+          "upstreamBlob": "ec09961e8e6635b467fe448168885780ef2e591c",
+          "candidateBlob": "70b10d25a315b9bd8cd7a33f62a47bf946a5f2f5"
+        },
+        {
+          "path": "src/gateway/server-methods/agent-subagent-registration.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "3a2a90a4ea51544ce39904bc3aa02810bf31439f",
+          "upstreamBlob": "485a43c83d009735bcff4cbd380476bd7e410ce0",
+          "candidateBlob": "3a2a90a4ea51544ce39904bc3aa02810bf31439f"
+        },
+        {
+          "path": "src/gateway/server-methods/client-types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8c7ae2a211e488bfc9e5c798cace284768641289",
+          "upstreamBlob": "786c47b8e2ed792a7ef829a4008062a9f62456b6",
+          "candidateBlob": "320e37b5c4c7e9d02b0fa082cec16e09e0a67752"
+        },
+        {
+          "path": "src/gateway/server-methods/shared-types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4f5bf934c69abfc942a562441def62f5efb2fce2",
+          "upstreamBlob": "175ba9ed3a7015e20a492b63fe6eae23859c4e70",
+          "candidateBlob": "473afd27dbbfe5ef6766c3bc48bc68d481fd0d9a"
+        },
+        {
+          "path": "src/gateway/server-methods/system.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "082534d3b94d4ffaff33c4591d36df2281b73c71",
+          "upstreamBlob": "fc317d26b63c8ffd95eedaed685d7c9db46b5ada",
+          "candidateBlob": "c477dcdfdc635fad483f9f28455c6fc399841afe"
+        },
+        {
+          "path": "src/gateway/server-plugin-in-process-authority.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "529bbc056ebe7d3138b3dd98cdc0613fbdc0ba51",
+          "upstreamBlob": "f08620e89b2bb871fda9bd9d4ea969ebde5da5aa",
+          "candidateBlob": "529bbc056ebe7d3138b3dd98cdc0613fbdc0ba51"
+        },
+        {
+          "path": "src/gateway/server-plugin-in-process-dispatch.types.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "052395ebe976ce1bca5aaf6c4bc088db758eecb2",
+          "upstreamBlob": "fd5ba625caca801ad95e1258a88e1c903048d335",
+          "candidateBlob": "052395ebe976ce1bca5aaf6c4bc088db758eecb2"
+        },
+        {
+          "path": "src/gateway/server-plugin-runtime-client.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "5b9782e73e374e7193af11389085a6d94d67b7b9",
+          "upstreamBlob": "f419c5f7465accf00d54ab6014c7fd9d4be521f2",
+          "candidateBlob": "5b9782e73e374e7193af11389085a6d94d67b7b9"
+        },
+        {
+          "path": "src/gateway/server-plugin-subagent-runtime.overrides.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "954bdae5d209c9d75dbd43296638255126e1d084",
+          "upstreamBlob": "7455f74c8572e3cb6b99828b5f9d959b00fce5ac",
+          "candidateBlob": "954bdae5d209c9d75dbd43296638255126e1d084"
+        },
+        {
+          "path": "src/gateway/server-plugin-subagent-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "c1d34dfbd0d9d8b9bdb22906b839dd6373885020",
+          "upstreamBlob": "6e4921e24b2160511374c82fa92a8c16f1408627",
+          "candidateBlob": "3be052dcfac1747f635844de7e32e9bf01f0d366"
+        },
+        {
+          "path": "src/gateway/server-plugins.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "43f21cdaa483c20e2846d1f70c3078680dc5d13c",
+          "upstreamBlob": "95f8aaf3587849602e3da10ceec008f51b3a0e3e",
+          "candidateBlob": "5b935d8336e266d4d3a501133bf4b2f4b01f6443"
+        },
+        {
+          "path": "src/gateway/server-request-context.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "deb762c180a73cd61688444c00f6f1f3599818c5",
+          "upstreamBlob": "6fda76e03c0cb372a40d68eb17139f234f486884",
+          "candidateBlob": "deb762c180a73cd61688444c00f6f1f3599818c5"
+        },
+        {
+          "path": "src/gateway/server-request-context.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "37510600f55920fe502971c745d65c31b9d689ad",
+          "upstreamBlob": "8cd086dbe59f03de7b50d42a17364a1fb8f10889",
+          "candidateBlob": "b26245a6f8a64bebc81bea273dbceaeb1ccb9ae4"
+        },
+        {
+          "path": "src/gateway/server-runtime-state-prepare.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "85a7c563022a09a81f9b6c72b983e14ed54dcf33",
+          "upstreamBlob": "7535f333e53cd85e27935d6abc06119dc3237851",
+          "candidateBlob": "ee775db35664f26b04a2542f1685909933947c68"
+        },
+        {
+          "path": "src/gateway/server.auth.compat-baseline.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "5175f11df9a53556a1c49d79f854431143e9f514",
+          "upstreamBlob": "572e8352cfa9c18578b1c57242312ce0d499812b",
+          "candidateBlob": "5175f11df9a53556a1c49d79f854431143e9f514"
+        },
+        {
+          "path": "src/gateway/server/ws-connection/connect-session.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "da331e8d09a261e83e022b636def31d61497ac26",
+          "upstreamBlob": "dcb33c5caf29b416a4ca74ad03b3d4c7658e105b",
+          "candidateBlob": "fd5f27d14a6ca1c978d8a613f02a5685fad806bf"
+        },
+        {
+          "path": "src/gateway/server/ws-types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "76b708c58c4ef12885f5887a208fe714b207738a",
+          "upstreamBlob": "db887564fae5c7986a592ab7b941cc8f986c97a5",
+          "candidateBlob": "8df2035864ca32aabff98113aed96abaf6595ddc"
+        },
+        {
+          "path": "src/plugins/loader-load-context.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "c5240ec8abb90f10cf12bdb9ac93a625a83c0efa",
+          "upstreamBlob": "e497a747b287d89576446041de3722da8369fede",
+          "candidateBlob": "5b0c4e883c30e4988bc6cb34e51dd1f774709126"
+        },
+        {
+          "path": "src/plugins/loader-module-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "0fbe06eafdaf6f2ce87f3bf9c5bab48a4815d857",
+          "upstreamBlob": "1c6692830856e313fcfb86fb424168fb7ddf30f6",
+          "candidateBlob": "f89d8671404c0b136445da43fd9960ee9067e63f"
+        },
+        {
+          "path": "src/plugins/loader.gateway-bindings.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "6413454f4aa323a5d4cf69dad6816883e995450c",
+          "upstreamBlob": "986ec72bdddcf90c5ed627501f5e1dfc8db62f8c",
+          "candidateBlob": "6413454f4aa323a5d4cf69dad6816883e995450c"
+        },
+        {
+          "path": "src/plugins/runtime/index.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "e824d8c817f762e569b920e9e082b712406dded7",
+          "upstreamBlob": "02f217a7bf929c325d879479d6d0409a4f164d51",
+          "candidateBlob": "68149c26b0f92b1302e6d07c00a57fb0e6af937e"
+        },
+        {
+          "path": "src/plugins/runtime/types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "998fae23a7a9de3e50864d4808ae9745ff416de2",
+          "upstreamBlob": "1ba77516448680740207175aaea8a29e76ef2774",
+          "candidateBlob": "75b5604ac3ab9ef3f0a7b3752cf7a1d91bc6d7c2"
+        },
+        {
+          "path": "src/process/supervisor/service-child-cleanup.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "5bbd8943a20c203324afb8320b95e23eff7ec9f7",
+          "upstreamBlob": "d9c46d397e1a0f9ce2e4137d2bc04665f049b692",
+          "candidateBlob": "bf013b364e4f42e5f21ae838128b96c23652889f"
+        },
+        {
+          "path": "src/process/supervisor/service-child-relay-host.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "df25d5fe7b73e4e4d7efd3fc6095d29f8a708d89",
+          "upstreamBlob": "9dbc493107463cbfd5781c876d625162de0f3ee1",
+          "candidateBlob": "9796f982643e8f30fd4774d8f588b6a93123a719"
+        },
+        {
+          "path": "src/process/supervisor/service-child-relay-host.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7f71b19c89f54da914eb07ebda3615bded7f9ac3",
+          "upstreamBlob": "78916e7d113bc6df5a60d42e7189f3ad6cc7098f",
+          "candidateBlob": "9018397f9c7515264a4b89eb4bfb276513346673"
+        },
+        {
+          "path": "src/state/openclaw-state-read.types.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "6e482c44c3510429134e46e2ff5fadb7b34ec941",
+          "upstreamBlob": "5e1a58fb581cab14ddc93c93c465fa3080ace20f",
+          "candidateBlob": "f4ce3356b74d7046472c6fbeb82b0d6c14d756ca"
+        },
+        {
+          "path": "src/state/openclaw-state-read.validation.managed-task-flow.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "dfa65b40ecaff4ef3cb6ba93093e7a882978f037",
+          "upstreamBlob": null,
+          "candidateBlob": "dfa65b40ecaff4ef3cb6ba93093e7a882978f037"
+        },
+        {
+          "path": "src/state/openclaw-state-read.validation.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "220e5fd47d000dcf9b2806302db184f0c4a2612a",
+          "upstreamBlob": "73f04124d2aa3b34bf14cf7a89e94a6e0e6c3618",
+          "candidateBlob": "95f6e0afa8de0317b98b5e9961715db39023556d"
+        },
+        {
+          "path": "src/state/openclaw-state-read.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "529b2ce487c38acea398e052cc52579fa714db6e",
+          "upstreamBlob": "69ad71dd27cb930bdf4858d3eca5de74aa646120",
+          "candidateBlob": "c1ee5c5ab69e1245454f300b20c6641101b36b24"
+        },
+        {
+          "path": "src/state/openclaw-state-worker-contract.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8f2cbd0d74dfb649cb3d432a08d55092d1bb10a0",
+          "upstreamBlob": "88e07e9f47578982eaa2d91db095ae147771d7cc",
+          "candidateBlob": "c4ee647c0930ded18788a94ef9a1517a1bcddec7"
+        },
+        {
+          "path": "src/state/openclaw-state-worker-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "961f889bec4db695867c930c67722f02663418a7",
+          "upstreamBlob": "dbe6c2883f0e4d22bd0fa87b35c2890da188ecf2",
+          "candidateBlob": "ebd27b5ec136378d94718549e3e68286f9232d61"
+        },
+        {
+          "path": "src/tasks/managed-task-flow-contract.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "55ebd42bbea9db7d904b945e26533ea5e37c8638",
+          "upstreamBlob": null,
+          "candidateBlob": "a414a377eb55c9760ea7683483f5652d8b7b3981"
+        },
+        {
+          "path": "src/tasks/managed-task-flow-host.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "69f2a7bd29f30a175889cfd6a3e59d47cd03198d",
+          "upstreamBlob": null,
+          "candidateBlob": "69f2a7bd29f30a175889cfd6a3e59d47cd03198d"
+        },
+        {
+          "path": "src/tasks/managed-task-flow-host.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "d9e55ae86850c06a2f348ac5e6d4c1d790ea81ea",
+          "upstreamBlob": null,
+          "candidateBlob": "4ab99b3c4b7e4e13e63028cc6c8ec29342ec047e"
+        },
+        {
+          "path": "src/tasks/managed-task-flow-kill-claim.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "8930d9fe4e1414490acb6e81c328ce58e24cd81b",
+          "upstreamBlob": null,
+          "candidateBlob": "8930d9fe4e1414490acb6e81c328ce58e24cd81b"
+        },
+        {
+          "path": "src/tasks/managed-task-flow.worker.integration.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "d8ee37c0cc0f41cfb67db91273998a2df9df6834",
+          "upstreamBlob": null,
+          "candidateBlob": "93284419b1bde20cf7ac5d20151f94d651ba6c04"
+        },
+        {
+          "path": "src/tasks/managed-task-flow.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "07cb39732be0d473abf40d5eccc8c8c0e038c2e5",
+          "upstreamBlob": null,
+          "candidateBlob": "403e6380e83e8ef0a1a91bb76ec8b8aa605064af"
+        },
+        {
+          "path": "test/fixtures/nowistay-list-properties-output-schema.json",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "a9bf78496de8874325791d7f35585d666e8fa88d",
+          "upstreamBlob": null,
+          "candidateBlob": "a9bf78496de8874325791d7f35585d666e8fa88d"
+        },
+        {
+          "path": "test/mcp-nowistay-schema-compatibility.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "5351fa504e8977b04494c19a64a33312b55b3a15",
+          "upstreamBlob": null,
+          "candidateBlob": "a219ddbd37df2b65e5b27b0f509793a61cc04132"
+        },
+        {
+          "path": "test/mcp-nowistay-sdk-regression.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4f4e6150e706aa2d810e3b310ebc0a7a32e7c4f3",
+          "upstreamBlob": null,
+          "candidateBlob": "6fcdfdc08e3a16aef4f29c1a02e7509bba5a077c"
+        },
+        {
+          "path": "test/scripts/ci-node-test-plan.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "bdeeca67c45f7078f74b1777c6b5373db50000e3",
+          "upstreamBlob": "fd32d69a43fe775417c3e231fe73b4bf8bee44fd",
+          "candidateBlob": "fd32d69a43fe775417c3e231fe73b4bf8bee44fd"
+        },
+        {
+          "path": "test/scripts/lint-suppressions.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "73bda6252a5397a055e24bdde54dc904146c4fac",
+          "upstreamBlob": "298ec1ed7976fda7fe61955e8c6c141a7a64b7fc",
+          "candidateBlob": "70f72425a2d91ea6ae4f25a17f494c652fe20ed8"
+        },
+        {
+          "path": "test/scripts/verify-stable-main-closeout.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "de1b5c30c30372caf296a55c6c465693ae34baee",
+          "upstreamBlob": "14a0a0b5036f6c1bda391de04bf35ab71c2d9ac9",
+          "candidateBlob": "ccfb7f739801a3b370d084aea42c04cc3b1e5cf3"
+        },
+        {
+          "path": "test/vitest-projects-config.test-support.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "79610114350a99ce4b4865209f57e3f6f02a7027",
+          "upstreamBlob": "a469228f45d511e0f05f64c42e6b7aa395385f9b",
+          "candidateBlob": "952ba5ed017214b3aed33fbbe2fb6c3d88eeca2a"
+        },
+        {
+          "path": "test/vitest-projects-config.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "cee177a5067ad6699a6b610188eab3c8e2e88801",
+          "upstreamBlob": "14d37b8fdcbcdf6bf8c48c7d84f145f1e88668bb",
+          "candidateBlob": "3c4708f4801ecb4d2575c9e28b15ac511f12f2a8"
+        },
+        {
+          "path": "test/vitest/vitest.database-worker-core-paths.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "523aaf7309c2d4923dbf2d2740ea10b55fce03df",
+          "upstreamBlob": "232c9ead1e2abcba079f14c89e63a0e318c71ac4",
+          "candidateBlob": "523aaf7309c2d4923dbf2d2740ea10b55fce03df"
+        },
+        {
+          "path": "test/vitest/vitest.gateway-server-paths.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "211387d11a79966d97c320978e2b8cd5130bed29",
+          "sourceTree": "d30f3addd04cb2557527d44b6ab101b2f9e86c5f",
+          "sourceBlob": "b9a463535fd10684c473607a3ed9e6043ee05ad3",
+          "upstreamBlob": "7bc122531082e94a6a1e6ae3e310ecd2f5cda8ee",
+          "candidateBlob": "b9a463535fd10684c473607a3ed9e6043ee05ad3"
+        },
+        {
+          "path": "test/vitest/vitest.tasks.config.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7e0586d3e183bc42bdb3ff0270cab3394ac08bc2",
+          "upstreamBlob": null,
+          "candidateBlob": null
+        },
+        {
+          "path": "test/vitest/vitest.test-shards.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4974e0fc5b83f1d712d75e6c8df8e6b2f7e528a5",
+          "upstreamBlob": "3604a370b2f63fbb432469cea9c6c3869ee5c7c1",
+          "candidateBlob": "3604a370b2f63fbb432469cea9c6c3869ee5c7c1"
+        }
+      ]
+    },
+    {
+      "id": "source-06-2e4e00e91dcc",
+      "originCommit": "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+      "disposition": "adapt",
+      "appliedCommit": "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+      "rationale": "Exact committed source adaptation: fix(fork): resolve 10.5 source qualification findings.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nscripts/lib/ci-node-test-inventory.mts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\nscripts/lib/ci-node-test-plan.mts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\nscripts/plugin-sdk-surface-report.mts [ADAPTED_SOURCE_ONLY]: Retarget the existing fork +1 export allowance to the measured 10.5 surface: 3646 public exports versus upstream 3645, solely for the unchanged CONFIG_MUTATION_CAPABILITIES durable-backup contract. Native measurement found 2115 callable exports and no unauthorized shipped-surface removals. Retain all callable, per-entrypoint, removal and other checks; no environment override or generated inventory change. Re-run the native gate with this exact source policy.\nsrc/gateway/server-managed-task-flow-runtime.ts [ADAPTED_SOURCE_ONLY]: Adapt the narrow managed-flow bridge to current PluginInstance authority and canonical state/native registry workers: exact owner and worker grants, current revision/generation fencing, one-use native launch backlink, atomic worker mutation and root-only cancellation. Controller activation and packaged runtime qualification remain separate.\ntest/scripts/ci-node-test-plan.test.ts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ntest/vitest/vitest.tasks.config.ts [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ntest/vitest/vitest.test-shards.mjs [ADAPTED_SOURCE_ONLY]: Wire the restored controller tests into the existing CI project/shard owners and keep the five standalone Node suites executed explicitly. This source decision does not qualify TaskFlow runtime behavior.\ncustom-patches/reconciliation-2026.10.5.json: Exact committed support change; no legacy disposition asserted.\nsrc/agents/subagents/registry/subagent-registry.store.worker.ts: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "00463c1bee2dffc180ea16dd127ff26a0f7eb67de0e81302c2d91f9c81b6c750",
+      "regressionTests": [
+        "test/scripts/ci-node-test-plan.test.ts"
+      ],
+      "dependsOn": [
+        "source-05-211387d11a79"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "custom-patches/reconciliation-2026.10.5.json",
+          "boundary": "tooling",
+          "sourceCommit": "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+          "sourceTree": "ff857f53fd1125212a679237d577575263d52541",
+          "sourceBlob": "2b3571426f7438cbbad7f282ac0b520940740203",
+          "upstreamBlob": null,
+          "candidateBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+        },
+        {
+          "path": "scripts/lib/ci-node-test-inventory.mts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "da2aac18d2afa84c7a9e2907241d9531318445c6",
+          "upstreamBlob": "2f602b4baa90ecf944841e4e7cf6bbb17230e02f",
+          "candidateBlob": "2f602b4baa90ecf944841e4e7cf6bbb17230e02f"
+        },
+        {
+          "path": "scripts/lib/ci-node-test-plan.mts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "59be8483986fc48b24b88b41f9543a79000e985b",
+          "upstreamBlob": "d0e4f65238430ddd3687e47321fc3a6cf4e01159",
+          "candidateBlob": "d0e4f65238430ddd3687e47321fc3a6cf4e01159"
+        },
+        {
+          "path": "scripts/plugin-sdk-surface-report.mts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "3a9b3da6d9254dd107b7d5492a0d78e0f5a68054",
+          "upstreamBlob": "458050d7a8fc43be88f07540a8e1fc7193620c8c",
+          "candidateBlob": "f9bb330b7e62423a073b64c974913a7718ae3200"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry.store.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+          "sourceTree": "ff857f53fd1125212a679237d577575263d52541",
+          "sourceBlob": "965a293d73c261f44948093f785ebda40c87a6e7",
+          "upstreamBlob": "0c4d9cb4a51c3df460fe9e9c4ecbcc66ab504e7e",
+          "candidateBlob": "965a293d73c261f44948093f785ebda40c87a6e7"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "12993a03a614b59c4c23c5b98c029f933d12bf70",
+          "upstreamBlob": null,
+          "candidateBlob": "7585aaebcd4c01539d109cd22e0a2898db568210"
+        },
+        {
+          "path": "test/scripts/ci-node-test-plan.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "bdeeca67c45f7078f74b1777c6b5373db50000e3",
+          "upstreamBlob": "fd32d69a43fe775417c3e231fe73b4bf8bee44fd",
+          "candidateBlob": "fd32d69a43fe775417c3e231fe73b4bf8bee44fd"
+        },
+        {
+          "path": "test/vitest/vitest.tasks.config.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7e0586d3e183bc42bdb3ff0270cab3394ac08bc2",
+          "upstreamBlob": null,
+          "candidateBlob": null
+        },
+        {
+          "path": "test/vitest/vitest.test-shards.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4974e0fc5b83f1d712d75e6c8df8e6b2f7e528a5",
+          "upstreamBlob": "3604a370b2f63fbb432469cea9c6c3869ee5c7c1",
+          "candidateBlob": "3604a370b2f63fbb432469cea9c6c3869ee5c7c1"
+        }
+      ]
+    },
+    {
+      "id": "source-07-572b94750cbb",
+      "originCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+      "disposition": "adapt",
+      "appliedCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+      "rationale": "Exact committed source adaptation: fix(fork): bind 10.5 authority fixtures and retained image plan.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nscripts/docker/CURRENT_PARITY_IMAGE.md [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\nscripts/docker/package-current-publisher.mjs [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\nscripts/docker/package-current-publisher.test.mjs [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\nsrc/agents/subagents/registry/subagent-control.accepted-stop.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server-managed-task-flow-runtime.client-scope.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/gateway/server-managed-task-flow-runtime.owners.test.ts: Exact committed support change; no legacy disposition asserted.\nsrc/tasks/managed-task-flow.test-helpers.ts: Exact committed support change; no legacy disposition asserted.\nsrc/tasks/managed-task-flow.worker.integration.test.ts: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "6ee97e26f8f5b51df16ec40e2fecaad3a96f06dff1f11e800274a3a2fdbb0369",
+      "regressionTests": [
+        "scripts/docker/package-current-publisher.test.mjs",
+        "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+        "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+        "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+        "src/tasks/managed-task-flow.worker.integration.test.ts"
+      ],
+      "dependsOn": [
+        "source-06-2e4e00e91dcc"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+          "upstreamBlob": null,
+          "candidateBlob": "a2bcc7e60cf37c2f2b82d7e2185fbb0d2fcb7679"
+        },
+        {
+          "path": "scripts/docker/package-current-publisher.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "03039885c285316c7275f361eafbff0c2bbd6a89",
+          "upstreamBlob": null,
+          "candidateBlob": "a8a136ca1d451db238021674a4ec51e2fd998239"
+        },
+        {
+          "path": "scripts/docker/package-current-publisher.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "b15896a768e53723433dbcc9c8b37e2cafc29eb6",
+          "upstreamBlob": null,
+          "candidateBlob": "6d505402dfa74aa0d442c2c97974bd00c2e82f98"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+          "sourceTree": "0a420e0b25e465bd3669574b0aaf087efbd455f6",
+          "sourceBlob": "9a920b423a0106e5781773d5e113e22b1b05f669",
+          "upstreamBlob": "568293e5b9ca0f7e9920f4307fc212ce6266504e",
+          "candidateBlob": "9a920b423a0106e5781773d5e113e22b1b05f669"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+          "sourceTree": "0a420e0b25e465bd3669574b0aaf087efbd455f6",
+          "sourceBlob": "5185ba9437e7879a4405028d1f15e64ec5a6bc40",
+          "upstreamBlob": null,
+          "candidateBlob": "5185ba9437e7879a4405028d1f15e64ec5a6bc40"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+          "sourceTree": "0a420e0b25e465bd3669574b0aaf087efbd455f6",
+          "sourceBlob": "e1ed6650df2299c9c3eba4c2fcfaa565eef41e3e",
+          "upstreamBlob": null,
+          "candidateBlob": "e1ed6650df2299c9c3eba4c2fcfaa565eef41e3e"
+        },
+        {
+          "path": "src/tasks/managed-task-flow.test-helpers.ts",
+          "boundary": "container",
+          "sourceCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+          "sourceTree": "0a420e0b25e465bd3669574b0aaf087efbd455f6",
+          "sourceBlob": "a95743e39f7de3ed2853d610e3ce058bbb3cc5dd",
+          "upstreamBlob": null,
+          "candidateBlob": "a95743e39f7de3ed2853d610e3ce058bbb3cc5dd"
+        },
+        {
+          "path": "src/tasks/managed-task-flow.worker.integration.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+          "sourceTree": "0a420e0b25e465bd3669574b0aaf087efbd455f6",
+          "sourceBlob": "ea472e3d0e2dd97d3984a0a297d193d6bbce17cd",
+          "upstreamBlob": null,
+          "candidateBlob": "93284419b1bde20cf7ac5d20151f94d651ba6c04"
+        }
+      ]
+    },
+    {
+      "id": "source-08-e8796be056dc",
+      "originCommit": "e8796be056dc39a2cf39def8b08a71cd2286ad02",
+      "disposition": "adapt",
+      "appliedCommit": "e8796be056dc39a2cf39def8b08a71cd2286ad02",
+      "rationale": "Exact committed source adaptation: test(fork): prove 10.5 native claim rejection boundaries.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nsrc/tasks/managed-task-flow.worker.integration.test.ts: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "796f708371c450357342acb3da85cff342994f1d2538f43b57634822577a1112",
+      "regressionTests": [
+        "src/tasks/managed-task-flow.worker.integration.test.ts"
+      ],
+      "dependsOn": [
+        "source-07-572b94750cbb"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "src/tasks/managed-task-flow.worker.integration.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "e8796be056dc39a2cf39def8b08a71cd2286ad02",
+          "sourceTree": "6101d8ec0139dd5c267106285ab8d1f74682276a",
+          "sourceBlob": "758e71510389dc7427aeae337e50e59470bdb324",
+          "upstreamBlob": null,
+          "candidateBlob": "93284419b1bde20cf7ac5d20151f94d651ba6c04"
+        }
+      ]
+    },
+    {
+      "id": "source-09-2743fe2853a9",
+      "originCommit": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+      "disposition": "adapt",
+      "appliedCommit": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+      "rationale": "Exact committed source adaptation: test(fork): narrow native worker replies before assertions.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nsrc/tasks/managed-task-flow.worker.integration.test.ts: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "50c0809180df3e58539ada45968b9d9f3d3b5cd3d46ad2b4abbebd2aeaa699d0",
+      "regressionTests": [
+        "src/tasks/managed-task-flow.worker.integration.test.ts"
+      ],
+      "dependsOn": [
+        "source-08-e8796be056dc"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "src/tasks/managed-task-flow.worker.integration.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+          "sourceTree": "9dd42d178010367e153b73f42f1f7d14370b579f",
+          "sourceBlob": "93284419b1bde20cf7ac5d20151f94d651ba6c04",
+          "upstreamBlob": null,
+          "candidateBlob": "93284419b1bde20cf7ac5d20151f94d651ba6c04"
+        }
+      ]
+    },
+    {
+      "id": "source-10-cb80407b3d01",
+      "originCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+      "disposition": "adapt",
+      "appliedCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+      "rationale": "Exact committed source adaptation: fix(docker): acquire pinned dependencies before offline execution.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nDockerfile [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof. Separate reviewed manifest-only Corepack/pnpm acquisition and pre-payload Debian/npm security acquisition from network-disabled candidate execution. Preserve frozen lockfile, patch/integrity and release-age policy; disable hooks only during acquisition, retain native offline install lifecycles and native-addon checks, and copy the pinned Corepack cache into the runtime. All RUN instructions declare their network mode; the three acquisition steps inherit the executor default while every other RUN stays explicitly offline. Acquire Matrix crypto native assets with official release SHA256 pins and use its supported loopback download mirror during native offline installation, preserving postinstall and native-addon checks.\nscripts/docker/CURRENT_PARITY_IMAGE.md [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\ncustom-patches/reconciliation-2026.10.5.json: Exact committed support change; no legacy disposition asserted.\nsrc/dockerfile.test.ts: Exact committed support change; no legacy disposition asserted.\ntest/scripts/docker-build-helper.test.ts: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "dba31f9fb66ae9c922577a8732c1ce5dcdbedd753ab7f290d3a5e084b8c1f646",
+      "regressionTests": [
+        "src/dockerfile.test.ts",
+        "test/scripts/docker-build-helper.test.ts"
+      ],
+      "dependsOn": [
+        "source-09-2743fe2853a9"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "Dockerfile",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4455a73c0dcd8111e90dd542892b47d6730420e8",
+          "upstreamBlob": "79c30caaf1963efe8e6eca18da2386c67b6f0455",
+          "candidateBlob": "c54e7aa05fc01ed6a1fad83e98481d17e95ddbea"
+        },
+        {
+          "path": "custom-patches/reconciliation-2026.10.5.json",
+          "boundary": "tooling",
+          "sourceCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+          "sourceTree": "9bb03f9cd6f8221f42a1c1701824a154d6f87d55",
+          "sourceBlob": "a7e4d4b8486136594f0b6d4ab8a17513181e01dc",
+          "upstreamBlob": null,
+          "candidateBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+        },
+        {
+          "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+          "upstreamBlob": null,
+          "candidateBlob": "a2bcc7e60cf37c2f2b82d7e2185fbb0d2fcb7679"
+        },
+        {
+          "path": "src/dockerfile.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+          "sourceTree": "9bb03f9cd6f8221f42a1c1701824a154d6f87d55",
+          "sourceBlob": "e9d85763ea9b035b6a7cb3da870dada65a3128f4",
+          "upstreamBlob": "f7e2f77b07460e908ef5236b3379f25ddab1e2b2",
+          "candidateBlob": "eaa0359aa06bf2ad9354049803aeed8436327bd6"
+        },
+        {
+          "path": "test/scripts/docker-build-helper.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+          "sourceTree": "9bb03f9cd6f8221f42a1c1701824a154d6f87d55",
+          "sourceBlob": "c8d3038f411d98c300a64d335851d10ee39b7612",
+          "upstreamBlob": "48f5f12ec32f96b70ff5f02f4d123ec3c4a9a253",
+          "candidateBlob": "c8d3038f411d98c300a64d335851d10ee39b7612"
+        }
+      ]
+    },
+    {
+      "id": "source-11-ff8fba59b4fc",
+      "originCommit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+      "disposition": "adapt",
+      "appliedCommit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+      "rationale": "Exact committed source adaptation: fix(docker): keep acquisition online and candidate RUNs offline.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nDockerfile [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof. Separate reviewed manifest-only Corepack/pnpm acquisition and pre-payload Debian/npm security acquisition from network-disabled candidate execution. Preserve frozen lockfile, patch/integrity and release-age policy; disable hooks only during acquisition, retain native offline install lifecycles and native-addon checks, and copy the pinned Corepack cache into the runtime. All RUN instructions declare their network mode; the three acquisition steps inherit the executor default while every other RUN stays explicitly offline. Acquire Matrix crypto native assets with official release SHA256 pins and use its supported loopback download mirror during native offline installation, preserving postinstall and native-addon checks.\nscripts/docker/CURRENT_PARITY_IMAGE.md [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\nscripts/docker/package-current-publisher.mjs [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\nscripts/docker/package-current-publisher.test.mjs [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\ncustom-patches/reconciliation-2026.10.5.json: Exact committed support change; no legacy disposition asserted.\nsrc/dockerfile.test.ts: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "887502f08f9339d650ad1b41af9962dde140e6b6849df4eb531571890871f879",
+      "regressionTests": [
+        "scripts/docker/package-current-publisher.test.mjs",
+        "src/dockerfile.test.ts"
+      ],
+      "dependsOn": [
+        "source-10-cb80407b3d01"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "Dockerfile",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4455a73c0dcd8111e90dd542892b47d6730420e8",
+          "upstreamBlob": "79c30caaf1963efe8e6eca18da2386c67b6f0455",
+          "candidateBlob": "c54e7aa05fc01ed6a1fad83e98481d17e95ddbea"
+        },
+        {
+          "path": "custom-patches/reconciliation-2026.10.5.json",
+          "boundary": "tooling",
+          "sourceCommit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+          "sourceTree": "fdbf31f86fa714b4f58c065e38d61fdece659902",
+          "sourceBlob": "f9abf5e5b0126bdfb4f2aa56e176a5a51e565b8b",
+          "upstreamBlob": null,
+          "candidateBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+        },
+        {
+          "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+          "upstreamBlob": null,
+          "candidateBlob": "a2bcc7e60cf37c2f2b82d7e2185fbb0d2fcb7679"
+        },
+        {
+          "path": "scripts/docker/package-current-publisher.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "03039885c285316c7275f361eafbff0c2bbd6a89",
+          "upstreamBlob": null,
+          "candidateBlob": "a8a136ca1d451db238021674a4ec51e2fd998239"
+        },
+        {
+          "path": "scripts/docker/package-current-publisher.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "b15896a768e53723433dbcc9c8b37e2cafc29eb6",
+          "upstreamBlob": null,
+          "candidateBlob": "6d505402dfa74aa0d442c2c97974bd00c2e82f98"
+        },
+        {
+          "path": "src/dockerfile.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+          "sourceTree": "fdbf31f86fa714b4f58c065e38d61fdece659902",
+          "sourceBlob": "f7005e0b7ea27e52e5cfd4501f8938f05293aee4",
+          "upstreamBlob": "f7e2f77b07460e908ef5236b3379f25ddab1e2b2",
+          "candidateBlob": "eaa0359aa06bf2ad9354049803aeed8436327bd6"
+        }
+      ]
+    },
+    {
+      "id": "source-12-ae85778296da",
+      "originCommit": "ae85778296da373dfe7d80101931bafac1acc9dd",
+      "disposition": "adapt",
+      "appliedCommit": "ae85778296da373dfe7d80101931bafac1acc9dd",
+      "rationale": "Exact committed source adaptation: fix(docker): acquire pinned Matrix native asset for offline install.\nThe commit-level adapt value records the linear applied commit; original per-path carry/adapt decisions remain verbatim below and in the evidence.\nDockerfile [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof. Separate reviewed manifest-only Corepack/pnpm acquisition and pre-payload Debian/npm security acquisition from network-disabled candidate execution. Preserve frozen lockfile, patch/integrity and release-age policy; disable hooks only during acquisition, retain native offline install lifecycles and native-addon checks, and copy the pinned Corepack cache into the runtime. All RUN instructions declare their network mode; the three acquisition steps inherit the executor default while every other RUN stays explicitly offline. Acquire Matrix crypto native assets with official release SHA256 pins and use its supported loopback download mirror during native offline installation, preserving postinstall and native-addon checks.\nscripts/docker/CURRENT_PARITY_IMAGE.md [ADAPTED_SOURCE_ONLY]: Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof.\ncustom-patches/reconciliation-2026.10.5.json: Exact committed support change; no legacy disposition asserted.\nscripts/docker/run-with-matrix-crypto-cache.mjs: Exact committed support change; no legacy disposition asserted.\nscripts/docker/run-with-matrix-crypto-cache.test.mjs: Exact committed support change; no legacy disposition asserted.\nsrc/dockerfile.test.ts: Exact committed support change; no legacy disposition asserted.",
+      "evidenceSha256": "29469d313c20e0c3744c59d15117b5a499da04c4d46134f5b1ac504eea99c9a8",
+      "regressionTests": [
+        "scripts/docker/run-with-matrix-crypto-cache.test.mjs",
+        "src/dockerfile.test.ts"
+      ],
+      "dependsOn": [
+        "source-11-ff8fba59b4fc"
+      ],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "Dockerfile",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "4455a73c0dcd8111e90dd542892b47d6730420e8",
+          "upstreamBlob": "79c30caaf1963efe8e6eca18da2386c67b6f0455",
+          "candidateBlob": "c54e7aa05fc01ed6a1fad83e98481d17e95ddbea"
+        },
+        {
+          "path": "custom-patches/reconciliation-2026.10.5.json",
+          "boundary": "tooling",
+          "sourceCommit": "ae85778296da373dfe7d80101931bafac1acc9dd",
+          "sourceTree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab",
+          "sourceBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d",
+          "upstreamBlob": null,
+          "candidateBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+        },
+        {
+          "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+          "upstreamBlob": null,
+          "candidateBlob": "a2bcc7e60cf37c2f2b82d7e2185fbb0d2fcb7679"
+        },
+        {
+          "path": "scripts/docker/run-with-matrix-crypto-cache.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "ae85778296da373dfe7d80101931bafac1acc9dd",
+          "sourceTree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab",
+          "sourceBlob": "bde2de05c94d4c94d8fd97b2ea87b2a82b5eb91c",
+          "upstreamBlob": null,
+          "candidateBlob": "bde2de05c94d4c94d8fd97b2ea87b2a82b5eb91c"
+        },
+        {
+          "path": "scripts/docker/run-with-matrix-crypto-cache.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "ae85778296da373dfe7d80101931bafac1acc9dd",
+          "sourceTree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab",
+          "sourceBlob": "ec582b58e7801d9749704b9c0d8a97fc8fe60ca5",
+          "upstreamBlob": null,
+          "candidateBlob": "ec582b58e7801d9749704b9c0d8a97fc8fe60ca5"
+        },
+        {
+          "path": "src/dockerfile.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "ae85778296da373dfe7d80101931bafac1acc9dd",
+          "sourceTree": "3efb0b6fdb4491462591e2f534161c2b8bab65ab",
+          "sourceBlob": "eaa0359aa06bf2ad9354049803aeed8436327bd6",
+          "upstreamBlob": "f7e2f77b07460e908ef5236b3379f25ddab1e2b2",
+          "candidateBlob": "eaa0359aa06bf2ad9354049803aeed8436327bd6"
+        }
+      ]
+    },
+    {
+      "id": "decision-93686d41f4f60e59",
+      "originCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+      "disposition": "retire",
+      "appliedCommit": null,
+      "rationale": "apps/android/app/src/main/java/ai/openclaw/app/gateway/GatewayProtocol.kt [RETIRED_REVIEWED]: 10.5 removed this tracked generated file. Current prepare-native-protocol.mjs generates the same method enum from core descriptors into the ignored Android build directory; do not restore the old generated owner. The upstreamed enum, where used, means the ledger's reviewed semantic equivalence; it does not claim exact patch identity.",
+      "evidenceSha256": "904c402b751d3e49746b2f20c5b4c00b7f1d93a3f00a75536a74c1a37da10095",
+      "regressionTests": [
+        "test/scripts/native-protocol-artifact.test.ts"
+      ],
+      "dependsOn": [],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "apps/android/app/src/main/java/ai/openclaw/app/gateway/GatewayProtocol.kt",
+          "boundary": "host",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7c9b12b5f17626d08bd915652f64c1fc8c43b92c",
+          "upstreamBlob": null,
+          "candidateBlob": null
+        }
+      ]
+    },
+    {
+      "id": "decision-abda4d1ac21aa495",
+      "originCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+      "disposition": "retire",
+      "appliedCommit": null,
+      "rationale": "apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift [RETIRED_REVIEWED]: 10.5 removed this tracked generated file. Current prepare-native-protocol.mjs generates the request/result models from ProtocolSchemas into the ignored Swift build directory; do not restore the old generated owner. The upstreamed enum, where used, means the ledger's reviewed semantic equivalence; it does not claim exact patch identity.",
+      "evidenceSha256": "50bbb664bf808da3bb7da7bf9b602c1ba1337f6dfeb5c76dffc0fa65d3ab09cd",
+      "regressionTests": [
+        "test/scripts/native-protocol-artifact.test.ts"
+      ],
+      "dependsOn": [],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift",
+          "boundary": "host",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "81aa1da784c6c375481ed874784e63cf49c910ae",
+          "upstreamBlob": null,
+          "candidateBlob": null
+        }
+      ]
+    },
+    {
+      "id": "decision-6e1e467c57c9625c",
+      "originCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+      "disposition": "upstreamed",
+      "appliedCommit": null,
+      "rationale": "scripts/check-codex-app-server-protocol.ts [UPSTREAM_EQUIVALENT_REVIEWED]: 10.5 already derives the config edit type from CodexAppServerRequestParams<\"config/batchWrite\">[\"edits\"][number], which is the old fork patch intent. The upstreamed enum, where used, means the ledger's reviewed semantic equivalence; it does not claim exact patch identity.",
+      "evidenceSha256": "bc015ad113e39176aeb3d6c6388f42cccb4a2ff789e78a453b81e7575c1b183f",
+      "regressionTests": [
+        "test/scripts/codex-app-server-protocol-source.test.ts"
+      ],
+      "dependsOn": [],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "scripts/check-codex-app-server-protocol.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "8d8663105a0cbadd3299175071dd03247cde4b81",
+          "upstreamBlob": "90393b0d7ba59855a898308f16bdfdba35043f92",
+          "candidateBlob": "90393b0d7ba59855a898308f16bdfdba35043f92"
+        }
+      ]
+    },
+    {
+      "id": "decision-53289496c4a25088",
+      "originCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+      "disposition": "retire",
+      "appliedCommit": null,
+      "rationale": "src/plugins/loader.runtime-metadata.test.ts [RETIRED_REVIEWED]: 10.5 removed this test owner. Replace its lazy TaskFlow facet coverage in src/plugins/loader.gateway-bindings.test.ts; do not restore the retired test file. The upstreamed enum, where used, means the ledger's reviewed semantic equivalence; it does not claim exact patch identity.",
+      "evidenceSha256": "19820f39fb6b30e9d3964550dc7d73f6d961310ec6468e27a13b11018dd865ad",
+      "regressionTests": [
+        "src/plugins/loader.gateway-bindings.test.ts"
+      ],
+      "dependsOn": [],
+      "regressionOwner": "gateway-plugin-instance-and-native-state-worker",
+      "paths": [
+        {
+          "path": "src/plugins/loader.runtime-metadata.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "28299a25690c3018d1fe71e6637aaf36641ada51",
+          "upstreamBlob": null,
+          "candidateBlob": null
+        }
+      ]
+    },
+    {
+      "id": "decision-01e86421020a12ed",
+      "originCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+      "disposition": "retire",
+      "appliedCommit": null,
+      "rationale": "src/plugins/loader.runtime-registry.test.ts [RETIRED_REVIEWED]: Retire the old fork hunk in this file. Current src/plugins/loader.gateway-bindings.test.ts proves that identical TaskFlow runtime owners share a load cache key and distinct owners do not; loader-load-context.ts owns the corresponding runtime identity input. The upstreamed enum, where used, means the ledger's reviewed semantic equivalence; it does not claim exact patch identity.",
+      "evidenceSha256": "b0f5dbc6aff75e01bf51fabc73a9f4ac41be2daaeec4865ce9b923cfca750a98",
+      "regressionTests": [
+        "src/plugins/loader.gateway-bindings.test.ts"
+      ],
+      "dependsOn": [],
+      "regressionOwner": "gateway-plugin-instance-and-native-state-worker",
+      "paths": [
+        {
+          "path": "src/plugins/loader.runtime-registry.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "1e4c271abe966e59af9843f6ddc729fae94d0f79",
+          "upstreamBlob": "aaf008d437666e48dcb589dbeaca76e3c310900c",
+          "candidateBlob": "aaf008d437666e48dcb589dbeaca76e3c310900c"
+        }
+      ]
+    },
+    {
+      "id": "decision-64bd30940e259a67",
+      "originCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+      "disposition": "upstreamed",
+      "appliedCommit": null,
+      "rationale": "test/scripts/full-release-validation-state.test.ts [UPSTREAM_EQUIVALENT_REVIEWED]: 10.5 already pins GITHUB_REPOSITORY to openclaw/openclaw for these upstream release decision fixtures and restores the ambient value afterward. The upstreamed enum, where used, means the ledger's reviewed semantic equivalence; it does not claim exact patch identity.",
+      "evidenceSha256": "879b080f8309915329148881bc91d63f5d7d84d498a759d0fe2f1894a2eec660",
+      "regressionTests": [
+        "test/scripts/full-release-validation-state.test.ts"
+      ],
+      "dependsOn": [],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "test/scripts/full-release-validation-state.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "7894c870c1337157f47207f9650a5215c408b57c",
+          "upstreamBlob": "00d1ea11b72b16ae61535470603eecff2dbd1215",
+          "candidateBlob": "00d1ea11b72b16ae61535470603eecff2dbd1215"
+        }
+      ]
+    },
+    {
+      "id": "decision-feeda4b9ab245184",
+      "originCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+      "disposition": "upstreamed",
+      "appliedCommit": null,
+      "rationale": "ui/src/test-helpers/app-sidebar-cases/session-delegated-activity.ts [UPSTREAM_EQUIVALENT_REVIEWED]: 10.5 already refreshes rosterActivityStore and awaits the affected delegated roster state with waitForFast. Retire the old settleRoster helper patch. The upstreamed enum, where used, means the ledger's reviewed semantic equivalence; it does not claim exact patch identity.",
+      "evidenceSha256": "6a474d0e43f753971cca8c2a3195d457d602575c0a62dd21ffc6dbe4e69eb7e9",
+      "regressionTests": [
+        "ui/src/components/app-sidebar.sessions.test.ts"
+      ],
+      "dependsOn": [],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "ui/src/test-helpers/app-sidebar-cases/session-delegated-activity.ts",
+          "boundary": "container",
+          "sourceCommit": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+          "sourceTree": "4c9ae22448aa71517739e4dcecc3cb0ae98f92f3",
+          "sourceBlob": "0f0071a81bfb459e54fdcca4e3e3aad3b08d68d1",
+          "upstreamBlob": "78ccc2cb2509054b2603c667531dd4c48bf61076",
+          "candidateBlob": "78ccc2cb2509054b2603c667531dd4c48bf61076"
+        }
+      ]
+    }
+  ]
+}

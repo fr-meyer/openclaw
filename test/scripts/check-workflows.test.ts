@@ -1,5 +1,6 @@
 // Check Workflows tests cover check workflows script behavior.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,6 +12,17 @@ import { cleanupTempDirs, makeTempDir } from "../helpers/temp-dir.js";
 const scriptPath = path.resolve("scripts/check-workflows.mts");
 const tempDirs: string[] = [];
 const testNodeExecPath = resolveTestNodeExecPath();
+const actionlintRevision = "011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7";
+const actionlintPatch = readFileSync("scripts/actionlint-cache-mode.patch");
+const actionlintVersion = `v1.7.13-0.20260419144658-${actionlintRevision.slice(0, 12)}+openclaw-cache-mode.${createHash("sha256").update(actionlintPatch).digest("hex").slice(0, 12)}`;
+
+function writeQualifiedActionlint(binDir: string, version = actionlintVersion) {
+  writeFileSync(
+    path.join(binDir, "actionlint"),
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then printf '%s\\n' '${version}'; fi\nexit 0\n`,
+    { mode: 0o755 },
+  );
+}
 
 type WorkflowStep = {
   name: string;
@@ -56,6 +68,60 @@ afterEach(() => {
 });
 
 describe("check-workflows", () => {
+  it.each([0, 7])(
+    "runs the real pre-commit actionlint entry without recursion (exit %i)",
+    (exit) => {
+      const config = parse(readFileSync(".pre-commit-config.yaml", "utf8")) as {
+        repos: {
+          repo: string;
+          hooks: { id: string; entry?: string; language?: string; files?: string }[];
+        }[];
+      };
+      const owner = config.repos.find((repo) =>
+        repo.hooks.some((hook) => hook.id === "actionlint"),
+      );
+      const hook = owner?.hooks.find((candidate) => candidate.id === "actionlint");
+      expect(owner?.repo).toBe("local");
+      expect(hook?.language).toBe("system");
+      expect(hook?.entry).toBe("node scripts/check-workflows.mts --actionlint-only");
+      expect(
+        new RegExp(hook?.files ?? "^$").test(".github/workflows/fork-release-pipeline.yml"),
+      ).toBe(true);
+      const tempDir = makeTempDir(tempDirs, "check-workflows-hook-");
+      const binDir = path.join(tempDir, "bin");
+      const marker = path.join(tempDir, "actionlint-args.json");
+      mkdirSync(binDir);
+      writeFileSync(
+        path.join(binDir, "actionlint"),
+        `#!${testNodeExecPath}\nconst fs = require('node:fs');\nconst args = process.argv.slice(2);\nif (args[0] === '--version') { console.log(${JSON.stringify(actionlintVersion)}); process.exit(0); }\nfs.writeFileSync(process.env.PROBE_MARKER, JSON.stringify(args));\nif (${exit} !== 0) { console.error('fixture workflow diagnostic'); }\nprocess.exit(${exit});\n`,
+        { mode: 0o755 },
+      );
+      for (const command of ["pre-commit", "python3", "node", "go"]) {
+        writeFileSync(
+          path.join(binDir, command),
+          "#!/bin/sh\necho forbidden-recursion >&2\nexit 99\n",
+          { mode: 0o755 },
+        );
+      }
+      const result = spawnSync(
+        testNodeExecPath,
+        [...hook!.entry!.split(" ").slice(1), ".github/workflows/fork-release-pipeline.yml"],
+        {
+          encoding: "utf8",
+          env: { ...process.env, PATH: binDir, PROBE_MARKER: marker },
+        },
+      );
+      expect(result.status, result.stderr).toBe(exit);
+      expect(result.stderr).not.toContain("forbidden-recursion");
+      expect(JSON.parse(readFileSync(marker, "utf8"))).toEqual([
+        ".github/workflows/fork-release-pipeline.yml",
+      ]);
+      if (exit !== 0) {
+        expect(result.stderr).toContain("fixture workflow diagnostic");
+      }
+    },
+  );
+
   it("prints an actionable diagnostic when actionlint and go are unavailable", () => {
     const result = spawnSync(testNodeExecPath, ["--import", "tsx", scriptPath], {
       encoding: "utf8",
@@ -72,127 +138,150 @@ describe("check-workflows", () => {
   });
 
   it.each([
-    { version: undefined, tool: "go" },
-    { version: "1.7.12", tool: "go" },
-    { version: "unknown", tool: "pre-commit" },
-    { version: "v1.7.13-0.20260419144658-011a6d15e749", tool: "installed" },
-    { version: "1.7.12", tool: "pre-commit", acquireStatus: 1 },
-    { version: "1.7.12", tool: "go", lintStatus: 7 },
-    { version: "1.7.12", tool: "unavailable", lintStatus: 1 },
+    { version: undefined, acquire: true },
+    { version: "1.7.12", acquire: true },
+    { version: "v1.7.13-0.20260419144658-011a6d15e749", acquire: true },
+    { version: actionlintVersion, acquire: false },
+    { version: actionlintVersion.replace(/\.[a-f0-9]{12}$/u, ".ffffffffffff"), acquire: true },
+    { version: "unknown", acquire: false, noGo: true, expected: 1 },
+    { version: undefined, acquire: true, failure: "fetch", expected: 1 },
+    { version: undefined, acquire: true, failure: "identity", expected: 1 },
+    { version: undefined, acquire: true, failure: "patch-check", expected: 1 },
+    { version: undefined, acquire: true, failure: "patch-apply", expected: 1 },
+    { version: undefined, acquire: true, failure: "build", expected: 1 },
+    { version: undefined, acquire: true, failure: "version", expected: 1 },
+    { version: undefined, acquire: true, failure: "parser", expected: 1 },
+    { version: "1.7.12", acquire: true, failure: "lint", expected: 7 },
   ])(
-    "selects $tool actionlint for installed version $version ($acquireStatus/$lintStatus)",
-    ({ version, tool, acquireStatus = 0, lintStatus = 0 }) => {
+    "qualifies exact patched actionlint: $version / $failure",
+    ({ version, acquire, noGo = false, failure = "", expected = 0 }) => {
       const tempDir = makeTempDir(tempDirs, "check-workflows-");
       const binDir = path.join(tempDir, "bin");
-      const markerPath = path.join(tempDir, "go-install.txt");
-      const binMarkerPath = path.join(tempDir, "go-bin.txt");
-      const pinnedMarkerPath = path.join(tempDir, "pinned-actionlint.txt");
-      const preCommitMarkerPath = path.join(tempDir, "pre-commit.txt");
-      const actionlintMarkerPath = path.join(tempDir, "actionlint.txt");
+      const marker = path.join(tempDir, "commands.jsonl");
       mkdirSync(binDir);
       if (version) {
+        writeQualifiedActionlint(binDir, version);
+      }
+      const fake = (name: string, body: string) =>
         writeFileSync(
-          path.join(binDir, "actionlint"),
-          [
-            "#!/bin/sh",
-            `if [ "$1" = "--version" ]; then printf '%s\\n' '${version}'; exit 0; fi`,
-            'printf "%s\\n" "$*" > "$ACTIONLINT_MARKER"',
-            "",
-          ].join("\n"),
+          path.join(binDir, name),
+          `#!${testNodeExecPath}\nconst fs = require('node:fs');\nconst args = process.argv.slice(2);\nconst record = value => fs.appendFileSync(process.env.PROBE_MARKER, JSON.stringify(value) + '\\n');\n${body}\n`,
           { mode: 0o755 },
+        );
+      if (!noGo) {
+        fake(
+          "git",
+          `
+        if (args[0] === '--version') process.exit(0);
+        record({tool:'git', args, cwd:process.cwd()});
+        if (args[0] === 'fetch' && process.env.FAILURE === 'fetch') process.exit(1);
+        if (args[0] === 'rev-parse') { console.log(process.env.FAILURE === 'identity' ? 'f'.repeat(40) : '${actionlintRevision}'); process.exit(0); }
+        if (args[0] === 'apply') {
+          const patch = fs.readFileSync(0);
+          record({tool:'patch', hash: require('node:crypto').createHash('sha256').update(patch).digest('hex')});
+          if (process.env.FAILURE === (args.includes('--check') ? 'patch-check' : 'patch-apply')) process.exit(1);
+        }
+      `,
+        );
+        fake("gofmt", "record({tool:'gofmt', args});");
+        fake(
+          "go",
+          `
+        if (args[0] === 'version') process.exit(0);
+        record({tool:'go', args});
+        if (process.env.FAILURE === 'build') process.exit(1);
+        fs.copyFileSync(process.env.BUILT_BINARY, args[args.indexOf('-o') + 1]);
+        fs.chmodSync(args[args.indexOf('-o') + 1], 0o755);
+      `,
         );
       }
-      if (tool === "go" || acquireStatus !== 0) {
-        writeFileSync(
-          path.join(binDir, "pinned-actionlint"),
-          [
-            "#!/bin/sh",
-            'printf "%s\\n" "$*" > "$PINNED_ACTIONLINT_MARKER"',
-            `exit ${lintStatus}`,
-            "",
-          ].join("\n"),
-          { mode: 0o755 },
-        );
-        writeFileSync(
-          path.join(binDir, "go"),
-          [
-            "#!/bin/sh",
-            'if [ "$1" = "version" ]; then exit 0; fi',
-            'if [ "$1" = "install" ]; then',
-            '  printf "%s\\n" "$*" > "$GO_FALLBACK_MARKER"',
-            '  printf "%s\\n" "$GOBIN" > "$GO_BIN_MARKER"',
-            `  if [ ${acquireStatus} != 0 ]; then exit ${acquireStatus}; fi`,
-            '  /bin/cp "$PINNED_ACTIONLINT" "$GOBIN/actionlint"',
-            "  exit 0",
-            "fi",
-            "exit 1",
-            "",
-          ].join("\n"),
-          { mode: 0o755 },
-        );
+      fake(
+        "built-actionlint",
+        `
+      if (args[0] === '--version') {
+        console.log(process.env.FAILURE === 'version' ? 'unpatched' : process.env.EXPECTED_VERSION); process.exit(0);
       }
-      if (tool !== "unavailable") {
-        writeFileSync(
-          path.join(binDir, "pre-commit"),
-          [
-            "#!/bin/sh",
-            'if [ "$1" = "--version" ]; then exit 0; fi',
-            'printf "%s\\n" "$*" >> "$PRE_COMMIT_MARKER"',
-            "exit 0",
-            "",
-          ].join("\n"),
-          { mode: 0o755 },
-        );
+      const file = args.at(-1);
+      if (file.includes('actionlint-parser-')) {
+        record({tool:'parser', file});
+        if (process.env.FAILURE === 'parser') process.exit(2);
+        if (file.includes('invalid-')) { console.log(/-[01]\\.yml$/.test(file) ? 'invalid cache-mode' : 'cache-mode must be a string'); process.exit(1); }
+        if (file.includes('unknown-')) { console.log('unexpected key "unexpected-cache-key"'); process.exit(1); }
+        process.exit(0);
       }
-      for (const command of tool === "unavailable" ? ["node"] : ["python3", "node"]) {
+      record({tool:'lint', args}); process.exit(process.env.FAILURE === 'lint' ? 7 : 0);
+    `,
+      );
+      fake("pre-commit", "if (args[0] !== '--version') record({tool:'pre-commit', args});");
+      for (const command of ["python3", "node"]) {
         writeFileSync(path.join(binDir, command), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
       }
-
       const result = spawnSync(testNodeExecPath, ["--import", "tsx", scriptPath], {
         encoding: "utf8",
         env: {
           ...process.env,
-          GO_FALLBACK_MARKER: markerPath,
-          GO_BIN_MARKER: binMarkerPath,
-          PINNED_ACTIONLINT: path.join(binDir, "pinned-actionlint"),
-          PINNED_ACTIONLINT_MARKER: pinnedMarkerPath,
-          PRE_COMMIT_MARKER: preCommitMarkerPath,
-          ACTIONLINT_MARKER: actionlintMarkerPath,
           PATH: binDir,
+          PROBE_MARKER: marker,
+          BUILT_BINARY: path.join(binDir, "built-actionlint"),
+          EXPECTED_VERSION: actionlintVersion,
+          FAILURE: failure,
         },
       });
-
-      expect(result.status).toBe(lintStatus);
-      expect(existsSync(actionlintMarkerPath)).toBe(tool === "installed");
-      const acquired = tool === "go" || acquireStatus !== 0;
-      expect(existsSync(markerPath)).toBe(acquired);
-      if (acquired) {
-        expect(readFileSync(markerPath, "utf8")).toContain(
-          "install github.com/rhysd/actionlint/cmd/actionlint@011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7",
-        );
-        expect(existsSync(readFileSync(binMarkerPath, "utf8").trim())).toBe(false);
-      } else if (tool === "installed") {
-        expect(readFileSync(actionlintMarkerPath, "utf8")).toContain(".github/workflows/ci.yml");
+      expect(result.status, result.stderr).toBe(expected);
+      const commands = existsSync(marker)
+        ? readFileSync(marker, "utf8")
+            .trim()
+            .split("\n")
+            .map(
+              (line) =>
+                JSON.parse(line) as { tool: string; args?: string[]; cwd?: string; hash?: string },
+            )
+        : [];
+      expect(commands.some((item) => item.tool === "git")).toBe(acquire);
+      const fetch = commands.find((item) => item.tool === "git" && item.args?.[0] === "fetch");
+      if (fetch) {
+        expect(fetch.args).toEqual([
+          "fetch",
+          "--quiet",
+          "--depth=1",
+          "https://github.com/rhysd/actionlint.git",
+          actionlintRevision,
+        ]);
       }
-      expect(existsSync(pinnedMarkerPath)).toBe(tool === "go");
-      if (tool === "go") {
-        expect(readFileSync(pinnedMarkerPath, "utf8")).toContain(".github/workflows/ci.yml");
+      for (const command of commands.filter((item) => item.tool === "git")) {
+        expect(existsSync(command.cwd!)).toBe(false);
       }
-      if (lintStatus !== 0) {
-        expect(existsSync(preCommitMarkerPath)).toBe(false);
-        if (tool === "unavailable") {
-          expect(result.stderr).toContain(
-            "missing workflow linter: install actionlint built from 011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7",
+      for (const command of commands.filter((item) => item.tool === "patch")) {
+        expect(command.hash).toBe(createHash("sha256").update(actionlintPatch).digest("hex"));
+      }
+      for (const command of commands.filter(
+        (item) => item.tool === "git" && item.args?.[0] === "apply",
+      )) {
+        expect(command.args).toEqual([
+          "apply",
+          ...(command.args?.includes("--check") ? ["--check"] : []),
+          "--unidiff-zero",
+          "--whitespace=error-all",
+          "-",
+        ]);
+      }
+      const build = commands.find((item) => item.tool === "go");
+      if (build) {
+        expect(build.args).toContain(`-X github.com/rhysd/actionlint.version=${actionlintVersion}`);
+      }
+      const hooks = commands.filter((item) => item.tool === "pre-commit");
+      expect(hooks.every((item) => !item.args?.includes("actionlint"))).toBe(true);
+      if (expected === 0) {
+        expect(hooks.some((item) => item.args?.includes("zizmor"))).toBe(true);
+        if (acquire) {
+          expect(commands.filter((item) => item.tool === "parser")).toHaveLength(18);
+          expect(commands.find((item) => item.tool === "lint")?.args).toContain(
+            ".github/workflows/ci.yml",
           );
-          expect(result.stderr).toContain("Go to acquire that revision, or a pre-commit runtime");
         }
-        return;
+      } else {
+        expect(hooks).toHaveLength(0);
       }
-      const preCommitArgs = readFileSync(preCommitMarkerPath, "utf8");
-      expect(preCommitArgs.includes(" actionlint --files")).toBe(tool === "pre-commit");
-      expect(preCommitArgs).toContain("run --config .pre-commit-config.yaml zizmor --files");
-      expect(preCommitArgs).toContain(".github/workflows/ci.yml");
-      expect(preCommitArgs).toContain(".github/workflows/windows-testbox-probe.yml");
     },
   );
 
@@ -201,6 +290,7 @@ describe("check-workflows", () => {
     const binDir = path.join(tempDir, "bin");
     const markerPath = path.join(tempDir, "python.txt");
     mkdirSync(binDir);
+    writeQualifiedActionlint(binDir);
     writeFileSync(path.join(binDir, "node"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     writeFileSync(
       path.join(binDir, "python3"),
@@ -240,9 +330,7 @@ describe("check-workflows", () => {
     expect(result.status).toBe(0);
     const pythonArgs = readFileSync(markerPath, "utf8");
     expect(pythonArgs).toContain("-m pip install --disable-pip-version-check pre-commit==4.6.2");
-    expect(pythonArgs).toContain(
-      "-m pre_commit run --config .pre-commit-config.yaml actionlint --files",
-    );
+    expect(pythonArgs).not.toContain(" actionlint --files");
     expect(pythonArgs).toContain(
       "-m pre_commit run --config .pre-commit-config.yaml zizmor --files",
     );
@@ -253,6 +341,7 @@ describe("check-workflows", () => {
     const binDir = path.join(tempDir, "bin");
     const markerPath = path.join(tempDir, "venv-attempt.txt");
     mkdirSync(binDir);
+    writeQualifiedActionlint(binDir);
     writeFileSync(
       path.join(binDir, "python3"),
       [
@@ -285,6 +374,7 @@ describe("check-workflows", () => {
     const tempDir = makeTempDir(tempDirs, "check-workflows-");
     const binDir = path.join(tempDir, "bin");
     mkdirSync(binDir);
+    writeQualifiedActionlint(binDir);
     writeFileSync(path.join(binDir, "node"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     writeFileSync(
       path.join(binDir, "python3"),
@@ -312,7 +402,7 @@ describe("check-workflows", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("python venv unavailable");
-    expect(result.stderr).toContain("missing pre-commit runtime for actionlint");
+    expect(result.stderr).toContain("missing pre-commit runtime for zizmor");
     expect(result.stderr).toContain("Python venv support for pre-commit 4.6.2");
   });
 
@@ -321,6 +411,7 @@ describe("check-workflows", () => {
     const binDir = path.join(tempDir, "bin");
     const markerPath = path.join(tempDir, "venv-path.txt");
     mkdirSync(binDir);
+    writeQualifiedActionlint(binDir);
     writeFileSync(path.join(binDir, "node"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     writeFileSync(
       path.join(binDir, "python3"),

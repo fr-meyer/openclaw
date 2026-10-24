@@ -1,0 +1,93 @@
+{
+  "schema": "openclaw.local-source-commit-evidence.v1",
+  "commit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+  "tree": "0a420e0b25e465bd3669574b0aaf087efbd455f6",
+  "parent": "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+  "commitObjectSha256": "ddbb08d5dc522ada0a7c0bd2a11f274697e2ea6a885efc3d6a38052ba706d68a",
+  "subject": "fix(fork): bind 10.5 authority fixtures and retained image plan",
+  "changedPaths": [
+    "scripts/docker/CURRENT_PARITY_IMAGE.md",
+    "scripts/docker/package-current-publisher.mjs",
+    "scripts/docker/package-current-publisher.test.mjs",
+    "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+    "src/tasks/managed-task-flow.test-helpers.ts",
+    "src/tasks/managed-task-flow.worker.integration.test.ts"
+  ],
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
+  "verbatimSemanticDecisions": [
+    {
+      "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "03039885c285316c7275f361eafbff0c2bbd6a89",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.test.mjs",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "b15896a768e53723433dbcc9c8b37e2cafc29eb6",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    }
+  ],
+  "introducedOrUpdatedSupport": [
+    {
+      "path": "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+      "sourceCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+      "sourceCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+      "sourceCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    },
+    {
+      "path": "src/tasks/managed-task-flow.test-helpers.ts",
+      "sourceCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    },
+    {
+      "path": "src/tasks/managed-task-flow.worker.integration.test.ts",
+      "sourceCommit": "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    }
+  ],
+  "allChangedTestReferences": [
+    "scripts/docker/package-current-publisher.test.mjs",
+    "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+    "src/tasks/managed-task-flow.worker.integration.test.ts"
+  ],
+  "inventoryTestReferences": [
+    "scripts/docker/package-current-publisher.test.mjs",
+    "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+    "src/tasks/managed-task-flow.worker.integration.test.ts"
+  ],
+  "qualification": "References only; this generator executes no tests and transfers no qualification."
+}

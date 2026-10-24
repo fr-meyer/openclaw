@@ -1,0 +1,64 @@
+{
+  "schema": "openclaw.local-source-commit-evidence.v1",
+  "commit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+  "tree": "9bb03f9cd6f8221f42a1c1701824a154d6f87d55",
+  "parent": "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+  "commitObjectSha256": "69721c5e8c7aebc8b0a69955a3ad51123dae3c584fd359eb8c59dd0ad103c664",
+  "subject": "fix(docker): acquire pinned dependencies before offline execution",
+  "changedPaths": [
+    "Dockerfile",
+    "custom-patches/reconciliation-2026.10.5.json",
+    "scripts/docker/CURRENT_PARITY_IMAGE.md",
+    "src/dockerfile.test.ts",
+    "test/scripts/docker-build-helper.test.ts"
+  ],
+  "semanticLedgerSha256": "91056a9485c39f4d28f2d8cf0d811ada9365ceb95a4ecbce17162ada95816a96",
+  "verbatimSemanticDecisions": [
+    {
+      "path": "Dockerfile",
+      "treeRelation": "UPSTREAM_CHANGED",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": "1f29e266a14c12da42073fb9ce22d8e0753eb6c7",
+      "v99ForkBlob": "4455a73c0dcd8111e90dd542892b47d6730420e8",
+      "v105UpstreamBlob": "79c30caaf1963efe8e6eca18da2386c67b6f0455",
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof. Separate reviewed manifest-only Corepack/pnpm acquisition and pre-payload Debian/npm security acquisition from network-disabled candidate execution. Preserve frozen lockfile, patch/integrity and release-age policy; disable hooks only during acquisition, retain native offline install lifecycles and native-addon checks, and copy the pinned Corepack cache into the runtime. All RUN instructions declare their network mode; the three acquisition steps inherit the executor default while every other RUN stays explicitly offline. Acquire Matrix crypto native assets with official release SHA256 pins and use its supported loopback download mirror during native offline installation, preserving postinstall and native-addon checks."
+    },
+    {
+      "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+      "treeRelation": "FORK_ONLY_NEW",
+      "disposition": "ADAPTED_SOURCE_ONLY",
+      "v99BaseBlob": null,
+      "v99ForkBlob": "7fe43a3640e5844da0851fb1e4ebba828340b112",
+      "v105UpstreamBlob": null,
+      "semanticOwner": "image-packaging",
+      "reason": "Adapt inert publisher packaging to the 10.5 multi-stage image. Bind packaged bytes to the clean reconciled source commit, include selected Codex and Workboard runtime plugins, and retain production ineligibility until separate image/native proof."
+    }
+  ],
+  "introducedOrUpdatedSupport": [
+    {
+      "path": "custom-patches/reconciliation-2026.10.5.json",
+      "sourceCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    },
+    {
+      "path": "src/dockerfile.test.ts",
+      "sourceCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    },
+    {
+      "path": "test/scripts/docker-build-helper.test.ts",
+      "sourceCommit": "cb80407b3d01111996ec6abb803fd00417b535a0",
+      "basis": "Exact committed support change; no legacy disposition asserted."
+    }
+  ],
+  "allChangedTestReferences": [
+    "src/dockerfile.test.ts",
+    "test/scripts/docker-build-helper.test.ts"
+  ],
+  "inventoryTestReferences": [
+    "src/dockerfile.test.ts",
+    "test/scripts/docker-build-helper.test.ts"
+  ],
+  "qualification": "References only; this generator executes no tests and transfers no qualification."
+}

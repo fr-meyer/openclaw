@@ -2,6 +2,7 @@
 
 // Guards pnpm package patches against unapproved additions.
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +11,10 @@ import YAML from "yaml";
 import { pnpmLockfileDocuments } from "./lib/pnpm-lockfile-documents.mjs";
 
 const ALLOWED_PATCHED_DEPENDENCIES = new Map([
+  ["@a2ui/lit@0.11.0", "patches/@a2ui__lit@0.11.0.patch"],
+  ["@a2ui/web_core@0.11.0", "patches/@a2ui__web_core@0.11.0.patch"],
+  ["@discord/embedded-app-sdk@2.5.0", "patches/@discord__embedded-app-sdk@2.5.0.patch"],
+  ["zod@4.6.6", "patches/zod@4.6.6.patch"],
   ["chrome-devtools-mcp@1.9.0", "patches/chrome-devtools-mcp@1.9.0.patch"],
   ["@awesome.me/webawesome@3.13.0", "patches/@awesome.me__webawesome@3.13.0.patch"],
   ["@novnc/novnc@1.7.0", "patches/@novnc__novnc@1.7.0.patch"],
@@ -21,6 +26,31 @@ const ALLOWED_PATCHED_DEPENDENCIES = new Map([
 ]);
 
 const ALLOWED_PATCH_FILES = new Set(["patches/.gitkeep", ...ALLOWED_PATCHED_DEPENDENCIES.values()]);
+
+type ToolSourcePatchApproval = {
+  sha256: string;
+  upstream: { repository: string; revision: string };
+  consumer: { path: string; sha256: string };
+};
+
+// This reviewed parser extension is applied to pinned Go tool source, never a
+// pnpm dependency. Any patch or consumer change requires renewed exact review.
+const APPROVED_TOOL_SOURCE_PATCHES = new Map<string, ToolSourcePatchApproval>([
+  [
+    "scripts/actionlint-cache-mode.patch",
+    {
+      sha256: "81677056e3c693453b2292cc96bd69743bd2d071d859594172de0329bd1b2128",
+      upstream: {
+        repository: "https://github.com/rhysd/actionlint.git",
+        revision: "011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7",
+      },
+      consumer: {
+        path: "scripts/check-workflows.mts",
+        sha256: "bfd4b66b40533c118b03a477129da947aceca8b5cc77e815f2738b64d91e6919",
+      },
+    },
+  ],
+]);
 
 type PackagePatchViolation = { file: string; kind: string; detail: string };
 
@@ -49,6 +79,21 @@ function collectPatchedDependencyViolations(
   options: { allowAnyValueForLegacy?: boolean } = {},
 ) {
   for (const [specifier, patchPathOrHash] of Object.entries(asRecord(patchedDependencies))) {
+    const declaredPath =
+      typeof patchPathOrHash === "string" ? patchPathOrHash : asRecord(patchPathOrHash).path;
+    // Legacy lockfiles accept hashes, but must not repurpose an approved tool
+    // patch as a package patch through either the string or object path form.
+    if (
+      typeof declaredPath === "string" &&
+      APPROVED_TOOL_SOURCE_PATCHES.has(path.posix.normalize(declaredPath.replaceAll("\\", "/")))
+    ) {
+      violations.push({
+        file,
+        kind: "toolSourcePatchPnpmReference",
+        detail: `${specifier} -> ${declaredPath}`,
+      });
+      continue;
+    }
     if (
       options.allowAnyValueForLegacy === true
         ? ALLOWED_PATCHED_DEPENDENCIES.has(specifier)
@@ -103,12 +148,50 @@ function collectPackageJsonPatchViolations(cwd: string, violations: PackagePatch
   }
 }
 
+function matchesToolSourceApproval(
+  cwd: string,
+  patchPath: string,
+  approval: ToolSourcePatchApproval,
+) {
+  if (!listTrackedFiles(cwd, [approval.consumer.path]).includes(approval.consumer.path)) {
+    return false;
+  }
+  for (const { path: relativePath, sha256: expectedHash } of [
+    { path: patchPath, sha256: approval.sha256 },
+    approval.consumer,
+  ]) {
+    const file = path.join(cwd, relativePath);
+    if (!fs.existsSync(file) || !fs.lstatSync(file).isFile()) {
+      return false;
+    }
+    if (createHash("sha256").update(fs.readFileSync(file)).digest("hex") !== expectedHash) {
+      return false;
+    }
+  }
+  const consumer = fs.readFileSync(path.join(cwd, approval.consumer.path), "utf8");
+  return (
+    consumer.includes(`const ACTIONLINT_REVISION = "${approval.upstream.revision}";`) &&
+    consumer.includes(JSON.stringify(approval.upstream.repository))
+  );
+}
+
 function collectPatchFileViolations(cwd: string, violations: PackagePatchViolation[]) {
   for (const relativePath of listTrackedFiles(cwd, ["*.patch"])) {
     if (!fs.existsSync(path.join(cwd, relativePath))) {
       continue;
     }
     if (ALLOWED_PATCH_FILES.has(relativePath)) {
+      continue;
+    }
+    const toolApproval = APPROVED_TOOL_SOURCE_PATCHES.get(relativePath);
+    if (toolApproval) {
+      if (!matchesToolSourceApproval(cwd, relativePath, toolApproval)) {
+        violations.push({
+          file: relativePath,
+          kind: "toolSourcePatchApproval",
+          detail: "tool source patch or tracked consumer differs from the exact reviewed approval",
+        });
+      }
       continue;
     }
     violations.push({

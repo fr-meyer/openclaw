@@ -1,0 +1,40 @@
+Narrow parser compatibility for GitHub's token-enforced cache-mode field.
+Apply only to rhysd/actionlint 011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7.
+Retain all other parsing and diagnostics; remove when upstream supports this field.
+
+--- a/ast.go
++++ b/ast.go
+@@ -907,0 +908,2 @@
++	// CacheMode is the literal GitHub Actions cache access mode.
++	CacheMode *String
+@@ -963,0 +966,2 @@
++	// CacheMode is the literal GitHub Actions cache access mode.
++	CacheMode *String
+--- a/parse.go
++++ b/parse.go
+@@ -756,0 +757,15 @@
++}
++
++// https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#cache-mode
++func (p *parser) parseCacheMode(n *yaml.Node) *String {
++	if n.Kind != yaml.ScalarNode || n.Tag != "!!str" {
++		p.error(n, "cache-mode must be a string: read, write, write-only, or none")
++		return nil
++	}
++	switch n.Value {
++	case "read", "write", "write-only", "none":
++		return newString(n)
++	default:
++		p.errorf(n, "invalid cache-mode %q: expected read, write, write-only, or none", n.Value)
++		return nil
++	}
+@@ -1365,0 +1381,2 @@
++		case "cache-mode":
++			ret.CacheMode = p.parseCacheMode(v)
+@@ -1436,0 +1454 @@
++				"cache-mode",
+@@ -1524,0 +1543,2 @@
++		case "cache-mode":
++			w.CacheMode = p.parseCacheMode(v)
+@@ -1540,0 +1561 @@
++				"cache-mode",
