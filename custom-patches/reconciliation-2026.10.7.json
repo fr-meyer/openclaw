@@ -9,7 +9,7 @@
   "previousInventory": "custom-patches/reconciliation-2026.10.6.json",
   "qualificationTransferred": false,
   "summary": {
-    "paths": 219,
+    "paths": 220,
     "previousForkPaths": 152,
     "newUpstreamOverlapPaths": [
       "src/state/openclaw-state-worker-contract.ts",
@@ -20,9 +20,11 @@
     "dispositions": {
       "CARRIED_EXACT": 137,
       "ADAPTED_RELEASE_BINDING": 4,
-      "SECURITY_MERGED_SOURCE": 50,
-      "SECURITY_CARRIED_EXACT": 26,
-      "MERGED_SOURCE_REVIEWED": 2
+      "SECURITY_MERGED_SOURCE": 48,
+      "SECURITY_CARRIED_EXACT": 24,
+      "ADAPTED_DEV_DEPENDENCY_AND_TEST_BINDING": 4,
+      "MERGED_SOURCE_REVIEWED": 2,
+      "ADDED_DEV_DEPENDENCY_COMPATIBILITY_TEST": 1
     },
     "upstreamedClaimed": 0,
     "retired": 0
@@ -892,10 +894,10 @@
       "fork106SecurityBlob": "b19bc5edf55a901269ae05bf61d8cb91ec0cd3ce",
       "upstream107Blob": "7aef13a8539d55a6bf137f9bd54fdb9f7062cb28",
       "approvedSecuritySourceBlob": "4989b951e1ed1a2f27e3ad0a0cf5dc590354427b",
-      "resultBlob": "24b9e3cd2ec74759e976ab4897228feb2813ab4b",
+      "resultBlob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b",
       "upstream107Changed": true,
-      "disposition": "SECURITY_MERGED_SOURCE",
-      "reason": "Carry reviewed PR26 dependency/security fixtures with PR24 parser/UI pins and upstream10.7 changes. Strict cooldown retained; only the exact approved body-parser age exception is added."
+      "disposition": "ADAPTED_DEV_DEPENDENCY_AND_TEST_BINDING",
+      "reason": "Preserve carried runtime/security repairs and add only the age-eligible development Sigstore cache refresh, exact dependency fixture and maintained native-test ownership. Vendor disputes advisory; no causal fix claim."
     },
     {
       "path": "pnpm-workspace.yaml",
@@ -903,10 +905,10 @@
       "fork106SecurityBlob": "e9250bb88ecc64e68803e8dea5cc0a15f8cef143",
       "upstream107Blob": "458e124e46478c6f8ecc760d0aba576ea9f29fb3",
       "approvedSecuritySourceBlob": "6475cc6cb57e3d616690772b47c4b87f0b94d09e",
-      "resultBlob": "bbd6cac41f7e56f11aed120d48174cab49be271a",
+      "resultBlob": "b5451b324bce188ce55030ac5473c05f3991162f",
       "upstream107Changed": true,
-      "disposition": "SECURITY_MERGED_SOURCE",
-      "reason": "Carry reviewed PR26 dependency/security fixtures with PR24 parser/UI pins and upstream10.7 changes. Strict cooldown retained; only the exact approved body-parser age exception is added."
+      "disposition": "ADAPTED_DEV_DEPENDENCY_AND_TEST_BINDING",
+      "reason": "Preserve carried runtime/security repairs and add only the age-eligible development Sigstore cache refresh, exact dependency fixture and maintained native-test ownership. Vendor disputes advisory; no causal fix claim."
     },
     {
       "path": "scripts/check-package-patches.mts",
@@ -1123,10 +1125,10 @@
       "fork106SecurityBlob": null,
       "upstream107Blob": null,
       "approvedSecuritySourceBlob": "272db39df8e4109c21fe0afe1368358fdfb4687c",
-      "resultBlob": "272db39df8e4109c21fe0afe1368358fdfb4687c",
+      "resultBlob": "4aa9aee8e12a71f5aa699fd2f36accd983c5f77e",
       "upstream107Changed": false,
-      "disposition": "SECURITY_CARRIED_EXACT",
-      "reason": "Carry reviewed PR26 dependency/security fixtures with PR24 parser/UI pins and upstream10.7 changes. Strict cooldown retained; only the exact approved body-parser age exception is added."
+      "disposition": "ADAPTED_DEV_DEPENDENCY_AND_TEST_BINDING",
+      "reason": "Preserve carried runtime/security repairs and add only the age-eligible development Sigstore cache refresh, exact dependency fixture and maintained native-test ownership. Vendor disputes advisory; no causal fix claim."
     },
     {
       "path": "scripts/lib/ci-changed-node-test-plan.mts",
@@ -2196,6 +2198,17 @@
       "reason": "Exact PR24 bytes preserved. Prior test evidence remains historical, not10.7 runtime qualification."
     },
     {
+      "path": "test/http-cache-semantics-compat.test.mjs",
+      "upstream106Blob": null,
+      "fork106SecurityBlob": null,
+      "upstream107Blob": null,
+      "approvedSecuritySourceBlob": null,
+      "resultBlob": "52691bf24bae0f576f96e03a2e4375ab3ee0e429",
+      "upstream107Changed": false,
+      "disposition": "ADDED_DEV_DEPENDENCY_COMPATIBILITY_TEST",
+      "reason": "Synthetic public package API and Vary/Cache-Control boundary proof for the compatible4.3.0 development dependency; no network or runtime configuration."
+    },
+    {
       "path": "test/mcp-nowistay-schema-compatibility.test.mjs",
       "upstream106Blob": null,
       "fork106SecurityBlob": "a219ddbd37df2b65e5b27b0f509793a61cc04132",
@@ -2278,10 +2291,10 @@
       "fork106SecurityBlob": null,
       "upstream107Blob": null,
       "approvedSecuritySourceBlob": "1e70ddb2bb405e0b1305511e4231c23a417fcf27",
-      "resultBlob": "1e70ddb2bb405e0b1305511e4231c23a417fcf27",
+      "resultBlob": "b8e91df25892be06527641454dcd78cd74233e9a",
       "upstream107Changed": false,
-      "disposition": "SECURITY_CARRIED_EXACT",
-      "reason": "Carry reviewed PR26 dependency/security fixtures with PR24 parser/UI pins and upstream10.7 changes. Strict cooldown retained; only the exact approved body-parser age exception is added."
+      "disposition": "ADAPTED_DEV_DEPENDENCY_AND_TEST_BINDING",
+      "reason": "Preserve carried runtime/security repairs and add only the age-eligible development Sigstore cache refresh, exact dependency fixture and maintained native-test ownership. Vendor disputes advisory; no causal fix claim."
     },
     {
       "path": "test/scripts/native-security-ownership.test.ts",
@@ -2437,5 +2450,16 @@
       "disposition": "SECURITY_CARRIED_EXACT",
       "reason": "Carry reviewed PR26 dependency/security fixtures with PR24 parser/UI pins and upstream10.7 changes. Strict cooldown retained; only the exact approved body-parser age exception is added."
     }
-  ]
+  ],
+  "devDependencyRefresh": {
+    "parent": "make-fetch-happen@16.0.1",
+    "package": "http-cache-semantics",
+    "old": "4.2.0",
+    "new": "4.3.0",
+    "declaredRange": "^4.1.1",
+    "advisory": "GHSA-ch52-4w7c-c8xp",
+    "vendorDisputed": true,
+    "causalVulnerabilityFixClaimed": false,
+    "ageExceptionAdded": false
+  }
 }

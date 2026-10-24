@@ -91,7 +91,9 @@ it("keeps the import/ownership mapper dependency-free and precise", () => {
 
 it("owns mandatory security members and only present legacy MCP members", () => {
   const root = fixture();
-  expect(listNativeSecurityTests(root)).toHaveLength(6);
+  expect(listNativeSecurityTests(root)).toHaveLength(
+    NATIVE_SECURITY_TEST_FILES.length - OPTIONAL_NATIVE_SECURITY_TEST_FILES.length,
+  );
   put(
     root,
     "src/agents/mcp-http-tool-schema-compatibility.ts",

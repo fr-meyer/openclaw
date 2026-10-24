@@ -12,6 +12,7 @@ export const OPTIONAL_NATIVE_SECURITY_TEST_FILES = Object.freeze([
   "test/mcp-nowistay-sdk-regression.test.mjs",
 ]);
 export const NATIVE_SECURITY_TEST_FILES = Object.freeze([
+  "test/http-cache-semantics-compat.test.mjs",
   "test/zod-container-bounds.test.mjs",
   "test/a2ui-native-zod-regression.test.mjs",
   "test/discord-native-zod-regression.test.mjs",

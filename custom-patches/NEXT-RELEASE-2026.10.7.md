@@ -8,23 +8,25 @@ transfer to this branch.
 
 ## Exact inputs and patch reconciliation
 
-| Input | Identity |
-| --- | --- |
-| Official stable release | [v2026.10.7](https://github.com/openclaw/openclaw/releases/tag/v2026.10.7), published 2026-10-24 09:53:46 UTC, not prerelease |
-| Verified annotated tag object | `5c101ce5a0637df375c5f6ae49d44d0d27cc26b1` |
-| Official source / tree | `157d8c2bc3ea2fa183afdc11088e69690bf8e64e` / `0885f6473945093107db1406d9a2ad5259db10e7` |
-| Official 10.6 ancestor | `fe06181dc5ecc01cf8904abbfc26925925efefbc` |
-| PR #19 source | `a39cad2d97efae7d0c832af3d71e6ccc86f60e50` |
-| PR #24 security successor / first parent | `8a2300c841024443fb38954d65eb5bff1229c0a0` |
-| Later reviewed dependency repairs | [PR #26](https://github.com/fr-meyer/openclaw/pull/26), `85a9bdc1285c338f10f5ca818abc259f6d483b5b`; only dependency, patch and relevant test-owner paths carried |
+| Input                                    | Identity                                                                                                                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Official stable release                  | [v2026.10.7](https://github.com/openclaw/openclaw/releases/tag/v2026.10.7), published 2026-10-24 09:53:46 UTC, not prerelease                                    |
+| Verified annotated tag object            | `5c101ce5a0637df375c5f6ae49d44d0d27cc26b1`                                                                                                                       |
+| Official source / tree                   | `157d8c2bc3ea2fa183afdc11088e69690bf8e64e` / `0885f6473945093107db1406d9a2ad5259db10e7`                                                                          |
+| Official 10.6 ancestor                   | `fe06181dc5ecc01cf8904abbfc26925925efefbc`                                                                                                                       |
+| PR #19 source                            | `a39cad2d97efae7d0c832af3d71e6ccc86f60e50`                                                                                                                       |
+| PR #24 security successor / first parent | `8a2300c841024443fb38954d65eb5bff1229c0a0`                                                                                                                       |
+| Later reviewed dependency repairs        | [PR #26](https://github.com/fr-meyer/openclaw/pull/26), `85a9bdc1285c338f10f5ca818abc259f6d483b5b`; only dependency, patch and relevant test-owner paths carried |
 
 Official 10.7 adds 73 commits without divergence from 10.6. The uncommitted merge
 needed no textual conflict resolution. The previous 142-path 10.5 carry inventory
 and PR #24's additional hardening remain included. The new
-`reconciliation-2026.10.7.json` records all 219 retained fork/security paths with
-exact original, upstream and result blob identities: 137 exact carries, 2 reviewed
-upstream overlaps, 4 release-binding adaptations and 76 security carry paths
-(26 exact, 50 merged). No custom fix is claimed upstreamed or retired.
+`reconciliation-2026.10.7.json` records all 220 retained fork/security paths with
+exact original, upstream and result blob identities. The initial merge retained
+137 exact carries, 2 reviewed upstream overlaps, 4 release-binding adaptations
+and 76 security carry paths (26 exact, 50 merged). A subsequent scoped development
+dependency refresh and its owned regression are recorded explicitly. No custom
+fix is claimed upstreamed or retired.
 
 The two new overlaps are:
 
@@ -71,6 +73,16 @@ distinct from dependency, native image and real-data qualification.
 - **Memory Wiki:** reimport preserves the designated human Notes block, not
   arbitrary generated content. Marker/preservation regressions belong in the
   focused future qualification set.
+
+The development-only Sigstore → make-fetch-happen 16.0.1 cache dependency is
+refreshed from http-cache-semantics 4.2.0 to 4.3.0 within its declared ^4.1.1 range.
+Version 4.3.0 was published October 4 and needs no age exception. This removes the
+reported range for [GHSA-ch52-4w7c-c8xp](https://github.com/advisories/GHSA-ch52-4w7c-c8xp);
+the vendor [disputes the advisory](https://github.com/kornelski/http-cache-semantics/issues/56),
+and the exact package diff does not change max-stale handling. This is a compatible
+dependency refresh, not a claimed causal fix or demonstrated production exposure.
+Tests cover the actual package identity, cache API/serialization, private/no-store
+storage exclusions and own-property/wildcard Vary behavior. Audits remain enforced.
 
 Upstream release validation/npm preflight passed the release source, but its
 ClawHub submission failed. That distribution defect is separate from core source
