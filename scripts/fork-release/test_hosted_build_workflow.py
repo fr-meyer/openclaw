@@ -303,18 +303,19 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         admission = step(self.workflow, 'Validate manual candidate identity before checkout')
         self.assertIn('"$PUBLIC_EXPORT" == true && "$STORAGE_APPROVED" != true', admission)
 
-    def test_image_only_branch_job_is_creation_once_and_manual_main_guard_is_unchanged(self):
+    def test_image_only_branch_job_is_exact_update_once_and_manual_main_guard_is_unchanged(self):
         job = self.workflow.split('  qualify-and-prepare:\n', 1)[1]
         condition = ' '.join(job.split('    if: >-\n', 1)[1].split('\n    runs-on:', 1)[0].split())
 
         def selected(ref='refs/heads/release-pipeline/v105-image-only-20261024',
-                     event='push', created=True, attempt='1', actor='fr-meyer',
+                     event='push', created=False, attempt='1', actor='fr-meyer',
+                     before='98a1a20386b1c0bd63bd6bc94bff329d945498c3',
                      repo='fr-meyer/openclaw'):
             return expression(condition, github=NS(ref=ref, event_name=event,
-                event=NS(created=created), run_attempt=attempt, actor=actor, repository=repo))
+                event=NS(created=created, before=before), run_attempt=attempt, actor=actor, repository=repo))
 
         self.assertTrue(selected())
-        for change in ({'created': False}, {'attempt': '2'}, {'actor': 'someone-else'},
+        for change in ({'created': True}, {'before': 'b' * 40}, {'attempt': '2'}, {'actor': 'someone-else'},
                        {'repo': 'other/openclaw'}, {'event': 'workflow_dispatch'},
                        {'event': 'pull_request'}):
             with self.subTest(change=change):
@@ -355,7 +356,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             value.update(manifest or {})
             metadata.write_text(json.dumps(value))
             event_file = root / 'event.json'
-            event_file.write_text(json.dumps({'created': True, **(event or {})}))
+            event_file.write_text(json.dumps({'created': False,
+                'before': '98a1a20386b1c0bd63bd6bc94bff329d945498c3', **(event or {})}))
             output = root / 'output'
             env = {'PATH': os.environ.get('PATH', ''),
                    'GITHUB_REF': 'refs/heads/release-pipeline/v105-image-only-20261024',
@@ -378,7 +380,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             {'environment': {'GITHUB_ACTOR': 'someone-else'}},
             {'environment': {'GITHUB_RUN_ATTEMPT': '2'}},
             {'environment': {'GITHUB_EVENT_NAME': 'workflow_dispatch'}},
-            {'event': {'created': False}}, {'event': {'created': 1}},
+            {'event': {'created': True}}, {'event': {'created': 0}},
+            {'event': {'before': 'b' * 40}}, {'event': {'before': None}},
             {'manifest': {'productionEligible': True}},
             {'manifest': {'productionEligible': 0}},
             {'manifest': {'review': None}},

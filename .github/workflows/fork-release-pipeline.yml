@@ -294,7 +294,8 @@ jobs:
       ${{ github.event_name != 'pull_request' && github.repository == 'fr-meyer/openclaw' &&
           (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') &&
           (github.ref != 'refs/heads/release-pipeline/v105-image-only-20261024' ||
-           (github.event_name == 'push' && github.event.created &&
+           (github.event_name == 'push' && github.event.created == false &&
+            github.event.before == '98a1a20386b1c0bd63bd6bc94bff329d945498c3' &&
             github.run_attempt == '1' && github.actor == 'fr-meyer')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -337,8 +338,8 @@ jobs:
         id: identity
         run: |
           set -euo pipefail
-          # This owned branch creation is one nonproduction image qualification,
-          # not main adoption or a fabricated reviewed metadata PR.
+          # This exact update from the preserved, unstarted branch is one
+          # nonproduction qualification, not main adoption or a metadata PR.
           python3 - <<'PY_IMAGE_ONLY'
           import json
           import os
@@ -356,7 +357,8 @@ jobs:
                   os.environ['GITHUB_REPOSITORY'] == 'fr-meyer/openclaw' and
                   os.environ['GITHUB_ACTOR'] == 'fr-meyer' and
                   os.environ['GITHUB_RUN_ATTEMPT'] == '1' and
-                  event.get('created') is True and
+                  event.get('created') is False and
+                  event.get('before') == '98a1a20386b1c0bd63bd6bc94bff329d945498c3' and
                   manifest.get('repository') == 'fr-meyer/openclaw' and
                   manifest.get('productionEligible') is False and
                   'review' not in manifest and
@@ -364,8 +366,8 @@ jobs:
                   manifest.get('image') == {'architecture': 'amd64', 'extensions': 'codex,workboard'}
               ):
                   raise SystemExit('One-shot nonproduction image scope changed')
-              # A deleted/recreated branch is a new push, so creation alone is
-              # not a one-use authorization. Keep the first run as the durable
+              # The exact event transition alone is not a global one-use claim.
+              # Keep the first run as the durable
               # claim; failed/incomplete public lookups cannot authorize work.
               request = Request(
                   'https://api.github.com/repos/fr-meyer/openclaw/actions/workflows/'
