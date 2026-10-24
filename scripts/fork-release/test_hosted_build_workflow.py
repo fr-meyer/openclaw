@@ -267,7 +267,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                 'https://github.com/fr-meyer/openclaw.git?fetch-by-commit=true&checksum=' + source + '#' + source)
         for required in ('DOCKER_BUILD_RECORD_UPLOAD: "false"', 'DOCKER_BUILD_SUMMARY: "false"',
                          'OPENCLAW_PARITY_IMAGE=1', 'OPENCLAW_DOCKER_BUILD_TSDOWN_MAX_OLD_SPACE_MB=6144',
-                         'platforms: linux/amd64', 'provenance: mode=max', 'sbom: true'):
+                         'platforms: linux/amd64', 'provenance: mode=max,version=v1', 'sbom: true'):
             self.assertIn(required, self.build)
 
     def test_export_defaults_off_and_requires_manual_storage_decision(self):

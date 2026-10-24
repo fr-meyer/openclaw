@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import hosted_privacy as privacy
 
@@ -34,6 +35,19 @@ def archive(entries):
                 member.size = len(data)
                 output.addfile(member, io.BytesIO(data))
     return result.getvalue()
+
+
+def inspect_with_short_member_reads(fixture, maximum):
+    extractfile = tarfile.TarFile.extractfile
+    class ShortReads:
+        def __init__(self, stream):
+            self.stream = stream
+        def read(self, size):
+            return self.stream.read(min(size, maximum))
+    def short_member(archive_file, member):
+        return ShortReads(extractfile(archive_file, member))
+    with patch.object(tarfile.TarFile, "extractfile", short_member):
+        return fixture.inspect()
 
 
 class Layout:
@@ -139,6 +153,65 @@ class PrivacyTests(unittest.TestCase):
         result = self.files([("app/material", payload)]).inspect()
         self.assertEqual([item["rule"] for item in result["findings"]], ["private_key"])
 
+    def test_public_identifiers_are_not_service_tokens_in_files_or_json(self):
+        identifiers = [b"task-this-is-a-normal-public-identifier-with-long-suffix",
+                       b"mask-protected-function-name-that-is-not-a-secret",
+                       b"prefix_sk-" + b"P" * 30]
+        config = {"os": "linux", "architecture": "amd64", "config": {
+            "Labels": {"org.opencontainers.image.revision": SOURCE}, "Env": []},
+            "history": [{"created_by": value.decode()} for value in identifiers]}
+        result = self.files([("app/public-identifiers", b"\n".join(identifiers))],
+                            config=config).inspect()
+        self.assertEqual(result["status"], "passed", result)
+
+    def test_identifier_boundary_survives_stream_overlap_and_short_reads(self):
+        # Put the internal sk- exactly at the first retained byte, around the
+        # read boundary, and in short reads that still retain the real file start.
+        for chunk_size in (privacy.CHUNK, 17):
+            offsets = (privacy.CHUNK - privacy.OVERLAP - 1,
+                       privacy.CHUNK - privacy.OVERLAP,
+                       privacy.CHUNK - privacy.OVERLAP + 1,
+                       privacy.CHUNK - 1, privacy.CHUNK, privacy.CHUNK + 1) if chunk_size == privacy.CHUNK else (0, 16, 17)
+            for offset in offsets:
+                with self.subTest(chunk=chunk_size, offset=offset), tempfile.TemporaryDirectory() as directory:
+                    payload = b"x" * offset + b"task-" + b"P" * 300 + b" " + b"x" * privacy.CHUNK
+                    # For full reads, align sk- itself at the chosen boundary.
+                    if chunk_size == privacy.CHUNK:
+                        payload = b"x" * (offset - 2) + b"task-" + b"P" * 300 + b" " + b"x" * privacy.CHUNK
+                    fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/public", payload)]))])
+                    result = inspect_with_short_member_reads(fixture, chunk_size)
+                    self.assertEqual(result["status"], "passed", result)
+
+    def test_service_tokens_keep_real_delimiters_and_stream_crossings(self):
+        token = b"sk-" + b"S" * 30
+        cases = [token, b'{"key":"' + token + b'"}', b"API_KEY=" + token,
+                 b"Authorization: Bearer " + token,
+                 b"https://example.invalid/?key=" + token,
+                 b"https://example.invalid/path/" + token,
+                 b"\x00\xff" + token + b"\x00", b"\xc3\xa9" + token,
+                 b"sk-proj-" + b"P" * 30, b"sk-svcacct-" + b"A" * 30,
+                 b" " * (privacy.CHUNK - 2) + token,
+                 b" " * (privacy.CHUNK - privacy.OVERLAP) + b"sk-svcacct-" + b"A" * 255 +
+                 b" " * privacy.CHUNK,
+                 b"x" * (privacy.CHUNK - privacy.OVERLAP - 2) + b"task-" + b"P" * 300 +
+                 b" " * 300 + token,
+                 b"x" * (privacy.CHUNK - privacy.OVERLAP - 2) + b"task-" + b"P" * 300 +
+                 b" " * 300 + b"xoxb-" + b"X" * 30]
+        for index, payload in enumerate(cases):
+            with self.subTest(case=index), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/data", payload)]))])
+                result = inspect_with_short_member_reads(fixture, 17) if index == 0 else fixture.inspect()
+                self.assertIn("service_token", [item["rule"] for item in result["findings"]], result)
+                self.assertTrue(result["inspectionComplete"], result)
+
+    def test_service_token_json_values_keep_their_real_start_boundary(self):
+        token = "sk-" + "S" * 30
+        config = {"os": "linux", "architecture": "amd64", "config": {
+            "Labels": {"org.opencontainers.image.revision": SOURCE, "public-label": token},
+            "Env": ["OPENAI_API_KEY=" + token]}}
+        result = self.layout(config=config).inspect()
+        self.assertIn("service_token", [item["rule"] for item in result["findings"]], result)
+
     def test_deleted_and_overwritten_layer_is_still_inspected(self):
         older = archive([("app/leak", b"ghp_" + b"X" * 36)])
         later = archive([("app/leak", b"clean"), ("app/.wh.leak", b"")])
@@ -236,7 +309,10 @@ class PrivacyTests(unittest.TestCase):
         self.assertEqual(fixture.inspect()["status"], "failed")
 
     def test_cli_sanitized_receipt_and_no_overwrite(self):
-        fixture = self.files([("app/.env", b"synthetic-only-secret")])
+        token = b"sk-" + b"S" * 30
+        fixture = self.files([("app/.env", b"synthetic-only-secret"),
+                             ("app/private-token-sentinel", token),
+                             ("app/other-token-sentinel", b"ghp_" + b"G" * 30)])
         with tempfile.TemporaryDirectory() as evidence:
             output = Path(evidence) / "receipt.json"
             command = [sys.executable, str(Path(privacy.__file__)), "--oci-dir", str(fixture.directory),
@@ -244,12 +320,45 @@ class PrivacyTests(unittest.TestCase):
                        "--tooling-sha", TOOLING, "--output", str(output)]
             result = subprocess.run(command, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 1, result.stderr)
-            self.assertNotIn("synthetic-only-secret", result.stdout + result.stderr + output.read_text())
+            emitted = result.stdout + result.stderr + output.read_text()
+            for value in ("synthetic-only-secret", "app/.env", "app/private-token-sentinel",
+                          "app/other-token-sentinel", token.decode(), "ghp_" + "G" * 30):
+                self.assertNotIn(value, emitted)
+            summary = json.loads(result.stdout)
+            self.assertEqual(summary["findings"], 3)
+            self.assertEqual(summary["findingCounts"], {
+                "private_runtime_path": 1, "service_token": 1, "github_token": 1})
+            self.assertEqual(summary["findingLocations"], json.loads(output.read_text())["findings"])
+            for finding in summary["findingLocations"]:
+                self.assertEqual(set(finding), {"rule", "locationSha256", "blobDigest"})
+                self.assertRegex(finding["locationSha256"], r"^[a-f0-9]{64}$")
+                self.assertRegex(finding["blobDigest"], r"^sha256:[a-f0-9]{64}$")
             before = output.read_bytes()
             result = subprocess.run(command, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 1)
             self.assertEqual(output.read_bytes(), before)
             self.assertIn("receipt_write_failed", result.stdout)
+
+    def test_cli_diagnostics_remain_bounded_at_the_original_finding_limit(self):
+        limit = privacy.Limits().findings
+        self.assertEqual(limit, 64)
+        fixture = self.files([(f"app/sentinel-{index}", b"sk-" + b"S" * 30)
+                              for index in range(limit + 1)])
+        with tempfile.TemporaryDirectory() as evidence:
+            output = Path(evidence) / "receipt.json"
+            result = subprocess.run([sys.executable, str(Path(privacy.__file__)),
+                "--oci-dir", str(fixture.directory), "--expected-index-digest", fixture.index["digest"],
+                "--source-sha", SOURCE, "--tooling-sha", TOOLING, "--output", str(output)],
+                capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            summary = json.loads(result.stdout)
+            self.assertEqual(summary["refusal"], "findings_limit")
+            self.assertFalse(summary["inspectionComplete"])
+            self.assertEqual(summary["findings"], limit)
+            self.assertEqual(summary["findingCounts"], {"service_token": limit})
+            self.assertEqual(len(summary["findingLocations"]), limit)
+            self.assertNotIn("app/sentinel-", result.stdout + result.stderr + output.read_text())
+            self.assertNotIn("sk-" + "S" * 30, result.stdout + result.stderr + output.read_text())
 
 
 if __name__ == "__main__":

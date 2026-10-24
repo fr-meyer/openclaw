@@ -51,7 +51,7 @@ PATTERNS = (
         rb"(?:Proc-Type: [^\r\n]{1,80}\r?\nDEK-Info: [^\r\n]{1,160}\r?\n\r?\n)?"
         rb"[A-Za-z0-9+/]{64}")),
     ("github_token", re.compile(rb"(?:gh[pousr]_[A-Za-z0-9]{30,255}|github_pat_[A-Za-z0-9_]{30,255})")),
-    ("service_token", re.compile(rb"(?:sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,255}|xox[baprs]-[A-Za-z0-9-]{20,255})")),
+    ("service_token", re.compile(rb"(?:(?<![A-Za-z0-9_])sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,255}|xox[baprs]-[A-Za-z0-9-]{20,255})")),
     ("aws_access_key", re.compile(rb"(?:AKIA|ASIA)[A-Z0-9]{16}")),
     ("credential_url", re.compile(rb"https?://[^\s/:@\"']{1,100}:[^\s/@\"']{1,150}@")),
 )
@@ -146,9 +146,14 @@ class Inspector:
             finding["blobDigest"] = blob_digest
         self.findings.append(finding)
 
-    def scan_bytes(self, data, location, blob_digest=None):
+    def scan_bytes(self, data, location, blob_digest=None, *, previous_byte=b""):
         for rule, pattern in PATTERNS:
-            if pattern.search(data):
+            # Only sk- has a left boundary. Its retained stream window needs
+            # the real preceding byte, without scanning that context as a new
+            # start. Other detectors retain their existing input and behavior.
+            found = (pattern.search(previous_byte + data, len(previous_byte))
+                     if rule == "service_token" else pattern.search(data))
+            if found:
                 self.finding(rule, location, blob_digest)
 
     def scan_json(self, value, location, blob_digest=None):
@@ -336,7 +341,7 @@ class Inspector:
                     self.counts["files"] += 1
                     file = archive.extractfile(member)  # A stream only: never extract to disk.
                     require(file is not None, "missing_member_stream")
-                    total, tail = 0, b""
+                    total, tail, previous_byte = 0, b"", b""
                     while True:
                         chunk = file.read(CHUNK)
                         if not chunk:
@@ -345,8 +350,12 @@ class Inspector:
                             self.finding("sqlite_database_payload", name, digest)
                         total += len(chunk)
                         self.counts["fileBytes"] += len(chunk)
-                        self.scan_bytes(tail + chunk, name, digest)
-                        tail = (tail + chunk)[-OVERLAP:]
+                        window = tail + chunk
+                        self.scan_bytes(window, name, digest, previous_byte=previous_byte)
+                        # Preserve lookbehind at a clipped overlap boundary;
+                        # short reads retain file-start semantics until clipping.
+                        previous_byte = window[-OVERLAP - 1:-OVERLAP]
+                        tail = window[-OVERLAP:]
                     require(total == member.size, "truncated_member")
                 while True:
                     padding = archive.fileobj.read(CHUNK)
@@ -496,8 +505,15 @@ def main():
     except OSError:
         print('{"status":"failed","refusal":"receipt_write_failed"}')
         return 1
+    # These are retained, deduplicated findings, not credential occurrences or
+    # complete totals when inspection was refused. The existing limit bounds
+    # both counts and hashed locations; never emit raw paths or matched values.
+    finding_counts = {}
+    for finding in result["findings"]:
+        finding_counts[finding["rule"]] = finding_counts.get(finding["rule"], 0) + 1
     print(json.dumps({"status": result["status"], "inspectionComplete": result["inspectionComplete"],
-                      "findings": len(result["findings"]), "refusal": result.get("refusal")}))
+                      "findings": len(result["findings"]), "findingCounts": finding_counts,
+                      "findingLocations": result["findings"], "refusal": result.get("refusal")}))
     return 0 if result["status"] == "passed" else 1
 
 

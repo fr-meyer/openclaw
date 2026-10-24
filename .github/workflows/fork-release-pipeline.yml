@@ -623,7 +623,7 @@ jobs:
             org.opencontainers.image.version=${{ steps.source.outputs.version }}
             org.opencontainers.image.created=${{ steps.identity.outputs.built_at }}
           sbom: true
-          provenance: mode=max
+          provenance: mode=max,version=v1
           push: false
       - name: Inspect all OCI layers and metadata before native smoke or publication
         env:
