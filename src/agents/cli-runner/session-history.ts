@@ -31,6 +31,7 @@ import {
   type SessionMessageEntry,
 } from "../sessions/session-manager.js";
 import { cliBackendLog } from "./log.js";
+import type { CliReusableSession } from "./types.js";
 
 const MAX_CLI_SESSION_HISTORY_BYTES = 5 * 1024 * 1024;
 const MAX_CLI_SESSION_HISTORY_MESSAGES = MAX_AGENT_HOOK_HISTORY_MESSAGES;
@@ -62,16 +63,10 @@ type HistoryMessage = {
   timestamp?: unknown;
 };
 type RawTranscriptReseedReason =
+  | Extract<CliReusableSession, { mode: "invalidate" }>["invalidatedReason"]
   | "auth-unknown"
-  | "auth-profile"
-  | "auth-epoch"
-  | "message-policy"
-  | "system-prompt"
-  | "cwd"
-  | "mcp"
-  | "missing-transcript"
-  | "orphaned-tool-use"
-  | "session-expired";
+  | "session-expired"
+  | "stateless";
 
 export function resolveAutoCliSessionReseedHistoryChars(contextWindowTokens: number): number {
   if (!Number.isFinite(contextWindowTokens) || contextWindowTokens <= 0) {

@@ -10,17 +10,22 @@ minimumReleaseAgeStrict: true
 
 # Trusted Codex runtimes are outside the dependency cooldown.
 minimumReleaseAgeExclude:
+  # Reviewed GHSA-27r3-jxmh-p828 fix; remove after 2026-10-29T11:39:38.614Z.
+  - "body-parser@2.4.0"
   - "@openai/codex"
   - "@openai/codex-*"
-  # Reviewed fs-safe 0.25.0 release and native helpers; remove after 2026-10-15T21:23:59.079Z.
-  - "@openclaw/fs-safe@0.25.0"
-  - "@openclaw/fs-safe-darwin-arm64@0.25.0"
-  - "@openclaw/fs-safe-darwin-x64@0.25.0"
-  - "@openclaw/fs-safe-linux-arm64-gnu@0.25.0"
-  - "@openclaw/fs-safe-linux-arm64-musl@0.25.0"
-  - "@openclaw/fs-safe-linux-x64-gnu@0.25.0"
-  - "@openclaw/fs-safe-linux-x64-musl@0.25.0"
-  - "@openclaw/fs-safe-win32-x64-msvc@0.25.0"
+  # Reviewed fs-safe 0.26.0 release and native helpers; remove after 2026-10-17T20:00:18.006Z.
+  - "@openclaw/fs-safe@0.26.0"
+  - "@openclaw/fs-safe-darwin-arm64@0.26.0"
+  - "@openclaw/fs-safe-darwin-x64@0.26.0"
+  - "@openclaw/fs-safe-freebsd-arm64@0.26.0"
+  - "@openclaw/fs-safe-freebsd-x64@0.26.0"
+  - "@openclaw/fs-safe-linux-arm64-gnu@0.26.0"
+  - "@openclaw/fs-safe-linux-arm64-musl@0.26.0"
+  - "@openclaw/fs-safe-linux-x64-gnu@0.26.0"
+  - "@openclaw/fs-safe-linux-x64-musl@0.26.0"
+  - "@openclaw/fs-safe-win32-arm64-msvc@0.26.0"
+  - "@openclaw/fs-safe-win32-x64-msvc@0.26.0"
 
 # Isolated installs let pnpm reuse whole-package APFS clones instead of relinking every file.
 nodeLinker: isolated
@@ -31,6 +36,23 @@ verifyDepsBeforeRun: false
 blockExoticSubdeps: true
 
 overrides:
+  # GHSA-xcx6-jx8p-x3h5: reviewed real-parent compatibility for fixed MSAL.
+  "@azure/identity@4.13.3>@azure/msal-node": 7.1.0
+  "@microsoft/teams.apps@2.1.0>@azure/msal-node": 7.1.0
+  # GHSA-xjj6-f33q-929c: repair remaining vulnerable v8 transitive resolutions.
+  "undici@>=8.0.0 <8.12.2": 8.12.2
+  # Fix compressed-body trailing-byte DoS; qs meets this parser's declared range.
+  "express@5.2.1>body-parser": 2.4.0
+  "body-parser@2.4.0>qs": 6.16.1
+  # GHSA-mrhx-c7xc-m3w5: native v4 consumers and bounded SDK compatibility parsing.
+  "zod@>=4.0.0 <4.6.6": 4.6.6
+  # These exact consumers are migrated by the versioned package patches below.
+  "@a2ui/lit@0.12.0>zod": 4.6.6
+  "@a2ui/web_core@0.12.0>zod": 4.6.6
+  "@a2ui/web_core@0.12.0>zod-to-json-schema": "-"
+  "@discord/embedded-app-sdk@2.5.0>zod": 4.6.6
+  # Preserve the converter's declared support for retained v3 schema peers.
+  "zod-to-json-schema@3.25.2>zod": "^3.25.28 || ^4"
   # Memory LanceDB supplies vectors; WhatsApp prepares thumbnails with Rastermill.
   "@lancedb/lancedb>@huggingface/transformers": "-"
   "baileys>sharp": "-"
@@ -113,6 +135,10 @@ packageExtensions:
       typescript: 5.9.3
 
 patchedDependencies:
+  "@a2ui/lit@0.12.0": patches/@a2ui__lit@0.12.0.patch
+  "@a2ui/web_core@0.12.0": patches/@a2ui__web_core@0.12.0.patch
+  "@discord/embedded-app-sdk@2.5.0": patches/@discord__embedded-app-sdk@2.5.0.patch
+  "zod@4.6.6": patches/zod@4.6.6.patch
   "baileys@7.0.0-rc14": patches/baileys@7.0.0-rc14.patch
   "matrix-js-sdk@42.4.0": patches/matrix-js-sdk@42.4.0.patch
   "@novnc/novnc@1.7.0": patches/@novnc__novnc@1.7.0.patch

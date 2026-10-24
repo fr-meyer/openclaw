@@ -16,6 +16,7 @@ import {
   isCiDocumentationPath as isDocumentationPath,
   isNodeTestDataOnlyPath,
 } from "../ci-changed-scope.mjs";
+import { nativeSecurityTargetsForPath } from "../fork-release/native_tests.mjs";
 import {
   buildVitestRunPlans,
   CHANNEL_CONTRACT_CONFIG_PATTERNS,
@@ -583,7 +584,10 @@ export function resolveChangedNodeTestTargets(
 }
 
 function resolvePreciseChangedTargets(targets: readonly string[], cwd: string) {
-  return targets.map((target) => {
+  const ownerTargets = [
+    ...new Set(targets.flatMap((target) => nativeSecurityTargetsForPath(target) ?? [target])),
+  ];
+  return ownerTargets.map((target) => {
     // Plugin opt-ins reuse source routing before canonical config remapping.
     const sourcePlans = buildVitestRunPlans([target], cwd);
     return {
@@ -915,6 +919,15 @@ export function createChangedNodeTestShards(
     )
   ) {
     return fallback("invalid changed path");
+  }
+
+  const nativeOwners = changedPaths.flatMap((file) => nativeSecurityTargetsForPath(file) ?? []);
+  if (
+    nativeOwners.some(
+      (file) => lstatSync(path.join(cwd, file), { throwIfNoEntry: false })?.isFile() !== true,
+    )
+  ) {
+    return fallback("missing native security test owner");
   }
 
   const selectedTargets =

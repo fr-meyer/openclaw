@@ -244,7 +244,12 @@ export async function runCompactionScenario(
     createCompactionContext({ sessionManager, getApiKeyAndHeadersMock }),
   )) as {
     cancel?: boolean;
-    compaction?: { summary: string; firstKeptEntryId: string; tokensBefore: number };
+    compaction?: {
+      summary: string;
+      firstKeptEntryId: string;
+      tokensBefore: number;
+      details?: unknown;
+    };
   };
   return { result, getApiKeyAndHeadersMock };
 }
@@ -255,6 +260,7 @@ export function expectCompactionResult(result: {
     summary: string;
     firstKeptEntryId: string;
     tokensBefore: number;
+    details?: unknown;
   };
 }) {
   expect(result.cancel).not.toBe(true);

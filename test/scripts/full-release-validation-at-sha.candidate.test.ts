@@ -507,6 +507,39 @@ describe("candidate-owned full release dispatch entry point", () => {
     }
   });
 
+  it("refuses publish qualification when the candidate changelog thanks an internal handle", () => {
+    const fixture = createDispatchFixture({
+      candidateOwned: true,
+      releaseNotes: "- Fixes: keep replies threaded. Thanks @steipete.",
+    });
+    try {
+      const result = fixture.run([
+        "--workflow-sha",
+        fixture.targetSha,
+        "-f",
+        "validation_purpose=publish",
+        "-f",
+        `publication_selection_json=${JSON.stringify({
+          route: "normal",
+          npmDistTag: "beta",
+          publishOpenclawNpm: true,
+          pluginPublishScope: "all-publishable",
+          plugins: [],
+        })}`,
+      ]);
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(
+        "Forbidden changelog thanks attribution (pnpm check:changelog-attributions): CHANGELOG.md:3 uses Thanks @steipete. Use verified human GitHub credits",
+      );
+      expect(
+        fixture.readCalls(fixture.ghCallsPath).filter((args) => ghApiMethod(args) !== "GET"),
+      ).toEqual([]);
+      expect(dispatches(fixture)).toEqual([]);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
   it("reopens the original selected-plugin spelling after dispatch canonicalizes order and duplicates", () => {
     const fixture = createDispatchFixture({ candidateOwned: true });
     const original = JSON.stringify({

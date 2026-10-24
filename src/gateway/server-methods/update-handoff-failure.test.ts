@@ -24,6 +24,18 @@ import {
 } from "./update.test-harness.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+const startHandoff = startManagedServiceUpdateHandoffMock;
+const transferHandoff = transferManagedServiceUpdateHandoffMock;
+const scheduleRestart = scheduleGatewayRestartMock;
+
+function readRun(payload: Awaited<ReturnType<typeof captureUpdateRunPayload>>) {
+  return expectDefined(getUpdateRun(expectDefined(payload, "update response").runId), "update run");
+}
+
+function expectServing() {
+  expect(scheduleRestart).not.toHaveBeenCalled();
+  expect(transferHandoff).not.toHaveBeenCalled();
+}
 
 describe("update.run handoff refusal diagnostics", () => {
   it("retains a handoff cause after the helper has finalized the failed run", async () => {
@@ -171,6 +183,25 @@ describe("update.run handoff refusal diagnostics", () => {
     expect(renderUpdateRunReport(expectDefined(run, "update run")).markdown).toContain(
       "The serving Gateway has not been stopped.",
     );
+  });
+
+  it("preserves the Node engine refusal and serving observation for update.run", async () => {
+    const message =
+      "Node 26.10.0 at /fixture/node requires >=24.22.1 <25 || >=26.12.1. Install Node 24.22.1 and update the service definition selecting /fixture/node.";
+    startHandoff.mockRejectedValueOnce(
+      new UpdatePreMutationError("preflight-node-runtime-incompatible", message),
+    );
+
+    const payload = expectDefined(await captureUpdateRunPayload(), "update response");
+    const run = readRun(payload);
+    expect(payload).toMatchObject({
+      ok: false,
+      result: { status: "error", reason: "preflight-node-runtime-incompatible" },
+    });
+    expect(run.origin.nextAction).toBe(message);
+    expect(run.verification.serviceRunning).toBe(true);
+    expect(renderUpdateRunReport(run).lines.join("\n")).toContain(message);
+    expectServing();
   });
 
   it.each(["helper-start", "sentinel-write"] as const)(
