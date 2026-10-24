@@ -10,6 +10,8 @@ minimumReleaseAgeStrict: true
 
 # Trusted Codex runtimes are outside the dependency cooldown.
 minimumReleaseAgeExclude:
+  # Reviewed GHSA-27r3-jxmh-p828 fix; remove after 2026-10-29T11:39:38.614Z.
+  - "body-parser@2.4.0"
   - "@openai/codex"
   - "@openai/codex-*"
   # Reviewed fs-safe 0.25.0 release and native helpers; remove after 2026-10-15T21:23:59.079Z.
@@ -31,6 +33,9 @@ verifyDepsBeforeRun: false
 blockExoticSubdeps: true
 
 overrides:
+  # Fix compressed-body trailing-byte DoS; qs meets this parser's declared range.
+  "express@5.2.1>body-parser": 2.4.0
+  "body-parser@2.4.0>qs": 6.16.1
   # GHSA-mrhx-c7xc-m3w5: native v4 consumers and bounded SDK compatibility parsing.
   "zod@>=4.0.0 <4.6.6": 4.6.6
   # These exact consumers are migrated by the versioned package patches below.
