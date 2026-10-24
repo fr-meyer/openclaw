@@ -18,11 +18,12 @@
     "securityCarryPaths": 76,
     "textualConflicts": 0,
     "dispositions": {
-      "CARRIED_EXACT": 136,
+      "CARRIED_EXACT": 135,
       "ADAPTED_RELEASE_BINDING": 4,
       "SECURITY_MERGED_SOURCE": 48,
       "SECURITY_CARRIED_EXACT": 24,
       "ADAPTED_DEV_DEPENDENCY_AND_TEST_BINDING": 4,
+      "ADAPTED_COMPATIBILITY_TESTS": 1,
       "ADDED_FOCUSED_CONTRACT_TEST": 2,
       "MERGED_SOURCE_REVIEWED": 2,
       "ADDED_DEV_DEPENDENCY_COMPATIBILITY_TEST": 1,
@@ -1446,10 +1447,10 @@
       "fork106SecurityBlob": "2fc578563884f961b9ee088ff93ef7f977aa311e",
       "upstream107Blob": "badeddd8cd3552dc5fde9c5b86a847a92c4f3da0",
       "approvedSecuritySourceBlob": null,
-      "resultBlob": "2fc578563884f961b9ee088ff93ef7f977aa311e",
+      "resultBlob": "f37e4fce3858aa482b160d8ba1d05255945da5be",
       "upstream107Changed": false,
-      "disposition": "CARRIED_EXACT",
-      "reason": "Exact PR24 bytes preserved. Prior test evidence remains historical, not10.7 runtime qualification."
+      "disposition": "ADAPTED_COMPATIBILITY_TESTS",
+      "reason": "Preserve PR24 backup-reuse fixture behavior; type its mutable environment as ProcessEnv while retaining the required state locator. No runtime implementation or dependency change."
     },
     {
       "path": "src/commands/doctor-migration-backup.ts",
@@ -2421,8 +2422,8 @@
     },
     {
       "path": "test/vitest/vitest.commands-light-paths.mjs",
-      "upstream106Blob": null,
-      "fork106SecurityBlob": null,
+      "upstream106Blob": "ab04965e653a125628615628269c4acee67c3e26",
+      "fork106SecurityBlob": "ab04965e653a125628615628269c4acee67c3e26",
       "upstream107Blob": "ab04965e653a125628615628269c4acee67c3e26",
       "approvedSecuritySourceBlob": null,
       "resultBlob": "c540d33b8339076656200f9ad13609ba8cbaaf9d",
