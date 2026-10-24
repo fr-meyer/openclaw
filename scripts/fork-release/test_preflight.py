@@ -14,8 +14,40 @@ HERE = Path(__file__).parent
 
 class PreflightTests(unittest.TestCase):
     def setUp(self):
-        self.manifest, self.manifest_hash = release.manifest_at(HERE / "manifest.json")
-        self.inventory = release.read_json(HERE / "patch-inventory.json")
+        # Schema negatives need the legacy seed's explicit missing-upstream and
+        # missing-decision-evidence preconditions, not whichever candidate is staged.
+        # Keep current candidate metadata covered independently below.
+        self.manifest = {
+            "schema": "openclaw.fork-release.v1", "repository": "fr-meyer/openclaw",
+            "candidate": "fork-main-seed-20260929", "productionEligible": False,
+            "source": {"baseCommit": "1" * 40, "baseTree": "2" * 40,
+                       "commit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a", "tree": "5" * 40,
+                       "patches": [{"commit": "3" * 40, "tree": "4" * 40},
+                                   {"commit": "8b1f5c8ff5d02d45e23d685e67d460c21514c87a",
+                                    "tree": "5" * 40}]},
+            "gates": {"patchLifecycle": ["test/fixture-lifecycle.test.ts"],
+                      "producerConsumer": ["test/fixture-consumer.test.ts"]},
+            "image": {"architecture": "amd64", "extensions": "codex,workboard"},
+        }
+        self.manifest_hash = release.sha256(json.dumps(self.manifest, sort_keys=True).encode())
+        self.inventory = {"schema": "openclaw.fork-patch-inventory.v1",
+                          "repository": self.manifest["repository"],
+                          "candidate": self.manifest["candidate"],
+                          "manifestSha256": self.manifest_hash, "upstream": None,
+                          "patches": []}
+        for index, patch in enumerate(self.manifest["source"]["patches"]):
+            self.inventory["patches"].append({
+                "id": f"fixture-{index}", "originCommit": patch["commit"],
+                "disposition": "carry", "appliedCommit": patch["commit"],
+                "rationale": "Synthetic ordered schema fixture", "evidenceSha256": None,
+                "regressionTests": ["test/fixture-lifecycle.test.ts"],
+                "dependsOn": [f"fixture-{index - 1}"] if index else [],
+                "regressionOwner": "fixture",
+                "paths": [{"path": f"src/fixture-{index}.ts", "boundary": "container",
+                           "sourceCommit": patch["commit"], "sourceTree": patch["tree"],
+                           "sourceBlob": "6" * 40, "upstreamBlob": None,
+                           "candidateBlob": "7" * 40}],
+            })
 
     def check_inventory(self, value):
         checks = pf.Checks()
@@ -25,6 +57,13 @@ class PreflightTests(unittest.TestCase):
     def test_seed_inventory_is_manifest_bound_and_ordered(self):
         self.assertEqual(self.check_inventory(self.inventory), [])
         self.assertFalse(self.manifest["productionEligible"])
+
+    def test_current_candidate_inventory_is_manifest_bound_and_ordered(self):
+        manifest, manifest_hash = release.manifest_at(HERE / "manifest.json")
+        inventory = release.read_json(HERE / "patch-inventory.json")
+        checks = pf.Checks()
+        pf.inventory_checks(checks, inventory, manifest, manifest_hash)
+        self.assertEqual(checks.errors, [])
 
     def test_batches_stale_binding_reordered_queue_and_unresolved_disposition(self):
         value = copy.deepcopy(self.inventory)

@@ -295,7 +295,7 @@ jobs:
           (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') &&
           (github.ref != 'refs/heads/release-pipeline/v105-image-only-20261024' ||
            (github.event_name == 'push' && github.event.created == false &&
-            github.event.before == 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5' &&
+            github.event.before == '9c2df877355c763ccd9b939250de4384ff80b586' &&
             github.run_attempt == '1' && github.actor == 'fr-meyer')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -358,7 +358,7 @@ jobs:
                   os.environ['GITHUB_ACTOR'] == 'fr-meyer' and
                   os.environ['GITHUB_RUN_ATTEMPT'] == '1' and
                   event.get('created') is False and
-                  event.get('before') == 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5' and
+                  event.get('before') == '9c2df877355c763ccd9b939250de4384ff80b586' and
                   manifest.get('repository') == 'fr-meyer/openclaw' and
                   manifest.get('productionEligible') is False and
                   'review' not in manifest and
@@ -380,35 +380,29 @@ jobs:
                       raise SystemExit('One-shot image metadata is incomplete')
                   return value
 
-              # Only this known terminal pre-build failure may precede the
-              # current claim. Verify its job: failed builds never grant reuse.
+              # Exactly these terminal pre-build failures may precede the
+              # current claim. Every job must prove no build or upload began.
+              priors = {
+                  40062126779: ('aee8475917dd29e0ee9a0b4059daf34990cfdbd5', 120777706110),
+                  40062948481: ('9c2df877355c763ccd9b939250de4384ff80b586', 120780156996),
+              }
               history = public_json('/actions/workflows/fork-release-pipeline.yml/runs?'
-                  'event=push&per_page=2&branch=release-pipeline%2Fv105-image-only-20261024')
+                  'event=push&per_page=3&branch=release-pipeline%2Fv105-image-only-20261024')
               runs = history.get('workflow_runs')
-              prior_id = 40062126779
               current = [r for r in runs or [] if isinstance(r, dict) and
                          type(r.get('id')) is int and str(r['id']) == os.environ['GITHUB_RUN_ID']]
-              prior = [r for r in runs or [] if isinstance(r, dict) and r.get('id') == prior_id]
               if not (
-                  type(history.get('total_count')) is int and history['total_count'] == 2 and
-                  isinstance(runs, list) and len(runs) == 2 and len(current) == len(prior) == 1 and
-                  current[0]['id'] != prior_id and
+                  type(history.get('total_count')) is int and history['total_count'] == 3 and
+                  isinstance(runs, list) and len(runs) == 3 and len(current) == 1 and
+                  current[0]['id'] not in priors and
                   current[0].get('head_sha') == os.environ['GITHUB_SHA'] and
-                  type(current[0].get('run_attempt')) is int and current[0]['run_attempt'] == 1 and
-                  all(r.get('head_branch') == image_ref.removeprefix('refs/heads/') and
-                      r.get('event') == 'push' for r in runs) and
-                  prior[0].get('head_sha') == 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5' and
-                  prior[0].get('status') == 'completed' and prior[0].get('conclusion') == 'failure' and
-                  type(prior[0].get('run_attempt')) is int and prior[0]['run_attempt'] == 1
+                  all(isinstance(r, dict) and type(r.get('id')) is int and
+                      r.get('head_branch') == image_ref.removeprefix('refs/heads/') and
+                      r.get('event') == 'push' and type(r.get('run_attempt')) is int and
+                      r['run_attempt'] == 1 for r in runs) and
+                  {r['id'] for r in runs} == set(priors) | {current[0]['id']}
               ):
                   raise SystemExit('One-shot image run already claimed or history incomplete')
-              job = public_json('/actions/jobs/120777706110')
-              steps = job.get('steps')
-              if not (job.get('id') == 120777706110 and job.get('run_id') == prior_id and
-                      job.get('head_sha') == 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5' and
-                      job.get('name') == 'qualify-and-prepare' and job.get('status') == 'completed' and
-                      job.get('conclusion') == 'failure' and isinstance(steps, list)):
-                  raise SystemExit('Prior image job is not a terminal pre-build failure')
               expected = {'Verify source and run offline pipeline regressions': 'failure',
                           'Set up bounded hosted Docker Buildx': 'skipped',
                           'Verify hosted worker limits and begin bounded resource observation': 'skipped',
@@ -421,11 +415,23 @@ jobs:
                           'Prepare and verify the bounded public artifact': 'skipped',
                           'Retain the exact tested OCI payload and public receipt': 'skipped',
                           'Confirm uploaded bytes match the bounded artifact': 'skipped'}
-              for name, conclusion in expected.items():
-                  matching = [s for s in steps if isinstance(s, dict) and s.get('name') == name]
-                  if not (len(matching) == 1 and matching[0].get('status') == 'completed' and
-                          matching[0].get('conclusion') == conclusion):
-                      raise SystemExit('Prior image build or upload started or is uncertain')
+              for prior_id, (sha, job_id) in priors.items():
+                  prior = next(r for r in runs if r['id'] == prior_id)
+                  if not (prior.get('head_sha') == sha and prior.get('status') == 'completed' and
+                          prior.get('conclusion') == 'failure'):
+                      raise SystemExit('Prior image run is not a terminal pre-build failure')
+                  job = public_json('/actions/jobs/' + str(job_id))
+                  steps = job.get('steps')
+                  if not (job.get('id') == job_id and job.get('run_id') == prior_id and
+                          job.get('head_sha') == sha and job.get('run_attempt') == 1 and
+                          job.get('name') == 'qualify-and-prepare' and job.get('status') == 'completed' and
+                          job.get('conclusion') == 'failure' and isinstance(steps, list)):
+                      raise SystemExit('Prior image job is not a terminal pre-build failure')
+                  for name, conclusion in expected.items():
+                      matching = [s for s in steps if isinstance(s, dict) and s.get('name') == name]
+                      if not (len(matching) == 1 and matching[0].get('status') == 'completed' and
+                              matching[0].get('conclusion') == conclusion):
+                          raise SystemExit('Prior image build or upload started or is uncertain')
           with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
               print('image_only_export=' + ('true' if selected else 'false'), file=output)
           PY_IMAGE_ONLY

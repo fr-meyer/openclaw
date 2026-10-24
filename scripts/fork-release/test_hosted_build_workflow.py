@@ -309,7 +309,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
 
         def selected(ref='refs/heads/release-pipeline/v105-image-only-20261024',
                      event='push', created=False, attempt='1', actor='fr-meyer',
-                     before='aee8475917dd29e0ee9a0b4059daf34990cfdbd5',
+                     before='9c2df877355c763ccd9b939250de4384ff80b586',
                      repo='fr-meyer/openclaw'):
             return expression(condition, github=NS(ref=ref, event_name=event,
                 event=NS(created=created, before=before), run_attempt=attempt, actor=actor, repository=repo))
@@ -324,7 +324,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         self.assertFalse(selected(event='workflow_dispatch', ref='refs/heads/other'))
 
     def run_image_only_scope(self, *, environment=None, event=None, manifest=None,
-                             history=None, history_error=False, oversized=False, previous_job=None):
+                             history=None, history_error=False, oversized=False, previous_job=None, previous_job_2=None):
         identity = step(self.workflow, 'Resolve exact source identity')
         raw = identity.split("          python3 - <<'PY_IMAGE_ONLY'\n", 1)[1].split(
             '\n          PY_IMAGE_ONLY', 1)[0]
@@ -334,10 +334,11 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         prior = {**run, 'id': 40062126779, 'head_sha': 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5',
                  'status': 'completed', 'conclusion': 'failure', 'run_attempt': 1}
         payload = json.dumps(history if history is not None else {
-            'total_count': 2, 'workflow_runs': [run, prior]})
+            'total_count': 3, 'workflow_runs': [run, prior, {**prior, 'id': 40062948481,
+                'head_sha': '9c2df877355c763ccd9b939250de4384ff80b586'}]})
         job = {'id': 120777706110, 'run_id': 40062126779, 'name': 'qualify-and-prepare',
                'head_sha': 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5',
-               'status': 'completed', 'conclusion': 'failure', 'steps': [
+               'status': 'completed', 'conclusion': 'failure', 'run_attempt': 1, 'steps': [
                    {'name': name, 'status': 'completed', 'conclusion': conclusion} for name, conclusion in (
                        ('Verify source and run offline pipeline regressions', 'failure'),
                        ('Set up bounded hosted Docker Buildx', 'skipped'),
@@ -351,20 +352,25 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                        ('Prepare and verify the bounded public artifact', 'skipped'),
                        ('Retain the exact tested OCI payload and public receipt', 'skipped'),
                        ('Confirm uploaded bytes match the bounded artifact', 'skipped'))]}
+        job2 = {**job, 'id': 120780156996, 'run_id': 40062948481,
+                'head_sha': '9c2df877355c763ccd9b939250de4384ff80b586'}
         job.update(previous_job or {})
+        job2.update(previous_job_2 or {})
         wrapper = (
             'import io, json\nfrom unittest.mock import patch\n'
             'def fake_open(request, *, timeout):\n'
             '    assert timeout == 15\n'
             '    history_url = '
             "'https://api.github.com/repos/fr-meyer/openclaw/actions/workflows/' "
-            "'fork-release-pipeline.yml/runs?event=push&per_page=2&' "
+            "'fork-release-pipeline.yml/runs?event=push&per_page=3&' "
             "'branch=release-pipeline%2Fv105-image-only-20261024'\n"
             '    job_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120777706110"\n'
-            '    assert request.full_url in (history_url, job_url)\n'
+            '    job2_url = \"https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120780156996\"\n'
+            '    assert request.full_url in (history_url, job_url, job2_url)\n'
             '    assert not request.has_header("Authorization")\n'
             + ('    raise OSError("bounded lookup unavailable")\n' if history_error else
-               '    if request.full_url == job_url: return io.BytesIO(' + repr(json.dumps(job).encode()) + ')\n'
+               '    if request.full_url == job2_url: return io.BytesIO(' + repr(json.dumps(job2).encode()) + ')\n'
+               + '    if request.full_url == job_url: return io.BytesIO(' + repr(json.dumps(job).encode()) + ')\n'
                + '    return io.BytesIO(' + ("b'x' * (128 * 1024 + 1)" if oversized else repr(payload.encode())) + ')\n')
             + 'with patch("urllib.request.urlopen", side_effect=fake_open):\n'
             + '    exec(' + repr(code) + ')\n')
@@ -382,7 +388,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             metadata.write_text(json.dumps(value))
             event_file = root / 'event.json'
             event_file.write_text(json.dumps({'created': False,
-                'before': 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5', **(event or {})}))
+                'before': '9c2df877355c763ccd9b939250de4384ff80b586', **(event or {})}))
             output = root / 'output'
             env = {'PATH': os.environ.get('PATH', ''),
                    'GITHUB_REF': 'refs/heads/release-pipeline/v105-image-only-20261024',
@@ -423,8 +429,11 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                 self.assertEqual(emitted, '')
 
     def test_image_only_rejects_recreation_other_run_and_unavailable_history(self):
-        run = {'id': 1234, 'head_sha': SOURCE,
+        run = {'id': 1234, 'head_sha': SOURCE, 'run_attempt': 1,
                'head_branch': 'release-pipeline/v105-image-only-20261024', 'event': 'push'}
+        prior = [{**run, 'id': run_id, 'head_sha': sha, 'status': 'completed', 'conclusion': 'failure'}
+                 for run_id, sha in ((40062126779, 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5'),
+                                     (40062948481, '9c2df877355c763ccd9b939250de4384ff80b586'))]
         for change in (
             {'history': {'total_count': 2, 'workflow_runs': [run, {**run, 'id': 1233}]}},
             {'history': {'total_count': 0, 'workflow_runs': []}},
@@ -433,6 +442,16 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             *({'history': {'total_count': 1, 'workflow_runs': [{**run, **field}]}}
               for field in ({'id': 1233}, {'id': '1234'}, {'head_sha': 'b' * 40},
                             {'head_branch': 'other'}, {'event': 'pull_request'})),
+            {'history': {'total_count': 3, 'workflow_runs': [run, prior[0], prior[0]]}},
+            {'history': {'total_count': 4, 'workflow_runs': [run, *prior]}},
+            *({'history': {'total_count': 3, 'workflow_runs': [{**run, **field}, *prior]}}
+              for field in ({'id': 1233}, {'id': '1234'}, {'head_sha': 'b' * 40},
+                            {'run_attempt': 2}, {'head_branch': 'other'}, {'event': 'pull_request'})),
+            *({'history': {'total_count': 3, 'workflow_runs': [run, *[
+                {**p, **field} if p['id'] == selected else p for p in prior]]}}
+              for selected in (40062126779, 40062948481)
+              for field in ({'head_sha': 'b' * 40}, {'status': 'in_progress'},
+                            {'conclusion': 'success'}, {'run_attempt': 2})),
             {'history_error': True}, {'oversized': True},
         ):
             with self.subTest(change=change):
@@ -466,9 +485,10 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                          *({'steps': [s for s in steps if s['name'] != name]} for name, _ in expected),
                          {'steps': [dict(s, status='in_progress') if s == steps[4] else s for s in steps]}):
             with self.subTest(previous=previous):
-                result, emitted = self.run_image_only_scope(previous_job=previous)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertEqual(emitted, '')
+                for key in ('previous_job', 'previous_job_2'):
+                    result, emitted = self.run_image_only_scope(**{key: previous})
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(emitted, '')
 
     def test_other_refs_cannot_enable_image_only_export_and_both_export_stages_agree(self):
         for ref in ('refs/heads/main', 'refs/heads/release-pipeline/other',
