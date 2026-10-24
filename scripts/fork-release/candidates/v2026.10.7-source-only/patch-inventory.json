@@ -1,0 +1,2057 @@
+{
+  "schema": "openclaw.fork-patch-inventory.v1",
+  "repository": "fr-meyer/openclaw",
+  "candidate": "v2026.10.7-source-only",
+  "manifestSha256": "11c40415739f47e77385fc664b4930fe6b7acbdc7fe28d077c5db335d10c3c3a",
+  "upstream": {
+    "tag": "v2026.10.7",
+    "tagObject": "5c101ce5a0637df375c5f6ae49d44d0d27cc26b1",
+    "commit": "157d8c2bc3ea2fa183afdc11088e69690bf8e64e",
+    "verificationSha256": "bcf86980fea62a344cc6f9e4f5e25e7ed5c37afcba0c32227371d5b476999d9d"
+  },
+  "patches": [
+    {
+      "id": "merge-2026.10.7-ea99d608de69",
+      "originCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+      "disposition": "adapt",
+      "appliedCommit": "ea99d608de6921c328d44d32c91a27f89323945f",
+      "rationale": "Preserve the committed223-path fork/security union, ordered10.7 integration and three explicit linear successors. No historical runtime qualification transfers.",
+      "evidenceSha256": "4323cb2b317d52aeaed8b8e2826082eadfce3cc51689bd0248fe61375bddf2e8",
+      "regressionTests": [
+        "src/state/openclaw-agent-db-lease.exited-owner.test.ts",
+        "src/commands/doctor/shared/config-migration-result.provenance.test.ts",
+        "src/tasks/managed-task-flow.worker.integration.test.ts",
+        "src/commands/doctor-config-preflight.test.ts"
+      ],
+      "dependsOn": [],
+      "regressionOwner": "fr-meyer",
+      "paths": [
+        {
+          "path": "Dockerfile",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "9ede1b0d0300c663371fb27a8d80229489151177",
+          "upstreamBlob": "4ad85b5d75bb10361ea2b614c1417e64ea612feb",
+          "candidateBlob": "9ede1b0d0300c663371fb27a8d80229489151177"
+        },
+        {
+          "path": "custom-patches/NEXT-RELEASE-2026.10.6.md",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "e197f77b2de9f3780793344a6af5fdd45a67377b",
+          "upstreamBlob": null,
+          "candidateBlob": "e197f77b2de9f3780793344a6af5fdd45a67377b"
+        },
+        {
+          "path": "custom-patches/NEXT-RELEASE-2026.10.7.md",
+          "boundary": "tooling",
+          "sourceCommit": "ea99d608de6921c328d44d32c91a27f89323945f",
+          "sourceTree": "a4aadb99741d49d2fd3dd85a3c4b501a3eb7ecdf",
+          "sourceBlob": "5f308d59395afd83deba0187c31a1b09bfa7a60f",
+          "upstreamBlob": null,
+          "candidateBlob": "5f308d59395afd83deba0187c31a1b09bfa7a60f"
+        },
+        {
+          "path": "custom-patches/manifest.json",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "ccb4facfd85b47913305089d97bd111c728ebbf4",
+          "upstreamBlob": null,
+          "candidateBlob": "4e1a85c1666193c48d3aa7705f72a728ed5d9941"
+        },
+        {
+          "path": "custom-patches/reconciliation-2026.10.5.json",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d",
+          "upstreamBlob": null,
+          "candidateBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+        },
+        {
+          "path": "custom-patches/reconciliation-2026.10.6.json",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "186abc747081b09b8f7af58a37513b170af1f4b4",
+          "upstreamBlob": null,
+          "candidateBlob": "186abc747081b09b8f7af58a37513b170af1f4b4"
+        },
+        {
+          "path": "custom-patches/reconciliation-2026.10.7.json",
+          "boundary": "tooling",
+          "sourceCommit": "ea99d608de6921c328d44d32c91a27f89323945f",
+          "sourceTree": "a4aadb99741d49d2fd3dd85a3c4b501a3eb7ecdf",
+          "sourceBlob": "89f127f993d1743bfd6b2aebc065fab81b6b4d81",
+          "upstreamBlob": null,
+          "candidateBlob": "89f127f993d1743bfd6b2aebc065fab81b6b4d81"
+        },
+        {
+          "path": "docs/cli/gateway/query.md",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5eee26341a91ae74f64ef3d75fe9a3167f655b99",
+          "upstreamBlob": "4facce71043695558704c66f7b0606954352489e",
+          "candidateBlob": "5eee26341a91ae74f64ef3d75fe9a3167f655b99"
+        },
+        {
+          "path": "docs/plugins/sdk-migration.md",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "29019b5f0c5c960603087aacf9db4b71b01aedd0",
+          "upstreamBlob": "06df1775faed742ec504d13d62fd4e7d50f2d7ce",
+          "candidateBlob": "29019b5f0c5c960603087aacf9db4b71b01aedd0"
+        },
+        {
+          "path": "docs/plugins/sdk-migration/removed-surfaces.md",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "b4c7c57477a0a59464ad183950338b954d2ce775",
+          "upstreamBlob": "71e9da5accda24b35859e0f0c7f4bb2671ceb953",
+          "candidateBlob": "b4c7c57477a0a59464ad183950338b954d2ce775"
+        },
+        {
+          "path": "docs/plugins/sdk-runtime.md",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "194d538c65fdc69f52aeda8d7afbb9f40cf9bfd1",
+          "upstreamBlob": "61ba6b00e9c8250cfd760ffb710628e064826c50",
+          "candidateBlob": "194d538c65fdc69f52aeda8d7afbb9f40cf9bfd1"
+        },
+        {
+          "path": "docs/plugins/sdk-runtime/background-work.md",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "25946eb07ce82add5d94faca2f5c6c984bae39e3",
+          "upstreamBlob": "c62d762588ad1bdd87926919a978cad5932de41d",
+          "candidateBlob": "25946eb07ce82add5d94faca2f5c6c984bae39e3"
+        },
+        {
+          "path": "docs/plugins/sdk-runtime/config-and-utilities.md",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "18559190bb222fcd87f1c3cd38d914e42ff6a0c2",
+          "upstreamBlob": "33acc2d821a7a16e7fd4a6c931d1659a94a3756c",
+          "candidateBlob": "18559190bb222fcd87f1c3cd38d914e42ff6a0c2"
+        },
+        {
+          "path": "extensions/a2a/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "798799f9271bf5615608dc4185f7de520614ac7f",
+          "upstreamBlob": "f0044c5c83fbb3bc99d7234c0c987c5097c52b0b",
+          "candidateBlob": "f1372a49a00c60998896b6044bd4ecc24483a06a"
+        },
+        {
+          "path": "extensions/acpx/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "3be28276608961437442d93bf248f7b753d2e94b",
+          "upstreamBlob": "764329a35e46d232762b3b5dc08d6e71999d0b62",
+          "candidateBlob": "336c572005b411c0345e51d5ab5721f3470b1f29"
+        },
+        {
+          "path": "extensions/agentsapi/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "1f54e38264972fa583aef416b5b26dae75693469",
+          "upstreamBlob": "438b2b3d1c83f39ddfef3e1ba45b5c5fdd7d66e5",
+          "candidateBlob": "c3598575ddf667fb6e430c2c471d900b6ca13852"
+        },
+        {
+          "path": "extensions/anthropic-vertex/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "3b78c0d22cdf5d6d8313399e80a03eb8b3b82b06",
+          "upstreamBlob": "fce55b302b979717b75204a6c68115a813400428",
+          "candidateBlob": "1177bb3e0f1d42876f7167e66c9ca2502236083b"
+        },
+        {
+          "path": "extensions/apple-fm/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "d109dd65c11325b44d1e0310d47233c59d1d8d5f",
+          "upstreamBlob": "f3ed2a1da2a2bb00c9ad34684945e0ceae6d05bb",
+          "candidateBlob": "9df8766158550291a5a79cbe6b77fefc0653dd65"
+        },
+        {
+          "path": "extensions/browser/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "c125b891a4f735a61a9c3fbac5d46c6d0f370efe",
+          "upstreamBlob": "f00ca22f7d4f1595b3361640950a4191bcad7241",
+          "candidateBlob": "1a4527c251e934667a93ad0f50cb3c06278f5338"
+        },
+        {
+          "path": "extensions/buzz/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "1f5837692e9f70fcf0f40b2ffeafe45f7ed77478",
+          "upstreamBlob": "ab3ab1c6a724dc48b831e63f4d16ac15da60a9cc",
+          "candidateBlob": "5a18ec1b627e816ba7e09d2984a0564f3facf052"
+        },
+        {
+          "path": "extensions/clickclack/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "3333a1cca77545e8e570709f17d6188754983ac0",
+          "upstreamBlob": "8df8807fd61483aea60dc81b22b2a4a1d89207ee",
+          "candidateBlob": "deb4b99658a14249d3e3fbbbd68ccea2f5cf5793"
+        },
+        {
+          "path": "extensions/codex/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "872d8697b321da8f75c570793b146704ebccf936",
+          "upstreamBlob": "0ea8a4125a4934d6360f1ba16ca0a0a4b3b5ed43",
+          "candidateBlob": "c2d7c763f76731956ee0ec6512f6d028ea67dd84"
+        },
+        {
+          "path": "extensions/cua-computer/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "293c6d192a3625ca494efeba01f5763da92e25e2",
+          "upstreamBlob": "8086cb8a5430702b7d235013a3f864aee077e725",
+          "candidateBlob": "21b86a4dabdd99bc131bc29484f48f6b5d221f80"
+        },
+        {
+          "path": "extensions/diffs/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a53f43492207234fb08879f6cc2726e769548154",
+          "upstreamBlob": "3e1ab050c7450a2eb66e4e65ac276b2f59a5b314",
+          "candidateBlob": "05e6e98267105dc3476616d0911f29586fb14b93"
+        },
+        {
+          "path": "extensions/discord/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "98c34749fbb2606c1fe8d2bc036adf148313d56b",
+          "upstreamBlob": "8c29a8fea5178bc55715587fd539e43427fbb894",
+          "candidateBlob": "f9461a8713d4330c37fd23b86fe9ee80fe602e1a"
+        },
+        {
+          "path": "extensions/feishu/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "763f4433835c0e75d63fb1c789a062ff0e5c2b6d",
+          "upstreamBlob": "844f09831e5b2fd0b9a7269925f3b66219d3b355",
+          "candidateBlob": "1b1147ac4e97be7b8914485dac29b08874afd2ed"
+        },
+        {
+          "path": "extensions/googlechat/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "7ed56fb64c30e0dae1cf8058f080b6ce95bc3c55",
+          "upstreamBlob": "9e91d696c8a6886d34721c1b9fc77b7fb95003e8",
+          "candidateBlob": "72e3f858a09b140a7db8f677c3f7ff729db96435"
+        },
+        {
+          "path": "extensions/imessage/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "2da7835a204ee1d867144e568199dbdb65edd74e",
+          "upstreamBlob": "db3185af04f52c6efed1e85455dca98451f76ddd",
+          "candidateBlob": "41ed142c375acc9a93886b9c24011b504c6f8980"
+        },
+        {
+          "path": "extensions/irc/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "1c2c71220d974668916d278d625972f0e9241849",
+          "upstreamBlob": "58a0457049da00d0c084611fa8918ddff2e269b3",
+          "candidateBlob": "ac034b7c6665fdf43e123fef383c321d94471fa5"
+        },
+        {
+          "path": "extensions/line/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a8c4335af480f5080591f1133c837d8c028ace4c",
+          "upstreamBlob": "a20aa4628878b2508594ca014260d18c7e145f05",
+          "candidateBlob": "d61475763e556c979211c80c54169040620409a8"
+        },
+        {
+          "path": "extensions/linux-node/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "3241f72495564e53df5273f87f996df86919d660",
+          "upstreamBlob": "c54ada95410355405fb1e5a0599b8eaf96784291",
+          "candidateBlob": "8d792b5a10be733c84c295b89f1cf4bfedca4fdb"
+        },
+        {
+          "path": "extensions/matrix/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "883f76242afb5f4ebd16ee1bb72cac224de5c691",
+          "upstreamBlob": "63c3bbff98ba84d66b1f5d17af30b248aa5b1a16",
+          "candidateBlob": "df94fd0bc6520a54732fe44de0f81fe0c48147f5"
+        },
+        {
+          "path": "extensions/mattermost/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "186ea069027f4e3d8ecdac0bf71387ffa5e9c01d",
+          "upstreamBlob": "7e5fd35956cdbc80d9a78471a1a291721ab0f37a",
+          "candidateBlob": "f1b1ef3b2ae45afcb42dffdf54f650eceb290c22"
+        },
+        {
+          "path": "extensions/memory-core/src/dreaming.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a2469409b3e497d11d807df0a821603acf74053d",
+          "upstreamBlob": "a09eb12f5d42a462b174fb32a7584394cfbcc9ea",
+          "candidateBlob": "a2469409b3e497d11d807df0a821603acf74053d"
+        },
+        {
+          "path": "extensions/memory-core/src/dreaming.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "34dcc14663d8c1df16569dbe5a5a35a97e88630b",
+          "upstreamBlob": "2916c93ef932281c7ae310e79610046681bd7b09",
+          "candidateBlob": "34dcc14663d8c1df16569dbe5a5a35a97e88630b"
+        },
+        {
+          "path": "extensions/memory-core/src/memory-search-tool-query.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "33a694d5edab4c4d7644931f1ceb0cf56a8f52bb",
+          "upstreamBlob": "a870eff5ccc9d30b17b60a503af07f55ffebdda0",
+          "candidateBlob": "33a694d5edab4c4d7644931f1ceb0cf56a8f52bb"
+        },
+        {
+          "path": "extensions/memory-core/src/memory-search-tool-query.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "fec2401fc06a263993476f66965a33b08b5ac02d",
+          "upstreamBlob": "5950ca1a463dd2ec5f2f634c942201b743d0dce7",
+          "candidateBlob": "fec2401fc06a263993476f66965a33b08b5ac02d"
+        },
+        {
+          "path": "extensions/memory-core/src/session-search-visibility.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "f53146fe2ee9499241503d982d3f4c565f88b90d",
+          "upstreamBlob": "1e06f50ceed330341aa3cb77dcf288a9e92f30e2",
+          "candidateBlob": "f53146fe2ee9499241503d982d3f4c565f88b90d"
+        },
+        {
+          "path": "extensions/memory-core/src/session-search-visibility.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "80d4c519be4d5461279d2bbc523d06a0be546a7a",
+          "upstreamBlob": "f0b00513849428971d76e3cdd7b14220e8f8e229",
+          "candidateBlob": "80d4c519be4d5461279d2bbc523d06a0be546a7a"
+        },
+        {
+          "path": "extensions/memory-wiki/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "91841945890381c8c30871c09f8a2291bf9cd6ef",
+          "upstreamBlob": "74c28abfaa339ed6178a832975cb3e02e60731f0",
+          "candidateBlob": "d7259b62a55e85b2889f5a759868313ebcfd8ecb"
+        },
+        {
+          "path": "extensions/msteams/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a7d163452180939b26865d1906f3090191f3b199",
+          "upstreamBlob": "6e4bcc2f7c4cebd4d0103cad5559113b384ee0d4",
+          "candidateBlob": "08971ba26318c45be2ae1f68814724a9e08e351d"
+        },
+        {
+          "path": "extensions/mxc/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "c19fedec57f698e4abb7dc1bec846de469cb2f72",
+          "upstreamBlob": "fb26b135c3ad8b728eb320dea6c3be9326131569",
+          "candidateBlob": "1eccc0341e29450c65e18a053cf12e5599b77d1b"
+        },
+        {
+          "path": "extensions/nextcloud-talk/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "0061f6477fb18c07ad6c7f0c51e3034cbe1bc700",
+          "upstreamBlob": "aa524e7170cbc41db8ace196ee89359739d324c1",
+          "candidateBlob": "7b7d58810d43f205b789c8f4b0c09dc3ed0b9fba"
+        },
+        {
+          "path": "extensions/nostr/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "3d3c0f0c7726a85809bb296393d74380fab841a8",
+          "upstreamBlob": "4ddc8a8e884fcece3e1ccc928cb3e801ba57e563",
+          "candidateBlob": "395145aae27cd8b69cb4178a5388b1ac0798ea63"
+        },
+        {
+          "path": "extensions/oc-path/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "4246d588536f236b53c796063d53ec83e28068e2",
+          "upstreamBlob": "15fe2f818dd0b27ec1147f943ab1f3f2c03c854a",
+          "candidateBlob": "2d0eef57949046b037299dab39e642c261fba167"
+        },
+        {
+          "path": "extensions/openai/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "f4f4d9d441c60c8f191fef391ee87e6ae937b71d",
+          "upstreamBlob": "366b6142714db74169afeb7585ccb425319a9ea8",
+          "candidateBlob": "3f5ba4f62cdbfc25a6a9ec0056a7b6b32b32f24c"
+        },
+        {
+          "path": "extensions/openshell/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "d99a6caa793e1f666131372ba67bed475665065b",
+          "upstreamBlob": "409fa379ec55040f5958f6cf6a2a1c43993d0699",
+          "candidateBlob": "3748474e2ba6650a566500bfa62dc28dabc3be7b"
+        },
+        {
+          "path": "extensions/qa-channel/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "e240f36f3a722d17b49b12cfd6fa4ab786584871",
+          "upstreamBlob": "9aa8cc828586f5fd1cce94aea856d16e62b5658f",
+          "candidateBlob": "c1e62ad32ba7faa96e965fd3b17c64863bfe89d4"
+        },
+        {
+          "path": "extensions/qa-lab/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a2dd4ea54d1f46d6f606ae6cfc12f18430ffadbd",
+          "upstreamBlob": "e9f955f3e969067d06a6030879d95e02f07bcb61",
+          "candidateBlob": "d3f9732e69d97a002567c008ff29545b72f68281"
+        },
+        {
+          "path": "extensions/raft/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "66c7a4f85c2234832c2ec14a23ba5ba17d3bf07f",
+          "upstreamBlob": "810def9c2d341d70b01df9c46b82fb57a0ad37f1",
+          "candidateBlob": "ff31a43a538a99b619d725f15a3461a6701fd1e3"
+        },
+        {
+          "path": "extensions/reef/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "9e4ea7e93212965e68de4bea0c41810a70ccb2b0",
+          "upstreamBlob": "c9bb36e61a7e159d3e42e3b6ef8e341f9e9a4d4a",
+          "candidateBlob": "2c26f30bcdeb1a4b5b07c593303234118e55189c"
+        },
+        {
+          "path": "extensions/signal/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "247cb43e346909b15d8a0c2a8cd2a44cc5b5e3df",
+          "upstreamBlob": "1672fdd7ca9bde5b0f4ec7786c60a79960f5698b",
+          "candidateBlob": "f0b58ea2c9fddb271c769cb862b27f7e33fcf249"
+        },
+        {
+          "path": "extensions/slack/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "de402db746257c03a5c5c39bff42087a09d11f07",
+          "upstreamBlob": "184595a9ecd90e01d9c68f0f4e4eb53deb510062",
+          "candidateBlob": "8d899580e88f8deddb23c7b3ceebc4eb319b1fbf"
+        },
+        {
+          "path": "extensions/sms/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "c8148cce02910a8bd47c5ef31a3b9ada3228b77c",
+          "upstreamBlob": "f1eb777e77d23494ff64f7b8bcd19de6ad38ed7f",
+          "candidateBlob": "66ca5fc2273de8ddfb897e8cdb76fd2a74fb681f"
+        },
+        {
+          "path": "extensions/synology-chat/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "9c7954732ffef574737d8a65a3499bc36ebd355c",
+          "upstreamBlob": "5b52afc048bea231983fe04032748b235774f03a",
+          "candidateBlob": "43d78ee5eb94ba2f9070f60a17741bfff404bd1d"
+        },
+        {
+          "path": "extensions/team-reports/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "edaf4be072d255a99a815eccf29b93f1391f38ca",
+          "upstreamBlob": "254b92467ecbb6d8def45fa09c8682e501c25e73",
+          "candidateBlob": "ab8eb0e9dce89833460dab6e6dc32afa6cdc58b8"
+        },
+        {
+          "path": "extensions/telegram/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5fecc0bd61e45a377c70a22afd820a7c68365933",
+          "upstreamBlob": "9bfb3eb109342486a1ac4af4ae6f3b48847efb48",
+          "candidateBlob": "3233da73857d95bac29bb9ba39957001b37cf962"
+        },
+        {
+          "path": "extensions/tlon/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "e8ed7f13eb1a2e81b598affcf7f1d944fb3729de",
+          "upstreamBlob": "7d92c045abd8874a189ce7fa7f6caf1a3e7f3248",
+          "candidateBlob": "96aea047c40074b61ba3603a6132ee14e0d478a3"
+        },
+        {
+          "path": "extensions/twitch/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "16f37522bb4d6244931389fbb63842ff5f712b48",
+          "upstreamBlob": "2e88ec45bb64ab5156b4c483a3980b3733e79b8f",
+          "candidateBlob": "5e838f7a5d63cac1732f2afd56665c1b3defbb6d"
+        },
+        {
+          "path": "extensions/visitor-access/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "ad8eb000d024c480408804d69352595d4fec581c",
+          "upstreamBlob": "dfe94f250c82e4de8872f398c7e9eaee0591e995",
+          "candidateBlob": "a700544357267ec68369a66e50fd228db0dbb5b1"
+        },
+        {
+          "path": "extensions/voice-call/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "b651d528affb8e5099068cb24e7282e8dd921b5f",
+          "upstreamBlob": "5493d7b347e96645c0379245cab5a8fbbe0ca21c",
+          "candidateBlob": "445bd939f349253fd80fa74aa50e24c68d5a7f7d"
+        },
+        {
+          "path": "extensions/workboard/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "95e04cced1190786793ec9f19d69b68a14500f5b",
+          "upstreamBlob": "b0114dce01f9ed726122cabfdfce6963d99b8f54",
+          "candidateBlob": "7832852c8a176b2f22ad8410d697d86ae6b7529f"
+        },
+        {
+          "path": "extensions/x/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "f9bdc261b708cd8d400392bb2cf4225735180c0f",
+          "upstreamBlob": "f8c66505caaf09c140dfc486abe70f75f33beaba",
+          "candidateBlob": "afd692ec003579bfb2512a3cec295d06c6100578"
+        },
+        {
+          "path": "extensions/zalo/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "fa312b03da82c8b25ef0cc60c6ec6d3d6dcb6427",
+          "upstreamBlob": "44d642e2444e1216bcc84340de091e7383fef22e",
+          "candidateBlob": "c10d91f780bc37ab0e2740dea94970d0842affa3"
+        },
+        {
+          "path": "extensions/zalouser/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "eb9002661621e6c0108c53a978f12a128e9c9ffd",
+          "upstreamBlob": "398235f3288c9226072fede8e3bc7a2393f20ee1",
+          "candidateBlob": "a5e5168c2e583abb36b943bd3c9391f712c9e7b0"
+        },
+        {
+          "path": "package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "fa577fcfdc5425b5a01628b195a84563a33cc838",
+          "upstreamBlob": "f79bdec24d94c1e1845e43d59e65ab06ce9f543c",
+          "candidateBlob": "193e8d37219fe9bab671d7f677d3302111eb0676"
+        },
+        {
+          "path": "packages/gateway-protocol/src/core-request-params.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a16edc62eec150c0f40ae6d52baad17a3f24a2e8",
+          "upstreamBlob": "6b81e88afda0459be8b5f6f2e96825fe56179935",
+          "candidateBlob": "a16edc62eec150c0f40ae6d52baad17a3f24a2e8"
+        },
+        {
+          "path": "packages/gateway-protocol/src/public-schema.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "312d0be7c4a09875f5229a6bf7d6420cd110e2df",
+          "upstreamBlob": "4a4794887273b5d1bc838eaf91f94fa1496d9fe6",
+          "candidateBlob": "312d0be7c4a09875f5229a6bf7d6420cd110e2df"
+        },
+        {
+          "path": "packages/gateway-protocol/src/schema/system-info.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "71976357ed5307a6c00577ff433ebe9de9f03a74",
+          "upstreamBlob": "a0f4a81f35a35dca2f7c2714790f362661bdb776",
+          "candidateBlob": "71976357ed5307a6c00577ff433ebe9de9f03a74"
+        },
+        {
+          "path": "packages/gateway-protocol/src/validator-registry.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "48843257decea86647fe3600df3bde81ff0d9c33",
+          "upstreamBlob": "8857f8bcddbc320213b43fad5cc46c052a2af441",
+          "candidateBlob": "48843257decea86647fe3600df3bde81ff0d9c33"
+        },
+        {
+          "path": "packages/markdown-core/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5faa5aeb6cdd7de7b738b01080c3c7179f086528",
+          "upstreamBlob": "8c90b67b7f422f27077246e14ecc9524081fcec0",
+          "candidateBlob": "5faa5aeb6cdd7de7b738b01080c3c7179f086528"
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/memory-schema-storage-migration.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "66604f62406e42dccff0199ad1b649ab539d5a66",
+          "upstreamBlob": "e99697b0e69f28cc95df512d0aa73a6002596321",
+          "candidateBlob": "66604f62406e42dccff0199ad1b649ab539d5a66"
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/memory-schema-storage-migration.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "dcc06f58c2ddf6e1eabab557843fb7444a069e9a",
+          "upstreamBlob": "86e34a64bca00e1ff91bb40e41380a8ef0e30321",
+          "candidateBlob": "dcc06f58c2ddf6e1eabab557843fb7444a069e9a"
+        },
+        {
+          "path": "packages/mermaid-renderer/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "9a1fd0b6c751aa24023f3c4d422fd955aeee707a",
+          "upstreamBlob": "5814e6e539eeb55a531b63331ed6856a976f9f41",
+          "candidateBlob": "9a1fd0b6c751aa24023f3c4d422fd955aeee707a"
+        },
+        {
+          "path": "packages/model-catalog-core/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "62f895846289e4d2f68acbf6754d835d4080e504",
+          "upstreamBlob": "62f895846289e4d2f68acbf6754d835d4080e504",
+          "candidateBlob": "334ee5a66332a575082dc6d055bd3a6d840460d3"
+        },
+        {
+          "path": "patches/@a2ui__lit@0.12.0.patch",
+          "boundary": "container",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "4b6625e5d89be85e56824c76409dab88d00cc75d",
+          "upstreamBlob": null,
+          "candidateBlob": "4b6625e5d89be85e56824c76409dab88d00cc75d"
+        },
+        {
+          "path": "patches/@a2ui__web_core@0.12.0.patch",
+          "boundary": "container",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "c9efbf19c51adcf80888d1566d77f8d4d4fe96be",
+          "upstreamBlob": null,
+          "candidateBlob": "c9efbf19c51adcf80888d1566d77f8d4d4fe96be"
+        },
+        {
+          "path": "patches/@discord__embedded-app-sdk@2.5.0.patch",
+          "boundary": "container",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "22e55290112e703ebceb03f5f58b1fef47dc3a1e",
+          "upstreamBlob": null,
+          "candidateBlob": "22e55290112e703ebceb03f5f58b1fef47dc3a1e"
+        },
+        {
+          "path": "patches/README.md",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "54fd9dbe0e529352d7ac5b6712f459c6c350739a",
+          "upstreamBlob": "54fd9dbe0e529352d7ac5b6712f459c6c350739a",
+          "candidateBlob": "f3205f3660832ce69984b1fd1974ad8617564065"
+        },
+        {
+          "path": "patches/zod@4.6.6.patch",
+          "boundary": "container",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "9d1ef9049aa950eebe802c0f170321f3c7b1eecb",
+          "upstreamBlob": null,
+          "candidateBlob": "9d1ef9049aa950eebe802c0f170321f3c7b1eecb"
+        },
+        {
+          "path": "pnpm-lock.yaml",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "b19bc5edf55a901269ae05bf61d8cb91ec0cd3ce",
+          "upstreamBlob": "7aef13a8539d55a6bf137f9bd54fdb9f7062cb28",
+          "candidateBlob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b"
+        },
+        {
+          "path": "pnpm-workspace.yaml",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "e9250bb88ecc64e68803e8dea5cc0a15f8cef143",
+          "upstreamBlob": "458e124e46478c6f8ecc760d0aba576ea9f29fb3",
+          "candidateBlob": "b5451b324bce188ce55030ac5473c05f3991162f"
+        },
+        {
+          "path": "scripts/check-package-patches.mts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5dd243be4fc4eb4d5836af24ad180bbaf140e879",
+          "upstreamBlob": "5dd243be4fc4eb4d5836af24ad180bbaf140e879",
+          "candidateBlob": "7c6b7977eacc23c2e0c95c8a607aad811b23a797"
+        },
+        {
+          "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "0e2835c8dd04e9d1d5049ca21b98d63f7a0a054f",
+          "upstreamBlob": null,
+          "candidateBlob": "45110797d931c21b8251739535cf5293542b78e4"
+        },
+        {
+          "path": "scripts/docker/package-current-publisher.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "7a4b5f2048e401cefd0cdb0edb45039fb004506c",
+          "upstreamBlob": null,
+          "candidateBlob": "9d0c926ee3adac53fb9e8a9470f3c259973e990c"
+        },
+        {
+          "path": "scripts/docker/package-current-publisher.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "af661b2424a7b3ad59647d6853a8fec28b752545",
+          "upstreamBlob": null,
+          "candidateBlob": "e743fea20d48808a6c506579d540ae5da5b2721d"
+        },
+        {
+          "path": "scripts/docker/run-with-matrix-crypto-cache.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "bde2de05c94d4c94d8fd97b2ea87b2a82b5eb91c",
+          "upstreamBlob": null,
+          "candidateBlob": "bde2de05c94d4c94d8fd97b2ea87b2a82b5eb91c"
+        },
+        {
+          "path": "scripts/docker/run-with-matrix-crypto-cache.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "ec582b58e7801d9749704b9c0d8a97fc8fe60ca5",
+          "upstreamBlob": null,
+          "candidateBlob": "ec582b58e7801d9749704b9c0d8a97fc8fe60ca5"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "439be669dd7d338282fbd61799054f5de42b2762",
+          "upstreamBlob": null,
+          "candidateBlob": "439be669dd7d338282fbd61799054f5de42b2762"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/index.mjs",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "85c442b5855163f07a76ea75941c8169ce589deb",
+          "upstreamBlob": null,
+          "candidateBlob": "85c442b5855163f07a76ea75941c8169ce589deb"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/openclaw.plugin.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "50fe1d9bb252488417f633510af5c15800b0cf78",
+          "upstreamBlob": null,
+          "candidateBlob": "50fe1d9bb252488417f633510af5c15800b0cf78"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "e0ba34f234511cb574f4ac1c16ec4efadcd7c532",
+          "upstreamBlob": null,
+          "candidateBlob": "e0ba34f234511cb574f4ac1c16ec4efadcd7c532"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/controller.mjs",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "dcbe84772cae3da3e7cd69028260f9fccddd538a",
+          "upstreamBlob": null,
+          "candidateBlob": "dcbe84772cae3da3e7cd69028260f9fccddd538a"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/http.mjs",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5ec7ad7ad16541cbbc87798996ae959ee0ef11d3",
+          "upstreamBlob": null,
+          "candidateBlob": "5ec7ad7ad16541cbbc87798996ae959ee0ef11d3"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "9e3901760df7eb6877fe95b5424a1e544178d65b",
+          "upstreamBlob": null,
+          "candidateBlob": "9e3901760df7eb6877fe95b5424a1e544178d65b"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "ad6458ef883ac95693cb59f6782cf01df4809d3c",
+          "upstreamBlob": null,
+          "candidateBlob": "ad6458ef883ac95693cb59f6782cf01df4809d3c"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/capture-integrity.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "527c9b98a3893235bd14dd37d765bfc96c2a86b3",
+          "upstreamBlob": null,
+          "candidateBlob": "527c9b98a3893235bd14dd37d765bfc96c2a86b3"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "b949a416c9822009a82f47bc403353c82bd7df61",
+          "upstreamBlob": null,
+          "candidateBlob": "b949a416c9822009a82f47bc403353c82bd7df61"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/fixtures/predecessor-pin-package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "6113b7e6265617d28dc767e13af166ec33444dec",
+          "upstreamBlob": null,
+          "candidateBlob": "6113b7e6265617d28dc767e13af166ec33444dec"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/inert-parity-host.mjs",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "26b2985dcc325487ea682f0b1c671ae02eddef7d",
+          "upstreamBlob": null,
+          "candidateBlob": "26b2985dcc325487ea682f0b1c671ae02eddef7d"
+        },
+        {
+          "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "e827634b3032ec387c22202ceca789baa5ad5874",
+          "upstreamBlob": null,
+          "candidateBlob": "e827634b3032ec387c22202ceca789baa5ad5874"
+        },
+        {
+          "path": "scripts/fork-release/native_tests.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "272db39df8e4109c21fe0afe1368358fdfb4687c",
+          "upstreamBlob": null,
+          "candidateBlob": "4aa9aee8e12a71f5aa699fd2f36accd983c5f77e"
+        },
+        {
+          "path": "scripts/lib/ci-changed-node-test-plan.mts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "f13d49c1679a02dc1bf34f225ba61e9d38394758",
+          "upstreamBlob": "f13d49c1679a02dc1bf34f225ba61e9d38394758",
+          "candidateBlob": "e3f1847a848db272e8d4905a4f2f1a5c4be7206d"
+        },
+        {
+          "path": "scripts/plugin-sdk-surface-report.mts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "f9bb330b7e62423a073b64c974913a7718ae3200",
+          "upstreamBlob": "458050d7a8fc43be88f07540a8e1fc7193620c8c",
+          "candidateBlob": "f9bb330b7e62423a073b64c974913a7718ae3200"
+        },
+        {
+          "path": "scripts/test-projects.test-support.mts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "064618caf8163bfcd280ba71a68ceaba64ff7b7a",
+          "upstreamBlob": "064618caf8163bfcd280ba71a68ceaba64ff7b7a",
+          "candidateBlob": "0b774b0481f7a8dc07ebe0778ea68832571b4251"
+        },
+        {
+          "path": "scripts/tsdown-build.mts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "ca38bf17e7f74f1f20d63ced24b3489572a4db5d",
+          "upstreamBlob": "ac3b2cabc4ecd875d3974cc561687b5fa5a63be4",
+          "candidateBlob": "ca38bf17e7f74f1f20d63ced24b3489572a4db5d"
+        },
+        {
+          "path": "src/agents/mcp-http-tool-schema-compatibility.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "2b95c3d44b6f7e763f478f0f1ca3973ab6f941d0",
+          "upstreamBlob": null,
+          "candidateBlob": "2b95c3d44b6f7e763f478f0f1ca3973ab6f941d0"
+        },
+        {
+          "path": "src/agents/mcp-http-transport.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "b92fc1eb916001fae0eae69c696143254a7f85c9",
+          "upstreamBlob": "38bd95a7c96a67a261f17f1881034d2bacc7fd52",
+          "candidateBlob": "b92fc1eb916001fae0eae69c696143254a7f85c9"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-control-kill-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "0903887c5a59d0947605520229c99fb16f3ab9aa",
+          "upstreamBlob": "fd65180d8ae8b6dd54cc7940f1c8193848613ddc",
+          "candidateBlob": "0903887c5a59d0947605520229c99fb16f3ab9aa"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-control-kill.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "4e7ab713c485f0de2d6b552f5b7383efa108d46b",
+          "upstreamBlob": "d7f215f61794706641e2903d71dddffb06aa5047",
+          "candidateBlob": "4e7ab713c485f0de2d6b552f5b7383efa108d46b"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "9a920b423a0106e5781773d5e113e22b1b05f669",
+          "upstreamBlob": "568293e5b9ca0f7e9920f4307fc212ce6266504e",
+          "candidateBlob": "9a920b423a0106e5781773d5e113e22b1b05f669"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry-persistence.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "c7db42623aa73ef6d07dfbcd317eed2a5a7b126c",
+          "upstreamBlob": "85bfb49a8eb84da147a40c44485e22aec95e5109",
+          "candidateBlob": "c7db42623aa73ef6d07dfbcd317eed2a5a7b126c"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry-persistence.types.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "7ee96bd12e5c327ecfd8620a4c6d28f737d6c231",
+          "upstreamBlob": "d02ffa6096d1274e1a32a9ce9ca0c4fde2e9822e",
+          "candidateBlob": "7ee96bd12e5c327ecfd8620a4c6d28f737d6c231"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry-run-launch.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "019bf1592bbb6ae8edfaed5d98c469338ffe2e4e",
+          "upstreamBlob": "c6f21dbb3852c0beac43f5ceb4a0550e1c6d411c",
+          "candidateBlob": "019bf1592bbb6ae8edfaed5d98c469338ffe2e4e"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry-run-manager.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "2bbd917734129c1a22aa8b161980dbbfaa440335",
+          "upstreamBlob": "3ca41047975ea151d7b30c1ac6a2687bc3112961",
+          "candidateBlob": "2bbd917734129c1a22aa8b161980dbbfaa440335"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry.store.kernel.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "0a0a90013be6761734f1161540e182a0688b8242",
+          "upstreamBlob": "9ff840ad2b24fa00207d0e1d2d819cfabb031def",
+          "candidateBlob": "0a0a90013be6761734f1161540e182a0688b8242"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry.store.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "965a293d73c261f44948093f785ebda40c87a6e7",
+          "upstreamBlob": "0c4d9cb4a51c3df460fe9e9c4ecbcc66ab504e7e",
+          "candidateBlob": "965a293d73c261f44948093f785ebda40c87a6e7"
+        },
+        {
+          "path": "src/agents/subagents/registry/subagent-registry.types.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "21c16da5a557e1b0cba06e148b7b1cc8855410c8",
+          "upstreamBlob": "4b7a1cadb5489ff95521cb837cad19c0bafa89dc",
+          "candidateBlob": "21c16da5a557e1b0cba06e148b7b1cc8855410c8"
+        },
+        {
+          "path": "src/agents/worktrees/run-lease-store.kernel.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "87b6ed412672be92354ee76017ed89bedeb207cf",
+          "upstreamBlob": "2cddcb1bf3fc222d11b8b61654439025a19db32e",
+          "candidateBlob": "87b6ed412672be92354ee76017ed89bedeb207cf"
+        },
+        {
+          "path": "src/agents/worktrees/run-lease.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "3eb2ef9915a26ce723f064d1536585876a68f5f1",
+          "upstreamBlob": "fa20807feb1cbdca65b14b234bbf86a20fad9382",
+          "candidateBlob": "3eb2ef9915a26ce723f064d1536585876a68f5f1"
+        },
+        {
+          "path": "src/cli/gateway-cli/gateway-call.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "3717147894ee9d37a1042aa85d87377627e48846",
+          "upstreamBlob": null,
+          "candidateBlob": "3717147894ee9d37a1042aa85d87377627e48846"
+        },
+        {
+          "path": "src/cli/gateway-cli/register.option-collisions.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "90a94834d04e9ade7488d1ce11c2a8f6bbffc89e",
+          "upstreamBlob": "c852138c3e137059dc0bfdd65e40c44e8d1c8aac",
+          "candidateBlob": "90a94834d04e9ade7488d1ce11c2a8f6bbffc89e"
+        },
+        {
+          "path": "src/cli/gateway-cli/register.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "0426c82cd9b35eb506be7ab96f580b8aa4e821be",
+          "upstreamBlob": "7a6349f04c57fcc64e6a68148543a68e4ce9f937",
+          "candidateBlob": "0426c82cd9b35eb506be7ab96f580b8aa4e821be"
+        },
+        {
+          "path": "src/cli/gateway-rpc.runtime.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "48f28212677ec2273734612eef02a5f1c9d5e6ab",
+          "upstreamBlob": "176e67fd9320a4960a9a0c37797176fec8c87358",
+          "candidateBlob": "48f28212677ec2273734612eef02a5f1c9d5e6ab"
+        },
+        {
+          "path": "src/cli/gateway-rpc.runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a1ab3a374abc71226dc61de41a7e55ad346cefac",
+          "upstreamBlob": "7f0afbd625c9a6a62f11d92719978395f5c695c7",
+          "candidateBlob": "a1ab3a374abc71226dc61de41a7e55ad346cefac"
+        },
+        {
+          "path": "src/cli/gateway-rpc.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "995b90f4ca867833d2a84e230d75ea71a924dc51",
+          "upstreamBlob": "d146725a5ee2a8ec9992e6714302bd56ae2b34d9",
+          "candidateBlob": "995b90f4ca867833d2a84e230d75ea71a924dc51"
+        },
+        {
+          "path": "src/cli/run-main-doctor-startup.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "fa2b24b25ca7a69dae9f376d6ede420a7e121237",
+          "upstreamBlob": null,
+          "candidateBlob": "fa2b24b25ca7a69dae9f376d6ede420a7e121237"
+        },
+        {
+          "path": "src/cli/run-main-doctor-startup.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "058a2b32953753f672a6b2db242fb67b6f06bd34",
+          "upstreamBlob": "bc8d4ca46432f1c17cb8180abaa4456b89c71431",
+          "candidateBlob": "058a2b32953753f672a6b2db242fb67b6f06bd34"
+        },
+        {
+          "path": "src/commands/doctor-migration-backup-artifacts.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "9d20abc4116498b9a6f1fadcf957a50576fb7375",
+          "upstreamBlob": "487f1391a3b7340ced302e2d2faa2847dfcf5648",
+          "candidateBlob": "9d20abc4116498b9a6f1fadcf957a50576fb7375"
+        },
+        {
+          "path": "src/commands/doctor-migration-backup-reuse.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "eae70df8e364b5a848071432c6114c9ecb5935ec",
+          "upstreamBlob": null,
+          "candidateBlob": "eae70df8e364b5a848071432c6114c9ecb5935ec"
+        },
+        {
+          "path": "src/commands/doctor-migration-backup.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "2fc578563884f961b9ee088ff93ef7f977aa311e",
+          "upstreamBlob": "badeddd8cd3552dc5fde9c5b86a847a92c4f3da0",
+          "candidateBlob": "f37e4fce3858aa482b160d8ba1d05255945da5be"
+        },
+        {
+          "path": "src/commands/doctor-migration-backup.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "2ed3f76b4c59897874a4d367fd083b83abe12009",
+          "upstreamBlob": "002b291c2326b3252b5acd8c7aa18db1f6580d90",
+          "candidateBlob": "2ed3f76b4c59897874a4d367fd083b83abe12009"
+        },
+        {
+          "path": "src/commands/doctor/shared/config-migration-result.provenance.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "ea99d608de6921c328d44d32c91a27f89323945f",
+          "sourceTree": "a4aadb99741d49d2fd3dd85a3c4b501a3eb7ecdf",
+          "sourceBlob": "acd2959fb114ce5ea3bb88a8fd0f2c7568aecbb8",
+          "upstreamBlob": null,
+          "candidateBlob": "acd2959fb114ce5ea3bb88a8fd0f2c7568aecbb8"
+        },
+        {
+          "path": "src/config/backup-rotation.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "1661f9186998f53ce5948b52c4498e1b47a9c721",
+          "upstreamBlob": "e2ad143a33c1610e5aff02839242711e5d990bc7",
+          "candidateBlob": "1661f9186998f53ce5948b52c4498e1b47a9c721"
+        },
+        {
+          "path": "src/config/io.types.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a4555f792b4794bfb1db70c7cfa7e7c67f30f2a1",
+          "upstreamBlob": "2c1cd7161cd4c32b7afecdded47f0bfae792a01c",
+          "candidateBlob": "a4555f792b4794bfb1db70c7cfa7e7c67f30f2a1"
+        },
+        {
+          "path": "src/config/io.write.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "b137420035d80fa48acaf80f4e9e74c80e9ebf2e",
+          "upstreamBlob": "72828e07a305f670e8413466b2b653779374c05d",
+          "candidateBlob": "b137420035d80fa48acaf80f4e9e74c80e9ebf2e"
+        },
+        {
+          "path": "src/dockerfile.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "1bdeedb045cc1a78232dab9563d6311bad7f2a80",
+          "upstreamBlob": "c0f28f366d807b80bbc1ab8b36ca3251abc5871f",
+          "candidateBlob": "1bdeedb045cc1a78232dab9563d6311bad7f2a80"
+        },
+        {
+          "path": "src/flows/doctor-health.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a0edbc4d75dc2af2fb2adbd935dc43591e6a692c",
+          "upstreamBlob": "667dfc9f89a943df2bf23d51c47c47924478b58a",
+          "candidateBlob": "a0edbc4d75dc2af2fb2adbd935dc43591e6a692c"
+        },
+        {
+          "path": "src/flows/doctor-health.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "0c1292f047ab3222b1ef2c28054a6155e0ce984c",
+          "upstreamBlob": "d48424baf3b03a7e69687e37695f931a3e970ce2",
+          "candidateBlob": "0c1292f047ab3222b1ef2c28054a6155e0ce984c"
+        },
+        {
+          "path": "src/gateway/agent-turn/agent-run-subagent.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "f4f3dc65f581245d4f99646f5584d86596788656",
+          "upstreamBlob": "13be62094559a78b37c9e65b81e1a7c7e58b27c6",
+          "candidateBlob": "f4f3dc65f581245d4f99646f5584d86596788656"
+        },
+        {
+          "path": "src/gateway/methods/core-descriptors.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "2886f3b527f5757913b95456dddc6f2d43845382",
+          "upstreamBlob": "48387a41305c56de5aad947b8f84da7c71845dc8",
+          "candidateBlob": "2886f3b527f5757913b95456dddc6f2d43845382"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5185ba9437e7879a4405028d1f15e64ec5a6bc40",
+          "upstreamBlob": null,
+          "candidateBlob": "5185ba9437e7879a4405028d1f15e64ec5a6bc40"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.mergeguez-parity.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "770c3337d4e0c3078f3e92408aa2e2119ec80841",
+          "upstreamBlob": null,
+          "candidateBlob": "770c3337d4e0c3078f3e92408aa2e2119ec80841"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.mergeguez-recovery.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "48222cc1cddfdea9c2b400ca89e68866239d0b83",
+          "upstreamBlob": null,
+          "candidateBlob": "48222cc1cddfdea9c2b400ca89e68866239d0b83"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "e1ed6650df2299c9c3eba4c2fcfaa565eef41e3e",
+          "upstreamBlob": null,
+          "candidateBlob": "e1ed6650df2299c9c3eba4c2fcfaa565eef41e3e"
+        },
+        {
+          "path": "src/gateway/server-managed-task-flow-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a353da31e358e28933d1766339131f628faf9b2e",
+          "upstreamBlob": null,
+          "candidateBlob": "a353da31e358e28933d1766339131f628faf9b2e"
+        },
+        {
+          "path": "src/gateway/server-methods-list.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "70b10d25a315b9bd8cd7a33f62a47bf946a5f2f5",
+          "upstreamBlob": "ec09961e8e6635b467fe448168885780ef2e591c",
+          "candidateBlob": "70b10d25a315b9bd8cd7a33f62a47bf946a5f2f5"
+        },
+        {
+          "path": "src/gateway/server-methods/agent-subagent-registration.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "3a2a90a4ea51544ce39904bc3aa02810bf31439f",
+          "upstreamBlob": "485a43c83d009735bcff4cbd380476bd7e410ce0",
+          "candidateBlob": "3a2a90a4ea51544ce39904bc3aa02810bf31439f"
+        },
+        {
+          "path": "src/gateway/server-methods/client-types.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "320e37b5c4c7e9d02b0fa082cec16e09e0a67752",
+          "upstreamBlob": "786c47b8e2ed792a7ef829a4008062a9f62456b6",
+          "candidateBlob": "320e37b5c4c7e9d02b0fa082cec16e09e0a67752"
+        },
+        {
+          "path": "src/gateway/server-methods/shared-types.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "473afd27dbbfe5ef6766c3bc48bc68d481fd0d9a",
+          "upstreamBlob": "175ba9ed3a7015e20a492b63fe6eae23859c4e70",
+          "candidateBlob": "473afd27dbbfe5ef6766c3bc48bc68d481fd0d9a"
+        },
+        {
+          "path": "src/gateway/server-methods/system.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "c477dcdfdc635fad483f9f28455c6fc399841afe",
+          "upstreamBlob": "fc317d26b63c8ffd95eedaed685d7c9db46b5ada",
+          "candidateBlob": "c477dcdfdc635fad483f9f28455c6fc399841afe"
+        },
+        {
+          "path": "src/gateway/server-plugin-in-process-authority.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "529bbc056ebe7d3138b3dd98cdc0613fbdc0ba51",
+          "upstreamBlob": "f08620e89b2bb871fda9bd9d4ea969ebde5da5aa",
+          "candidateBlob": "529bbc056ebe7d3138b3dd98cdc0613fbdc0ba51"
+        },
+        {
+          "path": "src/gateway/server-plugin-in-process-dispatch.types.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "052395ebe976ce1bca5aaf6c4bc088db758eecb2",
+          "upstreamBlob": "fd5ba625caca801ad95e1258a88e1c903048d335",
+          "candidateBlob": "052395ebe976ce1bca5aaf6c4bc088db758eecb2"
+        },
+        {
+          "path": "src/gateway/server-plugin-runtime-client.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5b9782e73e374e7193af11389085a6d94d67b7b9",
+          "upstreamBlob": "f419c5f7465accf00d54ab6014c7fd9d4be521f2",
+          "candidateBlob": "5b9782e73e374e7193af11389085a6d94d67b7b9"
+        },
+        {
+          "path": "src/gateway/server-plugin-subagent-runtime.overrides.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "954bdae5d209c9d75dbd43296638255126e1d084",
+          "upstreamBlob": "7455f74c8572e3cb6b99828b5f9d959b00fce5ac",
+          "candidateBlob": "954bdae5d209c9d75dbd43296638255126e1d084"
+        },
+        {
+          "path": "src/gateway/server-plugin-subagent-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "3be052dcfac1747f635844de7e32e9bf01f0d366",
+          "upstreamBlob": "6e4921e24b2160511374c82fa92a8c16f1408627",
+          "candidateBlob": "3be052dcfac1747f635844de7e32e9bf01f0d366"
+        },
+        {
+          "path": "src/gateway/server-plugins.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5b935d8336e266d4d3a501133bf4b2f4b01f6443",
+          "upstreamBlob": "95f8aaf3587849602e3da10ceec008f51b3a0e3e",
+          "candidateBlob": "5b935d8336e266d4d3a501133bf4b2f4b01f6443"
+        },
+        {
+          "path": "src/gateway/server-request-context.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "deb762c180a73cd61688444c00f6f1f3599818c5",
+          "upstreamBlob": "6fda76e03c0cb372a40d68eb17139f234f486884",
+          "candidateBlob": "deb762c180a73cd61688444c00f6f1f3599818c5"
+        },
+        {
+          "path": "src/gateway/server-request-context.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "b26245a6f8a64bebc81bea273dbceaeb1ccb9ae4",
+          "upstreamBlob": "8cd086dbe59f03de7b50d42a17364a1fb8f10889",
+          "candidateBlob": "b26245a6f8a64bebc81bea273dbceaeb1ccb9ae4"
+        },
+        {
+          "path": "src/gateway/server-runtime-state-prepare.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "ee775db35664f26b04a2542f1685909933947c68",
+          "upstreamBlob": "7535f333e53cd85e27935d6abc06119dc3237851",
+          "candidateBlob": "ee775db35664f26b04a2542f1685909933947c68"
+        },
+        {
+          "path": "src/gateway/server.auth.compat-baseline.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5175f11df9a53556a1c49d79f854431143e9f514",
+          "upstreamBlob": "572e8352cfa9c18578b1c57242312ce0d499812b",
+          "candidateBlob": "5175f11df9a53556a1c49d79f854431143e9f514"
+        },
+        {
+          "path": "src/gateway/server/ws-connection/connect-session.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "fd5f27d14a6ca1c978d8a613f02a5685fad806bf",
+          "upstreamBlob": "dcb33c5caf29b416a4ca74ad03b3d4c7658e105b",
+          "candidateBlob": "fd5f27d14a6ca1c978d8a613f02a5685fad806bf"
+        },
+        {
+          "path": "src/gateway/server/ws-types.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "8df2035864ca32aabff98113aed96abaf6595ddc",
+          "upstreamBlob": "db887564fae5c7986a592ab7b941cc8f986c97a5",
+          "candidateBlob": "8df2035864ca32aabff98113aed96abaf6595ddc"
+        },
+        {
+          "path": "src/infra/git-commit.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "04d288b19f9322dc90abd3cd29f16a14f5fbc550",
+          "upstreamBlob": "12ed310f8811b3f010229b81e5b629c34b1dc3ad",
+          "candidateBlob": "04d288b19f9322dc90abd3cd29f16a14f5fbc550"
+        },
+        {
+          "path": "src/infra/git-commit.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "4464e9fe1893ea129b6673abd5f87d504d4b79c6",
+          "upstreamBlob": "dbd3cedbb1be43d087895c87c4e533428c59179c",
+          "candidateBlob": "4464e9fe1893ea129b6673abd5f87d504d4b79c6"
+        },
+        {
+          "path": "src/plugin-sdk/config-mutation.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "b8ac3bd618cf6e6daeae98608155689f4b1d2e0d",
+          "upstreamBlob": "3caf4de38f6ed6f55b9eab26beb0ce8a114fed34",
+          "candidateBlob": "b8ac3bd618cf6e6daeae98608155689f4b1d2e0d"
+        },
+        {
+          "path": "src/plugins/loader-load-context.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5b0c4e883c30e4988bc6cb34e51dd1f774709126",
+          "upstreamBlob": "e497a747b287d89576446041de3722da8369fede",
+          "candidateBlob": "5b0c4e883c30e4988bc6cb34e51dd1f774709126"
+        },
+        {
+          "path": "src/plugins/loader-module-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "f89d8671404c0b136445da43fd9960ee9067e63f",
+          "upstreamBlob": "1c6692830856e313fcfb86fb424168fb7ddf30f6",
+          "candidateBlob": "f89d8671404c0b136445da43fd9960ee9067e63f"
+        },
+        {
+          "path": "src/plugins/loader.gateway-bindings.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "6413454f4aa323a5d4cf69dad6816883e995450c",
+          "upstreamBlob": "986ec72bdddcf90c5ed627501f5e1dfc8db62f8c",
+          "candidateBlob": "6413454f4aa323a5d4cf69dad6816883e995450c"
+        },
+        {
+          "path": "src/plugins/registry-runtime-task-flow.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "ed27f5f112e8476a60b4cba81208e1af51873dbc",
+          "upstreamBlob": null,
+          "candidateBlob": "ed27f5f112e8476a60b4cba81208e1af51873dbc"
+        },
+        {
+          "path": "src/plugins/registry-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "4dc27a59dd70d41244e8a25fd934a9f2663f7d6c",
+          "upstreamBlob": "f5bf7c083e464e24a392a7858d1ad31861a35174",
+          "candidateBlob": "4dc27a59dd70d41244e8a25fd934a9f2663f7d6c"
+        },
+        {
+          "path": "src/plugins/runtime/index.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "68149c26b0f92b1302e6d07c00a57fb0e6af937e",
+          "upstreamBlob": "02f217a7bf929c325d879479d6d0409a4f164d51",
+          "candidateBlob": "68149c26b0f92b1302e6d07c00a57fb0e6af937e"
+        },
+        {
+          "path": "src/plugins/runtime/types.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "75b5604ac3ab9ef3f0a7b3752cf7a1d91bc6d7c2",
+          "upstreamBlob": "1ba77516448680740207175aaea8a29e76ef2774",
+          "candidateBlob": "75b5604ac3ab9ef3f0a7b3752cf7a1d91bc6d7c2"
+        },
+        {
+          "path": "src/process/supervisor/service-child-cleanup.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "bf013b364e4f42e5f21ae838128b96c23652889f",
+          "upstreamBlob": "d9c46d397e1a0f9ce2e4137d2bc04665f049b692",
+          "candidateBlob": "bf013b364e4f42e5f21ae838128b96c23652889f"
+        },
+        {
+          "path": "src/process/supervisor/service-child-relay-host.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "2bf104cf879525a61ec172c3f04a5c4838e6fc3b",
+          "upstreamBlob": "92bc58b0ad641be25394eed2d46bf1c85c6456df",
+          "candidateBlob": "2bf104cf879525a61ec172c3f04a5c4838e6fc3b"
+        },
+        {
+          "path": "src/process/supervisor/service-child-relay-host.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5ce86be97b50e9534d74183aa1a967a6ef766d15",
+          "upstreamBlob": "f3b78da2ef14216016ce69c50c20c8589074b307",
+          "candidateBlob": "5ce86be97b50e9534d74183aa1a967a6ef766d15"
+        },
+        {
+          "path": "src/secrets/egress-proxy/proxy-forward.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "f6fd912039fe03c212e3284572f8bb25dba51495",
+          "upstreamBlob": "becc0ec285ffd1b19a1d6d5d0d3d429a624e4030",
+          "candidateBlob": "f6fd912039fe03c212e3284572f8bb25dba51495"
+        },
+        {
+          "path": "src/secrets/egress-proxy/proxy-forward.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "f4c6576a4c629bf4f8603746c8e0d90ca4c3a5f2",
+          "upstreamBlob": "45a596407fd2c53c23830db3fc7a71e36c5e95ac",
+          "candidateBlob": "f4c6576a4c629bf4f8603746c8e0d90ca4c3a5f2"
+        },
+        {
+          "path": "src/secrets/egress-proxy/response-headers.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "e3892282050e17737010bd6cccc764f2179144d2",
+          "upstreamBlob": "81e2151ab26c2dc4081b35d1db00901bda550c9d",
+          "candidateBlob": "e3892282050e17737010bd6cccc764f2179144d2"
+        },
+        {
+          "path": "src/secrets/egress-proxy/response-headers.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "57f397d09e5ce1defebda81332a2602e8a1d97d7",
+          "upstreamBlob": "11714002c31ebbb3400ce7effae8eab5be085785",
+          "candidateBlob": "57f397d09e5ce1defebda81332a2602e8a1d97d7"
+        },
+        {
+          "path": "src/state/openclaw-agent-db-lease.exited-owner.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "ea99d608de6921c328d44d32c91a27f89323945f",
+          "sourceTree": "a4aadb99741d49d2fd3dd85a3c4b501a3eb7ecdf",
+          "sourceBlob": "fca5a1d4f0d1778310f27b2ddb2877148a1cb7ed",
+          "upstreamBlob": null,
+          "candidateBlob": "fca5a1d4f0d1778310f27b2ddb2877148a1cb7ed"
+        },
+        {
+          "path": "src/state/openclaw-state-lease-heartbeat.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "5426070ac983b4c6899d3d450d5a0205862667bd",
+          "upstreamBlob": "0ddfa711df78973c3a3f9b9841ea8fb1ce49fc37",
+          "candidateBlob": "5426070ac983b4c6899d3d450d5a0205862667bd"
+        },
+        {
+          "path": "src/state/openclaw-state-read.types.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "f4ce3356b74d7046472c6fbeb82b0d6c14d756ca",
+          "upstreamBlob": "5e1a58fb581cab14ddc93c93c465fa3080ace20f",
+          "candidateBlob": "f4ce3356b74d7046472c6fbeb82b0d6c14d756ca"
+        },
+        {
+          "path": "src/state/openclaw-state-read.validation.managed-task-flow.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "dfa65b40ecaff4ef3cb6ba93093e7a882978f037",
+          "upstreamBlob": null,
+          "candidateBlob": "dfa65b40ecaff4ef3cb6ba93093e7a882978f037"
+        },
+        {
+          "path": "src/state/openclaw-state-read.validation.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "95f6e0afa8de0317b98b5e9961715db39023556d",
+          "upstreamBlob": "73f04124d2aa3b34bf14cf7a89e94a6e0e6c3618",
+          "candidateBlob": "95f6e0afa8de0317b98b5e9961715db39023556d"
+        },
+        {
+          "path": "src/state/openclaw-state-read.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "c1ee5c5ab69e1245454f300b20c6641101b36b24",
+          "upstreamBlob": "69ad71dd27cb930bdf4858d3eca5de74aa646120",
+          "candidateBlob": "c1ee5c5ab69e1245454f300b20c6641101b36b24"
+        },
+        {
+          "path": "src/state/openclaw-state-worker-contract.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "c4ee647c0930ded18788a94ef9a1517a1bcddec7",
+          "upstreamBlob": "f91904fd30c9283b7d8a4a819ef748d5d8d971f5",
+          "candidateBlob": "4843e269a88f2e6c5ffb50b2bc4c415d5999476e"
+        },
+        {
+          "path": "src/state/openclaw-state-worker-runtime.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "ebd27b5ec136378d94718549e3e68286f9232d61",
+          "upstreamBlob": "dbe6c2883f0e4d22bd0fa87b35c2890da188ecf2",
+          "candidateBlob": "ebd27b5ec136378d94718549e3e68286f9232d61"
+        },
+        {
+          "path": "src/tasks/managed-task-flow-contract.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "d41c9ed3b11ff30b7218bee9d35a2c1082b7a9f8",
+          "upstreamBlob": null,
+          "candidateBlob": "d41c9ed3b11ff30b7218bee9d35a2c1082b7a9f8"
+        },
+        {
+          "path": "src/tasks/managed-task-flow-host.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "69f2a7bd29f30a175889cfd6a3e59d47cd03198d",
+          "upstreamBlob": null,
+          "candidateBlob": "69f2a7bd29f30a175889cfd6a3e59d47cd03198d"
+        },
+        {
+          "path": "src/tasks/managed-task-flow-host.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "78cc910e1683ce58666a19edc4531e97576635a5",
+          "upstreamBlob": null,
+          "candidateBlob": "78cc910e1683ce58666a19edc4531e97576635a5"
+        },
+        {
+          "path": "src/tasks/managed-task-flow-kill-claim.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "8930d9fe4e1414490acb6e81c328ce58e24cd81b",
+          "upstreamBlob": null,
+          "candidateBlob": "8930d9fe4e1414490acb6e81c328ce58e24cd81b"
+        },
+        {
+          "path": "src/tasks/managed-task-flow.test-helpers.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a95743e39f7de3ed2853d610e3ce058bbb3cc5dd",
+          "upstreamBlob": null,
+          "candidateBlob": "a95743e39f7de3ed2853d610e3ce058bbb3cc5dd"
+        },
+        {
+          "path": "src/tasks/managed-task-flow.worker.integration.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "93284419b1bde20cf7ac5d20151f94d651ba6c04",
+          "upstreamBlob": null,
+          "candidateBlob": "93284419b1bde20cf7ac5d20151f94d651ba6c04"
+        },
+        {
+          "path": "src/tasks/managed-task-flow.worker.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "403e6380e83e8ef0a1a91bb76ec8b8aa605064af",
+          "upstreamBlob": null,
+          "candidateBlob": "403e6380e83e8ef0a1a91bb76ec8b8aa605064af"
+        },
+        {
+          "path": "src/version.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "b693d05c03c6e6e8c15ca4ce3f5653116c73e265",
+          "upstreamBlob": "c76a04f0c026d10d1c28a2098cc592c4a0b87315",
+          "candidateBlob": "b693d05c03c6e6e8c15ca4ce3f5653116c73e265"
+        },
+        {
+          "path": "src/version.ts",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "c90fcb2f2831337c77e1340978ff69d7ecfd7a2d",
+          "upstreamBlob": "403fc4ba793c985601ad4f76b00cca47b13c7b93",
+          "candidateBlob": "c90fcb2f2831337c77e1340978ff69d7ecfd7a2d"
+        },
+        {
+          "path": "test/a2ui-native-zod-regression.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "ac8ca204ac2179d12f172751daf85bbb8257ae74",
+          "upstreamBlob": null,
+          "candidateBlob": "ac8ca204ac2179d12f172751daf85bbb8257ae74"
+        },
+        {
+          "path": "test/body-parser-security.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "8242d42dbd39579825a768019c7f496207f44aaa",
+          "upstreamBlob": null,
+          "candidateBlob": "8242d42dbd39579825a768019c7f496207f44aaa"
+        },
+        {
+          "path": "test/discord-native-zod-regression.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "d53527118c208861eaa5778204bea7b395e6c651",
+          "upstreamBlob": null,
+          "candidateBlob": "d53527118c208861eaa5778204bea7b395e6c651"
+        },
+        {
+          "path": "test/fixtures/nowistay-list-properties-output-schema.json",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a9bf78496de8874325791d7f35585d666e8fa88d",
+          "upstreamBlob": null,
+          "candidateBlob": "a9bf78496de8874325791d7f35585d666e8fa88d"
+        },
+        {
+          "path": "test/http-cache-semantics-compat.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "ea99d608de6921c328d44d32c91a27f89323945f",
+          "sourceTree": "a4aadb99741d49d2fd3dd85a3c4b501a3eb7ecdf",
+          "sourceBlob": "52691bf24bae0f576f96e03a2e4375ab3ee0e429",
+          "upstreamBlob": null,
+          "candidateBlob": "52691bf24bae0f576f96e03a2e4375ab3ee0e429"
+        },
+        {
+          "path": "test/mcp-nowistay-schema-compatibility.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "a219ddbd37df2b65e5b27b0f509793a61cc04132",
+          "upstreamBlob": null,
+          "candidateBlob": "a219ddbd37df2b65e5b27b0f509793a61cc04132"
+        },
+        {
+          "path": "test/mcp-nowistay-sdk-regression.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "6fcdfdc08e3a16aef4f29c1a02e7509bba5a077c",
+          "upstreamBlob": null,
+          "candidateBlob": "6fcdfdc08e3a16aef4f29c1a02e7509bba5a077c"
+        },
+        {
+          "path": "test/msal-parent-compat.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "d2b6e4a2576d263725ccdd1c9047ae6415883192",
+          "upstreamBlob": null,
+          "candidateBlob": "d2b6e4a2576d263725ccdd1c9047ae6415883192"
+        },
+        {
+          "path": "test/scripts/check-package-patches.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "6fe2c7bd2563d802b304e23bd017305f3e59f85a",
+          "upstreamBlob": "6fe2c7bd2563d802b304e23bd017305f3e59f85a",
+          "candidateBlob": "3fd8ba0906af59494a48de61a5a712d388fab87b"
+        },
+        {
+          "path": "test/scripts/docker-build-helper.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "c8d3038f411d98c300a64d335851d10ee39b7612",
+          "upstreamBlob": "48f5f12ec32f96b70ff5f02f4d123ec3c4a9a253",
+          "candidateBlob": "c8d3038f411d98c300a64d335851d10ee39b7612"
+        },
+        {
+          "path": "test/scripts/generate-npm-package-lock.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "35c8cf6437a6f5bda45847863551535810702185",
+          "upstreamBlob": "35c8cf6437a6f5bda45847863551535810702185",
+          "candidateBlob": "989b5bf8a497427a081b441afdb4e27d13114d7e"
+        },
+        {
+          "path": "test/scripts/lint-suppressions.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "70f72425a2d91ea6ae4f25a17f494c652fe20ed8",
+          "upstreamBlob": "298ec1ed7976fda7fe61955e8c6c141a7a64b7fc",
+          "candidateBlob": "70f72425a2d91ea6ae4f25a17f494c652fe20ed8"
+        },
+        {
+          "path": "test/scripts/native-runner.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "1e70ddb2bb405e0b1305511e4231c23a417fcf27",
+          "upstreamBlob": null,
+          "candidateBlob": "b8e91df25892be06527641454dcd78cd74233e9a"
+        },
+        {
+          "path": "test/scripts/native-security-ownership.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "b669e8fa13f9b1a187f5e69a71a2b4db0c960e38",
+          "upstreamBlob": null,
+          "candidateBlob": "b669e8fa13f9b1a187f5e69a71a2b4db0c960e38"
+        },
+        {
+          "path": "test/scripts/native-security.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "651b7416fc8aecbbac578719f3c8aed181b2897b",
+          "upstreamBlob": null,
+          "candidateBlob": "651b7416fc8aecbbac578719f3c8aed181b2897b"
+        },
+        {
+          "path": "test/scripts/test-install-sh-docker.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "aed74ede72998c5a978426e5082051e1b43da941",
+          "upstreamBlob": "2eff75cfc82c06d3ff3bbaf1d7e6a7b9f2f327d5",
+          "candidateBlob": "aed74ede72998c5a978426e5082051e1b43da941"
+        },
+        {
+          "path": "test/scripts/tsdown-build.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "9f139ab85890994f1ab2e1143ae9562e760e795a",
+          "upstreamBlob": "2a061583c737f94f670a78fb5131fd8fe269750e",
+          "candidateBlob": "9f139ab85890994f1ab2e1143ae9562e760e795a"
+        },
+        {
+          "path": "test/scripts/verify-stable-main-closeout.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "ccfb7f739801a3b370d084aea42c04cc3b1e5cf3",
+          "upstreamBlob": "14a0a0b5036f6c1bda391de04bf35ab71c2d9ac9",
+          "candidateBlob": "ccfb7f739801a3b370d084aea42c04cc3b1e5cf3"
+        },
+        {
+          "path": "test/scripts/zod-legacy-closure.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "5477253f123893a94c782845339b3df4cab46e9a",
+          "upstreamBlob": null,
+          "candidateBlob": "5477253f123893a94c782845339b3df4cab46e9a"
+        },
+        {
+          "path": "test/undici-security.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "01e6659de76d278d2b069ec18c18ea4f039a3705",
+          "upstreamBlob": null,
+          "candidateBlob": "01e6659de76d278d2b069ec18c18ea4f039a3705"
+        },
+        {
+          "path": "test/vitest-projects-config.test-support.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "952ba5ed017214b3aed33fbbe2fb6c3d88eeca2a",
+          "upstreamBlob": "a469228f45d511e0f05f64c42e6b7aa395385f9b",
+          "candidateBlob": "68c51bb549ac48436da5172cf3459907873eec42"
+        },
+        {
+          "path": "test/vitest-projects-config.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "3c4708f4801ecb4d2575c9e28b15ac511f12f2a8",
+          "upstreamBlob": "14d37b8fdcbcdf6bf8c48c7d84f145f1e88668bb",
+          "candidateBlob": "3c4708f4801ecb4d2575c9e28b15ac511f12f2a8"
+        },
+        {
+          "path": "test/vitest/vitest.commands-light-paths.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "ab04965e653a125628615628269c4acee67c3e26",
+          "upstreamBlob": "ab04965e653a125628615628269c4acee67c3e26",
+          "candidateBlob": "c540d33b8339076656200f9ad13609ba8cbaaf9d"
+        },
+        {
+          "path": "test/vitest/vitest.database-worker-core-paths.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "d04c82cfb43e31e81abc07de22d6dc830cff7256",
+          "upstreamBlob": "cacccf148cbcdcdf855b5c57d42fa88acd1262d1",
+          "candidateBlob": "838c9900ca64b50c03e48f56e056803cd5a3e37c"
+        },
+        {
+          "path": "test/vitest/vitest.gateway-server-paths.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "71a5d1e75e34a9359ef3f99ca08fdb0e0f365404",
+          "upstreamBlob": "a01957f162ff47ce232403c39da1dc6bfc8a109a",
+          "candidateBlob": "116585a520a55312bd9d746a121e5beae06119fb"
+        },
+        {
+          "path": "test/vitest/vitest.tooling-isolated-paths.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "dfebc1ec6462b3b475e9c51c8e4b23faf9171f45",
+          "upstreamBlob": "dfebc1ec6462b3b475e9c51c8e4b23faf9171f45",
+          "candidateBlob": "fbdd6d2068ad83e53275eec561cc3e245277ba62"
+        },
+        {
+          "path": "test/zod-container-bounds.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+          "sourceTree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a",
+          "sourceBlob": "3d1617a4c4306ec4171d409ef73ed3c4819d5502",
+          "upstreamBlob": null,
+          "candidateBlob": "3d1617a4c4306ec4171d409ef73ed3c4819d5502"
+        },
+        {
+          "path": "ui/package.json",
+          "boundary": "container",
+          "sourceCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+          "sourceTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+          "sourceBlob": "82196638bcb88150956ca3c3a0405a4e3a94de01",
+          "upstreamBlob": "25a98d9a07f6a9d74f79b82bd84a2b195ef416fa",
+          "candidateBlob": "5e31552fee7c0ff1e96be209711e151f3e58a0de"
+        }
+      ]
+    }
+  ]
+}

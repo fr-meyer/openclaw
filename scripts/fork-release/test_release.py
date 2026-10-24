@@ -34,6 +34,7 @@ class ReleaseTests(unittest.TestCase):
         for upstream in (None, {"tag": "v2026.10.5"}, {"tag": "v2026.9.8"}):
             self.assertEqual(release.validation_node_version({"upstream": upstream}), "24.21.0")
         self.assertEqual(release.validation_node_version({"upstream": {"tag": "v2026.10.6"}}), "24.22.1")
+        self.assertEqual(release.validation_node_version({"upstream": {"tag": "v2026.10.7"}}), "24.22.1")
         workflow = (Path(__file__).resolve().parents[2] /
                     ".github/workflows/fork-release-pipeline.yml").read_text()
         self.assertIn("node-version: ${{ steps.candidate.outputs.node_version }}", workflow)

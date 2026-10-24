@@ -1,0 +1,66 @@
+{
+  "schema": "openclaw.fork-release.v1",
+  "repository": "fr-meyer/openclaw",
+  "candidate": "v2026.10.7-source-only",
+  "productionEligible": false,
+  "source": {
+    "baseCommit": "157d8c2bc3ea2fa183afdc11088e69690bf8e64e",
+    "baseTree": "0885f6473945093107db1406d9a2ad5259db10e7",
+    "commit": "ea99d608de6921c328d44d32c91a27f89323945f",
+    "tree": "a4aadb99741d49d2fd3dd85a3c4b501a3eb7ecdf",
+    "patches": [
+      {
+        "commit": "ea99d608de6921c328d44d32c91a27f89323945f",
+        "tree": "a4aadb99741d49d2fd3dd85a3c4b501a3eb7ecdf"
+      }
+    ],
+    "merge": {
+      "schema": "openclaw.fork-source-merge.v2",
+      "commonCommit": "fe06181dc5ecc01cf8904abbfc26925925efefbc",
+      "commonTree": "de35137f62064ebdfd93c7d146b78b05a0332ff1",
+      "forkCommit": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+      "forkTree": "83eb598cef22684193e967a08418d774aebd2e1e",
+      "integration": {
+        "commit": "4c5850e9d80d214d490dd0212ec62915ee1370aa",
+        "tree": "5a5e332d32a7fbeb23c7531cb84ac667b716819a"
+      },
+      "successors": [
+        {
+          "commit": "cfd2ae456c13effacfeff797a469c39437eeb092",
+          "tree": "eec073a798107e3da496269e040cdeaacd0d7f00"
+        },
+        {
+          "commit": "2ad647a6f62bebc07edd9b0f40848c223a131083",
+          "tree": "1bbb50f4d3f34cd6e0c1b4571ec1d35b2ac11000"
+        },
+        {
+          "commit": "ea99d608de6921c328d44d32c91a27f89323945f",
+          "tree": "a4aadb99741d49d2fd3dd85a3c4b501a3eb7ecdf"
+        }
+      ],
+      "securitySource": {
+        "commit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+        "tree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
+      },
+      "reconciliation": {
+        "path": "custom-patches/reconciliation-2026.10.7.json",
+        "blob": "89f127f993d1743bfd6b2aebc065fab81b6b4d81",
+        "sha256": "4323cb2b317d52aeaed8b8e2826082eadfce3cc51689bd0248fe61375bddf2e8"
+      }
+    }
+  },
+  "gates": {
+    "patchLifecycle": [
+      "src/state/openclaw-agent-db-lease.exited-owner.test.ts",
+      "src/commands/doctor/shared/config-migration-result.provenance.test.ts"
+    ],
+    "producerConsumer": [
+      "src/tasks/managed-task-flow.worker.integration.test.ts",
+      "src/commands/doctor-config-preflight.test.ts"
+    ]
+  },
+  "image": {
+    "architecture": "amd64",
+    "extensions": "codex,workboard"
+  }
+}

@@ -95,11 +95,30 @@ def git(source_dir, *args):
 
 
 def validate_merge_shape(source):
-    """Only an explicitly pinned two-parent integration, never an implicit DAG."""
+    """Only an explicitly pinned integration and bounded, declared successors."""
     merge = source["merge"]
-    need(type(merge) is dict and set(merge) == {
-        "commonCommit", "commonTree", "forkCommit", "forkTree", "reconciliation"},
+    fields = {"commonCommit", "commonTree", "forkCommit", "forkTree", "reconciliation"}
+    versioned = type(merge) is dict and "schema" in merge
+    need(type(merge) is dict and set(merge) == (fields | {
+        "schema", "integration", "successors", "securitySource"} if versioned else fields),
         "invalid merge proof fields")
+    if versioned:
+        need(merge["schema"] == "openclaw.fork-source-merge.v2", "unsupported merge proof schema")
+        for name in ("integration", "securitySource"):
+            item = merge[name]
+            need(type(item) is dict and set(item) == {"commit", "tree"}
+                 and all(matches(SHA, item[key]) for key in ("commit", "tree")),
+                 "invalid merge " + name)
+        successors = merge["successors"]
+        need(type(successors) is list and 1 <= len(successors) <= 16,
+             "invalid merge successor count")
+        for item in successors:
+            need(type(item) is dict and set(item) == {"commit", "tree"}
+                 and all(matches(SHA, item[key]) for key in ("commit", "tree")),
+                 "invalid merge successor")
+        commits = [merge["integration"]["commit"]] + [item["commit"] for item in successors]
+        need(len(set(commits)) == len(commits) and successors[-1] == {
+            "commit": source["commit"], "tree": source["tree"]}, "merge successor tip changed")
     for name in ("commonCommit", "commonTree", "forkCommit", "forkTree"):
         need(matches(SHA, merge[name]), "invalid merge " + name)
     proof = merge["reconciliation"]
@@ -112,7 +131,7 @@ def validate_merge_shape(source):
     need(matches(SHA, proof["blob"]) and matches(re.compile(r"[0-9a-f]{64}\Z"), proof["sha256"]),
          "invalid merge reconciliation identity")
     need(source["patches"] == [{"commit": source["commit"], "tree": source["tree"]}],
-         "merge proof requires exactly one integration commit")
+         "merge proof requires exactly one applied result")
 
 
 def check_merge_reconciliation(source, source_dir):
@@ -129,6 +148,9 @@ def check_merge_reconciliation(source, source_dir):
                          capture_output=True, check=True, env={**os.environ, "GIT_NO_LAZY_FETCH": "1"}).stdout
     need(sha256(raw) == proof["sha256"], "merge reconciliation digest changed")
     ledger = json.loads(raw)
+    if "schema" in merge:
+        check_v107_reconciliation(source, source_dir, ledger)
+        return
     need(type(ledger) is dict and set(ledger) == {
         "schema", "method", "upstream105", "fork105", "upstream106", "qualificationTransferred",
         "summary", "carryForwardCommits", "conflictPaths", "paths"}, "invalid merge ledger fields")
@@ -199,6 +221,119 @@ def check_merge_reconciliation(source, source_dir):
          "upstreamedExact": 0, "retired": 0}, "merge ledger summary changed")
 
 
+def check_v107_reconciliation(source, source_dir, ledger):
+    """Consume the committed 10.7 security-union ledger without rewriting it.
+
+    Dispositions remain independent source-review judgments. This validates the
+    exact source objects, complete result coverage and claimed byte-for-byte
+    carries, never transfers an older runtime qualification.
+    """
+    merge = source["merge"]
+    need(type(ledger) is dict and set(ledger) == {
+        "schema", "method", "upstream106", "fork106", "fork106Security", "upstream107",
+        "approvedSecuritySource", "previousInventory", "qualificationTransferred", "summary",
+        "paths", "devDependencyRefresh", "focusedTestSuccessor"}, "invalid 10.7 merge ledger fields")
+    need(ledger["schema"] == "openclaw-v107-fork-patch-reconciliation-v1"
+         and ledger["qualificationTransferred"] is False, "unsupported 10.7 ledger or qualification")
+    need(isinstance(ledger["method"], str) and bool(ledger["method"].strip()), "invalid 10.7 ledger method")
+    need(ledger["upstream106"] == merge["commonCommit"]
+         and ledger["fork106Security"] == merge["forkCommit"]
+         and ledger["upstream107"] == source["baseCommit"]
+         and ledger["approvedSecuritySource"] == merge["securitySource"]["commit"],
+         "10.7 ledger source binding changed")
+    need(matches(SHA, ledger["fork106"]) and git(source_dir, "merge-base", "--all",
+         ledger["fork106"], merge["forkCommit"]).splitlines() == [ledger["fork106"]],
+         "10.7 prior fork is not an ancestor")
+    need(ledger["previousInventory"] == "custom-patches/reconciliation-2026.10.6.json"
+         and git(source_dir, "cat-file", "-t", ledger["fork106"] + ":" + ledger["previousInventory"]) == "blob",
+         "10.7 prior inventory changed or missing")
+    proof_path = "custom-patches/reconciliation-2026.10.7.json"
+    need(merge["reconciliation"]["path"] == proof_path, "unsupported 10.7 ledger path")
+    support = {proof_path, "custom-patches/NEXT-RELEASE-2026.10.7.md"}
+    paths = ledger["paths"]
+    need(type(paths) is list and 1 <= len(paths) <= 4096, "invalid 10.7 ledger paths")
+    names = []
+    for item in paths:
+        need(type(item) is dict and set(item) == {
+            "path", "upstream106Blob", "fork106SecurityBlob", "upstream107Blob",
+            "approvedSecuritySourceBlob", "resultBlob", "upstream107Changed", "disposition", "reason"},
+            "invalid 10.7 ledger path fields")
+        name = item["path"]
+        need(isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_./@+-]+", name)
+             and not name.startswith("/") and not any(part in ("", ".", "..") for part in name.split("/")),
+             "invalid 10.7 ledger path")
+        need(type(item["upstream107Changed"]) is bool and isinstance(item["reason"], str)
+             and bool(item["reason"].strip()), "invalid 10.7 ledger decision")
+        names.append(name)
+    changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                  source["baseCommit"], source["commit"]).split("\0")))
+    fork_changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                      merge["commonCommit"], merge["forkCommit"]).split("\0")))
+    need(len(names) == len(set(names)) and set(names) == changed - support
+         and support <= changed and fork_changed <= set(names), "10.7 ledger coverage changed")
+    trees = {}
+    for key, commit in (("upstream106Blob", merge["commonCommit"]),
+                        ("fork106SecurityBlob", merge["forkCommit"]),
+                        ("upstream107Blob", source["baseCommit"]),
+                        ("approvedSecuritySourceBlob", merge["securitySource"]["commit"]),
+                        ("resultBlob", source["commit"])):
+        entries = git(source_dir, "--literal-pathspecs", "ls-tree", "-r", "-z", commit, "--", *names)
+        trees[key] = dict((name, header.split()) for entry in entries.split("\0") if entry
+                          for header, name in [entry.split("\t", 1)])
+    allowed = {"CARRIED_EXACT", "ADAPTED_RELEASE_BINDING", "SECURITY_MERGED_SOURCE",
+               "SECURITY_CARRIED_EXACT", "ADAPTED_DEV_DEPENDENCY_AND_TEST_BINDING",
+               "ADDED_FOCUSED_CONTRACT_TEST", "MERGED_SOURCE_REVIEWED",
+               "ADDED_DEV_DEPENDENCY_COMPATIBILITY_TEST", "ADAPTED_FOCUSED_TEST_OWNERSHIP",
+               "ADAPTED_COMPATIBILITY_TESTS"}
+    dispositions, overlaps, security_count = {}, [], 0
+    for item in paths:
+        name, disposition = item["path"], item["disposition"]
+        need(disposition in allowed, "unsupported 10.7 disposition")
+        for key, tree in trees.items():
+            # Null in the security column means this path was not selected for
+            # security carry, rather than asserting absence from that source.
+            if key == "approvedSecuritySourceBlob" and item[key] is None:
+                continue
+            entry = tree.get(name)
+            need((entry[2] if entry else None) == item[key], "10.7 ledger blob changed: " + name)
+        need(item["resultBlob"] is not None, "10.7 ledger cannot retire a path")
+        overlap = (name in trees["fork106SecurityBlob"] and trees["upstream106Blob"].get(name) !=
+                   trees["upstream107Blob"].get(name))
+        need(item["upstream107Changed"] == overlap, "10.7 upstream overlap changed: " + name)
+        if disposition == "CARRIED_EXACT":
+            need(trees["fork106SecurityBlob"].get(name) == trees["resultBlob"].get(name),
+                 "10.7 exact fork carry changed: " + name)
+        if disposition.startswith("SECURITY_"):
+            need(item["approvedSecuritySourceBlob"] is not None, "10.7 security carry has no source")
+        if disposition == "SECURITY_CARRIED_EXACT":
+            need(trees["approvedSecuritySourceBlob"].get(name) == trees["resultBlob"].get(name),
+                 "10.7 exact security carry changed: " + name)
+        security_count += item["approvedSecuritySourceBlob"] is not None
+        if disposition == "MERGED_SOURCE_REVIEWED":
+            need(overlap, "10.7 reviewed overlap is not an upstream change")
+            overlaps.append(name)
+        dispositions[disposition] = dispositions.get(disposition, 0) + 1
+    summary = ledger["summary"]
+    need(type(summary) is dict and set(summary) == {
+        "paths", "previousForkPaths", "newUpstreamOverlapPaths", "securityCarryPaths",
+        "textualConflicts", "dispositions", "upstreamedClaimed", "retired"}
+         and summary["paths"] == len(paths) and summary["previousForkPaths"] == len(fork_changed)
+         and summary["newUpstreamOverlapPaths"] == sorted(overlaps)
+         and summary["securityCarryPaths"] == security_count and summary["dispositions"] == dispositions
+         and type(summary["textualConflicts"]) is int and summary["textualConflicts"] >= 0
+         and summary["upstreamedClaimed"] == 0 and summary["retired"] == 0,
+         "10.7 ledger summary changed")
+    successor = ledger["focusedTestSuccessor"]
+    need(type(successor) is dict and successor.get("base") in
+         [item["commit"] for item in merge["successors"][:-1]]
+         and successor.get("runtimeChanged") is False and successor.get("dependenciesChanged") is False,
+         "10.7 focused-test successor binding changed")
+    focused_paths = git(source_dir, "diff", "--name-only", "--no-renames",
+                        successor["base"], source["commit"]).splitlines()
+    need(all(matches(TEST_PATH, name) or name.startswith("test/") or name in support
+             for name in focused_paths), "10.7 focused successor changed runtime or dependencies")
+
+
 def check_merge_ancestry(source, source_dir):
     """Missing shallow ancestry must not invent a unique common ancestor."""
     common = source["merge"]["commonCommit"]
@@ -222,8 +357,20 @@ def check_source_graph(source, source_dir):
         for name in ("common", "fork"):
             need(git(source_dir, "rev-parse", merge[name + "Commit"] + "^{tree}") == merge[name + "Tree"],
                  "merge " + name + " tree changed")
-        need(git(source_dir, "show", "-s", "--format=%P", source["commit"]).split() ==
+        integration = merge.get("integration", {"commit": source["commit"], "tree": source["tree"]})
+        need(git(source_dir, "rev-parse", integration["commit"] + "^{tree}") == integration["tree"],
+             "merge integration tree changed")
+        need(git(source_dir, "show", "-s", "--format=%P", integration["commit"]).split() ==
              [merge["forkCommit"], source["baseCommit"]], "merge ordered parents changed")
+        if "schema" in merge:
+            need(git(source_dir, "rev-parse", merge["securitySource"]["commit"] + "^{tree}") ==
+                 merge["securitySource"]["tree"], "merge security source tree changed")
+            parent = integration["commit"]
+            for item in merge["successors"]:
+                need(git(source_dir, "rev-parse", item["commit"] + "^{tree}") == item["tree"]
+                     and git(source_dir, "show", "-s", "--format=%P", item["commit"]) == parent,
+                     "merge successor parent or tree changed")
+                parent = item["commit"]
         need(git(source_dir, "merge-base", "--all", merge["forkCommit"], source["baseCommit"]).splitlines() ==
              [merge["commonCommit"]], "merge common ancestor changed or unavailable")
         check_merge_reconciliation(source, source_dir)
@@ -576,9 +723,9 @@ def human_status(state):
 
 
 def validation_node_version(inventory):
-    """Keep retained workflow runtime; pin the separate stable 10.6 lane."""
+    """Keep retained workflow runtime; select the supported future stable lanes."""
     upstream = inventory.get("upstream")
-    return "24.22.1" if upstream and upstream["tag"] == "v2026.10.6" else "24.21.0"
+    return "24.22.1" if upstream and upstream["tag"] in ("v2026.10.6", "v2026.10.7") else "24.21.0"
 
 
 def main():
