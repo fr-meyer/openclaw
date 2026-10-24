@@ -1,5 +1,102 @@
 # Hosted image build and retained-image qualification
 
+## Private hosted retention preparation (not activated)
+
+The optional `.github/actions/retain-private-oci` composite is disabled by
+default and has no workflow caller. Existing build triggers, permissions and
+application pins are unchanged. Activation is a separate operator action; this
+source does not create cloud identities, IAM grants, secrets or storage.
+
+The intended caller step is named `Retain private OCI archive`, after successful
+Docker output and the existing resource collector's completion. Its condition
+must permit private retention when privacy refuses, but never run after a failed
+Docker solve. The caller supplies an independently approved exact workflow SHA,
+source/tree and private input/output paths. It needs `contents: read`,
+`id-token: write` and `attestations: write`. Those additional permissions are not
+present in the current build workflow.
+
+The preparation keeps these responsibilities separate:
+
+1. `private_oci_bundle.py prepare-from-build` streams a canonical uncompressed
+   tar without copying the OCI blobs. It contains five bounded original JSON
+   documents and the complete unchanged OCI graph. The whole archive, including
+   tar overhead, is at most 2 GiB. Its write-once receipt is outside the archive
+   directory. No seal or successful privacy result is fabricated.
+2. The SHA-pinned existing `actions/attest` action signs the archive digest with
+   the original GitHub workflow/run identity. This publishes provenance and the
+   archive hash, not image bytes, cloud paths, capabilities or suspect values.
+   It does not push an image or create a public artifact.
+3. `private_oci_signing.py` defaults to offline canonical-request preparation.
+   Explicit future signing uses the operator's existing identity and the fixed
+   IAM Credentials `signBlob` API; it does not impersonate a service account,
+   create keys or change access. PUT signatures include the exact object,
+   method, expiry, `x-goog-content-length-range: 1,2147483648` and
+   `x-goog-if-generation-match: 0`. GET signatures pin the object generation.
+   Only private write-once capability envelopes receive the URL.
+4. `private_oci_transfer.py` defaults to validation. Explicit PUT/GET streams
+   pinned bytes, refuses redirects/retries and retains uncertain outcomes. Its
+   plan and capability are private, and diagnostics never print URLs, headers,
+   OAuth tokens or response bodies. A failed acknowledgement is reconciled
+   against the exact object generation; it does not authorize a rebuild.
+
+The single temporary secret contains a closed capability envelope, not a general
+GCP credential. A repository-level secret is not isolated to one workflow by
+itself. The approved activation must restrict the event, actor, source, workflow
+head and run attempt, and preserve the current secretless candidate-build
+boundary. The composite exposes its capability only to the final transfer step.
+
+The provider's size-range header is a server-side PUT constraint. Local parsing
+does not authenticate a signature or prove live enforcement. The signing
+helper's explicit `probe` mode uses only an approved 8-byte plan with a
+120-second capability: oversized body must fail, a changed signed range must
+fail authentication, the valid body must create a generation, and a second
+create must fail. Unexpected responses stop immediately. It never deletes the
+probe. A real image capability must not be issued until this separately
+authorized native test passes and the probe generation is reconciled and
+removed after its upload URL expires. Synthetic tests are not that proof.
+
+For later inspection, `hosted_image_context.py prepare` is offline and cannot
+authenticate provenance. Explicit `capture` runs the installed native GitHub
+attestation verifier and fixed canonical run/job API owner. It checks the
+original workflow/ref/run/attempt, successful Docker step, actual attested tar,
+unchanged OCI closure and original resource evidence. A failed upload step may
+remain failed while the same signed bytes are recovered; failed Docker output
+cannot pass. Caller-supplied `authenticated: true` JSON is not accepted.
+
+Linux verification uses the separately approved, hash-pinned official GitHub CLI
+2.98.0 at the tooling checkout's
+`.local/qualification-tools/gh-2.98.0/bin/gh`. Its exact 41,377,954-byte executable
+is verified before use. There is no caller-selected executable, PATH fallback or
+system package upgrade. Preparing this source does not download or install it on
+the receiver. Native verification uses the existing operator login; credentials
+are never forwarded to the candidate image.
+
+The existing coordinator has an explicit hosted mode:
+
+```bash
+python3 scripts/fork-release/gcp_image_reinspection.py --mode hosted \
+  --plan /private/hosted-plan.json --plan-sha256 PLAN_SHA256 \
+  --state-dir /private/owner/32_HEX_INSPECTION_ID \
+  --resource-admission /private/fresh-admission.json \
+  --resource-admission-sha256 ADMISSION_SHA256
+```
+
+The outer hosted plan binds the nested original-hosted plan and its hash; the
+signed archive supplies original resources. No CLI override may replace them.
+The local inspection ID is not a fabricated GCP build operation. Explicit
+`capture-retained-hosted-origin`, `qualify-retained-hosted` and
+`verify-retained-hosted` image-owner commands reuse existing privacy, static,
+resource, native runtime and layout checks. They retain original producer facts
+separately from the later inspector and reauthenticate on verification. GCP
+remains the driver default and its entrypoints reject hosted plans.
+
+Private bytes must arrive on existing test storage with their archive hash,
+generation and size verified. Native execution remains behind clean complete
+privacy, static checks and fresh owner admission. Qualified output feeds the
+existing deployment handoff without rebuilding scanner-only changes. Production
+cutover remains separate. No real image or live provider qualification is
+established by this source preparation.
+
 ## Prepared private retained-image route
 
 This source implements a private GCP reinspection entry point; no build,

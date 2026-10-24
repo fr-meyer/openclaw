@@ -34,6 +34,8 @@ OP = re.compile(r"[0-9a-f]{32}\Z")
 BASE_FIELDS = {"schema", "manifestPath", "inventoryPath", "sourceDir", "ociDir", "executionPath",
                "originalToolingSha", "executionSha256", "inspectionToolingSha"}
 OPTIONAL_BASE_FIELDS = {"smokeTransport"}
+HOSTED_FIELDS = {"schema", "hostedPlanPath", "hostedPlanSha256", "manifestPath", "inventoryPath",
+                 "sourceDir", "ociDir", "inspectionToolingSha"}
 OUTPUTS = ("origin.json", "static.json", "diagnostics.json", "receipt.json", "native.json",
            "native-attempt.json", "native-execution.json", "admission.json")
 TIMEOUT = 900
@@ -121,23 +123,38 @@ def outside(left, right):
          "state.overlaps_input")
 
 
-def prepare(plan_path, plan_pin, state, original_resources, resources_pin):
+def prepare(plan_path, plan_pin, state, original_resources, resources_pin, mode="gcp"):
     raw = pinned(plan_path, plan_pin)
     plan = json.loads(raw, object_pairs_hook=hosted_reinspection._pairs)
-    need(isinstance(plan, dict) and BASE_FIELDS <= set(plan) <= BASE_FIELDS | OPTIONAL_BASE_FIELDS and
-         plan.get("schema") == "openclaw.retained-gcp-input.v1" and
+    need(mode in ("gcp", "hosted"), "plan.mode_invalid")
+    fields = HOSTED_FIELDS if mode == "hosted" else BASE_FIELDS
+    need(isinstance(plan, dict) and fields <= set(plan) <= fields | OPTIONAL_BASE_FIELDS and
+         plan.get("schema") == f"openclaw.retained-{mode}-input.v1" and
          ("smokeTransport" not in plan or plan["smokeTransport"] == "loaded"), "plan.invalid")
-    need(all(isinstance(plan[k], str) and SHA.fullmatch(plan[k]) for k in
-             ("originalToolingSha", "inspectionToolingSha")) and
-         isinstance(plan.get("executionSha256"), str) and HEX.fullmatch(plan["executionSha256"]),
-         "plan.identity_invalid")
-    for key in ("manifestPath", "inventoryPath", "sourceDir", "ociDir", "executionPath"):
+    if mode == "hosted":
+        import hosted_image_context
+        need(original_resources is None and resources_pin is None, "hosted.resource_override")
+        nested, _ = hosted_image_context.plan_at(plan["hostedPlanPath"], plan["hostedPlanSha256"])
+        need(all(plan[key] == nested[key] for key in
+                 ("manifestPath", "inventoryPath", "sourceDir", "ociDir", "inspectionToolingSha")), "hosted.plan_mismatch")
+        original_resources, resources_pin = nested["resourcesPath"], nested["resourcesSha256"]
+        identity = {"hostedPlanSha256": plan["hostedPlanSha256"], "archiveSha256": nested["archiveSha256"],
+                    "originalProducer": {"workflowSha": nested["workflowSha"], "runId": nested["runId"], "attempt": nested["attempt"]}}
+        original_parent = Path(nested["originPath"]).parent
+    else:
+        need(all(isinstance(plan[k], str) and SHA.fullmatch(plan[k]) for k in
+                 ("originalToolingSha", "inspectionToolingSha")) and
+             isinstance(plan.get("executionSha256"), str) and HEX.fullmatch(plan["executionSha256"]), "plan.identity_invalid")
+        identity = {"executionSha256": plan["executionSha256"]}
+        original_parent = Path(plan["executionPath"]).parent
+    for key in ("manifestPath", "inventoryPath", "sourceDir", "ociDir") + (
+            ("hostedPlanPath",) if mode == "hosted" else ("executionPath",)):
         need(isinstance(plan[key], str), "plan.path_invalid")
         canonical(plan[key])
     gcp_build.clean_checkout(TOOLING, plan["inspectionToolingSha"])
     state = canonical(state)
     need(OP.fullmatch(state.name), "state.operation_invalid")
-    for path in (Path(plan["sourceDir"]), Path(plan["ociDir"]), Path(plan["executionPath"]).parent):
+    for path in (Path(plan["sourceDir"]), Path(plan["ociDir"]), original_parent):
         outside(state, path)
     parent = state.parent.lstat()
     need(stat.S_ISDIR(parent.st_mode) and parent.st_uid == os.getuid() and parent.st_mode & 0o077 == 0,
@@ -149,9 +166,9 @@ def prepare(plan_path, plan_pin, state, original_resources, resources_pin):
              (state / "intent.json").exists(), "state.not_owned_operation")
     else:
         state.mkdir(mode=0o700)
-    intent = {"schema": "openclaw.gcp-image-reinspection-intent.v1", "operationId": state.name,
+    intent = {"schema": f"openclaw.{mode}-image-reinspection-intent.v1", "operationId": state.name,
               "planSha256": plan_pin, "inspectionToolingSha": plan["inspectionToolingSha"],
-              "executionSha256": plan["executionSha256"], "originalResourcesSha256": resources_pin}
+              **identity, "originalResourcesSha256": resources_pin}
     write_once(state / "intent.json", encoded(intent))
     write_once(state / "base-plan.json", raw)
     write_once(state / "original-resources.json", resources)
@@ -227,7 +244,8 @@ def resource_admission(path, pin, captured, state, clock):
 
 
 def summary(state, captured, checks, status, reason=None, handoff=None):
-    result = {"schema": "openclaw.gcp-image-reinspection-summary.v1", "operationId": state.name,
+    hosted = document(state / "intent.json")[0]["schema"] == "openclaw.hosted-image-reinspection-intent.v1"
+    result = {"schema": f"openclaw.{'hosted' if hosted else 'gcp'}-image-reinspection-summary.v1", "operationId": state.name,
               "status": status, "checks": checks, "reason": reason, "productionAuthorized": False,
               "buildExecuted": False, "transferExecuted": False, "hostChecksPerformed": False,
               "qualified": status == "qualified"}
@@ -244,8 +262,10 @@ def summary(state, captured, checks, status, reason=None, handoff=None):
 
 
 def inspect(plan_path, plan_pin, state, *, admission_path=None, admission_pin=None,
-            original_resources, resources_pin, node=None, execute=command, clock=now):
-    plan, state, _ = prepare(plan_path, plan_pin, state, original_resources, resources_pin)
+            original_resources=None, resources_pin=None, node=None, execute=command, clock=now, mode="gcp"):
+    plan, state, intent = prepare(plan_path, plan_pin, state, original_resources, resources_pin, mode)
+    resources_pin = intent["originalResourcesSha256"]
+    outputs = (*OUTPUTS, "hosted-authentication.json") if mode == "hosted" else OUTPUTS
     node = node or shutil.which("node")
     need(node is not None, "tool.node_missing")
     node = str(Path(node).resolve())
@@ -255,19 +275,25 @@ def inspect(plan_path, plan_pin, state, *, admission_path=None, admission_pin=No
     owner = [node, str(HERE / "image.mjs")]
     checks = {key: "blocked" for key in ("metadata", "resources", "privacy", "static", "native")}
     capture_path = state / "capture.json"
-    capture = stage(state, "capture", [*owner, "capture-retained-gcp-origin", str(state / "base-plan.json"),
+    capture = stage(state, "capture", [*owner, f"capture-retained-{mode}-origin", str(state / "base-plan.json"),
                                       str(capture_path)], state, ("capture.json",), execute, clock)
     if capture["status"] != "completed" or capture["exitCode"] != 0 or not capture_path.exists():
         return summary(state, None, checks, "blocked", "metadata.unconfirmed")
     captured, _ = document(capture_path)
-    need(captured.get("schema") == "openclaw.retained-gcp-build-context.v1" and
+    need(captured.get("schema") == f"openclaw.retained-{mode}-build-context.v1" and
          captured.get("status") == "captured" and captured.get("qualified") is False and
          captured.get("productionAuthorized") is False and
-         captured.get("executionSha256") == plan["executionSha256"] and
          captured.get("inspectionToolingSha") == plan["inspectionToolingSha"] and
          isinstance(captured.get("sourceSha"), str) and SHA.fullmatch(captured["sourceSha"]) and
          isinstance(captured.get("indexDigest"), str) and DIGEST.fullmatch(captured["indexDigest"]),
          "metadata.identity_invalid")
+    if mode == "hosted":
+        need(captured.get("originAuthenticated") is True and
+             captured.get("hostedPlanSha256") == plan["hostedPlanSha256"] and
+             captured.get("resourcesSha256") == resources_pin and captured.get("archiveSha256") == intent["archiveSha256"] and
+             captured.get("producer") == intent["originalProducer"], "hosted.authentication_mismatch")
+    else:
+        need(captured.get("executionSha256") == plan["executionSha256"], "metadata.identity_invalid")
     checks["metadata"] = "passed"
     output_dir = state / "qualification"
     privacy_path = state / "privacy.json"
@@ -287,8 +313,8 @@ def inspect(plan_path, plan_pin, state, *, admission_path=None, admission_pin=No
              "state.qualification_inputs_missing")
         saved_privacy = stage(state, "privacy", privacy_args, state, ("privacy.json",), execute, clock)
         need(saved_privacy["status"] == "completed", "state.privacy_unconfirmed")
-        saved_result = stage(state, "qualify", [*owner, "qualify-retained-gcp",
-                             str(qualify_plan_path), str(output_dir)], output_dir, OUTPUTS, execute, clock,
+        saved_result = stage(state, "qualify", [*owner, f"qualify-retained-{mode}",
+                             str(qualify_plan_path), str(output_dir)], output_dir, outputs, execute, clock,
                              inputs=(qualify_plan_path,))
         if (saved_result["status"] == "completed" and
                 saved_result["exitCode"] != 0 and not (output_dir / "native-attempt.json").exists()):
@@ -303,7 +329,7 @@ def inspect(plan_path, plan_pin, state, *, admission_path=None, admission_pin=No
         if not receipt_path.exists() or not (output_dir / "admission.json").exists():
             checks["native"] = "uncertain"
             return summary(state, captured, checks, "blocked", "native.outcome_uncertain")
-        verify_args = [*owner, "verify-retained-gcp", str(qualify_plan_path), str(receipt_path)]
+        verify_args = [*owner, f"verify-retained-{mode}", str(qualify_plan_path), str(receipt_path)]
         if not verify_owner(verify_args, execute):
             checks["native"] = "uncertain"
             return summary(state, captured, checks, "blocked", "native.verification_failed")
@@ -340,7 +366,7 @@ def inspect(plan_path, plan_pin, state, *, admission_path=None, admission_pin=No
     except (OSError, ValueError, TypeError):
         checks["resources"] = "failed"
         return summary(state, captured, checks, "blocked", "resource.admission_refused")
-    qualify_plan = {**plan, "schema": "openclaw.retained-gcp-qualification.v1",
+    qualify_plan = {**plan, "schema": f"openclaw.retained-{mode}-qualification.v1",
                     "privacyPath": str(privacy_path), "privacySha256": privacy_hash,
                     "resourceAdmissionPath": str(admitted_path), "resourceAdmissionSha256": admission_pin,
                     "originalResourcesPath": str(state / "original-resources.json"),
@@ -351,8 +377,8 @@ def inspect(plan_path, plan_pin, state, *, admission_path=None, admission_pin=No
     info = output_dir.lstat()
     need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and info.st_mode & 0o077 == 0 and
          not any(output_dir.iterdir()), "state.qualification_output_not_empty")
-    result = stage(state, "qualify", [*owner, "qualify-retained-gcp", str(qualify_plan_path), str(output_dir)],
-                   output_dir, OUTPUTS, execute, clock, inputs=(qualify_plan_path,))
+    result = stage(state, "qualify", [*owner, f"qualify-retained-{mode}", str(qualify_plan_path), str(output_dir)],
+                   output_dir, outputs, execute, clock, inputs=(qualify_plan_path,))
     if (output_dir / "static.json").exists():
         static, _ = document(output_dir / "static.json")
         need(all(static.get(key) == captured[key] for key in ("sourceSha", "indexDigest")) and
@@ -366,7 +392,7 @@ def inspect(plan_path, plan_pin, state, *, admission_path=None, admission_pin=No
             checks["native"] = "uncertain"
         return summary(state, captured, checks, "failed", "qualification.not_passed")
     need(clean and checks["static"] == "passed" and receipt_path.exists(), "qualification.inconsistent")
-    if not verify_owner([*owner, "verify-retained-gcp", str(qualify_plan_path), str(receipt_path)], execute):
+    if not verify_owner([*owner, f"verify-retained-{mode}", str(qualify_plan_path), str(receipt_path)], execute):
         checks["native"] = "uncertain"
         return summary(state, captured, checks, "blocked", "native.verification_failed")
     receipt, receipt_hash = document(receipt_path)
@@ -391,23 +417,28 @@ def finish_handoff(state, captured, checks, receipt, receipt_hash, output_dir):
     return summary(state, captured, checks, "qualified", handoff=handoff)
 
 
-def main():
+def main(argv=None, execute=command, clock=now):
     parser = argparse.ArgumentParser(description=__doc__)
-    for field in ("plan", "plan-sha256", "state-dir", "original-resources", "original-resources-sha256"):
+    for field in ("plan", "plan-sha256", "state-dir"):
         parser.add_argument("--" + field, required=True)
+    parser.add_argument("--mode", choices=("gcp", "hosted"), default="gcp")
+    parser.add_argument("--original-resources")
+    parser.add_argument("--original-resources-sha256")
     parser.add_argument("--resource-admission")
     parser.add_argument("--resource-admission-sha256")
     parser.add_argument("--node")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         result = inspect(args.plan, args.plan_sha256, args.state_dir,
                          admission_path=args.resource_admission, admission_pin=args.resource_admission_sha256,
                          original_resources=args.original_resources, resources_pin=args.original_resources_sha256,
-                         node=args.node)
+                         node=args.node, mode=args.mode, execute=execute, clock=clock)
         print(json.dumps(result, sort_keys=True))
         return 0 if result["qualified"] else 1
     except (OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError):
-        print('{"schema":"openclaw.gcp-image-reinspection-summary.v1","status":"refused","qualified":false,"buildExecuted":false,"transferExecuted":false,"productionAuthorized":false,"checks":{"metadata":"failed","resources":"blocked","privacy":"blocked","static":"blocked","native":"blocked"}}')
+        print(json.dumps({"schema": f"openclaw.{args.mode}-image-reinspection-summary.v1", "status": "refused",
+                          "qualified": False, "buildExecuted": False, "transferExecuted": False, "productionAuthorized": False,
+                          "checks": {"metadata": "failed", "resources": "blocked", "privacy": "blocked", "static": "blocked", "native": "blocked"}}))
         return 1
 
 

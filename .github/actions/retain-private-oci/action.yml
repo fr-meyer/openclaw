@@ -1,0 +1,191 @@
+name: Retain one private OCI archive
+description: Disabled by default; prepare, attest and transfer an unqualified OCI archive without granting promotion
+inputs:
+  enabled:
+    description: Explicit separately authorized private retention
+    required: false
+    default: "false"
+  approved-workflow-sha:
+    description: Independently approved exact caller workflow commit, never inferred
+    required: false
+  source-sha:
+    description: Exact source commit
+    required: false
+  source-tree:
+    description: Exact source tree
+    required: false
+  built-at:
+    description: Original reproducible build-input timestamp
+    required: false
+  manifest:
+    description: Exact source manifest file
+    required: false
+  inventory:
+    description: Exact source patch inventory file
+    required: false
+  build-metadata:
+    description: Original successful BuildKit metadata file
+    required: false
+  resources:
+    description: Original completed hosted resource observation
+    required: false
+  oci-directory:
+    description: Original OCI layout, not runtime state
+    required: false
+  output-directory:
+    description: New private archive directory below the runner temporary directory
+    required: false
+  upload-capability:
+    description: Private JSON capability envelope; supply only from an approved temporary secret
+    required: false
+outputs:
+  archive-sha256:
+    description: Original archive digest; not an image qualification
+    value: ${{ steps.prepare.outputs.sha256 }}
+  archive-bytes:
+    description: Complete archive size
+    value: ${{ steps.prepare.outputs.bytes }}
+runs:
+  using: composite
+  steps:
+    - name: Check separately authorized private scope
+      id: scope
+      shell: bash
+      env:
+        RETAIN_ENABLED: ${{ inputs.enabled }}
+        APPROVED_WORKFLOW_SHA: ${{ inputs.approved-workflow-sha }}
+        ACTUAL_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        SOURCE_SHA: ${{ inputs.source-sha }}
+        SOURCE_TREE: ${{ inputs.source-tree }}
+      run: |
+        python3 - <<'PY_PRIVATE_SCOPE'
+        import os
+        import re
+        from pathlib import Path
+
+        enabled = os.environ.get("RETAIN_ENABLED", "false")
+        if enabled not in ("false", "true"):
+            raise SystemExit("Private retention scope refused")
+        if enabled == "true":
+            expected = os.environ.get("APPROVED_WORKFLOW_SHA", "")
+            if not (
+                re.fullmatch(r"[0-9a-f]{40}", expected) and
+                expected == os.environ.get("ACTUAL_WORKFLOW_SHA") == os.environ.get("GITHUB_SHA") and
+                os.environ.get("GITHUB_REPOSITORY") == "fr-meyer/openclaw" and
+                os.environ.get("GITHUB_ACTOR") == "fr-meyer" and
+                os.environ.get("GITHUB_EVENT_NAME") in ("workflow_dispatch", "push") and
+                os.environ.get("GITHUB_RUN_ATTEMPT") == "1" and
+                re.fullmatch(r"[1-9][0-9]*", os.environ.get("GITHUB_RUN_ID", "")) and
+                os.environ.get("SOURCE_SHA") == "85a9bdc1285c338f10f5ca818abc259f6d483b5b" and
+                os.environ.get("SOURCE_TREE") == "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
+            ):
+                raise SystemExit("Private retention scope refused")
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+            print("enabled=" + enabled, file=output)
+        PY_PRIVATE_SCOPE
+    - name: Prepare exact opaque private archive
+      if: steps.scope.outputs.enabled == 'true'
+      id: prepare
+      shell: bash
+      env:
+        SOURCE_SHA: ${{ inputs.source-sha }}
+        SOURCE_TREE: ${{ inputs.source-tree }}
+        WORKFLOW_SHA: ${{ github.workflow_sha }}
+        BUILT_AT: ${{ inputs.built-at }}
+        MANIFEST: ${{ inputs.manifest }}
+        INVENTORY: ${{ inputs.inventory }}
+        BUILD_METADATA: ${{ inputs.build-metadata }}
+        RESOURCES: ${{ inputs.resources }}
+        OCI_DIRECTORY: ${{ inputs.oci-directory }}
+        OUTPUT_DIRECTORY: ${{ inputs.output-directory }}
+      run: |
+        set -euo pipefail
+        umask 077
+        helper="$GITHUB_ACTION_PATH/../../../scripts/fork-release/private_oci_bundle.py"
+        python3 - "$OUTPUT_DIRECTORY" "$RUNNER_TEMP" <<'PY_PRIVATE_PATH'
+        import pathlib
+        import sys
+        root, parent = (pathlib.Path(value).absolute() for value in sys.argv[1:])
+        if parent.resolve() != parent or root.parent.resolve() != root.parent or parent not in root.parents:
+            raise SystemExit("Private output location refused")
+        PY_PRIVATE_PATH
+        python3 -B "$helper" prepare-from-build \
+          --manifest "$MANIFEST" --inventory "$INVENTORY" --build-metadata "$BUILD_METADATA" \
+          --resources "$RESOURCES" --oci-dir "$OCI_DIRECTORY" --output-dir "$OUTPUT_DIRECTORY" \
+          --output "${OUTPUT_DIRECTORY}-retention.json" --source-sha "$SOURCE_SHA" \
+          --source-tree "$SOURCE_TREE" --workflow-sha "$WORKFLOW_SHA" --run-id "$GITHUB_RUN_ID" \
+          --attempt "$GITHUB_RUN_ATTEMPT" --built-at "$BUILT_AT" > /dev/null
+        python3 - <<'PY_PRIVATE_OUTPUT'
+        import json
+        import os
+        from pathlib import Path
+
+        result = json.loads(Path(os.environ["OUTPUT_DIRECTORY"] + "-retention.json").read_bytes())
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+            print("sha256=" + result["archiveSha256"], file=output)
+            print("bytes=" + str(result["archiveBytes"]), file=output)
+        PY_PRIVATE_OUTPUT
+    - name: Attest retained private OCI archive
+      if: steps.scope.outputs.enabled == 'true'
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      with:
+        subject-digest: sha256:${{ steps.prepare.outputs.sha256 }}
+        subject-name: retained-oci.tar
+        push-to-registry: false
+        create-storage-record: false
+        show-summary: false
+    - name: Transfer only the approved private object
+      if: steps.scope.outputs.enabled == 'true'
+      shell: bash
+      env:
+        OCI_UPLOAD_ENVELOPE: ${{ inputs.upload-capability }}
+        OUTPUT_DIRECTORY: ${{ inputs.output-directory }}
+      run: |
+        set -euo pipefail
+        umask 077
+        python3 - <<'PY_PRIVATE_PLAN'
+        import hashlib
+        import json
+        import os
+        import subprocess
+        from pathlib import Path
+
+        root = Path(os.environ["OUTPUT_DIRECTORY"])
+        result = json.loads(Path(str(root) + "-retention.json").read_bytes())
+        source = "85a9bdc1285c338f10f5ca818abc259f6d483b5b"
+        try:
+            raw_envelope = os.environ["OCI_UPLOAD_ENVELOPE"]
+            if len(raw_envelope) > 32768:
+                raise ValueError()
+            envelope = json.loads(raw_envelope)
+            if not (
+                isinstance(envelope, dict) and
+                set(envelope) == {"schema", "sourceSha", "workflowSha", "bucket", "object", "signer", "url"} and
+                envelope["schema"] == "openclaw.private-oci-capability.v1" and
+                envelope["sourceSha"] == source and envelope["workflowSha"] == os.environ["GITHUB_SHA"]
+            ):
+                raise ValueError()
+        except (KeyError, TypeError, ValueError):
+            raise SystemExit("Private capability envelope refused") from None
+        plan = {
+            "schema": "openclaw.private-oci-transfer-plan.v1", "sourceSha": source,
+            "toolingSha": os.environ["GITHUB_SHA"], "runId": os.environ["GITHUB_RUN_ID"],
+            "attempt": os.environ["GITHUB_RUN_ATTEMPT"], "archiveSha256": result["archiveSha256"],
+            "archiveBytes": result["archiveBytes"],
+            "bucket": envelope["bucket"], "object": envelope["object"], "signer": envelope["signer"],
+            "generation": None,
+        }
+        raw = (json.dumps(plan, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        with (root / "transfer-plan.json").open("xb") as output:
+            output.write(raw)
+        helper = Path(os.environ["GITHUB_ACTION_PATH"], "../../../scripts/fork-release/private_oci_transfer.py")
+        child_environment = dict(os.environ)
+        child_environment.pop("OCI_UPLOAD_ENVELOPE", None)
+        child_environment["OCI_UPLOAD_CAPABILITY"] = envelope["url"]
+        status = subprocess.run([
+            "python3", "-B", str(helper), "put", "--plan", str(root / "transfer-plan.json"),
+            "--plan-sha256", hashlib.sha256(raw).hexdigest(), "--capability-env", "OCI_UPLOAD_CAPABILITY",
+            "--archive", str(root / "retained-oci.tar"), "--receipt", str(root / "transfer.json"),
+        ], env=child_environment, check=False).returncode
+        raise SystemExit(status)
+        PY_PRIVATE_PLAN

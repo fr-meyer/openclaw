@@ -1,6 +1,8 @@
 """Synthetic orchestration; no image, Docker, cloud or database execution."""
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import redirect_stdout
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -59,27 +61,36 @@ class FakeOwners:
             if self.mode == "inconsistent-exit":
                 return 1
             return 0 if value["status"] == "passed" else 1
-        if args[2] == "capture-retained-gcp-origin":
+        if args[2] in ("capture-retained-gcp-origin", "capture-retained-hosted-origin"):
             if self.mode == "capture-failed":
                 return 1
-            save(Path(args[4]), {"schema": "openclaw.retained-gcp-build-context.v1", "status": "captured",
+            hosted = args[2] == "capture-retained-hosted-origin"
+            value = {"schema": f"openclaw.retained-{'hosted' if hosted else 'gcp'}-build-context.v1", "status": "captured",
                                  "qualified": False, "productionAuthorized": False, "sourceSha": SOURCE,
                                  "sourceTree": "1" * 40, "indexDigest": INDEX,
-                                 "executionSha256": self.fixture.plan["executionSha256"],
-                                 "inspectionToolingSha": TOOLING})
+                                 "inspectionToolingSha": TOOLING}
+            if hosted:
+                value.update(originAuthenticated=self.mode != "capture-unauthenticated",
+                             hostedPlanSha256=self.fixture.plan["hostedPlanSha256"], resourcesSha256=self.fixture.original_pin,
+                             archiveSha256=self.fixture.hosted_plan["archiveSha256"], producer=self.fixture.producer())
+            else:
+                value["executionSha256"] = self.fixture.plan["executionSha256"]
+            save(Path(args[4]), value)
             return 0
-        if args[2] == "verify-retained-gcp":
+        if args[2] in ("verify-retained-gcp", "verify-retained-hosted"):
             if self.mode == "verify-timeout":
                 raise subprocess.TimeoutExpired(args, 900)
             out = Path(args[4]).parent
             return 0 if (out / "receipt.json").exists() and (out / "admission.json").exists() else 1
-        if args[2] != "qualify-retained-gcp":
+        if args[2] not in ("qualify-retained-gcp", "qualify-retained-hosted"):
             raise AssertionError("Unexpected command owner")
         plan, out = json.loads(Path(args[3]).read_text()), Path(args[4])
         self.fixture.test.assertEqual(plan["originalResourcesSha256"], self.fixture.original_pin)
         self.fixture.test.assertEqual(driver.private_data(plan["originalResourcesPath"])[1], self.fixture.original_pin)
         self.fixture.test.assertEqual(out.stat().st_mode & 0o777, 0o700)
         self.fixture.test.assertEqual(list(out.iterdir()), [])
+        if args[2] == "qualify-retained-hosted":
+            save(out / "hosted-authentication.json", {"producer": self.fixture.producer(), "originAuthenticated": True})
         save(out / "static.json", {"schema": "openclaw.fork-release-static.v1", "sourceSha": SOURCE,
                                     "indexDigest": INDEX, "inspectionToolingSha": TOOLING,
                                     "status": "failed" if self.mode == "static-failed" else "passed"})
@@ -92,9 +103,7 @@ class FakeOwners:
             raise subprocess.TimeoutExpired(args, 900)
         save(out / "receipt.json", {"schema": "openclaw.fork-release-image.v2", "sourceSha": SOURCE,
                                     "indexDigest": INDEX, "imageDigest": IMAGE, "configDigest": CONFIG,
-                                    "producer": {"kind": "gcp", "toolingSha": ORIGINAL,
-                                                 "operationId": "2" * 32, "attempt": 1,
-                                                 "executionSha256": self.fixture.plan["executionSha256"]}})
+                                    "producer": self.fixture.producer()})
         if self.mode == "receipt-without-admission":
             raise subprocess.TimeoutExpired(args, 900)
         for name in ("native.json", "native-execution.json", "admission.json"):
@@ -132,10 +141,38 @@ class Fixture:
         self.admission_pin = save(self.admission, self.admission_value)
         self.state = root / ("3" * 32)
 
+    def producer(self):
+        if self.plan["schema"] == "openclaw.retained-hosted-input.v1":
+            return {"workflowSha": ORIGINAL, "runId": "123", "attempt": "2"}
+        return {"kind": "gcp", "toolingSha": ORIGINAL, "operationId": "2" * 32, "attempt": 1,
+                "executionSha256": self.plan["executionSha256"]}
+
+    def use_hosted(self):
+        custody = self.root / "custody"
+        custody.mkdir(mode=0o700)
+        self.original = custody / "resources.json"
+        self.original_pin = save(self.original, {"schema": "openclaw.hosted-resources.v1", "status": "passed",
+            "sourceSha": SOURCE, "toolingSha": ORIGINAL, "indexDigest": INDEX, "violations": []})
+        self.hosted_path = self.root / "hosted-plan.json"
+        self.hosted_plan = {"schema": "openclaw.retained-hosted-origin-input.v1", "sourceDir": str(self.source),
+            "ociDir": str(self.oci), "manifestPath": str(self.manifest), "inventoryPath": str(self.inventory),
+            "metadataPath": str(custody / "build-metadata.json"), "originPath": str(custody / "build-origin.json"),
+            "archivePath": str(self.root / "retained-oci.tar"), "resourcesPath": str(self.original),
+            "workflowSha": ORIGINAL, "workflowRef": "refs/heads/synthetic-release", "inspectionToolingSha": TOOLING,
+            "runId": "123", "attempt": "2", "jobId": "456", "archiveSha256": "4" * 64, "originSha256": "5" * 64,
+            "manifestSha256": "6" * 64, "inventorySha256": "7" * 64, "buildMetadataSha256": "8" * 64,
+            "resourcesSha256": self.original_pin, "indexDigest": INDEX, "builtAt": driver.utc(CLOCK)}
+        pin = save(self.hosted_path, self.hosted_plan)
+        self.plan = {key: self.plan[key] for key in ("manifestPath", "inventoryPath", "sourceDir", "ociDir", "inspectionToolingSha")}
+        self.plan.update(schema="openclaw.retained-hosted-input.v1", hostedPlanPath=str(self.hosted_path), hostedPlanSha256=pin)
+        self.plan_pin = save(self.plan_path, self.plan)
+
     def run(self, owners, **overrides):
         args = {"admission_path": self.admission, "admission_pin": self.admission_pin,
                 "original_resources": self.original, "resources_pin": self.original_pin,
                 "node": sys.executable, "execute": owners, "clock": lambda: self.current}
+        if self.plan["schema"] == "openclaw.retained-hosted-input.v1":
+            args.update(mode="hosted", original_resources=None, resources_pin=None)
         args.update(overrides)
         with patch.object(driver.gcp_build, "clean_checkout"):
             return driver.inspect(self.plan_path, self.plan_pin, self.state, **args)
@@ -146,6 +183,88 @@ class DriverTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.f = Fixture(Path(self.temp.name), self)
+
+    def test_hosted_cli_uses_genuine_producer_and_signed_resources_not_gcp_identity(self):
+        self.f.use_hosted()
+        owner, output = FakeOwners(self.f), io.StringIO()
+        arguments = ["--mode", "hosted", "--plan", str(self.f.plan_path), "--plan-sha256", self.f.plan_pin,
+                     "--state-dir", str(self.f.state), "--resource-admission", str(self.f.admission),
+                     "--resource-admission-sha256", self.f.admission_pin, "--node", sys.executable]
+        with patch.object(driver.gcp_build, "clean_checkout"), redirect_stdout(output):
+            status = driver.main(arguments, execute=owner, clock=lambda: CLOCK)
+        self.assertEqual(status, 0)
+        self.assertEqual(json.loads(output.getvalue())["schema"], "openclaw.hosted-image-reinspection-summary.v1")
+        self.assertEqual(owner.actions(), ["capture-retained-hosted-origin", "privacy", "qualify-retained-hosted", "verify-retained-hosted"])
+        intent = json.loads((self.f.state / "intent.json").read_text())
+        self.assertNotIn("executionSha256", intent)
+        self.assertEqual(intent["originalProducer"], self.f.producer())
+        qualified_plan = json.loads((self.f.state / "qualification-plan.json").read_text())
+        self.assertEqual(qualified_plan["schema"], "openclaw.retained-hosted-qualification.v1")
+        self.assertEqual(qualified_plan["originalResourcesSha256"], self.f.original_pin)
+        self.assertEqual((self.f.state / "original-resources.json").read_bytes(), self.f.original.read_bytes())
+        handoff = json.loads((self.f.state / "handoff.json").read_text())
+        self.assertEqual(handoff["originalProducer"], self.f.producer())
+        self.assertNotIn("operationId", handoff["originalProducer"])
+
+    def test_hosted_complete_resume_only_verifies_and_authentication_bytes_are_pinned(self):
+        self.f.use_hosted()
+        owner = FakeOwners(self.f)
+        self.f.run(owner)
+        owner.calls.clear()
+        self.f.current += timedelta(days=1)
+        self.assertTrue(self.f.run(owner, admission_path=None, admission_pin=None)["qualified"])
+        self.assertEqual(owner.actions(), ["verify-retained-hosted"])
+        save(self.f.state / "qualification/hosted-authentication.json", {"originAuthenticated": True, "changed": True})
+        owner.calls.clear()
+        with self.assertRaisesRegex(driver.Refusal, "stage_changed"):
+            self.f.run(owner)
+        self.assertEqual(owner.calls, [])
+
+    def test_hosted_plan_mismatch_or_arbitrary_resource_override_never_calls_owner(self):
+        self.f.use_hosted()
+        owner = FakeOwners(self.f)
+        with self.assertRaisesRegex(driver.Refusal, "hosted.resource_override"):
+            self.f.run(owner, original_resources=self.f.original, resources_pin=self.f.original_pin)
+        self.f.plan["sourceDir"] = str(self.f.build)
+        self.f.plan_pin = save(self.f.plan_path, self.f.plan)
+        with self.assertRaisesRegex(driver.Refusal, "hosted.plan_mismatch"):
+            self.f.run(owner)
+        self.assertEqual(owner.calls, [])
+
+    def test_hosted_requires_explicit_mode_and_true_owner_authentication(self):
+        self.f.use_hosted()
+        owner = FakeOwners(self.f, "capture-unauthenticated")
+        with self.assertRaisesRegex(driver.Refusal, "plan.invalid"):
+            self.f.run(owner, mode="gcp")
+        with self.assertRaisesRegex(driver.Refusal, "hosted.authentication_mismatch"):
+            self.f.run(owner)
+        self.assertEqual(owner.actions(), ["capture-retained-hosted-origin"])
+
+    def test_hosted_findings_still_collect_static_without_native_and_uncertainty_never_reruns(self):
+        for mode in ("findings", "interrupted"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                f = Fixture(Path(tmp), self)
+                f.use_hosted()
+                owner = FakeOwners(f, mode)
+                result = f.run(owner)
+                self.assertFalse(result["qualified"])
+                self.assertEqual(result["checks"]["static"], "passed")
+                self.assertEqual((f.state / "qualification/native-attempt.json").exists(), mode == "interrupted")
+                owner.calls.clear()
+                self.assertFalse(f.run(owner)["qualified"])
+                self.assertEqual(owner.calls, [])
+
+    def test_hosted_nested_plan_pin_and_archived_resources_change_fail_before_capture(self):
+        for target in ("plan", "resources"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as tmp:
+                f = Fixture(Path(tmp), self)
+                f.use_hosted()
+                path = f.hosted_path if target == "plan" else f.original
+                path.write_bytes(path.read_bytes() + b" ")
+                owner = FakeOwners(f)
+                with self.assertRaises(ValueError):
+                    f.run(owner)
+                self.assertEqual(owner.calls, [])
 
     def test_qualified_handoff_preserves_producer_without_build_or_transfer(self):
         owner = FakeOwners(self.f)

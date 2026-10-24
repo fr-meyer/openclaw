@@ -62,6 +62,24 @@ class HostedExportTests(unittest.TestCase):
                                         public_export=True, storage_approved=True)["export"],
                          "public-actions-artifact")
 
+    def test_private_retention_preserves_failed_resources_without_qualifying_export(self):
+        failed = {**self.resources, "status": "failed", "violations": ["worker_oom"]}
+        identity = {key: self.args[key] for key in ("source", "tooling", "index")}
+        self.assertFalse(export.require_resources(failed, **identity, require_pass=False))
+        self.assertEqual(failed["violations"], ["worker_oom"])
+        with self.assertRaises(export.Refusal):
+            export.validate(self.seal, self.privacy, failed, **self.args)
+        with self.assertRaises(export.Refusal):
+            export.require_resources(failed, **identity)
+
+    def test_private_resource_capture_still_refuses_wrong_identity_and_incomplete_status(self):
+        identity = {key: self.args[key] for key in ("source", "tooling", "index")}
+        for changed in ({"sourceSha": "f" * 40}, {"toolingSha": "f" * 40},
+                        {"indexDigest": "sha256:" + "f" * 64}, {"status": "running"},
+                        {"violations": None}, {"schema": "other"}):
+            with self.subTest(changed=changed), self.assertRaises(export.Refusal):
+                export.require_resources({**self.resources, **changed}, **identity, require_pass=False)
+
     def test_every_receipt_is_bound_to_same_source_image_tooling_and_run(self):
         for i, key, value in ((0, "sourceSha", "d" * 40), (0, "indexDigest", "sha256:" + "d" * 64),
                               (0, "producer", {"workflowSha": "b" * 40, "runId": "13", "attempt": "1"}),

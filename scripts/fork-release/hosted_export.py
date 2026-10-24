@@ -96,6 +96,23 @@ def runtime_proof(seal):
          "incomplete built UI or consumer proof")
 
 
+def require_resources(resources, *, source, tooling, index, require_pass=True):
+    """Share resource identity checks without promoting failed private evidence."""
+    need(type(require_pass) is bool, "invalid resource admission mode")
+    need(isinstance(resources, dict) and
+         resources.get("schema") == "openclaw.hosted-resources.v1" and
+         resources.get("status") in ("passed", "failed") and
+         isinstance(resources.get("violations"), list),
+         "incomplete privacy or resource assessment")
+    need(resources.get("toolingSha") == tooling, "assessment tooling changed")
+    need(resources.get("sourceSha") == source and resources.get("indexDigest") == index,
+         "assessment source or image changed")
+    if require_pass:
+        need(resources["status"] == "passed", "incomplete privacy or resource assessment")
+        need(resources["violations"] == [], "resource violations remain")
+    return resources["status"] == "passed" and resources["violations"] == []
+
+
 def validate(seal, privacy, resources, *, source, tooling, index, run, attempt,
              public_export=False, storage_approved=False):
     need(re.fullmatch(r"[0-9a-f]{40}", source or "") is not None, "invalid source identity")
@@ -113,15 +130,13 @@ def validate(seal, privacy, resources, *, source, tooling, index, run, attempt,
     need(seal.get("buildContext") == {"kind": "git", "repository": "https://github.com/fr-meyer/openclaw",
                                       "sourceSha": source}, "hosted Git source proof missing or changed")
     runtime_proof(seal)
-    for receipt, schema in ((privacy, "openclaw.hosted-privacy.v2"),
-                            (resources, "openclaw.hosted-resources.v1")):
-        need(isinstance(receipt, dict) and receipt.get("schema") == schema and
-             receipt.get("status") == "passed", "incomplete privacy or resource assessment")
-        need(receipt.get("toolingSha") == tooling, "assessment tooling changed")
-    for receipt in (seal, privacy, resources):
+    need(isinstance(privacy, dict) and privacy.get("schema") == "openclaw.hosted-privacy.v2" and
+         privacy.get("status") == "passed", "incomplete privacy or resource assessment")
+    need(privacy.get("toolingSha") == tooling, "assessment tooling changed")
+    for receipt in (seal, privacy):
         need(receipt.get("sourceSha") == source and receipt.get("indexDigest") == index,
              "assessment source or image changed")
-    need(resources.get("violations") == [], "resource violations remain")
+    require_resources(resources, source=source, tooling=tooling, index=index)
     require_clean_privacy(privacy)
     for field in ("imageDigest", "configDigest"):
         need(re.fullmatch(r"sha256:[0-9a-f]{64}", seal.get(field, "")) is not None and
