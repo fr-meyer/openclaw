@@ -10,6 +10,8 @@ minimumReleaseAgeStrict: true
 
 # Trusted Codex runtimes are outside the dependency cooldown.
 minimumReleaseAgeExclude:
+  # Reviewed GHSA-27r3-jxmh-p828 fix; remove after 2026-10-29T11:39:38.614Z.
+  - "body-parser@2.4.0"
   # Reviewed ACPX release; remove after 2026-09-29T10:05:37.124Z.
   - acpx@0.19.1
   # Reviewed running-adapter evidence contract; remove after 2026-09-24T01:40:08.183Z.
@@ -35,6 +37,9 @@ verifyDepsBeforeRun: false
 blockExoticSubdeps: true
 
 overrides:
+  # Fix compressed-body trailing-byte DoS; qs meets this parser's declared range.
+  "express@5.2.1>body-parser": 2.4.0
+  "body-parser@2.4.0>qs": 6.16.1
   # GHSA-mrhx-c7xc-m3w5: native v4 consumers and bounded SDK compatibility parsing.
   "zod@>=4.0.0 <4.6.6": 4.6.6
   # These exact consumers are migrated by the versioned package patches below.
