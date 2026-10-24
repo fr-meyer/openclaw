@@ -9,6 +9,263 @@ const coreEntry = pathToFileURL(projectRequire.resolve("@a2ui/web_core/v0_9")).h
 const { readFileSync } = await import("node:fs");
 const version = JSON.parse(readFileSync(new URL("../../package.json", coreEntry), "utf8")).version;
 assert.ok(["0.11.0", "0.12.0"].includes(version));
+function checkOwnReferenceRoots(core, publishedControl = false) {
+  const create = (name, local) => {
+    const parameters = {
+      type: "object",
+      $defs: local,
+      properties: { value: { $ref: `#/$defs/${name}/properties/value` } },
+      required: ["value"],
+    };
+    const catalog = {
+      catalogId: "own-reference-fixture",
+      protocolVersion: "0.9",
+      components: {},
+      $defs: Object.fromEntries([[name, { properties: { value: { type: "string" } } }]]),
+      functions: { check: { parameters } },
+    };
+    return core.Catalog.fromSchema(catalog, "0.9").functions.get("check").schema;
+  };
+
+  for (const name of ["constructor", "toString"]) {
+    const absent = create(name, { Unused: { type: "number" } });
+    assert.equal(
+      absent.safeParse({ value: "ok" }).success,
+      true,
+      "absent own local " + name + " falls back to own catalog definition",
+    );
+    assert.equal(
+      absent.safeParse({ value: 42 }).success,
+      false,
+      "catalog " + name + " type remains enforced",
+    );
+    if (publishedControl) continue;
+    const own = create(
+      name,
+      Object.fromEntries([[name, { properties: { value: { type: "number" } } }]]),
+    );
+    assert.equal(
+      own.safeParse({ value: 42 }).success,
+      true,
+      "own local " + name + " retains priority",
+    );
+    assert.equal(own.safeParse({ value: "bad" }).success, false);
+    const inherited = Object.create(
+      Object.fromEntries([[name, { properties: { value: { type: "number" } } }]]),
+    );
+    inherited.Unused = { type: "boolean" };
+    const before = Object.getPrototypeOf(inherited);
+    const schema = create(name, inherited);
+    assert.equal(
+      schema.safeParse({ value: "ok" }).success,
+      true,
+      "inherited object target does not preempt catalog " + name,
+    );
+    assert.equal(schema.safeParse({ value: 42 }).success, false);
+    assert.equal(
+      Object.getPrototypeOf(inherited),
+      before,
+      "no caller or global prototype mutation",
+    );
+    assert.equal(Object.hasOwn(inherited, name), false);
+  }
+  return publishedControl
+    ? {
+        scope: "published own catalog constructor/toString nested-schema fallback controls only",
+        absentOwnLocalCatalogFallback: "passed",
+        catalogTypeGuard: "passed",
+      }
+    : {
+        ownLocalPriority: "passed",
+        absentOwnLocalCatalogFallback: "passed",
+        inheritedObjectCannotPreemptFallback: "passed",
+        prototypeMutation: false,
+      };
+}
+function checkMixedReferenceContexts(core, version) {
+  const parameters = (properties, $defs) => ({
+    type: "object",
+    properties,
+    required: Object.keys(properties),
+    $defs,
+  });
+  const load = (definitions, params) =>
+    core.Catalog.fromSchema(
+      {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        catalogId: "custom-full-catalog",
+        protocolVersion: "0.9",
+        components: {},
+        $defs: definitions,
+        functions: { check: { name: "check", returnType: "boolean", parameters: params } },
+      },
+      "0.9",
+    ).functions.get("check").schema;
+  const global = load(
+    { Shared: { type: "string" } },
+    parameters({ value: { $ref: "#/$defs/Shared" } }, { Unused: { type: "number" } }),
+  );
+  assert.equal(
+    global.safeParse({ value: "ok" }).success,
+    true,
+    "published custom-catalog global reference remains valid",
+  );
+  assert.equal(
+    global.safeParse({ value: 42 }).success,
+    false,
+    "catalog type guard remains enforced with unused local definitions",
+  );
+  const mixed = load(
+    { Shared: { type: "string" } },
+    parameters(
+      { global: { $ref: "#/$defs/Shared" }, local: { $ref: "#/$defs/Local" } },
+      { Local: { type: "number" } },
+    ),
+  );
+  assert.equal(mixed.safeParse({ global: "ok", local: 42 }).success, true);
+  assert.equal(mixed.safeParse({ global: 42, local: 42 }).success, false);
+  assert.equal(mixed.safeParse({ global: "ok", local: "bad" }).success, false);
+  for (const reverse of [false, true]) {
+    const properties = {
+      local: { $ref: "#/$defs/Shared" },
+      localAlias: { $ref: "#/$defs/LocalAlias" },
+      globalAlias: { $ref: "#/$defs/GlobalAlias" },
+    };
+    const ordered = reverse ? Object.fromEntries(Object.entries(properties).reverse()) : properties;
+    const collisions = load(
+      { Shared: { type: "string" }, GlobalAlias: { $ref: "#/$defs/Shared" } },
+      parameters(ordered, { Shared: { type: "number" }, LocalAlias: { $ref: "#/$defs/Shared" } }),
+    );
+    assert.equal(
+      collisions.safeParse({ local: 42, localAlias: 1, globalAlias: "ok" }).success,
+      true,
+      "fallback definition retains its own global lookup context",
+    );
+    assert.equal(
+      collisions.safeParse({ local: "bad", localAlias: 1, globalAlias: "ok" }).success,
+      false,
+      "local definitions win",
+    );
+    assert.equal(
+      collisions.safeParse({ local: 42, localAlias: 1, globalAlias: 42 }).success,
+      false,
+      "global nested refs do not bind to local cache entries",
+    );
+  }
+  const sharedParameters = parameters(
+    { value: { $ref: "#/$defs/Shared" } },
+    { Unused: { type: "boolean" } },
+  );
+  const original = structuredClone(sharedParameters);
+  const first = load({ Shared: { type: "string" } }, sharedParameters);
+  const second = load({ Shared: { type: "number" } }, sharedParameters);
+  assert.equal(second.safeParse({ value: 42 }).success, true);
+  assert.equal(second.safeParse({ value: "bad" }).success, false);
+  assert.equal(
+    first.safeParse({ value: "ok" }).success,
+    true,
+    "reused input object does not rebind the first catalog",
+  );
+  assert.equal(first.safeParse({ value: 42 }).success, false);
+  assert.deepEqual(sharedParameters, original, "caller schema is not mutated");
+  const catalog = {
+    catalogId: "per-resource-cache",
+    protocolVersion: "0.9",
+    components: {},
+    $defs: { Global: { type: "boolean" } },
+    functions: {
+      text: {
+        parameters: parameters(
+          { value: { $ref: "#/$defs/Shared" }, global: { $ref: "#/$defs/Global" } },
+          { Shared: { type: "string" } },
+        ),
+      },
+      number: {
+        parameters: parameters(
+          { value: { $ref: "#/$defs/Shared" }, global: { $ref: "#/$defs/Global" } },
+          { Shared: { type: "number" } },
+        ),
+      },
+    },
+  };
+  const perResource = core.Catalog.fromSchema(catalog, "0.9");
+  assert.equal(
+    perResource.functions.get("text").schema.safeParse({ value: "ok", global: true }).success,
+    true,
+  );
+  assert.equal(
+    perResource.functions.get("text").schema.safeParse({ value: 42, global: true }).success,
+    false,
+  );
+  assert.equal(
+    perResource.functions.get("number").schema.safeParse({ value: 42, global: false }).success,
+    true,
+  );
+  assert.equal(
+    perResource.functions.get("number").schema.safeParse({ value: "bad", global: false }).success,
+    false,
+  );
+  if (version === "0.12.0") {
+    const recursive = load(
+      { Shared: { type: "string" }, GlobalAlias: { $ref: "#/$defs/Shared" } },
+      parameters(
+        { entry: { $ref: "#/$defs/Node" } },
+        {
+          Shared: { type: "number" },
+          Node: {
+            type: "object",
+            properties: {
+              local: { $ref: "#/$defs/Shared" },
+              global: { $ref: "#/$defs/GlobalAlias" },
+              children: { type: "array", items: { $ref: "#/$defs/Node" } },
+            },
+            required: ["local", "global"],
+          },
+        },
+      ),
+    );
+    assert.equal(
+      recursive.safeParse({
+        entry: { local: 1, global: "ok", children: [{ local: 2, global: "nested" }] },
+      }).success,
+      true,
+      "lazy recursion retains both document contexts",
+    );
+    assert.equal(
+      recursive.safeParse({
+        entry: { local: 1, global: "ok", children: [{ local: 2, global: 42 }] },
+      }).success,
+      false,
+    );
+    const missing = load(
+      {},
+      parameters({ value: { $ref: "#/$defs/Missing" } }, { Unused: { type: "string" } }),
+    );
+    assert.equal(
+      missing.safeParse({ value: "bad" }).success,
+      false,
+      "unresolved reference remains fail closed",
+    );
+    const localFalse = load(
+      { Shared: { type: "string" } },
+      parameters({ value: { $ref: "#/$defs/Shared" } }, { Shared: false }),
+    );
+    assert.equal(
+      localFalse.safeParse({ value: "bad" }).success,
+      false,
+      "unsupported present local target does not fall back to permissive global target",
+    );
+  }
+  return {
+    publishedGlobalGuard: "preserved",
+    mixedLocalGlobal: "passed",
+    nestedGlobalContext: "passed",
+    localPriority: "passed",
+    perResourceCache: "passed",
+    sharedInputNonmutation: "passed",
+    lazyGlobalContext: version === "0.12.0" ? "passed" : "inherited-0.11-coarsening-not-expanded",
+  };
+}
 function checkFunctionParameterResources(core, z, version, generateCatalogSchema) {
   let tree;
   tree = z.lazy(() => z.object({ label: z.string(), children: z.array(tree).optional() }));
@@ -373,6 +630,8 @@ try {
       ? (await import(new URL("../catalog/schema_generator.js", coreEntry))).generateCatalogSchema
       : undefined;
   checkFunctionParameterResources(core, z, version, generate);
+  checkMixedReferenceContexts(core, version);
+  checkOwnReferenceRoots(core);
   assert.equal(compilationAttempts, 0);
   console.log(
     JSON.stringify({

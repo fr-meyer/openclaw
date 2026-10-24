@@ -221,7 +221,7 @@ packageExtensionsChecksum: sha256-Y7vhONQzlz51oZN7TTGWCJABkDu/F4SuqtCdf5qYwZ0=
 
 patchedDependencies:
   '@a2ui/lit@0.11.0': 9a47b40034e70009f23bd5378c746b188fc4afcf2ab420b7dab8f7d250ef032a
-  '@a2ui/web_core@0.11.0': 555d85c210337d79042004f55773030fbd9d9e1c1e28bee6698bedbfa71f77a4
+  '@a2ui/web_core@0.11.0': 461b6d953f216c0b48dbc539f245e605dd9d5cbbba2e5421004d7498066b2ff3
   '@awesome.me/webawesome@3.13.0': b8ce280c2f477ef59002e971c5c6cb29a7103e607926e22453091946b719d588
   '@discord/embedded-app-sdk@2.5.0': 571102cd0329706f1c9edf2dd5cd7f50bfcb8c4336809c961e0c12f43760ab87
   '@novnc/novnc@1.7.0': bfde0e1bda172da3525f9f5014d85ad28073325b74f09609084598a65d2f412d
@@ -445,7 +445,7 @@ importers:
         version: 0.11.0(patch_hash=9a47b40034e70009f23bd5378c746b188fc4afcf2ab420b7dab8f7d250ef032a)(signal-polyfill@0.2.2)
       '@a2ui/web_core':
         specifier: 0.11.0
-        version: 0.11.0(patch_hash=555d85c210337d79042004f55773030fbd9d9e1c1e28bee6698bedbfa71f77a4)
+        version: 0.11.0(patch_hash=461b6d953f216c0b48dbc539f245e605dd9d5cbbba2e5421004d7498066b2ff3)
       '@babel/types':
         specifier: 8.0.5
         version: 8.0.5
@@ -876,7 +876,7 @@ importers:
         version: 0.11.0(patch_hash=9a47b40034e70009f23bd5378c746b188fc4afcf2ab420b7dab8f7d250ef032a)(signal-polyfill@0.2.2)
       '@a2ui/web_core':
         specifier: 0.11.0
-        version: 0.11.0(patch_hash=555d85c210337d79042004f55773030fbd9d9e1c1e28bee6698bedbfa71f77a4)
+        version: 0.11.0(patch_hash=461b6d953f216c0b48dbc539f245e605dd9d5cbbba2e5421004d7498066b2ff3)
       '@lit/context':
         specifier: 1.1.6
         version: 1.1.6
@@ -10341,7 +10341,7 @@ snapshots:
 
   '@a2ui/lit@0.11.0(patch_hash=9a47b40034e70009f23bd5378c746b188fc4afcf2ab420b7dab8f7d250ef032a)(signal-polyfill@0.2.2)':
     dependencies:
-      '@a2ui/web_core': 0.11.0(patch_hash=555d85c210337d79042004f55773030fbd9d9e1c1e28bee6698bedbfa71f77a4)
+      '@a2ui/web_core': 0.11.0(patch_hash=461b6d953f216c0b48dbc539f245e605dd9d5cbbba2e5421004d7498066b2ff3)
       '@lit-labs/signals': 0.3.0
       '@lit/context': 1.1.6
       lit: 3.3.3
@@ -10350,7 +10350,7 @@ snapshots:
     transitivePeerDependencies:
       - signal-polyfill
 
-  '@a2ui/web_core@0.11.0(patch_hash=555d85c210337d79042004f55773030fbd9d9e1c1e28bee6698bedbfa71f77a4)':
+  '@a2ui/web_core@0.11.0(patch_hash=461b6d953f216c0b48dbc539f245e605dd9d5cbbba2e5421004d7498066b2ff3)':
     dependencies:
       '@lit/context': 1.1.6
       '@preact/signals-core': 1.14.4
