@@ -93,7 +93,7 @@ describe("reviewed legacy Zod closure", () => {
       new Map([["zod", new Set(["3.25.76"])]]),
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0].packageName).toBe("zod");
+    expect(findings[0]?.packageName).toBe("zod");
   });
 
   it("binds supported consumer pins, precise overrides, and actual patch bytes", () => {

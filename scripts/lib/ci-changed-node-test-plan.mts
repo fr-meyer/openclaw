@@ -15,6 +15,7 @@ import {
   isCiDocumentationPath as isDocumentationPath,
   isNodeTestDataOnlyPath,
 } from "../ci-changed-scope.mjs";
+import { nativeSecurityTargetsForPath } from "../fork-release/native_tests.mjs";
 import {
   buildVitestRunPlans,
   CHANNEL_CONTRACT_CONFIG_PATTERNS,
@@ -421,10 +422,11 @@ function resolvePreciseChangedTargets(
     return null;
   }
   const targets = [
-    ...new Set([
-      ...plan.targets.filter((target) => !erasedPaths.has(target)),
-      ...additionalTargets,
-    ]),
+    ...new Set(
+      [...plan.targets.filter((target) => !erasedPaths.has(target)), ...additionalTargets].flatMap(
+        (target) => nativeSecurityTargetsForPath(target) ?? [target],
+      ),
+    ),
   ];
   if (
     targets.some((target) => !isTestFileTarget(target)) ||
@@ -789,6 +791,15 @@ export function createChangedNodeTestShards(
     return fallback("missing changed paths");
   }
 
+  const nativeOwners = changedPaths.flatMap((file) => nativeSecurityTargetsForPath(file) ?? []);
+  if (
+    nativeOwners.some(
+      (file) => lstatSync(path.join(cwd, file), { throwIfNoEntry: false })?.isFile() !== true,
+    )
+  ) {
+    return fallback("missing native security test owner");
+  }
+
   // These inputs change execution or module resolution for every project.
   // Ordinary helpers, package sources, and tooling leaves use their consumers.
   const globalInput = changedPaths.find((file) => GLOBAL_NODE_TEST_INPUT_RE.test(file));
@@ -859,8 +870,8 @@ export function createChangedNodeTestShards(
       // Deleted source cannot be import-graphed; deleted tests retain boundary coverage.
       return fallback(`deleted or missing source: ${changedPath}`);
     }
-    if (live || documentation) {
-      // Preserve input order and resolve even deleted docs before crediting an empty plan.
+    if (live || documentation || nativeSecurityTargetsForPath(changedPath) !== null) {
+      // Native deletions retain their executable adapter instead of an empty plan.
       resolutionPaths.push(changedPath);
     }
   }
