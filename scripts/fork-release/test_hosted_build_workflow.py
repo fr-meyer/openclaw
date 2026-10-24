@@ -324,7 +324,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
 
         def selected(ref='refs/heads/release-pipeline/v105-image-only-20261024',
                      event='push', created=False, attempt='1', actor='fr-meyer',
-                     before='272ce7e9eab02aa36da875b35ea862e8b1a1dbfe',
+                     before='c5f6ea725b69740582e8051c974a798feda792ba',
                      repo='fr-meyer/openclaw'):
             return expression(condition, github=NS(ref=ref, event_name=event,
                 event=NS(created=created, before=before), run_attempt=attempt, actor=actor, repository=repo))
@@ -346,7 +346,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                              built_job_3=None, built_job_4=None, artifacts=None, artifacts_2=None, artifacts_3=None,
                              artifacts_4=None, current_commit=None, private_preflight_job=None,
                              private_preflight_artifacts=None, private_retention_job=None,
-                             private_retention_artifacts=None, unavailable_endpoint=None):
+                             private_retention_artifacts=None, whole_export_job=None,
+                             whole_export_artifacts=None, unavailable_endpoint=None):
         identity = step(self.workflow, 'Resolve exact source identity')
         raw = identity.split("          python3 - <<'PY_IMAGE_ONLY'\n", 1)[1].split(
             '\n          PY_IMAGE_ONLY', 1)[0]
@@ -356,7 +357,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         prior = {**run, 'id': 40062126779, 'head_sha': 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5',
                  'status': 'completed', 'conclusion': 'failure', 'run_attempt': 1}
         payload = json.dumps(history if history is not None else {
-            'total_count': 9, 'workflow_runs': [run, prior, {**prior, 'id': 40062948481,
+            'total_count': 10, 'workflow_runs': [run, prior, {**prior, 'id': 40062948481,
                 'head_sha': '9c2df877355c763ccd9b939250de4384ff80b586'},
                 {**prior, 'id': 40063895699,
                  'head_sha': 'e7f32458be156cc489f76fd7cc68d35c5c1e1986'},
@@ -369,7 +370,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                 {**prior, 'id': 40098041073,
                  'head_sha': 'b572943a2137c43afd433f7b782a54e12cf13902'},
                 {**prior, 'id': 40100140347,
-                 'head_sha': '272ce7e9eab02aa36da875b35ea862e8b1a1dbfe'}]})
+                 'head_sha': '272ce7e9eab02aa36da875b35ea862e8b1a1dbfe'},
+                {**prior, 'id': 40108417145, 'head_sha': 'c5f6ea725b69740582e8051c974a798feda792ba'}]})
         job = {'id': 120777706110, 'run_id': 40062126779, 'name': 'qualify-and-prepare',
                'head_sha': 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5',
                'status': 'completed', 'conclusion': 'failure', 'run_attempt': 1, 'steps': [
@@ -416,6 +418,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                 'head_sha': '272ce7e9eab02aa36da875b35ea862e8b1a1dbfe',
                 'steps': [{'name': n, 'status': 'completed', 'conclusion': c}
                           for n, c in retention_steps.items()]}
+        job9 = {**job8, 'id': 120914843959, 'run_id': 40108417145,
+                'head_sha': 'c5f6ea725b69740582e8051c974a798feda792ba'}
         job.update(previous_job or {})
         job2.update(previous_job_2 or {})
         job3.update(built_job or {})
@@ -424,6 +428,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         job6.update(built_job_4 or {})
         job7.update(private_preflight_job or {})
         job8.update(private_retention_job or {})
+        job9.update(whole_export_job or {})
         artifact_payload = artifacts if artifacts is not None else {'total_count': 0, 'artifacts': []}
         artifact_payload_2 = artifacts_2 if artifacts_2 is not None else {'total_count': 0, 'artifacts': []}
         artifact_payload_3 = artifacts_3 if artifacts_3 is not None else {'total_count': 0, 'artifacts': []}
@@ -432,8 +437,10 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             'total_count': 0, 'artifacts': []}
         retention_artifact_payload = private_retention_artifacts if private_retention_artifacts is not None else {
             'total_count': 0, 'artifacts': []}
+        whole_export_artifact_payload = whole_export_artifacts if whole_export_artifacts is not None else {
+            'total_count': 0, 'artifacts': []}
         commit_payload = current_commit if current_commit is not None else {
-            'sha': SOURCE, 'parents': [{'sha': '531358ca658550f19e5808b8912d97fe952d08cf'}]}
+            'sha': SOURCE, 'parents': [{'sha': '0f0f67d1ab0fd809b237d807bada7e5f7f73bb0b'}]}
 
         wrapper = (
             'import io, json\nfrom unittest.mock import patch\n'
@@ -441,7 +448,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             '    assert timeout == 15\n'
             '    history_url = '
             "'https://api.github.com/repos/fr-meyer/openclaw/actions/workflows/' "
-            "'fork-release-pipeline.yml/runs?event=push&per_page=9&' "
+            "'fork-release-pipeline.yml/runs?event=push&per_page=10&' "
             "'branch=release-pipeline%2Fv105-image-only-20261024'\n"
             '    commit_url = "https://api.github.com/repos/fr-meyer/openclaw/git/commits/" + ' + repr(SOURCE) + '\n'
             '    job_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120777706110"\n'
@@ -452,13 +459,15 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             '    job6_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120818019684"\n'
             '    job7_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120884304655"\n'
             '    job8_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120890424635"\n'
+            '    job9_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120914843959"\n'
             '    artifacts_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40063895699/artifacts?per_page=1"\n'
             '    artifacts2_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40067322318/artifacts?per_page=1"\n'
             '    artifacts3_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40070695622/artifacts?per_page=1"\n'
             '    artifacts4_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40075559894/artifacts?per_page=1"\n'
             '    preflight_artifacts_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40098041073/artifacts?per_page=1"\n'
             '    retention_artifacts_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40100140347/artifacts?per_page=1"\n'
-            '    assert request.full_url in (commit_url, history_url, job_url, job2_url, job3_url, job4_url, job5_url, job6_url, job7_url, job8_url, artifacts_url, artifacts2_url, artifacts3_url, artifacts4_url, preflight_artifacts_url, retention_artifacts_url)\n'
+            '    whole_export_artifacts_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40108417145/artifacts?per_page=1"\n'
+            '    assert request.full_url in (commit_url, history_url, job_url, job2_url, job3_url, job4_url, job5_url, job6_url, job7_url, job8_url, job9_url, artifacts_url, artifacts2_url, artifacts3_url, artifacts4_url, preflight_artifacts_url, retention_artifacts_url, whole_export_artifacts_url)\n'
             '    assert not request.has_header("Authorization")\n'
             '    if request.full_url == ' + repr(unavailable_endpoint) + ': raise OSError("bounded lookup unavailable")\n'
             + ('    raise OSError("bounded lookup unavailable")\n' if history_error else
@@ -469,6 +478,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                + '    if request.full_url == artifacts4_url: return io.BytesIO(' + repr(json.dumps(artifact_payload_4).encode()) + ')\n'
                + '    if request.full_url == preflight_artifacts_url: return io.BytesIO(' + repr(json.dumps(preflight_artifact_payload).encode()) + ')\n'
                + '    if request.full_url == retention_artifacts_url: return io.BytesIO(' + repr(json.dumps(retention_artifact_payload).encode()) + ')\n'
+               + '    if request.full_url == whole_export_artifacts_url: return io.BytesIO(' + repr(json.dumps(whole_export_artifact_payload).encode()) + ')\n'
+               + '    if request.full_url == job9_url: return io.BytesIO(' + repr(json.dumps(job9).encode()) + ')\n'
                + '    if request.full_url == job8_url: return io.BytesIO(' + repr(json.dumps(job8).encode()) + ')\n'
                + '    if request.full_url == job7_url: return io.BytesIO(' + repr(json.dumps(job7).encode()) + ')\n'
                + '    if request.full_url == job6_url: return io.BytesIO(' + repr(json.dumps(job6).encode()) + ')\n'
@@ -495,7 +506,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             metadata.write_text(json.dumps(value))
             event_file = root / 'event.json'
             event_file.write_text(json.dumps({'created': False,
-                'before': '272ce7e9eab02aa36da875b35ea862e8b1a1dbfe',
+                'before': 'c5f6ea725b69740582e8051c974a798feda792ba',
                 'after': SOURCE, **(event or {})}))
             output = root / 'output'
             env = {'PATH': os.environ.get('PATH', ''),
@@ -575,7 +586,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                                      (40070695622, '0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1'),
                                      (40075559894, 'a1c3837ba9d8e33a6964a8208ef74d339d6aa635'),
                                      (40098041073, 'b572943a2137c43afd433f7b782a54e12cf13902'),
-                                     (40100140347, '272ce7e9eab02aa36da875b35ea862e8b1a1dbfe'))]
+                                     (40100140347, '272ce7e9eab02aa36da875b35ea862e8b1a1dbfe'),
+                                     (40108417145, 'c5f6ea725b69740582e8051c974a798feda792ba'))]
         for change in (
             {'history': {'total_count': 2, 'workflow_runs': [run, {**run, 'id': 1233}]}},
             {'history': {'total_count': 0, 'workflow_runs': []}},
@@ -584,15 +596,15 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             *({'history': {'total_count': 1, 'workflow_runs': [{**run, **field}]}}
               for field in ({'id': 1233}, {'id': '1234'}, {'head_sha': 'b' * 40},
                             {'head_branch': 'other'}, {'event': 'pull_request'})),
-            {'history': {'total_count': 9, 'workflow_runs': [run, prior[0], prior[0], prior[2], prior[3], prior[4], prior[5], prior[6], prior[7]]}},
+            {'history': {'total_count': 10, 'workflow_runs': [run, prior[0], prior[0], prior[2], prior[3], prior[4], prior[5], prior[6], prior[7], prior[8]]}},
             {'history': {'total_count': 5, 'workflow_runs': [run, *prior[:4]]}},
-            {'history': {'total_count': 10, 'workflow_runs': [run, *prior, {**run, 'id': 1233}]}},
-            *({'history': {'total_count': 9, 'workflow_runs': [{**run, **field}, *prior]}}
+            {'history': {'total_count': 11, 'workflow_runs': [run, *prior, {**run, 'id': 1233}]}},
+            *({'history': {'total_count': 10, 'workflow_runs': [{**run, **field}, *prior]}}
               for field in ({'id': 1233}, {'id': '1234'}, {'head_sha': 'b' * 40},
                             {'run_attempt': 2}, {'head_branch': 'other'}, {'event': 'pull_request'})),
-            *({'history': {'total_count': 9, 'workflow_runs': [run, *[
+            *({'history': {'total_count': 10, 'workflow_runs': [run, *[
                 {**p, **field} if p['id'] == selected else p for p in prior]]}}
-              for selected in (40062126779, 40062948481, 40063895699, 40067322318, 40070695622, 40075559894, 40098041073, 40100140347)
+              for selected in (40062126779, 40062948481, 40063895699, 40067322318, 40070695622, 40075559894, 40098041073, 40100140347, 40108417145)
               for field in ({'head_sha': 'b' * 40}, {'status': 'in_progress'},
                             {'conclusion': 'success'}, {'run_attempt': 2})),
             {'history_error': True}, {'oversized': True},
@@ -675,7 +687,9 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                          '/actions/jobs/120884304655',
                          '/actions/runs/40098041073/artifacts?per_page=1',
                          '/actions/jobs/120890424635',
-                         '/actions/runs/40100140347/artifacts?per_page=1'):
+                         '/actions/runs/40100140347/artifacts?per_page=1',
+                         '/actions/jobs/120914843959',
+                         '/actions/runs/40108417145/artifacts?per_page=1'):
             with self.subTest(endpoint=endpoint):
                 result, emitted = self.run_image_only_scope(unavailable_endpoint=(
                     'https://api.github.com/repos/fr-meyer/openclaw' + endpoint))
@@ -800,11 +814,39 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         result, emitted = self.run_image_only_scope()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('private_retention=true', emitted)
-        for old_before in ('b572943a2137c43afd433f7b782a54e12cf13902',
+        for old_before in ('272ce7e9eab02aa36da875b35ea862e8b1a1dbfe',
+                           'b572943a2137c43afd433f7b782a54e12cf13902',
                            'a1c3837ba9d8e33a6964a8208ef74d339d6aa635'):
             result, emitted = self.run_image_only_scope(event={'before': old_before})
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(emitted, '')
+
+    def test_latest_whole_export_failure_requires_exact_terminal_steps_and_no_artifact(self):
+        expected = {**self.built_job_step_outcomes(),
+            'Capture original hosted build metadata for private retention': 'success',
+            'Retain private OCI archive': 'failure'}
+        steps = [{'name': name, 'status': 'completed', 'conclusion': conclusion}
+                 for name, conclusion in expected.items()]
+        changes = [
+            {'whole_export_job': {'id': 42}},
+            {'whole_export_job': {'head_sha': 'b' * 40}},
+            {'whole_export_job': {'status': 'in_progress'}},
+            {'whole_export_job': {'run_attempt': 2}},
+            {'whole_export_artifacts': {'total_count': 1, 'artifacts': [{'id': 1}]}},
+            {'whole_export_artifacts': {'total_count': False, 'artifacts': []}},
+        ]
+        for selected in steps:
+            changes.append({'whole_export_job': {'steps': [
+                {**item, 'conclusion': 'success' if item['conclusion'] != 'success' else 'failure'}
+                if item == selected else item for item in steps]}})
+        for change in changes:
+            with self.subTest(change=change):
+                result, emitted = self.run_image_only_scope(**change)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(emitted, '')
+        result, emitted = self.run_image_only_scope()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('private_retention=true', emitted)
 
     def test_private_caller_requires_exact_external_workflow_approval_and_preparation_parent(self):
         identity = step(self.workflow, 'Resolve exact source identity')
@@ -815,9 +857,9 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         self.assertIn('APPROVED_PRIVATE_WORKFLOW_SHA:', before_process)
         for change in ({'sha': 'b' * 40}, {'parents': []}, {'parents': None},
                        {'parents': [{'sha': 'b' * 40}]},
-                       {'parents': [{'sha': '531358ca658550f19e5808b8912d97fe952d08cf'},
-                                    {'sha': '531358ca658550f19e5808b8912d97fe952d08cf'}]}):
-            value = {'sha': SOURCE, 'parents': [{'sha': '531358ca658550f19e5808b8912d97fe952d08cf'}],
+                       {'parents': [{'sha': '0f0f67d1ab0fd809b237d807bada7e5f7f73bb0b'},
+                                    {'sha': '0f0f67d1ab0fd809b237d807bada7e5f7f73bb0b'}]}):
+            value = {'sha': SOURCE, 'parents': [{'sha': '0f0f67d1ab0fd809b237d807bada7e5f7f73bb0b'}],
                      **change}
             result, emitted = self.run_image_only_scope(current_commit=value)
             self.assertNotEqual(result.returncode, 0)
