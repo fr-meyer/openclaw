@@ -349,7 +349,7 @@ describe("memory-core plugin runtime registration", () => {
     }
   });
 
-  it("hides intent create, list, and cancel from non-owner turns", () => {
+  it("keeps intent definitions stable across owner authority", () => {
     const warn = vi.fn();
     let intentFactory:
       | ((ctx: { config?: OpenClawConfig; senderIsOwner?: boolean }) => unknown)
@@ -375,10 +375,6 @@ describe("memory-core plugin runtime registration", () => {
       throw new Error("expected standing-intent tool factory");
     }
 
-    expect(intentFactory({ config: {}, senderIsOwner: false })).toBeNull();
-    expect(intentFactory({ config: {} })).toBeNull();
-    expect(warn).not.toHaveBeenCalled();
-
     expect(intentFactory({ senderIsOwner: true })).toBeNull();
     expect(warn).toHaveBeenCalledExactlyOnceWith(
       "memory-core: intent tool unavailable: runtime config is unavailable for this turn",
@@ -392,6 +388,13 @@ describe("memory-core plugin runtime registration", () => {
       };
     };
     expect(ownerTool).toMatchObject({ name: "intent" });
+    for (const senderIsOwner of [false, undefined]) {
+      expect(intentFactory({ config: {}, senderIsOwner })).toMatchObject({
+        name: ownerTool.name,
+        description: ownerTool.description,
+        parameters: ownerTool.parameters,
+      });
+    }
     expect(ownerTool.description).toContain("system injects the reminder automatically");
     expect(ownerTool.description).toContain("Use scheduled tasks for time-based reminders");
     expect(ownerTool.description).not.toMatch(/\b(?:cron|automations)\b/u);

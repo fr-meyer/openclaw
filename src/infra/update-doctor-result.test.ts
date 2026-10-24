@@ -105,20 +105,7 @@ describe("post-install doctor result IPC", () => {
     await expect(fs.access(resultPath)).rejects.toThrow();
   });
 
-  it("discards malformed optional database proof without changing Doctor success", async () => {
-    const resultPath = createUpdatePostInstallDoctorResultPath();
-    resultPaths.push(resultPath);
-    await fs.writeFile(
-      resultPath,
-      JSON.stringify({ status: "ok", databaseWrites: { unchanged: "true" } }),
-    );
-    await expect(consumeUpdatePostInstallDoctorResult(resultPath)).resolves.toMatchObject({
-      status: "ok",
-      databaseWrites: undefined,
-    });
-  });
-
-  it("bounds warning count and length before writing and after reading", async () => {
+  it("bounds distinct warnings before writing and after reading", async () => {
     const resultPath = createUpdatePostInstallDoctorResultPath();
     resultPaths.push(resultPath);
     const warnings = [
@@ -126,8 +113,12 @@ describe("post-install doctor result IPC", () => {
       ...Array.from({ length: 40 }, (_, index) => `${index}: ${"x".repeat(600)}`),
     ];
     const expected = warnings.slice(1, 33).map((warning) => warning.slice(0, 500));
+    const repeatedWarnings = warnings.flatMap((warning) => [warning, ` ${warning} `]);
 
-    await writeUpdatePostInstallDoctorResult({ resultPath, result: { status: "ok", warnings } });
+    await writeUpdatePostInstallDoctorResult({
+      resultPath,
+      result: { status: "ok", warnings: repeatedWarnings },
+    });
     expect(JSON.parse(await fs.readFile(resultPath, "utf8"))).toEqual({
       status: "ok",
       warnings: expected,
@@ -137,7 +128,7 @@ describe("post-install doctor result IPC", () => {
       warnings: expected,
     });
 
-    await fs.writeFile(resultPath, JSON.stringify({ status: "ok", warnings }));
+    await fs.writeFile(resultPath, JSON.stringify({ status: "ok", warnings: repeatedWarnings }));
     await expect(consumeUpdatePostInstallDoctorResult(resultPath)).resolves.toEqual({
       status: "ok",
       warnings: expected,

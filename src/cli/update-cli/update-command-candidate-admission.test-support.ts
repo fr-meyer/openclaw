@@ -213,6 +213,7 @@ export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
           yes: true,
           json: true,
           restart: false,
+          ...(source === "fallback" ? { tag: path.join(pkgRoot, "candidate.tgz") } : {}),
           ...(check === "config" ? { channel: "beta" } : {}),
         }),
       ).rejects.toEqual(new ExitError(1));
@@ -349,7 +350,7 @@ export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
   );
 
   it.each(["existing", "fresh"] as const)(
-    "candidate admit with warn does not bypass runtime recovery (%s profile)",
+    "keeps installed runtime admission authoritative (%s profile)",
     async (profile) => {
       runtimeRecovery.stubNodeRuntime();
       const verdict = candidateAdmissionVerdict();
@@ -399,7 +400,7 @@ export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
           createConfigIO({ observe: false, pluginValidation: "skip" }).readConfigFileSnapshot(),
         );
       }
-      await withEnvAsync(env, () =>
+      const updating = withEnvAsync(env, () =>
         invokeUpdateCli({
           admission: "auto",
           yes: true,
@@ -410,6 +411,18 @@ export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
             : {}),
         }),
       );
+      if (profile === "existing") {
+        await expect(updating).rejects.toEqual(new ExitError(1));
+        expect(recoverNode).not.toHaveBeenCalled();
+        expect(stages).toEqual([]);
+        expect(contexts).toEqual([]);
+        expect(lastWriteJsonCall()).toMatchObject({
+          status: "error",
+          reason: "preflight-node-runtime-incompatible",
+        });
+        return;
+      }
+      await updating;
 
       expect(recoverNode).toHaveBeenCalledOnce();
       expect(events).toContain("runtime-provision");
@@ -429,28 +442,6 @@ export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
     },
   );
 
-  it("candidate admission: retains a check the candidate did not report", async () => {
-    runtimeRecovery.stubNodeRuntime();
-    const verdict = candidateAdmissionVerdict();
-    verdict.facts.checks = verdict.facts.checks.filter((check) => check.name !== "node-runtime");
-    const { stages, contexts } = await prepareCandidateAdmissionFixture({ marker: true, verdict });
-    nodeVersionSatisfiesEngine.mockReturnValue(false);
-
-    await expect(
-      updateCommand({ admission: "auto", yes: true, json: true, restart: false }),
-    ).rejects.toEqual(new ExitError(1));
-
-    expect(contexts).toHaveLength(1);
-    expect(nodeVersionSatisfiesEngine).toHaveBeenCalled();
-    expect(stages.every((root) => !fsSync.existsSync(root))).toBe(true);
-    expect(lastWriteJsonCall()).toMatchObject({
-      status: "error",
-      reason: "node-runtime-preflight",
-      run: { admission: { owner: "candidate" } },
-    });
-    expectNoSideEffects(serviceStop, candidateValidation);
-  });
-
   it("candidate admission: forces installed checks through the option before staging", async () => {
     runtimeRecovery.stubNodeRuntime();
     const { stages, contexts } = await prepareCandidateAdmissionFixture({
@@ -467,8 +458,7 @@ export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
     expect(contexts).toEqual([]);
     expect(lastWriteJsonCall()).toMatchObject({
       status: "error",
-      reason: "node-runtime-preflight",
-      run: { admission: { owner: "installed", fallbackReason: "forced-installed" } },
+      reason: "preflight-node-runtime-incompatible",
     });
     expectNoSideEffects(serviceStop, candidateValidation);
   });
@@ -552,7 +542,7 @@ export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
     expect(lastWriteJsonCall()).toMatchObject({
       dryRun: true,
       failures: expect.arrayContaining([
-        expect.objectContaining({ reason: "node-runtime-preflight" }),
+        expect.objectContaining({ reason: "preflight-node-runtime-incompatible" }),
       ]),
     });
     expectNoSideEffects(serviceStop, candidateValidation);
@@ -692,7 +682,7 @@ export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
 
     expectNoSideEffects(updateGitCheckout, defaultRuntime.exit);
     expect(packageInstallCommandCall()?.[0]).toBeUndefined();
-    expect(listUpdateRuns({ limit: 1 })[0]?.reason).toBe("node-runtime-preflight");
+    expect(listUpdateRuns({ limit: 1 })[0]?.reason).toBe("preflight-node-runtime-incompatible");
     const refusal = "Failing check node-runtime (node-runtime-preflight); key engines.node: ";
     expect(defaultRuntime.log).toHaveBeenCalledWith(
       [

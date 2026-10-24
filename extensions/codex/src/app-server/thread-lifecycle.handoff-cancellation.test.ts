@@ -65,6 +65,36 @@ function createHandoffFixture(label: string) {
   };
 }
 
+it.each(["thread/archived", "thread/deleted", "thread/closed"] as const)(
+  "releases a retired owner handoff after %s without waiting for process exit",
+  async (method) => {
+    const fixture = createHandoffFixture(method);
+    retireSharedCodexAppServerClientIfCurrent(fixture.old.client);
+    const handoff = fixture.handoff();
+    let outcome: unknown = "pending";
+    void handoff.then(
+      (value) => {
+        outcome = value;
+      },
+      (error: unknown) => {
+        outcome = error;
+      },
+    );
+    try {
+      await setImmediate();
+      expect(outcome).toBe("pending");
+      fixture.old.send({ method, params: { threadId: fixture.threadId } });
+      await handoff;
+      expect(outcome).not.toBe("pending");
+      expect(fixture.old.process.exitCode).toBeNull();
+    } finally {
+      fixture.old.emitExit();
+      await Promise.allSettled([handoff]);
+      fixture.cleanup();
+    }
+  },
+);
+
 it.each(["closed", "force-retired"] as const)(
   "cancels a %s owner handoff and admits a successor without releasing the physical writer fence",
   async (state) => {

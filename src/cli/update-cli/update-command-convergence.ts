@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { theme } from "../../../packages/terminal-core/src/theme.js";
 import { readConfigFileSnapshot } from "../../config/config.js";
+import { retainCurrentDeferredPluginMigrationWarnings } from "../../infra/deferred-plugin-migration-warnings.js";
 import type { UpdateChannel } from "../../infra/update-channels.js";
 import { compareSemverStrings } from "../../infra/update-check.js";
 import { hasDeferredUpdateModelRetirement } from "../../infra/update-deferred-model-retirement.js";
@@ -149,7 +150,7 @@ export async function convergeUpdatePlugins(params: {
   return await withOwnedManagedUpdateEnv(params.ownedManagedUpdateEnv, () =>
     withUpdateEnv(compatibilityEnv, async () => {
       let postCorePluginUpdate;
-      const doctorWarnings: string[] = [];
+      let doctorWarnings: string[] = [];
       let targetRuntimeConverged = false;
       let maintenanceDeferred = false;
       if (shouldResumePostCoreInFreshProcess) {
@@ -174,22 +175,20 @@ export async function convergeUpdatePlugins(params: {
           return {
             resultWithPostUpdate: {
               ...failedTargetRuntime(),
-              ...(freshProcessResult.failureFacts?.length
-                ? {
-                    steps: [
-                      ...params.result.steps,
-                      {
-                        name: "post-update verification",
-                        command: "openclaw update",
-                        cwd: postUpdateRoot,
-                        durationMs: 0,
-                        exitCode: freshProcessResult.exitCode,
-                        stderrTail: freshProcessResult.error,
-                        failureFacts: freshProcessResult.failureFacts,
-                      },
-                    ],
-                  }
-                : {}),
+              steps: [
+                ...params.result.steps,
+                {
+                  name: "post-update verification",
+                  command: "openclaw update",
+                  cwd: postUpdateRoot,
+                  durationMs: 0,
+                  exitCode: freshProcessResult.exitCode,
+                  stderrTail: freshProcessResult.error,
+                  failureFacts: freshProcessResult.failureFacts?.length
+                    ? freshProcessResult.failureFacts
+                    : [{ check: "runtime", code: "post-core-update-failed" }],
+                },
+              ],
             },
             detail: freshProcessResult.error,
             cancelled: freshProcessResult.exitCode === 130 || freshProcessResult.exitCode === 143,
@@ -285,6 +284,14 @@ export async function convergeUpdatePlugins(params: {
         if (completedPluginUpdate) {
           postCorePluginUpdate = completedPluginUpdate.pluginUpdate;
           postUpdateConfigSnapshot = completedPluginUpdate.configSnapshot;
+          doctorWarnings = await retainCurrentDeferredPluginMigrationWarnings(
+            doctorWarnings,
+            new Set(
+              (postCorePluginUpdate.warnings ?? []).flatMap((warning) =>
+                warning.reason === "doctor-advisory" && warning.pluginId ? [warning.pluginId] : [],
+              ),
+            ),
+          );
         }
       } else if (params.candidateRuntime) {
         postUpdateConfigSnapshot = await readConfigFileSnapshot({ observe: false });

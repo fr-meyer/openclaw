@@ -1,11 +1,16 @@
+import type { ResolvedCliBackend } from "../cli-backends.js";
 import { resolveConversationCapabilityProfile } from "../conversation-capability-profile.js";
+import { resolveExecConfigState } from "../exec-defaults.js";
+import { resolveEffectiveToolFsWorkspaceOnly } from "../tool-fs-policy.js";
 import { expandToolGroups, normalizeToolPolicyName } from "../tool-policy.js";
 import type { RunCliAgentParams } from "./types.js";
 
 /**
  * Translate the caller's runtime tool cap into the CLI run's exact tool availability.
- * Native CLI tools cannot enforce channel or inherited completion caps, so those
- * runs expose their whole surface through the mediated MCP policy projection.
+ * Native CLI tools cannot enforce workspace, channel, or inherited completion caps, so those
+ * runs expose their whole surface through the mediated MCP policy projection. Bundled
+ * local Claude agent turns use that same mediated surface even without a cap, so a
+ * completion does not replace the native tool prefix of a running session.
  */
 export function resolveCliRuntimeToolPolicy(input: {
   params: RunCliAgentParams;
@@ -14,7 +19,9 @@ export function resolveCliRuntimeToolPolicy(input: {
   backendId: string;
   bundleMcp: boolean;
   canEnforceExactToolAvailability: boolean;
+  projectNativeToolAuthority?: ResolvedCliBackend["projectNativeToolAuthority"];
   isSideQuestion: boolean;
+  sideQuestionToolMode?: "disabled" | "native";
   skipsTurnPreparation: boolean;
 }): { params: RunCliAgentParams; runtimeToolsAllowPolicy: string[] | undefined } {
   let { params } = input;
@@ -79,7 +86,33 @@ export function resolveCliRuntimeToolPolicy(input: {
           modelId: params.model,
         }).policy;
   const senderRestricted = requesterPolicy?.inheritedToolPolicySource === "sender";
-  if ((params.trustedInternalHandoff || senderRestricted) && params.disableTools !== true) {
+  // Internal controls and backend-enforced tool-free questions have no file authority.
+  const workspaceOnly =
+    params.controlOperation === undefined &&
+    !(input.isSideQuestion && input.sideQuestionToolMode === "disabled") &&
+    resolveEffectiveToolFsWorkspaceOnly({ cfg: params.config, agentId: input.policyAgentId });
+  const ordinaryClaudeMediation =
+    input.backendId === "claude-cli" &&
+    input.bundleMcp &&
+    input.canEnforceExactToolAvailability &&
+    !input.isSideQuestion &&
+    !input.skipsTurnPreparation &&
+    params.sessionEntry?.execHost !== "node" &&
+    params.cliToolAvailability === undefined &&
+    resolveExecConfigState({
+      cfg: params.config,
+      sessionEntry: params.sessionEntry,
+      execOverrides: params.execOverrides,
+      agentId: input.policyAgentId,
+      sessionKey: input.policySessionKey,
+    }).host !== "node";
+  if (
+    (params.trustedInternalHandoff ||
+      senderRestricted ||
+      workspaceOnly ||
+      ordinaryClaudeMediation) &&
+    params.disableTools !== true
+  ) {
     if (
       !input.canEnforceExactToolAvailability ||
       !input.bundleMcp ||
@@ -91,13 +124,25 @@ export function resolveCliRuntimeToolPolicy(input: {
         `CLI backend ${input.backendId} cannot enforce ${senderRestricted ? "conversation" : "completion"} tool policy`,
       );
     }
-    runtimeToolsAllowPolicy ??= senderRestricted
-      ? (params.cliToolAvailability?.openClaw ?? ["*"])
-      : ["*"];
+    const exactWorkspaceTools =
+      !params.trustedInternalHandoff &&
+      workspaceOnly &&
+      params.cliToolAvailability &&
+      runtimeToolsAllowPolicy === undefined
+        ? [
+            ...params.cliToolAvailability.openClaw,
+            ...(input.projectNativeToolAuthority?.(params.cliToolAvailability.native) ?? []),
+          ]
+        : undefined;
+    if (exactWorkspaceTools === undefined) {
+      runtimeToolsAllowPolicy ??= senderRestricted
+        ? (params.cliToolAvailability?.openClaw ?? ["*"])
+        : ["*"];
+    }
     params = {
       ...params,
       toolsAllow: undefined,
-      cliToolAvailability: { native: [], openClaw: [] },
+      cliToolAvailability: { native: [], openClaw: exactWorkspaceTools ?? [] },
     };
   }
   return { params, runtimeToolsAllowPolicy };

@@ -89,6 +89,10 @@ import {
   detectChangedLanes,
   listChangedPathsFromGit as listChangedPathsFromGitSource,
 } from "./changed-lanes.mts";
+import {
+  nativeSecurityAdapterForPath,
+  nativeSecurityTargetsForPath,
+} from "./fork-release/native_tests.mjs";
 import { parsePermissiveBooleanToken } from "./lib/arg-utils.mts";
 import {
   getChangedPathFacts,
@@ -4024,6 +4028,10 @@ function resolveToolingTestTargets(
   cwd = process.cwd(),
   options: ChangedTestTargetOptions = {},
 ) {
+  const nativeOwners = nativeSecurityTargetsForPath(changedPath);
+  if (nativeOwners) {
+    return nativeOwners;
+  }
   if (
     /^test\/scripts\/(?:ci-(?:checkout|git-owner|linux-git|platform-checkout|windows-process-census)\.test(?:-support)?\.ts|generated-publisher\.test-support\.ts|openclaw-performance-(?:workflow\.test(?:-support)?|git-lifecycle\.test)\.ts|plugin-release-git-lifecycle\.test\.ts|release-workflow-git-lifecycle\.test\.ts|fixtures\/(?:ci-platform-checkout\.mjs|ci-checkout-auth\.py|ci-windows-process-census\.(?:mjs|py)))$/u.test(
       changedPath,
@@ -4638,7 +4646,9 @@ export function resolveChangedTestTargetPlan(
     return resolveBoundedChangedTestTargetPlan(changedPaths, options);
   }
   const executableChangedPaths = changedPaths.filter(
-    (changedPath) => !isDeletedChangedTestTarget(changedPath, cwd),
+    (changedPath) =>
+      nativeSecurityAdapterForPath(changedPath) !== null ||
+      !isDeletedChangedTestTarget(changedPath, cwd),
   );
   const toolingTargets = resolveToolingChangedTestTargets(executableChangedPaths, cwd, options);
   if (toolingTargets) {

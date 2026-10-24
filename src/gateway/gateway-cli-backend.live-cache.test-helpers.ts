@@ -265,11 +265,14 @@ export async function verifyCliBackendAnnounceOrdering({
   announceBarrier,
   requestTimeoutMs,
   logStep,
+  minCacheHitRate,
 }: {
   client: GatewayClient;
   announceBarrier: Awaited<ReturnType<typeof createCliAnnounceBarrier>>;
   requestTimeoutMs: number;
   logStep: (step: string, details?: Record<string, unknown>) => void;
+  /** Cache probes require the completion and the next ordinary turn to reuse the parent prefix. */
+  minCacheHitRate?: number;
 }) {
   const announceNonce = randomBytes(3).toString("hex").toUpperCase();
   const announceSessionKey = `agent:dev:cli-announce-${announceNonce.toLowerCase()}`;
@@ -352,25 +355,21 @@ export async function verifyCliBackendAnnounceOrdering({
     sessionId: announceEntry.sessionId,
     sessionKey: announceSessionKey,
   });
+  let assistantUsage: Array<CliCacheUsage | undefined> = [];
   const { parentReplyIndex, completionReplyIndex } = await waitFor(async () => {
-    const announceHistory = await loadCliSessionHistoryMessages({ sessionTarget });
-    const assistantReplies = announceHistory.flatMap((message) => {
-      const record = message as { role?: unknown; content?: unknown };
-      return record.role === "assistant"
-        ? [extractTextFromChatContent(record.content, { joinWith: "" }) ?? ""]
-        : [];
+    const history = await loadCliSessionHistoryMessages({ sessionTarget });
+    const assistantMessages = history.flatMap((message) => {
+      const record = message as { role?: unknown; content?: unknown; usage?: CliCacheUsage };
+      return record.role === "assistant" ? [record] : [];
     });
-    const observedParentReplyIndex = assistantReplies.findIndex((reply) =>
-      reply.includes(announceParentToken),
+    assistantUsage = assistantMessages.map((record) => record.usage);
+    const replies = assistantMessages.map(
+      (record) => extractTextFromChatContent(record.content, { joinWith: "" }) ?? "",
     );
-    const observedCompletionReplyIndex = assistantReplies.findIndex((reply) =>
-      reply.includes(announceChildToken),
-    );
-    return observedParentReplyIndex >= 0 && observedCompletionReplyIndex >= 0
-      ? {
-          parentReplyIndex: observedParentReplyIndex,
-          completionReplyIndex: observedCompletionReplyIndex,
-        }
+    const parentIndex = replies.findIndex((reply) => reply.includes(announceParentToken));
+    const completionIndex = replies.findIndex((reply) => reply.includes(announceChildToken));
+    return parentIndex >= 0 && completionIndex >= 0
+      ? { parentReplyIndex: parentIndex, completionReplyIndex: completionIndex }
       : undefined;
   });
   logStep("announce-child:transcript-order", {
@@ -382,4 +381,30 @@ export async function verifyCliBackendAnnounceOrdering({
   });
   expect(parentReplyIndex).toBeGreaterThanOrEqual(0);
   expect(completionReplyIndex).toBeGreaterThan(parentReplyIndex);
+  if (minCacheHitRate === undefined) {
+    return;
+  }
+  // Ordinary -> verified completion -> ordinary must keep one reusable prefix.
+  logCliCacheUsage("announce-parent", {
+    meta: { agentMeta: { usage: assistantUsage[parentReplyIndex] } },
+  });
+  const completionHitRate = logCliCacheUsage("announce-completion", {
+    meta: { agentMeta: { usage: assistantUsage[completionReplyIndex] } },
+  });
+  const followupToken = `CLI_ANNOUNCE_FOLLOWUP_${announceNonce}`;
+  const followup = await client.request(
+    "agent",
+    {
+      sessionKey: announceSessionKey,
+      idempotencyKey: `cli-announce-followup-${randomUUID()}`,
+      deliver: false,
+      timeout: 240,
+      message: `Do not inspect files or run tools. Reply with exactly: ${followupToken}.`,
+    },
+    { expectFinal: true, timeoutMs: requestTimeoutMs },
+  );
+  expect(extractPayloadText(followup.result)).toContain(followupToken);
+  const followupHitRate = logCliCacheUsage("announce-followup", followup.result);
+  expect(completionHitRate).toBeGreaterThanOrEqual(minCacheHitRate);
+  expect(followupHitRate).toBeGreaterThanOrEqual(minCacheHitRate);
 }

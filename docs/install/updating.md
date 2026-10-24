@@ -401,9 +401,14 @@ containing the managed-helper authority fix, subsequent updates started through
 **from** the fixed version; it does not repair the 2026.9.4 macOS handoff in place.
 </Note>
 
-Package updates that select Node inspect the exact candidate's Node requirement before activation.
-An incompatible runtime produces `node-runtime-preflight`, with the target
-version, required engine range, selected Node version, and an upgrade command.
+Registry package updates inspect the exact target's Node requirement before
+staging or running package lifecycle scripts. An incompatible Gateway runtime
+produces `preflight-node-runtime-incompatible`, with the target version, required
+engine range, selected Node version, and an upgrade command. If the Gateway
+service pins a Node executable, update that service definition too; changing
+the shell's Node alone does not change the service. The updater keeps the
+requested OpenClaw target and does not select another release automatically.
+Later runtime capability checks can still produce `node-runtime-preflight`.
 npm directory permission failures produce `global-install-permission-denied`,
 naming the directory, its owner when available, and the next action. Dry-run JSON
 includes these outcomes in `failures`; the update report and Doctor's update
@@ -508,6 +513,8 @@ This lets validation run while the serving Gateway keeps its configured ports.
 It preserves non-secret Gateway auth settings such as `gateway.auth.rateLimit`
 for policy checks, while using a temporary token and disabling Tailscale identity
 authentication.
+Doctor omits the onboarding URL warning derived from that temporary loopback
+binding during rehearsal; other findings remain visible.
 The activated Gateway retains your normal listener settings. Candidate startup
 progress is emitted only when the driving updater announces support, so older
 updaters, including 2026.9.5 and 2026.9.6, retain actual startup errors instead of
@@ -743,13 +750,22 @@ or rollback for it. Do not rewrite identities or delete recovery artifacts.
 
 ### Unfinished publication and rollback
 
-`openclaw update` automatically settles a `publication-complete` operation when
-the live candidate passes the same verification as repair, even when the update
-lease is unchanged. A dry run previews settlement without changing recovery
-artifacts. With an unchanged lease, other unfinished phases still require explicit
-repair.
+`openclaw update` automatically settles a `prepared`, `publishing`, or
+`publication-complete` operation when the live candidate passes the same
+verification as repair, even when the update lease is unchanged. It also retires
+an untouched preparation after verifying the original package and launchers.
+This does not republish files beneath a running Gateway. A dry run previews
+settlement without changing recovery artifacts. Unfinished publication that
+still needs file changes, pending rollback, and failed verification retain their
+recovery artifacts and report the repair command.
 
-For an external-helper operation stuck at `prepared`, `publishing`, or
+After a managed-service update fails before stopping the original Gateway,
+the handoff checks whether that original version is still serving and records
+the outcome. A stopped Gateway or unavailable health check is reported with
+its reason. This observation does not restart the service or mark the attempted
+update successful.
+
+To explicitly settle an external-helper operation stuck at `prepared`, `publishing`, or
 `publication-complete` whose live package already serves the candidate, run
 `openclaw update repair` from an independent terminal. Repair verifies the
 installed candidate's dist content inventory, manifest, launchers,

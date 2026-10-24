@@ -448,6 +448,102 @@ describe("session lifecycle state", () => {
     });
   });
 
+  it("records a tool execution timeout as a resumable safe checkpoint", async () => {
+    const started = await persistLifecycle(
+      { sessionId: "session-id", updatedAt: 900 },
+      {
+        ts: 1_000,
+        sessionId: "session-id",
+        runId: "tool-run",
+        data: { phase: "start", startedAt: 1_000 },
+      },
+    );
+    const interrupted = await persistLifecycle(started, {
+      ts: 2_000,
+      sessionId: "session-id",
+      runId: "tool-run",
+      data: {
+        phase: "error",
+        startedAt: 1_000,
+        endedAt: 2_000,
+        status: "timed_out",
+        timeoutPhase: "tool_execution",
+        providerStarted: true,
+      },
+    });
+
+    expect(interrupted).toMatchObject({
+      status: "interrupted",
+      abortedLastRun: true,
+      restartRecoveryForceSafeTools: true,
+      lifecycleRunId: undefined,
+      lastRunId: "tool-run",
+      lastRunError: expect.stringContaining("unknown outcome"),
+      mainRestartRecovery: {
+        cycleId: expect.any(String),
+        revision: 1,
+        chargedAttempts: 0,
+        safeToolsRequired: true,
+      },
+      restartRecoveryRuns: [
+        { runId: "tool-run", lifecycleGeneration: getAgentEventLifecycleGeneration() },
+      ],
+    });
+
+    const repeated = await persistLifecycle(
+      {
+        ...started,
+        mainRestartRecovery: {
+          cycleId: "existing-cycle",
+          revision: 3,
+          chargedAttempts: 1,
+        },
+      },
+      {
+        ts: 2_000,
+        sessionId: "session-id",
+        runId: "tool-run",
+        data: {
+          phase: "error",
+          startedAt: 1_000,
+          endedAt: 2_000,
+          status: "timed_out",
+          timeoutPhase: "tool_execution",
+          providerStarted: true,
+        },
+      },
+    );
+    expect(repeated.mainRestartRecovery).toEqual({
+      cycleId: "existing-cycle",
+      revision: 4,
+      chargedAttempts: 1,
+      safeToolsRequired: true,
+    });
+
+    const settled: SessionEntry = {
+      ...interrupted,
+      status: "done",
+      abortedLastRun: false,
+      mainRestartRecovery: undefined,
+      restartRecoveryForceSafeTools: undefined,
+      restartRecoveryRuns: undefined,
+    };
+    const replayed = await persistLifecycle(settled, {
+      ts: 2_000,
+      sessionId: "session-id",
+      runId: "tool-run",
+      data: {
+        phase: "error",
+        startedAt: 1_000,
+        endedAt: 2_000,
+        status: "timed_out",
+        timeoutPhase: "tool_execution",
+        providerStarted: true,
+      },
+    });
+    expect(replayed).toEqual(settled);
+  });
+
   it.each([
     { name: "visible run", controlUiVisible: true, isHeartbeat: false, lastActivityAt: 1_800 },
     { name: "heartbeat", controlUiVisible: true, isHeartbeat: true, lastActivityAt: 1_000 },

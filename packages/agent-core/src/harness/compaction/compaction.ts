@@ -11,6 +11,12 @@ import { isRuntimeContextCarrier } from "../messages.js";
 import { buildSessionContext, projectSessionEntryMessage } from "../session/session.js";
 import { selectResetKeptEntries } from "../session/tool-result-pairing.js";
 import { CompactionError, err, ok, type Result, type SessionTreeEntry } from "../types.js";
+import {
+  formatSplitTurnSourceAsk,
+  latestCompactionUserText,
+  selectCompactionRequestMessages,
+  stripPreviousCompactionMetadata,
+} from "./request-scope.js";
 import { runSummarizationCompletion } from "./summarization-completion.js";
 import { buildSummaryCheckpointPrompt } from "./summary-checkpoint-prompt.js";
 import {
@@ -18,8 +24,8 @@ import {
   createFileOps,
   extractFileOpsFromMessage,
   type FileOperations,
+  formatCompactionUserLabel,
   formatFileOperations,
-  formatPersistedSenderSuffix,
   getCompactionContent,
   mergeSummaryFileOperations,
   stringifyCompactionValue,
@@ -84,21 +90,8 @@ const LATEST_USER_REQUEST_TRUNCATED_MARKER = "\n[... latest user request truncat
 const MAX_REQUIRED_ASK_CONTEXT_CHARS = 2_000;
 const REQUIRED_ASK_CONTEXT_TRUNCATED_MARKER = "\n[... split-turn ask context truncated ...]\n";
 
-function latestUserText(messages: AgentMessage[]): string {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role === "user") {
-      const source = getCompactionContent(message.content).text.trim();
-      if (source) {
-        return source;
-      }
-    }
-  }
-  return "";
-}
-
 function extractLatestUserRequest(messages: AgentMessage[]): string | undefined {
-  const source = latestUserText(messages);
+  const source = latestCompactionUserText(messages);
   if (!source || source.length <= MAX_LATEST_USER_REQUEST_CHARS) {
     return source || undefined;
   }
@@ -330,8 +323,8 @@ export function estimateTokens(message: AgentMessage): number {
     }
     case "user": {
       chars = countContentChars(message.content);
-      // serializeConversation projects this exact persisted-sender suffix.
-      chars += estimateStringChars(formatPersistedSenderSuffix(message));
+      // User text is the baseline; charge the exact added source and sender label.
+      chars += estimateStringChars(formatCompactionUserLabel(message)) - "User".length;
       break;
     }
     case "custom":
@@ -403,6 +396,8 @@ interface CompactionRetentionBudget {
 }
 
 interface CompactionRetentionConstraints {
+  /** The run's source input; later internal updates do not replace its human ask. */
+  requestFromEntryId?: string;
   /** An admitted, unprocessed user remains intact even before its budget is prepared. */
   preserveFromEntryId?: string;
   budget?: CompactionRetentionBudget;
@@ -609,6 +604,8 @@ export interface CompactionPreparation {
   /** Prefix messages summarized separately when compaction splits a turn. */
   turnPrefixMessages: AgentMessage[];
   isSplitTurn: boolean;
+  /** Run-owner selection is authoritative, including an empty pending request. */
+  requestState?: "unresolved" | "none";
   /** Bounded request that the run owner will resume after compaction. */
   latestUnresolvedUserRequest?: string;
   tokensBefore: number;
@@ -681,8 +678,19 @@ export function prepareCompaction(
   const boundaryEnd = effectiveEntries.length;
 
   const contextMessages = buildSessionContext(pathEntries).messages;
+  // An admitted request can have later internal updates. Without that identity,
+  // only the latest input is known to belong to this run; do not scan past an
+  // independent internal input and revive an older human task.
+  const requestEntryId = constraints?.requestFromEntryId ?? constraints?.preserveFromEntryId;
+  const requestScope = selectCompactionRequestMessages(pathEntries, requestEntryId);
+  if (!requestScope) {
+    return err(
+      new CompactionError("invalid_session", "Compaction cannot find the admitted request."),
+    );
+  }
   const latestUnresolvedUserRequest = requestState
-    ? (extractLatestUserRequest(contextMessages) ?? previousLatestUnresolvedUserRequest)
+    ? (extractLatestUserRequest(requestScope.messages) ??
+      (requestScope.hasRequestInput ? undefined : previousLatestUnresolvedUserRequest))
     : undefined;
   const contextUsage = estimateContextTokens(contextMessages);
   const tokensBefore = contextUsage.tokens;
@@ -777,6 +785,7 @@ export function prepareCompaction(
     messagesToSummarize,
     turnPrefixMessages,
     isSplitTurn: cutPoint.isSplitTurn,
+    ...(requestState ? { requestState } : {}),
     ...(latestUnresolvedUserRequest ? { latestUnresolvedUserRequest } : {}),
     tokensBefore,
     previousSummary,
@@ -855,7 +864,10 @@ export async function compact(
     messagesToSummarize.length > 0 || !summarizeTurnPrefix
       ? await summarize(messagesToSummarize, previousSummary)
       : ok<string, CompactionError>(
-          previousSummaryWithoutFileOperations(preparation) ?? "No prior history.",
+          stripPreviousCompactionMetadata(
+            preparation.previousSummary,
+            preparation.previousSummaryDetails,
+          ) ?? "No prior history.",
         );
   if (!historyResult.ok) {
     return err(historyResult.error);
@@ -886,7 +898,7 @@ export function compactWithoutSummary(
   const droppedCount =
     preparation.messagesToSummarize.length + preparation.turnPrefixMessages.length;
   const sourceAsk = preparation.isSplitTurn
-    ? formatRequiredAskContext(latestUserText(preparation.turnPrefixMessages))
+    ? formatRequiredAskContext(formatSplitTurnSourceAsk(preparation.turnPrefixMessages))
     : "";
   // The notice and the already-bounded split-turn source ask are required; only the
   // carried summary shrinks to fit.
@@ -895,23 +907,13 @@ export function compactWithoutSummary(
     (sourceAsk ? `## Original request of the current turn\n${JSON.stringify(sourceAsk)}\n\n` : "");
   return finalizeCompaction(
     preparation,
-    previousSummaryWithoutFileOperations(preparation) ?? "",
+    stripPreviousCompactionMetadata(
+      preparation.previousSummary,
+      preparation.previousSummaryDetails,
+    ) ?? "",
     "",
     requiredContext,
   );
-}
-
-// File metadata is re-merged by finalizeCompaction, so the carried summary drops its old copy.
-function previousSummaryWithoutFileOperations(
-  preparation: CompactionPreparation,
-): string | undefined {
-  const { previousSummary, previousSummaryDetails } = preparation;
-  const previousFileOperations = previousSummaryDetails
-    ? formatFileOperations(previousSummaryDetails.readFiles, previousSummaryDetails.modifiedFiles)
-    : "";
-  return previousFileOperations && previousSummary?.endsWith(previousFileOperations)
-    ? previousSummary.slice(0, -previousFileOperations.length)
-    : previousSummary;
 }
 
 function finalizeCompaction(

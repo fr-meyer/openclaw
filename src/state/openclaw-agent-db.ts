@@ -1,6 +1,5 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { isMainThread } from "node:worker_threads";
 import { resolveStateDir } from "../config/paths.js";
 import { isGatewayExternallySupervised } from "../infra/gateway-supervision.js";
 import { registerNodeSqliteDisposeCallback } from "../infra/kysely-sync-cache-state.js";
@@ -85,6 +84,7 @@ import {
   revokePendingAgentDatabaseOpen,
   type PendingAgentDatabaseOpen,
 } from "./openclaw-agent-db-lifecycle.js";
+import * as openingRefusal from "./openclaw-agent-db-opening-refusal.js";
 import { ensureOpenClawAgentDatabasePermissions } from "./openclaw-agent-db-permissions.js";
 import { closeIdleOpenClawAgentDatabaseReadOnly } from "./openclaw-agent-db-readonly-scope.js";
 import { registerOpenClawAgentDatabase } from "./openclaw-agent-db-registry.js";
@@ -254,7 +254,7 @@ function* openOpenClawAgentDatabaseSteps(
     // and no directory, lease, registry row, WAL sidecar, or file write may be created.
     const db = openNodeSqliteDatabase(":memory:", { allowExtension });
     db.enableLoadExtension(false);
-    if (!isMainThread) {
+    if (!openingRefusal.mainThread) {
       // Worker-owned incognito must never spill SQLite temporary content to disk.
       db.exec("PRAGMA temp_store=MEMORY");
       // sqlite-allow-raw -- Admit the memory-only policy before schema work can use temporary pages.
@@ -435,7 +435,7 @@ function* openOpenClawAgentDatabaseSteps(
       diagnostics.because ??= integrityRevoked
         ? agentDatabaseAdmissionProvenanceRefusal(preparedLease?.provenance, pathname)
         : undefined;
-      if (preparedLease && !isMainThread) {
+      if (preparedLease && !openingRefusal.mainThread) {
         requestSqliteWorkerOperationAdmission({
           stage: "prepare",
           facts: { kind: "agent-validation-start", lease: preparedLease.receipt },
@@ -570,7 +570,7 @@ function* openOpenClawAgentDatabaseSteps(
       );
     }
     refreshAgentDatabaseIdleTimer(database);
-    if (isMainThread) {
+    if (openingRefusal.mainThread) {
       registerOpenClawAgentWalMaintenance(database, leaseEnvironment);
     }
     getOpenClawDatabaseMaintenanceScope()?.own(database.db, "agent-handles", () =>
@@ -579,6 +579,7 @@ function* openOpenClawAgentDatabaseSteps(
     releaseCreationAdmission?.();
     return database;
   } catch (error) {
+    const refusal = openingRefusal.classifyAgentDatabaseOpeningRefusal(error, preparedLease);
     let closeError: unknown;
     if (openedDatabase) {
       try {
@@ -628,12 +629,12 @@ function* openOpenClawAgentDatabaseSteps(
         closeMaintenanceAgentDatabase(retainedDatabase),
       );
       cache.unregisterExitClose ??= registerSqliteCacheExitClose(closeOpenClawAgentDatabases);
-    } else {
+    } else if (!refusal.deferLeaseRelease) {
       try {
-        releaseOpenClawAgentDatabaseLease(leaseId, releaseOptions);
+        releaseOpenClawAgentDatabaseLease(leaseId, releaseOptions, refusal.closeOutcome);
       } catch (releaseError) {
         retainFailedAgentDatabaseClose(agentId, pathname, () =>
-          releaseOpenClawAgentDatabaseLease(leaseId, releaseOptions),
+          releaseOpenClawAgentDatabaseLease(leaseId, releaseOptions, refusal.closeOutcome),
         );
         throw releaseError;
       }

@@ -302,10 +302,7 @@ export function runAgentAttempt(
       cliExecutionProvider,
       completionNeedsMessageDelivery,
     });
-  // Collector output is mandatory result transport, even on a narrowed tool
-  // surface. The CLI grant is minted from this list and enforced exactly on the
-  // loopback server, so a plugin-launched or cron-continued collector needs the
-  // same forced merge the embedded runner applies before its own construction.
+  // Collector output remains mandatory on a narrowed CLI grant, matching embedded runs.
   const cliRuntimeToolsAllow = mergeForcedEmbeddedAttemptToolsAllow(runtimeToolsAllow, {
     forceToolNames:
       params.opts.swarmCollector && params.opts.swarmOutputSchema

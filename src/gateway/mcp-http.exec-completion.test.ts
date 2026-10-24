@@ -180,8 +180,34 @@ async function readToolSurface(context: PreparedCliRunContext, signal: AbortSign
 }
 
 it.for([
-  { name: "unrestricted native tools", toolsAllow: undefined },
-  { name: "a finite caller cap", toolsAllow: ["exec", "process", "session_status"] },
+  {
+    name: "no caller cap",
+    toolsAllow: undefined,
+    sessionId: "exec-full",
+    terminal: "text",
+    expectedStatus: "completed",
+  },
+  {
+    name: "a finite caller cap",
+    toolsAllow: ["exec", "process", "session_status"],
+    sessionId: "exec-capped",
+    terminal: "text",
+    expectedStatus: "failed",
+  },
+  {
+    name: "an empty CLI final",
+    toolsAllow: undefined,
+    sessionId: "exec-empty",
+    terminal: "empty",
+    expectedStatus: "failed",
+  },
+  {
+    name: "a failed CLI final",
+    toolsAllow: undefined,
+    sessionId: "exec-failed",
+    terminal: "failed",
+    expectedStatus: "failed",
+  },
 ])(
   "retains the CLI surface and enforces completion effects with $name",
   async (source, { signal }) => {
@@ -230,7 +256,8 @@ it.for([
     const normalSurface = await readToolSurface(original, signal);
     expect(normalSurface.mcp).toContain("exec");
     expect(normalSurface.mcp).toContain("session_status");
-    expect(normalSurface.native).toEqual(source.toolsAllow ? [] : undefined);
+    // Ordinary managed Claude turns already use the mediated surface completions require.
+    expect(normalSurface.native).toEqual([]);
     if (source.toolsAllow) {
       expect(normalSurface.mcp).toEqual(["exec", "process", "session_status"]);
     }

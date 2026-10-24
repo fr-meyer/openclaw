@@ -413,10 +413,15 @@ export function registerHarnessCompletionRecoveryCases(
       );
       await expectRecovery({ started: 0, settled: 0, failed: 0, skipped: 1 });
       expect(callGateway).not.toHaveBeenCalled();
-      expect(loadSessionEntry({ sessionKey, storePath })).toMatchObject({
-        abortedLastRun: false,
-        mainRestartRecovery: { tombstone: expect.any(Object) },
-      });
+      const saved = loadSessionEntry({ sessionKey, storePath });
+      expect(saved?.abortedLastRun).toBe(false);
+      if (source === "delegated" || source === "unscoped control-ui") {
+        // Without remaining custody, sender loss retires the input instead of tombstoning.
+        expect(saved?.status).toBe("interrupted");
+        expect(saved?.mainRestartRecovery).toBeUndefined();
+      } else {
+        expect(saved?.mainRestartRecovery?.tombstone).toEqual(expect.any(Object));
+      }
       await expectRecovery({ started: 0, settled: 0, failed: 0, skipped: 0 });
       expect(callGateway).not.toHaveBeenCalled();
     },
