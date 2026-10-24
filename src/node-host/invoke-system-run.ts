@@ -35,6 +35,7 @@ import {
 } from "../infra/exec-auto-review.js";
 import {
   requestExecHostViaSocket,
+  type NodePermissionDetails,
   type ExecHostRequest,
   type ExecHostRunResult,
 } from "../infra/exec-host.js";
@@ -97,7 +98,7 @@ const OUTPUT_EVENT_TAIL = 20_000;
 type SystemRunInvokeResult = {
   ok: boolean;
   payloadJSON?: string | null;
-  error?: { code?: string; message?: string } | null;
+  error?: { code?: string; message?: string; details?: NodePermissionDetails } | null;
 };
 
 type SystemRunDeniedReason =
@@ -108,8 +109,16 @@ type SystemRunDeniedReason =
   | "allowlist-miss"
   | "execution-plan-miss"
   | "companion-unavailable"
+  | "timeout"
+  | "response-lost"
   | "cwd-unavailable"
   | "permission:screenRecording";
+
+const transportErrorCodes: Partial<Record<SystemRunDeniedReason, string>> = {
+  "companion-unavailable": "UNAVAILABLE",
+  timeout: "TIMEOUT",
+  "response-lost": "UNKNOWN",
+};
 
 type SystemRunExecutionContext = SystemRunParsePhase["execution"];
 
@@ -139,6 +148,8 @@ function normalizeDeniedReason(reason: string | null | undefined): SystemRunDeni
     case "allowlist-miss":
     case "execution-plan-miss":
     case "companion-unavailable":
+    case "timeout":
+    case "response-lost":
     case "cwd-unavailable":
     case "permission:screenRecording":
       return reason;
@@ -188,6 +199,7 @@ async function sendSystemRunDenied(
   execution: SystemRunExecutionContext,
   message: string,
   reason: SystemRunDeniedReason = "approval-required",
+  permissionDetails?: NodePermissionDetails,
 ): Promise<null> {
   await opts.sendNodeEvent?.("exec.denied", {
     sessionKey: execution.sessionKey,
@@ -199,10 +211,13 @@ async function sendSystemRunDenied(
   });
   await opts.sendInvokeResult({
     ok: false,
-    // A missing companion reply can follow execution; it is not a policy denial.
+    // A missing or late companion reply can follow execution; it is not a policy denial.
     error: {
-      code: reason === "companion-unavailable" ? "UNAVAILABLE" : "SYSTEM_RUN_DENIED",
+      code: permissionDetails
+        ? "PERMISSION_MISSING"
+        : (transportErrorCodes[reason] ?? "SYSTEM_RUN_DENIED"),
       message,
+      ...(permissionDetails ? { details: permissionDetails } : {}),
     },
   });
   return null;
@@ -370,8 +385,11 @@ async function parseSystemRunPhase(opts: HandleSystemRunInvokeOptions) {
     sessionKey,
     runId,
     execution,
-    deny: (message: string, reason?: SystemRunDeniedReason): Promise<null> =>
-      sendSystemRunDenied(opts, execution, message, reason),
+    deny: (
+      message: string,
+      reason?: SystemRunDeniedReason,
+      permissionDetails?: NodePermissionDetails,
+    ): Promise<null> => sendSystemRunDenied(opts, execution, message, reason, permissionDetails),
     approvalDecision,
     approvalSource: validatedApprovalSource,
     delayedApprovalPolicySnapshot,
@@ -823,7 +841,11 @@ async function executeSystemRunPhase(
       return;
     }
     if (!response.ok) {
-      await phase.deny(response.error.message, normalizeDeniedReason(response.error.reason));
+      await phase.deny(
+        response.error.message,
+        normalizeDeniedReason(response.error.reason),
+        response.error.details,
+      );
       return;
     }
     const result: ExecHostRunResult = response.payload;

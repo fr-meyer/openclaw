@@ -123,7 +123,7 @@ export function readMergePolicy(repo) {
     const parsed = parseGithubResponse(response);
     requireEvidence(
       !(parsed.status === "404" && parsed.body?.message === "Not Found"),
-      "classic branch-protection policy is unavailable to this writer; a generic 404 or hidden GraphQL rule cannot prove absence",
+      "classic branch-protection policy is unavailable to this writer; a generic 404 or hidden GraphQL rule cannot prove absence. The CI exception requires an authoritative policy read. Repair failed CI and use ordinary green-CI landing when its normal admission succeeds; do not change credentials or supply a policy snapshot. This refusal does not establish environment approval or production deployment authority",
     );
     if (parsed.status !== "404" || parsed.body?.message !== "Branch not protected") {
       throw error;
@@ -648,6 +648,10 @@ function asyncMergeResponse(repo, pr, head, uuid, payload) {
   } else if (result.status === "merged") {
     requireEvidence(OID.test(details.sha ?? ""), "async merge result has no valid commit");
   }
+  requireEvidence(
+    result.status === "merged" || details.sha == null,
+    "unmerged async result unexpectedly contains a commit",
+  );
   requireEvidence(
     response.status !== "202" || result.status === "pending",
     "async acceptance did not return a pending request UUID",

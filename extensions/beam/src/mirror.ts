@@ -4,7 +4,6 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { redactToolPayloadText } from "openclaw/plugin-sdk/logging-core";
 import type { OpenClawPluginServiceV2 } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
-import { resolveConfiguredSecretInputString } from "openclaw/plugin-sdk/secret-input-runtime";
 import type { SessionCatalogTranscriptItem } from "openclaw/plugin-sdk/session-catalog";
 import {
   listActiveSessionCatalogs,
@@ -93,9 +92,17 @@ export function parseBeamMirrorConfig(config: ReturnType<PluginRuntime["config"]
   ) {
     return `${MIRROR_CONFIG_PATH}.catalogs must explicitly list the catalog ids to mirror`;
   }
+  // The Gateway materializes refs to strings and leaves unavailable refs as objects.
+  // null means configured but unavailable; undefined keeps tokenless receivers supported.
+  const token =
+    mirror.token === undefined
+      ? undefined
+      : typeof mirror.token === "string" && mirror.token.trim()
+        ? mirror.token.trim()
+        : null;
   return {
     endpoint,
-    ...(mirror.token !== undefined ? { token: mirror.token } : {}),
+    token,
     catalogs: mirror.catalogs.map((id) => id.trim().toLowerCase()),
     pollSeconds: clampNumber(asFiniteNumber(mirror.pollSeconds) ?? DEFAULT_POLL_SECONDS, 10, 3_600),
     activeWindowMinutes: clampNumber(
@@ -208,13 +215,11 @@ type TrackedMirrorSession = {
 export function createBeamMirrorRunner(params: {
   runtime: { config: Pick<PluginRuntime["config"], "current"> };
   logger: { warn: (message: string) => void; info: (message: string) => void };
-  env?: NodeJS.ProcessEnv;
   fetchFn?: typeof fetch;
   now?: () => number;
   listCatalogs?: () => ActiveSessionCatalog[];
   signal: AbortSignal;
 }) {
-  const env = params.env ?? process.env;
   const now = params.now ?? Date.now;
   const listCatalogs = params.listCatalogs ?? listActiveSessionCatalogs;
   const tracked = new Map<string, TrackedMirrorSession>();
@@ -274,10 +279,21 @@ export function createBeamMirrorRunner(params: {
     }
   };
 
-  const upload = async (token: string | undefined, payload: BeamUpload): Promise<boolean> => {
+  const upload = async (payload: BeamUpload): Promise<boolean> => {
     if (signal.aborted || redirectBlocked) {
       return false;
     }
+    // Catalog reads may outlive a secret reload. Use the current credential at dispatch.
+    const current = parseBeamMirrorConfig(params.runtime.config.current());
+    if (
+      !current ||
+      typeof current === "string" ||
+      current.token === null ||
+      current.endpoint !== endpoint
+    ) {
+      return false;
+    }
+    const token = current.token;
 
     let guarded: Awaited<ReturnType<typeof fetchWithSsrFGuard>>;
     try {
@@ -391,23 +407,11 @@ export function createBeamMirrorRunner(params: {
         warnThrottled(`beam mirror disabled: ${String(error)}`);
         return;
       }
-      let token: string | undefined;
-      if (mirror.token !== undefined) {
-        const resolved = await resolveConfiguredSecretInputString({
-          // The resolver only reads; the plugin runtime exposes a DeepReadonly view.
-          config: config as OpenClawConfig,
-          env,
-          value: mirror.token,
-          path: MIRROR_TOKEN_PATH,
-        });
-        signal.throwIfAborted();
-        if (!resolved.value) {
-          warnThrottled(
-            `beam mirror token unresolved${resolved.unresolvedRefReason ? `: ${resolved.unresolvedRefReason}` : ""}`,
-          );
-          return;
-        }
-        token = resolved.value;
+      if (mirror.token === null) {
+        warnThrottled(
+          `beam mirror paused: ${MIRROR_TOKEN_PATH} credential unavailable; restore it and run openclaw secrets reload`,
+        );
+        return;
       }
       const activeSinceMs = now() - mirror.activeWindowMinutes * 60_000;
       const catalogs = listCatalogs().filter(
@@ -478,7 +482,7 @@ export function createBeamMirrorRunner(params: {
           if (tracked.get(key)?.fingerprint === fingerprint) {
             continue;
           }
-          const uploaded = await upload(token, payload);
+          const uploaded = await upload(payload);
           signal.throwIfAborted();
           if (uploaded) {
             trackSuccessfulUpload(key, candidate, fingerprint);
@@ -518,7 +522,7 @@ export function createBeamMirrorRunner(params: {
           try {
             const payload = await buildUpload(agentId, catalog, entry.candidate, true);
             signal.throwIfAborted();
-            uploaded = await upload(token, payload);
+            uploaded = await upload(payload);
             signal.throwIfAborted();
           } catch {
             signal.throwIfAborted();
@@ -566,9 +570,15 @@ export function createBeamMirrorService(params: {
         everyMs: mirror.pollSeconds * 1_000,
         run: () => active.tick(),
       });
-      ctx.logger.info(
-        `beam mirror active: ${mirror.catalogs.join(", ")} -> ${new URL(mirror.endpoint).origin}`,
-      );
+      if (mirror.token === null) {
+        ctx.logger.warn(
+          `beam mirror paused: ${MIRROR_TOKEN_PATH} credential unavailable; restore it and run openclaw secrets reload`,
+        );
+      } else {
+        ctx.logger.info(
+          `beam mirror active: ${mirror.catalogs.join(", ")} -> ${new URL(mirror.endpoint).origin}`,
+        );
+      }
     },
   };
 }

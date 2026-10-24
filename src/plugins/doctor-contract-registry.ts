@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
@@ -33,6 +32,10 @@ import {
   collectRelevantDoctorPluginIds,
   collectRelevantDoctorPluginIdsForTouchedPaths,
 } from "./doctor-contract-relevance.js";
+import {
+  isPluginDoctorMigrationDeferred,
+  withDeferredPluginDoctorMigrations,
+} from "./doctor-migration-deferral.js";
 import type { PluginDoctorMigrationResourceCollectionParams } from "./doctor-migration-resources.js";
 import type { DoctorSessionRouteStateOwner } from "./doctor-session-route-state-owner-types.js";
 import { isActivatedManifestOwner } from "./manifest-owner-policy.js";
@@ -48,19 +51,7 @@ export { collectRelevantDoctorPluginIds } from "./doctor-contract-relevance.js";
 
 const log = createSubsystemLogger("plugins/doctor-contracts");
 
-const deferredPluginMigrations = new AsyncLocalStorage<ReadonlySet<string>>();
-
-/** Defer unavailable plugin repairs while retaining host-owned historical listener facts. */
-export function withDeferredPluginDoctorMigrations<T>(
-  pluginIds: readonly string[],
-  run: () => T,
-): T {
-  return deferredPluginMigrations.run(new Set(pluginIds), run);
-}
-
-export function isPluginDoctorMigrationDeferred(pluginId: string): boolean {
-  return deferredPluginMigrations.getStore()?.has(pluginId) === true;
-}
+export { isPluginDoctorMigrationDeferred, withDeferredPluginDoctorMigrations };
 
 type PluginDoctorContractSurface = keyof PluginManifestDoctorContract;
 
@@ -514,7 +505,7 @@ function filterPluginDoctorStateMigrationRecords(
   const records: PluginManifestRegistryRecord[] = [];
   const normalizedConfig = normalizePluginsConfig(config?.plugins);
   for (const record of candidates) {
-    if (deferredPluginMigrations.getStore()?.has(record.id)) {
+    if (isPluginDoctorMigrationDeferred(record.id)) {
       continue;
     }
     const channelOwner = record.channels.length > 0;

@@ -494,6 +494,8 @@ When a fallback answers, the Control UI shows the successful answer once and rem
 
 ## Observability and failure summaries
 
+Each admitted retry or fallback request gets its own start-relative diagnostic recovery allowance. Earlier failed attempts remain in cumulative no-progress evidence, but that evidence cannot cancel a fresh request before its recorded allowance expires. User cancellation, retry limits, and overall run budgets still apply.
+
 `runWithModelFallback(...)` records per-attempt details that feed logs and user-facing cooldown messaging:
 
 - provider/model attempted

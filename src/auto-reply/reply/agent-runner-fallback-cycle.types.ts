@@ -2,6 +2,7 @@ import type { PreparedAgentRunAdmission } from "../../agents/admitted-run-contex
 import type { BootstrapContextRunKind } from "../../agents/bootstrap-mode.js";
 import type { RunEntryCandidateOptions } from "../../agents/embedded-agent-runner/run-entry.js";
 import type { DeferredEmbeddedRunLifecycleManager } from "../../agents/embedded-agent-runner/run/deferred-lifecycle-owner.js";
+import type { CompactionAccountingTarget } from "../../agents/embedded-agent-runner/run/internal-params.js";
 import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
 import type { FastModeAutoProgressState } from "../../agents/fast-mode.js";
 import type { CompactionRequestBudget } from "../../agents/sessions/compaction/request-budget.js";
@@ -61,6 +62,7 @@ export type AgentFallbackCandidateCommonParams = RunEntryCandidateOptions &
   };
 
 export type AgentFallbackCycleState = {
+  sessionWriter?: CompactionAccountingTarget;
   maintenanceAuthProfile?: CompletedAgentAuthSelection;
   compactionRequestBudget?: CompactionRequestBudget;
   deferredLifecycle: DeferredEmbeddedRunLifecycleManager;

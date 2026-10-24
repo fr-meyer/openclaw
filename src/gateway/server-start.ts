@@ -57,6 +57,7 @@ async function startGatewayServerWithSdkHost(
       ...gatewayKernel.createHttpTransportOptions(),
       httpRequestLifetime: gatewayKernel.gatewayRequestContext,
       updateCanary: opts.updateCanary,
+      onListening: opts.gatewayStateOwner?.markListening,
       ...(!gatewayKernel.minimalTestGateway && gatewayKernel.tailscaleMode !== "off"
         ? {
             prepareManagedTailscaleIngress: async (backend) => {

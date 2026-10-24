@@ -21,7 +21,6 @@ import {
 } from "../infra/sqlite-worker-store.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
-import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { isStateDatabaseReadAdmissionInvalidatedError } from "./openclaw-state-db-async-lifecycle.js";
 import {
   captureOpenClawStateDatabaseReadAdmission,
@@ -30,6 +29,7 @@ import {
   registerOpenClawStateDatabaseAsyncResource,
   registerOpenClawStateDatabaseLifecycleListener,
 } from "./openclaw-state-db-cache.js";
+import type { OpenClawDatabaseMaintenanceScope } from "./openclaw-state-maintenance-context.js";
 import type { OpenClawStateWorkerContext } from "./openclaw-state-worker-context.types.js";
 import type {
   OpenClawStateWorkerCleanupOperations,
@@ -53,7 +53,7 @@ import type {
 const log = createSubsystemLogger("state/worker");
 const SHARED_STATE_WORKER_IDLE_INSPECT_MS = 60_000;
 
-function createSharedStateWorkerOwner() {
+export function createSharedStateWorkerOwner() {
   const moduleUrl = resolveRuntimeProcessEntrypointUrl("sharedStateStore");
   const stores = new Set<Entry>();
   const activeEntries = new Set<Entry>();
@@ -437,6 +437,7 @@ function createSharedStateWorkerOwner() {
       context: SqliteWorkerStateContext,
       assertOwned: () => void,
       identity: DatabasePathIdentity,
+      maintenanceScope?: OpenClawDatabaseMaintenanceScope,
     ) {
       const expectedIdentity = { ...identity };
       assertOwned();
@@ -488,6 +489,11 @@ function createSharedStateWorkerOwner() {
         { ...captureRuntimeWorkerSource(moduleUrl), databasePath, existingOnly: true },
         context,
         assertCurrent,
+        {
+          cleanupAccess: maintenanceScope && {
+            assertDatabaseAccess: maintenanceScope.assertCleanupDatabaseAccess,
+          },
+        },
       );
     },
     async open(
@@ -713,12 +719,4 @@ function createSharedStateWorkerOwner() {
       return store;
     },
   };
-}
-
-export function getOpenClawStateWorkerOwner() {
-  return resolveGlobalSingleton(
-    Symbol.for("openclaw.sharedStateWorkerOwner"),
-    createSharedStateWorkerOwner,
-    (sharedOwner) => sharedOwner.close(),
-  );
 }

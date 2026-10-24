@@ -155,6 +155,7 @@ async function killLatestSubagentRun(params: {
   managedFlowKillClaim?: ManagedFlowNativeKillClaim;
   commands?: ReturnType<typeof captureSubagentCommands>;
   onKilled?: (entry: SubagentRunRecord) => void;
+  onContinuationRetired?: () => void;
 }): Promise<{
   entry: SubagentRunRecord;
   session?: SubagentKillSession;
@@ -217,6 +218,9 @@ async function killLatestSubagentRun(params: {
         ? { completedCleanupError: result.completedCleanupError }
         : {}),
     };
+  }
+  if (result.continuationRetired) {
+    params.onContinuationRetired?.();
   }
   if (result.killed) {
     // Later command or ownership failures cannot erase the committed native outcome.
@@ -289,7 +293,8 @@ async function visitAll(work: Promise<void>[]): Promise<void> {
 
 async function killSubagentRunTree(
   params: KillTraversal & { trees: KillTree[]; suppressCompletedWakes?: boolean },
-): Promise<{ killed: number; labels: string[]; execAborted: boolean }> {
+): Promise<{ killed: number; labels: string[]; execAborted: boolean; continuationRetired?: true }> {
+  let continuationRetired = false;
   const visits = new Map<
     KillTree,
     { label?: string; descendants: boolean; suppressCompletedWakes: boolean; execAborted: boolean }
@@ -323,6 +328,9 @@ async function killSubagentRunTree(
               ...params,
               tree,
               commands,
+              onContinuationRetired: () => {
+                continuationRetired = true;
+              },
               onKilled: (entry) => {
                 visitResult.label = resolveSubagentLabel(entry);
               },
@@ -409,6 +417,7 @@ async function killSubagentRunTree(
     killed: labels.length,
     labels,
     execAborted: [...visits.values()].some((result) => result.execAborted),
+    ...(continuationRetired ? { continuationRetired: true as const } : {}),
   };
 }
 
@@ -466,7 +475,14 @@ export async function killAllControlledSubagentRuns(params: {
   beforeKill?: (sealRootSelection: () => void) => boolean | Promise<boolean>;
 }): Promise<
   | Awaited<ReturnType<typeof killSelectedSubagentRuns>>
-  | { status: "forbidden"; error: string; killed: 0; labels: string[]; execAborted?: boolean }
+  | {
+      status: "forbidden";
+      error: string;
+      killed: 0;
+      labels: string[];
+      execAborted?: boolean;
+      continuationRetired?: true;
+    }
 > {
   if (params.controller.controlScope !== "children") {
     await params.beforeKill?.(() => {});
@@ -568,6 +584,7 @@ async function killSelectedSubagentRuns(
       killed: result.killed,
       labels: result.labels,
       ...(result.execAborted ? { execAborted: true } : {}),
+      ...(result.continuationRetired ? { continuationRetired: true as const } : {}),
     };
   }
   return {
@@ -575,6 +592,7 @@ async function killSelectedSubagentRuns(
     killed: result.killed,
     labels: result.labels,
     ...(result.execAborted ? { execAborted: true } : {}),
+    ...(result.continuationRetired ? { continuationRetired: true as const } : {}),
   };
 }
 

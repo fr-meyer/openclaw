@@ -70,6 +70,11 @@ const initialConfigSnapshot = {
   hash: "before-install",
   raw: "{}",
 };
+const configSchema = {
+  generatedAt: "2026-10-20T00:00:00.000Z",
+  schema: { type: "object", properties: {} },
+  uiHints: {},
+};
 
 it("blocks repeat install when saved-state reads fail, then reconciles aliases and later removal", async () => {
   let inventoryFails = true;
@@ -178,6 +183,9 @@ it("retires saved-install refreshes when their Gateway owner is replaced", async
     if (method === "config.get") {
       return installSaved ? configRead.promise : initialConfigSnapshot;
     }
+    if (method === "config.schema") {
+      return configSchema;
+    }
     if (method === "plugins.list") {
       return catalogRead.promise;
     }
@@ -190,6 +198,9 @@ it("retires saved-install refreshes when their Gateway owner is replaced", async
     }
     if (method === "config.get") {
       return replacementConfig;
+    }
+    if (method === "config.schema") {
+      return configSchema;
     }
     throw new Error(`Unexpected request: ${method}`);
   });

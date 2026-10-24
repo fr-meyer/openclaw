@@ -66,6 +66,7 @@ export function prepareEmbeddedRunTerminal(input: {
   terminalState: EmbeddedRunTerminalState;
 }) {
   const { runParams, attempt } = input;
+  const replyDeliveryState = resolveSourceReplyDelivery(attempt, input.replyDeliveryState);
   const { timedOutDuringCompaction, timedOutDuringToolExecution } = projectAgentRunAttemptTerminal(
     attempt.terminal,
   );
@@ -174,7 +175,7 @@ export function prepareEmbeddedRunTerminal(input: {
       effective: effectiveModelRef,
       successfulToolNames: resolveSuccessfulToolNames(attempt),
       assistantTranscriptIdempotencyKey: attempt.assistantTranscriptIdempotencyKey,
-      sourceReplyDelivered: resolveSourceReplyDelivery(attempt) === "delivered" ? true : undefined,
+      sourceReplyDelivered: replyDeliveryState === "delivered" ? true : undefined,
       rerouted: isProviderModelRerouted(requestedModelRef, effectiveModelRef),
     } satisfies Omit<AgentRunTerminalReceipt, "terminalDisposition">,
   });
@@ -210,7 +211,7 @@ export function prepareEmbeddedRunTerminal(input: {
     reasoningLevel: runParams.reasoningLevel,
     thinkingLevel: runParams.thinkLevel,
     toolResultFormat: input.resolvedToolResultFormat,
-    didDeliverSourceReplyViaMessageTool: resolveSourceReplyDelivery(attempt) === "delivered",
+    didDeliverSourceReplyViaMessageTool: replyDeliveryState === "delivered",
     sourceReplyDeliveryMode: runParams.sourceReplyDeliveryMode,
     agentId: runParams.agentId,
     runId: runParams.runId,
@@ -292,7 +293,7 @@ export function prepareEmbeddedRunTerminal(input: {
   });
   return {
     agentMeta,
-    replyDeliveryState: input.replyDeliveryState ?? "missing",
+    replyDeliveryState,
     reportedModelRef,
     finalAssistantVisibleText,
     finalAssistantRawText,

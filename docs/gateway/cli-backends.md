@@ -564,6 +564,12 @@ when the response ends; long-running tool responses and SSE notification streams
 remain open until completion or shutdown. Each later request opens a new loopback
 TCP connection.
 
+Each loopback response uses `Connection: close` so clients cannot reuse a pooled
+socket as the server closes it after an idle timeout. The connection closes only
+when the response ends; long-running tool responses and SSE notification streams
+remain open until completion or shutdown. Each later request opens a new loopback
+TCP connection.
+
 The shared listener remains available after the turn that first started it completes.
 Later calls use their own run's permissions and caller liveness, without retaining
 the starting turn's transcript read fence or request scope.
@@ -584,6 +590,11 @@ permitted tools and supported native capabilities. When a run retains native `Ba
 the saved automation retains its Gateway host target, including with an explicit
 `toolsAllow: ["exec"]` cap. Current account, tool, sandbox, and approval restrictions
 still apply; capturing the target does not grant broader execution permission.
+Exec calls that request another host or a node fail with an error naming the
+Gateway pin before the command runs. Calls without an explicit target keep using
+the pin. To change a scheduled job's target, an operator can set an explicit tool
+list with `openclaw cron edit <id> --tools exec`; this replaces the job's tool list
+and clears the captured pin, while current exec policy still applies.
 
 Backends that retain their native shell can also receive a node-only `exec` tool,
 offered only when policy permits it and a connected

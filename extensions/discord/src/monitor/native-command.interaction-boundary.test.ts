@@ -33,6 +33,32 @@ const GUILD = "100000000000000001";
 const CHANNEL = "100000000000000002";
 const THREAD = "100000000000000003";
 const USER = "100000000000000004";
+const PRIVATE_THREAD = "100000000000000005";
+const CHANNEL_CASES = [
+  { label: "parent", channelId: CHANNEL },
+  { label: "public thread", channelId: THREAD },
+  { label: "private thread", channelId: PRIVATE_THREAD },
+] as const;
+
+type FixtureChannel = Extract<
+  NonNullable<ReturnType<typeof createInternalInteractionPayload>["channel"]>,
+  { type: ChannelType.GuildText | ChannelType.PublicThread | ChannelType.PrivateThread }
+>;
+
+function channelFixture(channelId: string): FixtureChannel {
+  if (channelId === THREAD || channelId === PRIVATE_THREAD) {
+    return {
+      id: channelId,
+      type: channelId === THREAD ? ChannelType.PublicThread : ChannelType.PrivateThread,
+      parent_id: CHANNEL,
+      name: "topic",
+    };
+  }
+  if (channelId === CHANNEL || channelId === "denied") {
+    return { id: channelId, type: ChannelType.GuildText, name: "parent" };
+  }
+  throw new Error(`Unexpected Discord channel ${channelId}`);
+}
 
 function createConfig(): OpenClawConfig {
   return {
@@ -75,6 +101,11 @@ function createHarness() {
     createDiscordNativeCommand({
       ...commandContext,
       ephemeralDefault: true,
+      command: { name: "help", description: "Help", acceptsArgs: false },
+    }),
+    createDiscordNativeCommand({
+      ...commandContext,
+      ephemeralDefault: true,
       command: {
         name: "boundary-choice",
         description: "Choose",
@@ -94,11 +125,8 @@ function createHarness() {
   client.componentHandler.register(createDiscordModelPickerFallbackButton(commandContext));
   const post = vi.fn(async () => undefined);
   const get = vi.fn(async (path: string) => {
-    if (path === `/channels/${THREAD}`) {
-      return { id: THREAD, type: ChannelType.PublicThread, parent_id: CHANNEL, name: "topic" };
-    }
-    if (path === `/channels/${CHANNEL}`) {
-      return { id: CHANNEL, type: ChannelType.GuildText, name: "allowed" };
+    if (path.startsWith("/channels/")) {
+      return channelFixture(path.slice("/channels/".length));
     }
     throw new Error(`Unexpected Discord GET ${path}`);
   });
@@ -134,7 +162,7 @@ function createHarness() {
   };
 }
 
-function payload(channelId: string, hydrated = false, userId = USER) {
+function payload(channelId: string, hydrated = false, userId = USER, commandName = "status") {
   return createInternalInteractionPayload({
     id: "interaction1",
     token: "test-token",
@@ -149,8 +177,8 @@ function payload(channelId: string, hydrated = false, userId = USER) {
       permissions: "0",
       flags: GuildMemberFlags.CompletedOnboarding,
     },
-    ...(hydrated ? { channel: { id: channelId, type: ChannelType.GuildText } } : {}),
-    data: { id: "command1", name: "status", type: 1 },
+    ...(hydrated ? { channel: channelFixture(channelId) } : {}),
+    data: { id: "command1", name: commandName, type: 1 },
   });
 }
 
@@ -204,12 +232,10 @@ function expectEmptyAutocomplete(harness: ReturnType<typeof createHarness>) {
   expect(harness.session).not.toHaveBeenCalled();
 }
 
-function denyThreadParent(harness: ReturnType<typeof createHarness>) {
-  harness.get.mockResolvedValue({
-    id: THREAD,
-    type: ChannelType.PublicThread,
-    parent_id: "denied",
-    name: "topic",
+function denyThreadParent(harness: ReturnType<typeof createHarness>, channelId = THREAD) {
+  harness.get.mockImplementation(async (path: string) => {
+    const channel = channelFixture(path.slice("/channels/".length));
+    return channel.id === channelId ? { ...channel, parent_id: "denied" } : channel;
   });
 }
 
@@ -227,23 +253,72 @@ describe("Client.handleInteraction native command channel identity", () => {
   beforeEach(() => clearDiscordChannelInfoCacheForTest());
   afterEach(() => vi.restoreAllMocks());
 
-  it.each([THREAD])("delivers status for raw channel %s without hydration", async (channelId) => {
+  it.each(
+    CHANNEL_CASES.flatMap(({ label, channelId }) =>
+      [false, true].map((hydrated) => ({ label, channelId, hydrated })),
+    ),
+  )("delivers status for $label with hydration=$hydrated", async ({ channelId, hydrated }) => {
     const harness = createHarness();
-    await harness.client.handleInteraction(payload(channelId));
+    await harness.client.handleInteraction(payload(channelId, hydrated));
     expectVisibleStatus(harness, channelId);
   });
 
-  it("rejects a thread whose parent is outside the allowlist", async () => {
+  it.each(CHANNEL_CASES)("dispatches /help for the $label session", async ({ channelId }) => {
     const harness = createHarness();
-    denyThreadParent(harness);
-    await harness.client.handleInteraction(payload(THREAD));
-    expect(harness.status).not.toHaveBeenCalled();
-    expectFollowUp(harness, "This channel is not allowed.");
+    harness.dispatch.mockImplementationOnce(async (plan) => {
+      if (!("deliver" in plan.delivery) || !plan.delivery.deliver) {
+        throw new Error("Expected direct Discord delivery");
+      }
+      const reply = { text: "Help from the command fixture" };
+      const info = { kind: "final" as const };
+      const delivered = await plan.delivery.deliver(reply, info);
+      await plan.delivery.onDelivered?.(reply, info, delivered);
+      return {
+        admission: { kind: "dispatch" as const },
+        dispatched: true as const,
+        ctxPayload: plan.ctxPayload,
+        routeSessionKey: plan.route.sessionKey,
+        dispatchResult: { queuedFinal: true, counts: { final: 1, block: 0, tool: 0 } },
+      };
+    });
+
+    await harness.client.handleInteraction(payload(channelId, false, USER, "help"));
+
+    expect(harness.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        route: { agentId: "main", sessionKey: `agent:main:discord:slash:${USER}` },
+        ctxPayload: expect.objectContaining({
+          SessionKey: `agent:main:discord:slash:${USER}`,
+          CommandTargetSessionKey: `agent:main:discord:channel:${channelId}`,
+          commandText: "/help",
+        }),
+      }),
+    );
+    const context = harness.dispatch.mock.calls[0]?.[0].ctxPayload;
+    expect(context?.MessageThreadId).toBe(channelId === CHANNEL ? undefined : channelId);
+    expect(context?.ThreadParentId).toBe(channelId === CHANNEL ? undefined : CHANNEL);
+    expectFollowUp(harness, "Help from the command fixture");
   });
 
-  it.each([THREAD])(
-    "autocompletes for raw channel %s through the registered option",
-    async (channelId) => {
+  it.each(
+    [THREAD, PRIVATE_THREAD].flatMap((channelId) =>
+      ["status", "help"].map((commandName) => ({ channelId, commandName })),
+    ),
+  )(
+    "rejects /$commandName in thread $channelId with a denied parent",
+    async ({ channelId, commandName }) => {
+      const harness = createHarness();
+      denyThreadParent(harness, channelId);
+      await harness.client.handleInteraction(payload(channelId, false, USER, commandName));
+      expect(harness.status).not.toHaveBeenCalled();
+      expect(harness.dispatch).not.toHaveBeenCalled();
+      expectFollowUp(harness, "This channel is not allowed.");
+    },
+  );
+
+  it.each(CHANNEL_CASES)(
+    "autocompletes for the $label session through the registered option",
+    async ({ channelId }) => {
       const harness = createHarness();
       await harness.client.handleInteraction(autocompletePayload(channelId));
       expect(harness.post).toHaveBeenCalledWith("/interactions/interaction1/test-token/callback", {
@@ -260,9 +335,9 @@ describe("Client.handleInteraction native command channel identity", () => {
     },
   );
 
-  it.each([THREAD])(
-    "opens the registered picker for the raw channel %s session",
-    async (channelId) => {
+  it.each(CHANNEL_CASES)(
+    "opens the registered picker for the $label session",
+    async ({ channelId }) => {
       const harness = createHarness();
       await harness.client.handleInteraction(pickerPayload(channelId));
       expect(harness.session).toHaveBeenCalledWith(
@@ -281,34 +356,40 @@ describe("Client.handleInteraction native command channel identity", () => {
     },
   );
 
-  it.each(["sender", "parent"] as const)(
-    "denies raw autocomplete with denied %s",
-    async (denial) => {
-      const harness = createHarness();
-      const interaction = autocompletePayload(
-        denial === "parent" ? THREAD : CHANNEL,
-        false,
-        denial === "sender" ? "100000000000000099" : USER,
-      );
-      if (denial === "parent") {
-        denyThreadParent(harness);
-      }
-      await harness.client.handleInteraction(interaction);
-      expectEmptyAutocomplete(harness);
-    },
-  );
+  it.each([
+    { denial: "sender", channelId: CHANNEL },
+    { denial: "parent", channelId: THREAD },
+    { denial: "parent", channelId: PRIVATE_THREAD },
+  ])("denies raw autocomplete with denied $denial in $channelId", async ({ denial, channelId }) => {
+    const harness = createHarness();
+    const interaction = autocompletePayload(
+      channelId,
+      false,
+      denial === "sender" ? "100000000000000099" : USER,
+    );
+    if (denial === "parent") {
+      denyThreadParent(harness, channelId);
+    }
+    await harness.client.handleInteraction(interaction);
+    expectEmptyAutocomplete(harness);
+  });
 
-  it.each(["sender", "parent", "identity"] as const)(
-    "denies raw picker selection with denied %s",
-    async (denial) => {
+  it.each([
+    { denial: "sender", channelId: CHANNEL },
+    { denial: "parent", channelId: THREAD },
+    { denial: "parent", channelId: PRIVATE_THREAD },
+    { denial: "identity", channelId: CHANNEL },
+  ])(
+    "denies raw picker selection with denied $denial in $channelId",
+    async ({ denial, channelId }) => {
       const harness = createHarness();
       const interaction = pickerPayload(
-        denial === "parent" ? THREAD : CHANNEL,
+        channelId,
         "reset",
         denial === "sender" ? "100000000000000099" : USER,
       );
       if (denial === "parent") {
-        denyThreadParent(harness);
+        denyThreadParent(harness, channelId);
       }
       if (denial === "identity") {
         Reflect.deleteProperty(interaction, "channel_id");

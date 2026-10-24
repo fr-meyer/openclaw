@@ -126,6 +126,7 @@ const inspectionResponse = z.discriminatedUnion("ok", [
         version: z.number().int().safe(),
         integrityGateOutcome: z.enum(["cached", "healthy"]).optional(),
         preparationPending: z.literal(true).optional(),
+        emptyStore: z.boolean().optional(),
         writerAppVersion: z.string().optional(),
         reason: z.string().optional(),
         failure: agentSchemaInspectionErrorSchema.optional(),
@@ -324,7 +325,16 @@ export function createAgentSchemaInspectionWorker() {
         signal?.addEventListener("abort", onAbort, { once: true });
         try {
           active.child.send(
-            { type: kind === "state" ? "inspect-state" : "inspect", requestId, input, snapshot },
+            {
+              type: kind === "state" ? "inspect-state" : "inspect",
+              requestId,
+              input: {
+                ...input,
+                // Advanced IPC cannot clone the Windows case-insensitive env Proxy.
+                ...("env" in input && input.env ? { env: { ...input.env } } : {}),
+              },
+              snapshot,
+            },
             (error) => {
               if (error) {
                 failure ??= error;

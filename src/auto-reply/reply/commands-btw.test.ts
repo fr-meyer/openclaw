@@ -26,6 +26,23 @@ function buildParams(commandBody: string) {
   return buildCommandTestParams(commandBody, cfg, undefined, { workspaceDir: "/tmp/workspace" });
 }
 
+function activeParams(commandBody?: string): ReturnType<typeof buildParams> {
+  return {
+    ...buildParams(commandBody ?? "/btw what changed?"),
+    agentDir: "/tmp/agent",
+    sessionEntry: { sessionId: "session-1", updatedAt: Date.now() },
+  };
+}
+
+const run = (params: ReturnType<typeof buildParams>) => handleBtwCommand(params, true);
+const readRunnerArgs = () => mockFirstObjectArg(runBtwSideQuestionMock);
+function expectReply(result: Awaited<ReturnType<typeof run>>, text: string, question?: string) {
+  expect(result).toEqual({
+    shouldContinue: false,
+    reply: { text, ...(question ? { btw: { question } } : {}) },
+  });
+}
+
 describe("handleBtwCommand", () => {
   const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
@@ -278,4 +295,24 @@ describe("handleBtwCommand", () => {
       reply: { text: "target context", btw: { question: "what changed?" } },
     });
   });
+
+  it.each([
+    [
+      "/btw why does this fail?\nError: ENOSPC\n  at write",
+      "why does this fail?\nError: ENOSPC\n  at write",
+    ],
+    ["/btw\nwhy does this fail?", "why does this fail?"],
+    ["/side first\n\nsecond", "first\n\nsecond"],
+  ])(
+    "passes every line of a multi-line side question to the runner: %s",
+    async (body, question) => {
+      runBtwSideQuestionMock.mockResolvedValue({ text: "answer" });
+      const params = activeParams(body);
+
+      const result = await run(params);
+
+      expect(readRunnerArgs().question).toBe(question);
+      expectReply(result, "answer", question);
+    },
+  );
 });

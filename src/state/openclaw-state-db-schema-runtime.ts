@@ -108,7 +108,8 @@ export function ensureOpenClawStateRuntimeSchema(
         const includeAgentDeletionJournal =
           tableExists(db, "agent_deletion_journal") ||
           hasPreJournalStateSchema(db) ||
-          (initialization.kind === "fresh" && isUninitializedNativeStartupDatabase(db));
+          ((initialization.kind === "fresh" || initialization.nativeBootstrapEligible === true) &&
+            isUninitializedNativeStartupDatabase(db));
         if (previousVersion === OPENCLAW_STATE_SCHEMA_VERSION) {
           assertNoLegacyStateRuntimeRepair(db, pathname);
           const indexes = verifyAndRepairCanonicalSqliteIndexes(

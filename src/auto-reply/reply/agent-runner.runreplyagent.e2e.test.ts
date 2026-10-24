@@ -59,6 +59,7 @@ import { registerReplyAdmissionCases } from "./agent-runner.runreplyagent.admiss
 import { registerImmediateFailurePolicyCases } from "./agent-runner.runreplyagent.failure-policy.cases.js";
 import { createReplyAgentSessionFixture } from "./agent-runner.runreplyagent.fixture.test-support.js";
 import { registerFollowupDrainCases } from "./agent-runner.runreplyagent.followup-drain.cases.js";
+import { registerNativeReservationCases } from "./agent-runner.runreplyagent.native-reservation.cases.js";
 import { registerRequiredReplyCompletionCases } from "./agent-runner.runreplyagent.required-reply.cases.js";
 import { registerSteeringReceiptCases } from "./agent-runner.runreplyagent.steering-receipts.cases.js";
 import { registerWaitingStatusCases } from "./agent-runner.runreplyagent.waiting-status.cases.js";
@@ -1223,39 +1224,13 @@ describe("runReplyAgent active steering", () => {
     expect(state.runEmbeddedAgentMock).toHaveBeenCalledOnce();
   });
 
-  it("steers against the session's registered run owner, not a source-keyed reservation", async () => {
-    // A native command continuation whose target-slot adoption was skipped
-    // (#104844) still carries its slash-source reservation; steering must
-    // target the operation that owns this session's run slot.
-    state.queueEmbeddedAgentMessageMock.mockReturnValueOnce(true);
-    const targetOwner = createReplyOperation({
-      sessionKey: "main",
-      sessionId: "target-active-session",
-      resetTriggered: false,
-    });
-    targetOwner.setPhase("running");
-    const sourceReservation = createReplyOperation({
-      sessionKey: "agent:main:telegram:slash:steer-user",
-      sessionId: "source-reservation-session",
-      resetTriggered: false,
-    });
-    const { run } = createMinimalRun({
-      isActive: true,
-      shouldSteer: true,
-      resolvedQueueMode: "steer",
-      replyOperation: sourceReservation,
-    });
-
-    await expect(run()).resolves.toBeUndefined();
-
-    expect(state.queueEmbeddedAgentMessageMock).toHaveBeenCalledWith(
-      "target-active-session",
-      "hello",
-      expect.objectContaining({ steeringMode: "all" }),
-    );
-
-    targetOwner.complete();
-    sourceReservation.complete();
+  registerNativeReservationCases({
+    createMinimalRun,
+    makeSessionEntry,
+    makeSessionFixture,
+    parkedSteer,
+    sessionKeys,
+    state,
   });
 
   it("waits for transcript commit and keeps a rejected adoption finalizer irrevocably adopted", async () => {

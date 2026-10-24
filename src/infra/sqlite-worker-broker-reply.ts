@@ -111,7 +111,7 @@ function prepareSqliteWorkerOperationAdmission(
         job.maintenanceScope?.assertAdmission();
         assertStateDatabaseAccessAllowed(databasePath, {
           maintenanceScope: job.maintenanceScope,
-          schemaLease,
+          schemaLease: schemaLease ?? job.cleanupAccess,
         });
       };
       retained.admission.bindDatabaseAuthority({

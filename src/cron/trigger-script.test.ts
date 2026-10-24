@@ -194,7 +194,7 @@ describe("cron trigger script evaluator", () => {
         evaluate({
           jobId: "job-canonical-pinned-exec",
           script:
-            'await exec({ command: "printf openclaw-canonical-ok", host: "node", node: "remote" }); return { fire: false };',
+            'await exec({ command: "printf openclaw-canonical-ok", host: "gateway" }); return { fire: false };',
           state: null,
           toolsAllow: ["exec", "process"],
           scheduledToolPolicy: { version: 1, mode: "trusted" },

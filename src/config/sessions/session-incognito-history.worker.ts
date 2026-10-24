@@ -8,7 +8,6 @@ import {
   SOURCE_PAGE_MAX_MESSAGES,
 } from "../../gateway/session-transcript-source-pages.js";
 import { resolveGatewaySessionStoreReadSources } from "../../gateway/session-utils-store-sources.js";
-import type { SqliteWorkerCommand } from "../../infra/sqlite-worker-contract.js";
 import { isIncognitoSessionKey } from "../../shared/incognito-session-key.js";
 import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db-contract.js";
 import { readSessionTranscriptBoundedActiveContextCore } from "./session-accessor.sqlite-active-context.js";
@@ -43,11 +42,13 @@ import {
   prepareSessionHistoryReadOperation,
   type SessionHistoryReadOperationRequest,
 } from "./session-history-read-operation.worker.js";
-import type {
-  IncognitoSessionFacts,
-  IncognitoSessionOperations,
-} from "./session-incognito-contract.js";
+import type { IncognitoSessionFacts } from "./session-incognito-contract.js";
 import type { IncognitoHistoryOperations } from "./session-incognito-history-contract.js";
+import {
+  prepareHistoryRead,
+  type IncognitoHistoryCommand as Command,
+  type PreparedHistoryRead,
+} from "./session-incognito-history-prepared-read.js";
 import { resolveIncognitoHistoryProjectionSelection } from "./session-incognito-history-selection.js";
 import { readPendingInputHistoryInDatabase } from "./session-pending-input-history.kernel.js";
 import { readSessionTranscriptAccountingFromProjection } from "./session-transcript-accounting.js";
@@ -63,27 +64,6 @@ import {
   resolveSqliteSessionTranscriptReadFence,
   SessionTranscriptReadFenceError,
 } from "./session-transcript-read-fence.js";
-
-type Command = SqliteWorkerCommand<IncognitoHistoryOperations>;
-
-type PreparedHistoryRead<Key extends Command["type"]> = {
-  type: Key;
-  read(facts: IncognitoSessionFacts[]): IncognitoSessionOperations[Key]["output"];
-};
-
-function prepareHistoryRead<Key extends Command["type"]>(
-  type: Key,
-  read: () => IncognitoHistoryOperations[Key]["output"],
-): PreparedHistoryRead<Key>;
-function prepareHistoryRead(
-  type: Command["type"],
-  read: () => IncognitoHistoryOperations[Command["type"]]["output"],
-) {
-  return {
-    type,
-    read: (facts: IncognitoSessionFacts[]) => ({ value: read(), facts }),
-  };
-}
 
 /** Reuse durable reader kernels on the actor's admitted connection, never its sentinel opener. */
 export function createIncognitoHistoryWorker(
@@ -118,6 +98,7 @@ export function createIncognitoHistoryWorker(
       const { searchSessionTranscriptsReadOnlySync } =
         await import("./session-transcript-search.js");
       prepared = prepareHistoryRead(command.type, () => {
+        // The search revision fences canonical store reads; it is not part of the history result.
         const {
           found: _found,
           revision: _revision,

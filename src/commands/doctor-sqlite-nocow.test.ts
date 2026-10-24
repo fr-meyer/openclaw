@@ -72,6 +72,7 @@ async function repair(assertCurrent = () => {}) {
   const result = await repairDoctorSqliteNoCow({
     paths: [sqlitePath],
     stateDir: root,
+    env: { ...process.env, OPENCLAW_STATE_DIR: root },
     assertCurrent,
   });
   return [...result.changes, ...result.warnings];

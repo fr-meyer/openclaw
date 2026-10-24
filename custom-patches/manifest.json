@@ -1,17 +1,18 @@
 {
-  "schema": "openclaw-v105-source-preparation-v1",
+  "schema": "openclaw-v106-source-preparation-v1",
   "status": "SOURCE_ONLY_UNQUALIFIED",
   "productionEligible": false,
   "upstream": {
-    "tag": "v2026.10.5",
-    "tagObject": "9171d0a427738902efd811c648325cf54116743c",
-    "commit": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
-    "tree": "a138559698570e238395121723a773106ac33f8c"
+    "tag": "v2026.10.6",
+    "tagObject": "3494baecba2366a89fa703158a2c2b5c9edcd6ba",
+    "commit": "fe06181dc5ecc01cf8904abbfc26925925efefbc",
+    "tree": "de35137f62064ebdfd93c7d146b78b05a0332ff1"
   },
   "carryForward": {
-    "v99UpstreamBase": "bcfc88812a35243893585dbeca87ca41b48272ca",
-    "v99ForkSource": "c3f9123d4bea1e6cc8b21c8742fc71e0385f7ca6",
+    "v105UpstreamBase": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+    "v105ForkSource": "7f3ac1fbfd3691546c5b1fd247680a3d00851c76",
     "reconciliation": "COMPLETE_SOURCE",
+    "inventory": "custom-patches/reconciliation-2026.10.6.json",
     "qualificationTransferred": false
   },
   "publisher": {
@@ -25,6 +26,6 @@
     "build": "NOT_RUN",
     "runtime": "NOT_RUN",
     "production": "UNCHANGED",
-    "rollback": "NOT_PROVEN_ON_10_5"
+    "rollback": "NOT_PROVEN_ON_10_6"
   }
 }

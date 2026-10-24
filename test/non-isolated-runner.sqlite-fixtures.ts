@@ -57,6 +57,7 @@ async function useReadPool() {
     ...sharedStateOwnerFixtureFiles(),
     ...scheduledCloseFixtureFiles(),
     ...subagentRetirementFixtureFiles(),
+    ...retiredOwnerGenerationFixtureFiles(),
     ...stateReadPoolFixtureFiles(),
     ...failedDrainFixtureFiles(readPoolFixture),
     "11-a-sqlite-owner.test.ts": `
@@ -486,7 +487,7 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { closeOpenClawStateDatabaseAsync } from ${JSON.stringify(import.meta.resolve("../src/state/openclaw-state-db-cache.ts"))};
 import { captureOpenClawStateWorkerContext } from ${JSON.stringify(import.meta.resolve("../src/state/openclaw-state-worker-context.ts"))};
-import { getOpenClawStateWorkerOwner } from ${JSON.stringify(import.meta.resolve("../src/state/openclaw-state-worker-owner.ts"))};
+import { getOpenClawStateWorkerOwner } from ${JSON.stringify(import.meta.resolve("../src/state/openclaw-state-worker-owner-get.ts"))};
 
 const generation = ${JSON.stringify(generation)};
 const probeKey = Symbol.for("fixture.sharedStateOwnerGenerations");
@@ -537,6 +538,34 @@ it("binds shared-state retirement to the current file's database lifecycle " + g
 `,
     ]),
   );
+}
+
+function retiredOwnerGenerationFixtureFiles(): Record<string, string> {
+  return {
+    "10-e-retired-owner-generation.test.ts": `
+import { expect, it } from "vitest";
+import { getOpenClawStateWorkerOwner } from ${JSON.stringify(import.meta.resolve("../src/state/openclaw-state-worker-owner-get.ts"))};
+it("leaves its owner getter behind like detached work that outlives the file", () => {
+  Reflect.set(globalThis, Symbol.for("fixture.retiredOwnerGetter"), getOpenClawStateWorkerOwner);
+  expect(Reflect.has(globalThis, Symbol.for("openclaw.sharedStateWorkerOwner"))).toBe(false);
+});
+`,
+    "10-f-retired-owner-observer.test.ts": `
+import { expect, it } from "vitest";
+import ${JSON.stringify(import.meta.resolve("../src/state/openclaw-state-db-cache.ts"))};
+it("keeps a retired generation from installing an owner bound to its retired cache", () => {
+  const key = Symbol.for("fixture.retiredOwnerGetter");
+  const retired = Reflect.get(globalThis, key);
+  try {
+    expect(() => retired()).toThrow("OpenClaw state database lifecycle is retired");
+    expect(Reflect.has(globalThis, Symbol.for("openclaw.sharedStateWorkerOwner")),
+      "retired generation installed a shared-state worker owner").toBe(false);
+  } finally {
+    Reflect.deleteProperty(globalThis, key);
+  }
+});
+`,
+  };
 }
 
 function subagentRetirementFixtureFiles(): Record<string, string> {

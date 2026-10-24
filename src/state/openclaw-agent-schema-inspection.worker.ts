@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import { setSqliteBusyTimeout } from "../infra/sqlite-busy-timeout.js";
 import { readSqliteIntegrityFileIdentity } from "../infra/sqlite-file-generation.js";
 import { configureSqliteMaintenanceCache } from "../infra/sqlite-maintenance-cache.js";
@@ -82,6 +83,9 @@ process.on(
         return;
       }
       const { input, snapshot } = request;
+      if (input.env) {
+        input.env = cloneEnvWithPlatformSemantics(input.env);
+      }
       const readVerification = () =>
         !snapshot && input.startupIntegrityStateDir
           ? readOpenClawAgentIntegrityVerification(input.pathname, {

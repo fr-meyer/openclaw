@@ -14,6 +14,7 @@ import { withinTest } from "../../test/helpers/promise.js";
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 import { writeRestartSentinel } from "./restart-sentinel.js";
 import { writeTriageUpdateFailure } from "./update-failure-report-artifact.js";
+import type { ManagedHandoffTempDirTracker } from "./update-managed-service-handoff-artifacts.test-support.js";
 import type { ManagedServiceBoundaryOptions } from "./update-managed-service-handoff-boundary-contract.test-support.js";
 import {
   awaitEmulatedRecoveryHandoffExit,
@@ -24,7 +25,6 @@ import {
 import {
   createManagedServiceCancellationPreload,
   createManagedServiceLaunchdClockPreload,
-  prepareManagedServiceTriageClockPreload,
   createManagedServiceUpdaterFixtureScript,
   createManagedServiceManagerFixtureScript,
   isManagedServiceInspectionCommand,
@@ -63,7 +63,7 @@ export function createManagedServiceManagerBoundary({
   cleanups,
 }: {
   spawnMock: Mock;
-  tempDirs: Set<string>;
+  tempDirs: ManagedHandoffTempDirTracker;
   cleanups: Set<() => Promise<void>>;
 }) {
   let receipts: FixtureReceiptChannel;
@@ -309,8 +309,6 @@ export function createManagedServiceManagerBoundary({
             : { parentExitDeadlineAt: Date.now() + options.systemdHandoffDeadlineMs }),
           ...commandFixture,
           ...(options?.systemScope ? { serviceRecovery: undefined } : {}),
-          // Triage hangs must reach the diagnostic cap without timing out healthy recovery.
-          ...(options?.recoveryHang ? { recoveryTimeoutMs: 1000 } : {}),
           recovery: options?.originalRecovery ?? { serviceRestartSafe: true, version: "1.0.0" },
           recoveryModulePath,
           ...(selectedDriverPath
@@ -335,17 +333,13 @@ export function createManagedServiceManagerBoundary({
           outputPath: String(generated.triageContextPath),
         });
       }
-      const spawnFixture = await prepareManagedServiceSpawn(root, scriptPath, childEnv, options);
+      const spawnFixture = await prepareManagedServiceSpawn(root, scriptPath, childEnv, options, {
+        recoveryCommandArgv: commandFixture.recoveryCommandArgv,
+        recoveryTimeoutMs: Number(generated.recoveryTimeoutMs),
+        triageCommandArgv: commandFixture.triageCommandArgv,
+        triageInputPath: String(generated.triageInputPath),
+      });
       let helperEnv = spawnFixture.env;
-      const triageDeadlinePath = path.join(root, "triage-deadline.json");
-      if (options?.triageHang) {
-        helperEnv = await prepareManagedServiceTriageClockPreload(
-          { root, scriptPath, statePath },
-          commandFixture.triageCommandArgv,
-          String(generated.triageInputPath),
-          helperEnv,
-        );
-      }
       if (options?.launchdTeardown?.clockEachCommandMs || options?.recoveryClockAdvanceMs) {
         const preloadPath = path.join(root, "launchd-clock-preload.cjs");
         await fs.writeFile(
@@ -672,9 +666,7 @@ export function createManagedServiceManagerBoundary({
         state: JSON.parse(await fs.readFile(statePath, "utf8").catch(() => "{}")),
         sentinel: readRestartSentinelPayload({ OPENCLAW_STATE_DIR: root }),
         log: await fs.readFile(String(generated.logPath), "utf8"),
-        ...(options?.triageHang
-          ? { triageDeadline: JSON.parse(await fs.readFile(triageDeadlinePath, "utf8")) }
-          : {}),
+        ...(await spawnFixture.readCommandDeadlines()),
         savedFailure: await readSavedFailure(String(generated.triageContextPath)),
         sensitiveFilesRemoved: (
           await Promise.all((generated.sensitivePaths as string[]).map(pathExists))

@@ -161,6 +161,8 @@ const repositoryScriptEntries = [
   "scripts/e2e/lib/upgrade-survivor/native-assignment-app-server.mjs!",
   // package-activation-recovery.sh preloads this observer into the released updater.
   "scripts/e2e/lib/upgrade-survivor/package-activation-fault.mjs!",
+  // run.sh preloads this fixture adapter through NODE_OPTIONS by path.
+  "scripts/e2e/lib/upgrade-survivor/plugin-registry-redirect.mjs!",
   "scripts/e2e/lib/upgrade-survivor/probe-gateway.mjs!",
   "scripts/e2e/lib/upgrade-survivor/probe-volume-gateway.mjs!",
   "scripts/e2e/lib/upgrade-survivor/projects-doctor.mjs!",
@@ -225,8 +227,6 @@ const repositoryScriptEntries = [
   // Generates the checked-in native protocol models from core descriptor metadata.
   "scripts/protocol-gen.ts!",
   "scripts/pr-lib/ci-dispatch.mjs!",
-  // merge.sh invokes this native review-authority parser by path.
-  "scripts/pr-lib/clawsweeper-review-gate.mjs!",
   // review.sh invokes the corrected-candidate review validator by path.
   "scripts/pr-lib/correction-review.mjs!",
   "scripts/pr-lib/gh-api-preflight.mjs!",
@@ -751,6 +751,8 @@ const config = {
     // Focused outbox tests seed and recover rows through these kernels; production
     // reaches them only through the agent database worker's command dispatcher.
     "src/agents/harness/context-engine-turn-outbox.ts": ["exports"],
+    // Focused Crabbox tests inspect retained private diagnostics; production consumes them in-module.
+    "extensions/qa-lab/src/mantis/crabbox-runtime.ts": ["exports"],
     // Runtime reason values are exported now so protocol schemas can derive from one tuple later.
     "src/agents/failover/signal.ts": ["exports"],
     "src/context-engine/registry.ts": ["exports", "types"],

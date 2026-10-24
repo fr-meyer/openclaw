@@ -285,7 +285,7 @@ RUN --network=none node scripts/postinstall-bundled-plugins.mjs && \
 # ── Runtime base image ──────────────────────────────────────────
 FROM ${OPENCLAW_NODE_BOOKWORM_SLIM_IMAGE} AS base-runtime
 ARG OPENCLAW_NODE_BOOKWORM_SLIM_DIGEST
-LABEL org.opencontainers.image.base.name="docker.io/library/node:24-bookworm-slim" \
+LABEL org.opencontainers.image.base.name="docker.io/library/node:24.22.1-bookworm-slim" \
   org.opencontainers.image.base.digest="${OPENCLAW_NODE_BOOKWORM_SLIM_DIGEST}"
 
 # ── Stage 3: Runtime ────────────────────────────────────────────

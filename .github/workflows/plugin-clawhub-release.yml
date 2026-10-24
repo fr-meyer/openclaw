@@ -77,7 +77,7 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  NODE_VERSION: "24.21.0"
+  NODE_VERSION: "24.22.1"
   CLAWHUB_REGISTRY: "https://clawhub.ai"
   CLAWHUB_CLI_PACKAGE: "clawhub@0.23.3"
 
@@ -970,4 +970,4 @@ jobs:
           retention-days: 30
 
   # Exact public artifact verification runs in plugin-clawhub-postpublish.yml
-  # after the authorizing parent succeeds. Waiting here would deadlock staging.
+  # after the authorizing parent becomes terminal. Waiting here deadlocks staging.

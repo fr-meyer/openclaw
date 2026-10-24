@@ -7,7 +7,11 @@ import {
 } from "openclaw/plugin-sdk/agent-runtime";
 import type { HealthCheck, OpenClawConfig } from "openclaw/plugin-sdk/health";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
-import { createTestPluginServiceScheduler } from "openclaw/plugin-sdk/plugin-test-api";
+import {
+  createGatewaySchedulerClock,
+  createTestGatewayScheduler,
+  createTestPluginServiceScheduler,
+} from "openclaw/plugin-sdk/plugin-test-api";
 import { createCapturedPluginRegistration } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { createOpenClawTestState, type OpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { assert, describe, expect, it, vi } from "vitest";
@@ -57,7 +61,9 @@ function doctorContext(state: OpenClawTestState, cfg = config) {
 describe("native profile recovery", () => {
   it("reports the retired native profile in Doctor and startup without importing credentials", async () => {
     const state = await createOpenClawTestState({ label: "codex-native-profile-recovery" });
-    const scheduler = createTestPluginServiceScheduler();
+    const clock = createGatewaySchedulerClock();
+    const host = createTestGatewayScheduler(clock.clock);
+    const scheduler = createTestPluginServiceScheduler(host);
     try {
       const nativeHome = path.join(state.home, ".codex");
       await fs.mkdir(nativeHome, { recursive: true });
@@ -84,6 +90,8 @@ describe("native profile recovery", () => {
       assert(recovery, "Gateway startup must register the same recovery check");
       const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
       await recovery.start({ config, stateDir: state.stateDir, logger, scheduler });
+      expect(logger.warn).not.toHaveBeenCalled();
+      await clock.wake();
       expect(logger.warn).toHaveBeenCalledExactlyOnceWith(findings[0]?.message);
       expect(await fs.readFile(path.join(nativeHome, "auth.json"), "utf8")).toBe(nativeAuth);
       expect(loadAuthProfileStoreWithoutExternalProfiles(state.agentDir()).profiles).toEqual({});
@@ -92,9 +100,11 @@ describe("native profile recovery", () => {
       await expect(check.detect(doctorContext(state))).resolves.toEqual([]);
       logger.warn.mockClear();
       await recovery.start({ config, stateDir: state.stateDir, logger, scheduler });
+      await clock.wake();
       expect(logger.warn).not.toHaveBeenCalled();
     } finally {
       await scheduler.stop();
+      await host.stop();
       await state.cleanup();
     }
   });

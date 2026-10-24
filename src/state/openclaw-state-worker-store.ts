@@ -7,6 +7,7 @@ import {
   openClawStateDatabaseCache,
 } from "./openclaw-state-db-cache.js";
 import { findOpenClawStateDatabaseFailure } from "./openclaw-state-db-failure.js";
+import type { OpenClawDatabaseMaintenanceScope } from "./openclaw-state-maintenance-context.js";
 import type { OpenClawStateWorkerContext } from "./openclaw-state-worker-context.types.js";
 import type {
   OpenClawStateWorkerOperations,
@@ -21,7 +22,7 @@ import {
   runWithCapturedWorkerContext,
   runWithOpenClawStateWorkerStore,
 } from "./openclaw-state-worker-operation.js";
-import { getOpenClawStateWorkerOwner as owner } from "./openclaw-state-worker-owner.js";
+import { getOpenClawStateWorkerOwner as owner } from "./openclaw-state-worker-owner-get.js";
 import type { DomainScope } from "./openclaw-state-worker-store.types.js";
 
 export type { OpenClawStateWorkerLease } from "./openclaw-state-worker-lease.js";
@@ -37,8 +38,9 @@ export function openOpenClawStateWorkerCleanupStore(
   context: SqliteWorkerStateContext,
   assertOwned: () => void,
   identity: DatabasePathIdentity,
+  maintenanceScope?: OpenClawDatabaseMaintenanceScope,
 ) {
-  return owner().openCleanup(databasePath, context, assertOwned, identity);
+  return owner().openCleanup(databasePath, context, assertOwned, identity, maintenanceScope);
 }
 
 export async function executeOpenClawStateWorker<Key extends keyof OpenClawStateWorkerOperations>(

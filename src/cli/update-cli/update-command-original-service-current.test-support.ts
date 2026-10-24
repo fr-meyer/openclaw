@@ -19,12 +19,12 @@ import {
 } from "../../daemon/service-rebind.js";
 import type { GatewayServiceState } from "../../daemon/service.js";
 import * as integrity from "../../infra/package-update-integrity.js";
-import { createUpdateRun, getUpdateRun } from "../../infra/update-run-ledger.js";
+import { getUpdateRun } from "../../infra/update-run-ledger.js";
 import type { UpdateRunResult } from "../../infra/update-runner-types.js";
 import type { OpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { reserveTestPortListener } from "../../test-utils/port-claims.js";
 import type { UpdateCommandOptions } from "./shared.js";
-import { withUpdateCommandExecutor } from "./update-command-executor.js";
+import { withCurrentF3Admission } from "./update-command-original-service-current.admission.test-support.js";
 import {
   observeOriginalManagedServiceRuntime,
   revalidateOriginalManagedServiceRuntime,
@@ -58,20 +58,10 @@ type Fixture = {
 // Current composition only: real observations, admission and candidate-native helper;
 // receiver probe, native service and HTTP leaves are inert. No native command executes.
 export function registerCurrentF3Controls(fixture: () => Fixture) {
-  const admitted = async (
+  const admitted = (
     operation: (run: NonNullable<UpdateCommandOptions["run"]>) => Promise<void>,
     retained = true,
-  ) => {
-    const { state, rootA, rootB } = fixture();
-    const run: NonNullable<UpdateCommandOptions["run"]> = {
-      runId: createUpdateRun({ trigger: "cli" }, { env: state.env }).runId,
-      env: state.env,
-    };
-    await withUpdateCommandExecutor(run.runId, async (executor) => {
-      run.executorFence = await executor.enter(rootB, retained ? { serviceRoot: rootA } : {});
-      await operation(run);
-    });
-  };
+  ) => withCurrentF3Admission(fixture, operation, retained);
 
   it.each(["unchanged", "replaced"] as const)(
     "capable original recovery binds definition after native lock: %s",

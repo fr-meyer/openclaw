@@ -29,7 +29,7 @@ describe("runReplyAgent media path normalization", () => {
   afterEach(cleanupAgentRunnerMediaTestState);
 
   it.each(["device-a", "device-b"])(
-    "steers active non-streaming prompts from reviewer %s in steer queue mode",
+    "steers active non-streaming prompts without a target key from reviewer %s in steer queue mode",
     async (approvalReviewerDeviceId) => {
       queueEmbeddedAgentMessageWithOutcomeAsyncMock.mockImplementation(
         async (sessionId: string) => ({
@@ -52,6 +52,8 @@ describe("runReplyAgent media path normalization", () => {
       });
       followupRun.run.approvalReviewerDeviceId = approvalReviewerDeviceId;
 
+      expect(params.sessionKey).toBeUndefined();
+      expect(params.replyOperation?.key).toBe("main");
       await runReplyAgent(params);
 
       expect(

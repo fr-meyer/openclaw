@@ -27,6 +27,11 @@ import { defineThrowingDiscordChannelGetter } from "../test-support/partial-chan
 import { dispatchDiscordNativeAgentReply } from "./native-command-agent-reply.js";
 import * as nativeCommandRoute from "./native-command-route.js";
 import {
+  createNativeDispatchConfig as createConfig,
+  registerNativeRegistryRoutingCases,
+  type MockCalls,
+} from "./native-command.plugin-dispatch.registry.test-support.js";
+import {
   createMockCommandInteraction as createInteraction,
   createRouteState,
   type MockCommandInteraction,
@@ -102,18 +107,6 @@ function dispatchAgentReply(
   });
 }
 
-function createConfig(): OpenClawConfig {
-  return {
-    channels: {
-      discord: {
-        dm: { enabled: true },
-        dmPolicy: "open",
-        allowFrom: ["*"],
-      },
-    },
-  } as OpenClawConfig;
-}
-
 async function createNativeCommand(
   cfg: OpenClawConfig,
   commandSpec: NativeCommandSpec = {
@@ -136,10 +129,6 @@ async function createNativeCommand(
     dispatchReplyFromConfig,
   });
 }
-
-type MockCalls = {
-  mock: { calls: unknown[][] };
-};
 
 function isObjectValue(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -390,6 +379,16 @@ describe("Discord native plugin command dispatch", () => {
     await command.run(interaction);
 
     expect(observedNativeTurnDispatcher).toBe(dispatchReplyFromConfig);
+  });
+
+  registerNativeRegistryRoutingCases({
+    createNativeCommand,
+    runtimeModuleMocks,
+    expectFollowUpFields,
+    requireRecord,
+    firstMockArg,
+    expectSingleCallFirstArg,
+    expectFields,
   });
 
   it("refreshes native command routing config between invocations", async () => {
