@@ -1022,13 +1022,36 @@ function exactVersionFromOverrideSpec(spec: unknown) {
   return EXACT_VERSION_PATTERN.test(version) ? version : null;
 }
 
-function exactOverrideRulesFromOverrides(overrides: unknown) {
-  return Object.fromEntries(
-    Object.entries(normalizeOverrides(overrides)).flatMap<[string, string]>(([name, spec]) => {
+type ExactOverrideRule = {
+  selector: PackageSelector;
+  version: string | null;
+  aliasName?: string;
+  children: ExactOverrideRule[];
+};
+type ExactOverrideRules = ExactOverrideRule[];
+
+function exactOverrideRulesFromOverrides(overrides: unknown): ExactOverrideRules {
+  function compile(entries: OverrideMap): ExactOverrideRules {
+    return Object.entries(entries).flatMap(([name, value]) => {
+      if (name === ".") {
+        return [];
+      }
+      const spec = isRecord(value) ? value["."] : value;
       const version = exactVersionFromOverrideSpec(spec);
-      return version === null ? [] : [[name, version]];
-    }),
-  );
+      const alias = typeof spec === "string" ? parseNpmAliasOverrideSpec(spec) : null;
+      // Keep unsupported values as shadowing nodes: a later sibling is not
+      // npm's first matching policy merely because it has an exact version.
+      return [
+        {
+          selector: parsePkgAndParentSelector(name).targetPkg,
+          version,
+          ...(version && alias ? { aliasName: alias.name } : {}),
+          children: isRecord(value) ? compile(value) : [],
+        },
+      ];
+    });
+  }
+  return compile(normalizeOverrides(overrides));
 }
 
 function parseLockPackagePath(lockPath: unknown) {
@@ -1058,49 +1081,217 @@ function parseLockPackagePath(lockPath: unknown) {
   return packages;
 }
 
+// Resolve the declared edge using the same nearest-node lookup regardless of
+// whether npm physically nested or hoisted the selected package.
+function resolveLockDependencyPath(packages: UnknownRecord, parent: string, name: string) {
+  const ancestors = parseLockPackagePath(parent)
+    .map((entry) => entry.path)
+    .toReversed();
+  for (const ancestor of [...ancestors, ""]) {
+    const candidate = `${ancestor ? `${ancestor}/` : ""}node_modules/${name}`;
+    if (Object.hasOwn(packages, candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function selectorMatchesRange(selector: PackageSelector, spec: unknown) {
+  if (selector.bareSpecifier === undefined) {
+    return true;
+  }
+  if (typeof spec !== "string") {
+    return false;
+  }
+  const range = spec.startsWith("npm:") ? spec.slice(spec.lastIndexOf("@") + 1) : spec;
+  return Boolean(
+    semver.validRange(range) &&
+    semver.validRange(selector.bareSpecifier) &&
+    semver.intersects(range, selector.bareSpecifier),
+  );
+}
+
 type OverrideViolation = {
   actualVersion: string;
   expectedVersion: string;
   packageName: string;
+  actualName?: string;
+  expectedName?: string;
   packagePath: Array<{ name: string; path: string }>;
   path: string;
 };
 
 function collectOverrideViolations(
   lockfile: unknown,
-  overrideRules: Record<string, string>,
+  overrideRules: ExactOverrideRules,
 ): OverrideViolation[] {
   const packages = recordAt(lockfile, "packages");
   if (!packages) {
     return [];
   }
-  const violations: OverrideViolation[] = [];
-  for (const [lockPath, metadata] of Object.entries(packages)) {
-    const packagePath = parseLockPackagePath(lockPath);
-    const packageName = packagePath.at(-1)?.name;
-    if (!packageName) {
-      continue;
+  type Edge = { name: string; spec: string | undefined; path: string };
+  type State = { path: string; contexts: ExactOverrideRules[] };
+  const outgoing = new Map<string, Edge[]>();
+  const incoming = new Set<string>();
+  for (const [parent, metadata] of Object.entries(packages)) {
+    const specs = new Map<string, string | undefined>();
+    // Match Arborist's edge precedence: optional replaces ordinary, which
+    // replaces peer. Physical nesting never grants a different policy context.
+    for (const set of ["peerDependencies", "dependencies", "optionalDependencies"]) {
+      for (const [name, value] of Object.entries(recordAt(metadata, set) ?? {})) {
+        specs.set(name, typeof value === "string" ? value : undefined);
+      }
     }
-    const expectedVersion = overrideRules[packageName];
-    const actualVersion =
+    const edges: Edge[] = [];
+    for (const [name, spec] of specs) {
+      const target = resolveLockDependencyPath(packages, parent, name);
+      if (target) {
+        edges.push({ name, spec, path: target });
+        incoming.add(target);
+      }
+    }
+    outgoing.set(parent, edges);
+  }
+  const findings = new Map<string, OverrideViolation>();
+  const reached = new Set<string>();
+  const visited = new Set<string>();
+  const contextIds = new Map<ExactOverrideRules, number>();
+  const contextId = (context: ExactOverrideRules) => {
+    let id = contextIds.get(context);
+    if (id === undefined) {
+      id = contextIds.size;
+      contextIds.set(context, id);
+    }
+    return id;
+  };
+  function match(name: string, spec: string | undefined, contexts: ExactOverrideRules[]) {
+    for (const context of contexts) {
+      const rule = context.find(
+        (candidate) =>
+          candidate.selector.name === name && selectorMatchesRange(candidate.selector, spec),
+      );
+      if (rule) {
+        return rule;
+      }
+    }
+    return undefined;
+  }
+  function exactFallback(name: string) {
+    return overrideRules.find(
+      (rule) =>
+        rule.selector.name === name &&
+        rule.selector.bareSpecifier === undefined &&
+        rule.version !== null,
+    );
+  }
+  function record(lockPath: string, name: string, rule: ExactOverrideRule | undefined) {
+    if (!rule?.version) {
+      return;
+    }
+    const metadata = packages[lockPath];
+    const version =
       isRecord(metadata) && typeof metadata.version === "string" ? metadata.version : undefined;
-    if (!expectedVersion || actualVersion === expectedVersion) {
-      continue;
+    const actualName =
+      isRecord(metadata) && typeof metadata.name === "string" ? metadata.name : name;
+    if (version === rule.version && (!rule.aliasName || actualName === rule.aliasName)) {
+      return;
     }
-    violations.push({
+    findings.set(`${lockPath}\0${rule.version}\0${rule.aliasName ?? ""}`, {
       path: lockPath,
-      packageName,
-      actualVersion: actualVersion ?? "<missing>",
-      expectedVersion,
-      packagePath,
+      packageName: name,
+      actualVersion: version ?? "<missing>",
+      expectedVersion: rule.version,
+      ...(rule.aliasName && actualName !== rule.aliasName
+        ? { actualName, expectedName: rule.aliasName }
+        : {}),
+      packagePath: parseLockPackagePath(lockPath),
     });
   }
-  return violations;
+  function descend(
+    lockPath: string,
+    name: string,
+    rule: ExactOverrideRule | undefined,
+    contexts: ExactOverrideRules[],
+  ) {
+    const metadata = packages[lockPath];
+    const version =
+      isRecord(metadata) && typeof metadata.version === "string" ? metadata.version : undefined;
+    const actualName =
+      isRecord(metadata) && typeof metadata.name === "string" ? metadata.name : name;
+    const provenParent =
+      version !== undefined &&
+      rule &&
+      (selectorMatchesRange(rule.selector, version) ||
+        (rule.version === version && (!rule.aliasName || actualName === rule.aliasName)));
+    // Reuse context identities instead of growing stacks around dependency
+    // cycles. The newest proven scoped context remains first.
+    if (!provenParent || rule.children.length === 0 || contexts[0] === rule.children) {
+      return contexts;
+    }
+    return [rule.children, ...contexts.filter((context) => context !== rule.children)];
+  }
+  const pending: State[] = [];
+  function seed(lockPath: string) {
+    if (lockPath === "") {
+      pending.push({ path: lockPath, contexts: [overrideRules] });
+      return;
+    }
+    const name = parseLockPackagePath(lockPath).at(-1)?.name;
+    if (!name) {
+      return;
+    }
+    const metadata = packages[lockPath];
+    const version =
+      isRecord(metadata) && typeof metadata.version === "string" ? metadata.version : undefined;
+    const rule = match(name, version, [overrideRules]);
+    // No declared incoming edge proves a ranged replacement for an orphan.
+    // Keep the existing unqualified exact guard and use proven parent identity
+    // only to establish policy for its declared descendants.
+    record(lockPath, name, exactFallback(name));
+    pending.push({ path: lockPath, contexts: descend(lockPath, name, rule, [overrideRules]) });
+  }
+  seed("");
+  for (const lockPath of Object.keys(packages)) {
+    if (lockPath !== "" && !incoming.has(lockPath)) {
+      seed(lockPath);
+    }
+  }
+  function drain() {
+    while (pending.length > 0) {
+      const current = pending.pop()!;
+      const key = `${current.path}\0${current.contexts.map(contextId).join(",")}`;
+      if (visited.has(key)) {
+        continue;
+      }
+      visited.add(key);
+      reached.add(current.path);
+      for (const edge of outgoing.get(current.path) ?? []) {
+        const selected = match(edge.name, edge.spec, current.contexts);
+        const global = match(edge.name, edge.spec, [overrideRules]);
+        const fallback = global?.version ? global : exactFallback(edge.name);
+        record(edge.path, edge.name, selected?.version ? selected : fallback);
+        pending.push({
+          path: edge.path,
+          contexts: descend(edge.path, edge.name, selected, current.contexts),
+        });
+      }
+    }
+  }
+  drain();
+  // A disconnected cycle has no zero-incoming root. Inspect it once with the
+  // unqualified fallback rather than silently omitting its whole component.
+  for (const lockPath of Object.keys(packages)) {
+    if (!reached.has(lockPath)) {
+      seed(lockPath);
+      drain();
+    }
+  }
+  return [...findings.values()];
 }
 
 function disableDependencyShrinkwrapOverrideConflictSources(
   lockfile: unknown,
-  overrideRules: Record<string, string>,
+  overrideRules: ExactOverrideRules,
 ) {
   const packages = recordAt(lockfile, "packages");
   if (!packages) {
@@ -1138,7 +1329,10 @@ function describeOverrideViolations(violations: ReturnType<typeof collectOverrid
     .slice(0, 5)
     .map(
       (violation) =>
-        `${violation.path} locked ${violation.actualVersion}, expected ${violation.expectedVersion}`,
+        `${violation.path} locked ${violation.actualVersion}, expected ${violation.expectedVersion}` +
+        (violation.expectedName
+          ? ` (package ${violation.actualName}, expected ${violation.expectedName})`
+          : ""),
     )
     .join("; ");
 }

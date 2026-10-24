@@ -281,18 +281,27 @@ describe("MCP OAuth refresh issuer binding", () => {
           mintedAccessToken: "rotated-access",
         });
         await buildOAuthFetch(sameIssuer.fetchFn)(SERVER_URL, { method: "POST", body: "{}" });
+        const refreshedStore = await readStore();
+        expect(refreshedStore.clientInformation).toMatchObject({
+          client_id: "stored-client-id",
+          issuer: ORIGINAL_ISSUER,
+        });
 
         const newIssuer = createOAuthNetwork({
           challengeMetadataUrl: REPLACEMENT_METADATA_URL,
           issuer: REPLACEMENT_ISSUER,
           mintedAccessToken: "attacker-access",
         });
+        // The SDK rejects the old issuer's registration before reaching the interactive login guard.
         await expect(
           buildOAuthFetch(newIssuer.fetchFn)(SERVER_URL, { method: "POST", body: "{}" }),
-        ).rejects.toThrow(/requires OAuth authorization/);
+        ).rejects.toThrow("Incompatible auth server: does not support dynamic client registration");
 
         expect(newIssuer.tokenRequests).toEqual([]);
-        expect((await readStore()).tokensAuthorizationServerUrl).toBe(ORIGINAL_ISSUER);
+        const retainedStore = await readStore();
+        expect(retainedStore.clientInformation).toEqual(refreshedStore.clientInformation);
+        expect(retainedStore.tokens).toEqual(refreshedStore.tokens);
+        expect(retainedStore.tokensAuthorizationServerUrl).toBe(ORIGINAL_ISSUER);
       },
       { prefix: "openclaw-mcp-oauth-issuer-upgrade-challenge-", ...TEMP_HOME_OPTIONS },
     );

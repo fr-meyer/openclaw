@@ -1,3 +1,4 @@
+.agents/skills/autoreview/scripts/autoreview
 .github/workflows/pr-crabbox-gate-publisher.yml
 cli-root-options.mjs
 node-compile-cache.mjs
@@ -107,6 +108,7 @@ scripts/changed-lanes.mts
 scripts/check-changelog-attributions.mjs
 scripts/check-changelog-attributions.mts
 scripts/crabbox-untrusted-bootstrap.sh
+scripts/fork-release/native_tests.mjs
 scripts/lib/arg-utils.mts
 scripts/lib/arg-utils.runtime.mjs
 scripts/lib/bundled-plugin-paths.mjs
