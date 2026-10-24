@@ -60,14 +60,15 @@ class PrivateOciActionTests(unittest.TestCase):
                 self.assertEqual(output, "")
                 self.assertNotIn("unexpected-secret-fixture-value", result.stdout + result.stderr)
 
-    def test_unreferenced_composite_has_no_trigger_or_public_upload(self):
+    def test_composite_defaults_disabled_and_has_no_trigger_or_public_upload(self):
         action = ACTION.read_text()
         self.assertNotIn("\non:", action)
         self.assertNotIn("upload-artifact", action)
         self.assertNotIn("docker/login-action", action)
         self.assertEqual(action.count("if: steps.scope.outputs.enabled == 'true'"), 3)
         workflow = ACTION.parents[2] / "workflows/fork-release-pipeline.yml"
-        self.assertNotIn("retain-private-oci", workflow.read_text())
+        self.assertIn('default: "false"', action)
+        self.assertEqual(workflow.read_text().count('uses: ./tooling/.github/actions/retain-private-oci'), 1)
 
     def test_attestation_is_sha_pinned_and_does_not_publish_private_paths_or_registry(self):
         action = ACTION.read_text()

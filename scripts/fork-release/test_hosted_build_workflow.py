@@ -79,7 +79,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         self.assertIn('pr["head"]["ref"].startswith("candidate/")', manual)
         self.assertIn('parent === sourceSha', (WORKFLOW.parents[2] / 'scripts/fork-release/image.mjs').read_text())
         self.assertIn('permissions:\n  contents: read', self.workflow)
-        for forbidden in ('packages: write', 'id-token: write', 'docker/login-action',
+        for forbidden in ('packages: write', 'docker/login-action',
                           'cache-to:', 'cache-from:', 'self-hosted'):
             self.assertNotIn(forbidden, self.workflow)
         self.assertIn('push: false', self.build)
@@ -281,7 +281,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             for public in (False, True):
                 for cost in (False, True):
                     actual = expression(condition, github=NS(event_name=event),
-                                        steps=NS(identity=NS(outputs=NS(image_only_export='false'))),
+                                        steps=NS(identity=NS(outputs=NS(image_only_build='false'))),
                                         inputs=NS(export_public_artifact=public, artifact_storage_approved=cost))
                     self.assertEqual(actual, event == 'workflow_dispatch' and public and cost)
         self.assertNotIn('always()', upload)
@@ -309,7 +309,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
 
         def selected(ref='refs/heads/release-pipeline/v105-image-only-20261024',
                      event='push', created=False, attempt='1', actor='fr-meyer',
-                     before='0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1',
+                     before='a1c3837ba9d8e33a6964a8208ef74d339d6aa635',
                      repo='fr-meyer/openclaw'):
             return expression(condition, github=NS(ref=ref, event_name=event,
                 event=NS(created=created, before=before), run_attempt=attempt, actor=actor, repository=repo))
@@ -328,8 +328,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
     def run_image_only_scope(self, *, environment=None, event=None, manifest=None,
                              history=None, history_error=False, oversized=False,
                              previous_job=None, previous_job_2=None, built_job=None, built_job_2=None,
-                             built_job_3=None, artifacts=None, artifacts_2=None, artifacts_3=None,
-                             unavailable_endpoint=None):
+                             built_job_3=None, built_job_4=None, artifacts=None, artifacts_2=None, artifacts_3=None,
+                             artifacts_4=None, current_commit=None, unavailable_endpoint=None):
         identity = step(self.workflow, 'Resolve exact source identity')
         raw = identity.split("          python3 - <<'PY_IMAGE_ONLY'\n", 1)[1].split(
             '\n          PY_IMAGE_ONLY', 1)[0]
@@ -339,14 +339,16 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         prior = {**run, 'id': 40062126779, 'head_sha': 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5',
                  'status': 'completed', 'conclusion': 'failure', 'run_attempt': 1}
         payload = json.dumps(history if history is not None else {
-            'total_count': 6, 'workflow_runs': [run, prior, {**prior, 'id': 40062948481,
+            'total_count': 7, 'workflow_runs': [run, prior, {**prior, 'id': 40062948481,
                 'head_sha': '9c2df877355c763ccd9b939250de4384ff80b586'},
                 {**prior, 'id': 40063895699,
                  'head_sha': 'e7f32458be156cc489f76fd7cc68d35c5c1e1986'},
                 {**prior, 'id': 40067322318,
                  'head_sha': 'cf145a4c2afb999f06b3ced1f5a2b69e23929eae'},
                 {**prior, 'id': 40070695622,
-                 'head_sha': '0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1'}]})
+                 'head_sha': '0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1'},
+                {**prior, 'id': 40075559894,
+                 'head_sha': 'a1c3837ba9d8e33a6964a8208ef74d339d6aa635'}]})
         job = {'id': 120777706110, 'run_id': 40062126779, 'name': 'qualify-and-prepare',
                'head_sha': 'aee8475917dd29e0ee9a0b4059daf34990cfdbd5',
                'status': 'completed', 'conclusion': 'failure', 'run_attempt': 1, 'steps': [
@@ -375,14 +377,20 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                 'head_sha': 'cf145a4c2afb999f06b3ced1f5a2b69e23929eae'}
         job5 = {**job3, 'id': 120803275519, 'run_id': 40070695622,
                 'head_sha': '0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1'}
+        job6 = {**job3, 'id': 120818019684, 'run_id': 40075559894,
+                'head_sha': 'a1c3837ba9d8e33a6964a8208ef74d339d6aa635'}
         job.update(previous_job or {})
         job2.update(previous_job_2 or {})
         job3.update(built_job or {})
         job4.update(built_job_2 or {})
         job5.update(built_job_3 or {})
+        job6.update(built_job_4 or {})
         artifact_payload = artifacts if artifacts is not None else {'total_count': 0, 'artifacts': []}
         artifact_payload_2 = artifacts_2 if artifacts_2 is not None else {'total_count': 0, 'artifacts': []}
         artifact_payload_3 = artifacts_3 if artifacts_3 is not None else {'total_count': 0, 'artifacts': []}
+        artifact_payload_4 = artifacts_4 if artifacts_4 is not None else {'total_count': 0, 'artifacts': []}
+        commit_payload = current_commit if current_commit is not None else {
+            'sha': SOURCE, 'parents': [{'sha': 'e88b8997b29a2842127cc91a1cec3837b34dcc88'}]}
 
         wrapper = (
             'import io, json\nfrom unittest.mock import patch\n'
@@ -390,23 +398,29 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             '    assert timeout == 15\n'
             '    history_url = '
             "'https://api.github.com/repos/fr-meyer/openclaw/actions/workflows/' "
-            "'fork-release-pipeline.yml/runs?event=push&per_page=6&' "
+            "'fork-release-pipeline.yml/runs?event=push&per_page=7&' "
             "'branch=release-pipeline%2Fv105-image-only-20261024'\n"
+            '    commit_url = "https://api.github.com/repos/fr-meyer/openclaw/git/commits/" + ' + repr(SOURCE) + '\n'
             '    job_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120777706110"\n'
             '    job2_url = \"https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120780156996\"\n'
             '    job3_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120782979034"\n'
             '    job4_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120793190410"\n'
             '    job5_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120803275519"\n'
+            '    job6_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/120818019684"\n'
             '    artifacts_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40063895699/artifacts?per_page=1"\n'
             '    artifacts2_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40067322318/artifacts?per_page=1"\n'
             '    artifacts3_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40070695622/artifacts?per_page=1"\n'
-            '    assert request.full_url in (history_url, job_url, job2_url, job3_url, job4_url, job5_url, artifacts_url, artifacts2_url, artifacts3_url)\n'
+            '    artifacts4_url = "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40075559894/artifacts?per_page=1"\n'
+            '    assert request.full_url in (commit_url, history_url, job_url, job2_url, job3_url, job4_url, job5_url, job6_url, artifacts_url, artifacts2_url, artifacts3_url, artifacts4_url)\n'
             '    assert not request.has_header("Authorization")\n'
             '    if request.full_url == ' + repr(unavailable_endpoint) + ': raise OSError("bounded lookup unavailable")\n'
             + ('    raise OSError("bounded lookup unavailable")\n' if history_error else
-               '    if request.full_url == artifacts_url: return io.BytesIO(' + repr(json.dumps(artifact_payload).encode()) + ')\n'
+               '    if request.full_url == commit_url: return io.BytesIO(' + repr(json.dumps(commit_payload).encode()) + ')\n'
+               + '    if request.full_url == artifacts_url: return io.BytesIO(' + repr(json.dumps(artifact_payload).encode()) + ')\n'
                + '    if request.full_url == artifacts2_url: return io.BytesIO(' + repr(json.dumps(artifact_payload_2).encode()) + ')\n'
                + '    if request.full_url == artifacts3_url: return io.BytesIO(' + repr(json.dumps(artifact_payload_3).encode()) + ')\n'
+               + '    if request.full_url == artifacts4_url: return io.BytesIO(' + repr(json.dumps(artifact_payload_4).encode()) + ')\n'
+               + '    if request.full_url == job6_url: return io.BytesIO(' + repr(json.dumps(job6).encode()) + ')\n'
                + '    if request.full_url == job5_url: return io.BytesIO(' + repr(json.dumps(job5).encode()) + ')\n'
                + '    if request.full_url == job4_url: return io.BytesIO(' + repr(json.dumps(job4).encode()) + ')\n'
                + '    if request.full_url == job3_url: return io.BytesIO(' + repr(json.dumps(job3).encode()) + ')\n'
@@ -423,19 +437,22 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             metadata = root / 'metadata/scripts/fork-release/manifest.json'
             metadata.parent.mkdir(parents=True)
             value = {'repository': 'fr-meyer/openclaw', 'productionEligible': False,
-                     'source': {'commit': '85a9bdc1285c338f10f5ca818abc259f6d483b5b'},
+                     'source': {'commit': '85a9bdc1285c338f10f5ca818abc259f6d483b5b',
+                                'tree': '3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a'},
                      'image': {'architecture': 'amd64', 'extensions': 'codex,workboard'}}
             value.update(manifest or {})
             metadata.write_text(json.dumps(value))
             event_file = root / 'event.json'
             event_file.write_text(json.dumps({'created': False,
-                'before': '0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1', **(event or {})}))
+                'before': 'a1c3837ba9d8e33a6964a8208ef74d339d6aa635',
+                'after': SOURCE, **(event or {})}))
             output = root / 'output'
             env = {'PATH': os.environ.get('PATH', ''),
                    'GITHUB_REF': 'refs/heads/release-pipeline/v105-image-only-20261024',
                    'GITHUB_EVENT_NAME': 'push', 'GITHUB_REPOSITORY': 'fr-meyer/openclaw',
                    'GITHUB_ACTOR': 'fr-meyer', 'GITHUB_RUN_ATTEMPT': '1',
                    'GITHUB_RUN_ID': '1234', 'GITHUB_SHA': SOURCE,
+                   'ACTUAL_WORKFLOW_SHA': SOURCE, 'APPROVED_PRIVATE_WORKFLOW_SHA': SOURCE,
                    'GITHUB_EVENT_PATH': str(event_file), 'GITHUB_OUTPUT': str(output)}
             env.update(environment or {})
             result = subprocess.run([sys.executable, '-c', wrapper], cwd=root, env=env,
@@ -445,7 +462,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
 
     @staticmethod
     def built_job_step_outcomes():
-        # The three actual terminal runs consumed physical builds. Their privacy
+        # The four actual terminal runs consumed physical builds. Their privacy
         # refusals do not grant another attempt without explicit authorization.
         return {
             'Verify source and run offline pipeline regressions': 'success',
@@ -468,12 +485,15 @@ class HostedBuildWorkflowTests(unittest.TestCase):
     def test_image_only_scope_binds_exact_source_nonproduction_and_absent_review(self):
         result, emitted = self.run_image_only_scope()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(emitted, 'image_only_export=true\n')
+        self.assertEqual(emitted, 'image_only_build=true\nprivate_retention=true\nprivate_workflow_sha=' + SOURCE + '\n')
         negatives = (
             {'environment': {'GITHUB_REPOSITORY': 'other/openclaw'}},
             {'environment': {'GITHUB_ACTOR': 'someone-else'}},
             {'environment': {'GITHUB_RUN_ATTEMPT': '2'}},
             {'environment': {'GITHUB_EVENT_NAME': 'workflow_dispatch'}},
+            *({'environment': {'APPROVED_PRIVATE_WORKFLOW_SHA': value}} for value in ('', 'not-a-sha', 'b' * 40)),
+            {'environment': {'ACTUAL_WORKFLOW_SHA': 'b' * 40}},
+            {'event': {'after': 'b' * 40}},
             {'event': {'created': True}}, {'event': {'created': 0}},
             {'event': {'before': 'b' * 40}}, {'event': {'before': None}},
             {'event': {'before': 'e7f32458be156cc489f76fd7cc68d35c5c1e1986'}},
@@ -501,7 +521,8 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                                      (40062948481, '9c2df877355c763ccd9b939250de4384ff80b586'),
                                      (40063895699, 'e7f32458be156cc489f76fd7cc68d35c5c1e1986'),
                                      (40067322318, 'cf145a4c2afb999f06b3ced1f5a2b69e23929eae'),
-                                     (40070695622, '0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1'))]
+                                     (40070695622, '0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1'),
+                                     (40075559894, 'a1c3837ba9d8e33a6964a8208ef74d339d6aa635'))]
         for change in (
             {'history': {'total_count': 2, 'workflow_runs': [run, {**run, 'id': 1233}]}},
             {'history': {'total_count': 0, 'workflow_runs': []}},
@@ -510,15 +531,15 @@ class HostedBuildWorkflowTests(unittest.TestCase):
             *({'history': {'total_count': 1, 'workflow_runs': [{**run, **field}]}}
               for field in ({'id': 1233}, {'id': '1234'}, {'head_sha': 'b' * 40},
                             {'head_branch': 'other'}, {'event': 'pull_request'})),
-            {'history': {'total_count': 6, 'workflow_runs': [run, prior[0], prior[0], prior[2], prior[3], prior[4]]}},
+            {'history': {'total_count': 7, 'workflow_runs': [run, prior[0], prior[0], prior[2], prior[3], prior[4], prior[5]]}},
             {'history': {'total_count': 5, 'workflow_runs': [run, *prior[:4]]}},
-            {'history': {'total_count': 7, 'workflow_runs': [run, *prior, {**run, 'id': 1233}]}},
-            *({'history': {'total_count': 6, 'workflow_runs': [{**run, **field}, *prior]}}
+            {'history': {'total_count': 8, 'workflow_runs': [run, *prior, {**run, 'id': 1233}]}},
+            *({'history': {'total_count': 7, 'workflow_runs': [{**run, **field}, *prior]}}
               for field in ({'id': 1233}, {'id': '1234'}, {'head_sha': 'b' * 40},
                             {'run_attempt': 2}, {'head_branch': 'other'}, {'event': 'pull_request'})),
-            *({'history': {'total_count': 6, 'workflow_runs': [run, *[
+            *({'history': {'total_count': 7, 'workflow_runs': [run, *[
                 {**p, **field} if p['id'] == selected else p for p in prior]]}}
-              for selected in (40062126779, 40062948481, 40063895699, 40067322318, 40070695622)
+              for selected in (40062126779, 40062948481, 40063895699, 40067322318, 40070695622, 40075559894)
               for field in ({'head_sha': 'b' * 40}, {'status': 'in_progress'},
                             {'conclusion': 'success'}, {'run_attempt': 2})),
             {'history_error': True}, {'oversized': True},
@@ -574,7 +595,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                          if s == selected else s for s in steps]} for selected in steps),
         )
         for change in changes:
-            for key in ('built_job', 'built_job_2', 'built_job_3'):
+            for key in ('built_job', 'built_job_2', 'built_job_3', 'built_job_4'):
                 with self.subTest(key=key, change=change):
                     result, emitted = self.run_image_only_scope(**{key: change})
                     self.assertNotEqual(result.returncode, 0)
@@ -586,17 +607,18 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                           {'total_count': False, 'artifacts': []},
                           {'total_count': '0', 'artifacts': []},
                           {'total_count': 0}, {'total_count': 0, 'artifacts': None}):
-            for key in ('artifacts', 'artifacts_2', 'artifacts_3'):
+            for key in ('artifacts', 'artifacts_2', 'artifacts_3', 'artifacts_4'):
                 with self.subTest(key=key, artifacts=artifacts):
                     result, emitted = self.run_image_only_scope(**{key: artifacts})
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn('artifact absence is not established', result.stderr)
                     self.assertEqual(emitted, '')
         for endpoint in ('/actions/jobs/120782979034', '/actions/jobs/120793190410',
-                         '/actions/jobs/120803275519',
+                         '/actions/jobs/120803275519', '/actions/jobs/120818019684',
                          '/actions/runs/40063895699/artifacts?per_page=1',
                          '/actions/runs/40067322318/artifacts?per_page=1',
-                         '/actions/runs/40070695622/artifacts?per_page=1'):
+                         '/actions/runs/40070695622/artifacts?per_page=1',
+                         '/actions/runs/40075559894/artifacts?per_page=1'):
             with self.subTest(endpoint=endpoint):
                 result, emitted = self.run_image_only_scope(unavailable_endpoint=(
                     'https://api.github.com/repos/fr-meyer/openclaw' + endpoint))
@@ -609,7 +631,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                     'refs/heads/release-pipeline/v105-image-only-20261024-extra'):
             result, emitted = self.run_image_only_scope(environment={'GITHUB_REF': ref})
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(emitted, 'image_only_export=false\n')
+            self.assertEqual(emitted, 'image_only_build=false\nprivate_retention=false\nprivate_workflow_sha=\n')
         bundle = step(self.workflow, 'Prepare and verify the bounded public artifact')
         upload = step(self.workflow, 'Retain the exact tested OCI payload and public receipt')
         conditions = []
@@ -621,25 +643,26 @@ class HostedBuildWorkflowTests(unittest.TestCase):
                 for flag in ('false', 'true'):
                     actual = expression(condition, github=NS(event_name=event),
                         inputs=NS(export_public_artifact=False, artifact_storage_approved=False),
-                        steps=NS(identity=NS(outputs=NS(image_only_export=flag))))
-                    self.assertEqual(actual, flag == 'true')
+                        steps=NS(identity=NS(outputs=NS(image_only_build=flag))))
+                    self.assertFalse(actual)
         self.assertEqual(conditions[0], conditions[1])
         gate = step(self.workflow, 'Bind hosted qualification receipts and export decision')
         for name in ('PUBLIC_EXPORT', 'STORAGE_APPROVED'):
             value = re.search(r'^          ' + name + r': (.+)$', gate, re.M).group(1)
             for flag in ('false', 'true'):
-                actual = expression(value,
+                actual = expression(value, github=NS(event_name='push'),
                     inputs=NS(export_public_artifact=False, artifact_storage_approved=False),
-                    steps=NS(identity=NS(outputs=NS(image_only_export=flag))))
-                self.assertEqual(actual, flag == 'true')
+                    steps=NS(identity=NS(outputs=NS(image_only_build=flag))))
+                self.assertFalse(actual)
 
     def test_one_shot_route_preserves_all_checks_and_real_execution_binding(self):
         source = step(self.workflow, 'Verify source and run offline pipeline regressions')
         self.assertIn("python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_*.py'", source)
         self.assertIn('source_ancestry.py', source)
         self.assertIn('preflight.py', source)
-        self.assertIn("if [[ '${{ steps.identity.outputs.image_only_export }}' == true ]]; then", source)
+        self.assertIn("if [[ '${{ steps.identity.outputs.image_only_build }}' == true ]]; then", source)
         self.assertIn("-p 'test_hosted_*.py'", source)
+        self.assertIn("-p 'test_private_oci_*.py'", source)
         self.assertIn("-p 'test_image*.py'", source)
         self.assertIn('test_preflight test_release test_source_ancestry test_source_tests', source)
         self.assertIn('test_merge_source test_limited_coverage_gate', source)
@@ -653,6 +676,96 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         self.assertIn('--run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"', gate)
         # Existing resource, native framework, privacy, ZIP and upload tests stay active.
         self.assertNotIn('continue-on-error:', gate)
+
+    def test_private_caller_requires_exact_external_workflow_approval_and_preparation_parent(self):
+        identity = step(self.workflow, 'Resolve exact source identity')
+        self.assertIn("fromJSON(secrets.OPENCLAW_PRIVATE_OCI_CAPABILITY || '{}').workflowSha", identity)
+        before_process = identity.split('        run: |', 1)[0]
+        self.assertNotIn('upload-capability:', before_process)
+        self.assertNotIn('OCI_UPLOAD', before_process)
+        self.assertIn('APPROVED_PRIVATE_WORKFLOW_SHA:', before_process)
+        for change in ({'sha': 'b' * 40}, {'parents': []}, {'parents': None},
+                       {'parents': [{'sha': 'b' * 40}]},
+                       {'parents': [{'sha': 'e88b8997b29a2842127cc91a1cec3837b34dcc88'},
+                                    {'sha': 'e88b8997b29a2842127cc91a1cec3837b34dcc88'}]}):
+            value = {'sha': SOURCE, 'parents': [{'sha': 'e88b8997b29a2842127cc91a1cec3837b34dcc88'}],
+                     **change}
+            result, emitted = self.run_image_only_scope(current_commit=value)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('exact reviewed preparation successor', result.stderr)
+            self.assertEqual(emitted, '')
+
+    def test_private_retention_survives_privacy_failure_but_not_failed_build_or_cancel(self):
+        capture = step(self.workflow, 'Capture original hosted build metadata for private retention')
+        retain = step(self.workflow, 'Retain private OCI archive')
+
+        def selected(block, *, private='true', build='success', finish='success',
+                     metadata='success', cancelled=False, privacy='failure'):
+            condition = ' '.join(block.split('        if: >-\n', 1)[1].split(
+                '\n        ' + ('uses:' if block == retain else 'env:'), 1)[0].split())
+            condition = condition.replace('!cancelled()', 'not cancelled()')
+            return expression(condition, always=lambda: True, cancelled=lambda: cancelled,
+                steps=NS(identity=NS(outputs=NS(private_retention=private)),
+                    build=NS(outcome=build), resource_finish=NS(outcome=finish),
+                    private_metadata=NS(outcome=metadata), privacy=NS(outcome=privacy)))
+
+        self.assertTrue(selected(capture, privacy='failure'))
+        self.assertTrue(selected(capture, finish='failure'))
+        self.assertTrue(selected(retain, privacy='failure'))
+        for block in (capture, retain):
+            for change in ({'private': 'false'}, {'build': 'failure'},
+                           {'build': 'skipped'}, {'cancelled': True}):
+                with self.subTest(block=block[:70], change=change):
+                    self.assertFalse(selected(block, **change))
+        for outcome in ('skipped', 'cancelled'):
+            self.assertFalse(selected(capture, finish=outcome))
+        self.assertFalse(selected(retain, metadata='failure'))
+        self.assertIn('uses: ./tooling/.github/actions/retain-private-oci', retain)
+        self.assertIn('upload-capability: ${{ secrets.OPENCLAW_PRIVATE_OCI_CAPABILITY }}', retain)
+        self.assertIn('approved-workflow-sha: ${{ steps.identity.outputs.private_workflow_sha }}', retain)
+        self.assertIn('source-tree: 3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a', retain)
+        self.assertIn('output-directory: ${{ runner.temp }}/fork-private-retention', retain)
+        self.assertLess(self.workflow.index('      - name: Finish resource observation'),
+                        self.workflow.index('      - name: Capture original hosted build metadata'))
+        self.assertLess(self.workflow.index('      - name: Capture original hosted build metadata'),
+                        self.workflow.index('      - name: Retain private OCI archive'))
+        early = self.workflow.split('      - name: Retain private OCI archive', 1)[0]
+        self.assertNotIn('upload-capability: ${{ secrets.', early)
+        self.assertEqual(early.count('secrets.OPENCLAW_PRIVATE_OCI_CAPABILITY'), 1)
+
+    def test_private_metadata_capture_preserves_original_bytes_and_refuses_overwrite_or_mismatch(self):
+        capture = step(self.workflow, 'Capture original hosted build metadata for private retention')
+        code = textwrap.dedent(capture.split("<<'PY_PRIVATE_METADATA'\n", 1)[1].split(
+            '\n          PY_PRIVATE_METADATA', 1)[0])
+        digest = 'sha256:' + 'c' * 64
+        raw = '{ "containerimage.digest": "' + digest + '", "original": [1, 2] }\n'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'fork-release').mkdir()
+            env = {'RUNNER_TEMP': directory, 'ORIGINAL_BUILD_METADATA': raw, 'OCI_DIGEST': digest}
+            run = lambda **change: subprocess.run([sys.executable, '-I', '-B', '-c', code],
+                env={**env, **change}, capture_output=True, text=True, timeout=5)
+            bad = run(OCI_DIGEST='sha256:' + 'd' * 64)
+            self.assertNotEqual(bad.returncode, 0)
+            target = root / 'fork-release/build-metadata.json'
+            self.assertFalse(target.exists())
+            result = run()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(target.read_bytes(), raw.encode())
+            self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+            self.assertNotEqual(run().returncode, 0)
+            self.assertEqual(target.read_bytes(), raw.encode())
+            self.assertEqual(result.stdout, '')
+
+    def test_attestation_permissions_are_job_scoped_and_not_registry_authority(self):
+        header, jobs = self.workflow.split('\njobs:\n', 1)
+        self.assertNotIn('id-token:', header)
+        self.assertNotIn('attestations:', header)
+        qualification = jobs.split('  qualify-and-prepare:\n', 1)[1]
+        permissions = qualification.split('    permissions:\n', 1)[1].split('    steps:', 1)[0]
+        self.assertEqual(dict(re.findall(r'^      ([a-z-]+): (read|write)$', permissions, re.M)),
+                         {'contents': 'read', 'id-token': 'write', 'attestations': 'write'})
+        self.assertNotIn('packages: write', self.workflow)
 
     def test_public_member_qualification_is_selected_only_for_exact_reviewed_source(self):
         block = step(self.workflow, 'Inspect all OCI layers and metadata before native smoke or publication')

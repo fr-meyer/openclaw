@@ -295,10 +295,14 @@ jobs:
           (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') &&
           (github.ref != 'refs/heads/release-pipeline/v105-image-only-20261024' ||
            (github.event_name == 'push' && github.event.created == false &&
-            github.event.before == '0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1' &&
+            github.event.before == 'a1c3837ba9d8e33a6964a8208ef74d339d6aa635' &&
             github.run_attempt == '1' && github.actor == 'fr-meyer')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - name: Validate manual candidate identity before checkout
         if: github.event_name == 'workflow_dispatch'
@@ -336,13 +340,19 @@ jobs:
           [[ "$(git -C metadata rev-parse HEAD)" == "$CANDIDATE_HEAD_SHA" ]]
       - name: Resolve exact source identity
         id: identity
+        env:
+          # GitHub extracts only the public approval SHA; the capability itself
+          # reaches a process only in the final composite transfer step.
+          APPROVED_PRIVATE_WORKFLOW_SHA: ${{ github.ref == 'refs/heads/release-pipeline/v105-image-only-20261024' && fromJSON(secrets.OPENCLAW_PRIVATE_OCI_CAPABILITY || '{}').workflowSha || '' }}
+          ACTUAL_WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          # Activate this exact update only with approval for one additional
-          # physical build. All three prior builds remain consumed and unqualified.
+          # One approved private-retention build. Prior physical builds stay
+          # consumed; the external capability binds this reviewed workflow SHA.
           python3 - <<'PY_IMAGE_ONLY'
           import json
           import os
+          import re
           from pathlib import Path
           from urllib.request import Request, urlopen
 
@@ -352,17 +362,22 @@ jobs:
           if selected:
               event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
               manifest = json.loads(Path('metadata/scripts/fork-release/manifest.json').read_text())
+              approved = os.environ.get('APPROVED_PRIVATE_WORKFLOW_SHA', '')
               if not (
+                  re.fullmatch(r'[0-9a-f]{40}', approved) and
+                  approved == os.environ.get('ACTUAL_WORKFLOW_SHA') == os.environ['GITHUB_SHA'] and
                   os.environ['GITHUB_EVENT_NAME'] == 'push' and
                   os.environ['GITHUB_REPOSITORY'] == 'fr-meyer/openclaw' and
                   os.environ['GITHUB_ACTOR'] == 'fr-meyer' and
                   os.environ['GITHUB_RUN_ATTEMPT'] == '1' and
                   event.get('created') is False and
-                  event.get('before') == '0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1' and
+                  event.get('before') == 'a1c3837ba9d8e33a6964a8208ef74d339d6aa635' and
+                  event.get('after') == os.environ['GITHUB_SHA'] and
                   manifest.get('repository') == 'fr-meyer/openclaw' and
                   manifest.get('productionEligible') is False and
                   'review' not in manifest and
                   manifest.get('source', {}).get('commit') == image_source and
+                  manifest.get('source', {}).get('tree') == '3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a' and
                   manifest.get('image') == {'architecture': 'amd64', 'extensions': 'codex,workboard'}
               ):
                   raise SystemExit('One-shot nonproduction image scope changed')
@@ -380,7 +395,14 @@ jobs:
                       raise SystemExit('One-shot image metadata is incomplete')
                   return value
 
-              # Two pre-build failures and three built/privacy-refused runs are
+              current_commit = public_json('/git/commits/' + os.environ['GITHUB_SHA'])
+              parents = current_commit.get('parents')
+              if not (current_commit.get('sha') == approved and isinstance(parents, list) and
+                      len(parents) == 1 and isinstance(parents[0], dict) and
+                      parents[0].get('sha') == 'e88b8997b29a2842127cc91a1cec3837b34dcc88'):
+                  raise SystemExit('Private caller is not the exact reviewed preparation successor')
+
+              # Two pre-build failures and four built/privacy-refused runs are
               # retained explicitly. No prior run may have uploaded an image.
               priors = {
                   40062126779: ('aee8475917dd29e0ee9a0b4059daf34990cfdbd5', 120777706110),
@@ -388,16 +410,17 @@ jobs:
                   40063895699: ('e7f32458be156cc489f76fd7cc68d35c5c1e1986', 120782979034),
                   40067322318: ('cf145a4c2afb999f06b3ced1f5a2b69e23929eae', 120793190410),
                   40070695622: ('0d5edcd62b511ef8b4472d15bbd330f2bf93e6a1', 120803275519),
+                  40075559894: ('a1c3837ba9d8e33a6964a8208ef74d339d6aa635', 120818019684),
               }
-              built_priors = {40063895699, 40067322318, 40070695622}
+              built_priors = {40063895699, 40067322318, 40070695622, 40075559894}
               history = public_json('/actions/workflows/fork-release-pipeline.yml/runs?'
-                  'event=push&per_page=6&branch=release-pipeline%2Fv105-image-only-20261024')
+                  'event=push&per_page=7&branch=release-pipeline%2Fv105-image-only-20261024')
               runs = history.get('workflow_runs')
               current = [r for r in runs or [] if isinstance(r, dict) and
                          type(r.get('id')) is int and str(r['id']) == os.environ['GITHUB_RUN_ID']]
               if not (
-                  type(history.get('total_count')) is int and history['total_count'] == 6 and
-                  isinstance(runs, list) and len(runs) == 6 and len(current) == 1 and
+                  type(history.get('total_count')) is int and history['total_count'] == 7 and
+                  isinstance(runs, list) and len(runs) == 7 and len(current) == 1 and
                   current[0]['id'] not in priors and
                   current[0].get('head_sha') == os.environ['GITHUB_SHA'] and
                   all(isinstance(r, dict) and type(r.get('id')) is int and
@@ -455,7 +478,9 @@ jobs:
                               artifacts.get('artifacts') == []):
                           raise SystemExit('Prior physical build artifact absence is not established')
           with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
-              print('image_only_export=' + ('true' if selected else 'false'), file=output)
+              print('image_only_build=' + ('true' if selected else 'false'), file=output)
+              print('private_retention=' + ('true' if selected else 'false'), file=output)
+              print('private_workflow_sha=' + (approved if selected else ''), file=output)
           PY_IMAGE_ONLY
           python3 tooling/scripts/fork-release/release.py identity \
             --manifest metadata/scripts/fork-release/manifest.json \
@@ -539,10 +564,11 @@ jobs:
           python3 tooling/scripts/fork-release/preflight.py \
             --manifest metadata/scripts/fork-release/manifest.json \
             --inventory metadata/scripts/fork-release/patch-inventory.json --source-dir source
-          if [[ '${{ steps.identity.outputs.image_only_export }}' == true ]]; then
+          if [[ '${{ steps.identity.outputs.image_only_build }}' == true ]]; then
             # This job qualifies an image; GCP database/teardown lifecycle is
             # separate. Keep all hosted/image and source-binding owners here.
             python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_hosted_*.py'
+            python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_private_oci_*.py'
             python3 -m unittest discover -s tooling/scripts/fork-release -p 'test_image*.py'
             PYTHONPATH=tooling/scripts/fork-release python3 -m unittest \
               test_preflight test_release test_source_ancestry test_source_tests \
@@ -675,6 +701,7 @@ jobs:
             "$RUNNER_TEMP/fork-release/oci/default" "$BUILDKIT_DIGEST" \
             "$RUNNER_TEMP/fork-release/receipt.json"
       - name: Finish resource observation through export load and native verification
+        id: resource_finish
         if: always() && steps.resources.outcome == 'success'
         env:
           OCI_DIGEST: ${{ steps.build.outputs.digest }}
@@ -683,13 +710,61 @@ jobs:
           python3 tooling/scripts/fork-release/hosted_resources.py finish \
             --state-dir "$RUNNER_TEMP/fork-hosted-observation" \
             --index-digest "$OCI_DIGEST" --output "$RUNNER_TEMP/fork-release/resources.json"
+      - name: Capture original hosted build metadata for private retention
+        id: private_metadata
+        if: >-
+          ${{ always() && !cancelled() && steps.identity.outputs.private_retention == 'true' &&
+              steps.build.outcome == 'success' &&
+              (steps.resource_finish.outcome == 'success' || steps.resource_finish.outcome == 'failure') }}
+        env:
+          ORIGINAL_BUILD_METADATA: ${{ steps.build.outputs.metadata }}
+          OCI_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY_PRIVATE_METADATA'
+          import json
+          import os
+          from pathlib import Path
+
+          raw = os.environ['ORIGINAL_BUILD_METADATA'].encode()
+          if len(raw) > 2 * 1024 * 1024:
+              raise SystemExit('Original build metadata exceeds retention bound')
+          metadata = json.loads(raw)
+          if not isinstance(metadata, dict) or metadata.get('containerimage.digest') != os.environ['OCI_DIGEST']:
+              raise SystemExit('Original build metadata identity differs')
+          target = Path(os.environ['RUNNER_TEMP'], 'fork-release/build-metadata.json')
+          descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+          with os.fdopen(descriptor, 'wb') as output:
+              output.write(raw)
+              output.flush()
+              os.fsync(output.fileno())
+          PY_PRIVATE_METADATA
+      - name: Retain private OCI archive
+        if: >-
+          ${{ always() && !cancelled() && steps.identity.outputs.private_retention == 'true' &&
+              steps.build.outcome == 'success' && steps.private_metadata.outcome == 'success' }}
+        uses: ./tooling/.github/actions/retain-private-oci
+        with:
+          enabled: ${{ steps.identity.outputs.private_retention }}
+          approved-workflow-sha: ${{ steps.identity.outputs.private_workflow_sha }}
+          source-sha: ${{ steps.identity.outputs.source_sha }}
+          source-tree: 3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a
+          built-at: ${{ steps.identity.outputs.built_at }}
+          manifest: metadata/scripts/fork-release/manifest.json
+          inventory: metadata/scripts/fork-release/patch-inventory.json
+          build-metadata: ${{ runner.temp }}/fork-release/build-metadata.json
+          resources: ${{ runner.temp }}/fork-release/resources.json
+          oci-directory: ${{ runner.temp }}/fork-release/oci/default
+          output-directory: ${{ runner.temp }}/fork-private-retention
+          upload-capability: ${{ secrets.OPENCLAW_PRIVATE_OCI_CAPABILITY }}
       - name: Bind hosted qualification receipts and export decision
         env:
           SOURCE_SHA: ${{ steps.identity.outputs.source_sha }}
           TOOLING_SHA: ${{ github.sha }}
           OCI_DIGEST: ${{ steps.build.outputs.digest }}
-          PUBLIC_EXPORT: ${{ steps.identity.outputs.image_only_export == 'true' || inputs.export_public_artifact || false }}
-          STORAGE_APPROVED: ${{ steps.identity.outputs.image_only_export == 'true' || inputs.artifact_storage_approved || false }}
+          PUBLIC_EXPORT: ${{ github.event_name == 'workflow_dispatch' && inputs.export_public_artifact || false }}
+          STORAGE_APPROVED: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact_storage_approved || false }}
         run: |
           set -euo pipefail
           python3 tooling/scripts/fork-release/hosted_export.py \
@@ -703,9 +778,8 @@ jobs:
       - name: Prepare and verify the bounded public artifact
         id: bundle
         if: >-
-          ${{ steps.identity.outputs.image_only_export == 'true' ||
-              (github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
-               inputs.artifact_storage_approved) }}
+          ${{ github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
+              inputs.artifact_storage_approved }}
         run: |
           set -euo pipefail
           python3 tooling/scripts/fork-release/hosted_bundle.py prepare \
@@ -727,9 +801,8 @@ jobs:
       - name: Retain the exact tested OCI payload and public receipt
         id: image_artifact
         if: >-
-          ${{ steps.identity.outputs.image_only_export == 'true' ||
-              (github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
-               inputs.artifact_storage_approved) }}
+          ${{ github.event_name == 'workflow_dispatch' && inputs.export_public_artifact &&
+              inputs.artifact_storage_approved }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           # The pinned action streams one file unchanged and uses its basename.
