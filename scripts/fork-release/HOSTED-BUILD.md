@@ -68,8 +68,14 @@ Linux verification uses the separately approved, hash-pinned official GitHub CLI
 `.local/qualification-tools/gh-2.98.0/bin/gh`. Its exact 41,377,954-byte executable
 is verified before use. There is no caller-selected executable, PATH fallback or
 system package upgrade. Preparing this source does not download or install it on
-the receiver. Native verification uses the existing operator login; credentials
-are never forwarded to the candidate image.
+the receiver. A receiver without a GitHub login must supply the original signed
+public attestation bundle using the paired `attestationBundlePath` and
+`attestationBundleSha256` plan fields. Native verification snapshots the bounded
+private input and uses GitHub CLI's `--bundle` mode, retaining normal signature,
+subject and producer-identity checks. A bundle is untrusted signed input, not a
+saved verification result. Existing public run/job checks still run. No login or
+credential copy is needed for that path, and credentials are never forwarded to
+the candidate image.
 
 The existing coordinator has an explicit hosted mode:
 

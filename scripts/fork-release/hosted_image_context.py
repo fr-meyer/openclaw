@@ -14,6 +14,7 @@ import re
 import stat
 import subprocess
 import sys
+import tempfile
 
 import hosted_reinspection as documents
 import hosted_export
@@ -40,6 +41,7 @@ POSITIVE = re.compile(r"[1-9][0-9]*\Z")
 FIELDS = set("""schema sourceDir ociDir manifestPath inventoryPath metadataPath originPath archivePath resourcesPath
 workflowSha workflowRef inspectionToolingSha runId attempt jobId archiveSha256 originSha256
 manifestSha256 inventorySha256 buildMetadataSha256 resourcesSha256 indexDigest builtAt""".split())
+BUNDLE_FIELDS = {"attestationBundlePath", "attestationBundleSha256"}
 
 
 class Refusal(ValueError):
@@ -79,9 +81,10 @@ def stamp():
 def plan_at(path, expected):
     private(path)
     value, hashed = data(path)
-    need(HEX.fullmatch(expected) and hashed == expected and set(value) == FIELDS and
+    optional = set(value) & BUNDLE_FIELDS
+    need(optional in (set(), BUNDLE_FIELDS) and HEX.fullmatch(expected) and hashed == expected and set(value) == FIELDS | optional and
          value["schema"] == "openclaw.retained-hosted-origin-input.v1")
-    for key in FIELDS:
+    for key in FIELDS | optional:
         if key.endswith("Path") or key.endswith("Dir"):
             location = Path(value[key])
             need(location.is_absolute() and location.resolve() == location)
@@ -96,6 +99,17 @@ def plan_at(path, expected):
     documents.timestamp(value["builtAt"])
     need(documents.DIGEST.fullmatch(value["indexDigest"]))
     return value, hashed
+
+
+def bundle_bytes(plan):
+    if "attestationBundlePath" not in plan:
+        return None
+    private(plan["attestationBundlePath"])
+    raw, hashed = documents.read_document(plan["attestationBundlePath"])
+    need(hashed == plan["attestationBundleSha256"])
+    # An input Sigstore bundle is untrusted bytes for the native verifier. It is
+    # never parsed as a successful verification result or authentication flag.
+    return raw
 
 
 def prepare(plan, plan_hash):
@@ -128,6 +142,7 @@ def prepare(plan, plan_hash):
          inventory.get("manifestSha256") == manifest_hash and inventory.get("repository") == REPOSITORY)
     resource_passed = hosted_export.require_resources(resources, source=SOURCE, tooling=plan["workflowSha"],
                                                        index=plan["indexDigest"], require_pass=False)
+    bundle_bytes(plan)
     archive = private_oci_bundle.verify_archive(plan["archivePath"], plan["archiveSha256"],
         oci_dir=plan["ociDir"], manifest_path=plan["manifestPath"], inventory_path=plan["inventoryPath"],
         metadata_path=plan["metadataPath"], origin_path=plan["originPath"], resources_path=plan["resourcesPath"])
@@ -141,6 +156,7 @@ def prepare(plan, plan_hash):
             "resourcesSha256": resources_hash, "resourceAssessment": "passed" if resource_passed else "failed",
             "archiveSha256": archive["archiveSha256"], "ociClosureSha256": archive["ociClosureSha256"],
             "planSha256": plan_hash, "inspectionToolingSha": plan["inspectionToolingSha"],
+            **({"attestationBundleSha256": plan["attestationBundleSha256"]} if "attestationBundlePath" in plan else {}),
             "blockers": ["native_attestation_and_canonical_api_capture_required",
                          "privacy_static_and_native_image_qualification_not_performed"]}
 
@@ -173,20 +189,31 @@ def verifier_executable():
     return str(path)
 
 
-def command(plan):
-    return [verifier_executable(), "attestation", "verify", plan["archivePath"], "--hostname", "github.com", "--repo", REPOSITORY,
+def command(plan, bundle_snapshot=None):
+    argv = [verifier_executable(), "attestation", "verify", plan["archivePath"], "--hostname", "github.com", "--repo", REPOSITORY,
             "--signer-workflow", f"{REPOSITORY}/{WORKFLOW}", "--signer-digest", plan["workflowSha"],
             "--source-digest", plan["workflowSha"], "--source-ref", plan["workflowRef"],
             "--cert-oidc-issuer", "https://token.actions.githubusercontent.com", "--deny-self-hosted-runners",
             "--predicate-type", "https://slsa.dev/provenance/v1", "--format", "json", "--limit", "1",
             "--jq", VERIFICATION_FILTER]
+    if "attestationBundlePath" in plan:
+        argv.extend(["--bundle", str(bundle_snapshot or plan["attestationBundlePath"])])
+    return argv
 
 
 def capture(plan, prepared):
-    # Never load a saved verification JSON file or accept a caller-controlled
-    # verifier executable, bundle root, command hook or authenticated flag.
-    argv = command(plan)
-    result = subprocess.run(argv, capture_output=True, timeout=90, check=False)
+    # A separately pinned signed bundle may select native no-login verification;
+    # never accept a saved verification result, custom trust root, executable or
+    # auth-failure fallback. Snapshot the exact private input before native use.
+    raw_bundle = bundle_bytes(plan)
+    with tempfile.TemporaryDirectory(prefix="openclaw-attestation-input-") as directory:
+        snapshot = Path(directory) / "bundle.jsonl"
+        if raw_bundle is not None:
+            with snapshot.open("xb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(raw_bundle); stream.flush(); os.fsync(stream.fileno())
+        argv = command(plan, snapshot if raw_bundle is not None else None)
+        result = subprocess.run(argv, capture_output=True, timeout=90, check=False)
     need(result.returncode == 0 and len(result.stdout) <= 1024 * 1024)
     verified = json.loads(result.stdout, object_pairs_hook=documents._pairs)
     need(isinstance(verified, list) and len(verified) == 1)
@@ -234,12 +261,15 @@ def capture(plan, prepared):
     # Recheck retained bytes after native verification/API work, preserving a
     # separate later-inspector record without changing the original producer.
     need(prepare(plan, prepared["planSha256"]) == prepared)
+    recorded = argv[:3] + ["<private-archive>"] + argv[4:]
+    if "--bundle" in recorded:
+        recorded[recorded.index("--bundle") + 1] = "<private-attestation-bundle>"
     return {**prepared, "status": "captured", "originAuthenticated": True,
             "capturedAt": stamp(), "attestationVerificationSha256": digest(result.stdout),
             "apiCanonicalSha256": digest(encoded({"run": run, "job": job})),
             "buildStepOutcome": "success", "retentionStepOutcome": selected[1]["conclusion"],
             "workflowOutcome": run["conclusion"], "jobOutcome": job["conclusion"],
-            "verificationCommand": argv[:3] + ["<private-archive>"] + argv[4:],
+            "verificationCommand": recorded,
             "blockers": (["original_resource_assessment_failed"] if prepared["resourceAssessment"] != "passed" else []) +
                 ["privacy_static_and_native_image_qualification_not_performed"]}
 

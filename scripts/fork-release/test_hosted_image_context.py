@@ -105,7 +105,7 @@ class HostedOriginTests(unittest.TestCase):
         if args[0]=="status": return ""
         raise AssertionError(args)
 
-    def entry(self,mode="capture",native_code=0):
+    def entry(self,mode="capture",native_code=0,native_effect=None):
         self.write(self.plan_path,self.plan)
         def api(path):
             if path==f"repos/{owner.REPOSITORY}/actions/runs/42/attempts/1": return self.run
@@ -114,7 +114,7 @@ class HostedOriginTests(unittest.TestCase):
         output=io.StringIO()
         with patch.object(owner.pr,"git",side_effect=self.git), patch.object(owner.pr,"fetch_public_json",side_effect=api) as fetch, \
              patch.object(owner,"verifier_executable",return_value=owner.GH), \
-             patch.object(owner.subprocess,"run",return_value=SimpleNamespace(returncode=native_code,
+             patch.object(owner.subprocess,"run",side_effect=native_effect,return_value=SimpleNamespace(returncode=native_code,
                  stdout=json.dumps(self.proof).encode(),stderr=b"private-error-not-for-output")) as native,redirect_stdout(output):
             code=owner.main([mode,"--plan",str(self.plan_path),"--plan-sha256",self.hash(self.plan_path),"--output",str(self.output)])
         value=json.loads(output.getvalue())
@@ -232,6 +232,85 @@ class HostedOriginTests(unittest.TestCase):
         self.plan["ghExecutable"] = str(self.root / "caller-selected-gh")
         code,_,fetch,native = self.entry()
         self.assertNotEqual(code,0);fetch.assert_not_called();native.assert_not_called()
+
+    def add_bundle(self):
+        self.bundle=self.root/"public-attestation.jsonl"
+        self.bundle.write_bytes(b'{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}\n')
+        self.bundle.chmod(0o600)
+        self.plan.update(attestationBundlePath=str(self.bundle),attestationBundleSha256=self.hash(self.bundle))
+
+    def test_explicit_bundle_is_snapshotted_for_native_verification_without_auth_fallback(self):
+        self.add_bundle();raw=self.bundle.read_bytes();seen=[]
+        def verify(argv,**_kwargs):
+            snapshot=Path(argv[argv.index("--bundle")+1])
+            seen.append(snapshot)
+            self.assertNotEqual(snapshot,self.bundle)
+            self.assertEqual(snapshot.read_bytes(),raw)
+            self.assertEqual(snapshot.stat().st_mode&0o777,0o600)
+            return SimpleNamespace(returncode=0,stdout=json.dumps(self.proof).encode(),stderr=b"")
+        code,value,fetch,native=self.entry(native_effect=verify)
+        self.assertEqual(code,0,value)
+        self.assertTrue(value["originAuthenticated"])
+        self.assertEqual(value["attestationBundleSha256"],self.hash(self.bundle))
+        self.assertEqual(native.call_count,1);self.assertEqual(fetch.call_count,2)
+        self.assertEqual(len(seen),1);self.assertFalse(seen[0].exists())
+        self.assertEqual(value["verificationCommand"][value["verificationCommand"].index("--bundle")+1],
+                         "<private-attestation-bundle>")
+
+    def test_bundle_input_never_substitutes_for_native_signature_verification(self):
+        self.add_bundle()
+        self.bundle.write_text(json.dumps(self.proof))
+        self.plan["attestationBundleSha256"]=self.hash(self.bundle)
+        code,value,fetch,native=self.entry(native_code=1)
+        self.assertNotEqual(code,0);self.assertFalse(value["originAuthenticated"])
+        self.assertEqual(native.call_count,1);fetch.assert_not_called()
+
+    def test_partial_wrong_hash_or_nonprivate_bundle_refuses_before_native(self):
+        self.add_bundle();complete=dict(self.plan)
+        for change in ("missing_path","missing_pin","wrong_pin","public_file"):
+            with self.subTest(change=change):
+                self.plan=dict(complete);self.bundle.chmod(0o600)
+                if change=="missing_path": del self.plan["attestationBundlePath"]
+                elif change=="missing_pin": del self.plan["attestationBundleSha256"]
+                elif change=="wrong_pin": self.plan["attestationBundleSha256"]="f"*64
+                else: self.bundle.chmod(0o644)
+                code,_,fetch,native=self.entry()
+                self.assertNotEqual(code,0);fetch.assert_not_called();native.assert_not_called()
+
+    def test_changed_original_bundle_after_snapshot_cannot_publish_capture(self):
+        self.add_bundle()
+        def verify(argv,**_kwargs):
+            self.assertEqual(Path(argv[argv.index("--bundle")+1]).read_bytes(),self.bundle.read_bytes())
+            self.bundle.write_bytes(b"changed after verified snapshot")
+            return SimpleNamespace(returncode=0,stdout=json.dumps(self.proof).encode(),stderr=b"")
+        code,_,_,native=self.entry(native_effect=verify)
+        self.assertNotEqual(code,0);self.assertEqual(native.call_count,1)
+        self.assertFalse(self.output.exists())
+
+    def nested_driver_prepare(self):
+        import gcp_image_reinspection as driver
+        self.write(self.plan_path,self.plan)
+        outer={"schema":"openclaw.retained-hosted-input.v1",
+               **{key:self.plan[key] for key in ("manifestPath","inventoryPath","sourceDir","ociDir","inspectionToolingSha")},
+               "hostedPlanPath":str(self.plan_path),"hostedPlanSha256":self.hash(self.plan_path)}
+        outer_path=self.root/"outer.json";self.write(outer_path,outer)
+        parent=self.root/"inspection";parent.mkdir(mode=0o700)
+        state=parent/("a"*32)
+        with patch.object(driver.gcp_build,"clean_checkout"):
+            return driver.prepare(outer_path,self.hash(outer_path),state,None,None,"hosted")
+
+    def test_existing_hosted_driver_accepts_pinned_bundle_in_nested_plan(self):
+        self.add_bundle()
+        outer,state,intent=self.nested_driver_prepare()
+        self.assertEqual(intent["hostedPlanSha256"],self.hash(self.plan_path))
+        nested,_=owner.plan_at(outer["hostedPlanPath"],outer["hostedPlanSha256"])
+        self.assertEqual(nested["attestationBundleSha256"],self.hash(self.bundle))
+        self.assertTrue((state/"intent.json").exists())
+
+    def test_existing_hosted_driver_rejects_partial_nested_bundle(self):
+        self.add_bundle();del self.plan["attestationBundleSha256"]
+        with self.assertRaises(ValueError): self.nested_driver_prepare()
+        self.assertFalse((self.root/"inspection"/("a"*32)).exists())
 
 
 class FixedLinuxVerifierTests(unittest.TestCase):
