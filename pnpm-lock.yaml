@@ -163,6 +163,9 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@azure/identity@4.13.3>@azure/msal-node': 7.1.0
+  '@microsoft/teams.apps@2.1.0>@azure/msal-node': 7.1.0
+  undici@>=8.0.0 <8.12.2: 8.12.2
   express@5.2.1>body-parser: 2.4.0
   body-parser@2.4.0>qs: 6.16.1
   zod@>=4.0.0 <4.6.6: 4.6.6
@@ -221,7 +224,7 @@ packageExtensionsChecksum: sha256-Y7vhONQzlz51oZN7TTGWCJABkDu/F4SuqtCdf5qYwZ0=
 
 patchedDependencies:
   '@a2ui/lit@0.12.0': 1cc07844aae2cd1a6ebe80bdb5feb1aedf89f84f0c74bcd170cc4d34046b6fcd
-  '@a2ui/web_core@0.12.0': a3be869d04f68184046dfd0edc5f39475e5ace8b07e95956e14d79a1fc350b2d
+  '@a2ui/web_core@0.12.0': 37c06a8d997b50dc9127c55c23176f0b722455d7a0fa223bcdea3013b738f583
   '@awesome.me/webawesome@3.13.0': 9b35bfc2e23b45e47ac3e6a669b8bf7df0c4ca89423e8a78d6fb921faa686208
   '@discord/embedded-app-sdk@2.5.0': 571102cd0329706f1c9edf2dd5cd7f50bfcb8c4336809c961e0c12f43760ab87
   '@novnc/novnc@1.7.0': bfde0e1bda172da3525f9f5014d85ad28073325b74f09609084598a65d2f412d
@@ -289,7 +292,7 @@ importers:
         version: 0.25.0
       '@openclaw/proxyline':
         specifier: 0.4.0
-        version: 0.4.0(undici@8.11.2)
+        version: 0.4.0(undici@8.12.2)
       '@silvia-odwyer/photon-node':
         specifier: 0.3.4
         version: 0.3.4
@@ -385,7 +388,7 @@ importers:
         version: 12.2.0
       openai:
         specifier: 7.27.0
-        version: 7.27.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.22.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
+        version: 7.27.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)(undici@8.12.2)(ws@8.22.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       p-limit:
         specifier: 7.3.3
         version: 7.3.3
@@ -417,8 +420,8 @@ importers:
         specifier: 1.3.34
         version: 1.3.34
       undici:
-        specifier: 8.11.2
-        version: 8.11.2
+        specifier: 8.12.2
+        version: 8.12.2
       web-push:
         specifier: 3.6.7
         version: 3.6.7(supports-color@10.2.2)
@@ -440,7 +443,7 @@ importers:
         version: 0.12.0(patch_hash=1cc07844aae2cd1a6ebe80bdb5feb1aedf89f84f0c74bcd170cc4d34046b6fcd)(signal-polyfill@0.2.2)
       '@a2ui/web_core':
         specifier: 0.12.0
-        version: 0.12.0(patch_hash=a3be869d04f68184046dfd0edc5f39475e5ace8b07e95956e14d79a1fc350b2d)
+        version: 0.12.0(patch_hash=37c06a8d997b50dc9127c55c23176f0b722455d7a0fa223bcdea3013b738f583)
       '@babel/types':
         specifier: 8.0.6
         version: 8.0.6
@@ -680,7 +683,7 @@ importers:
     dependencies:
       openai:
         specifier: 7.27.0
-        version: 7.27.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.22.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
+        version: 7.27.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)(undici@8.12.2)(ws@8.22.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       zod:
         specifier: 4.6.6
         version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
@@ -745,8 +748,8 @@ importers:
         specifier: 11.1.0
         version: 11.1.0(supports-color@10.2.2)
       undici:
-        specifier: 8.11.2
-        version: 8.11.2
+        specifier: 8.12.2
+        version: 8.12.2
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
@@ -833,8 +836,8 @@ importers:
         specifier: 21.0.3
         version: 21.0.3
       undici:
-        specifier: 8.11.2
-        version: 8.11.2
+        specifier: 8.12.2
+        version: 8.12.2
 
   extensions/buzz:
     dependencies:
@@ -865,7 +868,7 @@ importers:
         version: 0.12.0(patch_hash=1cc07844aae2cd1a6ebe80bdb5feb1aedf89f84f0c74bcd170cc4d34046b6fcd)(signal-polyfill@0.2.2)
       '@a2ui/web_core':
         specifier: 0.12.0
-        version: 0.12.0(patch_hash=a3be869d04f68184046dfd0edc5f39475e5ace8b07e95956e14d79a1fc350b2d)
+        version: 0.12.0(patch_hash=37c06a8d997b50dc9127c55c23176f0b722455d7a0fa223bcdea3013b738f583)
       '@lit/context':
         specifier: 1.1.6
         version: 1.1.6
@@ -1143,8 +1146,8 @@ importers:
         specifier: 1.3.34
         version: 1.3.34
       undici:
-        specifier: 8.11.2
-        version: 8.11.2
+        specifier: 8.12.2
+        version: 8.12.2
       ws:
         specifier: 8.22.0
         version: 8.22.0
@@ -1614,7 +1617,7 @@ importers:
         version: 21.2.0
       openai:
         specifier: 7.27.0
-        version: 7.27.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.22.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
+        version: 7.27.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)(undici@8.12.2)(ws@8.22.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       typebox:
         specifier: 1.3.34
         version: 1.3.34
@@ -2152,7 +2155,7 @@ importers:
     dependencies:
       '@slack/bolt':
         specifier: 5.1.0
-        version: 5.1.0(@types/express@5.0.6)(supports-color@10.2.2)(undici@8.11.2)
+        version: 5.1.0(@types/express@5.0.6)(supports-color@10.2.2)(undici@8.12.2)
       '@slack/types':
         specifier: 3.2.0
         version: 3.2.0
@@ -2166,8 +2169,8 @@ importers:
         specifier: 1.3.34
         version: 1.3.34
       undici:
-        specifier: 8.11.2
-        version: 8.11.2
+        specifier: 8.12.2
+        version: 8.12.2
       zod:
         specifier: 4.6.6
         version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
@@ -2267,8 +2270,8 @@ importers:
         specifier: 1.3.34
         version: 1.3.34
       undici:
-        specifier: 8.11.2
-        version: 8.11.2
+        specifier: 8.12.2
+        version: 8.12.2
       zod:
         specifier: 4.6.6
         version: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
@@ -2621,7 +2624,7 @@ importers:
         version: 2.7.0(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
       openai:
         specifier: 7.27.0
-        version: 7.27.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.22.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
+        version: 7.27.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)(undici@8.12.2)(ws@8.22.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2))
       partial-json:
         specifier: 0.1.7
         version: 0.1.7
@@ -3353,24 +3356,12 @@ packages:
     resolution: {integrity: sha512-jS1stt81tslcVZi7fqVD+g6vr8w/IWqFl/vAB2dx/6EOroQDuCR4+z0o3C+d6a/GpLATvdoO+kwnDcYzsBXKQA==}
     engines: {node: '>=0.8.0'}
 
-  '@azure/msal-common@16.13.0':
-    resolution: {integrity: sha512-rOAy0KUcyBbdwVJ+f3uPpthXatFLLZN+/KWAsTLzk1aB23Xl9DRmmXYwSvBFOZyXj4jUQQ5FKxxRkhAFW1fOow==}
-    engines: {node: '>=0.8.0'}
-
-  '@azure/msal-common@16.14.1':
-    resolution: {integrity: sha512-Or6xhPNyi4zHW25158yxBoyxuCqNSPa5YBVqfF1J5Ks4MJWBo/USXdp05DQIPu1Zli00YZu6t0+h6KvHJealxQ==}
-    engines: {node: '>=0.8.0'}
-
   '@azure/msal-common@16.14.2':
     resolution: {integrity: sha512-HOBR0Gfo39TMrkxNG8k6cfjRkrRjXZc3JQs3ebMWQc9S4cihuknMYra3sgmzbZB752oQBqBN9+WF7c826p2vIQ==}
     engines: {node: '>=0.8.0'}
 
-  '@azure/msal-node@5.6.0':
-    resolution: {integrity: sha512-uFY9NxrWHw8PwZx7gAX6PDn+9vdfS05+levc/kwkx77IkjfaldnQbbcQzzDIZ5Hq5Zdr6/z92oAIoRWKp6MnOA==}
-    engines: {node: '>=20'}
-
-  '@azure/msal-node@6.0.1':
-    resolution: {integrity: sha512-ixSO1Y/kCVRthRs+hSx/5qkwaunX1/RAePhlMN0wIpIQ4WEZ6AREGGnGd1AP0qspHVsAwzWQKGubpjh50JyJIQ==}
+  '@azure/msal-node@7.1.0':
+    resolution: {integrity: sha512-s1O6hSY/C/dmqykTmmeHY6GhSkDuY8N1gxyhuLyaCwbY7N+UBvU2Wu4flas7+NxZiAPcXNPVpgt3n/HP/5yL+w==}
     engines: {node: '>=20'}
 
   '@babel/code-frame@7.29.7':
@@ -4773,7 +4764,7 @@ packages:
     resolution: {integrity: sha512-Yd32LmKmu1kHrc7Wt8OHK0z+Tjc52fOfWYHl2znIGqskPrC/YaIKUgrhG4x7/oAemGMwBWHf3Eb3iaMKpZ/otg==}
     engines: {node: '>=22.19.0'}
     peerDependencies:
-      undici: '>=8.5.0 <9'
+      undici: 8.12.2
 
   '@openclaw/uirouter@0.1.2':
     resolution: {integrity: sha512-m2FOEvUfXXIrHa5VFJBV/1CtQt1NkvE9duGvURvExUCizryRGqSLlZdYvV+cXQqV4No4UPWhz2F5H+iNFNSljg==}
@@ -5591,7 +5582,7 @@ packages:
     resolution: {integrity: sha512-F9T+FKbtsYRKV23X8l6WW1fx7ncqsMufg+HLA4ffHf/MvZSCvPunFw576ekmY0Q03kgTAIByTKDJxnM+wn1okg==}
     engines: {node: '>=20', npm: '>=9.6.4'}
     peerDependencies:
-      undici: ^7.0.0 || ^8.0.0
+      undici: 8.12.2
 
   '@slack/types@3.2.0':
     resolution: {integrity: sha512-IN4gdtlzQt8UJoj+1v+qAHeR4TxHO0KMlIs841SFfDQAcFFnsrWaGsEAE4goxVt8O/JOAFaGGdrFTzhNBop/Fg==}
@@ -8895,7 +8886,7 @@ packages:
       '@aws-sdk/credential-provider-node': 3.972.84
       '@smithy/hash-node': '>=4.3.0 <5'
       '@smithy/signature-v4': '>=5.4.0 <6'
-      undici: '>=5 <9'
+      undici: 8.12.2
       ws: ^8.21.0
       zod: 4.6.6
     peerDependenciesMeta:
@@ -9958,8 +9949,8 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
-  undici@8.11.2:
-    resolution: {integrity: sha512-u4UB2/IrKdU6lFxumHmmo1a3fCQO5tzQllRorfoRS63txhrB7xTpSn1PftwC4qEHkOaqP95fCWW4lJzwErwzhQ==}
+  undici@8.12.2:
+    resolution: {integrity: sha512-XtuDWVdqTLr3NAxm2ly9/hU6kUsJOgGh1RASzMBbsw6aWCOaQzHdW+QQDfdERjfJ2V5vL5pRPa4RetO9UfivDg==}
     engines: {node: '>=22.19.0'}
 
   unhomoglyph@1.0.6:
@@ -10348,7 +10339,7 @@ snapshots:
 
   '@a2ui/lit@0.12.0(patch_hash=1cc07844aae2cd1a6ebe80bdb5feb1aedf89f84f0c74bcd170cc4d34046b6fcd)(signal-polyfill@0.2.2)':
     dependencies:
-      '@a2ui/web_core': 0.12.0(patch_hash=a3be869d04f68184046dfd0edc5f39475e5ace8b07e95956e14d79a1fc350b2d)
+      '@a2ui/web_core': 0.12.0(patch_hash=37c06a8d997b50dc9127c55c23176f0b722455d7a0fa223bcdea3013b738f583)
       '@lit-labs/signals': 0.3.0
       '@lit/context': 1.1.6
       lit: 3.3.3
@@ -10357,7 +10348,7 @@ snapshots:
     transitivePeerDependencies:
       - signal-polyfill
 
-  '@a2ui/web_core@0.12.0(patch_hash=a3be869d04f68184046dfd0edc5f39475e5ace8b07e95956e14d79a1fc350b2d)':
+  '@a2ui/web_core@0.12.0(patch_hash=37c06a8d997b50dc9127c55c23176f0b722455d7a0fa223bcdea3013b738f583)':
     dependencies:
       '@lit/context': 1.1.6
       '@preact/signals-core': 1.14.4
@@ -10931,7 +10922,7 @@ snapshots:
       '@azure/core-util': 1.14.0(supports-color@10.2.2)
       '@azure/logger': 1.4.0(supports-color@10.2.2)
       '@azure/msal-browser': 5.24.0
-      '@azure/msal-node': 6.0.1
+      '@azure/msal-node': 7.1.0
       open: 10.2.0
       tslib: 2.8.1
     transitivePeerDependencies:
@@ -10948,20 +10939,11 @@ snapshots:
     dependencies:
       '@azure/msal-common': 16.14.2
 
-  '@azure/msal-common@16.13.0': {}
-
-  '@azure/msal-common@16.14.1': {}
-
   '@azure/msal-common@16.14.2': {}
 
-  '@azure/msal-node@5.6.0':
+  '@azure/msal-node@7.1.0':
     dependencies:
-      '@azure/msal-common': 16.13.0
-      jsonwebtoken: 9.0.3
-
-  '@azure/msal-node@6.0.1':
-    dependencies:
-      '@azure/msal-common': 16.14.1
+      '@azure/msal-common': 16.14.2
       jsonwebtoken: 9.0.3
 
   '@babel/code-frame@7.29.7':
@@ -12166,7 +12148,7 @@ snapshots:
 
   '@microsoft/teams.apps@2.1.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)':
     dependencies:
-      '@azure/msal-node': 5.6.0
+      '@azure/msal-node': 7.1.0
       '@microsoft/teams.api': 2.1.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
       '@microsoft/teams.common': 2.1.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
       '@microsoft/teams.graph': 2.1.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
@@ -12435,9 +12417,9 @@ snapshots:
     dependencies:
       ghostty-web: 0.4.0(patch_hash=d4c6598b6840564dac4a469f3aa9b8df24fe6eab48a6744302707017e095a524)
 
-  '@openclaw/proxyline@0.4.0(undici@8.11.2)':
+  '@openclaw/proxyline@0.4.0(undici@8.12.2)':
     dependencies:
-      undici: 8.11.2
+      undici: 8.12.2
 
   '@openclaw/uirouter@0.1.2': {}
 
@@ -13147,11 +13129,11 @@ snapshots:
 
   '@sindresorhus/transliterate@2.3.1': {}
 
-  '@slack/bolt@5.1.0(@types/express@5.0.6)(supports-color@10.2.2)(undici@8.11.2)':
+  '@slack/bolt@5.1.0(@types/express@5.0.6)(supports-color@10.2.2)(undici@8.12.2)':
     dependencies:
       '@slack/logger': 5.0.0
       '@slack/oauth': 4.0.0
-      '@slack/socket-mode': 3.1.0(undici@8.11.2)
+      '@slack/socket-mode': 3.1.0(undici@8.12.2)
       '@slack/types': 3.2.0
       '@slack/web-api': 8.2.0
       '@types/express': 5.0.6
@@ -13175,13 +13157,13 @@ snapshots:
       '@types/node': 26.6.4
       jsonwebtoken: 9.0.3
 
-  '@slack/socket-mode@3.1.0(undici@8.11.2)':
+  '@slack/socket-mode@3.1.0(undici@8.12.2)':
     dependencies:
       '@slack/logger': 5.0.0
       '@slack/web-api': 8.2.0
       '@types/node': 26.6.4
       eventemitter3: 5.0.4
-      undici: 8.11.2
+      undici: 8.12.2
 
   '@slack/types@3.2.0': {}
 
@@ -15735,7 +15717,7 @@ snapshots:
       parse5: 8.0.1
       saxes: 6.0.0
       tough-cookie: 6.0.2
-      undici: 8.11.2
+      undici: 8.12.2
       w3c-xmlserializer: 6.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
@@ -16086,7 +16068,7 @@ snapshots:
       nodemailer: 10.0.13
       punycode.js: 2.3.1
       tldts: 7.4.15
-      undici: 8.11.2
+      undici: 8.12.2
 
   mailparser@3.9.33:
     dependencies:
@@ -16802,12 +16784,12 @@ snapshots:
       - encoding
     optional: true
 
-  openai@7.27.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.22.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)):
+  openai@7.27.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)(undici@8.12.2)(ws@8.22.0)(zod@4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)):
     optionalDependencies:
       '@aws-sdk/credential-provider-node': 3.972.84
       '@smithy/hash-node': 4.5.2
       '@smithy/signature-v4': 5.7.4
-      undici: 8.11.2
+      undici: 8.12.2
       ws: 8.22.0
       zod: 4.6.6(patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2)
 
@@ -17922,7 +17904,7 @@ snapshots:
 
   undici-types@8.9.0: {}
 
-  undici@8.11.2: {}
+  undici@8.12.2: {}
 
   unhomoglyph@1.0.6: {}
 

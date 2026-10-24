@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { runInThisContext } from "node:vm";
 const projectRequire = createRequire(
   path.resolve(process.env.A2UI_TEST_PROJECT ?? process.cwd(), "package.json"),
 );
@@ -9,6 +10,218 @@ const coreEntry = pathToFileURL(projectRequire.resolve("@a2ui/web_core/v0_9")).h
 const { readFileSync } = await import("node:fs");
 const version = JSON.parse(readFileSync(new URL("../../package.json", coreEntry), "utf8")).version;
 assert.ok(["0.11.0", "0.12.0"].includes(version));
+function observeProtocolAliasPrecedence(core) {
+  const schema = (local, reference, global = {}) => {
+    const parameters = {
+      type: "object",
+      $defs: local,
+      properties: { value: { $ref: reference } },
+      required: ["value"],
+    };
+    const catalog = {
+      catalogId: "local-protocol-fixture",
+      protocolVersion: "0.9",
+      components: {},
+      $defs: global,
+      functions: { check: { parameters } },
+    };
+    return core.Catalog.fromSchema(catalog, "0.9").functions.get("check").schema;
+  };
+
+  const cases = [
+    [
+      "local-ComponentId",
+      schema({ ComponentId: { type: "number" } }, "#/$defs/ComponentId"),
+      42,
+      "local-string",
+    ],
+    [
+      "local-DynamicNumber",
+      schema({ DynamicNumber: { type: "string" } }, "#/$defs/DynamicNumber"),
+      "local-string",
+      42,
+    ],
+    [
+      "external-protocol",
+      schema({ ComponentId: { type: "number" } }, "common_types.json#/$defs/ComponentId"),
+      "protocol-string",
+      42,
+    ],
+    [
+      "missing-local-protocol",
+      schema({ Unused: { type: "number" } }, "#/$defs/ComponentId"),
+      "protocol-string",
+      42,
+    ],
+    [
+      "catalog-protocol-compatibility",
+      schema({ Unused: { type: "number" } }, "#/$defs/ComponentId", {
+        ComponentId: { type: "number" },
+      }),
+      "protocol-string",
+      42,
+    ],
+    [
+      "local-alias-context",
+      schema(
+        { ComponentId: { type: "number" }, Alias: { $ref: "#/$defs/ComponentId" } },
+        "#/$defs/Alias",
+      ),
+      42,
+      "local-string",
+    ],
+  ];
+  return cases.map(([name, validator, valid, invalid]) => ({
+    name,
+    acceptsExpected: validator.safeParse({ value: valid }).success,
+    rejectsUnexpected: !validator.safeParse({ value: invalid }).success,
+  }));
+}
+function checkProtocolAliasPrecedence(core) {
+  const checks = observeProtocolAliasPrecedence(core);
+  for (const c of checks) {
+    assert.equal(c.acceptsExpected, true, c.name + " accepts its declared schema");
+    assert.equal(c.rejectsUnexpected, true, c.name + " rejects the other type");
+  }
+  return {
+    localAliases: "passed",
+    externalProtocol: "preserved",
+    missingLocalProtocol: "preserved",
+    catalogProtocolCompatibility: "preserved",
+    nestedLocalContext: "passed",
+  };
+}
+function componentContextFixture(core, z, fixtureVersion) {
+  const recursive = () => {
+    const node = z.lazy(() => z.object({ label: z.string(), children: z.array(node).optional() }));
+    return node;
+  };
+  const components = [
+    { name: "WrappedA", schema: z.object({ tree: recursive() }) },
+    { name: "WrappedB", schema: z.object({ tree: recursive() }) },
+  ];
+  const source =
+    fixtureVersion === "0.11.0"
+      ? new core.Catalog("component-fixture", components)
+      : new core.Catalog("component-fixture", "0.9", components);
+  const processor = new core.MessageProcessor([source]);
+  const inline = processor.getClientCapabilities({
+    versions: ["v0.9"],
+    version: "v0.9",
+    includeInlineCatalogs: true,
+  })["v0.9"].inlineCatalogs[0];
+  return { source, inline, loaded: core.Catalog.fromSchema(inline, "0.9") };
+}
+function checkComponentReferenceContexts(core, z, fixtureVersion) {
+  const { source, inline, loaded } = componentContextFixture(core, z, fixtureVersion);
+  for (const name of ["WrappedA", "WrappedB"]) {
+    assert.equal(source.components.get(name).schema.safeParse({ tree: 42 }).success, false);
+    const restored = loaded.components.get(name).schema;
+    assert.equal(
+      restored.safeParse({ tree: { label: "ok", children: [{ label: "nested" }] } }).success,
+      true,
+      "emitted wrapped recursive component reopens",
+    );
+    assert.equal(
+      restored.safeParse({ tree: 42 }).success,
+      false,
+      "wrapped recursive field retains its previously-enforced object type",
+    );
+  }
+  const create = (kind) => ({
+    $defs: { Shared: { type: kind } },
+    properties: { value: { $ref: "#/$defs/Shared" }, global: { $ref: "#/$defs/Global" } },
+    required: ["value", "global"],
+  });
+  const catalog = {
+    catalogId: "component-context",
+    protocolVersion: "0.9",
+    $defs: {
+      Global: { type: "boolean" },
+      Shared: { type: "string" },
+      GlobalPart: {
+        properties: { fromGlobal: { $ref: "#/$defs/Shared" } },
+        required: ["fromGlobal"],
+      },
+    },
+    components: {
+      Text: create("string"),
+      Number: create("number"),
+      Mixed: {
+        $defs: { Shared: { type: "number" } },
+        allOf: [
+          { $ref: "#/$defs/GlobalPart" },
+          { properties: { fromLocal: { $ref: "#/$defs/Shared" } }, required: ["fromLocal"] },
+        ],
+      },
+    },
+  };
+  const parsed = core.Catalog.fromSchema(catalog, "0.9");
+  assert.equal(
+    parsed.components.get("Text").schema.safeParse({ value: "ok", global: true }).success,
+    true,
+  );
+  assert.equal(
+    parsed.components.get("Text").schema.safeParse({ value: 42, global: true }).success,
+    false,
+  );
+  assert.equal(
+    parsed.components.get("Number").schema.safeParse({ value: 42, global: false }).success,
+    true,
+    "component-local cache is independent",
+  );
+  assert.equal(
+    parsed.components.get("Number").schema.safeParse({ value: "bad", global: false }).success,
+    false,
+  );
+  const mixed = parsed.components.get("Mixed").schema;
+  assert.equal(
+    mixed.safeParse({ fromGlobal: "global-string", fromLocal: 42 }).success,
+    true,
+    "global allOf part retains original catalog lookup context",
+  );
+  assert.equal(
+    mixed.safeParse({ fromGlobal: 42, fromLocal: 42 }).success,
+    false,
+    "global allOf alias cannot rebind to local collision",
+  );
+  assert.equal(
+    mixed.safeParse({ fromGlobal: "global-string", fromLocal: "bad" }).success,
+    false,
+    "local context retains priority",
+  );
+  const oldProtocol = core.Catalog.fromSchema(
+    {
+      catalogId: "component-protocol",
+      components: {
+        Fixture: {
+          $defs: { ComponentId: { type: "number" } },
+          properties: {
+            value: { $ref: "#/$defs/ComponentId" },
+            external: { $ref: "common_types.json#/$defs/ComponentId" },
+          },
+          required: ["value", "external"],
+        },
+      },
+    },
+    "0.9",
+  ).components.get("Fixture").schema;
+  assert.equal(
+    oldProtocol.safeParse({ value: "legacy-string", external: "protocol-string" }).success,
+    true,
+    "component canonical shortcuts remain compatible",
+  );
+  assert.equal(oldProtocol.safeParse({ value: 42, external: "protocol-string" }).success, false);
+  return {
+    wrappedComponentType: "preserved",
+    twoComponentContexts: "isolated",
+    catalogFallback: "preserved",
+    allOfGlobalContext: "preserved",
+    componentProtocolCompatibility: "preserved",
+    deepRecursion: "not-newly-claimed",
+    inline,
+  };
+}
 function checkOwnReferenceRoots(core, publishedControl = false) {
   const create = (name, local) => {
     const parameters = {
@@ -39,7 +252,9 @@ function checkOwnReferenceRoots(core, publishedControl = false) {
       false,
       "catalog " + name + " type remains enforced",
     );
-    if (publishedControl) continue;
+    if (publishedControl) {
+      continue;
+    }
     const own = create(
       name,
       Object.fromEntries([[name, { properties: { value: { type: "number" } } }]]),
@@ -82,7 +297,7 @@ function checkOwnReferenceRoots(core, publishedControl = false) {
         prototypeMutation: false,
       };
 }
-function checkMixedReferenceContexts(core, version) {
+function checkMixedReferenceContexts(core, fixtureVersion) {
   const parameters = (properties, $defs) => ({
     type: "object",
     properties,
@@ -131,7 +346,9 @@ function checkMixedReferenceContexts(core, version) {
       localAlias: { $ref: "#/$defs/LocalAlias" },
       globalAlias: { $ref: "#/$defs/GlobalAlias" },
     };
-    const ordered = reverse ? Object.fromEntries(Object.entries(properties).reverse()) : properties;
+    const ordered = reverse
+      ? Object.fromEntries(Object.entries(properties).toReversed())
+      : properties;
     const collisions = load(
       { Shared: { type: "string" }, GlobalAlias: { $ref: "#/$defs/Shared" } },
       parameters(ordered, { Shared: { type: "number" }, LocalAlias: { $ref: "#/$defs/Shared" } }),
@@ -205,7 +422,7 @@ function checkMixedReferenceContexts(core, version) {
     perResource.functions.get("number").schema.safeParse({ value: "bad", global: false }).success,
     false,
   );
-  if (version === "0.12.0") {
+  if (fixtureVersion === "0.12.0") {
     const recursive = load(
       { Shared: { type: "string" }, GlobalAlias: { $ref: "#/$defs/Shared" } },
       parameters(
@@ -263,12 +480,12 @@ function checkMixedReferenceContexts(core, version) {
     localPriority: "passed",
     perResourceCache: "passed",
     sharedInputNonmutation: "passed",
-    lazyGlobalContext: version === "0.12.0" ? "passed" : "inherited-0.11-coarsening-not-expanded",
+    lazyGlobalContext:
+      fixtureVersion === "0.12.0" ? "passed" : "inherited-0.11-coarsening-not-expanded",
   };
 }
-function checkFunctionParameterResources(core, z, version, generateCatalogSchema) {
-  let tree;
-  tree = z.lazy(() => z.object({ label: z.string(), children: z.array(tree).optional() }));
+function checkFunctionParameterResources(core, z, fixtureVersion, generateCatalogSchema) {
+  const tree = z.lazy(() => z.object({ label: z.string(), children: z.array(tree).optional() }));
   const shared = z.enum(["a", "b"]);
   const fn = {
     name: "check/~",
@@ -276,20 +493,21 @@ function checkFunctionParameterResources(core, z, version, generateCatalogSchema
     returnType: "boolean",
   };
   const source =
-    version === "0.11.0"
+    fixtureVersion === "0.11.0"
       ? new core.Catalog("parameter-fixture", [], [fn])
       : new core.Catalog("parameter-fixture", "0.9", [], [fn]);
   const emitted =
-    version === "0.11.0"
+    fixtureVersion === "0.11.0"
       ? new core.MessageProcessor([source]).getClientCapabilities({ includeInlineCatalogs: true })[
           "v0.9"
         ].inlineCatalogs[0]
       : generateCatalogSchema(source);
-  if (version === "0.11.0")
+  if (fixtureVersion === "0.11.0") {
     assert.ok(
       emitted.functions[0].parameters.$defs,
       "actual advertised function owns local definitions",
     );
+  }
   const round = core.Catalog.fromSchema(emitted).functions.get(fn.name).schema;
   assert.equal(round.safeParse({ tree: { label: "ok" }, labels: ["a"] }).success, true);
   assert.equal(
@@ -392,16 +610,34 @@ let externalValidation;
 let packageResult;
 let compilationAttempts = 0;
 const originalFunction = globalThis.Function;
-const originalEval = globalThis.eval;
+// Trusted, bounded fixture code installs the eval guard in the same global realm
+// used by actual package imports. It never evaluates application-provided strings.
+const evalGuard = runInThisContext(
+  `(() => {
+    const originalEval = globalThis.eval;
+    let attempts = 0;
+    globalThis.eval = function () {
+      attempts++;
+      throw new Error("synthetic strict CSP denies eval");
+    };
+    return {
+      get attempts() { return attempts; },
+      isSameGlobal(candidate) { return candidate === globalThis; },
+      restore() { globalThis.eval = originalEval; }
+    };
+  })()`,
+  { timeout: 1000, filename: "a2ui-csp-eval-guard.fixture.js" },
+);
 globalThis.Function = function () {
   compilationAttempts++;
   throw new Error("synthetic strict CSP denies Function");
 };
-globalThis.eval = function () {
-  compilationAttempts++;
-  throw new Error("synthetic strict CSP denies eval");
-};
 try {
+  assert.equal(
+    evalGuard.isSameGlobal(globalThis),
+    true,
+    "eval guard shares actual package globals",
+  );
   const core = await import(coreEntry);
   const lit = await import(pathToFileURL(projectRequire.resolve("@a2ui/lit/v0_9")));
   const { z } = await import(new URL("../common/zod-runtime.js", coreEntry));
@@ -409,31 +645,38 @@ try {
   assert.equal(require("zod/package.json").version, "4.6.6");
   assert.equal(z.config().jitless, true);
   let visited = 0;
-  const child = z.string().superRefine(() => {
+  const boundedChild = z.string().superRefine(() => {
     visited++;
   });
-  assert.equal(z.array(child).max(1).safeParse(["a", "b"]).success, false);
+  assert.equal(z.array(boundedChild).max(1).safeParse(["a", "b"]).success, false);
   assert.equal(visited, 0);
-  for (const name of ["A2uiController", "A2uiLitElement", "A2uiSurface", "Context", "basicCatalog"])
+  for (const name of [
+    "A2uiController",
+    "A2uiLitElement",
+    "A2uiSurface",
+    "Context",
+    "basicCatalog",
+  ]) {
     assert.ok(lit[name], name);
-  const processor = new core.MessageProcessor([lit.basicCatalog]);
-  const caps = processor.getClientCapabilities({
+  }
+  const basicProcessor = new core.MessageProcessor([lit.basicCatalog]);
+  const basicCaps = basicProcessor.getClientCapabilities({
     versions: ["v0.9"],
     version: "v0.9",
     includeInlineCatalogs: true,
   });
-  assert.equal(Object.keys(caps["v0.9"].inlineCatalogs[0].components).length, 18);
+  assert.equal(Object.keys(basicCaps["v0.9"].inlineCatalogs[0].components).length, 18);
   assert.equal(lit.basicCatalog.functions.size, version === "0.11.0" ? 25 : 14);
   const actions = [];
   const surface = new core.SurfaceModel("fixture", lit.basicCatalog);
-  const schema = z.object({ label: core.CommonSchemas.DynamicString });
-  const component = new core.ComponentModel(
+  const bindingSchema = z.object({ label: core.CommonSchemas.DynamicString });
+  const boundComponent = new core.ComponentModel(
     "c1",
     "Fixture",
     { label: { path: "/title" } },
     lit.basicCatalog,
   );
-  surface.componentsModel.addComponent(component);
+  surface.componentsModel.addComponent(boundComponent);
   surface.dataModel.set("/title", "before");
   const context = new core.ComponentContext(surface, "c1");
   let onChangedUpdate;
@@ -445,10 +688,12 @@ try {
     },
     requestUpdate() {
       actions.push("update");
-      if (this.controller?.props.label === "after") onChangedUpdate?.();
+      if (this.controller?.props.label === "after") {
+        onChangedUpdate?.();
+      }
     },
   };
-  const controller = new lit.A2uiController(host, { name: "Fixture", schema });
+  const controller = new lit.A2uiController(host, { name: "Fixture", schema: bindingSchema });
   assert.equal(controller.props.label, "before");
   const changedUpdate = new Promise((resolve) => {
     onChangedUpdate = resolve;
@@ -458,9 +703,11 @@ try {
   assert.equal(controller.props.label, "after");
   assert.ok(actions.length > 0);
   controller.dispose();
-  const legacy = await import(new URL("../v0_8/schema/server-to-client.js", coreEntry));
-  assert.equal(typeof legacy.A2uiMessageSchema.safeParse, "function");
-  assert.equal(legacy.A2uiMessageSchema.safeParse({ bogus: true }).success, false);
+  const legacyMessageSchemas = await import(
+    new URL("../v0_8/schema/server-to-client.js", coreEntry)
+  );
+  assert.equal(typeof legacyMessageSchemas.A2uiMessageSchema.safeParse, "function");
+  assert.equal(legacyMessageSchemas.A2uiMessageSchema.safeParse({ bogus: true }).success, false);
 
   {
     const preprocess = z.preprocess(
@@ -473,12 +720,13 @@ try {
       "single",
       "preprocessed child reference",
     );
-    if (version === "0.12.0")
+    if (version === "0.12.0") {
       assert.deepEqual(
         [...core.getKnownSchemaKeys(preprocess)],
         ["child"],
         "preprocess function argument allowlist",
       );
+    }
     const validatorPipe = z
       .any()
       .superRefine(() => {})
@@ -489,8 +737,9 @@ try {
       "oneOf validator-only input exposes output shape",
     );
     const createRecursive = () => {
-      let node;
-      node = z.lazy(() => z.object({ label: z.string(), children: z.array(node).optional() }));
+      const node = z.lazy(() =>
+        z.object({ label: z.string(), children: z.array(node).optional() }),
+      );
       return node;
     };
     const apis = [
@@ -543,8 +792,9 @@ try {
       for (const name of ["RecursiveA", "RecursiveB"]) {
         const ref = full.components[name].properties.children.items.$ref;
         let target = full;
-        for (const token of ref.slice(2).split("/"))
+        for (const token of ref.slice(2).split("/")) {
           target = target[token.replaceAll("~1", "/").replaceAll("~0", "~")];
+        }
         assert.equal(target.properties.label.type, "string");
         assert.equal(target.properties.component, undefined);
       }
@@ -584,14 +834,15 @@ try {
       () => zodToJsonSchema(schema, { $refStrategy: "relative" }),
       /Unsupported A2UI JSON Schema reference strategy/,
     );
-    let recursive;
-    recursive = z.lazy(() =>
+    const recursive = z.lazy(() =>
       z.object({ value: z.string(), children: z.array(recursive).optional() }),
     );
     const recursiveJson = zodToJsonSchema(recursive, options);
     let refs = 0;
     function validateRefs(value) {
-      if (!value || typeof value !== "object") return;
+      if (!value || typeof value !== "object") {
+        return;
+      }
       if (typeof value.$ref === "string") {
         assert.ok(value.$ref.startsWith("#"));
         let cursor = recursiveJson;
@@ -601,7 +852,9 @@ try {
         }
         refs++;
       }
-      for (const child of Object.values(value)) validateRefs(child);
+      for (const child of Object.values(value)) {
+        validateRefs(child);
+      }
     }
     validateRefs(recursiveJson);
     assert.ok(refs > 0);
@@ -681,6 +934,32 @@ try {
       const { default: Ajv } = await import(
         pathToFileURL(validatorRequire.resolve("ajv/dist/2020.js"))
       );
+      const emittedComponents = componentContextFixture(core, z, version).inline.components;
+      const commonTypes = JSON.parse(
+        readFileSync(new URL("schemas/common_types.json", coreEntry), "utf8"),
+      );
+      const componentRegistry = new Ajv({ strict: false, allErrors: true });
+      const commonCatalogUri = new URL("catalog.json", commonTypes.$id).href;
+      componentRegistry.addSchema(
+        { $id: commonCatalogUri, $defs: { anyFunction: false } },
+        commonCatalogUri,
+      );
+      componentRegistry.addSchema(commonTypes, "common_types.json");
+      for (const name of ["WrappedA", "WrappedB"]) {
+        const validate = componentRegistry.compile(emittedComponents[name]);
+        const valid = {
+          id: "root",
+          component: name,
+          tree: { label: "ok", children: [{ label: "nested" }] },
+        };
+        assert.equal(
+          validate(valid),
+          true,
+          "actual emitted component schema validates wire payload",
+        );
+        assert.equal(validate({ ...valid, tree: 42 }), false);
+        assert.equal(validate({ ...valid, tree: { label: "ok", children: [42] } }), false);
+      }
       const protocol = JSON.parse(
         readFileSync(new URL("../v1_0/schemas/catalog_definition.json", coreEntry), "utf8"),
       );
@@ -688,8 +967,9 @@ try {
         protocol.properties.$defs,
       );
       for (const shape of ["direct-args", "wire-wrapper"]) {
-        let tree;
-        tree = z.lazy(() => z.object({ label: z.string(), children: z.array(tree).optional() }));
+        const tree = z.lazy(() =>
+          z.object({ label: z.string(), children: z.array(tree).optional() }),
+        );
         const args = z.object({ tree, labels: z.array(z.enum(["a", "b"])) });
         const schema =
           shape === "wire-wrapper" ? z.object({ call: z.literal("check"), args }) : args;
@@ -755,8 +1035,7 @@ try {
           );
         }
       }
-      let escapedTree;
-      escapedTree = z.lazy(() =>
+      const escapedTree = z.lazy(() =>
         z.object({ label: z.string(), children: z.array(escapedTree).optional() }),
       );
       const escapedName = "check/~";
@@ -819,7 +1098,10 @@ try {
   checkFunctionParameterResources(core, z, version, generate);
   checkMixedReferenceContexts(core, version);
   checkOwnReferenceRoots(core);
+  checkProtocolAliasPrecedence(core);
+  checkComponentReferenceContexts(core, z, version);
   assert.equal(compilationAttempts, 0);
+  assert.equal(evalGuard.attempts, 0, "native package never attempts eval");
   packageResult = {
     version,
     zod: "4.6.6",
@@ -828,17 +1110,22 @@ try {
     litReactiveBinding: "passed",
     legacySchema: "passed",
     nativeBoundedCollection: "passed",
-    strictCsp: { dynamicCompilationAvailable: false, compilationAttempts },
+    strictCsp: {
+      dynamicCompilationAvailable: false,
+      compilationAttempts: compilationAttempts + evalGuard.attempts,
+    },
     qualification: "package-level synthetic, no browser render or application image claim",
   };
 } finally {
   globalThis.Function = originalFunction;
-  globalThis.eval = originalEval;
+  evalGuard.restore();
 }
 
 // The external validator is a separate test tool that compiles schemas. Run it
 // after restoring the host globals; the native Canvas/CSP proof above remains strict.
-if (externalValidation) await externalValidation();
+if (externalValidation) {
+  await externalValidation();
+}
 console.log(
   JSON.stringify({
     ...packageResult,
