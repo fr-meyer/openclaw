@@ -212,6 +212,139 @@ class PrivacyTests(unittest.TestCase):
         result = self.layout(config=config).inspect()
         self.assertIn("service_token", [item["rule"] for item in result["findings"]], result)
 
+    def test_embedded_aws_identifiers_keep_their_real_stream_predecessor(self):
+        for family in (b"AKIA", b"ASIA"):
+            token = family + b"A" * 16
+            for offset in (0, privacy.CHUNK - privacy.OVERLAP - 1,
+                           privacy.CHUNK - privacy.OVERLAP, privacy.CHUNK - 1):
+                with self.subTest(family=family, offset=offset), tempfile.TemporaryDirectory() as directory:
+                    payload = b"x" * offset + b"_" + token + b" " + b"x" * privacy.CHUNK
+                    fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/public", payload)]))])
+                    result = inspect_with_short_member_reads(fixture, 17) if offset == 0 else fixture.inspect()
+                    self.assertEqual(result["status"], "passed", result)
+
+    def test_aws_tokens_keep_real_delimiters_json_and_split_controls(self):
+        for family in (b"AKIA", b"ASIA"):
+            token = family + b"A" * 16
+            cases = [token, b'"' + token + b'"', b"AWS_ACCESS_KEY_ID=" + token,
+                     b"\0\xff" + token + b"\0", b"\xc3\xa9" + token,
+                     b" " * (privacy.CHUNK - 2) + token,
+                     b" " * (privacy.CHUNK - privacy.OVERLAP) + token + b" " * privacy.CHUNK,
+                     b"x" * (privacy.CHUNK - privacy.OVERLAP - 1) + b"_" + token +
+                     b" " * 300 + token]
+            for index, payload in enumerate(cases):
+                with self.subTest(family=family, case=index), tempfile.TemporaryDirectory() as directory:
+                    fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/data", payload)]))])
+                    result = inspect_with_short_member_reads(fixture, 7) if index == 0 else fixture.inspect()
+                    self.assertIn("aws_access_key", [item["rule"] for item in result["findings"]], result)
+            inspector = privacy.Inspector("unused", None, SOURCE, TOOLING, privacy.Limits())
+            inspector.scan_json({"example": token.decode()}, "metadata")
+            self.assertEqual([f["rule"] for f in inspector.findings], ["aws_access_key"])
+
+    def test_credential_url_authority_stops_at_query_and_fragment(self):
+        cases = [b"https://public.invalid?redirect=user:pass@example.invalid",
+                 b"https://public.invalid#section:user@example.invalid",
+                 b"https://public.invalid:user?pass@example.invalid",
+                 b"https://public.invalid:user#pass@example.invalid",
+                 b"https://user?part:pass@example.invalid",
+                 b"https://user#part:pass@example.invalid"]
+        for index, value in enumerate(cases):
+            with self.subTest(case=index), tempfile.TemporaryDirectory() as directory:
+                payload = b" " * (privacy.CHUNK - 10) + value
+                fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/public", payload)]))])
+                self.assertEqual(fixture.inspect()["status"], "passed")
+
+    def test_credential_url_retains_real_userinfo_and_percent_encoded_delimiters(self):
+        cases = [b"https://user:pass@example.invalid/path?query=value#fragment",
+                 b"http://user:p:a:ss@[2001:db8::1]/?next=other@example.invalid",
+                 b"https://us%3Fer:p%23as%40s@example.invalid",
+                 b'"https://user:pass@example.invalid"',
+                 b"\0https://user:pass@example.invalid\0",
+                 b"https://" + b"u" * 100 + b":" + b"p" * 150 + b"@example.invalid"]
+        for index, value in enumerate(cases):
+            with self.subTest(case=index), tempfile.TemporaryDirectory() as directory:
+                payload = b" " * (privacy.CHUNK - 10) + value
+                fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/data", payload)]))])
+                result = inspect_with_short_member_reads(fixture, 17) if index == 0 else fixture.inspect()
+                self.assertIn("credential_url", [f["rule"] for f in result["findings"]], result)
+
+    def test_match_diagnostics_are_bounded_syntax_not_value_fingerprints(self):
+        token = b"ASIA" + b"A" * 16
+        inspector = privacy.Inspector("unused", None, SOURCE, TOOLING, privacy.Limits())
+        inspector.scan_bytes(b'"' + token + b'"', "private-path")
+        finding = inspector.findings[0]
+        self.assertEqual(finding["matchLength"], len(token))
+        self.assertEqual(finding["syntaxFlags"], {
+            "leftContext": "ascii_delimiter", "rightContext": "ascii_delimiter", "percentEncoded": False})
+        inspector.scan_bytes(b"https://u%3Fer:p%23ass@example.invalid", "other-path")
+        self.assertTrue(inspector.findings[1]["syntaxFlags"]["percentEncoded"])
+        self.assertEqual(inspector.findings[1]["syntaxFlags"]["leftContext"], "input_start")
+        rendered = json.dumps(inspector.findings)
+        for forbidden in (token.decode(), hashlib.sha256(token).hexdigest(), "private-path", "other-path"):
+            self.assertNotIn(forbidden, rendered)
+        # Repeated windows retain the first diagnostic, not a count of matches.
+        inspector.scan_bytes(token, "private-path")
+        self.assertEqual(len(inspector.findings), 2)
+        self.assertEqual(inspector.findings[0], finding)
+
+    def public_self_test_fixture(self, extra=b""):
+        payload = b"-----BEGIN " + PRIVATE_KEY_LABEL + b"-----\n" + b"A" * 64 + b"\n" + extra
+        name = "usr/lib/synthetic-public-self-test.so"
+        data = archive([(name, payload)])
+        fixture = self.layout(layers=[(privacy.TAR, data)])
+        record = {**privacy.PUBLIC_GNUTLS_SELF_TEST, "path": name,
+                  "blobDigest": "sha256:" + hashlib.sha256(data).hexdigest(),
+                  "memberSha256": hashlib.sha256(payload).hexdigest(), "memberBytes": len(payload)}
+        return fixture, record, payload
+
+    def test_public_self_test_requires_exact_full_member_binding(self):
+        fixture, record, payload = self.public_self_test_fixture()
+        with patch.object(privacy, "PUBLIC_GNUTLS_SELF_TEST", record):
+            result = inspect_with_short_member_reads(fixture, 17)
+        self.assertEqual(result["status"], "passed", result)
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["findings"], [])
+        qualified = result["qualifiedPublicFixtures"]
+        self.assertEqual(len(qualified), 1)
+        self.assertEqual(qualified[0], {**{k: record[k] for k in
+            ("rule", "blobDigest", "memberSha256", "memberBytes", "publicSourceSha256")},
+            "locationSha256": hashlib.sha256(record["path"].encode()).hexdigest()})
+        self.assertNotIn(record["path"], json.dumps(result))
+        self.assertNotIn(payload.decode(), json.dumps(result))
+        for key, value in (("rule", "aws_access_key"), ("blobDigest", "sha256:" + "0" * 64),
+                           ("path", "usr/lib/different.so"), ("memberSha256", "0" * 64),
+                           ("memberBytes", len(payload) + 1)):
+            with self.subTest(binding=key), patch.object(privacy, "PUBLIC_GNUTLS_SELF_TEST", {**record, key: value}):
+                refused = fixture.inspect()
+                self.assertEqual([f["rule"] for f in refused["findings"]], ["private_key"])
+                self.assertEqual(refused["qualifiedPublicFixtures"], [])
+                self.assertEqual(refused["status"], "failed")
+
+    def test_public_self_test_cannot_qualify_other_rules_or_an_incomplete_member(self):
+        fixture, record, _ = self.public_self_test_fixture(b"ASIA" + b"A" * 16)
+        with patch.object(privacy, "PUBLIC_GNUTLS_SELF_TEST", record):
+            result = fixture.inspect()
+        self.assertEqual([f["rule"] for f in result["findings"]], ["aws_access_key"])
+        self.assertEqual(len(result["qualifiedPublicFixtures"]), 1)
+        self.assertEqual(result["status"], "failed")
+        extractfile = tarfile.TarFile.extractfile
+        class InterruptedRead:
+            def __init__(self, stream):
+                self.stream, self.calls = stream, 0
+            def read(self, size):
+                self.calls += 1
+                if self.calls > 1:
+                    raise OSError("synthetic interrupted member")
+                return self.stream.read(size)
+        def interrupt(archive_file, member):
+            return InterruptedRead(extractfile(archive_file, member))
+        with patch.object(privacy, "PUBLIC_GNUTLS_SELF_TEST", record), \
+                patch.object(tarfile.TarFile, "extractfile", interrupt):
+            refused = fixture.inspect()
+        self.assertFalse(refused["inspectionComplete"])
+        self.assertEqual(refused["qualifiedPublicFixtures"], [])
+        self.assertIn("private_key", [f["rule"] for f in refused["findings"]])
+
     def test_deleted_and_overwritten_layer_is_still_inspected(self):
         older = archive([("app/leak", b"ghp_" + b"X" * 36)])
         later = archive([("app/leak", b"clean"), ("app/.wh.leak", b"")])
@@ -330,7 +463,12 @@ class PrivacyTests(unittest.TestCase):
                 "private_runtime_path": 1, "service_token": 1, "github_token": 1})
             self.assertEqual(summary["findingLocations"], json.loads(output.read_text())["findings"])
             for finding in summary["findingLocations"]:
-                self.assertEqual(set(finding), {"rule", "locationSha256", "blobDigest"})
+                expected = {"rule", "locationSha256", "blobDigest"}
+                if finding["rule"] != "private_runtime_path":
+                    expected |= {"matchLength", "syntaxFlags"}
+                    self.assertIs(type(finding["matchLength"]), int)
+                    self.assertEqual(set(finding["syntaxFlags"]), {"leftContext", "rightContext", "percentEncoded"})
+                self.assertEqual(set(finding), expected)
                 self.assertRegex(finding["locationSha256"], r"^[a-f0-9]{64}$")
                 self.assertRegex(finding["blobDigest"], r"^sha256:[a-f0-9]{64}$")
             before = output.read_bytes()

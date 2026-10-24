@@ -11,7 +11,8 @@ pipeline identity, not an assertion derived from the application image.
 This is NOT a proof of absence of secrets: patterns can miss arbitrary passwords,
 encoded/encrypted data and nested archives, and can flag public test credentials.
 It does not audit source history, dependency trust, logs or registry visibility.
-Only fixed rule codes and hashed locations are emitted, never matched contents.
+Only fixed rule codes, hashed locations and bounded syntax diagnostics are
+emitted, never matched contents or fingerprints of arbitrary matched values.
 """
 
 import argparse
@@ -52,13 +53,25 @@ PATTERNS = (
         rb"[A-Za-z0-9+/]{64}")),
     ("github_token", re.compile(rb"(?:gh[pousr]_[A-Za-z0-9]{30,255}|github_pat_[A-Za-z0-9_]{30,255})")),
     ("service_token", re.compile(rb"(?:(?<![A-Za-z0-9_])sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,255}|xox[baprs]-[A-Za-z0-9-]{20,255})")),
-    ("aws_access_key", re.compile(rb"(?:AKIA|ASIA)[A-Z0-9]{16}")),
-    ("credential_url", re.compile(rb"https?://[^\s/:@\"']{1,100}:[^\s/@\"']{1,150}@")),
+    ("aws_access_key", re.compile(rb"(?<![A-Za-z0-9_])(?:AKIA|ASIA)[A-Z0-9]{16}")),
+    ("credential_url", re.compile(rb"https?://[^\s/:@?#\"']{1,100}:[^\s/@?#\"']{1,150}@")),
 )
+# All six complete PEMs in this exact public binary match GnuTLS 3.7.9's
+# lib/crypto-selftests-pk.c. This qualifies only private_key after reading and
+# hashing the complete member; it is not a path, dependency or layer allowlist.
+PUBLIC_GNUTLS_SELF_TEST = {
+    "rule": "private_key",
+    "blobDigest": "sha256:11422d7ca1a44390a32bd8d8d9dc5946b4d053b3bbd9507d682e35584ba84a26",
+    "path": "usr/lib/x86_64-linux-gnu/libgnutls.so.30.34.3",
+    "memberSha256": "779b25d20249988bea2c1aa6bbeb218f5ae7ea8a9d30ce4f54ea37372965cc4b",
+    "memberBytes": 2209528,
+    "publicSourceSha256": "c3d79122e072177f55dc30a98f68b949c0f36f6159a363aae9512a22a9280ed0",
+}
 LIMITATIONS = [
     "Heuristic detection is not proof that an image contains no secrets.",
     "Arbitrary, encoded/encrypted credentials and nested archives may evade detection.",
-    "Public fixtures can cause refusals; no automatic exception or bypass is provided.",
+    "Only the exact hash-bound public GnuTLS self-test is qualified; other public fixtures can cause refusals.",
+    "Match lengths and syntax flags describe the first retained scan-window match, which may be a bounded prefix.",
     "Source history, build logs, dependencies and publication visibility are outside this inspection.",
     "Release qualification and complete provenance validation remain the image sealer's responsibility.",
 ]
@@ -128,13 +141,14 @@ class Inspector:
         self.index_digest, self.source_sha, self.tooling_sha = expected_index_digest, source_sha, tooling_sha
         self.limits = limits
         self.findings = []
+        self.qualified_public_fixtures = []
         self.seen_findings = set()
         self.blobs = {}
         self.counts = {"blobBytes": 0, "expandedBytes": 0, "layers": 0, "members": 0,
                        "files": 0, "fileBytes": 0, "jsonNodes": 0}
         self.image_digest = self.config_digest = None
 
-    def finding(self, rule, location, blob_digest=None):
+    def finding(self, rule, location, blob_digest=None, diagnostics=None):
         location_hash = sha256(location.encode("utf-8", "surrogatepass"))
         identity = (rule, location_hash, blob_digest)
         if identity in self.seen_findings:
@@ -144,17 +158,33 @@ class Inspector:
         finding = {"rule": rule, "locationSha256": location_hash}
         if blob_digest:
             finding["blobDigest"] = blob_digest
+        if diagnostics:
+            finding.update(diagnostics)
         self.findings.append(finding)
 
-    def scan_bytes(self, data, location, blob_digest=None, *, previous_byte=b""):
+    def scan_bytes(self, data, location, blob_digest=None, *, previous_byte=b"", pending_private_key=None):
+        # Preserve the real predecessor for both sk- and AWS lookbehind. Search
+        # after that byte so the context itself never becomes a new match start.
+        window = previous_byte + data
+        def context(byte, empty):
+            if not byte:
+                return empty
+            if re.fullmatch(rb"[A-Za-z0-9_]", byte):
+                return "ascii_identifier"
+            return "ascii_delimiter" if byte[0] < 128 else "non_ascii"
         for rule, pattern in PATTERNS:
-            # Only sk- has a left boundary. Its retained stream window needs
-            # the real preceding byte, without scanning that context as a new
-            # start. Other detectors retain their existing input and behavior.
-            found = (pattern.search(previous_byte + data, len(previous_byte))
-                     if rule == "service_token" else pattern.search(data))
+            found = pattern.search(window, len(previous_byte))
             if found:
-                self.finding(rule, location, blob_digest)
+                diagnostics = {"matchLength": found.end() - found.start(), "syntaxFlags": {
+                    "leftContext": context(window[max(0, found.start() - 1):found.start()], "input_start"),
+                    "rightContext": context(window[found.end():found.end() + 1], "window_end"),
+                    "percentEncoded": bool(re.search(rb"%[A-Fa-f0-9]{2}", found.group())),
+                }}
+                if rule == "private_key" and pending_private_key is not None:
+                    if not pending_private_key:
+                        pending_private_key.append((rule, location, blob_digest, diagnostics))
+                else:
+                    self.finding(rule, location, blob_digest, diagnostics)
 
     def scan_json(self, value, location, blob_digest=None):
         pending = [(value, location)]
@@ -342,21 +372,41 @@ class Inspector:
                     file = archive.extractfile(member)  # A stream only: never extract to disk.
                     require(file is not None, "missing_member_stream")
                     total, tail, previous_byte = 0, b"", b""
-                    while True:
-                        chunk = file.read(CHUNK)
-                        if not chunk:
-                            break
-                        if total == 0 and chunk.startswith(b"SQLite format 3\0"):
-                            self.finding("sqlite_database_payload", name, digest)
-                        total += len(chunk)
-                        self.counts["fileBytes"] += len(chunk)
-                        window = tail + chunk
-                        self.scan_bytes(window, name, digest, previous_byte=previous_byte)
-                        # Preserve lookbehind at a clipped overlap boundary;
-                        # short reads retain file-start semantics until clipping.
-                        previous_byte = window[-OVERLAP - 1:-OVERLAP]
-                        tail = window[-OVERLAP:]
-                    require(total == member.size, "truncated_member")
+                    public = PUBLIC_GNUTLS_SELF_TEST
+                    candidate = (public["rule"] == "private_key" and public["blobDigest"] == digest and
+                                 public["path"] == name and public["memberBytes"] == member.size)
+                    member_hash = hashlib.sha256() if candidate else None
+                    pending = []
+                    try:
+                        while True:
+                            chunk = file.read(CHUNK)
+                            if not chunk:
+                                break
+                            if total == 0 and chunk.startswith(b"SQLite format 3\0"):
+                                self.finding("sqlite_database_payload", name, digest)
+                            total += len(chunk)
+                            self.counts["fileBytes"] += len(chunk)
+                            if member_hash is not None:
+                                member_hash.update(chunk)
+                            window = tail + chunk
+                            self.scan_bytes(window, name, digest, previous_byte=previous_byte,
+                                            pending_private_key=pending if candidate else None)
+                            # Preserve lookbehind at a clipped overlap boundary;
+                            # short reads retain file-start semantics until clipping.
+                            previous_byte = window[-OVERLAP - 1:-OVERLAP]
+                            tail = window[-OVERLAP:]
+                        require(total == member.size, "truncated_member")
+                        if pending and member_hash.hexdigest() == public["memberSha256"]:
+                            qualification = {key: public[key] for key in
+                                ("rule", "blobDigest", "memberSha256", "memberBytes", "publicSourceSha256")}
+                            qualification["locationSha256"] = sha256(name.encode("utf-8", "surrogatepass"))
+                            if qualification not in self.qualified_public_fixtures:
+                                self.qualified_public_fixtures.append(qualification)
+                            pending.clear()
+                    finally:
+                        # An incomplete read or different byte hash never qualifies.
+                        for finding in pending:
+                            self.finding(*finding)
                 while True:
                     padding = archive.fileobj.read(CHUNK)
                     if not padding:
@@ -479,6 +529,7 @@ def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limi
         "configDigest": inspector.config_digest,
         "counts": inspector.counts,
         "findings": inspector.findings,
+        "qualifiedPublicFixtures": inspector.qualified_public_fixtures,
         "limits": dataclasses.asdict(inspector.limits),
         "limitations": LIMITATIONS,
         "heuristicOnly": True,
@@ -513,7 +564,9 @@ def main():
         finding_counts[finding["rule"]] = finding_counts.get(finding["rule"], 0) + 1
     print(json.dumps({"status": result["status"], "inspectionComplete": result["inspectionComplete"],
                       "findings": len(result["findings"]), "findingCounts": finding_counts,
-                      "findingLocations": result["findings"], "refusal": result.get("refusal")}))
+                      "findingLocations": result["findings"],
+                      "qualifiedPublicFixtures": result["qualifiedPublicFixtures"],
+                      "refusal": result.get("refusal")}))
     return 0 if result["status"] == "passed" else 1
 
 
