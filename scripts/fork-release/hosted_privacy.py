@@ -32,6 +32,9 @@ from pathlib import Path
 INDEX = "application/vnd.oci.image.index.v1+json"
 MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 CONFIG = "application/vnd.oci.image.config.v1+json"
+EMPTY_CONFIG = "application/vnd.oci.empty.v1+json"
+EMPTY_CONFIG_DIGEST = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+ATTESTATION_ARTIFACT = "application/vnd.docker.attestation.manifest.v1+json"
 TAR = "application/vnd.oci.image.layer.v1.tar"
 GZIP = TAR + "+gzip"
 ATTESTATION = "application/vnd.in-toto+json"
@@ -509,6 +512,30 @@ class Inspector:
                     require(len(seen) <= self.limits.blobs + 3, "export_entry_limit")
             require(seen == expected, "missing_export_entry")
 
+    def attestation_config(self, manifest, image):
+        config = manifest.get("config")
+        require(isinstance(config, dict), "unsupported_config")
+        media = config.get("mediaType")
+        if "artifactType" in manifest or media == EMPTY_CONFIG:
+            require(manifest.get("artifactType") == ATTESTATION_ARTIFACT, "unsupported_attestation_artifact")
+            subject = manifest.get("subject")
+            require(isinstance(subject, dict) and type(subject.get("size")) is int and
+                    all(subject.get(key) == image.get(key) for key in ("mediaType", "digest", "size")),
+                    "attestation_subject_mismatch")
+            self.descriptor(subject)
+        if media == CONFIG:
+            return self.blob(config, as_json=True)
+        # BuildKit's OCI artifact config is exactly {}. Inline data is only a
+        # redundant canonical encoding here: the local blob is still mandatory,
+        # hashed, budgeted and included in the verified export closure.
+        require(media == EMPTY_CONFIG and set(config) <= {"mediaType", "digest", "size", "data"} and
+                config.get("digest") == EMPTY_CONFIG_DIGEST and type(config.get("size")) is int and
+                config["size"] == 2 and ("data" not in config or config["data"] == "e30="),
+                "unsupported_empty_attestation_config")
+        value = self.blob({key: value for key, value in config.items() if key != "data"}, as_json=True)
+        require(value == {}, "nonempty_attestation_config")
+        return value
+
     def run(self):
         require(type(self.limits.findings) is int and 0 <= self.limits.findings <= MAX_REPRESENTATIVES,
                 "invalid_representative_limit")
@@ -537,10 +564,10 @@ class Inspector:
                     "unsupported_manifest")
             require(isinstance(manifest.get("layers"), list), "missing_layers")
             config_descriptor = manifest.get("config")
-            require(isinstance(config_descriptor, dict) and config_descriptor.get("mediaType") == CONFIG,
-                    "unsupported_config")
-            config = self.blob(config_descriptor, as_json=True)
             if entry == images[0]:
+                require(isinstance(config_descriptor, dict) and config_descriptor.get("mediaType") == CONFIG,
+                        "unsupported_config")
+                config = self.blob(config_descriptor, as_json=True)
                 self.config_digest = config_descriptor["digest"]
                 require(config.get("os") == "linux" and config.get("architecture") == "amd64", "config_platform_mismatch")
                 runtime = config.get("config", {})
@@ -562,6 +589,7 @@ class Inspector:
                 require(annotations.get("vnd.docker.reference.type") == "attestation-manifest" and
                         annotations.get("vnd.docker.reference.digest") == self.image_digest,
                         "unsupported_extra_manifest")
+                self.attestation_config(manifest, images[0])
                 for layer in manifest["layers"]:
                     require(layer.get("mediaType") == ATTESTATION, "unsupported_attestation_format")
                     statement = self.blob(layer, as_json=True)

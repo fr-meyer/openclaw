@@ -19,6 +19,8 @@ import hosted_privacy as privacy
 
 SOURCE = "a" * 40
 TOOLING = "b" * 40
+EMPTY_CONFIG_MEDIA = "application/vnd.oci.empty.v1+json"
+ATTESTATION_ARTIFACT = "application/vnd.docker.attestation.manifest.v1+json"
 # Assemble synthetic PEM markers without committing a literal key marker.
 PRIVATE_KEY_LABEL = b"PRIVATE KEY"
 
@@ -60,7 +62,8 @@ def inspect_with_short_member_reads(fixture, maximum):
 
 
 class Layout:
-    def __init__(self, directory, layers=None, config=None, provenance=None):
+    def __init__(self, directory, layers=None, config=None, provenance=None,
+                 artifact=False, attestation=None, runtime_manifest=None):
         self.directory = Path(directory)
         (self.directory / "blobs" / "sha256").mkdir(parents=True)
         (self.directory / "oci-layout").write_text('{"imageLayoutVersion":"1.0.0"}')
@@ -70,9 +73,12 @@ class Layout:
             "history": [{"created_by": "COPY /app/dist /app/dist"}]}
         self.config = config
         self.layers = layers or [(privacy.GZIP, gzip.compress(archive([("app/main.js", b"console.log('public');")])))]
-        runtime = self.blob({"schemaVersion": 2, "mediaType": privacy.MANIFEST,
-                             "config": self.blob(config, privacy.CONFIG),
-                             "layers": [self.blob(data, media) for media, data in self.layers]}, privacy.MANIFEST)
+        runnable = {"schemaVersion": 2, "mediaType": privacy.MANIFEST,
+                    "config": self.blob(config, privacy.CONFIG),
+                    "layers": [self.blob(data, media) for media, data in self.layers]}
+        if runtime_manifest:
+            runtime_manifest(runnable)
+        runtime = self.blob(runnable, privacy.MANIFEST)
         runtime["platform"] = {"os": "linux", "architecture": "amd64"}
         self.runtime = runtime
         source = {"uri": "https://github.com/fr-meyer/openclaw.git#" + SOURCE, "digest": {"sha1": SOURCE}}
@@ -82,9 +88,16 @@ class Layout:
                                                         "resolvedDependencies": [source]}}}
         if provenance:
             provenance(statement)
-        attested = self.blob({"schemaVersion": 2, "mediaType": privacy.MANIFEST,
-                              "config": self.blob({}, privacy.CONFIG),
-                              "layers": [self.blob(statement, privacy.ATTESTATION)]}, privacy.MANIFEST)
+        attested_manifest = {"schemaVersion": 2, "mediaType": privacy.MANIFEST,
+                             "config": self.blob({}, EMPTY_CONFIG_MEDIA if artifact else privacy.CONFIG),
+                             "layers": [self.blob(statement, privacy.ATTESTATION)]}
+        if artifact:
+            attested_manifest.update({"artifactType": ATTESTATION_ARTIFACT,
+                                      "subject": {key: runtime[key] for key in ("mediaType", "digest", "size")}})
+            attested_manifest["config"]["data"] = "e30="
+        if attestation:
+            attestation(attested_manifest)
+        attested = self.blob(attested_manifest, privacy.MANIFEST)
         attested.update({"platform": {"os": "unknown", "architecture": "unknown"}, "annotations": {
             "vnd.docker.reference.type": "attestation-manifest", "vnd.docker.reference.digest": runtime["digest"]}})
         self.index = self.blob({"schemaVersion": 2, "mediaType": privacy.INDEX,
@@ -134,6 +147,128 @@ class PrivacyTests(unittest.TestCase):
                              ("bin/other", (tarfile.SYMTYPE, "../usr/bin/tool")),
                              ("usr/bin/hard", (tarfile.LNKTYPE, "usr/bin/tool"))], compressed=False).inspect()
         self.assertEqual(result["status"], "passed", result)
+
+    def test_modern_attestation_empty_config_cli(self):
+        fixture = self.layout(artifact=True)
+        with tempfile.TemporaryDirectory() as evidence:
+            output = Path(evidence) / "receipt.json"
+            result = subprocess.run([sys.executable, str(Path(privacy.__file__)),
+                "--oci-dir", str(fixture.directory), "--expected-index-digest", fixture.index["digest"],
+                "--source-sha", SOURCE, "--tooling-sha", TOOLING, "--output", str(output)],
+                capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            receipt = json.loads(output.read_text())
+            self.assertEqual(receipt["status"], "passed")
+            self.assertTrue(receipt["inspectionComplete"])
+            self.assertEqual(receipt["findingSummary"]["total"], 0)
+
+    def test_modern_empty_config_without_inline_and_legacy_config_pass(self):
+        for artifact in (False, True):
+            with self.subTest(artifact=artifact), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(directory, artifact=artifact,
+                                 attestation=lambda manifest: manifest["config"].pop("data", None))
+                result = fixture.inspect()
+                self.assertEqual(result["status"], "passed", result)
+                self.assertTrue(result["inspectionComplete"])
+
+    def test_empty_attestation_config_rejects_noncanonical_descriptors(self):
+        for field, value in (("digest", "sha256:" + "0" * 64), ("size", 3), ("size", True),
+                             ("size", 2.0), ("data", None), ("data", "e30=\n"), ("data", "W10="),
+                             ("urls", ["https://example.invalid/blob"]), ("mediaType", "unknown")):
+            with self.subTest(field=field, value=value), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(directory, artifact=True,
+                                 attestation=lambda manifest: manifest["config"].update({field: value}))
+                result = fixture.inspect()
+                self.assertFalse(result["inspectionComplete"])
+                self.assertEqual(result["refusal"], "unsupported_empty_attestation_config")
+
+    def test_empty_attestation_requires_exact_artifact_and_subject(self):
+        mutations = [
+            (lambda manifest: manifest.pop("artifactType"), "unsupported_attestation_artifact"),
+            (lambda manifest: manifest.update(artifactType="unknown"), "unsupported_attestation_artifact"),
+            (lambda manifest: manifest.pop("subject"), "attestation_subject_mismatch"),
+            (lambda manifest: manifest.update(subject=None), "attestation_subject_mismatch"),
+        ]
+        for field, value in (("mediaType", privacy.CONFIG), ("digest", "sha256:" + "0" * 64),
+                             ("size", 2), ("size", True)):
+            mutations.append((lambda manifest, key=field, item=value: manifest["subject"].update({key: item}),
+                              "attestation_subject_mismatch"))
+        for field, value in (("data", "e30="), ("urls", ["https://example.invalid/manifest"])):
+            mutations.append((lambda manifest, key=field, item=value: manifest["subject"].update({key: item}),
+                              "external_or_inline_blob"))
+        for mutate, refusal in mutations:
+            with self.subTest(refusal=refusal), tempfile.TemporaryDirectory() as directory:
+                result = Layout(directory, artifact=True, attestation=mutate).inspect()
+                self.assertFalse(result["inspectionComplete"])
+                self.assertEqual(result["refusal"], refusal)
+
+    def test_inline_empty_config_never_substitutes_for_verified_local_blob(self):
+        for payload, refusal in ((None, "malformed_or_unreadable_layout"),
+                                 (b"[]", "blob_digest_mismatch"), (b"{}\n", "blob_size_mismatch")):
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(directory, artifact=True)
+                blob = fixture.directory / "blobs/sha256" / privacy.EMPTY_CONFIG_DIGEST[7:]
+                if payload is None:
+                    blob.unlink()
+                else:
+                    blob.write_bytes(payload)
+                result = fixture.inspect()
+                self.assertFalse(result["inspectionComplete"])
+                self.assertEqual(result["refusal"], refusal)
+
+    def test_empty_attestation_does_not_relax_other_descriptor_positions(self):
+        cases = [
+            (False, None, lambda manifest: manifest["config"].update(mediaType=EMPTY_CONFIG_MEDIA),
+             "unsupported_config"),
+            (False, None, lambda manifest: manifest["config"].update(data="e30="),
+             "external_or_inline_blob"),
+            (False, lambda manifest: manifest["config"].update(data="e30="), None,
+             "external_or_inline_blob"),
+            (True, lambda manifest: manifest["layers"][0].update(data="e30="), None,
+             "external_or_inline_blob"),
+        ]
+        for artifact, attestation, runtime, refusal in cases:
+            with self.subTest(refusal=refusal), tempfile.TemporaryDirectory() as directory:
+                result = Layout(directory, artifact=artifact, attestation=attestation,
+                                runtime_manifest=runtime).inspect()
+                self.assertFalse(result["inspectionComplete"])
+                self.assertEqual(result["refusal"], refusal)
+
+    def test_modern_artifact_still_requires_provenance_and_reports_findings(self):
+        mutations = [
+            (lambda statement: statement.update(predicateType="unknown"), "missing_source_provenance"),
+            (lambda statement: statement["subject"][0]["digest"].update(sha256="0" * 64),
+             "provenance_subject_mismatch"),
+            (lambda statement: statement["predicate"]["buildDefinition"]["externalParameters"]["configSource"].update(
+                uri="https://example.invalid/repository"), "provenance_source_mismatch"),
+        ]
+        for mutate, refusal in mutations:
+            with self.subTest(refusal=refusal), tempfile.TemporaryDirectory() as directory:
+                result = Layout(directory, artifact=True, provenance=mutate).inspect()
+                self.assertFalse(result["inspectionComplete"])
+                self.assertEqual(result["refusal"], refusal)
+        result = self.files([("app/leak", b"sk-" + b"S" * 30)], artifact=True).inspect()
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 1)
+
+    def test_bundle_closure_preserves_empty_attestation_blob_and_byte_budget(self):
+        import hosted_bundle as bundle
+        root = Path(self.temp.name).resolve()
+        fixture = Layout(root / "oci/default", artifact=True)
+        inputs = bundle.Inputs(root)
+        try:
+            closure = bundle.Closure(inputs, {"indexDigest": fixture.index["digest"],
+                                             "sourceSha": SOURCE, "toolingSha": TOOLING})
+            closure.run()
+            self.assertEqual(closure.blobs[privacy.EMPTY_CONFIG_DIGEST], 2)
+            self.assertEqual(closure.finding_total, 0)
+            self.assertEqual(closure.counts["blobBytes"], sum(closure.blobs.values()))
+        finally:
+            inputs.close()
+        result = fixture.inspect(limits=dataclasses.replace(privacy.Limits(),
+                                 total_blob_bytes=closure.counts["blobBytes"] - 1))
+        self.assertEqual(result["refusal"], "blob_total_limit")
 
     def test_private_runtime_paths(self):
         for name in ("app/.env", "app/.env.production", "home/node/.openclaw/config.json",
