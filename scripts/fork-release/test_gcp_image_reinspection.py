@@ -161,6 +161,55 @@ class DriverTests(unittest.TestCase):
         for name in ("intent.json", "base-plan.json", "original-resources.json", "handoff.json"):
             self.assertEqual((self.f.state / name).stat().st_mode & 0o777, 0o600)
 
+    def test_optional_loaded_transport_is_pinned_forwarded_and_resumed_without_native(self):
+        self.f.plan["smokeTransport"] = "loaded"
+        self.f.plan_pin = save(self.f.plan_path, self.f.plan)
+        owner = FakeOwners(self.f)
+        self.assertTrue(self.f.run(owner)["qualified"])
+        qualified_plan = json.loads((self.f.state / "qualification-plan.json").read_text())
+        self.assertEqual(qualified_plan["smokeTransport"], "loaded")
+        self.assertEqual(json.loads((self.f.state / "base-plan.json").read_text()), self.f.plan)
+        self.f.current += timedelta(days=1)
+        owner.calls.clear()
+        self.assertTrue(self.f.run(owner, admission_path=None, admission_pin=None)["qualified"])
+        self.assertEqual(owner.actions(), ["verify-retained-gcp"])
+
+    def test_transport_scope_is_closed_before_any_owner_runs(self):
+        for value in ("skopeo", "docker", "LOADED", "loaded --pull", "", None, False, ["loaded"], {"command": "load"}):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                f = Fixture(Path(tmp), self)
+                f.plan["smokeTransport"] = value
+                f.plan_pin = save(f.plan_path, f.plan)
+                owner = FakeOwners(f)
+                with self.assertRaisesRegex(driver.Refusal, "plan.invalid"):
+                    f.run(owner)
+                self.assertEqual(owner.calls, [])
+        self.f.plan["importCommand"] = "synthetic-unapproved-command"
+        self.f.plan_pin = save(self.f.plan_path, self.f.plan)
+        owner = FakeOwners(self.f)
+        with self.assertRaisesRegex(driver.Refusal, "plan.invalid"):
+            self.f.run(owner)
+        self.assertEqual(owner.calls, [])
+
+    def test_loaded_transport_change_refuses_completed_and_lost_outcome_resume(self):
+        for lost_outcome in (False, True):
+            with self.subTest(lost_outcome=lost_outcome), tempfile.TemporaryDirectory() as tmp:
+                f = Fixture(Path(tmp), self)
+                f.plan["smokeTransport"] = "loaded"
+                f.plan_pin = save(f.plan_path, f.plan)
+                owner = FakeOwners(f)
+                f.run(owner)
+                if lost_outcome:
+                    (f.state / "qualify.completed.json").unlink()
+                path = f.state / "qualification-plan.json"
+                changed = json.loads(path.read_text())
+                del changed["smokeTransport"]
+                save(path, changed)
+                owner.calls.clear()
+                with self.assertRaisesRegex(driver.Refusal, "stage_inputs_changed"):
+                    f.run(owner)
+                self.assertEqual(owner.calls, [])
+
     def test_findings_collect_static_but_block_native_and_handoff(self):
         owner = FakeOwners(self.f, "findings")
         result = self.f.run(owner)

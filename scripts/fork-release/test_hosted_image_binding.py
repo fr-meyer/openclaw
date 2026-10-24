@@ -568,7 +568,8 @@ cp.execFileSync = function(command, args, options) {
   fs.appendFileSync(process.env.RETAINED_NATIVE_LOG, JSON.stringify({command,args}) + '\n');
   if (process.env.RETAINED_NATIVE_FAIL === 'yes') throw new Error('synthetic native transport refused');
   if (command === 'skopeo') { clockOffset += Number(process.env.RETAINED_IMPORT_ELAPSED_MS || 0); return ''; }
-  if (args[0] === 'image' && args[1] === 'inspect') return process.env.RETAINED_CONFIG_DIGEST + '\n';
+  if (args[0] === 'image' && args[1] === 'inspect')
+    return (process.env.RETAINED_INSPECT_DIGEST || process.env.RETAINED_CONFIG_DIGEST) + '\n';
   if (args[0] === 'create') {
     const plugin = args.includes('/tmp/verify-image-plugins.mjs');
     if (plugin) clockOffset += Number(process.env.RETAINED_PLUGIN_CREATE_ELAPSED_MS || 0);
@@ -657,6 +658,62 @@ syncBuiltinESMExports();
         # Completed verification is historical: resource freshness is checked at
         # recorded guard times, not made into a new host admission claim.
         self.assertFalse(proof["productionAuthorized"])
+
+    def test_explicit_loaded_transport_uses_index_without_skopeo_and_binds_mode(self):
+        self.base["smokeTransport"] = "loaded"
+        self.private_json(self.base_path, self.base)
+        self.set_privacy()
+        index = self.resource["indexDigest"]
+        self.env["RETAINED_INSPECT_DIGEST"] = index
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 0, report)
+        calls = self.native_log.read_bytes()
+        entries = [json.loads(line) for line in calls.splitlines()]
+        self.assertFalse(any(entry["command"] == "skopeo" for entry in entries))
+        inspected = next(entry for entry in entries if entry["args"][:2] == ["image", "inspect"])
+        self.assertEqual(inspected["args"][-1], index)
+        for entry in entries:
+            if entry["args"][0] == "create":
+                self.assertIn(index, entry["args"])
+                platform = entry["args"].index("--platform")
+                self.assertEqual(entry["args"][platform + 1], "linux/amd64")
+        admission = json.loads((self.output / "admission.json").read_text())
+        capture = json.loads((self.output / "native-execution.json").read_text())
+        self.assertEqual(admission["smokeTransport"], "loaded")
+        self.assertEqual(capture["smokeTransport"], "loaded")
+        result, verified = self.run_owner("verify-retained-gcp", output=self.output / "receipt.json")
+        self.assertEqual(result.returncode, 0, verified)
+        self.assertEqual(self.native_log.read_bytes(), calls)
+        del self.plan["smokeTransport"]
+        self.private_json(self.plan_path, self.plan)
+        result, _ = self.run_owner("verify-retained-gcp", output=self.output / "receipt.json")
+        self.assertNotEqual(result.returncode, 0, "Loaded evidence was relabeled as default Skopeo")
+        self.assertEqual(self.native_log.read_bytes(), calls)
+
+    def test_loaded_transport_rejects_config_digest_as_index_before_native_start(self):
+        self.base["smokeTransport"] = "loaded"
+        self.set_privacy()
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["privacy"], "passed", report)
+        self.assertEqual(report["static"], "passed", report)
+        calls = [json.loads(line) for line in self.native_log.read_text().splitlines()]
+        self.assertTrue(calls)
+        self.assertFalse(any(entry["command"] == "skopeo" or entry["args"][0] in ("create", "start", "run")
+                             for entry in calls))
+        self.assertFalse((self.output / "receipt.json").exists())
+
+    def test_optional_transport_rejects_every_value_except_loaded(self):
+        for index, value in enumerate((None, False, "skopeo", "auto")):
+            with self.subTest(value=value):
+                self.base["smokeTransport"] = value
+                self.set_privacy()
+                target = self.state / ("transport-" + str(index))
+                target.mkdir(mode=0o700)
+                result, report = self.run_owner(output=target)
+                self.assertEqual(result.returncode, 1)
+                self.assertFalse(report["qualified"])
+                self.assertFalse(self.native_log.exists())
 
     def test_findings_still_collect_static_without_native_or_admission(self):
         scan = json.loads(self.privacy.read_text())

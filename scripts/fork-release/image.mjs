@@ -548,7 +548,11 @@ function writeRetained(path, value) {
 function retainedPlan(planPath, qualification) {
   privateOwned(planPath);
   const plan = diagnosticJson(planPath).value;
-  const fields = [...RETAINED_BASE_FIELDS, ...(qualification ? RETAINED_QUALIFICATION_FIELDS : [])];
+  const fields = [
+    ...RETAINED_BASE_FIELDS,
+    ...(qualification ? RETAINED_QUALIFICATION_FIELDS : []),
+    ...(Object.hasOwn(plan ?? {}, "smokeTransport") ? ["smokeTransport"] : []),
+  ];
   need(
     plan &&
       typeof plan === "object" &&
@@ -558,6 +562,10 @@ function retainedPlan(planPath, qualification) {
         (qualification
           ? "openclaw.retained-gcp-qualification.v1"
           : "openclaw.retained-gcp-input.v1"),
+    "retained.plan_refused",
+  );
+  need(
+    !Object.hasOwn(plan, "smokeTransport") || plan.smokeTransport === "loaded",
     "retained.plan_refused",
   );
   for (const key of fields.filter((key) => key.endsWith("Path") || key.endsWith("Dir"))) {
@@ -1019,6 +1027,9 @@ function nativeRetainedCheck({
     origin.configDigest,
     {
       isolation: "secretless",
+      ...(plan.smokeTransport === "loaded"
+        ? { transport: "loaded", loadedIndexDigest: context.indexDigest }
+        : {}),
       beforeNative: () => freshResourceBoundary(resources, "workspace"),
     },
   );
@@ -1236,6 +1247,7 @@ export async function qualifyRetainedGcp(planPath, outputDir) {
       originalBuildSha256: hash(originPath),
       nativeReceiptSha256: hash(join(outputDir, "native.json")),
       verifierToolingSha: plan.inspectionToolingSha,
+      smokeTransport: plan.smokeTransport ?? "skopeo",
       qualificationId,
       resourceAdmissionSha256: resources.current.sha256,
       resourceEvidenceSha256: resourceEvidenceHash(resources.checks, resources.refreshes),
@@ -1250,6 +1262,7 @@ export async function qualifyRetainedGcp(planPath, outputDir) {
       originalToolingSha: plan.originalToolingSha,
       inspectionToolingSha: plan.inspectionToolingSha,
       originalResourcesSha256: plan.originalResourcesSha256,
+      smokeTransport: plan.smokeTransport ?? "skopeo",
       resourceAdmissionSha256: plan.resourceAdmissionSha256,
       qualificationId,
       resourceChecks: resources.checks,
@@ -1460,6 +1473,7 @@ export async function verifyRetainedGcp(planPath, receiptPath) {
       "originalToolingSha",
       "inspectionToolingSha",
       "originalResourcesSha256",
+      "smokeTransport",
       "resourceAdmissionSha256",
       "qualificationId",
       "resourceChecks",
@@ -1481,6 +1495,7 @@ export async function verifyRetainedGcp(planPath, receiptPath) {
       admission.originalExecutionSha256 === plan.executionSha256 &&
       admission.originalToolingSha === plan.originalToolingSha &&
       admission.inspectionToolingSha === plan.inspectionToolingSha &&
+      admission.smokeTransport === (plan.smokeTransport ?? "skopeo") &&
       admission.originalResourcesSha256 === plan.originalResourcesSha256 &&
       admission.resourceAdmissionSha256 === plan.resourceAdmissionSha256 &&
       admission.qualifiedMemberReportSha256 === proof.qualifiedMemberReportSha256 &&
@@ -1537,6 +1552,7 @@ export async function verifyRetainedGcp(planPath, receiptPath) {
       "originalBuildSha256",
       "nativeReceiptSha256",
       "verifierToolingSha",
+      "smokeTransport",
       "qualificationId",
       "resourceAdmissionSha256",
       "resourceEvidenceSha256",
@@ -1548,6 +1564,7 @@ export async function verifyRetainedGcp(planPath, receiptPath) {
       capture.originalBuildSha256 === proof.originSha256 &&
       capture.nativeReceiptSha256 === proof.nativeReceiptSha256 &&
       capture.verifierToolingSha === plan.inspectionToolingSha &&
+      capture.smokeTransport === admission.smokeTransport &&
       capture.qualificationId === admission.qualificationId &&
       capture.resourceAdmissionSha256 === admission.resourceChecks.at(-1).resourceAdmissionSha256 &&
       capture.resourceEvidenceSha256 ===

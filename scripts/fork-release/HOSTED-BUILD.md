@@ -88,6 +88,15 @@ wrong, stale or replayed evidence blocks native execution and preserves owned
 cleanup. Invalid original identity/hash is refused immediately rather than
 refreshable. No import or build is repeated to obtain a fresh admission.
 
+The optional pinned base-plan field `smokeTransport: "loaded"` selects the
+existing GCP Docker-loading contract; omission keeps Skopeo. The private owner
+first requires clean privacy and passing static verification, then streams the
+same retained OCI into the existing Docker store through the already approved
+scoped wrapper. The qualifier adds no importer, package install, credentials or
+access change. Loaded mode verifies the immutable OCI index and Linux amd64
+selection; it does not confuse the index with the config digest. The selected
+transport is bound in admission, native execution and later verification.
+
 The coordinator's fixed summary contains passed/failed/blocked outcomes and no
 raw child output or suspect contents. Stage input/output hashes and exclusive
 claims prevent changed or concurrent resumes. A completed resume verifies only;
@@ -316,3 +325,33 @@ cause before another authorized attempt. No retained cross-run build cache is
 assumed; public storage/cost and exact-input cache policy must be qualified
 before adding one. Native data integrity and rehearsal startup remain separate
 requirements and are not satisfied by image fixture tests.
+
+## Detection, adjudication and future private delivery
+
+Detection still traverses all bounded image layers and metadata; diagnostic
+sample limits do not stop counting. Adjudication is narrower: exact reviewed
+public fixture version/source, member path, full byte hash/size and named rule
+can qualify that observation. Other rules, changed files/versions and unknown
+sensitive observations remain blocking. The hosted workflow selects the reviewed
+60-member plan only for its exact source85 commit. Other releases retain normal
+scanning until their own policy is reviewed. Synthetic regressions prove that
+this qualification cannot hide CI authentication, copied credential files or
+sensitive content left beneath whiteouts. No detector match alone establishes
+a leak, and public provenance alone does not prove harmlessness.
+
+The fourth hosted build used a checksum-bound public Git context, public base
+images/packages/assets and nonsecret build arguments. Git checkouts disabled
+credential persistence, and the Docker context was fetched separately. No GCP
+login, database mount or runtime-secret input was configured. The CI job still
+had GitHub authentication; optional Git-auth secret identifiers in provenance
+are not token values or proof of layer exposure. Moving public Debian/npm and
+builder/scanner inputs are not fully described by the application lockfile.
+
+GitHub can remain the default build location. The unconfigured permanent step
+is private immutable artifact retention/delivery: reviewed source → hosted build
+and provenance → private quarantine → privacy/static/native qualification →
+same digest in isolated rehearsal → separately approved promotion using current
+production data. Private retention permits diagnosis, not execution of an
+unqualified image. Keep delivery/promotion credentials out of candidate jobs;
+a new private destination, identity, access/retention/cost or transfer requires
+separate approval. No such mechanism is enabled by this preparation.

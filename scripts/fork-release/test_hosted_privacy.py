@@ -260,6 +260,59 @@ class PrivacyTests(unittest.TestCase):
         self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 2)
         self.assertEqual(result["publicMemberQualification"]["records"][0]["memberOccurrences"], 1)
 
+    def test_qualified_public_fixture_does_not_hide_ci_credentials_in_image_metadata(self):
+        public = b"ghp_" + b"P" * 30
+        plan = self.comparison_plan("app/public-example", public, rules=["github_token"])
+        cases = [(kind, key, "synthetic-ci-value-" + key.lower(), rule)
+                 for kind, rule in (("env", "sensitive_environment_value"), ("build_arg", "sensitive_metadata_value"))
+                 for key in ("GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN")]
+        cases.append(("history", "", "github_pat_" + "H" * 36, "github_token"))
+        for kind, key, value, rule in cases:
+            with self.subTest(kind=kind, key=key), tempfile.TemporaryDirectory() as directory:
+                config = {"os": "linux", "architecture": "amd64", "config": {
+                    "Labels": {"org.opencontainers.image.revision": SOURCE},
+                    "Env": [key + "=" + value] if kind == "env" else []}}
+                if kind == "history":
+                    config["history"] = [{"created_by": "RUN export GITHUB_TOKEN=" + value}]
+                def provenance(statement):
+                    if kind == "build_arg":
+                        statement["predicate"]["buildDefinition"]["externalParameters"]["args"] = {
+                            "build-arg:" + key: value}
+                fixture = Layout(directory, config=config, provenance=provenance,
+                                 layers=[(privacy.TAR, archive([("app/public-example", public)]))])
+                with self.trusted_comparison(plan) as (path, data):
+                    result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+                    privacy.require_public_member_qualification(result, data)
+                self.assertTrue(result["inspectionComplete"])
+                self.assertEqual(result["publicMemberQualification"]["status"], "satisfied")
+                self.assertEqual(result["status"], "failed")
+                self.assertEqual(result["findingSummary"]["total"], 1)
+                self.assertEqual(result["findingSummary"]["byRule"][rule], 1)
+                self.assertNotIn(value, json.dumps(result))
+
+    def test_qualified_public_fixture_does_not_hide_copied_ci_context_or_deleted_credentials(self):
+        public = b"ghp_" + b"P" * 30
+        github = b"ghs_" + b"C" * 36
+        package_token = b"github_pat_" + b"N" * 36
+        remote = b"https://x-access-token:" + github + b"@github.com/example/public.git"
+        older = archive([("app/public-example", public), ("app/.env", b"context-marker"),
+                         ("app/.git/config", b"[remote]\nurl=" + remote),
+                         ("app/.npmrc", b"//registry.npmjs.org/:_authToken=" + package_token)])
+        later = archive([("app/.wh..env", b""), ("app/.wh..git", b""), ("app/.wh..npmrc", b"")])
+        fixture = self.layout(layers=[(privacy.TAR, older), (privacy.TAR, later)])
+        with self.trusted_comparison(self.comparison_plan("app/public-example", public, rules=["github_token"])) as (path, data):
+            result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+            privacy.require_public_member_qualification(result, data)
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["counts"]["layers"], 2)
+        self.assertEqual(result["publicMemberQualification"]["status"], "satisfied")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["findingSummary"]["byRule"]["github_token"], 2)
+        self.assertEqual(result["findingSummary"]["byRule"]["credential_url"], 1)
+        self.assertEqual(result["findingSummary"]["byRule"]["private_runtime_path"], 1)
+        for value in (github.decode(), package_token.decode(), remote.decode(), "app/.git/config", "app/.npmrc"):
+            self.assertNotIn(value, json.dumps(result))
+
     def test_qualification_incomplete_member_flushes_pending_and_late_errors_still_fail(self):
         payload = b"sk-" + b"S" * 30
         fixture = self.files([("app/example", payload)])

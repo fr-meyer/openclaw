@@ -654,10 +654,14 @@ jobs:
           TOOLING_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          set --
+          if [[ "$SOURCE_SHA" == '85a9bdc1285c338f10f5ca818abc259f6d483b5b' ]]; then
+            set -- --public-comparisons tooling/scripts/fork-release/public-member-comparisons-v105.json --qualify-public-members
+          fi
           python3 tooling/scripts/fork-release/hosted_privacy.py \
             --oci-dir "$RUNNER_TEMP/fork-release/oci/default" \
             --expected-index-digest "$OCI_DIGEST" --source-sha "$SOURCE_SHA" \
-            --tooling-sha "$TOOLING_SHA" --output "$RUNNER_TEMP/fork-release/privacy.json"
+            --tooling-sha "$TOOLING_SHA" --output "$RUNNER_TEMP/fork-release/privacy.json" "$@"
       - name: Verify OCI bytes and smoke that exact image
         env:
           BUILT_AT: ${{ steps.identity.outputs.built_at }}

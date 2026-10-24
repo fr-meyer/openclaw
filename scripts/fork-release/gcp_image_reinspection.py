@@ -33,6 +33,7 @@ DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 OP = re.compile(r"[0-9a-f]{32}\Z")
 BASE_FIELDS = {"schema", "manifestPath", "inventoryPath", "sourceDir", "ociDir", "executionPath",
                "originalToolingSha", "executionSha256", "inspectionToolingSha"}
+OPTIONAL_BASE_FIELDS = {"smokeTransport"}
 OUTPUTS = ("origin.json", "static.json", "diagnostics.json", "receipt.json", "native.json",
            "native-attempt.json", "native-execution.json", "admission.json")
 TIMEOUT = 900
@@ -123,8 +124,9 @@ def outside(left, right):
 def prepare(plan_path, plan_pin, state, original_resources, resources_pin):
     raw = pinned(plan_path, plan_pin)
     plan = json.loads(raw, object_pairs_hook=hosted_reinspection._pairs)
-    need(isinstance(plan, dict) and set(plan) == BASE_FIELDS and
-         plan.get("schema") == "openclaw.retained-gcp-input.v1", "plan.invalid")
+    need(isinstance(plan, dict) and BASE_FIELDS <= set(plan) <= BASE_FIELDS | OPTIONAL_BASE_FIELDS and
+         plan.get("schema") == "openclaw.retained-gcp-input.v1" and
+         ("smokeTransport" not in plan or plan["smokeTransport"] == "loaded"), "plan.invalid")
     need(all(isinstance(plan[k], str) and SHA.fullmatch(plan[k]) for k in
              ("originalToolingSha", "inspectionToolingSha")) and
          isinstance(plan.get("executionSha256"), str) and HEX.fullmatch(plan["executionSha256"]),

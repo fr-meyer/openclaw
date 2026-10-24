@@ -654,6 +654,33 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         # Existing resource, native framework, privacy, ZIP and upload tests stay active.
         self.assertNotIn('continue-on-error:', gate)
 
+    def test_public_member_qualification_is_selected_only_for_exact_reviewed_source(self):
+        block = step(self.workflow, 'Inspect all OCI layers and metadata before native smoke or publication')
+        script = textwrap.dedent(block.split('        run: |\n', 1)[1])
+        reviewed = '85a9bdc1285c338f10f5ca818abc259f6d483b5b'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake = root / 'python3'
+            fake.write_text('#!' + sys.executable + '\nimport json,os,sys\n'
+                            'open(os.environ["ARGV_CAPTURE"], "w").write(json.dumps(sys.argv[1:]))\n')
+            fake.chmod(0o700)
+            for index, source in enumerate((reviewed, reviewed[:-1] + 'a', SOURCE)):
+                capture = root / (str(index) + '.json')
+                env = {**os.environ, 'PATH': str(root) + ':/usr/bin:/bin',
+                       'SOURCE_SHA': source, 'TOOLING_SHA': 'b' * 40,
+                       'OCI_DIGEST': 'sha256:' + 'c' * 64, 'RUNNER_TEMP': str(root),
+                       'ARGV_CAPTURE': str(capture)}
+                result = subprocess.run(['/bin/bash', '-c', script], env=env,
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                argv = json.loads(capture.read_bytes())
+                self.assertEqual('--qualify-public-members' in argv, source == reviewed)
+                self.assertEqual('--public-comparisons' in argv, source == reviewed)
+                self.assertEqual(argv[argv.index('--source-sha') + 1], source)
+                if source == reviewed:
+                    self.assertEqual(argv[argv.index('--public-comparisons') + 1],
+                                     'tooling/scripts/fork-release/public-member-comparisons-v105.json')
+
     def test_privacy_resources_and_native_seal_precede_receipt_gate_and_upload(self):
         names = ('Verify hosted worker limits and begin bounded resource observation',
                  'Build exact candidate once into OCI',
