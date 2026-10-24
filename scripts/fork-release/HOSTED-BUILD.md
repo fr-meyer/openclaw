@@ -1,65 +1,112 @@
-# Hosted image build stage
+# Hosted image build and retained-image qualification
 
-## Inactive diagnostic and reinspection preparation
+## Prepared private retained-image route
 
-These commands collect evidence; they do not activate another build, authenticate
-an asserted producer, create a release seal, grant export, or deploy production.
-The existing workflow still requires clean privacy before native execution and
-all qualification receipts before public upload. No private CI transfer is enabled.
+This source implements a private GCP reinspection entry point; no build,
+retention operation, transfer, native image execution or production activation
+has been performed by this preparation. GitHub-hosted builds remain the normal
+route. Failed hosted OCI bytes still expire with their runner, and no private
+hosted-to-GCP delivery or registry credential is configured. The public artifact
+route accepts qualified code-only output only.
 
-`hosted_privacy.py --public-comparisons public-member-comparisons-v105.json`
-adds exact, source-bound member comparisons to its normal OCI inspection. The
-checked-in plan names 60 reviewed public counterparts with exact paths, complete
-file hashes, byte counts and specific rules. A complete matching read produces
-diagnostic evidence only: findings and pass/fail decisions are unchanged. Changed,
-incomplete or repeated differing members never match. Reports contain expected
-public hashes and hashed locations, never unexpected content hashes or values.
-The plan excludes ambiguous content and the unresolved private-key/runtime-path
-observations. Matching a path or recognizing a dependency is insufficient.
+For one separately authorized GCP build, the existing adapter can retain its
+original OCI under `/var/tmp/openclaw-fork-gcp-build/<operation>/oci` in a private
+`0700` operation parent. This is root-backed storage; the separately configured
+BuildKit cache can be on test storage. Do not move output through a symlink or
+reuse a production database path. The exact security-successor source/tree is
+admitted separately without changing older source or next-release pins.
 
-The non-executing layout entry point is:
+Run the trusted tooling checkout's fixed coordinator after the original build
+has settled and the host owner has reconciled workload ownership:
 
-```text
-node scripts/fork-release/image.mjs inspect-layout MANIFEST INVENTORY SOURCE OCI ORIGIN PRIVACY INSPECTION_TOOLING_SHA PERFORMED_AT OUTPUT
+```bash
+python3 scripts/fork-release/gcp_image_reinspection.py \
+  --plan /private/owner/base-plan.json --plan-sha256 BASE_PLAN_SHA256 \
+  --state-dir /private/owner/32_HEX_INSPECTION_ID \
+  --original-resources /private/owner/build-resources.json \
+  --original-resources-sha256 ORIGINAL_RESOURCE_SHA256 \
+  --resource-admission /private/owner/fresh-admission.json \
+  --resource-admission-sha256 FRESH_ADMISSION_SHA256
 ```
 
-It reuses the existing OCI/SBOM/provenance verifier without loading an image or
-running Docker, plugins or native smoke. The bound privacy receipt must have
-completed structural inspection within the reader's budgets; nonzero findings
-can remain. Malformed, incomplete or mismatched inputs block this diagnostic.
-Its fixed-reason receipt is explicitly non-promotable and is not a native seal.
+The example paths are operator placeholders, not provisioned locations. The
+state parent and inputs must be private and owned. `base-plan.json` has exactly
+`schema: openclaw.retained-gcp-input.v1`, `manifestPath`, `inventoryPath`,
+`sourceDir`, `ociDir`, `executionPath`, `originalToolingSha`, `executionSha256`
+and `inspectionToolingSha`. Paths are absolute and separate from candidate
+source/OCI. Current tooling must be a clean checkout of the pinned revision.
+The image owner authenticates the genuine original GCP execution, source/tree,
+review, Dockerfile/build inputs and original OCI directory. Historical build
+success or resource facts are never invented from hosted logs.
 
-`hosted_reinspection.py` accepts independently pinned receipt hashes for the
-original build, original resources and later inspection reports. It preserves
-the original source/tree, image/config/index digests, producer, tooling and build
-time; later scanner revisions and execution times are separate fields. An old
-native seal alone cannot establish a new native execution. A separately pinned
-execution capture must bind its receipt, original build, verifier revision and
-time. Missing captures remain blocked. Even complete supplied evidence remains
-diagnostic with `export: none`; trusted origin capture/admission and promotion
-integration are not activated by this contract. Never rewrite old failed receipts.
+The coordinator invokes the existing owners in this order:
 
-For a future reviewed workflow, privacy, safe static verification and resource
-collection should retain separate passed/failed/blocked outcomes. A privacy
-finding must not suppress safe static diagnostics; a structural refusal still
-blocks dependent readers. Native execution stays conditional on clean privacy
-and static verification, and export stays conditional on every required pass.
-This diagnostic fan-out is preparation, not a change to the active workflow.
+1. `image.mjs capture-retained-gcp-origin BASE_PLAN CAPTURE` preserves original
+   producer, source, reproducible build time and tooling separately from later
+   inspection metadata. It does not execute candidate code.
+2. `hosted_privacy.py` performs the complete bounded image scan, with the tracked
+   public-member plan and explicit `--qualify-public-members`. Only exact whole
+   member bytes at reviewed source/path/hash/size/rule bindings qualify. All
+   other findings remain blockers. The optional `--public-comparisons` mode
+   alone remains diagnostic and does not remove findings.
+3. `image.mjs qualify-retained-gcp QUALIFICATION_PLAN OUTPUT_DIR` retains
+   independent privacy/static outcomes. Complete structural inspection permits
+   safe static OCI/SBOM/provenance diagnosis even when findings remain;
+   malformed or incomplete inputs block dependent readers. Native checks run
+   only after clean privacy, exact export closure and static verification pass.
+4. A fresh independently pinned host-owner admission is checked again at each
+   actual native start, including after image import/container creation. It
+   binds source/index/current tooling, capacity, ownership and absence of
+   competing heavy work. Its validity is at most five minutes. If traversal or
+   import consumes that window, obtain fresh owner evidence before native work;
+   do not extend an old receipt. No thresholds or host probes live in this driver.
+5. Native intent precedes execution. Non-promotable facts and a separate native
+   execution capture precede final admission and the existing image-v2 receipt.
+   `image.mjs verify-retained-gcp QUALIFICATION_PLAN RECEIPT` revalidates all
+   bound reports, original build, OCI graph and full root metadata without
+   executing the image again. Ordinary `verify` refuses retained receipts.
 
-The existing GCP adapter retains OCI bytes under
-`/var/tmp/openclaw-fork-gcp-build/<operation>/oci` inside a private `0700` parent.
-That output is on root by default; the separately configurable builder cache is
-not an OCI retention destination. Current qualification source pins do not admit
-the dependency-security successor automatically. A future GCP selection needs
-exact-source/profile review and fresh host, production-health, builder-ownership
-and filesystem measurements. Moving the output to test storage or receiving a
-failed hosted image would be a separate reviewed change, not a symlink workaround.
+If static verification or import outlasts that window, the qualifier uses a
+file-only owner refresh at the actual boundary. It creates
+`OUTPUT_DIR/resource-refresh/NN-request.json` privately (`NN` is `01` through
+`03`) and waits at most 60 seconds measured with a monotonic clock. The existing
+host owner supplies `NN-admission.json` and then atomically publishes the private
+write-once `NN-response.json`. No paths, commands or executable hooks are accepted
+from the response; this mechanism does not perform a host check itself.
 
-GitHub-hosted failed OCI output still expires with its runner. There is no
-configured private registry, GCP credential or private artifact delivery route.
-The approved public artifact is for qualified code-only output; it must not be
-used to retain an unqualified image. Private retention needs its own bounded
-destination, access, size and retention decision before another build.
+The request schema is `openclaw.retained-resource-request.v1` with exactly
+`qualificationId`, `originalOperationId`, `nonce`, `boundary` (`import`,
+`workspace` or `plugins`), `sourceSha`, `indexDigest`, `inspectionToolingSha`
+and `requestedAt`. The response schema is
+`openclaw.retained-resource-response.v1` with exactly `qualificationId`, `nonce`,
+`requestSha256` and `resourceAdmissionSha256`. The fresh admission uses the existing
+resource schema, must be issued at or after the request and remain fresh when
+consumed. Publish the response last, after both complete files have mode 0600;
+never expose partial files. Final qualification binds every consumed request,
+response and admission hash, with each historical guard time. Missing, late,
+wrong, stale or replayed evidence blocks native execution and preserves owned
+cleanup. Invalid original identity/hash is refused immediately rather than
+refreshable. No import or build is repeated to obtain a fresh admission.
+
+The coordinator's fixed summary contains passed/failed/blocked outcomes and no
+raw child output or suspect contents. Stage input/output hashes and exclusive
+claims prevent changed or concurrent resumes. A completed resume verifies only;
+an uncertain native attempt blocks retry. A pre-native refusal preserves the
+OCI for a separately reconciled inspection rather than triggering a rebuild.
+
+The final `handoff.json` names the existing OCI, immutable image/config/index,
+original producer, current inspection tooling, final receipt/hash and admission.
+The sole deployment owner must run `verify-retained-gcp` before consuming the
+image-v2 receipt in the existing release handoff. No additional image build is
+needed for scanner/verifier-only corrections. Changes to application or image
+content require a new build and separately scoped authority. All receipts retain
+`productionAuthorized: false`; this route neither promotes nor deploys.
+
+`image.mjs inspect-layout` and `hosted_reinspection.py` remain non-promotable
+static/diagnostic contracts. They cannot replace authenticated origin capture,
+native admission or the final retained-image verification above. All export
+requires every required check to pass; public export does not become a private
+retention shortcut.
 
 GitHub-hosted Ubuntu 24.04 x64 is the default location for future fork image
 builds. Build once, verify Linux amd64 bytes and provenance, then use that same

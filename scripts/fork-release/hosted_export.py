@@ -10,8 +10,11 @@ accepted as newly qualified hosted Git-context evidence here.
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import stat
+import sys
 
 import hosted_privacy as privacy_contract
 
@@ -27,6 +30,8 @@ def need(condition, reason):
 
 def require_clean_privacy(receipt):
     """V2 aggregates are authoritative; representatives may be empty/truncated."""
+    need(isinstance(receipt, dict) and receipt.get("schema") == "openclaw.hosted-privacy.v2" and
+         receipt.get("status") == "passed", "privacy receipt did not pass")
     summary = receipt.get("findingSummary")
     need(isinstance(summary, dict) and set(summary) == {"unit", "total", "byRule", "byUnit"} and
          summary.get("unit") == privacy_contract.COUNT_UNIT, "privacy aggregate contract missing")
@@ -50,6 +55,15 @@ def require_clean_privacy(receipt):
          type(receipt.get("locationIndexByteLimit")) is int and
          receipt["locationIndexByteLimit"] == privacy_contract.MAX_LOCATION_BYTES,
          "privacy location index is missing, truncated or nonempty")
+    if receipt.get("sourceSha") == privacy_contract.PUBLIC_MEMBER_QUALIFICATION["sourceSha"]:
+        need("publicMemberQualification" in receipt, "source qualification proof missing")
+    if "publicMemberQualification" in receipt:
+        try:
+            plan = read_bounded_bytes(Path(__file__).with_name("public-member-comparisons-v105.json"),
+                                      privacy_contract.MAX_COMPARISON_PLAN_BYTES)
+            privacy_contract.require_public_member_qualification(receipt, plan)
+        except (privacy_contract.Refusal, OSError, ValueError, TypeError, KeyError, AttributeError):
+            raise Refusal("public member qualification is incomplete or changed") from None
 
 
 def runtime_proof(seal):
@@ -122,16 +136,94 @@ def validate(seal, privacy, resources, *, source, tooling, index, run, attempt,
             "productionAuthorized": False}
 
 
+def read_bounded_bytes(path, limit):
+    # These are owned reports/trusted plans, never a runtime/home/database path.
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        need(stat.S_ISREG(before.st_mode) and 0 <= before.st_size <= limit,
+             "invalid or oversized receipt")
+        data = stream.read(limit + 1)
+        after = os.fstat(stream.fileno())
+        need(len(data) <= limit and len(data) == before.st_size and
+             (before.st_size, before.st_mtime_ns, before.st_ctime_ns) ==
+             (after.st_size, after.st_mtime_ns, after.st_ctime_ns), "receipt changed")
+    return data
+
+
 def read_receipt(path):
-    # These are fresh owned runner outputs, never a runtime/home/database path.
-    p = Path(path)
-    need(p.is_file() and not p.is_symlink() and p.stat().st_size <= 1024 * 1024,
-         "invalid or oversized receipt")
-    data = p.read_bytes()
+    data = read_bounded_bytes(path, 1024 * 1024)
     return json.loads(data), hashlib.sha256(data).hexdigest()
 
 
+class RetainedClosure(privacy_contract.Inspector):
+    """Rehash the exact previously inspected OCI graph without unpacking layers."""
+    def __init__(self, directory, index, source, tooling):
+        super().__init__(directory, index, source, tooling, privacy_contract.Limits())
+        self.root_hashes = {}
+
+    def local_json(self, name):
+        data = read_bounded_bytes(self.directory / name, self.limits.json_bytes)
+        self.root_hashes[name] = hashlib.sha256(data).hexdigest()
+        value = self.parse_json(data)
+        self.scan_json(value, name)
+        return value
+
+    def scan_layer(self, descriptor):
+        privacy_contract.require(descriptor.get("mediaType") in
+                                 (privacy_contract.TAR, privacy_contract.GZIP), "unsupported_layer_format")
+        self.counts["layers"] += 1
+        privacy_contract.require(self.counts["layers"] <= self.limits.layers, "layer_limit")
+        stream, _ = self.blob(descriptor)
+        stream.close()
+
+    def closure_digest(self):
+        self.run()
+        need(self.finding_total == 0, "retained metadata privacy findings")
+        # Root metadata is outside the content-addressed graph. Pin its complete
+        # bytes as well, including harmless changes, and reject a moving input.
+        for name, digest in self.root_hashes.items():
+            need(hashlib.sha256(read_bounded_bytes(self.directory / name, self.limits.json_bytes)).hexdigest()
+                 == digest, "retained root metadata changed")
+        value = {"schema": "openclaw.oci-closure.v1", "sourceSha": self.source_sha,
+                 "indexDigest": self.index_digest, "roots": self.root_hashes,
+                 "blobs": sorted(self.blobs.items())}
+        return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def check_privacy(argv):
+    """One shared native-admission check; never print untrusted receipt fields."""
+    parser = argparse.ArgumentParser(description="Check an exact clean privacy receipt")
+    for name in ("privacy", "sha256", "source-sha", "tooling-sha", "index-digest"):
+        parser.add_argument("--" + name, required=True)
+    parser.add_argument("--oci")
+    args = parser.parse_args(argv)
+    try:
+        need(re.fullmatch(r"[0-9a-f]{64}", args.sha256 or "") and
+             re.fullmatch(r"[0-9a-f]{40}", args.source_sha or "") and
+             re.fullmatch(r"[0-9a-f]{40}", args.tooling_sha or "") and
+             re.fullmatch(r"sha256:[0-9a-f]{64}", args.index_digest or ""), "invalid binding")
+        receipt, digest = read_receipt(args.privacy)
+        need(digest == args.sha256 and receipt.get("sourceSha") == args.source_sha and
+             receipt.get("toolingSha") == args.tooling_sha and
+             receipt.get("indexDigest") == args.index_digest, "privacy binding changed")
+        require_clean_privacy(receipt)
+        result = {"status": "passed", "privacyReceiptSha256": digest}
+        if args.oci:
+            closure = RetainedClosure(args.oci, args.index_digest, args.source_sha, args.tooling_sha)
+            result["ociClosureSha256"] = closure.closure_digest()
+            need(closure.image_digest == receipt.get("imageDigest") and
+                 closure.config_digest == receipt.get("configDigest"), "retained image changed")
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError, privacy_contract.Refusal):
+        print('{"status":"failed","reason":"privacy_not_clean_or_bound"}')
+        return 1
+
+
 def main():
+    if sys.argv[1:2] == ["check-privacy"]:
+        raise SystemExit(check_privacy(sys.argv[2:]))
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("seal", "privacy", "resources", "source-sha", "tooling-sha", "index-digest",
                  "run-id", "attempt", "output"):

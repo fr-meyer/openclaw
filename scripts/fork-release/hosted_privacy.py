@@ -71,6 +71,11 @@ MAX_LOCATION_BYTES = 512 * 1024
 MAX_RECEIPT_BYTES = 1024 * 1024
 MAX_COMPARISON_ENTRIES = 128
 MAX_COMPARISON_PLAN_BYTES = 128 * 1024
+PUBLIC_MEMBER_QUALIFICATION = {
+    "sourceSha": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+    "planSha256": "ac474379f3b44a6ba04382037622927d855b0fe23ec4487c3405af5a9a631e0f",
+    "rules": ("service_token", "credential_url", "github_token"),
+}
 # All six complete PEMs in this exact public binary match GnuTLS 3.7.9's
 # lib/crypto-selftests-pk.c. This qualifies only private_key after reading and
 # hashing the complete member; it is not a path, dependency or layer allowlist.
@@ -85,7 +90,7 @@ PUBLIC_GNUTLS_SELF_TEST = {
 LIMITATIONS = [
     "Heuristic detection is not proof that an image contains no secrets.",
     "Arbitrary, encoded/encrypted credentials and nested archives may evade detection.",
-    "Only the exact hash-bound public GnuTLS self-test is qualified; other public fixtures can cause refusals.",
+    "GnuTLS qualification is exact and hash-bound. Explicit public-member qualification additionally requires the code-pinned source/manifest and complete exact member bytes for its three permitted rules; other public fixtures still cause refusals.",
     "Match lengths and syntax flags describe the first retained scan-window match, which may be a bounded prefix.",
     "Counts are rule/scan-unit pairs, not unique credentials: each TAR member occurrence, JSON key/string occurrence, explicit metadata value or standalone byte input is a unit.",
     "Overlapping chunks and path/link checks share their member unit; repeated members or layers count separately. PAX JSON has its own key/string units.",
@@ -136,6 +141,61 @@ def object_pairs(pairs):
     return result
 
 
+def require_public_member_qualification(receipt, plan_bytes):
+    """Validate exact qualification evidence; this does not rescan image bytes."""
+    code = "invalid_public_member_qualification"
+    try:
+        trusted = PUBLIC_MEMBER_QUALIFICATION
+        require(type(plan_bytes) is bytes and len(plan_bytes) <= MAX_COMPARISON_PLAN_BYTES and
+                sha256(plan_bytes) == trusted["planSha256"], code)
+        plan = json.loads(plan_bytes, object_pairs_hook=object_pairs)
+        require(plan["schema"] == "openclaw.public-member-comparisons.v1" and
+                plan["sourceSha"] == trusted["sourceSha"] and receipt["sourceSha"] == trusted["sourceSha"] and
+                receipt["inspectionComplete"] is True, code)
+        expected = {entry["id"]: entry for entry in plan["entries"]}
+        expected_pairs = {(entry["id"], rule) for entry in plan["entries"] for rule in entry["rules"]}
+        require(len(expected) == len(plan["entries"]) <= MAX_COMPARISON_ENTRIES and
+                all(rule in trusted["rules"] for _, rule in expected_pairs), code)
+        comparison, qualification = receipt["publicMemberComparisons"], receipt["publicMemberQualification"]
+        require(set(comparison) == {"schema", "sourceSha", "planSha256", "diagnosticOnly", "records", "inspectionComplete"}
+                and comparison["schema"] == "openclaw.public-member-comparison-results.v1" and
+                comparison["diagnosticOnly"] is True and
+                set(qualification) == {"schema", "sourceSha", "planSha256", "records", "inspectionComplete", "status"} and
+                qualification["schema"] == "openclaw.public-member-qualification.v1" and
+                qualification["status"] == "satisfied", code)
+        for report in (comparison, qualification):
+            require(report["sourceSha"] == trusted["sourceSha"] and report["planSha256"] == trusted["planSha256"] and
+                    report["inspectionComplete"] is True and isinstance(report["records"], list), code)
+        require(len(comparison["records"]) == len(expected) and
+                len(qualification["records"]) == len(expected_pairs), code)
+        compared = {}
+        for record in comparison["records"]:
+            require(set(record) == {"id", "locationSha256", "memberSha256", "memberBytes", "rules", "status",
+                                    "observedMembers", "matchedMembers", "mismatchedMembers"}, code)
+            entry = expected[record["id"]]
+            require(record["id"] not in compared and record["status"] == "matched" and
+                    record["locationSha256"] == sha256(entry["path"].encode("utf-8", "surrogatepass")) and
+                    type(record["memberBytes"]) is int and
+                    all(record[key] == entry[key] for key in ("memberSha256", "memberBytes", "rules")) and
+                    all(type(record[key]) is int for key in ("observedMembers", "matchedMembers", "mismatchedMembers")) and
+                    record["observedMembers"] == record["matchedMembers"] > 0 and record["mismatchedMembers"] == 0, code)
+            compared[record["id"]] = record
+        seen = set()
+        for record in qualification["records"]:
+            require(set(record) == {"id", "locationSha256", "memberSha256", "memberBytes", "sourceSha",
+                                    "planSha256", "rule", "memberOccurrences"}, code)
+            pair = (record["id"], record["rule"])
+            require(pair in expected_pairs and pair not in seen, code)
+            observed = compared[record["id"]]
+            require(record["sourceSha"] == trusted["sourceSha"] and record["planSha256"] == trusted["planSha256"] and
+                    type(record["memberBytes"]) is int and type(record["memberOccurrences"]) is int and
+                    all(record[key] == observed[key] for key in ("locationSha256", "memberSha256", "memberBytes")) and
+                    record["memberOccurrences"] == observed["matchedMembers"], code)
+            seen.add(pair)
+    except (Refusal, ValueError, TypeError, KeyError, AttributeError, RecursionError, OverflowError):
+        raise Refusal(code) from None
+
+
 class ExpandedReader:
     """Budget decompression before tarfile can allocate a member/PAX payload."""
 
@@ -174,6 +234,29 @@ class Inspector:
         self.image_digest = self.config_digest = None
         self.public_comparisons = None
         self.comparisons_by_path = {}
+        self.qualify_public_members = False
+        self.qualified_public_members = {}
+
+    def enable_public_member_qualification(self):
+        plan, trusted = self.public_comparisons, PUBLIC_MEMBER_QUALIFICATION
+        require(plan is not None, "public_member_qualification_plan_required")
+        require(plan["sourceSha"] == trusted["sourceSha"] and plan["planSha256"] == trusted["planSha256"] and
+                all(rule in trusted["rules"] for record in plan["records"] for rule in record["rules"]),
+                "untrusted_public_member_qualification_plan")
+        self.qualify_public_members = True
+
+    def qualify_member_findings(self, candidates, pending, digest):
+        for rule, finding in pending.items():
+            record = candidates[rule]
+            if finding is not None and digest is not None and digest == record["memberSha256"]:
+                key = (record["id"], rule)
+                if key not in self.qualified_public_members:
+                    self.qualified_public_members[key] = {
+                        **{field: record[field] for field in ("id", "locationSha256", "memberSha256", "memberBytes")},
+                        "sourceSha": self.source_sha, "planSha256": self.public_comparisons["planSha256"],
+                        "rule": rule, "memberOccurrences": 0}
+                self.qualified_public_members[key]["memberOccurrences"] += 1
+                pending[rule] = None
 
     def load_public_comparisons(self, path):
         """Read a caller-reviewed public manifest, never image-controlled data."""
@@ -311,11 +394,12 @@ class Inspector:
             finding.update(diagnostics)
         self.findings.append(finding)
 
-    def scan_bytes(self, data, location, blob_digest=None, *, previous_byte=b"", pending_private_key=None):
+    def scan_bytes(self, data, location, blob_digest=None, *, previous_byte=b"", pending_private_key=None,
+                   pending_public_members=None):
         if self.unit_kind is None:
             with self.scan_unit("byte_input"):
                 self.scan_bytes(data, location, blob_digest, previous_byte=previous_byte,
-                                pending_private_key=pending_private_key)
+                                pending_private_key=pending_private_key, pending_public_members=pending_public_members)
             return
         # Preserve the real predecessor for both sk- and AWS lookbehind. Search
         # after that byte so the context itself never becomes a new match start.
@@ -337,6 +421,9 @@ class Inspector:
                 if rule == "private_key" and pending_private_key is not None:
                     if not pending_private_key:
                         pending_private_key.append((rule, location, blob_digest, diagnostics))
+                elif pending_public_members is not None and rule in pending_public_members:
+                    if pending_public_members[rule] is None:
+                        pending_public_members[rule] = (rule, location, blob_digest, diagnostics)
                 else:
                     self.finding(rule, location, blob_digest, diagnostics)
 
@@ -536,6 +623,8 @@ class Inspector:
                                      public["path"] == name and public["memberBytes"] == member.size)
                         member_hash = hashlib.sha256() if candidate or comparisons else None
                         complete_member_digest = None
+                        public_candidates = {rule: record for record in comparisons for rule in record["rules"]}
+                        public_pending = dict.fromkeys(public_candidates) if self.qualify_public_members else {}
                         pending = []
                         try:
                             while True:
@@ -550,13 +639,15 @@ class Inspector:
                                     member_hash.update(chunk)
                                 window = tail + chunk
                                 self.scan_bytes(window, name, digest, previous_byte=previous_byte,
-                                                pending_private_key=pending if candidate else None)
+                                                pending_private_key=pending if candidate else None,
+                                                pending_public_members=public_pending)
                                 # Preserve lookbehind at a clipped overlap boundary;
                                 # short reads retain file-start semantics until clipping.
                                 previous_byte = window[-OVERLAP - 1:-OVERLAP]
                                 tail = window[-OVERLAP:]
                             require(total == member.size, "truncated_member")
                             complete_member_digest = member_hash.hexdigest() if member_hash is not None else None
+                            self.qualify_member_findings(public_candidates, public_pending, complete_member_digest)
                             if pending and complete_member_digest == public["memberSha256"]:
                                 qualification = {key: public[key] for key in
                                     ("rule", "blobDigest", "memberSha256", "memberBytes", "publicSourceSha256")}
@@ -569,6 +660,9 @@ class Inspector:
                             # An incomplete read or different byte hash never qualifies.
                             for finding in pending:
                                 self.finding(*finding)
+                            for finding in public_pending.values():
+                                if finding is not None:
+                                    self.finding(*finding)
                 while True:
                     padding = archive.fileobj.read(CHUNK)
                     if not padding:
@@ -696,13 +790,17 @@ class Inspector:
         self.verify_export_closure()
 
 
-def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limits=None, public_comparisons=None):
+def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limits=None, public_comparisons=None,
+                   qualify_public_members=False):
     """Return sanitized receipt; callers must require passed AND inspectionComplete."""
     inspector = Inspector(oci_dir, expected_index_digest, source_sha, tooling_sha, limits or Limits())
     complete, error = False, None
     try:
+        require(type(qualify_public_members) is bool, "invalid_public_member_qualification_mode")
         if public_comparisons is not None:
             inspector.load_public_comparisons(public_comparisons)
+        if qualify_public_members:
+            inspector.enable_public_member_qualification()
         inspector.run()
         complete = True
     except Refusal as exc:
@@ -710,9 +808,14 @@ def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limi
     except (OSError, EOFError, tarfile.TarError, zlib.error, ValueError, TypeError, KeyError,
             AttributeError, RecursionError, OverflowError):
         error = "malformed_or_unreadable_layout"
+    qualification_satisfied = (not inspector.qualify_public_members or
+        all(record["status"] == "matched" and
+            all(inspector.qualified_public_members.get((record["id"], rule), {}).get("memberOccurrences") ==
+                record["matchedMembers"] for rule in record["rules"])
+            for record in inspector.public_comparisons["records"]))
     receipt = {
         "schema": "openclaw.hosted-privacy.v2",
-        "status": "passed" if complete and inspector.finding_total == 0 else "failed",
+        "status": "passed" if complete and inspector.finding_total == 0 and qualification_satisfied else "failed",
         "inspectionComplete": complete,
         "indexDigest": expected_index_digest if isinstance(expected_index_digest, str) and DIGEST.fullmatch(expected_index_digest) else None,
         "sourceSha": source_sha if isinstance(source_sha, str) and SHA.fullmatch(source_sha) else None,
@@ -737,6 +840,11 @@ def inspect_layout(oci_dir, expected_index_digest, source_sha, tooling_sha, limi
         receipt["refusal"] = error
     if inspector.public_comparisons is not None:
         receipt["publicMemberComparisons"] = {**inspector.public_comparisons, "inspectionComplete": complete}
+    if inspector.qualify_public_members:
+        receipt["publicMemberQualification"] = {"schema": "openclaw.public-member-qualification.v1",
+            "sourceSha": inspector.source_sha, "planSha256": inspector.public_comparisons["planSha256"],
+            "inspectionComplete": complete, "status": "satisfied" if complete and qualification_satisfied else "failed",
+            "records": list(inspector.qualified_public_members.values())}
     return receipt
 
 
@@ -748,9 +856,11 @@ def main():
     parser.add_argument("--tooling-sha", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--public-comparisons", help="Optional reviewed public-member comparison manifest; diagnostic only")
+    parser.add_argument("--qualify-public-members", action="store_true",
+                        help="Qualify only the code-pinned public manifest/source and permitted member-body rules")
     args = parser.parse_args()
     result = inspect_layout(args.oci_dir, args.expected_index_digest, args.source_sha, args.tooling_sha,
-                            public_comparisons=args.public_comparisons)
+                            public_comparisons=args.public_comparisons, qualify_public_members=args.qualify_public_members)
     encoded = json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n"
     if len(encoded.encode("utf-8")) > MAX_RECEIPT_BYTES:
         print('{"status":"failed","refusal":"receipt_size_limit"}')
@@ -801,6 +911,15 @@ def main():
             print(json.dumps({"recordType": "public_member_comparisons", "planSha256": comparison["planSha256"],
                               "sourceSha": comparison["sourceSha"], "offset": offset,
                               "items": comparison["records"][offset:offset + 16]}))
+    qualification = result.get("publicMemberQualification")
+    if qualification is not None:
+        print(json.dumps({"recordType": "public_member_qualification_summary",
+                          **{key: value for key, value in qualification.items() if key != "records"},
+                          "recordCount": len(qualification["records"])}))
+        for offset in range(0, len(qualification["records"]), 16):
+            print(json.dumps({"recordType": "qualified_public_members", "planSha256": qualification["planSha256"],
+                              "sourceSha": qualification["sourceSha"], "offset": offset,
+                              "items": qualification["records"][offset:offset + 16]}))
     return 0 if persisted and result["status"] == "passed" else 1
 
 

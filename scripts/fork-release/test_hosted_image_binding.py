@@ -1,6 +1,7 @@
 """Synthetic OCI closure/provenance checks through the actual image verifier."""
 
 import copy
+from datetime import datetime, timedelta, timezone
 import hashlib
 import io
 import json
@@ -210,6 +211,17 @@ class StaticDiagnosticTests(unittest.TestCase):
         self.git("config", "user.name", "Synthetic Fixture")
         self.git("config", "user.email", "fixture@example.invalid")
         (self.source / "package.json").write_text(json.dumps({"version": VERSION}))
+        (self.source / "Dockerfile").write_text(
+            'ARG OPENCLAW_NODE_BOOKWORM_IMAGE="docker.io/library/node:24.22.1-bookworm@sha256:' + "1" * 64 + '"\n'
+            'ARG OPENCLAW_NODE_BOOKWORM_SLIM_IMAGE="docker.io/library/node:24.22.1-bookworm-slim@sha256:' + "2" * 64 + '"\n')
+        (self.source / "packages/markdown-core").mkdir(parents=True)
+        (self.source / "packages/markdown-core/package.json").write_text(json.dumps({
+            "name": "@openclaw/markdown-core", "dependencies": {"markdown-it": "15.0.3"}}))
+        (self.source / "extensions/codex").mkdir(parents=True)
+        (self.source / "extensions/codex/package.json").write_text(json.dumps({
+            "dependencies": {"@openai/codex": "0.160.0"}}))
+        (self.source / "pnpm-lock.yaml").write_text(
+            "snapshots:\n\n  markdown-it@15.0.3:\n    dependencies:\n      argparse: 3.0.3\n")
         (self.source / "first.test.ts").write_text("export const fixture = 1;\n")
         (self.source / "second.test.ts").write_text("export const fixture = 2;\n")
         self.git("add", ".")
@@ -426,6 +438,424 @@ process.on('exit', () => fs.writeFileSync(process.env.STATIC_GROW_METRICS,
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["reason"], "static.input_refused")
         self.assertNotIn(str(self.root), result.stdout)
+
+
+class RetainedGcpQualificationTests(unittest.TestCase):
+    """Real CLI owner, private execution, and OCI checks with inert native transports."""
+
+    git = StaticDiagnosticTests.git
+    digest = staticmethod(StaticDiagnosticTests.digest)
+    inputs = StaticDiagnosticTests.inputs
+
+    @staticmethod
+    def private_json(path, value):
+        path.write_text(json.dumps(value))
+        path.chmod(0o600)
+
+    def setUp(self):
+        StaticDiagnosticTests.setUp(self)
+        origin, _ = self.inputs()
+        self.tooling = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+        self.build = self.root / "original-build"
+        self.build.mkdir(mode=0o700)
+        self.oci.rename(self.build / "oci")
+        self.oci = self.build / "oci"
+        self.private_json(self.build / "build-metadata.json", {"containerimage.digest": origin["indexDigest"]})
+        for name, data in (("build.exit", "0\n"), ("build.log", "synthetic completed build\n")):
+            (self.build / name).write_text(data)
+            (self.build / name).chmod(0o600)
+        self.execution = self.build / "execution.json"
+        self.private_json(self.execution, {
+            "schema": "openclaw.fork-gcp-image-execution.v1", "operationId": "d" * 32,
+            "attempt": "1", "projectNumber": "123", "instanceId": "456", "toolingSha": "c" * 40,
+            "sourceSha": self.sha, "sourceTree": self.tree,
+            "manifestSha256": self.digest(self.manifest), "inventorySha256": self.digest(self.inventory),
+            "indexDigest": origin["indexDigest"], "builtAt": BUILT_AT,
+            "startedAt": "2026-10-23T10:01:00Z", "completedAt": "2026-10-23T10:02:00Z",
+            "buildExitCode": 0, "buildMetadataSha256": self.digest(self.build / "build-metadata.json"),
+            "buildLogSha256": self.digest(self.build / "build.log")})
+        self.resources = self.build / "original-resources.json"
+        self.private_json(self.resources, {"historicalBuildConfig": {"builderMemoryBytes": 8 * 1024 ** 3}})
+        self.state = self.root / "state"
+        self.state.mkdir(mode=0o700)
+        self.base_path = self.state / "base-plan.json"
+        self.base = {
+            "schema": "openclaw.retained-gcp-input.v1", "manifestPath": str(self.manifest),
+            "inventoryPath": str(self.inventory), "sourceDir": str(self.source), "ociDir": str(self.oci),
+            "executionPath": str(self.execution), "originalToolingSha": "c" * 40,
+            "executionSha256": self.digest(self.execution), "inspectionToolingSha": self.tooling}
+        self.private_json(self.base_path, self.base)
+        self.resource_path = self.state / "resource-admission.json"
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        self.resource = {
+            "schema": "openclaw.fork-release-reinspection-resource-admission.v1",
+            "sourceSha": self.sha, "indexDigest": origin["indexDigest"], "inspectionToolingSha": self.tooling,
+            "checkedAt": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "expiresAt": (now + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"), "status": "passed",
+            "checks": {"capacity": "passed", "ownership": "passed", "heavyWorkload": "clear"}}
+        self.private_json(self.resource_path, self.resource)
+        self.plan_path = self.state / "qualify-plan.json"
+        self.output = self.state / "qualification"
+        self.output.mkdir(mode=0o700)
+        self.native_log = self.state / "native-calls.jsonl"
+        # Only the isolated test pretends the installed inspection checkout is
+        # clean; every source Git/preflight and byte verification remains real.
+        # Docker/Skopeo are intercepted before invocation, not replaced by a
+        # production qualification API that could fabricate native success.
+        self.preload = self.state / "native-transport-spy.mjs"
+        self.preload.write_text(r"""
+import cp from 'node:child_process';
+import {createHash} from 'node:crypto';
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
+const execute = cp.execFileSync;
+const open = fs.openSync;
+fs.openSync = function(path, ...args) {
+  if (process.env.RETAINED_FAIL_ADMISSION === 'yes' && String(path).endsWith('/admission.json'))
+    throw new Error('synthetic admission persistence failure');
+  return open(path, ...args);
+};
+const NativeDate = Date;
+let clockOffset = Number(process.env.RETAINED_CLOCK_OFFSET_MS || 0);
+let elapsed = 0;
+Object.defineProperty(performance, 'now', {value: () => elapsed});
+globalThis.Date = class extends NativeDate {
+  constructor(...args) { super(...(args.length ? args : [NativeDate.now() + clockOffset])); }
+  static now() { return NativeDate.now() + clockOffset; }
+};
+const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+Atomics.wait = function(_array, _index, _value, milliseconds) {
+  elapsed += milliseconds;
+  const mode = process.env.RETAINED_RESOURCE_RESPONSE || 'none';
+  if (mode === 'none') return 'timed-out';
+  const root = process.env.RETAINED_OUTPUT + '/resource-refresh';
+  for (const name of fs.readdirSync(root).filter((value) => /^\d\d-request\.json$/.test(value))) {
+    const prefix = root + '/' + name.slice(0, 2);
+    if (fs.existsSync(prefix + '-response.json')) continue;
+    const raw = fs.readFileSync(root + '/' + name), request = JSON.parse(raw);
+    const now = new Date();
+    const stamp = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const resource = {schema:'openclaw.fork-release-reinspection-resource-admission.v1',
+      sourceSha:request.sourceSha,indexDigest:request.indexDigest,inspectionToolingSha:request.inspectionToolingSha,
+      checkedAt:stamp(now),expiresAt:stamp(new Date(now.getTime() + 300000)),status:'passed',
+      checks:{capacity:'passed',ownership:'passed',heavyWorkload:'clear'}};
+    if (mode === 'wrong-source') resource.sourceSha = 'f'.repeat(40);
+    if (mode === 'stale') {
+      resource.checkedAt = stamp(new Date(now.getTime() - 600000));
+      resource.expiresAt = stamp(new Date(now.getTime() - 300000));
+    }
+    const bytes = JSON.stringify(resource);
+    fs.writeFileSync(prefix + '-admission.json', bytes, {flag:'wx',mode:0o600});
+    const response = {schema:'openclaw.retained-resource-response.v1',qualificationId:request.qualificationId,
+      nonce:request.nonce,requestSha256:digest(raw),resourceAdmissionSha256:digest(bytes)};
+    if (mode === 'wrong-hash') response.resourceAdmissionSha256 = 'f'.repeat(64);
+    if (mode === 'replayed') response.nonce = 'f'.repeat(32);
+    if (mode === 'wrong-request') response.requestSha256 = 'f'.repeat(64);
+    fs.writeFileSync(prefix + '-response.json', JSON.stringify(response), {flag:'wx',mode:0o600});
+  }
+  return 'timed-out';
+};
+process.on('exit', () => fs.writeFileSync(process.env.RETAINED_WAIT_METRICS, JSON.stringify({elapsedMs:elapsed})));
+cp.execFileSync = function(command, args, options) {
+  if (command === 'git' && args[0] === '-C' &&
+      fs.realpathSync(args[1]) === fs.realpathSync(process.env.RETAINED_TOOLING_ROOT) && args[2] === 'status') return '';
+  if (command !== 'docker' && command !== 'skopeo') {
+    const result = execute(command, args, options);
+    if (command === 'python3' && args.some((value) => value.endsWith('/preflight.py')))
+      clockOffset += Number(process.env.RETAINED_STATIC_ELAPSED_MS || 0);
+    return result;
+  }
+  fs.appendFileSync(process.env.RETAINED_NATIVE_LOG, JSON.stringify({command,args}) + '\n');
+  if (process.env.RETAINED_NATIVE_FAIL === 'yes') throw new Error('synthetic native transport refused');
+  if (command === 'skopeo') { clockOffset += Number(process.env.RETAINED_IMPORT_ELAPSED_MS || 0); return ''; }
+  if (args[0] === 'image' && args[1] === 'inspect') return process.env.RETAINED_CONFIG_DIGEST + '\n';
+  if (args[0] === 'create') {
+    const plugin = args.includes('/tmp/verify-image-plugins.mjs');
+    if (plugin) clockOffset += Number(process.env.RETAINED_PLUGIN_CREATE_ELAPSED_MS || 0);
+    return (plugin ? 'b' : 'a').repeat(64) + '\n';
+  }
+  if (args[0] === 'start') return args.at(-1) === 'b'.repeat(64) ? fs.readFileSync(process.env.RETAINED_NATIVE_PROOF,'utf8') : '';
+  if (args[0] === 'inspect') return args.includes('{{.State.Running}} {{.State.ExitCode}} {{.State.OOMKilled}}') ? 'false 0 false' : 'false 0';
+  if (args[0] === 'rm') return '';
+  throw new Error('Unexpected synthetic native command');
+};
+syncBuiltinESMExports();
+""")
+        from test_hosted_export import runtime_fixture
+        runtime = runtime_fixture(origin)
+        runtime["expected"].update({
+            "dockerfileSha256": self.digest(self.source / "Dockerfile"),
+            "consumerManifestSha256": self.digest(self.source / "packages/markdown-core/package.json"),
+            "lockfileSha256": self.digest(self.source / "pnpm-lock.yaml")})
+        self.proof = self.state / "native-proof.json"
+        self.private_json(self.proof, {"runtime": runtime, "plugins": [
+            {"id": "codex", "package": "@openclaw/codex", "version": VERSION,
+             "codexRuntime": {"cliVersion": "0.160.0", "packageVersion": "0.160.0",
+                              "initializeVersion": "0.160.0", "initialized": True, "shutdown": "exited"}},
+            {"id": "workboard", "package": "@openclaw/workboard", "version": VERSION,
+             "workboardRuntime": {"worker": "sqlite", "roundTrip": True, "closed": True}}]})
+        self.env.update(NODE_OPTIONS="--import " + str(self.preload), RETAINED_TOOLING_ROOT=str(ROOT),
+                        RETAINED_NATIVE_LOG=str(self.native_log), RETAINED_NATIVE_PROOF=str(self.proof),
+                        RETAINED_CONFIG_DIGEST=origin["configDigest"], RETAINED_OUTPUT=str(self.output),
+                        RETAINED_WAIT_METRICS=str(self.state / "wait-metrics.json"))
+        # There is deliberately no fabricated hosted producer environment.
+        for key in tuple(self.env):
+            if key.startswith("GITHUB_"):
+                del self.env[key]
+        self.set_privacy()
+
+    def set_privacy(self, **changes):
+        index = json.loads(self.execution.read_text())["indexDigest"]
+        scan = privacy.inspect_layout(self.oci, index, self.sha, self.tooling)
+        self.private_json(self.privacy, {**scan, **changes})
+        self.plan = {**self.base, "schema": "openclaw.retained-gcp-qualification.v1",
+                     "privacyPath": str(self.privacy), "privacySha256": self.digest(self.privacy),
+                     "resourceAdmissionPath": str(self.resource_path),
+                     "resourceAdmissionSha256": self.digest(self.resource_path),
+                     "originalResourcesPath": str(self.resources), "originalResourcesSha256": self.digest(self.resources)}
+        self.private_json(self.plan_path, self.plan)
+
+    def run_owner(self, command="qualify-retained-gcp", plan=None, output=None):
+        env = dict(self.env)
+        if command == "qualify-retained-gcp":
+            env["RETAINED_OUTPUT"] = str(output or self.output)
+        result = subprocess.run(["node", str(ROOT / "scripts/fork-release/image.mjs"), command,
+                                 str(plan or self.plan_path), str(output or self.output)],
+                                cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
+        self.assertFalse(self.marker.exists(), "A real native transport was invoked")
+        self.assertEqual(result.stderr, "")
+        self.assertNotIn(str(self.root), result.stdout)
+        return result, json.loads(result.stdout)
+
+    def test_original_capture_and_reinspection_preserve_producer_and_release_handoff(self):
+        capture = self.state / "captured.json"
+        result, context = self.run_owner("capture-retained-gcp-origin", self.base_path, capture)
+        self.assertEqual(result.returncode, 0, context)
+        self.assertFalse(self.native_log.exists())
+        self.assertEqual(context["producer"]["toolingSha"], "c" * 40)
+        self.assertEqual(context["executionSha256"], self.digest(self.execution))
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 0, report)
+        self.assertTrue(report["qualified"])
+        receipt = self.output / "receipt.json"
+        value = json.loads(receipt.read_text())
+        self.assertEqual(value["builtAt"], BUILT_AT)
+        self.assertEqual(value["producer"], context["producer"])
+        self.assertEqual(value["reinspection"]["inspectionToolingSha"], self.tooling)
+        self.assertNotEqual(value["producer"]["toolingSha"], self.tooling)
+        calls = self.native_log.read_bytes()
+        self.env["RETAINED_CLOCK_OFFSET_MS"] = "600000"
+        verified, proof = self.run_owner("verify-retained-gcp", output=receipt)
+        self.assertEqual(verified.returncode, 0, proof)
+        self.assertEqual(self.native_log.read_bytes(), calls, "Verification re-executed native code")
+        import release
+        self.assertEqual(release.receipt_at(receipt, json.loads(self.manifest.read_text()),
+                                           self.digest(self.manifest), self.digest(self.inventory)), value)
+        with self.assertRaises(Exception):
+            release.receipt_at(self.output / "native.json", json.loads(self.manifest.read_text()),
+                               self.digest(self.manifest), self.digest(self.inventory))
+        # Completed verification is historical: resource freshness is checked at
+        # recorded guard times, not made into a new host admission claim.
+        self.assertFalse(proof["productionAuthorized"])
+
+    def test_findings_still_collect_static_without_native_or_admission(self):
+        scan = json.loads(self.privacy.read_text())
+        self.set_privacy(status="failed", findings=[{"rule": "synthetic"}],
+                         findingSummary={**scan["findingSummary"], "total": 1})
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["static"], "passed", report)
+        self.assertEqual(report["privacy"], "failed")
+        self.assertEqual(report["native"], "blocked")
+        self.assertTrue((self.output / "static.json").exists())
+        self.assertFalse(self.native_log.exists())
+        for name in ("native-attempt.json", "receipt.json", "admission.json"):
+            self.assertFalse((self.output / name).exists(), name)
+
+    def test_incomplete_privacy_blocks_static_and_native(self):
+        self.set_privacy(inspectionComplete=False)
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["static"], "blocked")
+        self.assertFalse(self.native_log.exists())
+        self.assertFalse((self.output / "receipt.json").exists())
+
+    def test_wrong_original_pin_or_log_is_refused_without_native(self):
+        for mutation in ("tooling", "execution", "log", "source"):
+            with self.subTest(mutation=mutation):
+                value = dict(self.base)
+                if mutation == "tooling": value["originalToolingSha"] = "f" * 40
+                elif mutation == "execution": value["executionSha256"] = "f" * 64
+                elif mutation == "log": (self.build / "build.log").write_text("changed")
+                else: (self.source / "untracked").write_text("changed")
+                self.private_json(self.base_path, value)
+                result, report = self.run_owner("capture-retained-gcp-origin", self.base_path,
+                                                self.state / (mutation + ".json"))
+                self.assertEqual(result.returncode, 1, report)
+                self.assertFalse(self.native_log.exists())
+                (self.build / "build.log").write_text("synthetic completed build\n")
+                if (self.source / "untracked").exists(): (self.source / "untracked").unlink()
+
+    def test_stale_resource_after_static_blocks_native(self):
+        self.resource.update(checkedAt="2026-10-23T10:01:00Z", expiresAt="2026-10-23T10:02:00Z")
+        self.private_json(self.resource_path, self.resource)
+        self.set_privacy()
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["static"], "passed", report)
+        self.assertEqual(report["privacy"], "passed")
+        self.assertFalse(self.native_log.exists())
+        self.assertFalse((self.output / "native-attempt.json").exists())
+
+    def test_native_failure_marks_uncertainty_and_cannot_rerun(self):
+        self.env["RETAINED_NATIVE_FAIL"] = "yes"
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue((self.output / "native-attempt.json").exists(), report)
+        calls = self.native_log.read_bytes()
+        self.assertFalse((self.output / "receipt.json").exists())
+        self.assertFalse((self.output / "admission.json").exists())
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.native_log.read_bytes(), calls)
+
+    def test_import_expiry_consumes_fresh_owner_response_without_reimport_and_verifies_history(self):
+        self.env.update(RETAINED_IMPORT_ELAPSED_MS="301000", RETAINED_RESOURCE_RESPONSE="fresh")
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 0, report)
+        calls = self.native_log.read_bytes()
+        entries = [json.loads(line) for line in calls.splitlines()]
+        self.assertEqual(sum(entry["command"] == "skopeo" for entry in entries), 1)
+        admission = json.loads((self.output / "admission.json").read_text())
+        self.assertEqual(len(admission["resourceRefreshes"]), 1)
+        self.assertEqual([entry["refreshSequence"] for entry in admission["resourceChecks"]], [0, 1, 1])
+        request = json.loads((self.output / "resource-refresh/01-request.json").read_text())
+        self.assertEqual(request["boundary"], "workspace")
+        self.assertEqual(request["originalOperationId"], "d" * 32)
+        self.assertEqual(request["qualificationId"], admission["qualificationId"])
+        capture = json.loads((self.output / "native-execution.json").read_text())
+        self.assertEqual(capture["resourceAdmissionSha256"], admission["resourceRefreshes"][0]["resourceAdmissionSha256"])
+        self.assertNotEqual(capture["resourceAdmissionSha256"], self.plan["resourceAdmissionSha256"])
+        self.env["RETAINED_CLOCK_OFFSET_MS"] = "900000"
+        result, verified = self.run_owner("verify-retained-gcp", output=self.output / "receipt.json")
+        self.assertEqual(result.returncode, 0, verified)
+        self.assertEqual(self.native_log.read_bytes(), calls)
+        (self.output / "resource-refresh/01-response.json").write_text("{}")
+        result, verified = self.run_owner("verify-retained-gcp", output=self.output / "receipt.json")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.native_log.read_bytes(), calls)
+
+    def test_static_expiry_consumes_fresh_owner_response_before_single_import(self):
+        self.env.update(RETAINED_STATIC_ELAPSED_MS="301000", RETAINED_RESOURCE_RESPONSE="fresh")
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 0, report)
+        request = json.loads((self.output / "resource-refresh/01-request.json").read_text())
+        self.assertEqual(request["boundary"], "import")
+        calls = [json.loads(line) for line in self.native_log.read_text().splitlines()]
+        self.assertEqual(sum(entry["command"] == "skopeo" for entry in calls), 1)
+        self.assertEqual(len(json.loads((self.output / "admission.json").read_text())["resourceRefreshes"]), 1)
+
+    def test_wrong_stale_hash_or_replayed_refresh_never_starts_native(self):
+        self.env["RETAINED_IMPORT_ELAPSED_MS"] = "301000"
+        for index, mode in enumerate(("wrong-source", "stale", "wrong-hash", "replayed", "wrong-request")):
+            with self.subTest(mode=mode):
+                self.env["RETAINED_RESOURCE_RESPONSE"] = mode
+                target = self.state / ("refresh-" + str(index))
+                target.mkdir(mode=0o700)
+                result, report = self.run_owner(output=target)
+                self.assertEqual(result.returncode, 1, report)
+                calls = [json.loads(line) for line in self.native_log.read_text().splitlines()]
+                self.assertFalse(any(entry["command"] == "docker" and entry["args"][0] in ("start", "run")
+                                     for entry in calls))
+                self.assertEqual(sum(entry["command"] == "skopeo" for entry in calls), index + 1)
+                self.assertFalse((target / "receipt.json").exists())
+                self.assertFalse((target / "admission.json").exists())
+    def test_import_outliving_admission_never_starts_native_and_cleans_owned_container(self):
+        self.env["RETAINED_IMPORT_ELAPSED_MS"] = "301000"
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["static"], "passed", report)
+        calls = [json.loads(line) for line in self.native_log.read_text().splitlines()]
+        self.assertEqual(calls[0]["command"], "skopeo")
+        self.assertFalse(any(entry["command"] == "docker" and entry["args"][0] in ("start", "run")
+                             for entry in calls), "Native execution occurred after admission expiry")
+        self.assertEqual(calls[-1], {"command": "docker", "args": ["rm", "--force", "a" * 64]})
+        self.assertFalse((self.output / "receipt.json").exists())
+        self.assertFalse((self.output / "admission.json").exists())
+        self.assertEqual(json.loads((self.state / "wait-metrics.json").read_text())["elapsedMs"], 60000)
+
+    def test_failed_admission_persistence_cannot_publish_consumable_native_facts(self):
+        self.env["RETAINED_FAIL_ADMISSION"] = "yes"
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1)
+        facts = json.loads((self.output / "native.json").read_text())
+        self.assertEqual(facts["schema"], "openclaw.retained-native-facts.v1")
+        self.assertFalse(facts["promotable"])
+        self.assertFalse((self.output / "receipt.json").exists())
+        self.assertFalse((self.output / "admission.json").exists())
+
+    def test_plugin_create_outliving_admission_never_starts_plugin_and_cleans_owned_container(self):
+        self.env["RETAINED_PLUGIN_CREATE_ELAPSED_MS"] = "301000"
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1)
+        calls = [json.loads(line) for line in self.native_log.read_text().splitlines()]
+        starts = [entry["args"][-1] for entry in calls if entry["command"] == "docker" and entry["args"][0] == "start"]
+        self.assertEqual(starts, ["a" * 64])
+        self.assertEqual(calls[-1], {"command": "docker", "args": ["rm", "--force", "b" * 64]})
+        self.assertFalse((self.output / "receipt.json").exists())
+
+    def test_resource_pin_identity_lifetime_and_unknown_checks_fail_closed(self):
+        for index, change in enumerate(({"sourceSha": OTHER}, {"indexDigest": "sha256:" + "f" * 64},
+                                        {"inspectionToolingSha": OTHER},
+                                        {"expiresAt": "2099-01-01T00:00:00Z"},
+                                        {"checks": {**self.resource["checks"], "extra": "passed"}})):
+            with self.subTest(change=change):
+                self.private_json(self.resource_path, {**self.resource, **change})
+                self.set_privacy()
+                target = self.state / ("resource-case-" + str(index))
+                target.mkdir(mode=0o700)
+                result, report = self.run_owner(output=target)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(report["privacy"], "passed", report)
+                self.assertEqual(report["static"], "passed", report)
+                self.assertFalse(self.native_log.exists())
+
+
+    def test_verification_rejects_changed_evidence_and_missing_commit_record(self):
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 0, report)
+        calls = self.native_log.read_bytes()
+        for name in ("admission.json", "native-attempt.json", "native-execution.json", "native.json", "static.json"):
+            with self.subTest(name=name):
+                path = self.output / name
+                original = path.read_bytes()
+                path.write_text("{}")
+                result, report = self.run_owner("verify-retained-gcp", output=self.output / "receipt.json")
+                self.assertEqual(result.returncode, 1, report)
+                path.write_bytes(original)
+        self.assertEqual(self.native_log.read_bytes(), calls)
+
+    def test_verification_rejects_orphans_and_unbound_root_metadata_changes(self):
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 0, report)
+        calls = self.native_log.read_bytes()
+        for relative in ("unexpected-file", "blobs/sha256/" + "f" * 64, "index.json", "oci-layout"):
+            with self.subTest(relative=relative):
+                path = self.oci / relative
+                original = path.read_bytes() if path.exists() else None
+                if original is None:
+                    path.write_text("unexpected")
+                else:
+                    value = json.loads(original)
+                    value["unboundMetadata"] = "public changed metadata"
+                    path.write_text(json.dumps(value))
+                result, report = self.run_owner("verify-retained-gcp", output=self.output / "receipt.json")
+                self.assertEqual(result.returncode, 1, report)
+                if original is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(original)
+        self.assertEqual(self.native_log.read_bytes(), calls)
 
 
 if __name__ == "__main__":

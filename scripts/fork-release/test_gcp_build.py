@@ -417,6 +417,24 @@ class BuildTests(unittest.TestCase):
                 build.prepare(self.root / "private", fresh, self.manifest,
                               self.inventory, self.source, self.tooling)
 
+    def test_security_successor_qualification_binds_exact_source_and_tree(self):
+        samples = self.qualification_fixture()
+        self.config.update(sourceSha=build.SECURITY_QUALIFICATION_SOURCE_SHA,
+                           sourceTree=build.SECURITY_QUALIFICATION_SOURCE_TREE)
+        bound = build.bind_adaptive_selection(self.config, samples)
+        self.assertEqual(bound["limits"]["minStartMemoryAvailableBytes"], 10 << 30)
+        self.assertEqual(bound["limits"]["minMemoryAvailableBytes"], 2 << 30)
+        self.assertEqual(bound["buildTuning"], {"tsdownMaxOldSpaceMb": 6144})
+        build.validate_config(bound)
+        self.config["sourceTree"] = "f" * 40
+        self.assertFalse(build.is_selectable_qualification_source(self.config))
+        self.assertIsNone(build.select_profile(self.config, samples))
+        self.config.update(sourceSha="e" * 40, sourceTree=build.SECURITY_QUALIFICATION_SOURCE_TREE)
+        self.assertFalse(build.is_selectable_qualification_source(self.config))
+        self.assertIsNone(build.select_profile(self.config, samples))
+        self.assertTrue(build.is_selectable_qualification_source({
+            "sourceSha": build.QUALIFICATION_SOURCE_SHA, "sourceTree": "f" * 40}))
+
     def test_qualification_ten_gib_start_and_two_gib_runtime_boundaries(self):
         samples = self.qualification_fixture()
         with patch.object(build, "QUALIFICATION_SOURCE_SHA", self.config["sourceSha"]):

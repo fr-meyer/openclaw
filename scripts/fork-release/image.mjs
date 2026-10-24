@@ -1,22 +1,27 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   chmodSync,
   closeSync,
   constants,
   fstatSync,
+  fsyncSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readFileSync,
+  readdirSync,
   readSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import {
   verifyDockerReleaseLayout,
   smokeDockerReleaseImage,
@@ -74,9 +79,14 @@ export function inspectLoadedPlugins(
   imageReference,
   codexVersion,
   runtimeExpectations,
+  beforeNative,
 ) {
   need(DIGEST.test(imageReference), "Plugin inspection requires an immutable image digest");
   need(/^\d+\.\d+\.\d+$/u.test(codexVersion), "Missing exact source-pinned Codex version");
+  need(
+    beforeNative === undefined || typeof beforeNative === "function",
+    "Invalid owned plugin admission callback",
+  );
   const verifierSource = fileURLToPath(new URL("verify-image-plugins.mjs", import.meta.url));
   const verifierRoot = mkdtempSync(join(tmpdir(), "openclaw-image-verifier-"));
   try {
@@ -141,6 +151,7 @@ export function inspectLoadedPlugins(
     ).trim();
     need(/^[0-9a-f]{64}$/u.test(container), "Invalid owned plugin-check container identity");
     try {
+      beforeNative?.();
       const output = execFileSync("docker", ["start", "--attach", container], {
         encoding: "utf8",
         timeout: 120_000,
@@ -456,7 +467,1149 @@ export async function inspectLayoutStatic({
   return report;
 }
 
+const RETAINED_BASE_FIELDS = [
+  "schema",
+  "manifestPath",
+  "inventoryPath",
+  "sourceDir",
+  "ociDir",
+  "executionPath",
+  "originalToolingSha",
+  "executionSha256",
+  "inspectionToolingSha",
+];
+const RETAINED_QUALIFICATION_FIELDS = [
+  "privacyPath",
+  "privacySha256",
+  "resourceAdmissionPath",
+  "resourceAdmissionSha256",
+  "originalResourcesPath",
+  "originalResourcesSha256",
+];
+const HEX = /^[0-9a-f]{64}$/u;
+const nowUtc = () => new Date().toISOString().replace(/\.\d{3}Z$/u, "Z");
+const canonicalUtc = (value) =>
+  typeof value === "string" &&
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u.test(value) &&
+  Number.isFinite(Date.parse(value)) &&
+  new Date(value).toISOString() === value.replace("Z", ".000Z");
+const same = isDeepStrictEqual;
+const closedFields = (value, fields) =>
+  value &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  Object.keys(value).toSorted().join(",") === fields.toSorted().join(",");
+
+function privateOwned(path, directory = false) {
+  const info = lstatSync(path);
+  need(
+    (directory ? info.isDirectory() : info.isFile()) &&
+      !info.isSymbolicLink() &&
+      info.uid === process.getuid() &&
+      (info.mode & 0o077) === 0,
+    "retained.private_input_refused",
+  );
+  need(
+    isAbsolute(path) && resolve(path) === path && realpathSync(path) === path,
+    "retained.private_input_refused",
+  );
+}
+
+function separate(left, right) {
+  for (const [parent, child] of [
+    [left, right],
+    [right, left],
+  ]) {
+    const path = relative(parent, child);
+    need(path === ".." || path.startsWith("../"), "retained.paths_overlap");
+  }
+}
+
+function writeRetained(path, value) {
+  const descriptor = openSync(
+    path,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+    0o600,
+  );
+  try {
+    writeFileSync(descriptor, `${JSON.stringify(value, null, 2)}\n`);
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  const directory = openSync(dirname(path), constants.O_RDONLY | constants.O_DIRECTORY);
+  try {
+    fsyncSync(directory);
+  } finally {
+    closeSync(directory);
+  }
+}
+
+function retainedPlan(planPath, qualification) {
+  privateOwned(planPath);
+  const plan = diagnosticJson(planPath).value;
+  const fields = [...RETAINED_BASE_FIELDS, ...(qualification ? RETAINED_QUALIFICATION_FIELDS : [])];
+  need(
+    plan &&
+      typeof plan === "object" &&
+      !Array.isArray(plan) &&
+      Object.keys(plan).toSorted().join(",") === fields.toSorted().join(",") &&
+      plan.schema ===
+        (qualification
+          ? "openclaw.retained-gcp-qualification.v1"
+          : "openclaw.retained-gcp-input.v1"),
+    "retained.plan_refused",
+  );
+  for (const key of fields.filter((key) => key.endsWith("Path") || key.endsWith("Dir"))) {
+    need(
+      typeof plan[key] === "string" && isAbsolute(plan[key]) && resolve(plan[key]) === plan[key],
+      "retained.plan_refused",
+    );
+  }
+  for (const path of [
+    planPath,
+    ...fields.filter((key) => key.endsWith("Path")).map((key) => plan[key]),
+  ]) {
+    separate(path, plan.sourceDir);
+    separate(path, plan.ociDir);
+  }
+  need(
+    SHA.test(plan.originalToolingSha) &&
+      SHA.test(plan.inspectionToolingSha) &&
+      HEX.test(plan.executionSha256) &&
+      (!qualification ||
+        RETAINED_QUALIFICATION_FIELDS.filter((key) => key.endsWith("Sha256")).every((key) =>
+          HEX.test(plan[key]),
+        )),
+    "retained.plan_refused",
+  );
+  return plan;
+}
+
+function inspectionTooling(expected) {
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  assertCleanSourceCheckout(root);
+  const actual = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  need(actual === expected, "retained.inspection_tooling_changed");
+  return actual;
+}
+
+function authenticatedRetainedContext(plan) {
+  inspectionTooling(plan.inspectionToolingSha);
+  const manifestInput = diagnosticJson(plan.manifestPath),
+    inventoryInput = diagnosticJson(plan.inventoryPath);
+  const manifest = validateManifestValue(manifestInput.value);
+  need(
+    realpathSync(plan.sourceDir) === plan.sourceDir && realpathSync(plan.ociDir) === plan.ociDir,
+    "retained.plan_refused",
+  );
+  assertCleanSourceCheckout(plan.sourceDir);
+  need(
+    execFileSync("git", ["-C", plan.sourceDir, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim() === manifest.source.commit &&
+      execFileSync("git", ["-C", plan.sourceDir, "rev-parse", "HEAD^{tree}"], {
+        encoding: "utf8",
+      }).trim() === manifest.source.tree,
+    "retained.source_changed",
+  );
+  if (manifest.review) {
+    need(
+      SHA.test(manifest.review.baseSha) && HEX.test(manifest.review.changedDiffSha256),
+      "retained.review_changed",
+    );
+    const diff = execFileSync("git", [
+      "-C",
+      plan.sourceDir,
+      "diff",
+      "--binary",
+      "--full-index",
+      "--no-ext-diff",
+      manifest.review.baseSha,
+      manifest.source.commit,
+    ]);
+    need(
+      createHash("sha256").update(diff).digest("hex") === manifest.review.changedDiffSha256,
+      "retained.review_changed",
+    );
+  }
+  const execution = diagnosticJson(plan.executionPath);
+  need(
+    execution.sha256 === plan.executionSha256 && DIGEST.test(execution.value.indexDigest),
+    "retained.execution_changed",
+  );
+  need(
+    plan.ociDir === join(dirname(realpathSync(plan.executionPath)), "oci"),
+    "retained.oci_not_original",
+  );
+  const { producer, builtAt } = readGcpExecution(plan.executionPath, {
+    sourceDir: plan.sourceDir,
+    sourceSha: manifest.source.commit,
+    sourceTree: manifest.source.tree,
+    toolingSha: plan.originalToolingSha,
+    manifestSha256: manifestInput.sha256,
+    inventorySha256: inventoryInput.sha256,
+    indexDigest: execution.value.indexDigest,
+  });
+  need(producer.executionSha256 === plan.executionSha256, "retained.execution_changed");
+  return {
+    manifest,
+    context: {
+      schema: "openclaw.retained-gcp-build-context.v1",
+      status: "captured",
+      qualified: false,
+      productionAuthorized: false,
+      repository: manifest.repository,
+      sourceSha: manifest.source.commit,
+      sourceTree: manifest.source.tree,
+      manifestSha256: manifestInput.sha256,
+      inventorySha256: inventoryInput.sha256,
+      architecture: manifest.image.architecture,
+      version: diagnosticJson(join(plan.sourceDir, "package.json")).value.version,
+      builtAt,
+      indexDigest: execution.value.indexDigest,
+      producer,
+      executionSha256: plan.executionSha256,
+      inspectionToolingSha: plan.inspectionToolingSha,
+    },
+  };
+}
+
+export function captureRetainedGcpOrigin(planPath, outputPath) {
+  const plan = retainedPlan(planPath, false),
+    { context } = authenticatedRetainedContext(plan);
+  privateOwned(dirname(outputPath), true);
+  separate(dirname(outputPath), plan.sourceDir);
+  separate(dirname(outputPath), plan.ociDir);
+  writeRetained(outputPath, context);
+  return context;
+}
+
+function retainedPrivacy(plan, context) {
+  privateOwned(plan.privacyPath);
+  const input = diagnosticJson(plan.privacyPath);
+  need(
+    input.sha256 === plan.privacySha256 &&
+      input.value.sourceSha === context.sourceSha &&
+      input.value.toolingSha === plan.inspectionToolingSha &&
+      input.value.indexDigest === context.indexDigest &&
+      [input.value.imageDigest, input.value.configDigest].every(
+        (value) => typeof value === "string" && DIGEST.test(value),
+      ),
+    "retained.privacy_changed",
+  );
+  return input.value;
+}
+
+function qualifiedMemberReportHash(scan) {
+  // This hash names the qualification subreports; the separate privacy hash
+  // binds their original serialized bytes and the full traversal evidence.
+  return Object.hasOwn(scan, "publicMemberQualification")
+    ? createHash("sha256")
+        .update(
+          JSON.stringify({
+            comparisons: scan.publicMemberComparisons,
+            qualification: scan.publicMemberQualification,
+          }),
+        )
+        .digest("hex")
+    : null;
+}
+
+function requireRetainedCleanPrivacy(plan, context) {
+  const output = execFileSync(
+    "python3",
+    [
+      fileURLToPath(new URL("hosted_export.py", import.meta.url)),
+      "check-privacy",
+      "--privacy",
+      plan.privacyPath,
+      "--sha256",
+      plan.privacySha256,
+      "--source-sha",
+      context.sourceSha,
+      "--tooling-sha",
+      plan.inspectionToolingSha,
+      "--index-digest",
+      context.indexDigest,
+      "--oci",
+      plan.ociDir,
+    ],
+    { encoding: "utf8", stdio: "pipe", timeout: 600_000, maxBuffer: 64 * 1024 },
+  );
+  const proof = JSON.parse(output);
+  need(
+    proof.status === "passed" &&
+      proof.privacyReceiptSha256 === plan.privacySha256 &&
+      HEX.test(proof.ociClosureSha256),
+    "retained.privacy_closure_refused",
+  );
+  return proof.ociClosureSha256;
+}
+
+function resourceRecord(
+  plan,
+  context,
+  evidence = { path: plan.resourceAdmissionPath, sha256: plan.resourceAdmissionSha256 },
+) {
+  privateOwned(evidence.path);
+  const input = diagnosticJson(evidence.path),
+    value = input.value;
+  need(
+    input.sha256 === evidence.sha256 &&
+      value &&
+      typeof value === "object" &&
+      Object.keys(value).toSorted().join(",") ===
+        [
+          "schema",
+          "sourceSha",
+          "indexDigest",
+          "inspectionToolingSha",
+          "checkedAt",
+          "expiresAt",
+          "status",
+          "checks",
+        ]
+          .toSorted()
+          .join(",") &&
+      value.schema === "openclaw.fork-release-reinspection-resource-admission.v1" &&
+      value.status === "passed" &&
+      value.sourceSha === context.sourceSha &&
+      value.indexDigest === context.indexDigest &&
+      value.inspectionToolingSha === plan.inspectionToolingSha &&
+      same(value.checks, { capacity: "passed", ownership: "passed", heavyWorkload: "clear" }) &&
+      canonicalUtc(value.checkedAt) &&
+      canonicalUtc(value.expiresAt) &&
+      Date.parse(value.expiresAt) - Date.parse(value.checkedAt) > 0 &&
+      Date.parse(value.expiresAt) - Date.parse(value.checkedAt) <= 300_000,
+    "retained.resource_admission_refused",
+  );
+  return input;
+}
+
+function resourceAdmission(plan, context, at = nowUtc(), evidence) {
+  const { value } = resourceRecord(plan, context, evidence);
+  need(
+    canonicalUtc(at) && value.checkedAt <= at && at <= value.expiresAt,
+    "retained.resource_admission_refused",
+  );
+  return at;
+}
+
+const RESOURCE_BOUNDARIES = ["import", "workspace", "plugins"];
+const resourceEvidenceHash = (checks, refreshes) =>
+  createHash("sha256").update(JSON.stringify({ checks, refreshes })).digest("hex");
+const refreshPaths = (directory, sequence) => {
+  const root = join(directory, "resource-refresh"),
+    prefix = String(sequence).padStart(2, "0");
+  return {
+    root,
+    request: join(root, `${prefix}-request.json`),
+    response: join(root, `${prefix}-response.json`),
+    admission: join(root, `${prefix}-admission.json`),
+  };
+};
+
+function readResourceRefresh(plan, context, directory, qualificationId, entry) {
+  need(
+    closedFields(entry, [
+      "sequence",
+      "requestSha256",
+      "responseSha256",
+      "resourceAdmissionSha256",
+    ]) &&
+      Number.isSafeInteger(entry.sequence) &&
+      entry.sequence >= 1 &&
+      entry.sequence <= 3 &&
+      [entry.requestSha256, entry.responseSha256, entry.resourceAdmissionSha256].every((value) =>
+        HEX.test(value),
+      ),
+    "retained.resource_refresh_refused",
+  );
+  const paths = refreshPaths(directory, entry.sequence);
+  privateOwned(paths.root, true);
+  privateOwned(paths.request);
+  privateOwned(paths.response);
+  const request = diagnosticJson(paths.request),
+    response = diagnosticJson(paths.response);
+  need(
+    request.sha256 === entry.requestSha256 &&
+      response.sha256 === entry.responseSha256 &&
+      closedFields(request.value, [
+        "schema",
+        "qualificationId",
+        "originalOperationId",
+        "nonce",
+        "boundary",
+        "sourceSha",
+        "indexDigest",
+        "inspectionToolingSha",
+        "requestedAt",
+      ]) &&
+      request.value.schema === "openclaw.retained-resource-request.v1" &&
+      request.value.qualificationId === qualificationId &&
+      request.value.originalOperationId === context.producer.operationId &&
+      /^[0-9a-f]{32}$/u.test(request.value.nonce) &&
+      RESOURCE_BOUNDARIES.includes(request.value.boundary) &&
+      request.value.sourceSha === context.sourceSha &&
+      request.value.indexDigest === context.indexDigest &&
+      request.value.inspectionToolingSha === plan.inspectionToolingSha &&
+      canonicalUtc(request.value.requestedAt) &&
+      closedFields(response.value, [
+        "schema",
+        "qualificationId",
+        "nonce",
+        "requestSha256",
+        "resourceAdmissionSha256",
+      ]) &&
+      response.value.schema === "openclaw.retained-resource-response.v1" &&
+      response.value.qualificationId === qualificationId &&
+      response.value.nonce === request.value.nonce &&
+      response.value.requestSha256 === request.sha256 &&
+      response.value.resourceAdmissionSha256 === entry.resourceAdmissionSha256,
+    "retained.resource_refresh_refused",
+  );
+  const evidence = { path: paths.admission, sha256: entry.resourceAdmissionSha256 };
+  const resource = resourceRecord(plan, context, evidence);
+  need(resource.value.checkedAt >= request.value.requestedAt, "retained.resource_refresh_refused");
+  return { request: request.value, evidence };
+}
+
+function freshResourceBoundary(session, boundary) {
+  const { plan, context, directory, qualificationId } = session;
+  need(RESOURCE_BOUNDARIES[session.checks.length] === boundary, "retained.resource_order_refused");
+  let at = nowUtc(),
+    record = resourceRecord(plan, context, session.current);
+  need(record.value.checkedAt <= at, "retained.resource_admission_refused");
+  if (record.value.expiresAt < at) {
+    const sequence = session.refreshes.length + 1,
+      paths = refreshPaths(directory, sequence);
+    if (sequence === 1) mkdirSync(paths.root, { mode: 0o700 });
+    privateOwned(paths.root, true);
+    const request = {
+      schema: "openclaw.retained-resource-request.v1",
+      qualificationId,
+      originalOperationId: context.producer.operationId,
+      nonce: randomBytes(16).toString("hex"),
+      boundary,
+      sourceSha: context.sourceSha,
+      indexDigest: context.indexDigest,
+      inspectionToolingSha: plan.inspectionToolingSha,
+      requestedAt: at,
+    };
+    writeRetained(paths.request, request);
+    const requestSha256 = hash(paths.request);
+    const deadline = performance.now() + 60_000,
+      pause = new Int32Array(new SharedArrayBuffer(4));
+    while (!lstatMaybe(paths.response) && performance.now() < deadline) {
+      Atomics.wait(pause, 0, 0, Math.min(250, Math.max(0, deadline - performance.now())));
+    }
+    need(
+      lstatMaybe(paths.response) && performance.now() <= deadline,
+      "retained.resource_refresh_timeout",
+    );
+    privateOwned(paths.response);
+    const response = diagnosticJson(paths.response);
+    const entry = {
+      sequence,
+      requestSha256,
+      responseSha256: response.sha256,
+      resourceAdmissionSha256: response.value.resourceAdmissionSha256,
+    };
+    const refreshed = readResourceRefresh(plan, context, directory, qualificationId, entry);
+    at = nowUtc();
+    resourceAdmission(plan, context, at, refreshed.evidence);
+    session.current = refreshed.evidence;
+    session.refreshes.push(entry);
+  } else {
+    resourceAdmission(plan, context, at, session.current);
+  }
+  session.checks.push({
+    boundary,
+    checkedAt: at,
+    resourceAdmissionSha256: session.current.sha256,
+    refreshSequence: session.refreshes.length,
+  });
+}
+
+function verifyResourceHistory(plan, context, directory, admission) {
+  need(
+    /^[0-9a-f]{32}$/u.test(admission.qualificationId) &&
+      Array.isArray(admission.resourceRefreshes) &&
+      admission.resourceRefreshes.length <= 3 &&
+      Array.isArray(admission.resourceChecks) &&
+      admission.resourceChecks.length === 3,
+    "retained.resource_history_refused",
+  );
+  resourceRecord(plan, context);
+  const refreshes = admission.resourceRefreshes.map((entry, index) => {
+    need(entry.sequence === index + 1, "retained.resource_history_refused");
+    return readResourceRefresh(plan, context, directory, admission.qualificationId, entry);
+  });
+  need(
+    new Set(refreshes.map((entry) => entry.request.nonce)).size === refreshes.length,
+    "retained.resource_history_refused",
+  );
+  let previousSequence = 0;
+  const used = new Set();
+  admission.resourceChecks.forEach((check, index) => {
+    need(
+      closedFields(check, [
+        "boundary",
+        "checkedAt",
+        "resourceAdmissionSha256",
+        "refreshSequence",
+      ]) &&
+        check.boundary === RESOURCE_BOUNDARIES[index] &&
+        canonicalUtc(check.checkedAt) &&
+        admission.startedAt <= check.checkedAt &&
+        check.checkedAt <= admission.completedAt &&
+        (index === 0 || admission.resourceChecks[index - 1].checkedAt <= check.checkedAt) &&
+        Number.isSafeInteger(check.refreshSequence) &&
+        check.refreshSequence >= previousSequence &&
+        check.refreshSequence <= previousSequence + 1 &&
+        check.refreshSequence <= refreshes.length,
+      "retained.resource_history_refused",
+    );
+    const refreshed = check.refreshSequence === 0 ? null : refreshes[check.refreshSequence - 1];
+    const evidence = refreshed?.evidence ?? {
+      path: plan.resourceAdmissionPath,
+      sha256: plan.resourceAdmissionSha256,
+    };
+    if (refreshed) {
+      need(
+        admission.startedAt <= refreshed.request.requestedAt &&
+          refreshed.request.requestedAt <= check.checkedAt,
+        "retained.resource_history_refused",
+      );
+      if (!used.has(check.refreshSequence))
+        need(refreshed.request.boundary === check.boundary, "retained.resource_history_refused");
+      used.add(check.refreshSequence);
+    }
+    need(check.resourceAdmissionSha256 === evidence.sha256, "retained.resource_history_refused");
+    resourceAdmission(plan, context, check.checkedAt, evidence);
+    previousSequence = check.refreshSequence;
+  });
+  need(used.size === refreshes.length, "retained.resource_history_refused");
+}
+
+function originalResources(plan) {
+  privateOwned(plan.originalResourcesPath);
+  need(
+    diagnosticJson(plan.originalResourcesPath).sha256 === plan.originalResourcesSha256,
+    "retained.original_resources_changed",
+  );
+}
+
+function nativeRetainedCheck({
+  manifest,
+  context,
+  origin,
+  runtimeExpected,
+  codexVersion,
+  plan,
+  resources,
+}) {
+  const smoke = smokeDockerReleaseImage(
+    plan.ociDir,
+    context.architecture,
+    "default",
+    origin.configDigest,
+    {
+      isolation: "secretless",
+      beforeNative: () => freshResourceBoundary(resources, "workspace"),
+    },
+  );
+  return inspectLoadedPlugins(
+    manifest,
+    context.version,
+    smoke.imageReference,
+    codexVersion,
+    runtimeExpected,
+    () => freshResourceBoundary(resources, "plugins"),
+  );
+}
+
+function validateRetainedRuntime(native, expected, manifest, codexVersion) {
+  validateImageRuntimeProof(native.runtimeQualification, expected);
+  const plugins = native.pluginPayload;
+  need(
+    native.selectedExtensions === manifest.image.extensions &&
+      native.bundledCodexVersion === codexVersion &&
+      Array.isArray(plugins) &&
+      plugins.map((entry) => entry.id).join(",") === manifest.image.extensions &&
+      plugins.every(
+        (entry) => entry.package === `@openclaw/${entry.id}` && entry.version === native.version,
+      ) &&
+      ["sourceSha", "imageDigest", "configDigest"].every(
+        (key) => native.runtimeQualification[key] === native[key],
+      ),
+    "retained.native_proof_refused",
+  );
+  const codex = plugins.find((entry) => entry.id === "codex")?.codexRuntime;
+  const workboard = plugins.find((entry) => entry.id === "workboard")?.workboardRuntime;
+  need(
+    codex &&
+      [codex.cliVersion, codex.packageVersion, codex.initializeVersion].every(
+        (value) => value === native.bundledCodexVersion,
+      ) &&
+      codex.initialized === true &&
+      codex.shutdown === "exited" &&
+      (!manifest.image.extensions.split(",").includes("workboard") ||
+        (workboard?.worker === "sqlite" &&
+          workboard.roundTrip === true &&
+          workboard.closed === true)),
+    "retained.native_proof_refused",
+  );
+}
+
+export async function qualifyRetainedGcp(planPath, outputDir) {
+  let phase = "retained.input_refused",
+    outputReady = false;
+  const diagnostics = {
+    schema: "openclaw.retained-gcp-diagnostics.v1",
+    status: "failed",
+    qualified: false,
+    productionAuthorized: false,
+    privacy: "blocked",
+    static: "blocked",
+    native: "blocked",
+    reason: phase,
+  };
+  try {
+    const plan = retainedPlan(planPath, true);
+    privateOwned(outputDir, true);
+    separate(outputDir, plan.sourceDir);
+    separate(outputDir, plan.ociDir);
+    need(outputDir !== dirname(plan.executionPath), "retained.output_overlaps_build");
+    need(!lstatMaybe(join(outputDir, "native-attempt.json")), "retained.native_attempt_uncertain");
+    need(readdirSync(outputDir).length === 0, "retained.output_not_empty");
+    const planSha256 = diagnosticJson(planPath).sha256;
+    outputReady = true;
+    phase = "retained.execution_refused";
+    const { manifest, context } = authenticatedRetainedContext(plan);
+    originalResources(plan);
+    phase = "retained.privacy_refused";
+    const scan = retainedPrivacy(plan, context);
+    const origin = {
+      schema: "openclaw.fork-release-build-origin.v1",
+      ...Object.fromEntries(
+        [
+          "repository",
+          "sourceSha",
+          "sourceTree",
+          "manifestSha256",
+          "inventorySha256",
+          "architecture",
+          "version",
+          "builtAt",
+          "indexDigest",
+          "producer",
+        ].map((key) => [key, context[key]]),
+      ),
+      imageDigest: scan.imageDigest,
+      configDigest: scan.configDigest,
+    };
+    const originPath = join(outputDir, "origin.json");
+    writeRetained(originPath, origin);
+    const performedAt = nowUtc();
+    const staticReport = await inspectLayoutStatic({
+      manifestPath: plan.manifestPath,
+      inventoryPath: plan.inventoryPath,
+      sourceDir: plan.sourceDir,
+      ociDir: plan.ociDir,
+      originalBuildPath: originPath,
+      privacyPath: plan.privacyPath,
+      inspectionToolingSha: plan.inspectionToolingSha,
+      performedAt,
+    });
+    writeRetained(join(outputDir, "static.json"), staticReport);
+    diagnostics.static = staticReport.status;
+    let ociClosureSha256;
+    try {
+      ociClosureSha256 = requireRetainedCleanPrivacy(plan, context);
+      diagnostics.privacy = "passed";
+    } catch {
+      diagnostics.privacy = "failed";
+    }
+    need(
+      diagnostics.privacy === "passed" && staticReport.status === "passed",
+      "retained.qualification_blocked",
+    );
+    phase = "retained.native_refused";
+    const startedAt = nowUtc(),
+      qualificationId = randomBytes(16).toString("hex");
+    const resources = {
+      plan,
+      context,
+      directory: outputDir,
+      qualificationId,
+      current: { path: plan.resourceAdmissionPath, sha256: plan.resourceAdmissionSha256 },
+      checks: [],
+      refreshes: [],
+    };
+    freshResourceBoundary(resources, "import");
+    const runtimeExpected = readRuntimeExpectations(plan.sourceDir);
+    const codexVersion = diagnosticJson(join(plan.sourceDir, "extensions/codex/package.json")).value
+      .dependencies?.["@openai/codex"];
+    need(/^\d+\.\d+\.\d+$/u.test(codexVersion), "retained.native_source_refused");
+    writeRetained(join(outputDir, "native-attempt.json"), {
+      schema: "openclaw.retained-native-attempt.v1",
+      sourceSha: context.sourceSha,
+      indexDigest: context.indexDigest,
+      inspectionToolingSha: plan.inspectionToolingSha,
+      qualificationId,
+      startedAt,
+    });
+    diagnostics.native = "failed";
+    const inspected = nativeRetainedCheck({
+      manifest,
+      context,
+      origin,
+      runtimeExpected,
+      codexVersion,
+      plan,
+      resources,
+    });
+    const completedAt = nowUtc();
+    const native = {
+      schema: "openclaw.fork-release-image.v2",
+      ...Object.fromEntries(
+        [
+          "manifestSha256",
+          "inventorySha256",
+          "repository",
+          "sourceSha",
+          "sourceTree",
+          "architecture",
+          "version",
+          "builtAt",
+          "indexDigest",
+          "producer",
+        ].map((key) => [key, context[key]]),
+      ),
+      selectedExtensions: manifest.image.extensions,
+      bundledCodexVersion: codexVersion,
+      artifactName: producerArtifactName(context.sourceSha, context.producer),
+      ...(manifest.review ? { review: { ...manifest.review, headSha: context.sourceSha } } : {}),
+      pluginPayload: inspected.plugins,
+      runtimeQualification: {
+        ...inspected.runtime,
+        sourceSha: context.sourceSha,
+        imageDigest: origin.imageDigest,
+        configDigest: origin.configDigest,
+      },
+      imageDigest: origin.imageDigest,
+      configDigest: origin.configDigest,
+    };
+    validateRetainedRuntime(native, runtimeExpected, manifest, codexVersion);
+    authenticatedRetainedContext(plan);
+    originalResources(plan);
+    retainedPrivacy(plan, context);
+    verifyResourceHistory(plan, context, outputDir, {
+      qualificationId,
+      resourceChecks: resources.checks,
+      resourceRefreshes: resources.refreshes,
+      startedAt,
+      completedAt,
+    });
+    need(diagnosticJson(planPath).sha256 === planSha256, "retained.plan_changed");
+    // Intermediate native facts are deliberately not a consumable image seal.
+    writeRetained(join(outputDir, "native.json"), {
+      schema: "openclaw.retained-native-facts.v1",
+      promotable: false,
+      productionAuthorized: false,
+      imageReceipt: native,
+    });
+    const capture = {
+      schema: "openclaw.fork-release-native-execution.v1",
+      status: "passed",
+      nativeExecuted: true,
+      ...Object.fromEntries(
+        ["sourceSha", "sourceTree", "indexDigest", "imageDigest", "configDigest"].map((key) => [
+          key,
+          origin[key],
+        ]),
+      ),
+      originalBuildSha256: hash(originPath),
+      nativeReceiptSha256: hash(join(outputDir, "native.json")),
+      verifierToolingSha: plan.inspectionToolingSha,
+      qualificationId,
+      resourceAdmissionSha256: resources.current.sha256,
+      resourceEvidenceSha256: resourceEvidenceHash(resources.checks, resources.refreshes),
+      performedAt: completedAt,
+    };
+    writeRetained(join(outputDir, "native-execution.json"), capture);
+    const admission = {
+      schema: "openclaw.retained-gcp-admission.v1",
+      status: "passed",
+      productionAuthorized: false,
+      originalExecutionSha256: plan.executionSha256,
+      originalToolingSha: plan.originalToolingSha,
+      inspectionToolingSha: plan.inspectionToolingSha,
+      originalResourcesSha256: plan.originalResourcesSha256,
+      resourceAdmissionSha256: plan.resourceAdmissionSha256,
+      qualificationId,
+      resourceChecks: resources.checks,
+      resourceRefreshes: resources.refreshes,
+      startedAt,
+      completedAt,
+      nativeAttemptSha256: hash(join(outputDir, "native-attempt.json")),
+      originSha256: hash(originPath),
+      privacySha256: plan.privacySha256,
+      staticSha256: hash(join(outputDir, "static.json")),
+      qualifiedMemberReportSha256: qualifiedMemberReportHash(scan),
+      ociClosureSha256,
+      nativeReceiptSha256: capture.nativeReceiptSha256,
+      nativeExecutionSha256: hash(join(outputDir, "native-execution.json")),
+    };
+    const admissionSha256 = createHash("sha256")
+      .update(`${JSON.stringify(admission, null, 2)}\n`)
+      .digest("hex");
+    const receipt = {
+      ...native,
+      reinspection: {
+        schema: "openclaw.retained-gcp-qualification.v1",
+        originalExecutionSha256: plan.executionSha256,
+        originalToolingSha: plan.originalToolingSha,
+        inspectionToolingSha: plan.inspectionToolingSha,
+        originSha256: admission.originSha256,
+        privacySha256: admission.privacySha256,
+        staticSha256: admission.staticSha256,
+        qualifiedMemberReportSha256: admission.qualifiedMemberReportSha256,
+        ociClosureSha256: admission.ociClosureSha256,
+        nativeReceiptSha256: admission.nativeReceiptSha256,
+        nativeExecutionSha256: admission.nativeExecutionSha256,
+        admissionSha256,
+        performedAt: completedAt,
+      },
+    };
+    // Publish the consumable image receipt only after the complete admission is
+    // durable. An interrupted admission without a final receipt is incomplete.
+    writeRetained(join(outputDir, "admission.json"), admission);
+    writeRetained(join(outputDir, "receipt.json"), receipt);
+    diagnostics.status = "passed";
+    diagnostics.qualified = true;
+    diagnostics.native = "passed";
+    diagnostics.reason = null;
+  } catch {
+    diagnostics.reason = phase;
+  }
+  if (outputReady) {
+    try {
+      writeRetained(join(outputDir, "diagnostics.json"), diagnostics);
+    } catch {
+      diagnostics.status = "failed";
+      diagnostics.qualified = false;
+      diagnostics.reason = "retained.output_uncertain";
+    }
+  }
+  return diagnostics;
+}
+
+function lstatMaybe(path) {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+export async function verifyRetainedGcp(planPath, receiptPath) {
+  const plan = retainedPlan(planPath, true),
+    { manifest, context } = authenticatedRetainedContext(plan);
+  originalResources(plan);
+  const scan = retainedPrivacy(plan, context);
+  const ociClosureSha256 = requireRetainedCleanPrivacy(plan, context);
+  privateOwned(dirname(receiptPath), true);
+  privateOwned(receiptPath);
+  const receipt = diagnosticJson(receiptPath).value;
+  const directory = dirname(receiptPath),
+    proof = receipt.reinspection;
+  need(
+    proof &&
+      proof.schema === "openclaw.retained-gcp-qualification.v1" &&
+      Object.keys(proof).toSorted().join(",") ===
+        [
+          "schema",
+          "originalExecutionSha256",
+          "originalToolingSha",
+          "inspectionToolingSha",
+          "originSha256",
+          "privacySha256",
+          "staticSha256",
+          "nativeReceiptSha256",
+          "nativeExecutionSha256",
+          "qualifiedMemberReportSha256",
+          "ociClosureSha256",
+          "admissionSha256",
+          "performedAt",
+        ]
+          .toSorted()
+          .join(",") &&
+      proof.originalExecutionSha256 === plan.executionSha256 &&
+      proof.originalToolingSha === plan.originalToolingSha &&
+      proof.inspectionToolingSha === plan.inspectionToolingSha &&
+      proof.privacySha256 === plan.privacySha256 &&
+      proof.ociClosureSha256 === ociClosureSha256 &&
+      proof.qualifiedMemberReportSha256 === qualifiedMemberReportHash(scan),
+    "retained.admission_refused",
+  );
+  for (const [name, key] of [
+    ["origin.json", "originSha256"],
+    ["static.json", "staticSha256"],
+    ["native.json", "nativeReceiptSha256"],
+    ["native-execution.json", "nativeExecutionSha256"],
+    ["admission.json", "admissionSha256"],
+  ]) {
+    privateOwned(join(directory, name));
+    need(hash(join(directory, name)) === proof[key], "retained.report_changed");
+  }
+  const origin = diagnosticJson(join(directory, "origin.json")).value,
+    staticReport = diagnosticJson(join(directory, "static.json")).value,
+    facts = diagnosticJson(join(directory, "native.json")).value,
+    capture = diagnosticJson(join(directory, "native-execution.json")).value,
+    admission = diagnosticJson(join(directory, "admission.json")).value;
+  need(
+    closedFields(facts, ["schema", "promotable", "productionAuthorized", "imageReceipt"]) &&
+      facts.schema === "openclaw.retained-native-facts.v1" &&
+      facts.promotable === false &&
+      facts.productionAuthorized === false,
+    "retained.native_facts_changed",
+  );
+  const native = facts.imageReceipt;
+  const without = { ...receipt };
+  delete without.reinspection;
+  need(same(without, native), "retained.native_changed");
+  need(
+    closedFields(origin, [
+      "schema",
+      "repository",
+      "sourceSha",
+      "sourceTree",
+      "manifestSha256",
+      "inventorySha256",
+      "architecture",
+      "version",
+      "builtAt",
+      "indexDigest",
+      "producer",
+      "imageDigest",
+      "configDigest",
+    ]) &&
+      origin.schema === "openclaw.fork-release-build-origin.v1" &&
+      same(origin.producer, context.producer),
+    "retained.origin_changed",
+  );
+  need(
+    receipt.schema === "openclaw.fork-release-image.v2" &&
+      receipt.producer.kind === "gcp" &&
+      same(receipt.producer, context.producer) &&
+      [
+        "repository",
+        "sourceSha",
+        "sourceTree",
+        "manifestSha256",
+        "inventorySha256",
+        "indexDigest",
+        "builtAt",
+        "version",
+        "architecture",
+      ].every((key) => receipt[key] === context[key]) &&
+      receipt.imageDigest === scan.imageDigest &&
+      receipt.configDigest === scan.configDigest &&
+      receipt.artifactName === producerArtifactName(context.sourceSha, context.producer),
+    "retained.identity_changed",
+  );
+  need(
+    !manifest.review || same(receipt.review, { ...manifest.review, headSha: context.sourceSha }),
+    "retained.review_changed",
+  );
+  need(
+    staticReport.status === "passed" &&
+      staticReport.staticOnly === true &&
+      staticReport.nativeExecuted === false &&
+      staticReport.originalBuildSha256 === proof.originSha256 &&
+      staticReport.privacyReceiptSha256 === plan.privacySha256 &&
+      staticReport.inspectionToolingSha === plan.inspectionToolingSha &&
+      staticReport.schema === "openclaw.fork-release-static.v1" &&
+      staticReport.promotable === false &&
+      staticReport.productionAuthorized === false &&
+      staticReport.reason === null &&
+      [
+        "sourceSha",
+        "sourceTree",
+        "manifestSha256",
+        "inventorySha256",
+        "indexDigest",
+        "imageDigest",
+        "configDigest",
+        "builtAt",
+      ].every((key) => staticReport[key] === receipt[key] && origin[key] === receipt[key]),
+    "retained.static_changed",
+  );
+  need(
+    closedFields(admission, [
+      "schema",
+      "status",
+      "productionAuthorized",
+      "originalExecutionSha256",
+      "originalToolingSha",
+      "inspectionToolingSha",
+      "originalResourcesSha256",
+      "resourceAdmissionSha256",
+      "qualificationId",
+      "resourceChecks",
+      "resourceRefreshes",
+      "startedAt",
+      "completedAt",
+      "nativeAttemptSha256",
+      "originSha256",
+      "privacySha256",
+      "staticSha256",
+      "qualifiedMemberReportSha256",
+      "ociClosureSha256",
+      "nativeReceiptSha256",
+      "nativeExecutionSha256",
+    ]) &&
+      admission.schema === "openclaw.retained-gcp-admission.v1" &&
+      admission.status === "passed" &&
+      admission.productionAuthorized === false &&
+      admission.originalExecutionSha256 === plan.executionSha256 &&
+      admission.originalToolingSha === plan.originalToolingSha &&
+      admission.inspectionToolingSha === plan.inspectionToolingSha &&
+      admission.originalResourcesSha256 === plan.originalResourcesSha256 &&
+      admission.resourceAdmissionSha256 === plan.resourceAdmissionSha256 &&
+      admission.qualifiedMemberReportSha256 === proof.qualifiedMemberReportSha256 &&
+      admission.ociClosureSha256 === proof.ociClosureSha256 &&
+      [
+        "originSha256",
+        "privacySha256",
+        "staticSha256",
+        "nativeReceiptSha256",
+        "nativeExecutionSha256",
+      ].every((key) => admission[key] === proof[key]) &&
+      canonicalUtc(admission.startedAt) &&
+      canonicalUtc(admission.completedAt) &&
+      admission.startedAt <= admission.completedAt &&
+      admission.completedAt <= nowUtc() &&
+      canonicalUtc(staticReport.performedAt) &&
+      staticReport.performedAt <= admission.startedAt &&
+      admission.completedAt === proof.performedAt &&
+      Array.isArray(admission.resourceChecks) &&
+      admission.resourceChecks.length === 3,
+    "retained.admission_changed",
+  );
+  verifyResourceHistory(plan, context, directory, admission);
+  privateOwned(join(directory, "native-attempt.json"));
+  const attempt = diagnosticJson(join(directory, "native-attempt.json"));
+  need(
+    closedFields(attempt.value, [
+      "schema",
+      "sourceSha",
+      "indexDigest",
+      "inspectionToolingSha",
+      "qualificationId",
+      "startedAt",
+    ]) &&
+      attempt.sha256 === admission.nativeAttemptSha256 &&
+      attempt.value.schema === "openclaw.retained-native-attempt.v1" &&
+      attempt.value.sourceSha === context.sourceSha &&
+      attempt.value.indexDigest === context.indexDigest &&
+      attempt.value.inspectionToolingSha === plan.inspectionToolingSha &&
+      attempt.value.qualificationId === admission.qualificationId &&
+      attempt.value.startedAt === admission.startedAt,
+    "retained.native_attempt_changed",
+  );
+  need(
+    closedFields(capture, [
+      "schema",
+      "status",
+      "nativeExecuted",
+      "sourceSha",
+      "sourceTree",
+      "indexDigest",
+      "imageDigest",
+      "configDigest",
+      "originalBuildSha256",
+      "nativeReceiptSha256",
+      "verifierToolingSha",
+      "qualificationId",
+      "resourceAdmissionSha256",
+      "resourceEvidenceSha256",
+      "performedAt",
+    ]) &&
+      capture.schema === "openclaw.fork-release-native-execution.v1" &&
+      capture.status === "passed" &&
+      capture.nativeExecuted === true &&
+      capture.originalBuildSha256 === proof.originSha256 &&
+      capture.nativeReceiptSha256 === proof.nativeReceiptSha256 &&
+      capture.verifierToolingSha === plan.inspectionToolingSha &&
+      capture.qualificationId === admission.qualificationId &&
+      capture.resourceAdmissionSha256 === admission.resourceChecks.at(-1).resourceAdmissionSha256 &&
+      capture.resourceEvidenceSha256 ===
+        resourceEvidenceHash(admission.resourceChecks, admission.resourceRefreshes) &&
+      capture.performedAt === proof.performedAt &&
+      ["sourceSha", "sourceTree", "indexDigest", "imageDigest", "configDigest"].every(
+        (key) => capture[key] === receipt[key] && origin[key] === receipt[key],
+      ),
+    "retained.native_capture_changed",
+  );
+  const codexVersion = diagnosticJson(join(plan.sourceDir, "extensions/codex/package.json")).value
+    .dependencies?.["@openai/codex"];
+  validateRetainedRuntime(native, readRuntimeExpectations(plan.sourceDir), manifest, codexVersion);
+  const image = await verifyImageLayout({ manifest, receipt, ociDir: plan.ociDir });
+  need(
+    image.imageDigest === receipt.imageDigest && image.configDigest === receipt.configDigest,
+    "retained.image_changed",
+  );
+  return {
+    schema: "openclaw.retained-gcp-verification.v1",
+    status: "passed",
+    sourceSha: receipt.sourceSha,
+    indexDigest: receipt.indexDigest,
+    imageDigest: receipt.imageDigest,
+    configDigest: receipt.configDigest,
+    imageReceiptSha256: hash(receiptPath),
+    ociClosureSha256,
+    originalToolingSha: plan.originalToolingSha,
+    inspectionToolingSha: plan.inspectionToolingSha,
+    productionAuthorized: false,
+  };
+}
+
 async function main() {
+  if (
+    ["capture-retained-gcp-origin", "qualify-retained-gcp", "verify-retained-gcp"].includes(
+      process.argv[2],
+    )
+  ) {
+    let report;
+    try {
+      need(process.argv.length === 5, "retained.arguments_refused");
+      report =
+        process.argv[2] === "capture-retained-gcp-origin"
+          ? captureRetainedGcpOrigin(process.argv[3], process.argv[4])
+          : await (process.argv[2] === "qualify-retained-gcp"
+              ? qualifyRetainedGcp(process.argv[3], process.argv[4])
+              : verifyRetainedGcp(process.argv[3], process.argv[4]));
+    } catch {
+      report = {
+        schema: "openclaw.retained-gcp-diagnostics.v1",
+        status: "failed",
+        qualified: false,
+        productionAuthorized: false,
+        reason: "retained.input_refused",
+      };
+    }
+    console.log(JSON.stringify(report));
+    process.exitCode = ["passed", "captured"].includes(report.status) ? 0 : 1;
+    return;
+  }
+
   if (process.argv[2] === "inspect-layout") {
     const args = process.argv.slice(3);
     let report;
@@ -529,6 +1682,10 @@ async function main() {
   if (command === "verify") {
     const receipt = json(third);
     need(receipt.schema === "openclaw.fork-release-image.v2", "Wrong image receipt schema");
+    need(
+      !Object.hasOwn(receipt, "reinspection"),
+      "Retained qualification requires verify-retained-gcp",
+    );
     need(
       receipt.manifestSha256 === hash(manifestPath),
       "Image receipt belongs to another manifest",

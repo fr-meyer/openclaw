@@ -1,12 +1,15 @@
 import copy
+import hashlib
 import json
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import hosted_export as export
 import hosted_privacy as privacy
+from test_hosted_privacy import Layout, SOURCE, TOOLING
 
 
 def runtime_fixture(common):
@@ -166,6 +169,132 @@ class HostedExportTests(unittest.TestCase):
             failed = subprocess.run(command, capture_output=True, text=True)
             self.assertNotEqual(failed.returncode, 0)
             self.assertNotIn("never-print-this", failed.stdout + failed.stderr)
+
+    def test_shared_privacy_check_refuses_failed_status_and_forged_member_qualification(self):
+        for change in ({"status": "failed"}, {"publicMemberQualification": {"status": "passed"}}):
+            with self.subTest(change=change), self.assertRaises(export.Refusal):
+                export.require_clean_privacy({**self.privacy, **change})
+        source = privacy.PUBLIC_MEMBER_QUALIFICATION["sourceSha"]
+        with self.assertRaisesRegex(export.Refusal, "source qualification proof missing"):
+            export.require_clean_privacy({**self.privacy, "sourceSha": source})
+        seal, scan, resources = copy.deepcopy((self.seal, self.privacy, self.resources))
+        for value in (seal, scan, resources):
+            value["sourceSha"] = source
+        seal["buildContext"]["sourceSha"] = source
+        seal["runtimeQualification"]["sourceSha"] = source
+        seal["artifactName"] = f"fork-release-{source}-12-1"
+        with self.assertRaisesRegex(export.Refusal, "source qualification proof missing"):
+            export.validate(seal, scan, resources, **{**self.args, "source": source})
+
+    def test_privacy_only_cli_binds_exact_receipt_and_redacts_refusals(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "privacy-private-marker.json"
+            raw = json.dumps(self.privacy).encode()
+            path.write_bytes(raw)
+            command = ["python3", str(Path(export.__file__)), "check-privacy", "--privacy", str(path),
+                       "--sha256", hashlib.sha256(raw).hexdigest(), "--source-sha", self.args["source"],
+                       "--tooling-sha", self.args["tooling"], "--index-digest", self.args["index"]]
+            passed = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(passed.returncode, 0, passed.stderr)
+            self.assertEqual(json.loads(passed.stdout), {
+                "status": "passed", "privacyReceiptSha256": hashlib.sha256(raw).hexdigest()})
+            for flag, value in (("--sha256", "0" * 64), ("--source-sha", "f" * 40),
+                                ("--tooling-sha", "f" * 40), ("--index-digest", "sha256:" + "f" * 64)):
+                changed = command.copy()
+                changed[changed.index(flag) + 1] = value
+                failed = subprocess.run(changed, capture_output=True, text=True)
+                self.assertEqual(failed.returncode, 1)
+                self.assertEqual(json.loads(failed.stdout), {
+                    "status": "failed", "reason": "privacy_not_clean_or_bound"})
+                self.assertNotIn("privacy-private-marker", failed.stdout + failed.stderr)
+
+    def test_receipt_reader_refuses_links_and_bounds_a_file_growing_during_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "receipt.json"
+            path.write_bytes(b"{}")
+            link = Path(directory) / "link.json"
+            link.symlink_to(path)
+            with self.assertRaises(OSError):
+                export.read_receipt(link)
+            original = export.os.fdopen
+            requests = []
+            class GrowingRead:
+                def __init__(self, descriptor, mode):
+                    self.stream = original(descriptor, mode)
+                def __enter__(self):
+                    self.stream.__enter__()
+                    return self
+                def __exit__(self, *args):
+                    return self.stream.__exit__(*args)
+                def fileno(self):
+                    return self.stream.fileno()
+                def read(self, maximum):
+                    requests.append(maximum)
+                    with path.open("ab") as output:
+                        output.write(b"x" * (1024 * 1024 + 10))
+                    return self.stream.read(maximum)
+            with patch.object(export.os, "fdopen", GrowingRead), self.assertRaisesRegex(export.Refusal, "changed"):
+                export.read_receipt(path)
+            self.assertEqual(requests, [1024 * 1024 + 1])
+
+    def test_retained_closure_rehashes_blobs_and_binds_all_root_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Layout(directory)
+            def closure():
+                return export.RetainedClosure(directory, fixture.index["digest"], SOURCE, TOOLING).closure_digest()
+            before = closure()
+            self.assertEqual(closure(), before)
+            root = Path(directory) / "index.json"
+            value = json.loads(root.read_bytes())
+            value["annotations"] = {"public-note": "changed"}
+            root.write_text(json.dumps(value))
+            self.assertNotEqual(closure(), before)
+            value["annotations"] = {"public-note": "https://synthetic:example@invalid.test"}
+            root.write_text(json.dumps(value))
+            with self.assertRaisesRegex(export.Refusal, "metadata privacy"):
+                closure()
+            value.pop("annotations")
+            root.write_text(json.dumps(value))
+            blob = Path(directory) / "blobs" / "sha256" / fixture.runtime["digest"][7:]
+            blob.write_bytes(blob.read_bytes().replace(b"schemaVersion", b"schemaVersioN"))
+            with self.assertRaises(privacy.Refusal):
+                closure()
+
+    def test_retained_closure_rejects_orphans_and_root_extras_without_unpacking_layers(self):
+        for name in ("private-extra.json", "blobs/sha256/" + "f" * 64):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(directory)
+                (Path(directory) / name).write_bytes(b"uninspected")
+                with patch.object(privacy.Inspector, "scan_layer", side_effect=AssertionError("must not unpack")):
+                    with self.assertRaisesRegex(privacy.Refusal, "unexpected_export_entry"):
+                        export.RetainedClosure(directory, fixture.index["digest"], SOURCE, TOOLING).closure_digest()
+
+    def test_privacy_cli_revalidates_exact_oci_and_requires_source_specific_member_proof(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Layout(Path(directory) / "oci")
+            receipt = fixture.inspect()
+            raw = json.dumps(receipt).encode()
+            path = Path(directory) / "privacy.json"
+            path.write_bytes(raw)
+            command = ["python3", str(Path(export.__file__)), "check-privacy", "--privacy", str(path),
+                       "--sha256", hashlib.sha256(raw).hexdigest(), "--source-sha", SOURCE,
+                       "--tooling-sha", TOOLING, "--index-digest", fixture.index["digest"],
+                       "--oci", str(fixture.directory)]
+            passed = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(passed.returncode, 0, passed.stderr)
+            self.assertRegex(json.loads(passed.stdout)["ociClosureSha256"], r"^[a-f0-9]{64}$")
+            (fixture.directory / "private-extra.json").write_text("never-print-this")
+            failed = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(failed.returncode, 1)
+            self.assertEqual(json.loads(failed.stdout), {"status": "failed", "reason": "privacy_not_clean_or_bound"})
+            self.assertNotIn("never-print-this", failed.stdout + failed.stderr)
+            receipt["sourceSha"] = privacy.PUBLIC_MEMBER_QUALIFICATION["sourceSha"]
+            raw = json.dumps(receipt).encode()
+            path.write_bytes(raw)
+            command = command[:-2]
+            command[command.index("--source-sha") + 1] = receipt["sourceSha"]
+            command[command.index("--sha256") + 1] = hashlib.sha256(raw).hexdigest()
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
 
 
 if __name__ == "__main__":

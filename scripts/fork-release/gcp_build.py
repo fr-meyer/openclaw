@@ -47,6 +47,9 @@ PRODUCTION_GATEWAY_NAME = "openclaw-openclaw-gateway-1"
 # This profile is a single controlled qualification of the reviewed 10.5
 # source, not a general lower-memory promise for future Dockerfiles.
 QUALIFICATION_SOURCE_SHA = "4cf5cb7e256c67a5c98097774cad2d05cd781c01"
+# Same reviewed Dockerfile/network contract, separately reviewed dependency fix.
+SECURITY_QUALIFICATION_SOURCE_SHA = "85a9bdc1285c338f10f5ca818abc259f6d483b5b"
+SECURITY_QUALIFICATION_SOURCE_TREE = "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
 RETAINED_QUALIFICATION_SOURCE_SHA = "84d65b446d66cd5db5b9c533bd158e9062968692"
 HISTORICAL_QUALIFICATION_SOURCE_SHA = "1d5ab20bea4cccce0b80b60a9ba5d5020cf08038"
 # Separate next-release qualification; no 10.5 image or runtime proof transfers.
@@ -561,6 +564,8 @@ def is_next_qualification_source(config):
 
 def is_selectable_qualification_source(config):
     return (config["sourceSha"] == QUALIFICATION_SOURCE_SHA or
+            (config["sourceSha"] == SECURITY_QUALIFICATION_SOURCE_SHA and
+             config["sourceTree"] == SECURITY_QUALIFICATION_SOURCE_TREE) or
             is_next_qualification_source(config))
 
 

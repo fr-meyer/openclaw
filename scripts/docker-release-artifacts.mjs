@@ -320,6 +320,10 @@ function smokeImage(directory, architecture, variant, configDigest, options = {}
     options.transport === undefined || ["skopeo", "loaded"].includes(options.transport),
     "Unsupported Docker smoke transport.",
   );
+  requireValue(
+    options.beforeNative === undefined || typeof options.beforeNative === "function",
+    "Invalid owned native admission callback.",
+  );
   requireValue(DIGEST.test(configDigest), "Missing exact smoke config digest.");
   requireValue(
     options.loadedIndexDigest === undefined ||
@@ -404,6 +408,9 @@ function smokeImage(directory, architecture, variant, configDigest, options = {}
     ]).trim();
     requireValue(/^[0-9a-f]{64}$/u.test(container), "Invalid owned smoke container identity.");
     try {
+      // The owner can refresh a short-lived admission after a slow import.
+      // Keep this inside cleanup authority and immediately before native start.
+      options.beforeNative?.();
       run("docker", ["start", "--attach", container], {
         timeout: 120_000,
         stdio: "inherit",
@@ -424,6 +431,7 @@ function smokeImage(directory, architecture, variant, configDigest, options = {}
     }
     return { imageReference };
   }
+  options.beforeNative?.();
   run(
     "docker",
     [

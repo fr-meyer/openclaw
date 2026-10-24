@@ -2,6 +2,7 @@
 
 import dataclasses
 import copy
+from contextlib import contextmanager
 import gzip
 import hashlib
 import io
@@ -145,6 +146,201 @@ class PrivacyTests(unittest.TestCase):
         actual = dict(compared)
         actual.pop("publicMemberComparisons")
         self.assertEqual(actual, baseline)
+
+    @contextmanager
+    def trusted_comparison(self, plan):
+        with tempfile.TemporaryDirectory() as directory:
+            data = json.dumps(plan).encode()
+            path = Path(directory) / "public.json"
+            path.write_bytes(data)
+            # Synthetic proof only: production constants remain the exact
+            # reviewed source85/60-entry plan and three permitted rules.
+            trusted = {**privacy.PUBLIC_MEMBER_QUALIFICATION, "sourceSha": SOURCE, "planSha256": privacy.sha256(data)}
+            with patch.object(privacy, "PUBLIC_MEMBER_QUALIFICATION", trusted):
+                yield path, data
+
+    def test_explicit_public_qualification_requires_complete_exact_bytes_for_each_rule(self):
+        payload = b"sk-" + b"S" * 30 + b" ghp_" + b"G" * 30 + b" https://user:pass@example.invalid/"
+        plan = self.comparison_plan("app/example", payload, rules=["service_token", "github_token", "credential_url"])
+        fixture = self.files([("app/example", payload)])
+        with self.trusted_comparison(plan) as (path, data):
+            diagnostic = fixture.inspect(public_comparisons=path)
+            result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+            privacy.require_public_member_qualification(result, data)
+        self.assertEqual(diagnostic["status"], "failed")
+        self.assertEqual(diagnostic["findingSummary"]["total"], 3)
+        self.assertNotIn("publicMemberQualification", diagnostic)
+        self.assertEqual(result["status"], "passed", result)
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["findingSummary"]["total"], 0)
+        qualification = result["publicMemberQualification"]
+        self.assertEqual(qualification["status"], "satisfied")
+        self.assertEqual({record["rule"] for record in qualification["records"]}, set(plan["entries"][0]["rules"]))
+        for record in qualification["records"]:
+            self.assertEqual(record["memberOccurrences"], 1)
+            self.assertEqual(record["sourceSha"], SOURCE)
+            self.assertEqual(record["planSha256"], privacy.sha256(data))
+            self.assertEqual(record["memberSha256"], privacy.sha256(payload))
+        self.assertNotIn("app/example", json.dumps(qualification))
+        self.assertNotIn(payload.decode(), json.dumps(qualification))
+
+    def test_public_qualification_refuses_missing_or_untrusted_plan_source_rule_and_mode(self):
+        payload = b"sk-" + b"S" * 30
+        fixture = self.files([("app/example", payload)])
+        self.assertEqual(fixture.inspect(qualify_public_members=True)["refusal"], "public_member_qualification_plan_required")
+        self.assertEqual(fixture.inspect(qualify_public_members=1)["refusal"], "invalid_public_member_qualification_mode")
+        plan = self.comparison_plan("app/example", payload)
+        with self.trusted_comparison(plan) as (path, _):
+            for field, value in (("sourceSha", "c" * 40), ("planSha256", "0" * 64)):
+                with self.subTest(field=field), patch.object(privacy, "PUBLIC_MEMBER_QUALIFICATION",
+                    {**privacy.PUBLIC_MEMBER_QUALIFICATION, field: value}):
+                    result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+                    self.assertFalse(result["inspectionComplete"])
+                    self.assertEqual(result["refusal"], "untrusted_public_member_qualification_plan")
+            path.write_bytes(path.read_bytes() + b" ")
+            self.assertEqual(fixture.inspect(public_comparisons=path, qualify_public_members=True)["refusal"],
+                             "untrusted_public_member_qualification_plan")
+        plan["entries"][0]["rules"] = ["aws_access_key"]
+        with self.trusted_comparison(plan) as (path, _):
+            self.assertEqual(fixture.inspect(public_comparisons=path, qualify_public_members=True)["refusal"],
+                             "untrusted_public_member_qualification_plan")
+
+    def test_qualification_missing_changed_clean_or_nonregular_occurrences_fail_after_full_scan(self):
+        payload = b"sk-" + b"S" * 30
+        plan = self.comparison_plan("app/example", payload)
+        cases = [[], [b"x" * len(payload)], [payload, b"x" * len(payload)],
+                 [b"x" * len(payload), payload], [payload, (tarfile.SYMTYPE, "other")],
+                 [payload, (tarfile.DIRTYPE, "")], [payload, b"short"]]
+        for entries in cases:
+            with self.subTest(entries=entries), tempfile.TemporaryDirectory() as directory:
+                layers = [(privacy.TAR, archive([("app/example", entry)])) for entry in entries]
+                fixture = Layout(directory, layers=layers or [(privacy.TAR, archive([("app/other", b"safe")]))])
+                with self.trusted_comparison(plan) as (path, data):
+                    result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+                    with self.assertRaisesRegex(privacy.Refusal, "invalid_public_member_qualification"):
+                        privacy.require_public_member_qualification(result, data)
+                self.assertTrue(result["inspectionComplete"], result)
+                self.assertEqual(result["status"], "failed")
+                self.assertEqual(result["publicMemberQualification"]["status"], "failed")
+                self.assertNotIn("refusal", result)
+
+    def test_qualification_never_suppresses_other_rules_or_paths_and_metadata(self):
+        payload = b"sk-" + b"S" * 30 + b" ASIA" + b"A" * 16 + b" ghp_" + b"G" * 30
+        config = {"os": "linux", "architecture": "amd64", "config": {
+            "Labels": {"org.opencontainers.image.revision": SOURCE}, "Env": ["PUBLIC_VALUE=sk-" + "M" * 30]}}
+        fixture = self.files([("app/.env", payload)], config=config)
+        plan = self.comparison_plan("app/.env", payload)
+        with self.trusted_comparison(plan) as (path, data):
+            result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+            privacy.require_public_member_qualification(result, data)
+        self.assertEqual(result["status"], "failed")
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["publicMemberQualification"]["status"], "satisfied")
+        self.assertEqual(result["findingSummary"]["byRule"]["private_runtime_path"], 1)
+        self.assertEqual(result["findingSummary"]["byRule"]["aws_access_key"], 1)
+        self.assertEqual(result["findingSummary"]["byRule"]["github_token"], 1)
+        self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 1)
+
+    def test_qualification_does_not_suppress_pax_or_a_different_path(self):
+        payload = b"sk-" + b"S" * 30
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as output:
+            member = tarfile.TarInfo("app/example")
+            member.size = len(payload)
+            member.pax_headers = {"comment": "sk-" + "P" * 30}
+            output.addfile(member, io.BytesIO(payload))
+            other = tarfile.TarInfo("app/other")
+            other.size = len(payload)
+            output.addfile(other, io.BytesIO(payload))
+        fixture = self.layout(layers=[(privacy.TAR, buffer.getvalue())])
+        with self.trusted_comparison(self.comparison_plan("app/example", payload)) as (path, _):
+            result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 2)
+        self.assertEqual(result["publicMemberQualification"]["records"][0]["memberOccurrences"], 1)
+
+    def test_qualification_incomplete_member_flushes_pending_and_late_errors_still_fail(self):
+        payload = b"sk-" + b"S" * 30
+        fixture = self.files([("app/example", payload)])
+        plan = self.comparison_plan("app/example", payload)
+        with self.trusted_comparison(plan) as (path, _), \
+                patch.object(tarfile.TarFile, "extractfile", side_effect=lambda *args: io.BytesIO(payload[:-1])):
+            result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+        self.assertFalse(result["inspectionComplete"])
+        self.assertEqual(result["refusal"], "truncated_member")
+        self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 1)
+        self.assertEqual(result["publicMemberQualification"]["records"], [])
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/example", payload)]) + b"hidden")])
+            with self.trusted_comparison(plan) as (path, data):
+                result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+                with self.assertRaises(privacy.Refusal):
+                    privacy.require_public_member_qualification(result, data)
+            self.assertFalse(result["inspectionComplete"])
+            self.assertEqual(result["refusal"], "trailing_archive_data")
+            self.assertEqual(result["status"], "failed")
+
+    def test_qualification_consumer_rejects_fabricated_missing_and_duplicate_records(self):
+        payload = b"sk-" + b"S" * 30
+        fixture = self.files([("app/example", payload)])
+        with self.trusted_comparison(self.comparison_plan("app/example", payload)) as (path, data):
+            valid = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+            privacy.require_public_member_qualification(valid, data)
+            mutations = [lambda receipt: receipt.pop("publicMemberQualification"),
+                         lambda receipt: receipt.update(inspectionComplete=False),
+                         lambda receipt: receipt.update(sourceSha="c" * 40),
+                         lambda receipt: receipt["publicMemberQualification"].update(status="failed"),
+                         lambda receipt: receipt["publicMemberQualification"].update(records=[]),
+                         lambda receipt: receipt["publicMemberComparisons"].update(records=[]),
+                         lambda receipt: receipt["publicMemberQualification"]["records"].append(
+                             copy.deepcopy(receipt["publicMemberQualification"]["records"][0]))]
+            for field, value in (("id", "unknown"), ("rule", "private_key"), ("memberSha256", "0" * 64),
+                                 ("locationSha256", "0" * 64), ("memberBytes", True), ("memberOccurrences", True),
+                                 ("memberOccurrences", 2), ("sourceSha", "c" * 40), ("planSha256", "0" * 64)):
+                mutations.append(lambda receipt, key=field, item=value:
+                                 receipt["publicMemberQualification"]["records"][0].update({key: item}))
+            for mutate in mutations:
+                changed = copy.deepcopy(valid)
+                mutate(changed)
+                with self.subTest(changed=changed), self.assertRaisesRegex(privacy.Refusal, "invalid_public_member_qualification"):
+                    privacy.require_public_member_qualification(changed, data)
+            with self.assertRaises(privacy.Refusal):
+                privacy.require_public_member_qualification(valid, data + b" ")
+
+    def test_public_qualification_cli_is_explicit_pinned_and_sanitized(self):
+        payload = b"sk-" + b"S" * 30
+        fixture = self.files([("app/example", payload)])
+        with self.trusted_comparison(self.comparison_plan("app/example", payload)) as (path, _):
+            for qualify, trusted_hash, expected in ((False, None, 1), (True, None, 0), (True, "0" * 64, 1)):
+                with self.subTest(qualify=qualify, trusted_hash=trusted_hash), tempfile.TemporaryDirectory() as directory:
+                    output = Path(directory) / "receipt.json"
+                    trusted = dict(privacy.PUBLIC_MEMBER_QUALIFICATION)
+                    if trusted_hash:
+                        trusted["planSha256"] = trusted_hash
+                    # Invoke the actual CLI parser/main in a separate process;
+                    # only its production trust constant is replaced for this synthetic fixture.
+                    script = ("import json,sys; import hosted_privacy as privacy; "
+                              "privacy.PUBLIC_MEMBER_QUALIFICATION=json.loads(sys.argv.pop(1)); "
+                              "raise SystemExit(privacy.main())")
+                    command = [sys.executable, "-c", script, json.dumps(trusted),
+                        "--oci-dir", str(fixture.directory), "--expected-index-digest", fixture.index["digest"],
+                        "--source-sha", SOURCE, "--tooling-sha", TOOLING, "--output", str(output),
+                        "--public-comparisons", str(path)]
+                    if qualify:
+                        command.append("--qualify-public-members")
+                    result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                    receipt = json.loads(output.read_text())
+                    if expected == 0:
+                        self.assertEqual(receipt["publicMemberQualification"]["status"], "satisfied")
+                        records = [json.loads(line) for line in result.stdout.splitlines()]
+                        summary = next(record for record in records if record["recordType"] == "public_member_qualification_summary")
+                        batch = next(record for record in records if record["recordType"] == "qualified_public_members")
+                        self.assertEqual(summary["planSha256"], trusted["planSha256"])
+                        self.assertEqual(batch["items"], receipt["publicMemberQualification"]["records"])
+                    for value in (payload.decode(), "app/example"):
+                        self.assertNotIn(value, result.stdout + result.stderr + output.read_text())
 
     def test_public_comparison_is_diagnostic_only_for_matching_and_changed_bytes(self):
         public = b"sk-" + b"S" * 30
@@ -671,6 +867,19 @@ class PrivacyTests(unittest.TestCase):
         self.assertEqual(compared["status"], "failed")
         self.assertEqual(compared["findingSummary"]["byRule"]["aws_access_key"], 1)
         self.assertEqual(compared["publicMemberComparisons"]["records"][0]["status"], "matched")
+
+    def test_member_qualification_coexists_with_exact_gnutls_and_keeps_unplanned_rules(self):
+        fixture, record, payload = self.public_self_test_fixture(b"sk-" + b"S" * 30 + b" ASIA" + b"A" * 16)
+        with patch.object(privacy, "PUBLIC_GNUTLS_SELF_TEST", record), \
+                self.trusted_comparison(self.comparison_plan(record["path"], payload)) as (path, data):
+            result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+            privacy.require_public_member_qualification(result, data)
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(len(result["qualifiedPublicFixtures"]), 1)
+        self.assertEqual(result["publicMemberQualification"]["records"][0]["rule"], "service_token")
+        self.assertEqual(result["findingSummary"]["total"], 1)
+        self.assertEqual(result["findingSummary"]["byRule"]["aws_access_key"], 1)
 
     def test_deleted_and_overwritten_layer_is_still_inspected(self):
         older = archive([("app/leak", b"ghp_" + b"X" * 36)])

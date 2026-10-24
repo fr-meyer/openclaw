@@ -8,6 +8,19 @@ import preflight
 HERE = Path(__file__).parent
 
 class ImageBoundaryTests(unittest.TestCase):
+    def test_ordinary_verifier_refuses_retained_qualification_metadata_before_oci(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "receipt.json"
+            receipt.write_text(json.dumps({"schema": "openclaw.fork-release-image.v2",
+                                           "reinspection": {"schema": "openclaw.retained-gcp-qualification.v1"}}))
+            result = subprocess.run(["node", str(HERE / "image.mjs"), "verify",
+                                     str(HERE / "manifest.json"), str(HERE / "patch-inventory.json"),
+                                     str(receipt), str(Path(directory) / "missing-oci")],
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Retained qualification requires verify-retained-gcp", result.stderr)
+            self.assertNotIn("ENOENT", result.stderr)
+
     def test_actual_receipt_verifier_rejects_malformed_present_runtime_proof_before_oci(self):
         manifest = json.loads((HERE / "manifest.json").read_text())
         value = {
