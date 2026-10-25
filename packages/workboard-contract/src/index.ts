@@ -262,6 +262,10 @@ type WorkboardLaunchIdentity = {
   requestedSessionKey: string;
   provisionalRunId: string;
   preparedAt: number;
+  /** Claim owner captured when the launch was prepared, absent for legacy launches. */
+  claimOwnerId?: string;
+  /** Positive safe-integer claim generation captured at launch preparation. */
+  claimGeneration?: number;
 };
 
 export type WorkboardLaunchState =

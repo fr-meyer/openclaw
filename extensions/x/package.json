@@ -7,7 +7,7 @@
     "linkify-it": "6.1.0",
     "lit": "3.3.3",
     "tlds": "1.261.0",
-    "zod": "4.6.5"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@openclaw/plugin-sdk": "workspace:*",

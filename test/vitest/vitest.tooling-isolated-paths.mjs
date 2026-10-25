@@ -12,6 +12,8 @@ export const toolingIsolatedTestFiles = [
   "test/scripts/control-ui-i18n.test.ts",
   "test/scripts/managed-child-process.drain.test.ts",
   "test/scripts/managed-child-process.termination.test.ts",
+  "test/scripts/native-security.test.ts",
+  "test/scripts/native-runner.test.ts",
   "test/scripts/openclaw-e2e-instance.test.ts",
   "test/scripts/test-projects-build-admission.test.ts",
   "test/scripts/vitest-fork-shutdown.test.ts",

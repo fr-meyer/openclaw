@@ -38,7 +38,7 @@
     "@panzoom/panzoom": "4.6.2",
     "@tanstack/lit-virtual": "3.14.2",
     "@tanstack/virtual-core": "3.17.11",
-    "dompurify": "3.4.16",
+    "dompurify": "3.4.17",
     "ghostty-web": "0.4.0",
     "highlight.js": "11.12.0",
     "json5": "2.2.3",
@@ -49,7 +49,7 @@
     "markdown-it-emoji": "3.1.0",
     "parse5": "8.0.1",
     "remend": "1.4.0",
-    "zod": "4.6.5"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@types/markdown-it": "14.2.0",
@@ -61,7 +61,7 @@
     "pako": "3.0.2",
     "playwright": "1.63.0",
     "postcss": "8.5.28",
-    "vite": "8.3.2",
+    "vite": "8.3.3",
     "vitest": "5.0.1"
   }
 }
