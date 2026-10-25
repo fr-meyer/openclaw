@@ -38,6 +38,8 @@ type WorkboardWorktreeRuntime = PluginRuntime["worktrees"];
 
 type WorkboardDispatchStartOptions = {
   cardId?: string;
+  intentRunId?: string;
+  targetMode?: "start" | "dispatch";
   maxStarts?: number;
   model?: string;
   provider?: string;
@@ -182,7 +184,7 @@ function selectStartableCards(
   candidates: WorkboardCard[],
   ownerOverride: string | undefined,
   now: number,
-  mode: "scheduled" | "exact",
+  mode: "scheduled" | "exact-start" | "exact-dispatch",
 ): { cards: WorkboardCard[]; rejection?: WorkboardStartFailure } {
   if (limit <= 0) {
     return { cards: [] };
@@ -206,16 +208,18 @@ function selectStartableCards(
         ? `Card is already claimed by ${card.metadata?.claim?.ownerId ?? "another worker"}.`
         : mode === "scheduled" && card.status !== "ready"
           ? ""
-          : mode === "exact" &&
+          : mode === "exact-start" &&
               card.status !== "backlog" &&
               card.status !== "todo" &&
               card.status !== "ready"
             ? `Card cannot start from ${card.status}; move it to backlog, todo, or ready first.`
-            : runningOwners.has(owner)
-              ? `Owner ${owner} already has active Workboard work; complete or stop it before starting another card.`
-              : undefined;
+            : mode === "exact-dispatch" && card.status !== "ready"
+              ? `Card cannot dispatch from ${card.status}; dependency, schedule, and status gates must make it ready first.`
+              : runningOwners.has(owner)
+                ? `Owner ${owner} already has active Workboard work; complete or stop it before starting another card.`
+                : undefined;
     if (rejection !== undefined) {
-      if (mode === "exact") {
+      if (mode !== "scheduled") {
         return {
           cards: [],
           rejection: { cardId: card.id, title: card.title, error: rejection },
@@ -264,19 +268,54 @@ async function runWorkboardDispatch(
   const boardId = params.options?.boardId;
   const directCardId = params.options?.cardId;
   const assertOwnerCurrent = params.options?.assertOwnerCurrent;
-  const directCard = directCardId
-    ? await params.store.prepareStart(directCardId, now, assertOwnerCurrent)
-    : undefined;
-  const dispatch = directCard
-    ? { promoted: [], reclaimed: [], blocked: [], orchestrated: [], count: 0 }
-    : await params.store.dispatch({ now, boardId, assertOwnerCurrent });
+  const targetMode = directCardId ? (params.options?.targetMode ?? "start") : undefined;
+  if (params.options?.targetMode && !directCardId) {
+    throw new Error("targetMode requires one exact card.");
+  }
+  if (directCardId && params.options?.maxStarts !== undefined && params.options.maxStarts !== 1) {
+    throw new Error("maxStarts must be 1 when cardId is provided.");
+  }
+  const intentRunId = params.options?.intentRunId;
+  if (intentRunId !== undefined) {
+    if (targetMode !== "dispatch") {
+      throw new Error("intentRunId requires exact-card dispatch.");
+    }
+    if (
+      typeof intentRunId !== "string" ||
+      intentRunId.length !== 43 ||
+      !/^wb-[0-9a-f]{40}$/.test(intentRunId)
+    ) {
+      throw new Error("intentRunId must be a wb-<40 lowercase hex> dispatch intent id.");
+    }
+  }
+  let directCard: WorkboardCard | undefined;
+  let dispatch: WorkboardDispatchResult;
+  if (directCardId && targetMode === "start") {
+    directCard = await params.store.prepareStart(directCardId, now, assertOwnerCurrent);
+    dispatch = { promoted: [], reclaimed: [], blocked: [], orchestrated: [], count: 0 };
+  } else {
+    dispatch = await params.store.dispatch({
+      now,
+      boardId,
+      ...(directCardId ? { cardId: directCardId } : {}),
+      assertOwnerCurrent,
+    });
+    if (directCardId) {
+      directCard = await params.store.get(directCardId);
+      if (!directCard) {
+        throw new Error(`card not found: ${directCardId}`);
+      }
+    }
+  }
   const maxStarts = resolveNonNegativeIntegerOption(
     params.options?.maxStarts,
     DEFAULT_DISPATCH_MAX_STARTS,
   );
   const started: WorkboardStartedRun[] = [];
   const startFailures: WorkboardStartFailure[] = [];
-  const cards = await params.store.list();
+  // Exact targets rely on the store's atomic owner-slot claim rather than
+  // reading unrelated queued cards to infer whether their owner is available.
+  const cards = directCard ? [] : await params.store.list();
   const candidates = directCard ? [directCard] : await params.store.list({ boardId });
   const ownerOverride = params.options?.ownerId?.trim() || undefined;
   const startedOwners = new Set<string>();
@@ -291,7 +330,7 @@ async function runWorkboardDispatch(
     candidates,
     ownerOverride,
     now,
-    directCardId ? "exact" : "scheduled",
+    directCardId ? (targetMode === "dispatch" ? "exact-dispatch" : "exact-start") : "scheduled",
   );
   if (selection.rejection) {
     startFailures.push(selection.rejection);
@@ -431,6 +470,7 @@ async function runWorkboardDispatch(
         now,
         scope: { ownerId, token: claimValue },
         assertOwnerCurrent,
+        ...(intentRunId ? { intentRunId } : {}),
       });
       const launched = prepared.card;
       preparedLaunch = prepared.launch;
