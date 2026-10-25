@@ -23,17 +23,23 @@ type GatewayOptions = JsonOptions & {
 };
 
 type DispatchOptions = GatewayOptions & {
+  card?: string;
+  intentRunId?: string;
   maxStarts?: number;
 };
+
+function invalidCliArgument(message: string): Error {
+  return Object.assign(new Error(message), {
+    name: "InvalidArgumentError",
+    code: "commander.invalidArgument",
+    exitCode: 1,
+  });
+}
 
 function parseMaxStarts(value: string): number {
   const parsed = parseStrictPositiveInteger(value);
   if (parsed === undefined) {
-    throw Object.assign(new Error("--max-starts must be a positive integer."), {
-      name: "InvalidArgumentError",
-      code: "commander.invalidArgument",
-      exitCode: 1,
-    });
+    throw invalidCliArgument("--max-starts must be a positive integer.");
   }
   return parsed;
 }
@@ -219,6 +225,8 @@ export function registerWorkboardCli(params: { program: Command; store: Workboar
       .command("dispatch")
       .description("Promote ready cards and start worker runs through the Gateway")
       .option("--board <id>", "Dispatch a single board")
+      .option("--card <id>", "Dispatch one exact card id without scanning other queued cards")
+      .option("--intent-run-id <id>", "Bind an exact-card launch to a dispatch intent receipt")
       .option(
         "--max-starts <count>",
         "Maximum new worker runs to start in this pass (default 3)",
@@ -227,9 +235,27 @@ export function registerWorkboardCli(params: { program: Command; store: Workboar
       .option("--admin", "Request full-host workspace access", false)
       .option("--json", "Print JSON", false),
   ).action(async (options: DispatchOptions) => {
+    const cardId = options.card?.trim();
+    if (options.card !== undefined && !cardId) {
+      throw invalidCliArgument("--card must be a non-empty string.");
+    }
+    if (options.intentRunId !== undefined && !cardId) {
+      throw invalidCliArgument("--intent-run-id requires --card.");
+    }
+    if (
+      options.intentRunId !== undefined &&
+      (options.intentRunId.length !== 43 || !/^wb-[0-9a-f]{40}$/.test(options.intentRunId))
+    ) {
+      throw invalidCliArgument(
+        "--intent-run-id must be a wb-<40 lowercase hex> dispatch intent id.",
+      );
+    }
+    if (cardId && options.maxStarts !== undefined && options.maxStarts !== 1) {
+      throw invalidCliArgument("--max-starts must be 1 when --card is provided.");
+    }
     try {
       const method =
-        options.maxStarts === undefined
+        options.maxStarts === undefined && !cardId
           ? "workboard.cards.dispatch"
           : "workboard.cards.dispatchWithOptions";
       const result = await callGatewayFromCli(
@@ -237,6 +263,8 @@ export function registerWorkboardCli(params: { program: Command; store: Workboar
         options,
         {
           boardId: options.board,
+          ...(cardId ? { cardId } : {}),
+          ...(options.intentRunId ? { intentRunId: options.intentRunId } : {}),
           ...(options.maxStarts !== undefined ? { maxStarts: options.maxStarts } : {}),
         },
         {
@@ -265,6 +293,7 @@ export function registerWorkboardCli(params: { program: Command; store: Workboar
       }
     } catch (error) {
       if (
+        cardId ||
         !isGatewayUnavailableError(error) ||
         hasExplicitGatewayTarget(options) ||
         hasConfiguredRemoteGatewayTarget()

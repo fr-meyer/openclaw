@@ -746,6 +746,183 @@ describe("workboard gateway methods", () => {
     });
   });
 
+  it("validates exact-card dispatch options before touching worker state", async () => {
+    const { api, methods, invoke } = createGatewayMethodCapture();
+    const store = createWorkboardSqliteTestStore();
+    using dispatch = vi.spyOn(store, "dispatch");
+    using prepareStart = vi.spyOn(store, "prepareStart");
+    registerWorkboardGatewayMethods({ api, store });
+    expect(methods.get("workboard.cards.dispatchWithOptions")?.opts).toEqual({
+      scope: "operator.write",
+    });
+    const intent = `wb-${"a".repeat(40)}`;
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      ["dispatch", { cardId: "target" }, "cardId requires workboard.cards.dispatchWithOptions."],
+      [
+        "dispatch",
+        { intentRunId: intent },
+        "intentRunId requires one exact card through dispatchWithOptions.",
+      ],
+      ...[null, 42, "   "].map((cardId): [string, Record<string, unknown>, string] => [
+        "dispatchWithOptions",
+        { cardId },
+        "cardId must be a non-empty string.",
+      ]),
+      [
+        "dispatchWithOptions",
+        { cardId: "target", maxStarts: 2 },
+        "maxStarts must be 1 when cardId is provided.",
+      ],
+      [
+        "dispatchWithOptions",
+        { intentRunId: intent },
+        "intentRunId requires one exact card through dispatchWithOptions.",
+      ],
+      ...["bad", `wb-${"A".repeat(40)}`, `wb-${"a".repeat(39)}`, `${intent}\n`].map(
+        (intentRunId): [string, Record<string, unknown>, string] => [
+          "dispatchWithOptions",
+          { cardId: "target", intentRunId },
+          "intentRunId must be a wb-<40 lowercase hex> dispatch intent id.",
+        ],
+      ),
+      [
+        "start",
+        { id: "target", intentRunId: intent },
+        "intentRunId requires one exact card through dispatchWithOptions.",
+      ],
+    ];
+    for (const [method, input, message] of cases) {
+      const respond = await invoke(`workboard.cards.${method}`, input);
+      expect(respond).toHaveBeenCalledWith(false, undefined, {
+        code: "workboard_error",
+        message,
+      });
+    }
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(prepareStart).not.toHaveBeenCalled();
+  });
+
+  it("dispatches only the exact card, forwards its intent, and redacts the returned claim", async () => {
+    const { api, methods } = createGatewayMethodCapture();
+    const run = vi.fn(async (input: { idempotencyKey: string }) => ({
+      runId: `accepted:${input.idempotencyKey}`,
+    }));
+    api.runtime.subagent = { run } as unknown as OpenClawPluginApi["runtime"]["subagent"];
+    const store = createWorkboardSqliteTestStore();
+    const target = await store.create({
+      title: "Exact dispatch",
+      status: "ready",
+      agentId: "target",
+      workspaceAccess: { unrestricted: true },
+    });
+    const unrelated = await store.create({
+      title: "Unrelated urgent work",
+      status: "ready",
+      priority: "urgent",
+      agentId: "other",
+      workspaceAccess: { unrestricted: true },
+    });
+    using list = vi.spyOn(store, "list");
+    using prepareStart = vi.spyOn(store, "prepareStart");
+    using prepareLaunch = vi.spyOn(store, "prepareExecutionLaunch");
+    registerWorkboardGatewayMethods({ api, store });
+    const intentRunId = `wb-${"b".repeat(40)}`;
+    const respond = vi.fn();
+    await methods.get("workboard.cards.dispatchWithOptions")!.handler({
+      params: { cardId: target.id, intentRunId },
+      context: { getRuntimeConfig: () => ({}) },
+      respond,
+    } as never);
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    expect(respond.mock.calls[0]?.[1]).toMatchObject({
+      started: [{ cardId: target.id, card: { metadata: { claim: { token: "[redacted]" } } } }],
+      startFailures: [],
+    });
+    expect(prepareLaunch).toHaveBeenCalledWith(target.id, expect.objectContaining({ intentRunId }));
+    expect(prepareStart).not.toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledOnce();
+    await expect(store.get(unrelated.id)).resolves.toEqual(unrelated);
+  });
+
+  it("keeps exact dispatch eligibility and response separate from direct start", async () => {
+    const { api, methods } = createGatewayMethodCapture();
+    const run = vi.fn().mockResolvedValue({ runId: "run-manual-card" });
+    api.runtime.subagent = { run } as unknown as OpenClawPluginApi["runtime"]["subagent"];
+    const store = createWorkboardSqliteTestStore();
+    const target = await store.create({
+      title: "Manual todo card",
+      status: "todo",
+      workspaceAccess: { unrestricted: true },
+    });
+    const unrelated = await store.create({
+      title: "Unrelated ready card",
+      status: "ready",
+      agentId: "other",
+      workspaceAccess: { unrestricted: true },
+    });
+    registerWorkboardGatewayMethods({ api, store });
+    const respond = vi.fn();
+    await methods.get("workboard.cards.dispatchWithOptions")!.handler({
+      params: { cardId: target.id, maxStarts: 1 },
+      context: { getRuntimeConfig: () => ({}) },
+      respond,
+    } as never);
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    expect(respond.mock.calls[0]?.[1]).toMatchObject({
+      started: [],
+      startFailures: [{ cardId: target.id, error: expect.stringContaining("cannot dispatch") }],
+    });
+    expect(run).not.toHaveBeenCalled();
+    await expect(store.get(unrelated.id)).resolves.toEqual(unrelated);
+    const direct = vi.fn();
+    await methods.get("workboard.cards.start")!.handler({
+      params: { id: target.id, provider: "openai", model: "test-model" },
+      context: { getRuntimeConfig: () => ({}) },
+      respond: direct,
+    } as never);
+    expect(direct.mock.calls[0]?.[0]).toBe(true);
+    expect(direct.mock.calls[0]?.[1]).toMatchObject({
+      cardId: target.id,
+      runId: "run-manual-card",
+    });
+    expect(direct.mock.calls[0]?.[1]).not.toHaveProperty("started");
+    expect(run).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "openai", model: "test-model" }),
+    );
+  });
+
+  it("keeps connected exact-card dispatch within configured workspace authority", async () => {
+    const { api, methods } = createGatewayMethodCapture();
+    const run = vi.fn();
+    api.runtime.subagent = { run } as unknown as OpenClawPluginApi["runtime"]["subagent"];
+    const store = createWorkboardSqliteTestStore();
+    const target = await store.create({
+      title: "Outside exact target",
+      status: "ready",
+      workspace: { kind: "worktree", sourcePath: "/outside/workboard-repo" },
+      workspaceAccess: { unrestricted: true },
+    });
+    registerWorkboardGatewayMethods({ api, store });
+    const respond = vi.fn();
+    await methods.get("workboard.cards.dispatchWithOptions")!.handler({
+      params: { cardId: target.id },
+      client: { connect: { scopes: ["operator.write"] } },
+      context: {
+        getRuntimeConfig: () => ({ agents: { defaults: { workspace: "/workspace" } } }),
+      },
+      respond,
+    } as never);
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    expect(respond.mock.calls[0]?.[1]).toMatchObject({
+      started: [],
+      startFailures: [{ cardId: target.id, error: expect.stringContaining("outside the caller") }],
+    });
+    expect(run).not.toHaveBeenCalled();
+    await expect(store.get(target.id)).resolves.toMatchObject({ status: "ready" });
+  });
+
   it("returns an actionable exact-card admission failure", async () => {
     const { methods, registerGatewayMethod } = createGatewayMethodCapture();
     const run = vi.fn();

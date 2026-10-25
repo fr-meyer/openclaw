@@ -67,6 +67,7 @@ async function runSessionSweep(params: {
     status?: "running" | "done" | "failed" | "killed" | "timeout";
     hasActiveRun?: boolean;
     abortedLastRun?: boolean;
+    lastRunId?: string;
   }>;
   complete?: boolean;
   now?: number;
@@ -785,21 +786,24 @@ describe("Workboard gateway lifecycle sync", () => {
     const store = createWorkboardSqliteTestStore();
     const provisionalSessionKey = "subagent:workboard-default-match-race";
     const created = await createLinkedCard(store, { sessionKey: provisionalSessionKey });
-    const provisionalRunId = `workboard:${created.id}:${created.updatedAt}`;
-    const card = await store.update(created.id, {
-      runId: provisionalRunId,
-      execution: execution(provisionalSessionKey, provisionalRunId),
+    const claimed = await store.claim(created.id, { ownerId: "worker" });
+    const { card } = await store.prepareExecutionLaunch(created.id, {
+      requestedSessionKey: provisionalSessionKey,
+      now: created.updatedAt,
+      scope: { ownerId: "worker", token: claimed.token },
     });
     const newerSessionKey = "agent:newer:subagent:workboard-default-match-race";
     const originalSync = store.syncLifecycle.bind(store);
-    vi.spyOn(store, "syncLifecycle").mockImplementationOnce(async (id, input) => {
-      await store.update(id, {
-        sessionKey: newerSessionKey,
-        runId: "newer-run",
-        execution: execution(newerSessionKey, "newer-run"),
+    const syncLifecycle = vi
+      .spyOn(store, "syncLifecycle")
+      .mockImplementationOnce(async (id, input) => {
+        await store.update(id, {
+          sessionKey: newerSessionKey,
+          runId: "newer-run",
+          execution: execution(newerSessionKey, "newer-run"),
+        });
+        return await originalSync(id, input);
       });
-      return await originalSync(id, input);
-    });
 
     await syncWorkboardSubagentEnded({
       store,
@@ -811,6 +815,7 @@ describe("Workboard gateway lifecycle sync", () => {
       },
     });
 
+    expect(syncLifecycle).toHaveBeenCalledOnce();
     await expect(store.get(card.id)).resolves.toMatchObject({
       status: "running",
       sessionKey: newerSessionKey,
@@ -843,6 +848,36 @@ describe("Workboard gateway lifecycle sync", () => {
       status: "running",
       runId: "current-run",
       execution: { runId: "current-run", status: "running" },
+    });
+  });
+
+  it("does not settle the current accepted run from an older terminal session snapshot", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const sessionKey = "agent:worker:subagent:workboard-default-retried";
+    const card = await createLinkedCard(store, {
+      sessionKey,
+      runId: "current-run",
+      execution: execution(sessionKey, "current-run"),
+    });
+
+    await runSessionSweep({
+      store,
+      sessions: [
+        {
+          key: sessionKey,
+          status: "done",
+          hasActiveRun: false,
+          lastRunId: "older-run",
+          updatedAt: card.updatedAt + 1,
+        },
+      ],
+      now: card.updatedAt + 2,
+    });
+
+    await expect(store.get(card.id)).resolves.toMatchObject({
+      status: "running",
+      runId: "current-run",
+      execution: { status: "running", runId: "current-run" },
     });
   });
 
@@ -911,6 +946,31 @@ describe("Workboard gateway lifecycle sync", () => {
       readWorkboardLifecycleSessions({ isAvailable: async () => false, request }),
     ).resolves.toEqual({ sessions: [], complete: false });
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("retains the session owner's terminal run identity from exact Gateway reads", async () => {
+    const key = "agent:worker:subagent:workboard-default-terminal";
+    const request = vi.fn().mockResolvedValue({
+      session: {
+        key,
+        status: "done",
+        hasActiveRun: false,
+        updatedAt: 100,
+        lastRunId: " accepted-run ",
+      },
+    });
+
+    await expect(
+      readWorkboardLifecycleSessions(
+        { isAvailable: async () => true, request },
+        { includeUnknown: false, sessionKey: key },
+      ),
+    ).resolves.toEqual({
+      sessions: [
+        { key, status: "done", hasActiveRun: false, updatedAt: 100, lastRunId: "accepted-run" },
+      ],
+      complete: false,
+    });
   });
 
   it("treats a full sessions.list page as possibly truncated", async () => {

@@ -247,7 +247,7 @@ export function registerWorkboardGatewayMethods(params: {
     dispatchCards(request, { supportsMaxStarts: false }),
   );
   register("workboard.cards.dispatchWithOptions", WRITE_SCOPE, (request) =>
-    dispatchCards(request, { supportsMaxStarts: true }),
+    dispatchCards(request, { supportsMaxStarts: true, supportsCardId: true }),
   );
   register("workboard.boards.list", READ_SCOPE, () => store.listBoards());
   register("workboard.boards.upsert", WRITE_SCOPE, async (request) => {
