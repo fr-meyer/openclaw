@@ -1,0 +1,80 @@
+name: Workboard maintained type graph validation
+
+on:
+  push:
+    branches: [validation/workboard-pr173202-bf6cce51-types3]
+
+permissions: {}
+
+concurrency:
+  group: workboard-source-integration-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  OPENCLAW_TEST: "1"
+  OPENCLAW_VITEST_RUNTIME: node
+  OPENCLAW_VITEST_MAX_WORKERS: "1"
+  OPENCLAW_VITEST_FS_MODULE_CACHE: "0"
+  TSX_DISABLE_CACHE: "1"
+  NODE_OPTIONS: --max-old-space-size=2048
+  GIT_CONFIG_GLOBAL: /dev/null
+  GIT_CONFIG_NOSYSTEM: "1"
+  GIT_TERMINAL_PROMPT: "0"
+
+jobs:
+  workboard-source:
+    name: Workboard / source integration
+    if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/validation/workboard-pr173202-bf6cce51-types3'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Fetch public exact source without a token
+        env:
+          EXPECTED_SOURCE_COMMIT: ebb223aa1645bf29c2783296a74864b29d18e77a
+          EXPECTED_SOURCE_TREE: 94902be20b56f2962568865a1ec69c60ee163209
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init --quiet .
+          git config core.hooksPath /dev/null
+          git -c credential.helper= fetch --no-tags --depth=3 https://github.com/fr-meyer/openclaw.git "$GITHUB_SHA"
+          git checkout --detach --quiet FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_SOURCE_COMMIT"
+          test "$(git rev-parse "$EXPECTED_SOURCE_COMMIT^{tree}")" = "$EXPECTED_SOURCE_TREE"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = ".github/workflows/workboard-source-integration.yml"
+          git diff --exit-code "$EXPECTED_SOURCE_COMMIT" HEAD -- . ':!.github/workflows/workboard-source-integration.yml'
+          printf 'bf3656f51dc8dc1660e1dcf289db8bc52811bf5e9bc8aabd588489b2ad85aaf1  pnpm-lock.yaml\n' | sha256sum --check
+          printf 'Exact source commit: %s\nSource tree: %s\nCI commit: %s\n' "$EXPECTED_SOURCE_COMMIT" "$EXPECTED_SOURCE_TREE" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Maintained full-workspace frozen setup with normal lifecycle scripts
+        id: setup
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24.22.1"
+          cache-mode: off
+          install-bun: "false"
+          install-deps: "true"
+          frozen-lockfile: "true"
+          semantic-checks: "true"
+
+      - name: Verify maintained installation and unchanged frozen source
+        id: deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = v24.22.1
+          test "$(pnpm --version)" = 12.15.0
+          printf 'bf3656f51dc8dc1660e1dcf289db8bc52811bf5e9bc8aabd588489b2ad85aaf1  pnpm-lock.yaml\n' | sha256sum --check
+          git diff --exit-code
+          mkdir -p "$RUNNER_TEMP/workboard-state"
+          echo "OPENCLAW_STATE_DIR=$RUNNER_TEMP/workboard-state" >> "$GITHUB_ENV"
+
+      - name: Type check maintained extension production and test graphs
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        env:
+          OPENCLAW_CI_STATIC_EVIDENCE: "1"
+          OPENCLAW_TSGO_TIMEOUT_MS: "480000"
+        shell: bash
+        run: node scripts/run-tsgo-core-test-shards.mjs --ci-graphs-json '["extensions","extensions-test"]' --concurrency 1
