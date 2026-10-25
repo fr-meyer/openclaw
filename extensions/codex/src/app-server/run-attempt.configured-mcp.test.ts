@@ -39,6 +39,44 @@ function createMcpParams(toolsAllow?: string[]) {
 
 describe("runCodexAppServerAttempt configured MCP ownership", () => {
   it.each([
+    { name: "disabled", disableTools: true, expectedMcpCalls: 0 },
+    { name: "enabled", disableTools: false, expectedMcpCalls: 1 },
+    { name: "omitted", disableTools: undefined, expectedMcpCalls: 1 },
+  ])("keeps requester catalog setup $name without changing other turns", async (testCase) => {
+    const params = createMcpParams(["cron", "fake__show"]);
+    if (testCase.disableTools === undefined) {
+      delete params.disableTools;
+    } else {
+      params.disableTools = testCase.disableTools;
+    }
+    params.senderId = "requester-with-advertised-catalog";
+    mcpMocks.requesterCollisionTool = true;
+    const harness = createStartedThreadHarness();
+    const run = runCodexAppServerAttempt(params);
+    try {
+      await harness.waitForMethod("turn/start");
+      const threadStart = harness.requests.find((request) => request.method === "thread/start")
+        ?.params as { dynamicTools?: CodexDynamicToolSpec[] } | undefined;
+      const toolNames = flattenCodexDynamicToolFunctions(threadStart?.dynamicTools).map(
+        (tool) => tool.name,
+      );
+      expect(mcpMocks.staticCalls).toHaveLength(testCase.expectedMcpCalls);
+      expect(mcpMocks.requesterCalls).toBe(testCase.expectedMcpCalls);
+      if (testCase.disableTools === true) {
+        expect(toolNames).toEqual([]);
+      } else {
+        expect(mcpMocks.requesterParams[0]?.requesterSenderId).toBe(params.senderId);
+        expect(toolNames).toEqual(expect.arrayContaining(["fake__show", "fake__show_2"]));
+      }
+    } finally {
+      await harness.completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+      await run;
+    }
+    expect(mcpMocks.dispose).toHaveBeenCalledTimes(testCase.expectedMcpCalls);
+    expect(mcpMocks.requesterDispose).toHaveBeenCalledTimes(testCase.expectedMcpCalls);
+  });
+
+  it.each([
     { reason: "cancellation", rejectCleanup: true },
     { reason: "authority closure", rejectCleanup: false },
   ])(

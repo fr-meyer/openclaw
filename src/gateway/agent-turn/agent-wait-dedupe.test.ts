@@ -11,8 +11,13 @@ import { registerQueuedChatTurn, type QueuedChatTurnMap } from "../chat-queued-t
 import { agentHandlers } from "../server-methods/agent.js";
 import { createGatewayRequestContext } from "../server-request-context.js";
 import { makeContextParams } from "../server-request-context.test-support.js";
-import type { DedupeEntry } from "../server-shared.js";
+import {
+  AGENT_DURABLE_NO_TOOLS_MODE,
+  AgentExecutionModeMismatchError,
+  type DedupeEntry,
+} from "../server-shared.js";
 import { roleClient, rolePolicyConfig } from "../session-sharing.test-utils.js";
+import { createAgentDedupeLifecycle } from "./agent-dedupe-lifecycle.js";
 import { replayAgentTurnIfCached } from "./agent-dedupe.js";
 import { setGatewayDedupeEntry, waitForAgentJob } from "./agent-job.js";
 import { createAgentTurnService } from "./agent-turn-service.js";
@@ -76,6 +81,159 @@ afterEach(() => {
 });
 
 describe("agent.wait gateway dedupe observations", () => {
+  it.each([
+    { name: "legacy accepted", tagged: false, disableTools: true, acceptedOnly: false },
+    {
+      name: "legacy terminal private retry",
+      tagged: false,
+      disableTools: true,
+      acceptedOnly: true,
+    },
+    { name: "no-tools to default", tagged: true, disableTools: false, acceptedOnly: false },
+    { name: "no-tools to omitted", tagged: true, disableTools: undefined, acceptedOnly: false },
+  ])("refuses execution-mode replay for $name without changing custody", (testCase) => {
+    const runId = `mode-replay-${testCase.name}`;
+    const key = `agent:${runId}`;
+    const context = createGatewayRequestContext(makeContextParams());
+    const entry: DedupeEntry = {
+      ts: 100,
+      ok: true,
+      ...(testCase.tagged ? { agentExecutionMode: AGENT_DURABLE_NO_TOOLS_MODE } : {}),
+      payload: { runId, status: testCase.acceptedOnly ? "ok" : "accepted" },
+    };
+    context.dedupe.set(key, entry);
+    const emitAcceptance = vi.fn();
+    expect(
+      replayAgentTurnIfCached({
+        preflight: { runId, agentDedupeKeys: [key], disableTools: testCase.disableTools },
+        context,
+        io: { emitAcceptance, emitFinal: vi.fn() },
+        acceptedOnly: testCase.acceptedOnly,
+      }),
+    ).toBe(true);
+    expect(emitAcceptance).toHaveBeenCalledWith([
+      false,
+      undefined,
+      expect.objectContaining({ code: "INVALID_REQUEST" }),
+    ]);
+    expect(context.dedupe.get(key)).toBe(entry);
+  });
+
+  it.each([true, false, undefined])("replays the matching execution mode %s", (disableTools) => {
+    const runId = `mode-matching-${String(disableTools)}`;
+    const key = `agent:${runId}`;
+    const context = createGatewayRequestContext(makeContextParams());
+    context.dedupe.set(key, {
+      ts: 100,
+      ok: true,
+      ...(disableTools === true ? { agentExecutionMode: AGENT_DURABLE_NO_TOOLS_MODE } : {}),
+      payload: { runId, status: "accepted" },
+    });
+    const emitAcceptance = vi.fn();
+    expect(
+      replayAgentTurnIfCached({
+        preflight: { runId, agentDedupeKeys: [key], disableTools },
+        context,
+        io: { emitAcceptance, emitFinal: vi.fn() },
+      }),
+    ).toBe(true);
+    expect(emitAcceptance).toHaveBeenCalledWith(
+      [true, expect.objectContaining({ runId, status: "in_flight" }), undefined],
+      { cached: true, runId },
+    );
+  });
+
+  it("checks every alias before attachment and refuses a late conflicting reservation", async () => {
+    const runId = "mode-alias-race";
+    const keys = [`agent:${runId}`, "agent:exec-approval-followup:mode-alias"];
+    const context = createGatewayRequestContext(makeContextParams());
+    const emitAcceptance = vi.fn();
+    const lifecycle = createAgentDedupeLifecycle({
+      cfg: {},
+      request: { message: "continue", idempotencyKey: runId },
+      runId,
+      lifecycleGeneration: "mode-generation",
+      agentDedupeKeys: keys,
+      disableTools: true,
+      suppressVisibleSessionEffects: false,
+      context,
+      io: { emitAcceptance, emitFinal: vi.fn() },
+    });
+    const reserveAfterYield = Promise.resolve().then(() => lifecycle.reserve());
+    const tagged: DedupeEntry = {
+      ts: 100,
+      ok: true,
+      agentExecutionMode: AGENT_DURABLE_NO_TOOLS_MODE,
+      payload: { runId, status: "accepted" },
+    };
+    const legacy: DedupeEntry = { ts: 100, ok: true, payload: { runId, status: "accepted" } };
+    context.dedupe.set(keys[0]!, tagged);
+    context.dedupe.set(keys[1]!, legacy);
+    await expect(reserveAfterYield).rejects.toBeInstanceOf(AgentExecutionModeMismatchError);
+    expect(lifecycle.isReserved()).toBe(false);
+    expect(
+      replayAgentTurnIfCached({
+        preflight: { runId, agentDedupeKeys: keys, disableTools: true },
+        context,
+        io: { emitAcceptance, emitFinal: vi.fn() },
+      }),
+    ).toBe(true);
+    expect(emitAcceptance.mock.calls[0]?.[0]?.[0]).toBe(false);
+    expect(context.dedupe.get(keys[0]!)).toBe(tagged);
+    expect(context.dedupe.get(keys[1]!)).toBe(legacy);
+  });
+
+  it("retains the captured mode through terminal, abort and private attempt publications", () => {
+    const runId = "mode-publication-custody";
+    const key = `agent:${runId}`;
+    const context = createGatewayRequestContext(makeContextParams());
+    const input = {
+      cfg: {},
+      request: { message: "continue", idempotencyKey: runId },
+      runId,
+      lifecycleGeneration: "mode-generation",
+      agentDedupeKeys: [key],
+      disableTools: true,
+      suppressVisibleSessionEffects: false,
+      context,
+      io: { emitAcceptance: vi.fn(), emitFinal: vi.fn() },
+    };
+    const lifecycle = createAgentDedupeLifecycle(input);
+    input.disableTools = false;
+    lifecycle.reserve();
+    expect(context.dedupe.get(key)?.agentExecutionMode).toBe(AGENT_DURABLE_NO_TOOLS_MODE);
+    for (const status of ["ok", "accepted", "timeout"] as const) {
+      setGatewayDedupeEntry({
+        dedupe: context.dedupe,
+        key,
+        ...(status === "accepted" ? { startNewAttempt: true as const } : {}),
+        entry: {
+          ts: 200,
+          ok: true,
+          payload: { runId, status, ...(status === "timeout" ? { stopReason: "rpc" } : {}) },
+        },
+      });
+      expect(context.dedupe.get(key)?.agentExecutionMode).toBe(AGENT_DURABLE_NO_TOOLS_MODE);
+    }
+    const legacyKey = "agent:mode-no-upgrade";
+    const legacy: DedupeEntry = { ts: 1, ok: true, payload: { status: "accepted" } };
+    context.dedupe.set(legacyKey, legacy);
+    expect(() =>
+      setGatewayDedupeEntry({
+        dedupe: context.dedupe,
+        key: legacyKey,
+        startNewAttempt: true,
+        entry: {
+          ts: 2,
+          ok: true,
+          agentExecutionMode: AGENT_DURABLE_NO_TOOLS_MODE,
+          payload: { status: "accepted" },
+        },
+      }),
+    ).toThrow(AgentExecutionModeMismatchError);
+    expect(context.dedupe.get(legacyKey)).toBe(legacy);
+  });
+
   it.each([
     { status: "ok", registration: "active" },
     { status: "error", registration: "retired" },

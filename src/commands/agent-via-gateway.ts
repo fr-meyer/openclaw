@@ -96,6 +96,7 @@ type AgentCliOpts = {
   messageFile?: string;
   agent?: string;
   model?: string;
+  tools?: boolean;
   to?: string;
   sessionId?: string;
   sessionKey?: string;
@@ -911,6 +912,7 @@ async function agentViaGatewayCommand(
             message: body,
             agentId,
             model: modelOverride,
+            ...(opts.tools === false ? { disableTools: true } : {}),
             to: opts.to,
             replyTo: opts.replyTo,
             sessionId: opts.sessionId,
@@ -1109,6 +1111,7 @@ export async function agentCliCommand(
         result = await runEmbeddedAgentCommand(
           {
             ...gatewayDispatchOpts,
+            ...(gatewayDispatchOpts.tools === false ? { disableTools: true } : {}),
             agentId:
               gatewayDispatchOpts.agent ?? gatewayDispatchOpts.localGatewayCompatibilityAgentId,
             replyAccountId: gatewayDispatchOpts.replyAccount,

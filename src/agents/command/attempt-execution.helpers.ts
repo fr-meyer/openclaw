@@ -520,6 +520,7 @@ export function resolveCompletionToolPolicy(params: {
 }) {
   const { run, completionNeedsMessageDelivery, isSubagentAnnounceHandoff } = params;
   const completionRetainsRequesterTools =
+    run.opts.disableTools !== true &&
     params.trustedSubagentAnnounceHandoff &&
     !params.isRawModelRun &&
     (!params.isCliExecutionProvider ||
@@ -538,6 +539,7 @@ export function resolveCompletionToolPolicy(params: {
         : undefined
     : run.opts.toolsAllow;
   const disableTools =
+    run.opts.disableTools === true ||
     run.opts.modelRun === true ||
     (isSubagentAnnounceHandoff &&
       !completionRetainsRequesterTools &&

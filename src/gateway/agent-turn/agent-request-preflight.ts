@@ -50,6 +50,12 @@ export function prepareAgentRequestPreflight(params: {
     params.io.emitAcceptance([false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, message)]);
     return undefined;
   };
+  const disableTools = request.disableTools === true;
+  if (disableTools && (request.modelRun === true || request.promptMode === "none")) {
+    return rejectInvalidRequest(
+      "disableTools=true requires a durable agent run, not modelRun or promptMode=none.",
+    );
+  }
   const cfg = params.context.getRuntimeConfig();
   const canUseInternalRuntimeHandoff =
     params.client?.connect?.client?.mode === GATEWAY_CLIENT_MODES.BACKEND;
@@ -258,6 +264,7 @@ export function prepareAgentRequestPreflight(params: {
   });
   return {
     request,
+    ...(disableTools ? { disableTools: true } : {}),
     cfg,
     runId,
     allowModelOverride,

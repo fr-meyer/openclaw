@@ -1,5 +1,6 @@
 import { createAgentHarnessAttemptCancellation } from "openclaw/plugin-sdk/agent-harness-attempt-runtime";
 import {
+  AgentHarnessPreflightError,
   isActiveHarnessContextEngine,
   resolveSandboxContext,
   resolveUserPath,
@@ -92,6 +93,14 @@ export async function prepareCodexAttemptConnection({ params, options }: CodexRu
   const pluginConfig = readCodexPluginConfig(options.pluginConfig);
   const requirementsToml = readCodexRequirementsToml({});
   const computerUseConfig = resolveCodexComputerUseConfig({ pluginConfig });
+  if (params.disableTools === true && computerUseConfig.enabled) {
+    // Computer Use can provision and probe during client acquisition, before the
+    // per-thread tool restriction. Refuse before workspace or client preparation.
+    const message = "Explicit no-tools agent runs do not support enabled Codex Computer Use.";
+    // An unscoped preflight error stops the fallback chain; another harness must
+    // not silently replace this explicitly requested execution contract.
+    throw new AgentHarnessPreflightError(message, { userMessage: message });
+  }
   const { sessionAgentId } = resolveSessionAgentIdsStrict({
     sessionKey: params.sessionKey,
     config: params.config,

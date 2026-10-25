@@ -24,7 +24,7 @@ import { isNonTerminalAgentRunStatus } from "../../shared/agent-run-status.js";
 import { getAsyncWorkSignal } from "../../shared/async-work-scope.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { setSafeTimeout } from "../../utils/timer-delay.js";
-import type { DedupeEntry } from "../server-shared.js";
+import { AgentExecutionModeMismatchError, type DedupeEntry } from "../server-shared.js";
 import type { AgentJobObservation, AgentJobSession, AgentJobTerminalSnapshot } from "./types.js";
 
 const AGENT_RUN_CACHE_TTL_MS = 10 * 60_000;
@@ -521,6 +521,13 @@ export function setGatewayDedupeEntry(params: {
   const executionTiming =
     lifecycle && sameAgentJobSession(lifecycle.session, params.session) ? lifecycle : undefined;
   const existing = params.dedupe.get(params.key);
+  if (
+    existing &&
+    params.entry.agentExecutionMode !== undefined &&
+    params.entry.agentExecutionMode !== existing.agentExecutionMode
+  ) {
+    throw new AgentExecutionModeMismatchError();
+  }
   const existingObservation = existing ? parseDedupeObservation(existing) : undefined;
   const incomingObservation = parseDedupeObservation(params.entry, executionTiming);
   const existingOutcome =
@@ -541,10 +548,13 @@ export function setGatewayDedupeEntry(params: {
     return;
   }
 
-  // Terminal writers own outcomes, not request identity; never erase the admission binding.
-  const entry = existing?.requestIdentity
+  // Terminal writers own outcomes, not admission identity or execution mode.
+  const identityBoundEntry = existing?.requestIdentity
     ? { ...params.entry, requestIdentity: existing.requestIdentity }
     : params.entry;
+  const entry = existing?.agentExecutionMode
+    ? { ...identityBoundEntry, agentExecutionMode: existing.agentExecutionMode }
+    : identityBoundEntry;
   params.dedupe.set(params.key, entry);
   if (!key) {
     return;

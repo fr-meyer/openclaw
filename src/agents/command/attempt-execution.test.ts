@@ -28,9 +28,60 @@ import {
   claudeCliSessionTranscriptHasOrphanedToolUse,
   createAcpVisibleTextAccumulator,
   resolveFallbackRetryPrompt,
+  resolveCompletionToolPolicy,
   sessionTranscriptHasContent,
 } from "./attempt-execution.helpers.js";
 import { resolveClaudeCliProjectDirForWorkspace } from "./claude-cli-project-dir.js";
+
+describe("durable no-tools policy", () => {
+  it.each([undefined, false, true])("narrows only explicit disableTools=%s", (disableTools) => {
+    const result = resolveCompletionToolPolicy({
+      run: {
+        sessionEntry: undefined,
+        opts: { message: "review", toolsAllow: ["exec"], disableTools },
+      },
+      trustedSubagentAnnounceHandoff: false,
+      isSubagentAnnounceHandoff: false,
+      isRawModelRun: false,
+      isCliExecutionProvider: false,
+      cliExecutionProvider: "",
+      completionNeedsMessageDelivery: false,
+    });
+    expect(result.disableTools).toBe(disableTools === true);
+    expect(result.completionRetainsRequesterTools).toBe(false);
+  });
+
+  it.each([undefined, true])(
+    "does not widen a trusted completion restriction %s",
+    (disableTools) => {
+      const result = resolveCompletionToolPolicy({
+        run: { sessionEntry: undefined, opts: { message: "review", disableTools } },
+        trustedSubagentAnnounceHandoff: true,
+        isSubagentAnnounceHandoff: true,
+        isRawModelRun: false,
+        isCliExecutionProvider: false,
+        cliExecutionProvider: "",
+        completionNeedsMessageDelivery: false,
+      });
+      expect(result.completionRetainsRequesterTools).toBe(disableTools !== true);
+      expect(result.disableTools).toBe(disableTools === true);
+    },
+  );
+
+  it("does not let completion message delivery re-enable disabled tools", () => {
+    const result = resolveCompletionToolPolicy({
+      run: { sessionEntry: undefined, opts: { message: "review", disableTools: true } },
+      trustedSubagentAnnounceHandoff: true,
+      isSubagentAnnounceHandoff: true,
+      isRawModelRun: false,
+      isCliExecutionProvider: false,
+      cliExecutionProvider: "",
+      completionNeedsMessageDelivery: true,
+    });
+    expect(result.disableTools).toBe(true);
+    expect(result.completionRetainsRequesterTools).toBe(false);
+  });
+});
 
 function formatClaudeCliFallbackPrelude(
   seed: NonNullable<

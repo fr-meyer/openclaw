@@ -1,0 +1,126 @@
+name: Mergeguez no-tools core boundary qualification
+
+on:
+  create:
+
+permissions:
+  contents: read
+
+jobs:
+  core-boundary:
+    if: >-
+      github.event.ref_type == 'branch' &&
+      github.event.ref == 'qualification/mergeguez-no-tools-core-20261025' &&
+      github.ref == 'refs/heads/qualification/mergeguez-no-tools-core-20261025' &&
+      github.repository == 'fr-meyer/openclaw' &&
+      github.event.repository.id == 1309456040 &&
+      github.event.repository.private == false &&
+      github.event.repository.owner.type == 'User' &&
+      github.actor == 'fr-meyer' &&
+      github.actor_id == '26621962' &&
+      github.event.sender.id == 26621962 &&
+      github.event.sender.type == 'User' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CI: 'true'
+      OPENCLAW_CI_STATIC_EVIDENCE: '1'
+    steps:
+      - name: Checkout exact new public qualification head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify public source identity and runner headroom before setup
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_CHECK'
+          import hashlib,json,os,pathlib,subprocess
+          root=pathlib.Path.cwd()
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD')==os.environ['GITHUB_SHA']
+          headers,_,message=git('cat-file','-p','HEAD').partition(chr(10)*2)
+          parents=[line[7:] for line in headers.splitlines() if line.startswith('parent ')]
+          assert parents==['30786562e236aab6a924981c62aa61b920132c76']
+          tree=git('rev-parse','HEAD^{tree}')
+          assert message.strip()=='mergeguez-no-tools-core 648dc8d2fc26fa97e7cf566fd586913f4bb66503 tree='+tree
+          data=(root/'proofs/no-tools-core/input-manifest.json').read_bytes()
+          assert hashlib.sha256(data).hexdigest()=='bb7b6eab956ee4794b96ce5ab3951445883c756fc29549ef5c8d87bff61b82cd'
+          m=json.loads(data)
+          assert m['base_commit']=='30786562e236aab6a924981c62aa61b920132c76'
+          for row in m['files']+m['unchanged_source_owner_pins']:
+              q=root/row['path']
+              assert q.is_file() and not q.is_symlink()
+              b=q.read_bytes()
+              assert len(b)==row['bytes'] and hashlib.sha256(b).hexdigest()==row['sha256'],row['path']
+          mem=dict((line.split(':',1)[0],int(line.split()[1])) for line in pathlib.Path('/proc/meminfo').read_text().splitlines())
+          fs=os.statvfs('.')
+          available_mem_kib=mem['MemAvailable']
+          available_disk=fs.f_bavail*fs.f_frsize
+          assert available_mem_kib>=10*1024*1024
+          assert available_disk>=8*1024**3
+          assert os.cpu_count()>=4
+          print(json.dumps({'head':os.environ['GITHUB_SHA'],'tree':tree,'source_files':len(m['files']),'behavior_files':len(m['behavior_files']),'type_graphs':len(m['type_configs']),'available_mem_kib':available_mem_kib,'available_disk_bytes':available_disk,'logical_cpu_count':os.cpu_count()}))
+          PY_CHECK
+      - name: Prepare matching public dependency closure using maintained owner
+        timeout-minutes: 12
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: '24.21.0'
+          install-bun: 'false'
+          install-deps: 'true'
+          frozen-lockfile: 'true'
+          cache-mode: 'off'
+          dependency-cache: 'false'
+          vitest-fs-cache: 'false'
+          vitest-worker-cache: 'false'
+          restore-test-caches: 'false'
+          node-compile-cache: 'false'
+          build-all-cache-scope: ''
+          semantic-checks: 'true'
+      - name: Run exact synthetic behavior targets through maintained test owner
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node -p process.versions.node)" = '24.21.0'
+          test "$(pnpm --version)" = '12.9.0'
+          pnpm test \
+            packages/gateway-protocol/src/schema/agent.test.ts \
+            src/agents/command/attempt-execution.test.ts \
+            src/cli/program/register.agent.test.ts \
+            src/commands/agent-via-gateway.test.ts \
+            src/gateway/agent-turn/agent-request-preflight.test.ts \
+            src/gateway/agent-turn/agent-wait-dedupe.test.ts \
+            extensions/codex/src/app-server/run-attempt-connection.test.ts \
+            extensions/codex/src/app-server/run-attempt.configured-mcp.test.ts \
+            extensions/codex/src/app-server/run-attempt.computer-use.test.ts \
+            src/agents/agent-bundle-mcp-acquisition.test.ts \
+            src/agents/agent-bundle-mcp-manager.requester-connect.test.ts \
+            src/agents/agent-bundle-mcp-requester-connect.import-boundary.test.ts \
+            src/agents/agent-bundle-mcp-tools.request-boundary.test.ts \
+            test/codex-completion-policy.integration.test.ts \
+            src/agents/command/attempt-execution.cli.test.ts \
+            src/gateway/server-methods/agent.test.ts
+      - name: Check existing production and target test type graphs
+        timeout-minutes: 23
+        shell: bash
+        env:
+          OPENCLAW_TSGO_TIMEOUT_MS: '120000'
+        run: |
+          set -euo pipefail
+          node scripts/run-tsgo-core-test-shards.mjs --ci-graphs-json '["core","extensions","extensions-test","core-test-packages","core-test-commands","core-test-agents-root","core-test-gateway-other","core-test-gateway-methods"]'
+          node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.test.root.other.json --incremental
+      - name: Record completion state without uploading caches or artifacts
+        if: always()
+        timeout-minutes: 1
+        shell: bash
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          printf 'core-boundary job status=%s; no provider or production operation is part of this job\n' "$RESULT"

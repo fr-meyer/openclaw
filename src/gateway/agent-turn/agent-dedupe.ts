@@ -1,7 +1,9 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
+import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import type { GatewayRequestContext } from "../server-methods/types.js";
+import { AGENT_DURABLE_NO_TOOLS_MODE, AgentExecutionModeMismatchError } from "../server-shared.js";
 import { setGatewayDedupeEntry } from "./agent-job.js";
 import type { AgentTurnIo } from "./types.js";
 
@@ -34,6 +36,21 @@ export function readGatewayDedupeEntry(params: {
     }
   }
   return undefined;
+}
+
+/** Every alias belongs to the same original request, including private retry paths. */
+export function assertAgentDedupeExecutionMode(params: {
+  dedupe: GatewayRequestContext["dedupe"];
+  keys: readonly string[];
+  disableTools?: boolean;
+}): void {
+  const expectedMode = params.disableTools === true ? AGENT_DURABLE_NO_TOOLS_MODE : undefined;
+  for (const key of params.keys) {
+    const entry = params.dedupe.get(key);
+    if (entry && entry.agentExecutionMode !== expectedMode) {
+      throw new AgentExecutionModeMismatchError();
+    }
+  }
 }
 
 export function isAcceptedAgentDedupePayload(payload: unknown): payload is {
@@ -169,11 +186,28 @@ export function setAbortedAgentDedupeEntries(params: {
 
 export function replayAgentTurnIfCached(params: {
   acceptedOnly?: boolean;
-  preflight: { agentDedupeKeys: readonly string[]; runId: string };
+  preflight: { agentDedupeKeys: readonly string[]; runId: string; disableTools?: boolean };
   context: Pick<GatewayRequestContext, "dedupe" | "chatAbortControllers">;
   io: AgentTurnIo;
 }): boolean {
   const { agentDedupeKeys, runId } = params.preflight;
+  try {
+    assertAgentDedupeExecutionMode({
+      dedupe: params.context.dedupe,
+      keys: agentDedupeKeys,
+      disableTools: params.preflight.disableTools,
+    });
+  } catch (error) {
+    if (!(error instanceof AgentExecutionModeMismatchError)) {
+      throw error;
+    }
+    params.io.emitAcceptance([
+      false,
+      undefined,
+      errorShape(ErrorCodes.INVALID_REQUEST, error.message),
+    ]);
+    return true;
+  }
   const cached = readGatewayDedupeEntry({
     dedupe: params.context.dedupe,
     keys: agentDedupeKeys,

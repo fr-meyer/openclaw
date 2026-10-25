@@ -17,6 +17,8 @@ export type StartAgentRunExecutionParams = {
   prepared: PreparedAgentRunDispatch;
   mainRestartRecoveryOwnerLease?: MainSessionRecoveryOwnerLease;
   request: AgentRunRequest;
+  /** Restriction captured synchronously by request preflight before awaited admission. */
+  readonly disableTools?: boolean;
   cfg: OpenClawConfig;
   cfgForAgent?: OpenClawConfig;
   sessionEntry?: SessionEntry;

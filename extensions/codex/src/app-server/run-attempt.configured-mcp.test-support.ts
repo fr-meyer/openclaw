@@ -69,6 +69,10 @@ vi.mock("openclaw/plugin-sdk/agent-harness-runtime", async (importOriginal) => {
     loadCodexBundleMcpThreadConfig: async (
       ...args: Parameters<typeof actual.loadCodexBundleMcpThreadConfig>
     ) => {
+      // Keep the real tool-free gate before this fixture fabricates static servers.
+      if (args[0].disableTools === true) {
+        return actual.loadCodexBundleMcpThreadConfig(...args);
+      }
       const params = args[0] as Record<string, unknown>;
       const override = mcpMocks.threadConfigFacade(params);
       if (override) {

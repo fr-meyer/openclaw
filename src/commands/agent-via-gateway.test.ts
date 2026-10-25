@@ -311,6 +311,88 @@ afterEach(() => {
 });
 
 describe("agentCliCommand", () => {
+  it.each([undefined, true, false])(
+    "preserves review identity, deadline and durable response with tools=%s",
+    async (tools) => {
+      await withTempStore(async ({ dir }) => {
+        const messageFile = path.join(dir, "review.md");
+        fs.writeFileSync(messageFile, "review the complete frozen input", "utf8");
+        const reply = gatewaySuccessReply("complete review");
+        callGateway.mockResolvedValue(reply);
+        const result = await agentCliCommand(
+          {
+            messageFile,
+            sessionKey: "agent:main:review-attempt",
+            runId: "review-idempotency",
+            model: "openai/gpt-5.6-sol",
+            thinking: "xhigh",
+            timeout: "180",
+            json: true,
+            ...(tools === undefined ? {} : { tools }),
+          },
+          jsonRuntime,
+        );
+        expect(callGateway).toHaveBeenCalledOnce();
+        const request = requireRecord(requireFirstCallArg(callGateway, "gateway"), "request");
+        const params = requireRecord(request.params, "params");
+        expect(params).toMatchObject({
+          message: "review the complete frozen input",
+          sessionKey: "agent:main:review-attempt",
+          idempotencyKey: "review-idempotency",
+          model: "openai/gpt-5.6-sol",
+          thinking: "xhigh",
+          timeout: 180,
+        });
+        expect(request.timeoutMs).toBe(210_000);
+        expect(request.scopes).toEqual(["operator.admin"]);
+        expect(Object.hasOwn(params, "disableTools")).toBe(tools === false);
+        if (tools === false) {
+          expect(params.disableTools).toBe(true);
+        }
+        expect(params).not.toHaveProperty("modelRun");
+        expect(params).not.toHaveProperty("promptMode");
+        expect(params).not.toHaveProperty("cleanupBundleMcpOnRunEnd");
+        expect(agentCommand).not.toHaveBeenCalled();
+        expect(result).toEqual(reply);
+      });
+    },
+  );
+
+  it("does not retry or switch to embedded mode when a Gateway rejects no-tools", async () => {
+    await withTempStore(async () => {
+      const error = new GatewayClientRequestError({
+        code: "INVALID_REQUEST",
+        message: "unsupported disableTools parameter",
+      });
+      callGateway.mockRejectedValue(error);
+      await expect(
+        agentCliCommand(
+          { message: "review", sessionKey: "agent:main:review", tools: false },
+          runtime,
+        ),
+      ).rejects.toBe(error);
+      expect(callGateway).toHaveBeenCalledOnce();
+      expect(agentCommand).not.toHaveBeenCalled();
+    });
+  });
+
+  it("carries the restriction through explicit embedded execution without raw-model mode", async () => {
+    await withTempStore(async ({ dir }) => {
+      mockLocalAgentReply();
+      await agentCliCommand(
+        { message: "review", sessionKey: "agent:main:review", local: true, tools: false },
+        runtime,
+        { localGatewayLockOptions: createLocalGatewayLockOptions(dir) },
+      );
+      expect(callGateway).not.toHaveBeenCalled();
+      const options = requireRecord(requireFirstCallArg(agentCommand, "embedded agent"), "options");
+      expect(options.disableTools).toBe(true);
+      expect(options.modelRun).toBeUndefined();
+      expect(options.promptMode).toBeUndefined();
+      expect(options.sessionKey).toBe("agent:main:review");
+    });
+  });
+
   it("rejects blank --to selectors before local or Gateway dispatch", async () => {
     await withTempStore(async () => {
       mockGatewaySuccessReply();

@@ -530,6 +530,43 @@ describe("gateway agent handler", () => {
     expect(mocks.agentCommand).not.toHaveBeenCalled();
   });
 
+  it("retains durable session behavior for an explicit no-tools turn", async () => {
+    primeMainAgentRun();
+    mocks.agentCommand.mockResolvedValue({ payloads: [{ text: "review complete" }], meta: {} });
+    mocks.updateSessionStore.mockClear();
+    const context = makeContext();
+    await invokeAgent(
+      {
+        message: "review complete frozen input",
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        disableTools: true,
+        timeout: 180,
+        idempotencyKey: "durable-no-tools-review",
+      },
+      { reqId: "durable-no-tools-review", client: operatorWriteCliClient(), context },
+    );
+    const options = await waitForAgentCommandCall<{
+      disableTools?: boolean;
+      modelRun?: boolean;
+      promptMode?: string;
+      sessionEffects?: string;
+      sessionKey?: string;
+      runId?: string;
+      timeout?: string;
+    }>();
+    expectRecordFields(options, {
+      disableTools: true,
+      modelRun: false,
+      sessionKey: "agent:main:main",
+      runId: "durable-no-tools-review",
+      timeout: "180",
+    });
+    expect(options.promptMode).toBeUndefined();
+    expect(options.sessionEffects).not.toBe("internal");
+    expect(mocks.updateSessionStore).toHaveBeenCalled();
+  });
+
   it("keeps CLI model runs out of durable and visible gateway state", async () => {
     const sessionId = "model-run-123e4567-e89b-12d3-a456-426614174000";
     const sessionKey = `agent:main:explicit:${sessionId}`;

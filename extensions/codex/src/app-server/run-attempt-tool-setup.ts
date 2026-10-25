@@ -452,7 +452,9 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
     // Requester-scoped MCP: dynamic tools on a shared thread (never harness-native MCP).
     // Specs come from the session advertised-catalog cache so fingerprints stay stable.
     scopedMcpTools =
-      authenticatedScheduledMode || params.requireWorkspaceOnly === true
+      params.disableTools === true ||
+      authenticatedScheduledMode ||
+      params.requireWorkspaceOnly === true
         ? undefined
         : await materializeRequesterScopedMcpToolsForHarnessRun({
             ...mcpOptions,

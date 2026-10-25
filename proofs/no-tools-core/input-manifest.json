@@ -1,0 +1,339 @@
+{
+  "schema": "openclaw.no-tools.public-core-test-inputs/v1",
+  "base_commit": "30786562e236aab6a924981c62aa61b920132c76",
+  "base_tree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+  "reviewed_core_tree": "648dc8d2fc26fa97e7cf566fd586913f4bb66503",
+  "files": [
+    {
+      "path": "docs/cli/agent.md",
+      "sha256": "8c90e0c8e53a01c358d8f09efbb45029ba47bd953c8ff7c727f8dc39d4816999",
+      "bytes": 38779,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "extensions/codex/src/app-server/completion-connection.test-support.ts",
+      "sha256": "11b08ec0a1a90a3f8a74ab4e7f454b4f462f63a8604757b59a9963ac289a3e8c",
+      "bytes": 5603,
+      "origin": "reviewed-computed-completion-regression-v2"
+    },
+    {
+      "path": "extensions/codex/src/app-server/run-attempt-connection.test.ts",
+      "sha256": "db728274b477cc352e5c47fe158dd45fbc24079632efd25eb81a83f216bcd628",
+      "bytes": 47802,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "extensions/codex/src/app-server/run-attempt-connection.ts",
+      "sha256": "6f3643dded367ca8a13939c9dae17ea9075af8b6ede29e5662c34268b6a7236b",
+      "bytes": 27044,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "extensions/codex/src/app-server/run-attempt-tool-setup.ts",
+      "sha256": "519ec126d0895ff275bb43502d6a9633a421e37b39d26b2ff67a5592d6401fb0",
+      "bytes": 29177,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "extensions/codex/src/app-server/run-attempt.configured-mcp.test-support.ts",
+      "sha256": "fda4777ef915559d06cfa0dd6014fe11e00a7284e5acede059baa2161f1e6c2d",
+      "bytes": 8447,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "extensions/codex/src/app-server/run-attempt.configured-mcp.test.ts",
+      "sha256": "bb422489a6435cef0e2dec3815f85e5d29e7f1e27f74b2bbea01c1a7edc2a7a5",
+      "bytes": 29936,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "extensions/codex/test-api.ts",
+      "sha256": "cb0165a546ae59b6bb0cbf8321e63d29ddb18d0d13a897a9ee7112cabe35c453",
+      "bytes": 6127,
+      "origin": "reviewed-computed-completion-regression-v2"
+    },
+    {
+      "path": "packages/gateway-protocol/src/schema/agent.test.ts",
+      "sha256": "2bd245afe53906cc2aaea8ff629178ef89a90c03871a01d079deaee4ee6601e3",
+      "bytes": 10976,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "packages/gateway-protocol/src/schema/agent.ts",
+      "sha256": "0cd38fc66cf8145fa5fe56faed2861df9c463cd1becb1990d81019bee53944ed",
+      "bytes": 18566,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/agents/command/attempt-execution.helpers.ts",
+      "sha256": "ed72c76b7a745b86ad70863866fa35d6efd0bf7def8f4fe2c7dcdb6e43465274",
+      "bytes": 18503,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/agents/command/attempt-execution.test.ts",
+      "sha256": "fe068f91004359eb025daa5f5f73c7966f594650237ff764c5dcacf8cee57dd3",
+      "bytes": 18151,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/agents/command/types.ts",
+      "sha256": "cbc714c3fe13f652ed90b4c18c43fac40a8d3f4d7e0ba53cee945037e68d8757",
+      "bytes": 16252,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/cli/program/register.agent-turn.ts",
+      "sha256": "0b611c088d32a955660e1b59d3e0ae2fb6cfa0ac31fa2936e0ab1298b2688b52",
+      "bytes": 8758,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/cli/program/register.agent.test.ts",
+      "sha256": "42fbfac1d11056ad59e6218bcca603ed0ce6150761c60f2338d328fbc4ef9f29",
+      "bytes": 9671,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/commands/agent-via-gateway.test.ts",
+      "sha256": "1904418aa4bd720c96a42e071877c7d1d85af93dfeb5c087df2336b5c024d6f9",
+      "bytes": 71734,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/commands/agent-via-gateway.ts",
+      "sha256": "0412c7fec163e62df5dbdfe6341a0fb3cdcb3aeb70ea5e78b2997cb156a7226b",
+      "bytes": 42086,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-dedupe-lifecycle.ts",
+      "sha256": "ace1fbcbd2371729ef4f8474fe034fedf5712baeccc617841226440f19934465",
+      "bytes": 11214,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-dedupe.ts",
+      "sha256": "3654e666778d0b96fcad0987e2835a64406fbd7ce21959a39181117994f76efb",
+      "bytes": 8380,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-job.ts",
+      "sha256": "45e8b43a3bb2373987a40f8d404448175806e734968f3cab29419166e4768266",
+      "bytes": 26826,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-request-preflight.test.ts",
+      "sha256": "a8f765914afd5a2f01d60040314e2339ab6b1fd92755f8f458cfd3161a1be065",
+      "bytes": 23766,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-request-preflight.ts",
+      "sha256": "cd89a87e6f15b9e0658025a8191a0c1c8e21e82e48ad8cf80745d1bbda817cfd",
+      "bytes": 13162,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-run-execution-phase.ts",
+      "sha256": "a08b6fe86c46bce1b5f8dc20347795f74a60dbcfde95014fa2bf4d3072b427d7",
+      "bytes": 35152,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-run-execution-types.ts",
+      "sha256": "6ae106136dcf0a1c32e321f28de3776b3c5277b253a16bcd17644e615ec0b668",
+      "bytes": 2768,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-wait-dedupe.test.ts",
+      "sha256": "96bdf52a2c66f2494c02bac0bae506ce8917f9fa94079182c394a18f4fffd3a9",
+      "bytes": 34567,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/gateway/server-methods/agent.events-and-subagents.test-utils.ts",
+      "sha256": "a4ab7e58ba385ac4f7f08b26843f4294635d5dea673e90cee1c004f49bceda6c",
+      "bytes": 51908,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "src/gateway/server-shared.ts",
+      "sha256": "c5e8c9ea2c368b2268579942bc19faa4f3c21c8fbb49fd8218ae298157a2ef43",
+      "bytes": 1199,
+      "origin": "reviewed-core-source-proposal"
+    },
+    {
+      "path": "test/codex-completion-policy.integration.test.ts",
+      "sha256": "b44efa0944bb1d4ccf91a3ecd9ce123967ecb3fbbce84c854065fd5b07ce3642",
+      "bytes": 4480,
+      "origin": "reviewed-computed-completion-regression-v2"
+    },
+    {
+      "path": "test/vitest/vitest.database-worker-core-paths.mjs",
+      "sha256": "67a1830e510b44b5ff39fe7ecc72e6ba5229d26a8808b87a5fa233c59f6f1739",
+      "bytes": 66808,
+      "origin": "reviewed-computed-completion-regression-v2"
+    }
+  ],
+  "unchanged_source_owner_pins": [
+    {
+      "path": "package.json",
+      "sha256": "d710a29089d273e1fd7395447ce7af29a01a0c47238c3b23993d68549b4ee06f",
+      "bytes": 145818
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "251877f1497a222979df6b166212da1a3c61c3e45426a9bb22bb04d86b5063ed",
+      "bytes": 606200
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "sha256": "d34dce5064d8114504da5acf0b430f64a51033a907fd1490d3c60ca1233ea78c",
+      "bytes": 5286
+    },
+    {
+      "path": ".github/actions/setup-node-env/action.yml",
+      "sha256": "779d2e77b1b839e99d1ec50ce8b20fd4e1c7734f8cdb63498f84adeefe366674",
+      "bytes": 22714
+    },
+    {
+      "path": ".github/actions/setup-node-env/install-dependencies.sh",
+      "sha256": "aae8a1af7e39b9ab8ab81d067133e8786c0bc65cc83e69e792c07c7d45d68f48",
+      "bytes": 4034
+    },
+    {
+      "path": ".github/actions/setup-node-env/dependency-fingerprint.mjs",
+      "sha256": "ec612bb288294ca9429622b0bed9d80298150fa8333bcb9b3be24d386ac54207",
+      "bytes": 9349
+    },
+    {
+      "path": ".github/actions/setup-pnpm-store-cache/action.yml",
+      "sha256": "e6d411d4dce2ad2ddbbf0b98c45301cfc789544d189f1f0176c7c9f5b5560191",
+      "bytes": 6273
+    },
+    {
+      "path": ".github/actions/setup-pnpm-store-cache/ensure-node.sh",
+      "sha256": "4aedf086bc3039ff5f9ab42aa4cb66e65d8a3441a4bb26b7088d50e36fa3d420",
+      "bytes": 9569
+    },
+    {
+      "path": "scripts/tsx.mjs",
+      "sha256": "e726c78d5a5a274215d9fe292ac91e4acf601c4554d68fbd57ff3b932573f9e6",
+      "bytes": 566
+    },
+    {
+      "path": "scripts/test-projects.mts",
+      "sha256": "41cedf3b12f00f562ca70c72b9d9a1fedfbd1ef129d3d2ed9dced9b4584ad898",
+      "bytes": 240
+    },
+    {
+      "path": "scripts/test-projects-run.mts",
+      "sha256": "0b8bf9768dd3aa066dd27a573d3f756725348a4714b31a79d41987afec43ee39",
+      "bytes": 23739
+    },
+    {
+      "path": "scripts/run-tsgo.mjs",
+      "sha256": "286c375e240b767bc2a6b8fec044231a959247fec64c506adab2baa4540a8494",
+      "bytes": 289
+    },
+    {
+      "path": "scripts/run-tsgo.mts",
+      "sha256": "da82725847a9537bb3709f65445ee357e613c7c155c5d3157f0c9b5eecdf8375",
+      "bytes": 8188
+    },
+    {
+      "path": "scripts/run-tsgo-core-test-shards.mjs",
+      "sha256": "666af932c45b48680006a5a1501dc86ddeb3b47b36acadc38d487c176876b8dd",
+      "bytes": 333
+    },
+    {
+      "path": "scripts/run-tsgo-core-test-shards.mts",
+      "sha256": "f1a835aeccff7925f41bc0cacb87e4174ae03ca6ba45c676551b9a9ecd0f92e8",
+      "bytes": 11796
+    },
+    {
+      "path": "scripts/lib/tsgo-core-test-shards.mts",
+      "sha256": "f3a569a85817a68a2fa7e8d161944e2d8ae8210b12790b74316f132e57a060a0",
+      "bytes": 12710
+    },
+    {
+      "path": "tsconfig.core.json",
+      "sha256": "79b9ed5d075d7640692b0f0de944633ca3fc96c2422c8c0176691f328aa12828",
+      "bytes": 740
+    },
+    {
+      "path": "tsconfig.extensions.json",
+      "sha256": "26f1594747121353a59b11168ab2dde10b0e3d7ca6f2cde37770ed208f4fcda3",
+      "bytes": 613
+    },
+    {
+      "path": "test/tsconfig/tsconfig.extensions.test.json",
+      "sha256": "6a118481f6b2d8ea4cc67e12aa94190448ae4f7b856ca4f2c75582f03e561016",
+      "bytes": 420
+    },
+    {
+      "path": "test/tsconfig/tsconfig.test.packages.json",
+      "sha256": "05f7fc1d4fd4d35f82982b133a0a569e9407fb7b26c1d8636afd6d34b5d65517",
+      "bytes": 248
+    },
+    {
+      "path": "test/tsconfig/tsconfig.core.test.commands.json",
+      "sha256": "130765195d575b65a561e31f153373bdf8d10caa03be3b7eacecca61e9da2c02",
+      "bytes": 971
+    },
+    {
+      "path": "test/tsconfig/tsconfig.core.test.agents-root.json",
+      "sha256": "4bd202be865cdb6798f122ed3f0fdcabc0de00906e1cac6b8290329044f760d5",
+      "bytes": 1154
+    },
+    {
+      "path": "test/tsconfig/tsconfig.core.test.gateway-other.json",
+      "sha256": "0eb6abab9a42d2542c52404e3d99f1003b7f9e10da5a3f2081b54ff2988f4367",
+      "bytes": 641
+    },
+    {
+      "path": "test/tsconfig/tsconfig.core.test.gateway-methods.json",
+      "sha256": "b4799a05e4dc221b9e3df74bf05e4cc81e90c7eef80729932b475af281e50344",
+      "bytes": 296
+    },
+    {
+      "path": "test/tsconfig/tsconfig.test.root.other.json",
+      "sha256": "66bcc8ee446f88f5e04de35b5d82eea33484ab70107eef183bd6c35fb527e48b",
+      "bytes": 722
+    }
+  ],
+  "behavior_files": [
+    "packages/gateway-protocol/src/schema/agent.test.ts",
+    "src/agents/command/attempt-execution.test.ts",
+    "src/cli/program/register.agent.test.ts",
+    "src/commands/agent-via-gateway.test.ts",
+    "src/gateway/agent-turn/agent-request-preflight.test.ts",
+    "src/gateway/agent-turn/agent-wait-dedupe.test.ts",
+    "extensions/codex/src/app-server/run-attempt-connection.test.ts",
+    "extensions/codex/src/app-server/run-attempt.configured-mcp.test.ts",
+    "extensions/codex/src/app-server/run-attempt.computer-use.test.ts",
+    "src/agents/agent-bundle-mcp-acquisition.test.ts",
+    "src/agents/agent-bundle-mcp-manager.requester-connect.test.ts",
+    "src/agents/agent-bundle-mcp-requester-connect.import-boundary.test.ts",
+    "src/agents/agent-bundle-mcp-tools.request-boundary.test.ts",
+    "test/codex-completion-policy.integration.test.ts",
+    "src/agents/command/attempt-execution.cli.test.ts",
+    "src/gateway/server-methods/agent.test.ts"
+  ],
+  "type_configs": [
+    "tsconfig.core.json",
+    "tsconfig.extensions.json",
+    "test/tsconfig/tsconfig.extensions.test.json",
+    "test/tsconfig/tsconfig.test.packages.json",
+    "test/tsconfig/tsconfig.core.test.commands.json",
+    "test/tsconfig/tsconfig.core.test.agents-root.json",
+    "test/tsconfig/tsconfig.core.test.gateway-other.json",
+    "test/tsconfig/tsconfig.core.test.gateway-methods.json",
+    "test/tsconfig/tsconfig.test.root.other.json"
+  ],
+  "scope": "Public core and synthetic tests only; full matching source/lockfiles required, not a release/runtime or runnable closure qualification."
+}

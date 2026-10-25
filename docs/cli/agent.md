@@ -21,6 +21,15 @@ When `--session-id` finds an existing session in an agent's storage partition, i
 
 A completed turn exits `0`. Error, timeout, and cancellation outcomes exit `1`, after any text or JSON result is written. A received `SIGINT` or `SIGTERM` instead preserves the signal-specific exit status described below.
 
+Pass `--no-tools` to disable tools for one turn while retaining the normal session,
+transcript, audit and JSON result behavior. This also skips MCP tool setup for the
+turn. It does not change the configured tool policy for later turns, retire other
+sessions, or select stateless model-run mode. A Gateway that does not support the
+restriction rejects the request; the CLI does not retry it with tools enabled.
+The option applies to `agent` and explicit `agent --local` turns, not `agent exec`.
+Codex turns with Computer Use enabled refuse this option before startup.
+This also applies to turns whose existing tool policy already disables tools.
+
 Related: [Agent send tool](/tools/agent-send)
 
 ## `agent exec`

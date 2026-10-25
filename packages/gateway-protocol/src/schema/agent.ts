@@ -320,6 +320,8 @@ export const AgentParamsSchema = closedObject({
   // bundle MCP resources after the run instead of keeping them warm.
   cleanupBundleMcpOnRunEnd: Type.Optional(Type.Boolean()),
   modelRun: Type.Optional(Type.Boolean()),
+  /** Narrow this durable turn to model output without changing its session effects. */
+  disableTools: Type.Optional(Type.Boolean()),
   promptMode: Type.Optional(
     Type.Union([Type.Literal("full"), Type.Literal("minimal"), Type.Literal("none")]),
   ),

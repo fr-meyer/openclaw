@@ -12,6 +12,7 @@ import * as bindingConnection from "./binding-connection.js";
 import * as codexRequirements from "./config-requirements.js";
 import { resolveCodexAppServerRuntimeOptions } from "./config.js";
 import { prepareCodexAttemptConnection } from "./run-attempt-connection.js";
+import * as attemptLifecycle from "./run-attempt-lifecycle.js";
 import {
   createCodexRuntimePlanFixture,
   createParams,
@@ -19,6 +20,7 @@ import {
   setupRunAttemptTestHooks,
   tempDir,
 } from "./run-attempt-test-harness.js";
+import { runCodexAppServerAttempt as runAttemptDirectly } from "./run-attempt.js";
 import { createSandboxContext } from "./sandbox-exec-server.test-helpers.js";
 import {
   createCodexTestBindingStore,
@@ -36,6 +38,152 @@ import { withCodexThreadLifecycleBinding } from "./thread-lifecycle-adoption.js"
 setupRunAttemptTestHooks();
 
 describe("prepareCodexAttemptConnection", () => {
+  it.each([
+    { name: "enabled", computerUse: { enabled: true } },
+    {
+      name: "strict auto-install",
+      computerUse: {
+        enabled: true,
+        autoInstall: true,
+        strictReadiness: true,
+        marketplacePath: "/private/synthetic-computer-use-marketplace.json",
+      },
+    },
+    { name: "inferred auto-install", computerUse: { autoInstall: true } },
+    { name: "environment-enabled", computerUse: undefined },
+  ])(
+    "refuses explicit no-tools before startup for $name Computer Use",
+    async ({ name, computerUse }) => {
+      vi.stubEnv(
+        "OPENCLAW_CODEX_COMPUTER_USE",
+        name === "environment-enabled" ? "true" : undefined,
+      );
+      const params = createParams(
+        path.join(tempDir, "no-tools-computer-use.jsonl"),
+        path.join(tempDir, "no-tools-computer-use-workspace"),
+      );
+      params.disableTools = true;
+      const controller = new AbortController();
+      params.abortSignal = controller.signal;
+      params.onAttemptAbort = vi.fn();
+      const listenersBefore = getEventListeners(controller.signal, "abort").length;
+      const prepareEnvironment = vi.fn(params.hostCapabilities.preparedEnvironment);
+      const bindModelExecution = vi.fn(params.hostCapabilities.bindModelExecution);
+      params.hostCapabilities = {
+        ...params.hostCapabilities,
+        preparedEnvironment: prepareEnvironment,
+        bindModelExecution,
+      };
+      const workspace = vi.spyOn(attemptLifecycle, "ensureCodexWorkspaceDirOnce");
+      const connect = vi.spyOn(bindingConnection, "resolveCodexBindingAppServerConnection");
+      const reclaim = vi.spyOn(testCodexAppServerBindingStore, "prepareSessionGenerationReclaim");
+      const clientFactory = vi.fn(async () => {
+        throw new Error("unsupported Computer Use reached client acquisition");
+      });
+      const pluginConfig = { ...(computerUse ? { computerUse } : {}) };
+      const beforeConfig = structuredClone(pluginConfig);
+      const message = "Explicit no-tools agent runs do not support enabled Codex Computer Use.";
+
+      await expect(
+        runAttemptDirectly(params, {
+          bindingStore: testCodexAppServerBindingStore,
+          clientFactory,
+          pluginConfig,
+        }),
+      ).rejects.toMatchObject({
+        name: "AgentHarnessPreflightError",
+        message,
+        userMessage: message,
+        scope: undefined,
+      });
+      expect(workspace).not.toHaveBeenCalled();
+      expect(connect).not.toHaveBeenCalled();
+      expect(reclaim).not.toHaveBeenCalled();
+      expect(clientFactory).not.toHaveBeenCalled();
+      expect(prepareEnvironment).not.toHaveBeenCalled();
+      expect(bindModelExecution).not.toHaveBeenCalled();
+      expect(pluginConfig).toEqual(beforeConfig);
+      expect(params.disableTools).toBe(true);
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(listenersBefore);
+      controller.abort("test cleanup");
+      expect(params.onAttemptAbort).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, undefined] as const)(
+    "preserves enabled Computer Use connection behavior when disableTools is %s",
+    async (disableTools) => {
+      const sessionFile = path.join(tempDir, "ordinary-computer-use.jsonl");
+      const workspaceDir = path.join(tempDir, "ordinary-computer-use-workspace");
+      const params = createParams(sessionFile, workspaceDir);
+      if (disableTools === undefined) {
+        delete params.disableTools;
+      } else {
+        params.disableTools = disableTools;
+      }
+      registerCodexTestSessionIdentity(sessionFile, params.sessionId, params.sessionKey);
+      const pluginConfig = {
+        computerUse: { enabled: true, autoInstall: true, strictReadiness: true },
+      };
+      const beforeConfig = structuredClone(pluginConfig);
+      const workspace = vi.spyOn(attemptLifecycle, "ensureCodexWorkspaceDirOnce");
+      const connect = vi.spyOn(bindingConnection, "resolveCodexBindingAppServerConnection");
+      const clientFactory = vi.fn(async () => {
+        throw new Error("connection preparation must not acquire a client");
+      });
+      const connection = await prepareCodexAttemptConnection({
+        params,
+        options: { bindingStore: testCodexAppServerBindingStore, clientFactory, pluginConfig },
+      });
+      try {
+        expect(connection.computerUseConfig).toMatchObject(pluginConfig.computerUse);
+        expect(connection.pluginConfig).toEqual(beforeConfig);
+        expect(pluginConfig).toEqual(beforeConfig);
+        expect(connection.attemptClientFactory).toBe(clientFactory);
+        expect(workspace).toHaveBeenCalledWith(workspaceDir);
+        expect(connect).toHaveBeenCalledOnce();
+        expect(clientFactory).not.toHaveBeenCalled();
+        expect(() => connection.assertCurrent()).not.toThrow();
+      } finally {
+        connection.cancellation.dispose();
+        connection.releaseModelExecution();
+      }
+    },
+  );
+
+  it("preserves no-tools connection custody and cancellation when Computer Use is explicitly disabled", async () => {
+    vi.stubEnv("OPENCLAW_CODEX_COMPUTER_USE", "true");
+    const sessionFile = path.join(tempDir, "supported-no-tools.jsonl");
+    const workspaceDir = path.join(tempDir, "supported-no-tools-workspace");
+    const params = createParams(sessionFile, workspaceDir);
+    params.disableTools = true;
+    const controller = new AbortController();
+    params.abortSignal = controller.signal;
+    params.onAttemptAbort = vi.fn();
+    const listenersBefore = getEventListeners(controller.signal, "abort").length;
+    registerCodexTestSessionIdentity(sessionFile, params.sessionId, params.sessionKey);
+    const connection = await prepareCodexAttemptConnection({
+      params,
+      options: {
+        bindingStore: testCodexAppServerBindingStore,
+        pluginConfig: { computerUse: { enabled: false, autoInstall: true, strictReadiness: true } },
+      },
+    });
+    try {
+      expect(connection.computerUseConfig.enabled).toBe(false);
+      expect(connection.params).toBe(params);
+      expect(connection.params.disableTools).toBe(true);
+      expect(() => connection.assertCurrent()).not.toThrow();
+      controller.abort("user cancelled");
+      expect(connection.runAbortController.signal.aborted).toBe(true);
+      expect(params.onAttemptAbort).toHaveBeenCalledOnce();
+    } finally {
+      connection.cancellation.dispose();
+      connection.releaseModelExecution();
+    }
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(listenersBefore);
+  });
+
   it.each(["local", "websocket", "remote-root", "sandbox"])(
     "requests input paths only for confirmed local attachment execution: %s",
     async (placement) => {

@@ -17,8 +17,10 @@ import {
   sessionResetAckText,
 } from "../server-methods/agent-session-reset.js";
 import { emitSessionsChanged } from "../server-methods/session-change-event.js";
+import { AGENT_DURABLE_NO_TOOLS_MODE, AgentExecutionModeMismatchError } from "../server-shared.js";
 import {
   AgentRequestReservationEndedError,
+  assertAgentDedupeExecutionMode,
   buildAbortedAgentPayload,
   isAcceptedAgentDedupePayload,
   isPreRegistrationAbortedAgentDedupeEntryForSession,
@@ -38,6 +40,7 @@ export function createAgentDedupeLifecycle(params: {
   lifecycleGeneration: string;
   agentDedupeKeys: string[];
   suppressVisibleSessionEffects: boolean;
+  disableTools?: boolean;
   inputProvenance?: InputProvenance;
   privateCompletion?: true;
   ownerConnId?: string;
@@ -49,8 +52,14 @@ export function createAgentDedupeLifecycle(params: {
   let accepted = false;
   let committedResetCompletion: CommittedResetCompletion | undefined;
   const reservationId = randomUUID();
+  const disableTools = params.disableTools === true;
 
   const reserve = (sessionKey?: string, dedupeAgentId?: string) => {
+    assertAgentDedupeExecutionMode({
+      dedupe: params.context.dedupe,
+      keys: params.agentDedupeKeys,
+      disableTools,
+    });
     if (reserved) {
       return;
     }
@@ -85,6 +94,7 @@ export function createAgentDedupeLifecycle(params: {
       entry: {
         ts: acceptedAt,
         ok: true,
+        ...(disableTools ? { agentExecutionMode: AGENT_DURABLE_NO_TOOLS_MODE } : {}),
         payload: {
           runId: params.runId,
           reservationId,
@@ -132,12 +142,20 @@ export function createAgentDedupeLifecycle(params: {
       if (
         !ownsReservation() &&
         replayAgentTurnIfCached({
-          preflight: params,
+          preflight: { ...params, disableTools },
           context: params.context,
           io: params.io,
           acceptedOnly: params.privateCompletion,
         })
       ) {
+        return undefined;
+      }
+      if (error instanceof AgentExecutionModeMismatchError) {
+        params.io.emitAcceptance([
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, error.message),
+        ]);
         return undefined;
       }
       if (error instanceof AgentRequestReservationEndedError) {
@@ -251,7 +269,7 @@ export function createAgentDedupeLifecycle(params: {
       clearUnaccepted();
       if (
         !replayAgentTurnIfCached({
-          preflight: params,
+          preflight: { ...params, disableTools },
           context: params.context,
           io: params.io,
         })

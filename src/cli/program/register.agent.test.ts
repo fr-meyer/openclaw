@@ -86,6 +86,26 @@ beforeEach(() => {
 });
 
 describe("agent command registration", () => {
+  it.each([
+    { flag: [], expectedTools: true },
+    { flag: ["--no-tools"], expectedTools: false },
+  ])("passes the explicit no-tools choice $expectedTools", async ({ flag, expectedTools }) => {
+    await runCli(["agent", "--message-file", "/tmp/review.md", "--agent", "ops", ...flag]);
+    expect(agentCliCommandMock).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ messageFile: "/tmp/review.md", tools: expectedTools }),
+      runtime,
+    );
+    expect(agentExecCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unsupported no-tools choice on nested exec", async () => {
+    await expect(runCli(["agent", "--no-tools", "exec", "review"])).rejects.toThrow(
+      "--no-tools applies to agent turns",
+    );
+    expect(agentExecCommandMock).not.toHaveBeenCalled();
+    expect(agentCliCommandMock).not.toHaveBeenCalled();
+  });
+
   it("normalizes explicit verbosity", async () => {
     await runCli("agent --message hi --verbose ON --json".split(" "));
     expect(mocks.setVerboseMock).toHaveBeenCalledWith(true);

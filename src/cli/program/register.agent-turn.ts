@@ -22,6 +22,7 @@ export function registerAgentTurnCommand(
     .option("--session-id <id>", "Use an explicit session id")
     .option("--agent <id>", "Agent id (overrides routing bindings)")
     .option("--model <id>", "Model override for this run (provider/model or model id)")
+    .option("--no-tools", "Disable tools for this turn while retaining its session and audit")
     .option(
       "--thinking <level>",
       `Thinking level: ${THINKING_LEVELS_HELP.replaceAll("|", " | ")} where supported`,
@@ -155,8 +156,12 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
             thinking?: string;
             timeout?: string;
             json?: boolean;
+            tools?: boolean;
           }
         | undefined;
+      if (parentOpts?.tools === false) {
+        throw new Error("--no-tools applies to agent turns and is not supported by agent exec.");
+      }
       const execOpts = {
         ...opts,
         messageFile: opts.messageFile ?? parentOpts?.messageFile,

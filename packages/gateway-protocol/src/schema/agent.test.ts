@@ -86,6 +86,37 @@ const subagentCompletionEvent: AgentInternalEvent = {
 };
 
 describe("AgentParamsSchema", () => {
+  it.each([undefined, false, true])("accepts the optional durable tool restriction %s", (value) => {
+    const params = {
+      message: "review",
+      sessionKey: "agent:main:review",
+      idempotencyKey: "review-attempt",
+      ...(value === undefined ? {} : { disableTools: value }),
+    };
+    expect(Value.Check(AgentParamsSchema, params)).toBe(true);
+  });
+
+  it.each(["true", 1, null, { allow: [] }])("rejects nonboolean tool restriction %s", (value) => {
+    expect(
+      Value.Check(AgentParamsSchema, {
+        message: "review",
+        idempotencyKey: "review-attempt",
+        disableTools: value,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not open public tool grants alongside the restriction", () => {
+    expect(
+      Value.Check(AgentParamsSchema, {
+        message: "review",
+        idempotencyKey: "review-attempt",
+        disableTools: true,
+        toolsAllow: ["exec"],
+      }),
+    ).toBe(false);
+  });
+
   it.each([undefined, null, "requester-generation"])(
     "accepts the backend expected-session binding with revision %s",
     (revision) => {

@@ -55,6 +55,10 @@ export const loadCodexNativeSubagentMonitorTestFixture = () =>
 export const loadCodexAbortTranscriptTestFixture = () =>
   import("./src/app-server/transcript-abort.test-support.js");
 
+/** Loads the real connection boundary only for host completion-policy integration tests. */
+export const loadCodexCompletionConnectionTestFixture = () =>
+  import("./src/app-server/completion-connection.test-support.js");
+
 type CodexHarnessPromptSnapshot = {
   developerInstructions: string;
   parentLocalInstructions: string | null;

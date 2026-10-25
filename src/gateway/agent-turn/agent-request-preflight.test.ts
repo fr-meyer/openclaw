@@ -14,10 +14,66 @@ import {
   inspectAgentDatabaseAdmission,
   recordAgentDatabaseAdmissions,
 } from "../../state/agent-database-admission.js";
+import { createGatewayRequestContext } from "../server-request-context.js";
+import { makeContextParams } from "../server-request-context.test-support.js";
 import * as sessionStoreLookup from "../session-utils-store-lookup.js";
 import { prepareAgentRequestPreflight } from "./agent-request-preflight.js";
 import { createAgentTurnService } from "./agent-turn-service.js";
 import { createAgentTurnIo } from "./io.js";
+
+describe("durable no-tools preflight", () => {
+  it.each([
+    { modelRun: true },
+    { promptMode: "none" },
+    { modelRun: true, promptMode: "none" },
+  ] as const)("rejects raw combination %j before dispatch preparation", (rawOptions) => {
+    const context = createGatewayRequestContext(makeContextParams());
+    const getRuntimeConfig = vi.spyOn(context, "getRuntimeConfig");
+    const respond = vi.fn();
+    const result = prepareAgentRequestPreflight({
+      request: {
+        message: "review only",
+        idempotencyKey: "durable-no-tools-raw-conflict",
+        disableTools: true,
+        ...rawOptions,
+      },
+      context,
+      client: null,
+      io: createAgentTurnIo(respond),
+    });
+    expect(result).toBeUndefined();
+    expect(getRuntimeConfig).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ code: "INVALID_REQUEST" }),
+    );
+    getRuntimeConfig.mockRestore();
+  });
+
+  it("captures the admitted boolean independently of later request mutation", () => {
+    const context = createGatewayRequestContext(makeContextParams());
+    const getRuntimeConfig = vi.spyOn(context, "getRuntimeConfig").mockReturnValue({});
+    const respond = vi.fn();
+    const request = {
+      message: "review only",
+      agentId: "main",
+      idempotencyKey: "durable-no-tools-capture",
+      disableTools: true,
+    };
+    const result = prepareAgentRequestPreflight({
+      request,
+      context,
+      client: null,
+      io: createAgentTurnIo(respond),
+    });
+    expect(result?.disableTools).toBe(true);
+    request.disableTools = false;
+    expect(result?.disableTools).toBe(true);
+    expect(respond).not.toHaveBeenCalled();
+    getRuntimeConfig.mockRestore();
+  });
+});
 
 describe("agent database admission preflight", () => {
   afterEach(() => recordAgentDatabaseAdmissions([]));
