@@ -220,6 +220,34 @@ class DriverTests(unittest.TestCase):
             self.f.run(owner)
         self.assertEqual(owner.calls, [])
 
+    def test_explicit_hosted_custody_pair_flows_through_owned_stages_and_qualification_plan(self):
+        self.f.use_hosted()
+        custody = self.f.root / "synthetic-custody.json"
+        pin = save(custody, {"synthetic": "custody transport only; authentication belongs to image owner"})
+        self.f.plan.update(authenticationCustodyPath=str(custody), authenticationCustodySha256=pin)
+        self.f.plan_pin = save(self.f.plan_path, self.f.plan)
+        owners = FakeOwners(self.f)
+        result = self.f.run(owners)
+        self.assertTrue(result["qualified"])
+        qualified = driver.document(self.f.state / "qualification-plan.json")[0]
+        self.assertEqual(qualified["authenticationCustodyPath"], str(custody))
+        self.assertEqual(qualified["authenticationCustodySha256"], pin)
+        self.assertEqual(owners.actions(), ["capture-retained-hosted-origin", "privacy", "qualify-retained-hosted", "verify-retained-hosted"])
+        completed = driver.document(self.f.state / "capture.completed.json")[0]
+        self.assertEqual(completed["outputs"], {"capture.json": driver.private_data(self.f.state / "capture.json")[1]})
+
+    def test_partial_or_changed_hosted_custody_refuses_before_stage_creation(self):
+        self.f.use_hosted()
+        custody = self.f.root / "synthetic-custody.json"; save(custody, {})
+        original = dict(self.f.plan)
+        for values in ({"authenticationCustodyPath": str(custody)},
+                       {"authenticationCustodyPath": str(custody), "authenticationCustodySha256": "f"*64}):
+            with self.subTest(values=values):
+                self.f.plan = {**original, **values}; self.f.plan_pin = save(self.f.plan_path, self.f.plan)
+                owners = FakeOwners(self.f)
+                with self.assertRaises(ValueError): self.f.run(owners)
+                self.assertEqual(owners.calls, []); self.assertFalse(self.f.state.exists())
+
     def test_hosted_plan_mismatch_or_arbitrary_resource_override_never_calls_owner(self):
         self.f.use_hosted()
         owner = FakeOwners(self.f)

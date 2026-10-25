@@ -1,6 +1,6 @@
 """Hosted origin entrypoint with genuine local archives and inert API/GH owners."""
 import copy
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stdout
 import hashlib
 import io
 import json
@@ -320,6 +320,118 @@ class HostedOriginTests(unittest.TestCase):
         self.add_bundle();del self.plan["attestationBundleSha256"]
         with self.assertRaises(ValueError): self.nested_driver_prepare()
         self.assertFalse((self.root/"inspection"/("a"*32)).exists())
+
+    def historical_inputs(self):
+        code, original, _, _ = self.entry()
+        self.assertEqual(code, 0, original)
+        self.original_capture = self.output
+        self.original_plan = self.root / "original-plan.json"
+        self.original_plan.write_bytes(self.plan_path.read_bytes()); self.original_plan.chmod(0o600)
+        self.native_proof = self.root / "original-native.json"
+        self.native_proof.write_bytes(json.dumps(self.proof).encode()); self.native_proof.chmod(0o600)
+        self.canonical_api = self.root / "canonical-api.json"
+        self.canonical_api.write_bytes(owner.encoded({"run": self.run, "job": self.job})); self.canonical_api.chmod(0o600)
+        self.custody_path = self.root / "custody.json"
+        self.custody = {"schema": "openclaw.retained-hosted-authentication-custody.v1",
+            "currentPlanSha256": self.hash(self.plan_path), "originalPlanPath": str(self.original_plan),
+            "originalPlanSha256": self.hash(self.original_plan), "originalCapturePath": str(self.original_capture),
+            "originalCaptureSha256": self.hash(self.original_capture), "nativeVerificationPath": str(self.native_proof),
+            "canonicalApiPath": str(self.canonical_api)}
+        self.reuse_number = 0
+        return original
+
+    def reuse_entry(self, synthetic_authority=True, custody_hash=None, dirty=False, current_plan_hash=None):
+        self.reuse_number += 1
+        self.output = self.root / ("result/reuse-" + str(self.reuse_number) + ".json")
+        self.write(self.plan_path, self.plan)
+        self.custody["currentPlanSha256"] = current_plan_hash or self.hash(self.plan_path)
+        self.write(self.custody_path, self.custody)
+        def git(root, *args, **kwargs):
+            return "dirty" if dirty and args[0] == "status" else self.git(root, *args, **kwargs)
+        output = io.StringIO()
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(owner.pr, "git", side_effect=git))
+            fetch = stack.enter_context(patch.object(owner.pr, "fetch_public_json", side_effect=AssertionError("network forbidden")))
+            native = stack.enter_context(patch.object(owner.subprocess, "run", side_effect=AssertionError("native forbidden")))
+            if synthetic_authority:
+                stack.enter_context(patch.object(owner, "ORIGINAL_CAPTURE_SHA256", self.custody["originalCaptureSha256"]))
+                stack.enter_context(patch.object(owner, "ORIGINAL_PLAN_SHA256", self.custody["originalPlanSha256"]))
+            with redirect_stdout(output):
+                code = owner.main(["reuse", "--plan", str(self.plan_path), "--plan-sha256", self.hash(self.plan_path),
+                    "--custody", str(self.custody_path), "--custody-sha256", custody_hash or self.hash(self.custody_path),
+                    "--output", str(self.output)])
+        fetch.assert_not_called(); native.assert_not_called()
+        return code, json.loads(output.getvalue())
+
+    def test_historical_reuse_allows_local_relocation_and_new_inspector_without_fresh_authentication(self):
+        original = self.historical_inputs(); unchanged = self.original_capture.read_bytes()
+        relocated = self.root / "relocated.tar"; self.paths["archivePath"].rename(relocated)
+        self.plan["archivePath"] = str(relocated)
+        self.inspector = self.plan["inspectionToolingSha"] = "d" * 40
+        code, value = self.reuse_entry()
+        self.assertEqual(code, 0, value)
+        self.assertEqual(value["authenticationMethod"], "historical_verified_capture_reuse")
+        self.assertEqual(value["originalCaptureSha256"], self.hash(self.original_capture))
+        self.assertEqual(value["originalInspectionToolingSha"], original["inspectionToolingSha"])
+        for key in ("producer", "sourceSha", "sourceTree", "builtAt", "capturedAt", "workflowOutcome", "jobOutcome"):
+            self.assertEqual(value[key], original[key])
+        self.assertFalse(value["nativeAttestationVerificationPerformed"]); self.assertFalse(value["canonicalApiFetched"])
+        self.assertFalse(value["qualified"]); self.assertEqual(self.original_capture.read_bytes(), unchanged)
+
+    def test_self_selected_well_formed_saved_capture_is_not_authentication_authority(self):
+        self.historical_inputs()
+        code, value = self.reuse_entry(synthetic_authority=False)
+        self.assertNotEqual(code, 0); self.assertFalse(value["originAuthenticated"])
+        self.assertFalse(self.output.exists())
+
+    def test_historical_reuse_requires_exact_pins_private_complete_evidence_and_unchanged_inputs(self):
+        self.historical_inputs()
+        saved = {p: p.read_bytes() for p in (self.original_capture, self.original_plan, self.native_proof, self.canonical_api,
+                                            self.paths["archivePath"])}
+        original_plan, custody = copy.deepcopy(self.plan), dict(self.custody)
+        for change in ("custody_hash", "current_plan_hash", "capture_hash", "plan_hash", "missing_proof", "native_hash", "api_hash",
+                       "nonprivate_proof", "extra_field", "job", "archive", "source", "dirty"):
+            with self.subTest(change=change):
+                for path, raw in saved.items(): path.write_bytes(raw); path.chmod(0o600)
+                self.plan, self.custody = copy.deepcopy(original_plan), dict(custody)
+                if change == "capture_hash": self.custody["originalCaptureSha256"] = "f" * 64
+                elif change == "plan_hash": self.custody["originalPlanSha256"] = "f" * 64
+                elif change == "missing_proof": self.native_proof.unlink()
+                elif change == "native_hash": self.native_proof.write_bytes(b"[]")
+                elif change == "api_hash": self.canonical_api.write_bytes(b"{}")
+                elif change == "nonprivate_proof": self.native_proof.chmod(0o644)
+                elif change == "extra_field": self.custody["authenticated"] = True
+                elif change == "job": self.plan["jobId"] = "88"
+                elif change == "archive": self.paths["archivePath"].write_bytes(b"changed")
+                elif change == "source": self.plan["sourceDir"] = str(self.root / "different-source")
+                code, value = self.reuse_entry(custody_hash="f" * 64 if change == "custody_hash" else None,
+                                             dirty=change == "dirty",
+                                             current_plan_hash="f" * 64 if change == "current_plan_hash" else None)
+                self.assertNotEqual(code, 0); self.assertFalse(value["originAuthenticated"])
+                self.assertFalse(self.output.exists())
+
+    def test_historical_evidence_rechecks_certificate_run_and_chronology_despite_consistent_fixture_hashes(self):
+        original = self.historical_inputs(); proof, run, job = copy.deepcopy(self.proof), copy.deepcopy(self.run), copy.deepcopy(self.job)
+        for change in ("san_shape", "san_uri", "signer_digest", "subject", "runner", "run", "step_order", "outcome", "captured_at"):
+            with self.subTest(change=change):
+                self.proof, self.run, self.job = copy.deepcopy(proof), copy.deepcopy(run), copy.deepcopy(job)
+                certificate = self.proof[0]["verificationResult"]["signature"]["certificate"]
+                capture = dict(original)
+                if change == "san_shape": certificate["subjectAlternativeName"] = {"type": "URI", "value": certificate["subjectAlternativeName"]}
+                elif change == "san_uri": certificate["subjectAlternativeName"] += "/other"
+                elif change == "signer_digest": certificate["sourceRepositoryDigest"] = "f" * 40
+                elif change == "subject": self.proof[0]["verificationResult"]["statement"]["subject"][0]["digest"]["sha256"] = "f" * 64
+                elif change == "runner": certificate["runnerEnvironment"] = "self-hosted"
+                elif change == "run": self.run["run_attempt"] = 2
+                elif change == "step_order": self.job["steps"][1]["started_at"] = "2026-10-23T09:00:00Z"
+                elif change == "outcome": capture["workflowOutcome"] = "success"
+                elif change == "captured_at": capture["capturedAt"] = "2026-10-23T10:00:30Z"
+                self.native_proof.write_bytes(json.dumps(self.proof).encode())
+                self.canonical_api.write_bytes(owner.encoded({"run": self.run, "job": self.job}))
+                capture.update(attestationVerificationSha256=self.hash(self.native_proof), apiCanonicalSha256=self.hash(self.canonical_api))
+                self.write(self.original_capture, capture); self.custody["originalCaptureSha256"] = self.hash(self.original_capture)
+                code, value = self.reuse_entry()
+                self.assertNotEqual(code, 0); self.assertFalse(value["originAuthenticated"])
 
 
 class FixedLinuxVerifierTests(unittest.TestCase):

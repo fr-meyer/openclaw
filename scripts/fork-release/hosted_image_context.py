@@ -2,7 +2,10 @@
 """Prepare/capture a hosted producer; never qualify, execute or upload its image.
 
 Only explicit capture calls the installed native GitHub attestation verifier and
-canonical GitHub API owner. Saved caller-supplied JSON is never signature proof.
+canonical GitHub API owner. Historical reuse requires an independently pinned
+custody handoff and the exact evidence authenticated by its original capture.
+Reuse is limited to one code-pinned source85 capture and plan; it is not a
+generic saved-receipt authenticator and never refreshes historical evidence.
 """
 import argparse
 from datetime import datetime, timezone
@@ -42,6 +45,10 @@ FIELDS = set("""schema sourceDir ociDir manifestPath inventoryPath metadataPath 
 workflowSha workflowRef inspectionToolingSha runId attempt jobId archiveSha256 originSha256
 manifestSha256 inventorySha256 buildMetadataSha256 resourcesSha256 indexDigest builtAt""".split())
 BUNDLE_FIELDS = {"attestationBundlePath", "attestationBundleSha256"}
+# Frozen authentication authority for this retained source85 image only. A
+# caller-provided handoff/hash cannot add another trusted historical capture.
+ORIGINAL_CAPTURE_SHA256 = "770c256fc291c4311e61141965f4421f1388c7cd8203e6bd2e4a3d2efffb637f"
+ORIGINAL_PLAN_SHA256 = "7a4b86a599282dae1d979d3ce5eab12aabd4c5eaa78d65b7a4b572ea318aac81"
 
 
 class Refusal(ValueError):
@@ -78,16 +85,14 @@ def stamp():
     return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def plan_at(path, expected):
-    private(path)
-    value, hashed = data(path)
+def validate_plan(value, canonical_paths=True):
     optional = set(value) & BUNDLE_FIELDS
-    need(optional in (set(), BUNDLE_FIELDS) and HEX.fullmatch(expected) and hashed == expected and set(value) == FIELDS | optional and
+    need(optional in (set(), BUNDLE_FIELDS) and set(value) == FIELDS | optional and
          value["schema"] == "openclaw.retained-hosted-origin-input.v1")
     for key in FIELDS | optional:
         if key.endswith("Path") or key.endswith("Dir"):
             location = Path(value[key])
-            need(location.is_absolute() and location.resolve() == location)
+            need(location.is_absolute() and (not canonical_paths or location.resolve() == location))
         if key.endswith("Sha256"):
             need(isinstance(value[key], str) and HEX.fullmatch(value[key]))
     need(all(isinstance(value[key], str) and SHA.fullmatch(value[key]) for key in
@@ -98,7 +103,14 @@ def plan_at(path, expected):
          ".." not in value["workflowRef"].split("/"))
     documents.timestamp(value["builtAt"])
     need(documents.DIGEST.fullmatch(value["indexDigest"]))
-    return value, hashed
+    return value
+
+
+def plan_at(path, expected):
+    private(path)
+    value, hashed = data(path)
+    need(isinstance(expected, str) and HEX.fullmatch(expected) and hashed == expected)
+    return validate_plan(value), hashed
 
 
 def bundle_bytes(plan):
@@ -201,21 +213,8 @@ def command(plan, bundle_snapshot=None):
     return argv
 
 
-def capture(plan, prepared):
-    # A separately pinned signed bundle may select native no-login verification;
-    # never accept a saved verification result, custom trust root, executable or
-    # auth-failure fallback. Snapshot the exact private input before native use.
-    raw_bundle = bundle_bytes(plan)
-    with tempfile.TemporaryDirectory(prefix="openclaw-attestation-input-") as directory:
-        snapshot = Path(directory) / "bundle.jsonl"
-        if raw_bundle is not None:
-            with snapshot.open("xb") as stream:
-                os.fchmod(stream.fileno(), 0o600)
-                stream.write(raw_bundle); stream.flush(); os.fsync(stream.fileno())
-        argv = command(plan, snapshot if raw_bundle is not None else None)
-        result = subprocess.run(argv, capture_output=True, timeout=90, check=False)
-    need(result.returncode == 0 and len(result.stdout) <= 1024 * 1024)
-    verified = json.loads(result.stdout, object_pairs_hook=documents._pairs)
+def validate_attestation(plan, raw):
+    verified = json.loads(raw, object_pairs_hook=documents._pairs)
     need(isinstance(verified, list) and len(verified) == 1)
     proof = verified[0]["verificationResult"]
     certificate = proof["signature"]["certificate"]
@@ -235,9 +234,9 @@ def capture(plan, prepared):
          isinstance(statement.get("subject"), list) and len(statement["subject"]) == 1 and
          statement["subject"][0].get("name") == "retained-oci.tar" and
          statement["subject"][0].get("digest") == {"sha256": plan["archiveSha256"]})
-    prefix = f"repos/{REPOSITORY}"
-    run = pr.fetch_public_json(f"{prefix}/actions/runs/{plan['runId']}/attempts/{plan['attempt']}")
-    job = pr.fetch_public_json(f"{prefix}/actions/jobs/{plan['jobId']}")
+
+
+def canonical_outcomes(plan, run, job, captured_at):
     need(run.get("id") == int(plan["runId"]) and run.get("run_attempt") == int(plan["attempt"]) and
          run.get("head_sha") == plan["workflowSha"] and run.get("path") == WORKFLOW and
          run.get("repository", {}).get("full_name") == REPOSITORY and
@@ -258,7 +257,30 @@ def capture(plan, prepared):
         selected.append(matches[0])
     need(documents.timestamp(selected[0]["started_at"]) <= documents.timestamp(selected[0]["completed_at"]) <=
          documents.timestamp(selected[1]["started_at"]) <= documents.timestamp(selected[1]["completed_at"]) <=
-         documents.timestamp(job["completed_at"]) <= documents.timestamp(stamp()))
+         documents.timestamp(job["completed_at"]) <= documents.timestamp(captured_at))
+    return {"buildStepOutcome": "success", "retentionStepOutcome": selected[1]["conclusion"],
+            "workflowOutcome": run["conclusion"], "jobOutcome": job["conclusion"]}
+
+
+def capture(plan, prepared):
+    # A separately pinned signed bundle may select native no-login verification;
+    # never accept a saved verification result, custom trust root, executable or
+    # auth-failure fallback. Snapshot the exact private input before native use.
+    raw_bundle = bundle_bytes(plan)
+    with tempfile.TemporaryDirectory(prefix="openclaw-attestation-input-") as directory:
+        snapshot = Path(directory) / "bundle.jsonl"
+        if raw_bundle is not None:
+            with snapshot.open("xb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(raw_bundle); stream.flush(); os.fsync(stream.fileno())
+        argv = command(plan, snapshot if raw_bundle is not None else None)
+        result = subprocess.run(argv, capture_output=True, timeout=90, check=False)
+    need(result.returncode == 0 and len(result.stdout) <= 1024 * 1024)
+    validate_attestation(plan, result.stdout)
+    prefix = f"repos/{REPOSITORY}"
+    run = pr.fetch_public_json(f"{prefix}/actions/runs/{plan['runId']}/attempts/{plan['attempt']}")
+    job = pr.fetch_public_json(f"{prefix}/actions/jobs/{plan['jobId']}")
+    outcomes = canonical_outcomes(plan, run, job, stamp())
     # Recheck retained bytes after native verification/API work, preserving a
     # separate later-inspector record without changing the original producer.
     need(prepare(plan, prepared["planSha256"]) == prepared)
@@ -268,24 +290,86 @@ def capture(plan, prepared):
     return {**prepared, "status": "captured", "originAuthenticated": True,
             "capturedAt": stamp(), "attestationVerificationSha256": digest(result.stdout),
             "apiCanonicalSha256": digest(encoded({"run": run, "job": job})),
-            "buildStepOutcome": "success", "retentionStepOutcome": selected[1]["conclusion"],
-            "workflowOutcome": run["conclusion"], "jobOutcome": job["conclusion"],
+            **outcomes,
             "verificationCommand": recorded,
             "blockers": (["original_resource_assessment_failed"] if prepared["resourceAssessment"] != "passed" else []) +
                 ["privacy_static_and_native_image_qualification_not_performed"]}
 
 
+def reuse(plan, prepared, custody_path, custody_hash):
+    private(custody_path)
+    custody, actual = data(custody_path)
+    fields = {"schema", "currentPlanSha256", "originalPlanPath", "originalPlanSha256", "originalCapturePath",
+              "originalCaptureSha256", "nativeVerificationPath", "canonicalApiPath"}
+    need(isinstance(custody_hash, str) and HEX.fullmatch(custody_hash) and actual == custody_hash and
+         set(custody) == fields and custody["schema"] == "openclaw.retained-hosted-authentication-custody.v1" and
+         custody["currentPlanSha256"] == prepared["planSha256"] and
+         custody["originalCaptureSha256"] == ORIGINAL_CAPTURE_SHA256 and
+         custody["originalPlanSha256"] == ORIGINAL_PLAN_SHA256)
+    raw = {}
+    for key in fields:
+        if not key.endswith("Path"):
+            continue
+        private(custody[key])
+        raw[key], _ = documents.read_document(custody[key])
+    for name in ("originalPlan", "originalCapture"):
+        need(isinstance(custody[name + "Sha256"], str) and HEX.fullmatch(custody[name + "Sha256"]) and
+             digest(raw[name + "Path"]) == custody[name + "Sha256"])
+    original_plan = validate_plan(json.loads(raw["originalPlanPath"], object_pairs_hook=documents._pairs),
+                                  canonical_paths=False)
+    original = json.loads(raw["originalCapturePath"], object_pairs_hook=documents._pairs)
+    # Only explicitly local paths and the later inspector may differ. Original
+    # producer, bundle digest, source, archive, controls, run/job and time do not.
+    need(set(original_plan) == set(plan) and all(original_plan[key] == plan[key] for key in plan
+         if not key.endswith(("Path", "Dir")) and key != "inspectionToolingSha"))
+    capture_fields = {"capturedAt", "attestationVerificationSha256", "apiCanonicalSha256", "buildStepOutcome",
+                      "retentionStepOutcome", "workflowOutcome", "jobOutcome", "verificationCommand"}
+    need(set(original) == set(prepared) | capture_fields and original["status"] == "captured" and
+         original["originAuthenticated"] is True and original["planSha256"] == custody["originalPlanSha256"] and
+         original["inspectionToolingSha"] == original_plan["inspectionToolingSha"] and
+         all(original[key] == prepared[key] for key in prepared
+             if key not in {"status", "originAuthenticated", "planSha256", "inspectionToolingSha", "blockers"}) and
+         documents.timestamp(original["builtAt"]) <= documents.timestamp(original["capturedAt"]) <=
+         documents.timestamp(stamp()) and
+         digest(raw["nativeVerificationPath"]) == original["attestationVerificationSha256"])
+    validate_attestation(original_plan, raw["nativeVerificationPath"])
+    api = json.loads(raw["canonicalApiPath"], object_pairs_hook=documents._pairs)
+    need(set(api) == {"run", "job"} and digest(encoded(api)) == original["apiCanonicalSha256"])
+    outcomes = canonical_outcomes(original_plan, api["run"], api["job"], original["capturedAt"])
+    need(all(original[key] == value for key, value in outcomes.items()))
+    blockers = (["original_resource_assessment_failed"] if prepared["resourceAssessment"] != "passed" else []) + [
+        "privacy_static_and_native_image_qualification_not_performed"]
+    need(original["blockers"] == blockers and prepare(plan, prepared["planSha256"]) == prepared)
+    # This is a local check of historical authenticated evidence, not a new
+    # signature verification/API observation. Never rewrite the original file.
+    return {**prepared, "status": "captured", "originAuthenticated": True,
+            **{key: original[key] for key in capture_fields}, "blockers": blockers,
+            "authenticationMethod": "historical_verified_capture_reuse",
+            "authenticationCustodySha256": custody_hash,
+            "originalCaptureSha256": custody["originalCaptureSha256"],
+            "originalPlanSha256": custody["originalPlanSha256"],
+            "originalCapturedAt": original["capturedAt"],
+            "originalInspectionToolingSha": original["inspectionToolingSha"],
+            "nativeAttestationVerificationPerformed": False, "canonicalApiFetched": False}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("prepare", "capture"))
+    parser.add_argument("mode", choices=("prepare", "capture", "reuse"))
     for field in ("plan", "plan-sha256", "output"):
         parser.add_argument("--" + field, required=True)
+    parser.add_argument("--custody")
+    parser.add_argument("--custody-sha256")
     args = parser.parse_args(argv)
     try:
+        need((args.mode == "reuse") == (args.custody is not None and args.custody_sha256 is not None) and
+             (args.mode == "reuse" or args.custody is args.custody_sha256 is None))
         plan, plan_hash = plan_at(args.plan, args.plan_sha256)
         value = prepare(plan, plan_hash)
         if args.mode == "capture":
             value = capture(plan, value)
+        elif args.mode == "reuse":
+            value = reuse(plan, value, args.custody, args.custody_sha256)
         need(plan_at(args.plan, args.plan_sha256) == (plan, plan_hash))
         parent = Path(args.output).parent
         private(parent, directory=True)

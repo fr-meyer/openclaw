@@ -36,6 +36,7 @@ BASE_FIELDS = {"schema", "manifestPath", "inventoryPath", "sourceDir", "ociDir",
 OPTIONAL_BASE_FIELDS = {"smokeTransport"}
 HOSTED_FIELDS = {"schema", "hostedPlanPath", "hostedPlanSha256", "manifestPath", "inventoryPath",
                  "sourceDir", "ociDir", "inspectionToolingSha"}
+HOSTED_AUTHENTICATION_FIELDS = {"authenticationCustodyPath", "authenticationCustodySha256"}
 OUTPUTS = ("origin.json", "static.json", "diagnostics.json", "receipt.json", "native.json",
            "native-attempt.json", "native-execution.json", "admission.json")
 TIMEOUT = 900
@@ -128,11 +129,17 @@ def prepare(plan_path, plan_pin, state, original_resources, resources_pin, mode=
     plan = json.loads(raw, object_pairs_hook=hosted_reinspection._pairs)
     need(mode in ("gcp", "hosted"), "plan.mode_invalid")
     fields = HOSTED_FIELDS if mode == "hosted" else BASE_FIELDS
-    need(isinstance(plan, dict) and fields <= set(plan) <= fields | OPTIONAL_BASE_FIELDS and
+    optional = OPTIONAL_BASE_FIELDS | (HOSTED_AUTHENTICATION_FIELDS if mode == "hosted" else set())
+    need(isinstance(plan, dict) and fields <= set(plan) <= fields | optional and
          plan.get("schema") == f"openclaw.retained-{mode}-input.v1" and
          ("smokeTransport" not in plan or plan["smokeTransport"] == "loaded"), "plan.invalid")
     if mode == "hosted":
         import hosted_image_context
+        selected = set(plan) & HOSTED_AUTHENTICATION_FIELDS
+        need(selected in (set(), HOSTED_AUTHENTICATION_FIELDS), "hosted.partial_authentication_custody")
+        if selected:
+            canonical(plan["authenticationCustodyPath"])
+            pinned(plan["authenticationCustodyPath"], plan["authenticationCustodySha256"])
         need(original_resources is None and resources_pin is None, "hosted.resource_override")
         nested, _ = hosted_image_context.plan_at(plan["hostedPlanPath"], plan["hostedPlanSha256"])
         need(all(plan[key] == nested[key] for key in

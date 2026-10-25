@@ -562,6 +562,11 @@ function retainedPlan(planPath, qualification, kind = "gcp") {
     ...(kind === "hosted" ? HOSTED_RETAINED_BASE_FIELDS : RETAINED_BASE_FIELDS),
     ...(qualification ? RETAINED_QUALIFICATION_FIELDS : []),
     ...(Object.hasOwn(plan ?? {}, "smokeTransport") ? ["smokeTransport"] : []),
+    ...(kind === "hosted" &&
+    (Object.hasOwn(plan ?? {}, "authenticationCustodyPath") ||
+      Object.hasOwn(plan ?? {}, "authenticationCustodySha256"))
+      ? ["authenticationCustodyPath", "authenticationCustodySha256"]
+      : []),
   ];
   need(
     plan &&
@@ -593,7 +598,9 @@ function retainedPlan(planPath, qualification, kind = "gcp") {
   }
   need(
     (kind === "hosted"
-      ? HEX.test(plan.hostedPlanSha256)
+      ? HEX.test(plan.hostedPlanSha256) &&
+        (!Object.hasOwn(plan, "authenticationCustodyPath") ||
+          HEX.test(plan.authenticationCustodySha256))
       : SHA.test(plan.originalToolingSha) && HEX.test(plan.executionSha256)) &&
       SHA.test(plan.inspectionToolingSha) &&
       (!qualification ||
@@ -652,25 +659,47 @@ function authenticatedHostedContext(plan) {
     );
   }
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "openclaw-hosted-origin-"))),
-    capturePath = join(directory, "capture.json");
+    capturePath = join(directory, "capture.json"),
+    historical = Object.hasOwn(plan, "authenticationCustodyPath");
   try {
     chmodSync(directory, 0o700);
     const stdout = execFileSync(
       "python3",
       [
         fileURLToPath(new URL("hosted_image_context.py", import.meta.url)),
-        "capture",
+        historical ? "reuse" : "capture",
         "--plan",
         plan.hostedPlanPath,
         "--plan-sha256",
         plan.hostedPlanSha256,
         "--output",
         capturePath,
+        ...(historical
+          ? [
+              "--custody",
+              plan.authenticationCustodyPath,
+              "--custody-sha256",
+              plan.authenticationCustodySha256,
+            ]
+          : []),
       ],
       { encoding: "utf8", stdio: "pipe", timeout: 180_000, maxBuffer: 1024 * 1024 },
     );
     privateOwned(capturePath);
     const captured = diagnosticJson(capturePath).value;
+    need(
+      historical
+        ? captured.authenticationMethod === "historical_verified_capture_reuse" &&
+            captured.authenticationCustodySha256 === plan.authenticationCustodySha256 &&
+            HEX.test(captured.originalCaptureSha256) &&
+            HEX.test(captured.originalPlanSha256) &&
+            SHA.test(captured.originalInspectionToolingSha) &&
+            captured.originalCapturedAt === captured.capturedAt &&
+            captured.nativeAttestationVerificationPerformed === false &&
+            captured.canonicalApiFetched === false
+        : !Object.hasOwn(captured, "authenticationMethod"),
+      "retained.hosted_capture_refused",
+    );
     need(
       same(JSON.parse(stdout), captured) &&
         captured.schema === "openclaw.retained-hosted-build-context.v1" &&
@@ -791,6 +820,14 @@ function matchesOriginAuthentication(proof, plan, context, kind, directory) {
       "resourceAssessment",
       "architecture",
       "version",
+      "authenticationMethod",
+      "authenticationCustodySha256",
+      "originalCaptureSha256",
+      "originalPlanSha256",
+      "originalCapturedAt",
+      "originalInspectionToolingSha",
+      "nativeAttestationVerificationPerformed",
+      "canonicalApiFetched",
     ].every((key) => same(original.value[key], context[key]))
   );
 }

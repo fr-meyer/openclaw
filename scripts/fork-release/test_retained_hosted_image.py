@@ -91,11 +91,60 @@ class RetainedHostedImageTests(unittest.TestCase):
         result,proof=self.run_owner("verify-retained-hosted",output=self.output/"receipt.json")
         self.assertEqual(result.returncode,0,proof)
         self.assertEqual(self.native_log.read_bytes(),native)
+
         self.assertGreater(len(self.authority_log.read_bytes()),len(before),"Verification trusted saved authentication JSON")
         self.env["HOSTED_AUTHORITY_FAIL"]="yes"
         result,_=self.run_owner("verify-retained-hosted",output=self.output/"receipt.json")
         self.assertNotEqual(result.returncode,0)
         self.assertEqual(self.native_log.read_bytes(),native)
+
+    def use_historical_authentication(self):
+        custody = self.state / "synthetic-custody.json"
+        self.private_json(custody, {"synthetic": "transport fixture; Python owner validates real custody"})
+        self.base.update(authenticationCustodyPath=str(custody), authenticationCustodySha256=self.digest(custody))
+        self.private_json(self.base_path, self.base); self.set_privacy()
+        self.capture.update(authenticationMethod="historical_verified_capture_reuse",
+            authenticationCustodySha256=self.digest(custody), originalCaptureSha256="7"*64,
+            originalPlanSha256="8"*64, originalInspectionToolingSha="9"*40,
+            originalCapturedAt=self.capture["capturedAt"], nativeAttestationVerificationPerformed=False,
+            canonicalApiFetched=False)
+        self.private_json(self.capture_path, self.capture)
+
+    def test_explicit_historical_authentication_routes_capture_qualify_verify_without_native_reexecution(self):
+        self.use_historical_authentication()
+        result, value = self.run_owner("capture-retained-hosted-origin", self.base_path, self.state/"reused.json")
+        self.assertEqual(result.returncode, 0, value)
+        self.assertEqual(value["authenticationMethod"], "historical_verified_capture_reuse")
+        result, value = self.run_owner(); self.assertEqual(result.returncode, 0, value)
+        native = self.native_log.read_bytes()
+        result, value = self.run_owner("verify-retained-hosted", output=self.output/"receipt.json")
+        self.assertEqual(result.returncode, 0, value); self.assertEqual(self.native_log.read_bytes(), native)
+        requests = [json.loads(line) for line in self.authority_log.read_text().splitlines()]
+        self.assertTrue(requests)
+        for args in requests:
+            self.assertEqual(args[1], "reuse")
+            self.assertEqual(args[args.index("--custody-sha256")+1], self.base["authenticationCustodySha256"])
+        changed = dict(self.capture, originalCaptureSha256="f"*64)
+        self.private_json(self.capture_path, changed)
+        result, _ = self.run_owner("verify-retained-hosted", output=self.output/"receipt.json")
+        self.assertNotEqual(result.returncode, 0); self.assertEqual(self.native_log.read_bytes(), native)
+
+    def test_historical_authentication_does_not_bypass_stale_admission(self):
+        self.use_historical_authentication()
+        self.resource.update(checkedAt="2026-10-23T10:01:00Z", expiresAt="2026-10-23T10:02:00Z")
+        self.private_json(self.resource_path, self.resource); self.set_privacy()
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1); self.assertEqual(report["static"], "passed", report)
+        self.assertFalse(self.native_log.exists()); self.assertFalse((self.output/"native-attempt.json").exists())
+
+    def test_historical_authentication_does_not_bypass_private_findings(self):
+        self.use_historical_authentication()
+        scan = json.loads(self.privacy.read_text())
+        self.set_privacy(status="failed", findings=[{"rule":"synthetic"}],
+            findingSummary={**scan["findingSummary"], "total":1})
+        result, report = self.run_owner()
+        self.assertEqual(result.returncode, 1); self.assertEqual(report["privacy"], "failed", report)
+        self.assertFalse(self.native_log.exists()); self.assertFalse((self.output/"receipt.json").exists())
 
     def test_crypto_failure_or_changed_archive_pin_blocks_before_native(self):
         for index,change in enumerate(({"originAuthenticated":False},{"archiveSha256":"f"*64})):
