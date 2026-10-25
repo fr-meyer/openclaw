@@ -83,7 +83,7 @@ MAX_PROVENANCE_SUBJECT_DETAILS = 4
 _MISSING = object()
 PUBLIC_MEMBER_QUALIFICATION = {
     "sourceSha": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
-    "planSha256": "9794771e592bf196451ad562669b151dd87bd12be88d8a8b7be86ca2023eef23",
+    "planSha256": "f5ea8cfbcd7e53bd38e344d6c6d9f7aaa39f465d8565668ca4c6fe3ebf03ec53",
     "rules": ("service_token", "credential_url", "github_token", "aws_access_key", "private_key",
               "private_runtime_path"),
 }

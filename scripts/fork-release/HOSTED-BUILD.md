@@ -343,10 +343,10 @@ scan, a consistent zero aggregate and matching identities. A v1 report is not
 silently reinterpreted as this proof; preserve historical reports under their
 original producer and schema.
 
-Only the exact public GnuTLS self-test qualification is currently supported. It
-requires the pinned layer, member path, complete member SHA and size, and applies
-only to the verified private-key test vectors. Other rules on that member still
-run. Generated assets and dependencies receive no blanket exemption.
+The exact public GnuTLS self-test qualification and the source-pinned reviewed
+member plan both require complete matching member bytes and apply only to their
+named rules. The GnuTLS record also pins the layer. Other rules on the same member
+still run. Generated assets and dependencies receive no blanket exemption.
 
 The on-disk receipt stays within 1 MiB. Standard output is bounded NDJSON: a
 summary followed by detail and location-index batches. Existing Actions logs
@@ -441,11 +441,27 @@ sample limits do not stop counting. Adjudication is narrower: exact reviewed
 public fixture version/source, member path, full byte hash/size and named rule
 can qualify that observation. Other rules, changed files/versions and unknown
 sensitive observations remain blocking. The hosted workflow selects the reviewed
-60-member plan only for its exact source85 commit. Other releases retain normal
+member plan only for its exact source85 commit. Other releases retain normal
 scanning until their own policy is reviewed. Synthetic regressions prove that
 this qualification cannot hide CI authentication, copied credential files or
 sensitive content left beneath whiteouts. No detector match alone establishes
 a leak, and public provenance alone does not prove harmlessness.
+
+The source85 plan also includes exact documentation examples from Debian
+security u4 `HTTP::Tiny` and `@npmcli/redact`, and the WebSocket endpoint-rejection
+test installed under `@openclaw/ai`. Their complete member bytes and installed
+paths were matched. The public archive version identifies the evidence
+counterpart; it does not assert the installed package version.
+
+The same plan separately pins 24 compiled members from the authenticated
+source85 build: three contain dynamic userinfo expressions, and 21 raw matches
+cross distinct object-property templates. Complete cached member reads found
+one URL-pattern span per file; reviewed static parsing and syntax observations
+support those exact lexical dispositions. These records cite original build
+provenance, not downloaded public whole-file counterparts. Only `credential_url`
+is qualified, after matching the complete member path, size and hash. Changed
+output requires a new review. This does not prove absence of arbitrary split or
+encoded secrets; the raw detector and all other rules remain unchanged.
 
 The fourth hosted build used a checksum-bound public Git context, public base
 images/packages/assets and nonsecret build arguments. Git checkouts disabled

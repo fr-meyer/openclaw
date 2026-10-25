@@ -1068,6 +1068,357 @@
         "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/qa/scenarios/personal/operator-integration-rotation-live.yaml",
         "sha256": "18f8770a141f564451a14d892cf7f406792e97dc99baa78bf075caafee4a978c"
       }
+    },
+    {
+      "id": "v105-84c87d891dbe50b0a08e",
+      "path": "usr/share/perl/5.36.0/HTTP/Tiny.pm",
+      "memberSha256": "a28408da12eb2e156377d63dcb891a27c0d16d79d07dd9794810ee3c8cc33cf8",
+      "memberBytes": 82093,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://security.debian.org/debian-security/pool/updates/main/p/perl/perl-modules-5.36_5.36.0-7+deb12u4_all.deb",
+        "sha256": "3ed38ffa8320e9bf7597cefa01b6a6ace4a08ccc77cdfd15ef7d8b711dea7166"
+      }
+    },
+    {
+      "id": "v105-8a505d40470062498e0d",
+      "path": "usr/local/lib/node_modules/npm/node_modules/@npmcli/redact/README.md",
+      "memberSha256": "d664dc870ea42ad76b2b8ca5f4d03eb990cb0b46670d4fc57c5057571e3f89c7",
+      "memberBytes": 978,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@npmcli/redact/-/redact-5.0.0.tgz",
+        "sha256": "fcb701861706437c91b0b4d75aafc86432b740ba9fc4e4f6aab469c1eb9b22c1"
+      }
+    },
+    {
+      "id": "v105-bd672a930bae3e5563d6",
+      "path": "app/node_modules/@openclaw/ai/src/transports/openai-responses-websocket.test.ts",
+      "memberSha256": "cfe8fab1649492185031acb107e0c2b2a9264bb7b1ed29e430228ca340abc68b",
+      "memberBytes": 13968,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/packages/ai/src/transports/openai-responses-websocket.test.ts",
+        "sha256": "cfe8fab1649492185031acb107e0c2b2a9264bb7b1ed29e430228ca340abc68b"
+      }
+    },
+    {
+      "id": "v105-syntax-324f3023b65ec7dcc3ee",
+      "path": "app/dist/config-Cj4w0nkR.mjs",
+      "memberSha256": "1af4449f0c362b9b2f714fa47753f071961cc12da35a980db14f318143d8152a",
+      "memberBytes": 15337,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-115460fa84fd71b6d5f6",
+      "path": "app/dist/control-ui/assets/ar-D3Sz35R5.js",
+      "memberSha256": "3b0fe1210b4ceeda0bbf9331d47897661a1956286e4924bc9271fd22000d0d0a",
+      "memberBytes": 566880,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-44e70fb4093a0ffc34ab",
+      "path": "app/dist/control-ui/assets/control-ui-core-Dyr_Otz4.js",
+      "memberSha256": "9de90b07618410c882def22b593b95e067c067e65197e3db52d667b2bf53695a",
+      "memberBytes": 467689,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-44cd733048a9fd8f2584",
+      "path": "app/dist/control-ui/assets/de-DcqP7xlW.js",
+      "memberSha256": "e075d7743e70c9c8db144010c8ed66102fe7654b92a06719ee8ff0c6512efc37",
+      "memberBytes": 466555,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-52cb3b349b372a8b8267",
+      "path": "app/dist/control-ui/assets/es-BTa0WUEC.js",
+      "memberSha256": "057152812a625adc4504ba8838561b2fee16344882e62dd0f7c0017a82b0a25d",
+      "memberBytes": 457279,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-aeaf3b5285a77da45c4f",
+      "path": "app/dist/control-ui/assets/fa-aQ7Ofaz0.js",
+      "memberSha256": "f0ec00a2f6c9733983bbec582e53c7f02b55080310a128964a9fcf3fef3439b8",
+      "memberBytes": 616362,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-ff2698d5a962ebb859c5",
+      "path": "app/dist/control-ui/assets/fr-CZpRItcW.js",
+      "memberSha256": "ef6aefadbeec295142cba03a6b7e417f03ecc5fdc5dc2424ada1217fdb0ad8ec",
+      "memberBytes": 478779,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-5804caf5d5033498a424",
+      "path": "app/dist/control-ui/assets/hi-Bz6iaYuf.js",
+      "memberSha256": "3930906414f78e44a877e4f8bd57ff7256e225e16835b3c7c7b01c72e477402c",
+      "memberBytes": 822292,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-744de7b6ea95ba535fe4",
+      "path": "app/dist/control-ui/assets/id-CWIYvpTA.js",
+      "memberSha256": "a783167a5e16661ad4f4751799a61e55e41d96db915f118559138ec998bd10b7",
+      "memberBytes": 416569,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-6f28afb6600f66f2d656",
+      "path": "app/dist/control-ui/assets/it-Dxn39gbY.js",
+      "memberSha256": "81051de7771438cd677101de016b8a03fe91b92ea67d0a68c28b0f5222bc08ff",
+      "memberBytes": 454591,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-85d55f149be66a5785c9",
+      "path": "app/dist/control-ui/assets/ja-JP-NiDMKLnS.js",
+      "memberSha256": "1a57ea4c709c3795aee8f11907a02d20525f446ca0db767994571c90fcdab3fc",
+      "memberBytes": 538827,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-fef5a752b8af930cfd32",
+      "path": "app/dist/control-ui/assets/ko-BiaCX04H.js",
+      "memberSha256": "bac0aa581bb04f9f324ca625d17902604df90fe5970c51c932dfa7b9f2e78334",
+      "memberBytes": 471126,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-d94c13e2300cc4ae4438",
+      "path": "app/dist/control-ui/assets/nl-CTjpQjGM.js",
+      "memberSha256": "aaf7c9e052744a333c799a78e478a5d365a33d82b306a38e1fe497cd614b1c0e",
+      "memberBytes": 439591,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-3c550fe6d42fcfb65188",
+      "path": "app/dist/control-ui/assets/pl-BlKsnNxx.js",
+      "memberSha256": "f4392cc45693b1773dedb21b2bca85cd0706609d7412aee9f88c0cb8b298be88",
+      "memberBytes": 455372,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-65cb88caa1f68d34d4ba",
+      "path": "app/dist/control-ui/assets/pt-BR-Cm_99aVM.js",
+      "memberSha256": "00234255e15eac44356ec543482c88b01980d81d9c25288a73f6b8270759fa75",
+      "memberBytes": 444813,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-a92e376e0c8e32e711e5",
+      "path": "app/dist/control-ui/assets/ru-CplaMOZ6.js",
+      "memberSha256": "737b7709f7a38c97b49844bd22478b075a94f867b1e98e6e26b4162272d35f50",
+      "memberBytes": 684257,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-67af51aac92c2c73f097",
+      "path": "app/dist/control-ui/assets/th-olDsfW-j.js",
+      "memberSha256": "5552e18a77acbb9c957925b2fb3e18344113b47fdf840a8b0eee55f62cd95d33",
+      "memberBytes": 852161,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-a10ee422ee0587fa0394",
+      "path": "app/dist/control-ui/assets/tr-l5SOpnek.js",
+      "memberSha256": "d42bb12c10abbb047660108172fb1b05289c4879fcf448983efacb3c790d44cf",
+      "memberBytes": 447815,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-b1bbd5c9076feaa4d3d8",
+      "path": "app/dist/control-ui/assets/uk-Dk6TDkbE.js",
+      "memberSha256": "58db9515357066d11197bdc5a835711a7760f6368c92b4199f1090517b39d074",
+      "memberBytes": 679534,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-17a727ad06f8cb843861",
+      "path": "app/dist/control-ui/assets/vi-Ci2lpnkb.js",
+      "memberSha256": "84559da21b9a81bdfa0da1303d9f446074a97cc38d62ddefc5e2c01112cf1a2d",
+      "memberBytes": 515584,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-0dda302c96b0121ca5f8",
+      "path": "app/dist/control-ui/assets/zh-CN-D_z2OmkO.js",
+      "memberSha256": "d3128686f60513e2b70dd5d95c18ba5a5c5db2a31f2659fc13bd52d097ce0ba4",
+      "memberBytes": 381892,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-2588f7401cd70fb8e255",
+      "path": "app/dist/control-ui/assets/zh-TW-tU_-KVtX.js",
+      "memberSha256": "9cee5ce43a8f670119706865856cbfac566f31e9670916927874b0bfd490855c",
+      "memberBytes": 392225,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-351136b83ebfa8b1f330",
+      "path": "app/dist/proxy-server-GWpDcF7x.mjs",
+      "memberSha256": "97ceef34398d48aff255fbdfaf33a3b03a7f19ff4370c0045f89d86b549b13c5",
+      "memberBytes": 39345,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-f39fe4979193e09fd79c",
+      "path": "app/dist/worker/worker-chunk-BohXdWEa.mjs",
+      "memberSha256": "146c0b5fe0be1edda14f4265bf211bee8b2c6e6877804d5b4f265853632b8f2d",
+      "memberBytes": 9468,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
     }
   ]
 }

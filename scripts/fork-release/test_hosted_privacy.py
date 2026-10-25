@@ -226,10 +226,36 @@ class PrivacyTests(unittest.TestCase):
         self.assertEqual(privacy.sha256(data), privacy.PUBLIC_MEMBER_QUALIFICATION["planSha256"])
         plan = json.loads(data)
         self.assertEqual(plan["sourceSha"], privacy.PUBLIC_MEMBER_QUALIFICATION["sourceSha"])
-        self.assertEqual(len(plan["entries"]), 82)
-        self.assertEqual(sum(len(entry["rules"]) for entry in plan["entries"]), 83)
+        self.assertEqual(len(plan["entries"]), 109)
+        self.assertEqual(sum(len(entry["rules"]) for entry in plan["entries"]), 110)
         self.assertEqual({rule for entry in plan["entries"] for rule in entry["rules"]},
                          set(privacy.PUBLIC_MEMBER_QUALIFICATION["rules"]))
+
+    def test_compiled_object_template_match_needs_exact_reviewed_bytes(self):
+        payload = b"export const sample={origin:`https://example.invalid`,label:`example@`};"
+        name = "app/dist/synthetic-compiled.js"
+        plan = self.comparison_plan(name, payload, rules=["credential_url"])
+        credential = b"https://example-user:example-password@example.invalid/"
+        for changed, extra, qualifies in ((False, False, True), (True, False, False),
+                                          (False, True, False)):
+            with self.subTest(changed=changed, extra=extra), tempfile.TemporaryDirectory() as directory:
+                entries = [(name, payload + (b" " if changed else b""))]
+                if extra:
+                    entries.append(("app/other.js", credential))
+                fixture = Layout(directory, layers=[(privacy.TAR, archive(entries))])
+                with self.trusted_comparison(plan) as (path, data):
+                    diagnostic = fixture.inspect(public_comparisons=path)
+                    result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+                    self.assertGreater(diagnostic["findingSummary"]["total"], 0)
+                    self.assertEqual(result["status"] == "passed", qualifies, result)
+                    if qualifies:
+                        privacy.require_public_member_qualification(result, data)
+
+    def test_backtick_inside_quoted_credential_remains_a_finding(self):
+        payload = b'const example="https://example-user:example`password@example.invalid/";'
+        result = self.files([("app/example.js", payload)]).inspect()
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["findingSummary"]["byRule"]["credential_url"], 1)
 
     def test_public_runtime_path_requires_complete_exact_regular_member(self):
         payload = b"synthetic-local-redis-fixture\n"
