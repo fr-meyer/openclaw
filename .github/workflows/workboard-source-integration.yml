@@ -1,0 +1,108 @@
+name: Workboard source integration validation v2
+
+on:
+  push:
+    branches: [validation/workboard-pr173202-bf6cce51-ci2]
+
+permissions: {}
+
+concurrency:
+  group: workboard-source-integration-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  OPENCLAW_TEST: "1"
+  OPENCLAW_VITEST_RUNTIME: node
+  OPENCLAW_VITEST_MAX_WORKERS: "1"
+  OPENCLAW_VITEST_FS_MODULE_CACHE: "0"
+  TSX_DISABLE_CACHE: "1"
+  NODE_OPTIONS: --max-old-space-size=2048
+  GIT_CONFIG_GLOBAL: /dev/null
+  GIT_CONFIG_NOSYSTEM: "1"
+  GIT_TERMINAL_PROMPT: "0"
+
+jobs:
+  workboard-source:
+    name: Workboard / source integration
+    if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/validation/workboard-pr173202-bf6cce51-ci2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Fetch public exact source without a token
+        env:
+          EXPECTED_SOURCE_COMMIT: ebb223aa1645bf29c2783296a74864b29d18e77a
+          EXPECTED_SOURCE_TREE: 94902be20b56f2962568865a1ec69c60ee163209
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init --quiet .
+          git config core.hooksPath /dev/null
+          git -c credential.helper= fetch --no-tags --depth=3 https://github.com/fr-meyer/openclaw.git "$GITHUB_SHA"
+          git checkout --detach --quiet FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_SOURCE_COMMIT"
+          test "$(git rev-parse "$EXPECTED_SOURCE_COMMIT^{tree}")" = "$EXPECTED_SOURCE_TREE"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = ".github/workflows/workboard-source-integration.yml"
+          git diff --exit-code "$EXPECTED_SOURCE_COMMIT" HEAD -- . ':!.github/workflows/workboard-source-integration.yml'
+          printf 'bf3656f51dc8dc1660e1dcf289db8bc52811bf5e9bc8aabd588489b2ad85aaf1  pnpm-lock.yaml\n' | sha256sum --check
+          printf 'Exact source commit: %s\nSource tree: %s\nCI commit: %s\n' "$EXPECTED_SOURCE_COMMIT" "$EXPECTED_SOURCE_TREE" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Maintained full-workspace frozen setup with normal lifecycle scripts
+        id: setup
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24.22.1"
+          cache-mode: off
+          install-bun: "false"
+          install-deps: "true"
+          frozen-lockfile: "true"
+          semantic-checks: "true"
+
+      - name: Verify maintained installation and unchanged frozen source
+        id: deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = v24.22.1
+          test "$(pnpm --version)" = 12.15.0
+          printf 'bf3656f51dc8dc1660e1dcf289db8bc52811bf5e9bc8aabd588489b2ad85aaf1  pnpm-lock.yaml\n' | sha256sum --check
+          git diff --exit-code
+          mkdir -p "$RUNNER_TEMP/workboard-state"
+          echo "OPENCLAW_STATE_DIR=$RUNNER_TEMP/workboard-state" >> "$GITHUB_ENV"
+
+      - name: Focused exact-card and preserved lifecycle regressions
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        shell: bash
+        run: node scripts/run-vitest.mjs extensions/workboard/src/cli.test.ts extensions/workboard/src/dispatcher-exact-dispatch.test.ts extensions/workboard/src/dispatcher.test.ts extensions/workboard/src/dispatcher-compensation.test.ts extensions/workboard/src/gateway-dispatch.test.ts extensions/workboard/src/gateway.test.ts extensions/workboard/src/lifecycle-sync.claim-release.test.ts extensions/workboard/src/lifecycle-sync.test.ts extensions/workboard/src/lifecycle-sync.archived-session.test.ts extensions/workboard/src/lifecycle-sync.cleanup-recovery.test.ts extensions/workboard/src/lifecycle-sync.restart.test.ts extensions/workboard/src/store-dispatch.test.ts extensions/workboard/src/store-lifecycle.test.ts extensions/workboard/src/store.attempts.test.ts extensions/workboard/src/store.dispatch-comment-limit.test.ts --maxWorkers=1 --reporter=verbose
+
+      - name: Format changed source and documentation
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        env:
+          OPENCLAW_FORMAT_TOOL: oxfmt
+        shell: bash
+        run: node scripts/run-format.mts --check docs/cli/workboard.md docs/plugins/reference/workboard.md docs/plugins/workboard.md extensions/workboard/openclaw.plugin.json extensions/workboard/src/cli.test.ts extensions/workboard/src/cli.ts extensions/workboard/src/dispatcher-exact-dispatch.test.ts extensions/workboard/src/dispatcher.test.ts extensions/workboard/src/dispatcher.ts extensions/workboard/src/gateway-dispatch.test.ts extensions/workboard/src/gateway-helpers.ts extensions/workboard/src/gateway.test.ts extensions/workboard/src/gateway.ts extensions/workboard/src/lifecycle-sync.claim-release.test.ts extensions/workboard/src/lifecycle-sync.ts extensions/workboard/src/session-link.ts extensions/workboard/src/store-card-helpers.ts extensions/workboard/src/store-dispatch.test.ts extensions/workboard/src/store-dispatch.ts extensions/workboard/src/store-inputs.ts extensions/workboard/src/store-workflow.ts extensions/workboard/src/store.ts
+
+      - name: Lint changed TypeScript through the owner wrapper
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        shell: bash
+        run: node scripts/run-oxlint.mjs --tsconfig extensions/tsconfig.json extensions/workboard/src/cli.test.ts extensions/workboard/src/cli.ts extensions/workboard/src/dispatcher-exact-dispatch.test.ts extensions/workboard/src/dispatcher.test.ts extensions/workboard/src/dispatcher.ts extensions/workboard/src/gateway-dispatch.test.ts extensions/workboard/src/gateway-helpers.ts extensions/workboard/src/gateway.test.ts extensions/workboard/src/gateway.ts extensions/workboard/src/lifecycle-sync.claim-release.test.ts extensions/workboard/src/lifecycle-sync.ts extensions/workboard/src/session-link.ts extensions/workboard/src/store-card-helpers.ts extensions/workboard/src/store-dispatch.test.ts extensions/workboard/src/store-dispatch.ts extensions/workboard/src/store-inputs.ts extensions/workboard/src/store-workflow.ts extensions/workboard/src/store.ts
+
+      - name: Type check Workboard with inherited strict project settings
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts/workboard-ci
+          node --input-type=module - .artifacts/workboard-ci/tsconfig.json <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const root = process.cwd();
+          fs.writeFileSync(process.argv[2], JSON.stringify({
+            extends: path.join(root, 'extensions/tsconfig.json'),
+            compilerOptions: { noEmit: true, incremental: false },
+            include: [path.join(root, 'extensions/workboard/**/*.ts')],
+            exclude: [path.join(root, 'node_modules'), path.join(root, 'dist')]
+          }));
+          NODE
+          node scripts/run-tsgo.mjs -p .artifacts/workboard-ci/tsconfig.json --noEmit
