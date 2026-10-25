@@ -154,7 +154,7 @@ class PrivacyTests(unittest.TestCase):
             path = Path(directory) / "public.json"
             path.write_bytes(data)
             # Synthetic proof only: production constants remain the exact
-            # reviewed source85/60-entry plan and three permitted rules.
+            # reviewed source85 plan and its explicitly permitted rules.
             trusted = {**privacy.PUBLIC_MEMBER_QUALIFICATION, "sourceSha": SOURCE, "planSha256": privacy.sha256(data)}
             with patch.object(privacy, "PUBLIC_MEMBER_QUALIFICATION", trusted):
                 yield path, data
@@ -200,10 +200,93 @@ class PrivacyTests(unittest.TestCase):
             path.write_bytes(path.read_bytes() + b" ")
             self.assertEqual(fixture.inspect(public_comparisons=path, qualify_public_members=True)["refusal"],
                              "untrusted_public_member_qualification_plan")
-        plan["entries"][0]["rules"] = ["aws_access_key"]
+        plan["entries"][0]["rules"] = ["sqlite_database_payload"]
         with self.trusted_comparison(plan) as (path, _):
             self.assertEqual(fixture.inspect(public_comparisons=path, qualify_public_members=True)["refusal"],
                              "untrusted_public_member_qualification_plan")
+
+    def test_explicit_public_qualification_covers_only_planned_aws_and_pem_rules(self):
+        samples = [("aws_access_key", b"ASIA" + b"A" * 16),
+                   ("private_key", b"-----BEGIN " + PRIVATE_KEY_LABEL + b"-----\n" + b"A" * 64)]
+        for rule, payload in samples:
+            with self.subTest(rule=rule), tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/public-fixture", payload)]))])
+                plan = self.comparison_plan("app/public-fixture", payload, rules=[rule])
+                with self.trusted_comparison(plan) as (path, data):
+                    diagnostic = fixture.inspect(public_comparisons=path)
+                    result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+                    privacy.require_public_member_qualification(result, data)
+                self.assertEqual(diagnostic["findingSummary"]["byRule"][rule], 1)
+                self.assertEqual(result["status"], "passed", result)
+                self.assertEqual(result["publicMemberQualification"]["records"][0]["rule"], rule)
+
+    def test_production_public_manifest_is_exactly_pinned(self):
+        path = Path(privacy.__file__).with_name("public-member-comparisons-v105.json")
+        data = path.read_bytes()
+        self.assertEqual(privacy.sha256(data), privacy.PUBLIC_MEMBER_QUALIFICATION["planSha256"])
+        plan = json.loads(data)
+        self.assertEqual(plan["sourceSha"], privacy.PUBLIC_MEMBER_QUALIFICATION["sourceSha"])
+        self.assertEqual(len(plan["entries"]), 82)
+        self.assertEqual(sum(len(entry["rules"]) for entry in plan["entries"]), 83)
+        self.assertEqual({rule for entry in plan["entries"] for rule in entry["rules"]},
+                         set(privacy.PUBLIC_MEMBER_QUALIFICATION["rules"]))
+
+    def test_public_runtime_path_requires_complete_exact_regular_member(self):
+        payload = b"synthetic-local-redis-fixture\n"
+        name = "app/node_modules/.pnpm/example@1.0.0/node_modules/example/.env"
+        plan = self.comparison_plan(name, payload, rules=["private_runtime_path"])
+        cases = [(name, payload, True), (name, b"X" * len(payload), False),
+                 (name, payload + b"changed", False),
+                 (name.replace("example@1.0.0", "example@1.0.1"), payload, False),
+                 (name, (tarfile.SYMTYPE, "other"), False),
+                 (name, (tarfile.LNKTYPE, "other"), False)]
+        for actual_path, body, qualifies in cases:
+            with self.subTest(path=actual_path, kind=type(body).__name__, qualifies=qualifies), \
+                    tempfile.TemporaryDirectory() as directory:
+                fixture = Layout(directory, layers=[(privacy.TAR, archive([(actual_path, body)]))])
+                with self.trusted_comparison(plan) as (path, data):
+                    diagnostic = fixture.inspect(public_comparisons=path)
+                    result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+                    if qualifies:
+                        privacy.require_public_member_qualification(result, data)
+                    else:
+                        with self.assertRaises(privacy.Refusal):
+                            privacy.require_public_member_qualification(result, data)
+                self.assertEqual(diagnostic["findingSummary"]["byRule"]["private_runtime_path"], 1)
+                self.assertTrue(result["inspectionComplete"], result)
+                self.assertEqual(result["status"], "passed" if qualifies else "failed")
+                self.assertEqual(result["findingSummary"]["byRule"]["private_runtime_path"], int(not qualifies))
+                self.assertEqual(result["publicMemberQualification"]["status"], "satisfied" if qualifies else "failed")
+        fixture = self.files([(name, payload)])
+        with self.trusted_comparison(plan) as (path, _), \
+                patch.object(tarfile.TarFile, "extractfile", side_effect=lambda *args: io.BytesIO(payload[:-1])):
+            result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+        self.assertFalse(result["inspectionComplete"])
+        self.assertEqual(result["refusal"], "truncated_member")
+        self.assertEqual(result["findingSummary"]["byRule"]["private_runtime_path"], 1)
+        self.assertEqual(result["publicMemberQualification"]["records"], [])
+        with self.trusted_comparison(plan) as (path, _), \
+                patch.object(tarfile.TarFile, "extractfile", return_value=None):
+            result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+        self.assertEqual(result["refusal"], "missing_member_stream")
+        self.assertEqual(result["findingSummary"]["byRule"]["private_runtime_path"], 1)
+
+    def test_qualified_public_env_does_not_hide_other_paths_content_or_metadata(self):
+        payload = b"sk-" + b"S" * 30
+        name = "app/node_modules/.pnpm/example@1.0.0/node_modules/example/.env"
+        config = {"os": "linux", "architecture": "amd64", "config": {
+            "Labels": {"org.opencontainers.image.revision": SOURCE}, "Env": ["GITHUB_TOKEN=synthetic-ci-value"]}}
+        fixture = self.files([(name, payload), ("app/.env", b"other-runtime-state"),
+                              ("app/link", (tarfile.SYMTYPE, ".ssh/id_rsa"))], config=config)
+        with self.trusted_comparison(self.comparison_plan(name, payload, rules=["private_runtime_path"])) as (path, data):
+            result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+            privacy.require_public_member_qualification(result, data)
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["publicMemberQualification"]["status"], "satisfied")
+        self.assertEqual(result["findingSummary"]["byRule"]["private_runtime_path"], 2)
+        self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 1)
+        self.assertEqual(result["findingSummary"]["byRule"]["sensitive_environment_value"], 1)
 
     def test_qualification_missing_changed_clean_or_nonregular_occurrences_fail_after_full_scan(self):
         payload = b"sk-" + b"S" * 30
@@ -819,6 +902,91 @@ class PrivacyTests(unittest.TestCase):
         result = self.files([("app/public-identifiers", b"\n".join(identifiers))],
                             config=config).inspect()
         self.assertEqual(result["status"], "passed", result)
+
+    def test_exact_openssh_algorithm_is_not_a_service_token_in_files_or_json(self):
+        algorithm = b"sk-ecdsa-sha2-nistp256-cert-v01@openssh.com"
+        boundaries = (b"", b"\0", b" ", b"\t", b"\r", b"\n", b",", b'"', b"'")
+        values = [boundary + algorithm + boundary for boundary in boundaries]
+        config = {"os": "linux", "architecture": "amd64", "config": {
+            "Labels": {"org.opencontainers.image.revision": SOURCE}, "Env": []},
+            "history": [{"created_by": value.decode()} for value in values]}
+        result = self.files([("app/algorithms", b"\n".join(values))], config=config).inspect()
+        self.assertEqual(result["status"], "passed", result)
+        self.assertTrue(result["inspectionComplete"])
+        self.assertEqual(result["findingSummary"]["total"], 0)
+
+    def test_changed_or_unterminated_openssh_names_remain_service_findings(self):
+        algorithm = b"sk-ecdsa-sha2-nistp256-cert-v01@openssh.com"
+        values = [algorithm[:-1], algorithm.split(b"@")[0],
+                  algorithm.replace(b"nistp256", b"nistp384"),
+                  algorithm.replace(b"v01", b"v02"),
+                  algorithm.replace(b"openssh.com", b"openssh.example"),
+                  algorithm.replace(b"openssh", b"OpenSSH")]
+        values += [algorithm + suffix for suffix in
+                   (b".evil", b"-extra", b"_extra", b"@extra", b"/extra", b":443", b"!", b"\xc3\xa9")]
+        values += [prefix + algorithm for prefix in (b"changed-", b"changed.", b"changed@", b"/", b":")]
+        for index, value in enumerate(values):
+            with self.subTest(case=index), tempfile.TemporaryDirectory() as directory:
+                config = {"os": "linux", "architecture": "amd64", "config": {
+                    "Labels": {"org.opencontainers.image.revision": SOURCE}, "Env": []},
+                    "history": [{"created_by": value.decode()}]}
+                fixture = Layout(directory, config=config,
+                                 layers=[(privacy.TAR, archive([("app/algorithms", value)]))])
+                result = inspect_with_short_member_reads(fixture, 17)
+                self.assertTrue(result["inspectionComplete"], result)
+                self.assertEqual(result["status"], "failed", result)
+                self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 2)
+
+    def test_openssh_namespace_exclusion_survives_stream_boundaries_and_short_reads(self):
+        algorithm = b"sk-ecdsa-sha2-nistp256-cert-v01@openssh.com"
+        offsets = {privacy.CHUNK - split for split in range(1, len(algorithm) + 1)}
+        offsets.update((privacy.CHUNK - privacy.OVERLAP - 1,
+                        privacy.CHUNK - privacy.OVERLAP,
+                        privacy.CHUNK - privacy.OVERLAP + 1))
+        cases = [(privacy.CHUNK, offset) for offset in sorted(offsets)]
+        cases += [(17, offset) for offset in (0, 1, 16, 17)]
+        for maximum, offset in cases:
+            with self.subTest(read=maximum, offset=offset), tempfile.TemporaryDirectory() as directory:
+                payload = b" " * offset + algorithm + b"\0" + b" " * 40
+                fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/algorithms", payload)]))])
+                result = inspect_with_short_member_reads(fixture, maximum)
+                self.assertEqual(result["status"], "passed", result)
+                self.assertTrue(result["inspectionComplete"])
+        # The exact namespace can end at a read boundary while the next byte
+        # changes the name. Seeing that byte must preserve the service finding.
+        payload = b" " * (privacy.CHUNK - len(algorithm)) + algorithm + b".evil"
+        result = self.files([("app/algorithms", payload)], compressed=False).inspect()
+        self.assertTrue(result["inspectionComplete"], result)
+        self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 1)
+        for prefix in (b"changed-", b"changed.", b"changed@"):
+            with self.subTest(prefix=prefix), tempfile.TemporaryDirectory() as directory:
+                payload = (b" " * (privacy.CHUNK - privacy.OVERLAP - len(prefix)) + prefix +
+                           algorithm + b" " * privacy.CHUNK)
+                fixture = Layout(directory, layers=[(privacy.TAR, archive([("app/algorithms", payload)]))])
+                result = fixture.inspect()
+                self.assertTrue(result["inspectionComplete"], result)
+                self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 1)
+
+    def test_openssh_identifier_does_not_hide_adjacent_synthetic_credentials(self):
+        algorithm = b"sk-ecdsa-sha2-nistp256-cert-v01@openssh.com"
+        tokens = (b"sk-" + b"S" * 30, b"sk-proj-" + b"P" * 30,
+                  b"sk-svcacct-" + b"A" * 30, b"xoxb-" + b"X" * 30)
+        for index, token in enumerate(tokens):
+            with self.subTest(case=index), tempfile.TemporaryDirectory() as directory:
+                value = algorithm + b" " + token
+                config = {"os": "linux", "architecture": "amd64", "config": {
+                    "Labels": {"org.opencontainers.image.revision": SOURCE}, "Env": []},
+                    "history": [{"created_by": value.decode()}]}
+                payload = b" " * (privacy.CHUNK - len(algorithm) - 1) + value
+                fixture = Layout(directory, config=config,
+                                 layers=[(privacy.TAR, archive([("app/algorithms", payload)]))])
+                result = inspect_with_short_member_reads(fixture, 17) if index == 0 else fixture.inspect()
+                self.assertTrue(result["inspectionComplete"], result)
+                self.assertEqual(result["status"], "failed", result)
+                self.assertEqual(result["findingSummary"]["byRule"]["service_token"], 2)
+                self.assertTrue(all(item["matchLength"] == len(token) for item in result["findings"]
+                                    if item["rule"] == "service_token"))
+                self.assertNotIn(token.decode(), json.dumps(result))
 
     def test_identifier_boundary_survives_stream_overlap_and_short_reads(self):
         # Put the internal sk- exactly at the first retained byte, around the

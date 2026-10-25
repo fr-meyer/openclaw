@@ -781,6 +781,293 @@
         "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
         "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
       }
+    },
+    {
+      "id": "v105-ef1c1030970a06944daa",
+      "path": "app/extensions/alibaba/video-generation-provider.test.ts",
+      "memberSha256": "23b38f10cae4e884ed85bc8771335ef2354259522a1f75ae3ccae37a2dffc355",
+      "memberBytes": 9838,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/alibaba/video-generation-provider.test.ts",
+        "sha256": "23b38f10cae4e884ed85bc8771335ef2354259522a1f75ae3ccae37a2dffc355"
+      }
+    },
+    {
+      "id": "v105-39ba13acfc5f3f663bd8",
+      "path": "app/extensions/browser/src/browser/config.ts",
+      "memberSha256": "65008f5e5e3f5ffd2f879c04dfb0a9380b57433501823666cda7459b9b531732",
+      "memberBytes": 19771,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/config.ts",
+        "sha256": "65008f5e5e3f5ffd2f879c04dfb0a9380b57433501823666cda7459b9b531732"
+      }
+    },
+    {
+      "id": "v105-ae3a87be9f631bc6507e",
+      "path": "app/extensions/openai/openai-api-key-catalog.test.ts",
+      "memberSha256": "b40a65ab2150714674d1fb2c3bc2749afbdbb523655a7074be6b132b3415e197",
+      "memberBytes": 6200,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/openai/openai-api-key-catalog.test.ts",
+        "sha256": "b40a65ab2150714674d1fb2c3bc2749afbdbb523655a7074be6b132b3415e197"
+      }
+    },
+    {
+      "id": "v105-bdf61eea09fbc0da0b3a",
+      "path": "app/extensions/openai/realtime-sideband-call.test.ts",
+      "memberSha256": "b677ce90ef29dbffbca189827d73823afb0737a9f45d80bc326f348918305f44",
+      "memberBytes": 5919,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/openai/realtime-sideband-call.test.ts",
+        "sha256": "b677ce90ef29dbffbca189827d73823afb0737a9f45d80bc326f348918305f44"
+      }
+    },
+    {
+      "id": "v105-33163d408ffd5c88ddec",
+      "path": "app/node_modules/.pnpm/@aws-sdk+nested-clients@3.997.46/node_modules/@aws-sdk/nested-clients/dist-types/submodules/sts/commands/AssumeRoleCommand.d.ts",
+      "memberSha256": "d6b5f96e31cdfcf6955ca63778db40cbf392b87934b6c0db399b5b71206ff609",
+      "memberBytes": 14668,
+      "rules": [
+        "aws_access_key"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@aws-sdk/nested-clients/-/nested-clients-3.997.46.tgz",
+        "sha256": "32c9bfdcdd100106fb86e9c8aae6835030cfde6219acd02c03b547ac7c64a72a"
+      }
+    },
+    {
+      "id": "v105-331e525b94b8f299e14e",
+      "path": "app/node_modules/.pnpm/@aws-sdk+nested-clients@3.997.46/node_modules/@aws-sdk/nested-clients/dist-types/submodules/sts/commands/AssumeRoleWithWebIdentityCommand.d.ts",
+      "memberSha256": "93271217ff1125ad4250d78a14941f3cc59aa477eb10207bc72c709e82790bbe",
+      "memberBytes": 19434,
+      "rules": [
+        "aws_access_key"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@aws-sdk/nested-clients/-/nested-clients-3.997.46.tgz",
+        "sha256": "32c9bfdcdd100106fb86e9c8aae6835030cfde6219acd02c03b547ac7c64a72a"
+      }
+    },
+    {
+      "id": "v105-9f256b6d70f7d5186fd7",
+      "path": "app/node_modules/.pnpm/@openai+codex@0.160.0-linux-x64/node_modules/@openai/codex/vendor/x86_64-unknown-linux-musl/bin/codex",
+      "memberSha256": "12eb3e81114588aca3b7998f4f19e8997b056aca08e57a7ca7c8a3ec8c652aad",
+      "memberBytes": 289101384,
+      "rules": [
+        "github_token",
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0-linux-x64.tgz",
+        "sha256": "37a41d61c3399182b8c727b77090cc7a1566bd849d0f09070a0bbc6fec4c58dc"
+      }
+    },
+    {
+      "id": "v105-2784e4d2ccbecbec9ee4",
+      "path": "app/node_modules/.pnpm/@openclaw+proxyline@0.4.0_undici@8.12.2/node_modules/@openclaw/proxyline/docs/api-reference.md",
+      "memberSha256": "1dcfdf8c8ed694f03de9d13f0ea49f9fdee9998f039042deb842d566f638e904",
+      "memberBytes": 13129,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@openclaw/proxyline/-/proxyline-0.4.0.tgz",
+        "sha256": "96ee649cccd2cacd4e2006ea9c3bf7e58cf8d00f95d1b9fb39a0d97e5f68a7fe"
+      }
+    },
+    {
+      "id": "v105-2de28df695063fbc82da",
+      "path": "app/node_modules/.pnpm/@openclaw+proxyline@0.4.0_undici@8.12.2/node_modules/@openclaw/proxyline/docs/observability.md",
+      "memberSha256": "56b5ac72fae09a246f3c8a9b2434fc82705a73fe398a050276ad1361fe47c3e3",
+      "memberBytes": 3094,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@openclaw/proxyline/-/proxyline-0.4.0.tgz",
+        "sha256": "96ee649cccd2cacd4e2006ea9c3bf7e58cf8d00f95d1b9fb39a0d97e5f68a7fe"
+      }
+    },
+    {
+      "id": "v105-195a4d765b16399c7abd",
+      "path": "app/node_modules/.pnpm/@postalsys+vmc@1.1.5/node_modules/@postalsys/vmc/test/fixtures/postal_vmc.key",
+      "memberSha256": "0e86ee16ad888e7cfe44f8becd4d83558dcb72280fcdd97654f253fc1fbe3bba",
+      "memberBytes": 1704,
+      "rules": [
+        "private_key"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@postalsys/vmc/-/vmc-1.1.5.tgz",
+        "sha256": "64330a09a8f113a19e13b57b24f6473a8464f75871e9fb06a95bc5d57ccae565"
+      }
+    },
+    {
+      "id": "v105-81a7707f45dbe2775acb",
+      "path": "app/node_modules/.pnpm/@types+node@24.19.1/node_modules/@types/node/http.d.ts",
+      "memberSha256": "06c12e208576282dfd4aa04cc47ae3447008fdf79a360a9b0f3a6fb940960cd1",
+      "memberBytes": 101368,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@types/node/-/node-24.19.1.tgz",
+        "sha256": "4605482935b2a8c26c53c7637fbc20665e49f9b0b6dc0db50449500e86727a82"
+      }
+    },
+    {
+      "id": "v105-bb0ed23a263f0f3add2c",
+      "path": "app/node_modules/.pnpm/@types+node@24.19.1/node_modules/@types/node/https.d.ts",
+      "memberSha256": "0c50296ee73dae94efc3f0da4936b1146ca6ce2217acfabb44c19c9a33fa30e5",
+      "memberBytes": 26256,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@types/node/-/node-24.19.1.tgz",
+        "sha256": "4605482935b2a8c26c53c7637fbc20665e49f9b0b6dc0db50449500e86727a82"
+      }
+    },
+    {
+      "id": "v105-125760f34c15bfe2d1a8",
+      "path": "app/node_modules/.pnpm/@types+node@24.19.1/node_modules/@types/node/url.d.ts",
+      "memberSha256": "85fb581c048b948a48842e6584d61512939566e0c7a4d6439f54902ce6c79bee",
+      "memberBytes": 48036,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@types/node/-/node-24.19.1.tgz",
+        "sha256": "4605482935b2a8c26c53c7637fbc20665e49f9b0b6dc0db50449500e86727a82"
+      }
+    },
+    {
+      "id": "v105-881064bb12f1241b8d29",
+      "path": "app/node_modules/.pnpm/bottleneck@2.19.5/node_modules/bottleneck/.env",
+      "memberSha256": "9a71de52ef575866ca37dce0fe306c2571ed84f780ae2e8a263a6135fc42ac74",
+      "memberBytes": 37,
+      "rules": [
+        "private_runtime_path"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/bottleneck/-/bottleneck-2.19.5.tgz",
+        "sha256": "a62dcc8a1260148fde067d36acc601a20532a34626e3b862b5f9eea140d97060"
+      }
+    },
+    {
+      "id": "v105-127880b861d5dd4edff1",
+      "path": "app/node_modules/.pnpm/chrome-devtools-mcp@1.10.1_patch_hash=d31d6e7e187ea9fd4dad87ed3ad08073c77ffcfddd52bc4761b39a2dfce0ac1e/node_modules/chrome-devtools-mcp/build/src/third_party/index.js",
+      "memberSha256": "c988e0684584b75e87ae04b768c4f8ae7064401afe5187ec0d4878b2c6833f12",
+      "memberBytes": 8305782,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/chrome-devtools-mcp/-/chrome-devtools-mcp-1.10.1.tgz",
+        "sha256": "012cbcf6e832d4f6709dad0c21d7bef17089e94adee9cf33179d15ea0a9adf2b"
+      }
+    },
+    {
+      "id": "v105-6e6d6cbab62f8b096d56",
+      "path": "app/node_modules/.pnpm/chrome-devtools-mcp@1.10.1_patch_hash=d31d6e7e187ea9fd4dad87ed3ad08073c77ffcfddd52bc4761b39a2dfce0ac1e/node_modules/chrome-devtools-mcp/build/src/third_party/issue-descriptions/corsRedirectContainsCredentials.md",
+      "memberSha256": "274efbd8aede09f4c7c91db3c9ee3e28a11dea1e3764dc30e5cd168cc2e663f8",
+      "memberBytes": 379,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/chrome-devtools-mcp/-/chrome-devtools-mcp-1.10.1.tgz",
+        "sha256": "012cbcf6e832d4f6709dad0c21d7bef17089e94adee9cf33179d15ea0a9adf2b"
+      }
+    },
+    {
+      "id": "v105-bc7333f5fa8c37c058c9",
+      "path": "app/node_modules/.pnpm/chrome-devtools-mcp@1.10.1_patch_hash=d31d6e7e187ea9fd4dad87ed3ad08073c77ffcfddd52bc4761b39a2dfce0ac1e/node_modules/chrome-devtools-mcp/build/src/third_party/lighthouse-devtools-mcp-bundle.js",
+      "memberSha256": "7682ff891dfa484a9fb1bec0bde5c0c19d9aeb90c22752e09bf2b22bad0ea651",
+      "memberBytes": 3892874,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/chrome-devtools-mcp/-/chrome-devtools-mcp-1.10.1.tgz",
+        "sha256": "012cbcf6e832d4f6709dad0c21d7bef17089e94adee9cf33179d15ea0a9adf2b"
+      }
+    },
+    {
+      "id": "v105-fc0a632efca1800d93bf",
+      "path": "app/node_modules/.pnpm/fast-uri@4.2.1/node_modules/fast-uri/test/fixtures/uri-js-parse.json",
+      "memberSha256": "bc79392f033f75a491f4360f8cd50610375d9945f257b5d1a40f872f17e059c9",
+      "memberBytes": 10276,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/fast-uri/-/fast-uri-4.2.1.tgz",
+        "sha256": "5e8f578d8b61a322289028af5ee135edd3dde32bb6c1c870ef4329e4e12601a8"
+      }
+    },
+    {
+      "id": "v105-0c4f3355f66637937976",
+      "path": "app/node_modules/.pnpm/tldts@7.4.15/node_modules/tldts/README.md",
+      "memberSha256": "e0884b3c1bf9b9787d9c48164cf66fdc1412dac15575b0ab0d52c14a3429ba85",
+      "memberBytes": 13286,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/tldts/-/tldts-7.4.15.tgz",
+        "sha256": "a04b09dc29c67fb419cb77ff4e78da85322de24ed60864c26cbaa92c98458a40"
+      }
+    },
+    {
+      "id": "v105-0b29c9ab983214772b1a",
+      "path": "app/node_modules/.pnpm/zod@4.6.6_patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2/node_modules/zod/src/v4/classic/tests/string.test.ts",
+      "memberSha256": "04f902a3638ff3c33f78ee3dacba72a1a9e87034f00d8eded5f65acf2adc0f3a",
+      "memberBytes": 91163,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/zod/-/zod-4.6.6.tgz",
+        "sha256": "312553620ac82cbb25d505100fbb41c1e219b3cd6979cf93c3a1b4dd5b79e039"
+      }
+    },
+    {
+      "id": "v105-7e2fcfaa756808ef587f",
+      "path": "app/qa/scenarios/channels/slack-blocked-lifecycle-no-restart.yaml",
+      "memberSha256": "ea37ff534554090af525dcd1c12611cf4cd834956600a714070fd70fbaac3045",
+      "memberBytes": 3606,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/qa/scenarios/channels/slack-blocked-lifecycle-no-restart.yaml",
+        "sha256": "ea37ff534554090af525dcd1c12611cf4cd834956600a714070fd70fbaac3045"
+      }
+    },
+    {
+      "id": "v105-f4dd30e6880d3a9b14c1",
+      "path": "app/qa/scenarios/personal/operator-integration-rotation-live.yaml",
+      "memberSha256": "18f8770a141f564451a14d892cf7f406792e97dc99baa78bf075caafee4a978c",
+      "memberBytes": 11436,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/qa/scenarios/personal/operator-integration-rotation-live.yaml",
+        "sha256": "18f8770a141f564451a14d892cf7f406792e97dc99baa78bf075caafee4a978c"
+      }
     }
   ]
 }

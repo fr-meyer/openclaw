@@ -49,6 +49,7 @@ SENSITIVE_KEY = re.compile(
     r"(?:^|[:_./-])(?:password|passwd|token|secret|api[_-]?key|private[_-]?key|"
     r"access[_-]?key|credentials)(?:$|[_-](?:id|value|secret)$)", re.I
 )
+OPENSSH_SK_ALGORITHM = b"sk-ecdsa-sha2-nistp256-cert-v01@openssh.com"
 PATTERNS = (
     # A header literal is common in public crypto parsers/documentation. Require
     # a plausible body, including the optional legacy encrypted-PEM headers.
@@ -57,7 +58,14 @@ PATTERNS = (
         rb"(?:Proc-Type: [^\r\n]{1,80}\r?\nDEK-Info: [^\r\n]{1,160}\r?\n\r?\n)?"
         rb"[A-Za-z0-9+/]{64}")),
     ("github_token", re.compile(rb"(?:gh[pousr]_[A-Za-z0-9]{30,255}|github_pat_[A-Za-z0-9_]{30,255})")),
-    ("service_token", re.compile(rb"(?:(?<![A-Za-z0-9_])sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,255}|xox[baprs]-[A-Za-z0-9-]{20,255})")),
+    # Exclude only the complete public OpenSSH algorithm at a string/name-list
+    # delimiter on both sides. Changed names and namespace continuations remain
+    # candidates under the ordinary service-token start boundary.
+    ("service_token", re.compile(
+        rb"(?:(?<![A-Za-z0-9_])"
+        rb"(?!(?<![^\x00\t\r\n ,\"'])" + re.escape(OPENSSH_SK_ALGORITHM) +
+        rb"(?=\Z|[\x00\t\r\n ,\"']))"
+        rb"sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,255}|xox[baprs]-[A-Za-z0-9-]{20,255})")),
     ("aws_access_key", re.compile(rb"(?<![A-Za-z0-9_])(?:AKIA|ASIA)[A-Z0-9]{16}")),
     ("credential_url", re.compile(rb"https?://[^\s/:@?#\"']{1,100}:[^\s/@?#\"']{1,150}@")),
 )
@@ -75,8 +83,9 @@ MAX_PROVENANCE_SUBJECT_DETAILS = 4
 _MISSING = object()
 PUBLIC_MEMBER_QUALIFICATION = {
     "sourceSha": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
-    "planSha256": "ac474379f3b44a6ba04382037622927d855b0fe23ec4487c3405af5a9a631e0f",
-    "rules": ("service_token", "credential_url", "github_token"),
+    "planSha256": "9794771e592bf196451ad562669b151dd87bd12be88d8a8b7be86ca2023eef23",
+    "rules": ("service_token", "credential_url", "github_token", "aws_access_key", "private_key",
+              "private_runtime_path"),
 }
 # All six complete PEMs in this exact public binary match GnuTLS 3.7.9's
 # lib/crypto-selftests-pk.c. This qualifies only private_key after reading and
@@ -92,7 +101,7 @@ PUBLIC_GNUTLS_SELF_TEST = {
 LIMITATIONS = [
     "Heuristic detection is not proof that an image contains no secrets.",
     "Arbitrary, encoded/encrypted credentials and nested archives may evade detection.",
-    "GnuTLS qualification is exact and hash-bound. Explicit public-member qualification additionally requires the code-pinned source/manifest and complete exact member bytes for its three permitted rules; other public fixtures still cause refusals.",
+    "GnuTLS qualification is exact and hash-bound. Explicit public-member qualification additionally requires the code-pinned source/manifest and complete exact regular-member bytes for each permitted rule; unplanned rules, paths and changed fixtures still cause refusals.",
     "Match lengths and syntax flags describe the first retained scan-window match, which may be a bounded prefix.",
     "Counts are rule/scan-unit pairs, not unique credentials: each TAR member occurrence, JSON key/string occurrence, explicit metadata value or standalone byte input is a unit.",
     "Overlapping chunks and path/link checks share their member unit; repeated members or layers count separately. PAX JSON has its own key/string units.",
@@ -616,11 +625,12 @@ class Inspector:
         self.findings.append(finding)
 
     def scan_bytes(self, data, location, blob_digest=None, *, previous_byte=b"", pending_private_key=None,
-                   pending_public_members=None):
+                   pending_public_members=None, final_chunk=True):
         if self.unit_kind is None:
             with self.scan_unit("byte_input"):
                 self.scan_bytes(data, location, blob_digest, previous_byte=previous_byte,
-                                pending_private_key=pending_private_key, pending_public_members=pending_public_members)
+                                pending_private_key=pending_private_key, pending_public_members=pending_public_members,
+                                final_chunk=final_chunk)
             return
         # Preserve the real predecessor for both sk- and AWS lookbehind. Search
         # after that byte so the context itself never becomes a new match start.
@@ -633,6 +643,14 @@ class Inspector:
             return "ascii_delimiter" if byte[0] < 128 else "non_ascii"
         for rule, pattern in PATTERNS:
             found = pattern.search(window, len(previous_byte))
+            # Defer only an unresolved prefix of the excluded name; it fits in
+            # the retained overlap. Other credentials remain immediate findings,
+            # including when a later member read fails. EOF flags truncated names.
+            if found and rule == "service_token" and not final_chunk:
+                predecessor = window[max(0, found.start() - 1):found.start()]
+                if ((not predecessor or re.fullmatch(rb"[\x00\t\r\n ,\"']", predecessor)) and
+                        OPENSSH_SK_ALGORITHM.startswith(window[found.start():])):
+                    continue
             if found:
                 diagnostics = {"matchLength": found.end() - found.start(), "syntaxFlags": {
                     "leftContext": context(window[max(0, found.start() - 1):found.start()], "input_start"),
@@ -765,7 +783,7 @@ class Inspector:
                 parts.append(part)
         return "/".join(parts)
 
-    def scan_path(self, path, digest):
+    def scan_path(self, path, digest, *, pending_public_members=None):
         parts = path.lower().split("/")
         leaf = parts[-1]
         # Empty runtime directories are normal; this applies to files/links only.
@@ -776,7 +794,10 @@ class Inspector:
                          "openclaw.sqlite", "openclaw-agent.sqlite") or
                 any(leaf.startswith(db + "-") for db in ("openclaw.sqlite", "openclaw-agent.sqlite")) or
                 ("gcloud" in parts and "credential" in leaf)):
-            self.finding("private_runtime_path", path, digest)
+            if pending_public_members is not None and "private_runtime_path" in pending_public_members:
+                pending_public_members["private_runtime_path"] = ("private_runtime_path", path, digest)
+            else:
+                self.finding("private_runtime_path", path, digest)
 
     def scan_layer(self, descriptor):
         media_type = descriptor.get("mediaType")
@@ -828,16 +849,14 @@ class Inspector:
                         comparisons = self.begin_public_comparisons(name, member)
                         if member.isdir():
                             continue
-                        self.scan_path(name, digest)
                         if member.issym() or member.islnk():
+                            self.scan_path(name, digest)
                             target = self.safe_name(member.linkname, link=True,
                                                     parent=name.rpartition("/")[0] if member.issym() else "")
                             self.scan_path(target, digest)
                             self.scan_bytes(member.linkname.encode("utf-8", "surrogatepass"), name, digest)
                             continue
                         self.counts["files"] += 1
-                        file = archive.extractfile(member)  # A stream only: never extract to disk.
-                        require(file is not None, "missing_member_stream")
                         total, tail, previous_byte = 0, b"", b""
                         public = PUBLIC_GNUTLS_SELF_TEST
                         candidate = (public["rule"] == "private_key" and public["blobDigest"] == digest and
@@ -848,6 +867,12 @@ class Inspector:
                         public_pending = dict.fromkeys(public_candidates) if self.qualify_public_members else {}
                         pending = []
                         try:
+                            # Only an exact planned regular member can defer a path
+                            # finding. The full hash below qualifies it; every failed
+                            # or incomplete read flushes the finding in finally.
+                            self.scan_path(name, digest, pending_public_members=public_pending)
+                            file = archive.extractfile(member)  # A stream only: never extract to disk.
+                            require(file is not None, "missing_member_stream")
                             while True:
                                 chunk = file.read(CHUNK)
                                 if not chunk:
@@ -861,7 +886,8 @@ class Inspector:
                                 window = tail + chunk
                                 self.scan_bytes(window, name, digest, previous_byte=previous_byte,
                                                 pending_private_key=pending if candidate else None,
-                                                pending_public_members=public_pending)
+                                                pending_public_members=public_pending,
+                                                final_chunk=total == member.size)
                                 # Preserve lookbehind at a clipped overlap boundary;
                                 # short reads retain file-start semantics until clipping.
                                 previous_byte = window[-OVERLAP - 1:-OVERLAP]
@@ -1094,7 +1120,7 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--public-comparisons", help="Optional reviewed public-member comparison manifest; diagnostic only")
     parser.add_argument("--qualify-public-members", action="store_true",
-                        help="Qualify only the code-pinned public manifest/source and permitted member-body rules")
+                        help="Qualify only the code-pinned public manifest/source and exact regular-member rules")
     args = parser.parse_args()
     # Persist a bounded safe namespace observation before any expensive parsing
     # or decompression. The data-only owner independently binds a fresh view.

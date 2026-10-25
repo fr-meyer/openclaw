@@ -150,7 +150,12 @@ The coordinator invokes the existing owners in this order:
 2. `hosted_privacy.py` performs the complete bounded image scan, with the tracked
    public-member plan and explicit `--qualify-public-members`. Only exact whole
    member bytes at reviewed source/path/hash/size/rule bindings qualify. All
-   other findings remain blockers. The optional `--public-comparisons` mode
+   path qualifications also require a regular file and its complete matching
+   bytes; another `.env`, a link, changed bytes, or metadata never qualifies
+   through that record. Public package origin alone does not establish benign
+   semantics. The pinned entries retain the reviewed docs, synthetic fixtures,
+   historical expired certificate-test key and client telemetry distinctions.
+   Other findings remain blockers. The optional `--public-comparisons` mode
    alone remains diagnostic and does not remove findings.
 3. `image.mjs qualify-retained-gcp QUALIFICATION_PLAN OUTPUT_DIR` retains
    independent privacy/static outcomes. Complete structural inspection permits
