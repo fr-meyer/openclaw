@@ -22,8 +22,8 @@ import hosted_reinspection as inspection
 
 MAX_BYTES = bundle.MAX_BYTES
 CHUNK = bundle.CHUNK
-SOURCE = "85a9bdc1285c338f10f5ca818abc259f6d483b5b"
-TREE = "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
+SOURCE = "30786562e236aab6a924981c62aa61b920132c76"
+TREE = "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff"
 ORIGINAL_FILES = ("build-origin.json", "build-metadata.json", "manifest.json", "patch-inventory.json", "resources.json")
 INVENTORY_FILE = "export-inventory.json"
 FILES = ORIGINAL_FILES + (INVENTORY_FILE,)

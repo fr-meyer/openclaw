@@ -1,0 +1,1424 @@
+{
+  "schema": "openclaw.public-member-comparisons.v1",
+  "sourceSha": "30786562e236aab6a924981c62aa61b920132c76",
+  "entries": [
+    {
+      "id": "v105-1e61902015e7ce09cae2",
+      "path": "app/docs/gateway/config-tools/github-identity.md",
+      "memberSha256": "c6a26e4487ae492524ed2285ec771d63472c3b25d499e32175b6dc7d7e76d3d0",
+      "memberBytes": 20913,
+      "rules": [
+        "github_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/docs/gateway/config-tools/github-identity.md",
+        "sha256": "c6a26e4487ae492524ed2285ec771d63472c3b25d499e32175b6dc7d7e76d3d0"
+      }
+    },
+    {
+      "id": "v105-68aec6a151c97e443f8d",
+      "path": "app/docs/tools/browser/remote.md",
+      "memberSha256": "6483f7c549246b030b8d3c81004c6d659072f2cd238a8cfff333d202244313d1",
+      "memberBytes": 11001,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/docs/tools/browser/remote.md",
+        "sha256": "6483f7c549246b030b8d3c81004c6d659072f2cd238a8cfff333d202244313d1"
+      }
+    },
+    {
+      "id": "v105-413f3e8c6f390aa558aa",
+      "path": "app/extensions/anthropic/cli-process.test.ts",
+      "memberSha256": "2f90ee7b1e2cc02485776e01ec7e2254cffa4a078864797b4742e0c9d0ba5576",
+      "memberBytes": 27076,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/anthropic/cli-process.test.ts",
+        "sha256": "2f90ee7b1e2cc02485776e01ec7e2254cffa4a078864797b4742e0c9d0ba5576"
+      }
+    },
+    {
+      "id": "v105-93a0736cb72fdd8e6ec0",
+      "path": "app/extensions/browser/chrome-extension/bootstrap.chromium.test.ts",
+      "memberSha256": "1dabf689c518cf9f03630e5d055dbd1dde784fc843f6e1e993f1fd4bfca7b6d8",
+      "memberBytes": 43638,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/chrome-extension/bootstrap.chromium.test.ts",
+        "sha256": "1dabf689c518cf9f03630e5d055dbd1dde784fc843f6e1e993f1fd4bfca7b6d8"
+      }
+    },
+    {
+      "id": "v105-c6f3924027bf781647c4",
+      "path": "app/extensions/browser/src/browser-tool.test.ts",
+      "memberSha256": "197ad17089984ce0444974d91a31f31ff87b7507a5b91b5739699ac26882d51f",
+      "memberBytes": 82306,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser-tool.test.ts",
+        "sha256": "197ad17089984ce0444974d91a31f31ff87b7507a5b91b5739699ac26882d51f"
+      }
+    },
+    {
+      "id": "v105-5d65c99b92fe8f6e6cbb",
+      "path": "app/extensions/browser/src/browser/browser-utils.test.ts",
+      "memberSha256": "ccd4f945fc3f0d6a364998cfa9b7ee61a076d9367d0bc99592f69c23d801ee41",
+      "memberBytes": 3018,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/browser-utils.test.ts",
+        "sha256": "ccd4f945fc3f0d6a364998cfa9b7ee61a076d9367d0bc99592f69c23d801ee41"
+      }
+    },
+    {
+      "id": "v105-ec6a34b87e5cd6a30743",
+      "path": "app/extensions/browser/src/browser/cdp.helpers.test.ts",
+      "memberSha256": "f0e4b064349d067a07fbf4b850571f5b9e507add6547b493b976a1b1d35a3ee5",
+      "memberBytes": 29024,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/cdp.helpers.test.ts",
+        "sha256": "f0e4b064349d067a07fbf4b850571f5b9e507add6547b493b976a1b1d35a3ee5"
+      }
+    },
+    {
+      "id": "v105-d812912aee70911dd64f",
+      "path": "app/extensions/browser/src/browser/cdp.helpers.transport.test.ts",
+      "memberSha256": "66731a43364bdb8508b98550d8db461f67b443ec5af81d0c812eaa0572db546e",
+      "memberBytes": 5797,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/cdp.helpers.transport.test.ts",
+        "sha256": "66731a43364bdb8508b98550d8db461f67b443ec5af81d0c812eaa0572db546e"
+      }
+    },
+    {
+      "id": "v105-b85be05319533f7509cb",
+      "path": "app/extensions/browser/src/browser/cdp.test.ts",
+      "memberSha256": "01c87e8f1ed4e69f4e9d781fd0d3dec8387b0c82aab060b242db4a89d5bb20c4",
+      "memberBytes": 19071,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/cdp.test.ts",
+        "sha256": "01c87e8f1ed4e69f4e9d781fd0d3dec8387b0c82aab060b242db4a89d5bb20c4"
+      }
+    },
+    {
+      "id": "v105-1bc7b6d11faa28b321b9",
+      "path": "app/extensions/browser/src/browser/chrome-mcp.test.ts",
+      "memberSha256": "a2f4e5cf57c46e8402fcc3904840eb8f8abfcdb3967203c6200af1826465cdc0",
+      "memberBytes": 79209,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/chrome-mcp.test.ts",
+        "sha256": "a2f4e5cf57c46e8402fcc3904840eb8f8abfcdb3967203c6200af1826465cdc0"
+      }
+    },
+    {
+      "id": "v105-77f1336a2bc60b3fb1b0",
+      "path": "app/extensions/browser/src/browser/chrome.test.ts",
+      "memberSha256": "f4bf00737a71b1dda845a9ec7817f36b5ccf39b5c95f7ee0f9066ade36a95fd8",
+      "memberBytes": 20771,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/chrome.test.ts",
+        "sha256": "f4bf00737a71b1dda845a9ec7817f36b5ccf39b5c95f7ee0f9066ade36a95fd8"
+      }
+    },
+    {
+      "id": "v105-9532acbf89b2b50ef9aa",
+      "path": "app/extensions/browser/src/browser/config.test.ts",
+      "memberSha256": "bca7cffffdae2c6045e214871a2f774ec87c9e36a40c3e6c8b1cdaf8691b72fd",
+      "memberBytes": 35455,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/config.test.ts",
+        "sha256": "bca7cffffdae2c6045e214871a2f774ec87c9e36a40c3e6c8b1cdaf8691b72fd"
+      }
+    },
+    {
+      "id": "v105-6c148e1b690ad1da7c08",
+      "path": "app/extensions/browser/src/browser/navigation-guard.test.ts",
+      "memberSha256": "1413f3afe488bbcfa12e5f7f56486c715d7ab464aae18120071f371e6e93614e",
+      "memberBytes": 11745,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/navigation-guard.test.ts",
+        "sha256": "1413f3afe488bbcfa12e5f7f56486c715d7ab464aae18120071f371e6e93614e"
+      }
+    },
+    {
+      "id": "v105-fe2bb4675401d1e98aca",
+      "path": "app/extensions/browser/src/browser/profiles-service.test.ts",
+      "memberSha256": "844893857f094c06bda6cf140974c29d26c198d302dc1003924236780c0b1b1e",
+      "memberBytes": 25429,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/profiles-service.test.ts",
+        "sha256": "844893857f094c06bda6cf140974c29d26c198d302dc1003924236780c0b1b1e"
+      }
+    },
+    {
+      "id": "v105-91e2183ad79597e80bd0",
+      "path": "app/extensions/browser/src/browser/pw-session.connections.test.ts",
+      "memberSha256": "eae41d6f923b0fea2b970984ec3a660dc5d6f6e229f1e5aa01e682ec9d3d7241",
+      "memberBytes": 31279,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/pw-session.connections.test.ts",
+        "sha256": "eae41d6f923b0fea2b970984ec3a660dc5d6f6e229f1e5aa01e682ec9d3d7241"
+      }
+    },
+    {
+      "id": "v105-1808bba447597316112e",
+      "path": "app/extensions/browser/src/browser/routes/basic.existing-session.test.ts",
+      "memberSha256": "95eb5afe57beac16790c0eca96c858704ab7b1574f7480adfddd229761bcb5fc",
+      "memberBytes": 19896,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/routes/basic.existing-session.test.ts",
+        "sha256": "95eb5afe57beac16790c0eca96c858704ab7b1574f7480adfddd229761bcb5fc"
+      }
+    },
+    {
+      "id": "v105-c791253fb72769e620eb",
+      "path": "app/extensions/browser/src/browser/server-context.ensure-browser-available.waits-for-cdp-ready.test.ts",
+      "memberSha256": "a6f75272db44f0e1660c9673a6b1fdbf72290f664508c1654913295fe123146a",
+      "memberBytes": 28309,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/server-context.ensure-browser-available.waits-for-cdp-ready.test.ts",
+        "sha256": "a6f75272db44f0e1660c9673a6b1fdbf72290f664508c1654913295fe123146a"
+      }
+    },
+    {
+      "id": "v105-ea31dfab9df1ab486807",
+      "path": "app/extensions/browser/src/browser/server-context.existing-session.test.ts",
+      "memberSha256": "4e43e2b7cbaaf5fbedf63caa02eeee26de0ccb5783c410e5236defb3357db9b6",
+      "memberBytes": 15213,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/server-context.existing-session.test.ts",
+        "sha256": "4e43e2b7cbaaf5fbedf63caa02eeee26de0ccb5783c410e5236defb3357db9b6"
+      }
+    },
+    {
+      "id": "v105-7094575208a4b0d1c45c",
+      "path": "app/extensions/browser/src/browser/server-context.list-profiles.test.ts",
+      "memberSha256": "fe7fd710fec3910c502467eeba8c0414533d3a6bf35faac69653941453cde344",
+      "memberBytes": 10824,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/server-context.list-profiles.test.ts",
+        "sha256": "fe7fd710fec3910c502467eeba8c0414533d3a6bf35faac69653941453cde344"
+      }
+    },
+    {
+      "id": "v105-34afb5c1a4643cdcc0ee",
+      "path": "app/extensions/browser/src/browser/session-tab-registry.extension-cleanup.test.ts",
+      "memberSha256": "fa840dc24233f51363be701f5b74f376354a493878a3bab2fb6e11d324e6f323",
+      "memberBytes": 10410,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/session-tab-registry.extension-cleanup.test.ts",
+        "sha256": "fa840dc24233f51363be701f5b74f376354a493878a3bab2fb6e11d324e6f323"
+      }
+    },
+    {
+      "id": "v105-c8e4bb2cff8e47dcc817",
+      "path": "app/extensions/browser/src/cli/browser-cli-manage.test.ts",
+      "memberSha256": "0ac9e48eff14c901482edb51535d66776c8b8634204c391e14f8ff97a2a7376d",
+      "memberBytes": 25041,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/cli/browser-cli-manage.test.ts",
+        "sha256": "0ac9e48eff14c901482edb51535d66776c8b8634204c391e14f8ff97a2a7376d"
+      }
+    },
+    {
+      "id": "v105-b1de3aa998516211d8a4",
+      "path": "app/extensions/browser/src/node-host/invoke-browser.test.ts",
+      "memberSha256": "9ddb69f15917f7e3535defd78eab0b63140fe32f4ad50129be3a5f478e2e21e0",
+      "memberBytes": 31650,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/node-host/invoke-browser.test.ts",
+        "sha256": "9ddb69f15917f7e3535defd78eab0b63140fe32f4ad50129be3a5f478e2e21e0"
+      }
+    },
+    {
+      "id": "v105-3e17ed1161bd18e54148",
+      "path": "app/extensions/crabbox/src/crabbox-model-run.test.ts",
+      "memberSha256": "998584fb905292a491743ddedec7f00470cebfdec4edbc072c40c9524ecf8453",
+      "memberBytes": 4436,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/crabbox/src/crabbox-model-run.test.ts",
+        "sha256": "998584fb905292a491743ddedec7f00470cebfdec4edbc072c40c9524ecf8453"
+      }
+    },
+    {
+      "id": "v105-ef2563675f13ebf43999",
+      "path": "app/extensions/elevenlabs/shared.ts",
+      "memberSha256": "1d6e1f2fd0400ae6a45898cdba92d249d429b198f101281ff13977e53e094702",
+      "memberBytes": 1819,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/elevenlabs/shared.ts",
+        "sha256": "1d6e1f2fd0400ae6a45898cdba92d249d429b198f101281ff13977e53e094702"
+      }
+    },
+    {
+      "id": "v105-2eab79827c92cbc7fe46",
+      "path": "app/extensions/github-copilot/embeddings.transport.test.ts",
+      "memberSha256": "1fa329c589d1bf996b710d3792b52cc65c95b3cba63a6b784bdce85efb861dbb",
+      "memberBytes": 12979,
+      "rules": [
+        "github_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/github-copilot/embeddings.transport.test.ts",
+        "sha256": "1fa329c589d1bf996b710d3792b52cc65c95b3cba63a6b784bdce85efb861dbb"
+      }
+    },
+    {
+      "id": "v105-7a0f5b6cb6815a8b14f0",
+      "path": "app/extensions/github/index.test.ts",
+      "memberSha256": "6c245e56255fef49ea83e21d1bbfc28d232c30c890211355ff08ad7cdfcec658",
+      "memberBytes": 16767,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/github/index.test.ts",
+        "sha256": "6c245e56255fef49ea83e21d1bbfc28d232c30c890211355ff08ad7cdfcec658"
+      }
+    },
+    {
+      "id": "v105-5128a0ea2fc910bed143",
+      "path": "app/extensions/github/src/detail-checks.test.ts",
+      "memberSha256": "d6d6881397710741a9f903c6ea3813568e93a3881fa011a0ae7ac81ddcaf534c",
+      "memberBytes": 12922,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/github/src/detail-checks.test.ts",
+        "sha256": "d6d6881397710741a9f903c6ea3813568e93a3881fa011a0ae7ac81ddcaf534c"
+      }
+    },
+    {
+      "id": "v105-64191d9141e02b9e4782",
+      "path": "app/extensions/github/src/detail.test.ts",
+      "memberSha256": "33e2f427a5af85e6ef105179432df5de96d8918b3b296aee41d0d3da92c23146",
+      "memberBytes": 31222,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/github/src/detail.test.ts",
+        "sha256": "33e2f427a5af85e6ef105179432df5de96d8918b3b296aee41d0d3da92c23146"
+      }
+    },
+    {
+      "id": "v105-be17887849186bde9d79",
+      "path": "app/extensions/google/api.test.ts",
+      "memberSha256": "dfafdfd3afc6511383861e9b39dbeef0205ece6527d12694c93dfde4efd472ec",
+      "memberBytes": 11394,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/google/api.test.ts",
+        "sha256": "dfafdfd3afc6511383861e9b39dbeef0205ece6527d12694c93dfde4efd472ec"
+      }
+    },
+    {
+      "id": "v105-892ea2b5d798acfa0783",
+      "path": "app/extensions/memory-core/src/memory/manager.fts-only-reindex.test.ts",
+      "memberSha256": "e1a8954b7a1f43ee62b0656fa9236527cea14e6f8860e60fef9d9bce260cd708",
+      "memberBytes": 30551,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/memory-core/src/memory/manager.fts-only-reindex.test.ts",
+        "sha256": "e1a8954b7a1f43ee62b0656fa9236527cea14e6f8860e60fef9d9bce260cd708"
+      }
+    },
+    {
+      "id": "v105-9ecedbf1d4db9f0a4f30",
+      "path": "app/extensions/policy/src/doctor/register.models-and-mcp.test-utils.ts",
+      "memberSha256": "3eb07efd9c8f241322a5d61255c43d8e3a640d93524ae3345854858262fd7d12",
+      "memberBytes": 42991,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/policy/src/doctor/register.models-and-mcp.test-utils.ts",
+        "sha256": "3eb07efd9c8f241322a5d61255c43d8e3a640d93524ae3345854858262fd7d12"
+      }
+    },
+    {
+      "id": "v105-c92b00e444e7e10d896b",
+      "path": "app/extensions/reef/protocol/checks-ulid.test.ts",
+      "memberSha256": "19fbc5ec54b3253e01a757852c4aa6798d77921757b8fec3afd99de34dab4086",
+      "memberBytes": 4739,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/reef/protocol/checks-ulid.test.ts",
+        "sha256": "19fbc5ec54b3253e01a757852c4aa6798d77921757b8fec3afd99de34dab4086"
+      }
+    },
+    {
+      "id": "v105-c69a334b012cd54a25da",
+      "path": "app/node_modules/.pnpm/@mistralai+mistralai@2.7.0_@opentelemetry+api@1.9.1_@opentelemetry+resources@2.11.0_@op_773b5fbdc1502aacc06005081afcce80/node_modules/@mistralai/mistralai/tests/extra/observability/redaction-policies.test.ts",
+      "memberSha256": "9414b6fd554a95f2f48b0d69921a6a7c2d10fa16a9d1f9f43a215215821f1c6e",
+      "memberBytes": 9713,
+      "rules": [
+        "github_token"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@mistralai/mistralai/-/mistralai-2.7.0.tgz",
+        "sha256": "9b66b96aa08a6a20152ed807947c8162ea2f68c5b316b7cf73ab72dfd6a96e3b"
+      }
+    },
+    {
+      "id": "v105-ca51045a231f464571b4",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esm/experimental_attributes.d.ts",
+      "memberSha256": "4755d51a9a47fcc934aed639653acd919e96bedd0a0e072259020825e4216612",
+      "memberBytes": 675713,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-eaef912cc83b2bfddceb",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esm/experimental_attributes.js",
+      "memberSha256": "f54ca8e6872115818943ec484ab92e5ce9fb2c5c7ea9b093c4123f940583e4be",
+      "memberBytes": 664616,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-fffcde453d9c774b7a45",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esm/experimental_attributes.js.map",
+      "memberSha256": "7e244e42803c57a45b4528620b5b824c903a630d40b8ac8ae61d4d3f59082723",
+      "memberBytes": 805732,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-50477c4aeb3229c535dc",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esm/stable_attributes.d.ts",
+      "memberSha256": "1c4563e4618aa59f076443e009ad212af07446a13728ed3130ab7c96dc104e98",
+      "memberBytes": 71850,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-6a8f62a6f6a5b0fbaf49",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esm/stable_attributes.js",
+      "memberSha256": "b5cac33558fa03371d8b74981e8e8bd69aee9d423aac0c74a1a1d53c4e29b09d",
+      "memberBytes": 71214,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-ad70ce92618576809473",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esm/stable_attributes.js.map",
+      "memberSha256": "ddccd507a38792943065879e0557cfa5423e159aea0c23ee7d67763081689e07",
+      "memberBytes": 87917,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-9d13422ef143d6fa933e",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esm/trace/SemanticAttributes.d.ts",
+      "memberSha256": "18ad8f49eddd1c5555b989c3eb48d376359852f460cc8a3b20d1f2f5e04b9b02",
+      "memberBytes": 147977,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-c494479c9d6a4aa8efca",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esm/trace/SemanticAttributes.js",
+      "memberSha256": "b614526ad590d2b2f92ab48fc0b7210550f021aedb3f776350980c658e6c2deb",
+      "memberBytes": 142241,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-c20cebed35de4f1c4897",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esm/trace/SemanticAttributes.js.map",
+      "memberSha256": "4e6f68c19283e3afeb1e754fe1066ff316510c82500775da5c7a71b4f744e776",
+      "memberBytes": 214768,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-78383df926a00a7e9e32",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esnext/experimental_attributes.d.ts",
+      "memberSha256": "4755d51a9a47fcc934aed639653acd919e96bedd0a0e072259020825e4216612",
+      "memberBytes": 675713,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-068e39428933d7a20d59",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esnext/experimental_attributes.js",
+      "memberSha256": "f54ca8e6872115818943ec484ab92e5ce9fb2c5c7ea9b093c4123f940583e4be",
+      "memberBytes": 664616,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-7de10eb7f5cfdc64bbf0",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esnext/experimental_attributes.js.map",
+      "memberSha256": "7e244e42803c57a45b4528620b5b824c903a630d40b8ac8ae61d4d3f59082723",
+      "memberBytes": 805732,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-bae96bce7baf68562cb8",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esnext/stable_attributes.d.ts",
+      "memberSha256": "1c4563e4618aa59f076443e009ad212af07446a13728ed3130ab7c96dc104e98",
+      "memberBytes": 71850,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-491f55b7b7fe547ac68a",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esnext/stable_attributes.js",
+      "memberSha256": "b5cac33558fa03371d8b74981e8e8bd69aee9d423aac0c74a1a1d53c4e29b09d",
+      "memberBytes": 71214,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-e84175ee32478f68dbdd",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esnext/stable_attributes.js.map",
+      "memberSha256": "ddccd507a38792943065879e0557cfa5423e159aea0c23ee7d67763081689e07",
+      "memberBytes": 87917,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-89221cb4aef8d30d8ac5",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esnext/trace/SemanticAttributes.d.ts",
+      "memberSha256": "18ad8f49eddd1c5555b989c3eb48d376359852f460cc8a3b20d1f2f5e04b9b02",
+      "memberBytes": 147977,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-ab9c69669567610eb66b",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esnext/trace/SemanticAttributes.js",
+      "memberSha256": "b614526ad590d2b2f92ab48fc0b7210550f021aedb3f776350980c658e6c2deb",
+      "memberBytes": 142241,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-513318df3f02ccb39bed",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/esnext/trace/SemanticAttributes.js.map",
+      "memberSha256": "4e6f68c19283e3afeb1e754fe1066ff316510c82500775da5c7a71b4f744e776",
+      "memberBytes": 214768,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-7ded8f265eac006ccc63",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/src/experimental_attributes.d.ts",
+      "memberSha256": "4755d51a9a47fcc934aed639653acd919e96bedd0a0e072259020825e4216612",
+      "memberBytes": 675713,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-be7dc6aab3c143b2cf2b",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/src/experimental_attributes.js",
+      "memberSha256": "18e9b78725c08761537a4b0161236e69eb68e68c1037587c5a83fce411b0238c",
+      "memberBytes": 731016,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-2022b1196996930c32bc",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/src/experimental_attributes.js.map",
+      "memberSha256": "18565d3ec7aa1f0bfa3afd124ada690dee4e00a462ddf664c3850ab93ed824ec",
+      "memberBytes": 789284,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-c532cd75a825990dbdf6",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/src/stable_attributes.d.ts",
+      "memberSha256": "1c4563e4618aa59f076443e009ad212af07446a13728ed3130ab7c96dc104e98",
+      "memberBytes": 71850,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-c504613963db8c7e7a1c",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/src/stable_attributes.js",
+      "memberSha256": "d6e1ba3d97d5cd782dbf8205ef54f10412941201bd465eae068797d6f5ceac61",
+      "memberBytes": 79026,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-730b6711c380625ba103",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/src/stable_attributes.js.map",
+      "memberSha256": "df1456e9df818e9b6eccfa91962c438ad5a844daf26ee3dd3a1b0313b7c077f4",
+      "memberBytes": 86503,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-21dc9b33c8f90bf4b4d1",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/src/trace/SemanticAttributes.d.ts",
+      "memberSha256": "18ad8f49eddd1c5555b989c3eb48d376359852f460cc8a3b20d1f2f5e04b9b02",
+      "memberBytes": 147977,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-e642e3e85dc39a29e1fc",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/src/trace/SemanticAttributes.js",
+      "memberSha256": "fe54c0a216df0a2b4b8ed8056002cb66a11a12b908ac0ba2afc38e5ee499966e",
+      "memberBytes": 152072,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-1b2355bcbafdef337b7e",
+      "path": "app/node_modules/.pnpm/@opentelemetry+semantic-conventions@1.43.0/node_modules/@opentelemetry/semantic-conventions/build/src/trace/SemanticAttributes.js.map",
+      "memberSha256": "a073a16cf439a3fc80e63f3ae3d0a376f4429bbb70be9b93d17c9f9f18521c86",
+      "memberBytes": 212088,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
+        "sha256": "4465839df9cf25046eacb64e37a38e7a2d033546356335190234bad60bd85d42"
+      }
+    },
+    {
+      "id": "v105-ef1c1030970a06944daa",
+      "path": "app/extensions/alibaba/video-generation-provider.test.ts",
+      "memberSha256": "23b38f10cae4e884ed85bc8771335ef2354259522a1f75ae3ccae37a2dffc355",
+      "memberBytes": 9838,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/alibaba/video-generation-provider.test.ts",
+        "sha256": "23b38f10cae4e884ed85bc8771335ef2354259522a1f75ae3ccae37a2dffc355"
+      }
+    },
+    {
+      "id": "v105-39ba13acfc5f3f663bd8",
+      "path": "app/extensions/browser/src/browser/config.ts",
+      "memberSha256": "65008f5e5e3f5ffd2f879c04dfb0a9380b57433501823666cda7459b9b531732",
+      "memberBytes": 19771,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/browser/src/browser/config.ts",
+        "sha256": "65008f5e5e3f5ffd2f879c04dfb0a9380b57433501823666cda7459b9b531732"
+      }
+    },
+    {
+      "id": "v105-ae3a87be9f631bc6507e",
+      "path": "app/extensions/openai/openai-api-key-catalog.test.ts",
+      "memberSha256": "b40a65ab2150714674d1fb2c3bc2749afbdbb523655a7074be6b132b3415e197",
+      "memberBytes": 6200,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/openai/openai-api-key-catalog.test.ts",
+        "sha256": "b40a65ab2150714674d1fb2c3bc2749afbdbb523655a7074be6b132b3415e197"
+      }
+    },
+    {
+      "id": "v105-bdf61eea09fbc0da0b3a",
+      "path": "app/extensions/openai/realtime-sideband-call.test.ts",
+      "memberSha256": "b677ce90ef29dbffbca189827d73823afb0737a9f45d80bc326f348918305f44",
+      "memberBytes": 5919,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/extensions/openai/realtime-sideband-call.test.ts",
+        "sha256": "b677ce90ef29dbffbca189827d73823afb0737a9f45d80bc326f348918305f44"
+      }
+    },
+    {
+      "id": "v105-33163d408ffd5c88ddec",
+      "path": "app/node_modules/.pnpm/@aws-sdk+nested-clients@3.997.46/node_modules/@aws-sdk/nested-clients/dist-types/submodules/sts/commands/AssumeRoleCommand.d.ts",
+      "memberSha256": "d6b5f96e31cdfcf6955ca63778db40cbf392b87934b6c0db399b5b71206ff609",
+      "memberBytes": 14668,
+      "rules": [
+        "aws_access_key"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@aws-sdk/nested-clients/-/nested-clients-3.997.46.tgz",
+        "sha256": "32c9bfdcdd100106fb86e9c8aae6835030cfde6219acd02c03b547ac7c64a72a"
+      }
+    },
+    {
+      "id": "v105-331e525b94b8f299e14e",
+      "path": "app/node_modules/.pnpm/@aws-sdk+nested-clients@3.997.46/node_modules/@aws-sdk/nested-clients/dist-types/submodules/sts/commands/AssumeRoleWithWebIdentityCommand.d.ts",
+      "memberSha256": "93271217ff1125ad4250d78a14941f3cc59aa477eb10207bc72c709e82790bbe",
+      "memberBytes": 19434,
+      "rules": [
+        "aws_access_key"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@aws-sdk/nested-clients/-/nested-clients-3.997.46.tgz",
+        "sha256": "32c9bfdcdd100106fb86e9c8aae6835030cfde6219acd02c03b547ac7c64a72a"
+      }
+    },
+    {
+      "id": "v105-9f256b6d70f7d5186fd7",
+      "path": "app/node_modules/.pnpm/@openai+codex@0.160.0-linux-x64/node_modules/@openai/codex/vendor/x86_64-unknown-linux-musl/bin/codex",
+      "memberSha256": "12eb3e81114588aca3b7998f4f19e8997b056aca08e57a7ca7c8a3ec8c652aad",
+      "memberBytes": 289101384,
+      "rules": [
+        "github_token",
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0-linux-x64.tgz",
+        "sha256": "37a41d61c3399182b8c727b77090cc7a1566bd849d0f09070a0bbc6fec4c58dc"
+      }
+    },
+    {
+      "id": "v105-2784e4d2ccbecbec9ee4",
+      "path": "app/node_modules/.pnpm/@openclaw+proxyline@0.4.0_undici@8.12.2/node_modules/@openclaw/proxyline/docs/api-reference.md",
+      "memberSha256": "1dcfdf8c8ed694f03de9d13f0ea49f9fdee9998f039042deb842d566f638e904",
+      "memberBytes": 13129,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@openclaw/proxyline/-/proxyline-0.4.0.tgz",
+        "sha256": "96ee649cccd2cacd4e2006ea9c3bf7e58cf8d00f95d1b9fb39a0d97e5f68a7fe"
+      }
+    },
+    {
+      "id": "v105-2de28df695063fbc82da",
+      "path": "app/node_modules/.pnpm/@openclaw+proxyline@0.4.0_undici@8.12.2/node_modules/@openclaw/proxyline/docs/observability.md",
+      "memberSha256": "56b5ac72fae09a246f3c8a9b2434fc82705a73fe398a050276ad1361fe47c3e3",
+      "memberBytes": 3094,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@openclaw/proxyline/-/proxyline-0.4.0.tgz",
+        "sha256": "96ee649cccd2cacd4e2006ea9c3bf7e58cf8d00f95d1b9fb39a0d97e5f68a7fe"
+      }
+    },
+    {
+      "id": "v105-195a4d765b16399c7abd",
+      "path": "app/node_modules/.pnpm/@postalsys+vmc@1.1.5/node_modules/@postalsys/vmc/test/fixtures/postal_vmc.key",
+      "memberSha256": "0e86ee16ad888e7cfe44f8becd4d83558dcb72280fcdd97654f253fc1fbe3bba",
+      "memberBytes": 1704,
+      "rules": [
+        "private_key"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@postalsys/vmc/-/vmc-1.1.5.tgz",
+        "sha256": "64330a09a8f113a19e13b57b24f6473a8464f75871e9fb06a95bc5d57ccae565"
+      }
+    },
+    {
+      "id": "v105-81a7707f45dbe2775acb",
+      "path": "app/node_modules/.pnpm/@types+node@24.19.1/node_modules/@types/node/http.d.ts",
+      "memberSha256": "06c12e208576282dfd4aa04cc47ae3447008fdf79a360a9b0f3a6fb940960cd1",
+      "memberBytes": 101368,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@types/node/-/node-24.19.1.tgz",
+        "sha256": "4605482935b2a8c26c53c7637fbc20665e49f9b0b6dc0db50449500e86727a82"
+      }
+    },
+    {
+      "id": "v105-bb0ed23a263f0f3add2c",
+      "path": "app/node_modules/.pnpm/@types+node@24.19.1/node_modules/@types/node/https.d.ts",
+      "memberSha256": "0c50296ee73dae94efc3f0da4936b1146ca6ce2217acfabb44c19c9a33fa30e5",
+      "memberBytes": 26256,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@types/node/-/node-24.19.1.tgz",
+        "sha256": "4605482935b2a8c26c53c7637fbc20665e49f9b0b6dc0db50449500e86727a82"
+      }
+    },
+    {
+      "id": "v105-125760f34c15bfe2d1a8",
+      "path": "app/node_modules/.pnpm/@types+node@24.19.1/node_modules/@types/node/url.d.ts",
+      "memberSha256": "85fb581c048b948a48842e6584d61512939566e0c7a4d6439f54902ce6c79bee",
+      "memberBytes": 48036,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@types/node/-/node-24.19.1.tgz",
+        "sha256": "4605482935b2a8c26c53c7637fbc20665e49f9b0b6dc0db50449500e86727a82"
+      }
+    },
+    {
+      "id": "v105-881064bb12f1241b8d29",
+      "path": "app/node_modules/.pnpm/bottleneck@2.19.5/node_modules/bottleneck/.env",
+      "memberSha256": "9a71de52ef575866ca37dce0fe306c2571ed84f780ae2e8a263a6135fc42ac74",
+      "memberBytes": 37,
+      "rules": [
+        "private_runtime_path"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/bottleneck/-/bottleneck-2.19.5.tgz",
+        "sha256": "a62dcc8a1260148fde067d36acc601a20532a34626e3b862b5f9eea140d97060"
+      }
+    },
+    {
+      "id": "v105-127880b861d5dd4edff1",
+      "path": "app/node_modules/.pnpm/chrome-devtools-mcp@1.10.1_patch_hash=d31d6e7e187ea9fd4dad87ed3ad08073c77ffcfddd52bc4761b39a2dfce0ac1e/node_modules/chrome-devtools-mcp/build/src/third_party/index.js",
+      "memberSha256": "c988e0684584b75e87ae04b768c4f8ae7064401afe5187ec0d4878b2c6833f12",
+      "memberBytes": 8305782,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/chrome-devtools-mcp/-/chrome-devtools-mcp-1.10.1.tgz",
+        "sha256": "012cbcf6e832d4f6709dad0c21d7bef17089e94adee9cf33179d15ea0a9adf2b"
+      }
+    },
+    {
+      "id": "v105-6e6d6cbab62f8b096d56",
+      "path": "app/node_modules/.pnpm/chrome-devtools-mcp@1.10.1_patch_hash=d31d6e7e187ea9fd4dad87ed3ad08073c77ffcfddd52bc4761b39a2dfce0ac1e/node_modules/chrome-devtools-mcp/build/src/third_party/issue-descriptions/corsRedirectContainsCredentials.md",
+      "memberSha256": "274efbd8aede09f4c7c91db3c9ee3e28a11dea1e3764dc30e5cd168cc2e663f8",
+      "memberBytes": 379,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/chrome-devtools-mcp/-/chrome-devtools-mcp-1.10.1.tgz",
+        "sha256": "012cbcf6e832d4f6709dad0c21d7bef17089e94adee9cf33179d15ea0a9adf2b"
+      }
+    },
+    {
+      "id": "v105-bc7333f5fa8c37c058c9",
+      "path": "app/node_modules/.pnpm/chrome-devtools-mcp@1.10.1_patch_hash=d31d6e7e187ea9fd4dad87ed3ad08073c77ffcfddd52bc4761b39a2dfce0ac1e/node_modules/chrome-devtools-mcp/build/src/third_party/lighthouse-devtools-mcp-bundle.js",
+      "memberSha256": "7682ff891dfa484a9fb1bec0bde5c0c19d9aeb90c22752e09bf2b22bad0ea651",
+      "memberBytes": 3892874,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/chrome-devtools-mcp/-/chrome-devtools-mcp-1.10.1.tgz",
+        "sha256": "012cbcf6e832d4f6709dad0c21d7bef17089e94adee9cf33179d15ea0a9adf2b"
+      }
+    },
+    {
+      "id": "v105-fc0a632efca1800d93bf",
+      "path": "app/node_modules/.pnpm/fast-uri@4.2.1/node_modules/fast-uri/test/fixtures/uri-js-parse.json",
+      "memberSha256": "bc79392f033f75a491f4360f8cd50610375d9945f257b5d1a40f872f17e059c9",
+      "memberBytes": 10276,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/fast-uri/-/fast-uri-4.2.1.tgz",
+        "sha256": "5e8f578d8b61a322289028af5ee135edd3dde32bb6c1c870ef4329e4e12601a8"
+      }
+    },
+    {
+      "id": "v105-0c4f3355f66637937976",
+      "path": "app/node_modules/.pnpm/tldts@7.4.15/node_modules/tldts/README.md",
+      "memberSha256": "e0884b3c1bf9b9787d9c48164cf66fdc1412dac15575b0ab0d52c14a3429ba85",
+      "memberBytes": 13286,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/tldts/-/tldts-7.4.15.tgz",
+        "sha256": "a04b09dc29c67fb419cb77ff4e78da85322de24ed60864c26cbaa92c98458a40"
+      }
+    },
+    {
+      "id": "v105-0b29c9ab983214772b1a",
+      "path": "app/node_modules/.pnpm/zod@4.6.6_patch_hash=9fe4b383c96309498941cafec0f003951e8c68447c668202dc6f122cc4029be2/node_modules/zod/src/v4/classic/tests/string.test.ts",
+      "memberSha256": "04f902a3638ff3c33f78ee3dacba72a1a9e87034f00d8eded5f65acf2adc0f3a",
+      "memberBytes": 91163,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/zod/-/zod-4.6.6.tgz",
+        "sha256": "312553620ac82cbb25d505100fbb41c1e219b3cd6979cf93c3a1b4dd5b79e039"
+      }
+    },
+    {
+      "id": "v105-7e2fcfaa756808ef587f",
+      "path": "app/qa/scenarios/channels/slack-blocked-lifecycle-no-restart.yaml",
+      "memberSha256": "ea37ff534554090af525dcd1c12611cf4cd834956600a714070fd70fbaac3045",
+      "memberBytes": 3606,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/qa/scenarios/channels/slack-blocked-lifecycle-no-restart.yaml",
+        "sha256": "ea37ff534554090af525dcd1c12611cf4cd834956600a714070fd70fbaac3045"
+      }
+    },
+    {
+      "id": "v105-f4dd30e6880d3a9b14c1",
+      "path": "app/qa/scenarios/personal/operator-integration-rotation-live.yaml",
+      "memberSha256": "18f8770a141f564451a14d892cf7f406792e97dc99baa78bf075caafee4a978c",
+      "memberBytes": 11436,
+      "rules": [
+        "service_token"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/qa/scenarios/personal/operator-integration-rotation-live.yaml",
+        "sha256": "18f8770a141f564451a14d892cf7f406792e97dc99baa78bf075caafee4a978c"
+      }
+    },
+    {
+      "id": "v105-84c87d891dbe50b0a08e",
+      "path": "usr/share/perl/5.36.0/HTTP/Tiny.pm",
+      "memberSha256": "a28408da12eb2e156377d63dcb891a27c0d16d79d07dd9794810ee3c8cc33cf8",
+      "memberBytes": 82093,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://security.debian.org/debian-security/pool/updates/main/p/perl/perl-modules-5.36_5.36.0-7+deb12u4_all.deb",
+        "sha256": "3ed38ffa8320e9bf7597cefa01b6a6ace4a08ccc77cdfd15ef7d8b711dea7166"
+      }
+    },
+    {
+      "id": "v105-8a505d40470062498e0d",
+      "path": "usr/local/lib/node_modules/npm/node_modules/@npmcli/redact/README.md",
+      "memberSha256": "d664dc870ea42ad76b2b8ca5f4d03eb990cb0b46670d4fc57c5057571e3f89c7",
+      "memberBytes": 978,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://registry.npmjs.org/@npmcli/redact/-/redact-5.0.0.tgz",
+        "sha256": "fcb701861706437c91b0b4d75aafc86432b740ba9fc4e4f6aab469c1eb9b22c1"
+      }
+    },
+    {
+      "id": "v105-bd672a930bae3e5563d6",
+      "path": "app/node_modules/@openclaw/ai/src/transports/openai-responses-websocket.test.ts",
+      "memberSha256": "cfe8fab1649492185031acb107e0c2b2a9264bb7b1ed29e430228ca340abc68b",
+      "memberBytes": 13968,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/blob/85a9bdc1285c338f10f5ca818abc259f6d483b5b/packages/ai/src/transports/openai-responses-websocket.test.ts",
+        "sha256": "cfe8fab1649492185031acb107e0c2b2a9264bb7b1ed29e430228ca340abc68b"
+      }
+    },
+    {
+      "id": "v105-syntax-324f3023b65ec7dcc3ee",
+      "path": "app/dist/config-Cj4w0nkR.mjs",
+      "memberSha256": "1af4449f0c362b9b2f714fa47753f071961cc12da35a980db14f318143d8152a",
+      "memberBytes": 15337,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-115460fa84fd71b6d5f6",
+      "path": "app/dist/control-ui/assets/ar-D3Sz35R5.js",
+      "memberSha256": "3b0fe1210b4ceeda0bbf9331d47897661a1956286e4924bc9271fd22000d0d0a",
+      "memberBytes": 566880,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-44e70fb4093a0ffc34ab",
+      "path": "app/dist/control-ui/assets/control-ui-core-Dyr_Otz4.js",
+      "memberSha256": "9de90b07618410c882def22b593b95e067c067e65197e3db52d667b2bf53695a",
+      "memberBytes": 467689,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-44cd733048a9fd8f2584",
+      "path": "app/dist/control-ui/assets/de-DcqP7xlW.js",
+      "memberSha256": "e075d7743e70c9c8db144010c8ed66102fe7654b92a06719ee8ff0c6512efc37",
+      "memberBytes": 466555,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-52cb3b349b372a8b8267",
+      "path": "app/dist/control-ui/assets/es-BTa0WUEC.js",
+      "memberSha256": "057152812a625adc4504ba8838561b2fee16344882e62dd0f7c0017a82b0a25d",
+      "memberBytes": 457279,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-aeaf3b5285a77da45c4f",
+      "path": "app/dist/control-ui/assets/fa-aQ7Ofaz0.js",
+      "memberSha256": "f0ec00a2f6c9733983bbec582e53c7f02b55080310a128964a9fcf3fef3439b8",
+      "memberBytes": 616362,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-ff2698d5a962ebb859c5",
+      "path": "app/dist/control-ui/assets/fr-CZpRItcW.js",
+      "memberSha256": "ef6aefadbeec295142cba03a6b7e417f03ecc5fdc5dc2424ada1217fdb0ad8ec",
+      "memberBytes": 478779,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-5804caf5d5033498a424",
+      "path": "app/dist/control-ui/assets/hi-Bz6iaYuf.js",
+      "memberSha256": "3930906414f78e44a877e4f8bd57ff7256e225e16835b3c7c7b01c72e477402c",
+      "memberBytes": 822292,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-744de7b6ea95ba535fe4",
+      "path": "app/dist/control-ui/assets/id-CWIYvpTA.js",
+      "memberSha256": "a783167a5e16661ad4f4751799a61e55e41d96db915f118559138ec998bd10b7",
+      "memberBytes": 416569,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-6f28afb6600f66f2d656",
+      "path": "app/dist/control-ui/assets/it-Dxn39gbY.js",
+      "memberSha256": "81051de7771438cd677101de016b8a03fe91b92ea67d0a68c28b0f5222bc08ff",
+      "memberBytes": 454591,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-85d55f149be66a5785c9",
+      "path": "app/dist/control-ui/assets/ja-JP-NiDMKLnS.js",
+      "memberSha256": "1a57ea4c709c3795aee8f11907a02d20525f446ca0db767994571c90fcdab3fc",
+      "memberBytes": 538827,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-fef5a752b8af930cfd32",
+      "path": "app/dist/control-ui/assets/ko-BiaCX04H.js",
+      "memberSha256": "bac0aa581bb04f9f324ca625d17902604df90fe5970c51c932dfa7b9f2e78334",
+      "memberBytes": 471126,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-d94c13e2300cc4ae4438",
+      "path": "app/dist/control-ui/assets/nl-CTjpQjGM.js",
+      "memberSha256": "aaf7c9e052744a333c799a78e478a5d365a33d82b306a38e1fe497cd614b1c0e",
+      "memberBytes": 439591,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-3c550fe6d42fcfb65188",
+      "path": "app/dist/control-ui/assets/pl-BlKsnNxx.js",
+      "memberSha256": "f4392cc45693b1773dedb21b2bca85cd0706609d7412aee9f88c0cb8b298be88",
+      "memberBytes": 455372,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-65cb88caa1f68d34d4ba",
+      "path": "app/dist/control-ui/assets/pt-BR-Cm_99aVM.js",
+      "memberSha256": "00234255e15eac44356ec543482c88b01980d81d9c25288a73f6b8270759fa75",
+      "memberBytes": 444813,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-a92e376e0c8e32e711e5",
+      "path": "app/dist/control-ui/assets/ru-CplaMOZ6.js",
+      "memberSha256": "737b7709f7a38c97b49844bd22478b075a94f867b1e98e6e26b4162272d35f50",
+      "memberBytes": 684257,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-67af51aac92c2c73f097",
+      "path": "app/dist/control-ui/assets/th-olDsfW-j.js",
+      "memberSha256": "5552e18a77acbb9c957925b2fb3e18344113b47fdf840a8b0eee55f62cd95d33",
+      "memberBytes": 852161,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-a10ee422ee0587fa0394",
+      "path": "app/dist/control-ui/assets/tr-l5SOpnek.js",
+      "memberSha256": "d42bb12c10abbb047660108172fb1b05289c4879fcf448983efacb3c790d44cf",
+      "memberBytes": 447815,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-b1bbd5c9076feaa4d3d8",
+      "path": "app/dist/control-ui/assets/uk-Dk6TDkbE.js",
+      "memberSha256": "58db9515357066d11197bdc5a835711a7760f6368c92b4199f1090517b39d074",
+      "memberBytes": 679534,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-17a727ad06f8cb843861",
+      "path": "app/dist/control-ui/assets/vi-Ci2lpnkb.js",
+      "memberSha256": "84559da21b9a81bdfa0da1303d9f446074a97cc38d62ddefc5e2c01112cf1a2d",
+      "memberBytes": 515584,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-0dda302c96b0121ca5f8",
+      "path": "app/dist/control-ui/assets/zh-CN-D_z2OmkO.js",
+      "memberSha256": "d3128686f60513e2b70dd5d95c18ba5a5c5db2a31f2659fc13bd52d097ce0ba4",
+      "memberBytes": 381892,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-2588f7401cd70fb8e255",
+      "path": "app/dist/control-ui/assets/zh-TW-tU_-KVtX.js",
+      "memberSha256": "9cee5ce43a8f670119706865856cbfac566f31e9670916927874b0bfd490855c",
+      "memberBytes": 392225,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-351136b83ebfa8b1f330",
+      "path": "app/dist/proxy-server-GWpDcF7x.mjs",
+      "memberSha256": "97ceef34398d48aff255fbdfaf33a3b03a7f19ff4370c0045f89d86b549b13c5",
+      "memberBytes": 39345,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    },
+    {
+      "id": "v105-syntax-f39fe4979193e09fd79c",
+      "path": "app/dist/worker/worker-chunk-BohXdWEa.mjs",
+      "memberSha256": "146c0b5fe0be1edda14f4265bf211bee8b2c6e6877804d5b4f265853632b8f2d",
+      "memberBytes": 9468,
+      "rules": [
+        "credential_url"
+      ],
+      "evidence": {
+        "reference": "https://github.com/fr-meyer/openclaw/actions/runs/40149784070",
+        "sha256": "3f7b98bd5b8f2d836a18c58575d9621e7ce3e781cb0a1378efe208be4faaace6"
+      }
+    }
+  ]
+}

@@ -20,7 +20,7 @@ import stat
 import time
 from urllib.parse import parse_qsl, quote, urlsplit
 
-SOURCE = "85a9bdc1285c338f10f5ca818abc259f6d483b5b"
+SOURCE = "30786562e236aab6a924981c62aa61b920132c76"
 HOST = "storage.googleapis.com"
 MAX_BYTES = 2_147_483_648
 CHUNK = 1024 * 1024

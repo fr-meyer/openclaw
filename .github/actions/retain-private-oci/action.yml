@@ -76,8 +76,8 @@ runs:
                 os.environ.get("GITHUB_EVENT_NAME") in ("workflow_dispatch", "push") and
                 os.environ.get("GITHUB_RUN_ATTEMPT") == "1" and
                 re.fullmatch(r"[1-9][0-9]*", os.environ.get("GITHUB_RUN_ID", "")) and
-                os.environ.get("SOURCE_SHA") == "85a9bdc1285c338f10f5ca818abc259f6d483b5b" and
-                os.environ.get("SOURCE_TREE") == "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
+                os.environ.get("SOURCE_SHA") == "30786562e236aab6a924981c62aa61b920132c76" and
+                os.environ.get("SOURCE_TREE") == "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff"
             ):
                 raise SystemExit("Private retention scope refused")
         with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
@@ -204,7 +204,7 @@ runs:
 
         root = Path(os.environ["OUTPUT_DIRECTORY"])
         result = json.loads(Path(str(root) + "-retention.json").read_bytes())
-        source = "85a9bdc1285c338f10f5ca818abc259f6d483b5b"
+        source = "30786562e236aab6a924981c62aa61b920132c76"
         try:
             raw_envelope = os.environ["OCI_UPLOAD_ENVELOPE"]
             if len(raw_envelope) > 32768:

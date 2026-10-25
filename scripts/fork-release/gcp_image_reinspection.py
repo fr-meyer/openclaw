@@ -309,7 +309,7 @@ def inspect(plan_path, plan_pin, state, *, admission_path=None, admission_pin=No
     privacy_args = [sys.executable, str(HERE / "hosted_privacy.py"), "--oci-dir", plan["ociDir"],
                     "--expected-index-digest", captured["indexDigest"], "--source-sha", captured["sourceSha"],
                     "--tooling-sha", plan["inspectionToolingSha"], "--output", str(privacy_path),
-                    "--public-comparisons", str(HERE / "public-member-comparisons-v105.json"),
+                    "--public-comparisons", str(HERE / "public-member-comparisons-v105-workboard.json"),
                     "--qualify-public-members"]
 
     # Once native qualification may have started, the only permitted resume is

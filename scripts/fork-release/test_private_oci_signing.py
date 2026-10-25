@@ -17,7 +17,7 @@ import private_oci_transfer as transfer
 
 NOW = 1_792_843_200.0
 PUT_VECTOR = """PUT
-/synthetic-private-bucket/oci-quarantine/v2026.10.5/85a9bdc1285c338f10f5ca818abc259f6d483b5b/synthetic/retained-oci.tar
+/synthetic-private-bucket/oci-quarantine/v2026.10.5/30786562e236aab6a924981c62aa61b920132c76/synthetic/retained-oci.tar
 X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=synthetic-signer%40synthetic-project.iam.gserviceaccount.com%2F20261024%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20261024T120000Z&X-Goog-Expires=600&X-Goog-SignedHeaders=content-type%3Bhost%3Bx-goog-content-length-range%3Bx-goog-if-generation-match
 content-type:application/octet-stream
 host:storage.googleapis.com
@@ -27,7 +27,7 @@ x-goog-if-generation-match:0
 content-type;host;x-goog-content-length-range;x-goog-if-generation-match
 UNSIGNED-PAYLOAD"""
 GET_VECTOR = """GET
-/synthetic-private-bucket/oci-quarantine/v2026.10.5/85a9bdc1285c338f10f5ca818abc259f6d483b5b/synthetic/retained-oci.tar
+/synthetic-private-bucket/oci-quarantine/v2026.10.5/30786562e236aab6a924981c62aa61b920132c76/synthetic/retained-oci.tar
 X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=synthetic-signer%40synthetic-project.iam.gserviceaccount.com%2F20261024%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20261024T120000Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&generation=1234
 host:storage.googleapis.com
 

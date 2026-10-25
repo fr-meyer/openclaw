@@ -1,5 +1,5 @@
 {
-  "candidate": "v2026.10.5-provider-fixture-85a9bdc1",
+  "candidate": "v2026.10.5-workboard-carry-30786562",
   "gates": {
     "patchLifecycle": [
       "src/agents/worktrees/run-lease.test.ts",
@@ -31,7 +31,13 @@
       "test/body-parser-security.test.mjs",
       "test/msal-parent-compat.test.mjs",
       "test/undici-security.test.mjs",
-      "src/agents/provider-local-service.test.ts"
+      "src/agents/provider-local-service.test.ts",
+      "extensions/workboard/src/cli.test.ts",
+      "extensions/workboard/src/dispatcher-exact-dispatch.test.ts",
+      "extensions/workboard/src/gateway.test.ts",
+      "extensions/workboard/src/lifecycle-sync.test.ts",
+      "extensions/workboard/src/store-claim-generation.test.ts",
+      "extensions/workboard/src/store-exact-dispatch.test.ts"
     ]
   },
   "image": {
@@ -44,7 +50,7 @@
   "source": {
     "baseCommit": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
     "baseTree": "a138559698570e238395121723a773106ac33f8c",
-    "commit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+    "commit": "30786562e236aab6a924981c62aa61b920132c76",
     "patches": [
       {
         "commit": "94f1ee3e18015055ab25d62f71ee090d43c32062",
@@ -165,8 +171,12 @@
       {
         "commit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
         "tree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
+      },
+      {
+        "commit": "30786562e236aab6a924981c62aa61b920132c76",
+        "tree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff"
       }
     ],
-    "tree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
+    "tree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff"
   }
 }

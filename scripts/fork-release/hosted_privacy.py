@@ -82,8 +82,8 @@ MAX_COMPARISON_PLAN_BYTES = 128 * 1024
 MAX_PROVENANCE_SUBJECT_DETAILS = 4
 _MISSING = object()
 PUBLIC_MEMBER_QUALIFICATION = {
-    "sourceSha": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
-    "planSha256": "f5ea8cfbcd7e53bd38e344d6c6d9f7aaa39f465d8565668ca4c6fe3ebf03ec53",
+    "sourceSha": "30786562e236aab6a924981c62aa61b920132c76",
+    "planSha256": "4243432f63377a19a75746f5f41d345f24db3d7176aa2e446ccee3aa3a4bff11",
     "rules": ("service_token", "credential_url", "github_token", "aws_access_key", "private_key",
               "private_runtime_path"),
 }

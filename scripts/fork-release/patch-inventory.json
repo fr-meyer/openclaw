@@ -1,6 +1,6 @@
 {
-  "candidate": "v2026.10.5-provider-fixture-85a9bdc1",
-  "manifestSha256": "1ee24854a7ed6ffc741aed522521f0caf297904d99d55e8ddb7ddc01f13e0e17",
+  "candidate": "v2026.10.5-workboard-carry-30786562",
+  "manifestSha256": "014164429307daba11e5929d600aa7d8d0a034eb985e520b6ec6d112aa70afec",
   "patches": [
     {
       "appliedCommit": "94f1ee3e18015055ab25d62f71ee090d43c32062",
@@ -4151,6 +4151,190 @@
       "regressionOwner": "fr-meyer",
       "regressionTests": [
         "src/agents/provider-local-service.test.ts"
+      ]
+    },
+    {
+      "appliedCommit": "30786562e236aab6a924981c62aa61b920132c76",
+      "dependsOn": [
+        "source-30-85a9bdc1285c"
+      ],
+      "disposition": "adapt",
+      "evidenceSha256": "060b66faede124c0485c24a1b9d21c34e8d145c07ea502940492840fc133c560",
+      "id": "source-31-30786562e236",
+      "originCommit": "30786562e236aab6a924981c62aa61b920132c76",
+      "paths": [
+        {
+          "boundary": "container",
+          "candidateBlob": "e7390fca5531acba06bf7d0734dc1908c05cc24d",
+          "path": "docs/cli/workboard.md",
+          "sourceBlob": "e7390fca5531acba06bf7d0734dc1908c05cc24d",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "db886ba26a5bbe35d18de6e01f1ab201736cb4e5"
+        },
+        {
+          "boundary": "tooling",
+          "candidateBlob": "9a61e4802a77633dd91e9615745fd1d477b08e0d",
+          "path": "extensions/workboard/src/cli.test.ts",
+          "sourceBlob": "9a61e4802a77633dd91e9615745fd1d477b08e0d",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "a72d40dc421ea477ceb4f3185e1f944e6b518cc4"
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "f12d5d5f9de8389d4f9def90c8d055bd25f35e67",
+          "path": "extensions/workboard/src/cli.ts",
+          "sourceBlob": "f12d5d5f9de8389d4f9def90c8d055bd25f35e67",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "5ef4ef08b5da5a1f9e2b23c23513589d8871c414"
+        },
+        {
+          "boundary": "tooling",
+          "candidateBlob": "fce49c1eed080d010b7b380e3baf7c75744ae116",
+          "path": "extensions/workboard/src/dispatcher-exact-dispatch.test.ts",
+          "sourceBlob": "fce49c1eed080d010b7b380e3baf7c75744ae116",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": null
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "082150b335dc257e582e897694ddfe153031f57e",
+          "path": "extensions/workboard/src/dispatcher.ts",
+          "sourceBlob": "082150b335dc257e582e897694ddfe153031f57e",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "b95f8b3fa37b335627c5a0e15cd60ac84ce4e280"
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "9a0a95899f2f2399688b911e83eadb1062577cfd",
+          "path": "extensions/workboard/src/gateway-helpers.ts",
+          "sourceBlob": "9a0a95899f2f2399688b911e83eadb1062577cfd",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "47e7be4cdef4c8437b1b4054a441743ff30cb9ae"
+        },
+        {
+          "boundary": "tooling",
+          "candidateBlob": "2582e3d46f67365912397cc6a9117d46583677c8",
+          "path": "extensions/workboard/src/gateway.test.ts",
+          "sourceBlob": "2582e3d46f67365912397cc6a9117d46583677c8",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "a1949619c24096d53dfe8025c73a6c15a38fc01a"
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "703253679810d8ae3c0a6a7a8067dcf13bf30ce8",
+          "path": "extensions/workboard/src/gateway.ts",
+          "sourceBlob": "703253679810d8ae3c0a6a7a8067dcf13bf30ce8",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "fd1403077b048efbc2ab61d167b9174bc6234acf"
+        },
+        {
+          "boundary": "tooling",
+          "candidateBlob": "74a45f54fb90ef9ec8264f8718b390f5bcf1c2f8",
+          "path": "extensions/workboard/src/lifecycle-sync.test.ts",
+          "sourceBlob": "74a45f54fb90ef9ec8264f8718b390f5bcf1c2f8",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "3a1101e9eb76c68d8334cf0152c8422449a469d4"
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "ec19f0cf2fc316aaa8bd5101fe7f989fff0e23bc",
+          "path": "extensions/workboard/src/lifecycle-sync.ts",
+          "sourceBlob": "ec19f0cf2fc316aaa8bd5101fe7f989fff0e23bc",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "e40d7661fbfef157e596d9a1b08a10023bfd5a82"
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "c98d3b9af08b083464a138968f8dca33e64ad6cc",
+          "path": "extensions/workboard/src/session-link.ts",
+          "sourceBlob": "c98d3b9af08b083464a138968f8dca33e64ad6cc",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "9f855421e80a51c422a9987c755910827c9bcf26"
+        },
+        {
+          "boundary": "tooling",
+          "candidateBlob": "27e335f1b903471d0e1ce41080fa177dc204d99e",
+          "path": "extensions/workboard/src/store-claim-generation.test.ts",
+          "sourceBlob": "27e335f1b903471d0e1ce41080fa177dc204d99e",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": null
+        },
+        {
+          "boundary": "tooling",
+          "candidateBlob": "ced09440d06275abd97109047b951d4a0e29d950",
+          "path": "extensions/workboard/src/store-exact-dispatch.test.ts",
+          "sourceBlob": "ced09440d06275abd97109047b951d4a0e29d950",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": null
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "110d983491167db89ca6851128c597a8d294b465",
+          "path": "extensions/workboard/src/store-inputs.ts",
+          "sourceBlob": "110d983491167db89ca6851128c597a8d294b465",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "fdb3e7609756887e859f1ca884615797fa2ab8f0"
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "4a8fcb2882fcca90e368077dcf3ac3ebaf8cf11a",
+          "path": "extensions/workboard/src/store-normalizers.ts",
+          "sourceBlob": "4a8fcb2882fcca90e368077dcf3ac3ebaf8cf11a",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "4c00c8552a3512657f368949bfb977eeddebf8ad"
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "e21cd9a61564d1481707dae7481f964a1837ab18",
+          "path": "extensions/workboard/src/store-workflow.ts",
+          "sourceBlob": "e21cd9a61564d1481707dae7481f964a1837ab18",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "a1aa76c4489b61042110abfe4dae497575d566cd"
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "0433322619963850517349577a96703418395fc9",
+          "path": "extensions/workboard/src/store.ts",
+          "sourceBlob": "0433322619963850517349577a96703418395fc9",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "da2ed7dbba6bbc76bfb13dfec1c049baa8a2e2e4"
+        },
+        {
+          "boundary": "container",
+          "candidateBlob": "1ed599eaf345604b5a1b3c1964c91ba2ed79076e",
+          "path": "packages/workboard-contract/src/index.ts",
+          "sourceBlob": "1ed599eaf345604b5a1b3c1964c91ba2ed79076e",
+          "sourceCommit": "30786562e236aab6a924981c62aa61b920132c76",
+          "sourceTree": "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff",
+          "upstreamBlob": "4597c0612f6316c74b6941eb14c18429e39333c7"
+        }
+      ],
+      "rationale": "Restore the already-merged fork exact-card/intent dispatch and owner/claim-generation fencing contracts without changing SQL schema, migrations or dependencies. Keep the existing owner-or-token launch authorization and legacy launch timestamp fencing. Focused source evidence is 299 tests plus affected production types/formatting and independent review with recorded dispositions; this inventory does not claim successor image or production qualification.",
+      "regressionOwner": "fr-meyer",
+      "regressionTests": [
+        "extensions/workboard/src/cli.test.ts",
+        "extensions/workboard/src/dispatcher-exact-dispatch.test.ts",
+        "extensions/workboard/src/gateway.test.ts",
+        "extensions/workboard/src/lifecycle-sync.test.ts",
+        "extensions/workboard/src/store-claim-generation.test.ts",
+        "extensions/workboard/src/store-exact-dispatch.test.ts"
       ]
     }
   ],

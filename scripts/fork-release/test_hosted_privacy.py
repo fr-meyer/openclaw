@@ -154,7 +154,7 @@ class PrivacyTests(unittest.TestCase):
             path = Path(directory) / "public.json"
             path.write_bytes(data)
             # Synthetic proof only: production constants remain the exact
-            # reviewed source85 plan and its explicitly permitted rules.
+            # reviewed Workboard successor plan and its explicitly permitted rules.
             trusted = {**privacy.PUBLIC_MEMBER_QUALIFICATION, "sourceSha": SOURCE, "planSha256": privacy.sha256(data)}
             with patch.object(privacy, "PUBLIC_MEMBER_QUALIFICATION", trusted):
                 yield path, data
@@ -221,15 +221,35 @@ class PrivacyTests(unittest.TestCase):
                 self.assertEqual(result["publicMemberQualification"]["records"][0]["rule"], rule)
 
     def test_production_public_manifest_is_exactly_pinned(self):
-        path = Path(privacy.__file__).with_name("public-member-comparisons-v105.json")
+        path = Path(privacy.__file__).with_name("public-member-comparisons-v105-workboard.json")
         data = path.read_bytes()
         self.assertEqual(privacy.sha256(data), privacy.PUBLIC_MEMBER_QUALIFICATION["planSha256"])
         plan = json.loads(data)
+        self.assertEqual(plan["sourceSha"], "30786562e236aab6a924981c62aa61b920132c76")
         self.assertEqual(plan["sourceSha"], privacy.PUBLIC_MEMBER_QUALIFICATION["sourceSha"])
+        frozen = path.with_name("public-member-comparisons-v105.json").read_bytes()
+        self.assertEqual(privacy.sha256(frozen), "f5ea8cfbcd7e53bd38e344d6c6d9f7aaa39f465d8565668ca4c6fe3ebf03ec53")
+        self.assertEqual(json.loads(frozen)["sourceSha"], "85a9bdc1285c338f10f5ca818abc259f6d483b5b")
+        self.assertEqual(plan["entries"], json.loads(frozen)["entries"])
         self.assertEqual(len(plan["entries"]), 109)
         self.assertEqual(sum(len(entry["rules"]) for entry in plan["entries"]), 110)
         self.assertEqual({rule for entry in plan["entries"] for rule in entry["rules"]},
                          set(privacy.PUBLIC_MEMBER_QUALIFICATION["rules"]))
+
+    def test_workboard_plan_rejects_frozen_source_and_changed_plan_bytes(self):
+        data = Path(privacy.__file__).with_name("public-member-comparisons-v105-workboard.json").read_bytes()
+        for source, changed, refusal in (
+            ("85a9bdc1285c338f10f5ca818abc259f6d483b5b", False, "invalid_public_comparison_plan"),
+            ("30786562e236aab6a924981c62aa61b920132c76", True, "untrusted_public_member_qualification_plan"),
+        ):
+            with self.subTest(source=source, changed=changed), tempfile.TemporaryDirectory() as directory:
+                with patch.dict(globals(), SOURCE=source):
+                    fixture = Layout(Path(directory) / "oci")
+                    path = Path(directory) / "comparison.json"
+                    path.write_bytes(data + (b" " if changed else b""))
+                    result = fixture.inspect(public_comparisons=path, qualify_public_members=True)
+                self.assertFalse(result["inspectionComplete"])
+                self.assertEqual(result["refusal"], refusal)
 
     def test_compiled_object_template_match_needs_exact_reviewed_bytes(self):
         payload = b"export const sample={origin:`https://example.invalid`,label:`example@`};"

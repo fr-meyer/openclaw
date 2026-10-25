@@ -174,7 +174,9 @@ class PrivateTransferTests(unittest.TestCase):
         self.assertIn("generation=1234", self.connection.request[1])
 
     def test_plan_hash_source_fields_and_limits_fail_before_network(self):
-        for field, value in [("sourceSha", "c" * 40), ("toolingSha", "short"), ("attempt", True),
+        for field, value in [("sourceSha", "c" * 40),
+                             ("sourceSha", "85a9bdc1285c338f10f5ca818abc259f6d483b5b"),
+                             ("toolingSha", "short"), ("attempt", True),
                              ("archiveBytes", transfer.MAX_BYTES + 1), ("archiveBytes", True),
                              ("object", "../retained-oci.tar"), ("signer", "other@example.com"),
                              ("unknown", "value")]:

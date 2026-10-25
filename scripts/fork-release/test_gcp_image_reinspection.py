@@ -195,6 +195,11 @@ class DriverTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(json.loads(output.getvalue())["schema"], "openclaw.hosted-image-reinspection-summary.v1")
         self.assertEqual(owner.actions(), ["capture-retained-hosted-origin", "privacy", "qualify-retained-hosted", "verify-retained-hosted"])
+        privacy_call = next(args for args in owner.calls if args[1].endswith("hosted_privacy.py"))
+        self.assertEqual(privacy_call[privacy_call.index("--public-comparisons") + 1],
+                         str(driver.HERE / "public-member-comparisons-v105-workboard.json"))
+        self.assertEqual(privacy_call[privacy_call.index("--source-sha") + 1], SOURCE)
+        self.assertIn("--qualify-public-members", privacy_call)
         intent = json.loads((self.f.state / "intent.json").read_text())
         self.assertNotIn("executionSha256", intent)
         self.assertEqual(intent["originalProducer"], self.f.producer())

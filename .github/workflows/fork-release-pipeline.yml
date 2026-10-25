@@ -295,7 +295,7 @@ jobs:
           (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') &&
           (github.ref != 'refs/heads/release-pipeline/v105-image-only-20261024' ||
            (github.event_name == 'push' && github.event.created == false &&
-            github.event.before == 'c5f6ea725b69740582e8051c974a798feda792ba' &&
+            github.event.before == 'a65f70c5dad17b39bc3ee26ba92cde6d00bfb259' &&
             github.run_attempt == '1' && github.actor == 'fr-meyer')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -357,7 +357,7 @@ jobs:
           from urllib.request import Request, urlopen
 
           image_ref = 'refs/heads/release-pipeline/v105-image-only-20261024'
-          image_source = '85a9bdc1285c338f10f5ca818abc259f6d483b5b'
+          image_source = '30786562e236aab6a924981c62aa61b920132c76'
           selected = os.environ['GITHUB_REF'] == image_ref
           if selected:
               event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
@@ -371,13 +371,13 @@ jobs:
                   os.environ['GITHUB_ACTOR'] == 'fr-meyer' and
                   os.environ['GITHUB_RUN_ATTEMPT'] == '1' and
                   event.get('created') is False and
-                  event.get('before') == 'c5f6ea725b69740582e8051c974a798feda792ba' and
+                  event.get('before') == 'a65f70c5dad17b39bc3ee26ba92cde6d00bfb259' and
                   event.get('after') == os.environ['GITHUB_SHA'] and
                   manifest.get('repository') == 'fr-meyer/openclaw' and
                   manifest.get('productionEligible') is False and
                   'review' not in manifest and
                   manifest.get('source', {}).get('commit') == image_source and
-                  manifest.get('source', {}).get('tree') == '3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a' and
+                  manifest.get('source', {}).get('tree') == '2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff' and
                   manifest.get('image') == {'architecture': 'amd64', 'extensions': 'codex,workboard'}
               ):
                   raise SystemExit('One-shot nonproduction image scope changed')
@@ -387,8 +387,8 @@ jobs:
                                'X-GitHub-Api-Version': '2022-11-28',
                                'User-Agent': 'openclaw-owned-image-qualification'})
                   with urlopen(request, timeout=15) as response:
-                      raw = response.read(128 * 1024 + 1)
-                  if len(raw) > 128 * 1024:
+                      raw = response.read(256 * 1024 + 1)
+                  if len(raw) > 256 * 1024:
                       raise SystemExit('One-shot image metadata exceeds bounded response')
                   value = json.loads(raw)
                   if not isinstance(value, dict):
@@ -399,11 +399,11 @@ jobs:
               parents = current_commit.get('parents')
               if not (current_commit.get('sha') == approved and isinstance(parents, list) and
                       len(parents) == 1 and isinstance(parents[0], dict) and
-                      parents[0].get('sha') == '0f0f67d1ab0fd809b237d807bada7e5f7f73bb0b'):
+                      parents[0].get('sha') == 'b632bd947862f71dfb278b4bca9d9ba26367c7ac'):
                   raise SystemExit('Private caller is not the exact reviewed preparation successor')
 
-              # Preserve all nine prior outcomes. The last build completed,
-              # privacy refused and private preparation failed before upload.
+              # Preserve all ten consumed prior outcomes. The latest build
+              # retained private bytes after privacy refused; it is not a retry grant.
               priors = {
                   40062126779: ('aee8475917dd29e0ee9a0b4059daf34990cfdbd5', 120777706110),
                   40062948481: ('9c2df877355c763ccd9b939250de4384ff80b586', 120780156996),
@@ -414,18 +414,20 @@ jobs:
                   40098041073: ('b572943a2137c43afd433f7b782a54e12cf13902', 120884304655),
                   40100140347: ('272ce7e9eab02aa36da875b35ea862e8b1a1dbfe', 120890424635),
                   40108417145: ('c5f6ea725b69740582e8051c974a798feda792ba', 120914843959),
+                  40149784070: ('a65f70c5dad17b39bc3ee26ba92cde6d00bfb259', 121038697438),
               }
-              built_priors = {40063895699, 40067322318, 40070695622, 40075559894, 40100140347, 40108417145}
+              built_priors = {40063895699, 40067322318, 40070695622, 40075559894, 40100140347, 40108417145, 40149784070}
               private_preflight_priors = {40098041073}
               private_retention_failure_priors = {40100140347, 40108417145}
+              private_retention_success_priors = {40149784070}
               history = public_json('/actions/workflows/fork-release-pipeline.yml/runs?'
-                  'event=push&per_page=10&branch=release-pipeline%2Fv105-image-only-20261024')
+                  'event=push&per_page=20&branch=release-pipeline%2Fv105-image-only-20261024')
               runs = history.get('workflow_runs')
               current = [r for r in runs or [] if isinstance(r, dict) and
                          type(r.get('id')) is int and str(r['id']) == os.environ['GITHUB_RUN_ID']]
               if not (
-                  type(history.get('total_count')) is int and history['total_count'] == 10 and
-                  isinstance(runs, list) and len(runs) == 10 and len(current) == 1 and
+                  type(history.get('total_count')) is int and history['total_count'] == 11 and
+                  isinstance(runs, list) and len(runs) == 11 and len(current) == 1 and
                   current[0]['id'] not in priors and
                   current[0].get('head_sha') == os.environ['GITHUB_SHA'] and
                   all(isinstance(r, dict) and type(r.get('id')) is int and
@@ -481,6 +483,10 @@ jobs:
                       prior_expected = {**built_expected,
                           'Capture original hosted build metadata for private retention': 'success',
                           'Retain private OCI archive': 'failure'}
+                  if prior_id in private_retention_success_priors:
+                      prior_expected = {**built_expected,
+                          'Capture original hosted build metadata for private retention': 'success',
+                          'Retain private OCI archive': 'success'}
                   for name, conclusion in prior_expected.items():
                       matching = [s for s in steps if isinstance(s, dict) and s.get('name') == name]
                       if not (len(matching) == 1 and matching[0].get('status') == 'completed' and
@@ -699,8 +705,8 @@ jobs:
         run: |
           set -euo pipefail
           set --
-          if [[ "$SOURCE_SHA" == '85a9bdc1285c338f10f5ca818abc259f6d483b5b' ]]; then
-            set -- --public-comparisons tooling/scripts/fork-release/public-member-comparisons-v105.json --qualify-public-members
+          if [[ "$SOURCE_SHA" == '30786562e236aab6a924981c62aa61b920132c76' ]]; then
+            set -- --public-comparisons tooling/scripts/fork-release/public-member-comparisons-v105-workboard.json --qualify-public-members
           fi
           python3 tooling/scripts/fork-release/hosted_privacy.py \
             --oci-dir "$RUNNER_TEMP/fork-release/oci/default" \
@@ -767,7 +773,7 @@ jobs:
           enabled: ${{ steps.identity.outputs.private_retention }}
           approved-workflow-sha: ${{ steps.identity.outputs.private_workflow_sha }}
           source-sha: ${{ steps.identity.outputs.source_sha }}
-          source-tree: 3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a
+          source-tree: 2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff
           built-at: ${{ steps.identity.outputs.built_at }}
           manifest: metadata/scripts/fork-release/manifest.json
           inventory: metadata/scripts/fork-release/patch-inventory.json

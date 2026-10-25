@@ -25,8 +25,8 @@ import pr
 import private_oci_bundle
 
 REPOSITORY = "fr-meyer/openclaw"
-SOURCE = "85a9bdc1285c338f10f5ca818abc259f6d483b5b"
-TREE = "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
+SOURCE = "30786562e236aab6a924981c62aa61b920132c76"
+TREE = "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff"
 WORKFLOW = ".github/workflows/fork-release-pipeline.yml"
 BUILD_STEP = "Build exact candidate once into OCI"
 ATTEST_STEP = "Retain private OCI archive"

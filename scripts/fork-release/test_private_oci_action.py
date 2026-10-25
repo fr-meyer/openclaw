@@ -13,8 +13,8 @@ from test_private_oci_bundle import Fixture, WORKFLOW, BUILT
 
 
 ACTION = Path(__file__).resolve().parents[2] / ".github/actions/retain-private-oci/action.yml"
-SOURCE = "85a9bdc1285c338f10f5ca818abc259f6d483b5b"
-TREE = "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
+SOURCE = "30786562e236aab6a924981c62aa61b920132c76"
+TREE = "2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff"
 
 
 def block(marker):
@@ -52,7 +52,9 @@ class PrivateOciActionTests(unittest.TestCase):
         for change in ({"APPROVED_WORKFLOW_SHA": ""}, {"APPROVED_WORKFLOW_SHA": "b" * 40},
                        {"ACTUAL_WORKFLOW_SHA": "b" * 40}, {"GITHUB_SHA": "b" * 40},
                        {"GITHUB_REPOSITORY": "untrusted/fork"}, {"GITHUB_ACTOR": "someone"},
-                       {"SOURCE_SHA": "b" * 40}, {"SOURCE_TREE": "b" * 40},
+                       {"SOURCE_SHA": "b" * 40},
+                       {"SOURCE_SHA": "85a9bdc1285c338f10f5ca818abc259f6d483b5b"},
+                       {"SOURCE_TREE": "b" * 40},
                        {"GITHUB_EVENT_NAME": "pull_request_target"}, {"GITHUB_EVENT_NAME": "pull_request"},
                        {"GITHUB_RUN_ATTEMPT": "2"}, {"GITHUB_RUN_ID": "0"},
                        {"RETAIN_ENABLED": "unexpected-secret-fixture-value"}):

@@ -1,19 +1,60 @@
 # Hosted image build and retained-image qualification
 
-## Private hosted retention preparation (not activated)
+## Source307 Workboard successor preparation
 
-The optional `.github/actions/retain-private-oci` composite is disabled by
-default and has no workflow caller. Existing build triggers, permissions and
-application pins are unchanged. Activation is a separate operator action; this
-source does not create cloud identities, IAM grants, secrets or storage.
+The selected application successor is
+`30786562e236aab6a924981c62aa61b920132c76`, tree
+`2c7d245a5abe5b4ecfd4477f7890f00aaa3deeff`. It restores the reviewed
+Workboard exact-card/intent dispatch and claim-fencing contracts. Its source
+tests are evidence for those contracts, not an image seal or production approval.
+Source85's qualified archive, original producer and b632 inspector remain frozen
+under their original identities; they cannot be relabeled as this successor.
+
+The successor's closed source/tree restrictions change together in the hosted
+workflow/action, opaque archive/transfer owner and fresh hosted-origin capture.
+The signing owner inherits the transfer owner's exact source restriction; its
+signature/size/replay protocol is unchanged. Original historical-capture pins
+are not repinned: a source307 archive needs its own native attestation and
+canonical run/job authentication before any later offline reuse is considered.
+
+`public-member-comparisons-v105-workboard.json` is a distinct, exactly pinned
+source307 plan. The source85 plan is preserved. All 109 member records and 110
+named-rule pairs keep their prior complete path/size/hash and immutable evidence.
+The 39 referenced source fixtures are byte-identical in source307. The 24
+compiled-member entries qualify only if the new image contains those exact
+bytes; changed or missing chunks remain blockers. Never predict new hashes or
+broaden a rule to make a rebuilt file pass. Private retention remains independent
+of semantic qualification so a reviewed scanner correction can inspect the same
+immutable successor bytes without another physical build.
+
+All ten earlier image-run outcomes remain consumed, including A65/run40149784070:
+Docker output and private retention succeeded while its original privacy step
+failed. Its later source85 reinspection does not rewrite that workflow result.
+One explicitly selected successor push must bind the actual prior branch head,
+reviewed preparation parent, exact workflow approval and a new first-attempt run.
+Uncertain outcomes never authorize a second build.
+
+The previous temporary verification VM has been deleted and its preserved data
+disk is unattached. This preparation creates no receiver, access, secret, VM or
+storage. A coordinated private receiving route and any specifically required
+temporary security action must be established within the operator's actual
+authority before activation. No production database, migration, deployment,
+resize or new infrastructure follows from these controls.
+
+## Private hosted retention contract
+
+The optional `.github/actions/retain-private-oci` composite defaults disabled.
+Its existing one-shot image-route caller remains inactive without a matching
+temporary capability and exact workflow/source/actor/attempt approval. Activation
+is a separate operator action; this source does not create cloud identities,
+IAM grants, secrets or storage.
 
 The intended caller step is named `Retain private OCI archive`, after successful
 Docker output and the existing resource collector's completion. Its condition
 must permit private retention when privacy refuses, but never run after a failed
 Docker solve. The caller supplies an independently approved exact workflow SHA,
 source/tree and private input/output paths. It needs `contents: read`,
-`id-token: write` and `attestations: write`. Those additional permissions are not
-present in the current build workflow.
+`id-token: write` and `attestations: write`, scoped to that existing build job.
 
 The preparation keeps these responsibilities separate:
 
