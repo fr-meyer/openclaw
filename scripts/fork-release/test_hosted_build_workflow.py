@@ -450,7 +450,7 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         retained_artifact_payload = retained_artifacts if retained_artifacts is not None else {
             'total_count': 0, 'artifacts': []}
         commit_payload = current_commit if current_commit is not None else {
-            'sha': SOURCE, 'parents': [{'sha': 'b632bd947862f71dfb278b4bca9d9ba26367c7ac'}]}
+            'sha': SOURCE, 'parents': [{'sha': 'cc82192a8c32c2ee89720a14bd97b985df9cf4f7'}]}
 
         wrapper = (
             'import io, json\nfrom unittest.mock import patch\n'
@@ -918,10 +918,10 @@ class HostedBuildWorkflowTests(unittest.TestCase):
         self.assertIn('APPROVED_PRIVATE_WORKFLOW_SHA:', before_process)
         for change in ({'sha': 'b' * 40}, {'parents': []}, {'parents': None},
                        {'parents': [{'sha': 'b' * 40}]},
-                       {'parents': [{'sha': 'b632bd947862f71dfb278b4bca9d9ba26367c7ac'},
-                                    {'sha': 'b632bd947862f71dfb278b4bca9d9ba26367c7ac'}]},
+                       {'parents': [{'sha': 'cc82192a8c32c2ee89720a14bd97b985df9cf4f7'},
+                                    {'sha': 'cc82192a8c32c2ee89720a14bd97b985df9cf4f7'}]},
                        {'parents': [{'sha': '0f0f67d1ab0fd809b237d807bada7e5f7f73bb0b'}]}):
-            value = {'sha': SOURCE, 'parents': [{'sha': 'b632bd947862f71dfb278b4bca9d9ba26367c7ac'}],
+            value = {'sha': SOURCE, 'parents': [{'sha': 'cc82192a8c32c2ee89720a14bd97b985df9cf4f7'}],
                      **change}
             result, emitted = self.run_image_only_scope(current_commit=value)
             self.assertNotEqual(result.returncode, 0)

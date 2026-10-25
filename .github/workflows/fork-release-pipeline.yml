@@ -399,7 +399,7 @@ jobs:
               parents = current_commit.get('parents')
               if not (current_commit.get('sha') == approved and isinstance(parents, list) and
                       len(parents) == 1 and isinstance(parents[0], dict) and
-                      parents[0].get('sha') == 'b632bd947862f71dfb278b4bca9d9ba26367c7ac'):
+                      parents[0].get('sha') == 'cc82192a8c32c2ee89720a14bd97b985df9cf4f7'):
                   raise SystemExit('Private caller is not the exact reviewed preparation successor')
 
               # Preserve all ten consumed prior outcomes. The latest build
