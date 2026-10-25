@@ -221,11 +221,12 @@ def capture(plan, prepared):
     certificate = proof["signature"]["certificate"]
     signer = f"https://github.com/{REPOSITORY}/{WORKFLOW}@{plan['workflowRef']}"
     invocation = f"https://github.com/{REPOSITORY}/actions/runs/{plan['runId']}/attempts/{plan['attempt']}"
+    # Pinned GH 2.98.0 emits the URI SAN as a JSON string.
     need(certificate.get("issuer") == "https://token.actions.githubusercontent.com" and
          certificate.get("sourceRepositoryURI") == f"https://github.com/{REPOSITORY}" and
          certificate.get("sourceRepositoryDigest") == certificate.get("buildSignerDigest") == plan["workflowSha"] and
          certificate.get("buildSignerURI") == signer and
-         certificate.get("subjectAlternativeName") == {"type": "URI", "value": signer} and
+         certificate.get("subjectAlternativeName") == signer and
          certificate.get("sourceRepositoryRef") == plan["workflowRef"] and
          certificate.get("runnerEnvironment") == "github-hosted" and certificate.get("runInvocationURI") == invocation and
          isinstance(proof.get("verifiedTimestamps"), list) and bool(proof["verifiedTimestamps"]))

@@ -86,7 +86,7 @@ class HostedOriginTests(unittest.TestCase):
             "signature":{"certificate":{"issuer":"https://token.actions.githubusercontent.com",
                 "sourceRepositoryURI":f"https://github.com/{owner.REPOSITORY}","sourceRepositoryDigest":self.workflow,
                 "buildSignerDigest":self.workflow,"buildSignerURI":signer,
-                "subjectAlternativeName":{"type":"URI","value":signer},"sourceRepositoryRef":self.plan["workflowRef"],
+                "subjectAlternativeName":signer,"sourceRepositoryRef":self.plan["workflowRef"],
                 "runnerEnvironment":"github-hosted",
                 "runInvocationURI":f"https://github.com/{owner.REPOSITORY}/actions/runs/42/attempts/1"}},
             "verifiedTimestamps":[{"type":"Tlog","timestamp":"2026-10-23T10:02:00Z"}],
@@ -131,7 +131,7 @@ class HostedOriginTests(unittest.TestCase):
         self.assertFalse(value["qualified"])
         fetch.assert_not_called();native.assert_not_called()
 
-    def test_explicit_capture_uses_native_crypto_and_api_even_when_privacy_job_failed(self):
+    def test_pinned_gh_string_san_capture_uses_native_crypto_and_api_even_when_privacy_job_failed(self):
         code,value,fetch,native=self.entry()
         self.assertEqual(code,0,value)
         self.assertTrue(value["originAuthenticated"])
@@ -157,7 +157,14 @@ class HostedOriginTests(unittest.TestCase):
 
     def test_certificate_invocation_signer_subject_and_runner_mismatch_refuse(self):
         original=copy.deepcopy(self.proof)
+        signer=original[0]["verificationResult"]["signature"]["certificate"]["subjectAlternativeName"]
         for field,value in (("runInvocationURI","https://github.com/fr-meyer/openclaw/actions/runs/42/attempts/2"),
+                            ("subjectAlternativeName",signer+"/changed"),
+                            ("subjectAlternativeName",{"type":"URI","value":signer}),
+                            ("subjectAlternativeName",[signer]),
+                            ("subjectAlternativeName",None),
+                            ("sourceRepositoryDigest","f"*40),
+                            ("sourceRepositoryRef","refs/heads/other"),
                             ("buildSignerDigest","f"*40),("sourceRepositoryURI","https://github.com/other/repo"),
                             ("runnerEnvironment","self-hosted")):
             with self.subTest(field=field):
