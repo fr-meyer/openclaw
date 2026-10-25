@@ -76,7 +76,11 @@ function createFixture() {
   const agent = path.join(stateDir, "agents", "main", "openclaw-agent.sqlite");
   seedDatabase(shared, "shared before migration");
   seedDatabase(agent, "agent before migration");
-  return { shared, agent, env: { ...process.env, OPENCLAW_STATE_DIR: stateDir } };
+  const env: NodeJS.ProcessEnv & { OPENCLAW_STATE_DIR: string } = {
+    ...process.env,
+    OPENCLAW_STATE_DIR: stateDir,
+  };
+  return { shared, agent, env };
 }
 
 function prepareCrossBuildGroup(fixture: ReturnType<typeof createFixture>) {

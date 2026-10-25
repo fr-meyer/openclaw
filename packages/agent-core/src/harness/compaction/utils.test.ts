@@ -12,8 +12,8 @@ import {
   computeFileLists,
   createFileOps,
   extractFileOpsFromMessage,
+  formatCompactionUserLabel,
   formatFileOperations,
-  formatPersistedSenderSuffix,
   getCompactionContent,
   MAX_FILE_OPS_SECTION_CHARS,
   mergeSummaryFileOperations,
@@ -463,7 +463,8 @@ describe("serializeConversation", () => {
     expect(estimateTokens(attributed)).toBe(
       Math.ceil(
         (estimateStringChars(content) +
-          estimateStringChars(formatPersistedSenderSuffix(attributed))) /
+          estimateStringChars(formatCompactionUserLabel(attributed)) -
+          "User".length) /
           CHARS_PER_TOKEN_ESTIMATE,
       ),
     );

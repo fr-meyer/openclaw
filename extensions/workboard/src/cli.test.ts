@@ -226,6 +226,83 @@ describe("registerWorkboardCli", () => {
     );
   });
 
+  it("forwards an exact card and optional intent through the scoped Gateway method", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const intentRunId = `wb-${"a".repeat(40)}`;
+    gatewayRuntime.callGatewayFromCli.mockResolvedValue({ started: [], startFailures: [] });
+    for (const intent of [undefined, intentRunId]) {
+      const program = createProgram(store);
+      await captureStdout(async () => {
+        await program.parseAsync(
+          [
+            "workboard",
+            "dispatch",
+            "--board",
+            "ops",
+            "--card",
+            "card-exact-1",
+            ...(intent ? ["--intent-run-id", intent, "--max-starts", "1"] : []),
+          ],
+          { from: "user" },
+        );
+      });
+      expect(gatewayRuntime.callGatewayFromCli).toHaveBeenLastCalledWith(
+        "workboard.cards.dispatchWithOptions",
+        expect.anything(),
+        {
+          boardId: "ops",
+          cardId: "card-exact-1",
+          ...(intent ? { intentRunId: intent, maxStarts: 1 } : {}),
+        },
+        { mode: "cli", scopes: ["operator.write", "operator.read"] },
+      );
+    }
+  });
+
+  it("rejects invalid exact-card options before contacting the Gateway", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const cases: Array<[string[], string]> = [
+      [["--card", "   "], "--card must be a non-empty string."],
+      [["--intent-run-id", `wb-${"a".repeat(40)}`], "--intent-run-id requires --card."],
+      ...["bad", `wb-${"A".repeat(40)}`, `wb-${"a".repeat(39)}`, `wb-${"a".repeat(40)}\n`].map(
+        (intent): [string[], string] => [
+          ["--card", "card-exact-1", "--intent-run-id", intent],
+          "--intent-run-id must be a wb-<40 lowercase hex> dispatch intent id.",
+        ],
+      ),
+      [
+        ["--card", "card-exact-1", "--max-starts", "2"],
+        "--max-starts must be 1 when --card is provided.",
+      ],
+    ];
+    for (const [args, message] of cases) {
+      await expect(
+        createProgram(store).parseAsync(["workboard", "dispatch", ...args], { from: "user" }),
+      ).rejects.toThrow(message);
+    }
+    expect(gatewayRuntime.callGatewayFromCli).not.toHaveBeenCalled();
+  });
+
+  it("never falls back to local data-only dispatch for an exact card", async () => {
+    const store = createWorkboardSqliteTestStore();
+    const card = await store.create({ title: "Exact Gateway target", status: "ready" });
+    using dispatch = vi.spyOn(store, "dispatch");
+    for (const message of [
+      "connect ECONNREFUSED 127.0.0.1:18789",
+      "unknown method: workboard.cards.dispatch",
+      "unknown method: workboard.cards.dispatchWithOptions",
+    ]) {
+      gatewayRuntime.callGatewayFromCli.mockRejectedValueOnce(new Error(message));
+      await expect(
+        createProgram(store).parseAsync(["workboard", "dispatch", "--card", card.id], {
+          from: "user",
+        }),
+      ).rejects.toThrow(message);
+      await expect(store.get(card.id)).resolves.toEqual(card);
+    }
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it("requests minimum scopes unless full-host access is explicit", async () => {
     const store = createWorkboardSqliteTestStore();
     const program = createProgram(store);

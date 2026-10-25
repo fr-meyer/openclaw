@@ -49,7 +49,10 @@ import {
   type MainSessionRecoveryDecision,
   type MainSessionRecoverySkipReason,
 } from "./main-session-restart-recovery-diagnostics.js";
-import { tombstoneMainRestartRecoveryWithNotice } from "./main-session-restart-recovery-failure.js";
+import {
+  finishDelegatedRestartRecovery,
+  tombstoneMainRestartRecoveryWithNotice,
+} from "./main-session-restart-recovery-failure.js";
 import {
   hasReplaySafeCodeModeCheckpointInCurrentTurn,
   resolveMainSessionResumePolicy,
@@ -532,7 +535,7 @@ export async function recoverStore(params: {
             source === "harness_completion") &&
             entry.restartRecoverySourceIngress === "internal"))
       ) {
-        const tombstone = await tombstoneMainRestartRecoveryWithNotice({
+        const outcome = await finishDelegatedRestartRecovery({
           ...target,
           cfg: params.cfg,
           entry,
@@ -540,7 +543,7 @@ export async function recoverStore(params: {
           observation: recoveryView.observation,
           reason: "delegated recovery sender authority is unavailable",
         });
-        if (tombstone === "notice_failed") {
+        if (outcome === "notice_failed") {
           result.failed++;
         } else {
           skip("delegated_authority_unavailable");
@@ -561,12 +564,15 @@ export async function recoverStore(params: {
           forceRestartSafeTools:
             pendingAction === "fail" ||
             (isTerminalSessionStatus(entry.status) && entry.status !== "interrupted") ||
+            entry.mainRestartRecovery?.safeToolsRequired === true ||
             entry.restartRecoveryForceSafeTools === true ||
             hasReplaySafeCodeModeCheckpointInCurrentTurn(messages),
         };
       } else {
         const retainedSafeTools =
-          replaySafeCheckpoint || (entry.restartRecoveryForceSafeTools === true && !fullAccess);
+          replaySafeCheckpoint ||
+          entry.mainRestartRecovery?.safeToolsRequired === true ||
+          (entry.restartRecoveryForceSafeTools === true && !fullAccess);
         const resumePolicy = resolveMainSessionResumePolicy(
           messages,
           retainedSafeTools,

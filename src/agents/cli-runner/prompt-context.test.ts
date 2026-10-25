@@ -13,13 +13,13 @@ describe("CLI resume user context", () => {
         {
           mode: "reuse-with-drift",
           sessionId: "native-bound",
-          drift: { reasons: ["prompt-tools"] },
+          drift: { reasons: ["system-prompt"] },
         },
         preservedTurnsContext,
       ),
     ).toEqual({
       text: [
-        buildCliSessionDriftNote(["prompt-tools"]),
+        buildCliSessionDriftNote(["system-prompt"]),
         preservedTurnsContext,
         "Conversation info",
       ].join("\n\n"),
