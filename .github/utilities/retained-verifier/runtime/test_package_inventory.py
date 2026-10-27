@@ -94,13 +94,20 @@ class Inventory(unittest.TestCase):
   self.setUp();self.ownership[runtime.PYTHON]+=self.ownership[runtime.PYTHON];self.bind();self.refused('inventory.owner_shape')
   self.setUp();self.filelists['python3.11-minimal']=b'/usr/bin/other\n';self.bind();self.refused('inventory.python_missing')
  def test_only_exact_adjacent_bookworm_dash_diversion_annotation_is_ignored(self):
-  raw=b'/.\n/bin\n/bin/dash\n/bin/sh\npackage diverts others to: /bin/sh.distrib\n'
-  self.assertEqual(m.parse_listfiles(raw,binary_name='dash'),{'/bin','/bin/dash','/bin/sh'})
+  raw=(b'/.\n/bin\n/bin/dash\n/bin/sh\npackage diverts others to: /bin/sh.distrib\n'
+       b'/usr/share/man/man1/sh.1.gz\n'
+       b'package diverts others to: /usr/share/man/man1/sh.distrib.1.gz\n')
+  self.assertEqual(m.parse_listfiles(raw,binary_name='dash'),
+                   {'/bin','/bin/dash','/bin/sh','/usr/share/man/man1/sh.1.gz'})
   for binary,changed,code in (
       ('other',raw,'inventory.filelist_diversion'),
       ('dash',raw.replace(b'/bin/sh\n',b'/bin/other\n'),'inventory.filelist_diversion'),
       ('dash',raw+b'package diverts others to: /bin/sh.distrib\n','inventory.filelist_diversion'),
       ('dash',raw.replace(b'/bin/sh.distrib',b'/tmp/unknown'),'inventory.filelist_path'),
+      ('dash',raw.replace(b'/usr/share/man/man1/sh.1.gz\n',b'/usr/share/man/man1/other.1.gz\n'),
+       'inventory.filelist_diversion'),
+      ('dash',raw.replace(b'/usr/share/man/man1/sh.distrib.1.gz',b'/tmp/unknown.1.gz'),
+       'inventory.filelist_path'),
       ('dash',raw.replace(b'package diverts others',b'locally diverted'),'inventory.filelist_path')):
    with self.subTest(binary=binary,changed=changed):
     with self.assertRaises(runtime.Refusal) as error:m.parse_listfiles(changed,binary_name=binary)

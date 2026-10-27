@@ -128,7 +128,7 @@ class BuildFixture:
     def __init__(self):
         self.io,self.program=fixture.setup_io();self.calls=[];self.kv='6.1.0-39-amd64'
         self.io.values['kernelVersion']=self.kv
-        names=sorted(set(self.io.packages)|set(build_recipe.REQUIRED_PACKAGES)|{'dpkg','linux-image-'+self.kv})
+        names=sorted(set(self.io.packages)|set(build_recipe.REQUIRED_PACKAGES)|{'dash','dpkg','linux-image-'+self.kv})
         self.packages={name:{'name':name,'version':build_recipe.SYSTEMD_VERSION if name.startswith(('systemd','libsystemd'))else'1',
           'architecture':'amd64','debSha256':m.sha(('synthetic archive '+name).encode())}for name in names}
         self.data={p:raw for p,raw in self.io.files.items()if p.startswith(('/usr/','/lib/','/lib64/'))}
@@ -147,6 +147,9 @@ class BuildFixture:
         # reached through Debian's merged-/usr aliases.
         self.lists['systemd']=self.lists['systemd'].replace(b'/usr/bin/systemctl\n',b'/bin/systemctl\n').replace(
           b'/usr/lib/systemd/systemd\n',b'/lib/systemd/systemd\n')
+        self.lists['dash']+=(b'/bin/dash\n/bin/sh\npackage diverts others to: /bin/sh.distrib\n'
+                            b'/usr/share/man/man1/sh.1.gz\n'
+                            b'package diverts others to: /usr/share/man/man1/sh.distrib.1.gz\n')
         self.owners['/bin/systemctl']='systemd';self.owners['/lib/systemd/systemd']='systemd'
         self.index=''.join('Package: '+n+'\nVersion: '+r['version']+'\nArchitecture: amd64\nFilename: pool/main/f/fixture/'+n+'_1_amd64.deb\nSize: 12\nSHA256: '+r['debSha256']+'\n\n'for n,r in self.packages.items()).encode()
         release=('-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nOrigin: Debian\nCodename: bookworm\nVersion: fixture\nDate: Fri, 01 Jan 2010 00:00:00 UTC\nSHA256:\n '+m.sha(self.index)+' '+str(len(self.index))+' main/binary-amd64/Packages\n-----BEGIN PGP SIGNATURE-----\nsynthetic\n-----END PGP SIGNATURE-----\n').encode()
@@ -208,6 +211,12 @@ class BuildFixture:
 
 
 class BuildGuestJoinTests(unittest.TestCase):
+    def test_actual_build_transaction_refuses_changed_dash_diversion(self):
+        f=BuildFixture()
+        f.lists['dash']=f.lists['dash'].replace(b'/usr/share/man/man1/sh.distrib.1.gz',
+                                                b'/tmp/unknown.1.gz')
+        with self.assertRaisesRegex(runtime_prepare.Refusal,'inventory.filelist_path'):f.build()
+
     def test_real_filelist_rejection_keeps_guard_and_reports_first_public_line(self):
         raw=(b'/.\n/usr\n/usr/bin/sh\n'
              b'package diverts others to: /usr/bin/sh.distrib\n')
@@ -226,10 +235,12 @@ class BuildGuestJoinTests(unittest.TestCase):
                              {'/usr/bin/sh'})
         self.assertEqual(output.getvalue(),'')
         exact=(b'/.\n/bin/dash\n/bin/sh\n'
-               b'package diverts others to: /bin/sh.distrib\n')
+               b'package diverts others to: /bin/sh.distrib\n'
+               b'/usr/share/man/man1/sh.1.gz\n'
+               b'package diverts others to: /usr/share/man/man1/sh.distrib.1.gz\n')
         with redirect_stderr(output):
             self.assertEqual(build_entry.parse_installed_filelist(package_inventory,'dash',exact),
-                             {'/bin/dash','/bin/sh'})
+                             {'/bin/dash','/bin/sh','/usr/share/man/man1/sh.1.gz'})
         self.assertEqual(output.getvalue(),'')
 
     def test_pinned_bookworm_systemctl_alias_refuses_missing_owner_or_substitution(self):

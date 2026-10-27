@@ -285,12 +285,13 @@ def parse_installed_filelist(inventory,binary,raw):
     try:return inventory.parse_listfiles(raw,binary_name=binary)
     except inventory.runtime.Refusal as exc:
         if exc.code in ('inventory.filelist_path','inventory.filelist_diversion'):
-            seen=set();previous=None;dash_diversion=False
+            seen=set();previous=None;dash_diversions=set()
             for index,line in enumerate(raw.decode('utf-8','strict').splitlines()):
                 if line in ('/.','/'):continue
-                if line=='package diverts others to: /bin/sh.distrib':
-                    valid=binary=='dash' and previous=='/bin/sh' and not dash_diversion
-                    dash_diversion=True
+                if line in inventory.DASH_DIVERSION.values():
+                    valid=(binary=='dash' and inventory.DASH_DIVERSION.get(previous)==line and
+                           line not in dash_diversions)
+                    dash_diversions.add(line)
                 else:
                     valid=(line.startswith('/') and '\x00' not in line and
                            posixpath.normpath(line)==line and '..' not in line.split('/') and
@@ -301,7 +302,7 @@ def parse_installed_filelist(inventory,binary,raw):
                                 'line':line if len(line)<=256 and all(32<=ord(c)<127 for c in line) else None}
                     sys.stderr.write(canonical(diagnostic).decode()+'\n')
                     break
-                if line!='package diverts others to: /bin/sh.distrib':seen.add(line);previous=line
+                if line not in inventory.DASH_DIVERSION.values():seen.add(line);previous=line
         raise
 
 

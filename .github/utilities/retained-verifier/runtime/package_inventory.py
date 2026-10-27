@@ -19,6 +19,10 @@ FILE_CAP=64*1024*1024
 INDEX_CAP=128*1024*1024
 MAX_FILES=30000
 MAX_READ_BYTES=512*1024*1024
+DASH_DIVERSION={
+ '/bin/sh':'package diverts others to: /bin/sh.distrib',
+ '/usr/share/man/man1/sh.1.gz':'package diverts others to: /usr/share/man/man1/sh.distrib.1.gz',
+}
 
 
 def need(value,code):runtime.need(value,code)
@@ -106,16 +110,15 @@ def parse_listfiles(raw,*,binary_name=None):
  need(type(raw)is bytes and len(raw)<=4*1024*1024,'inventory.filelist_cap')
  try:lines=raw.decode('utf-8','strict').splitlines()
  except UnicodeError:raise runtime.Refusal('inventory.filelist_encoding') from None
- result=[];seen=set();previous=None;dash_diversion=False
+ result=[];seen=set();previous=None;dash_diversions=set()
  for line in lines:
   if line in('/.','/'):continue
-  # Bookworm dash records its package-owned /bin/sh diversion as an annotation
-  # immediately after that pathname. It is not another owned file. This exact
-  # spelling is the only admitted annotation; local or other diversions refuse.
-  if line=='package diverts others to: /bin/sh.distrib':
-   need(binary_name=='dash' and previous=='/bin/sh' and not dash_diversion,
+  # Bookworm dash records its two package-owned shell diversions immediately
+  # after their paths. Annotations are not files; no other diversion is admitted.
+  if line in DASH_DIVERSION.values():
+   need(binary_name=='dash' and DASH_DIVERSION.get(previous)==line and line not in dash_diversions,
         'inventory.filelist_diversion')
-   dash_diversion=True;continue
+   dash_diversions.add(line);continue
   need(line.startswith('/') and '\x00'not in line and posixpath.normpath(line)==line and '..'not in line.split('/')
        and len(line)<=1024 and line not in seen,'inventory.filelist_path')
   result.append(line);seen.add(line);previous=line;need(len(result)<=MAX_FILES,'inventory.filelist_count')
