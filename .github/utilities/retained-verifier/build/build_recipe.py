@@ -348,6 +348,18 @@ def partition_argv(image):
     return ('/usr/sbin/sfdisk', '--json', path(image))
 
 
+def canonical_guid(value, reason):
+    # libfdisk prints GPT GUIDs in uppercase; the UUID value is unchanged.
+    require(type(value) is str and re.fullmatch(
+        r'[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}', value), reason)
+    try:
+        normalized = str(UUID(value))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise Refusal(reason) from exc
+    require(normalized == value.lower(), reason)
+    return normalized
+
+
 def root_partition(raw, image_path, image_bytes):
     value = unique_json(raw)
     require(type(value) is dict and set(value) == {'partitiontable'}, 'build.partition_wrapper')
@@ -365,17 +377,15 @@ def root_partition(raw, image_path, image_bytes):
     row = rows[0]
     require(type(row) is dict and {'node', 'start', 'size', 'type', 'uuid'} <= row.keys()
             and set(row) <= {'node', 'start', 'size', 'type', 'uuid', 'name', 'attrs', 'bootable'}, 'build.partition_row')
-    require(row['type'] == ROOT_TYPE and row['node'] == image_path + '1'
+    require(canonical_guid(row['type'], 'build.root_type') == ROOT_TYPE
+            and row['node'] == image_path + '1'
             and row.get('attrs', '') == '' and row.get('bootable', False) is False, 'build.root_type')
     for key in ('start', 'size'):
         require(type(row[key]) is int and row[key] > 0, 'build.partition_range')
     require(row['start'] * sector >= 1024**2 and (row['start']+row['size']) * sector < image_bytes,
             'build.partition_bounds')
-    try:
-        partuuid = str(UUID(row['uuid']))
-    except (ValueError, AttributeError, TypeError) as exc:
-        raise Refusal('build.partuuid') from exc
-    require(partuuid == row['uuid'] and partuuid != str(UUID(int=0)), 'build.partuuid')
+    partuuid = canonical_guid(row['uuid'], 'build.partuuid')
+    require(partuuid != str(UUID(int=0)), 'build.partuuid')
     return {'partuuid': partuuid, 'type': ROOT_TYPE, 'start': row['start'], 'sectors': row['size'],
             'sectorBytes': sector, 'sfdiskSha256': sha(raw)}
 

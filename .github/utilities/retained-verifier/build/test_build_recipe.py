@@ -124,6 +124,19 @@ class RecipeTests(unittest.TestCase):
         x=binding()
         self.assertEqual(x['rootPartition']['partuuid'],'11111111-2222-4333-8444-555555555555')
         self.assertEqual(x['rootPartition']['sfdiskSha256'],b.sha(b.canonical(table())))
+    def test_libfdisk_uppercase_guid_is_same_exact_partition(self):
+        t=table();row=t['partitiontable']['partitions'][0]
+        row['type']=row['type'].upper();row['uuid']='ABCDEF01-2222-4333-8444-555555555555'
+        x=b.root_partition(b.canonical(t),'/out/ocv-test.raw',2*1024**3)
+        self.assertEqual(x['type'],b.ROOT_TYPE)
+        self.assertEqual(x['partuuid'],'abcdef01-2222-4333-8444-555555555555')
+        self.assertEqual(x['sfdiskSha256'],b.sha(b.canonical(t)))
+        for field,value in (('type','4f68bce3-e8cd-4db1-96e7-fbcaf984b708'),
+                            ('type','{'+b.ROOT_TYPE+'}'),('uuid','abcdef01222243338444555555555555'),
+                            ('node','/out/another.raw1'),('attrs','RequiredPartition')):
+            bad=copy.deepcopy(t);bad['partitiontable']['partitions'][0][field]=value
+            with self.subTest(field=field,value=value),self.assertRaises(b.Refusal):
+                b.root_partition(b.canonical(bad),'/out/ocv-test.raw',2*1024**3)
     def test_partition_bad_roster_type_bounds(self):
         for variant in ('extra','type','path','uuid','range','sector'):
             t=table();r=t['partitiontable']['partitions'][0]
