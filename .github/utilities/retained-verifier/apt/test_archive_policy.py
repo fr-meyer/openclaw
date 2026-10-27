@@ -2,7 +2,7 @@
 import copy
 from datetime import datetime, timezone
 import unittest
-from archive_policy import Fixture, Refusal, classify, fields, signature_contract, sha
+from archive_policy import BOOKWORM, Fixture, Refusal, classify, fields, signature_contract, sha
 
 
 class PolicyTests(unittest.TestCase):
@@ -48,9 +48,32 @@ class PolicyTests(unittest.TestCase):
             self.check(timed_out=True)
 
     def test_nonzero_none_bool_exit_refuses(self):
-        for code in (1, 2, None, False):
+        for code in (1, None, False):
             with self.subTest(code=code), self.assertRaisesRegex(Refusal, 'gpgv_exit'):
                 self.check(returncode=code)
+        with self.assertRaisesRegex(Refusal,'gpgv_unexpected_cosignature'):
+            self.check(returncode=2)
+
+    def test_exact_bookworm_cosignature_requires_both_trusted_signatures(self):
+        bookworm,release=sorted(BOOKWORM.primaries)
+        status=(f'[GNUPG:] NEWSIG\n'
+                f'[GNUPG:] VALIDSIG {bookworm} 2026-07-11 1783765031 0 4 0 1 8 01 {bookworm}\n'
+                f'[GNUPG:] NEWSIG\n'
+                f'[GNUPG:] ERRSIG 78DBA3BC47EF2265 1 8 01 1783765032 9 B8E5F13176D2A7A75220028078DBA3BC47EF2265\n'
+                f'[GNUPG:] NO_PUBKEY 78DBA3BC47EF2265\n'
+                f'[GNUPG:] NEWSIG\n'
+                f'[GNUPG:] VALIDSIG {release} 2026-07-11 1783765141 0 4 0 22 8 01 {release}\n').encode()
+        self.assertEqual(set(signature_contract(2,False,status,BOOKWORM)),BOOKWORM.primaries)
+        for changed in (status.replace(b'1783765032',b'1783765033'),
+                        status.replace(b'NO_PUBKEY 78DBA3BC47EF2265',b'NO_PUBKEY 0000000000000000'),
+                        status.replace(b'ERRSIG',b'BADSIG'),
+                        status.replace(bookworm.encode(),b'0'*40),
+                        status.replace(b'NO_PUBKEY 78DBA3BC47EF2265\n',b''),
+                        status+b'[GNUPG:] UNEXPECTED extra\n'):
+            with self.subTest(changed=changed[-100:]),self.assertRaises(Refusal):
+                signature_contract(2,False,changed,BOOKWORM)
+        with self.assertRaises(Refusal):signature_contract(0,False,status,BOOKWORM)
+        with self.assertRaises(Refusal):signature_contract(2,False,status,self.policy)
 
     def test_goodsig_only_is_not_validsig(self):
         with self.assertRaisesRegex(Refusal, 'expected_primary_absent'):

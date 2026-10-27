@@ -183,10 +183,11 @@ def _sources(ops):
     require('preferences' not in etc, 'apt.preference_override')
 
 
-def _result_ok(value, cap):
+def _result_ok(value, cap, *, signature_status=False):
     require(type(value) is dict and {'exitCode', 'timedOut', 'captureComplete',
             'ownedChildExited', 'ownershipRetained', 'stdout', 'stderr'} <= value.keys(), 'apt.command_shape')
-    require(type(value['exitCode']) is int and value['exitCode'] == 0 and
+    require(type(value['exitCode']) is int and
+            value['exitCode'] in ((0, 2) if signature_status else (0,)) and
             value['timedOut'] is False and value['captureComplete'] is True and
             value['ownedChildExited'] is True and value['ownershipRetained'] is False and
             type(value['stdout']) is bytes and len(value['stdout']) <= cap and
@@ -194,7 +195,7 @@ def _result_ok(value, cap):
     return value
 
 
-def _command(ops, role, argv, maximum):
+def _command(ops, role, argv, maximum, *, signature_status=False):
     try:
         value = ops.run(argv, timeout=30, stdout_cap=maximum, stderr_cap=16384)
     except BaseException as error:
@@ -203,7 +204,7 @@ def _command(ops, role, argv, maximum):
         raise Refusal('apt.command_boundary') from None
     # Save the actual bounded cause before interpreting JSON/status/exit.
     ops.evidence(role, value)
-    return _result_ok(value, maximum)
+    return _result_ok(value, maximum, signature_status=signature_status)
 
 
 def run_guard(ops, context, phase):
@@ -240,7 +241,7 @@ def _run_guard(ops, context, phase, fixture):
                             ('/usr/lib/apt/apt-helper', 'aptHelperSha256')):
         require(sha(_read(ops, executable, 16777216)) == context[key], 'apt.tool_pin')
     signature = _command(ops, 'gpgv', ('/usr/bin/gpgv', '--status-fd=1', '--keyring', KEYRING,
-                                     release_path), 16384)
+                                     release_path), 16384, signature_status=True)
     packages = _command(ops, 'packages', ('/usr/lib/apt/apt-helper', 'cat-file', package_path),
                         64 * 1024 * 1024)['stdout']
     # Recheck the underlying roster/bytes after the tools finish. Any concurrent

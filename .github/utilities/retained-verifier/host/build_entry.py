@@ -22,6 +22,7 @@ ROOT='/opt/ocv/source'
 CONTROL='/opt/ocv/control'
 OUT='/work/out'
 DATA=CONTROL+'/apt-data'
+GPG_METADATA=('/usr/bin/gpgv','--status-fd=1','--keyring',DATA+'/keyring.gpg',DATA+'/InRelease')
 HEADER=CONTROL+'/build-stage-context.json'
 SOURCE_MANIFEST=ROOT+'/PUBLIC-SOURCE-MANIFEST.json'
 WORKFLOW='fr-meyer/openclaw/.github/workflows/authorized-beta-focused-validation.yml@refs/heads/retained-verifier-prerequisites'
@@ -103,13 +104,24 @@ def source_roster(raw,expected_source):
     return out
 
 
-def command_ok(result):
-    need(type(result)is dict and result.get('exitCode')==0 and type(result.get('exitCode'))is int
+def command_ok(result, *, signature_status=False):
+    need(type(result)is dict and type(result.get('exitCode'))is int and
+         result['exitCode'] in ((0, 2) if signature_status else (0,))
          and result.get('timedOut')is False and result.get('captureComplete')is True
          and result.get('ownedChildExited')is True and result.get('ownershipRetained')is False
          and type(result.get('stdout'))is bytes and type(result.get('stderr'))is bytes,
          'build_entry.command_refused')
     return result['stdout']
+
+
+def deferred_signature_failure(argv,result,metadata_ready):
+    """Keep one complete exit-2 gpgv result for policy classification."""
+    return (metadata_ready is False and argv==GPG_METADATA and type(result)is dict and
+            type(result.get('exitCode'))is int and result['exitCode']==2 and
+            result.get('timedOut') is False and result.get('captureComplete') is True and
+            result.get('ownedChildExited') is True and result.get('ownershipRetained') is False and
+            not result.get('errors') and type(result.get('stdout'))is bytes and
+            type(result.get('stderr'))is bytes)
 
 
 def capture_command(argv,timeout,capout,caperr,io):
@@ -254,10 +266,11 @@ def verify_metadata(ops,header,source_sha,leaves):
     data={n:ops.read(DATA+'/'+n,64*1024**2 if n=='Packages' else 2*1024**2) for n in FIXED_DATA}
     joined=archive.verify_export(descriptor,data,expected_keyring_sha256=header['keyringSha256'],
                                   expected_source_manifest_sha256=source_sha,expected_build_id=header['buildId'])
-    result=ops.run(('/usr/bin/gpgv','--status-fd=1','--keyring',DATA+'/keyring.gpg',DATA+'/InRelease'),30)
-    status=command_ok(result)
+    result=ops.run(GPG_METADATA,30)
+    status=command_ok(result,signature_status=True)
     classified=policy.classify(data['InRelease'],data['Packages'],returncode=result['exitCode'],
         timed_out=result['timedOut'],status=status,checked_at=ops.now())
+    if hasattr(ops,'deferred_gpg_failure'):ops.deferred_gpg_failure=None
     signature={'schema':'ocv-build-signature-v1','exportJoin':joined,'classification':classified,
                'freshGpgStatusSha256':sha(status),'sourceManifestSha256':source_sha}
     return data,joined,signature
@@ -379,7 +392,7 @@ class NativeBuildOps:
              and os.getuid()==os.geteuid()==os.getgid()==os.getegid()==0,'build_entry.native_target')
         need(__file__==ROOT+'/host/build_entry.py' and os.environ.get('BUILDROOT')=='/'
              and os.environ.get('OUTPUTDIR')==OUT,'build_entry.fixed_chroot')
-        self.command_count=0;self.command_evidence=[];self.first_failure=None
+        self.command_count=0;self.command_evidence=[];self.first_failure=None;self.deferred_gpg_failure=None
         self.metadata_ready=False
         self.source_sha=expected_source;self.context_sha=expected_context
         header_raw=self.read(HEADER,1024**2)
@@ -393,7 +406,11 @@ class NativeBuildOps:
         need(fields.get('ID','').strip('"')=='debian' and fields.get('VERSION_CODENAME','').strip('"')=='bookworm',
              'build_entry.debian_root')
         self.leaves=load_leaves(self)
-        self._metadata=verify_metadata(self,self.header,expected_source,self.leaves)
+        try:self._metadata=verify_metadata(self,self.header,expected_source,self.leaves)
+        except BaseException:
+            if self.deferred_gpg_failure is not None:
+                self.preserve_failure('build_entry.gpgv_metadata',self.deferred_gpg_failure)
+            raise
         self.metadata_ready=True
 
     def now(self):return dt.datetime.now(dt.timezone.utc)
@@ -535,7 +552,7 @@ class NativeBuildOps:
 
     def _command_cap(self,argv):
         need(type(argv)is tuple and all(type(a)is str and a and '\x00'not in a for a in argv),'build_entry.argv')
-        gpg=('/usr/bin/gpgv','--status-fd=1','--keyring',DATA+'/keyring.gpg',DATA+'/InRelease')
+        gpg=GPG_METADATA
         if not self.metadata_ready:
             need(argv==gpg,'build_entry.metadata_not_verified')
             return 16384,8192
@@ -577,7 +594,9 @@ class NativeBuildOps:
             'streamFacts':result['streamFacts'],'stderr':result['stderr'][-4096:].decode('utf-8','replace')}
         self.command_evidence.append(record)
         if result['exitCode']!=0 or not result['captureComplete']:
-            self.preserve_failure('build_entry.command',record)
+            if deferred_signature_failure(argv,result,self.metadata_ready):
+                self.deferred_gpg_failure=record
+            else:self.preserve_failure('build_entry.command',record)
         return result
 
     def preserve_failure(self,phase,detail):
@@ -640,6 +659,16 @@ def synthetic_contract_tests():
     rejects(lambda:decode(b'{"x":1,"x":2}'))
     rejects(lambda:command_ok({'exitCode':0,'timedOut':True,'captureComplete':True,'ownedChildExited':True,
                               'ownershipRetained':False,'stdout':b'{}','stderr':b''}))
+    signature={'exitCode':2,'timedOut':False,'captureComplete':True,'ownedChildExited':True,
+               'ownershipRetained':False,'stdout':b'bounded-status','stderr':b''}
+    check(command_ok(signature,signature_status=True)==signature['stdout'])
+    rejects(lambda:command_ok(signature))
+    rejects(lambda:command_ok(dict(signature,ownershipRetained=True),signature_status=True))
+    check(deferred_signature_failure(GPG_METADATA,dict(signature,errors=[]),False))
+    check(not deferred_signature_failure(GPG_METADATA,dict(signature,errors=[]),True))
+    check(not deferred_signature_failure(('/usr/bin/gpgv','--status-fd=1'),dict(signature,errors=[]),False))
+    check(not deferred_signature_failure(GPG_METADATA,dict(signature,errors=[],captureComplete=False),False))
+    check(not deferred_signature_failure(GPG_METADATA,dict(signature,errors=[{'phase':'read'}]),False))
     actual={'platform':'not-linux','machine':'not-x86','euid':9}
     check(RuntimeOps(SimpleNamespace(platform_facts=lambda:actual)).facts()==actual)
     class Stream:

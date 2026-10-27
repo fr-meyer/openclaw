@@ -82,6 +82,15 @@ class GuardTests(unittest.TestCase):
     def setUp(self):self.ops=Ops()
     def run_guard(self,phase='update'):
         return g._run_guard(self.ops,self.ops.context,phase,self.ops.fixture)
+    def test_only_signature_process_may_deliver_complete_exit_two_to_policy(self):
+        value={'exitCode':2,'timedOut':False,'captureComplete':True,'ownedChildExited':True,
+               'ownershipRetained':False,'stdout':b'bounded-status','stderr':b''}
+        self.assertEqual(g._result_ok(value,16384,signature_status=True),value)
+        with self.assertRaisesRegex(g.Refusal,'apt.command_failed'):g._result_ok(value,16384)
+        for field in ('timedOut','captureComplete','ownedChildExited','ownershipRetained'):
+            changed=dict(value,**{field:not value[field]})
+            with self.subTest(field=field),self.assertRaisesRegex(g.Refusal,'apt.command_failed'):
+                g._result_ok(changed,16384,signature_status=True)
     def test_actual_logic_with_small_explicit_fixture(self):
         proof,raw=self.run_guard()
         self.assertEqual(proof['releaseSha256'],sha(self.ops.release));self.assertEqual(raw['Packages'],self.ops.packages)

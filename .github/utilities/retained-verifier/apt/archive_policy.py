@@ -91,7 +91,7 @@ def one(values, key):
 
 def signature_contract(returncode, timed_out, status, fixture=BOOKWORM):
     """Classify fresh fixed-process output; arbitrary JSON is not native proof."""
-    require(timed_out is False and type(returncode) is int and returncode == 0,
+    require(timed_out is False and type(returncode) is int and returncode in (0, 2),
             'gpgv_exit')
     require(type(status) is bytes and len(status) <= 16384, 'gpgv_status_size')
     try:
@@ -99,12 +99,19 @@ def signature_contract(returncode, timed_out, status, fixture=BOOKWORM):
     except UnicodeError:
         raise Refusal('gpgv_status_encoding') from None
     valid = set()
-    bad = {'BADSIG', 'ERRSIG', 'NO_PUBKEY', 'REVKEYSIG', 'EXPKEYSIG', 'EXPSIG',
+    missing = []
+    bad = {'BADSIG', 'REVKEYSIG', 'EXPKEYSIG', 'EXPSIG',
            'KEYEXPIRED', 'SIGEXPIRED', 'FAILURE', 'ERROR', 'NODATA'}
     for line in lines:
         require(line.startswith('[GNUPG:] '), 'gpgv_status_prefix')
         parts = line[9:].split()
         require(parts and parts[0] not in bad, 'gpgv_bad_status')
+        if returncode == 2:
+            require(parts[0] in {'NEWSIG','KEY_CONSIDERED','SIG_ID','GOODSIG','VALIDSIG',
+                                 'ERRSIG','NO_PUBKEY'}, 'gpgv_unexpected_status')
+        if parts[0] in ('ERRSIG', 'NO_PUBKEY'):
+            missing.append(line)
+            continue
         if parts[0] != 'VALIDSIG':
             continue
         require(len(parts) in (10, 11), 'gpgv_validsig_shape')
@@ -115,6 +122,16 @@ def signature_contract(returncode, timed_out, status, fixture=BOOKWORM):
                 'gpgv_fingerprint')
         require(primary not in valid, 'gpgv_duplicate_validsig')
         valid.add(primary)
+    if returncode == 2:
+        # This exact pinned Bookworm fixture has two trusted signatures and
+        # one additional signature absent from Noble's Debian keyring. The
+        # unknown signature is never used as authority.
+        require(fixture == BOOKWORM and valid == fixture.primaries and missing == [
+            '[GNUPG:] ERRSIG 78DBA3BC47EF2265 1 8 01 1783765032 9 B8E5F13176D2A7A75220028078DBA3BC47EF2265',
+            '[GNUPG:] NO_PUBKEY 78DBA3BC47EF2265',
+        ], 'gpgv_unexpected_cosignature')
+    else:
+        require(not missing, 'gpgv_bad_status')
     require(bool(valid & fixture.primaries), 'gpgv_expected_primary_absent')
     return sorted(valid)
 

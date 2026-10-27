@@ -188,9 +188,30 @@ class NativePort:
         release=read_regular(self.project/'metadata/InRelease',196608)
         compressed=read_regular(self.project/'metadata/Packages.xz',16777216)
         self.packages=decompress_packages(compressed)
-        status=self._run('gpgv_metadata',{'project':str(self.project)},30)
+        status=self._run('gpgv_metadata',{'project':str(self.project)},30,allow_failure=True)
+        if status['returncode']==2:
+            require(status.get('status')=='refused' and status.get('reason')=='command_exit_nonzero' and
+                    status.get('spawned') is True and status.get('timedOut') is False and
+                    status.get('outerExited') is True and status.get('ownedGroupGone') is True and
+                    status.get('streamsEOF') is True and status.get('streamsClosed') is True and
+                    status.get('ownershipRetained') is False and status.get('truncated') is False and
+                    status.get('cleanupErrors')==[] and status.get('setupCause') is None,
+                    'host.gpgv_process_boundary')
+        else:
+            require(status.get('status')=='outer_exit_passed','host.gpgv_process_boundary')
         self.metadata=self.m.policy.classify(release,self.packages,returncode=status['returncode'],
           timed_out=status['timedOut'],status=status['stdout'],checked_at=datetime.now(timezone.utc))
+        if status['returncode']==2:
+            # The classifier accepted only the exact extra unknown signature.
+            # Clear provisional failure custody before the expected APT-negative
+            # test so its diagnostic files retain their true origin.
+            require(self.first_failure is self.commands[-1],'host.gpgv_failure_custody')
+            for name in ('stdout','stderr'):
+                diagnostic=self.artifacts/('host-'+name+'.bin')
+                require(read_regular(diagnostic,1048576)==status[name][:1048576],
+                        'host.gpgv_failure_custody')
+                diagnostic.unlink()
+            self.first_failure=None
         self.records=self.m.apt.package_records(self.packages)
         self.roots=select_roots(self.records,self.m.build.REQUIRED_PACKAGES,'linux-image-6.1.0-50-amd64')
         self.m.build.package_specs(self.roots)

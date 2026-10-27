@@ -58,7 +58,7 @@ def outer(stdout=b'',stderr=b'',**changes):
  value={'status':'outer_exit_passed','returncode':0,'timedOut':False,'truncated':False,
   'outerExited':True,'ownedGroupGone':True,'streamsEOF':True,'streamsClosed':True,
   'ownershipRetained':False,'stdout':stdout,'stderr':stderr,'setupCause':None,
-  'spawned':True,'synthetic':True}
+  'spawned':True,'cleanupErrors':[],'synthetic':True}
  value.update(changes);return value
 
 
@@ -128,6 +128,7 @@ class ContractFixture:
    'GITHUB_SHA':'c'*40,'GITHUB_RUN_ID':'123'}
   self.negative_changes={};self.qemu_mode='valid';self.qemu_calls=0;self.output_paths=set()
   self.short_stream=False;self.real_read=h.read_regular;self.real_lstat=Path.lstat
+  self.gpg_exit=0;self.gpg_changes={}
  def new_port(self):
   with mock.patch.dict(os.environ,self.environment):
    self.port=h.NativePort(self.permit,self.modules,self.source,self.raw,self.rows)
@@ -206,7 +207,10 @@ class ContractFixture:
   if role=='debian_metadata_curl':
    self.write(self.port.project/'metadata'/('InRelease' if args['kind']=='release' else 'Packages.xz'),
     self.release if args['kind']=='release' else lzma.compress(self.packages));return outer()
-  if role=='gpgv_metadata':return outer(self.gpg_status)
+  if role=='gpgv_metadata':
+   if self.gpg_exit==2:
+    return outer(self.gpg_status,status='refused',returncode=2,reason='command_exit_nonzero',**self.gpg_changes)
+   return outer(self.gpg_status)
   if role=='mkosi_build' and Path(args['project']).name=='negative':
    context=json.loads((Path(args['project'])/'pkgmngr/etc/apt/ocv/guard-context.json').read_bytes())
    record={'schema':'ocv-apt-refused-v1','buildId':context['buildId'],'sourceManifestSha256':SHA(self.raw),
@@ -235,6 +239,37 @@ class NativePortContract(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(prefix='ocv-public-contract-')
   self.addCleanup(self.tmp.cleanup);self.fixture=ContractFixture(self.tmp.name)
+ def test_complete_gpg_exit_two_requires_policy_before_provisional_custody_clear(self):
+  self.fixture.gpg_exit=2
+  port=self.fixture.new_port()
+  def checked(_release,_packages,**kw):
+   self.assertEqual(kw['returncode'],2)
+   self.assertEqual(kw['status'],self.fixture.gpg_status)
+   return {'verifiedPrimaryFingerprints':['synthetic-policy-seam']}
+  with mock.patch.object(h,'read_regular',side_effect=self.fixture.tool_read),\
+       mock.patch.object(self.fixture.policy,'classify',side_effect=checked):
+   port.install_host_tools();port.authenticate_metadata()
+  self.assertIsNone(port.first_failure)
+  self.assertEqual(port.commands[-1]['status'],'refused')
+  self.assertFalse((port.artifacts/'host-stdout.bin').exists())
+  self.assertFalse((port.artifacts/'host-stderr.bin').exists())
+ def test_incomplete_gpg_exit_two_preserves_first_cause(self):
+  self.fixture.gpg_exit=2;self.fixture.gpg_changes={'streamsEOF':False}
+  port=self.fixture.new_port()
+  with mock.patch.object(h,'read_regular',side_effect=self.fixture.tool_read):
+   port.install_host_tools()
+   with self.assertRaisesRegex(h.Refusal,'host.gpgv_process_boundary'):
+    port.authenticate_metadata()
+  self.assertEqual(port.first_failure['role'],'gpgv_metadata')
+  self.assertTrue((port.artifacts/'host-stdout.bin').exists())
+ def test_gpg_exit_two_with_cleanup_error_never_reaches_policy(self):
+  self.fixture.gpg_exit=2;self.fixture.gpg_changes={'cleanupErrors':[{'phase':'close'}]}
+  port=self.fixture.new_port()
+  with mock.patch.object(h,'read_regular',side_effect=self.fixture.tool_read):
+   port.install_host_tools()
+   with self.assertRaisesRegex(h.Refusal,'host.gpgv_process_boundary'):
+    port.authenticate_metadata()
+  self.assertEqual(port.first_failure['role'],'gpgv_metadata')
  def test_public_project_stays_separate_from_private_runner_artifact_temp(self):
   runner_temp=self.fixture.root/'runner-temp';runner_temp.mkdir(mode=0o700)
   self.fixture.environment['RUNNER_TEMP']=str(runner_temp)
