@@ -348,6 +348,8 @@ class NativePort:
     def build_once(self):
         self._project_files(self.project)
         self._run('mkosi_build',{'project':str(self.project)},900)
+        self._run('own_mkosi_image',{'project':str(self.project),
+            'uid':self.permit.uid,'gid':self.permit.gid},30)
         self._run('freeze_public_outputs',{'project':str(self.project)},30)
         self.build=decode(read_regular(self.project/'out/build.json',32768))
         require(self.build['sourceManifestSha256']==sha(self.manifest_raw) and self.build['runIdentity']==self.run and

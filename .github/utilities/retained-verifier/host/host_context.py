@@ -38,6 +38,7 @@ ROLE_MAP={
  'gpgv_metadata':('host/command_factories.py','gpgv_metadata'),
  'dpkg_query':('host/command_factories.py','dpkg_query'),
  'own_project_chown':('host/command_factories.py','own_project_chown'),
+ 'own_mkosi_image':('host/command_factories.py','own_mkosi_image'),
  'freeze_public_outputs':('host/command_factories.py','freeze_public_outputs'),
  'python_tests':('host/command_factories.py','python_tests'),
  'mkosi_build':('build/build_recipe.py','mkosi_argv'),
@@ -392,6 +393,17 @@ def _freeze_outputs(project):
        and not info.st_mode&0o022,'host.freeze_identity')
 
 
+def _preflight_mkosi_image(permit,arguments):
+ need(set(arguments)=={'project','uid','gid'} and arguments['uid']==permit.uid
+      and arguments['gid']==permit.gid,'host.mkosi_image_owner')
+ path=Path(arguments['project'])/'out/ocv-test.raw'
+ need(path.resolve()==path and not path.is_symlink(),'host.mkosi_image_path')
+ info=path.lstat()
+ need(stat.S_ISREG(info.st_mode) and info.st_uid==permit.uid and info.st_gid==permit.gid
+      and info.st_nlink==1 and 0<info.st_size<=6*1024**3 and not info.st_mode&0o022,
+      'host.mkosi_image_identity')
+
+
 def _freeze_vector(project,argv):
  exact=('/usr/bin/sudo','-n','--','/usr/bin/chmod','0444','--')+tuple(
   str(Path(project)/'out'/name)for name in('ocv-test.raw','kernel.bin','initrd.img'))
@@ -424,6 +436,7 @@ def seal_command(permit,role,arguments,*,cwd,environment):
  if 'workspace'in arguments:need(arguments['workspace']==str(permit.workspace),'host.workspace_arg')
  if 'source_root'in arguments:need(arguments['source_root']==str(permit.source),'host.source_arg')
  if role=='own_project_chown':_prepare_chown(arguments)
+ if role=='own_mkosi_image':_preflight_mkosi_image(permit,arguments)
  if role=='freeze_public_outputs':_freeze_outputs(arguments['project'])
  if role=='partition_read':need(arguments.get('image')==str(permit.project/'out/ocv-test.raw'),'host.partition_arg')
  if role=='qemu_once':_qemu_arguments(permit,arguments)
@@ -432,6 +445,10 @@ def seal_command(permit,role,arguments,*,cwd,environment):
  need(type(argv)is tuple and argv and argv[0]in PROGRAMS and all(type(a)is str and a and '\x00'not in a for a in argv),
       'host.factory_argv')
  if role=='freeze_public_outputs':_freeze_vector(arguments['project'],argv)
+ if role=='own_mkosi_image':
+  need(argv==('/usr/bin/sudo','-n','--','/usr/bin/chown',
+       '--from='+str(permit.uid)+':'+str(permit.gid),'--','0:0',
+       str(permit.project/'out/ocv-test.raw')),'host.mkosi_image_argv')
  if argv[0]=='/usr/bin/sudo':need(len(argv)>4 and argv[:3]==('/usr/bin/sudo','-n','--')
   and (argv[3]in('/usr/bin/apt-get','/usr/bin/chown')
    or role=='freeze_public_outputs' and argv[3]=='/usr/bin/chmod'),'host.sudo_command')

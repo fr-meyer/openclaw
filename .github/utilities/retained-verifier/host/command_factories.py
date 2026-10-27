@@ -93,6 +93,16 @@ def own_project_chown(project, phase, owner):
     return ('/usr/bin/sudo','-n','--','/usr/bin/chown','-R','--',owner,project_path(project,'out'))
 
 
+def own_mkosi_image(project, uid, gid):
+    # mkosi20.2 assigns staged non-directory outputs to INVOKING_USER.
+    # Correct only its one known public image, never an output tree.
+    require(type(uid) is int and type(gid) is int and 0<uid<1000000 and 0<gid<1000000,
+            'mkosi_owner')
+    owner=str(uid)+':'+str(gid)
+    return ('/usr/bin/sudo','-n','--','/usr/bin/chown','--from='+owner,'--','0:0',
+            project_path(project,'out/ocv-test.raw'))
+
+
 def freeze_public_outputs(project):
     return ('/usr/bin/sudo','-n','--','/usr/bin/chmod','0444','--')+tuple(
         project_path(project,'out/'+name)for name in ('ocv-test.raw','kernel.bin','initrd.img'))

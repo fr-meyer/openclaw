@@ -117,7 +117,7 @@ class ContractFixture:
    (self.source/'PUBLIC-SOURCE-MANIFEST.json').chmod(0o444)
   self.raw,self.rows=h.bootstrap_source(self.source,SHA((self.source/'PUBLIC-SOURCE-MANIFEST.json').read_bytes()))
   self.permit=SimpleNamespace(project=str(self.root/'project'),mission=self.mission,
-   expected={'source_manifest_sha':SHA(self.raw)})
+   uid=os.getuid(),gid=os.getgid(),expected={'source_manifest_sha':SHA(self.raw)})
   self.commands=SyntheticCommands(self)
   self.release,self.packages,self.gpg_status,self.policy_fixture=metadata()
   self.policy=SimpleNamespace(classify=lambda *args,**kw:policy.classify(*args,fixture=self.policy_fixture,**kw))

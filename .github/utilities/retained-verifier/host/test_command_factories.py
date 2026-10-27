@@ -28,6 +28,11 @@ class FactoryTests(unittest.TestCase):
             with self.assertRaises(c.Refusal):c.ubuntu_apt_update(value)
         with self.assertRaises(c.Refusal):c.own_project_chown('/tmp/x','prepare','1001:1001')
         with self.assertRaises(c.Refusal):c.own_project_chown('/tmp/x','outside','1001:1001')
+        self.assertEqual(c.own_mkosi_image('/tmp/x',1001,1001),
+          ('/usr/bin/sudo','-n','--','/usr/bin/chown','--from=1001:1001','--','0:0',
+           '/tmp/x/out/ocv-test.raw'))
+        for uid,gid in ((0,1001),(1001,0),('1001',1001),(1001,True)):
+            with self.assertRaises(c.Refusal):c.own_mkosi_image('/tmp/x',uid,gid)
     def test_test_roster_comes_only_from_known_manifest_rows(self):
         rows={'host/test_a.py':{},'host/not_a_test.py':{},'host/deep/test_b.py':{},'apt/test_archive_policy.py':{}}
         self.assertEqual(r.selected_paths(rows,'host'),['host/test_a.py'])
