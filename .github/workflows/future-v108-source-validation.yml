@@ -1,0 +1,139 @@
+name: Future v108 source validation
+run-name: future-v108-source-validation-20261027
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+# One campaign, including corrections. Queued duplicates fail admission.
+concurrency:
+  group: future-v108-source-validation-20261027
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  admission:
+    if: >-
+      ${{ github.repository == 'fr-meyer/openclaw' && github.event.repository.private == false &&
+          github.event.pull_request.number == 28 && github.event.pull_request.draft == true &&
+          github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' &&
+          github.event.pull_request.head.ref == 'task/v107-source-binding' &&
+          github.event.pull_request.base.ref == 'release-pipeline/v105-image-only-20261024' &&
+          github.event.pull_request.base.sha == 'a65f70c5dad17b39bc3ee26ba92cde6d00bfb259' &&
+          github.run_attempt == 1 }}
+    name: admission
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      matrix: ${{ steps.admit.outputs.matrix }}
+      deadline_epoch: ${{ steps.admit.outputs.deadline_epoch }}
+    steps:
+      - name: Checkout reviewed pipeline head and complete ancestry
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout frozen product source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: 61f924bdb7ed4f837096c87120087919ff0a6bdf
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Admit exact campaign and source with read-only public metadata
+        id: admit
+        env:
+          GH_SOURCE_READ_TOKEN: ${{ github.token }}
+        run: >-
+          python3 pipeline/scripts/fork-release/source_validation_v108.py admit
+          --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
+
+  source:
+    needs: admission
+    name: source (${{ matrix.profile }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.minutes }}
+    permissions:
+      contents: read
+    env:
+      SOURCE_PROFILE: ${{ matrix.profile }}
+      SOURCE_DEADLINE_EPOCH: ${{ needs.admission.outputs.deadline_epoch }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.admission.outputs.matrix) }}
+    steps:
+      - name: Checkout reviewed pipeline head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout frozen product source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: 61f924bdb7ed4f837096c87120087919ff0a6bdf
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup fixed supported Node runtime without a cache
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.22.1
+          package-manager-cache: false
+      - name: Verify complete public source closure through maintained preflight
+        run: >-
+          python3 pipeline/scripts/fork-release/source_validation_v108.py fetch-closure
+          --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
+      - name: Run named source profile with synthetic state and credential-free environment
+        run: >-
+          python3 pipeline/scripts/fork-release/source_validation_v108.py run
+          --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
+          --profile "$SOURCE_PROFILE"
+
+  final:
+    if: ${{ always() && needs.admission.result == 'success' }}
+    needs: [admission, source]
+    name: final
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout reviewed pipeline head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Record bounded source-only result in logs and job summary
+        env:
+          SOURCE_ADMISSION_RESULT: ${{ needs.admission.result }}
+          SOURCE_MATRIX_RESULT: ${{ needs.source.result }}
+        run: >-
+          python3 pipeline/scripts/fork-release/source_validation_v108.py finalize
+          --pipeline-dir "$GITHUB_WORKSPACE/pipeline"
+
+# No artifact upload or cache route. The owner captures allowlisted summaries
+# within one day; total retained diagnostic evidence is limited to 64 MiB.
+# Normal source postinstall and maintained test-owner qaRuntime/worker/facade
+# compilation use ephemeral job storage and remain inside these timeouts.
+# No image, registry, cloud, deployment or production approval is produced.

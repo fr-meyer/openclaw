@@ -103,21 +103,24 @@ def validate_merge_shape(source):
         "schema", "integration", "successors", "securitySource"} if versioned else fields),
         "invalid merge proof fields")
     if versioned:
-        need(merge["schema"] == "openclaw.fork-source-merge.v2", "unsupported merge proof schema")
+        need(merge["schema"] in ("openclaw.fork-source-merge.v2", "openclaw.fork-source-merge.v3"),
+             "unsupported merge proof schema")
         for name in ("integration", "securitySource"):
             item = merge[name]
             need(type(item) is dict and set(item) == {"commit", "tree"}
                  and all(matches(SHA, item[key]) for key in ("commit", "tree")),
                  "invalid merge " + name)
         successors = merge["successors"]
-        need(type(successors) is list and 1 <= len(successors) <= 16,
+        minimum = 0 if merge["schema"] == "openclaw.fork-source-merge.v3" else 1
+        need(type(successors) is list and minimum <= len(successors) <= 16,
              "invalid merge successor count")
         for item in successors:
             need(type(item) is dict and set(item) == {"commit", "tree"}
                  and all(matches(SHA, item[key]) for key in ("commit", "tree")),
                  "invalid merge successor")
         commits = [merge["integration"]["commit"]] + [item["commit"] for item in successors]
-        need(len(set(commits)) == len(commits) and successors[-1] == {
+        tip = successors[-1] if successors else merge["integration"]
+        need(len(set(commits)) == len(commits) and tip == {
             "commit": source["commit"], "tree": source["tree"]}, "merge successor tip changed")
     for name in ("commonCommit", "commonTree", "forkCommit", "forkTree"):
         need(matches(SHA, merge[name]), "invalid merge " + name)
@@ -148,6 +151,9 @@ def check_merge_reconciliation(source, source_dir):
                          capture_output=True, check=True, env={**os.environ, "GIT_NO_LAZY_FETCH": "1"}).stdout
     need(sha256(raw) == proof["sha256"], "merge reconciliation digest changed")
     ledger = json.loads(raw)
+    if merge.get("schema") == "openclaw.fork-source-merge.v3":
+        check_v108_reconciliation(source, source_dir, ledger)
+        return
     if "schema" in merge:
         check_v107_reconciliation(source, source_dir, ledger)
         return
@@ -332,6 +338,132 @@ def check_v107_reconciliation(source, source_dir, ledger):
                         successor["base"], source["commit"]).splitlines()
     need(all(matches(TEST_PATH, name) or name.startswith("test/") or name in support
              for name in focused_paths), "10.7 focused successor changed runtime or dependencies")
+
+
+
+def check_v108_metadata_carry(source_dir, name, fork_entry, upstream_entry, result_entry):
+    """Only release metadata may change in a claimed dependency-security carry.
+
+    This preserves the reviewed fork's dependency selections, overrides, scripts
+    and plugin configuration. It does not evaluate dependency vulnerability or
+    transfer the historical security source's qualification.
+    """
+    documents = [json.loads(git(source_dir, "cat-file", "blob", entry["blob"]))
+                 for entry in (fork_entry, upstream_entry, result_entry)]
+    need(all(type(item) is dict for item in documents), "invalid 10.8 package metadata: " + name)
+    fork, upstream, result = documents
+    # These exact fields are the release metadata that changed from 10.7 to 10.8.
+    # Copy their values from the pinned upstream; every other fork field is kept.
+    expected = json.loads(json.dumps(fork))
+    for keys in (("version",), ("peerDependencies", "openclaw"),
+                 ("openclaw", "compat", "pluginApi"),
+                 ("openclaw", "build", "openclawVersion")):
+        target, incoming = expected, upstream
+        for key in keys[:-1]:
+            target = target.get(key) if type(target) is dict else None
+            incoming = incoming.get(key) if type(incoming) is dict else None
+        if type(target) is dict and type(incoming) is dict and keys[-1] in incoming:
+            target[keys[-1]] = incoming[keys[-1]]
+    need(result == expected, "10.8 dependency security or fork metadata changed: " + name)
+    need(fork_entry["mode"] == result_entry["mode"], "10.8 package mode changed: " + name)
+
+
+def check_v108_reconciliation(source, source_dir, ledger):
+    """Check the committed 10.8 ledger against complete, exact mode/blob trees.
+
+    Reconciliation of overlapping source and documentation remains a reviewed
+    judgment. This proves identities and path preservation, not runtime behavior.
+    """
+    merge = source["merge"]
+    proof_path = "custom-patches/reconciliation-2026.10.8.json"
+    note_path = "custom-patches/NEXT-RELEASE-2026.10.8.md"
+    need(type(ledger) is dict and set(ledger) == {
+        "schema", "upstream107", "fork107Source", "upstream108", "priorForkDeltaPaths",
+        "textualConflicts", "qualificationTransferred", "selfExclusion", "paths"},
+        "invalid 10.8 merge ledger fields")
+    need(ledger["schema"] == "openclaw-v108-source-reconciliation-v1"
+         and ledger["qualificationTransferred"] is False,
+         "unsupported 10.8 ledger or qualification")
+    need(ledger["upstream107"] == merge["commonCommit"]
+         and ledger["fork107Source"] == merge["forkCommit"]
+         and ledger["upstream108"] == source["baseCommit"], "10.8 ledger source binding changed")
+    need(merge["reconciliation"]["path"] == proof_path
+         and ledger["selfExclusion"] == {"path": proof_path, "reason": "result-blob self-reference excluded"},
+         "unsupported 10.8 ledger self-exclusion")
+    need(type(ledger["textualConflicts"]) is int and ledger["textualConflicts"] == 0,
+         "unsupported 10.8 textual conflict claim")
+    paths = ledger["paths"]
+    need(type(paths) is list and 1 <= len(paths) <= 4096, "invalid 10.8 ledger paths")
+    names = []
+    for item in paths:
+        need(type(item) is dict and set(item) == {
+            "path", "upstream107", "fork107", "upstream108", "result", "disposition"},
+            "invalid 10.8 ledger path fields")
+        name = item["path"]
+        need(isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_./@+-]+", name)
+             and not name.startswith("/") and not any(part in ("", ".", "..") for part in name.split("/")),
+             "invalid 10.8 ledger path")
+        for key in ("upstream107", "fork107", "upstream108", "result"):
+            entry = item[key]
+            need(entry is None or (type(entry) is dict and set(entry) == {"mode", "blob"}
+                 and entry["mode"] in ("100644", "100755", "120000") and matches(SHA, entry["blob"])),
+                 "invalid 10.8 ledger mode/blob: " + name)
+        names.append(name)
+    fork_changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                      merge["commonCommit"], merge["forkCommit"]).split("\0")))
+    result_changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                        source["baseCommit"], source["commit"]).split("\0")))
+    need(len(names) == len(set(names)) and proof_path not in names
+         and set(names) == fork_changed | (result_changed - {proof_path})
+         and proof_path in result_changed and note_path in names,
+         "10.8 ledger coverage differs from prior fork or result delta")
+    need(type(ledger["priorForkDeltaPaths"]) is int and ledger["priorForkDeltaPaths"] == len(fork_changed),
+         "10.8 prior fork path count changed")
+    trees = {}
+    for key, commit in (("upstream107", merge["commonCommit"]), ("fork107", merge["forkCommit"]),
+                        ("upstream108", source["baseCommit"]), ("result", source["commit"])):
+        entries = git(source_dir, "--literal-pathspecs", "ls-tree", "-r", "-z", commit, "--", *names)
+        tree = {}
+        for entry in filter(None, entries.split("\0")):
+            header, name = entry.split("\t", 1)
+            mode, kind, blob = header.split()
+            need(kind == "blob", "10.8 ledger entry is not a blob: " + name)
+            tree[name] = {"mode": mode, "blob": blob}
+        trees[key] = tree
+    special = {
+        "ADDED_SOURCE_ONLY_RUNBOOK": {note_path},
+        "ADAPTED_SOURCE_ONLY_RELEASE_BINDING": {"custom-patches/manifest.json"},
+        "MERGED_SDK_CONTRACT_DOCUMENTATION": {
+            "docs/plugins/sdk-runtime.md", "docs/plugins/sdk-runtime/config-and-utilities.md"},
+        "MERGED_TASK_ACCESS_AND_IMMUTABLE_INSPECTION": {"src/plugins/loader-module-runtime.ts"},
+        "MERGED_MAINTAINED_TEST_ROUTE_UNION": {
+            "test/vitest/vitest.database-worker-core-paths.mjs", "test/vitest/vitest.gateway-server-paths.mjs"},
+    }
+    for item in paths:
+        name, disposition = item["path"], item["disposition"]
+        for key, tree in trees.items():
+            need(tree.get(name) == item[key], "10.8 ledger mode/blob changed: " + name)
+        need(item["result"] is not None, "10.8 ledger cannot retire a fork or security path: " + name)
+        need(isinstance(disposition, str), "unsupported 10.8 disposition")
+        if disposition == "CARRIED_EXACT":
+            need(item["fork107"] is not None and item["fork107"] == item["result"],
+                 "10.8 exact fork carry changed: " + name)
+        elif disposition == "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY":
+            need(name == "package.json" or re.fullmatch(r"extensions/[A-Za-z0-9._-]+/package\.json", name),
+                 "10.8 metadata disposition path changed: " + name)
+            need(all(item[key] is not None for key in ("upstream107", "fork107", "upstream108"))
+                 and item["upstream107"] != item["upstream108"], "10.8 metadata overlap changed: " + name)
+            check_v108_metadata_carry(source_dir, name, item["fork107"], item["upstream108"], item["result"])
+        else:
+            need(disposition in special and name in special[disposition], "unsupported 10.8 disposition: " + name)
+            if disposition == "ADDED_SOURCE_ONLY_RUNBOOK":
+                need(all(item[key] is None for key in ("upstream107", "fork107", "upstream108")),
+                     "10.8 runbook was not newly added")
+            elif disposition != "ADAPTED_SOURCE_ONLY_RELEASE_BINDING":
+                need(all(item[key] is not None for key in ("upstream107", "fork107", "upstream108"))
+                     and item["upstream107"] != item["upstream108"], "10.8 reviewed overlap changed: " + name)
+            else:
+                need(item["fork107"] is not None, "10.8 release binding has no fork source")
 
 
 def check_merge_ancestry(source, source_dir):
@@ -725,7 +857,7 @@ def human_status(state):
 def validation_node_version(inventory):
     """Keep retained workflow runtime; select the supported future stable lanes."""
     upstream = inventory.get("upstream")
-    return "24.22.1" if upstream and upstream["tag"] in ("v2026.10.6", "v2026.10.7") else "24.21.0"
+    return "24.22.1" if upstream and upstream["tag"] in ("v2026.10.6", "v2026.10.7", "v2026.10.8") else "24.21.0"
 
 
 def main():
