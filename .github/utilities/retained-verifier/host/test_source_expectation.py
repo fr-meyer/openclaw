@@ -225,6 +225,12 @@ class BuildGuestJoinTests(unittest.TestCase):
             self.assertEqual(build_entry.parse_installed_filelist(package_inventory,'dash',b'/.\n/usr/bin/sh\n'),
                              {'/usr/bin/sh'})
         self.assertEqual(output.getvalue(),'')
+        exact=(b'/.\n/bin/dash\n/bin/sh\n'
+               b'package diverts others to: /bin/sh.distrib\n')
+        with redirect_stderr(output):
+            self.assertEqual(build_entry.parse_installed_filelist(package_inventory,'dash',exact),
+                             {'/bin/dash','/bin/sh'})
+        self.assertEqual(output.getvalue(),'')
 
     def test_pinned_bookworm_systemctl_alias_refuses_missing_owner_or_substitution(self):
         for defect,reason in (('missing','build_entry.tool_filelist'),

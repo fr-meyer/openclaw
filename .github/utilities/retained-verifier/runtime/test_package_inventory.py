@@ -93,6 +93,18 @@ class Inventory(unittest.TestCase):
   self.ownership[runtime.PYTHON]=b'diversion by other: /usr/bin/python3.11\n';self.bind();self.refused('inventory.owner_identity')
   self.setUp();self.ownership[runtime.PYTHON]+=self.ownership[runtime.PYTHON];self.bind();self.refused('inventory.owner_shape')
   self.setUp();self.filelists['python3.11-minimal']=b'/usr/bin/other\n';self.bind();self.refused('inventory.python_missing')
+ def test_only_exact_adjacent_bookworm_dash_diversion_annotation_is_ignored(self):
+  raw=b'/.\n/bin\n/bin/dash\n/bin/sh\npackage diverts others to: /bin/sh.distrib\n'
+  self.assertEqual(m.parse_listfiles(raw,binary_name='dash'),{'/bin','/bin/dash','/bin/sh'})
+  for binary,changed,code in (
+      ('other',raw,'inventory.filelist_diversion'),
+      ('dash',raw.replace(b'/bin/sh\n',b'/bin/other\n'),'inventory.filelist_diversion'),
+      ('dash',raw+b'package diverts others to: /bin/sh.distrib\n','inventory.filelist_diversion'),
+      ('dash',raw.replace(b'/bin/sh.distrib',b'/tmp/unknown'),'inventory.filelist_path'),
+      ('dash',raw.replace(b'package diverts others',b'locally diverted'),'inventory.filelist_path')):
+   with self.subTest(binary=binary,changed=changed):
+    with self.assertRaises(runtime.Refusal) as error:m.parse_listfiles(changed,binary_name=binary)
+    self.assertEqual(error.exception.code,code)
  def test_pycache_generated_bytes_not_read_and_required_tool_missing_refuses(self):
   self.filelists['libpython3.11-stdlib']+=runtime.STDLIB.encode()+b'__pycache__/unknown.pyc\n';self.bind();self.build()
   self.assertFalse(any('__pycache__'in row[1] for row in self.reader.calls))

@@ -102,16 +102,23 @@ def parse_show(raw):
  need(4<=len(result)<=512,'inventory.show_count');return result
 
 
-def parse_listfiles(raw):
+def parse_listfiles(raw,*,binary_name=None):
  need(type(raw)is bytes and len(raw)<=4*1024*1024,'inventory.filelist_cap')
  try:lines=raw.decode('utf-8','strict').splitlines()
  except UnicodeError:raise runtime.Refusal('inventory.filelist_encoding') from None
- result=[];seen=set()
+ result=[];seen=set();previous=None;dash_diversion=False
  for line in lines:
   if line in('/.','/'):continue
+  # Bookworm dash records its package-owned /bin/sh diversion as an annotation
+  # immediately after that pathname. It is not another owned file. This exact
+  # spelling is the only admitted annotation; local or other diversions refuse.
+  if line=='package diverts others to: /bin/sh.distrib':
+   need(binary_name=='dash' and previous=='/bin/sh' and not dash_diversion,
+        'inventory.filelist_diversion')
+   dash_diversion=True;continue
   need(line.startswith('/') and '\x00'not in line and posixpath.normpath(line)==line and '..'not in line.split('/')
        and len(line)<=1024 and line not in seen,'inventory.filelist_path')
-  result.append(line);seen.add(line);need(len(result)<=MAX_FILES,'inventory.filelist_count')
+  result.append(line);seen.add(line);previous=line;need(len(result)<=MAX_FILES,'inventory.filelist_count')
  return set(result)
 
 
@@ -163,7 +170,8 @@ def build_inventory(packages_raw,installed_show_raw,filelists,ownership,resoluti
  signed=parse_packages(indexes);installed=parse_show(installed_show_raw)
  need(runtime.REQUIRED_PACKAGES<=set(installed),'inventory.required_packages')
  need(type(filelists)is dict and set(filelists)=={r['binaryName'] for r in installed.values()},'inventory.list_roster')
- lists={name:parse_listfiles(filelists[row['binaryName']]) for name,row in installed.items()}
+ lists={name:parse_listfiles(filelists[row['binaryName']],binary_name=row['binaryName'])
+        for name,row in installed.items()}
  index_rows={};packages=[]
  for name,row in installed.items():
   key=(name,row['version'],row['architecture']);need(key in signed,'inventory.installed_version_unindexed')

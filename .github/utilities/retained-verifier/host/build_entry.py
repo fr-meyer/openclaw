@@ -282,22 +282,26 @@ def verify_metadata(ops,header,source_sha,leaves):
 
 def parse_installed_filelist(inventory,binary,raw):
     """Preserve the first unexpected public package-list line without admitting it."""
-    try:return inventory.parse_listfiles(raw)
+    try:return inventory.parse_listfiles(raw,binary_name=binary)
     except inventory.runtime.Refusal as exc:
-        if exc.code=='inventory.filelist_path':
-            seen=set()
+        if exc.code in ('inventory.filelist_path','inventory.filelist_diversion'):
+            seen=set();previous=None;dash_diversion=False
             for index,line in enumerate(raw.decode('utf-8','strict').splitlines()):
                 if line in ('/.','/'):continue
-                valid=(line.startswith('/') and '\x00' not in line and
-                       posixpath.normpath(line)==line and '..' not in line.split('/') and
-                       len(line)<=1024 and line not in seen)
+                if line=='package diverts others to: /bin/sh.distrib':
+                    valid=binary=='dash' and previous=='/bin/sh' and not dash_diversion
+                    dash_diversion=True
+                else:
+                    valid=(line.startswith('/') and '\x00' not in line and
+                           posixpath.normpath(line)==line and '..' not in line.split('/') and
+                           len(line)<=1024 and line not in seen)
                 if not valid:
                     diagnostic={'schema':'ocv-dpkg-filelist-refusal-v1','binaryName':binary,
                                 'lineIndex':index,'lineSha256':sha(line.encode()),
                                 'line':line if len(line)<=256 and all(32<=ord(c)<127 for c in line) else None}
                     sys.stderr.write(canonical(diagnostic).decode()+'\n')
                     break
-                seen.add(line)
+                if line!='package diverts others to: /bin/sh.distrib':seen.add(line);previous=line
         raise
 
 
