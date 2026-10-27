@@ -1,0 +1,103 @@
+name: Retained Verifier Linux Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_source:
+        description: Reviewed utility commit
+        required: true
+        type: string
+      expected_tree:
+        description: Reviewed utility Git tree
+        required: true
+        type: string
+      workflow_sha:
+        description: Reviewed workflow SHA256
+        required: true
+        type: string
+      source_manifest_sha:
+        description: Reviewed public source manifest SHA256
+        required: true
+        type: string
+      mission_id:
+        description: Nonsecret one-mission ledger identity
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: retained-verifier-linux-proof
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  native-proof:
+    if: github.repository == 'fr-meyer/openclaw' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      OCV_EXPECTED_SOURCE: ${{ inputs.expected_source }}
+      OCV_EXPECTED_TREE: ${{ inputs.expected_tree }}
+      OCV_WORKFLOW_SHA: ${{ inputs.workflow_sha }}
+      OCV_SOURCE_MANIFEST_SHA: ${{ inputs.source_manifest_sha }}
+      OCV_MISSION_ID: ${{ inputs.mission_id }}
+    steps:
+      - name: Admit exact utility dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == fr-meyer/openclaw ]]
+          [[ "$GITHUB_REF" == refs/heads/retained-verifier-prerequisites ]]
+          [[ "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$OCV_EXPECTED_SOURCE" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$OCV_EXPECTED_TREE" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$OCV_WORKFLOW_SHA" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$OCV_SOURCE_MANIFEST_SHA" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$OCV_MISSION_ID" =~ ^[a-f0-9]{32}$ ]]
+          [[ "$GITHUB_SHA" == "$OCV_EXPECTED_SOURCE" ]]
+      - name: Checkout only reviewed utility sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.expected_source }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/utilities/retained-verifier
+            .github/workflows/authorized-beta-focused-validation.yml
+      - name: Build and prove synthetic Linux isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -S -B .github/utilities/retained-verifier/host/ci_host.py
+      - name: Attest public helper and Linux proof
+        if: success()
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: |
+            ${{ runner.temp }}/ocv-ci-artifacts/public-tooling.tar.gz
+            ${{ runner.temp }}/ocv-ci-artifacts/host-result.json
+      - name: Retain bounded public proof and failure evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: retained-verifier-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ocv-ci-artifacts/public-tooling.tar.gz
+            ${{ runner.temp }}/ocv-ci-artifacts/host-result.json
+            ${{ runner.temp }}/ocv-ci-artifacts/host-custody.json
+            ${{ runner.temp }}/ocv-ci-artifacts/host-stdout.bin
+            ${{ runner.temp }}/ocv-ci-artifacts/host-stderr.bin
+            ${{ runner.temp }}/ocv-ci-artifacts/negative-stdout.bin
+            ${{ runner.temp }}/ocv-ci-artifacts/negative-stderr.bin
+          if-no-files-found: error
+          retention-days: 1

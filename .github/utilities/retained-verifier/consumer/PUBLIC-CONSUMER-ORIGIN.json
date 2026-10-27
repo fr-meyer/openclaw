@@ -1,0 +1,34 @@
+{
+  "changes": "Generic source/scanner/comparison/catalog data and import-only CLI entry; no validation function/class change. Operational plans/receipts/pins are not exported.",
+  "fixtureOnly": true,
+  "nativeProof": false,
+  "schema": "ocv.public-consumer-origin.v1",
+  "sources": {
+    "hosted_export.py": {
+      "allFunctionAndClassASTsUnchanged": true,
+      "changedTopLevelOnly": [
+        "__main__ entry only"
+      ],
+      "ciSourceSha256": "4469f534a4c61678e951a1542e6e5caa69ac8fd7431729b6cfedeaef0f084e3c",
+      "definitionASTSha256": "1a7be878c3e87b7f49f7361fcc410b2e4d6b759e7a51e95b3e5cdaa5c7e169bc",
+      "definitionCount": 14,
+      "originalUtilitySourceSha256": "fff4cbb193a0ef1a5a8561b81badeff8926a4b9a1ebf36414437d6b9a321863c"
+    },
+    "hosted_privacy.py": {
+      "allFunctionAndClassASTsUnchanged": true,
+      "changedTopLevelOnly": [
+        "REPOSITORY",
+        "PUBLIC_MEMBER_QUALIFICATION",
+        "PUBLIC_GNUTLS_SELF_TEST",
+        "__main__ entry only"
+      ],
+      "ciSourceSha256": "b6f9d4736b0051361aacc7c56f562de135a41c9662babae7e20cbdee436495b9",
+      "definitionASTSha256": "3ebcbd8e2df7955b37180984e03d0765eb7caf865d5b3f14bd6d25424fec997a",
+      "definitionCount": 16,
+      "originalUtilitySourceSha256": "3018beaf50d6e87767bca7a8056b26573f53cf6fdca930764d2c0444667e6b75"
+    }
+  },
+  "syntheticPlanSha256": "b172ee3c6cdf34d983cdb4b1452924b5931762020b94596b4405e7a6fdeb03df",
+  "syntheticScannerSha": "d658c890f5684b2dbe8468449a7fed17bb46055d",
+  "syntheticSourceSha": "8770609a78d68f6b53607ce3199baf0aa08687cf"
+}
