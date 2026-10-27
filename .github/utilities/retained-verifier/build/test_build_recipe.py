@@ -137,6 +137,15 @@ class RecipeTests(unittest.TestCase):
             bad=copy.deepcopy(t);bad['partitiontable']['partitions'][0][field]=value
             with self.subTest(field=field,value=value),self.assertRaises(b.Refusal):
                 b.root_partition(b.canonical(bad),'/out/ocv-test.raw',2*1024**3)
+    def test_partition_refusals_identify_only_failed_field_without_value(self):
+        for field,value,reason in (('type','not-a-guid','build.root_type_shape'),
+                                   ('type','4f68bce3-e8cd-4db1-96e7-fbcaf984b708','build.root_type_value'),
+                                   ('node','/out/another.raw1','build.root_node'),
+                                   ('attrs','RequiredPartition','build.root_attrs'),
+                                   ('bootable',True,'build.root_bootable')):
+            bad=table();bad['partitiontable']['partitions'][0][field]=value
+            with self.subTest(field=field),self.assertRaisesRegex(b.Refusal,'^'+reason+'$'):
+                b.root_partition(b.canonical(bad),'/out/ocv-test.raw',2*1024**3)
     def test_partition_bad_roster_type_bounds(self):
         for variant in ('extra','type','path','uuid','range','sector'):
             t=table();r=t['partitiontable']['partitions'][0]

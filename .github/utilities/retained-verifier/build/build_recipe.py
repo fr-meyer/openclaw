@@ -377,9 +377,11 @@ def root_partition(raw, image_path, image_bytes):
     row = rows[0]
     require(type(row) is dict and {'node', 'start', 'size', 'type', 'uuid'} <= row.keys()
             and set(row) <= {'node', 'start', 'size', 'type', 'uuid', 'name', 'attrs', 'bootable'}, 'build.partition_row')
-    require(canonical_guid(row['type'], 'build.root_type') == ROOT_TYPE
-            and row['node'] == image_path + '1'
-            and row.get('attrs', '') == '' and row.get('bootable', False) is False, 'build.root_type')
+    require(canonical_guid(row['type'], 'build.root_type_shape') == ROOT_TYPE,
+            'build.root_type_value')
+    require(row['node'] == image_path + '1', 'build.root_node')
+    require(row.get('attrs', '') == '', 'build.root_attrs')
+    require(row.get('bootable', False) is False, 'build.root_bootable')
     for key in ('start', 'size'):
         require(type(row[key]) is int and row[key] > 0, 'build.partition_range')
     require(row['start'] * sector >= 1024**2 and (row['start']+row['size']) * sector < image_bytes,
