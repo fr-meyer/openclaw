@@ -107,8 +107,8 @@ class Sources:
         self.trusted(self.incoming,mode=0o600)
         require(self.ops.listdir(self.incoming,128)==[],'ci.anchor_incoming_not_empty')
         sources['/run/systemd/incoming']=self.incoming
-        rows=[]
-        for target in sorted(probe.MOUNT_TARGETS):
+        rows=[];inherited=[]
+        for target in sorted(probe.MOUNT_TARGETS|probe.INHERITED_TARGETS):
             source=sources.get(target,self.root+'/root'+('' if target=='/' else target))
             require(not (source=='/proc/sys/fs/binfmt_misc' or
                          source.startswith('/proc/sys/fs/binfmt_misc/')),
@@ -121,10 +121,15 @@ class Sources:
             if self.add_nosuid:flags.add('nosuid')
             if target in ('/input','/control'):flags.add('noexec')
             self.original[source]=ident(info)
-            rows.append({'role':role,'target':target,'fsroot':fsroot,'majorMinor':mount['majorMinor'],
-              'fsType':mount['fsType'],'source':mount['source'],'vfsOptions':sorted(flags),
-              'fsOptions':mount['fsOptions'],'optionalFields':[],'identity':ident(info)})
+            if target in probe.MOUNT_TARGETS:
+                rows.append({'role':role,'target':target,'fsroot':fsroot,'majorMinor':mount['majorMinor'],
+                  'fsType':mount['fsType'],'source':mount['source'],'vfsOptions':sorted(flags),
+                  'fsOptions':mount['fsOptions'],'optionalFields':[],'identity':ident(info)})
+            else:
+                inherited.append({'target':target,'identity':ident(info)})
         jail=self.trusted(self.root+'/root');exe=self.ops.lstat(self.root+'/root/usr/bin/python3.11')
+        require(all(row['identity']['dev']==jail.st_dev for row in inherited),
+                'ci.anchor_inherited_device')
         require(stat.S_ISREG(exe.st_mode) and exe.st_uid==exe.st_gid==0 and not stat.S_IMODE(exe.st_mode)&0o022,
                 'ci.anchor_executable')
         stdio={}
@@ -135,7 +140,8 @@ class Sources:
             else:require(stat.S_ISREG(info.st_mode) and info.st_uid==info.st_gid==0 and stat.S_IMODE(info.st_mode)==0o600,'ci.anchor_stdio')
             stdio[label]={'dev':info.st_dev,'ino':info.st_ino}
             if label=='stdin':stdio[label]['rdev']=info.st_rdev
-        return {'mounts':rows,'executable':{'path':self.root+'/root/usr/bin/python3.11','dev':exe.st_dev,'ino':exe.st_ino},
+        return {'mounts':rows,'inheritedPaths':inherited,
+          'executable':{'path':self.root+'/root/usr/bin/python3.11','dev':exe.st_dev,'ino':exe.st_ino},
           'jailRoot':{'path':self.root+'/root','dev':jail.st_dev,'ino':jail.st_ino},'stdio':stdio}
     def recheck(self):
         require(self.original and self.namespaces()==self.manager,'ci.manager_namespace_changed')

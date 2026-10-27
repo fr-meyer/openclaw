@@ -21,7 +21,7 @@ def status_line(pid,uid=61200,gid=61200):
 
 def expected_fixture():
     session='a'*32;jail='/synthetic/verifier/nonroot/'+session+'/root';dev=os.makedev(8,1)
-    rows=[]
+    rows=[];inherited=[]
     for index,target in enumerate(sorted(p.MOUNT_TARGETS)):
         role=p.FIXED_ROLES.get(target,target[1:].replace('/','_'))
         flags=['ro','nosuid','nodev']
@@ -35,12 +35,16 @@ def expected_fixture():
             'fsType':'tmpfs' if target=='/run/systemd/incoming' else 'ext4','source':'tmpfs' if target=='/run/systemd/incoming' else '/dev/sda1',
             'vfsOptions':flags,'fsOptions':['rw'],'optionalFields':[],
             'identity':{'dev':device,'ino':ino,'type':'directory','mode':mode,'uid':0,'gid':0}})
+    for index,target in enumerate(sorted(p.INHERITED_TARGETS)):
+        inherited.append({'target':target,'identity':{'dev':dev,'ino':200+index,
+            'type':'directory','mode':0o755,'uid':0,'gid':0}})
     return {'schema':p.EXPECTED_SCHEMA,'sessionId':session,'bootId':'aaaabbbb-1234-5678-9abc-123456789abc',
         'pid':77,'startTimeTicks':500,'unitName':'ocv-'+session+'.service','identityName':'ocv-'+session[:24],
         'invocationId':'b'*32,'uid':61200,'gid':61200,'dynamicIdRange':[61184,65519],
         'cgroupPath':'/system.slice/ocv-'+session+'.service',
         'executable':{'path':jail+'/usr/bin/python3.11','dev':dev,'ino':999},'jailRoot':{'path':jail,'dev':dev,'ino':100},
         'hostNamespaces':dict(zip(p.NAMESPACE_NAMES,range(10,17))),'mounts':rows,
+        'inheritedPaths':inherited,
         'stdio':{'stdin':{'dev':os.makedev(0,5),'ino':1,'rdev':os.makedev(1,3)},
                  'stdout':{'dev':dev,'ino':1000},'stderr':{'dev':dev,'ino':1001}},
         'limits':{'memoryMaxBytes':2147483648,'memorySwapMaxBytes':0,'cpuQuota':100000,'cpuPeriod':100000,'pidsMax':64},
@@ -70,6 +74,9 @@ class FixtureReader:
             self.stats[where]=metadata(stat.S_IFDIR,ident['mode'],dev=ident['dev'],ino=ident['ino'])
             if row['role'] in ('private_tmp','private_var_tmp','systemd_incoming'):self.directories[base+'/root'+target]=[]
             lines.append(f'{index+100} 99 {row["majorMinor"]} {row["fsroot"]} {target} '+','.join(row['vfsOptions'])+' - '+row['fsType']+' '+row['source']+' '+','.join(row['fsOptions'])+'\n')
+        for row in expected['inheritedPaths']:
+            ident=row['identity'];where=base+'/root'+row['target']
+            self.stats[where]=metadata(stat.S_IFDIR,ident['mode'],dev=ident['dev'],ino=ident['ino'])
         self.data[base+'/mountinfo']=''.join(lines).encode()
         for number,label in ((0,'stdin'),(1,'stdout'),(2,'stderr')):
             record=expected['stdio'][label];flags=0o100000 if number==0 else os.O_WRONLY|os.O_APPEND|0o100000

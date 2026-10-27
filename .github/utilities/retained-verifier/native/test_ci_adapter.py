@@ -73,7 +73,7 @@ class Ops:
             if not self.unit_started:raise FileNotFoundError(path)
             row=next(r for r in self.expected['mounts'] if r['target']=='/run/systemd/incoming')
             return fixtures.metadata(stat.S_IFDIR,0o600,dev=row['identity']['dev'],ino=row['identity']['ino'])
-        for row in self.expected['mounts']:
+        for row in self.expected['mounts']+self.expected['inheritedPaths']:
             source=self.port.root+'/root'+('' if row['target']=='/' else row['target'])
             if row['target'] in ('/tmp','/var/tmp'):source=row['fsroot']
             if path==source:
@@ -290,8 +290,8 @@ class Integration(unittest.TestCase):
         self.assertNotIn('gate',self.port.effect_intents)
         diagnostic=json.loads((self.root/'custody/host-diagnostics.private.bin').read_bytes())
         records=diagnostic['facts']['records'];roster=next(r['facts'] for r in records if r['role']=='mount.roster')
-        self.assertEqual(roster['actualCount'],13)
-        self.assertEqual(roster['expectedCount'],12)
+        self.assertEqual(roster['actualCount'],len(self.expected['mounts'])+1)
+        self.assertEqual(roster['expectedCount'],len(self.expected['mounts']))
         self.assertEqual(roster['extraTargets'][0]['label'],'/dev/shm')
         self.assertEqual(roster['missingTargets'],[])
         self.assertEqual(len(roster['observedMounts']),4)
@@ -399,6 +399,20 @@ class Integration(unittest.TestCase):
         self.ops.kernel.stats['/proc/77/root/code'].st_ino+=1
         result=self.run_driver();self.assertEqual(result['status'],'refused')
         self.assertTrue(result['reason'].startswith('probe.'));self.assertNotIn('input_read',self.ops.events)
+
+    def test_control_noexec_loss_refuses_before_release(self):
+        raw=self.ops.kernel.data['/proc/77/mountinfo']
+        self.ops.kernel.data['/proc/77/mountinfo']=raw.replace(b'ro,nosuid,nodev,noexec',b'ro,nosuid,nodev',1)
+        result=self.run_driver()
+        self.assertEqual(result['reason'],'probe.mount_source_or_flags',result)
+        self.assertNotIn('input_read',self.ops.events)
+
+    def test_control_readonly_loss_refuses_before_release(self):
+        raw=self.ops.kernel.data['/proc/77/mountinfo']
+        self.ops.kernel.data['/proc/77/mountinfo']=raw.replace(b'ro,nosuid,nodev,noexec',b'rw,nosuid,nodev,noexec',1)
+        result=self.run_driver()
+        self.assertEqual(result['reason'],'probe.mount_source_or_flags',result)
+        self.assertNotIn('input_read',self.ops.events)
 
     def test_manager_namespace_mismatch_refuses_before_unit(self):
         self.ops.fail='manager_namespace';result=self.run_driver()
@@ -532,7 +546,9 @@ class Integration(unittest.TestCase):
         import ci_profile
         props=ci_profile.properties((B/'CI-PROFILE.json').read_bytes(),self.session,self.session_root)
         for expected in ('DynamicUser=yes','NoNewPrivileges=yes','PrivateNetwork=yes','PrivateIPC=yes',
-                         'CapabilityBoundingSet=','AmbientCapabilities=','MemorySwapMax=0','Restart=no','MountFlags=private'):
+                         'CapabilityBoundingSet=','AmbientCapabilities=','MemorySwapMax=0','Restart=no','MountFlags=private',
+                         'ProtectSystem=strict','ReadOnlyPaths=+/','NoExecPaths=+/input +/control',
+                         'BindReadOnlyPaths='+self.session_root+'/root/input:/input '+self.session_root+'/root/control:/control'):
             self.assertIn(expected,props)
         self.assertNotIn('BindPaths=',props)
         for name in ('ci_adapter.py','ci_native_port.py','ci_worker.py'):

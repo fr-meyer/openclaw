@@ -27,7 +27,7 @@ SLOTS.update({'worker-stderr-raw':8192,'native-isolation-cases':12288})
 FACT_KEYS={'schema','sessionId','bootId','pid','startTimeTicks','uid','gid','invocationId',
            'unitName','identityName','profileSha256','cgroupPath','namespaces','seccompMode',
            'seccompFilterCount','capabilitySets','noNewPrivileges','supplementaryGroups',
-           'peerProcessesChecked','executable','jailRoot','mounts','environment','limits',
+           'peerProcessesChecked','executable','jailRoot','mounts','inheritedPaths','environment','limits',
            'stdio','children','stableTuple','readCalls','readBytes','factsSha256'}
 CODE_KEYS={'entrySha256','workerSha256','runtimeManifestSha256','consumerCode'}
 CONSUMER_FILES={'hosted_export.py','hosted_privacy.py','public-member-comparisons-v105-workboard.json'}
@@ -179,6 +179,22 @@ def facts_join(raw,source_expected,context):
             environment['canonicalSha256']==sha(canonical(probe.ENVIRONMENT)) and environment['sha256'] in allowed,
             'replay.environment_binding')
     mounts_join(facts['mounts'],source_expected['mounts'])
+    require(type(facts['inheritedPaths']) is list and
+            len(facts['inheritedPaths'])==len(probe.INHERITED_TARGETS),
+            'replay.inherited_roster')
+    inherited={}
+    for row in facts['inheritedPaths']:
+        closed(row,{'target','identity'},'replay.inherited_row')
+        target=row['target']
+        require(type(target) is str and target in probe.INHERITED_TARGETS and
+                target not in inherited,'replay.inherited_roster')
+        closed(row['identity'],probe.IDENTITY_KEYS,'replay.inherited_identity')
+        inherited[target]=row['identity']
+    require(set(inherited)==probe.INHERITED_TARGETS,'replay.inherited_roster')
+    for row in source_expected['inheritedPaths']:
+        require(inherited[row['target']]==row['identity'] and
+                row['identity']['dev']==source_expected['jailRoot']['dev'],
+                'replay.inherited_binding')
     stdio_join(facts['stdio'],source_expected['stdio'])
     return facts
 

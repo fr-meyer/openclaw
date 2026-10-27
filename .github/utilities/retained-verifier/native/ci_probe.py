@@ -27,12 +27,12 @@ ENVIRONMENT = {'PATH': '/usr/bin', 'LANG': 'C', 'LC_ALL': 'C', 'HOME': '/'}
 NAMESPACE_NAMES = ('mnt', 'net', 'ipc', 'pid', 'user', 'uts', 'cgroup')
 EXPECTED_KEYS = {'schema','sessionId','bootId','pid','startTimeTicks','unitName','identityName',
     'invocationId','uid','gid','dynamicIdRange','cgroupPath','executable','jailRoot',
-    'hostNamespaces','mounts','stdio','limits','environmentSha256','profileSha256'}
+    'hostNamespaces','mounts','inheritedPaths','stdio','limits','environmentSha256','profileSha256'}
 MOUNT_KEYS = {'role','target','fsroot','majorMinor','fsType','source','vfsOptions','fsOptions',
               'optionalFields','identity'}
 IDENTITY_KEYS = {'dev','ino','type','mode','uid','gid'}
-MOUNT_TARGETS = {'/','/run','/tmp','/var/tmp','/dev','/dev/mqueue','/proc','/sys','/input','/control','/code',
-                 '/run/systemd/incoming'}
+MOUNT_TARGETS = {'/','/tmp','/var/tmp','/input','/control','/run/systemd/incoming'}
+INHERITED_TARGETS = {'/run','/dev','/dev/mqueue','/proc','/sys','/code'}
 FIXED_ROLES = {'/':'jail_root','/tmp':'private_tmp','/var/tmp':'private_var_tmp',
                '/run/systemd/incoming':'systemd_incoming'}
 LIMIT_KEYS = {'memoryMaxBytes','memorySwapMaxBytes','cpuQuota','cpuPeriod','pidsMax'}
@@ -128,6 +128,15 @@ def validate_expected(value):
     # The profile declares these mounts positively. No arbitrary descendant
     # mounts or omitted private-tmp/incoming exceptions may be admitted.
     require(seen == MOUNT_TARGETS,'probe.expected_mount_roster')
+    inherited=value['inheritedPaths']
+    require(type(inherited) is list and len(inherited)==len(INHERITED_TARGETS),'probe.expected_inherited')
+    inherited_seen=set()
+    for row in inherited:
+        closed(row,{'target','identity'},'probe.expected_inherited')
+        require(row['target'] in INHERITED_TARGETS and row['target'] not in inherited_seen,
+                'probe.expected_inherited')
+        inherited_seen.add(row['target']);positive_identity(row['identity'])
+    require(inherited_seen==INHERITED_TARGETS,'probe.expected_inherited')
     closed(value['stdio'],('stdin','stdout','stderr'),'probe.expected_stdio')
     for label, row in value['stdio'].items():
         closed(row,{'dev','ino','rdev'} if label == 'stdin' else {'dev','ino'},'probe.expected_stdio')
@@ -411,6 +420,12 @@ def collect_and_validate(reader,expected):
             positive.append({**actual,'role':row['role'],'identity':identity(info)})
         root_mount=indexed['/'];require(root_mount['majorMinor']==str(os.major(ji.st_dev))+':'+str(os.minor(ji.st_dev))
             and next(r for r in expected['mounts'] if r['target']=='/')['identity']['ino']==ji.st_ino,'probe.jail_mount_join')
+        inherited=[]
+        for row in expected['inheritedPaths']:
+            info=obs.stat(base+'/root'+row['target'],'inherited.'+row['target'])
+            require(identity(info)==row['identity'] and info.st_dev==ji.st_dev,
+                    'probe.inherited_identity')
+            inherited.append({'target':row['target'],'identity':identity(info)})
         dev=obs.text(base+'/net/dev',16384,'network.interfaces')
         interfaces=[r.split(':',1)[0].strip() for r in dev.splitlines() if ':' in r]
         require(interfaces==['lo'],'probe.external_interface')
@@ -465,6 +480,10 @@ def collect_and_validate(reader,expected):
                 and obs.link(base+'/cwd','stable.cwd')==jail,'probe.unstable_object')
         require(obs.read(base+'/environ',8192,'stable.environment')==environment,'probe.unstable_environment')
         require(mount_table(obs.text(base+'/mountinfo',1048576,'stable.mounts'))==mounts,'probe.unstable_mounts')
+        for row in expected['inheritedPaths']:
+            info=obs.stat(base+'/root'+row['target'],'stable.inherited.'+row['target'])
+            require(identity(info)==row['identity'] and info.st_dev==ji.st_dev,
+                    'probe.unstable_inherited')
         require(set(obs.names(base+'/fd',16,'stable.fd.roster'))=={'0','1','2'},'probe.unstable_descriptors')
         for number,label in ((0,'stdin'),(1,'stdout'),(2,'stderr')):
             info=obs.stat(base+'/fd/'+str(number),'stable.fd.'+label)
@@ -483,7 +502,7 @@ def collect_and_validate(reader,expected):
             'noNewPrivileges':1,'supplementaryGroups':[] if not first['groups'] else [expected['gid']],
             'peerProcessesChecked':len(peers),
             'executable':{'dev':exei.st_dev,'ino':exei.st_ino},'jailRoot':{'dev':ji.st_dev,'ino':ji.st_ino},
-            'mounts':positive,'environment':env_proof,'limits':limits,'stdio':fd_facts,'children':[],
+            'mounts':positive,'inheritedPaths':inherited,'environment':env_proof,'limits':limits,'stdio':fd_facts,'children':[],
             'stableTuple':True,'readCalls':obs.reads,'readBytes':obs.bytes}
         require(len(canonical(facts))<=10000,'probe.facts_cap')
         facts['factsSha256']=sha(canonical(facts));return facts
