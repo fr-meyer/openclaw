@@ -259,6 +259,16 @@ class Integration(unittest.TestCase):
         result=self.run_driver()
         self.assertEqual(result['reason'],'probe.supplementary_groups',result)
         self.assertNotIn('gate',self.port.effect_intents)
+    def test_guest_executable_path_substitution_refuses(self):
+        self.ops.kernel.links['/proc/77/exe']='/usr/bin/python3.10'
+        result=self.run_driver();self.assertEqual(result['reason'],'probe.executable_changed',result)
+        self.assertNotIn('gate',self.port.effect_intents)
+    def test_guest_executable_source_identity_substitution_refuses(self):
+        import ci_probe
+        reader=fixtures.FixtureReader(self.expected)
+        reader.stats['/proc/77/exe'].st_ino+=1
+        with self.assertRaisesRegex(Refusal,'probe.executable_changed'):
+            ci_probe.collect_and_validate(reader,self.expected)
     def test_stacked_manager_mount_refuses_with_bounded_label(self):
         self.ops.stage_file('/proc/self/mountinfo',
           b'1 9 8:1 / / rw,nodev - ext4 /dev/sda1 rw\n'

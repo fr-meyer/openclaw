@@ -346,7 +346,9 @@ def collect_and_validate(reader,expected):
             require(expected['uid'] not in peer['Uid'] and expected['gid'] not in peer['Gid'],'probe.shared_dynamic_identity')
         obs.add('peer_exclusivity',processesChecked=len(peers),matchingPeers=0)
         exe=obs.link(base+'/exe','executable.path');exei=obs.stat(base+'/exe','executable.identity')
-        require(exe==expected['executable']['path'] and stat.S_ISREG(exei.st_mode)
+        # /proc/<pid>/exe renders the pathname inside the worker's root.
+        # The host-derived source path remains bound through exact dev/inode.
+        require(exe=='/usr/bin/python3.11' and stat.S_ISREG(exei.st_mode)
                 and exei.st_dev==expected['executable']['dev'] and exei.st_ino==expected['executable']['ino']
                 and exei.st_uid==exei.st_gid==0 and not stat.S_IMODE(exei.st_mode)&0o022,'probe.executable_changed')
         jail=obs.link(base+'/root','jail.path');ji=obs.stat(base+'/root','jail.identity')
