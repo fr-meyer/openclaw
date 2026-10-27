@@ -60,7 +60,7 @@ class FixtureReader:
             cg+'/memory.max':b'2147483648\n',cg+'/memory.swap.max':b'0\n',cg+'/cpu.max':b'100000 100000\n',
             cg+'/pids.max':b'64\n',cg+'/pids.current':b'1\n'})
         self.directories.update({'/proc':['1','77','self','net'],base+'/fd':['0','1','2'],base+'/task':['77']})
-        self.links.update({base+'/exe':'/usr/bin/python3.11',base+'/root':jail,base+'/cwd':jail})
+        self.links.update({base+'/exe':'/usr/bin/python3.11',base+'/root':'/',base+'/cwd':'/'})
         self.stats.update({base+'/exe':metadata(stat.S_IFREG,0o755,dev=expected['executable']['dev'],ino=999),
                            base+'/root':metadata(stat.S_IFDIR,0o755,ino=100)})
         for name,host in expected['hostNamespaces'].items():self.links[base+'/ns/'+name]=name+':['+str(host+100 if name in ('mnt','net','ipc') else host)+']'

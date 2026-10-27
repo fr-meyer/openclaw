@@ -352,10 +352,12 @@ def collect_and_validate(reader,expected):
                 and exei.st_dev==expected['executable']['dev'] and exei.st_ino==expected['executable']['ino']
                 and exei.st_uid==exei.st_gid==0 and not stat.S_IMODE(exei.st_mode)&0o022,'probe.executable_changed')
         jail=obs.link(base+'/root','jail.path');ji=obs.stat(base+'/root','jail.identity')
-        require(jail==expected['jailRoot']['path'] and stat.S_ISDIR(ji.st_mode)
+        # /proc/<pid>/root and cwd render as / inside the fixed RootDirectory.
+        # The source-derived host jail remains pinned by exact dev/inode.
+        require(jail=='/' and stat.S_ISDIR(ji.st_mode)
                 and ji.st_dev==expected['jailRoot']['dev'] and ji.st_ino==expected['jailRoot']['ino']
                 and ji.st_uid==ji.st_gid==0,'probe.jail_changed')
-        require(obs.link(base+'/cwd','cwd.path')==jail,'probe.cwd_changed')
+        require(obs.link(base+'/cwd','cwd.path')=='/','probe.cwd_changed')
         environment=obs.read(base+'/environ',8192,'environment')
         require(environment.endswith(b'\0') and environment.count(b'\0')==4,'probe.environment_closed')
         parts=environment[:-1].split(b'\0');env={}
