@@ -115,15 +115,16 @@ def command_ok(result, *, signature_status=False):
     return result['stdout']
 
 
-def required_owner(ops,path):
+def required_owner(ops,path,query_path):
     """Keep the first exact public package path when a required owner lookup fails."""
-    result=ops.run(('/usr/bin/dpkg-query','--search',path),10)
+    result=ops.run(('/usr/bin/dpkg-query','--search',query_path),10)
     try:return command_ok(result)
     except Refusal:
         # The path comes only from the public installed Debian package view,
         # parsed ldd output, or the fixed compiler/loader paths. Never print
         # command output, which is not needed to diagnose the failed lookup.
         diagnostic={'schema':'ocv-required-owner-refusal-v1','path':path,
+                    'queryPath':query_path,
                     'exitCode':result.get('exitCode') if type(result)is dict and
                                type(result.get('exitCode'))is int else None,
                     'timedOut':result.get('timedOut') if type(result)is dict else None,
@@ -365,8 +366,11 @@ def run_checked(ops,header,source_sha,context_sha,leaves):
     elf_inputs={p for p in regular if p==runtime.PYTHON or p.endswith('.so')}
     resolutions={p:command_ok(ops.run(('/usr/bin/ldd',p),15)) for p in sorted(elf_inputs)}
     required=set(regular)|set(inventory.TOOL_PATHS)|{runtime.LOADER}
-    for p,raw in resolutions.items():required.update(runtime.parse_ldd(raw,allow_no_dependencies=p!=runtime.PYTHON))
-    ownership={p:required_owner(ops,p) for p in sorted(required)}
+    dependency_paths=set()
+    for p,raw in resolutions.items():dependency_paths.update(runtime.parse_ldd(raw,allow_no_dependencies=p!=runtime.PYTHON))
+    required.update(dependency_paths)
+    ownership={p:required_owner(ops,p,inventory.owner_lookup_path(p,lists,dependency_paths))
+               for p in sorted(required)}
     proof=inventory.input_binding(data['Packages'],raw_show,filelists,ownership,resolutions,{},
         context_sha256=context_sha,signature_sha256=signature_sha,install_sha256=install_sha)
     installed,evidence=inventory.build_inventory(data['Packages'],raw_show,filelists,ownership,resolutions,ops,proof,{})

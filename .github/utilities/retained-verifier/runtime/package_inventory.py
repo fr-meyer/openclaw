@@ -126,6 +126,23 @@ def parse_listfiles(raw,*,binary_name=None):
  return set(result)
 
 
+def owner_lookup_path(path,lists,dependency_paths):
+ """Select a package-recorded /usr path only for an ldd /lib alias.
+
+ The fallback is limited to one signed installed-file-list entry. Actual
+ alias and byte identity are checked independently by build_inventory().
+ """
+ need(type(path)is str and type(lists)is dict and type(dependency_paths)is set,
+      'inventory.owner_lookup_inputs')
+ if any(path in paths for paths in lists.values()):return path
+ prefix='/lib/x86_64-linux-gnu/'
+ if (path in dependency_paths and path.startswith(prefix) and
+     re.fullmatch(r'[A-Za-z0-9_.+-]{1,128}\.so(?:\.[A-Za-z0-9_.+-]{1,64})?',path[len(prefix):])):
+  recorded='/usr'+path
+  if sum(recorded in paths for paths in lists.values())==1:return recorded
+ return path
+
+
 def _metadata(value,*,allow_directory=False):
  need(type(value)is dict and set(value)==STAT_KEYS,'inventory.metadata_schema')
  need(type(value['sourcePath'])is str and value['sourcePath'].startswith('/') and '\x00'not in value['sourcePath'] and len(value['sourcePath'])<=1024
@@ -157,7 +174,10 @@ def build_inventory(packages_raw,installed_show_raw,filelists,ownership,resoluti
  Fixed show command format:
  dpkg-query --show --showformat='${binary:Package}\\t${Version}\\t${Architecture}\\t${db:Status-Status}\\n'
  filelists[binaryName] is actual dpkg-query --listfiles stdout. ownership[path]
- is actual dpkg-query --search stdout for that exact original installed path.
+ is actual dpkg-query --search stdout for the package-recorded original path.
+ For an ldd /lib path missing from all package file lists, that query may use
+ the exact package-listed /usr/lib alias; both paths must resolve to identical
+ checked package bytes.
  resolutions[Python/each stdlib.so] is standard guest ldd stdout. None of these
  commands is invoked by this helper. proof is a checked owner's hash join to
  actual signature/install/context records, never a JSON passed verdict.
@@ -195,7 +215,9 @@ def build_inventory(packages_raw,installed_show_raw,filelists,ownership,resoluti
   if info['type']=='regular':metadata[path]=info;required.add(path)
  elf_inputs={p for p in metadata if p==runtime.PYTHON or p.endswith('.so')}
  need(type(resolutions)is dict and set(resolutions)==elf_inputs,'inventory.resolution_roster')
- for path,raw in resolutions.items():required.update(runtime.parse_ldd(raw,allow_no_dependencies=path!=runtime.PYTHON))
+ dependency_paths=set()
+ for path,raw in resolutions.items():dependency_paths.update(runtime.parse_ldd(raw,allow_no_dependencies=path!=runtime.PYTHON))
+ required.update(dependency_paths)
  need(type(ownership)is dict and set(ownership)==required,'inventory.ownership_roster')
  files=[];evidence=[];total=0
  for path in sorted(required):
@@ -206,9 +228,18 @@ def build_inventory(packages_raw,installed_show_raw,filelists,ownership,resoluti
   need(len(owner_lines)==1 and ': 'in owner_lines[0],'inventory.owner_shape')
   binary,owned=owner_lines[0].split(': ',1)
   candidates=[name for name,row in installed.items() if binary==row['binaryName'] or ':'not in row['binaryName'] and binary==name]
-  need(len(candidates)==1 and owned==path,'inventory.owner_identity');name=candidates[0]
-  need(path in lists[name],'inventory.owner_filelist')
+  recorded=owner_lookup_path(path,lists,dependency_paths)
+  need(len(candidates)==1 and owned==recorded,'inventory.owner_identity');name=candidates[0]
+  need(recorded in lists[name],'inventory.owner_filelist')
   data,info=_read_checked(reader,path,FILE_CAP,metadata.get(path))
+  if recorded!=path:
+   recorded_data,recorded_info=_read_checked(reader,recorded,FILE_CAP)
+   identity=('sourcePath','dev','ino','size','uid','gid','mode','nlink','mtimeNs','ctimeNs')
+   need(info['sourcePath'].startswith('/usr/lib/x86_64-linux-gnu/') and
+        all(info[k]==recorded_info[k] for k in identity) and data==recorded_data and
+        _metadata(reader.stat_original(path))==info and
+        _metadata(reader.stat_original(recorded))==recorded_info,
+        'inventory.owner_alias_identity')
   total+=len(data);need(total<=MAX_READ_BYTES and len(files)<MAX_FILES,'inventory.total_file_cap')
   files.append({'path':path,'package':name,'version':installed[name]['version'],'sha256':sha(data),'bytes':len(data)})
   evidence.append({'path':path,'sourcePath':info['sourcePath'],'dev':info['dev'],'ino':info['ino'],

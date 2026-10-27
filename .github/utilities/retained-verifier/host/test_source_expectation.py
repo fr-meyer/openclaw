@@ -212,6 +212,29 @@ class BuildFixture:
 
 
 class BuildGuestJoinTests(unittest.TestCase):
+    def test_actual_build_transaction_uses_only_identical_packaged_ldd_alias(self):
+        f=BuildFixture();path='/lib/x86_64-linux-gnu/libcrypto.so.3';recorded='/usr'+path
+        f.data[recorded]=b'public synthetic packaged crypto library'
+        f.owners[recorded]='libssl3'
+        f.packages['libssl3']={'name':'libssl3','version':'1','architecture':'amd64',
+                               'debSha256':m.sha(b'synthetic archive libssl3')}
+        f.show+=b'libssl3\t1\tamd64\tinstalled\n'
+        f.lists['libssl3']=('/.\n/usr\n'+recorded+'\n').encode()
+        f.index+=('Package: libssl3\nVersion: 1\nArchitecture: amd64\n'
+                  'Filename: pool/main/f/fixture/libssl3_1_amd64.deb\nSize: 12\n'
+                  'SHA256: '+f.packages['libssl3']['debSha256']+'\n\n').encode()
+        original_read=f.read_original;original_run=f.run
+        def read(path_name,cap):return original_read(recorded if path_name==path else path_name,cap)
+        def run(argv,timeout):
+            result=original_run(argv,timeout)
+            if argv[0]=='/usr/bin/ldd':
+                return dict(result,stdout=result['stdout']+('libcrypto.so.3 => '+path+' (0x4000)\n').encode())
+            return result
+        f.read_original=read;f.run=run
+        f.build()
+        self.assertIn(('/usr/bin/dpkg-query','--search',recorded),f.calls)
+        self.assertNotIn(('/usr/bin/dpkg-query','--search',path),f.calls)
+
     def test_required_owner_refusal_reports_public_path_and_remains_fatal(self):
         f=BuildFixture();original=f.run
         missing='/usr/bin/gcc-12'

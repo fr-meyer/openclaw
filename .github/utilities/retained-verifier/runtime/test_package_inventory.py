@@ -7,7 +7,7 @@ import runtime_prepare as runtime
 
 class Inventory(unittest.TestCase):
  def setUp(self):
-  self.names=sorted(runtime.REQUIRED_PACKAGES|{'gcc-12','binutils'})
+  self.names=sorted(runtime.REQUIRED_PACKAGES|{'gcc-12','binutils','libssl3'})
   self.versions={name:'1.0~synthetic-fixture' for name in self.names}
   self.binaries={name:name+(':amd64' if name=='libc6' else '') for name in self.names}
   self.archive={name:('synthetic deb '+name).encode() for name in self.names}
@@ -27,20 +27,21 @@ class Inventory(unittest.TestCase):
   self.ownership={p:(self.binaries[n]+': '+p+'\n').encode() for p,n in self.owners.items()}
   ldd=b'linux-vdso.so.1 (0x1000)\nlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x2000)\n/lib64/ld-linux-x86-64.so.2 (0x3000)\n'
   self.resolutions={runtime.PYTHON:ldd,runtime.STDLIB+'lib-dynload/test.so':ldd}
-  self.cache={}
+  self.cache={};self.aliases={}
   class Reader:
    def __init__(reader,outer):reader.outer=outer;reader.calls=[];reader.metadata_override={};reader.after_override={};reader.counts={};reader.view_override={}
    def stat_original(reader,path):
     reader.calls.append(('stat',path));reader.counts[path]=reader.counts.get(path,0)+1
-    data=reader.outer.data.get(path,b'')
-    info={'sourcePath':path,'type':'directory' if path==runtime.STDLIB.rstrip('/') else 'regular','dev':1,'ino':100,
+    canonical=reader.outer.aliases.get(path,path)
+    data=reader.outer.data.get(canonical,b'')
+    info={'sourcePath':canonical,'type':'directory' if path==runtime.STDLIB.rstrip('/') else 'regular','dev':1,'ino':100,
       'size':len(data),'uid':0,'gid':0,'mode':0o755,'nlink':1,'mtimeNs':100,'ctimeNs':100,'aliasProofSha256':'c'*64,
       **reader.metadata_override}
     if reader.counts[path]>1:info.update(reader.after_override)
     return info
    def read_original(reader,path,cap):
     reader.calls.append(('read',path));info=reader.stat_original(path)
-    return {'bytes':reader.outer.data[path],'sourcePath':info['sourcePath'],'uid':info['uid'],'gid':info['gid'],
+    return {'bytes':reader.outer.data[info['sourcePath']],'sourcePath':info['sourcePath'],'uid':info['uid'],'gid':info['gid'],
      'mode':info['mode'],'regular':True,'symlinkChainSha256':info['aliasProofSha256'],**reader.view_override}
   self.reader=Reader(self);self.bind()
  def bind(self):
@@ -94,6 +95,30 @@ class Inventory(unittest.TestCase):
   self.ownership[runtime.PYTHON]=b'diversion by other: /usr/bin/python3.11\n';self.bind();self.refused('inventory.owner_identity')
   self.setUp();self.ownership[runtime.PYTHON]+=self.ownership[runtime.PYTHON];self.bind();self.refused('inventory.owner_shape')
   self.setUp();self.filelists['python3.11-minimal']=b'/usr/bin/other\n';self.bind();self.refused('inventory.python_missing')
+ def test_authenticated_merged_usr_ldd_alias_requires_same_package_bytes(self):
+  path='/lib/x86_64-linux-gnu/libcrypto.so.3';recorded='/usr'+path
+  self.data[recorded]=b'public synthetic packaged crypto library'
+  self.aliases[path]=recorded
+  self.filelists['libssl3']+=recorded.encode()+b'\n'
+  self.ownership[path]=('libssl3: '+recorded+'\n').encode()
+  self.resolutions[runtime.PYTHON]+=('libcrypto.so.3 => '+path+' (0x4000)\n').encode()
+  self.bind();manifest,evidence=self.build()
+  row=next(r for r in manifest['files'] if r['path']==path)
+  self.assertEqual((row['package'],row['sha256']),('libssl3',m.sha(self.data[recorded])))
+  self.assertEqual(next(r for r in evidence['files'] if r['path']==path)['sourcePath'],recorded)
+  self.ownership[path]=('libc6:amd64: '+recorded+'\n').encode();self.bind();self.refused('inventory.owner_filelist')
+  self.ownership[path]=('libssl3: '+recorded+'\n').encode()
+  self.data[recorded]=b'changed';self.aliases[path]='/lib/x86_64-linux-gnu/other.so'
+  self.data[self.aliases[path]]=b'changed';self.bind();self.refused('inventory.owner_alias_identity')
+ def test_owner_alias_selection_refuses_unlisted_or_unrelated_path(self):
+  path='/lib/x86_64-linux-gnu/libcrypto.so.3';recorded='/usr'+path
+  lists={'libssl3':{recorded},'libc6':{'/lib64/ld-linux-x86-64.so.2'}}
+  self.assertEqual(m.owner_lookup_path(path,lists,{path}),recorded)
+  self.assertEqual(m.owner_lookup_path(path,lists,set()),path)
+  self.assertEqual(m.owner_lookup_path(path,{'libssl3':{recorded},'other':{recorded}},{path}),path)
+  self.assertEqual(m.owner_lookup_path(path,{'libssl3':{recorded,'/lib/x86_64-linux-gnu/libcrypto.so.3'}},{path}),path)
+  self.assertEqual(m.owner_lookup_path('/lib/x86_64-linux-gnu/../libcrypto.so.3',lists,{path}),
+                   '/lib/x86_64-linux-gnu/../libcrypto.so.3')
  def test_only_exact_adjacent_bookworm_dash_diversion_annotation_is_ignored(self):
   raw=(b'/.\n/bin\n/bin/dash\n/bin/sh\npackage diverts others to: /bin/sh.distrib\n'
        b'/usr/share/man/man1/sh.1.gz\n'
