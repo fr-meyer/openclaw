@@ -153,7 +153,7 @@ class Ops:
             else:kind,value=values[name]
             if self.fail=='wrong_unit_security' and name=='PrivateNetwork':value=False
             if self.fail=='wrong_mount_flags' and name=='MountFlags':value=1048576
-            return self.result(canonical({'type':kind,'data':[value]}))
+            return self.result(canonical({'type':kind,'data':value}))
         if argv[:2]==('/usr/bin/systemctl','list-units'):
             return self.result((self.port.unit+' active running').encode() if self.fail=='existing_unit' else b'')
         if argv[:2]==('/usr/bin/systemctl','stop'):
@@ -236,6 +236,21 @@ class Integration(unittest.TestCase):
         self.assertTrue(result['custodyComplete']);self.assertTrue(result['ownedUnitEmpty'])
         with self.assertRaises(Refusal):self.run_driver()
         self.assertEqual(len(self.commands('/usr/bin/systemd-run')),1)
+    def test_busctl_property_value_is_direct_and_strictly_typed(self):
+        self.port.unit=self.context['unitName']
+        for kind,value in (('b',True),('s','success'),('u',77),('t',262144),('i',-1),('ay',list(range(16)))):
+            with self.subTest(kind=kind):
+                self.port.command=lambda argv,kind=kind,value=value:canonical({'type':kind,'data':value})
+                self.assertEqual(self.port.typed('org.freedesktop.systemd1.Service','Result',kind),value)
+        for kind,value in (('b',[True]),('s',['success']),('u',[77]),('t',[262144]),
+                           ('i',[0]),('ay',[list(range(16))]),('u',True),('t',-1),
+                           ('i',2**31),('ay',[0]*15),('ay',[0]*15+[256])):
+            with self.subTest(kind=kind,value=value):
+                self.port.command=lambda argv,kind=kind,value=value:canonical({'type':kind,'data':value})
+                with self.assertRaises(Refusal):
+                    self.port.typed('org.freedesktop.systemd1.Service','Result',kind)
+        self.port.command=lambda argv:canonical({'type':'s','data':True})
+        with self.assertRaises(Refusal):self.port.typed('org.freedesktop.systemd1.Service','Result','b')
     def test_actual_probe_changed_environment_blocks_gate_and_consumer(self):
         self.ops.kernel.data['/proc/77/environ']+=b'LD_PRELOAD=bad\0'
         result=self.run_driver();self.assertEqual(result['reason'],'probe.environment_closed',result)

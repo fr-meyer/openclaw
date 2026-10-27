@@ -352,8 +352,20 @@ class Port:
         value=decode(self.command(('/usr/bin/busctl','--system','--json=short','get-property','org.freedesktop.systemd1',
           '/org/freedesktop/systemd1/unit/'+escaped,interface,name)),16384)
         closed(value,{'type','data'},'ci.typed_schema')
-        require(value['type']==kind and type(value['data']) is list and len(value['data'])==1,'ci.typed_shape')
-        return value['data'][0]
+        require(value['type']==kind,'ci.typed_shape')
+        data=value['data']
+        # busctl get-property emits the D-Bus property's value directly. Its
+        # JSON `data` is a scalar for basic types and a list for an array.
+        # Never unwrap a synthetic single-element envelope as authority.
+        if kind=='b':require(type(data) is bool,'ci.typed_shape')
+        elif kind=='s':require(type(data) is str,'ci.typed_shape')
+        elif kind=='u':require(type(data) is int and 0<=data<2**32,'ci.typed_shape')
+        elif kind=='t':require(type(data) is int and 0<=data<2**64,'ci.typed_shape')
+        elif kind=='i':require(type(data) is int and -(2**31)<=data<2**31,'ci.typed_shape')
+        elif kind=='ay':require(type(data) is list and len(data)==16 and
+                                all(type(byte) is int and 0<=byte<256 for byte in data),'ci.typed_shape')
+        else:raise Refusal('ci.typed_signature_unsupported')
+        return data
     def owned_observation(self,context):
         # Exact scalar readback. Missing/unsupported rendering refuses; no absent->empty inference.
         service='org.freedesktop.systemd1.Service';unit='org.freedesktop.systemd1.Unit'

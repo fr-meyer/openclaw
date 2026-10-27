@@ -199,10 +199,21 @@ class PortCustodyTests(integration.Integration):
         prior=old.Port(self.ops,original_port.manifest,session_root=self.session_root,clock=self.clock,
                        metadata_admission=self.admission)
         prior.unit=self.context['unitName'];prior.context=self.context;prior.unit_issued=True;self.ops.port=prior
+        current_command=self.ops.command
+        def legacy_fixture_command(argv,timeout=5):
+            result=current_command(argv,timeout)
+            if argv[0]=='/usr/bin/busctl':
+                # The frozen old parser expected this synthetic wrapper. It
+                # is not the shape observed from real Debian busctl.
+                value=json.loads(result['stdout'])
+                return self.ops.result(canonical({'type':value['type'],'data':[value['data']]}))
+            return result
+        self.ops.command=legacy_fixture_command
         with self.assertRaises(Refusal):prior.command(('/usr/bin/systemd-run','fixture'))
         old_evidence=prior.failure_evidence()
         self.assertEqual(old_evidence['ownedSetup'],{'ExecMainCode':1,'ExecMainStatus':226,'Result':'namespace'})
         self.assertFalse(any(b'UNIQUE-FIRST-SETUP-CAUSE' in base64.b64decode(row['stdout']['viewBase64']) for row in old_evidence['commands']))
+        self.ops.command=current_command
         self.ops.port=original_port;original_port.unit=self.context['unitName'];original_port.context=self.context;original_port.unit_issued=True
         with self.assertRaises(Refusal):original_port.command(('/usr/bin/systemd-run','fixture'))
         new_evidence=original_port.failure_evidence()
