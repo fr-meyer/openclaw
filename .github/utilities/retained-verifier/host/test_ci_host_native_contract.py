@@ -235,6 +235,18 @@ class NativePortContract(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(prefix='ocv-public-contract-')
   self.addCleanup(self.tmp.cleanup);self.fixture=ContractFixture(self.tmp.name)
+ def test_public_project_stays_separate_from_private_runner_artifact_temp(self):
+  runner_temp=self.fixture.root/'runner-temp';runner_temp.mkdir(mode=0o700)
+  self.fixture.environment['RUNNER_TEMP']=str(runner_temp)
+  port=self.fixture.new_port()
+  self.assertEqual(port.project,self.fixture.root/'project')
+  self.assertEqual(port.artifacts,runner_temp/'ocv-ci-artifacts')
+  self.assertEqual(runner_temp.stat().st_mode&0o777,0o700)
+ def test_preexisting_symlink_project_refuses_before_command(self):
+  destination=self.fixture.root/'destination';destination.mkdir()
+  (self.fixture.root/'project').symlink_to(destination,target_is_directory=True)
+  with self.assertRaises(FileExistsError):self.fixture.new_port()
+  self.assertFalse(self.fixture.commands.calls)
  def test_actual_controller_metadata_negative_build_serial_replay_and_public_artifact(self):
   result=self.fixture.run()
   self.assertEqual(result['status'],'passed',getattr(self.fixture.port,'failure',result))

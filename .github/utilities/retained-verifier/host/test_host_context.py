@@ -142,6 +142,21 @@ class Host(unittest.TestCase):
   self.assertEqual(scope.environment,h.ENV)
   with self.assertRaises(dataclasses.FrozenInstanceError):scope.argv=('/bin/sh','-c','bad')
   self.assertFalse(scope.consumed)
+ def test_public_project_root_requires_canonical_root_owned_sticky_tmp(self):
+  root=Path('/tmp')
+  good=types.SimpleNamespace(st_uid=0,st_mode=stat.S_IFDIR|0o1777)
+  with mock.patch.object(h.Path,'resolve',lambda p:p),mock.patch.object(h.Path,'lstat',return_value=good):
+   self.assertEqual(h._public_project_root(),root)
+  for uid,mode in ((1001,stat.S_IFDIR|0o1777),(0,stat.S_IFDIR|0o0777),
+                   (0,stat.S_IFDIR|0o0755),(0,stat.S_IFLNK|0o1777)):
+   with self.subTest(uid=uid,mode=mode),mock.patch.object(h.Path,'resolve',lambda p:p), \
+        mock.patch.object(h.Path,'lstat',return_value=types.SimpleNamespace(st_uid=uid,st_mode=mode)), \
+        self.assertRaisesRegex(h.Refusal,'host.public_project_root'):
+    h._public_project_root()
+  with mock.patch.object(h.Path,'resolve',lambda p:Path('/private/tmp')), \
+       mock.patch.object(h.Path,'lstat',return_value=good), \
+       self.assertRaisesRegex(h.Refusal,'host.public_project_root'):
+   h._public_project_root()
 
 
 class ProjectAndSources(unittest.TestCase):
@@ -164,6 +179,11 @@ class ProjectAndSources(unittest.TestCase):
   with self.assertRaisesRegex(h.Refusal,'host.project_ancestor_traverse'):
    self.check_project(self.project,bad_ancestor=self.project.parent)
   self.assertEqual(h._ISSUED,{})
+ def test_public_tmp_project_keeps_ancestor_guard_without_runner_temp_parent(self):
+  self.project=Path('/tmp/ocv-'+'e'*32);self.permit.project=self.project
+  self.assertEqual(self.check_project(self.project),str(self.project))
+  with self.assertRaisesRegex(h.Refusal,'host.project_ancestor_traverse'):
+   self.check_project(self.project,bad_ancestor=Path('/tmp'))
  def test_old_project_predicate_reproduces_public_mode_refusal(self):
   oldpath=Path(__file__).parent/'review/host-context-r1-94ab37617e79/host_context.py'
   raw=oldpath.read_bytes();self.assertEqual(h.sha(raw),'94ab37617e7951a7f0f127e4bd65437eeb8f3c7a4d12b573779ae490caa200d2')

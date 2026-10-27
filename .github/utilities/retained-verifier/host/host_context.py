@@ -284,6 +284,15 @@ def _bootstrap_git(outer,workspace,kind):
  return result['stdout']
 
 
+def _public_project_root():
+ # APT's _apt user needs traversable ancestors. RUNNER_TEMP may be private;
+ # this fresh public/synthetic project uses the canonical sticky host temp root.
+ root=Path('/tmp');info=root.lstat()
+ need(root.resolve()==root and stat.S_ISDIR(info.st_mode) and info.st_uid==0
+      and stat.S_IMODE(info.st_mode)==0o1777,'host.public_project_root')
+ return root
+
+
 def make_native_permit(source_root,expected_source,mission_id):
  facts=_actual_role(expected_source,mission_id)
  workspace=Path(os.environ.get('GITHUB_WORKSPACE',''));temp=Path(os.environ.get('RUNNER_TEMP',''))
@@ -305,7 +314,7 @@ def make_native_permit(source_root,expected_source,mission_id):
  need(_bootstrap_git(outer,str(workspace),'head').decode('ascii').strip()==expected_source['expected_source']
       and _bootstrap_git(outer,str(workspace),'tree').decode('ascii').strip()==expected_source['expected_tree']
       and _bootstrap_git(outer,str(workspace),'clean')==b'','host.git_source')
- permit=NativePermit(_KEY,source=source,workspace=workspace,temp=temp,project=temp/('ocv-'+mission_id),
+ permit=NativePermit(_KEY,source=source,workspace=workspace,temp=temp,project=_public_project_root()/('ocv-'+mission_id),
   expected=dict(expected_source),mission=mission_id,rows=rows,outer=outer,uid=facts['uid'],gid=facts['gid'],run_id=expected_source['run_id'])
  _ISSUED[id(permit)]=permit;return permit
 
