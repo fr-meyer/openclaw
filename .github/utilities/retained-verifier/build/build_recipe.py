@@ -138,6 +138,7 @@ Incremental=no
 '''.format(packages='\n         '.join(specs))
     partition = '''[Partition]
 Type=root-x86-64
+GrowFileSystem=no
 Format=ext4
 CopyFiles=/
 SizeMinBytes=5G

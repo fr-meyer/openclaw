@@ -96,6 +96,8 @@ class RecipeTests(unittest.TestCase):
         self.assertEqual(b.mkosi_argv('/project'),('/usr/bin/mkosi','--directory=/project','build'))
         self.assertEqual(len(b.recipe_symlinks()),1)
         self.assertIn('CacheDirectory=cache',s)
+        self.assertIn('Type=root-x86-64\nGrowFileSystem=no\nFormat=ext4',
+                      f['repart.d/10-root.conf'][0].decode())
         shim=f['mkosi.postinst.chroot'][0].decode()
         self.assertTrue(shim.startswith('#!/bin/sh\nexec /usr/bin/python3.11 -I -S -B -'))
         self.assertIn('EXPECTED_CONTEXT = '+repr('e'*64),shim)
