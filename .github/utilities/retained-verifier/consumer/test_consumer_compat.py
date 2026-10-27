@@ -1,6 +1,6 @@
 """Public synthetic contract tests; no real report or Linux proof."""
 import ast
-from contextlib import contextmanager
+from contextlib import ExitStack,contextmanager
 import hashlib
 import json
 import shutil
@@ -15,6 +15,20 @@ from unittest.mock import patch
 import consumer_compat as c
 
 ROOT=Path(__file__).resolve().parent
+
+
+def recorded_definition_dump(node):
+    # Python 3.12 adds empty type_params to definition ASTs. The recorded
+    # digest was made with 3.9; remove only that interpreter-added empty field.
+    definitions=[part for part in ast.walk(node)
+                 if isinstance(part,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]
+    if any(getattr(part,'type_params',[]) for part in definitions):
+        raise ValueError('consumer.nonempty_type_params')
+    dumped=ast.dump(node,include_attributes=False)
+    added=sum('type_params' in part._fields for part in definitions)
+    if dumped.count(', type_params=[]')!=added:
+        raise ValueError('consumer.definition_ast_shape')
+    return dumped.replace(', type_params=[]','')
 
 
 class CompatibilityTests(unittest.TestCase):
@@ -39,12 +53,32 @@ class CompatibilityTests(unittest.TestCase):
         record=json.loads((ROOT/'PUBLIC-CONSUMER-ORIGIN.json').read_bytes())
         for name,row in record['sources'].items():
             tree=ast.parse((ROOT/name).read_bytes())
-            funcs={node.name:ast.dump(node,include_attributes=False) for node in tree.body
+            funcs={node.name:recorded_definition_dump(node) for node in tree.body
                    if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))}
             self.assertEqual(len(funcs),row['definitionCount'])
             self.assertEqual(hashlib.sha256(json.dumps(funcs,sort_keys=True).encode()).hexdigest(),
                              row['definitionASTSha256'])
             self.assertTrue(row['allFunctionAndClassASTsUnchanged'])
+
+    def test_recorded_definition_digest_survives_empty_python312_type_params_only(self):
+        record=json.loads((ROOT/'PUBLIC-CONSUMER-ORIGIN.json').read_bytes())
+        classes=(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)
+        for name,row in record['sources'].items():
+            tree=ast.parse((ROOT/name).read_bytes())
+            with self.subTest(name=name),ExitStack() as stack:
+                for cls in classes:
+                    fields=cls._fields
+                    stack.enter_context(patch.object(cls,'_fields',fields if 'type_params' in fields
+                                                      else fields+('type_params',)))
+                definitions=[part for part in ast.walk(tree) if isinstance(part,classes)]
+                for part in definitions:part.type_params=[]
+                funcs={node.name:recorded_definition_dump(node) for node in tree.body
+                       if isinstance(node,classes)}
+                self.assertEqual(hashlib.sha256(json.dumps(funcs,sort_keys=True).encode()).hexdigest(),
+                                 row['definitionASTSha256'])
+                definitions[0].type_params=[ast.Name(id='T',ctx=ast.Load())]
+                with self.assertRaisesRegex(ValueError,'nonempty_type_params'):
+                    recorded_definition_dump(definitions[0])
 
     def test_synthetic_source_and_plan_are_bound_not_a_saved_verdict(self):
         privacy,export,plan=c._load(ROOT)
