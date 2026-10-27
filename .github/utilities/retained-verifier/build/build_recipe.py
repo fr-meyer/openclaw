@@ -382,9 +382,13 @@ def root_partition(raw, image_path, image_bytes):
             'build.root_type_value')
     require(row['node'] == image_path + '1', 'build.root_node')
     attrs = row.get('attrs', '')
-    if attrs != '':
-        # The image is synthetic, but publish only a bounded type and digest
-        # of an unexpected attribute value. Never accept it by observation.
+    # Host systemd-repart 255 (and upstream 252) overwrites an explicit
+    # GrowFileSystem=no with its root-type default. libfdisk represents the
+    # resulting single GPT bit 59 as GUID:59. The QEMU command mounts this
+    # exact PARTUUID explicitly; accept only that known bit or no attributes.
+    # All other GPT flags still fail closed, including NoAuto and ReadOnly.
+    if type(attrs) is not str or attrs not in ('', 'GUID:59'):
+        # Publish only a bounded type and digest of an unexpected value.
         kind = 'null' if attrs is None else type(attrs).__name__
         raise Refusal('build.root_attrs_' + kind + '_' + sha(canonical(attrs))[:16])
     require(row.get('bootable', False) is False, 'build.root_bootable')

@@ -147,11 +147,22 @@ class RecipeTests(unittest.TestCase):
             bad=table();bad['partitiontable']['partitions'][0][field]=value
             with self.subTest(field=field),self.assertRaisesRegex(b.Refusal,'^'+reason+'$'):
                 b.root_partition(b.canonical(bad),'/out/ocv-test.raw',2*1024**3)
-        for attrs in ('GUID:59','GUID:63','0',None,False,{'unexpected':'value'}):
+        for attrs in ('GUID:63','GUID:60','GUID:59,63','GUID:59,60','GUID:59 ',
+                      'GUID:059','guid:59','0',None,False,{'unexpected':'value'}):
             bad=table();bad['partitiontable']['partitions'][0]['attrs']=attrs
             kind='null' if attrs is None else type(attrs).__name__
             reason='build.root_attrs_'+kind+'_'+b.sha(b.canonical(attrs))[:16]
             with self.subTest(attrs=attrs),self.assertRaisesRegex(b.Refusal,'^'+reason+'$'):
+                b.root_partition(b.canonical(bad),'/out/ocv-test.raw',2*1024**3)
+    def test_exact_growfs_flag_only_with_full_partition_identity(self):
+        t=table();t['partitiontable']['partitions'][0]['attrs']='GUID:59'
+        x=b.root_partition(b.canonical(t),'/out/ocv-test.raw',2*1024**3)
+        self.assertEqual(x['sfdiskSha256'],b.sha(b.canonical(t)))
+        self.assertEqual(x['type'],b.ROOT_TYPE)
+        for field,value in (('type','4f68bce3-e8cd-4db1-96e7-fbcaf984b708'),
+                            ('node','/out/other.raw1'),('bootable',True)):
+            bad=copy.deepcopy(t);bad['partitiontable']['partitions'][0][field]=value
+            with self.subTest(field=field),self.assertRaises(b.Refusal):
                 b.root_partition(b.canonical(bad),'/out/ocv-test.raw',2*1024**3)
     def test_partition_bad_roster_type_bounds(self):
         for variant in ('extra','type','path','uuid','range','sector'):
