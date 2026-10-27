@@ -159,13 +159,33 @@ class _OwnedOps:
   self.setupCause=None
  def now(self):return self.io.now()
  def pause(self,duration):self.io.pause(duration)
+ def _pre_spawn_cause(self,phase,error):
+  number=getattr(error,'errno',None)
+  code=str(error) if type(error)is Refusal and re.fullmatch('host\\.[A-Za-z0-9_.-]{1,75}',str(error)) else None
+  self.setupCause={'phase':phase,'exceptionType':type(error).__name__ if type(error).__name__ in
+                   {'OSError','BlockingIOError','PermissionError','FileExistsError','ValueError','KeyError',
+                    'TypeError','RuntimeError','Refusal'} else 'other',
+                   'errno':number if type(number)is int and 1<=number<=4095 else None,'reason':code}
  def spawn(self,argv,cwd,environment):
-  need(not self.spawn_intent,'host.spawn_consumed')
-  need(argv==self.argv and cwd==self.cwd and environment==self.environment,'host.command_scope')
-  self.spawn_intent=True;self.before_spawn()
-  selector=self.io.selector()
+  try:
+   need(not self.spawn_intent,'host.spawn_consumed')
+   need(argv==self.argv and cwd==self.cwd and environment==self.environment,'host.command_scope')
+   self.spawn_intent=True;self.before_spawn()
+  except BaseException as error:
+   self._pre_spawn_cause('before_spawn',error)
+   raise
+  try:selector=self.io.selector()
+  except BaseException as error:
+   self._pre_spawn_cause('selector_create',error);raise
   try:child=self.io.spawn(argv,cwd,environment)
-  except BaseException:selector.close();raise
+  except BaseException as error:
+   self._pre_spawn_cause('process_spawn',error)
+   try:selector.close()
+   except BaseException as close_error:
+    name=type(close_error).__name__
+    known={'OSError','BlockingIOError','PermissionError','ValueError','RuntimeError'}
+    self.setupCause['selectorCloseExceptionType']=name if name in known else 'other'
+   raise
   owned=self.outer.Owned(child,selector,child.pid);self.owned[id(owned)]=owned
   phase='stdout_fileno'
   try:

@@ -145,6 +145,7 @@ class NativePort:
                                       deadline=time.monotonic()+min(timeout,remaining-30))
         row={'role':role,'argv':list(scope.argv),'status':value.get('status'),'returncode':value.get('returncode'),
              'timedOut':value.get('timedOut'),'ownershipRetained':value.get('ownershipRetained'),
+             'spawned':value.get('spawned'),'outerReason':value.get('reason'),
              'setupCause':value.get('setupCause'),
              'stdoutBytes':len(value['stdout']),'stdoutSha256':sha(value['stdout']),
              'stderrBytes':len(value['stderr']),'stderrSha256':sha(value['stderr'])}

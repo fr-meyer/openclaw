@@ -65,12 +65,15 @@ class FakeIO:
  synthetic=True
  def __init__(self):
   self.clock=0.;self.calls=[];self.alive=True;self.timeout=False;self.selector_fault=False
+  self.selector_create_fault=False
   self.select_fault=False;self.close_fault=False;self.wait_fault=False;self.read_fault=False
   self.spawn_fault=False;self.term_fault=False;self.group_fault=False;self.reads={5:[b'public result\n',b''],6:[b'']}
- def selector(self):self.sel=Selector(self);return self.sel
+ def selector(self):
+  if self.selector_create_fault:raise OSError(5,'PRIVATE synthetic selector creation')
+  self.sel=Selector(self);return self.sel
  def spawn(self,argv,cwd,environment):
   self.calls.append(('spawn',argv,cwd,dict(environment)))
-  if self.spawn_fault:raise OSError('synthetic spawn')
+  if self.spawn_fault:raise OSError('PRIVATE synthetic spawn')
   self.child=Child(self);return self.child
  def nonblocking(self,fd):self.calls.append(('nonblocking',fd))
  def read(self,fd,cap):
@@ -270,6 +273,41 @@ class OwnedIO(unittest.TestCase):
   with self.assertRaises(outer.SpawnedRefusal) as caught:ops.spawn(self.argv,'/synthetic',self.env)
   self.assertEqual(caught.exception.setupCause,{'phase':'stdout_register','exceptionType':'OSError','errno':5})
   self.assertEqual(len(ops.owned),1);self.assertIs(caught.exception.process.child,self.io.child)
+ def test_pre_spawn_refusal_preserves_bounded_cause_without_process_or_private_text(self):
+  for failure,wanted in ((h.Refusal('host.owned_project'),
+        {'phase':'before_spawn','exceptionType':'Refusal','errno':None,'reason':'host.owned_project'}),
+       (h.Refusal('PRIVATE'),
+        {'phase':'before_spawn','exceptionType':'Refusal','errno':None,'reason':None}),
+       (OSError(17,'PRIVATE synthetic path'),
+        {'phase':'before_spawn','exceptionType':'FileExistsError','errno':17,'reason':None})):
+   with self.subTest(kind=type(failure).__name__):
+    self.setUp()
+    def refuse(error=failure):raise error
+    ops=h._OwnedOps(outer,self.argv,'/synthetic',self.env,self.io,refuse)
+    result=h._supervise_owned(ops,self.argv,cwd='/synthetic',environment=self.env,deadline=ops.now()+.5,grace=.1)
+    self.assertEqual(result['status'],'refused');self.assertFalse(result['spawned'])
+    self.assertEqual(result['setupCause'],wanted)
+    self.assertNotIn('PRIVATE',str(result['setupCause']))
+    self.assertFalse(any(call[0]=='spawn' for call in self.io.calls))
+ def test_selector_creation_and_process_spawn_failures_keep_bounded_cause(self):
+  for fault,wanted in (('selector_create_fault',
+      {'phase':'selector_create','exceptionType':'OSError','errno':5,'reason':None}),
+      ('spawn_fault',
+      {'phase':'process_spawn','exceptionType':'OSError','errno':None,'reason':None})):
+   with self.subTest(fault=fault):
+    self.setUp();setattr(self.io,fault,True)
+    result=self.execute()
+    self.assertEqual(result['status'],'refused');self.assertFalse(result['spawned'])
+    self.assertEqual(result['setupCause'],wanted)
+    self.assertNotIn('PRIVATE',str(result['setupCause']))
+    if fault=='spawn_fault':self.assertTrue(self.io.sel.closed)
+ def test_process_spawn_failure_retains_original_cause_if_selector_close_fails(self):
+  self.io.spawn_fault=True;self.io.close_fault=True
+  result=self.execute()
+  self.assertEqual(result['reason'],'outer_OSError')
+  self.assertEqual(result['setupCause'],{'phase':'process_spawn','exceptionType':'OSError','errno':None,
+                                         'reason':None,'selectorCloseExceptionType':'OSError'})
+  self.assertFalse(result['spawned'])
  def test_read_or_select_failure_cannot_skip_wait_or_term(self):
   for name in ('read_fault','select_fault'):
    self.setUp();setattr(self.io,name,True);result=self.execute()

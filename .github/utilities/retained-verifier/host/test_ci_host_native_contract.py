@@ -309,14 +309,16 @@ class NativePortContract(unittest.TestCase):
    with self.assertRaisesRegex(h.Refusal,'host.base_changed'):port.verify_base_unchanged()
  def test_exact_first_owned_setup_cause_survives_command_and_failure_custody(self):
   port=self.fixture.new_port()
-  cause={'phase':'stderr_register','exceptionType':'OSError','errno':5}
+  cause={'phase':'before_spawn','exceptionType':'Refusal','errno':None,'reason':'host.owned_project'}
   with mock.patch.object(self.fixture.commands,'run_owned',return_value=outer(b'PUBLIC-OUT',b'PUBLIC-ERR',
-      status='refused',returncode=None,setupCause=cause)):
+      status='refused',returncode=None,spawned=False,reason='outer_Refusal',setupCause=cause)):
    try:port._run('python_tests',{'source_root':str(self.fixture.source),'suite':'host'},3)
    except h.Refusal as error:port.preserve_failure('source-tests',error)
    else:self.fail('failed command accepted')
   self.assertEqual(port.first_failure['setupCause'],cause)
   self.assertEqual(port.failure['firstCommand']['setupCause'],cause)
+  self.assertFalse(port.failure['firstCommand']['spawned'])
+  self.assertEqual(port.failure['firstCommand']['outerReason'],'outer_Refusal')
   self.assertEqual((port.artifacts/'host-stderr.bin').read_bytes(),b'PUBLIC-ERR')
  def test_preexisting_project_or_artifact_dir_refuses_before_command(self):
   for target in (Path(self.fixture.permit.project),self.fixture.root/'ocv-ci-artifacts'):
