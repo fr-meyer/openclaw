@@ -115,6 +115,18 @@ def command_ok(result, *, signature_status=False):
     return result['stdout']
 
 
+def regular_read_cap_allowed(path,cap,immutable,header):
+    """Match the recipe's larger cap only for its exact generated initrd."""
+    if type(cap)is not int or cap<=0:return False
+    if cap<=128*1024**2:return True
+    if cap>512*1024**2 or immutable is not False or type(header)is not dict:return False
+    kernel=header.get('kernelPackage')
+    if type(kernel)is not dict or type(kernel.get('name'))is not str:return False
+    name=kernel['name']
+    return (re.fullmatch(r'linux-image-6\.1\.[A-Za-z0-9.+~_-]+',name) is not None and
+            path=='/boot/initrd.img-'+name.removeprefix('linux-image-'))
+
+
 def required_owner(ops,path,query_path):
     """Keep the first exact public package path when a required owner lookup fails."""
     result=ops.run(('/usr/bin/dpkg-query','--search',query_path),10)
@@ -531,7 +543,8 @@ class NativeBuildOps:
                 'mode':before['mode'],'regular':True,'symlinkChainSha256':before['aliasProofSha256']}
 
     def _read_regular(self,path,cap,immutable=True):
-        need(type(cap)is int and 0<cap<=128*1024**2,'build_entry.read_cap')
+        need(regular_read_cap_allowed(path,cap,immutable,getattr(self,'header',None)),
+             'build_entry.read_cap')
         fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC|os.O_NONBLOCK)
         try:
             a=os.fstat(fd)

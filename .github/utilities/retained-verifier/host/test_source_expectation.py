@@ -212,6 +212,22 @@ class BuildFixture:
 
 
 class BuildGuestJoinTests(unittest.TestCase):
+    def test_large_read_cap_is_only_for_pinned_generated_initrd(self):
+        header={'kernelPackage':{'name':'linux-image-6.1.0-39-amd64'}}
+        allowed=build_entry.regular_read_cap_allowed
+        self.assertTrue(allowed('/boot/initrd.img-6.1.0-39-amd64',512*1024**2,False,header))
+        self.assertTrue(allowed('/usr/lib/python3.11/os.py',128*1024**2,True,None))
+        for path,cap,immutable,binding in (
+            ('/boot/initrd.img-6.1.0-39-amd64',512*1024**2+1,False,header),
+            ('/boot/initrd.img-6.1.0-39-amd64',512*1024**2,True,header),
+            ('/boot/initrd.img-6.1.0-40-amd64',512*1024**2,False,header),
+            ('/boot/vmlinuz-6.1.0-39-amd64',512*1024**2,False,header),
+            ('/usr/lib/python3.11/os.py',512*1024**2,False,header),
+            ('/boot/initrd.img-6.1.0-39-amd64',512*1024**2,False,None),
+            ('/boot/initrd.img-6.1.0-39-amd64',True,False,header)):
+            with self.subTest(path=path,cap=cap,immutable=immutable):
+                self.assertFalse(allowed(path,cap,immutable,binding))
+
     def test_owner_argument_gate_admits_only_packaged_systemctl_bin_alias(self):
         ops=build_entry.NativeBuildOps.__new__(build_entry.NativeBuildOps)
         ops.metadata_ready=True
