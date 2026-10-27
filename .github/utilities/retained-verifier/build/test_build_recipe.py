@@ -184,6 +184,10 @@ class RecipeTests(unittest.TestCase):
             self.assertNotIn(v,a)
         self.assertEqual(a[a.index('-accel')+1],'tcg')
         self.assertEqual(a[a.index('-monitor')+1],'none')
+        # Disable only systemd-firstboot's interactive questions in this
+        # disposable synthetic guest; leave ConditionFirstBoot semantics intact.
+        self.assertEqual(a[-1].split().count('systemd.firstboot=0'),1)
+        self.assertNotIn('systemd.condition-first-boot=',a[-1])
         self.assertIn('ocv.build='+'c'*64,a[-1])
         self.assertEqual(a.count('-snapshot'),1)
         self.assertNotIn('snapshot=off',a[a.index('-drive')+1])

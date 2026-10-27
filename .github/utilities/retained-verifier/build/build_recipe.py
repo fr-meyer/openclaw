@@ -472,7 +472,8 @@ def qemu_argv(bound, session):
         cap = {'ocv-test.raw':MAX_IMAGE,'kernel.bin':MAX_KERNEL,'initrd.img':MAX_INITRD}[name]
         require(type(rec['bytes']) is int and 0 < rec['bytes'] <= cap, 'build.artifact_size')
     append = ('root=PARTUUID=' + partuuid + ' rootfstype=ext4 rw console=ttyS0,115200 '
-              'loglevel=3 systemd.show_status=false systemd.unit=multi-user.target panic=-1 ocv.source=' + bound['sourceManifestSha256'] +
+              'loglevel=3 systemd.show_status=false systemd.unit=multi-user.target '
+              'systemd.firstboot=0 panic=-1 ocv.source=' + bound['sourceManifestSha256'] +
               ' ocv.build=' + bound['buildControlSha256'] + ' ocv.session=' + session)
     return ('/usr/bin/qemu-system-x86_64', '-nodefaults', '-no-user-config',
             '-machine', 'q35', '-accel', 'tcg', '-cpu', 'max', '-smp', '2', '-m', '4096',
