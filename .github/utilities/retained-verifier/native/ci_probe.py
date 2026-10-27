@@ -384,8 +384,8 @@ def collect_and_validate(reader,expected):
                         'sourceSha256':sha(row['source'].encode()),'sourceBytes':len(row['source'].encode()),
                         'fsType':fs_type if fs_type in ('ext4','tmpfs','proc','sysfs','devtmpfs','cgroup2','mqueue','overlay') else 'other',
                         'majorMinor':row['majorMinor'],
-                        'vfsFlags':[f for f in ('ro','rw','nosuid','nodev','noexec') if f in row['vfsOptions']],
-                        'fsFlags':[f for f in ('ro','rw','nosuid','nodev','noexec') if f in row['fsOptions']],
+                        'vfsFlags':','.join(f for f in ('ro','rw','nosuid','nodev','noexec','relatime') if f in row['vfsOptions']),
+                        'fsFlags':','.join(f for f in ('ro','rw','nosuid','nodev','noexec') if f in row['fsOptions']),
                         'optionalCount':len(row['optionalFields'])}
             obs.add('mount.roster',actualCount=len(mounts),expectedCount=len(expected['mounts']),
                     matchedTargets=sorted(actual_targets&expected_targets),
