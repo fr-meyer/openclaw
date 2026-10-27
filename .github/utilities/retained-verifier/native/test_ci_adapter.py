@@ -283,6 +283,17 @@ class Integration(unittest.TestCase):
         reader.stats['/proc/77/root'].st_ino+=1
         with self.assertRaisesRegex(Refusal,'probe.jail_changed'):
             ci_probe.collect_and_validate(reader,self.expected)
+    def test_extra_child_mount_refuses_with_bounded_roster_diagnostic(self):
+        self.ops.kernel.data['/proc/77/mountinfo']+=(
+            b'999 99 0:21 / /dev/shm rw,nosuid,nodev - tmpfs tmpfs rw\n')
+        result=self.run_driver();self.assertEqual(result['reason'],'probe.mount_roster_changed',result)
+        self.assertNotIn('gate',self.port.effect_intents)
+        diagnostic=json.loads((self.root/'custody/host-diagnostics.private.bin').read_bytes())
+        records=diagnostic['facts']['records'];roster=next(r['facts'] for r in records if r['role']=='mount.roster')
+        self.assertEqual(roster['actualCount'],13)
+        self.assertEqual(roster['expectedCount'],12)
+        self.assertEqual(roster['extraTargets'][0]['label'],'/dev/shm')
+        self.assertEqual(roster['missingTargets'],[])
     def test_stacked_manager_mount_refuses_with_bounded_label(self):
         self.ops.stage_file('/proc/self/mountinfo',
           b'1 9 8:1 / / rw,nodev - ext4 /dev/sda1 rw\n'

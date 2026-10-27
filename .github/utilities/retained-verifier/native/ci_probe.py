@@ -369,7 +369,19 @@ def collect_and_validate(reader,expected):
         env_proof={'entryCount':4,'bytes':len(environment),'sha256':sha(environment),
                    'canonicalSha256':sha(canonical(ENVIRONMENT))}
         mounts=mount_table(obs.text(base+'/mountinfo',1048576,'mounts'))
-        require(len(mounts)==len(expected['mounts']),'probe.mount_roster_changed')
+        if len(mounts)!=len(expected['mounts']):
+            actual_targets={row['target'] for row in mounts}
+            expected_targets={row['target'] for row in expected['mounts']}
+            public_labels={'/dev/shm','/dev/pts','/sys/fs/cgroup','/run/lock',
+                           '/proc/sys/fs/binfmt_misc','/run/systemd/incoming'}
+            extra=sorted(actual_targets-expected_targets)
+            obs.add('mount.roster',actualCount=len(mounts),expectedCount=len(expected['mounts']),
+                    matchedTargets=sorted(actual_targets&expected_targets),
+                    missingTargets=sorted(expected_targets-actual_targets),extraCount=len(extra),
+                    extraTargets=[{'label':target if target in public_labels else 'other',
+                                   'sha256':sha(target.encode()),'bytes':len(target.encode())}
+                                  for target in extra[:8]])
+            raise Refusal('probe.mount_roster_changed')
         indexed={r['target']:r for r in mounts};positive=[]
         for row in expected['mounts']:
             role='mount.'+row['role'];obs.role=role
