@@ -143,10 +143,15 @@ class RecipeTests(unittest.TestCase):
         for field,value,reason in (('type','not-a-guid','build.root_type_shape'),
                                    ('type','4f68bce3-e8cd-4db1-96e7-fbcaf984b708','build.root_type_value'),
                                    ('node','/out/another.raw1','build.root_node'),
-                                   ('attrs','RequiredPartition','build.root_attrs'),
                                    ('bootable',True,'build.root_bootable')):
             bad=table();bad['partitiontable']['partitions'][0][field]=value
             with self.subTest(field=field),self.assertRaisesRegex(b.Refusal,'^'+reason+'$'):
+                b.root_partition(b.canonical(bad),'/out/ocv-test.raw',2*1024**3)
+        for attrs in ('GUID:59','GUID:63','0',None,False,{'unexpected':'value'}):
+            bad=table();bad['partitiontable']['partitions'][0]['attrs']=attrs
+            kind='null' if attrs is None else type(attrs).__name__
+            reason='build.root_attrs_'+kind+'_'+b.sha(b.canonical(attrs))[:16]
+            with self.subTest(attrs=attrs),self.assertRaisesRegex(b.Refusal,'^'+reason+'$'):
                 b.root_partition(b.canonical(bad),'/out/ocv-test.raw',2*1024**3)
     def test_partition_bad_roster_type_bounds(self):
         for variant in ('extra','type','path','uuid','range','sector'):

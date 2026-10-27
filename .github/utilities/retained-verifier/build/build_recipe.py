@@ -381,7 +381,12 @@ def root_partition(raw, image_path, image_bytes):
     require(canonical_guid(row['type'], 'build.root_type_shape') == ROOT_TYPE,
             'build.root_type_value')
     require(row['node'] == image_path + '1', 'build.root_node')
-    require(row.get('attrs', '') == '', 'build.root_attrs')
+    attrs = row.get('attrs', '')
+    if attrs != '':
+        # The image is synthetic, but publish only a bounded type and digest
+        # of an unexpected attribute value. Never accept it by observation.
+        kind = 'null' if attrs is None else type(attrs).__name__
+        raise Refusal('build.root_attrs_' + kind + '_' + sha(canonical(attrs))[:16])
     require(row.get('bootable', False) is False, 'build.root_bootable')
     for key in ('start', 'size'):
         require(type(row[key]) is int and row[key] > 0, 'build.partition_range')
