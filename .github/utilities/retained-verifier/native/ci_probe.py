@@ -464,10 +464,29 @@ def collect_and_validate(reader,expected):
                         'flags':hex_word(8,8),'interface':'lo' if item(9)=='lo' else 'other'})
                 obs.add('network.ipv6_route.shape',count=len(raw.splitlines()),rows=route_rows,
                         omitted=max(0,len(raw.splitlines())-6))
+                # Linux 6.1 exposes its unreachable null entry in both the
+                # main and local IPv6 tables. Its REJECT|NONEXTHOP flags and
+                # maximum metric make ::/0 an error result, not a usable
+                # default route. Admit only that exact observed roster plus
+                # the local ::1/128 route; any usable/default/other route
+                # still refuses before input release.
+                roster={'unreachable':0,'loopback':0}
                 for line in raw.splitlines():
-                    cols=line.split();require(len(cols)==10 and cols[-1]=='lo'
-                        and cols[0]=='00000000000000000000000000000001' and cols[1]=='80'
-                        and cols[4]=='0'*32,'probe.external_ipv6_route')
+                    cols=line.split()
+                    require(len(cols)==10 and cols[2]=='0'*32 and cols[3]=='00'
+                        and cols[4]=='0'*32 and cols[9]=='lo'
+                        and all(re.fullmatch('[0-9a-f]{8}',word) for word in cols[5:9])
+                        and int(cols[6],16)>0 and cols[7]=='00000000',
+                        'probe.external_ipv6_route')
+                    if (cols[0]=='0'*32 and cols[1]=='00' and cols[5]=='ffffffff'
+                            and cols[8]=='00200200'):
+                        roster['unreachable']+=1
+                    elif (cols[0]=='0'*31+'1' and cols[1]=='80' and cols[5]=='00000000'
+                            and cols[8]=='80200001'):
+                        roster['loopback']+=1
+                    else:raise Refusal('probe.external_ipv6_route')
+                require(not raw.splitlines() or roster=={'unreachable':2,'loopback':1},
+                        'probe.external_ipv6_route')
         cg='/sys/fs/cgroup'+expected['cgroupPath'];limits={}
         for key,leaf in (('memoryMaxBytes','memory.max'),('memorySwapMaxBytes','memory.swap.max'),('pidsMax','pids.max')):
             raw=obs.text(cg+'/'+leaf,128,'cgroup.'+leaf).strip()

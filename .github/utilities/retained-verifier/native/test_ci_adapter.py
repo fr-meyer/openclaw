@@ -429,6 +429,50 @@ class Integration(unittest.TestCase):
         self.assertNotIn(b'2'*32,diagnostic)
         self.assertNotIn('input_read',self.ops.events)
 
+    def test_kernel_unreachable_ipv6_roster_is_not_a_usable_route(self):
+        zero='0'*32
+        null=f'{zero} 00 {zero} 00 {zero} ffffffff 00000001 00000000 00200200 lo\n'
+        local=f'{zero[:-1]}1 80 {zero} 00 {zero} 00000000 00000001 00000000 80200001 lo\n'
+        self.ops.kernel.data['/proc/77/net/ipv6_route']=(null+local+null).encode()
+        result=self.run_driver()
+        self.assertEqual(result['unitStatus'],'passed',result)
+        self.assertTrue(result['custodyComplete'])
+
+    def _refuse_changed_ipv6_route(self,change):
+        zero='0'*32
+        null=f'{zero} 00 {zero} 00 {zero} ffffffff 00000001 00000000 00200200 lo\n'
+        local=f'{zero[:-1]}1 80 {zero} 00 {zero} 00000000 00000001 00000000 80200001 lo\n'
+        self.ops.kernel.data['/proc/77/net/ipv6_route']=(change(null,zero)+local+null).encode()
+        result=self.run_driver()
+        self.assertEqual(result['reason'],'probe.external_ipv6_route',result)
+        self.assertNotIn('input_read',self.ops.events)
+        self.assertNotIn('gate',self.port.effect_intents)
+
+    def test_ipv6_usable_default_route_refuses(self):
+        self._refuse_changed_ipv6_route(lambda row,zero:row.replace('00200200','00200001'))
+
+    def test_ipv6_null_route_without_maximum_metric_refuses(self):
+        self._refuse_changed_ipv6_route(lambda row,zero:row.replace('ffffffff','00000000'))
+
+    def test_ipv6_null_route_on_external_interface_refuses(self):
+        self._refuse_changed_ipv6_route(lambda row,zero:row.replace(' lo\n',' eth0\n'))
+
+    def test_ipv6_null_route_with_gateway_refuses(self):
+        self._refuse_changed_ipv6_route(lambda row,zero:row.replace(
+            f' 00 {zero} ffffffff',f' 00 {zero[:-1]}1 ffffffff'))
+
+    def test_ipv6_null_route_without_reject_flag_refuses(self):
+        self._refuse_changed_ipv6_route(lambda row,zero:row.replace('00200200','00200000'))
+
+    def test_ipv6_reject_roster_requires_exact_count(self):
+        zero='0'*32
+        null=f'{zero} 00 {zero} 00 {zero} ffffffff 00000001 00000000 00200200 lo\n'
+        local=f'{zero[:-1]}1 80 {zero} 00 {zero} 00000000 00000001 00000000 80200001 lo\n'
+        self.ops.kernel.data['/proc/77/net/ipv6_route']=(null+local+null+null).encode()
+        result=self.run_driver()
+        self.assertEqual(result['reason'],'probe.external_ipv6_route',result)
+        self.assertNotIn('input_read',self.ops.events)
+
     def test_manager_namespace_mismatch_refuses_before_unit(self):
         self.ops.fail='manager_namespace';result=self.run_driver()
         self.assertEqual(result['reason'],'ci.manager_namespace_changed');self.assertEqual(self.commands('/usr/bin/systemd-run'),[])
