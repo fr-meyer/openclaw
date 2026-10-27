@@ -216,6 +216,30 @@ class ExportTests(unittest.TestCase):
     def verify(self,ops,desc,contents):return g.verify_export(canonical(desc),contents,
       expected_keyring_sha256=ops.context['keyringSha256'],expected_source_manifest_sha256='1'*64,
       expected_build_id=ops.context['buildId'])
+    def repeat_fixture(self):
+        ops,descriptor,contents=self.fixture_export()
+        saved=g.parse_json(contents['guard-proof.json'])
+        live={name:contents[name] for name in ('InRelease','Packages','keyring.gpg','gpgv-status.txt')}
+        records=g.parse_json(contents['first-stage-ledger.json'])['records']
+        return (ops.context,saved,live,[dict(contents),dict(contents)],
+                [canonical(descriptor),canonical(descriptor)],records)
+    def test_second_outer_export_requires_exact_prior_and_live_metadata(self):
+        args=self.repeat_fixture()
+        e._verify_repeated_export(g,*args)
+        for change,reason in (
+            (lambda a:a[3][1].update({'Packages':b'changed'}),'apt.export_existing_copies'),
+            (lambda a:a[4].__setitem__(1,b'changed'),'apt.export_existing_descriptors'),
+            (lambda a:a[2].update({'Packages':b'changed'}),'apt.export_live_changed'),
+            (lambda a:a[1].update({'releaseSha256':'0'*64}),'apt.export_live_changed'),
+            (lambda a:a[5].append({'outcome':'refused'}),'apt.export_receipts_changed'),
+        ):
+            with self.subTest(reason=reason):
+                a=self.repeat_fixture();change(a)
+                with self.assertRaisesRegex(RuntimeError,reason):e._verify_repeated_export(g,*a)
+    def test_second_outer_export_rejects_identically_corrupted_copies(self):
+        a=self.repeat_fixture()
+        a[3][0]['Packages']=a[3][1]['Packages']=b'changed'
+        with self.assertRaisesRegex(g.Refusal,'apt.export_pin'):e._verify_repeated_export(g,*a)
     def test_exact_export_join_still_requires_fresh_signature(self):
         o,d,f=self.fixture_export();self.assertTrue(self.verify(o,d,f)['freshSignatureStillRequired'])
     def test_any_missing_phase_refuses(self):
