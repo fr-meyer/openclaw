@@ -489,24 +489,29 @@ export function toolCallXmlTextFilter(options: StripToolCallXmlOptions = {}): Te
             return false;
           }
           for (let start = text.indexOf("<", scannedThrough); start !== -1;) {
-            codeRegions ??= findCodeRegions(text);
-            // Appends cannot revoke block code after its opening line is complete.
-            // Inline code can still change ownership through tables and references.
-            const protectedBlock = codeRegions.some(
-              (region) =>
-                region.block &&
-                region.start <= start &&
-                start < region.end &&
-                /[\r\n]/.test(text.slice(region.start, start)),
-            );
             const next = text.indexOf("<", start + 1);
             const candidate = text.slice(start, next === -1 ? text.length : next);
-            if (!protectedBlock && TOOL_CALL_QUICK_RE.test(candidate)) {
-              active = true;
-              return true;
+            // Markdown ownership can only matter for a candidate that could begin a
+            // tool-call tag; ordinary markup must not re-parse the whole reply.
+            if (TOOL_CALL_QUICK_RE.test(candidate)) {
+              codeRegions ??= findCodeRegions(text);
+              // Appends cannot revoke block code after its opening line is complete.
+              // Inline code can still change ownership through tables and references.
+              const protectedBlock = codeRegions.some(
+                (region) =>
+                  region.block &&
+                  region.start <= start &&
+                  start < region.end &&
+                  /[\r\n]/.test(text.slice(region.start, start)),
+              );
+              if (!protectedBlock) {
+                active = true;
+                return true;
+              }
             }
-            if (!protectedBlock && next === -1 && /^<[\s/]*[\w:]*$/.test(candidate)) {
-              // An unfinished tag name can still become tool markup; rescan it on the next append.
+            if (next === -1 && /^<[\s/]*[\w:]*$/.test(candidate)) {
+              // An unfinished tag name can still become tool markup; rescan it on the next
+              // append. Its Markdown ownership is resolved only once the name completes.
               scannedThrough = start;
               codeRegions = undefined;
               return false;

@@ -303,7 +303,10 @@ a canonical URL alone is not proof of anonymous access.
     `openclaw/plugin-sdk/channel-secret-basic-runtime` combines `channelKey`,
     `account`/`channel` registry specs, and a `collect` callback. The callback receives
     `config`, `defaults`, `context`, `channelKey`, `channel`, and the resolved account
-    `surface`; it runs only when the channel record exists. Keep activation rules in the callback.
+    `surface`; it runs only when the channel record exists. Channels that start an implicit
+    default alongside named accounts supply `hasImplicitDefaultAccount`, using the same
+    credential-readiness rule as account listing. The shared surface then includes that
+    default as a consumer of root secrets. Keep field activation rules in `collect`.
 
     Config-backed logout handlers can use `clearAccountFieldsFromConfigSection`
     from `openclaw/plugin-sdk/channel-config-helpers`. Pass `cfg`, `sectionKey`,

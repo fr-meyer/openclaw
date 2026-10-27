@@ -34,9 +34,11 @@ export function createCodexAttemptLifecycleController(
   // still settle, but they cannot reopen the turn for another model step.
   const batchHadNonTerminalResult = () =>
     state.currentTurnHadNonTerminalDynamicToolResult && !state.currentTurnHadToolAuthoredFinalReply;
+  let terminalSteeringDrainPending = false;
   const scheduleTerminalDynamicToolReleaseCheck = () => {
     if (
       state.terminalDynamicToolReleaseCheckScheduled ||
+      terminalSteeringDrainPending ||
       (!state.pendingTerminalDynamicToolRelease &&
         !state.currentTurnHadNonTerminalDynamicToolResult)
     ) {
@@ -53,8 +55,8 @@ export function createCodexAttemptLifecycleController(
         pendingOpenClawDynamicToolCompletionIds.size === 0
       ) {
         // Tool response flush plus sibling classification commits terminal release.
-        // Fence steering now; active Codex items may delay the actual interrupt.
-        turnRuntime.steeringQueueRef.current?.cancel();
+        // Fence new input now, but keep submitted input eligible for consumption.
+        turnRuntime.steeringQueueRef.current?.sealAdmission();
       }
       if (
         state.activeAppServerTurnRequests > 0 ||
@@ -81,6 +83,15 @@ export function createCodexAttemptLifecycleController(
       ) {
         return;
       }
+      const steeringDrain = turnRuntime.steeringQueueRef.current?.drainBeforeCancel();
+      if (steeringDrain) {
+        terminalSteeringDrainPending = true;
+        void steeringDrain.then(() => {
+          terminalSteeringDrainPending = false;
+          scheduleTerminalDynamicToolReleaseCheck();
+        });
+        return;
+      }
       state.pendingTerminalDynamicToolRelease = undefined;
       state.currentTurnHadToolAuthoredFinalReply = false;
       trajectoryRecorder?.recordEvent("turn.dynamic_tool_terminal_release", {
@@ -97,9 +108,6 @@ export function createCodexAttemptLifecycleController(
         tool: value.call.tool,
         durationMs: value.durationMs,
       });
-      // Interrupt drops accepted pending input. Reject unconsumed steering first so
-      // completion delivery can use its fallback path instead of reporting success.
-      turnRuntime.steeringQueueRef.current?.cancel();
       void turnRuntime.interruptTurn(value.call.turnId, { locallyCompleted: true });
       turnRuntime.completeTurn();
     });

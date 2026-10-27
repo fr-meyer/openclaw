@@ -106,6 +106,8 @@ export async function projectCodexSettledHistoryInWorker(
     mirroredMessages: target.mirroredMessages,
     settledMessages: target.settledMessages,
     turnId: target.turnId,
+    ...(target.promptIdentity ? { promptIdentity: target.promptIdentity } : {}),
+    ...(target.promptSuppressed ? { promptSuppressed: true } : {}),
   };
   if (resolved.kind === "sqlite") {
     try {

@@ -22,6 +22,7 @@ import {
   assertCodexNativeHookRelayAllowed,
   CodexManagedHooksOnlyError,
 } from "./native-hook-relay.js";
+import { releaseCodexProbeClient } from "./probe-client.js";
 import { resolveCodexProviderWebSearchSupport } from "./provider-capabilities.js";
 import { isCodexResponsesOAuth } from "./responses-oauth.js";
 import type { CodexAttemptConnection } from "./run-attempt-connection.js";
@@ -31,10 +32,8 @@ import {
 } from "./scheduled-app-authority.js";
 import { canResolveScheduledConfiguredMcpCreatorAuthority } from "./scheduled-configured-mcp-authority.js";
 import {
-  createIsolatedCodexAppServerClient,
   getLeasedSharedCodexAppServerClient,
   getSharedCodexAppServerClient,
-  releaseLeasedSharedCodexAppServerClient,
   type CodexAppServerClientOptions,
 } from "./shared-client.js";
 import { fingerprintJsonObject } from "./thread-fingerprints.js";
@@ -286,11 +285,7 @@ export async function prepareCodexAttemptRuntime(connection: CodexAttemptConnect
       nativeToolSurfaceEnabled = false;
       embeddedAgentLog.info("Codex managed-only hooks require sandbox-backed OpenClaw tools");
     } finally {
-      if (attemptClientFactory === createIsolatedCodexAppServerClient) {
-        await client.closeAndWait();
-      } else {
-        releaseLeasedSharedCodexAppServerClient(client);
-      }
+      await releaseCodexProbeClient(client, attemptClientFactory);
     }
   }
   const configuredMcpSurface =

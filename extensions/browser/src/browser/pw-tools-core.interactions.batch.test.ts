@@ -240,6 +240,7 @@ describe("executeActViaPlaywright batches", () => {
       onPolicyCheckStarted: expect.any(Function),
       onPolicyDenied: expect.any(Function),
       page,
+      signal: expect.any(AbortSignal),
       ssrfPolicy,
       browserProxyMode: "explicit-browser-proxy",
     });
@@ -247,6 +248,7 @@ describe("executeActViaPlaywright batches", () => {
       ...target,
       page,
       response: null,
+      signal: expect.any(AbortSignal),
       ssrfPolicy,
       browserProxyMode: "explicit-browser-proxy",
       targetId: "tab-1",
@@ -274,6 +276,7 @@ describe("executeActViaPlaywright batches", () => {
       onPolicyCheckStarted: expect.any(Function),
       onPolicyDenied: expect.any(Function),
       page,
+      signal: expect.any(AbortSignal),
       ssrfPolicy,
       browserProxyMode: "explicit-browser-proxy",
     });

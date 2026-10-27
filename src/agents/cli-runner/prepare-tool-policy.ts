@@ -1,5 +1,6 @@
 import type { ResolvedCliBackend } from "../cli-backends.js";
 import { resolveConversationCapabilityProfile } from "../conversation-capability-profile.js";
+import { applyEmbeddedAttemptToolsAllow } from "../embedded-agent-runner/run/attempt-tool-construction-plan.js";
 import { resolveExecConfigState } from "../exec-defaults.js";
 import { resolveEffectiveToolFsWorkspaceOnly } from "../tool-fs-policy.js";
 import { expandToolGroups, normalizeToolPolicyName } from "../tool-policy.js";
@@ -10,7 +11,8 @@ import type { RunCliAgentParams } from "./types.js";
  * Native CLI tools cannot enforce workspace, channel, or inherited completion caps, so those
  * runs expose their whole surface through the mediated MCP policy projection. Bundled
  * local Claude agent turns use that same mediated surface even without a cap, so a
- * completion does not replace the native tool prefix of a running session.
+ * completion does not replace the native tool prefix of a running session. Operator-selected
+ * backend tools stay on both turn kinds for the same reason.
  */
 export function resolveCliRuntimeToolPolicy(input: {
   params: RunCliAgentParams;
@@ -20,12 +22,18 @@ export function resolveCliRuntimeToolPolicy(input: {
   bundleMcp: boolean;
   canEnforceExactToolAvailability: boolean;
   projectNativeToolAuthority?: ResolvedCliBackend["projectNativeToolAuthority"];
+  resolveManagedNativeTools?: ResolvedCliBackend["resolveManagedNativeTools"];
   isSideQuestion: boolean;
   sideQuestionToolMode?: "disabled" | "native";
   skipsTurnPreparation: boolean;
-}): { params: RunCliAgentParams; runtimeToolsAllowPolicy: string[] | undefined } {
+}): {
+  params: RunCliAgentParams;
+  runtimeToolsAllowPolicy: string[] | undefined;
+  managedNativeTools: readonly string[];
+} {
   let { params } = input;
   let runtimeToolsAllowPolicy: string[] | undefined;
+  let managedNativeTools: string[] = [];
   if (params.toolsAllow !== undefined) {
     if (params.cliToolAvailability !== undefined) {
       throw new Error(`CLI backend ${input.backendId} received conflicting runtime tool policies`);
@@ -124,6 +132,17 @@ export function resolveCliRuntimeToolPolicy(input: {
         `CLI backend ${input.backendId} cannot enforce ${senderRestricted ? "conversation" : "completion"} tool policy`,
       );
     }
+    // Only uncapped ordinary and verified completion turns reach this list, so both kinds
+    // launch the same native surface. Restricted and workspace-only runs keep none.
+    managedNativeTools =
+      params.cliToolAvailability === undefined && !senderRestricted && !workspaceOnly
+        ? [
+            ...(input.resolveManagedNativeTools?.({
+              config: params.config,
+              agentId: input.policyAgentId,
+            }) ?? []),
+          ]
+        : [];
     const exactWorkspaceTools =
       !params.trustedInternalHandoff &&
       workspaceOnly &&
@@ -142,8 +161,58 @@ export function resolveCliRuntimeToolPolicy(input: {
     params = {
       ...params,
       toolsAllow: undefined,
-      cliToolAvailability: { native: [], openClaw: exactWorkspaceTools ?? [] },
+      cliToolAvailability: { native: managedNativeTools, openClaw: exactWorkspaceTools ?? [] },
     };
   }
-  return { params, runtimeToolsAllowPolicy };
+  return { params, runtimeToolsAllowPolicy, managedNativeTools };
+}
+
+/**
+ * Bootstrap routing needs the run's final file access: a native file-capable
+ * selection, or Claude's mediated OpenClaw read plus write tools. Managed native
+ * selections confer no file capability by backend contract.
+ */
+export function resolveCliBootstrapFileAccess(input: {
+  backend: Pick<ResolvedCliBackend, "id" | "nativeToolMode">;
+  params: Pick<RunCliAgentParams, "cliToolAvailability" | "disableTools">;
+  managedNativeTools: readonly string[];
+  projectedToolNames: readonly string[];
+}): boolean {
+  const { backend, params, managedNativeTools, projectedToolNames } = input;
+  const selectedNativeToolsProvideFileAccess =
+    params.cliToolAvailability === undefined ||
+    params.cliToolAvailability.native.some((name) => !managedNativeTools.includes(name));
+  const mediatedBootstrapFileAccess =
+    backend.id === "claude-cli" &&
+    projectedToolNames.includes("read") &&
+    projectedToolNames.some((name) => ["write", "apply_patch"].includes(name));
+  return (
+    (((backend.nativeToolMode === "always-on" || backend.nativeToolMode === "selectable") &&
+      selectedNativeToolsProvideFileAccess) ||
+      mediatedBootstrapFileAccess) &&
+    params.disableTools !== true
+  );
+}
+
+type CliToolAvailability = NonNullable<RunCliAgentParams["cliToolAvailability"]>;
+
+/** Apply a `before_prompt_build` tool cap to both native and mediated CLI tools. */
+export function capCliToolAvailability(
+  availability: CliToolAvailability,
+  toolsAllow: string[],
+): CliToolAvailability {
+  const cap = (names: string[]) =>
+    applyEmbeddedAttemptToolsAllow(
+      names.map((name) => ({ name })),
+      toolsAllow,
+    ).map((tool) => tool.name);
+  return { native: cap(availability.native), openClaw: cap(availability.openClaw) };
+}
+
+/** Operator-managed native tools that survived every later per-turn cap. */
+export function keptManagedNativeTools(
+  managedNativeTools: readonly string[],
+  params: Pick<RunCliAgentParams, "cliToolAvailability">,
+): string[] {
+  return managedNativeTools.filter((name) => params.cliToolAvailability?.native.includes(name));
 }

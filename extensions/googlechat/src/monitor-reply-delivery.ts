@@ -10,6 +10,7 @@ import {
   sendGoogleChatMessage,
   updateGoogleChatMessage,
 } from "./api.js";
+import { formatGoogleChatMediaText } from "./format.js";
 import type { GoogleChatCoreRuntime, GoogleChatRuntimeEnv } from "./monitor-types.js";
 
 export type GoogleChatTypingMessage = ReturnType<typeof createGoogleChatTypingMessage>;
@@ -83,13 +84,10 @@ export async function deliverGoogleChatReply(params: {
     deliveryThreadName = typingMessage.deliveredThreadName;
   }
 
-  if (reply.hasMedia) {
-    runtime.error?.(
-      "Google Chat outbound attachments require user OAuth and are not supported by this service-account channel; sending text fallback only.",
-    );
-  }
-
-  if (reply.hasMedia && !reply.hasText) {
+  let text: string;
+  try {
+    text = formatGoogleChatMediaText(reply.text, reply.mediaUrls);
+  } catch (cause) {
     try {
       if (typingMessage) {
         await deleteGoogleChatMessage({ account, messageName: typingMessage.name });
@@ -100,8 +98,8 @@ export async function deliverGoogleChatReply(params: {
     // Permanent policy rejection before any recipient-visible send; the typed
     // contract keeps delivery custody from recording a false ambiguous attempt.
     throw new PlatformMessageNotDispatchedError(
-      "Google Chat outbound attachments require user OAuth and no text fallback is available.",
-      { cause: undefined, retryable: false },
+      cause instanceof Error ? cause.message : String(cause),
+      { cause, retryable: false },
     );
   }
 
@@ -130,7 +128,7 @@ export async function deliverGoogleChatReply(params: {
       deliveryThreadName = sent?.threadName?.trim() || deliveryThreadName;
     }
   };
-  const chunks = core.channel.text.chunkMarkdownTextWithMode(reply.text, chunkLimit, chunkMode);
+  const chunks = core.channel.text.chunkMarkdownTextWithMode(text, chunkLimit, chunkMode);
   for (const chunk of chunks) {
     if (!chunk) {
       continue;

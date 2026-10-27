@@ -1557,7 +1557,8 @@ describe("linkOpenClawPeerDependencies (via installPluginFromDir)", () => {
     const { result, warnings } = await installFromDirWithWarnings({ pluginDir, extensionsDir });
 
     expect(result.ok).toBe(true);
-    expect(warnings).toHaveLength(0);
+    // Replacing a copied host package is a reported repair (#181140).
+    expect(warnings).toEqual([expect.stringMatching(/^Repaired OpenClaw host link at /)]);
     if (!result.ok) {
       return;
     }

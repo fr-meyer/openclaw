@@ -11,7 +11,10 @@ const mocks = vi.hoisted(() => ({
   proxyAgent: { fixture: "configured-proxy" },
 }));
 
-vi.mock("ws", () => ({ default: FakeWebSocket }));
+vi.mock("openclaw/plugin-sdk/websocket-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("openclaw/plugin-sdk/websocket-runtime")>()),
+  WebSocket: FakeWebSocket,
+}));
 vi.mock("openclaw/plugin-sdk/proxy-capture", () => ({
   get captureWsEventAsync() {
     return mocks.captureAvailable ? mocks.capture : undefined;

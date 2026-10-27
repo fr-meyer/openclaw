@@ -12,6 +12,7 @@ import {
   type InputProvenance,
 } from "../../sessions/input-provenance.js";
 import { cleanupSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
+import { prepareSystemAgentRunAdmission } from "../admitted-run-context.js";
 import { buildAssistantMessage, buildUsageWithNoCost } from "../stream-message-shared.js";
 import { loadCliSessionPromptContext } from "./session-history.js";
 
@@ -37,8 +38,13 @@ async function createSession() {
 }
 
 describe("preserved Claude turns", () => {
-  it("carries completion exchanges since the last ordinary reply, and withholds them across the account boundary", async () => {
+  it("carries completion exchanges since the last ordinary reply, and withholds them across the account boundary", async ({
+    onTestFinished,
+  }) => {
     const { target, params } = await createSession();
+    const admission = prepareSystemAgentRunAdmission({}, "preserved", "main", "history-test");
+    onTestFinished(() => admission.close());
+    const admittedRunContext = await admission.admit("embedded");
     const reply = async (index: number, runId = `run-${index}`) =>
       await appendTranscriptMessage(target, {
         eventId: `assistant-${index}`,
@@ -67,6 +73,8 @@ describe("preserved Claude turns", () => {
     const completion = { kind: "inter_session", sourceTool: "subagent_announce" } as const;
     const resumed = {
       ...params,
+      sessionId: target.sessionId,
+      admittedRunContext,
       nativeSessionId: "native-session",
       provider: "claude-cli",
     };
@@ -80,31 +88,41 @@ describe("preserved Claude turns", () => {
     await reply(3, "announce:v1:agent:main:subagent:child:run-2");
 
     const context = await loadCliSessionPromptContext(resumed);
-    expect(context.preservedTurnsContext).toContain(
+    expect(context.resumeContext).toContain(
       JSON.stringify([
         {
-          source: "subagent_announce",
-          prompt: annotateInterSessionPromptText("Child result: CHILD_RESULT_7f3a9c", completion),
-          reply: "reply-1",
+          role: "user",
+          content: annotateInterSessionPromptText("Child result: CHILD_RESULT_7f3a9c", completion),
         },
-        { source: "subagent_announce", reply: "reply-3" },
+        { role: "assistant", content: "reply-1" },
+        { role: "assistant", content: "reply-3" },
       ]),
     );
-    expect(context.preservedTurnsContext).toContain("Verify current and time-sensitive facts");
+    expect(context.resumeContext).toContain("Verify current and time-sensitive facts");
     expect(
-      (await loadCliSessionPromptContext({ ...resumed, nativeSessionId: undefined }))
-        .preservedTurnsContext,
+      (await loadCliSessionPromptContext({ ...resumed, nativeSessionId: undefined })).resumeContext,
     ).toBeUndefined();
 
+    // A native-only resume still receives the update; fresh recovery receives nothing.
+    expect(
+      (await loadCliSessionPromptContext({ ...resumed, rawTranscriptReseedReason: "auth-unknown" }))
+        .resumeContext,
+    ).toBe(context.resumeContext);
     const withheld = await loadCliSessionPromptContext({
       ...resumed,
+      nativeSessionId: undefined,
       rawTranscriptReseedReason: "auth-unknown",
     });
-    expect(withheld.preservedTurnsContext).toBeUndefined();
+    expect(withheld.resumeContext).toBeUndefined();
+    expect(withheld.reseedMessages).toEqual([]);
+    expect(
+      (await loadCliSessionPromptContext({ ...resumed, rawTranscriptReseedReason: "auth-profile" }))
+        .resumeContext,
+    ).toBeUndefined();
 
     // The next ordinary reply means the bound session has now seen them.
     await turn(4, "What did the review find?");
-    expect((await loadCliSessionPromptContext(resumed)).preservedTurnsContext).toBeUndefined();
+    expect((await loadCliSessionPromptContext(resumed)).resumeContext).toBeUndefined();
 
     // The newest eight are carried; older ones stay in saved history.
     for (let index = 5; index < 14; index++) {
@@ -122,10 +140,10 @@ describe("preserved Claude turns", () => {
         __openclaw: { runId: "announce:long" },
       },
     });
-    const newest = (await loadCliSessionPromptContext(resumed)).preservedTurnsContext;
-    expect(newest).not.toContain('"reply":"reply-6"');
+    const newest = (await loadCliSessionPromptContext(resumed)).resumeContext;
+    expect(newest).not.toContain('"content":"reply-6"');
     for (let index = 7; index < 14; index++) {
-      expect(newest).toContain(`"reply":"reply-${index}"`);
+      expect(newest).toContain(`"content":"reply-${index}"`);
     }
     expect(newest).toContain("`\u200b``");
     expect(newest).toContain("…[truncated]");

@@ -197,9 +197,29 @@ describe("subagent registry restart recovery", () => {
       },
     );
 
+    it("reconciles an accepted child that never recorded a lifecycle run", async () => {
+      const entry = run();
+      entry.execution.lifecycleGeneration = getAgentEventLifecycleGeneration();
+      // Acceptance can persist before the child records its first lifecycle run.
+      Object.assign(mocks.entries[childSessionKey]!, {
+        status: undefined,
+        lifecycleRunId: undefined,
+        lastRunId: undefined,
+        abortedLastRun: false,
+      });
+      rotateAgentEventLifecycleGeneration();
+
+      expect(await recover(entry)).toMatchObject({
+        status: "terminal",
+        error: expect.stringContaining("Gateway restart"),
+      });
+      expect(dispatchAgent).not.toHaveBeenCalled();
+    });
+
     it.each([
       "current lifecycle",
       "different run",
+      "different last run",
       "completed session",
       "completed session with stale abort marker",
     ])("does not invent a restart interruption for a %s", async (scenario) => {
@@ -210,8 +230,14 @@ describe("subagent registry restart recovery", () => {
       }
       Object.assign(mocks.entries[childSessionKey]!, {
         status: scenario.startsWith("completed session") ? "done" : undefined,
-        lifecycleRunId: scenario === "different run" ? "newer-run" : entry.runId,
-        abortedLastRun: scenario === "completed session with stale abort marker",
+        lifecycleRunId:
+          scenario === "different last run"
+            ? undefined
+            : scenario === "different run"
+              ? "newer-run"
+              : entry.runId,
+        lastRunId: scenario === "different last run" ? "newer-run" : undefined,
+        abortedLastRun: scenario.endsWith("stale abort marker"),
       });
       expect(await recover(entry)).toEqual({ status: "ignored" });
       expect(dispatchAgent).not.toHaveBeenCalled();

@@ -50,24 +50,19 @@ struct PostUpdateBundledRuntimeTests {
     }
 
     @Test(arguments: ["2026.9.0", "2026.9.1", "2026.9.2"])
-    func `setup recovery explicitly retargets only forward`(_ pendingVersion: String) throws {
+    func `setup recovery leaves foreign targets intact without blocking current work`(_ pendingVersion: String) throws {
         let suite = "PostUpdateBundledRuntimeTests.setupTarget.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         try PostAppUpdateReceiptStore.recordSetupRecovery(
             fromVersion: "2026.8.1", toVersion: pendingVersion, defaults: defaults)
         let before = defaults.data(forKey: postAppUpdateReceiptKey)
-        if pendingVersion == "2026.9.2" {
-            #expect(throws: GatewayHostingError.self) {
-                try PostAppUpdateReceiptStore.recordSetupRecovery(
-                    fromVersion: "2026.9.1", toVersion: "2026.9.1", defaults: defaults)
-            }
+        let local = try PostAppUpdateReceiptStore.recordSetupRecovery(
+            fromVersion: "2026.9.1", toVersion: "2026.9.1", defaults: defaults)
+        #expect(local.toVersion == "2026.9.1")
+        #expect(local.coreUpdate == .gateway)
+        if pendingVersion != "2026.9.1" {
             #expect(defaults.data(forKey: postAppUpdateReceiptKey) == before)
-        } else {
-            try PostAppUpdateReceiptStore.recordSetupRecovery(
-                fromVersion: "2026.9.1", toVersion: "2026.9.1", defaults: defaults)
-            #expect(PostAppUpdateReceiptStore.pending(currentVersion: "2026.9.1", defaults: defaults)?
-                .coreUpdate == .gateway)
         }
     }
 

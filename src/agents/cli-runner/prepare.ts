@@ -1,7 +1,4 @@
-import {
-  ensureSystemPromptCacheBoundary,
-  splitSystemPromptRelocatableBoundary,
-} from "@openclaw/ai/internal/shared";
+import { splitSystemPromptRelocatableBoundary } from "@openclaw/ai/internal/shared";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import {
@@ -107,10 +104,8 @@ import type { ResolvedProviderAuth } from "../model-auth-runtime-shared.js";
 import { loadManifestModelCatalog, overlayConfiguredModelCatalog } from "../model-catalog.js";
 import { resolveModelContextWindowProfile } from "../model-context-window.js";
 import { recordAdmittedModelRoutingDecision } from "../model-routing-decision.js";
-import { applyPluginTextReplacements } from "../plugin-text-transforms.js";
 import { collectRuntimeChannelCapabilities } from "../runtime-capabilities.js";
 import { buildSystemPromptReport } from "../system-prompt-report.js";
-import { appendModelIdentitySystemPrompt, buildModelIdentityPromptLine } from "../system-prompt.js";
 import { normalizeToolPolicyName } from "../tool-policy.js";
 import { assertNativeCronCreatorCapabilities } from "../tools/cron-tool-creator-cap.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
@@ -145,9 +140,15 @@ import { resolveCliCatalogCapabilities } from "./model-capabilities.js";
 import { detectNodeClaudePlacement, resolveClaudeCliContextModelId } from "./prepare-claude.js";
 import * as mcp from "./prepare-mcp.js";
 import { runWithCliPreparationSource } from "./prepare-source.js";
-import { resolveCliRuntimeToolPolicy } from "./prepare-tool-policy.js";
+import {
+  capCliToolAvailability,
+  keptManagedNativeTools,
+  resolveCliBootstrapFileAccess,
+  resolveCliRuntimeToolPolicy,
+} from "./prepare-tool-policy.js";
 import {
   composeCliPromptContext,
+  finalizeCliSystemPrompt,
   prependCliSessionResumeUserContext,
   prepareCliSystemPrompt,
   prepareCliTurnPromptContext,
@@ -310,12 +311,13 @@ async function prepareCliRunContextWithinReadFence(
     bundleMcp: backendResolved.bundleMcp,
     canEnforceExactToolAvailability,
     projectNativeToolAuthority: backendResolved.projectNativeToolAuthority,
+    resolveManagedNativeTools: backendResolved.resolveManagedNativeTools,
     isSideQuestion,
     sideQuestionToolMode: backendResolved.sideQuestionToolMode,
     skipsTurnPreparation,
   });
   params = toolPolicy.params;
-  const { runtimeToolsAllowPolicy } = toolPolicy;
+  const { runtimeToolsAllowPolicy, managedNativeTools } = toolPolicy;
   const internalParams = params as RunCliAgentPrepareParams;
   const nodeClaudePlacement = detectNodeClaudePlacement({
     backendId: backendResolved.id,
@@ -823,23 +825,16 @@ async function prepareCliRunContextWithinReadFence(
     params = {
       ...params,
       cliToolAvailability: {
-        native: [],
+        native: params.cliToolAvailability?.native ?? [], // empty or operator-managed
         openClaw: hookFilteredProjectedTools.map((tool) => tool.name),
       },
     };
   }
   if (params.cliToolAvailability && promptBuildToolsAllow !== undefined) {
-    const filterToolNames = (names: string[]) =>
-      applyEmbeddedAttemptToolsAllow(
-        names.map((name) => ({ name })),
-        promptBuildToolsAllow,
-      ).map((tool) => tool.name);
+    const { cliToolAvailability } = params;
     params = {
       ...params,
-      cliToolAvailability: {
-        native: filterToolNames(params.cliToolAvailability.native),
-        openClaw: filterToolNames(params.cliToolAvailability.openClaw),
-      },
+      cliToolAvailability: capCliToolAvailability(cliToolAvailability, promptBuildToolsAllow),
     };
   }
   const projectedTools = applyEmbeddedAttemptToolsAllow(
@@ -851,18 +846,12 @@ async function prepareCliRunContextWithinReadFence(
   const canonicalWorkspace = resolveUserPath(
     resolveAgentWorkspaceDir(params.config ?? {}, workspaceResolution.agentId),
   );
-  const selectedNativeToolsProvideFileAccess =
-    params.cliToolAvailability === undefined || params.cliToolAvailability.native.length > 0;
-  const mediatedBootstrapFileAccess =
-    backendResolved.id === "claude-cli" &&
-    projectedTools.some((tool) => tool.name === "read") &&
-    projectedTools.some((tool) => ["write", "apply_patch"].includes(tool.name));
-  const hasBootstrapFileAccess =
-    (((backendResolved.nativeToolMode === "always-on" ||
-      backendResolved.nativeToolMode === "selectable") &&
-      selectedNativeToolsProvideFileAccess) ||
-      mediatedBootstrapFileAccess) &&
-    params.disableTools !== true;
+  const hasBootstrapFileAccess = resolveCliBootstrapFileAccess({
+    backend: backendResolved,
+    params,
+    managedNativeTools,
+    projectedToolNames: projectedTools.map((tool) => tool.name),
+  });
   const bootstrapRouting =
     skipsTurnPreparation || !canTransportSystemPrompt(backendResolved.config)
       ? undefined
@@ -1561,8 +1550,13 @@ async function prepareCliRunContextWithinReadFence(
             sessionTarget: params.sessionTarget,
             allowRawTranscriptReseed,
             rawTranscriptReseedReason,
+            admittedRunContext: params.admittedRunContext,
+            sessionId: params.sessionId,
             nativeSessionId: reusableCliSessionId,
             provider: params.provider,
+            runId: params.runId,
+            cliSessionBinding: params.cliSessionBinding,
+            userTurnTranscriptRecorder: params.userTurnTranscriptRecorder,
           });
     const effectiveReplyGuidance =
       skipsTurnPreparation || params.isolatedCompletion
@@ -1575,7 +1569,7 @@ async function prepareCliRunContextWithinReadFence(
     const finalizedTranscriptPrompt =
       (params.finalizePromptForResolvedTools ||
         sessionPromptContext?.durableContext ||
-        sessionPromptContext?.preservedTurnsContext ||
+        sessionPromptContext?.resumeContext ||
         effectiveReplyGuidance) &&
       params.transcriptPrompt === undefined
         ? params.prompt
@@ -1616,6 +1610,8 @@ async function prepareCliRunContextWithinReadFence(
         isNewSession:
           !reusableCliSessionId?.trim() || reusableCliSession.mode === "reuse-with-drift",
         thinkLevel: params.thinkLevel,
+        // Operator-kept orchestration tools that survived every later native-tool cap.
+        nativeDelegationTools: keptManagedNativeTools(managedNativeTools, params),
         runtimeContextFragments: params.runtimeContextFragments,
         context: [
           turnRuntimeFacts?.relocatable,
@@ -1628,11 +1624,9 @@ async function prepareCliRunContextWithinReadFence(
     }
     let historyPromptCurrentTurn = preparedPrompt;
     if (!skipsTurnPreparation) {
-      // Missed exchanges are saved conversation text: native reuse alone cannot replay them.
       const currentInboundContext = prependCliSessionResumeUserContext(
         params.currentInboundContext,
         reusableCliSession,
-        cliHistoryWriter ? sessionPromptContext?.preservedTurnsContext : undefined,
       );
       const renderCurrentPrompt = (prompt: string, preferResumableText = false) =>
         annotateInterSessionPromptText(
@@ -1662,23 +1656,14 @@ async function prepareCliRunContextWithinReadFence(
           maxHistoryChars: autoReseedHistoryChars,
         })
       : undefined;
-    const systemPromptWithReplacements = skipsTurnPreparation
-      ? systemPrompt
-      : applyPluginTextReplacements(systemPrompt, backendResolved.textTransforms?.input);
-    // Ensure the cache boundary before appending the model identity so the identity lands in the
-    // dynamic suffix, not the cached prefix, for marker-free hook overrides — otherwise an idle
-    // turn's prefix (O + identity) diverges from an active media turn's prefix (O) and breaks
-    // prompt caching. Skip empty prompts and turns with no identity line, which need no boundary.
     systemPrompt = skipsTurnPreparation
-      ? systemPromptWithReplacements
-      : appendModelIdentitySystemPrompt({
-          systemPrompt:
-            buildModelIdentityPromptLine(modelDisplay) &&
-            systemPromptWithReplacements.trim().length > 0
-              ? ensureSystemPromptCacheBoundary(systemPromptWithReplacements)
-              : systemPromptWithReplacements,
-          model: modelDisplay,
-        });
+      ? systemPrompt
+      : finalizeCliSystemPrompt(systemPrompt, modelDisplay, backendResolved.textTransforms?.input);
+    if (sessionPromptContext?.resumeContext) {
+      promptForHooks = composeCliPromptContext(promptForHooks ?? preparedPrompt, {
+        prependContext: sessionPromptContext.resumeContext,
+      });
+    }
     const systemPromptReport = buildSystemPromptReport({
       source: "run",
       generatedAt: Date.now(),
@@ -1738,6 +1723,8 @@ async function prepareCliRunContextWithinReadFence(
       systemPromptReport,
       claudeSkillsPluginArgs: claudeSkillsPlugin.args,
       ...(cliHistoryWriter ? { cliHistoryWriter } : {}),
+      resumeContext: sessionPromptContext?.resumeContext,
+      transcriptCursor: sessionPromptContext?.transcriptCursor,
       authEpoch,
       authBindingFingerprint,
       ...(skipLocalCredentialEpoch ? { authBindingSkipsLocalCredential: true as const } : {}),
@@ -1889,7 +1876,8 @@ async function prepareCliRunContextWithinReadFence(
       contextEngine,
       deferContextEngineDisposalUntil,
       contextEngineTurnPrompt,
-      ...(promptContext ? { promptContext, promptForHooks } : {}),
+      ...(promptContext ? { promptContext } : {}),
+      ...(promptForHooks !== undefined ? { promptForHooks } : {}),
       ...(nodeSkillWorkshop ? { nodeSkillWorkshop } : {}),
       ...(openClawHistoryPrompt ? { openClawHistoryPrompt } : {}),
     };

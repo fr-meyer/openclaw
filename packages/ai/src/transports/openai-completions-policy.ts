@@ -5,14 +5,19 @@ import type { OpenAIModeModel } from "./openai-transport-shared.js";
 export function applyCompletionsReasoningAndRouting(
   params: Record<string, unknown>,
   model: OpenAIModeModel,
-  reasoning: ReturnType<typeof resolveOpenAIRequestReasoning>,
+  reasoning: ReturnType<typeof resolveOpenAIRequestReasoning> & { thinkingExplicit: boolean },
   compat: ResolvedOpenAICompletionsCompat,
   mode: "direct" | "managed",
 ): void {
   const direct = mode === "direct";
   const nativeEffort = compat.thinkingFormat === "openrouter" ? undefined : reasoning.effort;
   const enabled = reasoning.thinkingEnabled ?? false;
-  if (model.reasoning) {
+  if (
+    model.reasoning &&
+    (!compat.thinkingOffControlUndeclared ||
+      reasoning.thinkingEnabled !== undefined ||
+      !reasoning.thinkingExplicit)
+  ) {
     let allowScalarEffort = true;
     if (direct && compat.thinkingFormat === "zai") {
       params.thinking = enabled ? { type: "enabled", clear_thinking: false } : { type: "disabled" };

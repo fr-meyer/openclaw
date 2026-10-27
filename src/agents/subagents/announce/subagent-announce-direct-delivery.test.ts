@@ -466,28 +466,43 @@ describe("late exact requester recovery", () => {
     expect(fixture.send).not.toHaveBeenCalled();
   });
 
-  it.each(["private", "incognito"] as const)(
-    "does not add recovery reads to %s delivery",
-    async (scope) => {
-      const fixture = setup();
-      if (scope === "private") {
-        fixture.params.completionTarget = "parent";
-        fixture.params.completionRequesterSessionId = "requester-session";
-        fixture.params.completionRequesterLifecycleRevision = "requester-revision";
-      } else {
-        fixture.params.requesterSessionKey = "agent:main:dashboard:incognito-recovery";
-        fixture.params.targetRequesterSessionKey = fixture.params.requesterSessionKey;
-      }
-      const delivery = fixture.startDelivery();
-      await fixture.dispatchEntered.promise;
-      fixture.state.entry = { ...fixture.state.entry, ...finalReceipt };
-      fixture.dispatchDone.resolve({ status: "ok", result: { payloads: [] } });
-      await expect(delivery).resolves.toMatchObject({ delivered: false });
-      expect(fixture.read).not.toHaveBeenCalled();
-      expect(fixture.dispatch).toHaveBeenCalledOnce();
-      expect(fixture.send).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    { captured: true as const, meta: { error: true as const } },
+    { captured: true as const, meta: { aborted: true as const } },
+    { payloads: [{ visible: true }] },
+  ])("does not accept unsuccessful private recovery evidence: %j", async (evidence) => {
+    const fixture = setup();
+    fixture.params.sourceTool = "subagent_announce";
+    fixture.params.completionTarget = "parent";
+    fixture.params.completionRequesterSessionId = "requester-session";
+    fixture.params.completionRequesterLifecycleRevision = "requester-revision";
+    fixture.state.entry = {
+      ...fixture.state.entry,
+      restartRecoveryTerminalRunIds: [sourceRunId],
+      restartRecoveryTerminalDeliveryEvidence: [{ runId: sourceRunId, ...evidence }],
+    };
+    fixture.readDone.resolve();
+    await expect(fixture.startDelivery()).resolves.toMatchObject({
+      delivered: false,
+      disposition: "permanent_failure",
+    });
+    expect(fixture.dispatch).not.toHaveBeenCalled();
+    expect(fixture.send).not.toHaveBeenCalled();
+  });
+
+  it.each(["incognito"] as const)("does not add recovery reads to %s delivery", async () => {
+    const fixture = setup();
+    fixture.params.requesterSessionKey = "agent:main:dashboard:incognito-recovery";
+    fixture.params.targetRequesterSessionKey = fixture.params.requesterSessionKey;
+    const delivery = fixture.startDelivery();
+    await fixture.dispatchEntered.promise;
+    fixture.state.entry = { ...fixture.state.entry, ...finalReceipt };
+    fixture.dispatchDone.resolve({ status: "ok", result: { payloads: [] } });
+    await expect(delivery).resolves.toMatchObject({ delivered: false });
+    expect(fixture.read).not.toHaveBeenCalled();
+    expect(fixture.dispatch).toHaveBeenCalledOnce();
+    expect(fixture.send).not.toHaveBeenCalled();
+  });
 
   it.each(["source retired", "cancelled", "read failed"] as const)(
     "does not accept late evidence when %s during its read",

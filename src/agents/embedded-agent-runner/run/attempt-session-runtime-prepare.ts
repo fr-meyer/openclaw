@@ -108,6 +108,12 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
   };
   const preparedSessionManager = await prepareEmbeddedAttemptSessionManager({
     ...sessionPreparation,
+    assertCurrent: () => {
+      runAbortSignal.throwIfAborted();
+      sessionLock.ownedTranscriptWriteContext.assertCommitAllowed?.();
+      sessionLock.ownedTranscriptWriteContext.initialWriter?.assertActive();
+    },
+    runAbortSignal,
     onSessionManagerCreated: (manager) => {
       resources.sessionManager = manager;
     },

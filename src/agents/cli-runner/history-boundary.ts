@@ -38,6 +38,17 @@ import { createCliRunCurrentAssertion } from "./execution-target.js";
 import type { PreparedCliRunContext } from "./types.js";
 
 /**
+ * Another writer or lifecycle owns the session history. Local session state, not a provider
+ * failure: model fallback must stop instead of replaying the turn on another candidate.
+ */
+class CliHistoryOwnerChangedError extends Error {
+  constructor() {
+    super("CLI history owner changed before preparation");
+    this.name = "CliHistoryOwnerChangedError";
+  }
+}
+
+/**
  * History belongs to the local transcript, not the latest native handle. Cover only
  * a proven-empty start or the contiguous events of the previously admitted CLI run.
  * An account transition, old-runtime write, import or unknown legacy prefix stays
@@ -123,7 +134,7 @@ async function prepareCliHistoryBoundaryOnce(
           snapshot.activeWriterRunId !== writerRunId &&
           hasLiveAgentRunContext(snapshot.activeWriterRunId)
         ) {
-          throw new Error("CLI history owner changed before preparation");
+          throw new CliHistoryOwnerChangedError();
         }
         assertSource();
       }),
@@ -139,7 +150,7 @@ async function prepareCliHistoryBoundaryOnce(
         (params.expectedLifecycleRevision !== undefined &&
           current.lifecycleRevision !== params.expectedLifecycleRevision)
       ) {
-        throw new Error("CLI history owner changed before preparation");
+        throw new CliHistoryOwnerChangedError();
       }
       return { activeWriterRunId: writerRunId, cliHistoryBoundary: boundary };
     },

@@ -25,6 +25,7 @@ import {
 import { defaultRuntime } from "../../runtime.js";
 import { formatCliCommand } from "../command-format.js";
 import { createGatewayRestartDeadline } from "../daemon-cli/restart-health-deadline.js";
+import { getGatewayChannelWarnings } from "../daemon-cli/restart-health-diagnostics.js";
 import { GATEWAY_RESTART_PROBE_TIMEOUT_MS } from "../daemon-cli/restart-health-probe.js";
 import {
   renderRestartDiagnostics,
@@ -99,6 +100,7 @@ export async function readFailedUpdateGatewayState(
     runningBuildId: undefined,
     versionMatch: undefined,
     readyz: false,
+    coreReady: false,
     settled: false,
     channelsReady: false,
   };
@@ -170,6 +172,7 @@ function updateGatewayHealthFacts(
   health: GatewayRestartSnapshot,
   port: number,
   readyz: boolean,
+  coreReady?: boolean,
 ): NonNullable<UpdateRunResult["verification"]> {
   return {
     serviceRunning:
@@ -190,9 +193,10 @@ function updateGatewayHealthFacts(
       ...(health.activatedPluginErrors?.map((error) => JSON.stringify(error)) ?? []),
       ...(health.unavailablePlugins?.map((error) => JSON.stringify(error)) ?? []),
     ],
-    channelsReady: health.healthy,
+    channelsReady: readyz && getGatewayChannelWarnings(health).length === 0,
     settled: health.healthy,
     readyz,
+    ...(coreReady !== undefined ? { coreReady } : {}),
   };
 }
 
@@ -216,11 +220,8 @@ export async function verifyUpdatedGateway(
     ...params,
     assertCurrent,
   });
-  const channelWarnings = [
-    ...(health.channelProbeErrors ?? []),
-    ...(health.channelProbeTimeouts ?? []),
-    ...(health.channelRuntimeWarnings ?? []),
-  ].map(({ id, error }) =>
+  const coreReady = http?.coreReady ?? readyz;
+  const channelWarnings = getGatewayChannelWarnings(health, http).map(({ id, error }) =>
     redactSupportDiagnosticLine(
       `Channel health warning (${id}: ${error}). Run openclaw channels status --probe or openclaw health --json to inspect it.`,
       { env: params.serviceEnv, stateDir: resolveStateDir(params.serviceEnv) },
@@ -234,11 +235,16 @@ export async function verifyUpdatedGateway(
   const serviceRunning = !params.requireRunningService || health.runtime.status === "running";
   assertCurrent();
   if (params.purpose === "recovery") {
-    params.result.verification = updateGatewayHealthFacts(health, params.gatewayPort, readyz);
+    params.result.verification = updateGatewayHealthFacts(
+      health,
+      params.gatewayPort,
+      readyz,
+      http?.coreReady,
+    );
   } else if (proofOptions.run) {
     recordUpdateRunVerification(
       proofOptions.run.runId,
-      updateGatewayHealthFacts(health, params.gatewayPort, readyz),
+      updateGatewayHealthFacts(health, params.gatewayPort, readyz, http?.coreReady),
       { env: proofOptions.run.env },
     );
   }
@@ -246,7 +252,7 @@ export async function verifyUpdatedGateway(
   if (
     params.purpose !== "package-replacement" &&
     serviceDefinitionRefusal &&
-    (!health.healthy || !serviceRunning || !readyz)
+    (!health.healthy || !serviceRunning || !coreReady)
   ) {
     return {
       ok: false,
@@ -305,7 +311,7 @@ export async function verifyUpdatedGateway(
       }
     }
   };
-  if (health.healthy && serviceRunning && readyz) {
+  if (health.healthy && serviceRunning && coreReady) {
     const pluginFailures = new Map<string, string>();
     for (const failure of health.activatedPluginErrors ?? []) {
       pluginFailures.set(failure.id, failure.error);
@@ -363,7 +369,7 @@ export async function verifyUpdatedGateway(
         health.waitOutcome === "still-starting" ? "still-starting" : "gateway-readiness-pending",
     };
   }
-  const httpFailed = http !== undefined && !readyz;
+  const httpFailed = http !== undefined && !coreReady;
   const diagnosticLines: [string, ...string[]] = [
     params.purpose === "package-replacement"
       ? "Package update installed; Gateway readiness remains unverified with --no-restart. Its replacement restart may still be starting."

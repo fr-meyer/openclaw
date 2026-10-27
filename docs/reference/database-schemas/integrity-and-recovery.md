@@ -618,6 +618,16 @@ preparation leaves the agent degraded with the recorded reason; it does not stop
 healthy agents. Shared-state database failures retain their existing startup
 checks.
 
+Deferred startup retries classified SQLite lock failures during opening or session
+migration up to four attempts with cancellable backoff. Each retry checks deletion
+status and the original database file identity again; migration retries retain the
+completed opening. Corruption, incompatible schemas, changed file identities, and
+mixed cleanup failures remain terminal. If locks persist through the retry budget,
+the agent remains degraded with `database locked by another process` and guidance
+to close competing processes and restart the Gateway. There is no periodic or
+on-demand in-process admission retry after exhaustion; a new Gateway startup
+retries admission. No schema or configuration changes are required.
+
 Pending preparation does not produce a startup migration warning. Status and
 Doctor derive failed inspection and preparation warnings from current agent
 admission decisions, with the reason and repair guidance. Successful preparation

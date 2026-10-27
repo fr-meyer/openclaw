@@ -1,9 +1,11 @@
 // Googlechat tests cover monitor.reply delivery plugin behavior.
+import { isChannelPartialDeliveryError } from "openclaw/plugin-sdk/channel-inbound";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { PlatformMessageNotDispatchedError } from "openclaw/plugin-sdk/error-runtime";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRuntimeSpies } from "../../test-support/runtime-spies.js";
 import type { ResolvedGoogleChatAccount } from "./accounts.js";
+import { GoogleChatApiError } from "./api.js";
 import { createGoogleChatTypingMessage, deliverGoogleChatReply } from "./monitor-reply-delivery.js";
 import type { GoogleChatCoreRuntime } from "./monitor-types.js";
 
@@ -162,14 +164,96 @@ describe("Google Chat reply delivery", () => {
     });
   });
 
-  it("cleans up typing and rejects media-only replies without provider upload access", async () => {
+  it.each([
+    { text: undefined, typing: false, missingTyping: false },
+    { text: "caption", typing: true, missingTyping: false },
+    { text: "caption", typing: true, missingTyping: true },
+  ])(
+    "delivers remote media with $text, typing=$typing, missing=$missingTyping",
+    async (scenario) => {
+      const expectedText = `${scenario.text ? "caption\n\n" : ""}Attachment: https://example.invalid/reply.png`;
+      if (scenario.missingTyping) {
+        mocks.updateGoogleChatMessage.mockRejectedValueOnce(
+          new GoogleChatApiError(404, "Not Found"),
+        );
+      }
+      const typingMessage = {
+        placement: "thread" as const,
+        name: "spaces/AAA/messages/typing",
+        requestedThreadName: "spaces/AAA/threads/root",
+        deliveredThreadName: "spaces/AAA/threads/root",
+      };
+      await deliverGoogleChatReply({
+        payload: {
+          text: scenario.text,
+          mediaUrl: "https://example.invalid/reply.png",
+          replyToId: "spaces/AAA/threads/root",
+        },
+        account,
+        spaceId: "spaces/AAA",
+        runtime: createRuntimeSpies(),
+        core: createCore(),
+        config,
+        ...(scenario.typing ? { typingMessage } : {}),
+      });
+
+      if (scenario.typing) {
+        expect(mocks.updateGoogleChatMessage).toHaveBeenCalledWith({
+          account,
+          messageName: "spaces/AAA/messages/typing",
+          text: expectedText,
+        });
+      }
+      if (!scenario.typing || scenario.missingTyping) {
+        expect(mocks.sendGoogleChatMessage).toHaveBeenCalledWith({
+          account,
+          space: "spaces/AAA",
+          text: expectedText,
+          thread: "spaces/AAA/threads/root",
+        });
+      } else {
+        expect(mocks.sendGoogleChatMessage).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("preserves accepted caption receipts when a later attachment-link chunk fails", async () => {
+    const caption = "a".repeat(35);
+    const error = new Error("send failed");
+    mocks.sendGoogleChatMessage
+      .mockResolvedValueOnce({ messageName: "spaces/AAA/messages/caption" })
+      .mockRejectedValueOnce(error);
+    const core = createCore();
+    vi.mocked(core.channel.text.chunkMarkdownTextWithMode).mockImplementation((text: string) =>
+      text.split("\n\n"),
+    );
+
+    await expect(
+      deliverGoogleChatReply({
+        payload: { text: caption, mediaUrl: "https://example.invalid/a.png" },
+        account,
+        spaceId: "spaces/AAA",
+        runtime: createRuntimeSpies(),
+        core,
+        config,
+      }),
+    ).rejects.toSatisfy(
+      (failure: unknown) =>
+        isChannelPartialDeliveryError(failure) &&
+        failure.deliveryResult.messageIds?.includes("spaces/AAA/messages/caption") === true &&
+        failure.deliveryResult.content?.trim() === caption,
+    );
+    expect(mocks.sendGoogleChatMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("cleans up typing and rejects local media without provider upload access", async () => {
     const core = createCore();
     const runtime = createRuntimeSpies();
 
     await expect(
       deliverGoogleChatReply({
         payload: {
-          mediaUrl: "https://example.invalid/reply.png",
+          mediaUrl: "/tmp/reply.png",
           replyToId: "spaces/AAA/threads/root",
         },
         account,
@@ -188,8 +272,7 @@ describe("Google Chat reply delivery", () => {
       (error: unknown) =>
         error instanceof PlatformMessageNotDispatchedError &&
         !error.retryable &&
-        error.message ===
-          "Google Chat outbound attachments require user OAuth and no text fallback is available.",
+        error.message === "Google Chat outbound attachments require remote HTTP(S) URLs.",
     );
 
     expect(mocks.deleteGoogleChatMessage).toHaveBeenCalledWith({

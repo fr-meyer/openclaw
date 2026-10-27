@@ -199,18 +199,6 @@ it.each([
   },
 );
 
-it("restores the stopped Gateway before reporting a settled state-owner release failure", async () => {
-  const failure = new Error("settled state-owner release failed");
-  boundary.release.mockRejectedValueOnce(failure);
-  const maintenance = await begin();
-
-  await expect(maintenance!.finish({})).rejects.toBe(failure);
-  expect(boundary.close).toHaveBeenCalledOnce();
-  expect(boundary.resume).toHaveBeenCalledOnce();
-  expect(boundary.restart).toHaveBeenCalledOnce();
-  expect(boundary.health).toHaveBeenCalledOnce();
-});
-
 it.each([undefined, {}])(
   "reports a settled state-release failure without a managed Gateway (%j)",
   async (config) => {

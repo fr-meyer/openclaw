@@ -53,7 +53,7 @@ export function createEmbeddedAgentSubscribeState(
     thinkingTagStream: createThinkingTagStreamState(),
     deltaBufferIsCommentary: false,
     hasFlushedPartialText: false,
-    partialBlockState: { thinking: false, final: false, inlineCode: createInlineCodeState() },
+    partialBlockState: { reasoningDepth: 0, final: false, inlineCode: createInlineCodeState() },
     lastAssistantAudioDirectiveCount: 0,
     assistantStream: undefined,
     lastStreamedReasoning: undefined,

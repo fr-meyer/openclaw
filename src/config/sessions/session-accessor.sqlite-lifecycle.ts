@@ -281,12 +281,11 @@ async function deleteSqliteSessionEntryLifecycleLocked(
         }
       : undefined;
   // An opened alias already selected its native owner; later retargeting cannot redirect this deletion.
-  const resolved = expectedIdentity
+  const preparedScope = expectedIdentity
     ? { ...requestedScope, path: expectedIdentity.nativeLocation }
     : requestedScope;
-  const databaseOptions = toDatabaseOptions(resolved);
   const reclamationOptions = useWorker
-    ? resolveSessionReclamationDatabaseOptions(databaseOptions)
+    ? resolveSessionReclamationDatabaseOptions(toDatabaseOptions(preparedScope))
     : undefined;
   const execution = reclamationOptions
     ? captureOpenClawAgentDatabaseExecution(
@@ -299,53 +298,56 @@ async function deleteSqliteSessionEntryLifecycleLocked(
     params.commitGuard?.();
   };
   try {
-    return await withSqliteTranscriptArchiveSession(databaseOptions, async () => {
-      if (reclamationOptions) {
-        await prepareSessionEntryReplacementDatabase(
-          reclamationOptions,
-          assertSourceCurrent,
-          execution,
-        );
-      }
-      const {
-        commitGuard: _commitGuard,
-        env: _env,
-        expectedDatabaseIdentity: _expectedDatabaseIdentity,
-        descendantRunBasis: _descendantRunBasis,
-        ...deleteParams
-      } = params;
-      const preparation = await runSessionDeletionPlanning(
-        resolved,
-        params,
-        {
-          operation: "entry",
-          input: {
-            deleteParams,
-            archiveDirectory: resolveSqliteTranscriptArchiveDirectory(resolved),
-            admissionIdentities: [
-              ...(collectActiveSessionWorkAdmissions().get(params.storePath) ?? []),
-            ],
-            allowLockedEntryRemoval,
-            expectedPluginOwnerId,
-          },
-        },
+    if (reclamationOptions) {
+      await prepareSessionEntryReplacementDatabase(
+        reclamationOptions,
         assertSourceCurrent,
+        execution,
       );
-      if (preparation.operation !== "entry") {
-        throw new Error(
-          `SQLite session deletion planning returned ${preparation.operation} for entry`,
-        );
-      }
-      if (preparation.value.kind === "missing") {
-        await publishSessionStateArchives(resolved, []);
-        return { archivedTranscripts: [], deleted: false };
-      }
-      if (preparation.value.kind === "expected-entry-mismatch") {
-        await publishSessionStateArchives(resolved, []);
-        return expectedEntryMismatchResult([]);
-      }
-      const prepared = preparation.value.value;
-
+    }
+    const {
+      commitGuard: _commitGuard,
+      env: _env,
+      expectedDatabaseIdentity: _expectedDatabaseIdentity,
+      descendantRunBasis: _descendantRunBasis,
+      ...deleteParams
+    } = params;
+    const preparation = await runSessionDeletionPlanning(
+      preparedScope,
+      params,
+      {
+        operation: "entry",
+        input: {
+          deleteParams,
+          archiveDirectory: resolveSqliteTranscriptArchiveDirectory(preparedScope),
+          admissionIdentities: [
+            ...(collectActiveSessionWorkAdmissions().get(params.storePath) ?? []),
+          ],
+          allowLockedEntryRemoval,
+          expectedPluginOwnerId,
+        },
+      },
+      assertSourceCurrent,
+    );
+    if (preparation.operation !== "entry") {
+      throw new Error(
+        `SQLite session deletion planning returned ${preparation.operation} for entry`,
+      );
+    }
+    if (preparation.value.kind === "missing") {
+      await publishSessionStateArchives(preparedScope, []);
+      return { archivedTranscripts: [], deleted: false };
+    }
+    if (preparation.value.kind === "expected-entry-mismatch") {
+      await publishSessionStateArchives(preparedScope, []);
+      return expectedEntryMismatchResult([]);
+    }
+    const prepared = preparation.value.value;
+    // Planning admitted this owner; archive requests must share its physical spelling.
+    const nativeLocation = execution?.fileIdentity?.nativeLocation;
+    const resolved = nativeLocation ? { ...preparedScope, path: nativeLocation } : preparedScope;
+    const databaseOptions = toDatabaseOptions(resolved);
+    return await withSqliteTranscriptArchiveSession(databaseOptions, async () => {
       return await withSqliteSessionDeletions(
         resolved,
         prepared.targetSnapshot,

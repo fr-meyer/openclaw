@@ -8,6 +8,7 @@ import { createPluginBackgroundRunner } from "./plugin-instance-background.js";
 import { createPluginInstanceBindings } from "./plugin-instance-bindings.js";
 import { DisposalFailures, type DisposalCleanup } from "./plugin-instance-disposal.js";
 import {
+  forcedRetirementError,
   PluginInstanceDrainTimeoutError,
   PluginInstanceUnavailableError,
 } from "./plugin-instance-error.js";
@@ -23,6 +24,7 @@ import { waitForPluginInstanceSettlement } from "./plugin-instance-settlement.js
 import type {
   PluginInstanceCallLease,
   PluginInstanceConsumer,
+  PluginInstanceDisposal,
   PluginInstanceDisposalResult,
   PluginInstanceLifecycle,
   PluginModuleLoaderRecovery,
@@ -82,7 +84,7 @@ export class PluginInstance {
     <T>(run: () => T) => this.run(run),
     <T>(run: () => T) => this.runConsumer(run),
   );
-  private disposal?: Promise<PluginInstanceDisposalResult>;
+  private disposal?: PluginInstanceDisposal;
   readonly owner?: PluginInstanceOwner;
   private readonly runtimeScope: Parameters<typeof withPluginRuntimePluginScope>[0];
 
@@ -482,7 +484,7 @@ export class PluginInstance {
         // Earlier borrowers may feed other calls or hand off a stream. Only the
         // last borrower joins disposal; cleanup callbacks cannot await themselves.
         return joinDisposal && this.calls.size === 0 && !this.controller.signal.aborted
-          ? this.disposal
+          ? this.disposal?.observed
           : undefined;
       },
     };
@@ -603,7 +605,10 @@ export class PluginInstance {
     this.accepting ||= !this.disposal && !this.controller.signal.aborted && !this.owner?.revoked;
   }
 
-  dispose(beforeCleanup?: () => void | Promise<void>): Promise<PluginInstanceDisposalResult> {
+  dispose(
+    beforeCleanup?: () => void | Promise<void>,
+    options?: { waitForSettlement?: boolean },
+  ): Promise<PluginInstanceDisposalResult> {
     if (beforeCleanup && this.disposal) {
       return Promise.reject(new Error(`Plugin ${this.pluginId} disposal already started`));
     }
@@ -624,7 +629,7 @@ export class PluginInstance {
         }
       });
       void settled.catch(() => {});
-      this.disposal = new Promise((resolve, reject) => {
+      const observed = new Promise<PluginInstanceDisposalResult>((resolve, reject) => {
         const timer = setTimeout(() => {
           const fact = {
             activeCallCount: new Set([
@@ -642,21 +647,22 @@ export class PluginInstance {
           }
           // Admitted consumers keep their own authority until the host closes or releases them.
           this.abortDisposal(work);
-          const error = new PluginInstanceDrainTimeoutError(
-            `Plugin ${this.pluginId} forced retirement after ${SHUTDOWN_TIMEOUT_MS}ms: ${fact.activeCallCount} still-running call(s), ${fact.retainedConsumerCount} retained consumer(s); resource cleanup remains pending.`,
-            settled,
-            {},
-            fact,
-          );
+          const error = forcedRetirementError(this.pluginId, SHUTDOWN_TIMEOUT_MS, fact, settled);
           log.warn(error.message);
           resolve(terminalFailures.result([error, ...terminalFailures]));
         }, SHUTDOWN_TIMEOUT_MS);
         void physical.then(resolve, reject).finally(() => clearTimeout(timer));
       });
       // Self-retirement is joined by the last returning call or stream.
-      void this.disposal.catch(() => {});
+      this.disposal = { observed, settled: physical };
+      void observed.catch(() => {});
     }
-    return this.activeCall() ? Promise.resolve({ errors: [] }) : this.disposal;
+    // Final resource owners join physical cleanup; reload observers keep their bounded report.
+    return this.activeCall()
+      ? Promise.resolve({ errors: [] })
+      : options?.waitForSettlement
+        ? this.disposal.settled
+        : this.disposal.observed;
   }
 
   private abortDisposal(work: AsyncWorkScope): void {

@@ -150,6 +150,11 @@ function normalizeTerminalDeliveryEvidenceResult(
     return undefined;
   }
   const captured = record.captured === true ? (true as const) : undefined;
+  const rawMeta = asOptionalObjectRecord(record.meta);
+  const meta: RestartRecoveryTerminalDeliveryEvidenceResult["meta"] = {
+    ...(rawMeta?.aborted === true ? { aborted: true as const } : {}),
+    ...(rawMeta?.error === true ? { error: true as const } : {}),
+  };
   const rawPayloads = Array.isArray(record.payloads) ? record.payloads : undefined;
   const payloads: RestartRecoveryTerminalDeliveryEvidenceResult["payloads"] = rawPayloads
     ? rawPayloads.slice(0, 64).map((payload) => {
@@ -271,6 +276,7 @@ function normalizeTerminalDeliveryEvidenceResult(
     record.restartUnsafeSideEffectsDetected === true ? (true as const) : undefined;
   if (
     !captured &&
+    Object.keys(meta).length === 0 &&
     !payloads?.length &&
     !payloadsTruncated &&
     !deliveryStatus &&
@@ -283,6 +289,7 @@ function normalizeTerminalDeliveryEvidenceResult(
   }
   return {
     ...(captured ? { captured } : {}),
+    ...(Object.keys(meta).length ? { meta } : {}),
     ...(payloads?.length ? { payloads } : {}),
     ...(payloadsTruncated ? { payloadsTruncated } : {}),
     ...(deliveryStatus ? { deliveryStatus } : {}),
@@ -550,6 +557,29 @@ export function hasMainSessionRecoveryClaim(entry: InternalSessionEntry | undefi
     entry?.restartRecoveryRuns?.some((run) => !hasRestartRecoveryTerminalRun(entry, run.runId)) ||
     entry?.restartRecoveryDeliveryRunId ||
     entry?.pendingFinalDelivery,
+  );
+}
+
+/** A new turn may retire an aborted claim only when restart recovery will not resume it. */
+export function canReplaceAbortedRestartRecoveryClaim(
+  entry: SessionEntry,
+  sessionKey: string,
+  admissionRunId: string | undefined,
+): boolean {
+  const activeClaimRunId = normalizeRunId(entry.restartRecoveryDeliveryRunId);
+  return Boolean(
+    admissionRunId &&
+    activeClaimRunId &&
+    admissionRunId !== activeClaimRunId &&
+    entry.abortedLastRun === true &&
+    (entry.status === undefined || entry.status === "interrupted") &&
+    entry.pendingFinalDelivery === undefined &&
+    entry.restartRecoveryBeforeAgentReplyState === undefined &&
+    entry.restartRecoveryDeliveryReceiptState === undefined &&
+    // Main-session recovery resumes other claims before new input. It never owns child,
+    // cron, or ACP sessions, so their interrupted claim would otherwise reject every turn.
+    (entry.restartRecoverySourceIngress === "control-ui" ||
+      !isMainRestartRecoveryCandidate(entry, sessionKey)),
   );
 }
 

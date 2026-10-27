@@ -478,7 +478,9 @@ export function startSessionTranscriptIndexReconcile(
   startPreparedSessionTranscriptIndexReconcile(prepareReconcileParams(input, incognito));
 }
 
-function startPreparedSessionTranscriptIndexReconcile(params: PreparedReconcileParams): void {
+export function startPreparedSessionTranscriptIndexReconcile(
+  params: PreparedReconcileParams,
+): void {
   if (!isSessionTranscriptReconcileGenerationCurrent(params.generation)) {
     return;
   }
@@ -692,7 +694,7 @@ export async function waitForSessionTranscriptProjection(
     : wait();
 }
 
-async function waitForPreparedSessionTranscriptProjection(
+export async function waitForPreparedSessionTranscriptProjection(
   sessionId: string,
   databaseOptions: PreparedReconcileParams,
   abortSignal?: AbortSignal,

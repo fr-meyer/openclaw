@@ -1,22 +1,25 @@
 {
-  "schema": "openclaw-v107-source-preparation-v1",
+  "schema": "openclaw-v108-source-preparation-v1",
   "status": "SOURCE_ONLY_UNQUALIFIED",
   "productionEligible": false,
   "upstream": {
-    "tag": "v2026.10.7",
-    "tagObject": "5c101ce5a0637df375c5f6ae49d44d0d27cc26b1",
-    "commit": "157d8c2bc3ea2fa183afdc11088e69690bf8e64e",
-    "tree": "0885f6473945093107db1406d9a2ad5259db10e7"
+    "tag": "v2026.10.8",
+    "tagObject": "e07a2f67d11717ed39aa2fa07bbe9342376ebfbf",
+    "commit": "dc2523e5a5c7a309517fd7fa834add938231d526",
+    "tree": "8e87ea041d88f72b77d83806b9ad05aa4f176d59"
   },
   "carryForward": {
     "v105UpstreamBase": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
     "v105ForkSource": "7f3ac1fbfd3691546c5b1fd247680a3d00851c76",
     "reconciliation": "COMPLETE_SOURCE",
-    "inventory": "custom-patches/reconciliation-2026.10.7.json",
+    "inventory": "custom-patches/reconciliation-2026.10.8.json",
     "qualificationTransferred": false,
     "v106UpstreamBase": "fe06181dc5ecc01cf8904abbfc26925925efefbc",
     "v106ForkSource": "a39cad2d97efae7d0c832af3d71e6ccc86f60e50",
-    "dependencyRepairSource": "8a2300c841024443fb38954d65eb5bff1229c0a0"
+    "dependencyRepairSource": "8a2300c841024443fb38954d65eb5bff1229c0a0",
+    "v107UpstreamBase": "157d8c2bc3ea2fa183afdc11088e69690bf8e64e",
+    "v107ForkSource": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
+    "workboardRepairSource": "1cf0627b9df7d81f101c39d94e87c0a68ba90884"
   },
   "publisher": {
     "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle",
@@ -29,6 +32,6 @@
     "build": "NOT_RUN",
     "runtime": "NOT_RUN",
     "production": "UNCHANGED",
-    "rollback": "NOT_PROVEN_ON_10_7"
+    "rollback": "NOT_PROVEN_ON_10_8"
   }
 }

@@ -201,6 +201,10 @@ async function prepareStartupConfig(
       cfg: read.snapshot.sourceConfig,
       env,
       measure,
+      beforePersistentEffect: async () => {
+        await beforeStatePreparation(read.snapshot);
+        assertLeaseCurrent();
+      },
     });
     setActiveDegradedPlugins(verification.quarantinedPlugins);
     recordStartupMigrationWarnings([

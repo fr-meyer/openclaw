@@ -183,6 +183,10 @@ that registration and closes any late child. Cleanup can extend beyond the
 startup deadline. A canceled caller leaves startup running when another caller
 still owns it.
 
+Temporary capability, native-hook, and tool-catalog probes wait for their isolated
+app-server to close before returning, including after a failed or timed-out read.
+Probes using a shared connection release their lease so other work can continue.
+
 OpenClaw preserves assistant text supplied with the initial native item and
 reasoning supplied with a completed item, even when Codex sends no text deltas.
 Completed items, including empty messages, reconcile the transcript with Codex's
@@ -272,6 +276,23 @@ A closed, replaced, or retired client still cannot complete a stale handoff.
 When native interruption and subscription cleanup are confirmed, stopping one
 chat leaves other chats running on the shared client. A follow-up can resume the
 stopped thread without waiting for those chats to finish.
+
+Native child completion delivery stops permanently when its retry budget is
+exhausted or requester recovery blocks it. OpenClaw retires that child turn's
+pending assignment and follow-up receipt together, so later parent registrations
+and Gateway restarts do not restart delivery. A bounded system note in the parent
+transcript identifies the child, its status, and its result session key; a warning
+records retirement even if the transcript note cannot be written. Other pending
+turns of the same child remain independent. Parent subscription retention during
+ordinary completion retries is unchanged.
+
+If a chat's previous client was retired while other chats still use it, the
+next turn waits for its exact thread to close or for that client to exit before
+resuming. If a plugin reload missed the thread's closure notification, OpenClaw
+reads the exact old client's thread status once. A matching `notLoaded` status
+allows the handoff; a still-loaded thread or a failed read keeps waiting. Native
+resume retains its exclusive persistence writer lock. Stopping the waiting turn
+cancels its read and wait.
 
 Managed local connections share a bounded inference relay. Up to 16 request
 preparations and uploads run at once, with another 16 waiting in arrival order.

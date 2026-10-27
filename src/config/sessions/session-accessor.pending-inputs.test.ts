@@ -42,6 +42,7 @@ import {
   runExclusiveSqliteSessionWrite,
   toDatabaseOptions,
 } from "./session-accessor.sqlite-scope.js";
+import type { SessionPendingInputAuthority } from "./session-pending-input-authority.js";
 import { SessionPendingInputCustodyError } from "./session-pending-input-custody-error.js";
 import { waitForSessionTranscriptProjection } from "./session-transcript-reconcile.js";
 import { useTempSessionsFixture } from "./test-helpers.js";
@@ -625,6 +626,37 @@ describe("accepted input custody", () => {
       expect(await promote(await stage("new-authorized-run"))).toMatchObject({ appended: true });
     },
   );
+
+  it("rejects an authorized stage when the same input is staged between its read and write", async () => {
+    // Authorized staging holds no outer reservation, so a racing duplicate can
+    // commit after the snapshot read; the staging transaction must refuse it.
+    let raced: Promise<SessionPendingInputReceipt> | undefined;
+    const authority: SessionPendingInputAuthority = {
+      assertLifetimeCurrent: () => {},
+      withCurrent: async (consume) => {
+        raced ??= stage("raced");
+        await raced;
+        return consume(
+          {
+            agentId: "main",
+            storePath: fixture.storePath(),
+            sessionKey,
+            entry: undefined,
+            members: [],
+          },
+          () => {},
+        );
+      },
+      withPreparedCurrent: (_facts, consume) => consume(),
+    };
+    await expect(stage("raced", { authority })).rejects.toThrow(
+      "Pending input changed before staging committed",
+    );
+    expect((await raced)?.state).toBe("queued");
+    expect(
+      database().db.prepare("SELECT COUNT(*) AS count FROM session_pending_inputs").get(),
+    ).toEqual({ count: 1 });
+  });
 
   it("fences authority loss after an await without overriding the owner's terminal disposition", async () => {
     let current = true;

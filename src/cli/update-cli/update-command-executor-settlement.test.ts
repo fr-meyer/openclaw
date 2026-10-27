@@ -70,6 +70,7 @@ type SettlementStore = Pick<
   | "current"
   | "owns"
   | "isProcessIdentityCurrent"
+  | "inspectProcessIdentity"
   | "acceptParentBoundExecutor"
 >;
 const rows = new Map<string, ManagedHandoffLease>();
@@ -144,6 +145,7 @@ beforeEach(() => {
     current,
     owns: current,
     isProcessIdentityCurrent: () => true,
+    inspectProcessIdentity: () => "live",
     acceptParentBoundExecutor: current,
   };
   boundaries.store.mockResolvedValue(store);

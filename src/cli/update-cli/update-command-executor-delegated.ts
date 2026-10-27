@@ -1,5 +1,7 @@
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { GATEWAY_SHUTDOWN_RESERVE_MS } from "../../../gateway-shutdown-budget.mjs";
+import { GATEWAY_OWNER_HEARTBEAT_MS } from "../../infra/gateway-lock-payload.js";
 import { readControlPlaneUpdateSentinelMeta } from "../../infra/update-control-plane-sentinel.js";
 import { resolveUpdateInstallRoot } from "../../infra/update-install-root.js";
 import type { ManagedCommandProcessAuthority } from "../../infra/update-managed-command-custody.js";
@@ -25,6 +27,19 @@ import {
 import { createUpdateIdentityWarningReporter } from "./update-command-identity-warning.js";
 import { UpdateCommandRecoveryPendingError } from "./update-command-recovery-error.js";
 import { createUpdateOperationDeadline } from "./update-operation-deadline.js";
+
+let terminating = false;
+// Signal listeners own cancellation and rollback; escalate only after the shutdown reserve.
+function requestOrphanedWorkerTermination(): void {
+  if (terminating) {
+    return;
+  }
+  terminating = true;
+  setTimeout(() => process.kill(process.pid, "SIGKILL"), GATEWAY_SHUTDOWN_RESERVE_MS).unref();
+  if (!process.emit("SIGTERM", "SIGTERM")) {
+    process.kill(process.pid, "SIGTERM");
+  }
+}
 
 function memoizeSuccessfulLeaseCheck<T>(check: (lease: T) => boolean) {
   const checked: T[] = [];
@@ -182,6 +197,36 @@ export async function withDelegatedUpdateCommandExecutor<T>(
       childOwners.set(fence, (childRoot, childOperation, purpose) =>
         owner.run(childRoot, childOperation, purpose),
       );
+      const parents = [
+        original,
+        parent,
+        spawner,
+        retained,
+        slot?.parent,
+        slot?.spawner,
+        slot?.reserver,
+      ];
+      const processes = new Map(
+        parents.flatMap((lease) =>
+          lease
+            ? [lease.helper, lease.executor].map(
+                (identity) => [`${identity.pid}:${identity.startIdentity}`, identity] as const,
+              )
+            : [],
+        ),
+      );
+      // A stalled await cannot recheck its fence. End orphaned maintenance through
+      // the normal bounded shutdown; peers still wait for this process to exit.
+      const parentWatch = setInterval(() => {
+        for (const identity of processes.values()) {
+          const state = store.inspectProcessIdentity(identity);
+          if (state === "dead" || state === "mismatch") {
+            requestOrphanedWorkerTermination();
+            break;
+          }
+        }
+      }, GATEWAY_OWNER_HEARTBEAT_MS);
+      parentWatch.unref();
       try {
         return await withUpdateCommandExecutorOperation(
           {
@@ -224,6 +269,7 @@ export async function withDelegatedUpdateCommandExecutor<T>(
           "delegated",
         );
       } finally {
+        clearInterval(parentWatch);
         active = false;
         childOwners.delete(fence);
         slotReservations.delete(fence);

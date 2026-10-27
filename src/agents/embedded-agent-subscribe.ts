@@ -340,7 +340,7 @@ export function subscribeEmbeddedAgentSession(input: SubscribeEmbeddedAgentSessi
       streamRendering.stripBlockTags(
         text,
         {
-          thinking: false,
+          reasoningDepth: 0,
           final: false,
           inlineCode: createInlineCodeState(),
         },

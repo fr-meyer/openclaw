@@ -321,10 +321,9 @@ it.each([
         const result = threadStartResult(request.params?.threadId ?? threadId, directory);
         result.thread.sessionId = "session-final-owner";
         if (request.method === "thread/read") {
-          send({
-            id: request.id,
-            result: { thread: { ...result.thread, status: { type: "notLoaded" } } },
-          });
+          // The original owner keeps the thread loaded until its process exits.
+          const status = index === 0 && !ownerExited ? { type: "idle" } : { type: "notLoaded" };
+          send({ id: request.id, result: { thread: { ...result.thread, status } } });
           return;
         }
         if (request.method === "thread/resume" || request.method === "thread/start") {

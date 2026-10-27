@@ -6,6 +6,7 @@
  */
 export * from "./session-history.js";
 export { listSessionPendingInputReceipts } from "./session-accessor.sqlite-pending-input-receipts.js";
+export { recoverSessionTranscriptProjection } from "./session-transcript-projection-recovery.js";
 export {
   bindSessionPendingInputSources,
   listSessionPendingInputs,

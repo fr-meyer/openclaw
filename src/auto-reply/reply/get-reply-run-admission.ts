@@ -56,6 +56,7 @@ import {
 } from "./reply-run-registry.js";
 import { getReplyOperationSessionReader } from "./reply-run-registry.state.js";
 import { admitReplyTurn } from "./reply-turn-admission.js";
+import { resolveReplyTurnKind } from "./reply-turn-kind.js";
 import {
   isSlackDirectRoutedThreadTurn,
   resolveRoutedDeliveryThreadId,
@@ -372,7 +373,9 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
     ? undefined
     : rawActiveSessionIdForInterrupt;
   const shouldPreemptHeartbeat =
-    !isRoomEvent && !context.isHeartbeat && rawActiveSessionIdForInterrupt !== undefined;
+    !isRoomEvent &&
+    resolveReplyTurnKind(opts) === "visible" &&
+    rawActiveSessionIdForInterrupt !== undefined;
   const heartbeatPreemption =
     shouldPreemptHeartbeat && embeddedAgentRuntime
       ? await embeddedAgentRuntime.preemptAndDrainEmbeddedHeartbeatRun(

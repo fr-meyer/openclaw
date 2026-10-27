@@ -281,14 +281,12 @@ async function runThroughFailureRecovery(params: {
 
 function expectRateLimitState(result: Awaited<ReturnType<typeof runThroughFailureRecovery>>): void {
   expect.soft(result.failureReason).toBe("rate_limit");
-  expect.soft(result.usage).toMatchObject({
-    cooldownReason: "rate_limit",
-    cooldownModel: MODEL_ID,
-    cooldownUntil: expect.any(Number),
-  });
-  expect.soft(result.usage).not.toHaveProperty("disabledReason");
-  expect.soft(result.usage).not.toHaveProperty("disabledUntil");
-  expect.soft(result.affectedModelBlocked).toBe(true);
+  // These throttles carry no provider retry timing, so a rate limit blocks no model.
+  expect.soft(result.usage).toMatchObject({ lastRateLimitAt: expect.any(Number) });
+  for (const key of ["cooldownReason", "cooldownUntil", "disabledReason", "disabledUntil"]) {
+    expect.soft(result.usage).not.toHaveProperty(key);
+  }
+  expect.soft(result.affectedModelBlocked).toBe(false);
   expect.soft(result.otherModelBlocked).toBe(false);
 }
 

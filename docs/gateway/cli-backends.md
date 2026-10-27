@@ -145,6 +145,67 @@ session, because the tool names changed. Explicit native-tool selections, node
 execution, side questions, and isolated tool-free completions retain their own
 tool contracts.
 
+### Keeping Claude Code orchestration tools on managed turns
+
+Managed turns expose no Claude-native tools by default. Operators who want
+Claude Code's native subagents or workflows can opt in per agent, or for every
+agent, through the Anthropic plugin config:
+
+```json5
+{
+  plugins: {
+    entries: {
+      anthropic: {
+        config: {
+          managedNativeTools: {
+            default: ["Agent", "Workflow"],
+            agents: { ops: [] }, // per-agent list replaces the default
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+Only `Agent` and `Workflow` are accepted: they add orchestration without
+granting file, shell, or network authority, so descendants act through the same
+policy-filtered OpenClaw tools as the parent. File and shell tools stay with
+OpenClaw. `Skill` is not offered because managed turns load no Claude skills.
+Managed turns also load no user or project settings, so `Agent` offers Claude
+Code's built-in subagent types only; custom subagents in `~/.claude/agents/` or
+a project's `.claude/agents/` are not loaded.
+
+- The same list applies to ordinary turns, verified child completions, and cron
+  turns in a session, so the tool definitions and cached prefix stay stable.
+  Changing the list keeps the native session; its next turn rebuilds the
+  cached prefix once.
+- Managed isolation stays in force: Claude settings, hooks, plugins, slash
+  commands, Chrome, and Claude-only MCP servers remain excluded, and scheduled
+  wake-ups, cron creation, background shell commands, and monitors stay blocked.
+- Restricted senders, turns with an explicit tool cap, and
+  `tools.fs.workspaceOnly` still receive no native tools. A capped turn in an
+  opted-in session therefore launches with different tool definitions.
+- Each native call still passes `before_tool_call` and exec policy: ask
+  `on-miss` or `always` routes it through approval, and exec security `deny`,
+  or `allowlist` with ask `off`, refuses it. Under those two settings the
+  opt-in has no effect, because `Agent` and `Workflow` are refused before any
+  descendant starts.
+- Descendants see the managed turn's tool list: the selected orchestration
+  tools plus OpenClaw's policy-filtered tools, never Claude-native file or
+  shell tools. Their OpenClaw tool calls pass the same grant and hooks as the
+  parent's.
+- Known limitations: native calls made by descendants (nested `Agent` or
+  `Workflow`) reach `before_tool_call` but do not emit `after_tool_call`, and the
+  parent sees only the descendant's result. OpenClaw does not track native
+  descendants as tasks, so `sessions_yield` does not wait for them. If an
+  `Agent` or `Workflow` descendant is still running when the turn ends,
+  OpenClaw closes the warm Claude Code process instead of reusing it, so that
+  descendant stops and can never act under a later turn's authority; the next
+  turn resumes the stored session in a fresh process. A
+  `Workflow` call can read its script from a workspace path through
+  `scriptPath`; the script itself can only orchestrate agents.
+
 Managed turns also exclude Claude's user settings, instruction files, auto-memory,
 user hooks, plugins, Chrome, and MCP servers configured only in Claude. OpenClaw supplies
 the instructions, selected skills, and policy-filtered tools for these turns.
@@ -200,6 +261,9 @@ Plugin tools such as remote SSH do not become background jobs automatically.
 
 When Claude Code moves a foreground Bash command to the background after its tool timeout,
 OpenClaw keeps the turn active until Claude processes the completion and returns its final answer.
+Stopping a native task releases that task's hold. Completions belonging to an earlier
+input do not hold or settle a newer input. Tasks launched inside a subagent report back
+to that subagent and do not independently hold the parent input open.
 Follow-up tools still require the current turn's host permissions. Commands started explicitly
 in the background do not hold the turn open. If the turn fails or is cancelled while one of these
 commands still needs a follow-up, OpenClaw closes that subprocess and starts a fresh one for the next turn.
@@ -411,14 +475,12 @@ have a separate revision from the active database.
 Incognito history uses a request-scoped memory index and never writes that index
 to disk. No migration or update repair is required.
 
-When a restricted completion turn runs in a separate Claude session, the next
-ordinary turn can resume a session that never saw that result. OpenClaw carries
-completion replies recorded since the last ordinary Claude reply into the resumed
-turn, including their prompts when saved. This uses the canonical transcript;
-it adds no stored state and survives Gateway restarts. The newest eight exchanges
-are included, with each string capped at 2,000 characters and labeled as historical
-records whose current facts should be verified. A completion that already ran in
-the bound session may appear once more as quoted context.
+Claude CLI and Gemini CLI resume their own conversation histories. OpenClaw therefore
+hands the same resumed native session new conversation rows it did not receive:
+scheduled results, Talk speech and consult replies, and completion announcements.
+One bounded history renderer supplies the newest eight user/assistant records,
+with each string capped at 2,000 characters and labeled as quoted history.
+Hidden consult instructions remain excluded.
 
 This replay requires the resuming turn's [history account boundary](#history-account-boundaries).
 When that boundary withholds saved text, the completion content is not replayed.
@@ -432,7 +494,7 @@ Automatic durable recovery requires a resolved static credential or a named OAut
 
 This uses existing session metadata and transcript generation/sequence counters. No SQLite schema migration or transcript deletion occurs. Existing conversations are not backfilled from their latest native binding. Older binaries do not enforce this new recovery boundary. After a downgrade and subsequent transcript writes, upgrading again refuses automatic replay because those writes are not covered. Do not rely on a downgrade to preserve the new security behavior.
 
-Explicit caller-owned in-memory context remains caller-supplied input, not permission to read a durable conversation carrying the same identifiers. Authentication invalidations still refuse its recovery prompt and saved session notes. When automatic recovery is refused, the saved transcript remains intact. The next CLI process receives the current request without the saved history or notes.
+Explicit caller-owned in-memory context remains caller-supplied input, not permission to read a durable conversation carrying the same identifiers. Authentication invalidations still refuse its recovery prompt and saved session notes. When automatic recovery is refused, the saved transcript remains intact. A fresh CLI process receives the current request without saved history or notes; the same native resume may also receive the bounded conversation handoff described above.
 
 Serialization: `serialize: true` keeps same-lane runs ordered (most CLIs serialize on one provider lane). OpenClaw also drops stored CLI session reuse when the selected auth identity changes. A changed auth profile id, static API key, static token, or OAuth account identity all count, when the CLI exposes one. OAuth access and refresh token rotation alone does not cut the session. If a CLI has no stable OAuth account id, OpenClaw lets that CLI enforce its own resume permissions.
 
@@ -718,6 +780,11 @@ Claude CLI backends scale this cap with the resolved Claude context window inste
 - Structured outputs depend on the CLI's own JSON format.
 
 ## Troubleshooting
+
+If JSONL output exceeds the parser's turn, line-size, or line-count limit, OpenClaw
+stops the local CLI turn and reports the output-limit error. Further CLI work is
+interrupted because OpenClaw can no longer observe its results. An established
+Claude session binding is kept so the next turn can resume it.
 
 When a local Claude Code subprocess fails, its run error includes a bounded,
 redacted stderr diagnostic when available. Check the run error or `openclaw logs`

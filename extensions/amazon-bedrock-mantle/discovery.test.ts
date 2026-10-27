@@ -750,6 +750,39 @@ describe("bedrock mantle discovery", () => {
     });
   });
 
+  it.each([
+    { region: "ap-northeast-1", env: { AWS_REGION: "ap-northeast-1" }, modelId: "openai.gpt-5.5" },
+    { region: "us-east-1", env: {}, modelId: "openai.gpt-5.6-luna" },
+  ])(
+    "routes discovered GPT models through Responses in $region",
+    async ({ region, env, modelId }) => {
+      const mockFetch = vi.fn<typeof fetch>().mockResolvedValue(
+        modelDiscoveryResponse({
+          data: [
+            { id: modelId, object: "model" },
+            { id: "openai.gpt-oss-120b", object: "model" },
+          ],
+        }),
+      );
+
+      const provider = await resolveImplicitWithDependencies({
+        // A distinct token keeps this discovery out of the region cache other cases read.
+        env: { ...env, AWS_BEARER_TOKEN_BEDROCK: `responses-${modelId}` }, // pragma: allowlist secret
+        fetchFn: mockFetch,
+      });
+
+      expect(provider?.baseUrl).toBe(`https://bedrock-mantle.${region}.api.aws/v1`);
+      expect(provider?.api).toBe("openai-completions");
+      expect(provider?.models?.find((model) => model.id === modelId)).toMatchObject({
+        api: "openai-responses",
+        baseUrl: `https://bedrock-mantle.${region}.api.aws/openai/v1`,
+      });
+      const oss = provider?.models?.find((model) => model.id === "openai.gpt-oss-120b");
+      expect(oss?.api ?? provider?.api).toBe("openai-completions");
+      expect(oss).not.toHaveProperty("baseUrl");
+    },
+  );
+
   it("rolls Claude Sonnet 5 to standard pricing on September 1, 2026", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.UTC(2026, 8, 1));

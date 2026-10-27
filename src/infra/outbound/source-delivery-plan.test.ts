@@ -29,6 +29,7 @@ function messageToolPlan(target: SourceDeliveryPlan["target"]): SourceDeliveryPl
       force: true,
       requireExplicitTarget: false,
       requireExplicitTargetEvidence: false,
+      finalByDefault: true,
     },
     fallback: { directDelivery: true, skipWhenMessageToolSentToTarget: true },
   };

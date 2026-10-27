@@ -745,7 +745,7 @@ describe("runWithModelFallback", () => {
         "openai:default": {
           cooldownUntil: Date.now() + 60_000,
           cooldownReason: "rate_limit",
-          failureCounts: { rate_limit: 1 },
+          lastRateLimitAt: Date.now(),
         },
       }),
     );
@@ -783,7 +783,7 @@ describe("runWithModelFallback", () => {
         "openai:default": {
           cooldownUntil: Date.now() + 60_000,
           cooldownReason: "rate_limit",
-          failureCounts: { rate_limit: 1 },
+          lastRateLimitAt: Date.now(),
         },
       }),
     );
@@ -846,7 +846,7 @@ describe("runWithModelFallback", () => {
           [`${provider}:default`]: {
             disabledUntil: Date.now() + 60_000,
             disabledReason: "billing",
-            failureCounts: { rate_limit: 4 },
+            failureCounts: { billing: 4 },
           },
         }),
       );
@@ -1446,7 +1446,7 @@ describe("runWithModelFallback", () => {
       usageStat: {
         disabledUntil: now + 5 * 60_000,
         disabledReason: "billing",
-        failureCounts: { rate_limit: 4 },
+        failureCounts: { billing: 4 },
       },
       expectedReason: "billing",
       credentialType: "token",
@@ -1476,7 +1476,7 @@ describe("runWithModelFallback", () => {
               cooldownUntil: expiry,
               cooldownReason: "rate_limit",
               cooldownModel: "claude-opus-4-5",
-              failureCounts: { rate_limit: 1 },
+              lastRateLimitAt: Date.now(),
             },
           },
         });
@@ -1514,13 +1514,13 @@ describe("runWithModelFallback", () => {
           cooldownUntil: unrelatedExpiry,
           cooldownReason: "rate_limit",
           cooldownModel: "claude-haiku-3-5",
-          failureCounts: { rate_limit: 1 },
+          lastRateLimitAt: Date.now(),
         },
         "openai:default": {
           cooldownUntil: relevantExpiry,
           cooldownReason: "rate_limit",
           cooldownModel: "gpt-5.2",
-          failureCounts: { rate_limit: 1 },
+          lastRateLimitAt: Date.now(),
         },
       },
     };
@@ -1648,8 +1648,8 @@ describe("runWithModelFallback", () => {
         dir,
         apiKeyStore([provider], {
           [`${provider}:default`]: {
-            cooldownUntil: Date.now() + 300_000,
-            failureCounts: { rate_limit: 1 },
+            cooldownUntil: Date.now() + 60_000,
+            cooldownReason: "rate_limit",
           },
         }),
       );

@@ -2,11 +2,14 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { statSync } from "node:fs";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
+import { sleepWithAbort } from "../infra/backoff.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
   sameFileMutationFingerprint,
   type FileMutationFingerprint,
 } from "../infra/file-descriptor.js";
+import { retryAsync } from "../infra/retry.js";
+import { isSqliteLockError } from "../infra/sqlite-error-diagnostics.js";
 import { readSqliteIntegrityFileIdentity } from "../infra/sqlite-file-generation.js";
 import { withSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -448,24 +451,55 @@ class AgentDatabaseStartupAdmission {
                   assertCurrent,
                   phase,
                 };
-                phase("open-wait");
-                const release = await this.opening.acquire({ signal: this.signal });
-                try {
-                  assertCurrent();
-                  phase("open");
-                  await activation.openAgent(input);
-                } finally {
-                  release?.();
-                }
-                phase("migration-wait");
-                const releaseMigration = await this.migrating.acquire({ signal: this.signal });
-                try {
-                  assertCurrent();
-                  phase("migration");
-                  await activation.migrateAgent(input);
-                } finally {
-                  releaseMigration?.();
-                }
+                const retryLockedPreparation = async (run: () => Promise<void>) => {
+                  let preparationAttempts = 0;
+                  await retryAsync(
+                    async () => {
+                      if (preparationAttempts++ > 0) {
+                        await assertNotDeleted();
+                      }
+                      assertCurrent();
+                      await run();
+                    },
+                    {
+                      attempts: 4,
+                      minDelayMs: 500,
+                      maxDelayMs: 8000,
+                      jitter: 0.2,
+                      sleep: (ms) => sleepWithAbort(ms, this.signal),
+                      // Mixed cleanup failures and uncertain outcomes must not replay preparation.
+                      shouldRetry: isSqliteLockError,
+                      onRetry: ({ attempt }) =>
+                        log.warn("agent database startup locked; retrying preparation", {
+                          agentId,
+                          phase: recovery.phase,
+                          attempt,
+                        }),
+                    },
+                  );
+                };
+                await retryLockedPreparation(async () => {
+                  phase("open-wait");
+                  const release = await this.opening.acquire({ signal: this.signal });
+                  try {
+                    assertCurrent();
+                    phase("open");
+                    await activation.openAgent(input);
+                  } finally {
+                    release?.();
+                  }
+                });
+                await retryLockedPreparation(async () => {
+                  phase("migration-wait");
+                  const releaseMigration = await this.migrating.acquire({ signal: this.signal });
+                  try {
+                    assertCurrent();
+                    phase("migration");
+                    await activation.migrateAgent(input);
+                  } finally {
+                    releaseMigration?.();
+                  }
+                });
                 // Keep the revision until admission publishes after its final journal check.
                 phase("publication-wait");
                 const previous = this.publication;

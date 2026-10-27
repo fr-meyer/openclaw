@@ -1558,6 +1558,21 @@ try {
     },
   );
 
+  runIfPowerShell("runs the piped installer and validates optional Node versions", () => {
+    const result = runPowerShell([
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "test/scripts/install-ps1-entrypoint.ps1",
+      "-InstallerPath",
+      join(process.cwd(), SCRIPT_PATH),
+    ]);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+  });
+
   runIfPowerShell("rejects unknown and positional options before starting the installer", () => {
     const cases = [
       ["-Frobnicate"],

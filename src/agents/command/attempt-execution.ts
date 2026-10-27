@@ -8,15 +8,10 @@ import {
 } from "../../auto-reply/reply/source-turn-id.js";
 import { messageToolOwnsVisibleReply } from "../../auto-reply/source-reply-delivery-mode.js";
 import type { ThinkLevel, VerboseLevel } from "../../auto-reply/thinking.js";
-import { resolveCollapsedSessionAuthPinSource } from "../../config/sessions/auth-profile-override-provenance.js";
 import type { SessionTranscriptRuntimeTarget } from "../../config/sessions/session-accessor.js";
 import { readSessionEntryInWorker } from "../../config/sessions/session-entry-read-runtime.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import {
-  injectTimestamp,
-  timestampOptsFromConfig,
-} from "../../gateway/server-methods/agent-timestamp.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { isSubagentSessionKey } from "../../routing/session-key.js";
@@ -27,7 +22,6 @@ import type { SkillSnapshot } from "../../skills/types.js";
 import { resolveUserPath } from "../../utils.js";
 import { resolveMessageChannel } from "../../utils/message-channel.js";
 import type { PreparedAgentRunAdmission } from "../admitted-run-context.js";
-import { resizeExecApprovalContinuationPrompt } from "../bash-tools.exec-approval-output.js";
 import { resolveBootstrapWarningSignaturesSeen } from "../bootstrap-budget.js";
 import {
   cliBackendAcceptsAuthProfileForwarding,
@@ -75,9 +69,12 @@ import {
   isTrustedSubagentCompletionHandoffForRun,
 } from "../subagents/announce/subagent-announce-handoff.js";
 import { isRuntimeToolAllowed, isToolAllowedByPolicies } from "../tool-policy-match.js";
-import { DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS } from "../tool-result-limits.js";
-import { resolveHarnessAuthProfileSelection } from "./attempt-auth-selection.js";
+import {
+  resolveHarnessAuthProfileSelection,
+  resolveSelectedSessionAuthProfile,
+} from "./attempt-auth-selection.js";
 import { emitAgentAttemptRuntimeStart } from "./attempt-callbacks.js";
+import { resolveCliAttemptPrompts } from "./attempt-execution.cli-prompt.js";
 import {
   buildClaudeCliFallbackContextPrelude,
   resolveCompletionToolPolicy,
@@ -87,6 +84,7 @@ import {
   resolveFallbackRetryPrompt,
   rebaseExecApprovalContinuationPromptRange,
 } from "./attempt-execution.helpers.js";
+import { assertSandboxedDelegatedChildNotCli } from "./attempt-sandbox-cli-admission.js";
 import type { AgentCommandOpts, AgentRunContext } from "./types.js";
 
 const log = createSubsystemLogger("agents/agent-command");
@@ -155,18 +153,10 @@ export function runAgentAttempt(
       ) => void;
     },
 ) {
-  const sessionAuthProfileId = params.sessionEntry?.authProfileOverride?.trim();
-  const sessionAuthProfileSource = resolveCollapsedSessionAuthPinSource(params.sessionEntry);
-  // An explicit session choice owns the conversation. Otherwise the profile
-  // bound to the configured model replaces a stale automatic session choice.
-  const selectedAuthProfile =
-    sessionAuthProfileId && sessionAuthProfileSource !== "auto"
-      ? { id: sessionAuthProfileId, source: sessionAuthProfileSource }
-      : params.configuredAuthProfileId?.trim()
-        ? { id: params.configuredAuthProfileId.trim(), source: "user" as const }
-        : sessionAuthProfileId
-          ? { id: sessionAuthProfileId, source: sessionAuthProfileSource }
-          : undefined;
+  const selectedAuthProfile = resolveSelectedSessionAuthProfile(
+    params.sessionEntry,
+    params.configuredAuthProfileId,
+  );
   const isRawModelRun = params.opts.modelRun === true || params.opts.promptMode === "none";
   // A completion handoff relays frozen child output, so only a verified private
   // capability plus persisted requester lineage may restore its tool surface.
@@ -292,6 +282,18 @@ export function runAgentAttempt(
         sessionRuntimeOverride,
         pinnedHarnessId,
       });
+  // Sandboxed delegated children never dispatch to host-executed CLI backends;
+  // spawn admission checks once the child model is resolved, and this run-seam
+  // guard owns the invariant for fallback candidates and post-spawn runtime
+  // overrides (the CLI runs on the host while the session is reported sandboxed).
+  assertSandboxedDelegatedChildNotCli({
+    useCliExecution: isCliExecutionProvider,
+    cliExecutionProvider,
+    cfg: params.cfg,
+    sessionKey: params.sessionKey,
+    sessionAgentId: params.sessionAgentId,
+    sessionEntry: params.sessionEntry,
+  });
   const { completionRetainsRequesterTools, runtimeToolsAllow, disableTools } =
     resolveCompletionToolPolicy({
       run: params,
@@ -506,39 +508,25 @@ export function runAgentAttempt(
           : authProfileId;
         const diagnosticOwner = params.deferredLifecycle?.handoffToCli();
         const cliProcessCwd = params.cwd ? resolveUserPath(params.cwd) : params.workspaceDir;
-        const cliContinuationBody = params.opts.execApprovalContinuationPromptRange
-          ? resizeExecApprovalContinuationPrompt({
-              prompt: params.body,
-              range: params.opts.execApprovalContinuationPromptRange,
-              maxOutputUtf16Units: DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS,
-            })
-          : params.body;
-        const cliResolvedPrompt = params.opts.execApprovalContinuationPromptRange
-          ? resolveFallbackRetryPrompt({
-              body: cliContinuationBody,
-              isFallbackRetry: params.isFallbackRetry,
-              sessionHasHistory: params.sessionHasHistory,
-              priorContextPrelude: claudeCliFallbackPrelude,
-            })
-          : resolvedPrompt;
-        const cliEffectivePrompt = params.opts.execApprovalContinuationPromptRange
-          ? annotateInterSessionPromptText(cliResolvedPrompt, params.opts.inputProvenance)
-          : effectivePrompt;
-        const cliTranscriptPrompt =
-          continuationTranscriptBody === undefined || !continuationTranscriptPromptRange
-            ? continuationTranscriptBody
-            : resizeExecApprovalContinuationPrompt({
-                prompt: continuationTranscriptBody,
-                range: continuationTranscriptPromptRange,
-                maxOutputUtf16Units: DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS,
-              });
+        const {
+          continuationBody: cliContinuationBody,
+          transcriptPrompt: cliTranscriptPrompt,
+          prompt: cliPrompt,
+        } = resolveCliAttemptPrompts({
+          cfg: params.cfg,
+          body: params.body,
+          promptRange: params.opts.execApprovalContinuationPromptRange,
+          transcriptBody: continuationTranscriptBody,
+          transcriptPromptRange: continuationTranscriptPromptRange,
+          isFallbackRetry: params.isFallbackRetry,
+          sessionHasHistory: params.sessionHasHistory,
+          priorContextPrelude: claudeCliFallbackPrelude,
+          inputProvenance: params.opts.inputProvenance,
+          effectivePrompt,
+        });
         params.userTurnTranscriptRecorder?.replaceTextBeforePersistence?.(
           cliTranscriptPrompt ?? cliContinuationBody,
         );
-        const cliPrompt =
-          params.opts.inputProvenance?.kind === "inter_session"
-            ? cliEffectivePrompt
-            : injectTimestamp(cliEffectivePrompt, timestampOptsFromConfig(params.cfg));
         const mutableCliSessionStore =
           params.sessionKey && params.sessionStore && params.storePath
             ? {

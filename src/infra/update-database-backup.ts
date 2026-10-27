@@ -87,7 +87,8 @@ async function inspectRestorableDatabaseFiles(
 ) {
   const identities = new Map<string, Awaited<ReturnType<typeof fs.lstat>>>();
   for (const database of databases) {
-    for (const suffix of ["", "-wal", "-shm", "-journal"]) {
+    // Readers mutate/recreate the transient WAL index; only durable files fence capture.
+    for (const suffix of ["", "-wal", "-journal"]) {
       const file = `${database}${suffix}`;
       let info;
       try {
@@ -107,7 +108,10 @@ async function inspectRestorableDatabaseFiles(
       if (before && !sameFileIdentity(before, info)) {
         throw new Error(`Update database file changed during backup: ${file}.`);
       }
-      identities.set(file, info);
+      // Readers can create an empty WAL beside a checkpointed database.
+      if (suffix !== "-wal" || info.size !== 0) {
+        identities.set(file, info);
+      }
     }
   }
   return identities;

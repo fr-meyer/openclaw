@@ -8,6 +8,8 @@ import type {
 } from "../../config/sessions.js";
 import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { GatewayRecoveryRuntime } from "../../gateway/server-instance-runtime.types.js";
+import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
+import { clearAgentRunContext, registerAgentRunContext } from "../../infra/agent-run-registry.js";
 import { cleanupSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
 import { transitionMainSessionRecovery } from "./main-session-recovery-state.js";
 import { markStartupOrphanedMainSessionsForRecovery } from "./main-session-restart-recovery-marking.js";
@@ -128,6 +130,123 @@ describe("main session recovery terminal-only residue", () => {
     expect(claimForeground(entry)).toEqual({ kind: "no_change" });
     expect(entry.mainRestartRecovery).toBeDefined();
     expect(entry.restartRecoveryDeliveryRunId).toBe("pending-delivery");
+  });
+
+  it("releases an ownerless killed fence without reviving it or discarding delivery custody", async () => {
+    const tempDir = tempDirs.make("openclaw-killed-recovery-fence-");
+    const storePath = path.join(tempDir, "sessions.json");
+    const read = (key: string) =>
+      loadSessionEntry({ sessionKey: `agent:main:${key}`, storePath, readConsistency: "latest" });
+    const killed: SessionEntry = {
+      sessionId: "killed-session",
+      updatedAt: 100,
+      status: "killed",
+      abortedLastRun: false,
+      restartRecoveryRuns: [{ runId: "stopped-run", lifecycleGeneration: "dead-generation" }],
+      restartRecoveryTerminalRunIds: Array.from({ length: 8 }, (_, index) => `other-${index}`),
+    };
+    const cases: Array<{ key: string; patch: Partial<SessionEntry> }> = [
+      { key: "orphan", patch: {} },
+      { key: "live", patch: {} },
+      { key: "aborted", patch: { abortedLastRun: true } },
+      {
+        key: "agent-live",
+        patch: {
+          restartRecoveryRuns: [{ runId: "active-run", lifecycleGeneration: "dead-generation" }],
+        },
+      },
+      {
+        key: "harness",
+        patch: {
+          restartRecoveryHarnessCompletion: {
+            taskId: "task",
+            taskStatus: "succeeded",
+            taskRunId: "task-run",
+            sourceRunId: "stopped-run",
+            requesterSessionKey: "agent:main:harness",
+            requesterAgentId: "main",
+            sessionId: "harness",
+          },
+        },
+      },
+      {
+        key: "tombstone",
+        patch: { mainRestartRecovery: recoveryState({ tombstone: { reason: "exhausted" } }) },
+      },
+      {
+        key: "pending",
+        patch: { pendingFinalDelivery: { kind: "replayable", text: "owed", createdAt: 1 } },
+      },
+      { key: "delivery", patch: { restartRecoveryDeliveryRunId: "delivery-run" } },
+      {
+        key: "reserved",
+        patch: {
+          mainRestartRecovery: recoveryState({
+            chargedAttempts: 1,
+            reservation: {
+              attempt: 1,
+              runId: "reserved-run",
+              lifecycleGeneration: "current-generation",
+            },
+          }),
+        },
+      },
+      {
+        key: "claimed",
+        patch: {
+          mainRestartRecovery: recoveryState({
+            foregroundClaims: { tokens: ["owner"], lifecycleGeneration: "current-generation" },
+          }),
+        },
+      },
+    ];
+    const before = new Map<string, SessionEntry | undefined>();
+    registerAgentRunContext("active-run", {
+      sessionKey: "agent:main:agent-live",
+      sessionId: "agent-live",
+      lifecycleGeneration: getAgentEventLifecycleGeneration(),
+      projectSessionActive: true,
+    });
+    try {
+      for (const { key, patch } of cases) {
+        await replaceSessionEntry(
+          { sessionKey: `agent:main:${key}`, storePath },
+          { ...killed, sessionId: key, ...patch },
+        );
+        before.set(key, read(key));
+      }
+
+      await markStartupOrphanedMainSessionsForRecovery({
+        activeSessionIds: ["live"],
+        activeSessionKeys: [],
+        cfg: { session: { store: storePath } },
+        stateDir: tempDir,
+      });
+
+      for (const key of ["orphan", "aborted"]) {
+        const entry = read(key);
+        expect(entry).toMatchObject({ sessionId: key, status: "killed" });
+        expect(entry?.mainRestartRecovery).toBeUndefined();
+        expect(entry?.restartRecoveryRuns).toBeUndefined();
+      }
+      expect(read("orphan")).toMatchObject({
+        abortedLastRun: false,
+        restartRecoveryTerminalRunIds: killed.restartRecoveryTerminalRunIds,
+      });
+      expect(read("pending")).toMatchObject({
+        pendingFinalDelivery: before.get("pending")?.pendingFinalDelivery,
+        restartRecoveryRuns: killed.restartRecoveryRuns,
+        abortedLastRun: true,
+      });
+      for (const { key } of cases.filter(
+        (candidate) => !["orphan", "aborted", "pending"].includes(candidate.key),
+      )) {
+        expect(read(key)).toEqual(before.get(key));
+      }
+    } finally {
+      clearAgentRunContext("active-run");
+      await cleanupSessionStateForTest({ stateDir: tempDir });
+    }
   });
 
   it.each([false, true])(

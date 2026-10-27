@@ -199,6 +199,12 @@ export function listSqliteSessionEntriesFromDatabase(
                 normalizeAgentId(parseAgentSessionKey(sessionKey)!.agentId) === requestedOwner &&
                 !((entry.updatedAt ?? 0) >= expired.updatedBefore))),
         );
+        // Retention also needs spawned children (metadata only) to keep their run parents.
+        const children = scope.cronRetention
+          ? entries.filter(
+              ({ sessionKey, entry }) => !isCronRunSessionKey(sessionKey) && entry.spawnedBy,
+            )
+          : [];
         // Capture only deletion candidates' payloads, in the same snapshot as their metadata.
         const rows = selected.length
           ? executeSqliteQuerySync(
@@ -212,7 +218,7 @@ export function listSqliteSessionEntriesFromDatabase(
                 ),
             ).rows
           : [];
-        return { entries: selected, rows };
+        return { entries: selected, children, rows };
       }),
     );
     // Cold JSON decoding must not extend the worker's deferred read transaction.
@@ -223,7 +229,7 @@ export function listSqliteSessionEntriesFromDatabase(
         summary.entry = { ...parseSessionEntryJson(row), ...summary.entry };
       }
     }
-    return captured.entries;
+    return [...captured.entries, ...captured.children];
   }
   const projection = scope.projection ?? "full";
   const cache = !isIncognitoOpenClawAgentSqlitePath(database.path, {

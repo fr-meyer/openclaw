@@ -12,6 +12,7 @@ import { formatErrorMessage } from "../../../infra/errors.js";
 import type { Context, ImageContent, TextContent } from "../../../llm/types.js";
 import { redactSensitiveText } from "../../../logging/redact.js";
 import {
+  applyRunHydrationSuppression,
   attachRuntimePromptMediaFacts,
   isImageMediaFact,
   isVideoMediaFact,
@@ -251,8 +252,9 @@ export async function detectAndLoadPromptImages(
   // Deferred transcript preparation can carry fresher facts than the recorder's
   // initial message. Resolve without persisting before choosing image ownership.
   const message = await params.userTurnTranscriptRecorder?.resolveMessage();
+  const recordedMedia = message ? readPersistedMediaFacts(message) : undefined;
   const media = normalizeMediaFacts(
-    (message ? readPersistedMediaFacts(message) : undefined) ?? params.media,
+    recordedMedia ? applyRunHydrationSuppression(recordedMedia, params.media) : params.media,
   );
   const mediaImageLayout =
     (message ? readPersistedMediaImageLayout(message) : undefined) ?? params.mediaImageLayout;

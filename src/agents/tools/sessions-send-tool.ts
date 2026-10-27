@@ -65,7 +65,7 @@ import {
   PLACED_SESSIONS_SEND_DESCRIPTION,
 } from "./sessions-placement-tool-contract.js";
 import { dispatchSessionsSendFollowup } from "./sessions-send-followup.js";
-import { sendFailure, sendReplyResult } from "./sessions-send-helpers.js";
+import { sendFailure, settleSessionsSendReply } from "./sessions-send-helpers.js";
 import { startSessionsSendReplyFlow } from "./sessions-send-reply-flow.js";
 import { captureSessionsSendResumeCaller, resumeSessionsSendTask } from "./sessions-send-resume.js";
 import {
@@ -697,19 +697,16 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
               return accepted();
             }
           }
-          if (result.status === "timeout" || result.status === "error") {
-            return jsonResult({
+          return await settleSessionsSendReply(
+            { runId, sessionKey: displayKey, ...watchField },
+            result,
+            {
               runId,
-              status: result.status,
-              error:
-                result.error ??
-                (result.status === "timeout" ? "agent run timed out" : "agent error"),
-              sentBeforeError: true,
-              sessionKey: displayKey,
-              ...watchField,
-            });
-          }
-          return sendReplyResult({ runId, sessionKey: displayKey, ...watchField }, result);
+              sessionKey: acceptedTargetSessionKey,
+              agentId: targetAgentId,
+              callGateway: gatewayCall,
+            },
+          );
         },
       });
     }),

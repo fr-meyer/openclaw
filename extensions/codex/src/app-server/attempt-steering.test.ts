@@ -496,6 +496,52 @@ describe("Codex app-server steering queue", () => {
     );
   });
 
+  it.each(["consumed", "unconfirmed"] as const)(
+    "drains submitted steering before terminal cancellation (%s)",
+    async (outcome) => {
+      const request = vi.fn(async () => ({ turnId: "turn-1" }));
+      const queue = createQueue({ request });
+      const outcomes: unknown[] = [];
+      void queue.queue("keep this follow-up", { debounceMs: 0 }).then(
+        () => outcomes.push("resolved"),
+        (error: unknown) => outcomes.push(error),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(request).toHaveBeenCalledOnce();
+
+      const cancelled = vi.fn();
+      const drain = queue.drainBeforeCancel();
+      expect(drain).toBeDefined();
+      void drain?.then(cancelled);
+      // New input is fenced as soon as the terminal release starts draining.
+      await expect(queue.queue("too late", { debounceMs: 0 })).rejects.toThrow(
+        "steering queue admission sealed",
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      expect(cancelled).not.toHaveBeenCalled();
+      expect(outcomes).toEqual([]);
+
+      if (outcome === "consumed") {
+        expect(queue.confirmConsumed("openclaw:turn-1:steer:1")).toBe(true);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(outcomes).toEqual(["resolved"]);
+      } else {
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(outcomes[0]).toBeInstanceOf(CodexSteeringAcceptedUnconfirmedError);
+      }
+      expect(cancelled).toHaveBeenCalledOnce();
+      expect(request).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("cancels at once when no submitted steering awaits consumption", async () => {
+    const queue = createQueue({ request: vi.fn(async () => ({ turnId: "turn-1" })) });
+    expect(queue.drainBeforeCancel()).toBeUndefined();
+    await expect(queue.queue("after release", { debounceMs: 0 })).rejects.toThrow(
+      "steering queue cancelled",
+    );
+  });
+
   it("rejects later steering behind a failed batch", async () => {
     let rejectFirstSteer: ((error: Error) => void) | undefined;
     const request = vi.fn(

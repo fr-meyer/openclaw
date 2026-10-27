@@ -236,6 +236,45 @@ it.each(["file", "ephemeral"] as const)(
   },
 );
 
+it.each(["symlink", "hardlink"] as const)(
+  "borrows one foreground admission for %s aliases without admitting a worker reservation",
+  async (kind) => {
+    const root = tempDirs.make("openclaw-batch-alias-");
+    const options = { agentId: "usage", path: path.join(root, "agent.sqlite") };
+    fs.writeFileSync(options.path, "database");
+    const aliasDirectory = path.join(root, "alias");
+    const alias = {
+      ...options,
+      path:
+        kind === "symlink"
+          ? path.join(aliasDirectory, path.basename(options.path))
+          : path.join(root, "alias.sqlite"),
+    };
+    if (kind === "symlink") {
+      fs.symlinkSync(root, aliasDirectory, process.platform === "win32" ? "junction" : "dir");
+    } else {
+      fs.linkSync(options.path, alias.path);
+    }
+    await runOpenClawAgentWriteAdmission(options, async () => {
+      expect(
+        await runOpenClawAgentWriteAdmissions([alias, options], () => "read complete", true),
+      ).toBe("read complete");
+    });
+    await runOpenClawAgentWorkerWrite(options, async () => {
+      await expect(
+        runOpenClawAgentWriteAdmissions([alias, options], () => "unsafe read", true),
+      ).rejects.toThrow("cannot reenter an active SQLite writer admission");
+    });
+    const distinct = { ...options, path: path.join(root, "distinct.sqlite") };
+    fs.writeFileSync(distinct.path, "other database");
+    await runOpenClawAgentWriteAdmission(options, async () => {
+      await expect(
+        runOpenClawAgentWriteAdmissions([options, distinct], () => "unsafe read", true),
+      ).rejects.toThrow("cannot reenter an active SQLite writer admission");
+    });
+  },
+);
+
 it("reports each ordered-read reservation across an awaited read without reporting reentrant borrowing", async () => {
   const { options, clock, warnings } = fixture();
   const second = { ...options, path: path.join(path.dirname(options.path), "second.sqlite") };

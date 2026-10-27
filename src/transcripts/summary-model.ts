@@ -162,6 +162,7 @@ export async function summarizeTranscriptsWithModel(params: {
             abortSignal: signal,
             assertCurrent: params.assertCurrent,
             outputTextPolicy: "strict-visible",
+            thinkLevel: "off",
             streamParams: { maxTokens: MODEL_SUMMARY_MAX_TOKENS },
           }),
         );

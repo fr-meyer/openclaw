@@ -95,9 +95,22 @@ A default or system agent database with a confirmed admission failure keeps read
 
 A broken Telegram or other channel account can also make `/readyz` return `503` while `/startupz` remains started. Neither check replaces the other: startup completion alone does not certify agent or channel availability.
 
+Detailed readiness responses also include `coreReady`, which excludes channel
+availability while retaining startup, drain, database admission, child-runtime,
+and plugin-replacement checks. Updates can complete with channel warnings when
+the core is ready. HTTP status and `ready` still include channel health, including
+for ordinary service start and traffic admission.
+
 Disabled, unconfigured, and ordinarily unlinked accounts do not fail channel readiness. An enabled, configured account with a recorded terminal disconnect, blocked lifecycle, or unavailable ingress still fails its health check even if it becomes unlinked. For example, a terminal WhatsApp logout makes `/readyz` return `503` with `failing: ["whatsapp"]` in detailed responses. Terminal disconnects and blocked accounts require operator action; the health monitor does not restart them.
 
+Unexpected channel exits use automatic restart backoff. Intentional stops cancel a pending retry; failed restart waits leave a stopped account with `restartPending: false` and the failure recorded in `lastError`.
+
 Remote unauthenticated startup responses contain only `ok` and `status`. Local-direct and authenticated callers also receive `version`, `uptimeMs`, and `pendingReason` while startup is pending. Readiness details follow the same local-or-authenticated gate because they can name failing subsystems.
+
+Proxies listed in `gateway.trustedProxies` can request aggregate readiness and
+startup checks without forwarded client headers. Diagnostic details still require
+client attribution and authorization. Proxy attribution remains required for
+non-probe routes; untrusted proxy sources do not receive this exception.
 
 ### Shared-state integrity failure
 

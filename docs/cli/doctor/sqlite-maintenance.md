@@ -6,7 +6,10 @@ read_when:
   - You are importing, validating, or recovering legacy session history
 ---
 
-Explicit SQLite maintenance runs offline, with the Gateway stopped. This page covers
+SQLite repairs and compaction run offline, with the Gateway stopped. The session
+`inspect` and `validate` modes are read-only and can run while the Gateway is up;
+they do not take the exclusive maintenance lock. Validation may add load, and
+separate reads can observe new commits while the Gateway runs. This page covers
 shared-state compaction and the targeted session SQLite modes.
 
 SQLite keeps pages freed by deletes available for reuse inside the database file.
@@ -96,6 +99,8 @@ compatible backup or upgrade OpenClaw for a newer schema.
 Canonical session-key repair follows complete transcript-owner alias chains, including
 long chains in large databases. It preserves the terminal owner's session key and
 retained transcript history; shortening history is not required to bound the repair's stack.
+Archived registry discovery and recovery diagnostics also process complete
+inventories without expanding them into function arguments.
 
 Runtime session rows and transcripts live in SQLite, by default at
 `~/.openclaw/agents/<agentId>/agent/openclaw-agent.sqlite`. Gateway startup uses
@@ -170,6 +175,13 @@ conflicting source that cannot be verified stays in place. A conflicting identit
 or missing middle event is named in the finding. Compare those events with a
 verified backup, preserve the original, and restore a corrected JSONL at the named
 path before rerunning recovery. A healthy agent does not inherit another agent's failure.
+
+Transcript verification recognizes Doctor's legacy inbound-context heading
+normalization when comparing retained JSONL with SQLite. Heading-only rewrites
+do not report missing content or block migration completion. Different message
+bodies, event identities, and parent links still fail verification; the original
+JSONL bytes remain unchanged.
+
 When the legacy index and live transcript inputs are gone, verified historical
 archives keep their existing receipts. They do not require a new legacy-index
 receipt or block post-session plugin repair. The plugin's completion releases

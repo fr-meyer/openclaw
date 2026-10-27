@@ -1414,7 +1414,7 @@ describe("promoteAuthProfileInOrder", () => {
                 cooldownReason: "rate_limit",
                 cooldownClassification: "wham_token_expired",
                 errorCount: 12,
-                failureCounts: { rate_limit: 12 },
+                lastRateLimitAt: Date.now(),
               },
             },
           },

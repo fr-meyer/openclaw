@@ -1,3 +1,4 @@
+import { ensureSystemPromptCacheBoundary } from "@openclaw/ai/internal/shared";
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import {
   buildActiveNodeContextText,
@@ -13,9 +14,28 @@ import { buildRuntimeContextCustomMessage } from "../embedded-agent-runner/run/r
 import { resolveSessionGitCoauthorPrompt } from "../git-coauthor-prompt.js";
 import { projectRuntimeContextFragments } from "../internal-runtime-context.js";
 import { buildMediaTaskRuntimeContext } from "../media-generation-task-status.js";
+import { applyPluginTextReplacements } from "../plugin-text-transforms.js";
+import { appendModelIdentitySystemPrompt, buildModelIdentityPromptLine } from "../system-prompt.js";
 import { buildProactiveSubagentOrchestrationSection } from "../ultra-orchestration.js";
 import { cliBackendLog } from "./log.js";
 import type { CliReusableSession, RunCliAgentParams } from "./types.js";
+
+export function finalizeCliSystemPrompt(
+  systemPrompt: string,
+  model: string,
+  replacements: Parameters<typeof applyPluginTextReplacements>[1],
+): string {
+  const replaced = applyPluginTextReplacements(systemPrompt, replacements);
+  // Identity belongs after the cache boundary even for marker-free hook overrides.
+  // Otherwise idle and active turns would place it on different sides of the prefix.
+  return appendModelIdentitySystemPrompt({
+    systemPrompt:
+      buildModelIdentityPromptLine(model) && replaced.trim().length > 0
+        ? ensureSystemPromptCacheBoundary(replaced)
+        : replaced,
+    model,
+  });
+}
 
 /** Current-turn facts stay outside native prompts that are retained across CLI turns. */
 async function buildCliTurnAppendContext(
@@ -26,6 +46,7 @@ async function buildCliTurnAppendContext(
     context: readonly (string | undefined)[];
     runtimeContextFragments?: RunCliAgentParams["runtimeContextFragments"];
     thinkLevel?: ThinkLevel;
+    nativeDelegationTools?: readonly string[];
     requesterProfileId?: string;
   },
 ): Promise<string> {
@@ -46,6 +67,7 @@ async function buildCliTurnAppendContext(
     buildProactiveSubagentOrchestrationSection({
       enabled: params.thinkLevel === "ultra",
       hasSessionsSpawn: params.capabilityToolNames.has("sessions_spawn"),
+      nativeDelegationTools: params.nativeDelegationTools,
     }).join("\n"),
     mediaTaskMessage ? labelRuntimeContextText(mediaTaskMessage.content) : undefined,
     // Native-prompt owners and first-only resumes do not receive the current runtime line.
@@ -169,20 +191,11 @@ export async function prepareCliSystemPrompt(
 export function prependCliSessionResumeUserContext(
   context: RunCliAgentParams["currentInboundContext"],
   reusableCliSession: CliReusableSession,
-  preservedTurnsContext?: string,
 ): RunCliAgentParams["currentInboundContext"] {
-  const completionContext =
-    reusableCliSession.mode === "reuse" || reusableCliSession.mode === "reuse-with-drift"
-      ? preservedTurnsContext
-      : undefined;
-  const note = [
+  const note =
     reusableCliSession.mode === "reuse-with-drift"
       ? buildCliSessionDriftNote(reusableCliSession.drift.reasons)
-      : undefined,
-    completionContext,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join("\n\n");
+      : undefined;
   if (!note) {
     return context;
   }

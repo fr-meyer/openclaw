@@ -210,7 +210,7 @@ describe("SQLite historical session disk budget", () => {
       expect(reclamationWorkers).toBe(execution === "in-process" ? 0 : 1);
       expect(archiveReplies.map(({ message }) => message.type)).toEqual(["done", "published"]);
       expect(new Set(archiveReplies.map(({ worker }) => worker)).size).toBe(1);
-      expect(archiveReplies.every(({ worker }) => worker.threadId === -1)).toBe(true);
+      expect(archiveReplies.every(({ worker }) => worker.threadId > 0)).toBe(true);
       expect(archiveReplies.map(({ message }) => message)).toMatchObject([
         { operationId: 1, settled: true },
         { operationId: 2, settled: true },
@@ -231,6 +231,8 @@ describe("SQLite historical session disk budget", () => {
           .get("idx_agent_session_windows_updated_at"),
       ).toEqual({ stat: expect.stringMatching(/^3\b/u) });
       expect(database().db.prepare("PRAGMA analysis_limit").get()).toEqual({ analysis_limit: 37 });
+      await closeOpenClawAgentDatabaseByPathAsync(database().path);
+      expect(archiveReplies.every(({ worker }) => worker.threadId === -1)).toBe(true);
     },
   );
 

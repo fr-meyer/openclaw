@@ -154,9 +154,7 @@ export async function agentsAddCommand(
       throwExpectedCliError(
         created.reason === "reserved-id"
           ? `"${created.agentId}" is reserved. Choose another name, or run ${formatCliCommand("openclaw agents list")} to inspect configured agents.`
-          : created.reason === "already-exists"
-            ? `Agent "${created.agentId}" already exists.`
-            : created.message,
+          : created.message,
       );
     }
 

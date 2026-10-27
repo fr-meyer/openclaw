@@ -178,10 +178,21 @@ The client retries ordinary connection loss automatically with randomized backof
 retry waits 800–960 ms, and sustained failures spread retries across 12.5–15 seconds.
 Server retry hints remain minimum waits and can extend beyond that normal cap, with up to
 20% additional spread. The Gateway's WebSocket ping/pong keepalive detects dead
-transports. Delayed application heartbeats on a busy Gateway do not by themselves
-reconnect an open tab. Returning to a suspended tab still recovers a connection
-after two advertised heartbeat intervals of silence. An individual request
-timeout does not reset the socket. Reconnecting does not replay
+peers on the server, but browsers cannot observe those frames or receive a close
+over a silently dead link. A connected, visible tab checks inbound silence every
+five seconds. After two advertised heartbeat intervals (60 seconds by default),
+or 15 seconds after the first request sent since the last inbound frame, it sends
+one read-only `health` request without active integration probing. Sent requests
+still count after they time out; any inbound event or response resets that clock.
+It reconnects only if no event or response
+arrives during the next 10 seconds. A locally closed socket is retired immediately;
+recovery does not wait for an unreachable peer to finish the WebSocket closing handshake.
+Any inbound traffic proves the link is alive;
+a responsive but busy Gateway is not reconnected just because application ticks
+are delayed. Hidden tabs do not probe; returning to a suspended tab uses the
+existing wake recovery after two advertised heartbeat intervals of silence.
+An individual request timeout does not reset a socket that is receiving traffic.
+Reconnecting does not replay
 arbitrary requests; read owners retry their reads, and write owners reconcile
 uncertain outcomes. Gateway startup hints keep their separate bounded timing
 (100–2000 ms), with up to 20% additional spread across reconnecting tabs.

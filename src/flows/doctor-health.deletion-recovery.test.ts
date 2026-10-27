@@ -62,21 +62,34 @@ it("refreshes supplied missing-history discovery after maintenance admits a newe
     mocks.runContributions.mockReset();
     mocks.emulateNativeInstall = false;
     const runtime = { log: vi.fn(), error: vi.fn(), exit: vi.fn() };
+    const configFlow = await import("../commands/doctor-config-flow.js");
+    const loadConfig = vi.spyOn(configFlow, "loadAndMaybeMigrateDoctorConfig");
     try {
-      await runDoctorHealthFlow(
-        runtime,
-        { repair: true, nonInteractive: true },
-        undefined,
-        prepared,
-      );
+      // Configured stores are restored after journal loss (#181804), so readiness refuses
+      // the legacy schema instead of holding them; their bytes stay untouched.
+      await expect(
+        runDoctorHealthFlow(runtime, { repair: true, nonInteractive: true }, undefined, prepared),
+      ).rejects.toMatchObject({
+        name: "DoctorMaintenanceRefusalError",
+        refusal: { kind: "data-at-risk", reason: "incomplete-migration" },
+      });
       expect(runtime.exit).not.toHaveBeenCalled();
+      expect(loadConfig).toHaveBeenCalledOnce();
       expect(
-        readAgentDeletionRecoveryHolds(openOpenClawStateDatabase({ env: state.env }))
-          .map((target) => target.path)
-          .toSorted(),
-      ).toEqual([mainPath, latePath].toSorted());
+        loadConfig.mock.calls[0]?.[0].agentDatabaseMigrationDiscovery?.discovery.targets
+          .map(({ agentId, path: databasePath, source }) => ({
+            agentId,
+            path: databasePath,
+            source,
+          }))
+          .toSorted((left, right) => left.agentId.localeCompare(right.agentId)),
+      ).toEqual([
+        { agentId: "late", path: latePath, source: "configured" },
+        { agentId: "main", path: mainPath, source: "configured" },
+      ]);
       expect([mainPath, latePath].map((file) => fs.readFileSync(file))).toEqual(bytes);
     } finally {
+      loadConfig.mockRestore();
       mocks.emulateNativeInstall = true;
       closeOpenClawStateDatabaseForTest();
     }

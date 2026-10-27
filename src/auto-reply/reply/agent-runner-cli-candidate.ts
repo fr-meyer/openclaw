@@ -182,6 +182,7 @@ export async function runCliFallbackCandidate(
         cliSessionBinding,
         assertSettlementCurrent,
         settleResult,
+        persistStoppedFirstSession,
       }) => {
         let sessionEntry = initialSessionEntry;
         const clearCliBinding = () =>
@@ -401,6 +402,20 @@ export async function runCliFallbackCandidate(
             cliSessionBinding,
             forkCliSessionOnResume,
             ...forkRunParams,
+            // Room events and preserved provenance never publish a new native session.
+            ...(turn.followupRun.currentInboundEventKind === "room_event" ||
+            shouldPreserveUserFacingSessionStateForInputProvenance(
+              turn.followupRun.run.inputProvenance,
+            )
+              ? {}
+              : {
+                  persistStoppedFirstCliSession: (binding) =>
+                    persistStoppedFirstSession({
+                      binding,
+                      expectedSession: sessionEntry,
+                      sessionStore: turn.activeSessionStore,
+                    }),
+                }),
             authProfileId,
             mediaImageLayout: params.currentTurnImages.mediaImageLayout,
             messageChannel: turn.followupRun.originatingChannel ?? undefined,

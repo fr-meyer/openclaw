@@ -110,7 +110,7 @@ actor MacNodeClaudeSessionCatalogWorker {
 
 actor MacNodeRuntime {
     private static let maxGatewayPayloadBytes = 25 * 1024 * 1024
-    private static let maxScreenSnapshotRawBytesBeforeBase64 = (maxGatewayPayloadBytes / 4) * 3
+    private static let maxInlineMediaRawBytes = (maxGatewayPayloadBytes / 4) * 3
     private static let cuaOwnedCommands = Set([
         OpenClawScreenCommand.snapshot.rawValue,
         OpenClawComputerCommand.act.rawValue,
@@ -577,7 +577,9 @@ extension MacNodeRuntime {
                 includeAudio: params.includeAudio ?? true,
                 deviceId: params.deviceId)
             defer { try? FileManager().removeItem(atPath: res.path) }
-            let data = try Data(contentsOf: URL(fileURLWithPath: res.path))
+            guard let data = try Self.readInlineMedia(atPath: res.path) else {
+                return Self.recordingPayloadTooLarge(req, hint: "reduce durationMs")
+            }
             struct ClipPayload: Encodable {
                 var format: String
                 var base64: String
@@ -589,6 +591,9 @@ extension MacNodeRuntime {
                 base64: data.base64EncodedString(),
                 durationMs: res.durationMs,
                 hasAudio: res.hasAudio))
+            guard try Self.fitsGatewayFrame(payload, for: req) else {
+                return Self.recordingPayloadTooLarge(req, hint: "reduce durationMs")
+            }
             return BridgeInvokeResponse(id: req.id, ok: true, payloadJSON: payload)
         case OpenClawCameraCommand.list.rawValue:
             let devices = await cameraCapture.listDevices()
@@ -753,7 +758,9 @@ extension MacNodeRuntime {
             fps: params.fps,
             includeAudio: params.includeAudio)
         defer { try? FileManager().removeItem(atPath: res.path) }
-        let data = try Data(contentsOf: URL(fileURLWithPath: res.path))
+        guard let data = try Self.readInlineMedia(atPath: res.path) else {
+            return Self.recordingPayloadTooLarge(req, hint: "reduce durationMs or fps")
+        }
         struct ScreenPayload: Encodable {
             var format: String
             var base64: String
@@ -769,6 +776,9 @@ extension MacNodeRuntime {
             fps: params.fps,
             screenIndex: params.screenIndex,
             hasAudio: res.hasAudio))
+        guard try Self.fitsGatewayFrame(payload, for: req) else {
+            return Self.recordingPayloadTooLarge(req, hint: "reduce durationMs or fps")
+        }
         return BridgeInvokeResponse(id: req.id, ok: true, payloadJSON: payload)
     }
 
@@ -812,7 +822,7 @@ extension MacNodeRuntime {
                 code: .unavailable,
                 message: "UNAVAILABLE: screen snapshot failed")
         }
-        if res.data.count > Self.maxScreenSnapshotRawBytesBeforeBase64 {
+        if res.data.count > Self.maxInlineMediaRawBytes {
             return Self.screenSnapshotPayloadTooLarge(req)
         }
         struct ScreenSnapshotPayload: Encodable {
@@ -832,11 +842,7 @@ extension MacNodeRuntime {
             height: res.height,
             screenIndex: params.screenIndex,
             capturedAtMs: capturedAtMs))
-        if try Self.projectedOuterFrameBytes(
-            forPayloadJSON: payload,
-            requestId: req.id,
-            nodeId: req.nodeId) > Self.maxGatewayPayloadBytes
-        {
+        guard try Self.fitsGatewayFrame(payload, for: req) else {
             return Self.screenSnapshotPayloadTooLarge(req)
         }
         return BridgeInvokeResponse(id: req.id, ok: true, payloadJSON: payload)
@@ -964,6 +970,22 @@ extension MacNodeRuntime {
             ok: true,
             payloadJSON: payloadJSON))
         return try JSONEncoder().encode(frame).count
+    }
+
+    /// Stats before reading so oversized recordings never allocate file data plus base64.
+    private static func readInlineMedia(atPath path: String) throws -> Data? {
+        let size = try FileManager().attributesOfItem(atPath: path)[.size] as? Int ?? 0
+        return size > self.maxInlineMediaRawBytes ? nil : try Data(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    /// The Gateway closes the node socket on frames above its limit, losing the result.
+    private static func fitsGatewayFrame(_ payloadJSON: String, for req: BridgeInvokeRequest) throws -> Bool {
+        try self.projectedOuterFrameBytes(forPayloadJSON: payloadJSON, requestId: req.id, nodeId: req.nodeId) <=
+            self.maxGatewayPayloadBytes
+    }
+
+    private static func recordingPayloadTooLarge(_ req: BridgeInvokeRequest, hint: String) -> BridgeInvokeResponse {
+        self.errorResponse(req, code: .unavailable, message: "UNAVAILABLE: \(req.command) payload too large; \(hint)")
     }
 
     private static func screenSnapshotPayloadTooLarge(_ req: BridgeInvokeRequest) -> BridgeInvokeResponse {

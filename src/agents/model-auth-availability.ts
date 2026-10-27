@@ -50,6 +50,7 @@ import {
 import { resolveAgentHarnessPolicy } from "./harness/policy.js";
 import { createCliRuntimeModelAuthEvaluator } from "./model-auth-availability.cli-runtime.js";
 import { createRuntimeCredentialOverlay } from "./model-auth-availability.runtime-overlay.js";
+import { listSyntheticAuthPluginProviderIds } from "./model-auth-availability.synthetic-providers.js";
 import type {
   ModelAuthAvailability,
   ModelAuthAvailabilityEvidence,
@@ -1295,26 +1296,16 @@ export function createModelAuthAvailabilityResolver(
       addProviderDiscoveryProviderId(provider);
     }
   }
-  for (const plugin of params.metadataSnapshot?.index?.plugins ?? []) {
-    if (
-      !plugin.enabled ||
-      !(plugin.syntheticAuthRefs ?? []).some((ref) =>
-        synthetic.has(normalizeProviderIdForAuth(ref)),
-      )
-    ) {
-      continue;
-    }
-    for (const provider of [
-      ...(plugin.contributions?.providers ?? []),
-      ...(plugin.contributions?.modelCatalogProviders ?? []),
-    ]) {
-      addProviderDiscoveryProviderId(provider);
-    }
+  for (const provider of listSyntheticAuthPluginProviderIds(params.metadataSnapshot, synthetic)) {
+    addProviderDiscoveryProviderId(provider);
   }
   if (synthetic.has("codex")) {
     addProviderDiscoveryProviderId(OPENAI_PROVIDER_ID);
   }
-  const evaluateCliRuntimeAuth = createCliRuntimeModelAuthEvaluator(params, evaluateModelAuth);
+  const evaluateCliRuntimeAuth = createCliRuntimeModelAuthEvaluator(
+    { ...params, authStore: orderStore },
+    evaluateModelAuth,
+  );
   return {
     providerDiscoveryProviderIds: [...providerDiscoveryProviderIds].toSorted((left, right) =>
       left.localeCompare(right),

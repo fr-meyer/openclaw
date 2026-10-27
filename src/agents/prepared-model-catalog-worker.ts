@@ -23,6 +23,7 @@ import type { PluginRegistry } from "../plugins/registry-types.js";
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import { listManifestSyntheticAuthProviderRefs } from "../plugins/synthetic-auth.runtime.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+import { getActiveSkillEnvKeysCore } from "../skills/runtime/env-overrides.js";
 import { cloneAuthProfileStore } from "./auth-profiles/clone.js";
 import { getPreparedSharedAuthStoreOwnership } from "./auth-profiles/path-resolve.js";
 import {
@@ -221,6 +222,13 @@ export function createPreparedModelCatalogWorkerInput(params: {
   preferBuiltPluginArtifacts?: boolean;
 }): PreparedModelCatalogWorkerInput {
   const source = params.agentFacts.input;
+  const env = { ...params.agentFacts.env };
+  if (source.allowGatewaySubagentBinding === true && source.env === undefined) {
+    // Skill overrides belong to a turn, not the Gateway's pinned catalog environment.
+    for (const key of getActiveSkillEnvKeysCore()) {
+      delete env[key];
+    }
+  }
   // Registries and closures stay process-local. The worker reconstructs them from this exact
   // lifecycle plan and receives only already-materialized auth facts.
   const input: PreparedModelCatalogWorkerInput["input"] = {
@@ -229,7 +237,7 @@ export function createPreparedModelCatalogWorkerInput(params: {
     ...(source.inheritedAuthDir ? { inheritedAuthDir: source.inheritedAuthDir } : {}),
     ...(source.workspaceDir ? { workspaceDir: source.workspaceDir } : {}),
     ...(source.readOnly ? { readOnly: true } : {}),
-    env: { ...params.agentFacts.env },
+    env,
     ...(source.allowGatewaySubagentBinding ? { allowGatewaySubagentBinding: true } : {}),
     config: source.config,
   };

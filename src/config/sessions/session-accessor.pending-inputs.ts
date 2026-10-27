@@ -11,6 +11,7 @@ import {
   assertAgentRunLifecycleGenerationCurrent,
 } from "../../infra/agent-events.js";
 import { hasSqliteWorkerOutcomeUnknown } from "../../infra/sqlite-worker-contract.js";
+import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import type { PersistedUserTurnMessage } from "../../sessions/user-turn-transcript.types.js";
 import { rethrowIncognitoSessionError } from "../../state/incognito-session-error.js";
 import { runOpenClawAgentWriteAdmission } from "../../state/openclaw-agent-write-admission.js";
@@ -215,17 +216,20 @@ export function stageSessionPendingInput(
   };
   const preparedRequest = preparePendingInputRequest(options);
   const lifecycleGeneration = getAgentEventLifecycleGeneration();
-  const admission = resolveSqliteWriteAdmissionScope(captured);
+  // Authority refresh reads every candidate store for the session, which a held
+  // writer reservation refuses to span. Persistent reads and the staging mutation
+  // take their own write admission; the mutation rechecks its snapshot and authority.
+  const ownAdmissions =
+    options.authority !== undefined && !incognito && !isIncognitoSessionKey(captured.sessionKey);
+  const admission = ownAdmissions ? undefined : resolveSqliteWriteAdmissionScope(captured);
   const stage = async () => {
     const store = await preparePendingInputStore(
       captured,
       options.authority?.assertLifetimeCurrent ?? options.assertCurrent,
     );
-    return store.withAdmission(
-      () =>
-        stagePreparedPendingInput(captured, options, preparedRequest, lifecycleGeneration, store),
-      admission !== undefined,
-    );
+    const accept = () =>
+      stagePreparedPendingInput(captured, options, preparedRequest, lifecycleGeneration, store);
+    return ownAdmissions ? accept() : store.withAdmission(accept, admission !== undefined);
   };
   return admission ? runOpenClawAgentWriteAdmission(toDatabaseOptions(admission), stage) : stage();
 }

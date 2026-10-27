@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { reloadControlUiDocument } from "../../ui/src/app/stale-chunk-reload.ts";
+import { sessionNavigationTarget } from "../../ui/src/lib/sessions/route-navigation.ts";
 import { computeInlineScriptHashes } from "./control-ui-csp.js";
 import { AUTH_TOKEN, createTestGatewayServer, sendRequest } from "./server-http.test-harness.js";
 import { createSessionRowProjectionFixture } from "./session-row-projection.test-support.js";
@@ -118,6 +119,29 @@ describe("canonical anonymous HTTP entry", () => {
     });
     expect(nonSecureApp.res.statusCode).toBe(200);
     expect(nonSecureApp.getBody()).toContain("<openclaw-app>");
+    expect(reader).not.toHaveBeenCalled();
+  });
+
+  it("reloads the exact short-session address produced by new-session navigation", async () => {
+    const sessionKey = "agent:main:dashboard:12345678-aaaa-4000-8000-000000000001";
+    const target = sessionNavigationTarget({
+      face: "chat",
+      sessionKey,
+      navigationKey: sessionKey,
+      focusComposer: true,
+      fallbackAgentId: "main",
+      basePath: "/control",
+    });
+    expect(target.options.search).toContain("__openclawSessionKey=");
+    expect(target.options.search).toContain("__openclawComposerFocus=1");
+    const response = await sendRequest(server(), {
+      path: target.options.pathname + (target.options.search ?? ""),
+      host: "gateway.lan:18789",
+      remoteAddress: "192.168.1.25",
+    });
+    expect(response.res.statusCode).toBe(200);
+    expect(response.getBody()).toContain("<openclaw-app>");
+    expect(resolveSession).not.toHaveBeenCalled();
     expect(reader).not.toHaveBeenCalled();
   });
 

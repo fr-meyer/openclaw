@@ -6,6 +6,10 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { compareOpenClawReleaseVersions } from "../infra/npm-registry-spec.js";
 import { resolveCompatibilityHostVersion } from "../version.js";
 import { inspectBundleMcpRuntimeSupport } from "./bundle-mcp.js";
+import {
+  resolveImmutableInstallIdentity,
+  resolvePluginCandidateInstallOwner,
+} from "./candidate-install-owner.js";
 import { capabilityCatalogFamilies, resolvePluginCapabilityCatalog } from "./capability-catalog.js";
 import { resolveMemorySlotDecision } from "./config-state.js";
 import {
@@ -480,7 +484,6 @@ export function loadRuntimePluginCandidate(params: {
 
   let moduleLoadMs = 0;
   let beforeRegister: number | undefined;
-  let failurePhase: "load" | "register" = "load";
   let failed = false;
   const beforeModuleLoad = performance.now();
   try {
@@ -491,6 +494,17 @@ export function loadRuntimePluginCandidate(params: {
     }
     state.pluginLoadAttemptCount++;
     params.logger.debug?.(`[plugins] loading ${record.id} from ${safeSource}`);
+    const moduleOwner = {
+      record,
+      rootDir: moduleRoot,
+      registry,
+      standalone: manifestRecord.manifestPath === candidate.source,
+      immutableInstallIdentity: resolveImmutableInstallIdentity(
+        candidate.origin,
+        resolvePluginCandidateInstallOwner(candidate),
+        context.installRecords,
+      ),
+    };
     const loadPluginModule = (source: string) => {
       if (recovery) {
         let instance = getPluginInstance(record);
@@ -500,12 +514,7 @@ export function loadRuntimePluginCandidate(params: {
         }
         return instance.loadModule(source);
       }
-      return params.loadPluginModule(source, {
-        record,
-        rootDir: moduleRoot,
-        registry,
-        standalone: manifestRecord.manifestPath === candidate.source,
-      });
+      return params.loadPluginModule(source, moduleOwner);
     };
     const mod = withProfile(
       { pluginId: record.id, source: safeSource },
@@ -589,7 +598,6 @@ export function loadRuntimePluginCandidate(params: {
       return;
     }
     beforeRegister = performance.now();
-    failurePhase = "register";
     const registerPlugin = () => {
       const ownedDefinition = instance?.wrap(definition) ?? definition;
       // Headless nodes also use non-activating registries; their commands remain available.
@@ -637,6 +645,7 @@ export function loadRuntimePluginCandidate(params: {
       clearActiveDegradedPlugin(pluginId);
     }
   } catch (error) {
+    const failurePhase = beforeRegister === undefined ? "load" : "register";
     let failure = error;
     try {
       params.options.prepareRegistrationFailureCleanup?.(registry, record);
@@ -669,7 +678,7 @@ export function loadRuntimePluginCandidate(params: {
       beforeRegister === undefined ? undefined : performance.now() - beforeRegister;
     detailPluginStartupTrace(params.options.startupTrace, record.id, [
       ["loadMs", moduleLoadMs || elapsed],
-      ["loadFailedCount", failed && failurePhase === "load" ? 1 : 0],
+      ["loadFailedCount", failed && beforeRegister === undefined ? 1 : 0],
       ...(registerMs === undefined
         ? []
         : ([

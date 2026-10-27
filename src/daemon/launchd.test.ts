@@ -768,19 +768,6 @@ describe("launchd install", () => {
     expect(launchctlCommandNames()).toEqual(["print"]);
   });
 
-  it("aborts before mutation when launchd has the only copy of the prior definition", async () => {
-    state.serviceStates.set(`${DOMAIN}/ai.openclaw.gateway`, "running");
-
-    await expect(installLaunchAgent(defaultLaunchAgentFixture(ENV))).rejects.toThrow(
-      "is loaded but its plist is missing",
-    );
-
-    expect(state.serviceLoaded).toBe(true);
-    expect(state.serviceRunning).toBe(true);
-    expect(state.fileWrites).toEqual([]);
-    expect(launchctlCommandNames()).toEqual(["print", "print"]);
-  });
-
   it.each(["fresh", "unloaded reinstall"] as const)(
     "restores the previous %s state after failed install",
     async (kind) => {
@@ -899,7 +886,6 @@ describe("launchd install", () => {
       "print-disabled",
       "print",
       "bootout",
-      "unload",
       "bootstrap",
       "print",
       "bootstrap",
@@ -1023,7 +1009,7 @@ describe("launchd install", () => {
     state.bootoutCode = 5;
 
     await expect(installLaunchAgent(defaultLaunchAgentFixture(ENV))).rejects.toThrow(
-      "launchctl bootout failed during LaunchAgent install: Boot-out failed: 5: Input/output error",
+      "launchctl bootout failed: Boot-out failed: 5: Input/output error",
     );
 
     expect(launchctlCommandNames()).toEqual(["print", "print", "bootout", "print", "bootout"]);

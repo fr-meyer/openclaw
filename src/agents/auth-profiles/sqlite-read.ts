@@ -4,7 +4,10 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { Result } from "@openclaw/normalization-core/result";
 import { cloneEnvWithPlatformSemantics } from "../../config/config-env-vars.js";
 import { runSqliteReadOnlyWorker } from "../../infra/sqlite-readonly-worker.js";
-import { inspectDatabasePathIdentitySync } from "../../infra/sqlite-worker-identity.js";
+import {
+  inspectDatabasePathIdentitySync,
+  type DatabasePathIdentity,
+} from "../../infra/sqlite-worker-identity.js";
 import { createSqliteWorkerOperationAdmission } from "../../infra/sqlite-worker-operation-admission.js";
 import { registerOpenClawAgentDatabaseAsyncResource } from "../../state/openclaw-agent-db-resources.js";
 import { registerOpenClawStateDatabaseAsyncResource } from "../../state/openclaw-state-db-cache.js";
@@ -64,6 +67,7 @@ function isInspection(value: unknown): value is PersistedAuthProfileStoreInspect
 /** Captured read authority survives all awaits until the runtime composition releases it. */
 export function prepareAgentAuthProfileRowsRead(options: {
   databasePath: string;
+  databaseIdentity?: DatabasePathIdentity;
   agentId: string;
   env: NodeJS.ProcessEnv;
 }): {
@@ -76,7 +80,8 @@ export function prepareAgentAuthProfileRowsRead(options: {
   const env = cloneEnvWithPlatformSemantics(options.env);
   let identity: ReturnType<typeof inspectDatabasePathIdentitySync>;
   try {
-    identity = inspectDatabasePathIdentitySync(databasePath);
+    // Discovered candidates pin the read to their captured physical file.
+    identity = options.databaseIdentity ?? inspectDatabasePathIdentitySync(databasePath);
   } catch {
     identity = undefined;
   }

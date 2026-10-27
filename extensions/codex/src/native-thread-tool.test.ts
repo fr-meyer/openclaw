@@ -90,11 +90,17 @@ describe("native Codex thread tool", () => {
     });
   }
 
-  it("materializes only for owner turns with user-home or supervision access", () =>
-    withFixture(() => {
+  it("declares native-home access but denies nonowner calls before native requests", () =>
+    withFixture(async () => {
       expect(createTool()).not.toBeNull();
-      expect(createTool({ owner: false })).toBeNull();
+      const request = vi.fn();
+      const nonowner = createTool({ owner: false, request });
+      await expect(nonowner!.execute("denied", { action: "list" })).rejects.toThrow(
+        "owner-authorized sender",
+      );
+      expect(request).not.toHaveBeenCalled();
       expect(createTool({ homeScope: "agent" })).toBeNull();
+      expect(createTool({ homeScope: "agent", owner: false })).toBeNull();
       expect(createTool({ omitHomeScope: true, supervision: true })).not.toBeNull();
     }));
 

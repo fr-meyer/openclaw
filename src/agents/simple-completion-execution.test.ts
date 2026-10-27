@@ -124,11 +124,33 @@ describe("completeWithPreparedSimpleCompletionModel", () => {
         {
           model: preparedModel,
           context,
-          options: { ...(expected ? { reasoning: expected } : {}), apiKey: auth.apiKey },
+          options: {
+            ...(expected ? { reasoning: expected } : {}),
+            ...(reasoning === "off" ? { onPayload: expect.any(Function) } : {}),
+            apiKey: auth.apiKey,
+          },
         },
       ]);
     },
   );
+
+  it("keeps explicit off ahead of configured local-server thinking switches", async () => {
+    await complete({ model: baseModel, options: { reasoning: "off" } });
+    const onPayload = completionRequests()[0]?.options?.onPayload;
+    const payload = {
+      think: true,
+      enable_thinking: true,
+      chat_template_kwargs: { enable_thinking: true, keep: 1 },
+      options: { num_ctx: 8192 },
+    };
+    onPayload?.(payload, baseModel);
+    expect(payload).toEqual({
+      think: false,
+      enable_thinking: false,
+      chat_template_kwargs: { enable_thinking: false, keep: 1 },
+      options: { num_ctx: 8192 },
+    });
+  });
 
   it("passes only selected auth facts to transport preparation", async () => {
     await complete({

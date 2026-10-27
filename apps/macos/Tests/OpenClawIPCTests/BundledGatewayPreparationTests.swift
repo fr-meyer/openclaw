@@ -250,9 +250,10 @@ struct BundledGatewayPreparationTests {
                     currentVersion: target, owner: .gateway)?.coreUpdate == .node)
                 let stale = PostAppUpdateReceipt(
                     fromVersion: "2026.8.1", toVersion: target, recordedAt: .distantPast)
-                #expect(throws: GatewayHostingError.self) {
-                    try PostAppUpdateReceiptStore.recordCoreUpdateDispatch(receipt: stale, owner: .gateway)
-                }
+                let foreignBytes = AppDefaults.standard.data(forKey: postAppUpdateReceiptKey)
+                let independent = try PostAppUpdateReceiptStore.recordCoreUpdateDispatch(receipt: stale, owner: .gateway)
+                #expect(independent.coreUpdate == .gateway)
+                #expect(AppDefaults.standard.data(forKey: postAppUpdateReceiptKey) == foreignBytes)
                 #expect(PostAppUpdateReceiptStore.setGatewayUpdateIncomplete(
                     true, receipt: stale).coreUpdate == .node)
                 #expect(PostAppUpdateReceiptStore.recordNotificationFailure(receipt: stale).coreUpdate == .node)
@@ -262,11 +263,10 @@ struct BundledGatewayPreparationTests {
                 #expect(PostAppUpdateReceiptStore.pending(currentVersion: target)?.notificationAttempts == 1)
                 #expect(!PostUpdateController.shouldRepairNodeMigration(
                     receipt: reloaded, migrationNeedsCoreRepair: true, migrationFailed: false))
-                do {
-                    _ = try await CLIInstaller.prepareBundledGateway(
-                        targetVersion: target, restartGateway: false, statusHandler: { _ in })
-                    Issue.record("Local repair must not replace pending node core work")
-                } catch {}
+                let pendingNodeBytes = AppDefaults.standard.data(forKey: postAppUpdateReceiptKey)
+                _ = try await CLIInstaller.prepareBundledGateway(
+                    targetVersion: target, restartGateway: false, statusHandler: { _ in })
+                #expect(AppDefaults.standard.data(forKey: postAppUpdateReceiptKey) == pendingNodeBytes)
                 #expect(PostAppUpdateReceiptStore.pending(currentVersion: target)?.coreUpdatePending == true)
                 #expect(!FileManager.default.fileExists(atPath: local.root.appendingPathComponent("updates").path))
                 return

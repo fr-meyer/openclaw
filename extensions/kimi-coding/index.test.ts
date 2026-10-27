@@ -109,6 +109,23 @@ describe("kimi provider plugin", () => {
     ).toBeUndefined();
   });
 
+  it.each(["k3.1-pro", "k3.1-pro-highspeed"])(
+    "exposes K3 thinking levels without off for %s",
+    async (modelId) => {
+      const provider = await registerSingleProviderPlugin(plugin);
+
+      expect(
+        provider.resolveThinkingProfile?.({ provider: "kimi", modelId, reasoning: true } as never),
+      ).toEqual({
+        levels: ["minimal", "low", "medium", "high", "adaptive", "xhigh", "max"].map((id) => ({
+          id,
+        })),
+        defaultLevel: "high",
+        preserveWhenCatalogReasoningFalse: true,
+      });
+    },
+  );
+
   it("exposes adaptive thinking levels for case-insensitive K3 ids", async () => {
     const provider = await registerSingleProviderPlugin(plugin);
 

@@ -573,8 +573,9 @@ describe("runEmbeddedAgent provider fault sequences", () => {
       expect(outcome.result.payloads?.[0]?.text).toContain("fallback chain ok");
 
       const usageStats = await readUsageStats(agentDir);
-      expect(usageStats["openai:p1"]?.cooldownReason).toBe("rate_limit");
-      expect(usageStats["openai:p1"]?.failureCounts?.rate_limit).toBe(1);
+      // The usage-limit 429 carried no provider timing: rotate now, without a cooldown.
+      expect(usageStats["openai:p1"]?.cooldownUntil).toBeUndefined();
+      expect(usageStats["openai:p1"]?.lastRateLimitAt).toEqual(expect.any(Number));
       expect(usageStats["openai:p2"]?.cooldownReason).toMatch(/^auth/);
       expect(usageStats["openai:p2"]?.failureCounts?.auth).toBe(1);
       expect(usageStats["groq:p1"]?.cooldownUntil).toBeUndefined();
@@ -898,7 +899,8 @@ describe("runEmbeddedAgent provider fault sequences", () => {
         { provider: "groq", model: "mock-3", reason: "billing" },
       ]);
       const usageStats = await readUsageStats(agentDir);
-      expect(usageStats["openai:p1"]?.cooldownReason).toBe("rate_limit");
+      expect(usageStats["openai:p1"]?.cooldownUntil).toBeUndefined();
+      expect(usageStats["openai:p1"]?.lastRateLimitAt).toEqual(expect.any(Number));
       expect(usageStats["openai:p2"]?.cooldownReason).toMatch(/^auth/);
       expect(usageStats["groq:p1"]?.disabledReason).toBe("billing");
     });

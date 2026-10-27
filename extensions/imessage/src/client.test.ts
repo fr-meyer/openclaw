@@ -606,9 +606,29 @@ describe("IMessageRpcClient bridge-stall cache invalidation", () => {
 
   // The cache uses the configured path, while spawning expands it. Recovery
   // must evict that same key and preserve send reconciliation's structured data.
-  it.each([{ name: "structured errors", data: { disposition: "not_started", retry_safe: true } }])(
+  // imsg emits legacy wait text for some failures and, since 0.14, structured
+  // bridge_v2 delivery failures for sends.
+  it.each([
+    {
+      name: "structured errors",
+      stallMessage: "Timed out waiting for response to 'send-message'",
+      data: { disposition: "not_started", retry_safe: true } as Record<string, unknown>,
+    },
+    {
+      name: "structured bridge_v2 deadline errors",
+      stallMessage: "Delivery failed before dispatch",
+      data: {
+        retry_safe: true,
+        disposition: "not_started",
+        transport: "bridge_v2",
+        operation: "send-message",
+        detail:
+          "The bridge response deadline expired. The client reclaimed and removed the unclaimed request.",
+      } as Record<string, unknown>,
+    },
+  ])(
     "invalidates the configured bridge cache and preserves $name",
-    async ({ data }) => {
+    async ({ stallMessage, data }) => {
       const cliPath = "~/imsg-stall-tilde/imsg";
       privateApiStatus.setCachedIMessagePrivateApiStatus(cliPath, { ...seeded });
       expect(privateApiStatus.getCachedIMessagePrivateApiStatus(cliPath)?.available).toBe(true);
@@ -619,7 +639,7 @@ describe("IMessageRpcClient bridge-stall cache invalidation", () => {
       pending.catch(() => {});
       emitRpcError(child, {
         code: -32603,
-        message: "Timed out waiting for response to 'send-message'",
+        message: stallMessage,
         data,
       });
 
@@ -630,7 +650,7 @@ describe("IMessageRpcClient bridge-stall cache invalidation", () => {
         args: ["launch"],
         timeoutMs: 30_000,
       });
-      expect(error.message).toContain("Timed out waiting for response to 'send-message'");
+      expect(error.message).toContain(stallMessage);
       expect(error.message).toContain("imsg launch");
       expect(error.message).toContain("channels status --probe");
       expect(error).toBeInstanceOf(IMessageRpcRequestError);

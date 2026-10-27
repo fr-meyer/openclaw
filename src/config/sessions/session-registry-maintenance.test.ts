@@ -73,6 +73,59 @@ async function listDeletedArchiveFiles(root: string): Promise<string[]> {
 }
 
 describe("runSessionRegistryMaintenanceForStore", () => {
+  it("keeps expired cron run ancestors of live children reachable", async () => {
+    const old = Date.now() - 8 * DAY_MS;
+    const parentKey = "agent:main:cron:parent:run:old";
+    const childKey = "agent:main:subagent:live-child";
+    const orphanKey = "agent:main:cron:orphan:run:old";
+    const storePath = await createStore({
+      [parentKey]: sessionEntry("parent-old", old),
+      [childKey]: { ...sessionEntry("child", Date.now()), spawnedBy: parentKey },
+      [orphanKey]: sessionEntry("orphan-old", old),
+    });
+    const result = await runSessionRegistryMaintenanceForStore({
+      agentId: "main",
+      storePath,
+      apply: true,
+      retentionMs: 7 * DAY_MS,
+      runningCronJobIds: new Set(),
+    });
+    expect(result.pruned).toBe(1);
+    expect(loadSessionEntry({ sessionKey: parentKey, storePath })?.sessionId).toBe("parent-old");
+    expect(loadSessionEntry({ sessionKey: orphanKey, storePath })).toBeUndefined();
+  });
+
+  it("defers cleanup when a live child is created after the ancestry read", async () => {
+    const parentKey = "agent:main:cron:late-child:run:old";
+    const storePath = await createStore({
+      [parentKey]: sessionEntry("late-parent", Date.now() - 8 * DAY_MS),
+    });
+    const apply = lifecycleProjection.applySessionEntryLifecycleMutation;
+    const mutation = vi
+      .spyOn(lifecycleProjection, "applySessionEntryLifecycleMutation")
+      .mockImplementationOnce(async (params) => {
+        await replaceSessionEntry(
+          { storePath, sessionKey: "agent:main:subagent:late-child" },
+          { ...sessionEntry("late-child", Date.now()), spawnedBy: parentKey },
+        );
+        return apply(params);
+      });
+    try {
+      await expect(
+        runSessionRegistryMaintenanceForStore({
+          agentId: "main",
+          storePath,
+          apply: true,
+          retentionMs: 7 * DAY_MS,
+          runningCronJobIds: new Set(),
+        }),
+      ).rejects.toThrow("Session ancestry changed before cron registry cleanup");
+      expect(loadSessionEntry({ sessionKey: parentKey, storePath })?.sessionId).toBe("late-parent");
+    } finally {
+      mutation.mockRestore();
+    }
+  });
+
   it("rechecks caller authority inside the removal transaction after planning", async () => {
     const sessionKey = "agent:main:cron:authority:run:old";
     const storePath = await createStore({
@@ -130,15 +183,16 @@ describe("runSessionRegistryMaintenanceForStore", () => {
         return apply(params);
       });
     try {
-      const result = await runSessionRegistryMaintenanceForStore({
-        agentId: "main",
-        storePath,
-        apply: true,
-        retentionMs: 7 * DAY_MS,
-        runningCronJobIds: new Set(),
-      });
+      await expect(
+        runSessionRegistryMaintenanceForStore({
+          agentId: "main",
+          storePath,
+          apply: true,
+          retentionMs: 7 * DAY_MS,
+          runningCronJobIds: new Set(),
+        }),
+      ).rejects.toThrow("Session ancestry changed before cron registry cleanup");
       expect(mutation).toHaveBeenCalledOnce();
-      expect(result).toEqual({ preservedRunning: 0, pruned: 0 });
       expect(loadSessionEntry(scope)).toEqual(changedEntry);
       await expect(loadTranscriptEvents(scope)).resolves.toEqual([event]);
       expect(await listDeletedArchiveFiles(path.dirname(storePath))).toEqual([]);

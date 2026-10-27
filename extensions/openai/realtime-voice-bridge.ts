@@ -10,7 +10,7 @@ import {
   sleepWithAbort,
   toStringifiedError,
 } from "openclaw/plugin-sdk/realtime-voice-provider";
-import WebSocket from "ws";
+import { WebSocket } from "openclaw/plugin-sdk/websocket-runtime";
 import type { OpenAIRealtimeHost } from "./realtime-host.js";
 import { readRealtimeErrorDetail } from "./realtime-provider-shared.js";
 import { buildOpenAIRealtimeSidebandUrl } from "./realtime-quicksilver-wire.js";

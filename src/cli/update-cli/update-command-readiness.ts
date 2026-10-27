@@ -106,7 +106,7 @@ export async function verifyPreviousGatewayForUpdate(params: {
       }
       const expectedVersion = params.expectedVersion ?? installedVersion;
       progress("readiness", `checking service and listener identity on port ${port}`);
-      const { health, readyz } = await observeUpdateGatewayReadiness({
+      const { health, readyz, http } = await observeUpdateGatewayReadiness({
         serviceEnv: env,
         gatewayPort: port,
         expectedVersion: expectedVersion ?? undefined,
@@ -122,7 +122,7 @@ export async function verifyPreviousGatewayForUpdate(params: {
         assertCurrent,
         onProgress: progress,
       });
-      if (!health.healthy || !readyz) {
+      if (!health.healthy || !(http?.coreReady ?? readyz)) {
         progress(health.waitOutcome ?? "unverified", health.probeError ?? lastReason, true);
         return false;
       }
@@ -358,6 +358,7 @@ export async function observeUpdateGatewayReadiness(params: UpdateGatewayReadine
       assertCurrent();
       http = await deadline.read("HTTP readiness", () =>
         waitForGatewayHttpReadiness({
+          requireChannelHealth: false,
           config: context.config,
           port: params.gatewayPort,
           attempts: waitForStartup ? Math.ceil(remainingMs() / DEFAULT_RESTART_HEALTH_DELAY_MS) : 1,
@@ -406,7 +407,10 @@ export async function observeUpdateGatewayReadiness(params: UpdateGatewayReadine
           health.probeError = "Gateway process changed during final readiness verification.";
         }
       }
-      if (health.waitOutcome !== "generation-changed" && (!readyz || remainingMs() === 0)) {
+      if (
+        health.waitOutcome !== "generation-changed" &&
+        (!(http.coreReady ?? readyz) || remainingMs() === 0)
+      ) {
         health = {
           ...health,
           healthy: false,

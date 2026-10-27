@@ -231,6 +231,8 @@ Disable automations: `cron.enabled: false` or `OPENCLAW_SKIP_CRON=1`.
 
     Gateway retention waits for deferred agent database startup preparation before its first sweep, logging the wait as an intentional deferral. Retention continues even when scheduled execution is disabled.
 
+    The seven-day session registry sweep retains an expired exact-run parent while a non-archived child session in the same agent store still names it as its spawning parent, and retries when a child is created during the sweep. This preserves the parent communication policy for `sessions_send`; it does not restore parent rows deleted before this fix.
+
     Session retention skips agents with pending or completed deletion while continuing maintenance for healthy agents. Pending deletion cleanup remains owned by the agent deletion operation.
 
   </Accordion>

@@ -1,0 +1,4490 @@
+{
+  "schema": "openclaw-v108-source-reconciliation-v1",
+  "upstream107": "157d8c2bc3ea2fa183afdc11088e69690bf8e64e",
+  "fork107Source": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
+  "upstream108": "dc2523e5a5c7a309517fd7fa834add938231d526",
+  "priorForkDeltaPaths": 243,
+  "textualConflicts": 0,
+  "qualificationTransferred": false,
+  "selfExclusion": {
+    "path": "custom-patches/reconciliation-2026.10.8.json",
+    "reason": "result-blob self-reference excluded"
+  },
+  "paths": [
+    {
+      "path": "Dockerfile",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "4ad85b5d75bb10361ea2b614c1417e64ea612feb"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "9ede1b0d0300c663371fb27a8d80229489151177"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "4ad85b5d75bb10361ea2b614c1417e64ea612feb"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "9ede1b0d0300c663371fb27a8d80229489151177"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "custom-patches/NEXT-RELEASE-2026.10.6.md",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "e197f77b2de9f3780793344a6af5fdd45a67377b"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "e197f77b2de9f3780793344a6af5fdd45a67377b"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "custom-patches/NEXT-RELEASE-2026.10.7.md",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "5f308d59395afd83deba0187c31a1b09bfa7a60f"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "5f308d59395afd83deba0187c31a1b09bfa7a60f"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "custom-patches/NEXT-RELEASE-2026.10.8.md",
+      "upstream107": null,
+      "fork107": null,
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "40808e9e029d290e7b3619a271ee8023ba4bf0cd"
+      },
+      "disposition": "ADDED_SOURCE_ONLY_RUNBOOK"
+    },
+    {
+      "path": "custom-patches/manifest.json",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "4e1a85c1666193c48d3aa7705f72a728ed5d9941"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "656d947aaa14f56d77f9abd66ab5d22b50c6c8bb"
+      },
+      "disposition": "ADAPTED_SOURCE_ONLY_RELEASE_BINDING"
+    },
+    {
+      "path": "custom-patches/reconciliation-2026.10.5.json",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "custom-patches/reconciliation-2026.10.6.json",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "186abc747081b09b8f7af58a37513b170af1f4b4"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "186abc747081b09b8f7af58a37513b170af1f4b4"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "custom-patches/reconciliation-2026.10.7.json",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "89f127f993d1743bfd6b2aebc065fab81b6b4d81"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "89f127f993d1743bfd6b2aebc065fab81b6b4d81"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "docs/cli/gateway/query.md",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "4facce71043695558704c66f7b0606954352489e"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5eee26341a91ae74f64ef3d75fe9a3167f655b99"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "4facce71043695558704c66f7b0606954352489e"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5eee26341a91ae74f64ef3d75fe9a3167f655b99"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "docs/cli/workboard.md",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "db886ba26a5bbe35d18de6e01f1ab201736cb4e5"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "e7390fca5531acba06bf7d0734dc1908c05cc24d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "db886ba26a5bbe35d18de6e01f1ab201736cb4e5"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "e7390fca5531acba06bf7d0734dc1908c05cc24d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "docs/plugins/sdk-migration.md",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "06df1775faed742ec504d13d62fd4e7d50f2d7ce"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "29019b5f0c5c960603087aacf9db4b71b01aedd0"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "06df1775faed742ec504d13d62fd4e7d50f2d7ce"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "29019b5f0c5c960603087aacf9db4b71b01aedd0"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "docs/plugins/sdk-migration/removed-surfaces.md",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "71e9da5accda24b35859e0f0c7f4bb2671ceb953"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "b4c7c57477a0a59464ad183950338b954d2ce775"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "71e9da5accda24b35859e0f0c7f4bb2671ceb953"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b4c7c57477a0a59464ad183950338b954d2ce775"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "docs/plugins/sdk-runtime.md",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "61ba6b00e9c8250cfd760ffb710628e064826c50"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "194d538c65fdc69f52aeda8d7afbb9f40cf9bfd1"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "fc1bcda3cd6e516ecd3987e16fe3193c5dcfbb02"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "675ed6c8127064e95dd19281b40e683489390caf"
+      },
+      "disposition": "MERGED_SDK_CONTRACT_DOCUMENTATION"
+    },
+    {
+      "path": "docs/plugins/sdk-runtime/background-work.md",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "c62d762588ad1bdd87926919a978cad5932de41d"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "25946eb07ce82add5d94faca2f5c6c984bae39e3"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "c62d762588ad1bdd87926919a978cad5932de41d"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "25946eb07ce82add5d94faca2f5c6c984bae39e3"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "docs/plugins/sdk-runtime/config-and-utilities.md",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "33acc2d821a7a16e7fd4a6c931d1659a94a3756c"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "18559190bb222fcd87f1c3cd38d914e42ff6a0c2"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "ed19fc6b7ecfb04b0f26b1938c0280fd9f7139e6"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "9dfc1307b38ed82a3688e9ffca4600380a45b53b"
+      },
+      "disposition": "MERGED_SDK_CONTRACT_DOCUMENTATION"
+    },
+    {
+      "path": "extensions/a2a/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f0044c5c83fbb3bc99d7234c0c987c5097c52b0b"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f1372a49a00c60998896b6044bd4ecc24483a06a"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "7d67f1e1624eec0c6563923e9717e990c00e1925"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5a318a04f1a045a8f9874e2985fe1299b193966a"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/acpx/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "764329a35e46d232762b3b5dc08d6e71999d0b62"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "336c572005b411c0345e51d5ab5721f3470b1f29"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "31e494ac66837455e966f3d976e866f56f811cb2"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "29cf58aaf979a4d4ad69c08b855f4c265a9da846"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/agentsapi/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "438b2b3d1c83f39ddfef3e1ba45b5c5fdd7d66e5"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c3598575ddf667fb6e430c2c471d900b6ca13852"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "afb7669d596b8ab32b0c2b932630c66f2b20f2ac"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "502f53235ac8135ada995431af74115fc0afbc8f"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/anthropic-vertex/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "fce55b302b979717b75204a6c68115a813400428"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "1177bb3e0f1d42876f7167e66c9ca2502236083b"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "cee87006a6d63088f9e0d9b8901a8ed59929c5b5"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "aeca669d5fc218a7b7fcdb0016012d5e66b64a3e"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/apple-fm/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f3ed2a1da2a2bb00c9ad34684945e0ceae6d05bb"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "9df8766158550291a5a79cbe6b77fefc0653dd65"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "3eb2d49f40a43f7e95af3142afa4b6133b32238b"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5b9293d1c68a73da58abc12ed797a8da4c3af608"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/browser/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f00ca22f7d4f1595b3361640950a4191bcad7241"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "1a4527c251e934667a93ad0f50cb3c06278f5338"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "fc56e309ca957520d526e058bbf4cce38a52974d"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "e0067359328718c185c690a04a9c97e422ab0781"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/buzz/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "ab3ab1c6a724dc48b831e63f4d16ac15da60a9cc"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5a18ec1b627e816ba7e09d2984a0564f3facf052"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "ed1aeb67ecfe8a2692cb0cbe2a5aacc528522e28"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b57377ae3a337c040de6cb0fed8fa781d64ffe7e"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/clickclack/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "8df8807fd61483aea60dc81b22b2a4a1d89207ee"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "deb4b99658a14249d3e3fbbbd68ccea2f5cf5793"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "60133e93d28c0958b1228affed1255e510f51405"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "19f5235848067846078506d61e6dff934f3796d2"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/codex/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "0ea8a4125a4934d6360f1ba16ca0a0a4b3b5ed43"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c2d7c763f76731956ee0ec6512f6d028ea67dd84"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "0f80854b02882c00bfb212ae2fda58d3c0b49a2b"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "d5902713f4722ac2b7d8de3793d3515262a96d12"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/cua-computer/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "8086cb8a5430702b7d235013a3f864aee077e725"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "21b86a4dabdd99bc131bc29484f48f6b5d221f80"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "773f758cb8687a45fcff0ad50c70f609ed48fc88"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b0565f7cea6d31c0407fe614c94173d8da47ab8b"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/diffs/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "3e1ab050c7450a2eb66e4e65ac276b2f59a5b314"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "05e6e98267105dc3476616d0911f29586fb14b93"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "ad3f70d4a2b54c48ad65fbce451f51f9c2b6ce90"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "a3934e121c0565b1fb459cdbc1752858ec65d887"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/discord/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "8c29a8fea5178bc55715587fd539e43427fbb894"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f9461a8713d4330c37fd23b86fe9ee80fe602e1a"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "788ec6af20adf3d68dfa388e0aa0d0d45f5df887"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "08e5b2255bc171369941992ba6a9e414d503d9f1"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/feishu/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "844f09831e5b2fd0b9a7269925f3b66219d3b355"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "1b1147ac4e97be7b8914485dac29b08874afd2ed"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "30f8c810379b052884dd7be1542f1852cbafe0f5"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "a7c86c1af1e5fe36f43c2f58852a2474666a19b8"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/googlechat/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "9e91d696c8a6886d34721c1b9fc77b7fb95003e8"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "72e3f858a09b140a7db8f677c3f7ff729db96435"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "85ef6557066fe9a04f3f92fc5a5936eb7eca0f46"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "3c9cbc755957138bb11bd4e5e38aed480e4eed00"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/imessage/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "db3185af04f52c6efed1e85455dca98451f76ddd"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "41ed142c375acc9a93886b9c24011b504c6f8980"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "2b7fd521bc7da71ba9bca4bfc4bcc213e695cd38"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "711d8ba9d1bede722884bf9a3f9d77b35ef7667e"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/irc/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "58a0457049da00d0c084611fa8918ddff2e269b3"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "ac034b7c6665fdf43e123fef383c321d94471fa5"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "607883f5941ba7a93a7d3b9ebddfcce269b9a7bf"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "814bfe09ba27704a1dd67eb9a266d4ba15660811"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/line/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "a20aa4628878b2508594ca014260d18c7e145f05"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "d61475763e556c979211c80c54169040620409a8"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "7e6203bfe00fc34cc0035ff55b43a3ec27610fd3"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "cadc61d93f788d6d995f6c31febfb3aafacebaae"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/linux-node/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "c54ada95410355405fb1e5a0599b8eaf96784291"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "8d792b5a10be733c84c295b89f1cf4bfedca4fdb"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "a80f44c7cf7a6c7ced2043d5a206f382dfacb575"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "9d59a18b21eeb20e898116308f27953b624b1d20"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/matrix/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "63c3bbff98ba84d66b1f5d17af30b248aa5b1a16"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "df94fd0bc6520a54732fe44de0f81fe0c48147f5"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "f0e3a07b8fd465fdc206ad9e263b144f606afd4c"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "7122aae23d03fa1cfe1d3900872d5f80cd31fc3b"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/mattermost/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "7e5fd35956cdbc80d9a78471a1a291721ab0f37a"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f1b1ef3b2ae45afcb42dffdf54f650eceb290c22"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "ca92b2f86b2babff8748752b8dc310417bb6a89d"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b356648eeb75d11020fcaea4698d67b530413c80"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/memory-core/src/dreaming.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "a09eb12f5d42a462b174fb32a7584394cfbcc9ea"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "a2469409b3e497d11d807df0a821603acf74053d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "a09eb12f5d42a462b174fb32a7584394cfbcc9ea"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "a2469409b3e497d11d807df0a821603acf74053d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/memory-core/src/dreaming.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "2916c93ef932281c7ae310e79610046681bd7b09"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "34dcc14663d8c1df16569dbe5a5a35a97e88630b"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "2916c93ef932281c7ae310e79610046681bd7b09"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "34dcc14663d8c1df16569dbe5a5a35a97e88630b"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/memory-core/src/memory-search-tool-query.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "a870eff5ccc9d30b17b60a503af07f55ffebdda0"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "33a694d5edab4c4d7644931f1ceb0cf56a8f52bb"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "a870eff5ccc9d30b17b60a503af07f55ffebdda0"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "33a694d5edab4c4d7644931f1ceb0cf56a8f52bb"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/memory-core/src/memory-search-tool-query.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "5950ca1a463dd2ec5f2f634c942201b743d0dce7"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "fec2401fc06a263993476f66965a33b08b5ac02d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "5950ca1a463dd2ec5f2f634c942201b743d0dce7"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "fec2401fc06a263993476f66965a33b08b5ac02d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/memory-core/src/session-search-visibility.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "1e06f50ceed330341aa3cb77dcf288a9e92f30e2"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f53146fe2ee9499241503d982d3f4c565f88b90d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "1e06f50ceed330341aa3cb77dcf288a9e92f30e2"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "f53146fe2ee9499241503d982d3f4c565f88b90d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/memory-core/src/session-search-visibility.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f0b00513849428971d76e3cdd7b14220e8f8e229"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "80d4c519be4d5461279d2bbc523d06a0be546a7a"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "f0b00513849428971d76e3cdd7b14220e8f8e229"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "80d4c519be4d5461279d2bbc523d06a0be546a7a"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/memory-wiki/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "74c28abfaa339ed6178a832975cb3e02e60731f0"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "d7259b62a55e85b2889f5a759868313ebcfd8ecb"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "933fa6e846698cf819606f69f210d2a89535e3d0"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5bd81e2df3a632c00a75cd84c2b1a0e7936f0d1a"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/msteams/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "6e4bcc2f7c4cebd4d0103cad5559113b384ee0d4"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "08971ba26318c45be2ae1f68814724a9e08e351d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "4e711068a473f7e60142f841842d70a96b5086f4"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "a4de7eef53f4f550816f012b8b70870f8482095d"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/mxc/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "fb26b135c3ad8b728eb320dea6c3be9326131569"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "1eccc0341e29450c65e18a053cf12e5599b77d1b"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "236556dcc374a319e15bdb3600bae56e2f7abcd6"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "a92a6d0c1800a18b3b696b5c8354b8d17f91a1a6"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/nextcloud-talk/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "aa524e7170cbc41db8ace196ee89359739d324c1"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "7b7d58810d43f205b789c8f4b0c09dc3ed0b9fba"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "b173afc2e94b42d5f1548037c82009d94913ef2f"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5ecc0372fa910c0e4e95965ff14f17093eef3208"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/nostr/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "4ddc8a8e884fcece3e1ccc928cb3e801ba57e563"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "395145aae27cd8b69cb4178a5388b1ac0798ea63"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "d145ee33d2f4f737bf6225366ad3dbdf57b7cf9e"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "f5e9c28d4c6b7075c046338afc8cd221638377d5"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/oc-path/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "15fe2f818dd0b27ec1147f943ab1f3f2c03c854a"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "2d0eef57949046b037299dab39e642c261fba167"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "2640f2d520e818eb0468dc336720f934df6693bc"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "64f7dcea1acebe1ddd8bab1b64d10525ed903b53"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/openai/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "366b6142714db74169afeb7585ccb425319a9ea8"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "3f5ba4f62cdbfc25a6a9ec0056a7b6b32b32f24c"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "28595af13707db1d96e2c9b77426b29cef7be3a3"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "1e7bb97eb6b4c55f7eee574cdc2c8f99c3de1cf3"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/openshell/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "409fa379ec55040f5958f6cf6a2a1c43993d0699"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "3748474e2ba6650a566500bfa62dc28dabc3be7b"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "564f3825cb5f62e6ce664cfec044baf64f286c69"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "69e360d347883de163fb08df979793072a557370"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/qa-channel/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "9aa8cc828586f5fd1cce94aea856d16e62b5658f"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c1e62ad32ba7faa96e965fd3b17c64863bfe89d4"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "a84005bfa07f491dec5f9f82b4cc804afba350bc"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "7ae906b4ea7b332a996250796e0e47f6b3c12d10"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/qa-lab/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "e9f955f3e969067d06a6030879d95e02f07bcb61"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "d3f9732e69d97a002567c008ff29545b72f68281"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "8b99a7c07c998729a5e690c958665c90b90dd49d"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "48783efb0a8872fe5d8b336410bf23a4a3fb9583"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/raft/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "810def9c2d341d70b01df9c46b82fb57a0ad37f1"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "ff31a43a538a99b619d725f15a3461a6701fd1e3"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "ad8a2504871fb8700e0da630162a08cb28f14454"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "662467e2f7d478fe796619c92df0fb23da2869ad"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/reef/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "c9bb36e61a7e159d3e42e3b6ef8e341f9e9a4d4a"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "2c26f30bcdeb1a4b5b07c593303234118e55189c"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "f2218ac8c12a6e2e251f10688eaabf60d2f1e654"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "4f20205323a207a95ccebb750e3f3a88a83acb8f"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/signal/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "1672fdd7ca9bde5b0f4ec7786c60a79960f5698b"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f0b58ea2c9fddb271c769cb862b27f7e33fcf249"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "24cb54d39e2a6b8313c24016aaeda6e3a574e014"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "c728959bfb95201bb85ba24678f9d96078d19454"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/slack/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "184595a9ecd90e01d9c68f0f4e4eb53deb510062"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "8d899580e88f8deddb23c7b3ceebc4eb319b1fbf"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "a429c76ca0a76407cda8e59e6248afe1b88dacdb"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "d6b75bb40a1b91f639107e9737cd304a5d478e4f"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/sms/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f1eb777e77d23494ff64f7b8bcd19de6ad38ed7f"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "66ca5fc2273de8ddfb897e8cdb76fd2a74fb681f"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "823e6d572b532f4925d35f065aae144727e6856c"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "3719bb45749ce8eadd00290a990b119023754b7c"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/synology-chat/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "5b52afc048bea231983fe04032748b235774f03a"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "43d78ee5eb94ba2f9070f60a17741bfff404bd1d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "1643f444a17278cb521ab8625c683c32cac0b8ed"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "72882d0535bbbdc1430f95a8810b47b9f9338089"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/team-reports/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "254b92467ecbb6d8def45fa09c8682e501c25e73"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "ab8eb0e9dce89833460dab6e6dc32afa6cdc58b8"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "993144e8bcab84099c878700c174ec6e57d9ca00"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "79a3a14ffd3a559299445aace9215d01308447d1"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/telegram/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "9bfb3eb109342486a1ac4af4ae6f3b48847efb48"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "3233da73857d95bac29bb9ba39957001b37cf962"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "030519ee3517b8519feaddd8a92c901815aab668"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "8493b98a73302d70f90a26370c99414cf052402f"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/tlon/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "7d92c045abd8874a189ce7fa7f6caf1a3e7f3248"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "96aea047c40074b61ba3603a6132ee14e0d478a3"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "000c5ca478207effe7a1ec08b7c40d28a4ebb6e4"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "0dcf0e7ff976cb5f999b26a14d707f275fd38d7c"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/twitch/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "2e88ec45bb64ab5156b4c483a3980b3733e79b8f"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5e838f7a5d63cac1732f2afd56665c1b3defbb6d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "00daa6726c6b91be9383b01d4935e667a86e07fe"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b25f73ebf2a8fe371131ff281c9ebfda896d5af0"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/visitor-access/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "dfe94f250c82e4de8872f398c7e9eaee0591e995"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "a700544357267ec68369a66e50fd228db0dbb5b1"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "2f3cb9d212c3edb8b9e86377ad09169a1890887c"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "6099357c6703e3fe082d6741f1a0eae51e83b1b6"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/voice-call/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "5493d7b347e96645c0379245cab5a8fbbe0ca21c"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "445bd939f349253fd80fa74aa50e24c68d5a7f7d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "d7ebfb652c739d7a127a0cf9bbe11ebfb602fafa"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "eec7ce6ac4b7f6992de94544b5277e09473b7853"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/workboard/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "b0114dce01f9ed726122cabfdfce6963d99b8f54"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "7832852c8a176b2f22ad8410d697d86ae6b7529f"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "1ed21ba0e643ea55e140a278182c0afb3d83bf5b"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "516c41595634ca90f436b2ca6a783ffa140be92a"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/workboard/src/cli.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "a72d40dc421ea477ceb4f3185e1f944e6b518cc4"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "9a61e4802a77633dd91e9615745fd1d477b08e0d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "a72d40dc421ea477ceb4f3185e1f944e6b518cc4"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "9a61e4802a77633dd91e9615745fd1d477b08e0d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/cli.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "5ef4ef08b5da5a1f9e2b23c23513589d8871c414"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f12d5d5f9de8389d4f9def90c8d055bd25f35e67"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "5ef4ef08b5da5a1f9e2b23c23513589d8871c414"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "f12d5d5f9de8389d4f9def90c8d055bd25f35e67"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/dispatcher-exact-dispatch.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "fce49c1eed080d010b7b380e3baf7c75744ae116"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "fce49c1eed080d010b7b380e3baf7c75744ae116"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/dispatcher.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "b95f8b3fa37b335627c5a0e15cd60ac84ce4e280"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "082150b335dc257e582e897694ddfe153031f57e"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "b95f8b3fa37b335627c5a0e15cd60ac84ce4e280"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "082150b335dc257e582e897694ddfe153031f57e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/gateway-helpers.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "47e7be4cdef4c8437b1b4054a441743ff30cb9ae"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "9a0a95899f2f2399688b911e83eadb1062577cfd"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "47e7be4cdef4c8437b1b4054a441743ff30cb9ae"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "9a0a95899f2f2399688b911e83eadb1062577cfd"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/gateway.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "a1949619c24096d53dfe8025c73a6c15a38fc01a"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "2582e3d46f67365912397cc6a9117d46583677c8"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "a1949619c24096d53dfe8025c73a6c15a38fc01a"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "2582e3d46f67365912397cc6a9117d46583677c8"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/gateway.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "fd1403077b048efbc2ab61d167b9174bc6234acf"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "703253679810d8ae3c0a6a7a8067dcf13bf30ce8"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "fd1403077b048efbc2ab61d167b9174bc6234acf"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "703253679810d8ae3c0a6a7a8067dcf13bf30ce8"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/lifecycle-sync.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "3a1101e9eb76c68d8334cf0152c8422449a469d4"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "74a45f54fb90ef9ec8264f8718b390f5bcf1c2f8"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "3a1101e9eb76c68d8334cf0152c8422449a469d4"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "74a45f54fb90ef9ec8264f8718b390f5bcf1c2f8"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/lifecycle-sync.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "e40d7661fbfef157e596d9a1b08a10023bfd5a82"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "ec19f0cf2fc316aaa8bd5101fe7f989fff0e23bc"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "e40d7661fbfef157e596d9a1b08a10023bfd5a82"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "ec19f0cf2fc316aaa8bd5101fe7f989fff0e23bc"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/session-link.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "9f855421e80a51c422a9987c755910827c9bcf26"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c98d3b9af08b083464a138968f8dca33e64ad6cc"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "9f855421e80a51c422a9987c755910827c9bcf26"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "c98d3b9af08b083464a138968f8dca33e64ad6cc"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/store-claim-generation.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "27e335f1b903471d0e1ce41080fa177dc204d99e"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "27e335f1b903471d0e1ce41080fa177dc204d99e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/store-exact-dispatch.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "ced09440d06275abd97109047b951d4a0e29d950"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "ced09440d06275abd97109047b951d4a0e29d950"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/store-inputs.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "fdb3e7609756887e859f1ca884615797fa2ab8f0"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "110d983491167db89ca6851128c597a8d294b465"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "fdb3e7609756887e859f1ca884615797fa2ab8f0"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "110d983491167db89ca6851128c597a8d294b465"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/store-normalizers.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "4c00c8552a3512657f368949bfb977eeddebf8ad"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "4a8fcb2882fcca90e368077dcf3ac3ebaf8cf11a"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "4c00c8552a3512657f368949bfb977eeddebf8ad"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "4a8fcb2882fcca90e368077dcf3ac3ebaf8cf11a"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/store-workflow.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "a12b462c3a2cce60a6d96c787d01d5c53154bd10"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "aa2a8dbf43cfc6ed7bb66ddebaa86bf0b9b3ff25"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "a12b462c3a2cce60a6d96c787d01d5c53154bd10"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "aa2a8dbf43cfc6ed7bb66ddebaa86bf0b9b3ff25"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/workboard/src/store.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "da2ed7dbba6bbc76bfb13dfec1c049baa8a2e2e4"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "0433322619963850517349577a96703418395fc9"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "da2ed7dbba6bbc76bfb13dfec1c049baa8a2e2e4"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "0433322619963850517349577a96703418395fc9"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "extensions/x/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f8c66505caaf09c140dfc486abe70f75f33beaba"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "afd692ec003579bfb2512a3cec295d06c6100578"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "c0106e5bc591daeb99e60b1d63ab11de0f924d47"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "153b0e7acb62bb5c0de0d358c3340db7aeaaad8c"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/zalo/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "44d642e2444e1216bcc84340de091e7383fef22e"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c10d91f780bc37ab0e2740dea94970d0842affa3"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "dbbe2230acd5509bd5836a0688cfb06d672b2ab3"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "79147a17c28faac85443c481de99e62623c54f2c"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "extensions/zalouser/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "398235f3288c9226072fede8e3bc7a2393f20ee1"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "a5e5168c2e583abb36b943bd3c9391f712c9e7b0"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "d555a1a7d8385713fa7de95b7a7ad3650dd175cb"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "13fd8e4a821ed9a572e7106e4fb705c9d3ffbaf4"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f79bdec24d94c1e1845e43d59e65ab06ce9f543c"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "193e8d37219fe9bab671d7f677d3302111eb0676"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "3513a5cb3da82bc70d1724b86c88da745eaddd03"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "94d515001629ab574eeb79591e7d86ecc2bd3ef4"
+      },
+      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+    },
+    {
+      "path": "packages/gateway-protocol/src/core-request-params.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "6b81e88afda0459be8b5f6f2e96825fe56179935"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "a16edc62eec150c0f40ae6d52baad17a3f24a2e8"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "6b81e88afda0459be8b5f6f2e96825fe56179935"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "a16edc62eec150c0f40ae6d52baad17a3f24a2e8"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "packages/gateway-protocol/src/public-schema.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "4a4794887273b5d1bc838eaf91f94fa1496d9fe6"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "312d0be7c4a09875f5229a6bf7d6420cd110e2df"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "4a4794887273b5d1bc838eaf91f94fa1496d9fe6"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "312d0be7c4a09875f5229a6bf7d6420cd110e2df"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "packages/gateway-protocol/src/schema/system-info.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "a0f4a81f35a35dca2f7c2714790f362661bdb776"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "71976357ed5307a6c00577ff433ebe9de9f03a74"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "a0f4a81f35a35dca2f7c2714790f362661bdb776"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "71976357ed5307a6c00577ff433ebe9de9f03a74"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "packages/gateway-protocol/src/validator-registry.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "8857f8bcddbc320213b43fad5cc46c052a2af441"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "48843257decea86647fe3600df3bde81ff0d9c33"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "8857f8bcddbc320213b43fad5cc46c052a2af441"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "48843257decea86647fe3600df3bde81ff0d9c33"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "packages/markdown-core/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "8c90b67b7f422f27077246e14ecc9524081fcec0"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5faa5aeb6cdd7de7b738b01080c3c7179f086528"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "8c90b67b7f422f27077246e14ecc9524081fcec0"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5faa5aeb6cdd7de7b738b01080c3c7179f086528"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/memory-schema-storage-migration.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "e99697b0e69f28cc95df512d0aa73a6002596321"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "66604f62406e42dccff0199ad1b649ab539d5a66"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "e99697b0e69f28cc95df512d0aa73a6002596321"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "66604f62406e42dccff0199ad1b649ab539d5a66"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/memory-schema-storage-migration.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "86e34a64bca00e1ff91bb40e41380a8ef0e30321"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "dcc06f58c2ddf6e1eabab557843fb7444a069e9a"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "86e34a64bca00e1ff91bb40e41380a8ef0e30321"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "dcc06f58c2ddf6e1eabab557843fb7444a069e9a"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "packages/mermaid-renderer/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "5814e6e539eeb55a531b63331ed6856a976f9f41"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "9a1fd0b6c751aa24023f3c4d422fd955aeee707a"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "5814e6e539eeb55a531b63331ed6856a976f9f41"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "9a1fd0b6c751aa24023f3c4d422fd955aeee707a"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "packages/model-catalog-core/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "62f895846289e4d2f68acbf6754d835d4080e504"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "334ee5a66332a575082dc6d055bd3a6d840460d3"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "62f895846289e4d2f68acbf6754d835d4080e504"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "334ee5a66332a575082dc6d055bd3a6d840460d3"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "packages/workboard-contract/src/index.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "4597c0612f6316c74b6941eb14c18429e39333c7"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "1ed599eaf345604b5a1b3c1964c91ba2ed79076e"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "4597c0612f6316c74b6941eb14c18429e39333c7"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "1ed599eaf345604b5a1b3c1964c91ba2ed79076e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "patches/@a2ui__lit@0.12.0.patch",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "4b6625e5d89be85e56824c76409dab88d00cc75d"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "4b6625e5d89be85e56824c76409dab88d00cc75d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "patches/@a2ui__web_core@0.12.0.patch",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "c9efbf19c51adcf80888d1566d77f8d4d4fe96be"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "c9efbf19c51adcf80888d1566d77f8d4d4fe96be"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "patches/@discord__embedded-app-sdk@2.5.0.patch",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "22e55290112e703ebceb03f5f58b1fef47dc3a1e"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "22e55290112e703ebceb03f5f58b1fef47dc3a1e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "patches/README.md",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "54fd9dbe0e529352d7ac5b6712f459c6c350739a"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f3205f3660832ce69984b1fd1974ad8617564065"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "54fd9dbe0e529352d7ac5b6712f459c6c350739a"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "f3205f3660832ce69984b1fd1974ad8617564065"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "patches/zod@4.6.6.patch",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "9d1ef9049aa950eebe802c0f170321f3c7b1eecb"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "9d1ef9049aa950eebe802c0f170321f3c7b1eecb"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "7aef13a8539d55a6bf137f9bd54fdb9f7062cb28"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "7aef13a8539d55a6bf137f9bd54fdb9f7062cb28"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "458e124e46478c6f8ecc760d0aba576ea9f29fb3"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "b5451b324bce188ce55030ac5473c05f3991162f"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "458e124e46478c6f8ecc760d0aba576ea9f29fb3"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b5451b324bce188ce55030ac5473c05f3991162f"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/check-package-patches.mts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "5dd243be4fc4eb4d5836af24ad180bbaf140e879"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "7c6b7977eacc23c2e0c95c8a607aad811b23a797"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "5dd243be4fc4eb4d5836af24ad180bbaf140e879"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "7c6b7977eacc23c2e0c95c8a607aad811b23a797"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "45110797d931c21b8251739535cf5293542b78e4"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "45110797d931c21b8251739535cf5293542b78e4"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "9d0c926ee3adac53fb9e8a9470f3c259973e990c"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "9d0c926ee3adac53fb9e8a9470f3c259973e990c"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "e743fea20d48808a6c506579d540ae5da5b2721d"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "e743fea20d48808a6c506579d540ae5da5b2721d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/run-with-matrix-crypto-cache.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "bde2de05c94d4c94d8fd97b2ea87b2a82b5eb91c"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "bde2de05c94d4c94d8fd97b2ea87b2a82b5eb91c"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/run-with-matrix-crypto-cache.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "ec582b58e7801d9749704b9c0d8a97fc8fe60ca5"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "ec582b58e7801d9749704b9c0d8a97fc8fe60ca5"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "439be669dd7d338282fbd61799054f5de42b2762"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "439be669dd7d338282fbd61799054f5de42b2762"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/index.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "85c442b5855163f07a76ea75941c8169ce589deb"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "85c442b5855163f07a76ea75941c8169ce589deb"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/openclaw.plugin.json",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "50fe1d9bb252488417f633510af5c15800b0cf78"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "50fe1d9bb252488417f633510af5c15800b0cf78"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/package.json",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "e0ba34f234511cb574f4ac1c16ec4efadcd7c532"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "e0ba34f234511cb574f4ac1c16ec4efadcd7c532"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/controller.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "dcbe84772cae3da3e7cd69028260f9fccddd538a"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "dcbe84772cae3da3e7cd69028260f9fccddd538a"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/http.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "5ec7ad7ad16541cbbc87798996ae959ee0ef11d3"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "5ec7ad7ad16541cbbc87798996ae959ee0ef11d3"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "9e3901760df7eb6877fe95b5424a1e544178d65b"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "9e3901760df7eb6877fe95b5424a1e544178d65b"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "ad6458ef883ac95693cb59f6782cf01df4809d3c"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "ad6458ef883ac95693cb59f6782cf01df4809d3c"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/capture-integrity.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "527c9b98a3893235bd14dd37d765bfc96c2a86b3"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "527c9b98a3893235bd14dd37d765bfc96c2a86b3"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "b949a416c9822009a82f47bc403353c82bd7df61"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "b949a416c9822009a82f47bc403353c82bd7df61"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/fixtures/predecessor-pin-package.json",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "6113b7e6265617d28dc767e13af166ec33444dec"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "6113b7e6265617d28dc767e13af166ec33444dec"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/inert-parity-host.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "26b2985dcc325487ea682f0b1c671ae02eddef7d"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "26b2985dcc325487ea682f0b1c671ae02eddef7d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "e827634b3032ec387c22202ceca789baa5ad5874"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "e827634b3032ec387c22202ceca789baa5ad5874"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/fork-release/native_tests.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "4aa9aee8e12a71f5aa699fd2f36accd983c5f77e"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "4aa9aee8e12a71f5aa699fd2f36accd983c5f77e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/lib/ci-changed-node-test-plan.mts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f13d49c1679a02dc1bf34f225ba61e9d38394758"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "e3f1847a848db272e8d4905a4f2f1a5c4be7206d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "f13d49c1679a02dc1bf34f225ba61e9d38394758"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "e3f1847a848db272e8d4905a4f2f1a5c4be7206d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/plugin-sdk-surface-report.mts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "458050d7a8fc43be88f07540a8e1fc7193620c8c"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f9bb330b7e62423a073b64c974913a7718ae3200"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "458050d7a8fc43be88f07540a8e1fc7193620c8c"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "f9bb330b7e62423a073b64c974913a7718ae3200"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/test-projects.test-support.mts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "064618caf8163bfcd280ba71a68ceaba64ff7b7a"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "0b774b0481f7a8dc07ebe0778ea68832571b4251"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "064618caf8163bfcd280ba71a68ceaba64ff7b7a"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "0b774b0481f7a8dc07ebe0778ea68832571b4251"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/tsdown-build.mts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "ac3b2cabc4ecd875d3974cc561687b5fa5a63be4"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "ca38bf17e7f74f1f20d63ced24b3489572a4db5d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "ac3b2cabc4ecd875d3974cc561687b5fa5a63be4"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "ca38bf17e7f74f1f20d63ced24b3489572a4db5d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/mcp-http-tool-schema-compatibility.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "2b95c3d44b6f7e763f478f0f1ca3973ab6f941d0"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "2b95c3d44b6f7e763f478f0f1ca3973ab6f941d0"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/mcp-http-transport.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "38bd95a7c96a67a261f17f1881034d2bacc7fd52"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "b92fc1eb916001fae0eae69c696143254a7f85c9"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "38bd95a7c96a67a261f17f1881034d2bacc7fd52"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b92fc1eb916001fae0eae69c696143254a7f85c9"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-control-kill-runtime.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "fd65180d8ae8b6dd54cc7940f1c8193848613ddc"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "0903887c5a59d0947605520229c99fb16f3ab9aa"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "fd65180d8ae8b6dd54cc7940f1c8193848613ddc"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "0903887c5a59d0947605520229c99fb16f3ab9aa"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-control-kill.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "d7f215f61794706641e2903d71dddffb06aa5047"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "4e7ab713c485f0de2d6b552f5b7383efa108d46b"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "d7f215f61794706641e2903d71dddffb06aa5047"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "4e7ab713c485f0de2d6b552f5b7383efa108d46b"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "568293e5b9ca0f7e9920f4307fc212ce6266504e"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "9a920b423a0106e5781773d5e113e22b1b05f669"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "568293e5b9ca0f7e9920f4307fc212ce6266504e"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "9a920b423a0106e5781773d5e113e22b1b05f669"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-persistence.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "85bfb49a8eb84da147a40c44485e22aec95e5109"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c7db42623aa73ef6d07dfbcd317eed2a5a7b126c"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "85bfb49a8eb84da147a40c44485e22aec95e5109"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "c7db42623aa73ef6d07dfbcd317eed2a5a7b126c"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-persistence.types.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "d02ffa6096d1274e1a32a9ce9ca0c4fde2e9822e"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "7ee96bd12e5c327ecfd8620a4c6d28f737d6c231"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "d02ffa6096d1274e1a32a9ce9ca0c4fde2e9822e"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "7ee96bd12e5c327ecfd8620a4c6d28f737d6c231"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-run-launch.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "c6f21dbb3852c0beac43f5ceb4a0550e1c6d411c"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "019bf1592bbb6ae8edfaed5d98c469338ffe2e4e"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "c6f21dbb3852c0beac43f5ceb4a0550e1c6d411c"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "019bf1592bbb6ae8edfaed5d98c469338ffe2e4e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-run-manager.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "3ca41047975ea151d7b30c1ac6a2687bc3112961"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "2bbd917734129c1a22aa8b161980dbbfaa440335"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "3ca41047975ea151d7b30c1ac6a2687bc3112961"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "2bbd917734129c1a22aa8b161980dbbfaa440335"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry.store.kernel.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "9ff840ad2b24fa00207d0e1d2d819cfabb031def"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "0a0a90013be6761734f1161540e182a0688b8242"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "9ff840ad2b24fa00207d0e1d2d819cfabb031def"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "0a0a90013be6761734f1161540e182a0688b8242"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry.store.worker.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "0c4d9cb4a51c3df460fe9e9c4ecbcc66ab504e7e"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "965a293d73c261f44948093f785ebda40c87a6e7"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "0c4d9cb4a51c3df460fe9e9c4ecbcc66ab504e7e"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "965a293d73c261f44948093f785ebda40c87a6e7"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry.types.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "4b7a1cadb5489ff95521cb837cad19c0bafa89dc"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "21c16da5a557e1b0cba06e148b7b1cc8855410c8"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "4b7a1cadb5489ff95521cb837cad19c0bafa89dc"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "21c16da5a557e1b0cba06e148b7b1cc8855410c8"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/worktrees/run-lease-store.kernel.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "2cddcb1bf3fc222d11b8b61654439025a19db32e"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "87b6ed412672be92354ee76017ed89bedeb207cf"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "2cddcb1bf3fc222d11b8b61654439025a19db32e"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "87b6ed412672be92354ee76017ed89bedeb207cf"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/agents/worktrees/run-lease.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "fa20807feb1cbdca65b14b234bbf86a20fad9382"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "3eb2ef9915a26ce723f064d1536585876a68f5f1"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "fa20807feb1cbdca65b14b234bbf86a20fad9382"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "3eb2ef9915a26ce723f064d1536585876a68f5f1"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/cli/gateway-cli/gateway-call.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "3717147894ee9d37a1042aa85d87377627e48846"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "3717147894ee9d37a1042aa85d87377627e48846"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/cli/gateway-cli/register.option-collisions.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "c852138c3e137059dc0bfdd65e40c44e8d1c8aac"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "90a94834d04e9ade7488d1ce11c2a8f6bbffc89e"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "c852138c3e137059dc0bfdd65e40c44e8d1c8aac"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "90a94834d04e9ade7488d1ce11c2a8f6bbffc89e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/cli/gateway-cli/register.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "7a6349f04c57fcc64e6a68148543a68e4ce9f937"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "0426c82cd9b35eb506be7ab96f580b8aa4e821be"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "7a6349f04c57fcc64e6a68148543a68e4ce9f937"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "0426c82cd9b35eb506be7ab96f580b8aa4e821be"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/cli/gateway-rpc.runtime.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "176e67fd9320a4960a9a0c37797176fec8c87358"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "48f28212677ec2273734612eef02a5f1c9d5e6ab"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "176e67fd9320a4960a9a0c37797176fec8c87358"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "48f28212677ec2273734612eef02a5f1c9d5e6ab"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/cli/gateway-rpc.runtime.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "7f0afbd625c9a6a62f11d92719978395f5c695c7"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "a1ab3a374abc71226dc61de41a7e55ad346cefac"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "7f0afbd625c9a6a62f11d92719978395f5c695c7"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "a1ab3a374abc71226dc61de41a7e55ad346cefac"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/cli/gateway-rpc.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "d146725a5ee2a8ec9992e6714302bd56ae2b34d9"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "995b90f4ca867833d2a84e230d75ea71a924dc51"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "d146725a5ee2a8ec9992e6714302bd56ae2b34d9"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "995b90f4ca867833d2a84e230d75ea71a924dc51"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/cli/run-main-doctor-startup.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "fa2b24b25ca7a69dae9f376d6ede420a7e121237"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "fa2b24b25ca7a69dae9f376d6ede420a7e121237"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/cli/run-main-doctor-startup.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "bc8d4ca46432f1c17cb8180abaa4456b89c71431"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "058a2b32953753f672a6b2db242fb67b6f06bd34"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "bc8d4ca46432f1c17cb8180abaa4456b89c71431"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "058a2b32953753f672a6b2db242fb67b6f06bd34"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/commands/doctor-migration-backup-artifacts.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "487f1391a3b7340ced302e2d2faa2847dfcf5648"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "9d20abc4116498b9a6f1fadcf957a50576fb7375"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "487f1391a3b7340ced302e2d2faa2847dfcf5648"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "9d20abc4116498b9a6f1fadcf957a50576fb7375"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/commands/doctor-migration-backup-reuse.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "eae70df8e364b5a848071432c6114c9ecb5935ec"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "eae70df8e364b5a848071432c6114c9ecb5935ec"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/commands/doctor-migration-backup.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "badeddd8cd3552dc5fde9c5b86a847a92c4f3da0"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f37e4fce3858aa482b160d8ba1d05255945da5be"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "badeddd8cd3552dc5fde9c5b86a847a92c4f3da0"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "f37e4fce3858aa482b160d8ba1d05255945da5be"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/commands/doctor-migration-backup.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "002b291c2326b3252b5acd8c7aa18db1f6580d90"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "2ed3f76b4c59897874a4d367fd083b83abe12009"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "002b291c2326b3252b5acd8c7aa18db1f6580d90"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "2ed3f76b4c59897874a4d367fd083b83abe12009"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/commands/doctor/shared/config-migration-result.provenance.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "acd2959fb114ce5ea3bb88a8fd0f2c7568aecbb8"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "acd2959fb114ce5ea3bb88a8fd0f2c7568aecbb8"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/config/backup-rotation.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "e2ad143a33c1610e5aff02839242711e5d990bc7"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "1661f9186998f53ce5948b52c4498e1b47a9c721"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "e2ad143a33c1610e5aff02839242711e5d990bc7"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "1661f9186998f53ce5948b52c4498e1b47a9c721"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/config/io.types.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "2c1cd7161cd4c32b7afecdded47f0bfae792a01c"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "a4555f792b4794bfb1db70c7cfa7e7c67f30f2a1"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "2c1cd7161cd4c32b7afecdded47f0bfae792a01c"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "a4555f792b4794bfb1db70c7cfa7e7c67f30f2a1"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/config/io.write.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "72828e07a305f670e8413466b2b653779374c05d"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "b137420035d80fa48acaf80f4e9e74c80e9ebf2e"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "72828e07a305f670e8413466b2b653779374c05d"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b137420035d80fa48acaf80f4e9e74c80e9ebf2e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/dockerfile.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "c0f28f366d807b80bbc1ab8b36ca3251abc5871f"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "1bdeedb045cc1a78232dab9563d6311bad7f2a80"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "c0f28f366d807b80bbc1ab8b36ca3251abc5871f"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "1bdeedb045cc1a78232dab9563d6311bad7f2a80"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/flows/doctor-health.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "667dfc9f89a943df2bf23d51c47c47924478b58a"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "a0edbc4d75dc2af2fb2adbd935dc43591e6a692c"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "667dfc9f89a943df2bf23d51c47c47924478b58a"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "a0edbc4d75dc2af2fb2adbd935dc43591e6a692c"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/flows/doctor-health.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "d48424baf3b03a7e69687e37695f931a3e970ce2"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "0c1292f047ab3222b1ef2c28054a6155e0ce984c"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "d48424baf3b03a7e69687e37695f931a3e970ce2"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "0c1292f047ab3222b1ef2c28054a6155e0ce984c"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-run-subagent.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "13be62094559a78b37c9e65b81e1a7c7e58b27c6"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f4f3dc65f581245d4f99646f5584d86596788656"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "13be62094559a78b37c9e65b81e1a7c7e58b27c6"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "f4f3dc65f581245d4f99646f5584d86596788656"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/methods/core-descriptors.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "48387a41305c56de5aad947b8f84da7c71845dc8"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "2886f3b527f5757913b95456dddc6f2d43845382"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "48387a41305c56de5aad947b8f84da7c71845dc8"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "2886f3b527f5757913b95456dddc6f2d43845382"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "5185ba9437e7879a4405028d1f15e64ec5a6bc40"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "5185ba9437e7879a4405028d1f15e64ec5a6bc40"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.mergeguez-parity.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "770c3337d4e0c3078f3e92408aa2e2119ec80841"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "770c3337d4e0c3078f3e92408aa2e2119ec80841"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.mergeguez-recovery.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "48222cc1cddfdea9c2b400ca89e68866239d0b83"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "48222cc1cddfdea9c2b400ca89e68866239d0b83"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "e1ed6650df2299c9c3eba4c2fcfaa565eef41e3e"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "e1ed6650df2299c9c3eba4c2fcfaa565eef41e3e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "a353da31e358e28933d1766339131f628faf9b2e"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "a353da31e358e28933d1766339131f628faf9b2e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-methods-list.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "ec09961e8e6635b467fe448168885780ef2e591c"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "70b10d25a315b9bd8cd7a33f62a47bf946a5f2f5"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "ec09961e8e6635b467fe448168885780ef2e591c"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "70b10d25a315b9bd8cd7a33f62a47bf946a5f2f5"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-methods/agent-subagent-registration.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "485a43c83d009735bcff4cbd380476bd7e410ce0"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "3a2a90a4ea51544ce39904bc3aa02810bf31439f"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "485a43c83d009735bcff4cbd380476bd7e410ce0"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "3a2a90a4ea51544ce39904bc3aa02810bf31439f"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-methods/client-types.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "786c47b8e2ed792a7ef829a4008062a9f62456b6"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "320e37b5c4c7e9d02b0fa082cec16e09e0a67752"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "786c47b8e2ed792a7ef829a4008062a9f62456b6"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "320e37b5c4c7e9d02b0fa082cec16e09e0a67752"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-methods/shared-types.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "175ba9ed3a7015e20a492b63fe6eae23859c4e70"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "473afd27dbbfe5ef6766c3bc48bc68d481fd0d9a"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "175ba9ed3a7015e20a492b63fe6eae23859c4e70"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "473afd27dbbfe5ef6766c3bc48bc68d481fd0d9a"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-methods/system.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "fc317d26b63c8ffd95eedaed685d7c9db46b5ada"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c477dcdfdc635fad483f9f28455c6fc399841afe"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "fc317d26b63c8ffd95eedaed685d7c9db46b5ada"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "c477dcdfdc635fad483f9f28455c6fc399841afe"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-plugin-in-process-authority.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f08620e89b2bb871fda9bd9d4ea969ebde5da5aa"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "529bbc056ebe7d3138b3dd98cdc0613fbdc0ba51"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "f08620e89b2bb871fda9bd9d4ea969ebde5da5aa"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "529bbc056ebe7d3138b3dd98cdc0613fbdc0ba51"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-plugin-in-process-dispatch.types.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "fd5ba625caca801ad95e1258a88e1c903048d335"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "052395ebe976ce1bca5aaf6c4bc088db758eecb2"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "fd5ba625caca801ad95e1258a88e1c903048d335"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "052395ebe976ce1bca5aaf6c4bc088db758eecb2"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-plugin-runtime-client.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f419c5f7465accf00d54ab6014c7fd9d4be521f2"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5b9782e73e374e7193af11389085a6d94d67b7b9"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "f419c5f7465accf00d54ab6014c7fd9d4be521f2"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5b9782e73e374e7193af11389085a6d94d67b7b9"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-plugin-subagent-runtime.overrides.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "7455f74c8572e3cb6b99828b5f9d959b00fce5ac"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "954bdae5d209c9d75dbd43296638255126e1d084"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "7455f74c8572e3cb6b99828b5f9d959b00fce5ac"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "954bdae5d209c9d75dbd43296638255126e1d084"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-plugin-subagent-runtime.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "6e4921e24b2160511374c82fa92a8c16f1408627"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "3be052dcfac1747f635844de7e32e9bf01f0d366"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "6e4921e24b2160511374c82fa92a8c16f1408627"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "3be052dcfac1747f635844de7e32e9bf01f0d366"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-plugins.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "95f8aaf3587849602e3da10ceec008f51b3a0e3e"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5b935d8336e266d4d3a501133bf4b2f4b01f6443"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "95f8aaf3587849602e3da10ceec008f51b3a0e3e"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5b935d8336e266d4d3a501133bf4b2f4b01f6443"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-request-context.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "6fda76e03c0cb372a40d68eb17139f234f486884"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "deb762c180a73cd61688444c00f6f1f3599818c5"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "6fda76e03c0cb372a40d68eb17139f234f486884"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "deb762c180a73cd61688444c00f6f1f3599818c5"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-request-context.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "8cd086dbe59f03de7b50d42a17364a1fb8f10889"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "b26245a6f8a64bebc81bea273dbceaeb1ccb9ae4"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "8cd086dbe59f03de7b50d42a17364a1fb8f10889"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b26245a6f8a64bebc81bea273dbceaeb1ccb9ae4"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server-runtime-state-prepare.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "7535f333e53cd85e27935d6abc06119dc3237851"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "ee775db35664f26b04a2542f1685909933947c68"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "7535f333e53cd85e27935d6abc06119dc3237851"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "ee775db35664f26b04a2542f1685909933947c68"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server.auth.compat-baseline.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "572e8352cfa9c18578b1c57242312ce0d499812b"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5175f11df9a53556a1c49d79f854431143e9f514"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "572e8352cfa9c18578b1c57242312ce0d499812b"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5175f11df9a53556a1c49d79f854431143e9f514"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server/ws-connection/connect-session.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "dcb33c5caf29b416a4ca74ad03b3d4c7658e105b"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "fd5f27d14a6ca1c978d8a613f02a5685fad806bf"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "dcb33c5caf29b416a4ca74ad03b3d4c7658e105b"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "fd5f27d14a6ca1c978d8a613f02a5685fad806bf"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/gateway/server/ws-types.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "db887564fae5c7986a592ab7b941cc8f986c97a5"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "8df2035864ca32aabff98113aed96abaf6595ddc"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "db887564fae5c7986a592ab7b941cc8f986c97a5"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "8df2035864ca32aabff98113aed96abaf6595ddc"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/infra/git-commit.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "12ed310f8811b3f010229b81e5b629c34b1dc3ad"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "04d288b19f9322dc90abd3cd29f16a14f5fbc550"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "12ed310f8811b3f010229b81e5b629c34b1dc3ad"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "04d288b19f9322dc90abd3cd29f16a14f5fbc550"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/infra/git-commit.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "dbd3cedbb1be43d087895c87c4e533428c59179c"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "4464e9fe1893ea129b6673abd5f87d504d4b79c6"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "dbd3cedbb1be43d087895c87c4e533428c59179c"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "4464e9fe1893ea129b6673abd5f87d504d4b79c6"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/plugin-sdk/config-mutation.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "3caf4de38f6ed6f55b9eab26beb0ce8a114fed34"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "b8ac3bd618cf6e6daeae98608155689f4b1d2e0d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "3caf4de38f6ed6f55b9eab26beb0ce8a114fed34"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b8ac3bd618cf6e6daeae98608155689f4b1d2e0d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/plugins/loader-load-context.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "e497a747b287d89576446041de3722da8369fede"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5b0c4e883c30e4988bc6cb34e51dd1f774709126"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "e497a747b287d89576446041de3722da8369fede"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5b0c4e883c30e4988bc6cb34e51dd1f774709126"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/plugins/loader-module-runtime.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "1c6692830856e313fcfb86fb424168fb7ddf30f6"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f89d8671404c0b136445da43fd9960ee9067e63f"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "0f1c0d33bf95ca54ecb214b8bd60610b0ded6340"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "16e6e0a1c729ee9dc0ebf5cd17d0e31fb60d128d"
+      },
+      "disposition": "MERGED_TASK_ACCESS_AND_IMMUTABLE_INSPECTION"
+    },
+    {
+      "path": "src/plugins/loader.gateway-bindings.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "986ec72bdddcf90c5ed627501f5e1dfc8db62f8c"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "6413454f4aa323a5d4cf69dad6816883e995450c"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "986ec72bdddcf90c5ed627501f5e1dfc8db62f8c"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "6413454f4aa323a5d4cf69dad6816883e995450c"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/plugins/registry-runtime-task-flow.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "ed27f5f112e8476a60b4cba81208e1af51873dbc"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "ed27f5f112e8476a60b4cba81208e1af51873dbc"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/plugins/registry-runtime.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f5bf7c083e464e24a392a7858d1ad31861a35174"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "4dc27a59dd70d41244e8a25fd934a9f2663f7d6c"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "f5bf7c083e464e24a392a7858d1ad31861a35174"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "4dc27a59dd70d41244e8a25fd934a9f2663f7d6c"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/plugins/runtime/index.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "02f217a7bf929c325d879479d6d0409a4f164d51"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "68149c26b0f92b1302e6d07c00a57fb0e6af937e"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "02f217a7bf929c325d879479d6d0409a4f164d51"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "68149c26b0f92b1302e6d07c00a57fb0e6af937e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/plugins/runtime/types.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "1ba77516448680740207175aaea8a29e76ef2774"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "75b5604ac3ab9ef3f0a7b3752cf7a1d91bc6d7c2"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "1ba77516448680740207175aaea8a29e76ef2774"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "75b5604ac3ab9ef3f0a7b3752cf7a1d91bc6d7c2"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/process/supervisor/service-child-cleanup.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "d9c46d397e1a0f9ce2e4137d2bc04665f049b692"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "bf013b364e4f42e5f21ae838128b96c23652889f"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "d9c46d397e1a0f9ce2e4137d2bc04665f049b692"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "bf013b364e4f42e5f21ae838128b96c23652889f"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/process/supervisor/service-child-relay-host.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "92bc58b0ad641be25394eed2d46bf1c85c6456df"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "2bf104cf879525a61ec172c3f04a5c4838e6fc3b"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "92bc58b0ad641be25394eed2d46bf1c85c6456df"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "2bf104cf879525a61ec172c3f04a5c4838e6fc3b"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/process/supervisor/service-child-relay-host.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f3b78da2ef14216016ce69c50c20c8589074b307"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5ce86be97b50e9534d74183aa1a967a6ef766d15"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "f3b78da2ef14216016ce69c50c20c8589074b307"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5ce86be97b50e9534d74183aa1a967a6ef766d15"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/secrets/egress-proxy/proxy-forward.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "becc0ec285ffd1b19a1d6d5d0d3d429a624e4030"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f6fd912039fe03c212e3284572f8bb25dba51495"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "becc0ec285ffd1b19a1d6d5d0d3d429a624e4030"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "f6fd912039fe03c212e3284572f8bb25dba51495"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/secrets/egress-proxy/proxy-forward.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "45a596407fd2c53c23830db3fc7a71e36c5e95ac"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f4c6576a4c629bf4f8603746c8e0d90ca4c3a5f2"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "45a596407fd2c53c23830db3fc7a71e36c5e95ac"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "f4c6576a4c629bf4f8603746c8e0d90ca4c3a5f2"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/secrets/egress-proxy/response-headers.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "81e2151ab26c2dc4081b35d1db00901bda550c9d"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "e3892282050e17737010bd6cccc764f2179144d2"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "81e2151ab26c2dc4081b35d1db00901bda550c9d"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "e3892282050e17737010bd6cccc764f2179144d2"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/secrets/egress-proxy/response-headers.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "11714002c31ebbb3400ce7effae8eab5be085785"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "57f397d09e5ce1defebda81332a2602e8a1d97d7"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "11714002c31ebbb3400ce7effae8eab5be085785"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "57f397d09e5ce1defebda81332a2602e8a1d97d7"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/state/openclaw-agent-db-lease.exited-owner.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "fca5a1d4f0d1778310f27b2ddb2877148a1cb7ed"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "fca5a1d4f0d1778310f27b2ddb2877148a1cb7ed"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/state/openclaw-state-lease-heartbeat.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "0ddfa711df78973c3a3f9b9841ea8fb1ce49fc37"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5426070ac983b4c6899d3d450d5a0205862667bd"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "0ddfa711df78973c3a3f9b9841ea8fb1ce49fc37"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5426070ac983b4c6899d3d450d5a0205862667bd"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/state/openclaw-state-read.types.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "5e1a58fb581cab14ddc93c93c465fa3080ace20f"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "f4ce3356b74d7046472c6fbeb82b0d6c14d756ca"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "5e1a58fb581cab14ddc93c93c465fa3080ace20f"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "f4ce3356b74d7046472c6fbeb82b0d6c14d756ca"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/state/openclaw-state-read.validation.managed-task-flow.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "dfa65b40ecaff4ef3cb6ba93093e7a882978f037"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "dfa65b40ecaff4ef3cb6ba93093e7a882978f037"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/state/openclaw-state-read.validation.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "73f04124d2aa3b34bf14cf7a89e94a6e0e6c3618"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "95f6e0afa8de0317b98b5e9961715db39023556d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "73f04124d2aa3b34bf14cf7a89e94a6e0e6c3618"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "95f6e0afa8de0317b98b5e9961715db39023556d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/state/openclaw-state-read.worker.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "69ad71dd27cb930bdf4858d3eca5de74aa646120"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c1ee5c5ab69e1245454f300b20c6641101b36b24"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "69ad71dd27cb930bdf4858d3eca5de74aa646120"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "c1ee5c5ab69e1245454f300b20c6641101b36b24"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/state/openclaw-state-worker-contract.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "f91904fd30c9283b7d8a4a819ef748d5d8d971f5"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "4843e269a88f2e6c5ffb50b2bc4c415d5999476e"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "f91904fd30c9283b7d8a4a819ef748d5d8d971f5"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "4843e269a88f2e6c5ffb50b2bc4c415d5999476e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/state/openclaw-state-worker-runtime.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "dbe6c2883f0e4d22bd0fa87b35c2890da188ecf2"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "ebd27b5ec136378d94718549e3e68286f9232d61"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "dbe6c2883f0e4d22bd0fa87b35c2890da188ecf2"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "ebd27b5ec136378d94718549e3e68286f9232d61"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/tasks/managed-task-flow-contract.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "d41c9ed3b11ff30b7218bee9d35a2c1082b7a9f8"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "d41c9ed3b11ff30b7218bee9d35a2c1082b7a9f8"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/tasks/managed-task-flow-host.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "69f2a7bd29f30a175889cfd6a3e59d47cd03198d"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "69f2a7bd29f30a175889cfd6a3e59d47cd03198d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/tasks/managed-task-flow-host.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "78cc910e1683ce58666a19edc4531e97576635a5"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "78cc910e1683ce58666a19edc4531e97576635a5"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/tasks/managed-task-flow-kill-claim.worker.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "8930d9fe4e1414490acb6e81c328ce58e24cd81b"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "8930d9fe4e1414490acb6e81c328ce58e24cd81b"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/tasks/managed-task-flow.test-helpers.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "a95743e39f7de3ed2853d610e3ce058bbb3cc5dd"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "a95743e39f7de3ed2853d610e3ce058bbb3cc5dd"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/tasks/managed-task-flow.worker.integration.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "93284419b1bde20cf7ac5d20151f94d651ba6c04"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "93284419b1bde20cf7ac5d20151f94d651ba6c04"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/tasks/managed-task-flow.worker.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "403e6380e83e8ef0a1a91bb76ec8b8aa605064af"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "403e6380e83e8ef0a1a91bb76ec8b8aa605064af"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/version.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "c76a04f0c026d10d1c28a2098cc592c4a0b87315"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "b693d05c03c6e6e8c15ca4ce3f5653116c73e265"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "c76a04f0c026d10d1c28a2098cc592c4a0b87315"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "b693d05c03c6e6e8c15ca4ce3f5653116c73e265"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/version.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "403fc4ba793c985601ad4f76b00cca47b13c7b93"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c90fcb2f2831337c77e1340978ff69d7ecfd7a2d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "403fc4ba793c985601ad4f76b00cca47b13c7b93"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "c90fcb2f2831337c77e1340978ff69d7ecfd7a2d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/a2ui-native-zod-regression.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "ac8ca204ac2179d12f172751daf85bbb8257ae74"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "ac8ca204ac2179d12f172751daf85bbb8257ae74"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/body-parser-security.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "8242d42dbd39579825a768019c7f496207f44aaa"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "8242d42dbd39579825a768019c7f496207f44aaa"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/discord-native-zod-regression.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "d53527118c208861eaa5778204bea7b395e6c651"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "d53527118c208861eaa5778204bea7b395e6c651"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/fixtures/nowistay-list-properties-output-schema.json",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "a9bf78496de8874325791d7f35585d666e8fa88d"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "a9bf78496de8874325791d7f35585d666e8fa88d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/http-cache-semantics-compat.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "52691bf24bae0f576f96e03a2e4375ab3ee0e429"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "52691bf24bae0f576f96e03a2e4375ab3ee0e429"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/mcp-nowistay-schema-compatibility.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "a219ddbd37df2b65e5b27b0f509793a61cc04132"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "a219ddbd37df2b65e5b27b0f509793a61cc04132"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/mcp-nowistay-sdk-regression.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "6fcdfdc08e3a16aef4f29c1a02e7509bba5a077c"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "6fcdfdc08e3a16aef4f29c1a02e7509bba5a077c"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/msal-parent-compat.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "d2b6e4a2576d263725ccdd1c9047ae6415883192"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "d2b6e4a2576d263725ccdd1c9047ae6415883192"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/check-package-patches.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "6fe2c7bd2563d802b304e23bd017305f3e59f85a"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "3fd8ba0906af59494a48de61a5a712d388fab87b"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "6fe2c7bd2563d802b304e23bd017305f3e59f85a"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "3fd8ba0906af59494a48de61a5a712d388fab87b"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/docker-build-helper.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "48f5f12ec32f96b70ff5f02f4d123ec3c4a9a253"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c8d3038f411d98c300a64d335851d10ee39b7612"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "48f5f12ec32f96b70ff5f02f4d123ec3c4a9a253"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "c8d3038f411d98c300a64d335851d10ee39b7612"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/generate-npm-package-lock.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "35c8cf6437a6f5bda45847863551535810702185"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "989b5bf8a497427a081b441afdb4e27d13114d7e"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "35c8cf6437a6f5bda45847863551535810702185"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "989b5bf8a497427a081b441afdb4e27d13114d7e"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/lint-suppressions.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "298ec1ed7976fda7fe61955e8c6c141a7a64b7fc"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "70f72425a2d91ea6ae4f25a17f494c652fe20ed8"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "298ec1ed7976fda7fe61955e8c6c141a7a64b7fc"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "70f72425a2d91ea6ae4f25a17f494c652fe20ed8"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/native-runner.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "b8e91df25892be06527641454dcd78cd74233e9a"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "b8e91df25892be06527641454dcd78cd74233e9a"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/native-security-ownership.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "b669e8fa13f9b1a187f5e69a71a2b4db0c960e38"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "b669e8fa13f9b1a187f5e69a71a2b4db0c960e38"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/native-security.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "651b7416fc8aecbbac578719f3c8aed181b2897b"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "651b7416fc8aecbbac578719f3c8aed181b2897b"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/test-install-sh-docker.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "2eff75cfc82c06d3ff3bbaf1d7e6a7b9f2f327d5"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "aed74ede72998c5a978426e5082051e1b43da941"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "2eff75cfc82c06d3ff3bbaf1d7e6a7b9f2f327d5"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "aed74ede72998c5a978426e5082051e1b43da941"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/tsdown-build.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "2a061583c737f94f670a78fb5131fd8fe269750e"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "9f139ab85890994f1ab2e1143ae9562e760e795a"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "2a061583c737f94f670a78fb5131fd8fe269750e"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "9f139ab85890994f1ab2e1143ae9562e760e795a"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/verify-stable-main-closeout.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "14a0a0b5036f6c1bda391de04bf35ab71c2d9ac9"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "ccfb7f739801a3b370d084aea42c04cc3b1e5cf3"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "14a0a0b5036f6c1bda391de04bf35ab71c2d9ac9"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "ccfb7f739801a3b370d084aea42c04cc3b1e5cf3"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/scripts/zod-legacy-closure.test.ts",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "5477253f123893a94c782845339b3df4cab46e9a"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "5477253f123893a94c782845339b3df4cab46e9a"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/undici-security.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "01e6659de76d278d2b069ec18c18ea4f039a3705"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "01e6659de76d278d2b069ec18c18ea4f039a3705"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/vitest-projects-config.test-support.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "a469228f45d511e0f05f64c42e6b7aa395385f9b"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "68c51bb549ac48436da5172cf3459907873eec42"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "a469228f45d511e0f05f64c42e6b7aa395385f9b"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "68c51bb549ac48436da5172cf3459907873eec42"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/vitest-projects-config.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "14d37b8fdcbcdf6bf8c48c7d84f145f1e88668bb"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "3c4708f4801ecb4d2575c9e28b15ac511f12f2a8"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "14d37b8fdcbcdf6bf8c48c7d84f145f1e88668bb"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "3c4708f4801ecb4d2575c9e28b15ac511f12f2a8"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/vitest/vitest.commands-light-paths.mjs",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "ab04965e653a125628615628269c4acee67c3e26"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "c540d33b8339076656200f9ad13609ba8cbaaf9d"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "ab04965e653a125628615628269c4acee67c3e26"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "c540d33b8339076656200f9ad13609ba8cbaaf9d"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/vitest/vitest.database-worker-core-paths.mjs",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "cacccf148cbcdcdf855b5c57d42fa88acd1262d1"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "838c9900ca64b50c03e48f56e056803cd5a3e37c"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "54a64809a63d5f404755d774269eef6335c931e9"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "ba8f742e8d9241c1e793ba6a91ffe65795a132d3"
+      },
+      "disposition": "MERGED_MAINTAINED_TEST_ROUTE_UNION"
+    },
+    {
+      "path": "test/vitest/vitest.gateway-server-paths.mjs",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "a01957f162ff47ce232403c39da1dc6bfc8a109a"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "116585a520a55312bd9d746a121e5beae06119fb"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "9df6606414cb58fcc9330d17f7d04749d88f1e53"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "870e86c382a7afe303bc5d88a8e3387e34b3e148"
+      },
+      "disposition": "MERGED_MAINTAINED_TEST_ROUTE_UNION"
+    },
+    {
+      "path": "test/vitest/vitest.tooling-isolated-paths.mjs",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "dfebc1ec6462b3b475e9c51c8e4b23faf9171f45"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "fbdd6d2068ad83e53275eec561cc3e245277ba62"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "dfebc1ec6462b3b475e9c51c8e4b23faf9171f45"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "fbdd6d2068ad83e53275eec561cc3e245277ba62"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "test/zod-container-bounds.test.mjs",
+      "upstream107": null,
+      "fork107": {
+        "mode": "100644",
+        "blob": "3d1617a4c4306ec4171d409ef73ed3c4819d5502"
+      },
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "3d1617a4c4306ec4171d409ef73ed3c4819d5502"
+      },
+      "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "ui/package.json",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "25a98d9a07f6a9d74f79b82bd84a2b195ef416fa"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "5e31552fee7c0ff1e96be209711e151f3e58a0de"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "25a98d9a07f6a9d74f79b82bd84a2b195ef416fa"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "5e31552fee7c0ff1e96be209711e151f3e58a0de"
+      },
+      "disposition": "CARRIED_EXACT"
+    }
+  ]
+}
