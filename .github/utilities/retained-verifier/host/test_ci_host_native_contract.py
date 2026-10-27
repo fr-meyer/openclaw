@@ -128,7 +128,17 @@ class ContractFixture:
    'GITHUB_SHA':'c'*40,'GITHUB_RUN_ID':'123'}
   self.negative_changes={};self.qemu_mode='valid';self.qemu_calls=0;self.output_paths=set()
   self.short_stream=False;self.real_read=h.read_regular;self.real_lstat=Path.lstat
-  self.gpg_exit=0;self.gpg_changes={}
+  self.gpg_exit=0;self.gpg_changes={};self.dpkg_missing=None
+ def host_path_facts(self,path):
+  target={'/usr/bin/bootctl':('/usr/bin/bootctl',1),
+          '/usr/sbin/depmod':('/usr/bin/kmod',2),'/sbin/depmod':('/usr/bin/kmod',2),
+          '/usr/sbin/mkfs.ext4':('/usr/sbin/mke2fs',3),
+          '/sbin/mkfs.ext4':('/usr/sbin/mke2fs',3)}[path]
+  canonical,ino=target
+  if self.dpkg_missing=='depmod_substitute' and path=='/sbin/depmod':ino=99
+  if self.dpkg_missing=='depmod_target' and path in ('/usr/sbin/depmod','/sbin/depmod'):
+   canonical='/usr/bin/other'
+  return {'canonical':canonical,'dev':1,'ino':ino,'bytes':128,'mode':0o755}
  def new_port(self):
   with mock.patch.dict(os.environ,self.environment):
    self.port=h.NativePort(self.permit,self.modules,self.source,self.raw,self.rows)
@@ -203,7 +213,22 @@ class ContractFixture:
  def execute(self,scope):
   role,args=scope.role,scope.arguments
   if role=='dpkg_query':
-   return outer(b'mkosi\t20.2-1\tamd64\n' if args['kind']=='versions' else b'mkosi: /usr/bin/mkosi\n')
+   if args['kind']=='versions':
+    return outer(b'mkosi\t20.2-1\tamd64\n'+
+                 (b'' if self.dpkg_missing=='version' else b'systemd-boot\t255.4-synthetic\tall\n')+
+                 (b'' if self.dpkg_missing=='kmod_version' else b'kmod\t31-synthetic\tamd64\n')+
+                 b'e2fsprogs\t1.47-synthetic\tamd64\n')
+   if args['kind']=='owners':return outer(b'mkosi: /usr/bin/mkosi\n'+
+                (b'' if self.dpkg_missing=='owner' else b'systemd-boot: /usr/bin/bootctl\n'))
+   if args['kind']=='systemd_boot_files':return outer(b'/usr/bin/bootctl\n')
+   if args['kind']=='kmod_files':return outer(b'/bin/kmod\n'+
+                (b'' if self.dpkg_missing=='depmod_filelist' else b'/sbin/depmod\n'))
+   if args['kind']=='e2fsprogs_files':return outer(b'/usr/sbin/mke2fs\n/usr/sbin/mkfs.ext4\n')
+   if args['kind']=='depmod_sbin_owner':return outer(
+     b'other: /sbin/depmod\n' if self.dpkg_missing=='depmod_owner' else b'kmod: /sbin/depmod\n')
+   if args['kind']=='mkfs_usr_owner':return outer(
+     b'other: /usr/sbin/mkfs.ext4\n' if self.dpkg_missing=='mkfs_owner' else b'e2fsprogs: /usr/sbin/mkfs.ext4\n')
+   raise AssertionError('unexpected synthetic dpkg query')
   if role=='debian_metadata_curl':
    self.write(self.port.project/'metadata'/('InRelease' if args['kind']=='release' else 'Packages.xz'),
     self.release if args['kind']=='release' else lzma.compress(self.packages));return outer()
@@ -228,7 +253,8 @@ class ContractFixture:
   return outer()
  def run(self,root_outputs=True):
   port=self.new_port()
-  with mock.patch.object(h,'read_regular',side_effect=self.tool_read):
+  with mock.patch.object(h,'read_regular',side_effect=self.tool_read),\
+       mock.patch.object(h,'host_path_facts',side_effect=self.host_path_facts):
    if root_outputs:
     with mock.patch.object(Path,'lstat',new=lambda p,*a,**k:self.root_output_stat(p,*a,**k)):
      return h.Controller(port).run()
@@ -247,6 +273,7 @@ class NativePortContract(unittest.TestCase):
    self.assertEqual(kw['status'],self.fixture.gpg_status)
    return {'verifiedPrimaryFingerprints':['synthetic-policy-seam']}
   with mock.patch.object(h,'read_regular',side_effect=self.fixture.tool_read),\
+       mock.patch.object(h,'host_path_facts',side_effect=self.fixture.host_path_facts),\
        mock.patch.object(self.fixture.policy,'classify',side_effect=checked):
    port.install_host_tools();port.authenticate_metadata()
   self.assertIsNone(port.first_failure)
@@ -256,7 +283,8 @@ class NativePortContract(unittest.TestCase):
  def test_incomplete_gpg_exit_two_preserves_first_cause(self):
   self.fixture.gpg_exit=2;self.fixture.gpg_changes={'streamsEOF':False}
   port=self.fixture.new_port()
-  with mock.patch.object(h,'read_regular',side_effect=self.fixture.tool_read):
+  with mock.patch.object(h,'read_regular',side_effect=self.fixture.tool_read),\
+       mock.patch.object(h,'host_path_facts',side_effect=self.fixture.host_path_facts):
    port.install_host_tools()
    with self.assertRaisesRegex(h.Refusal,'host.gpgv_process_boundary'):
     port.authenticate_metadata()
@@ -265,11 +293,35 @@ class NativePortContract(unittest.TestCase):
  def test_gpg_exit_two_with_cleanup_error_never_reaches_policy(self):
   self.fixture.gpg_exit=2;self.fixture.gpg_changes={'cleanupErrors':[{'phase':'close'}]}
   port=self.fixture.new_port()
-  with mock.patch.object(h,'read_regular',side_effect=self.fixture.tool_read):
+  with mock.patch.object(h,'read_regular',side_effect=self.fixture.tool_read),\
+       mock.patch.object(h,'host_path_facts',side_effect=self.fixture.host_path_facts):
    port.install_host_tools()
    with self.assertRaisesRegex(h.Refusal,'host.gpgv_process_boundary'):
     port.authenticate_metadata()
   self.assertEqual(port.first_failure['role'],'gpgv_metadata')
+ def test_missing_bootctl_package_or_ownership_refuses_before_build(self):
+  for missing,reason in (('version','host.package_version'),('owner','host.bootctl_package')):
+   with self.subTest(missing=missing):
+    with tempfile.TemporaryDirectory(prefix='ocv-public-bootctl-') as root:
+     fixture=ContractFixture(root);fixture.dpkg_missing=missing
+     result=fixture.run()
+     self.assertEqual(result['phase'],'host-tools')
+     self.assertEqual(result['reason'],reason)
+     self.assertFalse(any(scope.role=='mkosi_build' for scope in fixture.commands.calls))
+ def test_missing_wrong_or_substituted_host_prerequisite_refuses_before_build(self):
+  expected={'kmod_version':'host.package_version',
+            'depmod_filelist':'host.package_filelist',
+            'depmod_owner':'host.package_owner',
+            'mkfs_owner':'host.package_owner',
+            'depmod_substitute':'host.package_alias_identity',
+            'depmod_target':'host.package_target_owner'}
+  for defect,reason in expected.items():
+   with self.subTest(defect=defect):
+    with tempfile.TemporaryDirectory(prefix='ocv-public-host-tool-') as root:
+     fixture=ContractFixture(root);fixture.dpkg_missing=defect
+     result=fixture.run()
+     self.assertEqual((result['phase'],result['reason']),('host-tools',reason))
+     self.assertFalse(any(scope.role=='mkosi_build' for scope in fixture.commands.calls))
  def test_public_project_stays_separate_from_private_runner_artifact_temp(self):
   runner_temp=self.fixture.root/'runner-temp';runner_temp.mkdir(mode=0o700)
   self.fixture.environment['RUNNER_TEMP']=str(runner_temp)

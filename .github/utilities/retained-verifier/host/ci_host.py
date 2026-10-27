@@ -62,6 +62,49 @@ def read_regular(path,cap,*,owner=None):
     return b''.join(chunks)
 
 
+def host_path_facts(path):
+    """Read a fixed package path and every component of its resolved alias."""
+    p=Path(path)
+    require(p.is_absolute() and str(p)==path,'host.tool_path')
+    try:resolved=p.resolve(strict=True)
+    except (OSError,RuntimeError):raise Refusal('host.tool_missing') from None
+    require(str(resolved).startswith(('/usr/bin/','/usr/sbin/')),'host.tool_escape')
+    for leaf in (p,resolved):
+        for part in (leaf,*tuple(parent for parent in leaf.parents if str(parent)!='/')):
+            try:s=part.lstat()
+            except OSError:raise Refusal('host.tool_missing') from None
+            require(s.st_uid==s.st_gid==0 and
+                    (stat.S_ISLNK(s.st_mode) or not s.st_mode&0o022) and
+                    (stat.S_ISDIR(s.st_mode) or stat.S_ISLNK(s.st_mode) or part==leaf),
+                    'host.tool_component')
+    target=resolved.stat()
+    require(stat.S_ISREG(target.st_mode) and target.st_uid==target.st_gid==0 and
+            not target.st_mode&0o022 and target.st_mode&0o111 and
+            0<target.st_size<=64*1024**2,'host.tool_identity')
+    return {'canonical':str(resolved),'dev':target.st_dev,'ino':target.st_ino,
+            'bytes':target.st_size,'mode':stat.S_IMODE(target.st_mode)}
+
+
+def verify_host_package_binary(package,execution,registered,filelist,owner,*,probe=None):
+    """Join a signed-APT installed package, its dpkg roster, and one inode."""
+    require(type(filelist)is bytes and len(filelist)<=262144 and type(owner)is bytes and
+            len(owner)<=4096,'host.package_roster_cap')
+    paths=set(filelist.splitlines())
+    require(registered.encode() in paths and
+            owner.splitlines()==[(package+': '+registered).encode()], 'host.package_owner')
+    if probe is None:probe=host_path_facts
+    observed=probe(execution);recorded=probe(registered)
+    require(type(observed)is dict and type(recorded)is dict and observed==recorded,
+            'host.package_alias_identity')
+    canonical=observed.get('canonical')
+    require(type(canonical)is str and
+            (canonical.encode() in paths or canonical.replace('/usr/','/',1).encode() in paths),
+            'host.package_target_owner')
+    return {'package':package,'executionPath':execution,'registeredPath':registered,
+            'canonicalPath':canonical,'dev':observed['dev'],'ino':observed['ino'],
+            'bytes':observed['bytes']}
+
+
 def bootstrap_source(source,manifest_sha):
     require(type(manifest_sha)is str and re.fullmatch('[0-9a-f]{64}',manifest_sha),'host.source_pin')
     raw=read_regular(source/'PUBLIC-SOURCE-MANIFEST.json',1048576)
@@ -177,8 +220,37 @@ class NativePort:
         self._run('ubuntu_apt_install',{'project':str(self.project)},240)
         versions=self._run('dpkg_query',{'kind':'versions'},20)['stdout']
         owners=self._run('dpkg_query',{'kind':'owners'},20)['stdout']
-        require(b'mkosi\t20.2-1\t' in versions,'host.mkosi_version')
-        self.host_tools={'versionsSha256':sha(versions),'ownersSha256':sha(owners)}
+        installed={}
+        for line in versions.splitlines():
+            fields=line.split(b'\t')
+            require(len(fields)==3 and fields[0] not in installed,'host.package_version_roster')
+            installed[fields[0]]=fields
+        require(b'mkosi' in installed and installed[b'mkosi'][1]==b'20.2-1',
+                'host.mkosi_version')
+        for name in (b'systemd-boot',b'kmod',b'e2fsprogs'):
+            require(name in installed and re.fullmatch(rb'[A-Za-z0-9][A-Za-z0-9.+:~_-]{0,127}',installed[name][1])
+                    and installed[name][2] in (b'amd64',b'all'),'host.package_version')
+        require(b'systemd-boot: /usr/bin/bootctl' in owners.splitlines(),
+                'host.bootctl_package')
+        proof=[]
+        for package,executable,kind,allowed in (
+            ('systemd-boot','/usr/bin/bootctl','systemd_boot_files',('/usr/bin/bootctl',)),
+            ('kmod','/usr/sbin/depmod','kmod_files',('/usr/sbin/depmod','/sbin/depmod')),
+            ('e2fsprogs','/usr/sbin/mkfs.ext4','e2fsprogs_files',
+             ('/usr/sbin/mkfs.ext4','/sbin/mkfs.ext4'))):
+            files=self._run('dpkg_query',{'kind':kind},20)['stdout']
+            registered=[path for path in allowed if path.encode() in files.splitlines()]
+            require(len(registered)==1,'host.package_filelist')
+            path=registered[0]
+            if package=='systemd-boot':
+                owner=b'\n'.join(line for line in owners.splitlines() if b'/usr/bin/bootctl' in line)+b'\n'
+            else:
+                prefix='depmod' if package=='kmod' else 'mkfs'
+                owner_kind=prefix+('_usr_owner' if path.startswith('/usr/') else '_sbin_owner')
+                owner=self._run('dpkg_query',{'kind':owner_kind},20)['stdout']
+            proof.append(verify_host_package_binary(package,executable,path,files,owner))
+        self.host_tools={'versionsSha256':sha(versions),'ownersSha256':sha(owners),
+                         'packagePathProofSha256':sha(canonical(proof))}
         self.keyring=read_regular('/usr/share/keyrings/debian-archive-keyring.gpg',1048576,owner=0)
         self.gpgv_sha=sha(read_regular('/usr/bin/gpgv',8*1024**2,owner=0))
         self.apt_helper_sha=sha(read_regular('/usr/lib/apt/apt-helper',8*1024**2,owner=0))

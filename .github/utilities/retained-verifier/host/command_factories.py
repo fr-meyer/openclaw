@@ -2,7 +2,8 @@
 from pathlib import PurePosixPath
 import re
 
-HOST_PACKAGES=('mkosi=20.2-1','qemu-system-x86','fdisk','debian-archive-keyring','curl','gpgv')
+HOST_PACKAGES=('mkosi=20.2-1','qemu-system-x86','fdisk','debian-archive-keyring','curl','gpgv',
+               'systemd-boot','kmod','e2fsprogs')
 SUITES=('archive','outer','native','runtime','apt','build','bootstrap','host','consumer')
 
 
@@ -67,9 +68,18 @@ def gpgv_metadata(project):
 
 def dpkg_query(kind):
     table={'versions':('--show','--showformat=${binary:Package}\t${Version}\t${Architecture}\n',
-                       'mkosi','qemu-system-x86','fdisk','debian-archive-keyring','curl','gpgv'),
+                       'mkosi','qemu-system-x86','fdisk','debian-archive-keyring','curl','gpgv','systemd-boot',
+                       'kmod','e2fsprogs'),
            'owners':('--search','/usr/bin/mkosi','/usr/bin/qemu-system-x86_64','/usr/sbin/sfdisk',
-                     '/usr/share/keyrings/debian-archive-keyring.gpg','/usr/bin/gpgv','/usr/bin/curl')}
+                     '/usr/share/keyrings/debian-archive-keyring.gpg','/usr/bin/gpgv','/usr/bin/curl',
+                     '/usr/bin/bootctl'),
+           'kmod_files':('--listfiles','kmod'),
+           'e2fsprogs_files':('--listfiles','e2fsprogs'),
+           'systemd_boot_files':('--listfiles','systemd-boot'),
+           'depmod_usr_owner':('--search','/usr/sbin/depmod'),
+           'depmod_sbin_owner':('--search','/sbin/depmod'),
+           'mkfs_usr_owner':('--search','/usr/sbin/mkfs.ext4'),
+           'mkfs_sbin_owner':('--search','/sbin/mkfs.ext4')}
     require(kind in table,'dpkg_kind');return ('/usr/bin/dpkg-query',)+table[kind]
 
 

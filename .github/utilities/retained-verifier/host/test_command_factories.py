@@ -8,6 +8,14 @@ class FactoryTests(unittest.TestCase):
         vector=c.ubuntu_apt_install('/tmp/ocv-public')
         self.assertEqual(vector[:4],('/usr/bin/sudo','-n','--','/usr/bin/apt-get'))
         self.assertIn('mkosi=20.2-1',vector);self.assertNotIn('trusted=yes',c.ubuntu_sources().decode())
+        self.assertIn('systemd-boot',vector)
+        self.assertIn('kmod',vector);self.assertIn('e2fsprogs',vector)
+        self.assertIn('/usr/bin/bootctl',c.dpkg_query('owners'))
+        self.assertIn('systemd-boot',c.dpkg_query('versions'))
+        self.assertIn('kmod',c.dpkg_query('versions'))
+        self.assertIn('e2fsprogs',c.dpkg_query('versions'))
+        self.assertEqual(c.dpkg_query('kmod_files')[-2:],('--listfiles','kmod'))
+        self.assertEqual(c.dpkg_query('e2fsprogs_files')[-2:],('--listfiles','e2fsprogs'))
         self.assertNotIn('Check-Valid-Until=false',' '.join(vector))
     def test_metadata_urls_and_outputs_are_fixed_not_user_commands(self):
         for kind in ('release','packages'):

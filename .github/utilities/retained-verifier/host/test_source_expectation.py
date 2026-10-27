@@ -141,6 +141,11 @@ class BuildFixture:
           'linux-image-'+self.kv if p.startswith('/boot/')else'libc6'for p in self.data}
         self.show=''.join(n+'\t'+r['version']+'\tamd64\tinstalled\n'for n,r in self.packages.items()).encode()
         self.lists={n:('\n'.join(['/.','/usr']+sorted(p for p,owner in self.owners.items()if owner==n))+'\n').encode()for n in names}
+        # Exact pinned Bookworm systemd package paths; the execution path is
+        # reached through Debian's merged-/usr aliases.
+        self.lists['systemd']=self.lists['systemd'].replace(b'/usr/bin/systemctl\n',b'/bin/systemctl\n').replace(
+          b'/usr/lib/systemd/systemd\n',b'/lib/systemd/systemd\n')
+        self.owners['/bin/systemctl']='systemd';self.owners['/lib/systemd/systemd']='systemd'
         self.index=''.join('Package: '+n+'\nVersion: '+r['version']+'\nArchitecture: amd64\nFilename: pool/main/f/fixture/'+n+'_1_amd64.deb\nSize: 12\nSHA256: '+r['debSha256']+'\n\n'for n,r in self.packages.items()).encode()
         release=('-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nOrigin: Debian\nCodename: bookworm\nVersion: fixture\nDate: Fri, 01 Jan 2010 00:00:00 UTC\nSHA256:\n '+m.sha(self.index)+' '+str(len(self.index))+' main/binary-amd64/Packages\n-----BEGIN PGP SIGNATURE-----\nsynthetic\n-----END PGP SIGNATURE-----\n').encode()
         self.io.put(build_entry.DATA+'/Packages',self.index);self.io.put(build_entry.DATA+'/InRelease',release)
@@ -162,11 +167,13 @@ class BuildFixture:
         if raw is None:raise FileNotFoundError(path)
         assert len(raw)<=cap;return raw
     def read_original(self,path,cap):
-        raw=self.data.get(path,self.io.files.get(path));assert raw is not None and len(raw)<=cap
-        return {'bytes':raw,'sourcePath':path,'uid':0,'gid':0,'mode':0o755,'regular':True,'symlinkChainSha256':'c'*64}
+        canonical={'/bin/systemctl':'/usr/bin/systemctl',
+                   '/lib/systemd/systemd':'/usr/lib/systemd/systemd'}.get(path,path)
+        raw=self.data.get(canonical,self.io.files.get(canonical));assert raw is not None and len(raw)<=cap
+        return {'bytes':raw,'sourcePath':canonical,'uid':0,'gid':0,'mode':0o755,'regular':True,'symlinkChainSha256':'c'*64}
     def stat_original(self,path):
         view=self.read_original(path,64*1024**2)
-        return {'sourcePath':path,'type':'regular','dev':1,'ino':101,'size':len(view['bytes']),'uid':0,'gid':0,
+        return {'sourcePath':view['sourcePath'],'type':'regular','dev':1,'ino':101,'size':len(view['bytes']),'uid':0,'gid':0,
           'mode':0o755,'nlink':1,'mtimeNs':1,'ctimeNs':1,'aliasProofSha256':'c'*64}
     def facts(self,path):
         raw=self.io.files.get(path,self.data.get(path))
@@ -199,6 +206,23 @@ class BuildFixture:
 
 
 class BuildGuestJoinTests(unittest.TestCase):
+    def test_pinned_bookworm_systemctl_alias_refuses_missing_owner_or_substitution(self):
+        for defect,reason in (('missing','build_entry.tool_filelist'),
+                              ('owner','build_entry.tool_owner'),
+                              ('substituted','build_entry.tool_alias_identity')):
+            with self.subTest(defect=defect):
+                f=BuildFixture()
+                if defect=='missing':
+                    f.lists['systemd']=f.lists['systemd'].replace(b'/bin/systemctl\n',b'')
+                elif defect=='owner':
+                    f.owners['/bin/systemctl']='other'
+                else:
+                    original=f.stat_original
+                    def switched(path):
+                        row=original(path)
+                        return dict(row,ino=999) if path=='/bin/systemctl' else row
+                    f.stat_original=switched
+                with self.assertRaisesRegex(build_entry.Refusal,reason):f.build()
     def test_actual_build_transaction_output_is_accepted_by_actual_bootstrap_prepare(self):
         f=BuildFixture();f.build();plan=guard.verify(f.io);data=issuer.prepare(plan,f.io,f.program)
         runtime=plan.controls['runtime'];apt=plan.controls['apt']

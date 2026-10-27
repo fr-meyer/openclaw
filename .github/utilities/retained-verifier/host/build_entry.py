@@ -226,9 +226,12 @@ def capture_command(argv,timeout,capout,caperr,io):
 
 def tool_row(role,path,ops,installed,show,lists,indexed,alias_evidence=None):
     """Join actual owner/list/version and signed-index archive expectation."""
-    # Only the known Debian merged-/usr manager spelling pair may differ from
-    # the fixed execution path. No ambient/fuzzy ownership search is permitted.
-    accepted=(path,) if path!='/usr/lib/systemd/systemd' else (path,'/lib/systemd/systemd')
+    # Debian Bookworm still records these two files under /bin or /lib. Keep
+    # execution on the fixed /usr path and prove each registered alias is the
+    # same immutable inode, owned by the exact signed-index package.
+    aliases={'/usr/lib/systemd/systemd':'/lib/systemd/systemd',
+             '/usr/bin/systemctl':'/bin/systemctl'}
+    accepted=(path,aliases[path]) if path in aliases else (path,)
     listed=[(name,registered) for name,paths in lists.items() for registered in accepted if registered in paths]
     need(1<=len(listed)<=len(accepted) and len({name for name,_ in listed})==1,'build_entry.tool_filelist')
     original=ops.stat_original(path)
