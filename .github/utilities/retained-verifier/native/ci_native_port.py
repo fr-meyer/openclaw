@@ -376,7 +376,7 @@ class Port:
           values['PrivateIPC'] is True and values['CapabilityBoundingSet']==values['AmbientCapabilities']==0,'ci.unit_security_readback')
         require(type(values['MountFlags']) is int and values['MountFlags']==ci_anchors.MS_PRIVATE,'ci.unit_propagation_readback')
         pid=values['MainPID'];require(type(pid) is int and pid>1,'ci.unit_pid')
-        invocation=self.typed(unit,'InvocationID','ay');group=self.typed(unit,'ControlGroup','s')
+        invocation=self.typed(unit,'InvocationID','ay');group=self.typed(service,'ControlGroup','s')
         require(type(invocation) is list and len(invocation)==16 and all(type(x) is int and 0<=x<=255 for x in invocation),'ci.invocation')
         status=probe.status(self.ops.read('/proc/'+str(pid)+'/status',16384).decode(),full=True)
         uid,gid=int(status['Uid'][0]),int(status['Gid'][0])

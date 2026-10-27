@@ -28,8 +28,16 @@ def decode(raw):
 
 class NativeWorkerFiles:
  def __init__(self):
-  need(sys.platform=='linux' and 61184<=os.getuid()<=65519 and os.getuid()==os.geteuid() and os.getgid()==os.getegid() and
-    os.getgroups()==[] and str(Path(__file__).resolve())=='/code/worker.py','worker_boot.native_unit_required')
+  uid,euid,gid,egid,groups=os.getuid(),os.geteuid(),os.getgid(),os.getegid(),os.getgroups()
+  checks={'linux':sys.platform=='linux','uidRange':61184<=uid<=65519,
+          'uidEqEuid':uid==euid,'gidEqEgid':gid==egid,
+          'noSupplementary':groups==[],'codePath':str(Path(__file__).resolve())=='/code/worker.py'}
+  if not all(checks.values()):
+   # This worker is only built into a synthetic no-NIC CI guest. The bounded
+   # numeric/boolean diagnostic carries no report, credential or file bytes.
+   sys.stderr.write('OCV_WORKER_IDENTITY_V1:'+canonical({'checks':checks,'uid':uid,'gid':gid,
+     'groupCount':len(groups),'groupsHead':groups[:8]}).decode()+'\n')
+   raise Refusal('worker_boot.native_unit_required')
  def pending(self,path,cap):
   need(path=='/control/admission.json','worker_boot.pending_path')
   try:s=Path(path).lstat()

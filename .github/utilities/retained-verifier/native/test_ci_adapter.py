@@ -133,6 +133,8 @@ class Ops:
             return self.result()
         if argv[0]=='/usr/bin/busctl':
             name=argv[-1]
+            if name=='ControlGroup' and argv[-2]!='org.freedesktop.systemd1.Service':
+                return self.result(b'',code=1)
             values={'DynamicUser':('b',True),'User':('s',self.port.context['identityName']),
               'Group':('s',self.port.context['identityName']),'MainPID':('u',self.expected['pid']),
               'NoNewPrivileges':('b',True),'PrivateNetwork':('b',True),'PrivateIPC':('b',True),
@@ -232,6 +234,8 @@ class Integration(unittest.TestCase):
         self.assertGreater(len(self.ops.kernel.calls),10)
         self.assertIn(self.port.root+'/root/control/imports.json',self.ops.files)
         self.assertEqual(len(self.commands('/usr/bin/gpgv')),1);self.assertEqual(len(self.commands('/usr/bin/systemd-run')),1)
+        self.assertTrue(any(call[1][-2:]==('org.freedesktop.systemd1.Service','ControlGroup')
+                            for call in self.commands('/usr/bin/busctl')))
         self.assertIn('input_released',self.ops.events);self.assertIn('input_read',self.ops.events)
         self.assertTrue(result['custodyComplete']);self.assertTrue(result['ownedUnitEmpty'])
         with self.assertRaises(Refusal):self.run_driver()

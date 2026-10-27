@@ -1,5 +1,5 @@
 """Source/file/process-fact tests only. No native capability is ever issued."""
-import base64,copy,datetime as dt,hashlib,importlib.util,json,os,sys,tempfile
+import base64,copy,datetime as dt,hashlib,importlib.util,io,json,os,sys,tempfile
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -153,6 +153,18 @@ class Verification(unittest.TestCase):
   with self.assertRaises(worker_entry.Refusal):worker_entry.main()
   with self.assertRaises(guard.Refusal):issuer.load_program(guard.verify(self.io),self.io)
   with self.assertRaises(guard.Refusal):native_io.NativeEvidenceIO(B/'guest_boot.py')
+ def test_native_worker_identity_refusal_emits_only_bounded_facts(self):
+  stream=io.StringIO()
+  with patch.object(worker_entry.os,'getuid',return_value=62000),patch.object(worker_entry.os,'geteuid',return_value=62000),\
+       patch.object(worker_entry.os,'getgid',return_value=62000),patch.object(worker_entry.os,'getegid',return_value=62000),\
+       patch.object(worker_entry.os,'getgroups',return_value=[62000]),patch.object(worker_entry.sys,'stderr',stream):
+   with self.assertRaisesRegex(worker_entry.Refusal,'worker_boot.native_unit_required'):
+    worker_entry.NativeWorkerFiles()
+  output=stream.getvalue();self.assertLess(len(output),512)
+  self.assertTrue(output.startswith('OCV_WORKER_IDENTITY_V1:'))
+  fact=json.loads(output.split(':',1)[1]);self.assertEqual(fact['checks']['noSupplementary'],False)
+  self.assertEqual(fact['groupsHead'],[62000]);self.assertEqual(fact['groupCount'],1)
+  self.assertNotIn('report',output);self.assertNotIn('secret',output)
  def test_source_mode_owner_hash_and_extra_file_refuse(self):
   for kind in('mode','owner','hash','extra'):
    with self.subTest(kind=kind):
