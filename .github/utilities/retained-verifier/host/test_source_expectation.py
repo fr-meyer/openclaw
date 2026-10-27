@@ -212,6 +212,27 @@ class BuildFixture:
 
 
 class BuildGuestJoinTests(unittest.TestCase):
+    def test_required_owner_refusal_reports_public_path_and_remains_fatal(self):
+        f=BuildFixture();original=f.run
+        missing='/usr/bin/gcc-12'
+        def failed_owner(argv,timeout):
+            if argv==('/usr/bin/dpkg-query','--search',missing):
+                return {'exitCode':1,'timedOut':False,'captureComplete':True,
+                        'ownedChildExited':True,'ownershipRetained':False,
+                        'stdout':b'','stderr':b'dpkg-query: no path found'}
+            return original(argv,timeout)
+        f.run=failed_owner
+        output=io.StringIO()
+        with redirect_stderr(output):
+            with self.assertRaisesRegex(build_entry.Refusal,'build_entry.command_refused'):f.build()
+        diagnostic=json.loads(output.getvalue())
+        self.assertEqual(diagnostic['schema'],'ocv-required-owner-refusal-v1')
+        self.assertEqual(diagnostic['path'],missing)
+        self.assertEqual(diagnostic['exitCode'],1)
+        self.assertEqual((diagnostic['stdoutBytes'],diagnostic['stderrBytes']),
+                         (0,len(b'dpkg-query: no path found')))
+        self.assertNotIn('stderr',diagnostic)
+
     def test_optional_site_hook_stays_outside_runtime_without_widening_root(self):
         f=BuildFixture();original=f.stat_original
         def checked(path):

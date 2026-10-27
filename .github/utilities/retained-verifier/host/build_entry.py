@@ -115,6 +115,29 @@ def command_ok(result, *, signature_status=False):
     return result['stdout']
 
 
+def required_owner(ops,path):
+    """Keep the first exact public package path when a required owner lookup fails."""
+    result=ops.run(('/usr/bin/dpkg-query','--search',path),10)
+    try:return command_ok(result)
+    except Refusal:
+        # The path comes only from the public installed Debian package view,
+        # parsed ldd output, or the fixed compiler/loader paths. Never print
+        # command output, which is not needed to diagnose the failed lookup.
+        diagnostic={'schema':'ocv-required-owner-refusal-v1','path':path,
+                    'exitCode':result.get('exitCode') if type(result)is dict and
+                               type(result.get('exitCode'))is int else None,
+                    'timedOut':result.get('timedOut') if type(result)is dict else None,
+                    'captureComplete':result.get('captureComplete') if type(result)is dict else None,
+                    'ownedChildExited':result.get('ownedChildExited') if type(result)is dict else None,
+                    'ownershipRetained':result.get('ownershipRetained') if type(result)is dict else None,
+                    'stdoutBytes':len(result['stdout']) if type(result)is dict and
+                                  type(result.get('stdout'))is bytes else None,
+                    'stderrBytes':len(result['stderr']) if type(result)is dict and
+                                  type(result.get('stderr'))is bytes else None}
+        sys.stderr.write(canonical(diagnostic).decode()+'\n')
+        raise
+
+
 def deferred_signature_failure(argv,result,metadata_ready):
     """Keep one complete exit-2 gpgv result for policy classification."""
     return (metadata_ready is False and argv==GPG_METADATA and type(result)is dict and
@@ -343,7 +366,7 @@ def run_checked(ops,header,source_sha,context_sha,leaves):
     resolutions={p:command_ok(ops.run(('/usr/bin/ldd',p),15)) for p in sorted(elf_inputs)}
     required=set(regular)|set(inventory.TOOL_PATHS)|{runtime.LOADER}
     for p,raw in resolutions.items():required.update(runtime.parse_ldd(raw,allow_no_dependencies=p!=runtime.PYTHON))
-    ownership={p:command_ok(ops.run(('/usr/bin/dpkg-query','--search',p),10)) for p in sorted(required)}
+    ownership={p:required_owner(ops,p) for p in sorted(required)}
     proof=inventory.input_binding(data['Packages'],raw_show,filelists,ownership,resolutions,{},
         context_sha256=context_sha,signature_sha256=signature_sha,install_sha256=install_sha)
     installed,evidence=inventory.build_inventory(data['Packages'],raw_show,filelists,ownership,resolutions,ops,proof,{})
