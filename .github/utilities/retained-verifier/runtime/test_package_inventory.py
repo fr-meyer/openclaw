@@ -21,6 +21,7 @@ class Inventory(unittest.TestCase):
   self.owners={p:'gcc-12' if p in m.TOOL_PATHS else 'python3.11-minimal' if p==runtime.PYTHON else
     'libpython3.11-stdlib' if p.startswith(runtime.STDLIB) else 'libc6' for p in self.data}
   self.filelists={self.binaries[n]:('\n'.join(['/.','/usr']+sorted(p for p,o in self.owners.items() if o==n))+'\n').encode() for n in self.names}
+  self.filelists['libpython3.11-minimal']+=m.SITE_CUSTOMIZE.encode()+b'\n'
   # Directory rows are part of normal dpkg listfiles, never hashed as files.
   self.filelists['libpython3.11-stdlib']+=runtime.STDLIB.rstrip('/').encode()+b'\n'
   self.ownership={p:(self.binaries[n]+': '+p+'\n').encode() for p,n in self.owners.items()}
@@ -112,6 +113,13 @@ class Inventory(unittest.TestCase):
    with self.subTest(binary=binary,changed=changed):
     with self.assertRaises(runtime.Refusal) as error:m.parse_listfiles(changed,binary_name=binary)
     self.assertEqual(error.exception.code,code)
+ def test_optional_site_hook_is_not_followed_copied_or_reassigned(self):
+  manifest,_=self.build()
+  self.assertNotIn(m.SITE_CUSTOMIZE,{row['path'] for row in manifest['files']})
+  self.assertFalse(any(m.SITE_CUSTOMIZE in row for row in self.reader.calls))
+  self.setUp();self.filelists['libpython3.11-minimal']=self.filelists['libpython3.11-minimal'].replace(
+   m.SITE_CUSTOMIZE.encode()+b'\n',b'');self.bind();self.refused('inventory.site_hook_package')
+  self.setUp();self.filelists['binutils']+=m.SITE_CUSTOMIZE.encode()+b'\n';self.bind();self.refused('inventory.site_hook_package')
  def test_pycache_generated_bytes_not_read_and_required_tool_missing_refuses(self):
   self.filelists['libpython3.11-stdlib']+=runtime.STDLIB.encode()+b'__pycache__/unknown.pyc\n';self.bind();self.build()
   self.assertFalse(any('__pycache__'in row[1] for row in self.reader.calls))

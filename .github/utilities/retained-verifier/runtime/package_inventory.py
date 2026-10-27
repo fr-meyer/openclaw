@@ -19,6 +19,7 @@ FILE_CAP=64*1024*1024
 INDEX_CAP=128*1024*1024
 MAX_FILES=30000
 MAX_READ_BYTES=512*1024*1024
+SITE_CUSTOMIZE=runtime.STDLIB+'sitecustomize.py'
 DASH_DIVERSION={
  '/bin/sh':'package diverts others to: /bin/sh.distrib',
  '/usr/share/man/man1/sh.1.gz':'package diverts others to: /usr/share/man/man1/sh.distrib.1.gz',
@@ -175,13 +176,18 @@ def build_inventory(packages_raw,installed_show_raw,filelists,ownership,resoluti
  need(type(filelists)is dict and set(filelists)=={r['binaryName'] for r in installed.values()},'inventory.list_roster')
  lists={name:parse_listfiles(filelists[row['binaryName']],binary_name=row['binaryName'])
         for name,row in installed.items()}
+ # Debian's optional site hook is a packaged symlink into /etc/python3.11.
+ # Every issued interpreter uses -I -S, so do not follow or copy this hook.
+ need({name for name,paths in lists.items() if SITE_CUSTOMIZE in paths}=={'libpython3.11-minimal'},
+      'inventory.site_hook_package')
  index_rows={};packages=[]
  for name,row in installed.items():
   key=(name,row['version'],row['architecture']);need(key in signed,'inventory.installed_version_unindexed')
   entry=signed[key];index_rows[name]=entry
   packages.append({'name':name,'version':row['version'],'architecture':row['architecture'],'debSha256':entry['sha256']})
- primary={p for rows in lists.values() for p in rows if p==runtime.PYTHON or p.startswith(runtime.STDLIB)
-          and '__pycache__'not in p.split('/') and not p.endswith('.pyc')}
+ primary={p for rows in lists.values() for p in rows if p!=SITE_CUSTOMIZE and
+          (p==runtime.PYTHON or p.startswith(runtime.STDLIB) and
+           '__pycache__'not in p.split('/') and not p.endswith('.pyc'))}
  need(runtime.PYTHON in primary,'inventory.python_missing')
  metadata={};required=set(TOOL_PATHS)|{runtime.LOADER}
  for path in sorted(primary):

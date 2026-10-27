@@ -333,8 +333,11 @@ def run_checked(ops,header,source_sha,context_sha,leaves):
                for r in show.values()}
     lists={n:parse_installed_filelist(inventory,r['binaryName'],filelists[r['binaryName']])
            for n,r in show.items()}
-    primary={p for paths in lists.values() for p in paths if p==runtime.PYTHON or
-             p.startswith(runtime.STDLIB) and '__pycache__'not in p.split('/') and not p.endswith('.pyc')}
+    need({n for n,paths in lists.items() if inventory.SITE_CUSTOMIZE in paths}==
+         {'libpython3.11-minimal'},'build_entry.site_hook_package')
+    primary={p for paths in lists.values() for p in paths if p!=inventory.SITE_CUSTOMIZE and
+             (p==runtime.PYTHON or p.startswith(runtime.STDLIB) and
+              '__pycache__'not in p.split('/') and not p.endswith('.pyc'))}
     regular={p for p in primary if ops.stat_original(p)['type']=='regular'}
     elf_inputs={p for p in regular if p==runtime.PYTHON or p.endswith('.so')}
     resolutions={p:command_ok(ops.run(('/usr/bin/ldd',p),15)) for p in sorted(elf_inputs)}
@@ -477,8 +480,11 @@ class NativeBuildOps:
                 if pending:need(stat.S_ISDIR(s.st_mode),'build_entry.parent_type')
                 parts.append(item)
         resolved='/'+('/'.join(parts))
-        need(resolved.startswith(('/usr/','/lib/','/lib64/','/boot/','/opt/ocv/','/etc/apt/','/work/out/')),
-             'build_entry.source_root')
+        allowed=resolved.startswith(('/usr/','/lib/','/lib64/','/boot/','/opt/ocv/','/etc/apt/','/work/out/'))
+        if not allowed and path.startswith('/usr/lib/python3.11/') and len(path)<=1024 and len(resolved)<=1024:
+            sys.stderr.write(canonical({'schema':'ocv-build-root-refusal-v1','packagePath':path,
+                                        'resolvedPath':resolved}).decode()+'\n')
+        need(allowed,'build_entry.source_root')
         s=os.lstat(resolved)
         return resolved,s,sha(canonical(chain))
 

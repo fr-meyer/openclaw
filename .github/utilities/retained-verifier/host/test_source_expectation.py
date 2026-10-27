@@ -150,6 +150,7 @@ class BuildFixture:
         self.lists['dash']+=(b'/bin/dash\n/bin/sh\npackage diverts others to: /bin/sh.distrib\n'
                             b'/usr/share/man/man1/sh.1.gz\n'
                             b'package diverts others to: /usr/share/man/man1/sh.distrib.1.gz\n')
+        self.lists['libpython3.11-minimal']+=package_inventory.SITE_CUSTOMIZE.encode()+b'\n'
         self.owners['/bin/systemctl']='systemd';self.owners['/lib/systemd/systemd']='systemd'
         self.index=''.join('Package: '+n+'\nVersion: '+r['version']+'\nArchitecture: amd64\nFilename: pool/main/f/fixture/'+n+'_1_amd64.deb\nSize: 12\nSHA256: '+r['debSha256']+'\n\n'for n,r in self.packages.items()).encode()
         release=('-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nOrigin: Debian\nCodename: bookworm\nVersion: fixture\nDate: Fri, 01 Jan 2010 00:00:00 UTC\nSHA256:\n '+m.sha(self.index)+' '+str(len(self.index))+' main/binary-amd64/Packages\n-----BEGIN PGP SIGNATURE-----\nsynthetic\n-----END PGP SIGNATURE-----\n').encode()
@@ -211,6 +212,16 @@ class BuildFixture:
 
 
 class BuildGuestJoinTests(unittest.TestCase):
+    def test_optional_site_hook_stays_outside_runtime_without_widening_root(self):
+        f=BuildFixture();original=f.stat_original
+        def checked(path):
+            self.assertNotEqual(path,package_inventory.SITE_CUSTOMIZE)
+            return original(path)
+        f.stat_original=checked;f.build()
+        f=BuildFixture();f.lists['libpython3.11-minimal']=f.lists['libpython3.11-minimal'].replace(
+            package_inventory.SITE_CUSTOMIZE.encode()+b'\n',b'')
+        with self.assertRaisesRegex(build_entry.Refusal,'build_entry.site_hook_package'):f.build()
+
     def test_actual_build_transaction_refuses_changed_dash_diversion(self):
         f=BuildFixture()
         f.lists['dash']=f.lists['dash'].replace(b'/usr/share/man/man1/sh.distrib.1.gz',
