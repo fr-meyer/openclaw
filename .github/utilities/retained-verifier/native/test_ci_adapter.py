@@ -414,6 +414,21 @@ class Integration(unittest.TestCase):
         self.assertEqual(result['reason'],'probe.mount_source_or_flags',result)
         self.assertNotIn('input_read',self.ops.events)
 
+    def test_unknown_ipv6_route_emits_only_bounded_shape_and_refuses(self):
+        row=('2'*32+' 80 '+'0'*32+' 00 '+'0'*32+
+             ' 00000000 00000000 00000000 00000001 lo\n').encode()
+        self.ops.kernel.data['/proc/77/net/ipv6_route']=row
+        result=self.run_driver()
+        self.assertEqual(result['reason'],'probe.external_ipv6_route',result)
+        diagnostic=(self.root/'custody/host-diagnostics.private.bin').read_bytes()
+        records=json.loads(diagnostic)['facts']['records']
+        shape=next(r['facts'] for r in records if r['role']=='network.ipv6_route.shape')
+        self.assertEqual(shape['count'],1)
+        self.assertEqual(shape['rows'][0]['destinationClass'],'other')
+        self.assertEqual(shape['rows'][0]['interface'],'lo')
+        self.assertNotIn(b'2'*32,diagnostic)
+        self.assertNotIn('input_read',self.ops.events)
+
     def test_manager_namespace_mismatch_refuses_before_unit(self):
         self.ops.fail='manager_namespace';result=self.run_driver()
         self.assertEqual(result['reason'],'ci.manager_namespace_changed');self.assertEqual(self.commands('/usr/bin/systemd-run'),[])

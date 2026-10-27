@@ -439,6 +439,31 @@ def collect_and_validate(reader,expected):
                         and re.fullmatch('[0-9A-Fa-f]{8}',cols[1]) and int(cols[1],16)&255==127
                         and re.fullmatch('[0-9A-Fa-f]{8}',cols[7]) and int(cols[7],16)!=0,'probe.external_route')
             else:
+                # Refusal-only, bounded shape evidence. Never publish raw
+                # addresses or infer a trusted route from the observed table.
+                def address_class(word):
+                    if re.fullmatch('[0-9A-Fa-f]{32}',word) is None:return 'invalid'
+                    number=int(word,16)
+                    if number==0:return 'unspecified'
+                    if number==1:return 'loopback'
+                    if number>>120==255:return 'multicast'
+                    if number>>118==0x3fa:return 'link_local'
+                    return 'other'
+                route_rows=[]
+                for line in raw.splitlines()[:6]:
+                    cols=line.split()
+                    def item(index):return cols[index] if len(cols)>index else ''
+                    def hex_word(index,width):
+                        word=item(index)
+                        return word.lower() if re.fullmatch('[0-9A-Fa-f]{'+str(width)+'}',word) else 'invalid'
+                    address=item(0)
+                    route_rows.append({'fields':len(cols),'destinationClass':address_class(address),
+                        'destinationSha256':sha(address.encode()),'prefixLength':hex_word(1,2),
+                        'sourceClass':address_class(item(2)),'sourcePrefixLength':hex_word(3,2),
+                        'gatewayZero':item(4)=='0'*32,'metric':hex_word(5,8),
+                        'flags':hex_word(8,8),'interface':'lo' if item(9)=='lo' else 'other'})
+                obs.add('network.ipv6_route.shape',count=len(raw.splitlines()),rows=route_rows,
+                        omitted=max(0,len(raw.splitlines())-6))
                 for line in raw.splitlines():
                     cols=line.split();require(len(cols)==10 and cols[-1]=='lo'
                         and cols[0]=='00000000000000000000000000000001' and cols[1]=='80'
