@@ -243,10 +243,10 @@ def status(raw, *, full=True):
     return rows
 
 
-def mount_table(raw):
+def mount_table(raw, *, host_binfmt_stack=False):
     require(type(raw) is str and len(raw)<=1048576 and raw.endswith('\n'),'probe.mount_cap')
     lines=raw.splitlines();require(0<len(lines)<=4096,'probe.mount_cap')
-    rows=[];ids=set();targets=set()
+    rows=[];ids=set();targets={}
     def unescape(value):
         replacements={'040':' ','011':'\t','012':'\n','134':'\\'}
         require(re.search(r'\\(?!040|011|012|134)',value) is None,'probe.mount_escape')
@@ -259,13 +259,19 @@ def mount_table(raw):
         valid_target=path(target);valid_root=path(root)
         safe_labels={'/','/run','/proc','/sys','/dev','/dev/shm','/dev/pts','/tmp','/var/tmp',
                      '/run/lock','/sys/fs/cgroup','/run/systemd/incoming'}
-        require(mount_id not in ids and target not in targets and valid_target and valid_root,
+        repeated=target in targets
+        # The controller's host namespace can have an autofs/binfmt_misc
+        # stack. It is never a verifier source. Child mount parsing stays
+        # strict, and no other stacked target is admitted.
+        allowed_host_stack=(host_binfmt_stack and target=='/proc/sys/fs/binfmt_misc'
+                            and targets.get(target)==1)
+        require(mount_id not in ids and (not repeated or allowed_host_stack) and valid_target and valid_root,
                 'probe.mount_stacked_or_invalid',
-                {'mountId':mount_id,'idRepeated':mount_id in ids,'targetRepeated':target in targets,
+                {'mountId':mount_id,'idRepeated':mount_id in ids,'targetRepeated':repeated,
                  'targetLabel':target if target in safe_labels else 'other',
                  'targetSha256':sha(target.encode()),'targetBytes':len(target.encode()),
                  'targetValid':valid_target,'rootValid':valid_root})
-        ids.add(mount_id);targets.add(target)
+        ids.add(mount_id);targets[target]=targets.get(target,0)+1
         vfs=values[5].split(',');fs=values[split+3].split(',');optional=values[6:split]
         for wordlist in (vfs,fs,optional):tokens(wordlist,'probe.mount_flags')
         require(all(re.fullmatch(r'(?:shared|master|propagate_from):[1-9]\d*|unbindable',v) for v in optional),

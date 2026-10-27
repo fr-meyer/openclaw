@@ -97,7 +97,8 @@ class Sources:
         return row,root or '/'
     def collect(self,context):
         require(self.prepared and self.namespaces()==self.manager,'ci.manager_namespace_changed')
-        self.host_mounts=probe.mount_table(self.ops.read('/proc/self/mountinfo',1048576).decode())
+        self.host_mounts=probe.mount_table(self.ops.read('/proc/self/mountinfo',1048576).decode(),
+                                           host_binfmt_stack=True)
         sources={}
         for target,parent in (('/tmp','/tmp'),('/var/tmp','/var/tmp')):
             matches=self.roster(parent);require(len(matches)==1,'ci.anchor_private_tmp_ambiguous')
@@ -109,6 +110,9 @@ class Sources:
         rows=[]
         for target in sorted(probe.MOUNT_TARGETS):
             source=sources.get(target,self.root+'/root'+('' if target=='/' else target))
+            require(not (source=='/proc/sys/fs/binfmt_misc' or
+                         source.startswith('/proc/sys/fs/binfmt_misc/')),
+                    'ci.anchor_binfmt_not_source')
             mode=0o1777 if target in ('/tmp','/var/tmp') else 0o600 if target=='/run/systemd/incoming' else None
             info=self.trusted(source,mode=mode)
             role=probe.FIXED_ROLES.get(target,target[1:].replace('/','_'))

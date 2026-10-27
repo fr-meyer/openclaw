@@ -256,6 +256,25 @@ class Integration(unittest.TestCase):
         facts=diagnostic['facts'];self.assertEqual(facts['targetLabel'],'/run')
         self.assertIs(facts['targetRepeated'],True)
         self.assertNotIn('gate',self.port.effect_intents)
+    def test_host_binfmt_stack_does_not_change_child_mount_rule(self):
+        import ci_probe
+        base=(b'1 9 8:1 / / rw,nodev - ext4 /dev/sda1 rw\n'
+              b'2 1 0:20 / /run rw,nodev - tmpfs tmpfs rw\n')
+        stack=(b'3 1 0:21 / /proc/sys/fs/binfmt_misc rw,nodev - autofs systemd-1 rw\n'
+               b'4 3 0:22 / /proc/sys/fs/binfmt_misc rw,nodev - binfmt_misc binfmt_misc rw\n')
+        with self.assertRaisesRegex(Refusal,'probe.mount_stacked_or_invalid'):
+            ci_probe.mount_table((base+stack).decode())
+        self.ops.stage_file('/proc/self/mountinfo',base+stack,0o444)
+        result=self.run_driver();self.assertEqual(result['unitStatus'],'passed',result)
+        self.assertTrue(result['custodyComplete'])
+        for additional in (
+            b'5 4 0:23 / /proc/sys/fs/binfmt_misc rw,nodev - binfmt_misc binfmt_misc rw\n',
+            b'5 4 0:23 / /tmp rw,nodev - tmpfs tmpfs rw\n'
+            b'6 5 0:24 / /tmp rw,nodev - tmpfs tmpfs rw\n',
+        ):
+            with self.subTest(additional=additional):
+                with self.assertRaisesRegex(Refusal,'probe.mount_stacked_or_invalid'):
+                    ci_probe.mount_table((base+stack+additional).decode(),host_binfmt_stack=True)
     def test_busctl_property_value_is_direct_and_strictly_typed(self):
         self.port.unit=self.context['unitName']
         for kind,value in (('b',True),('s','success'),('u',77),('t',262144),('i',-1),('ay',list(range(16)))):
