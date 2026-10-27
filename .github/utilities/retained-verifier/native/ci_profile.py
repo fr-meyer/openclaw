@@ -2,7 +2,7 @@
 from pathlib import Path
 from ci_protocol import canonical, decode, identity, require, sha
 
-DESIGN_PROFILE_SHA = "6fcfba2eaf0670f5cc4f0eb528fe7340cad0b463943691fe3789e7da3ae1673c"
+DESIGN_PROFILE_SHA = "0e428b6ca56752ba7f03b6dc201169c47fa7990e085781eca78b65de7fbe53c5"
 ARMED = False
 
 
