@@ -3,9 +3,11 @@ import ast
 import dataclasses
 import stat
 import importlib.util
+import os
 from pathlib import Path
 import signal
 import sys
+import tempfile
 import types
 import unittest
 from unittest import mock
@@ -246,30 +248,68 @@ class ProjectAndSources(unittest.TestCase):
     h._freeze_outputs(str(self.project))
   with mock.patch.object(h.Path,'resolve',lambda p:p),mock.patch.object(h.Path,'is_symlink',return_value=True), \
        self.assertRaisesRegex(h.Refusal,'host.freeze_target'):h._freeze_outputs(str(self.project))
- def test_mkosi_image_owner_correction_is_one_checked_public_file(self):
+ def test_mkosi_output_owner_correction_is_exact_three_file_vector(self):
   import command_factories as factory
   args={'project':str(self.project),'uid':1001,'gid':1001}
-  exact=factory.own_mkosi_image(**args)
+  exact=factory.own_mkosi_outputs(**args)
   self.assertEqual(exact,('/usr/bin/sudo','-n','--','/usr/bin/chown','--from=1001:1001',
-                          '--','0:0',str(self.project/'out/ocv-test.raw')))
-  good=types.SimpleNamespace(st_mode=stat.S_IFREG|0o644,st_uid=1001,st_gid=1001,
-                             st_nlink=1,st_size=5*1024**3)
+                          '--','0:0',*(str(self.project/'out'/name) for name in
+                           ('ocv-test.raw','kernel.bin','initrd.img'))))
+  good=types.SimpleNamespace(st_mode=stat.S_IFREG|0o644,st_uid=1001,st_gid=1001,st_nlink=1,st_size=100)
   with mock.patch.object(h.Path,'resolve',lambda p:p),mock.patch.object(h.Path,'is_symlink',return_value=False), \
-       mock.patch.object(h.Path,'lstat',return_value=good):h._preflight_mkosi_image(self.permit,args)
-  for field,value in (('st_uid',0),('st_gid',0),('st_nlink',2),('st_size',0),
-                      ('st_size',7*1024**3),('st_mode',stat.S_IFDIR|0o755),
+       mock.patch.object(h.Path,'lstat',return_value=good):h._preflight_mkosi_outputs(self.permit,args)
+  for field,value in (('st_uid',0),('st_gid',0),('st_nlink',2),('st_size',0),('st_mode',stat.S_IFDIR|0o755),
                       ('st_mode',stat.S_IFREG|0o664)):
    bad=types.SimpleNamespace(**vars(good));setattr(bad,field,value)
    with self.subTest(field=field,value=value),mock.patch.object(h.Path,'resolve',lambda p:p), \
         mock.patch.object(h.Path,'is_symlink',return_value=False), \
         mock.patch.object(h.Path,'lstat',return_value=bad), \
-        self.assertRaisesRegex(h.Refusal,'host.mkosi_image_identity'):
-    h._preflight_mkosi_image(self.permit,args)
-  with self.assertRaisesRegex(h.Refusal,'host.mkosi_image_owner'):
-   h._preflight_mkosi_image(self.permit,{**args,'uid':1002})
+        self.assertRaisesRegex(h.Refusal,'host.mkosi_outputs_identity'):
+    h._preflight_mkosi_outputs(self.permit,args)
+  with self.assertRaisesRegex(h.Refusal,'host.mkosi_outputs_owner'):
+   h._preflight_mkosi_outputs(self.permit,{**args,'uid':1002})
   with mock.patch.object(h.Path,'resolve',lambda p:p),mock.patch.object(h.Path,'is_symlink',return_value=True), \
-       self.assertRaisesRegex(h.Refusal,'host.mkosi_image_path'):
-   h._preflight_mkosi_image(self.permit,args)
+       self.assertRaisesRegex(h.Refusal,'host.mkosi_outputs_path'):
+   h._preflight_mkosi_outputs(self.permit,args)
+ def test_mkosi_staging_roster_normalizes_only_exact_public_sidecars(self):
+  with tempfile.TemporaryDirectory() as directory:
+   project=Path(directory).resolve();out=project/'out';out.mkdir(mode=0o755)
+   for name in h.MKOSI_STAGE_DIRS:(out/('ocv-test-'+name)).mkdir(mode=0o755)
+   for name in h.MKOSI_STAGE_FILES:(out/('ocv-test-'+name)).write_bytes(b'public')
+   (out/'ocv-test.raw').write_bytes(b'untouched-image-marker')
+   original=h.Path.lstat
+   def staged_stat(path):
+    info=original(path)
+    if path.name in {*h.MKOSI_STAGE_DIRS,*(('ocv-test-'+n) for n in h.MKOSI_STAGE_DIRS)}:
+     return types.SimpleNamespace(**{**{key:getattr(info,key) for key in
+       ('st_dev','st_ino','st_mode','st_uid','st_gid','st_size')},'st_uid':0,'st_gid':0})
+    return info
+   with mock.patch.object(h.Path,'lstat',staged_stat):
+    h._normalize_mkosi_roster(str(project),os.getuid(),os.getgid())
+   for name in (*h.MKOSI_STAGE_DIRS,*h.MKOSI_STAGE_FILES):
+    self.assertTrue((out/name).exists());self.assertFalse((out/('ocv-test-'+name)).exists())
+   self.assertEqual((out/'ocv-test.raw').read_bytes(),b'untouched-image-marker')
+  with tempfile.TemporaryDirectory() as directory:
+   project=Path(directory).resolve();out=project/'out';out.mkdir(mode=0o755)
+   with self.assertRaisesRegex(h.Refusal,'host.mkosi_stage_path'):
+    h._normalize_mkosi_roster(str(project),os.getuid(),os.getgid())
+   self.assertEqual(list(out.iterdir()),[])
+  with tempfile.TemporaryDirectory() as directory:
+   project=Path(directory).resolve();out=project/'out';out.mkdir(mode=0o755)
+   for name in h.MKOSI_STAGE_DIRS:(out/('ocv-test-'+name)).mkdir(mode=0o755)
+   for name in h.MKOSI_STAGE_FILES:(out/('ocv-test-'+name)).write_bytes(b'public')
+   (out/'ocv-test-build.json').chmod(0o666)
+   original=h.Path.lstat
+   def staged_stat(path):
+    info=original(path)
+    if path.name in {*h.MKOSI_STAGE_DIRS,*(('ocv-test-'+n) for n in h.MKOSI_STAGE_DIRS)}:
+     return types.SimpleNamespace(**{**{key:getattr(info,key) for key in
+       ('st_dev','st_ino','st_mode','st_uid','st_gid','st_size')},'st_uid':0,'st_gid':0})
+    return info
+   with mock.patch.object(h.Path,'lstat',staged_stat),self.assertRaisesRegex(h.Refusal,'host.mkosi_stage_file'):
+    h._normalize_mkosi_roster(str(project),os.getuid(),os.getgid())
+   self.assertTrue((out/'ocv-test-apt-data').exists())
+   self.assertFalse((out/'apt-data').exists())
  def test_actual_current_factory_roles_nine_suites_and_exact_readonly_output_command(self):
   root=Path(__file__).resolve().parents[1];modules={}
   for relative,function in h.ROLE_MAP.values():

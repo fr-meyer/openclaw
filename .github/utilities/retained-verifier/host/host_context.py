@@ -38,7 +38,7 @@ ROLE_MAP={
  'gpgv_metadata':('host/command_factories.py','gpgv_metadata'),
  'dpkg_query':('host/command_factories.py','dpkg_query'),
  'own_project_chown':('host/command_factories.py','own_project_chown'),
- 'own_mkosi_image':('host/command_factories.py','own_mkosi_image'),
+ 'own_mkosi_outputs':('host/command_factories.py','own_mkosi_outputs'),
  'freeze_public_outputs':('host/command_factories.py','freeze_public_outputs'),
  'python_tests':('host/command_factories.py','python_tests'),
  'mkosi_build':('build/build_recipe.py','mkosi_argv'),
@@ -393,15 +393,61 @@ def _freeze_outputs(project):
        and not info.st_mode&0o022,'host.freeze_identity')
 
 
-def _preflight_mkosi_image(permit,arguments):
+MKOSI_STAGE_FILES={
+ 'apt-export.json':8*1024**2,'static-entry':1024**2,
+ 'runtime.json':16*1024**2,'tools.json':16*1024**2,'imports.json':16*1024**2,
+ 'apt.json':16*1024**2,'package-inventory.json':16*1024**2,
+ 'helper-proof.json':16*1024**2,'build-signature.json':16*1024**2,
+ 'tool-aliases.json':16*1024**2,'build-stage-result.json':16*1024**2,
+ 'kernel.bin':128*1024**2,'initrd.img':512*1024**2,'build.json':16*1024**2}
+MKOSI_STAGE_DIRS=('apt-data','runtime')
+
+
+def _normalize_mkosi_roster(project,uid,gid):
+ """Undo mkosi20.2's exact output prefix for known synthetic sidecars."""
+ out=Path(project)/'out';info=out.lstat()
+ need(out.resolve()==out and stat.S_ISDIR(info.st_mode) and info.st_uid==uid
+      and info.st_gid==gid and stat.S_IMODE(info.st_mode)==0o755,'host.mkosi_output_dir')
+ rows=[]
+ for name in (*MKOSI_STAGE_DIRS,*MKOSI_STAGE_FILES):
+  source=out/('ocv-test-'+name);target=out/name
+  need(os.path.lexists(source) and source.resolve()==source and not source.is_symlink() and
+       not os.path.lexists(target),'host.mkosi_stage_path')
+  fact=source.lstat()
+  if name in MKOSI_STAGE_DIRS:
+   need(stat.S_ISDIR(fact.st_mode) and fact.st_uid==fact.st_gid==0
+        and stat.S_IMODE(fact.st_mode)==0o755,'host.mkosi_stage_directory')
+  else:
+   need(stat.S_ISREG(fact.st_mode) and fact.st_uid==uid and fact.st_gid==gid
+        and fact.st_nlink==1 and 0<fact.st_size<=MKOSI_STAGE_FILES[name]
+        and not fact.st_mode&0o022,'host.mkosi_stage_file')
+  rows.append((source,target,(fact.st_dev,fact.st_ino,fact.st_mode,
+                              fact.st_uid,fact.st_gid,fact.st_size)))
+ for source,target,identity in rows:
+  os.rename(source,target)
+  fact=target.lstat()
+  need(not os.path.lexists(source) and
+       (fact.st_dev,fact.st_ino,fact.st_mode,fact.st_uid,fact.st_gid,fact.st_size)==identity,
+       'host.mkosi_stage_changed')
+
+
+def normalize_mkosi_outputs(permit,project):
+ permit=_permit(permit)
+ _project(permit,project)
+ _normalize_mkosi_roster(project,permit.uid,permit.gid)
+
+
+def _preflight_mkosi_outputs(permit,arguments):
  need(set(arguments)=={'project','uid','gid'} and arguments['uid']==permit.uid
-      and arguments['gid']==permit.gid,'host.mkosi_image_owner')
- path=Path(arguments['project'])/'out/ocv-test.raw'
- need(path.resolve()==path and not path.is_symlink(),'host.mkosi_image_path')
- info=path.lstat()
- need(stat.S_ISREG(info.st_mode) and info.st_uid==permit.uid and info.st_gid==permit.gid
-      and info.st_nlink==1 and 0<info.st_size<=6*1024**3 and not info.st_mode&0o022,
-      'host.mkosi_image_identity')
+      and arguments['gid']==permit.gid,'host.mkosi_outputs_owner')
+ for name,cap in (('ocv-test.raw',6*1024**3),('kernel.bin',128*1024**2),
+                  ('initrd.img',512*1024**2)):
+  path=Path(arguments['project'])/'out'/name
+  need(path.resolve()==path and not path.is_symlink(),'host.mkosi_outputs_path')
+  info=path.lstat()
+  need(stat.S_ISREG(info.st_mode) and info.st_uid==permit.uid and info.st_gid==permit.gid
+       and info.st_nlink==1 and 0<info.st_size<=cap and not info.st_mode&0o022,
+       'host.mkosi_outputs_identity')
 
 
 def _freeze_vector(project,argv):
@@ -436,7 +482,7 @@ def seal_command(permit,role,arguments,*,cwd,environment):
  if 'workspace'in arguments:need(arguments['workspace']==str(permit.workspace),'host.workspace_arg')
  if 'source_root'in arguments:need(arguments['source_root']==str(permit.source),'host.source_arg')
  if role=='own_project_chown':_prepare_chown(arguments)
- if role=='own_mkosi_image':_preflight_mkosi_image(permit,arguments)
+ if role=='own_mkosi_outputs':_preflight_mkosi_outputs(permit,arguments)
  if role=='freeze_public_outputs':_freeze_outputs(arguments['project'])
  if role=='partition_read':need(arguments.get('image')==str(permit.project/'out/ocv-test.raw'),'host.partition_arg')
  if role=='qemu_once':_qemu_arguments(permit,arguments)
@@ -445,10 +491,11 @@ def seal_command(permit,role,arguments,*,cwd,environment):
  need(type(argv)is tuple and argv and argv[0]in PROGRAMS and all(type(a)is str and a and '\x00'not in a for a in argv),
       'host.factory_argv')
  if role=='freeze_public_outputs':_freeze_vector(arguments['project'],argv)
- if role=='own_mkosi_image':
+ if role=='own_mkosi_outputs':
   need(argv==('/usr/bin/sudo','-n','--','/usr/bin/chown',
        '--from='+str(permit.uid)+':'+str(permit.gid),'--','0:0',
-       str(permit.project/'out/ocv-test.raw')),'host.mkosi_image_argv')
+       *(str(permit.project/'out'/name) for name in
+         ('ocv-test.raw','kernel.bin','initrd.img'))),'host.mkosi_outputs_argv')
  if argv[0]=='/usr/bin/sudo':need(len(argv)>4 and argv[:3]==('/usr/bin/sudo','-n','--')
   and (argv[3]in('/usr/bin/apt-get','/usr/bin/chown')
    or role=='freeze_public_outputs' and argv[3]=='/usr/bin/chmod'),'host.sudo_command')

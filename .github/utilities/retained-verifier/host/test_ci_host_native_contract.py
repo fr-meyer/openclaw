@@ -86,6 +86,9 @@ class SyntheticCommands:
  """Factory-shaped command seam. It cannot mint a NativePermit or execute."""
  ENV={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C','HOME':'/nonexistent'}
  def __init__(self,fixture):self.fixture=fixture;self.calls=[]
+ def normalize_mkosi_outputs(self,permit,project):
+  # This simulator writes its bounded public outputs under the final names.
+  assert permit is self.fixture.permit and project==str(self.fixture.port.project)
  def seal_command(self,permit,role,arguments,*,cwd,environment):
   assert permit is self.fixture.permit
   if role=='mkosi_build':argv=('/usr/bin/sudo','-n','--')+build.mkosi_argv(arguments['project'])
