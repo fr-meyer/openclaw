@@ -104,6 +104,8 @@ def recipe_files(rows, *, source_manifest_sha256, build_entry_sha256, build_stag
     digest(source_manifest_sha256)
     digest(build_entry_sha256)
     digest(build_stage_context_sha256)
+    # mkosi 20.2 discovers the exact mkosi.postinst[.chroot] files. Listing
+    # them again under PostInstallationScripts runs each create-only hook twice.
     config = '''[Distribution]
 Distribution=debian
 Release=bookworm
@@ -126,8 +128,6 @@ Bootable=no
 Bootloader=none
 Packages={packages}
 ExtraTrees=extra
-PostInstallationScripts=mkosi.postinst
-                        mkosi.postinst.chroot
 CleanPackageMetadata=no
 WithDocs=no
 WithRecommends=no

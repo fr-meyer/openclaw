@@ -363,61 +363,11 @@ def _write_once(path, raw):
     with os.fdopen(fd,'wb') as stream:stream.write(raw);stream.flush();os.fsync(stream.fileno())
 
 
-def _verify_repeated_export(guard,context,proof,live_contents,copies,descriptors,receipts):
-    require(copies[0]==copies[1],'apt.export_existing_copies')
-    require(descriptors[0]==descriptors[1],'apt.export_existing_descriptors')
-    guard.verify_export(descriptors[0],copies[0],
-      expected_keyring_sha256=context['keyringSha256'],
-      expected_source_manifest_sha256=context['sourceManifestSha256'],
-      expected_build_id=context['buildId'])
-    saved_proof=guard.parse_json(copies[0]['guard-proof.json'])
-    stable=('schema','buildId','sourceManifestSha256','releaseSha256','packagesSha256',
-            'keyringSha256','sourceRosterSha256','guardConfigSha256',
-            'verifiedPrimaryFingerprints','freshSecurityUpdateBase','nativeAuthenticationIssued')
-    require(all(saved_proof[name]==proof[name] for name in stable) and
-            all(copies[0][name]==live_contents[name] for name in
-                ('InRelease','Packages','keyring.gpg','gpgv-status.txt')),
-            'apt.export_live_changed')
-    ledger=guard.parse_json(copies[0]['first-stage-ledger.json'])
-    require(receipts==ledger['records'],'apt.export_receipts_changed')
-
-
-def _existing_export(guard, context, proof, live_contents, buildroot):
-    """Accept mkosi's repeated outer hook only for the exact prior export."""
-    roots=(buildroot/'opt/ocv/control/apt-data',Path('/work/out/apt-data'))
-    descriptors=(buildroot/'opt/ocv/control/apt-export.json',Path('/work/out/apt-export.json'))
-    present=[os.path.lexists(path) for path in roots+descriptors]
-    if not any(present):return False
-    require(all(present),'apt.export_partial')
-    caps={'InRelease':196608,'Packages':64*1024*1024,'keyring.gpg':1048576,
-          'gpgv-status.txt':16384,'guard-proof.json':16384,'first-stage-ledger.json':1048576}
-    copies=[]
-    for root in roots:
-        info=root.lstat()
-        require(root.resolve()==root and stat.S_ISDIR(info.st_mode) and
-                info.st_uid==info.st_gid==0 and stat.S_IMODE(info.st_mode)==0o755,
-                'apt.export_existing_directory')
-        with os.scandir(root) as stream:names={item.name for item in stream}
-        require(names==set(guard.EXPORT_NAMES),'apt.export_existing_names')
-        copies.append({name:_safe_read(root/name,caps[name],immutable=True)
-                       for name in guard.EXPORT_NAMES})
-    saved=tuple(_safe_read(path,8*1024**2,immutable=True) for path in descriptors)
-    receipts=[guard.parse_json(_safe_read(path,16384)) for path in _receipt_paths()]
-    _verify_repeated_export(guard,context,proof,live_contents,copies,saved,receipts)
-    return True
-
-
 def native_export(expected_context_sha, expected_guard_sha, expected_policy_sha):
     guard=io=None
     try:
         guard,context,io=_load(expected_context_sha,expected_guard_sha,expected_policy_sha)
         proof,contents=guard._run_guard(io,context,'postinstall',guard.policy.BOOKWORM)
-        buildroot=Path(os.environ.get('BUILDROOT',''))
-        require(buildroot.is_absolute() and buildroot!=Path('/') and buildroot.resolve()==buildroot,
-                'apt.export_buildroot')
-        source_manifest=_safe_read(buildroot/'opt/ocv/source/PUBLIC-SOURCE-MANIFEST.json',1048576,immutable=True)
-        require(sha(source_manifest)==context['sourceManifestSha256'],'apt.export_target_source')
-        if _existing_export(guard,context,proof,contents,buildroot):return 0
         _record(guard,io,proof,phase='postinstall')
         records=[]
         for path in _receipt_paths():
@@ -428,6 +378,11 @@ def native_export(expected_context_sha, expected_guard_sha, expected_policy_sha)
         guard.validate_ledger(ledger,context,proof)
         contents.update({'guard-proof.json':canonical(proof),'first-stage-ledger.json':ledger})
         descriptor=guard.export_descriptor(contents,proof,context)
+        buildroot=Path(os.environ.get('BUILDROOT',''))
+        require(buildroot.is_absolute() and buildroot!=Path('/') and buildroot.resolve()==buildroot,
+                'apt.export_buildroot')
+        source_manifest=_safe_read(buildroot/'opt/ocv/source/PUBLIC-SOURCE-MANIFEST.json',1048576,immutable=True)
+        require(sha(source_manifest)==context['sourceManifestSha256'],'apt.export_target_source')
         destinations=(buildroot/'opt/ocv/control/apt-data',Path('/work/out/apt-data'))
         for destination in destinations:
             require(not destination.exists() and destination.parent.resolve()==destination.parent,

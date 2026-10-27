@@ -90,6 +90,8 @@ class RecipeTests(unittest.TestCase):
         self.assertIn('PackageManagerTrees=pkgmngr',s)
         self.assertNotIn('LocalMirror',s)
         self.assertNotIn('Check-Valid-Until',s)
+        self.assertNotIn('PostInstallationScripts=',s)
+        self.assertEqual(sum('mkosi.postinst.chroot'==name for name in f),1)
         self.assertIn("host/build_entry.py",f['mkosi.postinst.chroot'][0].decode())
         self.assertEqual(b.mkosi_argv('/project'),('/usr/bin/mkosi','--directory=/project','build'))
         self.assertEqual(len(b.recipe_symlinks()),1)
