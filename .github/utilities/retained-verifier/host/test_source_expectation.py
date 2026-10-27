@@ -4,9 +4,11 @@ The injected command records are fixtures, not GPG/compiler/Linux evidence.
 No native constructor, ARM patch, subprocess, mount, socket or cloud call runs.
 """
 import copy
+from contextlib import redirect_stderr
 from dataclasses import replace
 import datetime as dt
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
@@ -206,6 +208,24 @@ class BuildFixture:
 
 
 class BuildGuestJoinTests(unittest.TestCase):
+    def test_real_filelist_rejection_keeps_guard_and_reports_first_public_line(self):
+        raw=(b'/.\n/usr\n/usr/bin/sh\n'
+             b'package diverts others to: /usr/bin/sh.distrib\n')
+        output=io.StringIO()
+        with redirect_stderr(output):
+            with self.assertRaises(runtime_prepare.Refusal) as error:
+                build_entry.parse_installed_filelist(package_inventory,'dash',raw)
+        self.assertEqual(error.exception.code,'inventory.filelist_path')
+        evidence=json.loads(output.getvalue())
+        self.assertEqual((evidence['schema'],evidence['binaryName'],evidence['lineIndex']),
+                         ('ocv-dpkg-filelist-refusal-v1','dash',3))
+        self.assertEqual(evidence['line'],'package diverts others to: /usr/bin/sh.distrib')
+        output=io.StringIO()
+        with redirect_stderr(output):
+            self.assertEqual(build_entry.parse_installed_filelist(package_inventory,'dash',b'/.\n/usr/bin/sh\n'),
+                             {'/usr/bin/sh'})
+        self.assertEqual(output.getvalue(),'')
+
     def test_pinned_bookworm_systemctl_alias_refuses_missing_owner_or_substitution(self):
         for defect,reason in (('missing','build_entry.tool_filelist'),
                               ('owner','build_entry.tool_owner'),

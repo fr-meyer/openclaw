@@ -10,6 +10,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import posixpath
 from pathlib import PurePosixPath
 import re
 import selectors
@@ -279,6 +280,27 @@ def verify_metadata(ops,header,source_sha,leaves):
     return data,joined,signature
 
 
+def parse_installed_filelist(inventory,binary,raw):
+    """Preserve the first unexpected public package-list line without admitting it."""
+    try:return inventory.parse_listfiles(raw)
+    except inventory.runtime.Refusal as exc:
+        if exc.code=='inventory.filelist_path':
+            seen=set()
+            for index,line in enumerate(raw.decode('utf-8','strict').splitlines()):
+                if line in ('/.','/'):continue
+                valid=(line.startswith('/') and '\x00' not in line and
+                       posixpath.normpath(line)==line and '..' not in line.split('/') and
+                       len(line)<=1024 and line not in seen)
+                if not valid:
+                    diagnostic={'schema':'ocv-dpkg-filelist-refusal-v1','binaryName':binary,
+                                'lineIndex':index,'lineSha256':sha(line.encode()),
+                                'line':line if len(line)<=256 and all(32<=ord(c)<127 for c in line) else None}
+                    sys.stderr.write(canonical(diagnostic).decode()+'\n')
+                    break
+                seen.add(line)
+        raise
+
+
 def run_checked(ops,header,source_sha,context_sha,leaves):
     """Concrete transaction, injectable for source-faithful no-command tests.
 
@@ -304,7 +326,8 @@ def run_checked(ops,header,source_sha,context_sha,leaves):
         need(signed is not None and signed['sha256']==row['sha256'],'build_entry.root_archive')
     filelists={r['binaryName']:command_ok(ops.run(('/usr/bin/dpkg-query','--listfiles',r['binaryName']),10))
                for r in show.values()}
-    lists={n:inventory.parse_listfiles(filelists[r['binaryName']]) for n,r in show.items()}
+    lists={n:parse_installed_filelist(inventory,r['binaryName'],filelists[r['binaryName']])
+           for n,r in show.items()}
     primary={p for paths in lists.values() for p in paths if p==runtime.PYTHON or
              p.startswith(runtime.STDLIB) and '__pycache__'not in p.split('/') and not p.endswith('.pyc')}
     regular={p for p in primary if ops.stat_original(p)['type']=='regular'}
