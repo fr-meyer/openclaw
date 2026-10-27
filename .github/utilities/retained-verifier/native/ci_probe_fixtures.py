@@ -16,7 +16,7 @@ def stat_line(pid,ticks=500,state='S',parent=1):
 
 def status_line(pid,uid=61200,gid=61200):
     return (f'Name:\tpython3\nState:\tS (sleeping)\nTgid:\t{pid}\nPid:\t{pid}\nPPid:\t1\n'
-        f'TracerPid:\t0\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\nGid:\t{gid}\t{gid}\t{gid}\t{gid}\nGroups:\t\nThreads:\t1\n'
+        f'TracerPid:\t0\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\nGid:\t{gid}\t{gid}\t{gid}\t{gid}\nGroups:\t{gid}\nThreads:\t1\n'
         'NoNewPrivs:\t1\nSeccomp:\t2\nSeccomp_filters:\t1\n'+''.join(k+':\t0000000000000000\n' for k in p.CAP_KEYS))
 
 def expected_fixture():

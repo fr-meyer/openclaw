@@ -31,7 +31,7 @@ class NativeWorkerFiles:
   uid,euid,gid,egid,groups=os.getuid(),os.geteuid(),os.getgid(),os.getegid(),os.getgroups()
   checks={'linux':sys.platform=='linux','uidRange':61184<=uid<=65519,
           'uidEqEuid':uid==euid,'gidEqEgid':gid==egid,
-          'noSupplementary':groups==[],'codePath':str(Path(__file__).resolve())=='/code/worker.py'}
+          'onlyPrimaryGroup':groups in ([],[gid]),'codePath':str(Path(__file__).resolve())=='/code/worker.py'}
   if not all(checks.values()):
    # This worker is only built into a synthetic no-NIC CI guest. The bounded
    # numeric/boolean diagnostic carries no report, credential or file bytes.
@@ -66,7 +66,8 @@ class NativeWorkerFiles:
 def verify(files,process):
  own=process.snapshot()
  need(type(own)is dict and set(own)=={'pid','uid','euid','gid','egid','groups'} and own['pid']>1 and
-  61184<=own['uid']<=65519 and own['uid']==own['euid'] and own['gid']==own['egid'] and own['groups']==[],
+  61184<=own['uid']<=65519 and own['uid']==own['euid'] and own['gid']==own['egid'] and
+  type(own['groups']) is list and own['groups'] in ([],[own['gid']]),
   'worker_boot.nonroot')
  raw=files.file('/control/context.json',16384);context=decode(raw)
  boot=decode(files.file('/control/worker-bootstrap.json',16384))

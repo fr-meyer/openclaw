@@ -157,13 +157,13 @@ class Verification(unittest.TestCase):
   stream=io.StringIO()
   with patch.object(worker_entry.os,'getuid',return_value=62000),patch.object(worker_entry.os,'geteuid',return_value=62000),\
        patch.object(worker_entry.os,'getgid',return_value=62000),patch.object(worker_entry.os,'getegid',return_value=62000),\
-       patch.object(worker_entry.os,'getgroups',return_value=[62000]),patch.object(worker_entry.sys,'stderr',stream):
+       patch.object(worker_entry.os,'getgroups',return_value=[62000,62001]),patch.object(worker_entry.sys,'stderr',stream):
    with self.assertRaisesRegex(worker_entry.Refusal,'worker_boot.native_unit_required'):
     worker_entry.NativeWorkerFiles()
   output=stream.getvalue();self.assertLess(len(output),512)
   self.assertTrue(output.startswith('OCV_WORKER_IDENTITY_V1:'))
-  fact=json.loads(output.split(':',1)[1]);self.assertEqual(fact['checks']['noSupplementary'],False)
-  self.assertEqual(fact['groupsHead'],[62000]);self.assertEqual(fact['groupCount'],1)
+  fact=json.loads(output.split(':',1)[1]);self.assertEqual(fact['checks']['onlyPrimaryGroup'],False)
+  self.assertEqual(fact['groupsHead'],[62000,62001]);self.assertEqual(fact['groupCount'],2)
   self.assertNotIn('report',output);self.assertNotIn('secret',output)
  def test_source_mode_owner_hash_and_extra_file_refuse(self):
   for kind in('mode','owner','hash','extra'):
@@ -276,7 +276,7 @@ class Integration(unittest.TestCase):
        actual=port.root+'/root'+path
        guard.need(base.ops.modes[actual]==0o444,'test.worker_mode');return ops.read(actual,cap)
      own={'pid':base.expected['pid'],'uid':base.expected['uid'],'euid':base.expected['uid'],
-      'gid':base.expected['gid'],'egid':base.expected['gid'],'groups':[]}
+      'gid':base.expected['gid'],'egid':base.expected['gid'],'groups':[base.expected['gid']]}
      process=SimpleNamespace(snapshot=lambda:dict(own))
      wp=worker_entry.verify(BootFiles(),process);outer.worker_plans.append(wp)
      class Files:

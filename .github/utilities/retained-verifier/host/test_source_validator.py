@@ -148,7 +148,9 @@ class ReplayTests(unittest.TestCase):
         changes=[lambda row:row.update(seccompMode=0),lambda row:row.update(seccompFilterCount=0),
                  lambda row:row.update(noNewPrivileges=True),lambda row:row['capabilitySets'].update(CapEff=1),
                  lambda row:row['capabilitySets'].update(CapAmb=False),lambda row:row.update(children=[99]),
-                 lambda row:row.update(supplementaryGroups=[1]),lambda row:row.update(stableTuple=False)]
+                 lambda row:row.update(supplementaryGroups=[1]),
+                 lambda row:row.update(supplementaryGroups=[row['gid'],1]),
+                 lambda row:row.update(stableTuple=False)]
         for change in changes:
             self.rows,self.expected=setup_rows();self.edit('host-result',change,True)
             with self.assertRaises(Refusal):self.check()

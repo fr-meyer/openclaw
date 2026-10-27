@@ -151,7 +151,8 @@ def facts_join(raw,source_expected,context):
             facts['noNewPrivileges']==1,'replay.process_protection')
     caps=closed(facts['capabilitySets'],probe.CAP_KEYS,'replay.caps_schema')
     require(all(type(v) is int and v==0 for v in caps.values()),'replay.capabilities')
-    require(type(facts['supplementaryGroups']) is list and facts['supplementaryGroups']==[] and
+    require(type(facts['supplementaryGroups']) is list and
+            facts['supplementaryGroups'] in ([],[facts['gid']]) and
             type(facts['children']) is list and facts['children']==[] and facts['stableTuple'] is True,
             'replay.process_shape')
     require(integer(facts['peerProcessesChecked'],1,probe.MAX_PIDS) and

@@ -104,7 +104,8 @@ class Worker:
         self.raw=raw;self.own=self.process.snapshot()
         closed(self.own,{'pid','uid','euid','gid','egid','groups'},'ci.worker_process_schema')
         require(all(type(self.own[k]) is int and self.own[k]>0 for k in ('pid','uid','euid','gid','egid')) and
-          self.own['uid']==self.own['euid'] and self.own['gid']==self.own['egid'] and self.own['groups']==[],
+          self.own['uid']==self.own['euid'] and self.own['gid']==self.own['egid'] and
+          type(self.own['groups']) is list and self.own['groups'] in ([],[self.own['gid']]),
           'ci.worker_nonroot')
         frame={'schema':'openclaw.retained-verifier-ready.v1','status':'ready','pid':self.own['pid'],
           'uid':self.own['uid'],'gid':self.own['gid'],'contextSha256':sha(raw),'workerSha256':self.context['workerSha256']}

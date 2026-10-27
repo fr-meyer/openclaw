@@ -125,7 +125,7 @@ class Ops:
                         func();raise worker.WorkerTimeout()
                     return func()
             own={'pid':self.expected['pid'],'uid':self.expected['uid'],'euid':self.expected['uid'],
-              'gid':self.expected['gid'],'egid':self.expected['gid'],'groups':[]}
+              'gid':self.expected['gid'],'egid':self.expected['gid'],'groups':[self.expected['gid']]}
             self.worker=worker.Worker(code=port.code,files=Files(),process=SimpleNamespace(snapshot=lambda:dict(own)),
               clock=self.clock,timer=Timer())
             ready=self.worker.ready(canonical(port.context))
@@ -240,6 +240,22 @@ class Integration(unittest.TestCase):
         self.assertTrue(result['custodyComplete']);self.assertTrue(result['ownedUnitEmpty'])
         with self.assertRaises(Refusal):self.run_driver()
         self.assertEqual(len(self.commands('/usr/bin/systemd-run')),1)
+    def test_extra_kernel_supplementary_group_refuses_before_gate(self):
+        path='/proc/'+str(self.expected['pid'])+'/status'
+        self.ops.kernel.data[path]=self.ops.kernel.data[path].replace(b'Groups:\t61200\n',b'Groups:\t61200 62001\n')
+        result=self.run_driver()
+        self.assertEqual(result['reason'],'probe.supplementary_groups',result)
+        self.assertNotIn('gate',self.port.effect_intents)
+    def test_stacked_manager_mount_refuses_with_bounded_label(self):
+        self.ops.stage_file('/proc/self/mountinfo',
+          b'1 9 8:1 / / rw,nodev - ext4 /dev/sda1 rw\n'
+          b'2 1 0:20 / /run rw,nodev - tmpfs tmpfs rw\n'
+          b'3 2 0:20 / /run rw,nodev - tmpfs tmpfs rw\n',0o444)
+        result=self.run_driver();self.assertEqual(result['reason'],'probe.mount_stacked_or_invalid')
+        diagnostic=json.loads((self.root/'custody/host-diagnostics.private.bin').read_bytes())
+        facts=diagnostic['facts'];self.assertEqual(facts['targetLabel'],'/run')
+        self.assertIs(facts['targetRepeated'],True)
+        self.assertNotIn('gate',self.port.effect_intents)
     def test_busctl_property_value_is_direct_and_strictly_typed(self):
         self.port.unit=self.context['unitName']
         for kind,value in (('b',True),('s','success'),('u',77),('t',262144),('i',-1),('ay',list(range(16)))):

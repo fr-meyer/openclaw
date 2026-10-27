@@ -256,7 +256,15 @@ def mount_table(raw):
         require(split>=6 and len(values)==split+4 and all(re.fullmatch(r'[1-9]\d*',v) for v in values[:2])
                 and re.fullmatch(r'(0|[1-9]\d*):(0|[1-9]\d*)',values[2]),'probe.mount_shape')
         mount_id=int(values[0]);parent_id=int(values[1]);target=unescape(values[4]);root=unescape(values[3])
-        require(mount_id not in ids and target not in targets and path(target) and path(root),'probe.mount_stacked_or_invalid')
+        valid_target=path(target);valid_root=path(root)
+        safe_labels={'/','/run','/proc','/sys','/dev','/dev/shm','/dev/pts','/tmp','/var/tmp',
+                     '/run/lock','/sys/fs/cgroup','/run/systemd/incoming'}
+        require(mount_id not in ids and target not in targets and valid_target and valid_root,
+                'probe.mount_stacked_or_invalid',
+                {'mountId':mount_id,'idRepeated':mount_id in ids,'targetRepeated':target in targets,
+                 'targetLabel':target if target in safe_labels else 'other',
+                 'targetSha256':sha(target.encode()),'targetBytes':len(target.encode()),
+                 'targetValid':valid_target,'rootValid':valid_root})
         ids.add(mount_id);targets.add(target)
         vfs=values[5].split(',');fs=values[split+3].split(',');optional=values[6:split]
         for wordlist in (vfs,fs,optional):tokens(wordlist,'probe.mount_flags')
@@ -286,14 +294,15 @@ def _snapshot(obs,expected,label):
     require(current['Pid']==current['Tgid']==str(expected['pid']) and current['TracerPid']=='0'
             and current['Threads']=='1','probe.process_shape')
     require(current['Uid']==[expected['uid']]*4 and current['Gid']==[expected['gid']]*4,'probe.identity_changed')
-    require(current['Groups']=='','probe.supplementary_groups')
+    groups=current['Groups']
+    require(groups in ('',str(expected['gid'])),'probe.supplementary_groups')
     require(current['NoNewPrivs']=='1' and current['Seccomp']=='2'
             and re.fullmatch('[1-9]\d*',current['Seccomp_filters']),'probe.process_filters')
     require(all(re.fullmatch('[0-9A-Fa-f]{1,16}',current[k]) and int(current[k],16)==0 for k in CAP_KEYS),'probe.capabilities')
     group=obs.text(base+'/cgroup',4096,label+'.cgroup')
     require(group=='0::'+expected['cgroupPath']+'\n','probe.cgroup_changed')
     obs.add(label+'.identity',pid=expected['pid'],startTimeTicks=generation['startTimeTicks'],uid=current['Uid'],gid=current['Gid'],
-            supplementaryGroupCount=0,capabilitiesZero=True,noNewPrivileges=1,seccompMode=2,seccompFilterCount=int(current['Seccomp_filters']))
+            supplementaryGroupCount=0 if not groups else 1,capabilitiesZero=True,noNewPrivileges=1,seccompMode=2,seccompFilterCount=int(current['Seccomp_filters']))
     namespace={}
     for name in NAMESPACE_NAMES:
         value=obs.link(base+'/ns/'+name,label+'.namespace.'+name)
@@ -302,6 +311,7 @@ def _snapshot(obs,expected,label):
         require((namespace[name]!=expected['hostNamespaces'][name]) if name in ('mnt','net','ipc')
                 else (namespace[name]==expected['hostNamespaces'][name]),'probe.namespace_shared_or_changed')
     return {'generation':{k:generation[k] for k in ('pid','parentPid','startTimeTicks')},'ids':{'uid':current['Uid'],'gid':current['Gid']},
+            'groups':[] if not groups else [expected['gid']],
             'caps':{k:current[k] for k in CAP_KEYS},'nnp':current['NoNewPrivs'],'seccomp':current['Seccomp'],
             'filters':current['Seccomp_filters'],'cgroup':group,'namespaces':namespace}
 
@@ -434,7 +444,8 @@ def collect_and_validate(reader,expected):
             'invocationId':expected['invocationId'],'unitName':expected['unitName'],'identityName':expected['identityName'],
             'profileSha256':expected['profileSha256'],'cgroupPath':expected['cgroupPath'],'namespaces':first['namespaces'],
             'seccompMode':2,'seccompFilterCount':int(first['filters']),'capabilitySets':{k:0 for k in CAP_KEYS},
-            'noNewPrivileges':1,'supplementaryGroups':[],'peerProcessesChecked':len(peers),
+            'noNewPrivileges':1,'supplementaryGroups':[] if not first['groups'] else [expected['gid']],
+            'peerProcessesChecked':len(peers),
             'executable':{'dev':exei.st_dev,'ino':exei.st_ino},'jailRoot':{'dev':ji.st_dev,'ino':ji.st_ino},
             'mounts':positive,'environment':env_proof,'limits':limits,'stdio':fd_facts,'children':[],
             'stableTuple':True,'readCalls':obs.reads,'readBytes':obs.bytes}
