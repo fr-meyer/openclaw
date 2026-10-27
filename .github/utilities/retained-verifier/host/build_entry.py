@@ -625,7 +625,8 @@ class NativeBuildOps:
             need(re.fullmatch('[a-z0-9][a-z0-9+.-]{0,80}(?::(?:amd64|all))?',argv[2]),'build_entry.package_arg')
             return 4*1024**2,8192
         if len(argv)==3 and argv[:2]==('/usr/bin/dpkg-query','--search'):
-            need(argv[2].startswith(('/usr/','/lib/','/lib64/','/boot/')) and '..'not in argv[2].split('/'),
+            need((argv[2]=='/bin/systemctl' or argv[2].startswith(('/usr/','/lib/','/lib64/','/boot/')))
+                 and '..'not in argv[2].split('/'),
                  'build_entry.owner_arg');return 8192,8192
         if len(argv)==2 and argv[0]=='/usr/bin/ldd':
             need(argv[1]=='/usr/bin/python3.11' or argv[1].startswith('/usr/lib/python3.11/') and argv[1].endswith('.so'),

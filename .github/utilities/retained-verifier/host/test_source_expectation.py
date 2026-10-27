@@ -212,6 +212,15 @@ class BuildFixture:
 
 
 class BuildGuestJoinTests(unittest.TestCase):
+    def test_owner_argument_gate_admits_only_packaged_systemctl_bin_alias(self):
+        ops=build_entry.NativeBuildOps.__new__(build_entry.NativeBuildOps)
+        ops.metadata_ready=True
+        self.assertEqual(ops._command_cap(('/usr/bin/dpkg-query','--search','/bin/systemctl')),
+                         (8192,8192))
+        for path in ('/bin/sh','/bin/other','/bin/systemctl/../sh'):
+            with self.subTest(path=path),self.assertRaisesRegex(build_entry.Refusal,'build_entry.owner_arg'):
+                ops._command_cap(('/usr/bin/dpkg-query','--search',path))
+
     def test_actual_build_transaction_uses_only_identical_packaged_ldd_alias(self):
         f=BuildFixture();path='/lib/x86_64-linux-gnu/libcrypto.so.3';recorded='/usr'+path
         f.data[recorded]=b'public synthetic packaged crypto library'
