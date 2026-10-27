@@ -294,6 +294,11 @@ class Integration(unittest.TestCase):
         self.assertEqual(roster['expectedCount'],12)
         self.assertEqual(roster['extraTargets'][0]['label'],'/dev/shm')
         self.assertEqual(roster['missingTargets'],[])
+        self.assertEqual(len(roster['observedMounts']),4)
+        self.assertGreater(roster['observedOmitted'],0)
+        self.assertTrue(all('fsrootSha256' in row and 'sourceSha256' in row
+                            and 'fsroot' not in row and 'source' not in row
+                            for row in roster['observedMounts']))
     def test_stacked_manager_mount_refuses_with_bounded_label(self):
         self.ops.stage_file('/proc/self/mountinfo',
           b'1 9 8:1 / / rw,nodev - ext4 /dev/sda1 rw\n'

@@ -375,12 +375,26 @@ def collect_and_validate(reader,expected):
             public_labels={'/dev/shm','/dev/pts','/sys/fs/cgroup','/run/lock',
                            '/proc/sys/fs/binfmt_misc','/run/systemd/incoming'}
             extra=sorted(actual_targets-expected_targets)
+            def mount_fact(row):
+                target=row['target'];fs_type=row['fsType']
+                return {'mountId':row['mountId'],'parentId':row['parentId'],
+                        'targetLabel':target if target in expected_targets|public_labels else 'other',
+                        'targetSha256':sha(target.encode()),'targetBytes':len(target.encode()),
+                        'fsrootSha256':sha(row['fsroot'].encode()),'fsrootBytes':len(row['fsroot'].encode()),
+                        'sourceSha256':sha(row['source'].encode()),'sourceBytes':len(row['source'].encode()),
+                        'fsType':fs_type if fs_type in ('ext4','tmpfs','proc','sysfs','devtmpfs','cgroup2','mqueue','overlay') else 'other',
+                        'majorMinor':row['majorMinor'],
+                        'vfsFlags':[f for f in ('ro','rw','nosuid','nodev','noexec') if f in row['vfsOptions']],
+                        'fsFlags':[f for f in ('ro','rw','nosuid','nodev','noexec') if f in row['fsOptions']],
+                        'optionalCount':len(row['optionalFields'])}
             obs.add('mount.roster',actualCount=len(mounts),expectedCount=len(expected['mounts']),
                     matchedTargets=sorted(actual_targets&expected_targets),
                     missingTargets=sorted(expected_targets-actual_targets),extraCount=len(extra),
                     extraTargets=[{'label':target if target in public_labels else 'other',
                                    'sha256':sha(target.encode()),'bytes':len(target.encode())}
-                                  for target in extra[:8]])
+                                  for target in extra[:8]],
+                    observedMounts=[mount_fact(row) for row in sorted(mounts,key=lambda row:row['target'])[:4]],
+                    observedOmitted=max(0,len(mounts)-4))
             raise Refusal('probe.mount_roster_changed')
         indexed={r['target']:r for r in mounts};positive=[]
         for row in expected['mounts']:
