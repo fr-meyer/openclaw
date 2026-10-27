@@ -547,7 +547,7 @@ class Integration(unittest.TestCase):
         props=ci_profile.properties((B/'CI-PROFILE.json').read_bytes(),self.session,self.session_root)
         for expected in ('DynamicUser=yes','NoNewPrivileges=yes','PrivateNetwork=yes','PrivateIPC=yes',
                          'CapabilityBoundingSet=','AmbientCapabilities=','MemorySwapMax=0','Restart=no','MountFlags=private',
-                         'ProtectSystem=strict','ReadOnlyPaths=+/ +/dev +/dev/mqueue +/proc +/sys','NoExecPaths=+/input +/control',
+                         'ProtectSystem=strict','ReadOnlyPaths=+/ +/dev +/dev/mqueue +/proc +/sys +/tmp +/var/tmp','NoExecPaths=+/input +/control',
                          'BindReadOnlyPaths='+self.session_root+'/root/input:/input '+self.session_root+'/root/control:/control'):
             self.assertIn(expected,props)
         self.assertNotIn('BindPaths=',props)
