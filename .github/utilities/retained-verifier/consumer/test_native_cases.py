@@ -100,6 +100,36 @@ def actual_run_child_injected(faults=None,malformed=False):
 
 
 class NativeCaseTests(unittest.TestCase):
+    def test_native_factory_accepts_only_no_supplementary_group_or_own_gid(self):
+        # Exercise the actual factory predicate with injected process facts;
+        # the file read is stopped before any native effect.
+        class Worker:pass
+        class NativeTimer:pass
+        core=types.ModuleType('ci_worker_core')
+        core.Worker=Worker;core.NativeTimer=NativeTimer;core.WorkerTimeout=OuterTimeout
+        files=types.SimpleNamespace(base=types.SimpleNamespace(released=True))
+        with patch.object(n.sys,'platform','linux'), \
+             patch.object(n.sys,'modules',dict(n.sys.modules,ci_worker_core=core)), \
+             patch.object(n,'Path',lambda _:types.SimpleNamespace(resolve=lambda:'/code/native_cases.py')), \
+             patch.object(n.os,'uname',return_value=types.SimpleNamespace(machine='x86_64')), \
+             patch.object(n.os,'getpid',return_value=77), \
+             patch.object(n.os,'getuid',return_value=61200), \
+             patch.object(n.os,'geteuid',return_value=61200), \
+             patch.object(n.os,'getgid',return_value=61200), \
+             patch.object(n.os,'getegid',return_value=61200), \
+             patch.object(n.NativeIO,'_file',side_effect=FileNotFoundError):
+            for groups,reason in (([],'native.file_missing'),([61200],'native.file_missing'),
+                                  ([61201],'native.worker_identity'),
+                                  ([61200,61200],'native.worker_identity')):
+                with self.subTest(groups=groups),patch.object(n.os,'getgroups',return_value=groups):
+                    own={'pid':77,'uid':61200,'euid':61200,'gid':61200,'egid':61200,'groups':groups}
+                    job=Worker();job.own=own;job.raw=b'public synthetic context'
+                    job.ready_used=True;job.used=True;job.timer=NativeTimer()
+                    job.process=types.SimpleNamespace(snapshot=lambda:own)
+                    job.context={'consumerCode':{'native_cases.py':{'bytes':0,'sha256':'0'*64}}}
+                    with self.assertRaisesRegex(n.Refusal,reason):
+                        n.NativeIO.for_checked_worker(job,files)
+
     def test_actual_pure_runner_and_result_parser_accept_finite_cases(self):
         io=FakeIO();result=n.run_cases(io)
         self.assertEqual(result['status'],'passed')

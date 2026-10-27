@@ -259,7 +259,8 @@ class NativeIO:
   own=job.process.snapshot()
   need(own==job.own and own=={'pid':os.getpid(),'uid':os.getuid(),'euid':os.geteuid(),
        'gid':os.getgid(),'egid':os.getegid(),'groups':os.getgroups()}and
-       61184<=own['uid']<=65519 and own['uid']==own['euid']and own['gid']==own['egid']and own['groups']==[],
+       61184<=own['uid']<=65519 and own['uid']==own['euid']and own['gid']==own['egid']and
+       own['groups'] in ([],[own['gid']]),
        'native.worker_identity')
   need(type(job.timer)is core.NativeTimer,'native.timer_source')
   result=cls(_NATIVE_KEY,job)
