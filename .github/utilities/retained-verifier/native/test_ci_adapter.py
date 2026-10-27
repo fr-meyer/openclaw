@@ -40,9 +40,11 @@ class Ops:
     def __init__(self,root,clock,expected):
         self.root,self.clock,self.expected=root,clock,expected
         self.kernel=fixtures.FixtureReader(expected);self.files={};self.modes={};self.calls=[];self.events=[]
-        self.fail=None;self.selinux_status=1;self.host_stat_counts={};self.unit_started=False;self.worker=None;self.outcome=None;self.gate=None;self.empty=False
+        self.fail=None;self.selinux_status=1;self.host_stat_counts={};self.unit_started=False;self.worker=None;self.outcome=None;self.gate=None;self.empty=False;self.ready_delay_reads=0
     def read(self,path,cap):
         self.calls.append(('read',path,cap))
+        if self.unit_started and path==self.port.root+'/evidence/worker.stderr' and self.ready_delay_reads:
+            self.ready_delay_reads-=1;return b''
         if path in self.files:
             raw=self.files[path].read_bytes();self.assert_cap(raw,cap);return raw
         if path in ('/etc/passwd','/etc/group'):return b'root:x:0:0:root:/root:/bin/sh\n'
@@ -240,6 +242,17 @@ class Integration(unittest.TestCase):
         self.assertTrue(result['custodyComplete']);self.assertTrue(result['ownedUnitEmpty'])
         with self.assertRaises(Refusal):self.run_driver()
         self.assertEqual(len(self.commands('/usr/bin/systemd-run')),1)
+    def test_delayed_owned_ready_line_is_bound_before_input_gate(self):
+        self.ops.ready_delay_reads=3
+        result=self.run_driver();self.assertEqual(result['unitStatus'],'passed',result)
+        self.assertGreaterEqual(self.clock.monotonic(),.15)
+        self.assertIn('gate',self.port.effect_intents)
+    def test_absent_owned_ready_line_times_out_and_never_opens_gate(self):
+        self.ops.ready_delay_reads=1000
+        result=self.run_driver();self.assertEqual(result['reason'],'ci.ready_timeout',result)
+        self.assertGreaterEqual(self.clock.monotonic(),5)
+        self.assertNotIn('gate',self.port.effect_intents)
+        self.assertTrue(result['ownedUnitEmpty'])
     def test_extra_kernel_supplementary_group_refuses_before_gate(self):
         path='/proc/'+str(self.expected['pid'])+'/status'
         self.ops.kernel.data[path]=self.ops.kernel.data[path].replace(b'Groups:\t61200\n',b'Groups:\t61200 62001\n')

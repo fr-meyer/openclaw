@@ -399,8 +399,18 @@ class Port:
         return expected,unit_value
     def source_anchor_recheck(self):return self.anchors.recheck()
     def ready_once(self):
-        raw=self.ops.read(self.root+'/evidence/worker.stderr',4096)
-        rows=raw.splitlines();require(len(rows)==1,'ci.ready_count');return rows[0]
+        # systemd-run returns after submitting the transient unit, before its
+        # process necessarily writes readiness. Wait only for the exact owned
+        # evidence file; a missing, malformed, or late frame never opens gate.
+        deadline=self.ops.monotonic()+5
+        while True:
+            raw=self.ops.read(self.root+'/evidence/worker.stderr',4096)
+            rows=raw.splitlines()
+            if rows:
+                require(len(rows)==1,'ci.ready_count');return rows[0]
+            remaining=deadline-self.ops.monotonic()
+            require(remaining>0,'ci.ready_timeout')
+            self.ops.sleep(min(.05,remaining))
     def release_inputs_and_gate(self,raw):
         self.effect('gate');self.ops.chmod(self.root+'/root/input',0o555)
         self.ops.stage_file(self.root+'/root/control/admission.json',raw,0o444);self.files.append(self.root+'/root/control/admission.json')
