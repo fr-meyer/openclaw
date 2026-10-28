@@ -172,6 +172,61 @@ class PartitionedFixtureHostTests(unittest.TestCase):
                 with self.assertRaisesRegex(ci_host.Refusal, code):
                     port._run('synthetic', {}, 100)
 
+    def test_pre_guest_phase_ceilings_share_original_550_second_pool(self):
+        expected={'source':60,'host':360,'metadata':270,'negative':30,'build':400}
+        self.assertEqual(ci_host.PRE_QEMU_PHASE_SECONDS, expected)
+        for name,ceiling in expected.items():
+            port=object.__new__(ci_host.NativePort);port.deadline=2700;port.phases=set()
+            with mock.patch.object(ci_host.time,'monotonic',return_value=500):
+                port._phase(name,ceiling)
+            self.assertEqual(port.phase_deadline,min(500+ceiling,550))
+            self.assertEqual(port.deadline,2700)
+        port=object.__new__(ci_host.NativePort);port.deadline=2700;port.phases=set()
+        with mock.patch.object(ci_host.time,'monotonic',return_value=550):
+            with self.assertRaisesRegex(ci_host.Refusal,'phase_deadline'):port._phase('host',360)
+        port=object.__new__(ci_host.NativePort);port.deadline=2700;port.phases=set()
+        with mock.patch.object(ci_host.time,'monotonic',return_value=1):
+            with self.assertRaisesRegex(ci_host.Refusal,'phase_ceiling'):port._phase('host',361)
+
+    def test_direct_preparation_and_readback_cannot_clear_spent_pool_or_phase(self):
+        for now,phase,code in ((550,600,'pre_qemu_pool'),(100,100,'phase_deadline')):
+            port=object.__new__(ci_host.NativePort);port.deadline=2700;port.phase_deadline=phase
+            with mock.patch.object(ci_host.time,'monotonic',return_value=now):
+                with self.assertRaisesRegex(ci_host.Refusal,code):port._pre_qemu_budget()
+                with self.assertRaisesRegex(ci_host.Refusal,code):port.bind_image()
+
+    def test_qemu_sealing_crossing_pool_end_never_reaches_owned_execution(self):
+        clock=[549.]
+        def seal(*args,**kwargs):
+            self.assertEqual(kwargs['launch_deadline'],550.)
+            clock[0]=550.;return SimpleNamespace(argv=('/usr/bin/qemu-system-x86_64',))
+        ctx=SimpleNamespace(ENV={},seal_command=seal,
+            run_owned=lambda *a,**k:self.fail('QEMU must not execute after pool end'))
+        port=object.__new__(ci_host.NativePort);port.m=SimpleNamespace(context=ctx)
+        port.permit=object();port.project=Path('/synthetic');port.deadline=2700.;port.phase_deadline=2549.
+        with mock.patch.object(ci_host.time,'monotonic',side_effect=lambda:clock[0]):
+            with self.assertRaisesRegex(ci_host.Refusal,'pre_qemu_pool'):
+                port._run('qemu_once',{},2000)
+        self.assertEqual(port.phase_deadline,2549.)
+
+    def test_declared_plan_is_pooled_and_refuses_expanded_or_invalid_ceilings(self):
+        plan=fixture.timing_preflight()
+        self.assertEqual((plan['jobSeconds'],plan['plannedSeconds'],plan['unallocatedSeconds']),(2700,2700,0))
+        self.assertEqual((plan['preGuestPoolSeconds'],plan['preQemuReserveSeconds'],plan['shutdownReserveSeconds']),(550,2150,30))
+        self.assertEqual(plan['conditionalPhaseSecondsSum'],3240)
+        self.assertIs(plan['allConditionalPhaseMaximaFit'],False)
+        self.assertIs(plan['successGuaranteed'],False)
+        reduced=dict(fixture.PHASE_SECONDS)
+        for name in plan['preGuestPhaseNames']:reduced[name]=1
+        reduced_plan=fixture.timing_preflight(reduced)
+        self.assertIs(reduced_plan['allConditionalPhaseMaximaFit'],True)
+        self.assertIs(reduced_plan['successGuaranteed'],False)
+        for name in fixture.PHASE_SECONDS:
+            for replacement in (True,0,-1,fixture.PHASE_SECONDS[name]+1):
+                bad=dict(fixture.PHASE_SECONDS);bad[name]=replacement
+                with self.subTest(name=name,replacement=replacement),self.assertRaises(fixture.Refusal):
+                    fixture.timing_preflight(bad)
+
 
 if __name__=='__main__':
     unittest.main()

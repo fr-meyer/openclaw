@@ -67,9 +67,12 @@ HOST_IMAGE_TOOL = {'role': 'mke2fs', 'path': '/usr/sbin/mke2fs',
 CATALOG_ROW_KEYS = frozenset(('role', 'path', 'bytes', 'sha256', 'package', 'version', 'debSha256'))
 ALIAS_KEYS = frozenset(('role', 'executionPath', 'packagePath', 'canonicalPath', 'dev', 'ino',
     'executionAliasProofSha256', 'packageAliasProofSha256', 'ownerQuerySha256'))
-PHASE_SECONDS = {'source-tests': 60, 'host-admission': 60, 'negative-build': 30,
-    'positive-build': 400, 'guest': 2000, 'artifact': 120}
+PHASE_SECONDS = {'source-tests': 60, 'host-admission': 360, 'metadata':270,
+    'negative-build': 30, 'positive-build': 400, 'guest': 2000, 'artifact': 120}
 JOB_SECONDS = 2700
+PRE_QEMU_RESERVE_SECONDS = 2150
+PRE_GUEST_POOL_SECONDS = JOB_SECONDS - PRE_QEMU_RESERVE_SECONDS
+SHUTDOWN_RESERVE_SECONDS = 30
 GUEST_WRAPPER_SECONDS = 2000
 GUEST_UNIT_WORKER_SECONDS = 300
 
@@ -304,16 +307,32 @@ def validate_tool_catalog(catalog, package_rows, aliases):
 
 
 def timing_preflight(phase_seconds=None):
+    """Pure conditional ceilings; no native admission or independent clocks.
+
+    All pre-guest phases share the original job's first550 seconds. Their
+   1120-second ceiling sum is deliberately not a simultaneous allocation:
+    unused time is pooled, and later phases refuse when that pool is spent.
+    """
     phases = dict(PHASE_SECONDS if phase_seconds is None else phase_seconds)
     need(set(phases) == set(PHASE_SECONDS) and all(type(v) is int and v > 0 for v in phases.values()),
          'integrated_fixture.phase_budget')
-    total = sum(phases.values())
-    need(total <= JOB_SECONDS and phases['guest'] == GUEST_WRAPPER_SECONDS and
+    need(all(phases[name] <= ceiling for name,ceiling in PHASE_SECONDS.items()),
+         'integrated_fixture.phase_ceiling')
+    total = PRE_GUEST_POOL_SECONDS + phases['guest'] + phases['artifact'] + SHUTDOWN_RESERVE_SECONDS
+    need(total == JOB_SECONDS and phases['guest'] == GUEST_WRAPPER_SECONDS and
          phases['artifact'] >= 120 and GUEST_UNIT_WORKER_SECONDS == 300,
          'integrated_fixture.whole_budget')
     return {'jobSeconds': JOB_SECONDS, 'plannedSeconds': total,
             'unallocatedSeconds': JOB_SECONDS-total, 'guestWrapperSeconds': GUEST_WRAPPER_SECONDS,
-            'workerSeconds': GUEST_UNIT_WORKER_SECONDS, 'phaseSeconds': phases}
+            'workerSeconds': GUEST_UNIT_WORKER_SECONDS, 'phaseSeconds': phases,
+            'phaseCeilingsConditional':True,'preGuestPoolSeconds':PRE_GUEST_POOL_SECONDS,
+            'preQemuReserveSeconds':PRE_QEMU_RESERVE_SECONDS,
+            'shutdownReserveSeconds':SHUTDOWN_RESERVE_SECONDS,
+            'preGuestPhaseNames':['source-tests','host-admission','metadata','negative-build','positive-build'],
+            'conditionalPhaseSecondsSum':sum(phases.values()),
+            'allConditionalPhaseMaximaFit':sum(phases.values())+SHUTDOWN_RESERVE_SECONDS<=JOB_SECONDS,
+            'successGuaranteed':False,
+            'nativeAuthority':False}
 
 
 if __name__ == '__main__':

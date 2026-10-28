@@ -155,11 +155,14 @@ class NativeIO:
 
 class _OwnedOps:
  """R2 native ownership semantics with only native IO made injectable."""
- def __init__(self,outer,argv,cwd,environment,io,before_spawn):
+ def __init__(self,outer,argv,cwd,environment,io,before_spawn,*,launch_deadline=None):
   self.outer=outer;self.argv=argv;self.cwd=cwd;self.environment=environment;self.io=io
   self.before_spawn=before_spawn;self.synthetic=io.synthetic;self.owned={};self.closed=set();self.spawn_intent=False
   self.setupCause=None
   self.spawn_deadline=None
+  need(launch_deadline is None or type(launch_deadline)in(int,float) and math.isfinite(launch_deadline),
+       'host.launch_deadline_scope')
+  self.launch_deadline=launch_deadline
  def now(self):return self.io.now()
  def pause(self,duration):self.io.pause(duration)
  def set_spawn_deadline(self,deadline):
@@ -170,6 +173,8 @@ class _OwnedOps:
   need(self.spawn_deadline is not None or self.synthetic is True,'host.spawn_deadline_unset')
   if self.spawn_deadline is not None:
    need(self.now()<self.spawn_deadline,'host.spawn_deadline')
+  if self.launch_deadline is not None:
+   need(self.now()<self.launch_deadline,'host.launch_deadline')
  def _pre_spawn_cause(self,phase,error):
   number=getattr(error,'errno',None)
   code=str(error) if type(error)is Refusal and re.fullmatch('host\\.[A-Za-z0-9_.-]{1,75}',str(error)) else None
@@ -555,14 +560,35 @@ class _Scope:
  cwd:str
  environment_items:tuple
  key:str
+ launch_deadline:float|None=None
  @property
  def environment(self):return dict(self.environment_items)
  @property
  def consumed(self):return self.key in self.permit.consumed
 
 
-def seal_command(permit,role,arguments,*,cwd,environment):
+def _qemu_launch_deadline(permit,value):
+ # Independently join the caller's cutoff to the same existing first-step
+ # clock used by NativePort. No phase, seal or intent may renew that anchor.
+ need(type(value)in(int,float) and math.isfinite(value),'host.launch_deadline_scope')
+ def pairs(rows):
+  result={}
+  for key,item in rows:
+   need(key not in result,'host.job_clock');result[key]=item
+  return result
+ raw=_read_regular(permit.temp/'ocv-job-clock.json',4096,uid=permit.uid)
+ clock=json.loads(raw,object_pairs_hook=pairs)
+ need(type(clock)is dict and set(clock)=={'schema','monotonicNs'} and
+      clock['schema']=='ocv-job-clock-v1' and type(clock['monotonicNs'])is int and
+      0<clock['monotonicNs']<=time.monotonic_ns(),'host.job_clock')
+ need(value==clock['monotonicNs']/1000000000+2700-2150,'host.launch_deadline_anchor')
+ need(time.monotonic()<value,'host.launch_deadline')
+
+
+def seal_command(permit,role,arguments,*,cwd,environment,launch_deadline=None):
  permit=_permit(permit);need(role in ROLE_MAP and type(arguments)is dict,'host.factory_role')
+ if role=='qemu_once':_qemu_launch_deadline(permit,launch_deadline)
+ else:need(launch_deadline is None,'host.launch_deadline_role')
  relative,function_name=ROLE_MAP[role];row=permit.rows[relative]
  module=_load(permit.source/relative,row['sha256']);factory=getattr(module,function_name)
  environment=_environment(role,environment)
@@ -607,14 +633,19 @@ def seal_command(permit,role,arguments,*,cwd,environment):
  need(cwdpath.resolve()==cwdpath and (cwdpath==permit.source or cwdpath==permit.project
       or role=='git_read' and cwdpath==permit.workspace
       or negative_allowed and cwdpath==permit.project/'negative'),'host.cwd')
- key=sha(canonical({'role':role,'argv':argv,'cwd':str(cwdpath),'environment':environment}))
- scope=_Scope(permit,role,argv,str(cwdpath),tuple(sorted(environment.items())),key)
+ key_value={'role':role,'argv':argv,'cwd':str(cwdpath),'environment':environment}
+ if launch_deadline is not None:
+  need(time.monotonic()<launch_deadline,'host.launch_deadline')
+  key_value['launchDeadline']=launch_deadline
+ key=sha(canonical(key_value))
+ scope=_Scope(permit,role,argv,str(cwdpath),tuple(sorted(environment.items())),key,launch_deadline)
  need(scope.key not in permit.scopes,'host.scope_already_sealed')
  permit.scopes[scope.key]=scope;return scope
 
 
 def _intent(scope):
  permit=_permit(scope.permit);need(not scope.consumed,'host.scope_consumed')
+ if scope.launch_deadline is not None:need(time.monotonic()<scope.launch_deadline,'host.launch_deadline')
  if scope.role=='integrated_test_image':
   fixture=_load(permit.source/'integrated/integrated_fixture.py',
       permit.rows['integrated/integrated_fixture.py']['sha256'])
@@ -631,6 +662,7 @@ def _intent(scope):
    'role':scope.role,'scopeSha256':scope.key,'sourceCommit':permit.expected['expected_source'],'automaticRetry':False})
   with os.fdopen(fd,'wb') as stream:stream.write(raw);stream.flush();os.fsync(stream.fileno())
  except BaseException:raise
+ if scope.launch_deadline is not None:need(time.monotonic()<scope.launch_deadline,'host.launch_deadline')
 
 
 class HostProcessOps(_OwnedOps):
@@ -638,7 +670,8 @@ class HostProcessOps(_OwnedOps):
   permit=_permit(permit)
   need(type(scope)is _Scope and scope.permit is permit and permit.scopes.get(scope.key)is scope,'host.scope_unissued')
   _environment(scope.role,scope.environment)
-  super().__init__(permit.outer,scope.argv,scope.cwd,scope.environment,NativeIO(),lambda:_intent(scope))
+  super().__init__(permit.outer,scope.argv,scope.cwd,scope.environment,NativeIO(),lambda:_intent(scope),
+      launch_deadline=scope.launch_deadline)
 
 
 def _supervise_owned(ops,argv,*,cwd,environment,deadline,grace=10.0):

@@ -387,6 +387,35 @@ class OwnedIO(unittest.TestCase):
   self.assertFalse(any(call[0]=='spawn' for call in self.io.calls))
   self.assertEqual(result['setupCause'],{'phase':'process_spawn','exceptionType':'Refusal',
    'errno':None,'reason':'host.spawn_deadline'})
+ def test_qemu_intent_or_selector_cannot_spend_preparation_reserve_before_popen(self):
+  for phase in ('intent','selector'):
+   self.setUp();original=self.io.selector
+   def intent():
+    if phase=='intent':self.io.clock=.5
+   def selector():
+    value=original()
+    if phase=='selector':self.io.clock=.5
+    return value
+   self.io.selector=selector
+   ops=h._OwnedOps(outer,self.argv,'/synthetic',self.env,self.io,intent,launch_deadline=.5)
+   result=h._supervise_owned(ops,self.argv,cwd='/synthetic',environment=self.env,deadline=10.,grace=.1)
+   self.assertFalse(result['spawned']);self.assertEqual(ops.spawn_deadline,10.)
+   self.assertFalse(any(call[0]=='spawn' for call in self.io.calls))
+   self.assertEqual(result['setupCause']['reason'],'host.launch_deadline')
+   if phase=='selector':self.assertTrue(self.io.sel.closed)
+ def test_qemu_launch_cutoff_joins_original_first_step_clock_only(self):
+  permit=types.SimpleNamespace(temp=Path('/synthetic'),uid=1001)
+  raw=h.canonical({'schema':'ocv-job-clock-v1','monotonicNs':1000000000})
+  with mock.patch.object(h,'_read_regular',return_value=raw),\
+       mock.patch.object(h.time,'monotonic_ns',return_value=100000000000),\
+       mock.patch.object(h.time,'monotonic',return_value=100.):
+   h._qemu_launch_deadline(permit,551.)
+   for value in (True,float('nan'),float('inf'),550.,552.):
+    with self.subTest(value=value),self.assertRaises(h.Refusal):h._qemu_launch_deadline(permit,value)
+  with mock.patch.object(h,'_read_regular',return_value=raw),\
+       mock.patch.object(h.time,'monotonic_ns',return_value=600000000000),\
+       mock.patch.object(h.time,'monotonic',return_value=551.):
+   with self.assertRaisesRegex(h.Refusal,'host.launch_deadline'):h._qemu_launch_deadline(permit,551.)
  def test_spawn_deadline_is_fixed_and_rejects_unbounded_or_invalid_scopes(self):
   for value in (True,0,-1,float('nan'),float('inf'),2001):
    ops=h.SyntheticProcessOps(outer,self.argv,'/synthetic',self.env,self.io)

@@ -17,6 +17,9 @@ import uuid
 
 ARTIFACT_CAP=64*1024**2
 TOOLING_CAP=48*1024**2
+JOB_SECONDS=2700
+PRE_QEMU_RESERVE_SECONDS=2150
+PRE_QEMU_PHASE_SECONDS={'source':60,'host':360,'metadata':270,'negative':30,'build':400}
 
 
 class Refusal(RuntimeError):pass
@@ -182,7 +185,7 @@ class NativePort:
                 anchor['schema']=='ocv-job-clock-v1' and type(anchor['monotonicNs'])is int and
                 0<anchor['monotonicNs']<=time.monotonic_ns(),'host.job_clock')
         self.started=anchor['monotonicNs']/1000000000
-        self.deadline=self.started+2700;self.phase_deadline=self.started+60
+        self.deadline=self.started+JOB_SECONDS;self.phase_deadline=self.started+60
         self.phases=set();self.commands=[];self.first_failure=None;self.bound=None
         self.run={'repository':'fr-meyer/openclaw','workflowRef':os.environ['GITHUB_WORKFLOW_REF'],
                   'sourceCommit':os.environ['GITHUB_SHA'],'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':'1'}
@@ -190,17 +193,26 @@ class NativePort:
         require(name not in self.phases and type(seconds)is int and seconds>0,'host.phase_consumed')
         self.phases.add(name)
         self.phase_deadline=min(self.deadline,time.monotonic()+seconds)
+        if name in PRE_QEMU_PHASE_SECONDS:
+            require(seconds<=PRE_QEMU_PHASE_SECONDS[name],'host.phase_ceiling')
+            self.phase_deadline=min(self.phase_deadline,self.deadline-PRE_QEMU_RESERVE_SECONDS)
         require(self.phase_deadline>time.monotonic(),'host.phase_deadline')
+    def _pre_qemu_budget(self):
+        now=time.monotonic()
+        require(now<self.deadline-PRE_QEMU_RESERVE_SECONDS,'host.pre_qemu_pool')
+        require(now<self.phase_deadline,'host.phase_deadline')
     def _run(self,role,arguments,timeout,*,allow_failure=False):
         remaining=self.deadline-time.monotonic();require(remaining>30,'host.whole_deadline')
         phase_remaining=self.phase_deadline-time.monotonic()
         require(phase_remaining>0,'host.phase_deadline')
         env=dict(self.m.context.ENV)
         if role.startswith('ubuntu_apt_'):env['DEBIAN_FRONTEND']='noninteractive'
-        scope=self.m.context.seal_command(self.permit,role,arguments,cwd=str(self.project),environment=env)
+        seal_options={'launch_deadline':self.deadline-PRE_QEMU_RESERVE_SECONDS} if role=='qemu_once' else {}
+        scope=self.m.context.seal_command(self.permit,role,arguments,cwd=str(self.project),environment=env,**seal_options)
         now=time.monotonic()
         require(self.deadline-now>30,'host.whole_deadline')
         require(self.phase_deadline>now,'host.phase_deadline')
+        if role=='qemu_once':require(now<self.deadline-PRE_QEMU_RESERVE_SECONDS,'host.pre_qemu_pool')
         value=self.m.context.run_owned(self.permit,scope,cwd=str(self.project),environment=env,
                                       deadline=min(self.deadline-30,self.phase_deadline,now+timeout))
         row={'role':role,'argv':list(scope.argv),'status':value.get('status'),'returncode':value.get('returncode'),
@@ -232,8 +244,9 @@ class NativePort:
         require(self.started+60>time.monotonic(),'host.source_phase_exhausted')
         self._phase('source',max(1,int(self.started+60-time.monotonic())))
         for suite in self.m.commands.SUITES:self._run('python_tests',{'source_root':str(self.source),'suite':suite},60)
+        self._pre_qemu_budget()
     def install_host_tools(self):
-        self._phase('host',60)
+        self._phase('host',PRE_QEMU_PHASE_SECONDS['host'])
         for relative in ('ubuntu-lists/partial','ubuntu-archives/partial','metadata','out'):
             (self.project/relative).mkdir(mode=0o755,parents=True)
         self._write(self.project/'ubuntu.sources.list',self.m.commands.ubuntu_sources())
@@ -284,7 +297,9 @@ class NativePort:
         self.gpgv_sha=sha(read_regular('/usr/bin/gpgv',8*1024**2,owner=0))
         self.apt_helper_sha=sha(read_regular('/usr/lib/apt/apt-helper',8*1024**2,owner=0))
         self._write(self.project/'metadata/keyring.gpg',self.keyring,0o444)
+        self._pre_qemu_budget()
     def authenticate_metadata(self):
+        self._phase('metadata',PRE_QEMU_PHASE_SECONDS['metadata'])
         for kind in ('release','packages'):self._run('debian_metadata_curl',{'project':str(self.project),'kind':kind},130)
         release=read_regular(self.project/'metadata/InRelease',196608)
         compressed=read_regular(self.project/'metadata/Packages.xz',16777216)
@@ -316,7 +331,9 @@ class NativePort:
         self.records=self.m.apt.package_records(self.packages)
         self.roots=select_roots(self.records,self.m.build.REQUIRED_PACKAGES,'linux-image-6.1.0-50-amd64')
         self.m.build.package_specs(self.roots)
+        self._pre_qemu_budget()
     def _project_files(self,destination,negative=False):
+        self._pre_qemu_budget()
         destination=Path(destination)
         if destination!=self.project:destination.mkdir(mode=0o755)
         build_id=sha((self.permit.mission+(':negative' if negative else ':positive')).encode())[:32]
@@ -329,7 +346,8 @@ class NativePort:
                 'packageRoots':self.roots}
         files=self.m.build.recipe_files(self.roots,source_manifest_sha256=sha(self.manifest_raw),
           build_entry_sha256=self.rows['host/build_entry.py']['sha256'],build_stage_context_sha256=sha(canonical(header)))
-        for name,(raw,mode)in files.items():self._write(destination/name,raw,mode)
+        for name,(raw,mode)in files.items():
+            self._pre_qemu_budget();self._write(destination/name,raw,mode)
         for name,(raw,mode)in self.m.guard_project.project_files(guard,
           guard_source=read_regular(self.source/'apt/archive_guard.py',131072),
           policy_source=read_regular(self.source/'apt/archive_policy.py',131072),
@@ -337,13 +355,16 @@ class NativePort:
         for name,mode in self.m.guard_project.project_directories().items():
             (destination/'pkgmngr'/name).mkdir(mode=mode,parents=True,exist_ok=True)
         self._write(destination/'mkosi.postinst',self.m.guard_project.outer_postinstall_script(),0o555)
-        for name,row in self.rows.items():self._write(destination/'extra/opt/ocv/source'/name,read_regular(self.source/name,row['bytes']+1),0o444)
+        for name,row in self.rows.items():
+            self._pre_qemu_budget()
+            self._write(destination/'extra/opt/ocv/source'/name,read_regular(self.source/name,row['bytes']+1),0o444)
         self._write(destination/'extra/opt/ocv/source/PUBLIC-SOURCE-MANIFEST.json',self.manifest_raw,0o444)
         self._write(destination/'extra/opt/ocv/control/build-stage-context.json',canonical(header),0o444)
         for name,target in self.m.build.recipe_symlinks().items():
             link=destination/name;link.parent.mkdir(mode=0o755,parents=True,exist_ok=True)
             os.symlink(target,link)
         self._run('own_project_chown',{'project':str(destination),'phase':'prepare','owner':'0:0'},30)
+        self._pre_qemu_budget()
         return guard
     def negative_bootstrap(self):
         self._phase('negative',30)
@@ -374,6 +395,7 @@ class NativePort:
             require(not new.exists(),'host.negative_custody_exists')
             if old.exists():old.rename(new)
         self.first_failure=None
+        self._pre_qemu_budget()
         # Expected negative is retained separately, not mislabeled a positive failure.
     def build_once(self):
         self._phase('build',400)
@@ -393,7 +415,9 @@ class NativePort:
         self.build=decode(read_regular(self.project/'out/build.json',32768))
         require(self.build['sourceManifestSha256']==sha(self.manifest_raw) and self.build['runIdentity']==self.run and
                 self.build['fixtureOnly']is True and self.build['candidateImage']is False,'host.build_control')
+        self._pre_qemu_budget()
     def bind_image(self):
+        self._pre_qemu_budget()
         from types import SimpleNamespace
         out=self.project/'out';records={}
         for name,cap in (('ocv-test.raw',6*1024**3),('kernel.bin',128*1024**2),('initrd.img',512*1024**2)):
@@ -401,6 +425,7 @@ class NativePort:
             h=hashlib.sha256();count=0
             with p.open('rb')as stream:
                 while True:
+                    self._pre_qemu_budget()
                     raw=stream.read(1048576)
                     if not raw:break
                     count+=len(raw);h.update(raw)
@@ -420,9 +445,10 @@ class NativePort:
         runtime_raw=read_regular(out/'runtime.json',4*1024**2)
         require(sha(runtime_raw)==self.build['runtimeManifestSha256'],'host.integrated_runtime_control')
         self.integrated_runtime_rows=self.m.integrated_capture.expected_runtime_rows(decode(runtime_raw,4*1024**2),self.build)
+        self._pre_qemu_budget()
         return self.expected
     def boot_once(self):
-        require(self.deadline-time.monotonic()>=2150,'host.guest_budget')
+        require(self.deadline-time.monotonic()>=PRE_QEMU_RESERVE_SECONDS,'host.guest_budget')
         self._phase('guest',2000)
         return self._run('qemu_once',{'bound':self.bound,'session':self.permit.mission,
             'test_record':self.test_record},2000,allow_failure=True)

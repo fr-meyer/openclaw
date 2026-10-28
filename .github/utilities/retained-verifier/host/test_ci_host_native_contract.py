@@ -103,8 +103,9 @@ class SyntheticCommands:
    stream.write(integrated_fixture.test_image_header())
    stream.truncate(integrated_fixture.TEST_IMAGE_BYTES)
   path.chmod(0o600)
- def seal_command(self,permit,role,arguments,*,cwd,environment):
+ def seal_command(self,permit,role,arguments,*,cwd,environment,launch_deadline=None):
   assert permit is self.fixture.permit
+  assert launch_deadline==(self.fixture.port.deadline-2150 if role=='qemu_once' else None)
   if role=='mkosi_build':argv=('/usr/bin/sudo','-n','--')+build.mkosi_argv(arguments['project'])
   elif role=='qemu_once':
    # Pure command model uses a relocated source-owned CI project; no command
@@ -120,7 +121,8 @@ class SyntheticCommands:
    argv=tuple(a.replace(fixed,arguments['seed_root']).replace(project+'/out/integrated-test.raw',arguments['output']) for a in argv)
   elif role=='partition_read':argv=build.partition_argv(arguments['image'])
   else:argv=getattr(commands,role)(**arguments)
-  return SimpleNamespace(role=role,arguments=copy.deepcopy(arguments),argv=argv,cwd=cwd,environment=environment)
+  return SimpleNamespace(role=role,arguments=copy.deepcopy(arguments),argv=argv,cwd=cwd,environment=environment,
+   launch_deadline=launch_deadline)
  def run_owned(self,permit,scope,*,cwd,environment,deadline):
   assert permit is self.fixture.permit and cwd==scope.cwd and environment==scope.environment
   self.calls.append(scope)
@@ -135,8 +137,8 @@ class SealedSyntheticCommands(SyntheticCommands):
  project/environment validation and the actual O_EXCL intent writer all run.
  """
  def __init__(self,fixture):super().__init__(fixture);self.arguments={}
- def seal_command(self,permit,role,arguments,*,cwd,environment):
-  scope=actual_host.seal_command(permit,role,arguments,cwd=cwd,environment=environment)
+ def seal_command(self,permit,role,arguments,*,cwd,environment,launch_deadline=None):
+  scope=actual_host.seal_command(permit,role,arguments,cwd=cwd,environment=environment,launch_deadline=launch_deadline)
   self.arguments[scope.key]=copy.deepcopy(arguments)
   return scope
  def run_owned(self,permit,scope,*,cwd,environment,deadline):

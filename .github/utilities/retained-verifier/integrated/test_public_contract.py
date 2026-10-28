@@ -46,9 +46,13 @@ class PublicContractTests(unittest.TestCase):
             integrated_materials.archive_bytes({'usr/../a':(b'x',0o444)})
     def test_absolute_budget_retains_bounded_shutdown_and_no_clock_renewal(self):
         value=integrated_fixture.timing_preflight()
-        self.assertEqual((value['jobSeconds'],value['plannedSeconds']),(2700,2670))
+        self.assertEqual((value['jobSeconds'],value['plannedSeconds']),(2700,2700))
         self.assertEqual(value['guestWrapperSeconds'],2000)
         self.assertEqual(value['workerSeconds'],300)
+        self.assertEqual(value['preGuestPoolSeconds'],550)
+        self.assertEqual(value['shutdownReserveSeconds'],30)
+        self.assertIs(value['phaseCeilingsConditional'],True)
+        self.assertIs(value['nativeAuthority'],False)
     def test_probe_source_measures_children_and_never_mutates_search_path(self):
         source=Path(copied_bootstrap_probe.__file__).read_bytes()
         ast.parse(source)
