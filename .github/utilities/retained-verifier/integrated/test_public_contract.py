@@ -272,4 +272,113 @@ class CopiedLocationTests(unittest.TestCase):
         self.assertEqual(evidence['streams']['stdout']['captureFacts'],result['stdoutFacts'])
 
 
+
+# Source-owned bounded proc EOF contracts.
+"""Execute only the actual script's reader helpers with inert fake OS reads."""
+import ast
+import base64
+from types import SimpleNamespace
+import unittest
+import zlib
+
+import copied_bootstrap_probe as probe
+from protocol import Refusal,canonical,sha
+
+
+class ProcIO:
+    O_RDONLY=0;O_NOFOLLOW=1
+    def __init__(self,chunks,*,close_error=False):
+        self.chunks=list(chunks);self.calls=[];self.closed=[];self.close_error=close_error
+    def open(self,path,flags):self.calls.append(('open',path,flags));return 7
+    def read(self,fd,count):
+        self.calls.append(('read',fd,count))
+        if not self.chunks:raise AssertionError('EOF must be observed explicitly')
+        value=self.chunks.pop(0)
+        if isinstance(value,BaseException):raise value
+        if type(value) is bytes and len(value)>count:
+            self.chunks.insert(0,value[count:]);return value[:count]
+        return value
+    def close(self,fd):
+        self.closed.append(fd)
+        if self.close_error:raise OSError(5,'synthetic close error')
+
+
+def readers(io):
+    tree=ast.parse(probe._SCRIPT)
+    names=('read_proc_complete','read_maps_complete')
+    nodes=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in names]
+    assert {node.name for node in nodes}==set(names)
+    namespace={'os':io}
+    exec(compile(ast.fix_missing_locations(ast.Module(body=nodes,type_ignores=[])),
+                 '<actual-copied-reader-functions>','exec'),namespace)
+    return SimpleNamespace(read=namespace[names[0]],maps=namespace[names[1]])
+
+
+class CopiedProcReadTests(unittest.TestCase):
+    def test_multiple_short_reads_require_eof_and_preserve_late_loader(self):
+        chunks=[b'1000-2000 r-xp 00000000 08:01 1 /copied/python\n',
+                b'2000-3000 r-xp 00000000 08:01 2 /copied/',b'ld-linux.so\n',b'']
+        io=ProcIO(chunks);data=readers(io).maps()
+        self.assertEqual(data,b''.join(chunks));self.assertIn(b'ld-linux.so',data)
+        self.assertEqual(sum(c[0]=='read' for c in io.calls),4);self.assertEqual(io.closed,[7])
+    def test_exact_cap_requires_a_further_eof_read_and_overflow_never_succeeds(self):
+        io=ProcIO([b'x'*65535+b'\n',b'']);self.assertEqual(len(readers(io).maps()),65536)
+        self.assertEqual(io.calls[-1],('read',7,1));self.assertEqual(io.closed,[7])
+        io=ProcIO([b'x'*65537,b''])
+        with self.assertRaisesRegex(RuntimeError,'copied.proc_cap'):readers(io).maps()
+        self.assertEqual(io.closed,[7])
+    def test_nonterminating_progress_is_bounded_and_malformed_or_no_progress_reads_refuse(self):
+        class Endless(ProcIO):
+            def read(self,fd,count):self.calls.append(('read',fd,count));return b'x'
+        io=Endless([])
+        with self.assertRaisesRegex(RuntimeError,'copied.proc_cap'):readers(io).read('/proc/self/maps',16)
+        self.assertLessEqual(sum(c[0]=='read'for c in io.calls),18);self.assertEqual(io.closed,[7])
+        for value in (None,'text',bytearray(b'x')):
+            io=ProcIO([value])
+            with self.subTest(value=value),self.assertRaisesRegex(RuntimeError,'copied.proc_read_type'):
+                readers(io).maps()
+            self.assertEqual(io.closed,[7])
+    def test_read_error_always_closes_and_close_error_is_not_success(self):
+        io=ProcIO([b'first',OSError(5,'synthetic read error')])
+        with self.assertRaises(OSError):readers(io).maps()
+        self.assertEqual(io.closed,[7])
+        io=ProcIO([b'complete\n',b''],close_error=True)
+        with self.assertRaises(OSError):readers(io).maps()
+        self.assertEqual(io.closed,[7])
+    def test_empty_or_unterminated_maps_refuse_and_children_use_same_eof_core(self):
+        for chunks in ([b''],[b'partial without newline',b'']):
+            io=ProcIO(chunks)
+            with self.subTest(chunks=chunks),self.assertRaisesRegex(RuntimeError,'copied.maps_malformed'):
+                readers(io).maps()
+            self.assertEqual(io.closed,[7])
+        io=ProcIO([b'12',b'3 456',b'']);self.assertEqual(readers(io).read('/proc/self/task/1/children',4096),b'123 456')
+        self.assertEqual(io.closed,[7])
+    def test_foreign_late_mapping_is_still_rejected_by_original_origin_guard(self):
+        names=['usr/bin/python3.11','lib64/ld-linux-x86-64.so.2','code/static-entry',
+            'usr/lib/python3.11/encodings/__init__.py']+[
+            'usr/lib/python3.11/synthetic_'+str(i)+'.py'for i in range(622)]
+        rows=[{'path':name,'bytes':1,'sha256':sha(b'x'),
+            'mode':0o555 if name in names[:3]else 0o444}for name in names]
+        root='/var/lib/openclaw-retained-bootstrap/'+'1'*64+'/'+'a'*32+'/root'
+        first=('1000-2000 r-xp 00000000 08:01 1 '+root+'/usr/bin/python3.11\n').encode()
+        late=('2000-3000 r-xp 00000000 08:01 2 '+root+'/lib64/ld-linux-x86-64.so.2\n').encode()
+        facts={'schema':'ocv.copied-controller-startup.v1','root':root,'prefix':root+'/usr',
+            'basePrefix':root+'/usr','execPrefix':root+'/usr','baseExecPrefix':root+'/usr',
+            'executable':root+'/usr/bin/python3.11',
+            'path':[root+'/usr/lib/python3.11',root+'/usr/lib/python3.11/lib-dynload'],
+            'origins':{'encodings':root+'/usr/lib/python3.11/encodings/__init__.py'},
+            'maps':readers(ProcIO([first,late,b''])).maps().decode('ascii'),
+            'flags':{'isolated':1,'noSite':1,'ignoreEnvironment':1,'dontWriteBytecode':True},
+            'version':[3,11,2],'childrenSpawned':False}
+        def envelope():
+            raw=canonical(facts)
+            return canonical({'schema':'ocv.copied-controller-envelope.v1','rawBytes':len(raw),
+                'rawSha256':sha(raw),'zlibBase64':base64.b64encode(zlib.compress(raw,9)).decode('ascii')})
+        self.assertEqual(probe.validate_result(envelope(),root,rows)['status'],'passed')
+        foreign=b'3000-4000 r-xp 00000000 08:01 3 /usr/lib/foreign-host.so\n'
+        facts['maps']=readers(ProcIO([first,late,foreign,b''])).maps().decode('ascii')
+        with self.assertRaisesRegex(Refusal,'copied.host_mapped_object'):
+            probe.validate_result(envelope(),root,rows)
+
+
 if __name__=='__main__':unittest.main()

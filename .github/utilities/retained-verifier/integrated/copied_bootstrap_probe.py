@@ -31,16 +31,27 @@ _SCRIPT=r'''
 import base64,hashlib,importlib,json,os,sys,zlib
 ROOT=__ROOT__
 for name in __MODULES__:importlib.import_module(name)
-fd=os.open('/proc/self/task/'+str(os.getpid())+'/children',os.O_RDONLY|os.O_NOFOLLOW)
-try:
- children=os.read(fd,4097)
- if len(children)>4096 or children.strip():raise RuntimeError('copied.children_present')
-finally:os.close(fd)
-fd=os.open('/proc/self/maps',os.O_RDONLY|os.O_NOFOLLOW)
-try:
- data=os.read(fd,65537)
- if len(data)>65536:raise RuntimeError('copied.maps_cap')
-finally:os.close(fd)
+def read_proc_complete(path,cap):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+ try:
+  chunks=[];total=0
+  for _ in range(cap+2):
+   wanted=min(4096,cap+1-total)
+   block=os.read(fd,wanted)
+   if type(block) is not bytes or len(block)>wanted:raise RuntimeError('copied.proc_read_type')
+   if not block:return b''.join(chunks)
+   total+=len(block)
+   if total>cap:raise RuntimeError('copied.proc_cap')
+   chunks.append(block)
+  raise RuntimeError('copied.proc_no_eof')
+ finally:os.close(fd)
+def read_maps_complete():
+ data=read_proc_complete('/proc/self/maps',65536)
+ if not data or not data.endswith(b'\n'):raise RuntimeError('copied.maps_malformed')
+ return data
+children=read_proc_complete('/proc/self/task/'+str(os.getpid())+'/children',4096)
+if children.strip():raise RuntimeError('copied.children_present')
+data=read_maps_complete()
 origins={}
 for name,module in sorted(sys.modules.items()):
  path=getattr(module,'__file__',None)
