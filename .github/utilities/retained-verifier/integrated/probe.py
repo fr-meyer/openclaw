@@ -42,10 +42,42 @@ STATUS_REQUIRED = {'Name','State','Tgid','Pid','PPid','TracerPid','Uid','Gid','G
 MAX_PIDS = 4096
 MAX_READS = 4500
 MAX_BYTES = 20 * 1024 * 1024
+# These values interpret Linux /proc wire data, including during Mac replay.
+# They are not flags for NativeReader's actual host-side os.open below.
+# Linux v6.1 include/uapi/asm-generic/fcntl.h (x86-64 target):
+# https://raw.githubusercontent.com/torvalds/linux/v6.1/include/uapi/asm-generic/fcntl.h
+LINUX_O_RDONLY = 0
+LINUX_O_WRONLY = 1
+LINUX_O_APPEND = 0o2000
+LINUX_O_LARGEFILE = 0o100000
+LINUX_DEV_MAX = (1 << 64)-1
+LINUX_DEVICE_COMPONENT_MAX = (1 << 32)-1
 
 
 def integer(value, low=0, high=(1 << 63)-1):
     return type(value) is int and low <= value <= high
+
+
+def linux_makedev(major, minor):
+    """glibc2.36 bits/sysmacros.h: uint64 dev_t, uint32 components.
+
+    https://raw.githubusercontent.com/bminor/glibc/glibc-2.36/bits/sysmacros.h
+    Reject invalid wire integers instead of accepting C-style truncation.
+    """
+    require(integer(major,0,LINUX_DEVICE_COMPONENT_MAX) and
+            integer(minor,0,LINUX_DEVICE_COMPONENT_MAX),'probe.linux_device_component')
+    return ((major & 0xfff) << 8) | ((major & 0xfffff000) << 32) | \
+           (minor & 0xff) | ((minor & 0xffffff00) << 12)
+
+
+def linux_major(device):
+    require(integer(device,0,LINUX_DEV_MAX),'probe.linux_device')
+    return ((device & 0x00000000000fff00) >> 8) | ((device & 0xfffff00000000000) >> 32)
+
+
+def linux_minor(device):
+    require(integer(device,0,LINUX_DEV_MAX),'probe.linux_device')
+    return (device & 0x00000000000000ff) | ((device & 0x00000ffffff00000) >> 12)
 
 
 def path(value):
@@ -62,6 +94,7 @@ def kind(mode):
 
 
 def identity(info):
+    require(integer(info.st_dev,0,LINUX_DEV_MAX),'probe.linux_device')
     return {'dev':info.st_dev,'ino':info.st_ino,'type':kind(info.st_mode),'mode':stat.S_IMODE(info.st_mode),
             'uid':info.st_uid,'gid':info.st_gid}
 
@@ -141,7 +174,7 @@ def validate_expected(value):
     for label, row in value['stdio'].items():
         closed(row,{'dev','ino','rdev'} if label == 'stdin' else {'dev','ino'},'probe.expected_stdio')
         require(all(integer(v) for v in row.values()) and row['ino'] > 0,'probe.expected_stdio')
-    require(value['stdio']['stdin']['rdev'] == os.makedev(1,3),'probe.expected_null')
+    require(value['stdio']['stdin']['rdev'] == linux_makedev(1,3),'probe.expected_null')
     require(value['stdio']['stdout'] != value['stdio']['stderr'],'probe.expected_distinct_outputs')
     closed(value['limits'],LIMIT_KEYS,'probe.expected_limits')
     require(value['limits'] == {'memoryMaxBytes':2147483648,'memorySwapMaxBytes':0,
@@ -414,11 +447,11 @@ def collect_and_validate(reader,expected):
                         for k in ('fsroot','majorMinor','fsType','source','vfsOptions','fsOptions','optionalFields')),'probe.mount_source_or_flags')
             info=obs.stat(base+'/root'+('' if row['target']=='/' else row['target']),role+'.identity')
             require(identity(info)==row['identity'],'probe.mount_identity')
-            require(str(os.major(info.st_dev))+':'+str(os.minor(info.st_dev))==row['majorMinor'],'probe.mount_device')
+            require(str(linux_major(info.st_dev))+':'+str(linux_minor(info.st_dev))==row['majorMinor'],'probe.mount_device')
             if row['role'] in ('private_tmp','private_var_tmp','systemd_incoming'):
                 require(obs.names(base+'/root'+row['target'],128,role+'.empty')==[],'probe.mount_exception_not_empty')
             positive.append({**actual,'role':row['role'],'identity':identity(info)})
-        root_mount=indexed['/'];require(root_mount['majorMinor']==str(os.major(ji.st_dev))+':'+str(os.minor(ji.st_dev))
+        root_mount=indexed['/'];require(root_mount['majorMinor']==str(linux_major(ji.st_dev))+':'+str(linux_minor(ji.st_dev))
             and next(r for r in expected['mounts'] if r['target']=='/')['identity']['ino']==ji.st_ino,'probe.jail_mount_join')
         inherited=[]
         for row in expected['inheritedPaths']:
@@ -508,11 +541,12 @@ def collect_and_validate(reader,expected):
             require(info.st_dev==want['dev'] and info.st_ino==want['ino'] and record['ino']==info.st_ino,'probe.stdio_inode')
             if number==0:
                 require(stat.S_ISCHR(info.st_mode) and info.st_rdev==want['rdev']
-                    and record['flags'] in (os.O_RDONLY,os.O_RDONLY|0o100000),'probe.stdin_authority')
+                    and record['flags'] in (LINUX_O_RDONLY,LINUX_O_RDONLY|LINUX_O_LARGEFILE),'probe.stdin_authority')
             else:
                 require(stat.S_ISREG(info.st_mode) and info.st_uid==info.st_gid==0
                     and stat.S_IMODE(info.st_mode)==0o600 and info.st_nlink==1 and 0<=info.st_size<=65536
-                    and record['flags'] in (os.O_WRONLY|os.O_APPEND,os.O_WRONLY|os.O_APPEND|0o100000),
+                    and record['flags'] in (LINUX_O_WRONLY|LINUX_O_APPEND,
+                                           LINUX_O_WRONLY|LINUX_O_APPEND|LINUX_O_LARGEFILE),
                     'probe.output_authority')
             fd_facts[label]={**identity(info),'rdev':info.st_rdev,'flags':record['flags'],'mountId':record['mountId'],
                              'nlink':info.st_nlink,'size':info.st_size}

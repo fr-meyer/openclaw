@@ -20,6 +20,8 @@ import time
 import types
 
 CASE_IDS=('readonly-code','management-paths','unix-socket','mount','entry-bad-argv','entry-bad-env','timer-late-zero')
+ENTRY_REFUSALS=types.MappingProxyType({'entry-bad-argv':b'entry_refused_args\n',
+    'entry-bad-env':b'entry_refused_unknown_key\n'})
 MANAGEMENT=('/run/docker.sock','/var/run/docker.sock','/run/systemd/private','/run/dbus/system_bus_socket')
 IMPORT_PINS={
  'hosted_export.py':'4469f534a4c61678e951a1542e6e5caa69ac8fd7431729b6cfedeaef0f084e3c',
@@ -133,7 +135,7 @@ def _classify(case,record):
   passed=blocked and record['stdout']==record['stderr']==b''
  elif case in ('entry-bad-argv','entry-bad-env'):
   passed=(record['exitCode']==111 and record['signal']is None and record['errno']is None and
-          record['stdout']==b'' and record['stderr']==b'entry_refused\n' and record['detail']=='exec_refused')
+          record['stdout']==b'' and record['stderr']==ENTRY_REFUSALS[case] and record['detail']=='exec_refused')
  else:
   passed=(record['exitCode']==0 and record['signal']is None and record['errno']is None and
           record['stdout']==TIMER_OUTPUT and record['stderr']==b'' and record['detail']=='timer_timeout')
@@ -221,7 +223,7 @@ def validate_result(value,expected_pid=None,expected_context_sha=None,allow_fail
        'native.case_shape')
   # Reconstruct only the two source-known outputs. Unknown bytes cannot clear.
   stdout=TIMER_OUTPUT if row['id']=='timer-late-zero' else b''
-  stderr=b'entry_refused\n' if row['id']in('entry-bad-argv','entry-bad-env')else b''
+  stderr=ENTRY_REFUSALS.get(row['id'],b'')
   outputs=(row['stdoutBytes']==len(stdout)and row['stdoutSha256']==sha(stdout)and
            row['stderrBytes']==len(stderr)and row['stderrSha256']==sha(stderr))
   observed={key:row[key]for key in ('exitCode','signal','errno','timedOut','reaped','outputComplete','detail','errors')}

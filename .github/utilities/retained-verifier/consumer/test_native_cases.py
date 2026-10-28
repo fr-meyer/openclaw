@@ -24,7 +24,8 @@ def good_observation(case):
     elif case=='management-paths':row['detail']='unavailable:2,2,2,2'
     elif case=='unix-socket':row['errno']=errno.EPERM
     elif case=='mount':row.update(exitCode=None,signal=int(signal.SIGSYS),detail='sigsys')
-    elif case in('entry-bad-argv','entry-bad-env'):row.update(exitCode=111,stderr=b'entry_refused\n',detail='exec_refused')
+    elif case=='entry-bad-argv':row.update(exitCode=111,stderr=b'entry_refused_args\n',detail='exec_refused')
+    elif case=='entry-bad-env':row.update(exitCode=111,stderr=b'entry_refused_unknown_key\n',detail='exec_refused')
     else:row.update(stdout=n.TIMER_OUTPUT,detail='timer_timeout')
     return row
 
@@ -187,6 +188,40 @@ class NativeCaseTests(unittest.TestCase):
         for field,value in(('exitCode',0),('stderr',b'entry_exec_failed\n'),('signal',int(signal.SIGKILL))):
             row=good_observation('entry-bad-env');row[field]=value
             self.assertEqual(n.run_cases(FakeIO(overrides={'entry-bad-env':row}))['status'],'failed')
+    def test_exact_case_specific_entry_labels_reject_old_swapped_extra_or_truncated_messages(self):
+        literals={'entry-bad-argv':b'entry_refused_args\n','entry-bad-env':b'entry_refused_unknown_key\n'}
+        self.assertEqual(dict(n.ENTRY_REFUSALS),literals)
+        self.assertEqual(n.sha(literals['entry-bad-argv']),'b47557099978d18c6e6ea3bb2d623f2edfa43d3ada11298473a87960d09cbc26')
+        for case,expected in literals.items():
+            for wrong in (b'entry_refused\n',b'entry_refused_pid\n',expected[:-1],expected+b'\n',
+                          literals['entry-bad-env'if case=='entry-bad-argv'else'entry-bad-argv']):
+                row=good_observation(case);row['stderr']=wrong
+                self.assertFalse(n._classify(case,row))
+                summary=n.run_cases(FakeIO(overrides={case:row}))
+                self.assertEqual(summary['status'],'failed');n.validate_result(summary,allow_failure=True)
+            with self.assertRaises(TypeError):n.ENTRY_REFUSALS[case]=b'wrong'
+    def test_independent_summary_reconstruction_requires_exact_label_hash_count_and_complete_denial(self):
+        summary=n.run_cases(FakeIO());n.validate_result(summary,allow_synthetic=True)
+        for case in ('entry-bad-argv','entry-bad-env'):
+            index=n.CASE_IDS.index(case)
+            for field,value in (('stderrSha256',n.sha(b'entry_refused\n')),('stderrBytes',14),
+                ('stdoutBytes',1),('exitCode',0),('signal',int(signal.SIGKILL)),
+                ('timedOut',True),('reaped',False),('outputComplete',False)):
+                changed=copy.deepcopy(summary);changed['cases'][index][field]=value
+                with self.subTest(case=case,field=field),self.assertRaises(n.Refusal):
+                    n.validate_result(changed,allow_synthetic=True)
+    def test_real_entry_case_vectors_have_one_bad_arg_or_one_fixed_unknown_key_without_executing(self):
+        class WouldExec(BaseException):pass
+        name='ocv-'+'a'*24;fake=types.SimpleNamespace(job=types.SimpleNamespace(context={'identityName':name}))
+        calls=[]
+        def capture(path,argv,environment):calls.append((path,argv,environment));raise WouldExec()
+        with patch.object(n.os,'execve',side_effect=capture):
+            for case in ('entry-bad-argv','entry-bad-env'):
+                with self.assertRaises(WouldExec):n.NativeIO._child(fake,case,None)
+        self.assertEqual(calls[0][0],'/code/static-entry');self.assertEqual(calls[0][1],['/code/static-entry'])
+        self.assertEqual(calls[1][1],['/code/static-entry',name])
+        self.assertEqual(set(calls[0][2]),{'PATH','LANG','LC_ALL','HOME','SHELL','USER','LOGNAME'})
+        self.assertEqual(calls[1][2],{**calls[0][2],'OCV_UNEXPECTED':'1'})
     def test_complete_timer_output_and_late_zero_is_refused(self):
         row=good_observation('timer-late-zero');row['detail']='timer_returned'
         result=n.run_cases(FakeIO(overrides={'timer-late-zero':row}))
