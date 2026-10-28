@@ -194,6 +194,10 @@ it("keeps production routes disabled while owned status, report and recovery wor
       expect(registered.tools).toHaveLength(1);
       expect(registered.subscriptions).toHaveLength(1);
       expect(registered.services).toHaveLength(1);
+      const registration = registered.tools[0];
+      if (registration === undefined) {
+        throw new Error("Expected the Mergeguez tool registration");
+      }
       const nativeContext = captureOpenClawStateWorkerContext();
       const policy = __testing.normalizeRuntimeConfig(config).repositories.get(repo);
       const nativeRun = createSubagentRunRecord({
@@ -257,7 +261,7 @@ it("keeps production routes disabled while owned status, report and recovery wor
       try {
         const statusClient = clientFor("status", statusKey, new AbortController().signal);
         await runInScope(statusClient, async () => {
-          const result = await registered.tools[0]
+          const result = await registration
             .factory({
               sessionKey: statusKey,
               agentId: "status",
@@ -275,7 +279,7 @@ it("keeps production routes disabled while owned status, report and recovery wor
           nativeRun.runId,
         );
         await runInScope(workerClient, async () => {
-          const report = await registered.tools[0]
+          const report = await registration
             .factory({
               sessionKey: workerKey,
               agentId: "reviewer",
@@ -536,7 +540,11 @@ it("lets packaged recovery cancel only its exact native root and holds an unknow
           },
           () => instance.run(run),
         );
-      const tool = registered.tools[0].factory({ sessionKey: ownerKey, agentId: "franck" });
+      const registration = registered.tools[0];
+      if (registration === undefined) {
+        throw new Error("Expected the Mergeguez tool registration");
+      }
+      const tool = registration.factory({ sessionKey: ownerKey, agentId: "franck" });
       let abortCalls = 0;
       const handle = createEmbeddedRunHandle({
         runId: rootRunId,
@@ -616,7 +624,12 @@ it("lets packaged recovery cancel only its exact native root and holds an unknow
             },
           },
         };
-        const racedTool = registeredApi(config, raceTasks).tools[0].factory({
+        const racedApi = registeredApi(config, raceTasks);
+        const racedRegistration = racedApi.tools[0];
+        if (racedRegistration === undefined) {
+          throw new Error("Expected the raced Mergeguez tool registration");
+        }
+        const racedTool = racedRegistration.factory({
           sessionKey: ownerKey,
           agentId: "franck",
         });

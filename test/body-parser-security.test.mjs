@@ -74,7 +74,7 @@ test("exact actual Express/parser/qs dependency identity", () => {
   assert.equal(expressRequire("body-parser/package.json").version, "2.4.0");
   const parserRequire = createRequire(expressRequire.resolve("body-parser/package.json"));
   assert.equal(parserRequire("qs/package.json").version, "6.16.1");
-  assert.equal(expressRequire("qs/package.json").version, "6.16.0");
+  assert.equal(expressRequire("qs/package.json").version, "6.16.1");
 });
 
 test("plain and leading-whitespace JSON preserve ordinary data", { timeout: 3000 }, async () => {

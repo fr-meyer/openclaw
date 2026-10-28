@@ -1624,9 +1624,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "94d515001629ab574eeb79591e7d86ecc2bd3ef4"
+        "blob": "8256d97438f10d8223b0bedadb0b9e2c3a8be51c"
       },
-      "disposition": "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
     {
       "path": "packages/gateway-protocol/src/core-request-params.ts",
@@ -1891,6 +1891,34 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "patches/vitest@5.0.1.patch",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "0d637049b4305c0d56aa6f7528b45307d699ea9b"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "0d637049b4305c0d56aa6f7528b45307d699ea9b"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "0d637049b4305c0d56aa6f7528b45307d699ea9b"
+      },
+      "result": null,
+      "disposition": "RETIRED_REPLACED_VITEST_PATCH"
+    },
+    {
+      "path": "patches/vitest@5.0.5.patch",
+      "upstream107": null,
+      "fork107": null,
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "11a2815b0f081961316f99f2a1fa7d5076fc81b5"
+      },
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
+    },
+    {
       "path": "patches/zod@4.6.6.patch",
       "upstream107": null,
       "fork107": {
@@ -1920,9 +1948,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b"
+        "blob": "14ba80c3f2e75ec9c3b7d01d549ebdf5aa32f7f6"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
     {
       "path": "pnpm-workspace.yaml",
@@ -1940,9 +1968,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "b5451b324bce188ce55030ac5473c05f3991162f"
+        "blob": "90272ea03ed2db476428cf4215bcaa4495176ca0"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
     {
       "path": "scripts/check-package-patches.mts",
@@ -2733,6 +2761,26 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "src/commands/doctor-config-preflight.process.test.ts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "50cc64b8ba3bf5411ff988eae4ce9344c3b7584f"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "50cc64b8ba3bf5411ff988eae4ce9344c3b7584f"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "50cc64b8ba3bf5411ff988eae4ce9344c3b7584f"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "ba643c5626c8a735dd317153a75f3e2036581e4f"
+      },
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
+    },
+    {
       "path": "src/commands/doctor-migration-backup-artifacts.ts",
       "upstream107": {
         "mode": "100644",
@@ -3004,9 +3052,9 @@
       "upstream108": null,
       "result": {
         "mode": "100644",
-        "blob": "770c3337d4e0c3078f3e92408aa2e2119ec80841"
+        "blob": "4f871f4d2487308074c616a4374544fe0ab12d6b"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
     {
       "path": "src/gateway/server-managed-task-flow-runtime.mergeguez-recovery.test.ts",
@@ -3018,9 +3066,9 @@
       "upstream108": null,
       "result": {
         "mode": "100644",
-        "blob": "48222cc1cddfdea9c2b400ca89e68866239d0b83"
+        "blob": "ba60c4a350606caba6ece2d02374b91cb5d571da"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
     {
       "path": "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
@@ -4034,9 +4082,9 @@
       "upstream108": null,
       "result": {
         "mode": "100644",
-        "blob": "8242d42dbd39579825a768019c7f496207f44aaa"
+        "blob": "5d0ff6fb8c65b811b5a4f95d5ca5c83b5e4eeea9"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
     {
       "path": "test/discord-native-zod-regression.test.mjs",
@@ -4333,6 +4381,17 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "test/v108-remediation-security.test.mjs",
+      "upstream107": null,
+      "fork107": null,
+      "upstream108": null,
+      "result": {
+        "mode": "100644",
+        "blob": "afc3283afd633e371c003d2c058f3c2a747b0167"
+      },
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
+    },
+    {
       "path": "test/vitest-projects-config.test-support.ts",
       "upstream107": {
         "mode": "100644",
@@ -4482,9 +4541,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "5e31552fee7c0ff1e96be209711e151f3e58a0de"
+        "blob": "e5159416b7a8e956e404aa8e1b10bb156b372585"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     }
   ]
 }

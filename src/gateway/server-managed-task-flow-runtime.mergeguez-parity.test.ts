@@ -248,8 +248,12 @@ it("activates the packaged controller only for the real Gateway owner and exact 
       expect(inert.routes).toHaveLength(0);
       expect(inert.subscriptions).toHaveLength(0);
       expect(inert.services).toHaveLength(0);
+      const inertTool = inert.tools[0];
+      if (inertTool === undefined) {
+        throw new Error("Expected the inert Mergeguez tool registration");
+      }
       await expect(
-        inert.tools[0].factory({ sessionKey: ownerKey }).execute("call", {
+        inertTool.factory({ sessionKey: ownerKey }).execute("call", {
           action: "status",
           flowId: "absent",
         }),
@@ -384,7 +388,11 @@ it("binds packaged status and reviewer reports to the exact native SQLite flow a
           { context, resolveGatewayContext, client: null, isWebchatConnect: () => false },
           () => instance.run(run),
         );
-      const tool = registered.tools[0].factory;
+      const registration = registered.tools[0];
+      if (registration === undefined) {
+        throw new Error("Expected the Mergeguez tool registration");
+      }
+      const tool = registration.factory;
       try {
         const statusClient = clientFor("status", statusKey, new AbortController().signal);
         await callAs(statusClient, async () => {
@@ -843,7 +851,11 @@ it("admits one packaged native root and never relaunches after a lost acknowledg
           { context, resolveGatewayContext, client: null, isWebchatConnect: () => false },
           () => instance.run(run),
         );
-      const tool = registered.tools[0].factory({ sessionKey: ownerKey, agentId: "franck" });
+      const registration = registered.tools[0];
+      if (registration === undefined) {
+        throw new Error("Expected the Mergeguez tool registration");
+      }
+      const tool = registration.factory({ sessionKey: ownerKey, agentId: "franck" });
       try {
         const first = callBackground(() =>
           tool.execute("first", { action: "continue", flowId: flow.flowId }),
