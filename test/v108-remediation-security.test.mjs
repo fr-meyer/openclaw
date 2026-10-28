@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
+import { once } from "node:events";
+import { Writable } from "node:stream";
 import http from "node:http";
 import https from "node:https";
 import { createRequire, syncBuiltinESMExports } from "node:module";
@@ -11,6 +14,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 // This file is run in its own secretless native-test child. Every message and
 // schema below is synthetic; even an accidental provider/network path refuses.
+const ownedLoopbackHttpRequest = http.request;
+const ownedLoopbackConnect = net.connect;
 let networkCalls = 0;
 const forbidNetwork = () => {
   networkCalls++;
@@ -227,3 +232,137 @@ test("the actual aligned Vitest mock generator treats hostile registration value
 });
 
 test("no real network operation occurred", () => assert.equal(networkCalls, 0));
+
+
+test("actual Vitest API-mode HTTP denies synthetic private files and its token", {
+  timeout: 45_000,
+  skip: process.platform !== "linux" && "Linux CI-only: fixture owns the XDG API-token path",
+}, async (t) => {
+  // openclaw-temp-dir: allow owns an external-tool HTTP fixture and its HOME.
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "v108-vitest-http-"));
+  const served = path.join(fixture, "served");
+  const home = path.join(fixture, "home");
+  const ownedEnvironment = {
+    HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: path.join(home, "config"),
+    XDG_CACHE_HOME: path.join(home, "cache"), XDG_DATA_HOME: path.join(served, "data"),
+  };
+  const previousEnvironment = Object.fromEntries(
+    Object.keys(ownedEnvironment).map((key) => [key, process.env[key]]),
+  );
+  const markers = new Map([
+    [".env", "SYNTHETIC_V108_ENV_MARKER"],
+    [".env.production", "SYNTHETIC_V108_ENV_VARIANT_MARKER"],
+    [".npmrc", "SYNTHETIC_V108_NPMRC_MARKER"],
+    [".git/config", "SYNTHETIC_V108_GIT_MARKER"],
+    ["fixture.pem", "SYNTHETIC_V108_KEY_MARKER"],
+    ["data/vitest/.vitest-secret-token", "SYNTHETIC_V108_API_TOKEN_MARKER"],
+  ]);
+  const files = new Map([...markers].map(([relative, marker]) => [path.join(served, relative), marker]));
+  const publicFile = path.join(served, "allowed.txt");
+  const allowedPaths = new Set([publicFile, ...files.keys()]);
+  let context;
+  let server;
+  let ownedPort;
+  const silent = new Writable({ write(_chunk, _encoding, done) { done(); } });
+  async function getOwnedFile(file, suffix = "") {
+    assert.equal(allowedPaths.has(file), true);
+    assert.ok(suffix === "" || suffix === "?raw");
+    t.signal.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      const request = ownedLoopbackHttpRequest({
+        hostname: "127.0.0.1", port: ownedPort, method: "GET", agent: false,
+        path: `/@fs/${file.replaceAll("\\", "/")}${suffix}`, signal: t.signal,
+        createConnection: () => ownedLoopbackConnect({ host: "127.0.0.1", port: ownedPort }),
+      }, (incoming) => {
+        const chunks = [];
+        let bytes = 0;
+        incoming.on("data", (chunk) => {
+          bytes += chunk.length;
+          if (bytes > 16_384) incoming.destroy(new Error("bounded synthetic HTTP response exceeded"));
+          else chunks.push(chunk);
+        });
+        incoming.on("error", reject);
+        incoming.on("end", () => resolve({ status: incoming.statusCode, body: Buffer.concat(chunks).toString("utf8") }));
+      });
+      request.on("error", reject);
+      request.end();
+    });
+  }
+  try {
+    fs.mkdirSync(home, { recursive: true });
+    fs.mkdirSync(served, { recursive: true });
+    fs.writeFileSync(path.join(served, "package.json"), '{"private":true,"type":"module"}\n');
+    fs.writeFileSync(publicFile, "SYNTHETIC_V108_ALLOWED_MARKER");
+    for (const [file, marker] of files) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, marker, { mode: 0o600 });
+    }
+    Object.assign(process.env, ownedEnvironment);
+    const { createVitest } = await import(pathToFileURL(rootRequire.resolve("vitest/node")).href);
+    const creating = createVitest({
+      root: served, config: false, watch: false, ui: false,
+      api: { middlewareMode: true, host: "127.0.0.1", allowWrite: false, allowExec: false },
+      reporters: [], include: [], passWithNoTests: true,
+    }, {
+      configFile: false, envFile: false, cacheDir: path.join(fixture, "cache"),
+      // Keep Vitest's shipped default fs.deny; a handwritten deny list would
+      // hide the regression. The allow root contains every negative fixture.
+      server: { fs: { strict: true, allow: [served] } },
+    }, { stdout: silent, stderr: silent });
+    const closeOnAbort = () => { void creating.then((owned) => owned.close()).catch(() => {}); };
+    t.signal.addEventListener("abort", closeOnAbort, { once: true });
+    try {
+      context = await creating;
+    } finally {
+      t.signal.removeEventListener("abort", closeOnAbort);
+    }
+    t.signal.throwIfAborted();
+    assert.equal(context.config.api.middlewareMode, true);
+    assert.equal(context.config.api.allowWrite, false);
+    assert.equal(context.config.api.allowExec, false);
+    assert.equal(context.vite.httpServer, null);
+    assert.ok(context.config.api.token === markers.get("data/vitest/.vitest-secret-token"),
+      "Vitest must use the owned synthetic API token");
+    server = http.createServer(context.vite.middlewares);
+    const listening = once(server, "listening", { signal: t.signal });
+    server.listen({ port: 0, host: "127.0.0.1", signal: t.signal });
+    await listening;
+    const address = server.address();
+    assert.equal(address.address, "127.0.0.1");
+    assert.ok(address.port > 0);
+    ownedPort = address.port;
+    const positive = await getOwnedFile(publicFile);
+    assert.equal(positive.status, 200);
+    assert.equal(positive.body, "SYNTHETIC_V108_ALLOWED_MARKER");
+    for (const file of files.keys()) {
+      for (const suffix of ["", "?raw"]) {
+        const denied = await getOwnedFile(file, suffix);
+        assert.ok([403, 404].includes(denied.status), `synthetic deny-list status ${denied.status}`);
+        for (const marker of markers.values()) assert.equal(denied.body.includes(marker), false);
+      }
+    }
+    assert.equal(networkCalls, 0);
+  } finally {
+    try {
+      const cleanup = [];
+      if (server) {
+        server.closeAllConnections();
+        cleanup.push(new Promise((resolve, reject) => server.close((error) =>
+          error && error.code !== "ERR_SERVER_NOT_RUNNING" ? reject(error) : resolve(),
+        )));
+      }
+      if (context) cleanup.push(context.close());
+      const outcomes = await Promise.allSettled(cleanup);
+      for (const outcome of outcomes) {
+        if (outcome.status === "rejected") throw outcome.reason;
+      }
+    } finally {
+      silent.destroy();
+      for (const [key, previous] of Object.entries(previousEnvironment)) {
+        if (previous === undefined) delete process.env[key];
+        else process.env[key] = previous;
+      }
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  }
+});
