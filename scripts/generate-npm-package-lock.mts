@@ -1565,7 +1565,134 @@ function describeOverrideViolations(violations: ReturnType<typeof collectOverrid
     .join("; ");
 }
 
-function installNpmPackageLock(tempDir: string, npmInstallArgs: string[], env: NodeJS.ProcessEnv) {
+/** Failure evidence only: never changes override admission or authenticates a bundle. */
+export function createNpmLockOverrideAttribution(
+  packageDirLabel: string,
+  lockText: string,
+  lockfile: unknown,
+  violations: ReturnType<typeof collectOverrideViolations>,
+  overrides: OverrideMap,
+) {
+  const safePath = (value: unknown) =>
+    typeof value === "string" &&
+    value.length <= 240 &&
+    (value === "" || value === "." ||
+      (/^[A-Za-z0-9@._+/-]+$/u.test(value) &&
+        !value.split("/").some((part) => part === ".." || part === "." || part === "")))
+      ? value
+      : null;
+  const safeSpec = (value: unknown) =>
+    typeof value === "string" && value.length <= 96 &&
+    /^[A-Za-z0-9@._+*^~<>=| -]+$/u.test(value) &&
+    versionRangeFromOverrideSpec(value) !== null ? value : null;
+  const safeSelector = (value: string) =>
+    value.length <= 240 && /^[A-Za-z0-9@._+/*^~<>=| -]+$/u.test(value) ? value : null;
+  const packages = recordAt(lockfile, "packages") ?? {};
+  const metadata = (lockPath: string) => {
+    const entry = recordAt(packages, lockPath);
+    return {
+      path: safePath(lockPath),
+      version: safeSpec(entry?.version),
+      inBundle: typeof entry?.inBundle === "boolean" ? entry.inBundle : null,
+      hasShrinkwrap: typeof entry?.hasShrinkwrap === "boolean" ? entry.hasShrinkwrap : null,
+    };
+  };
+  const projected = violations.slice(0, 3).map((violation) => {
+    const incoming: Array<{
+      parent: ReturnType<typeof metadata>;
+      dependencyName: string | null;
+      requestedSpec: string | null;
+    }> = [];
+    let incomingCount = 0;
+    for (const [parentPath, parent] of Object.entries(packages)) {
+      if (!isRecord(parent)) {
+        continue;
+      }
+      const dependencies = {
+        ...recordAt(parent, "peerDependencies"),
+        ...recordAt(parent, "dependencies"),
+        ...recordAt(parent, "optionalDependencies"),
+      };
+      for (const [name, spec] of Object.entries(dependencies)) {
+        if (name !== violation.packageName ||
+            resolveLockDependencyPath(packages, parentPath, name) !== violation.path) {
+          continue;
+        }
+        incomingCount++;
+        if (incoming.length < 8) {
+          incoming.push({ parent: metadata(parentPath), dependencyName: safePath(name),
+            requestedSpec: safeSpec(spec) });
+        }
+      }
+    }
+    const configured: Array<{ selectors: Array<string | null>; spec: string | null }> = [];
+    let configuredCount = 0;
+    let unvisitedPolicyBranches = 0;
+    const visit = (rules: OverrideMap, selectors: string[] = []) => {
+      if (selectors.length >= 4) {
+        unvisitedPolicyBranches++;
+        return;
+      }
+      for (const [selector, spec] of Object.entries(rules)) {
+        if (isRecord(spec)) {
+          visit(spec, [...selectors, selector]);
+        } else if ((parsePnpmPackageKey(selector)?.name ?? selector) === violation.packageName) {
+          configuredCount++;
+          if (configured.length < 8) {
+            configured.push({ selectors: [...selectors, selector].map(safeSelector),
+              spec: safeSpec(spec) });
+          }
+        }
+      }
+    };
+    visit(overrides);
+    const parentPaths = violation.packagePath.slice(0, -1);
+    return {
+      path: safePath(violation.path), packageName: safePath(violation.packageName),
+      actualVersion: safeSpec(violation.actualVersion), expectedSpec: safeSpec(violation.expectedSpec),
+      physicalParentCount: parentPaths.length,
+      physicalParentsOmitted: Math.max(0, parentPaths.length - 6),
+      physicalParents: parentPaths.slice(-6).map((item) => metadata(item.path)),
+      incomingCount, incomingOmitted: Math.max(0, incomingCount - incoming.length), incoming,
+      configuredCount, configuredOmitted: Math.max(0, configuredCount - configured.length),
+      unvisitedPolicyBranches, configured,
+    };
+  });
+  const npm = recordAt(packages, "node_modules/npm");
+  const integrity = npm?.integrity;
+  const result = {
+    schema: "openclaw.npm-lock-override-attribution.v1",
+    code: "npm_lock.override_violation",
+    packageDir: safePath(packageDirLabel),
+    generatedLockBytes: Buffer.byteLength(lockText),
+    generatedLockSha256: createHash("sha256").update(lockText).digest("hex"),
+    graphAuthority: "generated_lock_unverified",
+    violationCount: violations.length,
+    omittedViolationCount: Math.max(0, violations.length - projected.length),
+    violations: projected,
+    npmParent: {
+      version: safeSpec(npm?.version),
+      declaredIntegrity: typeof integrity === "string" && integrity.length <= 256 &&
+        /^sha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2}$/u.test(integrity) ? integrity : null,
+      tarballAuthentication: "not_reached",
+    },
+    truncatedForSize: false,
+  };
+  // Keep one complete parseable line; never export raw lock or registry/auth URLs.
+  if (Buffer.byteLength(JSON.stringify(result)) > 16 * 1024) {
+    result.violations = [];
+    result.omittedViolationCount = violations.length;
+    result.truncatedForSize = true;
+  }
+  return result;
+}
+
+function installNpmPackageLock(
+  tempDir: string,
+  npmInstallArgs: string[],
+  env: NodeJS.ProcessEnv,
+  packageDir: string,
+) {
   const npmLockPath = path.join(tempDir, "package-lock.json");
   const enforcedOverrides = readWorkspaceOverrides();
   const overrideRules = validationOverrideRulesFromOverrides(enforcedOverrides);
@@ -1608,6 +1735,9 @@ function installNpmPackageLock(tempDir: string, npmInstallArgs: string[], env: N
     if (newSources.length === 0) {
       const suffix =
         disabledPaths.size > 0 ? ` after disabling ${[...disabledPaths].join(", ")}` : "";
+      console.error(JSON.stringify(createNpmLockOverrideAttribution(
+        packageLabel(packageDir), npmLockText, parseJsonObject(npmLockText), remaining, enforcedOverrides,
+      )));
       throw new Error(
         `generated package-lock.json violates workspace overrides${suffix}: ${describeOverrideViolations(remaining)}`,
       );
@@ -1691,7 +1821,7 @@ export function generateNpmPackageLock(packageDir: string, options: NpmLockOptio
     copyLocalFileDependencies(normalizedPackageJson, packageDir, tempDir);
     // Lock-derived overrides steer npm placement. Only explicit workspace overrides
     // are policy that dependency shrinkwraps must not violate.
-    installNpmPackageLock(tempDir, npmInstallArgs, env);
+    installNpmPackageLock(tempDir, npmInstallArgs, env, packageDir);
     const generated = normalizeNpmVersionDrift(
       applyPackageExtensionPeerMetadata(
         parseJsonObject(readFileSync(path.join(tempDir, "package-lock.json"), "utf8")),

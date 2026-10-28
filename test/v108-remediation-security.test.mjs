@@ -270,7 +270,7 @@ test("actual Vitest API-mode HTTP denies synthetic private files and its token",
     t.signal.throwIfAborted();
     return new Promise((resolve, reject) => {
       const request = ownedLoopbackHttpRequest({
-        hostname: "127.0.0.1", port: ownedPort, method: "GET", agent: false,
+        hostname: "127.0.0.1", port: ownedPort, method: "GET",
         path: `/@fs/${file.replaceAll("\\", "/")}${suffix}`, signal: t.signal,
         createConnection: () => ownedLoopbackConnect({ host: "127.0.0.1", port: ownedPort }),
       }, (incoming) => {

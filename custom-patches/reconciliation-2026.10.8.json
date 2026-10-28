@@ -2259,6 +2259,26 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "scripts/generate-npm-package-lock.mts",
+      "upstream107": {
+        "mode": "100644",
+        "blob": "7238f62c06835eea41cdc9ad4a2e823a456c1762"
+      },
+      "fork107": {
+        "mode": "100644",
+        "blob": "7238f62c06835eea41cdc9ad4a2e823a456c1762"
+      },
+      "upstream108": {
+        "mode": "100644",
+        "blob": "7238f62c06835eea41cdc9ad4a2e823a456c1762"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "975ae34594d2b358ff41d605461c257fdb43fb87"
+      },
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
+    },
+    {
       "path": "scripts/lib/ci-changed-node-test-plan.mts",
       "upstream107": {
         "mode": "100644",
@@ -2428,9 +2448,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "9a920b423a0106e5781773d5e113e22b1b05f669"
+        "blob": "d1c94ee888c4a96d5237b885a4a961e9370e221c"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
     {
       "path": "src/agents/subagents/registry/subagent-registry-persistence.ts",
@@ -4226,9 +4246,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "989b5bf8a497427a081b441afdb4e27d13114d7e"
+        "blob": "909afc00db8db03b99d763d94ce36bf8d8f9f6ee"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
     {
       "path": "test/scripts/lint-suppressions.test.ts",
@@ -4387,7 +4407,7 @@
       "upstream108": null,
       "result": {
         "mode": "100644",
-        "blob": "7b8d9b401730daea486a8e256a6505eb67ca97b4"
+        "blob": "9fd7dc20312f7e904adbacabc9fa4a0aa48085b9"
       },
       "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },

@@ -13,6 +13,7 @@ import {
   collectNpmPlatformOptionalDependencies,
   createNpmPackageLockInstallStrategyArgs,
   createNpmLockExecOptions,
+  createNpmLockOverrideAttribution,
   disableDependencyShrinkwrapOverrideConflictSources,
   validationOverrideRulesFromOverrides,
   normalizeNpmVersionDrift,
@@ -35,6 +36,123 @@ describe("generate-npm-package-lock", () => {
   function repoRelativePath(value: string): string {
     return path.relative(process.cwd(), value).replaceAll("\\", "/");
   }
+
+  function attributionFixture() {
+    const packages: Record<string, Record<string, unknown>> = {
+      "": { dependencies: { npm: "12.2.0" } },
+      "node_modules/npm": {
+        version: "12.2.0", integrity: "sha512-Zml4dHVyZQ==",
+        dependencies: { "make-fetch-happen": "16.0.1" },
+      },
+      "node_modules/npm/node_modules/make-fetch-happen": {
+        version: "16.0.1", inBundle: true,
+        dependencies: { "http-cache-semantics": "^4.2.0" },
+      },
+      "node_modules/npm/node_modules/http-cache-semantics": {
+        version: "4.2.0", inBundle: true,
+      },
+    };
+    const lock = { packages };
+    const violations = collectOverrideViolations(lock, { "http-cache-semantics": "4.3.0" });
+    const overrides = normalizeOverrides({
+      "make-fetch-happen@16.0.1>http-cache-semantics": "4.3.0",
+    });
+    return { lock, violations, overrides };
+  }
+
+  it("attributes a refused nested npm lock without admitting its unverified bundle", () => {
+    const { lock, violations, overrides } = attributionFixture();
+    const raw = JSON.stringify(lock);
+    const result = createNpmLockOverrideAttribution(".", raw, lock, violations, overrides);
+    expect(result.packageDir).toBe(".");
+    expect(result.generatedLockBytes).toBe(Buffer.byteLength(raw));
+    expect(result.generatedLockSha256).toBe(createHash("sha256").update(raw).digest("hex"));
+    expect(result.graphAuthority).toBe("generated_lock_unverified");
+    expect(result.npmParent).toEqual({
+      version: "12.2.0", declaredIntegrity: "sha512-Zml4dHVyZQ==",
+      tarballAuthentication: "not_reached",
+    });
+    expect(result.violations[0]?.incoming).toEqual([{
+      parent: {
+        path: "node_modules/npm/node_modules/make-fetch-happen", version: "16.0.1",
+        inBundle: true, hasShrinkwrap: null,
+      },
+      dependencyName: "http-cache-semantics", requestedSpec: "^4.2.0",
+    }]);
+    expect(result.violations[0]?.configured).toEqual([{
+      selectors: ["make-fetch-happen@16.0.1", "http-cache-semantics"], spec: "4.3.0",
+    }]);
+    expect(collectOverrideViolations(lock, { "http-cache-semantics": "4.3.0" })).toEqual(violations);
+    expect(violations).toHaveLength(1);
+    expect(JSON.stringify(lock)).toBe(raw);
+  });
+
+  it.each(["../private", "/private", "https://token@example.test", "a\\b", "secret\nvalue"])(
+    "does not export an unsafe managed-package label (%s)", (label) => {
+      const { lock, violations, overrides } = attributionFixture();
+      const result = createNpmLockOverrideAttribution(label, JSON.stringify(lock), lock, violations, overrides);
+      expect(result.packageDir).toBeNull();
+      expect(JSON.stringify(result)).not.toContain(label);
+    },
+  );
+
+  it("redacts registry URLs and non-version fields rather than dumping lock metadata", () => {
+    const { lock, violations, overrides } = attributionFixture();
+    const canary = "https://user:private-canary@example.test/private.tgz";
+    lock.packages["node_modules/npm"] = {
+      version: "private-canary", integrity: canary, resolved: canary, _authToken: "private-canary",
+    };
+    lock.packages["node_modules/npm/node_modules/make-fetch-happen"] = {
+      version: "16.0.1", dependencies: { "http-cache-semantics": canary },
+    };
+    const raw = JSON.stringify(lock);
+    const result = createNpmLockOverrideAttribution("extensions/example", raw, lock, violations, overrides);
+    expect(result.npmParent.version).toBeNull();
+    expect(result.npmParent.declaredIntegrity).toBeNull();
+    expect(result.violations[0]?.incoming[0]?.requestedSpec).toBeNull();
+    expect(JSON.stringify(result)).not.toContain("private-canary");
+    expect(result.generatedLockSha256).toBe(createHash("sha256").update(raw).digest("hex"));
+  });
+
+  it("reports omitted incoming edges and policies without silently claiming completeness", () => {
+    const { lock, violations } = attributionFixture();
+    const overrides: Record<string, unknown> = {};
+    for (let i = 0; i < 12; i++) {
+      lock.packages[`node_modules/parent-${i}`] = {
+        version: "1.0.0", dependencies: { "http-cache-semantics": "^4" },
+      };
+      overrides[`parent-${i}`] = { "http-cache-semantics": "4.3.0" };
+    }
+    lock.packages["node_modules/http-cache-semantics"] = { version: "4.2.0" };
+    const globalViolation = collectOverrideViolations(lock, { "http-cache-semantics": "4.3.0" })
+      .filter((entry) => entry.path === "node_modules/http-cache-semantics");
+    const result = createNpmLockOverrideAttribution(".", JSON.stringify(lock), lock, globalViolation, overrides);
+    expect(result.violations[0]?.incomingCount).toBe(12);
+    expect(result.violations[0]?.incoming).toHaveLength(8);
+    expect(result.violations[0]?.incomingOmitted).toBe(4);
+    expect(result.violations[0]?.configuredCount).toBe(12);
+    expect(result.violations[0]?.configuredOmitted).toBe(4);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("caps the complete attribution line and retains full hash and omitted counts", () => {
+    const { lock, violations } = attributionFixture();
+    const overrides: Record<string, unknown> = {};
+    for (let i = 0; i < 8; i++) {
+      overrides[`${"a".repeat(239)}${i}`] = {
+        ["b".repeat(240)]: { ["c".repeat(240)]: { "http-cache-semantics": "4.3.0" } },
+      };
+    }
+    const raw = JSON.stringify(lock);
+    const result = createNpmLockOverrideAttribution(".", raw, lock,
+      [...violations, ...violations, ...violations, ...violations], overrides);
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(16 * 1024);
+    expect(result.truncatedForSize).toBe(true);
+    expect(result.violationCount).toBe(4);
+    expect(result.omittedViolationCount).toBe(4);
+    expect(result.violations).toEqual([]);
+    expect(result.generatedLockSha256).toBe(createHash("sha256").update(raw).digest("hex"));
+  });
 
   it("omits workspace packages that are published beside the package", () => {
     const normalized = packageJsonForNpmLock(
