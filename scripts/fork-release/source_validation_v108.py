@@ -27,7 +27,13 @@ REPOSITORY = "fr-meyer/openclaw"
 CAMPAIGN = "future-v108-source-validation-20261027"
 SOURCE = "61f924bdb7ed4f837096c87120087919ff0a6bdf"
 TREE = "416a77f6b89110883c41652f64c602ab989662d7"
-BASE = "918890b9f72b2d0372995362e8ea3088e0f87431"
+# The PR snapshot and actual target branch tip are distinct retained identities.
+BASE = "a65f70c5dad17b39bc3ee26ba92cde6d00bfb259"
+TARGET_BRANCH_TIP = "918890b9f72b2d0372995362e8ea3088e0f87431"
+APPROVAL_DEADLINE = "2026-10-29T00:03:19Z"
+SKIPPED_RUN_ID = "40607329263"
+SKIPPED_HEAD = "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3"
+SKIPPED_WORKFLOW_SHA256 = "717834ccb7a9ba27622d0981fc61875a109219b906350a825ea0ee2d04e8d13f"
 BRANCH = "task/v107-source-binding"
 BASE_BRANCH = "release-pipeline/v105-image-only-20261024"
 WORKFLOW = ".github/workflows/future-v108-source-validation.yml"
@@ -134,6 +140,8 @@ def code_binding(pipeline, source, event, env):
         need(git(source, "rev-parse", "HEAD").decode().strip() == SOURCE and
              git(source, "rev-parse", "HEAD^{tree}").decode().strip() == TREE, "source checkout/tree")
     acquire_workflow_commit(pipeline, head, env)
+    need(git(pipeline, "rev-parse", env["GITHUB_WORKFLOW_SHA"] + "^1").decode().strip() ==
+         TARGET_BRANCH_TIP, "workflow merge target parent")
     # pull_request workflow code can be a synthetic merge. Bind every executable
     # owner used by this driver to reviewed head bytes before source code runs.
     for path in (WORKFLOW, "scripts/fork-release/source_validation_v108.py",
@@ -230,23 +238,62 @@ def observed_minutes(jobs, expected):
     return minutes
 
 
+def skipped_admission(run, request, api):
+    """Retain only the positively observed, fixed whole-skipped admission."""
+    need(str(run.get("id")) == SKIPPED_RUN_ID and run.get("head_sha") == SKIPPED_HEAD and
+         run.get("status") == "completed" and run.get("conclusion") == "skipped" and
+         run.get("repository", {}).get("full_name") == REPOSITORY and
+         run.get("repository", {}).get("private") is False and
+         run.get("head_repository", {}).get("private") is False,
+         "fixed skipped admission identity")
+    previous = validate_request(read_json(content_at(api, REQUEST, SKIPPED_HEAD)))
+    need(previous == dict(request, round=0, profiles=[], priorRunIds=[]),
+         "fixed skipped initial request")
+    need(hashlib.sha256(content_at(api, WORKFLOW, SKIPPED_HEAD)).hexdigest() ==
+         SKIPPED_WORKFLOW_SHA256, "fixed skipped workflow digest")
+    jobs = api("/repos/" + REPOSITORY + "/actions/runs/" + SKIPPED_RUN_ID +
+               "/jobs?filter=all&per_page=100")
+    need(type(jobs.get("total_count")) is int and jobs["total_count"] == 3 and
+         type(jobs.get("jobs")) is list and len(jobs["jobs"]) == 3,
+         "complete skipped admission jobs")
+    names = {"admission", "source (${{ matrix.profile }})", "final"}
+    seen = set()
+    for job in jobs["jobs"]:
+        name = job.get("name")
+        need(name in names and name not in seen and job.get("status") == "completed" and
+             job.get("conclusion") == "skipped" and job.get("run_attempt") == 1 and
+             "runner_id" in job and (job["runner_id"] is None or
+                                     type(job["runner_id"]) is int and job["runner_id"] == 0) and
+             "runner_name" in job and job["runner_name"] is None and
+             "steps" in job and type(job["steps"]) is list and job["steps"] == [],
+             "skipped admission acquired runner or steps")
+        seen.add(name)
+    need(seen == names, "missing skipped admission job")
+    return {"runId": SKIPPED_RUN_ID, "headSha": SKIPPED_HEAD, "status": "skipped",
+            "bookedRunnerMinutes": 0, "observedRunnerMinutes": 0}
+
+
 def history_checks(request, event, env, pipeline, api):
     live = api("/repos/" + REPOSITORY + "/pulls/28")
     # Ignore PR prose entirely and revalidate only the same structured fields.
     current = dict(event, pull_request=live)
     need(validate_event(current, env) == event["pull_request"]["head"]["sha"], "live head changed")
+    target = api("/repos/" + REPOSITORY + "/git/ref/heads/" + BASE_BRANCH)
+    need(target.get("ref") == "refs/heads/" + BASE_BRANCH and
+         target.get("object", {}).get("type") == "commit" and
+         target["object"].get("sha") == TARGET_BRANCH_TIP, "fixed live target branch tip")
     listing = api("/repos/" + REPOSITORY + "/actions/workflows/" + Path(WORKFLOW).name +
                   "/runs?event=pull_request&per_page=100")
     need(type(listing.get("total_count")) is int and listing["total_count"] <= 100 and
          listing["total_count"] == len(listing.get("workflow_runs", [])), "complete run history")
     runs = listing["workflow_runs"]
-    known = [*request["priorRunIds"], env["GITHUB_RUN_ID"]]
-    need(len(runs) == len(known) and {str(run.get("id")) for run in runs} == set(known),
+    known = [SKIPPED_RUN_ID, *request["priorRunIds"], env["GITHUB_RUN_ID"]]
+    need(len(known) == len(set(known)) and len(runs) == len(known) and {str(run.get("id")) for run in runs} == set(known),
          "unlisted/duplicate campaign round")
     by_id = {str(run["id"]): run for run in runs}
-    booked, observed, starts = 0, 0, []
+    booked, observed, starts, retained_skipped = 0, 0, [], []
     workflow = (pipeline / WORKFLOW).read_bytes()
-    for index, run_id in enumerate(known):
+    for index, run_id in enumerate(known, start=-1):
         run = by_id[run_id]
         need(run.get("event") == "pull_request" and run.get("path") == WORKFLOW and
              run.get("display_title") == CAMPAIGN and run.get("run_attempt") == 1 and
@@ -254,6 +301,9 @@ def history_checks(request, event, env, pipeline, api):
              run.get("head_branch") == BRANCH and
              [pr.get("number") for pr in run.get("pull_requests", [])] == [28], "run identity/attempt")
         starts.append(timestamp(run["created_at"]))
+        if run_id == SKIPPED_RUN_ID:
+            retained_skipped.append(skipped_admission(run, request, api))
+            continue
         if run_id == env["GITHUB_RUN_ID"]:
             need(run.get("head_sha") == event["pull_request"]["head"]["sha"] and
                  run.get("status") == "in_progress", "current run identity")
@@ -263,7 +313,7 @@ def history_checks(request, event, env, pipeline, api):
                  ("success", "failure", "cancelled", "timed_out", "action_required", "neutral", "skipped"),
                  "previous run must be terminal")
             previous = validate_request(read_json(content_at(api, REQUEST, run["head_sha"])))
-            need(previous["round"] == index and previous["priorRunIds"] == known[:index],
+            need(previous["round"] == index and previous["priorRunIds"] == request["priorRunIds"][:index],
                  "ordered prior round request")
             need(content_at(api, WORKFLOW, run["head_sha"]) == workflow, "campaign workflow changed")
             subprocess.run(["git", "-C", str(pipeline), "merge-base", "--is-ancestor",
@@ -277,12 +327,15 @@ def history_checks(request, event, env, pipeline, api):
         booked += round_minutes(previous)
     need(starts == sorted(starts) and (starts[-1] - starts[0]).total_seconds() <= 86400 and
          0 <= (datetime.now(timezone.utc) - starts[0]).total_seconds() <= 86400, "24 hour campaign window")
+    deadline = min(int(starts[0].timestamp()) + 86400,
+                   int(timestamp(APPROVAL_DEADLINE).timestamp()))
+    need(datetime.now(timezone.utc).timestamp() <= deadline, "approval campaign deadline")
     need(booked + ANCILLARY_MINUTES + RESERVE_MINUTES <= CAMPAIGN_MINUTES,
          "campaign runner-minute ceiling")
     return {"bookedRunnerMinutes": booked, "observedPriorRunnerMinutes": observed,
             "ancillaryRunnerMinutes": ANCILLARY_MINUTES, "reserveRunnerMinutes": RESERVE_MINUTES,
             "campaignRunnerMinuteCeiling": CAMPAIGN_MINUTES,
-            "deadlineEpoch": int(starts[0].timestamp()) + 86400}
+            "deadlineEpoch": deadline, "retainedSkippedAdmissions": retained_skipped}
 
 
 def metadata(pipeline):
@@ -408,7 +461,8 @@ def deadline_check(env, profile):
     need(profile in PROFILE_MINUTES and re.fullmatch(r"[0-9]{10}", env.get("SOURCE_DEADLINE_EPOCH", "")),
          "admitted campaign deadline/profile required")
     need(datetime.now(timezone.utc).timestamp() + PROFILE_MINUTES[profile] * 60 <=
-         int(env["SOURCE_DEADLINE_EPOCH"]), "insufficient time in 24 hour campaign")
+         min(int(env["SOURCE_DEADLINE_EPOCH"]), int(timestamp(APPROVAL_DEADLINE).timestamp())),
+         "insufficient time in approved campaign")
 
 
 def resource_check(source):
