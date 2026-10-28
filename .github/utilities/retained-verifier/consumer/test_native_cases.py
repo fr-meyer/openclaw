@@ -24,7 +24,9 @@ def good_observation(case):
     elif case=='management-paths':row['detail']='unavailable:2,2,2,2'
     elif case=='unix-socket':row['errno']=errno.EPERM
     elif case=='mount':row.update(exitCode=None,signal=int(signal.SIGSYS),detail='sigsys')
-    elif case in('entry-bad-argv','entry-bad-env'):row.update(exitCode=111,stderr=b'entry_refused\n',detail='exec_refused')
+    elif case in('entry-bad-argv','entry-bad-env'):
+        marker=b'entry_refused_args\n' if case=='entry-bad-argv' else b'entry_refused_unknown_key\n'
+        row.update(exitCode=111,stderr=marker,detail='exec_refused')
     else:row.update(stdout=n.TIMER_OUTPUT,detail='timer_timeout')
     return row
 
@@ -187,6 +189,10 @@ class NativeCaseTests(unittest.TestCase):
         for field,value in(('exitCode',0),('stderr',b'entry_exec_failed\n'),('signal',int(signal.SIGKILL))):
             row=good_observation('entry-bad-env');row[field]=value
             self.assertEqual(n.run_cases(FakeIO(overrides={'entry-bad-env':row}))['status'],'failed')
+        for case,wrong_marker in (('entry-bad-argv',b'entry_refused_unknown_key\n'),
+                                  ('entry-bad-env',b'entry_refused_args\n')):
+            row=good_observation(case);row['stderr']=wrong_marker
+            self.assertEqual(n.run_cases(FakeIO(overrides={case:row}))['status'],'failed')
     def test_complete_timer_output_and_late_zero_is_refused(self):
         row=good_observation('timer-late-zero');row['detail']='timer_returned'
         result=n.run_cases(FakeIO(overrides={'timer-late-zero':row}))
