@@ -355,6 +355,44 @@ class NativeUnitSession:
         return value
 
 
+class _UnitCommandIO(host_admission._GuestCommandIO):
+    """Source-bound START deadline check at the sole inherited Popen boundary."""
+    def __init__(self,owner,context):
+        require(type(owner) is NativeUnitIO and type(owner._cap) is native_authority.SessionCapability and
+            owner._cap._key is native_authority._KEY and type(context) is dict and
+            set(context)==set(owner._cap.context) and all(context[k]==owner._cap.context[k]for k in
+                set(context)-{'inputManifestSha256','workerDeadlineUtc'}) and
+            all(owner._cap.context[k] in (None,context[k])for k in ('inputManifestSha256','workerDeadlineUtc')) and
+            all(context.get(k)==owner._cap.owner[k]for k in ('sessionId','vmId','bootId','unitName')),
+            'unit.command_io_binding')
+        self.owner=owner;self.context_raw=canonical(context)
+        self.start_argv=self.start_endpoint=None;self.start_attempted=False
+
+    def arm_start(self,argv,profile_raw):
+        props=_props(profile_raw,self.owner._cap)
+        expected=['/usr/bin/systemd-run','--unit='+self.owner._cap.owner['unitName']]
+        for value in props:
+            if not value.startswith('ExecStart='):expected.extend(('--property',value))
+        expected.extend(('/code/static-entry','ocv-'+self.owner._cap.owner['sessionId'][:24]))
+        require(self.start_argv is None and self.start_endpoint is None and
+            type(argv) is tuple and argv==tuple(expected),
+            'unit.start_dispatch_consumed')
+        self.start_argv=argv;self.start_endpoint=self.owner.monotonic()+15
+
+    def spawn(self,argv):
+        if argv[0]=='/usr/bin/systemd-run':
+            require(type(argv) is tuple and argv==self.start_argv and not self.start_attempted and
+                self.start_endpoint is not None,'unit.start_dispatch_unissued')
+            self.start_attempted=True  # Even a pre-Popen refusal cannot be retried.
+            self.owner._check()
+            context=decode(self.context_raw,16384)
+            now=self.owner.now()
+            deadline=worker.validate_context(context,protocol,now,self.owner._cap.context['workerSha256'])
+            require(now+dt.timedelta(seconds=30)<deadline,'unit.worker_start_reserve')
+            require(self.owner.monotonic()<self.start_endpoint,'unit.start_capture_deadline')
+        return super().spawn(argv)
+
+
 class NativeUnitIO:
     """Fixed Linux operations. bind() currently refuses native authority.
 
@@ -368,6 +406,7 @@ class NativeUnitIO:
         self._collector = None
         self._before = False
         self._anchors = {}
+        self._last_command = None  # Diagnostic provenance only; never authority.
 
     def bind(self, capability):
         require(self._cap is None and self._collector is None and not self._anchors,
@@ -471,6 +510,7 @@ class NativeUnitIO:
         self._check();require(self._collector is None,'unit.collector_once')
         ops=host_admission.HostOps(str(self._cap.session_root),self._cap.owner['unitName'])
         self._collector=host_admission.Collector(ops,self._cap.owner['bootId'])
+        self._collector.ops.command_port.io=_UnitCommandIO(self,context)
         self._collector.before();self._before=True
 
     def _command(self, kind):
@@ -481,7 +521,7 @@ class NativeUnitIO:
         require(not port.owned_commands,'unit.command_ownership_retained')
         unit=self._cap.owner['unitName']
         if kind=='start':
-            props=_props(self.profile_bytes(),self._cap)
+            profile_raw=self.profile_bytes();props=_props(profile_raw,self._cap)
             argv=['/usr/bin/systemd-run','--unit='+unit]
             for value in props:
                 if not value.startswith('ExecStart='):argv.extend(('--property',value))
@@ -490,7 +530,11 @@ class NativeUnitIO:
         else:
             keys=OWNERSHIP_KEYS if kind=='ownership_stop' else STATE_KEYS
             argv=['/usr/bin/systemctl','show','--no-pager','--property='+','.join(keys),unit]
+        if kind=='start':
+            require(type(port.io) is _UnitCommandIO and port.io.owner is self,'unit.start_io_unbound')
+            port.io.arm_start(tuple(argv),profile_raw)
         result=port.command(tuple(argv),15 if kind in ('start','stop') else 5)
+        self._last_command=(kind,tuple(argv),result)  # Before result adjudication.
         good=self._collector.generic['ci_native_port'].command_capture_ok(result)
         require(good and all(result.get(k,{}).get('truncated') is False for k in
                              ('stdoutFacts','stderrFacts')), 'unit.command_capture')

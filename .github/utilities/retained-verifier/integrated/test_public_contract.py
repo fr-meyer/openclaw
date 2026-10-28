@@ -381,4 +381,230 @@ class CopiedProcReadTests(unittest.TestCase):
             probe.validate_result(envelope(),root,rows)
 
 
+
+# Source-owned CI failure custody and START deadline contracts.
+"""Inert source/capture fixtures only; no native issuer, command or unit runs."""
+import base64
+import copy
+import datetime as dt
+import importlib.util
+from pathlib import Path
+import sys
+from types import SimpleNamespace,ModuleType
+import unittest
+from unittest import mock
+
+import guest_unit as gunit
+import host_admission as hadmit
+import integrated_failure as diagnostic
+import integrated_guest as gmod
+import mac_bridge as mbridge
+import native_authority as nauth
+import profile as gprofile
+import protocol as gprotocol
+import worker as gworker
+
+
+def diagnostic_context():
+    session='a'*32;owner={'vmId':nauth.VM_ID,'bootId':'aaaabbbb-1234-5678-9abc-123456789abc',
+        'sessionId':session,'unitName':'ocv-'+session+'.service','guestSourceSha256':'d'*64,
+        'providerStopAt':'2030-01-01T00:45:00Z','executionDeadlineUtc':'2030-01-01T00:55:00Z'}
+    context={'schema':gworker.CONTEXT_SCHEMA,'sessionId':session,'unitName':owner['unitName'],
+        'bootId':owner['bootId'],'vmId':nauth.VM_ID,'identityName':'ocv-'+session[:24],
+        'contextNonce':'2'*64,'workerDeadlineUtc':'2030-01-01T00:05:00Z','maxJobSeconds':300,
+        'operation':'retained-report-only','mountPropagation':'private','sourceSha':gworker.SOURCE,
+        'scannerSha':gworker.SCANNER,'indexDigest':gworker.INDEX,'privacySha256':gworker.REPORT_SHA256,
+        'privacyBytes':gworker.REPORT_BYTES,'consumerCode':copy.deepcopy(gworker.CONSUMER),
+        'profileSha256':gprofile.DESIGN_PROFILE_SHA,'entrySha256':gunit.HELPER_SHA256,
+        'workerSha256':'b'*64,'runtimeManifestSha256':'3'*64,'inputManifestSha256':'4'*64}
+    class SyntheticIO:evidence_kind='synthetic_contract'
+    cap=nauth.synthetic_capability(owner,dict(context,inputManifestSha256=None,workerDeadlineUtc=None),
+        pins={},ios={'unit':SyntheticIO()})
+    return owner,context,cap
+
+
+def diagnostic_capture():
+    result={'exitCode':1,'timedOut':False,'spawned':True,'spawnOutcome':'handle_returned',
+        'captureComplete':True,'streamsEOF':True,'streamsClosed':True,'ownedChildExited':True,
+        'ownershipRetained':False,'refusalCode':None,'failurePhase':None,'operationId':1,
+        'errors':[],'childPid':23,'stdout':b'fixed synthetic state','stderr':b'fixed synthetic failure'}
+    for name in ('stdout','stderr'):
+        raw=result[name];result[name+'Facts']={'bytes':len(raw),'sha256':gprotocol.sha(raw),
+            'truncated':False,'complete':True}
+    return result
+
+
+def diagnostic_command_fixture():
+    owner,context,cap=diagnostic_context();native=gunit.NativeUnitIO();native._cap=cap
+    collector=object.__new__(hadmit.Collector)
+    collector.ops=hadmit.HostOps(str(cap.session_root),owner['unitName'])
+    collector.generic=hadmit.load_generic();collector.boot=owner['bootId']
+    port=collector.generic['ci_native_port'].CommandCapture(gunit._UnitCommandIO(native,context))
+    collector.ops.command_port=port;native._collector=collector
+    result=diagnostic_capture();port.command_sequence=1;port.command_results[1]=result
+    argv=('/usr/bin/systemctl','show','--no-pager','--property='+','.join(gunit.STATE_KEYS),owner['unitName'])
+    native._last_command=('show',argv,result)
+    return SimpleNamespace(io=native,cap=cap),port,result
+
+
+class IntegratedFailureTests(unittest.TestCase):
+    def index(self):
+        return diagnostic.source_index({'protocol':gprotocol,'mac_bridge':mbridge,'guest_unit':gunit,'integrated_guest':gmod})
+    def test_exact_source_codes_and_frames_survive_uncertainty_but_foreign_messages_never_serialize(self):
+        try:
+            try:gunit._ready(b'',{})
+            except BaseException:raise mbridge.UncertainOutcome('bridge.effect_or_response_uncertain')from None
+        except BaseException as error:observed=diagnostic.exception_snapshot(error,self.index())
+        self.assertEqual([row['code']for row in observed['exceptions']],['bridge.effect_or_response_uncertain','unit.ready_cap'])
+        self.assertTrue(any(frame['source']=='guest_unit.py'for row in observed['exceptions']for frame in row['frames']))
+        class Foreign(RuntimeError):
+            def __str__(self):raise AssertionError('never stringify')
+        for error in (Foreign('DO_NOT_PUBLISH'),gprotocol.Refusal('unapproved.secret')):
+            raw=gprotocol.canonical(diagnostic.exception_snapshot(error,self.index()))
+            self.assertNotIn(b'DO_NOT_PUBLISH',raw);self.assertNotIn(b'unapproved.secret',raw)
+            self.assertNotIn(b'Foreign',raw)
+    def test_context_depth_cycle_and_trace_limits_are_bounded(self):
+        first=gprotocol.Refusal('unit.start_failed');current=first
+        for _ in range(20):current.__context__=gprotocol.Refusal('unit.start_failed');current=current.__context__
+        self.assertEqual(len(diagnostic.exception_snapshot(first,self.index())['exceptions']),8)
+        current.__context__=first
+        self.assertTrue(diagnostic.exception_snapshot(first,self.index())['contextTruncatedOrCyclic'])
+        module=ModuleType('trusted');source="def fail():\n raise RuntimeError('unit.start_failed')\n"
+        exec(compile(source,'trusted.py','exec'),module.__dict__)
+        other=ModuleType('other');exec(compile(source,'other.py','exec'),other.__dict__)
+        self.assertEqual(module.fail.__code__,other.fail.__code__)
+        self.assertIsNot(module.fail.__code__,other.fail.__code__)
+        try:other.fail()
+        except BaseException as error:value=diagnostic.exception_snapshot(error,diagnostic.source_index({'trusted':module}))
+        self.assertEqual(value['exceptions'][0]['frames'],[])
+    def test_capture_rejects_foreign_objects_extra_fields_oversize_and_hash_ownership_substitution(self):
+        result=diagnostic_capture()
+        self.assertEqual(diagnostic.command_snapshot(result,1,set())['capture']['exitCode'],1)
+        class Foreign(dict):pass
+        for mutate in (lambda r:r.update(environment={'DO_NOT_INCLUDE':'VALUE'}),
+            lambda r:r.update(stderr=b'e'*4097),lambda r:r['stdoutFacts'].update(sha256='f'*64),
+            lambda r:r.update(operationId=2),lambda r:r.update(ownershipRetained=True)):
+            value=copy.deepcopy(result);mutate(value)
+            with self.subTest(mutate=mutate),self.assertRaises(gprotocol.Refusal):diagnostic.command_snapshot(value,1,set())
+        with self.assertRaises(gprotocol.Refusal):diagnostic.command_snapshot(Foreign(result),1,set())
+    def test_fixed_argv_and_same_capture_identity_are_required_before_any_stream_is_exposed(self):
+        unit,port,result=diagnostic_command_fixture()
+        observed=gmod._diagnostic_command(unit,None)
+        self.assertEqual(observed['closedCommandRole'],'unit-state');self.assertNotIn('argv',observed)
+        record=unit.io._last_command
+        for replacement in (('show',('/usr/bin/systemctl','show','--all',unit.cap.owner['unitName']),result),
+            ('show',record[1],copy.deepcopy(result)),('environment',record[1],result)):
+            unit.io._last_command=replacement
+            with self.subTest(replacement=replacement[0]),self.assertRaises(gprotocol.Refusal):gmod._diagnostic_command(unit,None)
+        unit.io._last_command=record;port.io=object()
+        with self.assertRaises(gprotocol.Refusal):gmod._diagnostic_command(unit,None)
+        unit.io._last_command=None;self.assertIsNone(gmod._diagnostic_command(unit,None))
+    def test_full_stderr_counts_and_hashes_survive_declared_stdout_budget_shortening(self):
+        value=diagnostic_capture();value.update(stdout=bytes(range(256))*64,stderr=bytes(range(256))*16)
+        for name in ('stdout','stderr'):
+            raw=value[name];value[name+'Facts']={'bytes':len(raw),'sha256':gprotocol.sha(raw),'truncated':False,'complete':True}
+        command=diagnostic.command_snapshot(value,1,set())
+        primary={'boundedSyntheticPadding':'x'*10000}
+        evidence=diagnostic.render(primary,[],{}, {},command)
+        self.assertLessEqual(len(gprotocol.canonical({'nativeChain':evidence})),diagnostic.FACTS_CAP+32)
+        streams=evidence['latestSafeCommand']['streams']
+        self.assertTrue(streams['stdout']['viewTruncated'])
+        self.assertEqual(streams['stdout']['captureFacts'],value['stdoutFacts'])
+        self.assertEqual(base64.b64decode(streams['stderr']['viewBase64']),value['stderr'])
+        with self.assertRaises(gprotocol.Refusal):diagnostic.render({'padding':'x'*32768},[],{}, {},None)
+        frame={'source':'s'*64+'.py','function':'f'*64,'line':999999}
+        chain={'exceptions':[{'type':'t'*128,'code':'unit.start_failed','messageIncluded':False,
+            'frames':[dict(frame)for _ in range(8)],'framesObserved':8,'framesSha256':'c'*64,
+            'framesTruncated':False,'unlistedFrames':0}for _ in range(8)],
+            'innermostObservedCode':'unit.start_failed','contextsObserved':8,
+            'contextViewsOmitted':0,'contextTruncatedOrCyclic':False}
+        worst=diagnostic.render(chain,[copy.deepcopy(chain)for _ in range(3)],
+            {'boundedState':'x'*1000},{'boundedState':'x'*1000},diagnostic.command_snapshot(value,1,set()))
+        self.assertLessEqual(len(gprotocol.canonical(worst)),diagnostic.FACTS_CAP)
+        self.assertEqual(worst['primary']['innermostObservedCode'],'unit.start_failed')
+        self.assertEqual(base64.b64decode(worst['latestSafeCommand']['streams']['stderr']['viewBase64']),value['stderr'])
+        self.assertTrue(any(row['framesTruncated']for chain in [worst['primary'],*worst['cleanup']]for row in chain['exceptions']))
+    def test_forged_or_synthetic_capability_binding_refuses_without_native_reads(self):
+        _owner,_context,cap=diagnostic_context()
+        with mock.patch.object(gmod.os,'open',side_effect=AssertionError('no diagnostic IO')):
+            for value in ({},object(),cap):
+                with self.subTest(kind=type(value)),self.assertRaises(gprotocol.Refusal):
+                    gmod._diagnostic_binding(None,None,value,None,None,None,None,None,None)
+    def test_original_cleanup_is_once_only_and_all_cleanup_errors_are_retained(self):
+        calls=[];owner={'unitName':'synthetic.service'}
+        unit=SimpleNamespace(_submit_attempted=True,_attempted=set())
+        def stop(name):
+            calls.append('stop');unit._attempted.add('stop');raise gprotocol.Refusal('unit.start_failed')
+        unit.stop_owned_unit_normally=stop;unit.owned_cgroup_empty=lambda n:calls.append('empty')
+        storage=SimpleNamespace(_mounted=True,_used=set())
+        def unmount():calls.append('unmount');storage._used.add('unmount');raise OSError(5,'NOT_SERIALIZED')
+        storage.unmount_test_normally=unmount
+        journal=SimpleNamespace(close=lambda:(calls.append('close')or (_ for _ in ()).throw(OSError(5,'NOT_SERIALIZED'))))
+        errors=gmod._cleanup_owned(unit,storage,journal,owner)
+        self.assertEqual(calls,['stop','unmount','close']);self.assertEqual(len(errors),3)
+        gmod._cleanup_owned(unit,storage,SimpleNamespace(close=lambda:calls.append('closed')),owner)
+        self.assertEqual(calls.count('stop'),1);self.assertEqual(calls.count('unmount'),1)
+        unit._submit_attempted=False;unit._attempted=set()
+        gmod._cleanup_owned(unit,storage,SimpleNamespace(close=lambda:None),owner)
+        self.assertEqual(calls.count('stop'),1)
+    def test_unavailable_diagnostic_still_refuses_and_preserves_original_failure_cause(self):
+        path=Path(gmod.__file__).resolve().parent.parent/'bootstrap/guard.py'
+        if not path.exists():path=Path(gmod.__file__).resolve().parent/'proposed-public-harness/bootstrap/guard.py'
+        spec=importlib.util.spec_from_file_location('guard',path);guard=importlib.util.module_from_spec(spec)
+        with mock.patch.dict(sys.modules,{'guard':guard}):
+            spec.loader.exec_module(guard);original=mbridge.UncertainOutcome('DO_NOT_PUBLISH')
+            with self.assertRaises(guard.Refusal)as raised:
+                gmod._refuse_chain(original,[OSError(5,'DO_NOT_PUBLISH')],{'unavailable':True},*[None]*9)
+        self.assertIs(raised.exception.__cause__,original)
+        self.assertEqual(raised.exception.code,'integrated_guest.native_chain_uncertain')
+        self.assertFalse(raised.exception.facts['nativeChain']['retryPermitted'])
+        self.assertNotIn(b'DO_NOT_PUBLISH',gprotocol.canonical(raised.exception.facts))
+
+
+class UnitStartDeadlineTests(unittest.TestCase):
+    def fixture(self):
+        owner,context,cap=diagnostic_context();native=gunit.NativeUnitIO();native._cap=cap
+        clock={'mono':10.,'utc':dt.datetime(2030,1,1,tzinfo=dt.timezone.utc)}
+        native.monotonic=lambda:clock['mono'];native.now=lambda:clock['utc'];native._check=lambda:None
+        raw=(Path(gunit.__file__).resolve().parent/'PROFILE.template.private.json').read_bytes()
+        props=gunit._props(raw,cap);argv=['/usr/bin/systemd-run','--unit='+owner['unitName']]
+        for value in props:
+            if not value.startswith('ExecStart='):argv.extend(('--property',value))
+        argv.extend(('/code/static-entry',context['identityName']))
+        return native,context,clock,gunit._UnitCommandIO(native,context),tuple(argv),raw
+    def test_unrelated_clocks_do_not_arm_start_and_changed_vector_or_context_refuses(self):
+        native,context,clock,io,argv,raw=self.fixture();io.now();clock['mono']=100.
+        self.assertIsNone(io.start_endpoint);io.arm_start(argv,raw);self.assertEqual(io.start_endpoint,115.)
+        with mock.patch.object(hadmit.subprocess,'Popen')as popen:
+            with self.assertRaises(gprotocol.Refusal):io.spawn(argv+('extra',))
+            self.assertEqual(popen.call_count,0)
+        changed=dict(context,workerSha256='f'*64)
+        with self.assertRaises(gprotocol.Refusal):gunit._UnitCommandIO(native,changed)
+        _native,_ctx,_clock,other,vector,profile_raw=self.fixture()
+        with self.assertRaises(gprotocol.Refusal):other.arm_start(vector+('--property','Environment=BAD=1'),profile_raw)
+    def test_expired_worker_or_lost_ready_reserve_launches_nothing_and_cannot_retry(self):
+        for seconds in (280,301):
+            native,context,clock,io,argv,raw=self.fixture();io.arm_start(argv,raw)
+            clock['utc']+=dt.timedelta(seconds=seconds)
+            with mock.patch.object(hadmit.subprocess,'Popen')as popen:
+                with self.subTest(seconds=seconds),self.assertRaises(gprotocol.Refusal):io.spawn(argv)
+                self.assertEqual(popen.call_count,0)
+                with self.assertRaises(gprotocol.Refusal):io.spawn(argv)
+    def test_slow_final_identity_check_cannot_renew_original_command_endpoint(self):
+        native,context,clock,io,argv,raw=self.fixture();io.arm_start(argv,raw)
+        def slow():clock['mono']=26.
+        native._check=slow
+        with mock.patch.object(hadmit.subprocess,'Popen')as popen:
+            with self.assertRaisesRegex(gprotocol.Refusal,'unit.start_capture_deadline'):io.spawn(argv)
+            self.assertEqual(popen.call_count,0);self.assertEqual(io.start_endpoint,25.)
+    def test_positive_source_start_and_late_stop_use_same_inherited_single_popen(self):
+        native,context,clock,io,argv,raw=self.fixture();io.arm_start(argv,raw)
+        with mock.patch.object(hadmit.subprocess,'Popen',return_value='inert')as popen:
+            self.assertEqual(io.spawn(argv),'inert');self.assertEqual(popen.call_count,1)
+            with self.assertRaises(gprotocol.Refusal):io.spawn(argv)
+            clock['utc']+=dt.timedelta(seconds=1000)
+            self.assertEqual(io.spawn(('/usr/bin/systemctl','stop',native._cap.owner['unitName'])),'inert')
+            self.assertEqual(popen.call_count,2)
+
+
 if __name__=='__main__':unittest.main()

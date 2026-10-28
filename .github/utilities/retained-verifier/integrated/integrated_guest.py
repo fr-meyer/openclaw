@@ -20,6 +20,8 @@ import guest_server
 import guest_storage
 import guest_unit
 import integrated_capture
+import integrated_failure
+import host_admission
 import mac_bridge
 import native_authority
 from protocol import Refusal, canonical, decode, require, sha, utc
@@ -162,6 +164,158 @@ def _control_directories(cap):
     return session
 
 
+def _diagnostic_binding(parent,prepared,cap,storage,unit,transport,server,bridge,journal):
+    """Memory-only joins; this cannot issue or renew any native authority."""
+    import ci_authority
+    require(type(cap) is native_authority.SessionCapability and cap._key is native_authority._KEY and
+        cap.kind=='ci-native-proof' and type(cap._grant) is ci_authority.CIGrant and
+        cap._grant._key is ci_authority._KEY and cap._grant._parent is parent and
+        cap._grant._prepared is prepared and cap._grant._channel is transport and cap._channel is transport,
+        'integrated_guest.diagnostic_capability')
+    require(type(storage) is guest_storage.NativeStorageSession and type(storage.io) is guest_storage.NativeStorageIO and
+        type(unit) is guest_unit.NativeUnitSession and type(unit.io) is guest_unit.NativeUnitIO and
+        type(transport) is LocalGuestTransport and type(server) is guest_server.GuestServer and
+        type(bridge) is mac_bridge.MacBridge and type(journal) is durable_intent.DurableIntent and
+        type(server.journal) is guest_server.GuestIntentJournal and
+        storage.cap is unit.cap is server.cap is cap and unit.storage is server.storage is storage and
+        server.unit is unit and unit.io._cap is cap and transport._cap is cap and
+        transport._server is server and transport._peer is server.peer and
+        type(server.bootstrap) is guest_bootstrap.VerifiedBootstrap and server.bootstrap._key is guest_bootstrap._KEY and
+        server.bootstrap.purpose=='ci-native-proof' and server.bootstrap.owner==cap.owner and
+        server.bootstrap.owner_guard is cap._owner_guard and
+        type(server.peer) is guest_bootstrap.PeerAuthority and server.peer._key is guest_bootstrap._KEY and
+        server.peer._channel is transport and server.peer._bootstrap is server.bootstrap and
+        transport._journal is bridge.journal is journal and bridge.capability is cap and
+        bridge.transport is transport and cap._ios['storage'] is storage.io and
+        cap._ios['unit'] is unit.io and cap._ios['mac'] is transport,
+        'integrated_guest.diagnostic_components')
+    grant=cap._grant
+    require(getattr(parent.io,'_integrated_module_graph',None) is grant._graph,
+            'integrated_guest.diagnostic_graph')
+    grant._graph.require_loaded_rows(grant._root,dict(grant._graph_rows))
+    modules=dict(grant._graph._modules)
+    collector=unit.io._collector
+    if collector is not None:
+        require(type(collector) is host_admission.Collector and type(collector.ops) is host_admission.HostOps and
+            collector.ops.root==str(cap.session_root) and collector.ops.unit==cap.owner['unitName'] and
+            collector.boot==cap.owner['bootId'],'integrated_guest.diagnostic_collector')
+        require(type(collector.generic) is dict and set(collector.generic)==
+            {name[:-3]for name in host_admission.GENERIC_PINS},'integrated_guest.diagnostic_generic')
+        modules.update(collector.generic)
+    return integrated_failure.source_index(modules)
+
+
+def _diagnostic_state(storage,unit,transport,server,bridge,journal):
+    def operations(value,allowed):
+        require(type(value) is set and value<=set(allowed),'integrated_guest.diagnostic_operations')
+        return sorted(value)
+    def pending(value):
+        require(value is None or type(value) is tuple and len(value)==2 and type(value[0]) is int and
+            0<=value[0]<durable_intent.MAX_CALLS and value[1] in durable_intent.METHODS,
+            'integrated_guest.diagnostic_pending')
+        return None if value is None else list(value)
+    state={'bridgePhase':bridge.phase,'bridgeSequence':bridge.sequence,'serverSequence':server.sequence,
+        'transportAttempts':len(transport._attempts),'transportSettled':len(transport._methods),
+        'serverAttempted':operations(server.attempted,guest_server.METHODS),
+        'serverFinished':operations(server.finished,guest_server.METHODS),
+        'unitAttempted':operations(unit._attempted,guest_unit._INTENTS),
+        'unitFinished':operations(unit._finished,guest_unit._INTENTS),
+        'storageUsed':operations(storage._used,('preflight','prepare','context','unmount','release','report','remove')),
+        'macPending':pending(journal.pending),'guestPending':pending(server.journal.pending)}
+    require(state['bridgePhase'] in ('new','preparing','prepared','started','admitted','closing','closed','copies_removed') and
+        all(type(state[k]) is int and 0<=state[k]<=durable_intent.MAX_CALLS for k in
+            ('bridgeSequence','serverSequence','transportAttempts','transportSettled')),
+        'integrated_guest.diagnostic_state')
+    for name,value in (('bridgeBlocked',bridge.blocked),('transportBlocked',transport._blocked),
+        ('serverBlocked',server.blocked),('journalUncertain',journal.uncertain),
+        ('unitSubmissionAttempted',unit._submit_attempted),('unitStopped',unit._stopped),
+        ('unitEmpty',unit._empty),('testMounted',storage._mounted),('serverUnmounted',server.unmounted)):
+        require(type(value) is bool,'integrated_guest.diagnostic_boolean');state[name]=value
+    return state
+
+
+def _diagnostic_command(unit,storage):
+    record=unit.io._last_command
+    if record is None:return None
+    require(type(record) is tuple and len(record)==3,'integrated_guest.diagnostic_command_record')
+    kind,argv,result=record;require(type(argv) is tuple and type(result) is dict,
+        'integrated_guest.diagnostic_command_record')
+    name=unit.cap.owner['unitName'];role=None
+    if kind in ('show','show_stop','ownership_stop'):
+        keys=guest_unit.OWNERSHIP_KEYS if kind=='ownership_stop'else guest_unit.STATE_KEYS
+        expected=('/usr/bin/systemctl','show','--no-pager','--property='+','.join(keys),name)
+        role='unit-ownership'if kind=='ownership_stop'else 'unit-state'
+    elif kind=='stop':expected=('/usr/bin/systemctl','stop',name);role='unit-stop'
+    elif kind=='start':
+        props=unit._properties
+        require(type(props) is tuple and len(props)==55 and storage.staged is not None and
+            sha(canonical(props))==storage.staged['propertiesSha256'],
+            'integrated_guest.diagnostic_start_properties')
+        expected=['/usr/bin/systemd-run','--unit='+name]
+        for value in props:
+            if not value.startswith('ExecStart='):expected.extend(('--property',value))
+        expected.extend(('/code/static-entry','ocv-'+unit.cap.owner['sessionId'][:24]));expected=tuple(expected)
+        role='unit-start-fixed-profile'
+    else:raise Refusal('integrated_guest.diagnostic_command_kind')
+    require(argv==expected,'integrated_guest.diagnostic_unsafe_argv')
+    collector=unit.io._collector
+    require(type(collector) is host_admission.Collector,'integrated_guest.diagnostic_capture_source')
+    port=collector.ops.command_port
+    require(type(port) is collector.generic['ci_native_port'].CommandCapture and
+        type(port.io) is guest_unit._UnitCommandIO and port.io.owner is unit.io and type(port.command_results) is dict and
+        type(port.owned_commands) is dict and 0<len(port.command_results)<=256 and
+        type(port.command_sequence) is int and 1<=port.command_sequence<=256 and
+        all(type(k) is int and 1<=k<=port.command_sequence for k in port.command_results) and
+        port.command_results.get(port.command_sequence) is result and
+        result.get('operationId')==port.command_sequence,'integrated_guest.diagnostic_capture_source')
+    value=integrated_failure.command_snapshot(result,port.command_sequence,set(port.owned_commands))
+    value['closedCommandRole']=role
+    return value
+
+
+def _failure_snapshot(error,parent,prepared,cap,storage,unit,transport,server,bridge,journal):
+    index=_diagnostic_binding(parent,prepared,cap,storage,unit,transport,server,bridge,journal)
+    return {'primary':None if error is None else integrated_failure.exception_snapshot(error,index),'index':index,
+        'before':_diagnostic_state(storage,unit,transport,server,bridge,journal),
+        'command':_diagnostic_command(unit,storage)}
+
+
+def _refuse_chain(primary,cleanup,snapshot,parent,prepared,cap,storage,unit,transport,server,bridge,journal):
+    import guard
+    try:
+        if snapshot is None:
+            snapshot=_failure_snapshot(primary,parent,prepared,cap,storage,unit,transport,server,bridge,journal)
+        require('unavailable'not in snapshot,'integrated_guest.diagnostic_unavailable')
+        first=snapshot['primary'] if snapshot['primary'] is not None else integrated_failure.exception_snapshot(primary,snapshot['index'])
+        evidence=integrated_failure.render(first,
+            [integrated_failure.exception_snapshot(error,snapshot['index'])for error in cleanup],
+            snapshot['before'],_diagnostic_state(storage,unit,transport,server,bridge,journal),snapshot['command'])
+    except BaseException:
+        # An invalid/foreign diagnostic object never gets serialized. Failure,
+        # blocked state and the existing cleanup/outer poweroff remain mandatory.
+        evidence={'schema':'ocv.integrated-native-chain-failure.v1','syntheticOnly':True,
+            'privateInputs':False,'environmentIncluded':False,'messagesIncluded':False,
+            'retryPermitted':False,'diagnosticUnavailable':True,'cleanupExceptionCount':len(cleanup)}
+    raise guard.Refusal('integrated_guest.native_chain_uncertain',{'nativeChain':evidence}) from primary
+
+
+def _cleanup_owned(unit,storage,journal,owner):
+    """Original one-shot cleanup order; collect every error without redispatch."""
+    errors=[]
+    try:
+        if unit._submit_attempted and 'stop' not in unit._attempted:
+            unit.stop_owned_unit_normally(owner['unitName'])
+            unit.owned_cgroup_empty(owner['unitName'])
+    except BaseException as error:errors.append(error)
+    try:
+        if storage._mounted and 'unmount' not in storage._used:
+            storage.unmount_test_normally()
+    except BaseException as error:errors.append(error)
+    try:journal.close()
+    except BaseException as error:errors.append(error)
+    return errors
+
+
 def run_bound(parent, prepared, cap, bootstrap, peer, storage_io, unit_io, transport, *, identity):
     """One real native chain before the original generic Entry requests poweroff."""
     import ci_authority
@@ -192,6 +346,7 @@ def run_bound(parent, prepared, cap, bootstrap, peer, storage_io, unit_io, trans
         cap.pins['contextSha256'], sha(canonical(cap.pins)))
     transport.bind_journal(journal)
     bridge = mac_bridge.MacBridge(cap, transport, journal, now=unit_io.now)
+    primary=snapshot=None;cleanup=[]
     try:
         bridge.prepare()
         bridge.start_and_replay()
@@ -224,18 +379,20 @@ def run_bound(parent, prepared, cap, bootstrap, peer, storage_io, unit_io, trans
             proof=bridge.replay['proof'], staging=bridge.staged['inputManifest'],
             outputs=server.outputs, outcome=bridge.outcome, report=server.report, closeout=closeout, audit=audit,
             copied_bootstrap=copied_bootstrap)
+    except BaseException as error:
+        primary=error
+        try:snapshot=_failure_snapshot(error,parent,prepared,cap,storage,unit,transport,server,bridge,journal)
+        except BaseException:snapshot={'unavailable':True}
     finally:
         # Never replay a poisoned request or duplicate an ambiguous STOP. The
         # original outer bootstrap still independently requests guest poweroff.
-        try:
-            if unit._submit_attempted and 'stop' not in unit._attempted:
-                unit.stop_owned_unit_normally(cap.owner['unitName'])
-                unit.owned_cgroup_empty(cap.owner['unitName'])
-        finally:
-            try:
-                if storage._mounted and 'unmount' not in storage._used:
-                    storage.unmount_test_normally()
-            finally: journal.close()
+        if snapshot is None:
+            try:snapshot=_failure_snapshot(None,parent,prepared,cap,storage,unit,transport,server,bridge,journal)
+            except BaseException:snapshot={'unavailable':True}
+        cleanup=_cleanup_owned(unit,storage,journal,cap.owner)
+        if primary is not None or cleanup:
+            _refuse_chain(primary if primary is not None else cleanup[0],cleanup,snapshot,
+                parent,prepared,cap,storage,unit,transport,server,bridge,journal)
 
 
 if __name__ == '__main__': raise SystemExit('integrated_guest_requires_genuine_bootstrap')
