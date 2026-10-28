@@ -118,6 +118,14 @@ class SourceValidationTests(unittest.TestCase):
             mutate(changed)
             self.refused(driver.validate_event, changed, env)
 
+    def test_current_target_lease_is_exact_not_a_stale_base_alternative(self):
+        event, env = event_env()
+        self.assertEqual(driver.BASE, "918890b9f72b2d0372995362e8ea3088e0f87431")
+        workflow = Path(__file__).resolve().parents[2] / ".github/workflows/future-v108-source-validation.yml"
+        self.assertIn("base.sha == '" + driver.BASE + "'", workflow.read_text())
+        event["pull_request"]["base"]["sha"] = "a65f70c5dad17b39bc3ee26ba92cde6d00bfb259"
+        self.refused(driver.validate_event, event, env)
+
     def test_no_local_execution_dispatch_rerun_or_alternate_ref(self):
         event, env = event_env()
         for key, value in (("GITHUB_ACTIONS", "false"), ("RUNNER_OS", "macOS"),

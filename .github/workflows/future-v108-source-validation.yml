@@ -24,7 +24,7 @@ jobs:
           github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' &&
           github.event.pull_request.head.ref == 'task/v107-source-binding' &&
           github.event.pull_request.base.ref == 'release-pipeline/v105-image-only-20261024' &&
-          github.event.pull_request.base.sha == 'a65f70c5dad17b39bc3ee26ba92cde6d00bfb259' &&
+          github.event.pull_request.base.sha == '918890b9f72b2d0372995362e8ea3088e0f87431' &&
           github.run_attempt == 1 }}
     name: admission
     runs-on: ubuntu-24.04
