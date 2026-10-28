@@ -15,6 +15,7 @@ import re
 import stat
 import tarfile
 import zlib
+import math
 
 from protocol import Refusal, canonical, decode, read_regular, require, sha
 
@@ -110,7 +111,7 @@ def build_argv(root,script):
             '-I','-S','-B','-c',script.decode('ascii'))
 
 
-def capture_failure_evidence(result,root,script,rows,owned_commands):
+def capture_failure_evidence(result,root,script,rows,owned_commands,placement=None,*,capture_origin='genuine-command-capture'):
     """Bounded synthetic-child custody, constructed before any adjudication."""
     root=_root(root);_rows(rows)
     require(type(result) is dict and type(owned_commands) is int and 0<=owned_commands<=1,
@@ -142,6 +143,13 @@ def capture_failure_evidence(result,root,script,rows,owned_commands):
         'scriptSha256':sha(script),'argvSha256':sha(canonical(list(build_argv(root,script)))),
         'runtimeRosterSha256':sha(canonical(rows)),'ownedCommandsRemaining':owned_commands,
         'capture':{name:result[name] for name in sorted(controls)},'streams':{}}
+    require(capture_origin in ('genuine-command-capture','placement-not-attempted'),
+            'copied.failure_origin')
+    evidence['captureOrigin']=capture_origin
+    if placement is not None:
+        require(type(placement) is dict and set(placement)<={'beforeStage','beforeSpawn'} and
+            len(canonical(placement))<=2*8192+64,'copied.failure_placement_cap')
+        evidence['placement']=placement
     if 'childPid' in result:
         require(result['childPid'] is None or type(result['childPid']) is int,
                 'copied.failure_child_pid')
@@ -157,8 +165,77 @@ def capture_failure_evidence(result,root,script,rows,owned_commands):
         evidence['streams'][name]={'viewBase64':base64.b64encode(raw).decode('ascii'),
             'viewBytes':len(raw),'viewSha256':sha(raw),'viewTruncated':len(raw)!=facts['bytes'],
             'captureFacts':dict(facts)}
+    # Extra placement metadata never expands capture/pass limits or the32KiB
+    # failure budget. Shorten only the rendered stdout head/tail if necessary;
+    # preserve its complete original source count/hash and all stderr bytes.
+    raw=result['stdout'];limit=len(raw)
+    while len(canonical(evidence))>FAILURE_FACTS_CAP and limit>0:
+        limit=max(0,limit-1024);half=limit//2
+        view=raw[:half]+raw[-(limit-half):] if limit else b''
+        evidence['streams']['stdout'].update(viewBase64=base64.b64encode(view).decode('ascii'),
+            viewBytes=len(view),viewSha256=sha(view),viewTruncated=len(view)!=result['stdoutFacts']['bytes'])
     require(len(canonical(evidence))<=FAILURE_FACTS_CAP,'copied.failure_facts_cap')
     return evidence
+
+
+def not_attempted_capture(phase,error):
+    require(phase in ('placement_prewrite','placement_stage','placement_prespawn'),
+            'copied.not_attempted_phase')
+    result={'exitCode':None,'timedOut':False,'spawned':False,'spawnOutcome':'not_attempted',
+        'captureComplete':False,'streamsEOF':False,'streamsClosed':True,'ownedChildExited':False,
+        'ownershipRetained':False,'refusalCode':'copied.placement_refused','failurePhase':phase,
+        'operationId':1,'errors':[{'phase':phase,'type':type(error).__name__[:48],
+            'errno':error.errno if isinstance(error,OSError) else None}],'stdout':b'','stderr':b''}
+    for name in ('stdout','stderr'):
+        result[name+'Facts']={'bytes':0,'sha256':sha(b''),'truncated':False,'complete':False}
+    return result
+
+
+def observe_location(parent,prepared,runtime_source,root,rows,*,final):
+    """Actual readonly metadata, admitted by the same opaque genuine parent."""
+    import ci_authority
+    import copied_location
+    import guest_storage
+    require(type(runtime_source) is ci_authority.CIRuntimeSource,'copied.location_authority')
+    runtime_source.require_parent(parent,prepared);parent.check()
+    plan=runtime_source.inspect_materials(runtime_source.materials)
+    require(rows==plan['files'],'copied.location_runtime_changed')
+    session=sha(('integrated:'+parent.plan.markers['ocv.session']).encode('ascii'))[:32]
+    require(root==copied_location.root_for(rows,session),'copied.location_scope')
+    root_info=Path('/').lstat();ancestors=[]
+    for name in copied_location.ancestor_paths(root):
+        try:info=Path(name).lstat()
+        except FileNotFoundError:break
+        ancestors.append({'path':name,'device':info.st_dev,'inode':info.st_ino,
+            'uid':info.st_uid,'gid':info.st_gid,'mode':stat.S_IMODE(info.st_mode),
+            'directory':stat.S_ISDIR(info.st_mode),'symlink':stat.S_ISLNK(info.st_mode)})
+    kernel=guest_storage.NativeStorageIO()
+    raw=kernel._read_kernel(Path('/proc/self/mountinfo'),1048576)
+    metadata={'schema':copied_location.META_SCHEMA,'metadataOnly':True,'executionObserved':False,
+        'root':root,'bootId':parent.plan.boot_id,'rootDevice':root_info.st_dev,
+        'rootMajorMinor':str(os.major(root_info.st_dev))+':'+str(os.minor(root_info.st_dev)),
+        'ancestors':ancestors,'mountInfoSha256':sha(raw),
+        'mounts':copied_location.covering_mounts(raw,root),
+        'statvfsFlags':os.statvfs(ancestors[-1]['path']).f_flag,'executables':[]}
+    if final:
+        roster=_rows(rows)
+        for name in copied_location.EXECUTABLES:
+            path=Path(root)/name;info=path.lstat();row=roster[name]
+            raw=read_regular(path,row['bytes'],expected_size=row['bytes'],expected_sha=row['sha256'])
+            metadata['executables'].append({'path':name,'device':info.st_dev,'inode':info.st_ino,
+                'uid':info.st_uid,'gid':info.st_gid,'mode':stat.S_IMODE(info.st_mode),
+                'bytes':len(raw),'sha256':sha(raw),'links':info.st_nlink,
+                'executeAccess':os.access(path,os.X_OK,effective_ids=True,follow_symlinks=False)})
+    parent.check()
+    return metadata
+
+
+def check_probe_dispatch(check,now,deadline):
+    check()
+    instant=now()
+    require(type(deadline) in (int,float) and type(instant) in (int,float) and
+        math.isfinite(deadline) and math.isfinite(instant) and instant<deadline,
+        'copied.dispatch_deadline')
 
 
 def refuse_captured(code,evidence):
@@ -258,53 +335,79 @@ def run_native_proof(parent,prepared,runtime_source):
     rows=plan['files'];roster=_rows(rows)
     archive=materials['archive']
     require(sha(archive)==plan['archiveSha256'],'copied.archive_pin')
-    base=Path('/run/ocv')/('copied-controller-'+parent.plan.markers['ocv.session'])
-    require(base.parent.is_dir() and not base.parent.is_symlink() and
-            base.parent.stat().st_uid==0 and not stat.S_IMODE(base.parent.stat().st_mode)&0o077,
-            'copied.fixed_parent')
-    base.mkdir(mode=0o700);os.chmod(base,0o700)
-    root=base/'root';root.mkdir(mode=0o755);os.chmod(root,0o755)
-    with tarfile.open(fileobj=BytesIO(archive),mode='r:gz') as source:
-        seen=set();total=0
-        for member in source:
-            matches=[r for r in rows if r.get('archivePath',
-                'static-entry' if r['path']=='code/static-entry' else 'runtime/'+r['path'])==member.name]
-            require(len(matches)==1,'copied.archive_roster')
-            row=matches[0];name=row['path']
-            require(name not in seen and member.isreg() and
-                    set(member.pax_headers)<={'path'} and
-                    member.pax_headers.get('path',member.name)==member.name and
-                    member.size==row['bytes'] and member.mode==row['mode'],
-                    'copied.archive_member')
-            seen.add(name);handle=source.extractfile(member)
-            require(handle is not None,'copied.archive_stream')
-            raw=handle.read(row['bytes']+1);handle.close()
-            require(len(raw)==row['bytes'] and sha(raw)==row['sha256'],'copied.copied_pin')
-            target=root/name
-            target.parent.mkdir(mode=0o755,parents=True,exist_ok=True)
-            for directory in (target.parent,*target.parent.parents):
-                if directory==base:break
-                require(directory.is_dir() and not directory.is_symlink() and
-                        directory.stat().st_uid==0 and directory.stat().st_dev==base.stat().st_dev,
-                        'copied.destination_parent')
-                os.chmod(directory,0o755)
-            fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,row['mode'])
-            try:
-                os.fchmod(fd,row['mode']);view=memoryview(raw)
-                while view:
-                    count=os.write(fd,view);require(count>0,'copied.write_progress');view=view[count:]
-                os.fsync(fd)
-            finally:os.close(fd)
-            total+=len(raw);require(total<=100*1024*1024,'copied.expanded_cap')
-    require(seen==set(roster),'copied.incomplete_copy')
-    for name,row in roster.items():
-        read_regular(root/name,row['bytes'],expected_size=row['bytes'],expected_sha=row['sha256'])
+    import copied_location
+    session=sha(('integrated:'+parent.plan.markers['ocv.session']).encode('ascii'))[:32]
+    root=Path(copied_location.root_for(rows,session));base=root.parent
     script=probe_script(str(root),rows);argv=build_argv(str(root),script)
+    placement={};phase='placement_prewrite'
+    try:
+        placement['beforeStage']=observe_location(parent,prepared,runtime_source,str(root),rows,final=False)
+        copied_location.validate(placement['beforeStage'],str(root),rows,parent.plan.boot_id,final=False)
+        phase='placement_stage'
+        root_device=placement['beforeStage']['rootDevice']
+        for index,name in enumerate(copied_location.ancestor_paths(str(root))[3:],3):
+            directory=Path(name)
+            if index in (3,4):
+                try:directory.mkdir(mode=0o700)
+                except FileExistsError:pass
+            else:directory.mkdir(mode=0o700)  # Session and root are O_EXCL.
+            info=directory.lstat()
+            require(stat.S_ISDIR(info.st_mode) and not directory.is_symlink() and
+                info.st_uid==info.st_gid==0 and stat.S_IMODE(info.st_mode)==0o700 and
+                info.st_dev==root_device,'copied.location_created_directory')
+        with tarfile.open(fileobj=BytesIO(archive),mode='r:gz') as source:
+            seen=set();total=0
+            for member in source:
+                matches=[r for r in rows if r.get('archivePath',
+                    'static-entry' if r['path']=='code/static-entry' else 'runtime/'+r['path'])==member.name]
+                require(len(matches)==1,'copied.archive_roster')
+                row=matches[0];name=row['path']
+                require(name not in seen and member.isreg() and
+                        set(member.pax_headers)<={'path'} and
+                        member.pax_headers.get('path',member.name)==member.name and
+                        member.size==row['bytes'] and member.mode==row['mode'],
+                        'copied.archive_member')
+                seen.add(name);handle=source.extractfile(member)
+                require(handle is not None,'copied.archive_stream')
+                raw=handle.read(row['bytes']+1);handle.close()
+                require(len(raw)==row['bytes'] and sha(raw)==row['sha256'],'copied.copied_pin')
+                target=root/name
+                target.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+                for directory in (target.parent,*target.parent.parents):
+                    if directory==base:break
+                    require(directory.is_dir() and not directory.is_symlink() and
+                            directory.stat().st_uid==0 and directory.stat().st_dev==base.stat().st_dev,
+                            'copied.destination_parent')
+                    os.chmod(directory,0o700)
+                fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,row['mode'])
+                try:
+                    os.fchmod(fd,row['mode']);view=memoryview(raw)
+                    while view:
+                        count=os.write(fd,view);require(count>0,'copied.write_progress');view=view[count:]
+                    os.fsync(fd)
+                finally:os.close(fd)
+                total+=len(raw);require(total<=100*1024*1024,'copied.expanded_cap')
+        require(seen==set(roster),'copied.incomplete_copy')
+        for name,row in roster.items():
+            read_regular(root/name,row['bytes'],expected_size=row['bytes'],expected_sha=row['sha256'])
+        phase='placement_prespawn'
+        placement['beforeSpawn']=observe_location(parent,prepared,runtime_source,str(root),rows,final=True)
+        copied_location.validate_pair(placement,str(root),rows,parent.plan.boot_id)
+    except BaseException as error:
+        result=not_attempted_capture(phase,error)
+        evidence=capture_failure_evidence(result,str(root),script,rows,0,placement,
+            capture_origin='placement-not-attempted')
+        code=error.code if isinstance(error,Refusal) else 'copied.location_io_refused'
+        refuse_captured(code,evidence)
     program=parent.io.program
     class ProbeIO(program.native.NativeCommandIO):
-        def __init__(self):self.used=False
+        def __init__(self):self.used=False;self.deadline=None
+        def now(self):
+            instant=super().now()
+            if self.deadline is None:self.deadline=instant+30
+            return instant
         def spawn(self,supplied):
-            parent.check()
+            check_probe_dispatch(parent.check,super().now,self.deadline)
             require(tuple(supplied)==argv and not self.used,'copied.fixed_child')
             self.used=True
             return super().spawn(argv)
@@ -316,7 +419,7 @@ def run_native_proof(parent,prepared,runtime_source):
             'copied.fixed_capture_catalog_missing')
     capture=ProbeCapture(ProbeIO());parent.io._copied_probe_capture=capture
     result=capture.command(argv,timeout=30)
-    evidence=capture_failure_evidence(result,str(root),script,rows,len(capture.owned_commands))
+    evidence=capture_failure_evidence(result,str(root),script,rows,len(capture.owned_commands),placement)
     try:
         require(program.native.command_capture_ok(result) and result['exitCode']==0 and
                 not result['stdoutFacts']['truncated'] and not result['stderrFacts']['truncated'] and
@@ -325,7 +428,7 @@ def run_native_proof(parent,prepared,runtime_source):
     except BaseException as error:
         code=error.code if isinstance(error,Refusal) else 'copied.adjudication_failed'
         refuse_captured(code,evidence)
-    return {'proof':proof,'raw':result['stdout'],'scriptSha256':sha(script)}
+    return {'proof':proof,'raw':result['stdout'],'scriptSha256':sha(script),'placement':placement}
 
 
 if __name__=='__main__':raise SystemExit('copied_bootstrap_probe_no_cli')

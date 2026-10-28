@@ -128,4 +128,148 @@ class DeviceReadinessTests(unittest.TestCase):
             with self.assertRaises(Refusal):target.wait_for_device_appearance({'verified':True},{})
 
 
+
+# Source-owned copied BOOT placement contracts.
+"""Pure Linux metadata fixtures; no staging, chmod, mount or process occurs."""
+import base64
+import copy
+import json
+import unittest
+import zlib
+from unittest import mock
+
+import copied_bootstrap_probe as probe
+import copied_location as location
+import integrated_capture
+from protocol import Refusal,canonical,sha
+
+
+def fixture():
+    names=['usr/bin/python3.11','lib64/ld-linux-x86-64.so.2','code/static-entry',
+        'usr/lib/python3.11/encodings/__init__.py','usr/lib/python3.11/os.py']+[
+        'usr/lib/python3.11/synthetic_'+str(i)+'.py' for i in range(621)]
+    rows=[{'path':name,'archivePath':'static-entry' if name=='code/static-entry' else 'runtime/'+name,
+        'bytes':1,'sha256':sha(b'x'),'mode':0o555 if name in names[:3] else 0o444}for name in sorted(names)]
+    session='a'*32;boot='17038b18-d0f0-4cd6-8553-46db55427b58';root=location.root_for(rows,session)
+    mount={'id':1,'parent':0,'majorMinor':'8:1','root':'/','target':'/','options':['rw','relatime'],
+        'fstype':'ext4','source':'/dev/vda1','superOptions':['rw']}
+    final={'schema':location.META_SCHEMA,'metadataOnly':True,'executionObserved':False,
+        'root':root,'bootId':boot,'rootDevice':2049,'rootMajorMinor':'8:1','ancestors':[],
+        'mountInfoSha256':'b'*64,'mounts':[mount],'statvfsFlags':4096,'executables':[]}
+    for index,path in enumerate(location.ancestor_paths(root)):
+        final['ancestors'].append({'path':path,'device':2049,'inode':index+20,'uid':0,'gid':0,
+            'mode':0o755 if index<3 else 0o700,'directory':True,'symlink':False})
+    for index,name in enumerate(location.EXECUTABLES):
+        final['executables'].append({'path':name,'device':2049,'inode':index+100,'uid':0,'gid':0,
+            'mode':0o555,'bytes':1,'sha256':sha(b'x'),'links':1,'executeAccess':True})
+    before=copy.deepcopy(final);before['ancestors']=before['ancestors'][:3];before['executables']=[]
+    return rows,session,boot,root,{'beforeStage':before,'beforeSpawn':final}
+
+
+def packet(rows,root,placement):
+    value={'schema':'ocv.copied-controller-startup.v1','root':root,'prefix':root+'/usr',
+        'basePrefix':root+'/usr','execPrefix':root+'/usr','baseExecPrefix':root+'/usr',
+        'executable':root+'/usr/bin/python3.11',
+        'path':[root+'/usr/lib/python3.11',root+'/usr/lib/python3.11/lib-dynload'],
+        'origins':{'encodings':root+'/usr/lib/python3.11/encodings/__init__.py'},
+        'maps':'1000-2000 r-xp 00000000 08:01 1 '+root+'/usr/bin/python3.11\n'+
+               '2000-3000 r-xp 00000000 08:01 2 '+root+'/lib64/ld-linux-x86-64.so.2\n',
+        'flags':{'isolated':1,'noSite':1,'ignoreEnvironment':1,'dontWriteBytecode':True},
+        'version':[3,11,2],'childrenSpawned':False}
+    raw=canonical(value);wire=canonical({'schema':'ocv.copied-controller-envelope.v1','rawBytes':len(raw),
+        'rawSha256':sha(raw),'zlibBase64':base64.b64encode(zlib.compress(raw,9)).decode('ascii')})
+    return canonical({'proof':probe.validate_result(wire,root,rows),'wire':json.loads(wire),
+        'scriptSha256':sha(probe.probe_script(root,rows)),'placement':placement})
+
+
+class CopiedLocationTests(unittest.TestCase):
+    def test_versioned_roster_identity_is_order_independent_and_session_bound(self):
+        rows,session,_boot,root,_placement=fixture()
+        self.assertEqual(location.root_for(list(reversed(rows)),session),root)
+        self.assertNotEqual(location.root_for(rows,'b'*32),root)
+        changed=copy.deepcopy(rows);changed[0]['sha256']='f'*64
+        self.assertNotEqual(location.root_for(changed,session),root)
+        changed[0]['archivePath']='other'
+        with self.assertRaises(Refusal):location.root_for(changed,session)
+    def test_complete_positive_metadata_is_observation_only_and_private_argv_root_stays_generic(self):
+        rows,_session,boot,root,placement=fixture()
+        self.assertIs(location.validate_pair(placement,root,rows,boot),placement)
+        self.assertFalse(placement['beforeSpawn']['executionObserved'])
+        private='/var/lib/openclaw-retained-bootstrap/'+'f'*64+'/'+'e'*32+'/root'
+        self.assertEqual(probe.build_argv(private,b'print(1)')[0],private+'/lib64/ld-linux-x86-64.so.2')
+    def test_same_device_noexec_bind_and_statvfs_restrictions_refuse(self):
+        rows,_session,boot,root,placement=fixture()
+        for mutate in (lambda m:m['mounts'].append(dict(m['mounts'][0],id=2,target='/var/lib',options=['rw','noexec'])),
+                       lambda m:m['mounts'][0]['options'].append('noexec'),
+                       lambda m:m.update(statvfsFlags=8),lambda m:m.update(statvfsFlags=1)):
+            changed=copy.deepcopy(placement);mutate(changed['beforeStage'])
+            with self.subTest(mutate=mutate),self.assertRaises(Refusal):location.validate_pair(changed,root,rows,boot)
+        raw=b'1 0 8:1 / / rw,relatime - ext4 /dev/vda1 rw\n2 1 8:1 /var/lib /var/lib rw,noexec - ext4 /dev/vda1 rw\n'
+        self.assertEqual(len(location.covering_mounts(raw,root)),2)
+    def test_foreign_device_owner_symlink_mode_or_existing_session_refuses(self):
+        rows,_session,boot,root,placement=fixture()
+        for mutate in (lambda m:m['ancestors'][1].update(device=999),
+                       lambda m:m['ancestors'][1].update(uid=1000),
+                       lambda m:m['ancestors'][1].update(symlink=True),
+                       lambda m:m['ancestors'][1].update(mode=0o777),
+                       lambda m:m['ancestors'].extend(copy.deepcopy(placement['beforeSpawn']['ancestors'][3:6]))):
+            changed=copy.deepcopy(placement);mutate(changed['beforeStage'])
+            with self.subTest(mutate=mutate),self.assertRaises(Refusal):location.validate_pair(changed,root,rows,boot)
+        for field,value in (('mode',0o444),('executeAccess',False),('sha256','f'*64),('links',2)):
+            changed=copy.deepcopy(placement);changed['beforeSpawn']['executables'][0][field]=value
+            with self.subTest(field=field),self.assertRaises(Refusal):location.validate_pair(changed,root,rows,boot)
+    def test_independent_host_replay_refuses_fully_rehashed_foreign_root_roster_or_session(self):
+        rows,session,boot,root,placement=fixture();raw=packet(rows,root,placement)
+        self.assertEqual(integrated_capture.replay_copied_controller(raw,rows,root,boot)['status'],'passed')
+        for kind in ('session','roster'):
+            foreign=copy.deepcopy(rows)
+            if kind=='roster':foreign[0]['sha256']='f'*64
+            other=location.root_for(foreign,'b'*32 if kind=='session' else session)
+            moved=json.loads(canonical(placement).replace(root.encode(),other.encode()))
+            for index,path in enumerate(location.ancestor_paths(other)):
+                moved['beforeSpawn']['ancestors'][index]['path']=path
+            location.validate_pair(moved,other,foreign,boot)
+            forged=packet(foreign,other,moved)
+            with self.subTest(kind=kind),self.assertRaises(ValueError):
+                integrated_capture.replay_copied_controller(forged,rows,root,boot)
+    def test_original_dispatch_endpoint_survives_slow_parent_check(self):
+        clock=[10.];launched=[]
+        def slow():clock[0]=41.
+        with self.assertRaisesRegex(Refusal,'copied.dispatch_deadline'):
+            probe.check_probe_dispatch(slow,lambda:clock[0],40.)
+            launched.append(True)
+        self.assertEqual(launched,[])
+    def test_placement_not_attempted_and_real_ambiguous_spawn_stay_distinct(self):
+        rows,_session,_boot,root,placement=fixture()
+        for phase in ('placement_prewrite','placement_prespawn'):
+            result=probe.not_attempted_capture(phase,Refusal('copied.location_test'))
+            evidence=probe.capture_failure_evidence(result,root,b'print(1)',rows,0,placement,
+                capture_origin='placement-not-attempted')
+            self.assertEqual(evidence['capture']['spawnOutcome'],'not_attempted')
+            self.assertFalse(evidence['capture']['ownershipRetained'])
+        result=probe.not_attempted_capture('placement_prespawn',PermissionError(13,'not retained'))
+        result.update(spawnOutcome='unknown',ownershipRetained=True)
+        evidence=probe.capture_failure_evidence(result,root,b'print(1)',rows,1,placement)
+        self.assertEqual(evidence['capture']['spawnOutcome'],'unknown')
+        self.assertTrue(evidence['capture']['ownershipRetained'])
+        with mock.patch.object(probe.os,'statvfs',side_effect=AssertionError('native metadata read')):
+            with self.assertRaises(Refusal):probe.observe_location({}, {}, {}, root, rows,final=False)
+    def test_complete_placement_and_full_capture_fit_original_failure_budget_with_declared_view(self):
+        rows,_session,_boot,root,_placement=fixture()
+        result=probe.not_attempted_capture('placement_prespawn',PermissionError(13,'not retained'))
+        result.update(stdout=bytes(range(256))*64,stderr=bytes(range(256))*16,
+            spawned=True,spawnOutcome='handle_returned',exitCode=1,
+            errors=[{'phase':'x'*48,'type':'x'*48,'errno':4095}]*16)
+        for name in ('stdout','stderr'):
+            raw=result[name];result[name+'Facts']={'bytes':len(raw),'sha256':sha(raw),'truncated':False,'complete':True}
+        placement={name:{'padding':'x'*8100}for name in ('beforeStage','beforeSpawn')}
+        evidence=probe.capture_failure_evidence(result,root,b'print(1)',rows,0,placement)
+        self.assertLessEqual(len(canonical({'phase':'bootstrap','reason':'copied.location_test',
+            'exceptionType':'Refusal','facts':{'copiedChild':evidence},'errno':None})),32768)
+        self.assertEqual(base64.b64decode(evidence['streams']['stderr']['viewBase64']),result['stderr'])
+        self.assertEqual(evidence['placement'],placement)
+        self.assertTrue(evidence['streams']['stdout']['viewTruncated'])
+        self.assertEqual(evidence['streams']['stdout']['captureFacts'],result['stdoutFacts'])
+
+
 if __name__=='__main__':unittest.main()

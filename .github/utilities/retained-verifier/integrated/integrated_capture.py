@@ -127,7 +127,7 @@ def build_roles(*, identity, checks, capture, context, owner, ready, proof,
         'integrated-closeout': canonical(closeout), 'integrated-durable-audit': canonical(audit),
         'integrated-copied-bootstrap': canonical({'proof': copied_bootstrap['proof'],
             'wire': decode(copied_bootstrap['raw'], 16384),
-            'scriptSha256': copied_bootstrap['scriptSha256']}),
+            'scriptSha256': copied_bootstrap['scriptSha256'],'placement':copied_bootstrap['placement']}),
     }
     validate_roles(roles)
     return roles
@@ -179,7 +179,7 @@ def serial_frame(value):
     return frame
 
 
-def verify_roles(roles, expected, *, source_replay, runtime_rows=None):
+def verify_roles(roles, expected, *, source_replay, runtime_rows=None, expected_copied_root=None):
     """Historical pure host replay; `source_replay` is a pinned source callback.
 
     Native outer-exit custody and the original seven-case verifier are separate
@@ -200,7 +200,8 @@ def verify_roles(roles, expected, *, source_replay, runtime_rows=None):
          'integrated_capture.owner_join')
     need(callable(source_replay), 'integrated_capture.source_replay_missing')
     replay = source_replay(capture, context, owner, roles=roles, runtime_rows=runtime_rows,
-                           historical_finished_at=capture['binding']['finishedAtUtc'])
+                           historical_finished_at=capture['binding']['finishedAtUtc'],
+                           expected_copied_root=expected_copied_root)
     proof = decode(roles['integrated-host-proof'], 131072)
     need(type(replay) is dict and replay.get('schema') == 'ocv.integrated-source-replay.v1' and
          replay.get('status') == 'passed' and
@@ -233,10 +234,26 @@ def verify_roles(roles, expected, *, source_replay, runtime_rows=None):
             'privateVmAdmission': False, 'candidateQualified': False}
 
 
-def historical_source_replay(capture, context, owner, *, roles, runtime_rows, historical_finished_at):
+def replay_copied_controller(raw,runtime_rows,expected_root,boot_id):
+    import copied_bootstrap_probe
+    import copied_location
+    copied=decode(raw,65536)
+    need(type(copied) is dict and set(copied)=={'proof','wire','scriptSha256','placement'} and
+        type(copied['proof']) is dict and type(copied['scriptSha256']) is str,
+        'integrated_capture.copied_controller_shape')
+    need(type(expected_root) is str and copied['proof'].get('root')==expected_root,
+         'integrated_capture.copied_root_scope')
+    copied_location.validate_pair(copied['placement'],expected_root,runtime_rows,boot_id)
+    proof=copied_bootstrap_probe.validate_result(canonical(copied['wire']),expected_root,runtime_rows)
+    need(proof==copied['proof'] and copied['scriptSha256']==
+        sha(copied_bootstrap_probe.probe_script(expected_root,runtime_rows)),
+        'integrated_capture.copied_controller_binding')
+    return proof
+
+
+def historical_source_replay(capture, context, owner, *, roles, runtime_rows, historical_finished_at,expected_copied_root):
     """Source-owned probe/ready/maintained-consumer replay, without issuing a gate."""
     import controller
-    import copied_bootstrap_probe
     import copier
     import custody
     import guest_unit
@@ -249,15 +266,7 @@ def historical_source_replay(capture, context, owner, *, roles, runtime_rows, hi
          'integrated_capture.source_worker_pin')
     historical_time = protocol.utc(historical_finished_at)
     worker.validate_context(context, protocol, historical_time, EXPECTED_WORKER_SHA256)
-    copied = decode(roles['integrated-copied-bootstrap'], 65536)
-    need(type(copied) is dict and set(copied) == {'proof', 'wire', 'scriptSha256'} and
-         type(copied['proof']) is dict and type(copied['scriptSha256']) is str,
-         'integrated_capture.copied_controller_shape')
-    copied_root = copied['proof']['root']
-    copied_proof = copied_bootstrap_probe.validate_result(canonical(copied['wire']), copied_root, runtime_rows)
-    need(copied_proof == copied['proof'] and copied['scriptSha256'] ==
-         sha(copied_bootstrap_probe.probe_script(copied_root, runtime_rows)),
-         'integrated_capture.copied_controller_binding')
+    replay_copied_controller(roles['integrated-copied-bootstrap'],runtime_rows,expected_copied_root,owner['bootId'])
     replay_owner = {key: owner[key] for key in
                     ('vmId', 'bootId', 'sessionId', 'unitName', 'guestSourceSha256')}
     replay = mac_replay._evaluate(capture, context, replay_owner,
@@ -325,8 +334,10 @@ def validate_combined(rows, expected, *, generic_validator, runtime_rows):
     identity = {'sessionId': sha(('integrated:'+expected['sessionId']).encode('ascii'))[:32],
         'bootId': generic_context['bootId'], 'sourceManifestSha256': expected['sourceManifestSha256'],
         'sourceCommit': run['sourceCommit'], 'runId': run['runId'], 'runAttempt': run['runAttempt']}
+    import copied_location
     replay = verify_roles({role: rows[role] for role in ROLE_CAPS}, identity,
-        source_replay=historical_source_replay, runtime_rows=runtime_rows)
+        source_replay=historical_source_replay, runtime_rows=runtime_rows,
+        expected_copied_root=copied_location.root_for(runtime_rows,identity['sessionId']))
     need(replay['status'] == 'passed' and replay['freshAdmissionAuthority'] is False,
          'integrated_capture.integrated_replay')
     return result  # Existing outer verifier's exact receipt remains unchanged.

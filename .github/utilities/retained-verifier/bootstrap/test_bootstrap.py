@@ -582,6 +582,23 @@ class CopiedFailureCustodyTests(unittest.TestCase):
   guest_boot.handle_failure(io,plan,lookalike,guard,issuer,result_frame)
   frame,_=self.parse(io.sent[0]);row=frame['custody']['files'][0]
   self.assertEqual(json.loads(base64.b64decode(row['base64']))['facts'],{})
+ def test_prewrite_and_prespawn_metadata_refusals_keep_truthful_zero_dispatch_custody(self):
+  for phase,role in (('placement_prewrite','beforeStage'),('placement_prespawn','beforeSpawn')):
+   with self.subTest(phase=phase):
+    io,_=setup_io();plan=guard.verify(io)
+    result=copied_probe.not_attempted_capture(phase,guard.Refusal('copied.location_statvfs_policy'))
+    metadata={role:{'metadataOnly':True,'executionObserved':False,'statvfsFlags':8}}
+    evidence=copied_probe.capture_failure_evidence(result,'/synthetic-public-root',b'print(1)',self.rows(),0,
+     metadata,capture_origin='placement-not-attempted')
+    with self.assertRaises(guard.Refusal) as raised:
+     copied_probe.refuse_captured('copied.location_statvfs_policy',evidence)
+    guest_boot.handle_failure(io,plan,raised.exception,guard,issuer,result_frame)
+    frame,_=self.parse(io.sent[0]);saved=json.loads(base64.b64decode(frame['custody']['files'][0]['base64']))
+    child=saved['facts']['copiedChild']
+    self.assertEqual(child['captureOrigin'],'placement-not-attempted')
+    self.assertEqual(child['capture']['spawnOutcome'],'not_attempted')
+    self.assertFalse(child['capture']['spawned']);self.assertFalse(child['capture']['ownershipRetained'])
+    self.assertEqual(child['ownedCommandsRemaining'],0);self.assertEqual(child['placement'],metadata)
 
 
 class NativeSourceBoundaryTests(unittest.TestCase):
