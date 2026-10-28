@@ -4,7 +4,8 @@ No NativePermit is issued, no process runs, and no system package/tool is read.
 Only sealed-command execution, three fixed public-tool reads and the three
 simulated root-owned output identities are substituted. The actual controller,
 metadata classifier, builder bindings, serial/source replay and artifact packer
-run. The sole large fixture is a disposable sparse zero image, not an OS image.
+run. The large fixtures are disposable sparse synthetic files with fixed
+partition/superblock metadata; no filesystem or OS image is built.
 """
 import base64
 import copy
@@ -15,12 +16,14 @@ import lzma
 import os
 from pathlib import Path
 import stat
+import struct
 import sys
 import tarfile
 import tempfile
 import time
 from types import SimpleNamespace
 import unittest
+from uuid import UUID
 from unittest import mock
 
 import ci_host as h
@@ -92,6 +95,14 @@ class SyntheticCommands:
  def normalize_mkosi_outputs(self,permit,project):
   # This simulator writes its bounded public outputs under the final names.
   assert permit is self.fixture.permit and project==str(self.fixture.port.project)
+ def initialize_integrated_test_image(self,permit,project):
+  # This explicit non-native seam creates only the reviewed sparse prefill.
+  assert permit is self.fixture.permit and project==str(self.fixture.port.project)
+  path=Path(project)/'out/integrated-test.raw'
+  with path.open('xb') as stream:
+   stream.write(integrated_fixture.test_image_header())
+   stream.truncate(integrated_fixture.TEST_IMAGE_BYTES)
+  path.chmod(0o600)
  def seal_command(self,permit,role,arguments,*,cwd,environment):
   assert permit is self.fixture.permit
   if role=='mkosi_build':argv=('/usr/bin/sudo','-n','--')+build.mkosi_argv(arguments['project'])
@@ -298,7 +309,16 @@ class ContractFixture:
   if role=='mkosi_build':self.build_outputs();return outer()
   if role=='integrated_test_image':
    p=Path(args['output'])
-   with p.open('wb') as stream:stream.truncate(integrated_fixture.TEST_IMAGE_BYTES)
+   assert SHA(p.read_bytes())==integrated_fixture.initialized_test_image_sha256()
+   # A fixed wire vector substitutes only mke2fs execution. No filesystem
+   # is made; actual kernel part1/filesystem/ancestry remains a Linux gate.
+   superblock=bytearray(1024)
+   struct.pack_into('<I',superblock,4,16128)
+   struct.pack_into('<I',superblock,0x18,2)
+   struct.pack_into('<H',superblock,0x38,0xef53)
+   superblock[0x68:0x78]=UUID('56b32afd-9976-4d21-9720-c4d5fcd02751').bytes
+   with p.open('r+b') as stream:
+    stream.seek(1048576+1024);stream.write(superblock)
    p.chmod(0o444);return outer()
   if role=='partition_read':return outer(self.partition(args['image']))
   if role=='qemu_once':

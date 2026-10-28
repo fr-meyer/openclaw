@@ -34,15 +34,15 @@ OPERATIONAL_ROLES = frozenset(('storage', 'unit', 'mac'))
 
 
 def _device_appearance_paths():
-    return (integrated_fixture.BOOT_DEVICE_ALIAS, integrated_fixture.TEST_DEVICE_ALIAS,
-            '/dev/disk/by-uuid/'+integrated_fixture.TEST_UUID)
+    return (integrated_fixture.BOOT_DEVICE_ALIAS, integrated_fixture.TEST_DISK_ALIAS,
+            integrated_fixture.TEST_PARTITION_ALIAS, '/dev/disk/by-uuid/'+integrated_fixture.TEST_UUID)
 
 
 def _poll_device_appearance(paths, *, check, now, lstat, stat_follow, pause, begin, deadline):
     """Readiness metadata only. This never validates a block device identity."""
     import guest_storage
     p.require(type(paths) is tuple and paths == _device_appearance_paths() and
-              len(set(paths)) == 3, 'ci_authority.appearance_paths')
+              len(set(paths)) == 4, 'ci_authority.appearance_paths')
     p.require(type(begin) in (int, float) and type(deadline) in (int, float) and
               math.isfinite(begin) and math.isfinite(deadline) and
               begin < deadline <= begin+30, 'ci_authority.appearance_window')

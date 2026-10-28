@@ -2,6 +2,7 @@
 import ast
 import dataclasses
 import stat
+import struct
 import importlib.util
 import os
 from pathlib import Path
@@ -10,8 +11,10 @@ import sys
 import tempfile
 import types
 import unittest
+from uuid import UUID
 from unittest import mock
 import host_context as h
+import integrated_fixture
 
 CANDIDATE_OUTER=(Path(__file__).resolve().parent/'outer_supervision.py',
  Path(__file__).resolve().parents[2]/'outer-supervision-r2/outer_supervision.py')
@@ -119,7 +122,8 @@ class Host(unittest.TestCase):
  def test_public_host_apis_reject_plain_dicts_and_cli_before_any_spawn(self):
   with mock.patch.object(h.NativeIO,'spawn',side_effect=AssertionError('native')):
    for call in (lambda:h.HostProcessOps({},{}),lambda:h.seal_command({},'git_read',{},cwd='/',environment={}),
-                lambda:h.run_owned({},('/usr/bin/git',),cwd='/',environment={},deadline=1),lambda:h.main([])):
+                lambda:h.run_owned({},('/usr/bin/git',),cwd='/',environment={},deadline=1),
+                lambda:h.initialize_integrated_test_image({},'/unread'),lambda:h.main([])):
     with self.assertRaises(h.Refusal):call()
   self.assertEqual(h._ISSUED,{})
  def test_closed_child_environment_has_no_github_credentials_or_extra_apt_keys(self):
@@ -225,13 +229,26 @@ class ProjectAndSources(unittest.TestCase):
    with self.assertRaisesRegex(h.Refusal,'host.output_owner'):
     h._prepare_chown({'phase':'output','owner':'1001:1001','project':str(self.project)})
  def test_qemu_identity_is_canonical_digit_strings_only_and_positive_out(self):
+  # Fixed binary metadata is not an image build or a filesystem. The actual
+  # source-loaded validator must inspect it, in addition to the full hash.
+  raw=bytearray(64*1024*1024);raw[:512]=integrated_fixture.test_image_header()
+  start=1048576+1024
+  struct.pack_into('<I',raw,start+4,16128)
+  struct.pack_into('<I',raw,start+0x18,2)
+  struct.pack_into('<H',raw,start+0x38,0xef53)
+  raw[start+0x68:start+0x78]=UUID('56b32afd-9976-4d21-9720-c4d5fcd02751').bytes
+  raw=bytes(raw)
   arguments={'session':self.permit.mission,'bound':{'directory':str(self.project/'out'),
    'sourceManifestSha256':expected()['source_manifest_sha'],'runIdentity':{'repository':h.REPOSITORY,
     'workflowRef':h.WORKFLOW_REF,'sourceCommit':expected()['expected_source'],'runId':'42','runAttempt':'1'}},
-    'test_record':{'name':'integrated-test.raw','bytes':64*1024*1024,'sha256':h.sha(b'fixed-synthetic-image')}}
+    'test_record':{'name':'integrated-test.raw','bytes':64*1024*1024,'sha256':h.sha(raw)}}
+  fixture_path=Path(integrated_fixture.__file__).resolve()
+  self.permit.source=fixture_path.parent.parent
+  self.permit.rows={'integrated/integrated_fixture.py':{'sha256':h.sha(fixture_path.read_bytes())}}
   facts=types.SimpleNamespace(st_mode=stat.S_IFREG|0o444,st_uid=0,st_gid=0,st_nlink=1,st_size=64*1024*1024)
   with mock.patch.object(h.Path,'lstat',return_value=facts),mock.patch.object(h.Path,'resolve',lambda p:p),\
-       mock.patch.object(h,'_read_regular',return_value=b'fixed-synthetic-image'):
+       mock.patch.object(h,'_read_regular',side_effect=lambda path,cap,**kw:
+        raw if Path(path).name=='integrated-test.raw' else fixture_path.read_bytes()):
    h._qemu_arguments(self.permit,arguments)
   with self.assertRaisesRegex(h.Refusal,'host.integrated_image_record'):
    h._qemu_arguments(self.permit,{**arguments,'test_record':{**arguments['test_record'],'sha256':'0'}})
@@ -351,6 +368,33 @@ class OwnedIO(unittest.TestCase):
   self.assertTrue(result['outerExited']);self.assertTrue(result['ownedGroupGone']);self.assertTrue(result['streamsEOF'])
   self.assertTrue(self.io.child.stdout.closed);self.assertTrue(self.io.child.stderr.closed)
   self.assertEqual(sum(c[0]=='spawn'for c in self.io.calls),1)
+ def test_slow_intent_cannot_spawn_after_original_absolute_deadline(self):
+  def intent():self.io.clock=.5
+  ops=h._OwnedOps(outer,self.argv,'/synthetic',self.env,self.io,intent)
+  result=h._supervise_owned(ops,self.argv,cwd='/synthetic',environment=self.env,deadline=.5,grace=.1)
+  self.assertFalse(result['spawned']);self.assertFalse(self.io.calls)
+  self.assertEqual(result['setupCause'],{'phase':'before_spawn','exceptionType':'Refusal',
+   'errno':None,'reason':'host.spawn_deadline'})
+  self.assertEqual(ops.spawn_deadline,.5)
+ def test_slow_selector_closes_without_process_after_original_deadline(self):
+  original=self.io.selector
+  def selector():
+   result=original();self.io.clock=.5;return result
+  self.io.selector=selector
+  ops=h.SyntheticProcessOps(outer,self.argv,'/synthetic',self.env,self.io)
+  result=h._supervise_owned(ops,self.argv,cwd='/synthetic',environment=self.env,deadline=.5,grace=.1)
+  self.assertFalse(result['spawned']);self.assertTrue(self.io.sel.closed)
+  self.assertFalse(any(call[0]=='spawn' for call in self.io.calls))
+  self.assertEqual(result['setupCause'],{'phase':'process_spawn','exceptionType':'Refusal',
+   'errno':None,'reason':'host.spawn_deadline'})
+ def test_spawn_deadline_is_fixed_and_rejects_unbounded_or_invalid_scopes(self):
+  for value in (True,0,-1,float('nan'),float('inf'),2001):
+   ops=h.SyntheticProcessOps(outer,self.argv,'/synthetic',self.env,self.io)
+   with self.subTest(value=value),self.assertRaisesRegex(h.Refusal,'host.spawn_deadline_scope'):
+    ops.set_spawn_deadline(value)
+  ops=h.SyntheticProcessOps(outer,self.argv,'/synthetic',self.env,self.io)
+  ops.set_spawn_deadline(.5)
+  with self.assertRaisesRegex(h.Refusal,'host.spawn_deadline_scope'):ops.set_spawn_deadline(1.)
  def test_selector_registration_failure_retains_child_and_runs_independent_cleanup(self):
   self.io.selector_fault=True;result=self.execute()
   self.assertEqual(result['status'],'refused');self.assertTrue(result['spawned']);self.assertTrue(result['outerExited'])

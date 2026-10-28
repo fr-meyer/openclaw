@@ -30,8 +30,11 @@ import worker
 # Private values are declared here so the synthetic export can replace only
 # top-level fixtures while preserving every function/class definition.
 TEST_UUID = '56b32afd-9976-4d21-9720-c4d5fcd02751'
-TEST_DEVICE_ALIAS = '/dev/disk/by-id/virtio-ocv-integ-test'
-BOOT_DEVICE_ALIAS = '/dev/disk/by-id/virtio-ocv-integ-boot'
+TEST_DEVICE_ALIAS = '/dev/disk/by-id/virtio-ocv-integ-test-part1'
+TEST_DISK_ALIAS = '/dev/disk/by-id/virtio-ocv-integ-test'
+TEST_PARTITION_REQUIRED = True
+BOOT_DEVICE_ALIASES = ('/dev/disk/by-id/virtio-ocv-integ-boot-absent', '/dev/disk/by-id/virtio-ocv-integ-boot')
+BOOT_DEVICE_ALIAS = BOOT_DEVICE_ALIASES[0]  # Compatibility name; selection checks every candidate.
 LEGACY_TEST_MOUNT = '/mnt/ocv-synthetic-unused'
 RETAINED_RELATIVE = 'retained'
 REPORT_RELATIVE = 'report/privacy.json'
@@ -121,22 +124,40 @@ def validate_device_observation(value):
     p.require(value['euid'] == 0 and value['machine'] == 'x86_64' and
               type(value['sessionExists']) is bool, 'storage.host_identity')
     boot = p.closed(value['boot'], {'rootMajorMinor', 'wholeMajorMinor',
-        'aliasMajorMinor', 'fstype', 'freeBytes'}, 'storage.boot_schema')
+        'aliasMajorMinor', 'aliases', 'fstype', 'freeBytes'}, 'storage.boot_schema')
     test = p.closed(value['test'], {'uuid', 'fstype', 'majorMinor',
-        'uuidAliasMajorMinor', 'providerAliasMajorMinor'}, 'storage.device_schema')
+        'uuidAliasMajorMinor', 'providerAliasMajorMinor', 'wholeMajorMinor',
+        'providerWholeAliasMajorMinor', 'isPartition'}, 'storage.device_schema')
     numbers = (boot['rootMajorMinor'], boot['wholeMajorMinor'], boot['aliasMajorMinor'],
-               test['majorMinor'], test['uuidAliasMajorMinor'], test['providerAliasMajorMinor'])
+               test['majorMinor'], test['uuidAliasMajorMinor'], test['providerAliasMajorMinor'],
+               test['wholeMajorMinor'],test['providerWholeAliasMajorMinor'])
     p.require(all(type(v) is str and re.fullmatch(r'\d+:\d+', v) for v in numbers) and
               boot['wholeMajorMinor'] == boot['aliasMajorMinor'] and
               boot['rootMajorMinor'] != test['majorMinor'] and
               boot['wholeMajorMinor'] != test['majorMinor'] and
+              boot['rootMajorMinor'] != test['wholeMajorMinor'] and
+              boot['wholeMajorMinor'] != test['wholeMajorMinor'] and
               boot['fstype'] == test['fstype'] == FSTYPE and
               type(boot['freeBytes']) is int and boot['freeBytes'] >= p.MIN_BOOT_FREE and
               test['uuid'] == TEST_UUID and test['majorMinor'] ==
               test['uuidAliasMajorMinor'] == test['providerAliasMajorMinor'],
               'storage.device_identity')
+    p.require(type(boot['aliases']) is list and 1<=len(boot['aliases'])<=len(BOOT_DEVICE_ALIASES)
+        and all(type(name) is str for name in boot['aliases'])
+        and boot['aliases']==[name for name in BOOT_DEVICE_ALIASES if name in boot['aliases']]
+        and len(set(boot['aliases']))==len(boot['aliases']) and
+        test['wholeMajorMinor']==test['providerWholeAliasMajorMinor'] and
+        type(test['isPartition']) is bool and test['isPartition'] is TEST_PARTITION_REQUIRED and
+        ((test['majorMinor']!=test['wholeMajorMinor'])if TEST_PARTITION_REQUIRED else
+         (test['majorMinor']==test['wholeMajorMinor'])),'storage.device_ancestry')
     p.require(type(value['mounts']) is list and len(value['mounts']) <= 4096,
               'storage.mount_count')
+    for row in value['mounts']:
+        p.require(type(row) is dict and 'blockWholeMajorMinor'in row and
+            (row['blockWholeMajorMinor'] is None or
+             (type(row['blockWholeMajorMinor']) is str and
+              re.fullmatch(r'(0|[1-9][0-9]*):(0|[1-9][0-9]*)',row['blockWholeMajorMinor']))) and
+            row['blockWholeMajorMinor']!=test['wholeMajorMinor'],'storage.mounted_block_ancestry')
     return value
 
 
@@ -294,8 +315,9 @@ class NativeStorageSession:
         observed = validate_device_observation(self.io.observe())
         p.require(observed['bootId'] == self.cap.owner['bootId'] and not observed['sessionExists'],
                   'storage.boot_or_session_changed')
-        p.require(not any(row['majorMinor'] == observed['test']['majorMinor'] or
-                         row['target'] == LEGACY_TEST_MOUNT for row in observed['mounts']),
+        p.require(not any(row['majorMinor'] in (observed['test']['majorMinor'],observed['test']['wholeMajorMinor']) or
+                         row['target'] == LEGACY_TEST_MOUNT or
+                         row['target'].startswith(LEGACY_TEST_MOUNT+'/')for row in observed['mounts']),
                   'storage.test_already_mounted')
         self._observed = observed
         self.io.create_session()
@@ -601,7 +623,7 @@ class NativeStorageIO:
         """Kernel pseudo-files have nominal sizes unrelated to their EOF."""
         p.require(path in (Path('/proc/self/mountinfo'),
                           Path('/proc/sys/kernel/random/boot_id')) or
-                  (str(path).startswith('/sys/devices/') and path.name == 'dev'),
+                  (str(path).startswith('/sys/devices/') and path.name in ('dev','partition')),
                   'storage.kernel_path')
         p.require(type(cap) is int and 0 < cap <= MOUNTINFO_MAX, 'storage.kernel_cap')
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -780,15 +802,78 @@ class NativeStorageIO:
                   _identity(target.lstat()) == _identity(info), 'storage.device_alias_changed')
         return '{}:{}'.format(os.major(info.st_rdev),os.minor(info.st_rdev))
 
-    def _root_whole_device(self, major_minor):
+    def _block_ancestry(self, major_minor):
+        p.require(type(major_minor) is str and re.fullmatch(r'(0|[1-9][0-9]*):(0|[1-9][0-9]*)',major_minor),
+                  'storage.block_number')
         target = Path('/sys/dev/block')/major_minor
         resolved = target.resolve(strict=True)
         p.require(str(resolved).startswith('/sys/devices/'), 'storage.root_block_graph')
+        own=self._read_kernel(resolved/'dev',128).strip().decode('ascii')
+        p.require(own==major_minor,'storage.block_number_changed')
         partition = resolved/'partition'
-        whole = resolved.parent if partition.exists() else resolved
+        try:part_info=partition.lstat()
+        except FileNotFoundError:part_info=None
+        if part_info is not None:
+            p.require(stat.S_ISREG(part_info.st_mode) and part_info.st_uid==part_info.st_gid==0 and
+                      not stat.S_IMODE(part_info.st_mode)&0o022 and part_info.st_nlink==1,
+                      'storage.partition_identity')
+            part=self._read_kernel(partition,128).strip().decode('ascii')
+            p.require(re.fullmatch(r'[1-9][0-9]{0,9}',part) and int(part)<2**31,
+                      'storage.partition_number')
+        whole = resolved.parent if part_info is not None else resolved
+        p.require(str(whole).startswith('/sys/devices/'),'storage.root_block_graph')
+        if part_info is not None:
+            try:whole_partition=(whole/'partition').lstat()
+            except FileNotFoundError:whole_partition=None
+            p.require(whole_partition is None,'storage.whole_is_partition')
         raw = self._read_kernel(whole/'dev',128).strip().decode('ascii')
-        p.require(re.fullmatch(r'\d+:\d+',raw), 'storage.root_block_graph')
-        return raw
+        p.require(re.fullmatch(r'(0|[1-9][0-9]*):(0|[1-9][0-9]*)',raw), 'storage.root_block_graph')
+        return {'majorMinor':major_minor,'wholeMajorMinor':raw,'isPartition':part_info is not None}
+
+    def _root_whole_device(self, major_minor):return self._block_ancestry(major_minor)['wholeMajorMinor']
+
+    def _reject_test_mount_ancestry(self, rows, test_whole):
+        """Reject any mounted partition of TEST, including unselected siblings."""
+        p.require(type(rows) is list and len(rows)<=4096,'storage.mount_count')
+        numbers={row['majorMinor']for row in rows};whole_numbers={}
+        for number in sorted(numbers):
+            p.require(type(number) is str and re.fullmatch(r'(0|[1-9][0-9]*):(0|[1-9][0-9]*)',number),
+                      'storage.block_number')
+            path=Path('/sys/dev/block')/number
+            try:path.lstat()
+            except FileNotFoundError:
+                whole_numbers[number]=None;continue  # A genuinely absent non-block pseudo-filesystem.
+            try:ancestry=self._block_ancestry(number)
+            except FileNotFoundError:raise p.Refusal('storage.mounted_block_dangling')from None
+            p.require(ancestry['wholeMajorMinor']!=test_whole,'storage.test_disk_mounted')
+            whole_numbers[number]=ancestry['wholeMajorMinor']
+        return [dict(row,blockWholeMajorMinor=whole_numbers[row['majorMinor']])for row in rows]
+
+    def _boot_aliases(self, root_whole):
+        present=[]
+        for alias in BOOT_DEVICE_ALIASES:
+            self._root_chain(Path(alias).parent)
+            try:Path(alias).lstat()
+            except FileNotFoundError:continue
+            try:major=self._device(alias)
+            except FileNotFoundError:raise p.Refusal('storage.boot_alias_dangling')from None
+            p.require(major==root_whole,'storage.boot_alias_foreign')
+            ancestry=self._block_ancestry(major)
+            p.require(ancestry['isPartition'] is False and ancestry['wholeMajorMinor']==major,
+                      'storage.boot_alias_partition')
+            present.append(alias)
+        p.require(present,'storage.boot_alias_missing')
+        return present
+
+    def _test_devices(self):
+        part=self._device('/dev/disk/by-uuid/'+TEST_UUID)
+        p.require(part==self._device(TEST_DEVICE_ALIAS),'storage.device_alias_changed')
+        ancestry=self._block_ancestry(part)
+        whole=self._device(TEST_DISK_ALIAS);whole_info=self._block_ancestry(whole)
+        p.require(whole_info['isPartition'] is False and whole_info['wholeMajorMinor']==whole and
+            ancestry['wholeMajorMinor']==whole and ancestry['isPartition'] is TEST_PARTITION_REQUIRED and
+            ((part!=whole)if TEST_PARTITION_REQUIRED else(part==whole)), 'storage.test_parent')
+        return part,whole,ancestry
 
     def _uuid(self):
         alias = '/dev/disk/by-uuid/'+TEST_UUID
@@ -818,21 +903,25 @@ class NativeStorageIO:
         info = os.stat('/')
         major_minor = '{}:{}'.format(os.major(info.st_dev),os.minor(info.st_dev))
         p.require(root[0]['majorMinor'] == major_minor, 'storage.boot_device')
-        test_minor = self._device('/dev/disk/by-uuid/'+TEST_UUID)
-        p.require(not any(r['majorMinor'] == test_minor or r['target'] == LEGACY_TEST_MOUNT
+        root_info=self._block_ancestry(major_minor)
+        aliases=self._boot_aliases(root_info['wholeMajorMinor'])
+        test_minor,test_whole,test_info=self._test_devices()
+        p.require(not any(r['majorMinor'] in (test_minor,test_whole) or r['target'] == LEGACY_TEST_MOUNT or
+                          r['target'].startswith(LEGACY_TEST_MOUNT+'/')
                           for r in rows), 'storage.test_already_mounted')
-        p.require(test_minor == self._device(TEST_DEVICE_ALIAS), 'storage.device_alias_changed')
+        rows=self._reject_test_mount_ancestry(rows,test_whole)
         uuid = self._uuid()
         fs = os.statvfs('/var/lib')
         p.require(os.stat('/var/lib').st_dev == info.st_dev, 'storage.boot_path_device')
         return {'bootId':self._cap.owner['bootId'],'euid':os.geteuid(),
             'machine':os.uname().machine,'sessionExists':os.path.lexists(self.base),
-            'boot':{'rootMajorMinor':major_minor,'wholeMajorMinor':self._root_whole_device(major_minor),
-                    'aliasMajorMinor':self._device(BOOT_DEVICE_ALIAS),'fstype':root[0]['fstype'],
+            'boot':{'rootMajorMinor':major_minor,'wholeMajorMinor':root_info['wholeMajorMinor'],
+                    'aliasMajorMinor':root_info['wholeMajorMinor'],'aliases':aliases,'fstype':root[0]['fstype'],
                     'freeBytes':fs.f_bavail*fs.f_frsize},
             'test':{'uuid':uuid['UUID'],'fstype':uuid['TYPE'],'majorMinor':test_minor,
                     'uuidAliasMajorMinor':test_minor,
-                    'providerAliasMajorMinor':self._device(TEST_DEVICE_ALIAS)},'mounts':rows}
+                    'providerAliasMajorMinor':test_minor,'wholeMajorMinor':test_whole,
+                    'providerWholeAliasMajorMinor':test_whole,'isPartition':test_info['isPartition']},'mounts':rows}
 
     def _owned_base(self):
         self._root_chain(self.base, device=os.stat('/').st_dev)
@@ -937,8 +1026,15 @@ class NativeStorageIO:
                          'owner':self._cap.owner,'atUtc':p.stamp(self.now())}),0o400)
 
     def _mount_rows(self):
-        major = self._device('/dev/disk/by-uuid/'+TEST_UUID)
+        major,whole,_ = self._test_devices()
         rows = self._mounts()
+        p.require(not any((row['majorMinor']==whole and whole!=major) or
+            row['target']==LEGACY_TEST_MOUNT or row['target'].startswith(LEGACY_TEST_MOUNT+'/')
+            for row in rows),
+                  'storage.test_whole_mounted')
+        # The one owned source mount is expected during normal unmount/custody;
+        # every other mounted block device must have a different whole parent.
+        self._reject_test_mount_ancestry([row for row in rows if row['majorMinor']!=major],whole)
         return major, rows, [row for row in rows if row['majorMinor'] == major]
 
     def mount_test_readonly(self):

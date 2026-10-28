@@ -198,8 +198,11 @@ class NativePort:
         env=dict(self.m.context.ENV)
         if role.startswith('ubuntu_apt_'):env['DEBIAN_FRONTEND']='noninteractive'
         scope=self.m.context.seal_command(self.permit,role,arguments,cwd=str(self.project),environment=env)
+        now=time.monotonic()
+        require(self.deadline-now>30,'host.whole_deadline')
+        require(self.phase_deadline>now,'host.phase_deadline')
         value=self.m.context.run_owned(self.permit,scope,cwd=str(self.project),environment=env,
-                                      deadline=time.monotonic()+min(timeout,remaining-30,phase_remaining))
+                                      deadline=min(self.deadline-30,self.phase_deadline,now+timeout))
         row={'role':role,'argv':list(scope.argv),'status':value.get('status'),'returncode':value.get('returncode'),
              'timedOut':value.get('timedOut'),'ownershipRetained':value.get('ownershipRetained'),
              'spawned':value.get('spawned'),'outerReason':value.get('reason'),
@@ -381,6 +384,7 @@ class NativePort:
             for name,row in self.rows.items() if name.startswith('integrated/fixture/')}
         for name,(raw,mode) in self.m.integrated_fixture.fixture_layout(fixture_files).items():
             self._write(self.project/'integrated-seed'/name,raw,mode)
+        self.m.context.initialize_integrated_test_image(self.permit,str(self.project))
         self._run('integrated_test_image',{'seed_root':str(self.project/'integrated-seed'),
             'output':str(self.project/'out/integrated-test.raw')},30)
         self._run('own_mkosi_outputs',{'project':str(self.project),
@@ -410,6 +414,7 @@ class NativePort:
         self.expected=self.m.source_expectation.expected(self.source,out,self.bound,self.permit.mission)
         test=out/'integrated-test.raw';raw=read_regular(test,64*1024*1024,owner=0)
         require(len(raw)==64*1024*1024 and stat.S_IMODE(test.stat().st_mode)==0o444,'host.integrated_image_size')
+        self.m.integrated_fixture.validate_test_image(raw)
         self.test_record={'name':'integrated-test.raw','bytes':len(raw),'sha256':sha(raw)}
         self.base_records['integrated-test.raw']={'bytes':len(raw),'sha256':sha(raw)}
         runtime_raw=read_regular(out/'runtime.json',4*1024**2)

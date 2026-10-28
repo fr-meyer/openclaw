@@ -159,8 +159,17 @@ class _OwnedOps:
   self.outer=outer;self.argv=argv;self.cwd=cwd;self.environment=environment;self.io=io
   self.before_spawn=before_spawn;self.synthetic=io.synthetic;self.owned={};self.closed=set();self.spawn_intent=False
   self.setupCause=None
+  self.spawn_deadline=None
  def now(self):return self.io.now()
  def pause(self,duration):self.io.pause(duration)
+ def set_spawn_deadline(self,deadline):
+  need(self.spawn_deadline is None and type(deadline)in(int,float) and math.isfinite(deadline)
+       and 0<deadline-self.now()<=2000,'host.spawn_deadline_scope')
+  self.spawn_deadline=deadline
+ def _spawn_time(self):
+  need(self.spawn_deadline is not None or self.synthetic is True,'host.spawn_deadline_unset')
+  if self.spawn_deadline is not None:
+   need(self.now()<self.spawn_deadline,'host.spawn_deadline')
  def _pre_spawn_cause(self,phase,error):
   number=getattr(error,'errno',None)
   code=str(error) if type(error)is Refusal and re.fullmatch('host\\.[A-Za-z0-9_.-]{1,75}',str(error)) else None
@@ -172,14 +181,15 @@ class _OwnedOps:
   try:
    need(not self.spawn_intent,'host.spawn_consumed')
    need(argv==self.argv and cwd==self.cwd and environment==self.environment,'host.command_scope')
-   self.spawn_intent=True;self.before_spawn()
+   self._spawn_time();self.spawn_intent=True;self.before_spawn();self._spawn_time()
   except BaseException as error:
    self._pre_spawn_cause('before_spawn',error)
    raise
   try:selector=self.io.selector()
   except BaseException as error:
    self._pre_spawn_cause('selector_create',error);raise
-  try:child=self.io.spawn(argv,cwd,environment)
+  try:
+   self._spawn_time();child=self.io.spawn(argv,cwd,environment)
   except BaseException as error:
    self._pre_spawn_cause('process_spawn',error)
    try:selector.close()
@@ -401,7 +411,11 @@ def _qemu_arguments(permit,arguments):
  need(path.resolve()==path and stat.S_ISREG(info.st_mode) and info.st_uid==info.st_gid==0 and
       info.st_nlink==1 and stat.S_IMODE(info.st_mode)==0o444 and info.st_size==record['bytes'],
       'host.integrated_image_identity')
- need(sha(_read_regular(path,64*1024*1024))==record['sha256'],'host.integrated_image_changed')
+ raw=_read_regular(path,64*1024*1024)
+ need(sha(raw)==record['sha256'],'host.integrated_image_changed')
+ fixture=_load(permit.source/'integrated/integrated_fixture.py',
+     permit.rows['integrated/integrated_fixture.py']['sha256'])
+ fixture.validate_test_image(raw)
 
 
 def _freeze_outputs(project):
@@ -459,6 +473,61 @@ def normalize_mkosi_outputs(permit,project):
  _normalize_mkosi_roster(project,permit.uid,permit.gid)
 
 
+def _initialized_test_image(permit,fixture):
+ path=permit.project/'out/integrated-test.raw';info=path.lstat()
+ need(path.resolve()==path and stat.S_ISREG(info.st_mode) and
+      info.st_uid==permit.uid and info.st_gid==permit.gid and info.st_nlink==1 and
+      stat.S_IMODE(info.st_mode)==0o600 and info.st_size==fixture.TEST_IMAGE_BYTES,
+      'host.integrated_initial_identity')
+ need(sha(_read_regular(path,fixture.TEST_IMAGE_BYTES,uid=permit.uid))==
+      fixture.initialized_test_image_sha256(),'host.integrated_initial_changed')
+
+
+def initialize_integrated_test_image(permit,project):
+ """Only the actual admitted factory creates this fresh fixed public image.
+
+ No tool, shell, mount or child is launched. mke2fs subsequently formats the
+ exact partition offset through the existing owned command supervision.
+ """
+ permit=_permit(permit);_project(permit,project)
+ fixture=_load(permit.source/'integrated/integrated_fixture.py',
+     permit.rows['integrated/integrated_fixture.py']['sha256'])
+ out=permit.project/'out';before=out.lstat()
+ need(out.resolve()==out and stat.S_ISDIR(before.st_mode) and
+      before.st_uid==permit.uid and before.st_gid==permit.gid and
+      stat.S_IMODE(before.st_mode)==0o755,'host.integrated_initial_directory')
+ path=out/fixture.TEST_IMAGE_NAME
+ need(fixture.TEST_IMAGE_NAME=='integrated-test.raw' and fixture.TEST_IMAGE_BYTES==64*1024*1024 and
+      type(fixture.test_image_header())is bytes and len(fixture.test_image_header())==512,
+      'host.integrated_initial_spec')
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ try:
+  opened=os.fstat(fd)
+  need(stat.S_ISREG(opened.st_mode) and opened.st_uid==permit.uid and opened.st_gid==permit.gid and
+       opened.st_nlink==1 and opened.st_size==0 and stat.S_IMODE(opened.st_mode)==0o600,
+       'host.integrated_initial_file')
+  header=fixture.test_image_header()
+  need(os.write(fd,header)==len(header),'host.integrated_initial_short_write')
+  os.ftruncate(fd,fixture.TEST_IMAGE_BYTES);os.fsync(fd)
+  final=os.fstat(fd);linked=path.lstat();after=out.lstat()
+  identity=lambda v:(v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid,v.st_nlink,v.st_size)
+  need(path.resolve()==path and identity(final)==identity(linked) and
+       (final.st_dev,final.st_ino)==(opened.st_dev,opened.st_ino) and
+       final.st_size==fixture.TEST_IMAGE_BYTES and
+       (before.st_dev,before.st_ino,before.st_mode,before.st_uid,before.st_gid)==
+       (after.st_dev,after.st_ino,after.st_mode,after.st_uid,after.st_gid),
+       'host.integrated_initial_replaced')
+ finally:os.close(fd)
+ _initialized_test_image(permit,fixture)
+ directory_fd=os.open(out,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ try:
+  opened_dir=os.fstat(directory_fd)
+  need((opened_dir.st_dev,opened_dir.st_ino)==(before.st_dev,before.st_ino),
+       'host.integrated_initial_directory_changed')
+  os.fsync(directory_fd)
+ finally:os.close(directory_fd)
+
+
 def _preflight_mkosi_outputs(permit,arguments):
  need(set(arguments)=={'project','uid','gid'} and arguments['uid']==permit.uid
       and arguments['gid']==permit.gid,'host.mkosi_outputs_owner')
@@ -510,8 +579,8 @@ def seal_command(permit,role,arguments,*,cwd,environment):
  if role=='integrated_test_image':
   need(set(arguments)=={'seed_root','output'} and
        arguments['seed_root']==str(permit.project/'integrated-seed') and
-       arguments['output']==str(permit.project/'out/integrated-test.raw') and
-       not Path(arguments['output']).exists(),'host.integrated_image_arguments')
+       arguments['output']==str(permit.project/'out/integrated-test.raw'),'host.integrated_image_arguments')
+  _initialized_test_image(permit,module)
  if role=='qemu_once':_qemu_arguments(permit,arguments)
  try:
   if role=='qemu_once':
@@ -545,7 +614,12 @@ def seal_command(permit,role,arguments,*,cwd,environment):
 
 
 def _intent(scope):
- permit=_permit(scope.permit);need(not scope.consumed,'host.scope_consumed');permit.consumed.add(scope.key)
+ permit=_permit(scope.permit);need(not scope.consumed,'host.scope_consumed')
+ if scope.role=='integrated_test_image':
+  fixture=_load(permit.source/'integrated/integrated_fixture.py',
+      permit.rows['integrated/integrated_fixture.py']['sha256'])
+  _initialized_test_image(permit,fixture)
+ permit.consumed.add(scope.key)
  _project(permit,str(permit.project));directory=permit.project/'.host-intents'
  try:directory.mkdir(mode=0o700)
  except FileExistsError:pass
@@ -570,6 +644,7 @@ class HostProcessOps(_OwnedOps):
 def _supervise_owned(ops,argv,*,cwd,environment,deadline,grace=10.0):
  # Keep reviewed independent cleanup unchanged. Pipe setup diagnostics are
  # owned by this successor and carried alongside the exact outer record.
+ ops.set_spawn_deadline(deadline)
  result=ops.outer.supervise(ops,argv,cwd=cwd,environment=environment,deadline=deadline,grace=grace)
  result['setupCause']=dict(ops.setupCause) if ops.setupCause is not None else None
  return result
