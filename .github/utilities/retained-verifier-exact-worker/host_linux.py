@@ -164,6 +164,58 @@ def process_start(pid):
     return int(raw[raw.rfind(')') + 2:].split()[19])
 
 
+def failure_diagnostics(stderr, unit):
+    """Bounded, projected facts for this synthetic unit, never raw log bytes."""
+    result = {'schema': 'openclaw.exact-worker-failure-diagnostic.v1'}
+    try:
+        fd = os.open(stderr, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+        try: raw = os.read(fd, 65537)
+        finally: os.close(fd)
+        result['stderrBytesRead'] = min(len(raw), 65536)
+        result['stderrTruncated'] = len(raw) > 65536
+        result['stderrPrefixSha256'] = sha(raw[:65536])
+        markers, frames = [], []
+        for line in raw[:65536].splitlines()[:16]:
+            if line in (b'entry_refused', b'entry_exec_failed'):
+                markers.append(line.decode('ascii'))
+                continue
+            try: value = json.loads(line)
+            except (ValueError, UnicodeError):
+                if b'Traceback (most recent call last)' in line: markers.append('pythonTraceback')
+                continue
+            if type(value) is dict and value.get('schema') in (
+                    'openclaw.retained-verifier-ready.v1',
+                    'openclaw.retained-verifier-worker-final.v1'):
+                frame = {'schema': value['schema']}
+                for key in ('status', 'reasonCode'):
+                    item = value.get(key)
+                    if type(item) is str and re.fullmatch(r'[a-z][a-z0-9_-]{0,95}', item):
+                        frame[key] = item
+                frames.append(frame)
+        result['markers'] = markers[:8]
+        result['frames'] = frames[:8]
+    except (OSError, RuntimeError):
+        result['stderrUnavailable'] = True
+    keys = ('ActiveState', 'SubState', 'Result', 'ExecMainCode',
+            'ExecMainStatus', 'MainPID')
+    try:
+        outcome = subprocess.run(('/usr/bin/systemctl', 'show', '--no-pager',
+                                  '--property=' + ','.join(keys), unit),
+                                 capture_output=True, timeout=5,
+                                 env={'PATH': '/usr/bin', 'LANG': 'C', 'LC_ALL': 'C'})
+        result['unitQueryExitCode'] = outcome.returncode
+        if outcome.returncode == 0 and len(outcome.stdout) <= 4096:
+            values = dict(line.split('=', 1) for line in
+                          outcome.stdout.decode('ascii').splitlines() if '=' in line)
+            if set(keys) <= set(values) and all(re.fullmatch(r'[a-z0-9_.-]{1,64}', values[k])
+                                                    for k in keys[:3]) and all(
+                    re.fullmatch(r'[0-9]{1,10}', values[k]) for k in keys[3:]):
+                result['unit'] = {k: values[k] for k in keys}
+    except (OSError, subprocess.TimeoutExpired, UnicodeError, ValueError):
+        result['unitQueryUnavailable'] = True
+    return result
+
+
 def run():
     need(sys.platform == 'linux' and os.uname().machine == 'x86_64' and os.geteuid() == 0 and
          os.environ.get('GITHUB_REPOSITORY') == 'fr-meyer/openclaw' and
@@ -301,12 +353,17 @@ def run():
                       stdoutSha256=sha(read(stdout, 4096)),
                       stderrSha256=sha(read(stderr, 65536)))
     except BaseException as error:
-        result['reason'] = (str(error) if type(error) is RuntimeError and
-                            re.fullmatch(r'exact\.[a-z0-9_.]{1,100}', str(error))
-                            else type(error).__name__[:48])
+        reason = (str(error) if type(error) is RuntimeError and
+                  re.fullmatch(r'exact\.[a-z0-9_.-]{1,120}', str(error))
+                  else type(error).__name__[:48])
+        result['reason'] = reason
+        result['primaryReason'] = reason
         raise
     finally:
         if submitted:
+            if result['status'] == 'failed':
+                try: result['diagnostics'] = failure_diagnostics(stderr, unit)
+                except BaseException: result['diagnostics'] = {'status': 'unavailable'}
             try:
                 stopped = subprocess.run(('/usr/bin/systemctl','stop',unit), capture_output=True,
                                          timeout=15)
@@ -324,7 +381,7 @@ def run():
                 result['ownedCgroupEmpty'] = cgroup is not None
             except BaseException as error:
                 result['status'] = 'failed'
-                result['reason'] = ('exact.closeout_' + type(error).__name__)[:100]
+                result['closeoutReason'] = ('exact.closeout_' + type(error).__name__)[:100]
         if result['status'] == 'consumer-passed-pending-closeout':
             if result.get('ownedUnitStopped') is True and result.get('ownedCgroupEmpty') is True:
                 result['status'] = 'passed'
