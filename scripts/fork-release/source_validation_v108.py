@@ -31,6 +31,8 @@ TREE = "416a77f6b89110883c41652f64c602ab989662d7"
 BASE = "a65f70c5dad17b39bc3ee26ba92cde6d00bfb259"
 TARGET_BRANCH_TIP = "918890b9f72b2d0372995362e8ea3088e0f87431"
 APPROVAL_DEADLINE = "2026-10-29T00:03:19Z"
+BOOTSTRAP_FAILURE_RUN_ID = "40609889437"
+BOOTSTRAP_FAILURE_HEAD = "1328661613052dfa09902e1d1d080fa8e6ccd89d"
 SKIPPED_RUN_ID = "40607329263"
 SKIPPED_HEAD = "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3"
 SKIPPED_WORKFLOW_SHA256 = "717834ccb7a9ba27622d0981fc61875a109219b906350a825ea0ee2d04e8d13f"
@@ -52,6 +54,13 @@ RESERVE_MINUTES = 140
 MAX_CORRECTION_MINUTES = 180
 HEX256 = re.compile(r"[0-9a-f]{64}\Z")
 RUN_ID = re.compile(r"[1-9][0-9]{0,19}\Z")
+# Exact public pnpm@12.15.0 tarball files, inspected against registry SHA-512.
+# Only this initializer and its one local import run during bootstrap.
+PNPM_BOOTSTRAP_FILES = {
+    "package.json": "f3e2afee436a7793338c6837ee58f73d97db0de874e9f2a8acd1bf6d83eae0be",
+    "install.js": "f176986d8aad7d17c3328178928b9ba72d30b1a1c9edc94d2a279a51d8d6da6e",
+    "native-binary.mjs": "27c6039ef59196ad19cca8915c391b0ec34df2f9a91519717f87c28984787565",
+}
 TEST_PATH = re.compile(r"[A-Za-z0-9_./@+-]+\.(?:test|e2e)\.[cm]?[jt]s\Z")
 
 
@@ -85,6 +94,11 @@ def validate_request(value):
     need(len(profiles) == len(set(profiles)), "duplicate profile")
     if value["round"] == 0:
         need(profiles == [], "initial round is complete suite")
+    elif full_bootstrap_recheck(value):
+        # One global toolchain repair affects all original profiles. This is not
+        # a new source or a generic full-suite retry allowance.
+        need(sum(PROFILE_MINUTES[p] for p in profiles) + 20 == INITIAL_MINUTES,
+             "fixed bootstrap recheck scope")
     else:
         need(bool(profiles) and sum(PROFILE_MINUTES[p] for p in profiles) + 20 <=
              MAX_CORRECTION_MINUTES, "targeted correction minute cap")
@@ -93,6 +107,12 @@ def validate_request(value):
          all(release.matches(RUN_ID, item) for item in prior) and
          len(prior) == len(set(prior)), "prior rounds")
     return value
+
+
+def full_bootstrap_recheck(request):
+    return (request.get("round") == 1 and
+            request.get("priorRunIds") == [BOOTSTRAP_FAILURE_RUN_ID] and
+            request.get("profiles") == list(PROFILE_MINUTES))
 
 
 def profiles_for(request):
@@ -222,9 +242,17 @@ def observed_minutes(jobs, expected):
         seen.add(name)
         if name == "admission":
             admitted = job.get("conclusion") == "success"
-        # Skipped jobs have no runner. Acquired jobs must be standard public Ubuntu.
-        if job.get("conclusion") == "skipped" and not job.get("runner_id"):
+        # A queued cancellation can carry a timestamp but no acquired runner.
+        # Missing fields never stand for positive zero-execution evidence.
+        no_runner = ("runner_id" in job and (job["runner_id"] is None or
+                     type(job["runner_id"]) is int and job["runner_id"] == 0))
+        if job.get("conclusion") in ("skipped", "cancelled") and no_runner:
+            need("runner_name" in job and job["runner_name"] in (None, "") and
+                 "steps" in job and type(job["steps"]) is list and not job["steps"],
+                 "unacquired terminal job evidence")
             continue
+        need(type(job.get("runner_id")) is int and job["runner_id"] > 0,
+             "positive acquired runner identity")
         need(name != "source" and job.get("started_at") is not None, "missing job time")
         labels = job.get("labels", [])
         need("ubuntu-24.04" in labels and "self-hosted" not in labels and
@@ -274,6 +302,7 @@ def skipped_admission(run, request, api):
 
 
 def history_checks(request, event, env, pipeline, api):
+    request = validate_request(request)
     live = api("/repos/" + REPOSITORY + "/pulls/28")
     # Ignore PR prose entirely and revalidate only the same structured fields.
     current = dict(event, pull_request=live)
@@ -308,7 +337,13 @@ def history_checks(request, event, env, pipeline, api):
             need(run.get("head_sha") == event["pull_request"]["head"]["sha"] and
                  run.get("status") == "in_progress", "current run identity")
             previous = request
+            booked += round_minutes(previous)
         else:
+            if run_id == BOOTSTRAP_FAILURE_RUN_ID:
+                need(index == 0 and run.get("head_sha") == BOOTSTRAP_FAILURE_HEAD and
+                     run.get("status") == "completed" and
+                     run.get("conclusion") in ("failure", "cancelled"),
+                     "fixed bootstrap failure predecessor")
             need(run.get("status") == "completed" and run.get("conclusion") in
                  ("success", "failure", "cancelled", "timed_out", "action_required", "neutral", "skipped"),
                  "previous run must be terminal")
@@ -324,7 +359,9 @@ def history_checks(request, event, env, pipeline, api):
             measured = observed_minutes(jobs, profiles_for(previous))
             need(measured <= round_minutes(previous), "prior run budget")
             observed += measured
-        booked += round_minutes(previous)
+            # Terminal provider evidence is actual spent time. Keep the current
+            # round's complete timeout booking; never refund unfinished work.
+            booked += measured
     need(starts == sorted(starts) and (starts[-1] - starts[0]).total_seconds() <= 86400 and
          0 <= (datetime.now(timezone.utc) - starts[0]).total_seconds() <= 86400, "24 hour campaign window")
     deadline = min(int(starts[0].timestamp()) + 86400,
@@ -442,7 +479,8 @@ def commands(pipeline, source, profile, paths):
         return [["python3", "-m", "unittest", "discover", "-s", str(pipeline / "scripts/fork-release"),
                  "-p", name] for name in ("test_release.py", "test_preflight.py", "test_merge_source.py",
                                           "test_merge_source_v107.py", "test_merge_source_v108.py",
-                                          "test_source_tests.py", "test_source_validation_v108.py")]
+                                          "test_source_tests.py", "test_source_validation_v108.py",
+                                          "test_v108_pnpm_bootstrap.py", "test_v108_recovery_budget.py")]
     tests = selected_tests(paths, profile)
     need(bool(tests), "empty owner family")
     return [["node", "--import", "./scripts/tsx.mjs", "scripts/test-projects.mts", *tests]]
@@ -451,7 +489,7 @@ def commands(pipeline, source, profile, paths):
 def summarize(data, env):
     raw = json.dumps(data, sort_keys=True)
     need(len(raw.encode()) <= 65536, "bounded summary")
-    print(raw)
+    print(raw, flush=True)
     if env.get("GITHUB_STEP_SUMMARY"):
         with open(env["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
             out.write("```json\n" + raw + "\n```\n")
@@ -481,6 +519,68 @@ def resource_check(source):
          facts["availableSourceDiskBytes"] >= 8 * 1024 ** 3 and facts["logicalCpus"] >= 4,
          "standard runner below engineering resource floors")
     return facts
+
+
+def owned_pnpm_file(toolchain, relative):
+    path = toolchain / "node_modules/pnpm" / relative
+    need(path.resolve(strict=True) == path and path.is_file(), "owned regular pnpm bootstrap file")
+    return path
+
+
+def bootstrap_pnpm(home, env):
+    """Initialize only pinned pnpm, then return its owned native executable."""
+    phase, owned = "resolve-runtimes", False
+    try:
+        toolchain = home.resolve(strict=True) / "toolchain"
+        toolchain.mkdir(mode=0o700)
+        node, npm = (shutil.which(name, path=env["PATH"]) for name in ("node", "npm"))
+        need(node and npm, "bootstrap runtimes required")
+        node, npm = str(Path(node).resolve(strict=True)), str(Path(npm).resolve(strict=True))
+        phase = "download-pnpm"
+        subprocess.run([npm, "install", "--prefix", str(toolchain), "--ignore-scripts",
+                        "--no-audit", "--no-fund", "pnpm@12.15.0"], cwd=toolchain, env=env,
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        phase = "verify-package"
+        files = {name: owned_pnpm_file(toolchain, name) for name in PNPM_BOOTSTRAP_FILES}
+        for name, path in files.items():
+            need(path.stat().st_size <= 65536 and preflight.digest(path) == PNPM_BOOTSTRAP_FILES[name],
+                 "pinned pnpm bootstrap file digest")
+        package = read_json(files["package.json"].read_bytes())
+        need(package.get("name") == "pnpm" and package.get("version") == "12.15.0" and
+             package.get("bin") == {"pnpm": "pnpm", "pn": "pn", "pnpx": "pnpx", "pnx": "pnx"} and
+             package.get("optionalDependencies", {}).get("@pnpm/exe.linux-x64") == "12.15.0",
+             "fixed pnpm package/version/bin")
+        phase = "initialize-native"
+        # The reviewed Linux initializer only places the already-installed optional
+        # native binary. A direct Python exec cannot launch the shebang-less bin.
+        subprocess.run([node, str(files["install.js"])], cwd=toolchain, env=env,
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        phase = "verify-native"
+        pnpm = owned_pnpm_file(toolchain, "pnpm")
+        owned = True
+        with pnpm.open("rb") as executable:
+            need(executable.read(4) == b"\x7fELF" and os.access(pnpm, os.X_OK), "native pnpm executable")
+        need((toolchain / "node_modules/.bin/pnpm").resolve(strict=True) == pnpm,
+             "owned pnpm command link")
+        phase = "pnpm-version"
+        need(subprocess.check_output([str(pnpm), "--version"], cwd=toolchain, env=env,
+                                     text=True, stderr=subprocess.DEVNULL).strip() == "12.15.0",
+             "fixed pnpm version")
+        phase = "node-version"
+        need(subprocess.check_output([node, "--version"], cwd=toolchain, env=env,
+                                     text=True, stderr=subprocess.DEVNULL).strip() == "v24.22.1",
+             "fixed Node version")
+        env["PATH"] = str(toolchain / "node_modules/.bin") + os.pathsep + env["PATH"]
+        return pnpm
+    except (release.Refusal, OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
+        error_class = ("Refusal" if isinstance(error, release.Refusal) else
+                       "ProcessError" if isinstance(error, subprocess.CalledProcessError) else
+                       "OSError" if isinstance(error, OSError) else "MetadataError")
+        code = getattr(error, "errno", None)
+        summarize({"campaignId": CAMPAIGN, "bootstrapPhase": phase, "status": "refused",
+                   "errorClass": error_class, "errno": code if type(code) is int else None,
+                   "resolvedWithinOwnedToolchain": owned}, {})
+        raise
 
 
 def run_commands(planned, cwd, env):
@@ -540,14 +640,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix="v108-source-") as directory:
         home = Path(directory)
         child_env = clean_env(home, env)
-        subprocess.run(["npm", "install", "--prefix", str(home / "toolchain"), "--ignore-scripts",
-                        "--no-audit", "--no-fund", "pnpm@12.15.0"], env=child_env, check=True)
-        child_env["PATH"] = str(home / "toolchain/node_modules/.bin") + os.pathsep + child_env["PATH"]
-        version = subprocess.check_output(["pnpm", "--version"], env=child_env, text=True).strip()
-        need(version == "12.15.0", "fixed pnpm version")
-        need(subprocess.check_output(["node", "--version"], env=child_env, text=True).strip() == "v24.22.1",
-             "fixed Node version")
-        subprocess.run(["pnpm", "install", "--frozen-lockfile"], cwd=args.source_dir, env=child_env, check=True)
+        pnpm = bootstrap_pnpm(home, child_env)
+        planned = [[str(pnpm), *argv[1:]] if argv[0] == "pnpm" else argv for argv in planned]
+        subprocess.run([str(pnpm), "install", "--frozen-lockfile"], cwd=args.source_dir,
+                       env=child_env, check=True)
         cwd = args.pipeline_dir if args.profile == "pipeline-contracts" else args.source_dir
         outcomes = run_commands(planned, cwd, child_env)
         summarize({"campaignId": CAMPAIGN, "round": request["round"], "profile": args.profile,

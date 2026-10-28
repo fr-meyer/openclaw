@@ -306,7 +306,7 @@ class SourceValidationTests(unittest.TestCase):
             with patch.object(driver.subprocess, "run") as command, patch.object(driver, "datetime", wraps=datetime) as clock:
                 clock.now.return_value = NOW
                 budget = driver.history_checks(req, event, env, root, api)
-            self.assertEqual(budget["bookedRunnerMinutes"], 880)
+            self.assertEqual(budget["bookedRunnerMinutes"], 94)
             self.assertEqual(budget["observedPriorRunnerMinutes"], 14)
             self.assertIn(OLD_HEAD, command.call_args.args[0])
             self.assertIn(HEAD, command.call_args.args[0])
@@ -476,7 +476,7 @@ class SourceValidationTests(unittest.TestCase):
             with patch.object(driver.subprocess, "run"), patch.object(driver, "datetime", wraps=datetime) as clock:
                 clock.now.return_value = NOW
                 budget = driver.history_checks(req, event, env, root, api)
-            self.assertEqual(budget["bookedRunnerMinutes"], 960)
+            self.assertEqual(budget["bookedRunnerMinutes"], 97)
             self.assertEqual(budget["observedPriorRunnerMinutes"], 17)
             self.assertEqual(len(budget["retainedSkippedAdmissions"]), 1)
 
