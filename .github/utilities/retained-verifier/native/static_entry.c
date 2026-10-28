@@ -98,7 +98,28 @@ void entry_main(usize *stack) {
         while (k < length && env[i][k] != '=') k++;
         if (k == 0 || k == length) REFUSE("env_syntax");
         for (which = 0; which < 9 && !key_equal(env[i], k, keys[which]); which++);
-        if (which == 9) REFUSE("unknown_key");
+        if (which == 9) {
+            /* Diagnostic classifications remain fixed refusals; key and value are never emitted. */
+            if (key_equal(env[i], k, "MEMORY_PRESSURE_WATCH")) REFUSE("unknown_key_memory_pressure_watch");
+            if (key_equal(env[i], k, "MEMORY_PRESSURE_WRITE")) REFUSE("unknown_key_memory_pressure_write");
+            if (key_equal(env[i], k, "JOURNAL_STREAM")) REFUSE("unknown_key_journal_stream");
+            if (key_equal(env[i], k, "NOTIFY_SOCKET")) REFUSE("unknown_key_notify_socket");
+            if (key_equal(env[i], k, "WATCHDOG_USEC")) REFUSE("unknown_key_watchdog_usec");
+            if (key_equal(env[i], k, "WATCHDOG_PID")) REFUSE("unknown_key_watchdog_pid");
+            if (key_equal(env[i], k, "CREDENTIALS_DIRECTORY")) REFUSE("unknown_key_credentials_directory");
+            if (key_equal(env[i], k, "RUNTIME_DIRECTORY")) REFUSE("unknown_key_runtime_directory");
+            if (key_equal(env[i], k, "STATE_DIRECTORY")) REFUSE("unknown_key_state_directory");
+            if (key_equal(env[i], k, "CACHE_DIRECTORY")) REFUSE("unknown_key_cache_directory");
+            if (key_equal(env[i], k, "LOGS_DIRECTORY")) REFUSE("unknown_key_logs_directory");
+            if (key_equal(env[i], k, "CONFIGURATION_DIRECTORY")) REFUSE("unknown_key_configuration_directory");
+            if (key_equal(env[i], k, "LISTEN_FDS")) REFUSE("unknown_key_listen_fds");
+            if (key_equal(env[i], k, "LISTEN_PID")) REFUSE("unknown_key_listen_pid");
+            if (key_equal(env[i], k, "LISTEN_FDNAMES")) REFUSE("unknown_key_listen_fdnames");
+            if (key_equal(env[i], k, "XDG_RUNTIME_DIR")) REFUSE("unknown_key_xdg_runtime_dir");
+            if (key_equal(env[i], k, "TERM")) REFUSE("unknown_key_term");
+            if (key_equal(env[i], k, "FDSTORE")) REFUSE("unknown_key_fdstore");
+            REFUSE("unknown_key");
+        }
         if (seen & ((usize)1 << which)) REFUSE("duplicate_key");
         seen |= (usize)1 << which;
         value = env[i] + k + 1;
