@@ -28,6 +28,7 @@ import command_factories as commands
 import serial_receipt as serial
 import source_expectation
 import artifact
+import host_context as actual_host
 from test_source_validator import setup_rows
 import source_validator
 
@@ -113,6 +114,27 @@ class SyntheticCommands:
   assert permit is self.fixture.permit and cwd==scope.cwd and environment==scope.environment
   self.calls.append(scope)
   return self.fixture.execute(scope)
+
+
+class SealedSyntheticCommands(SyntheticCommands):
+ """Real sealer+durable intent, explicit non-native admission/execution seam.
+
+ No NativePermit or HostProcessOps is constructed. Tests substitute only the
+ permit lookup and process execution; source factories, scope-key uniqueness,
+ project/environment validation and the actual O_EXCL intent writer all run.
+ """
+ def __init__(self,fixture):super().__init__(fixture);self.arguments={}
+ def seal_command(self,permit,role,arguments,*,cwd,environment):
+  scope=actual_host.seal_command(permit,role,arguments,cwd=cwd,environment=environment)
+  self.arguments[scope.key]=copy.deepcopy(arguments)
+  return scope
+ def run_owned(self,permit,scope,*,cwd,environment,deadline):
+  assert permit is self.fixture.permit and type(scope) is actual_host._Scope
+  assert permit.scopes.get(scope.key) is scope and cwd==scope.cwd and environment==scope.environment
+  actual_host._intent(scope)
+  self.calls.append(scope)
+  return self.fixture.execute(SimpleNamespace(role=scope.role,arguments=self.arguments[scope.key],
+   argv=scope.argv,cwd=scope.cwd,environment=scope.environment))
 
 
 class ContractFixture:
@@ -301,6 +323,70 @@ class NativePortContract(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(prefix='ocv-public-contract-')
   self.addCleanup(self.tmp.cleanup);self.fixture=ContractFixture(self.tmp.name)
+ def sealed_fixture(self,root):
+  Path(root).chmod(0o755)
+  fixture=ContractFixture(root);permit=fixture.permit
+  permit.project=Path(permit.project);permit.source=fixture.source;permit.workspace=fixture.root
+  permit.rows=fixture.rows;permit.scopes={};permit.consumed=set();permit.run_id='123'
+  permit.expected['expected_source']='c'*40
+  fixture.commands=SealedSyntheticCommands(fixture);fixture.modules.context=fixture.commands
+  return fixture
+ def run_sealed_host_prefix(self,fixture):
+  port=fixture.new_port()
+  def no_metadata():raise h.Refusal('contract.host_tools_complete_no_linux_proof')
+  port.authenticate_metadata=no_metadata
+  def explicit_model(value):
+   self.assertIs(value,fixture.permit);self.assertNotIsInstance(value,actual_host.NativePermit)
+   return fixture.permit
+  with mock.patch.object(actual_host,'_permit',side_effect=explicit_model),\
+       mock.patch.object(actual_host.NativeIO,'spawn',side_effect=AssertionError('native process forbidden')),\
+       mock.patch.object(actual_host,'HostProcessOps',side_effect=AssertionError('native owner forbidden')),\
+       mock.patch.object(h,'read_regular',side_effect=fixture.tool_read),\
+       mock.patch.object(h,'host_path_facts',side_effect=fixture.host_path_facts):
+   result=h.Controller(port).run()
+   return result,port,explicit_model
+ def test_actual_controller_sealer_intents_share_one_settled_e2fs_listing_and_keep_all_owner_checks(self):
+  with tempfile.TemporaryDirectory(prefix='ocv-public-sealed-host-',dir='/tmp') as root:
+   fixture=self.sealed_fixture(root)
+   result,port,model=self.run_sealed_host_prefix(fixture)
+   self.assertEqual((result['phase'],result['reason']),
+    ('signed-metadata','contract.host_tools_complete_no_linux_proof'),getattr(port,'failure',result))
+   self.assertFalse(result['linuxIsolationProof'])
+   argv=[scope.argv for scope in fixture.commands.calls]
+   self.assertEqual(argv.count(commands.dpkg_query('e2fsprogs_files')),1)
+   self.assertEqual(argv.count(commands.dpkg_query('mkfs_usr_owner')),1)
+   self.assertEqual(argv.count(commands.dpkg_query('mke2fs_usr_owner')),1)
+   self.assertEqual(len(port.host_tools['packagePathProofSha256']),64)
+   intents=list((port.project/'.host-intents').glob('*.json'))
+   self.assertEqual(len(intents),len(argv))
+   self.assertEqual(len(fixture.permit.scopes),len(fixture.permit.consumed))
+   before=len(fixture.commands.calls)
+   # Reusing local immutable query evidence does not authorize resubmission:
+   # both a mutation and a readonly duplicate remain refused before dispatch.
+   with mock.patch.object(actual_host,'_permit',side_effect=model):
+    for role,args in (('ubuntu_apt_install',{'project':str(port.project)}),
+                      ('dpkg_query',{'kind':'e2fsprogs_files'})):
+     with self.subTest(role=role),self.assertRaisesRegex(actual_host.Refusal,'host.scope_already_sealed'):
+      port._run(role,args,2)
+   self.assertEqual(len(fixture.commands.calls),before)
+   self.assertEqual(len(list((port.project/'.host-intents').glob('*.json'))),len(intents))
+   self.assertEqual(actual_host._ISSUED,{})
+ def test_failed_readonly_listing_is_not_cached_retried_or_used_for_either_binary(self):
+  with tempfile.TemporaryDirectory(prefix='ocv-public-sealed-host-fail-',dir='/tmp') as root:
+   fixture=self.sealed_fixture(root);execute=fixture.execute
+   def fail_listing(scope):
+    if scope.role=='dpkg_query' and scope.arguments['kind']=='e2fsprogs_files':
+     return outer(b'',b'PUBLIC-SYNTHETIC-FAILED-LISTING',status='refused',returncode=1)
+    return execute(scope)
+   fixture.execute=fail_listing
+   result,port,_=self.run_sealed_host_prefix(fixture)
+   self.assertEqual((result['phase'],result['reason']),('host-tools','host.command_dpkg_query'))
+   argv=[scope.argv for scope in fixture.commands.calls]
+   self.assertEqual(argv.count(commands.dpkg_query('e2fsprogs_files')),1)
+   self.assertNotIn(commands.dpkg_query('mkfs_usr_owner'),argv)
+   self.assertNotIn(commands.dpkg_query('mke2fs_usr_owner'),argv)
+   self.assertFalse(hasattr(port,'host_tools'));self.assertFalse(result['linuxIsolationProof'])
+   self.assertEqual(actual_host._ISSUED,{})
  def test_complete_gpg_exit_two_requires_policy_before_provisional_custody_clear(self):
   self.fixture.gpg_exit=2
   port=self.fixture.new_port()

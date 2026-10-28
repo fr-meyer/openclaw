@@ -250,7 +250,7 @@ class NativePort:
                     and installed[name][2] in (b'amd64',b'all'),'host.package_version')
         require(b'systemd-boot: /usr/bin/bootctl' in owners.splitlines(),
                 'host.bootctl_package')
-        proof=[]
+        proof=[];package_filelists={}
         for package,executable,kind,allowed in (
             ('systemd-boot','/usr/bin/bootctl','systemd_boot_files',('/usr/bin/bootctl',)),
             ('kmod','/usr/sbin/depmod','kmod_files',('/usr/sbin/depmod','/sbin/depmod')),
@@ -258,7 +258,13 @@ class NativePort:
              ('/usr/sbin/mkfs.ext4','/sbin/mkfs.ext4')),
             ('e2fsprogs','/usr/sbin/mke2fs','e2fsprogs_files',
              ('/usr/sbin/mke2fs','/sbin/mke2fs'))):
-            files=self._run('dpkg_query',{'kind':kind},20)['stdout']
+            # One settled readonly package listing covers both e2fsprogs
+            # binaries in this transaction. Reusing its immutable bytes avoids
+            # resealing/reexecuting the identical command; per-binary owner,
+            # alias/inode and target checks still run independently below.
+            if kind not in package_filelists:
+                package_filelists[kind]=self._run('dpkg_query',{'kind':kind},20)['stdout']
+            files=package_filelists[kind]
             registered=[path for path in allowed if path.encode() in files.splitlines()]
             require(len(registered)==1,'host.package_filelist')
             path=registered[0]
