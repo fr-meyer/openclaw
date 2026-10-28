@@ -20,6 +20,7 @@ from protocol import Refusal, canonical, decode, read_regular, require, sha
 
 RAW_CAP=128*1024
 WIRE_CAP=16384
+FAILURE_FACTS_CAP=31*1024
 MODULES=('encodings','json','hashlib','os','sys','struct','zlib','ssl','socket',
          'selectors','subprocess','tarfile','ctypes','fcntl','stat','time',
          'datetime','threading','ipaddress','decimal','base64','ast','types',
@@ -107,6 +108,69 @@ def build_argv(root,script):
             '--library-path',root+'/lib/x86_64-linux-gnu:'+root+'/lib64',
             '--argv0',root+'/usr/bin/python3.11',root+'/usr/bin/python3.11',
             '-I','-S','-B','-c',script.decode('ascii'))
+
+
+def capture_failure_evidence(result,root,script,rows,owned_commands):
+    """Bounded synthetic-child custody, constructed before any adjudication."""
+    root=_root(root);_rows(rows)
+    require(type(result) is dict and type(owned_commands) is int and 0<=owned_commands<=1,
+            'copied.failure_result')
+    controls={'exitCode','timedOut','spawned','spawnOutcome','captureComplete','streamsEOF',
+        'streamsClosed','ownedChildExited','ownershipRetained','refusalCode','failurePhase','operationId','errors'}
+    require(controls|{'stdout','stderr','stdoutFacts','stderrFacts'}<=set(result) and
+        set(result)<=controls|{'stdout','stderr','stdoutFacts','stderrFacts','childPid'},
+        'copied.failure_result_schema')
+    require(result['exitCode'] is None or type(result['exitCode']) is int,'copied.failure_exit')
+    for name in ('timedOut','spawned','captureComplete','streamsEOF','streamsClosed',
+                 'ownedChildExited','ownershipRetained'):
+        require(type(result[name]) is bool,'copied.failure_control')
+    require(type(result['operationId']) is int and 0<result['operationId']<=1 and
+        result['spawnOutcome'] in ('not_attempted','unknown','handle_returned'),
+        'copied.failure_operation')
+    for name in ('refusalCode','failurePhase'):
+        require(result[name] is None or type(result[name]) is str and
+                re.fullmatch('[A-Za-z0-9_.-]{1,96}',result[name]),'copied.failure_control')
+    errors=result['errors']
+    require(type(errors) is list and len(errors)<=16,'copied.failure_errors')
+    for error in errors:
+        require(type(error) is dict and set(error)=={'phase','type','errno'} and
+            all(type(error[k]) is str and re.fullmatch('[A-Za-z0-9_.-]{1,48}',error[k])
+                for k in ('phase','type')) and
+            (error['errno'] is None or type(error['errno']) is int), 'copied.failure_error')
+    evidence={'schema':'ocv.copied-controller-command-failure.v1','syntheticOnly':True,
+        'privateInputs':False,'environmentIncluded':False,'root':root,
+        'scriptSha256':sha(script),'argvSha256':sha(canonical(list(build_argv(root,script)))),
+        'runtimeRosterSha256':sha(canonical(rows)),'ownedCommandsRemaining':owned_commands,
+        'capture':{name:result[name] for name in sorted(controls)},'streams':{}}
+    if 'childPid' in result:
+        require(result['childPid'] is None or type(result['childPid']) is int,
+                'copied.failure_child_pid')
+        evidence['capture']['childPid']=result['childPid']
+    for name,cap in (('stdout',16384),('stderr',4096)):
+        raw=result[name];facts=result[name+'Facts']
+        require(type(raw) is bytes and len(raw)<=cap and type(facts) is dict and
+            set(facts)=={'bytes','sha256','truncated','complete'} and
+            type(facts['bytes']) is int and len(raw)<=facts['bytes']<=2**63-1 and
+            type(facts['sha256']) is str and re.fullmatch('[0-9a-f]{64}',facts['sha256']) and
+            type(facts['truncated']) is bool and type(facts['complete']) is bool,
+            'copied.failure_stream')
+        evidence['streams'][name]={'viewBase64':base64.b64encode(raw).decode('ascii'),
+            'viewBytes':len(raw),'viewSha256':sha(raw),'viewTruncated':len(raw)!=facts['bytes'],
+            'captureFacts':dict(facts)}
+    require(len(canonical(evidence))<=FAILURE_FACTS_CAP,'copied.failure_facts_cap')
+    return evidence
+
+
+def refuse_captured(code,evidence):
+    # The checked guest graph resolves this import to the same genuine outer
+    # bootstrap guard module. Its failure handler intentionally trusts only
+    # that exact Refusal class when carrying structured diagnostic facts.
+    import guard
+    require(type(code) is str and re.fullmatch('copied[.][a-z0-9_.]{1,80}',code) and
+            type(evidence) is dict and evidence.get('schema')==
+                'ocv.copied-controller-command-failure.v1' and
+            len(canonical(evidence))<=FAILURE_FACTS_CAP,'copied.failure_refusal')
+    raise guard.Refusal(code,{'copiedChild':evidence})
 
 
 def decode_result(raw):
@@ -252,10 +316,15 @@ def run_native_proof(parent,prepared,runtime_source):
             'copied.fixed_capture_catalog_missing')
     capture=ProbeCapture(ProbeIO());parent.io._copied_probe_capture=capture
     result=capture.command(argv,timeout=30)
-    require(program.native.command_capture_ok(result) and result['exitCode']==0 and
-            not result['stdoutFacts']['truncated'] and not result['stderrFacts']['truncated'] and
-            result['stderr']==b'' and not capture.owned_commands,'copied.child_not_successful')
-    proof=validate_result(result['stdout'],str(root),rows)
+    evidence=capture_failure_evidence(result,str(root),script,rows,len(capture.owned_commands))
+    try:
+        require(program.native.command_capture_ok(result) and result['exitCode']==0 and
+                not result['stdoutFacts']['truncated'] and not result['stderrFacts']['truncated'] and
+                result['stderr']==b'' and not capture.owned_commands,'copied.child_not_successful')
+        proof=validate_result(result['stdout'],str(root),rows)
+    except BaseException as error:
+        code=error.code if isinstance(error,Refusal) else 'copied.adjudication_failed'
+        refuse_captured(code,evidence)
     return {'proof':proof,'raw':result['stdout'],'scriptSha256':sha(script)}
 
 

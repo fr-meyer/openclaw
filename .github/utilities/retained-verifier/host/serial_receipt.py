@@ -9,7 +9,7 @@ SERIAL_CAP = 6*1024*1024
 JSON_CAP = 4*1024*1024
 RAW_CAP = 3*1024*1024-65536
 ROLE_CAPS = {'report':86000,'host-result':12288,'staging-manifest':12288,
-             'worker-stdout':4096,'worker-stderr':4096,'host-diagnostics':8192,
+             'worker-stdout':4096,'worker-stderr':4096,'host-diagnostics':32768,
              'controller-context':16384,'consumer-compatibility':12288,
              'host-expectation':12288,'unit-readback':4096,
              'worker-stderr-raw':8192,'native-isolation-cases':12288}

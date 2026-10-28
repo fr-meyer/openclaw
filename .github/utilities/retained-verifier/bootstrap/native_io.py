@@ -118,7 +118,7 @@ class NativeEvidenceIO:
   return self.command(('/usr/bin/systemctl','poweroff','--no-block'),5)
 
  def write_failure(self,session,raw):
-  need(self.own is not None and len(raw)<=8192,'boot.failure_custody')
+  need(self.own is not None and len(raw)<=32768,'boot.failure_custody')
   import hashlib,json
   directory=Path('/run/ocv')/(session+'-bootstrap-failure');directory.mkdir(parents=True,mode=0o700,exist_ok=False)
   meta={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'truncated':False,'viewBytes':len(raw),'viewSha256':hashlib.sha256(raw).hexdigest()}

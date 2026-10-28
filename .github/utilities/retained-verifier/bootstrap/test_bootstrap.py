@@ -17,6 +17,8 @@ for path in (N,RT,CONSUMER):sys.path.insert(0,str(path))
 import ci_native_port,ci_metadata,ci_worker,ci_entry,ci_profile,ci_fixture,runtime_prepare
 import consumer_compat
 import native_cases
+import copied_bootstrap_probe as copied_probe
+import serial_receipt as independent_serial
 import test_native_cases as native_case_fixtures
 import test_ci_adapter as old_fixtures
 spec=importlib.util.spec_from_file_location('public_elf_fixture',RT/'test_runtime_prepare.py')
@@ -502,6 +504,84 @@ class FailureTests(unittest.TestCase):
   plan=guard.verify(io)
   with patch.object(sys,'stderr',stream.StringIO()):guest_boot.handle_failure(io,plan,guard.Refusal('boot.claim_exists'),guard,issuer,result_frame)
   self.assertFalse(io.shutdown_intent);self.assertEqual(io.sent,[])
+
+
+class CopiedFailureCustodyTests(unittest.TestCase):
+ def rows(self):
+  names=['usr/bin/python3.11','lib64/ld-linux-x86-64.so.2','code/static-entry']+[
+   'usr/lib/python3.11/synthetic_'+str(i)+'.py' for i in range(623)]
+  return [{'path':name,'bytes':1,'sha256':guard.sha(b'x'),'mode':0o555}for name in sorted(names)]
+ def capture(self,stdout=None,stderr=None):
+  stdout=bytes(range(256))*64 if stdout is None else stdout
+  stderr=bytes(range(256))*16 if stderr is None else stderr
+  result={'exitCode':1,'timedOut':False,'spawned':True,'spawnOutcome':'handle_returned',
+   'captureComplete':True,'streamsEOF':True,'streamsClosed':True,'ownedChildExited':True,
+   'ownershipRetained':False,'refusalCode':None,'failurePhase':None,'operationId':1,'errors':[],
+   'childPid':23,'stdout':stdout,'stderr':stderr}
+  for name in ('stdout','stderr'):
+   raw=result[name];result[name+'Facts']={'bytes':len(raw),'sha256':guard.sha(raw),
+    'truncated':False,'complete':True}
+  return result
+ def parse(self,raw):
+  frame=independent_serial.extract(raw)
+  expected={k:frame[k]for k in ('sessionId','runIdentity','sourceManifestSha256','buildControlSha256')}
+  outer={'status':'outer_exit_passed','timedOut':False,'truncated':False,'returncode':0,
+   'outerExited':True,'ownedGroupGone':True,'streamsEOF':True,'streamsClosed':True,
+   'ownershipRetained':False,'stdout':raw,'stderr':b''}
+  result=independent_serial.verify(outer,expected,source_validator=lambda *_:self.fail('refusal became proof'))
+  self.assertEqual(result['status'],'refused');self.assertFalse(result['candidateQualified'])
+  return frame,result
+ def test_actual_guard_failure_keeps_max_child_views_through_writer_emitter_and_host_parser(self):
+  io,_=setup_io();plan=guard.verify(io);rows=self.rows()
+  evidence=copied_probe.capture_failure_evidence(self.capture(),'/synthetic-public-root',b'print(1)',rows,0)
+  self.assertGreater(len(guard.canonical(evidence)),8192)
+  with self.assertRaises(guard.Refusal) as raised:
+   copied_probe.refuse_captured('copied.child_not_successful',evidence)
+  self.assertIs(type(raised.exception),guard.Refusal)
+  self.assertNotIsInstance(raised.exception,copied_probe.Refusal)
+  with tempfile.TemporaryDirectory(prefix='ocv-copied-failure-') as directory:
+   def rooted(path):
+    self.assertEqual(path,'/run/ocv');return Path(directory)
+   io.write_failure=lambda session,raw:native_io.NativeEvidenceIO.write_failure(io,session,raw)
+   with patch.object(native_io,'Path',side_effect=rooted):
+    guest_boot.handle_failure(io,plan,raised.exception,guard,issuer,result_frame)
+   self.assertTrue(io.shutdown_intent);self.assertEqual(len(io.sent),1)
+   frame,_=self.parse(io.sent[0]);row=next(r for r in frame['custody']['files']if r['role']=='host-diagnostics')
+   raw=base64.b64decode(row['base64']);self.assertLessEqual(len(raw),32768)
+   self.assertFalse(row['truncated']);self.assertLessEqual(frame['custody']['rawBytes'],131072)
+   self.assertLessEqual(len(guard.canonical(frame)),262144)
+   saved=json.loads(raw)['facts']['copiedChild'];self.assertEqual(saved,evidence)
+   self.assertEqual(base64.b64decode(saved['streams']['stderr']['viewBase64']),self.capture()['stderr'])
+   self.assertFalse(saved['environmentIncluded']);self.assertFalse(saved['privateInputs'])
+ def test_exact_eight_and_thirtytwo_kib_diagnostics_survive_actual_writer_and_parser(self):
+  for size in (8192,32768):
+   with self.subTest(size=size),tempfile.TemporaryDirectory(prefix='ocv-failure-boundary-') as directory:
+    io,_=setup_io();plan=guard.verify(io)
+    raw=guard.canonical({'padding':'x'*(size-len(guard.canonical({'padding':''})))})
+    with patch.object(native_io,'Path',return_value=Path(directory)):
+     folder=native_io.NativeEvidenceIO.write_failure(io,io.session,raw)
+    emitter=result_frame.Emitter(plan,io.read,io.emit)
+    emitter.emit(guard.canonical({'status':'refused','reason':'copied.synthetic_boundary'}),folder)
+    frame,_=self.parse(io.sent[0]);row=frame['custody']['files'][0]
+    self.assertEqual(base64.b64decode(row['base64']),raw);self.assertEqual(row['bytes'],size)
+    self.assertFalse(row['truncated'])
+ def test_overcap_diagnostic_refuses_before_write_and_independently_in_host_parser(self):
+  io,_=setup_io();plan=guard.verify(io);raw=guard.canonical({'padding':'x'*(32769-14)})
+  self.assertEqual(len(raw),32769)
+  with patch.object(native_io,'Path',side_effect=AssertionError('overcap file write')):
+   with self.assertRaisesRegex(guard.Refusal,'boot.failure_custody'):
+    native_io.NativeEvidenceIO.write_failure(io,io.session,raw)
+  row={'role':'host-diagnostics','bytes':len(raw),'sha256':guard.sha(raw),
+   'base64':base64.b64encode(raw).decode(),'sourceBytes':len(raw),
+   'sourceSha256':guard.sha(raw),'truncated':False}
+  with self.assertRaises(independent_serial.Refusal):
+   independent_serial.custody_rows({'schema':'ocv.custody.v1','rawBytes':len(raw),'files':[row]})
+ def test_protocol_lookalike_refusal_does_not_gain_bootstrap_fact_authority(self):
+  io,_=setup_io();plan=guard.verify(io)
+  lookalike=copied_probe.Refusal('copied.child_not_successful',{'copiedChild':{'forged':True}})
+  guest_boot.handle_failure(io,plan,lookalike,guard,issuer,result_frame)
+  frame,_=self.parse(io.sent[0]);row=frame['custody']['files'][0]
+  self.assertEqual(json.loads(base64.b64decode(row['base64']))['facts'],{})
 
 
 class NativeSourceBoundaryTests(unittest.TestCase):
