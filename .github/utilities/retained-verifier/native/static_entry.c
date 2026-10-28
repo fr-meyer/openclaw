@@ -69,9 +69,11 @@ static int pid_equal(const char *value, isize pid) {
     return number == (usize)pid;
 }
 
+/* Fixed labels only: never print an argument, environment key, or value. */
+#define REFUSE(label) stop("entry_refused_" label "\n", sizeof("entry_refused_" label "\n") - 1)
+
 __attribute__((noreturn, used, visibility("hidden")))
 void entry_main(usize *stack) {
-    static const char refusal[] = "entry_refused\n";
     static const char exec_failure[] = "entry_exec_failed\n";
     static const char *keys[] = {"PATH", "LANG", "LC_ALL", "HOME", "SHELL", "USER", "LOGNAME", "INVOCATION_ID", "SYSTEMD_EXEC_PID"};
     static const char *fixed[] = {"/usr/bin", "C", "C", "/", "/nonexistent"};
@@ -83,30 +85,43 @@ void entry_main(usize *stack) {
     if (argc != 2 || argv[2] != (char *)0 ||
         !argv[0] || bounded_length(argv[0], 64) > 64 ||
         !equal(argv[0], "/code/static-entry") || !name_valid(argv[1]))
-        stop(refusal, sizeof(refusal) - 1);
+        REFUSE("args");
     pid = syscall3(39, 0, 0, 0); /* Actual PID, never an inherited claim. */
-    if (pid <= 0 || pid > 2147483647) stop(refusal, sizeof(refusal) - 1);
+    if (pid <= 0 || pid > 2147483647) REFUSE("pid");
     env = argv + argc + 1;
     for (i = 0; i < 16 && env[i]; i++) {
         usize length = bounded_length(env[i], 511), k = 0, which;
         const char *value;
         if (length > 511 || length == 0 || total + length + 1 > 8192)
-            stop(refusal, sizeof(refusal) - 1);
+            REFUSE("env_bounds");
         total += length + 1; /* Bounds include each terminating NUL. */
         while (k < length && env[i][k] != '=') k++;
-        if (k == 0 || k == length) stop(refusal, sizeof(refusal) - 1);
+        if (k == 0 || k == length) REFUSE("env_syntax");
         for (which = 0; which < 9 && !key_equal(env[i], k, keys[which]); which++);
-        if (which == 9 || (seen & ((usize)1 << which)))
-            stop(refusal, sizeof(refusal) - 1);
+        if (which == 9) REFUSE("unknown_key");
+        if (seen & ((usize)1 << which)) REFUSE("duplicate_key");
         seen |= (usize)1 << which;
         value = env[i] + k + 1;
         if ((which < 5 && !equal(value, fixed[which])) ||
             ((which == 5 || which == 6) && !equal(value, argv[1])) ||
             (which == 7 && (bounded_length(value, 32) != 32 || !lower_hex(value, 32))) ||
-            (which == 8 && !pid_equal(value, pid)))
-            stop(refusal, sizeof(refusal) - 1);
+            (which == 8 && !pid_equal(value, pid))) {
+            switch (which) {
+            case 0: REFUSE("value_path");
+            case 1: REFUSE("value_lang");
+            case 2: REFUSE("value_lc_all");
+            case 3: REFUSE("value_home");
+            case 4: REFUSE("value_shell");
+            case 5: REFUSE("value_user");
+            case 6: REFUSE("value_logname");
+            case 7: REFUSE("value_invocation_id");
+            case 8: REFUSE("value_exec_pid");
+            default: REFUSE("value_unknown");
+            }
+        }
     }
-    if (env[i] || (seen & 127) != 127) stop(refusal, sizeof(refusal) - 1);
+    if (env[i]) REFUSE("env_count");
+    if ((seen & 127) != 127) REFUSE("missing_required");
     (void)syscall3(59, (isize)arguments[0], (isize)arguments, (isize)environment);
     stop(exec_failure, sizeof(exec_failure) - 1);
 }
