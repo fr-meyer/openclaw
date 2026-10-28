@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+import urllib.error
 
 import preflight
 import release
@@ -63,6 +64,18 @@ INITIAL_MINUTES = 940
 CAMPAIGN_MINUTES = 1800
 ANCILLARY_MINUTES = 135
 MAX_CORRECTION_MINUTES = 300
+INITIAL_RESUME_RUN_ID = "40639374411"
+INITIAL_RESUME_PIPELINE = "95df4eb49204150c8aaaa9da8e2abd3112fa5972"
+INITIAL_RESUME_REQUEST_SHA256 = "c7d63de47231fc368477635cc0f28e7b8e015129ebed8987b76ce01a636b83d1"
+INITIAL_RESUME_WITNESS = {
+    "schema": "openclaw.v108.initial-resume.v1", "priorRunId": INITIAL_RESUME_RUN_ID,
+    "priorPipelineHead": INITIAL_RESUME_PIPELINE,
+    "sourceSha": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+    "sourceTree": "c4b245211ceaab98b397945bb0177770f1052c90",
+    "manifestSha256": "802abd7c85ee123621d7cc96796ffcd0cf40d58c0d4db60f5f32304802a11f0b",
+    "inventorySha256": "876afa1cf8c6398b1fe3f5cdaa031bf1796d96b3e3307352e5a5571b8e3a296e",
+    "priorRequestSha256": INITIAL_RESUME_REQUEST_SHA256,
+}
 JOB_OVERHEAD_MINUTES = 25  # admission15 + final10
 DERIVED_LEDGER_PATH = "custom-patches/reconciliation-2026.10.8.json"
 TEST_ONLY_PATHS = frozenset((
@@ -100,8 +113,232 @@ PNPM_BOOTSTRAP_FILES = {
 TEST_PATH = re.compile(r"[A-Za-z0-9_./@+-]+\.(?:test|e2e)\.[cm]?[jt]s\Z")
 
 
+# Admission diagnostics project only these reviewed source literals. Never use
+# exception text, API bodies, child output or arbitrary labels as public codes.
+ADMISSION_NEED_CODES = {
+    'API timestamp': 'need.api_timestamp',
+    'Linux memory metadata': 'need.linux_memory_metadata',
+    'PR event and first attempt required': 'need.pr_event_and_first_attempt_required',
+    'actual prior425 proof': 'need.actual_prior425_proof',
+    'admitted campaign deadline/profile required': 'need.admitted_campaign_deadline_profile_required',
+    'all affected test-only owner profiles': 'need.all_affected_test_only_owner_profiles',
+    'all other tracked bytes equivalence': 'need.all_other_tracked_bytes_equivalence',
+    'ancillary alarm already owned': 'need.ancillary_alarm_already_owned',
+    'ancillary observation owned admission identity': 'need.ancillary_observation_owned_admission_identity',
+    'ancillary observation source/prefix metadata changed': 'need.ancillary_observation_source_prefix_metadata_changed',
+    'ancillary still unsettled after bounded60-second observation': 'need.ancillary_still_unsettled_after_bounded60_second_observation',
+    'authorized successor request': 'need.authorized_successor_request',
+    'bootstrap runtimes required': 'need.bootstrap_runtimes_required',
+    'bound first-source receipt': 'need.bound_first_source_receipt',
+    'bounded API response': 'need.bounded_api_response',
+    'bounded Git-backed content': 'need.bounded_git_backed_content',
+    'bounded complete branch history': 'need.bounded_complete_branch_history',
+    'bounded derived ledger': 'need.bounded_derived_ledger',
+    'bounded summary': 'need.bounded_summary',
+    'closed exact initial-resume witness': 'need.closed_exact_initial_resume_witness',
+    'closed test-only witness': 'need.closed_test_only_witness',
+    'closure commit': 'need.closure_commit',
+    'complete compatibility acceptance paths': 'need.complete_compatibility_acceptance_paths',
+    'complete current admission job table': 'need.complete_current_admission_job_table',
+    'complete dependency regression set': 'need.complete_dependency_regression_set',
+    'complete new ancillary job table': 'need.complete_new_ancillary_job_table',
+    'complete ordered prior source runs': 'need.complete_ordered_prior_source_runs',
+    'complete settled 57-record prefix': 'need.complete_settled_57_record_prefix',
+    'complete terminal job table': 'need.complete_terminal_job_table',
+    'complete test-only plus derived-ledger changed set': 'need.complete_test_only_plus_derived_ledger_changed_set',
+    'complete unique history pages': 'need.complete_unique_history_pages',
+    'content size': 'need.content_size',
+    'current admission acquisition': 'need.current_admission_acquisition',
+    'current admission runner': 'need.current_admission_runner',
+    'current source round identity': 'need.current_source_round_identity',
+    'derived ledger row schema': 'need.derived_ledger_row_schema',
+    'duplicate JSON key': 'need.duplicate_json_key',
+    'empty owner family': 'need.empty_owner_family',
+    'event action': 'need.event_action',
+    'exact campaign source run identity': 'need.exact_campaign_source_run_identity',
+    'exact published v2 prior request': 'need.exact_published_v2_prior_request',
+    'exact reviewed successor source': 'need.exact_reviewed_successor_source',
+    'exact test-only paths': 'need.exact_test_only_paths',
+    'exact two witnessed source checkout refs': 'need.exact_two_witnessed_source_checkout_refs',
+    'exact unstarted initial job set': 'need.exact_unstarted_initial_job_set',
+    'fetched workflow commit changed': 'need.fetched_workflow_commit_changed',
+    'first-source complete job booking exceeded': 'need.first_source_complete_job_booking_exceeded',
+    'fixed API route': 'need.fixed_api_route',
+    'fixed Node version': 'need.fixed_node_version',
+    'fixed base': 'need.fixed_base',
+    'fixed content identity': 'need.fixed_content_identity',
+    'fixed live target branch tip': 'need.fixed_live_target_branch_tip',
+    'fixed pnpm package/version/bin': 'need.fixed_pnpm_package_version_bin',
+    'fixed pnpm version': 'need.fixed_pnpm_version',
+    'fixed settled run fields': 'need.fixed_settled_run_fields',
+    'fixed settled usage envelope': 'need.fixed_settled_usage_envelope',
+    'fixed unique profiles': 'need.fixed_unique_profiles',
+    'fixed upstream tag': 'need.fixed_upstream_tag',
+    'four lifetime operator rounds': 'need.four_lifetime_operator_rounds',
+    'frozen install failed': 'need.frozen_install_failed',
+    'initial admission failed acquired within15 rounded minutes': 'need.initial_admission_failed_acquired_within15_rounded_minutes',
+    'initial source/final explicitly skipped unacquired': 'need.initial_source_final_explicitly_skipped_unacquired',
+    'initial-resume exact failed prior source/controls': 'need.initial_resume_exact_failed_prior_source_controls',
+    'initial-resume provider run/head binding': 'need.initial_resume_provider_run_head_binding',
+    'insufficient admission/deadline observation time': 'need.insufficient_admission_deadline_observation_time',
+    'insufficient time in approved campaign': 'need.insufficient_time_in_approved_campaign',
+    'internal120 ancillary-record alarm': 'need.internal120_ancillary_record_alarm',
+    'ledger changed beyond exact derived test result blobs': 'need.ledger_changed_beyond_exact_derived_test_result_blobs',
+    'lifetime1800 runner-minute ceiling': 'need.lifetime1800_runner_minute_ceiling',
+    'literal workflow commit required': 'need.literal_workflow_commit_required',
+    'live head changed': 'need.live_head_changed',
+    'missing admitted profile jobs': 'need.missing_admitted_profile_jobs',
+    'missing campaign boundary job': 'need.missing_campaign_boundary_job',
+    'named profile required': 'need.named_profile_required',
+    'native pnpm executable': 'need.native_pnpm_executable',
+    'new ancillary elapsed time': 'need.new_ancillary_elapsed_time',
+    'new ancillary job identity/attempt': 'need.new_ancillary_job_identity_attempt',
+    'new ancillary public identity/path/head': 'need.new_ancillary_public_identity_path_head',
+    'new ancillary run state': 'need.new_ancillary_run_state',
+    'new ancillary terminal conclusion': 'need.new_ancillary_terminal_conclusion',
+    'new ancillary terminal time evidence': 'need.new_ancillary_terminal_time_evidence',
+    'new ancillary135-minute bucket exceeded': 'need.new_ancillary135_minute_bucket_exceeded',
+    'new source authorization time': 'need.new_source_authorization_time',
+    'no ancillary usage headroom for observation': 'need.no_ancillary_usage_headroom_for_observation',
+    'no owned job budget remains': 'need.no_owned_job_budget_remains',
+    'observed ancillary identity changed': 'need.observed_ancillary_identity_changed',
+    'observed ancillary run disappeared': 'need.observed_ancillary_run_disappeared',
+    'old ledger result matches exact parent test blob': 'need.old_ledger_result_matches_exact_parent_test_blob',
+    'one full successor round': 'need.one_full_successor_round',
+    'open draft PR28': 'need.open_draft_pr28',
+    'ordered new source rounds': 'need.ordered_new_source_rounds',
+    'original approval deadline': 'need.original_approval_deadline',
+    'owned pnpm command link': 'need.owned_pnpm_command_link',
+    'owned regular pnpm bootstrap file': 'need.owned_regular_pnpm_bootstrap_file',
+    'pinned pnpm bootstrap file digest': 'need.pinned_pnpm_bootstrap_file_digest',
+    'pipeline checkout head': 'need.pipeline_checkout_head',
+    'positive in-progress ancillary acquisition': 'need.positive_in_progress_ancillary_acquisition',
+    'positive queued ancillary unacquired evidence': 'need.positive_queued_ancillary_unacquired_evidence',
+    'positive unacquired terminal evidence': 'need.positive_unacquired_terminal_evidence',
+    'prior new round terminal': 'need.prior_new_round_terminal',
+    'profile not in admitted request': 'need.profile_not_in_admitted_request',
+    'public hosted Linux only': 'need.public_hosted_linux_only',
+    'public repository': 'need.public_repository',
+    'read-only API token required': 'need.read_only_api_token_required',
+    'repository/ref': 'need.repository_ref',
+    'request digest': 'need.request_digest',
+    'request fields': 'need.request_fields',
+    'request metadata hashes': 'need.request_metadata_hashes',
+    'reviewed source pins required': 'need.reviewed_source_pins_required',
+    'reviewed workflow/code bytes': 'need.reviewed_workflow_code_bytes',
+    'run identity': 'need.run_identity',
+    'same-repository reviewed head': 'need.same_repository_reviewed_head',
+    'settled new ancillary state changed': 'need.settled_new_ancillary_state_changed',
+    'settled provider usage changed': 'need.settled_provider_usage_changed',
+    'settled run identity/state': 'need.settled_run_identity_state',
+    'settled usage digest': 'need.settled_usage_digest',
+    'settled425 source/ancillary coverage': 'need.settled425_source_ancillary_coverage',
+    'source checkout required': 'need.source_checkout_required',
+    'source checkout/tree': 'need.source_checkout_tree',
+    'source job clock freshness': 'need.source_job_clock_freshness',
+    'source job clock required': 'need.source_job_clock_required',
+    'source-only manifest': 'need.source_only_manifest',
+    'stable branch history pagination': 'need.stable_branch_history_pagination',
+    'standard public Ubuntu acquired runner': 'need.standard_public_ubuntu_acquired_runner',
+    'standard runner below engineering resource floors': 'need.standard_runner_below_engineering_resource_floors',
+    'targeted correction minute cap': 'need.targeted_correction_minute_cap',
+    'terminal ancillary run has pending jobs': 'need.terminal_ancillary_run_has_pending_jobs',
+    'terminal first-attempt unique job': 'need.terminal_first_attempt_unique_job',
+    'terminal job duration': 'need.terminal_job_duration',
+    'terminal unique positive job ID': 'need.terminal_unique_positive_job_id',
+    'test-only parent tree': 'need.test_only_parent_tree',
+    'test-only successor added/deleted path': 'need.test_only_successor_added_deleted_path',
+    'test-only successor must be direct single-parent': 'need.test_only_successor_must_be_direct_single_parent',
+    'test/ledger mode or type changed': 'need.test_ledger_mode_or_type_changed',
+    'unique derived ledger rows': 'need.unique_derived_ledger_rows',
+    'unknown new ancillary job state': 'need.unknown_new_ancillary_job_state',
+    'unlisted/duplicate source round': 'need.unlisted_duplicate_source_round',
+    'unwitnessed source repin': 'need.unwitnessed_source_repin',
+    'witness parent/digest': 'need.witness_parent_digest',
+    'workflow acquisition changed checkout': 'need.workflow_acquisition_changed_checkout',
+    'workflow identity': 'need.workflow_identity',
+    'workflow merge target parent': 'need.workflow_merge_target_parent',
+    'workflow/security caps changed between new rounds': 'need.workflow_security_caps_changed_between_new_rounds',
+}
+ADMISSION_PHASES = frozenset(("input", "metadata", "binding", "history", "closure", "equivalence", "matrix"))
+ADMISSION_SUBCHECKS = frozenset(("event.read", "event.validate", "manifest.request", "code.bind",
+    "current-pr", "target-ref", "branch-history", "settled-prefix", "source-rounds", "prior-round",
+    "new-ancillary", "closure.acquire", "equivalence.verify", "matrix.publish", "api.read"))
+_ADMISSION_DIAGNOSTIC = None
+
+
+def diagnostic_run_id(value):
+    return int(value) if type(value) is str and re.fullmatch(r"[1-9][0-9]{0,19}", value) else None
+
+
+def admission_stage(phase, subcheck, run_id=None):
+    if _ADMISSION_DIAGNOSTIC is not None:
+        _ADMISSION_DIAGNOSTIC.update(
+            phase=phase if phase in ADMISSION_PHASES else "unprojected",
+            subcheck=subcheck if subcheck in ADMISSION_SUBCHECKS else "unprojected",
+            relatedRunId=diagnostic_run_id(run_id))
+
+
+@contextmanager
+def admission_api_read(path):
+    if _ADMISSION_DIAGNOSTIC is None:
+        yield
+        return
+    previous = (_ADMISSION_DIAGNOSTIC["subcheck"], _ADMISSION_DIAGNOSTIC["relatedRunId"])
+    match = re.fullmatch(r"/repos/fr-meyer/openclaw/actions/runs/([1-9][0-9]{0,19})/jobs\?filter=all&per_page=100", path)
+    _ADMISSION_DIAGNOSTIC.update(subcheck="api.read", relatedRunId=diagnostic_run_id(match[1]) if match else previous[1])
+    try:
+        yield
+    except BaseException:
+        # Preserve only the fixed failing location; no response/error data.
+        raise
+    else:
+        _ADMISSION_DIAGNOSTIC.update(subcheck=previous[0], relatedRunId=previous[1])
+
+
+@contextmanager
+def admission_diagnostics(env, enabled):
+    global _ADMISSION_DIAGNOSTIC
+    previous = _ADMISSION_DIAGNOSTIC
+    if not enabled:
+        yield
+        return
+    _ADMISSION_DIAGNOSTIC = {"phase": "input", "subcheck": "event.read",
+        "runId": diagnostic_run_id(env.get("GITHUB_RUN_ID")), "relatedRunId": None}
+    try:
+        yield
+    except (release.Refusal, OSError, ValueError, KeyError, TypeError,
+            subprocess.CalledProcessError, ProfileInterrupted) as error:
+        classes = ((urllib.error.HTTPError, "HTTPError"),
+                   (subprocess.CalledProcessError, "CalledProcessError"),
+                   (release.Refusal, "Refusal"), (ProfileInterrupted, "ProfileInterrupted"),
+                   (OSError, "OSError"), (ValueError, "ValueError"),
+                   (KeyError, "KeyError"), (TypeError, "TypeError"))
+        error_class = next((name for cls, name in classes if isinstance(error, cls)), "UnprojectedError")
+        status = error.code if isinstance(error, urllib.error.HTTPError) else None
+        child_exit = error.returncode if isinstance(error, subprocess.CalledProcessError) else None
+        # HTTPError may delegate unknown attributes to an absent file handle.
+        # Read only our own annotation; never inspect/format exception payloads.
+        code = vars(error).get("admission_need_code")
+        summarize({"schema": "openclaw.v108.admission-failure.v1", "campaignId": CAMPAIGN,
+            "status": "refused", **_ADMISSION_DIAGNOSTIC,
+            "failedNeedCode": code if code in ADMISSION_NEED_CODES.values() else "need.unprojected",
+            "exceptionClass": error_class,
+            "httpStatus": status if type(status) is int and 100 <= status <= 599 else None,
+            "childExitCode": child_exit if type(child_exit) is int and -255 <= child_exit <= 255 else None,
+            "sourceSha": SOURCE, "sourceTree": TREE, "productionAuthorized": False, "imageBuilt": False}, {})
+        raise
+    finally:
+        _ADMISSION_DIAGNOSTIC = previous
+
+
 def need(value, code):
-    release.need(value, "source-validation: " + code)
+    try:
+        release.need(value, "source-validation: " + code)
+    except release.Refusal as error:
+        if _ADMISSION_DIAGNOSTIC is not None:
+            error.admission_need_code = ADMISSION_NEED_CODES.get(code, "need.unprojected")
+        raise
 
 
 def read_json(raw):
@@ -117,9 +354,9 @@ def read_json(raw):
 def validate_request(value, bind_source=True):
     fields = {"schema", "campaignId", "round", "profiles", "sourceSha", "sourceTree",
               "manifestSha256", "inventorySha256", "priorRunIds", "sourceAuthorization",
-              "settledUsageSha256", "firstSourceSha", "firstSourceTree", "sourceWitness"}
+              "settledUsageSha256", "firstSourceSha", "firstSourceTree", "sourceWitness", "initialResume"}
     need(type(value) is dict and set(value) == fields, "request fields")
-    need(value["schema"] == "openclaw.fork-source-validation-request.v2" and
+    need(value["schema"] == "openclaw.fork-source-validation-request.v3" and
          value["campaignId"] == CAMPAIGN and value["sourceAuthorization"] == SOURCE_AUTHORIZATION,
          "authorized successor request")
     for key in ("sourceSha", "sourceTree", "firstSourceSha", "firstSourceTree"):
@@ -140,10 +377,19 @@ def validate_request(value, bind_source=True):
     need(type(profiles) is list and all(type(p) is str and p in PROFILE_MINUTES for p in profiles)
          and len(profiles) == len(set(profiles)), "fixed unique profiles")
     witness = value["sourceWitness"]
+    resume = value["initialResume"]
+    if resume is not None:
+        need(type(resume) is dict and resume == INITIAL_RESUME_WITNESS and
+             value["round"] == 3 and prior[-1] == INITIAL_RESUME_RUN_ID and witness is None and
+             profiles == list(PROFILE_MINUTES) and
+             value["sourceSha"] == value["firstSourceSha"] == resume["sourceSha"] and
+             value["sourceTree"] == value["firstSourceTree"] == resume["sourceTree"] and
+             value["manifestSha256"] == resume["manifestSha256"] and
+             value["inventorySha256"] == resume["inventorySha256"], "closed exact initial-resume witness")
     if value["round"] == 2:
-        need(profiles == [] and witness is None and value["sourceSha"] == value["firstSourceSha"]
+        need(profiles == [] and witness is None and resume is None and value["sourceSha"] == value["firstSourceSha"]
              and value["sourceTree"] == value["firstSourceTree"], "one full successor round")
-    else:
+    elif resume is None:
         need(bool(profiles) and sum(PROFILE_MINUTES[p] for p in profiles) + JOB_OVERHEAD_MINUTES
              <= MAX_CORRECTION_MINUTES, "targeted correction minute cap")
         if witness is None:
@@ -164,8 +410,44 @@ def validate_request(value, bind_source=True):
             need(required <= set(profiles), "all affected test-only owner profiles")
     return value
 
+
+def prior_request(raw, pipeline_head):
+    value = read_json(raw)
+    if type(value) is dict and value.get("schema") == "openclaw.fork-source-validation-request.v2":
+        # v2 is historical evidence only: accept exactly the published95df blob,
+        # never a newly supplied operational request or a differently pinned v2.
+        need(pipeline_head == INITIAL_RESUME_PIPELINE and
+             hashlib.sha256(raw).hexdigest() == INITIAL_RESUME_REQUEST_SHA256,
+             "exact published v2 prior request")
+        validated = dict(value, schema="openclaw.fork-source-validation-request.v3", initialResume=None)
+        validate_request(validated, bind_source=False)
+        return value
+    return validate_request(value, bind_source=False)
+
+
+def initial_resume_jobs(table):
+    measured = observed_minutes(table, list(PROFILE_MINUTES))
+    names = {job["name"] for job in table["jobs"]}
+    need(len(table["jobs"]) == 3 and names ==
+         {"admission", "final", "source (${{ matrix.profile }})"}, "exact unstarted initial job set")
+    for job in table["jobs"]:
+        need(job.get("run_id") == int(INITIAL_RESUME_RUN_ID) and
+             job.get("head_sha") == INITIAL_RESUME_PIPELINE,
+             "initial-resume provider run/head binding")
+        if job["name"] == "admission":
+            need(job.get("conclusion") == "failure" and type(job.get("runner_id")) is int and
+                 job["runner_id"] > 0 and type(job.get("runner_name")) is str and bool(job["runner_name"]) and
+                 0 < measured <= 15, "initial admission failed acquired within15 rounded minutes")
+        else:
+            need(job.get("conclusion") == "skipped" and "runner_id" in job and
+                 (job["runner_id"] is None or type(job["runner_id"]) is int and job["runner_id"] == 0) and
+                 job.get("runner_name") in (None, "") and type(job.get("steps")) is list and not job["steps"],
+                 "initial source/final explicitly skipped unacquired")
+    return measured
+
+
 def profiles_for(request):
-    return list(PROFILE_MINUTES) if request["round"] == 2 else request["profiles"]
+    return list(PROFILE_MINUTES) if request["round"] == 2 or request["initialResume"] is not None else request["profiles"]
 
 def round_minutes(request):
     return JOB_OVERHEAD_MINUTES + sum(PROFILE_MINUTES[p] for p in profiles_for(request))
@@ -329,16 +611,17 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def api_json(path, token):
-    need(path.startswith("/repos/" + REPOSITORY + "/") and "\n" not in path,
-         "fixed API route")
-    request = urllib.request.Request("https://api.github.com" + path, headers={
-        "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": CAMPAIGN, "Authorization": "Bearer " + token,
-    })
-    with urllib.request.build_opener(NoRedirect).open(request, timeout=30) as response:
-        raw = response.read(4 * 1024 * 1024 + 1)
-    need(len(raw) <= 4 * 1024 * 1024, "bounded API response")
-    return read_json(raw)
+    with admission_api_read(path):
+        need(path.startswith("/repos/" + REPOSITORY + "/") and "\n" not in path,
+             "fixed API route")
+        request = urllib.request.Request("https://api.github.com" + path, headers={
+            "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": CAMPAIGN, "Authorization": "Bearer " + token,
+        })
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=30) as response:
+            raw = response.read(4 * 1024 * 1024 + 1)
+        need(len(raw) <= 4 * 1024 * 1024, "bounded API response")
+        return read_json(raw)
 
 
 def content_at(api, path, commit):
@@ -364,10 +647,13 @@ def observed_minutes(jobs, expected=None, legacy=False):
     limits = None if expected is None else {"admission": 15, "final": 5 if legacy else 10,
         "source": 0, "source (${{ matrix.profile }})": 0,
         **{"source (" + p + ")": caps[p] for p in expected}}
-    names, minutes, admitted = set(), 0, False
+    ids, names, minutes, admitted = set(), set(), 0, False
     for job in jobs["jobs"]:
+        need(type(job.get("id")) is int and job["id"] > 0 and job["id"] not in ids,
+             "terminal unique positive job ID")
+        ids.add(job["id"])
         name = job.get("name")
-        need(type(name) is str and 0 < len(name) <= 200 and name not in names and
+        need(type(name) is str and 0 < len(name) <= 200 and (limits is None or name not in names) and
              job.get("status") == "completed" and job.get("run_attempt") == 1 and
              (limits is None or name in limits), "terminal first-attempt unique job")
         names.add(name)
@@ -442,11 +728,12 @@ def ancillary_job_snapshot(table, now, terminal_run):
          table["total_count"] == len(table["jobs"]) and
          (bool(table["jobs"]) or terminal_run), "complete new ancillary job table")
     acquired_minutes, acquired, unacquired, pending = 0, 0, 0, False
-    names = set()
+    ids = set()
     for job in table["jobs"]:
-        need(type(job) is dict and type(job.get("name")) is str and job["name"] not in names and
+        need(type(job) is dict and type(job.get("id")) is int and job["id"] > 0 and job["id"] not in ids and
+             type(job.get("name")) is str and
              job.get("run_attempt") == 1, "new ancillary job identity/attempt")
-        names.add(job["name"])
+        ids.add(job["id"])
         status = job.get("status")
         if status == "completed":
             runner = job.get("runner_id")
@@ -557,6 +844,7 @@ def new_ancillary_usage(history, usage, request, event, env, api):
         for run_id, run in sorted(current.items()):
             if run_id in prefix or run.get("path") == WORKFLOW:
                 continue
+            admission_stage("history", "new-ancillary", run_id)
             need(run.get("event") in ("pull_request", "pull_request_target") and
                  run.get("path") in known_paths and run.get("head_sha") in known_heads and
                  run.get("run_attempt") == 1 and run.get("head_branch") == BRANCH and
@@ -628,19 +916,23 @@ def new_ancillary_usage(history, usage, request, event, env, api):
 
 def history_checks(request, event, env, pipeline, api):
     request = validate_request(request)
+    admission_stage("history", "current-pr")
     live = api("/repos/" + REPOSITORY + "/pulls/28")
     need(validate_event(dict(event, pull_request=live), env) == event["pull_request"]["head"]["sha"],
          "live head changed")
+    admission_stage("history", "target-ref")
     target = api("/repos/" + REPOSITORY + "/git/ref/heads/" + BASE_BRANCH)
     need(target.get("ref") == "refs/heads/" + BASE_BRANCH and
          target.get("object", {}).get("type") == "commit" and
          target["object"].get("sha") == TARGET_BRANCH_TIP, "fixed live target branch tip")
+    admission_stage("history", "branch-history")
     history = branch_history(api)
     need(sum(run.get("path") != WORKFLOW for run in history.values()) <= 120,
          "internal120 ancillary-record alarm")
     usage = settled_usage(pipeline, request)
     measured_prefix = 0
     for row in usage["runs"]:
+        admission_stage("history", "settled-prefix", row["id"])
         run = history.get(row["id"], {})
         need(run.get("head_sha") == row["headSha"] and run.get("path") == row["path"] and
              run.get("event") == row["event"] and run.get("status") == "completed" and
@@ -658,6 +950,7 @@ def history_checks(request, event, env, pipeline, api):
                             row["headSha"], event["pull_request"]["head"]["sha"]],
                            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     need(measured_prefix == SETTLED_MINUTES, "actual prior425 proof")
+    admission_stage("history", "source-rounds")
     expected = [*request["priorRunIds"], env["GITHUB_RUN_ID"]]
     actual = {rid for rid, run in history.items() if run.get("path") == WORKFLOW}
     need(actual == set(expected) and len(expected) == len(set(expected)), "unlisted/duplicate source round")
@@ -680,10 +973,11 @@ def history_checks(request, event, env, pipeline, api):
     first_receipt = None
     if request["round"] == 3:
         run_id = request["priorRunIds"][-1]
+        admission_stage("history", "prior-round", run_id)
         previous = history[run_id]
         need(previous.get("status") == "completed" and previous.get("run_attempt") == 1,
              "prior new round terminal")
-        old_request = validate_request(read_json(content_at(api, REQUEST, previous["head_sha"])), bind_source=False)
+        old_request = prior_request(content_at(api, REQUEST, previous["head_sha"]), previous["head_sha"])
         need(old_request["round"] == 2 and old_request["sourceSha"] == request["firstSourceSha"] and
              old_request["sourceTree"] == request["firstSourceTree"] and
              old_request["settledUsageSha256"] == request["settledUsageSha256"], "bound first-source receipt")
@@ -701,16 +995,35 @@ def history_checks(request, event, env, pipeline, api):
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         prior_jobs = api("/repos/" + REPOSITORY + "/actions/runs/" + run_id +
                          "/jobs?filter=all&per_page=100")
-        prior_new_minutes = observed_minutes(prior_jobs, list(PROFILE_MINUTES))
-        need(prior_new_minutes <= INITIAL_MINUTES, "first-source complete job booking exceeded")
+        if request["initialResume"] is not None:
+            need(run_id == INITIAL_RESUME_RUN_ID and previous.get("head_sha") == INITIAL_RESUME_PIPELINE and
+                 previous.get("conclusion") == "failure" and
+                 old_request["sourceSha"] == request["sourceSha"] and
+                 old_request["sourceTree"] == request["sourceTree"] and
+                 old_request["manifestSha256"] == request["manifestSha256"] and
+                 old_request["inventorySha256"] == request["inventorySha256"],
+                 "initial-resume exact failed prior source/controls")
+            prior_new_minutes = initial_resume_jobs(prior_jobs)
+        else:
+            prior_new_minutes = observed_minutes(prior_jobs, list(PROFILE_MINUTES))
+            need(prior_new_minutes <= INITIAL_MINUTES, "first-source complete job booking exceeded")
         first_receipt = {"runId": run_id, "pipelineHead": previous["head_sha"],
                          "sourceSha": request["firstSourceSha"],
                          "sourceTree": request["firstSourceTree"], "conclusion": previous.get("conclusion"),
                          "profileResults": {job["name"][8:-1]: job["conclusion"]
                             for job in prior_jobs["jobs"] if job["name"].startswith("source (")},
                          "relabeledAsCurrentSourcePass": False}
+        if request["initialResume"] is not None:
+            first_receipt.update(profileResults={}, sourceProfilesAcquired=0,
+                                 initialValidationNeverStarted=True, status="admission_failed")
+    admission_stage("history", "new-ancillary")
     ancillary = new_ancillary_usage(history, usage, request, event, env, api)
-    reserve = MAX_CORRECTION_MINUTES if request["round"] == 2 else 0
+    initial_resume = request["initialResume"] is not None
+    reserve = (MAX_CORRECTION_MINUTES if request["round"] == 2 else
+               MAX_CORRECTION_MINUTES - prior_new_minutes if initial_resume else 0)
+    # The failed14 is rebooked within the already approved300 bucket. Its286
+    # remainder is a reservation only; this final operator round creates no
+    # later-round authority. The full940 initial source suite never started.
     # The135 bucket includes observed new spend plus its remaining reserve.
     # The prior425 already includes its old33 ancillary minutes exactly once.
     booked = (SETTLED_MINUTES + prior_new_minutes + round_minutes(request) + reserve +
@@ -726,7 +1039,11 @@ def history_checks(request, event, env, pipeline, api):
     deadline = int(timestamp(APPROVAL_DEADLINE).timestamp())
     need(now < deadline, "original approval deadline")
     return {"bookedRunnerMinutes": booked, "actualSettledRunnerMinutes": SETTLED_MINUTES,
-            "observedNewPriorRunnerMinutes": prior_new_minutes, "futureTargetedReserveMinutes": reserve,
+            "observedNewPriorRunnerMinutes": prior_new_minutes,
+            "futureTargetedReserveMinutes": reserve if request["round"] == 2 else 0,
+            "reservedCorrectionBalanceMinutes": reserve if initial_resume else 0,
+            "initialValidationResume": initial_resume,
+            "operatorRoundsRemaining": 0 if request["round"] == 3 else 1,
             "ancillaryRunnerMinutes": ANCILLARY_MINUTES, "campaignRunnerMinuteCeiling": CAMPAIGN_MINUTES,
             "deadlineEpoch": deadline, "firstSourceReceipt": first_receipt,
             "historicalConclusionsRetained": True, **ancillary}
@@ -1105,19 +1422,28 @@ def main():
     parser.add_argument("--profile", choices=PROFILE_MINUTES)
     args = parser.parse_args()
     env = os.environ
+    with admission_diagnostics(env, args.command == "admit"):
+        return command(args, env)
+
+
+def command(args, env):
+    admission_stage("input", "event.read")
     event = read_json(Path(env["GITHUB_EVENT_PATH"]).read_bytes())
+    admission_stage("input", "event.validate")
     validate_event(event, env)
+    admission_stage("metadata", "manifest.request")
     request, manifest, manifest_hash = metadata(args.pipeline_dir)
     if args.command == "finalize":
         code_binding(args.pipeline_dir, None, event, env, minimal=True)
         passed = env.get("SOURCE_MATRIX_RESULT") == "success" and env.get("SOURCE_ADMISSION_RESULT") == "success"
         summarize({"campaignId": CAMPAIGN, "round": request["round"], "sourceSha": SOURCE,
                    "sourceTree": TREE, "status": "passed" if passed else "failed",
-                   "coverage": "combined_successor" if request["round"] == 2 else "targeted_correction_only",
+                   "coverage": "combined_successor" if request["round"] == 2 or request["initialResume"] is not None else "targeted_correction_only",
                    "sourceWitness": request["sourceWitness"],
                    "productionAuthorized": False, "imageBuilt": False}, env)
         return 0 if passed else 1
     need(args.source_dir is not None, "source checkout required")
+    admission_stage("binding", "code.bind")
     code_binding(args.pipeline_dir, args.source_dir, event, env)
     if args.command in ("fetch-closure", "run"):
         profile = args.profile if args.command == "run" else env.get("SOURCE_PROFILE")
@@ -1127,12 +1453,16 @@ def main():
         fetch_closure(args.pipeline_dir, args.source_dir)
         return 0
     if args.command == "admit":
+        admission_stage("history", "current-pr")
         token = env.get("GH_SOURCE_READ_TOKEN", "")
         need(bool(token), "read-only API token required")
         budget = history_checks(request, event, env, args.pipeline_dir, lambda p: api_json(p, token))
+        admission_stage("closure", "closure.acquire")
         fetch_closure(args.pipeline_dir, args.source_dir)
+        admission_stage("equivalence", "equivalence.verify")
         equivalence = verify_test_only_successor(args.source_dir, request)
         budget["testOnlyEquivalence"] = equivalence
+        admission_stage("matrix", "matrix.publish")
         matrix = {"include": [{"profile": p, "minutes": PROFILE_MINUTES[p]} for p in profiles_for(request)]}
         with open(env["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
             out.write("matrix=" + json.dumps(matrix, separators=(",", ":")) + "\n")
@@ -1188,10 +1518,14 @@ def main():
             raise
 
 
-if __name__ == "__main__":
+def entrypoint():
     try:
-        raise SystemExit(main())
+        return main()
     except (release.Refusal, OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError, ProfileInterrupted):
         # Do not print exception data from API/credential-bearing child contexts.
         print("source-validation: refused; inspect bounded structured admission/step diagnostics", file=sys.stderr)
-        raise SystemExit(2)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(entrypoint())

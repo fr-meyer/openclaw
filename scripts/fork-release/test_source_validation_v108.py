@@ -1,14 +1,18 @@
 """Closed successor campaign boundaries; synthetic APIs/runtimes and temporary Git only."""
 import base64
 import copy
+from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime, timedelta, timezone
 import hashlib
 import importlib.util
 import io
+import itertools
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+import urllib.error
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -23,12 +27,12 @@ NOW = datetime(2026, 10, 28, 5, tzinfo=timezone.utc)
 
 
 def request(round_number=2, profiles=None, prior=None):
-    return {"schema": "openclaw.fork-source-validation-request.v2", "campaignId": driver.CAMPAIGN,
+    return {"schema": "openclaw.fork-source-validation-request.v3", "campaignId": driver.CAMPAIGN,
             "round": round_number, "profiles": [] if profiles is None else profiles,
             "sourceSha": SOURCE, "sourceTree": TREE, "firstSourceSha": SOURCE,
             "firstSourceTree": TREE, "sourceAuthorization": driver.SOURCE_AUTHORIZATION,
             "manifestSha256": "d" * 64, "inventorySha256": "e" * 64,
-            "settledUsageSha256": "f" * 64, "sourceWitness": None,
+            "settledUsageSha256": "f" * 64, "sourceWitness": None, "initialResume": None,
             "priorRunIds": list(driver.RETAINED_SOURCE_RUN_IDS) if prior is None else prior}
 
 
@@ -46,9 +50,12 @@ def event_env():
     return copy.deepcopy(event), env
 
 
+_JOB_IDS = itertools.count(10000)
+
+
 def job(name, minutes=1, conclusion="success", acquired=True, legacy_label=False):
     start = NOW - timedelta(hours=3)
-    return {"name": name, "status": "completed", "conclusion": conclusion, "run_attempt": 1,
+    return {"id": next(_JOB_IDS), "name": name, "status": "completed", "conclusion": conclusion, "run_attempt": 1,
             "runner_id": 42 if acquired else 0, "runner_name": "hosted" if acquired else "",
             "runner_group_name": "GitHub Actions" if acquired else None,
             "labels": ["ubuntu-latest" if legacy_label else "ubuntu-24.04"] if acquired else [],
@@ -547,5 +554,295 @@ class AncillaryObservationTests(unittest.TestCase):
                 handler(driver.signal.SIGALRM,None)
         self.assertEqual(driver.signal.getitimer(driver.signal.ITIMER_REAL),(0.0,0.0))
         self.assertEqual(driver.signal.getsignal(driver.signal.SIGALRM),old)
+
+class AdmissionDiagnosticTests(unittest.TestCase):
+    CANARY = "PRIVATE_CANARY_URL_TOKEN_API_BODY_CHILD_STDERR_88199"
+    def setUp(self):
+        self.pins=patch.multiple(driver,SOURCE=SOURCE,TREE=TREE,FIRST_SOURCE=SOURCE,FIRST_TREE=TREE)
+        self.pins.start();self.addCleanup(self.pins.stop)
+    def admission(self, *, failed_owner="history_checks", effect=None, mutate_env=None, mutate_event=None):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);event,env=event_env()
+            if mutate_event:mutate_event(event)
+            event_path=root/"event.json";event_path.write_text(json.dumps(event))
+            output=root/"matrix";env.update(GITHUB_EVENT_PATH=str(event_path),GITHUB_OUTPUT=str(output),
+                GH_SOURCE_READ_TOKEN=self.CANARY,GITHUB_STEP_SUMMARY=str(root/"summary"))
+            if mutate_env:mutate_env(env)
+            stdout,stderr=io.StringIO(),io.StringIO()
+            owners={name:patch.object(driver,name) for name in
+                ("metadata","code_binding","history_checks","fetch_closure","verify_test_only_successor")}
+            mocks={name:owner.start() for name,owner in owners.items()}
+            mocks["metadata"].return_value=(request(),{},"d"*64)
+            mocks["history_checks"].return_value={"deadlineEpoch":int(NOW.timestamp())+3600}
+            mocks["verify_test_only_successor"].return_value=None
+            if effect is not None:mocks[failed_owner].side_effect=effect
+            try:
+                with patch.dict(driver.os.environ,env,clear=True),patch.object(sys,"argv",[
+                    "source_validation_v108.py","admit","--pipeline-dir",str(root/"pipeline"),
+                    "--source-dir",str(root/"source")]),redirect_stdout(stdout),redirect_stderr(stderr):
+                    code=driver.entrypoint()
+            finally:
+                for owner in reversed(list(owners.values())):owner.stop()
+            raw=stdout.getvalue()+stderr.getvalue();self.assertNotIn(self.CANARY,raw)
+            facts=[json.loads(line) for line in stdout.getvalue().splitlines()]
+            failure=[row for row in facts if row.get("schema")=="openclaw.v108.admission-failure.v1"]
+            if code==2:
+                self.assertFalse(output.exists(),"refusal emitted a source matrix")
+                self.assertEqual(len(failure),1)
+                self.assertEqual(stderr.getvalue(),"source-validation: refused; inspect bounded structured admission/step diagnostics\n")
+                self.assertLess(len(json.dumps(failure[0]).encode()),4096)
+                self.assertIsNone(driver._ADMISSION_DIAGNOSTIC)
+            return code,failure,facts,mocks,output.exists()
+    def test_known_owner_need_keeps_fixed_phase_reason_run_and_exit2(self):
+        def fail(*args):
+            driver.admission_stage("history","settled-prefix","40607329259")
+            driver.need(False,"settled provider usage changed")
+        code,failures,_,mocks,_=self.admission(effect=fail)
+        self.assertEqual(code,2);f=failures[0]
+        self.assertEqual((f["phase"],f["subcheck"]),("history","settled-prefix"))
+        self.assertEqual(f["failedNeedCode"],"need.settled_provider_usage_changed")
+        self.assertEqual(f["exceptionClass"],"Refusal")
+        self.assertEqual((f["runId"],f["relatedRunId"]),(999,40607329259))
+        self.assertIsNone(f["httpStatus"]);self.assertIsNone(f["childExitCode"])
+        self.assertFalse(f["productionAuthorized"]);self.assertFalse(f["imageBuilt"])
+        mocks["fetch_closure"].assert_not_called()
+    def test_unknown_need_label_canary_is_explicitly_unprojected_not_exported(self):
+        def fail(*args):driver.need(False,self.CANARY)
+        _,failures,_,_,_=self.admission(effect=fail)
+        self.assertEqual(failures[0]["failedNeedCode"],"need.unprojected")
+    def test_http_error_preserves_only_valid_status_and_fixed_api_location(self):
+        def fail(*args):
+            with driver.admission_api_read("/repos/fr-meyer/openclaw/actions/runs/40607329259/jobs?filter=all&per_page=100"):
+                raise urllib.error.HTTPError("https://"+self.CANARY,403,self.CANARY,{"x-secret":self.CANARY},io.BytesIO(self.CANARY.encode()))
+        _,failures,_,_,_=self.admission(effect=fail)
+        f=failures[0];self.assertEqual((f["phase"],f["subcheck"]),("history","api.read"))
+        self.assertEqual(f["relatedRunId"],40607329259);self.assertEqual(f["httpStatus"],403)
+        self.assertEqual(f["exceptionClass"],"HTTPError");self.assertEqual(f["failedNeedCode"],"need.unprojected")
+    def test_child_error_never_exports_argv_output_stderr_or_exception_text(self):
+        error=subprocess.CalledProcessError(7,[self.CANARY],output=self.CANARY,stderr=self.CANARY)
+        _,failures,_,_,_=self.admission(failed_owner="code_binding",effect=error)
+        f=failures[0];self.assertEqual((f["phase"],f["subcheck"]),("binding","code.bind"))
+        self.assertEqual(f["childExitCode"],7);self.assertEqual(f["exceptionClass"],"CalledProcessError")
+    def test_invalid_http_and_child_numeric_fields_never_project_bool_string_or_excess(self):
+        for value in (True,self.CANARY,600):
+            with self.subTest(http=value):
+                error=urllib.error.HTTPError(self.CANARY,value,self.CANARY,{},None)
+                _,failures,_,_,_=self.admission(effect=error);self.assertIsNone(failures[0]["httpStatus"])
+        for value in (True,self.CANARY,256):
+            with self.subTest(child=value):
+                error=subprocess.CalledProcessError(value,[self.CANARY])
+                _,failures,_,_,_=self.admission(effect=error);self.assertIsNone(failures[0]["childExitCode"])
+        _,failures,_,_,_=self.admission(effect=subprocess.CalledProcessError(-15,[self.CANARY]))
+        self.assertEqual(failures[0]["childExitCode"],-15)
+    def test_event_and_metadata_failures_have_distinct_fixed_stages(self):
+        _,failures,_,mocks,_=self.admission(mutate_event=lambda e:e["pull_request"]["base"].update(sha=HEAD))
+        self.assertEqual((failures[0]["phase"],failures[0]["subcheck"]),("input","event.validate"))
+        self.assertEqual(failures[0]["failedNeedCode"],"need.fixed_base");mocks["metadata"].assert_not_called()
+        def fail(*args):driver.need(False,"request metadata hashes")
+        _,failures,_,mocks,_=self.admission(failed_owner="metadata",effect=fail)
+        self.assertEqual((failures[0]["phase"],failures[0]["subcheck"]),("metadata","manifest.request"))
+        mocks["code_binding"].assert_not_called()
+    def test_raw_subclass_name_and_untrusted_context_are_not_exposed(self):
+        private_error=type(self.CANARY,(ValueError,),{})
+        def fail(*args):
+            driver.admission_stage(self.CANARY,self.CANARY,self.CANARY);raise private_error(self.CANARY)
+        _,failures,_,_,_=self.admission(effect=fail)
+        self.assertEqual(failures[0]["exceptionClass"],"ValueError")
+        self.assertEqual((failures[0]["phase"],failures[0]["subcheck"]),("unprojected","unprojected"))
+        self.assertIsNone(failures[0]["relatedRunId"])
+    def test_success_has_no_failure_projection_and_admits_matrix_once(self):
+        code,failures,facts,mocks,exists=self.admission()
+        self.assertEqual(code,0);self.assertEqual(failures,[]);self.assertTrue(exists)
+        mocks["fetch_closure"].assert_called_once();mocks["verify_test_only_successor"].assert_called_once()
+        self.assertEqual(facts[-1]["authorization"],"source-validation-only")
+    def test_nonadmission_failure_uses_original_exception_without_admission_output(self):
+        stdout=io.StringIO()
+        with redirect_stdout(stdout),self.assertRaises(driver.release.Refusal),driver.admission_diagnostics({},False):
+            driver.need(False,"fixed base")
+        self.assertEqual(stdout.getvalue(),"")
+    def test_diagnostic_allowlist_is_static_complete_for_existing_need_literals(self):
+        import ast
+        tree=ast.parse(Path(driver.__file__).read_text())
+        literals={n.args[1].value for n in ast.walk(tree) if isinstance(n,ast.Call) and
+            isinstance(n.func,ast.Name) and n.func.id=="need" and len(n.args)>1 and
+            isinstance(n.args[1],ast.Constant) and isinstance(n.args[1].value,str)}
+        self.assertEqual(literals,set(driver.ADMISSION_NEED_CODES))
+        self.assertEqual(len(set(driver.ADMISSION_NEED_CODES.values())),len(literals))
+        self.assertTrue(all(__import__('re').fullmatch(r"need\.[a-z0-9_]+",c) for c in driver.ADMISSION_NEED_CODES.values()))
+
+
+class ProviderJobIdentityTests(unittest.TestCase):
+    def table(self,acquired=False):
+        # Actual display/acquisition shape of the provider collision; only IDs
+        # identify rows, and equal labels cannot discount acquired usage.
+        rows=[job("${{ matrix.checkName }}",minutes,"success" if acquired else "skipped",acquired)
+              for minutes in ((1,2) if acquired else (0,0))]
+        rows[0]["id"],rows[1]["id"]=122550039414,122550039415
+        return {"total_count":2,"jobs":rows}
+    def test_distinct_ids_same_skipped_display_are_allowed_and_charge_zero(self):
+        table=self.table();self.assertEqual(driver.observed_minutes(table,legacy=True),0)
+        facts=driver.ancillary_job_snapshot(table,NOW,True)
+        self.assertTrue(facts["usageComplete"]);self.assertEqual(facts["explicitlyUnacquiredJobs"],2)
+        self.assertEqual(facts["observedAcquiredRunnerMinutes"],0)
+    def test_distinct_acquired_ids_same_display_charge_every_job(self):
+        table=self.table(True);self.assertEqual(driver.observed_minutes(table,legacy=True),3)
+        facts=driver.ancillary_job_snapshot(table,NOW,True)
+        self.assertEqual(facts["observedAcquiredRunnerMinutes"],3);self.assertEqual(facts["acquiredJobs"],2)
+    def test_repeated_or_noncanonical_job_id_refuses_even_if_name_differs(self):
+        for bad in (None,True,0,"122550039414",122550039414):
+            with self.subTest(id=bad):
+                table=self.table();table["jobs"][1].update(id=bad,name="different")
+                with self.assertRaises(driver.release.Refusal):driver.observed_minutes(table,legacy=True)
+                with self.assertRaises(driver.release.Refusal):driver.ancillary_job_snapshot(table,NOW,True)
+    def test_expected_source_semantic_names_stay_unique_even_with_distinct_ids(self):
+        table=source_jobs(legacy=False);first=next(j for j in table["jobs"] if j["name"]=="source (dependency)")
+        table["jobs"].append(dict(first,id=999999));table["total_count"]+=1
+        with self.assertRaises(driver.release.Refusal):driver.observed_minutes(table,list(driver.PROFILE_MINUTES))
+
+
+class InitialResumeTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary=tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
+        self.root=Path(self.temporary.name)
+        self.request=driver.read_json(Path(__file__).with_name("source-request.json").read_bytes())
+    def prior_raw(self):
+        value=copy.deepcopy(self.request)
+        value.update(schema="openclaw.fork-source-validation-request.v2",round=2,profiles=[],
+                     priorRunIds=list(driver.RETAINED_SOURCE_RUN_IDS))
+        value.pop("initialResume")
+        return (json.dumps(value,indent=2)+"\n").encode()
+    def prior_table(self):
+        rows=[job("admission",14,"failure"),job("final",0,"skipped",False),
+              job("source (${{ matrix.profile }})",0,"skipped",False)]
+        for row,identity in zip(rows,(122653671093,122657664876,122657665262)):
+            row.update(id=identity,run_id=int(driver.INITIAL_RESUME_RUN_ID),head_sha=driver.INITIAL_RESUME_PIPELINE)
+        rows[0].update(started_at="2026-10-28T05:40:39Z",completed_at="2026-10-28T05:53:48Z")
+        return {"total_count":3,"jobs":rows}
+    def fixture(self):
+        req=copy.deepcopy(self.request);original_digest=req["settledUsageSha256"]
+        req,event,env,responses,api,runs,tables=history_fixture(self.root,req)
+        usage=driver.read_json((self.root/driver.SETTLED_USAGE).read_bytes())
+        # This unit fixture replaces only the independently tested settled-file
+        # hash owner; history still measures every synthetic prefix job table.
+        req["settledUsageSha256"]=original_digest
+        previous=run_record(driver.INITIAL_RESUME_RUN_ID,driver.INITIAL_RESUME_PIPELINE,driver.WORKFLOW,"failure")
+        previous["created_at"]="2026-10-28T05:40:35Z";runs.append(previous)
+        current=next(run for run in runs if str(run["id"])==env["GITHUB_RUN_ID"])
+        current["created_at"]="2026-10-28T06:00:00Z"
+        tables[driver.INITIAL_RESUME_RUN_ID]=self.prior_table()
+        raw=self.prior_raw();self.assertEqual(hashlib.sha256(raw).hexdigest(),driver.INITIAL_RESUME_REQUEST_SHA256)
+        for path,content in ((driver.REQUEST,raw),(driver.WORKFLOW,b"frozen workflow")):
+            responses["/contents/"+path+"?ref="+driver.INITIAL_RESUME_PIPELINE]={
+                "type":"file","encoding":"base64","size":len(content),
+                "content":base64.b64encode(content).decode()}
+        return req,event,env,responses,api,runs,tables,usage
+    def check_history(self,args):
+        req,event,env,responses,api,runs,tables,usage=args
+        with patch.object(driver,"settled_usage",return_value=usage),patch.object(driver.subprocess,"run"),patch.object(driver,"datetime",wraps=datetime) as clock:
+            clock.now.return_value=datetime(2026,10,28,6,tzinfo=timezone.utc)
+            return driver.history_checks(req,event,env,self.root,api)
+    def test_closed_resume_rebooks_failed14_and286_without_a_new_round_or_relabel(self):
+        args=self.fixture();req=args[0]
+        self.assertEqual(driver.validate_request(req),req)
+        self.assertEqual(driver.profiles_for(req),list(driver.PROFILE_MINUTES))
+        self.assertEqual(driver.round_minutes(req),940)
+        result=self.check_history(args)
+        self.assertEqual(result["actualSettledRunnerMinutes"],425)
+        self.assertEqual(result["observedNewPriorRunnerMinutes"],14)
+        self.assertEqual(result["reservedCorrectionBalanceMinutes"],286)
+        self.assertEqual(result["futureTargetedReserveMinutes"],0)
+        self.assertEqual(result["operatorRoundsRemaining"],0)
+        self.assertEqual(result["bookedRunnerMinutes"],425+14+940+286+135)
+        prior=result["firstSourceReceipt"]
+        self.assertEqual(prior["runId"],driver.INITIAL_RESUME_RUN_ID)
+        self.assertEqual(prior["conclusion"],"failure");self.assertEqual(prior["profileResults"],{})
+        self.assertTrue(prior["initialValidationNeverStarted"]);self.assertFalse(prior["relabeledAsCurrentSourcePass"])
+    def test_v2_is_prior_evidence_only_bound_to_exact95df_blob(self):
+        raw=self.prior_raw();value=driver.read_json(raw)
+        with self.assertRaises(driver.release.Refusal):driver.validate_request(value)
+        self.assertEqual(driver.prior_request(raw,driver.INITIAL_RESUME_PIPELINE),value)
+        for content,head in ((raw+b" ",driver.INITIAL_RESUME_PIPELINE),(raw,HEAD)):
+            with self.assertRaises(driver.release.Refusal):driver.prior_request(content,head)
+    def test_normal_v3_nullable_resume_retains_targeted300_cap(self):
+        value=request(3,["types-tests","doctor-1","doctor-2","doctor-3"],
+                      [*driver.RETAINED_SOURCE_RUN_IDS,driver.INITIAL_RESUME_RUN_ID])
+        self.assertEqual(driver.round_minutes(driver.validate_request(value,bind_source=False)),250)
+        value["profiles"]=list(driver.PROFILE_MINUTES)
+        with self.assertRaises(driver.release.Refusal):driver.validate_request(value,bind_source=False)
+    def test_resume_witness_has_no_extra_fields_repin_partial_profiles_or_second_round(self):
+        for mutation in ("extra","head","source","tree","manifest","inventory","prior","profiles","round","source-witness"):
+            with self.subTest(mutation=mutation):
+                value=copy.deepcopy(self.request)
+                if mutation=="extra":value["initialResume"]["extra"]=True
+                elif mutation=="head":value["initialResume"]["priorPipelineHead"]=HEAD
+                elif mutation=="source":value["sourceSha"]=HEAD
+                elif mutation=="tree":value["sourceTree"]=HEAD
+                elif mutation=="manifest":value["manifestSha256"]="0"*64
+                elif mutation=="inventory":value["inventorySha256"]="0"*64
+                elif mutation=="prior":value["priorRunIds"][-1]="8888"
+                elif mutation=="profiles":value["profiles"]=["dependency"]
+                elif mutation=="round":value["round"]=2
+                else:value["sourceWitness"]={"schema":"other"}
+                with self.assertRaises(driver.release.Refusal):driver.validate_request(value)
+    def test_provider_positive_unstarted_evidence_cannot_be_forged_from_missing_or_acquired_jobs(self):
+        for mutation in ("acquired-source","source-steps","missing-runner","final-cancelled","admission-pass",
+                         "admission-over15","rerun","missing-job","extra-job","head","run","duplicate-id"):
+            with self.subTest(mutation=mutation):
+                table=self.prior_table();admission,final,source=table["jobs"]
+                if mutation=="acquired-source":source.update(runner_id=12,runner_name="hosted",runner_group_name="GitHub Actions",labels=["ubuntu-24.04"])
+                elif mutation=="source-steps":source["steps"]=[{"name":"unexpected"}]
+                elif mutation=="missing-runner":source.pop("runner_id")
+                elif mutation=="final-cancelled":final["conclusion"]="cancelled"
+                elif mutation=="admission-pass":admission["conclusion"]="success"
+                elif mutation=="admission-over15":admission["completed_at"]="2026-10-28T05:56:00Z"
+                elif mutation=="rerun":source["run_attempt"]=2
+                elif mutation=="missing-job":table["jobs"].pop();table["total_count"]-=1
+                elif mutation=="extra-job":table["jobs"].append(dict(source,id=998,name="source (dependency)"));table["total_count"]+=1
+                elif mutation=="head":source["head_sha"]=HEAD
+                elif mutation=="run":source["run_id"]=999
+                else:source["id"]=admission["id"]
+                with self.assertRaises(driver.release.Refusal):driver.initial_resume_jobs(table)
+    def test_changed_workflow_or_prior_conclusion_refuses_without_any_matrix(self):
+        for mutation in ("workflow","conclusion"):
+            with self.subTest(mutation=mutation):
+                # Each fixture owns only its synthetic temporary source controls.
+                with tempfile.TemporaryDirectory() as directory:
+                    old=self.root;self.root=Path(directory)
+                    try:
+                        args=self.fixture()
+                        if mutation=="workflow":(self.root/driver.WORKFLOW).write_bytes(b"different")
+                        else:next(r for r in args[5] if str(r["id"])==driver.INITIAL_RESUME_RUN_ID)["conclusion"]="success"
+                        with self.assertRaises(driver.release.Refusal):self.check_history(args)
+                    finally:self.root=old
+
+
+class FinalizeCoverageTests(unittest.TestCase):
+    def finalize(self,value):
+        with tempfile.TemporaryDirectory() as directory:
+            event,env=event_env();path=Path(directory)/"event.json";path.write_text(json.dumps(event))
+            env.update(GITHUB_EVENT_PATH=str(path),SOURCE_MATRIX_RESULT="success",SOURCE_ADMISSION_RESULT="success")
+            output=io.StringIO()
+            with patch.dict(driver.os.environ,env,clear=True),patch.object(sys,"argv",[
+                    "source_validation_v108.py","finalize","--pipeline-dir",directory]),\
+                    patch.object(driver,"metadata",return_value=(value,{},"d"*64)),\
+                    patch.object(driver,"code_binding") as binding,redirect_stdout(output):
+                code=driver.entrypoint()
+            binding.assert_called_once()
+            self.assertEqual(binding.call_args.args[:3],(Path(directory),None,event))
+            self.assertTrue(binding.call_args.kwargs["minimal"])
+            self.assertEqual(code,0)
+            facts=json.loads(output.getvalue());self.assertEqual(facts["status"],"passed")
+            self.assertFalse(facts["productionAuthorized"]);self.assertFalse(facts["imageBuilt"])
+            return facts
+    def test_resume_full_suite_and_initial_round_report_combined_successor(self):
+        resume=driver.read_json(Path(__file__).with_name("source-request.json").read_bytes())
+        for value in (request(),resume):
+            with self.subTest(round=value["round"],resume=value["initialResume"] is not None):
+                self.assertEqual(self.finalize(value)["coverage"],"combined_successor")
+    def test_normal_round3_null_resume_stays_targeted_correction_only(self):
+        value=request(3,["dependency"],[*driver.RETAINED_SOURCE_RUN_IDS,driver.INITIAL_RESUME_RUN_ID])
+        self.assertIsNone(value["initialResume"])
+        self.assertEqual(self.finalize(value)["coverage"],"targeted_correction_only")
+
 
 if __name__=="__main__":unittest.main()
