@@ -30,6 +30,30 @@ class ToolOps:
 
 
 class IntegratedToolTests(unittest.TestCase):
+    def test_authenticated_entry_source_is_the_exact_retained_public_source(self):
+        root=Path(__file__).resolve().parents[1]
+        raw=(root/'native/static_entry.c').read_bytes()
+        self.assertEqual(len(raw),11765)
+        self.assertEqual(build_entry.sha(raw),'29aa405e68a011d81dbf94d4aaf7e39899f62144eaaca6cceac884f183e335fe')
+        build_entry.retained_helper_source(raw)
+        self.assertIn(b'#define REFUSE(label) stop("entry_refused_" label',raw)
+        self.assertNotIn(b'printf(',raw)
+    def test_helper_source_pin_precedes_the_only_compile_and_fixed_result_pin_precedes_return(self):
+        root=Path(__file__).resolve().parents[1];raw=(root/'native/static_entry.c').read_bytes();calls=[]
+        helper={'path':'code/static-entry','sourceSha256':build_entry.RETAINED_HELPER_SOURCE_SHA256,
+            'sha256':'0039f448059652d87fdfe49cf2de875a38bfe2224c2711c17cc2c837f9c7c88a','bytes':17888,
+            'elf':{'sha256':'0039f448059652d87fdfe49cf2de875a38bfe2224c2711c17cc2c837f9c7c88a','bytes':17888}}
+        runtime=SimpleNamespace(build_helper=lambda source,digest,toolchain,ops:(calls.append((source,digest))or helper))
+        with self.assertRaisesRegex(build_entry.Refusal,'build_entry.retained_helper_source_pin'):
+            build_entry.build_retained_helper(runtime,raw+b'\n',{},None)
+        self.assertEqual(calls,[])
+        self.assertIs(build_entry.build_retained_helper(runtime,raw,{},None),helper)
+        self.assertEqual(len(calls),1)
+        for field,value in (('sha256','a'*64),('bytes',17889),('sourceSha256','a'*64)):
+            changed={**helper,field:value}
+            with self.subTest(field=field),self.assertRaisesRegex(build_entry.Refusal,'build_entry.retained_helper_result_pin'):
+                build_entry.retained_helper_result(changed)
+        with self.assertRaises(build_entry.Refusal):build_entry.retained_helper_result({**helper,'elf':{'sha256':'a'*64,'bytes':17888}})
     def row(self,role,*,registered=None,defect=None):
         spec=fixture.EXTRA_TOOL_SPECS[role];ops=ToolOps(spec)
         if defect:setattr(ops,defect,True)

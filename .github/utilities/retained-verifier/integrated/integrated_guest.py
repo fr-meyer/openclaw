@@ -236,7 +236,8 @@ def _diagnostic_state(storage,unit,transport,server,bridge,journal):
     for name,value in (('bridgeBlocked',bridge.blocked),('transportBlocked',transport._blocked),
         ('serverBlocked',server.blocked),('journalUncertain',journal.uncertain),
         ('unitSubmissionAttempted',unit._submit_attempted),('unitStopped',unit._stopped),
-        ('unitEmpty',unit._empty),('testMounted',storage._mounted),('serverUnmounted',server.unmounted)):
+        ('unitEmpty',unit._empty),('storageMountCompleted',storage._mounted),
+        ('storageNormalUnmountCompleted',storage._unmounted),('serverUnmounted',server.unmounted)):
         require(type(value) is bool,'integrated_guest.diagnostic_boolean');state[name]=value
     return state
 

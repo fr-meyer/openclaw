@@ -15,6 +15,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 HERE=Path(__file__).resolve().parent
 A=HERE.parent
@@ -202,8 +203,14 @@ class BuildFixture:
     def write_runtime(self,path,raw,mode):self.io.put('/work/out/runtime-root/'+path,raw,mode)
     def platform_facts(self):return {'platform':'linux','machine':'x86_64','euid':0}
     def build(self):
-        result=build_entry.run_checked(self,self.header,self.source_sha,'d'*64,
-          {'recipe':build_recipe,'runtime':runtime_prepare,'inventory':package_inventory,'archive':None,'policy':None})
+        # This existing boundary uses synthetic APT and ELF fixtures, never a
+        # native issuer/compiler. Bind only this test's expected result to its
+        # inert ELF; production pins remain fixed and have independent tests.
+        raw=self.io.files[guard.CONTROL+'/static-entry']
+        with mock.patch.object(build_entry,'RETAINED_HELPER_SHA256',m.sha(raw)),\
+             mock.patch.object(build_entry,'RETAINED_HELPER_BYTES',len(raw)):
+            result=build_entry.run_checked(self,self.header,self.source_sha,'d'*64,
+              {'recipe':build_recipe,'runtime':runtime_prepare,'inventory':package_inventory,'archive':None,'policy':None})
         self.io.files.update(self.data)
         for path in self.data:self.io.modes.setdefault(path,0o755)
         self.io.put('/var/lib/dpkg/status',b'\n\n'.join(('Package: '+n+'\nStatus: install ok installed\nVersion: '+r['version']+'\nArchitecture: amd64').encode()for n,r in self.packages.items())+b'\n')

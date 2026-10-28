@@ -37,6 +37,9 @@ COMPILER={'compiler':'/usr/bin/gcc-12','cc1':'/usr/lib/gcc/x86_64-linux-gnu/12/c
 SHOW_FORMAT='${binary:Package}\t${Version}\t${Architecture}\t${db:Status-Status}\n'
 FIXED_DATA=('InRelease','Packages','keyring.gpg','gpgv-status.txt','guard-proof.json','first-stage-ledger.json')
 HEADER_KEYS={'schema','sourceManifestSha256','runIdentity','keyringSha256','kernelPackage','packageRoots','buildId'}
+RETAINED_HELPER_SOURCE_SHA256='29aa405e68a011d81dbf94d4aaf7e39899f62144eaaca6cceac884f183e335fe'
+RETAINED_HELPER_SHA256='0039f448059652d87fdfe49cf2de875a38bfe2224c2711c17cc2c837f9c7c88a'
+RETAINED_HELPER_BYTES=17888
 
 
 class Refusal(RuntimeError):
@@ -50,6 +53,30 @@ def need(ok,code):
 def canonical(x):return json.dumps(x,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
 def sha(b):return hashlib.sha256(b).hexdigest()
 def digest(x):return type(x)is str and re.fullmatch('[0-9a-f]{64}',x) is not None
+
+
+def retained_helper_source(source):
+    need(type(source)is bytes and len(source)==11765 and sha(source)==RETAINED_HELPER_SOURCE_SHA256,
+         'build_entry.retained_helper_source_pin')
+
+
+def retained_helper_result(helper):
+    # runtime.build_helper already authenticated compiler/package/source/ELF.
+    # This additional fixed join refuses drift before any guest is booted.
+    need(type(helper)is dict and helper.get('path')=='code/static-entry' and
+        helper.get('sourceSha256')==RETAINED_HELPER_SOURCE_SHA256 and
+        type(helper.get('bytes'))is int and helper['bytes']==RETAINED_HELPER_BYTES and
+        helper.get('sha256')==RETAINED_HELPER_SHA256 and type(helper.get('elf'))is dict and
+        helper['elf'].get('sha256')==RETAINED_HELPER_SHA256 and
+        helper['elf'].get('bytes')==RETAINED_HELPER_BYTES,
+        'build_entry.retained_helper_result_pin')
+
+
+def build_retained_helper(runtime,source,toolchain,ops):
+    retained_helper_source(source)
+    helper=runtime.build_helper(source,sha(source),toolchain,ops)
+    retained_helper_result(helper)
+    return helper
 
 
 def decode(raw,cap=8*1024**2):
@@ -395,7 +422,7 @@ def run_checked(ops,header,source_sha,context_sha,leaves):
         'packageProofSha256':sha(canonical(evidence)),
         'tools':[tool_row(r,p,ops,installed,show,lists,indexed,tool_aliases) for r,p in COMPILER.items()]}
     source=ops.read(ROOT+'/native/static_entry.c',32768)
-    helper=runtime.build_helper(source,sha(source),toolchain,RuntimeOps(ops))
+    helper=build_retained_helper(runtime,source,toolchain,RuntimeOps(ops))
     # The static helper is compiled once. All later joins only revalidate it.
     ops.chmod(CONTROL+'/static-entry',0o555)
     runtime_manifest=runtime.collect_runtime(installed,resolutions,ops,helper)

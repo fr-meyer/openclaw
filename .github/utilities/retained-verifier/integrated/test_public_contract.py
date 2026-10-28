@@ -645,9 +645,11 @@ from unittest import mock
 import integrated_entry as construction_entry
 import integrated_guest as construction_guest
 
+RETAINED_ENTRY_SHA256='0039f448059652d87fdfe49cf2de875a38bfe2224c2711c17cc2c837f9c7c88a'
+
 
 @contextmanager
-def diagnostic_whole_factory():
+def diagnostic_whole_factory(*,entry_sha=RETAINED_ENTRY_SHA256):
     here=Path(construction_guest.__file__).resolve().parent
     public=here if (here/'PUBLIC-INTEGRATED-SOURCE-MANIFEST.json').exists() else here/'proposed-public-harness/integrated'
     exported=json.loads((public/'PUBLIC-INTEGRATED-SOURCE-MANIFEST.json').read_bytes())
@@ -698,7 +700,7 @@ def diagnostic_whole_factory():
             'workerDeadlineUtc':None,'maxJobSeconds':300,'operation':'retained-report-only','mountPropagation':'private',
             'sourceSha':worker.SOURCE,'scannerSha':worker.SCANNER,'indexDigest':worker.INDEX,
             'privacySha256':worker.REPORT_SHA256,'privacyBytes':worker.REPORT_BYTES,'consumerCode':worker.CONSUMER,
-            'profileSha256':profile.DESIGN_PROFILE_SHA,'entrySha256':unit_module.HELPER_SHA256,
+            'profileSha256':p.sha(files['PROFILE.template.private.json']),'entrySha256':entry_sha,
             'workerSha256':p.sha(files['worker.py']),'runtimeManifestSha256':'e'*64,'inputManifestSha256':None}
         mac_root=temp/'mac';mac_root.mkdir(mode=0o700)
         core=graph.require_loaded_rows(root,{row['path']:row for row in raw_rows})
@@ -903,6 +905,30 @@ class WholeDiagnosticConstructionTests(unittest.TestCase):
             self.assertEqual(evidence['diagnosticConstruction'],{'phase':'snapshot',
                 'reason':'integrated_guest.diagnostic_components','type':'protocol.Refusal'})
             self.assertIs(raised.exception.__cause__,original);self.assertFalse(evidence['retryPermitted'])
+    def test_independently_pinned_retained_entry_and_hashed_profile_reach_storage_without_unit_pin_relaxation(self):
+        with diagnostic_whole_factory()as f:
+            self.assertEqual(f.context['entrySha256'],RETAINED_ENTRY_SHA256)
+            self.assertEqual(f.context['profileSha256'],f.modules['protocol'].sha(
+                (f.physical/'guest/PROFILE.template.private.json').read_bytes()))
+            settle_synthetic_preparation(f)
+            with self.assertRaises(f.modules['mac_bridge'].UncertainOutcome)as caught:f.bridge.start_and_replay()
+            _snapshot,evidence=native_chain_snapshot(f,caught.exception)
+            self.assertEqual(evidence['primary']['innermostObservedCode'],'storage.worker_before_unmount')
+            self.assertEqual(evidence['stateBeforeCleanup']['unitAttempted'],['start'])
+            self.assertFalse(evidence['stateBeforeCleanup']['unitSubmissionAttempted'])
+        with diagnostic_whole_factory(entry_sha='a'*64)as f:
+            settle_synthetic_preparation(f)
+            with self.assertRaises(f.modules['mac_bridge'].UncertainOutcome)as caught:f.bridge.start_and_replay()
+            _snapshot,evidence=native_chain_snapshot(f,caught.exception)
+            self.assertEqual(evidence['primary']['innermostObservedCode'],'unit.context_pins')
+            self.assertEqual(evidence['stateBeforeCleanup']['unitAttempted'],[])
+            self.assertFalse(evidence['stateBeforeCleanup']['unitSubmissionAttempted'])
+    def test_mount_diagnostic_latches_distinguish_completed_mount_from_completed_normal_unmount(self):
+        with diagnostic_whole_factory()as f:
+            f.storage._mounted=f.storage._unmounted=f.server.unmounted=True
+            state=f.modules['integrated_guest']._diagnostic_state(f.storage,f.unit,f.transport,f.server,f.bridge,f.journal)
+            self.assertTrue(state['storageMountCompleted']);self.assertTrue(state['storageNormalUnmountCompleted'])
+            self.assertTrue(state['serverUnmounted']);self.assertNotIn('testMounted',state)
 
 
 if __name__=='__main__':unittest.main()
