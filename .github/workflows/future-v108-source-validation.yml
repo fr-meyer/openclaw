@@ -37,6 +37,9 @@ jobs:
       matrix: ${{ steps.admit.outputs.matrix }}
       deadline_epoch: ${{ steps.admit.outputs.deadline_epoch }}
     steps:
+      - name: Observe shared admission budget before either checkout
+        id: admission-clock
+        run: python3 -c 'import os,time; open(os.environ["GITHUB_OUTPUT"], "a").write("started_epoch=" + str(int(time.time())) + "\n")'
       - name: Checkout reviewed pipeline head and complete ancestry
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,18 +48,27 @@ jobs:
           path: pipeline
           fetch-depth: 0
           persist-credentials: false
+      - name: Bound product checkout by the same admission clock
+        id: checkout-budget
+        env:
+          SOURCE_ADMISSION_STARTED_EPOCH: ${{ steps.admission-clock.outputs.started_epoch }}
+        run: >-
+          python3 pipeline/scripts/fork-release/source_validation_v108.py checkout-budget
+          --pipeline-dir "$GITHUB_WORKSPACE/pipeline"
       - name: Checkout frozen product source
+        timeout-minutes: ${{ fromJSON(steps.checkout-budget.outputs.checkout_minutes) }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fr-meyer/openclaw
-          ref: f5c198efedd78625e5a1b4a133d58ebfb3dae1c5
+          ref: 84d9bd1c618708e9d5798a730d473ddecf99297a
           path: source
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
       - name: Admit exact campaign and source with read-only public metadata
         id: admit
         env:
           GH_SOURCE_READ_TOKEN: ${{ github.token }}
+          SOURCE_ADMISSION_STARTED_EPOCH: ${{ steps.admission-clock.outputs.started_epoch }}
         run: >-
           python3 pipeline/scripts/fork-release/source_validation_v108.py admit
           --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
@@ -88,12 +100,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Checkout frozen product source
+        timeout-minutes: 10
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fr-meyer/openclaw
-          ref: f5c198efedd78625e5a1b4a133d58ebfb3dae1c5
+          ref: 84d9bd1c618708e9d5798a730d473ddecf99297a
           path: source
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
       - name: Setup fixed supported Node runtime without a cache
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -101,6 +114,8 @@ jobs:
           node-version: 24.22.1
           package-manager-cache: false
       - name: Verify complete public source closure through maintained preflight
+        env:
+          SOURCE_JOB_STARTED_EPOCH: ${{ steps.source-clock.outputs.started_epoch }}
         run: >-
           python3 pipeline/scripts/fork-release/source_validation_v108.py fetch-closure
           --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"

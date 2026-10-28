@@ -22,8 +22,23 @@ SPEC = importlib.util.spec_from_file_location("v108_successor_driver", Path(__fi
 driver = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(driver)
 SOURCE_LITERAL = driver.SOURCE
+PIPELINE_ROOT = Path(__file__).resolve().parents[2]
 SOURCE, TREE, HEAD, OLD_HEAD, MERGE = (c * 40 for c in "defab")
 NOW = datetime(2026, 10, 28, 5, tzinfo=timezone.utc)
+
+
+def historical_v3_request():
+    """Immutable published historical input, never the operational v4 request."""
+    raw = Path(__file__).with_name("fixtures").joinpath("v108-source-request-v3-0dd.json").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != "f4328240f75c6a97471843fb4af8e3ee4ceeb93c2fcef98f3e0f9c59ee4fcd3c":
+        raise AssertionError("historical v3 fixture digest changed")
+    return driver.read_json(raw)
+
+
+def operational_v4_request():
+    """Actual tracked closed request; legacy fixtures never stand in for it."""
+    value = driver.read_json((PIPELINE_ROOT / driver.REQUEST).read_bytes())
+    return copy.deepcopy(driver.validate_request_v4(value, driver.STAGE_PINS))
 
 
 def request(round_number=2, profiles=None, prior=None):
@@ -243,10 +258,14 @@ class SourceValidationTests(unittest.TestCase):
             self.assertEqual(env["HOME"],directory)
     def test_final_only_sparse_history_and_source_budget_bindings(self):
         workflow=Path(__file__).resolve().parents[2]/driver.WORKFLOW;text=workflow.read_text();before,final=text.split("  final:\n",1)
-        self.assertNotIn("fetch-depth: 1",before);self.assertIn("fetch-depth: 1",final)
+        self.assertEqual(before.count("path: pipeline\n          fetch-depth: 0"),2)
+        self.assertEqual(before.count("path: source\n          fetch-depth: 1"),2)
+        self.assertIn("fetch-depth: 1",final)
         self.assertIn("sparse-checkout:",final);self.assertIn("timeout-minutes: 10",final)
         self.assertIn("SOURCE_JOB_STARTED_EPOCH: ${{ steps.source-clock.outputs.started_epoch }}",text)
-        self.assertEqual(text.count("ref: "+SOURCE_LITERAL),2)
+        self.assertEqual(SOURCE_LITERAL, driver.V4_PARENT_SOURCE)
+        self.assertEqual(text.count("ref: "+driver.STAGE_PINS["sourceSha"]),2)
+        self.assertNotIn("ref: "+SOURCE_LITERAL,text)
         self.assertNotIn("workflow_dispatch:",text);self.assertNotIn("actions/upload-artifact",text)
         self.assertNotIn("id-token:",text);self.assertNotIn("secrets.",text)
     def test_minimal_merge_acquisition_fetches_two_levels_and_preserves_head(self):
@@ -560,7 +579,7 @@ class AdmissionDiagnosticTests(unittest.TestCase):
     def setUp(self):
         self.pins=patch.multiple(driver,SOURCE=SOURCE,TREE=TREE,FIRST_SOURCE=SOURCE,FIRST_TREE=TREE)
         self.pins.start();self.addCleanup(self.pins.stop)
-    def admission(self, *, failed_owner="history_checks", effect=None, mutate_env=None, mutate_event=None):
+    def admission(self, *, failed_owner="history_checks_v4", effect=None, mutate_env=None, mutate_event=None):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);event,env=event_env()
             if mutate_event:mutate_event(event)
@@ -570,11 +589,17 @@ class AdmissionDiagnosticTests(unittest.TestCase):
             if mutate_env:mutate_env(env)
             stdout,stderr=io.StringIO(),io.StringIO()
             owners={name:patch.object(driver,name) for name in
-                ("metadata","code_binding","history_checks","fetch_closure","verify_test_only_successor")}
+                ("metadata","code_binding","history_checks_v4","fetch_closure",
+                 "verify_source_equivalence_v4","admission_deadline")}
             mocks={name:owner.start() for name,owner in owners.items()}
-            mocks["metadata"].return_value=(request(),{},"d"*64)
-            mocks["history_checks"].return_value={"deadlineEpoch":int(NOW.timestamp())+3600}
-            mocks["verify_test_only_successor"].return_value=None
+            current=operational_v4_request()
+            mocks["metadata"].return_value=(current,{},"d"*64)
+            mocks["admission_deadline"].return_value=int(NOW.timestamp())+3600
+            mocks["history_checks_v4"].return_value={"deadlineEpoch":int(NOW.timestamp())+3600,
+                "profileMatrix":[{"profile":profile,"minutes":driver.profile_minutes_for(current)[profile]}
+                                 for profile in current["profiles"]],
+                "reusedProfileEvidence":{"profiles":list(driver.V4_REUSED_PROFILES)}}
+            mocks["verify_source_equivalence_v4"].return_value={"status":"synthetic_verified_equivalence"}
             if effect is not None:mocks[failed_owner].side_effect=effect
             try:
                 with patch.dict(driver.os.environ,env,clear=True),patch.object(sys,"argv",[
@@ -594,7 +619,7 @@ class AdmissionDiagnosticTests(unittest.TestCase):
                 self.assertIsNone(driver._ADMISSION_DIAGNOSTIC)
             return code,failure,facts,mocks,output.exists()
     def test_known_owner_need_keeps_fixed_phase_reason_run_and_exit2(self):
-        def fail(*args):
+        def fail(*args, **kwargs):
             driver.admission_stage("history","settled-prefix","40607329259")
             driver.need(False,"settled provider usage changed")
         code,failures,_,mocks,_=self.admission(effect=fail)
@@ -607,17 +632,17 @@ class AdmissionDiagnosticTests(unittest.TestCase):
         self.assertFalse(f["productionAuthorized"]);self.assertFalse(f["imageBuilt"])
         mocks["fetch_closure"].assert_not_called()
     def test_unknown_need_label_canary_is_explicitly_unprojected_not_exported(self):
-        def fail(*args):driver.need(False,self.CANARY)
+        def fail(*args, **kwargs):driver.need(False,self.CANARY)
         _,failures,_,_,_=self.admission(effect=fail)
-        self.assertEqual(failures[0]["failedNeedCode"],"need.unprojected")
+        self.assertEqual(failures[0]["failedNeedCode"],"v4.unprojected")
     def test_http_error_preserves_only_valid_status_and_fixed_api_location(self):
-        def fail(*args):
+        def fail(*args, **kwargs):
             with driver.admission_api_read("/repos/fr-meyer/openclaw/actions/runs/40607329259/jobs?filter=all&per_page=100"):
                 raise urllib.error.HTTPError("https://"+self.CANARY,403,self.CANARY,{"x-secret":self.CANARY},io.BytesIO(self.CANARY.encode()))
         _,failures,_,_,_=self.admission(effect=fail)
         f=failures[0];self.assertEqual((f["phase"],f["subcheck"]),("history","api.read"))
         self.assertEqual(f["relatedRunId"],40607329259);self.assertEqual(f["httpStatus"],403)
-        self.assertEqual(f["exceptionClass"],"HTTPError");self.assertEqual(f["failedNeedCode"],"need.unprojected")
+        self.assertEqual(f["exceptionClass"],"HTTPError");self.assertEqual(f["failedNeedCode"],"v4.unprojected")
     def test_child_error_never_exports_argv_output_stderr_or_exception_text(self):
         error=subprocess.CalledProcessError(7,[self.CANARY],output=self.CANARY,stderr=self.CANARY)
         _,failures,_,_,_=self.admission(failed_owner="code_binding",effect=error)
@@ -638,13 +663,13 @@ class AdmissionDiagnosticTests(unittest.TestCase):
         _,failures,_,mocks,_=self.admission(mutate_event=lambda e:e["pull_request"]["base"].update(sha=HEAD))
         self.assertEqual((failures[0]["phase"],failures[0]["subcheck"]),("input","event.validate"))
         self.assertEqual(failures[0]["failedNeedCode"],"need.fixed_base");mocks["metadata"].assert_not_called()
-        def fail(*args):driver.need(False,"request metadata hashes")
+        def fail(*args, **kwargs):driver.need(False,"request metadata hashes")
         _,failures,_,mocks,_=self.admission(failed_owner="metadata",effect=fail)
         self.assertEqual((failures[0]["phase"],failures[0]["subcheck"]),("metadata","manifest.request"))
         mocks["code_binding"].assert_not_called()
     def test_raw_subclass_name_and_untrusted_context_are_not_exposed(self):
         private_error=type(self.CANARY,(ValueError,),{})
-        def fail(*args):
+        def fail(*args, **kwargs):
             driver.admission_stage(self.CANARY,self.CANARY,self.CANARY);raise private_error(self.CANARY)
         _,failures,_,_,_=self.admission(effect=fail)
         self.assertEqual(failures[0]["exceptionClass"],"ValueError")
@@ -653,7 +678,10 @@ class AdmissionDiagnosticTests(unittest.TestCase):
     def test_success_has_no_failure_projection_and_admits_matrix_once(self):
         code,failures,facts,mocks,exists=self.admission()
         self.assertEqual(code,0);self.assertEqual(failures,[]);self.assertTrue(exists)
-        mocks["fetch_closure"].assert_called_once();mocks["verify_test_only_successor"].assert_called_once()
+        mocks["fetch_closure"].assert_called_once();mocks["verify_source_equivalence_v4"].assert_called_once()
+        current=mocks["metadata"].return_value[0]
+        self.assertEqual(mocks["fetch_closure"].call_args.kwargs["request"],current)
+        self.assertEqual(mocks["verify_source_equivalence_v4"].call_args.args[:2],(current,driver.STAGE_PINS))
         self.assertEqual(facts[-1]["authorization"],"source-validation-only")
     def test_nonadmission_failure_uses_original_exception_without_admission_output(self):
         stdout=io.StringIO()
@@ -663,9 +691,33 @@ class AdmissionDiagnosticTests(unittest.TestCase):
     def test_diagnostic_allowlist_is_static_complete_for_existing_need_literals(self):
         import ast
         tree=ast.parse(Path(driver.__file__).read_text())
-        literals={n.args[1].value for n in ast.walk(tree) if isinstance(n,ast.Call) and
-            isinstance(n.func,ast.Name) and n.func.id=="need" and len(n.args)>1 and
+        calls=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and
+            isinstance(n.func,ast.Name) and n.func.id=="need" and len(n.args)>1]
+        literals={n.args[1].value for n in calls if
             isinstance(n.args[1],ast.Constant) and isinstance(n.args[1].value,str)}
+        dynamic=[n for n in calls if not (isinstance(n.args[1],ast.Constant) and
+                                         isinstance(n.args[1].value,str))]
+        history_owner=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="_h4_need")
+        self.assertEqual(len(dynamic),1)
+        self.assertIn(dynamic[0],list(ast.walk(history_owner)))
+        expected=ast.parse('need(value, "v4.history." + code)',mode="eval").body
+        self.assertEqual(ast.dump(dynamic[0],include_attributes=False),ast.dump(expected,include_attributes=False))
+        history_calls=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and
+            isinstance(n.func,ast.Name) and n.func.id=="_h4_need"]
+        self.assertTrue(history_calls)
+        for call in history_calls:
+            self.assertEqual(len(call.args),2)
+            self.assertIsInstance(call.args[1],ast.Constant)
+            self.assertIsInstance(call.args[1].value,str)
+            self.assertRegex(call.args[1].value,r"\A[a-z][a-z0-9_]*\Z")
+            literals.add("v4.history."+call.args[1].value)
+        # Replaced v3 metadata no longer calls these labels operationally. Keep
+        # their exact historical projection without allowing arbitrary extras.
+        historical={"source-only manifest":"need.source_only_manifest",
+                    "request metadata hashes":"need.request_metadata_hashes"}
+        for label,code in historical.items():
+            self.assertEqual(driver.ADMISSION_NEED_CODES[label],code)
+        literals.update(historical)
         self.assertEqual(literals,set(driver.ADMISSION_NEED_CODES))
         self.assertEqual(len(set(driver.ADMISSION_NEED_CODES.values())),len(literals))
         self.assertTrue(all(__import__('re').fullmatch(r"need\.[a-z0-9_]+",c) for c in driver.ADMISSION_NEED_CODES.values()))
@@ -704,7 +756,7 @@ class InitialResumeTests(unittest.TestCase):
     def setUp(self):
         self.temporary=tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
         self.root=Path(self.temporary.name)
-        self.request=driver.read_json(Path(__file__).with_name("source-request.json").read_bytes())
+        self.request=historical_v3_request()
     def prior_raw(self):
         value=copy.deepcopy(self.request)
         value.update(schema="openclaw.fork-source-validation-request.v2",round=2,profiles=[],
@@ -817,7 +869,7 @@ class InitialResumeTests(unittest.TestCase):
 
 
 class FinalizeCoverageTests(unittest.TestCase):
-    def finalize(self,value):
+    def finalize(self,value,pins=None):
         with tempfile.TemporaryDirectory() as directory:
             event,env=event_env();path=Path(directory)/"event.json";path.write_text(json.dumps(event))
             env.update(GITHUB_EVENT_PATH=str(path),SOURCE_MATRIX_RESULT="success",SOURCE_ADMISSION_RESULT="success")
@@ -825,24 +877,177 @@ class FinalizeCoverageTests(unittest.TestCase):
             with patch.dict(driver.os.environ,env,clear=True),patch.object(sys,"argv",[
                     "source_validation_v108.py","finalize","--pipeline-dir",directory]),\
                     patch.object(driver,"metadata",return_value=(value,{},"d"*64)),\
+                    patch.object(driver,"STAGE_PINS",driver.STAGE_PINS if pins is None else pins),\
                     patch.object(driver,"code_binding") as binding,redirect_stdout(output):
                 code=driver.entrypoint()
             binding.assert_called_once()
             self.assertEqual(binding.call_args.args[:3],(Path(directory),None,event))
             self.assertTrue(binding.call_args.kwargs["minimal"])
+            self.assertEqual(binding.call_args.kwargs["request"],value)
             self.assertEqual(code,0)
             facts=json.loads(output.getvalue());self.assertEqual(facts["status"],"passed")
             self.assertFalse(facts["productionAuthorized"]);self.assertFalse(facts["imageBuilt"])
             return facts
-    def test_resume_full_suite_and_initial_round_report_combined_successor(self):
-        resume=driver.read_json(Path(__file__).with_name("source-request.json").read_bytes())
-        for value in (request(),resume):
-            with self.subTest(round=value["round"],resume=value["initialResume"] is not None):
-                self.assertEqual(self.finalize(value)["coverage"],"combined_successor")
-    def test_normal_round3_null_resume_stays_targeted_correction_only(self):
-        value=request(3,["dependency"],[*driver.RETAINED_SOURCE_RUN_IDS,driver.INITIAL_RESUME_RUN_ID])
-        self.assertIsNone(value["initialResume"])
-        self.assertEqual(self.finalize(value)["coverage"],"targeted_correction_only")
+    def test_initial_v4_reports_affected_profiles_and_original_historical_reuse(self):
+        value=operational_v4_request()
+        facts=self.finalize(value)
+        self.assertEqual(facts["coverage"],"affected_profiles_with_admission_verified_historical_reuse")
+        self.assertEqual(facts["affectedProfiles"],value["profiles"])
+        reuse=facts["historicalReuse"]
+        self.assertTrue(reuse["verified"])
+        self.assertEqual(reuse["profiles"],list(driver.V4_REUSED_PROFILES))
+        self.assertEqual((reuse["sourceSha"],reuse["runId"]),(driver.V4_PARENT_SOURCE,driver.V4_PARENT_RUN))
+        self.assertFalse(reuse["relabeledAsCurrentSourcePass"])
+    def test_v4_same_source_correction_keeps_targeted_profiles_and_original_witness(self):
+        value=operational_v4_request()
+        pins=copy.deepcopy(driver.STAGE_PINS)
+        pins["priorRunIds"].append("99998")
+        value.update(round=5,lifetimeOperatorRound=6,profiles=["dependency"],priorRunIds=pins["priorRunIds"])
+        self.assertIsNone(value["sourceWitness"]["corrective"])
+        facts=self.finalize(value,pins)
+        self.assertEqual(facts["coverage"],"affected_profiles_with_admission_verified_historical_reuse")
+        self.assertEqual(facts["affectedProfiles"],["dependency"])
+        self.assertEqual(facts["sourceWitness"],value["sourceWitness"])
+
+
+
+
+class CheckoutClosurePolicyTests(unittest.TestCase):
+    F5 = "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5"
+    COMMITS = sorted(("157d8c2bc3ea2fa183afdc11088e69690bf8e64e",
+        "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
+        "2691ebb4610d5ff9f836c1587be3d6a9703a23e1",
+        "61f924bdb7ed4f837096c87120087919ff0a6bdf",
+        "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
+        "dc2523e5a5c7a309517fd7fa834add938231d526", F5))
+    TAG = "e07a2f67d11717ed39aa2fa07bbe9342376ebfbf"
+    UPSTREAM = "dc2523e5a5c7a309517fd7fa834add938231d526"
+
+    def test_real_layout_uses_only_root_candidate_request(self):
+        self.assertFalse(Path(__file__).with_name("source-request.json").exists())
+        actual = driver.read_json((PIPELINE_ROOT / driver.REQUEST).read_bytes())
+        self.assertEqual(actual["schema"], driver.V4_SCHEMA)
+        self.assertEqual(actual["sourceSha"], driver.STAGE_PINS["sourceSha"])
+        self.assertEqual(driver.validate_request_v4(actual, driver.STAGE_PINS), actual)
+
+    def test_policy_version_preserves_historical45_and_repairs_only_doctor1(self):
+        old = {"schema": "openclaw.fork-source-validation-request.v3"}
+        new = {"schema": "openclaw.fork-source-validation-request.v4",
+               "profilePolicy": "five-gate-repair-v1"}
+        self.assertEqual(driver.profile_minutes_for()["doctor-1"], 45)
+        self.assertEqual(driver.profile_minutes_for(old)["doctor-1"], 45)
+        self.assertEqual(driver.profile_minutes_for(new)["doctor-1"], 60)
+        historical=driver.profile_minutes_for(old)
+        current=driver.profile_minutes_for(new)
+        self.assertEqual(historical,driver.PROFILE_MINUTES)
+        self.assertEqual(current,{"dependency":60,"types-tests":90,"types-scripts":90,
+            "models-1":60,"doctor-1":60,"compatibility":60,"pipeline-contracts":30})
+        changed = [key for key in historical.keys() & current.keys()
+                   if historical[key] != current[key]]
+        self.assertEqual(changed, ["doctor-1"])
+        for bad in ({"schema": "unknown"}, dict(new, profilePolicy="other"),
+                    dict(old, profilePolicy="five-gate-repair-v1")):
+            with self.assertRaises(driver.release.Refusal):driver.profile_minutes_for(bad)
+        table = {"total_count": 3, "jobs": [job("admission",1),job("final",1),job("source (doctor-1)",47)]}
+        with self.assertRaises(driver.release.Refusal):driver.observed_minutes(table,["doctor-1"],profile_request=old)
+        self.assertEqual(driver.observed_minutes(table,["doctor-1"],profile_request=new),49)
+
+    def test_one_early_admission_clock_bounds_checkout_to_remaining_not_new10(self):
+        epoch = int(NOW.timestamp())
+        for age,expected in ((0,10),(5*60,9),(10*60,4)):
+            env = {"GITHUB_JOB":"admission","SOURCE_ADMISSION_STARTED_EPOCH":str(epoch-age)}
+            with patch.object(driver.time,"time",return_value=epoch):
+                self.assertEqual(driver.product_checkout_minutes(env),expected)
+        for start in (None,"not-time",str(epoch+1),str(epoch-15*60),str(epoch-14*60)):
+            env = {"GITHUB_JOB":"admission"}
+            if start is not None:env["SOURCE_ADMISSION_STARTED_EPOCH"]=start
+            with patch.object(driver.time,"time",return_value=epoch),self.assertRaises(driver.release.Refusal):
+                driver.product_checkout_minutes(env)
+
+    def test_product_only_shallow_checkout_and_clock_precede_both_checkouts(self):
+        text = (PIPELINE_ROOT / driver.WORKFLOW).read_text()
+        admission = text.split("  admission:\n",1)[1].split("\n  source:",1)[0]
+        self.assertLess(admission.index("id: admission-clock"),admission.index("Checkout reviewed pipeline"))
+        self.assertLess(admission.index("id: checkout-budget"),admission.index("Checkout frozen product"))
+        self.assertIn("timeout-minutes: ${{ fromJSON(steps.checkout-budget.outputs.checkout_minutes) }}",admission)
+        self.assertEqual(text.count("path: source\n          fetch-depth: 1"),2)
+        self.assertEqual(text.count("path: pipeline\n          fetch-depth: 0"),2)
+        self.assertEqual(text.count("SOURCE_ADMISSION_STARTED_EPOCH: ${{ steps.admission-clock.outputs.started_epoch }}"),2)
+
+    def closure(self, *, shallow=True, remains_shallow=False, fetch_failure=None,
+                tag_mismatch=False, expire_after_fetch=False, request_policy=None, source_profile=False):
+        epoch = int(NOW.timestamp()); clock=[epoch]; reads=[]; acquisitions=[]
+        env={"PATH":os.environ["PATH"],"GITHUB_JOB":"admission",
+             "SOURCE_ADMISSION_STARTED_EPOCH":str(epoch)}
+        req={"schema":"openclaw.fork-source-validation-request.v3"}
+        if request_policy:req=request_policy
+        if source_profile:
+            env.update(GITHUB_JOB="source",SOURCE_PROFILE="doctor-1",SOURCE_JOB_STARTED_EPOCH=str(epoch))
+        inventory={"upstream":{"tag":"v2026.10.8","tagObject":self.TAG,"commit":self.UPSTREAM}}
+        def inspect(argv,**kwargs):
+            args=argv[3:];reads.append(args)
+            self.assertGreater(kwargs["timeout"],0)
+            self.assertEqual(kwargs["env"]["GIT_NO_LAZY_FETCH"],"1")
+            if args==["rev-parse","--is-shallow-repository"]:
+                return b"true" if (not acquisitions and shallow) or (acquisitions and remains_shallow) else b"false"
+            if args[:2]==["cat-file","-t"]:return b"tag" if args[-1]==self.TAG else b"commit"
+            if args==["rev-parse","FETCH_HEAD"]:return ("0"*40 if tag_mismatch else self.TAG).encode()
+            if args==["rev-parse",self.TAG+"^{commit}"]:return self.UPSTREAM.encode()
+            raise AssertionError("unexpected local Git verification")
+        def acquire(argv,cwd,child_env,context,phase,ordinal):
+            acquisitions.append((argv,dict(context)))
+            self.assertEqual(phase,"source-closure");self.assertEqual(ordinal,len(acquisitions)-1)
+            self.assertNotIn("GH_SOURCE_READ_TOKEN",child_env)
+            if expire_after_fetch:clock[0]=context["deadlineEpoch"]+1
+            return SimpleNamespace(returncode=1 if fetch_failure==ordinal else 0,timed_out=False)
+        with patch.dict(driver.os.environ,env,clear=True),patch.object(driver,"SOURCE",self.F5), \
+                patch.object(driver,"metadata",return_value=(req,{},"d"*64)), \
+                patch.object(driver.preflight,"inventory_at",return_value=(inventory,None)), \
+                patch.object(driver.preflight,"history_commits",return_value=sorted(set(self.COMMITS) |
+                    ({req["sourceSha"]} if req["schema"]==driver.V4_SCHEMA else set()))), \
+                patch.object(driver.subprocess,"check_output",side_effect=inspect), \
+                patch.object(driver,"phase_process",side_effect=acquire), \
+                patch.object(driver,"source_preflight") as preflight, \
+                patch.object(driver.time,"time",side_effect=lambda:clock[0]):
+            error=None
+            try:driver.fetch_closure(Path("pipeline"),Path("source"))
+            except driver.release.Refusal as caught:error=caught
+        return error,reads,acquisitions,preflight
+
+    def test_present_but_shallow_f5_acquires_all7_plus_exact_annotated_tag_once(self):
+        error,reads,fetches,preflight=self.closure()
+        self.assertIsNone(error);self.assertEqual(len(fetches),2);preflight.assert_called_once()
+        first=fetches[0][0];second=fetches[1][0]
+        self.assertIn("--unshallow",first)
+        self.assertEqual(first[-8:], ["https://github.com/fr-meyer/openclaw.git",*self.COMMITS])
+        self.assertEqual(second[-2:],["https://github.com/openclaw/openclaw.git","refs/tags/v2026.10.8"])
+        self.assertNotIn("--all",first+second);self.assertFalse(any("*" in arg for arg in first+second))
+        self.assertFalse(any("cat-file" in args and "-e" in args for args in reads))
+
+    def test_complete_product_repo_still_acquires_all_named_roots_without_unshallow(self):
+        error,_,fetches,_=self.closure(shallow=False)
+        self.assertIsNone(error);self.assertEqual(len(fetches),2);self.assertNotIn("--unshallow",fetches[0][0])
+
+    def test_failed_fetch_shallow_result_or_tag_mismatch_has_no_retry_or_preflight(self):
+        for kwargs,expected_calls in (({"fetch_failure":0},1),({"remains_shallow":True},1),
+                                      ({"tag_mismatch":True},2),({"fetch_failure":1},2)):
+            with self.subTest(kwargs=kwargs):
+                error,_,fetches,preflight=self.closure(**kwargs)
+                self.assertIsInstance(error,driver.release.Refusal);self.assertEqual(len(fetches),expected_calls)
+                preflight.assert_not_called()
+
+    def test_shared_deadline_expiry_after_fetch_refuses_before_more_verification(self):
+        error,reads,fetches,preflight=self.closure(expire_after_fetch=True)
+        self.assertIsInstance(error,driver.release.Refusal);self.assertEqual(len(fetches),1)
+        self.assertEqual(reads,[["rev-parse","--is-shallow-repository"]]);preflight.assert_not_called()
+
+    def test_source_closure_uses_record_policy_and_original_early_source_clock(self):
+        old={"schema":"openclaw.fork-source-validation-request.v3"}
+        new=operational_v4_request()
+        for req,minutes in ((old,45),(new,60)):
+            error,_,fetches,_=self.closure(request_policy=req,source_profile=True)
+            self.assertIsNone(error)
+            self.assertEqual(fetches[0][1]["deadlineEpoch"],int(NOW.timestamp())+minutes*60-60)
 
 
 if __name__=="__main__":unittest.main()

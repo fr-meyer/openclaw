@@ -6,12 +6,12 @@
   "source": {
     "baseCommit": "dc2523e5a5c7a309517fd7fa834add938231d526",
     "baseTree": "8e87ea041d88f72b77d83806b9ad05aa4f176d59",
-    "commit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
-    "tree": "c4b245211ceaab98b397945bb0177770f1052c90",
+    "commit": "84d9bd1c618708e9d5798a730d473ddecf99297a",
+    "tree": "ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4",
     "patches": [
       {
-        "commit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
-        "tree": "c4b245211ceaab98b397945bb0177770f1052c90"
+        "commit": "84d9bd1c618708e9d5798a730d473ddecf99297a",
+        "tree": "ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4"
       }
     ],
     "merge": {
@@ -32,6 +32,10 @@
         {
           "commit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
           "tree": "c4b245211ceaab98b397945bb0177770f1052c90"
+        },
+        {
+          "commit": "84d9bd1c618708e9d5798a730d473ddecf99297a",
+          "tree": "ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4"
         }
       ],
       "securitySource": {
@@ -40,8 +44,8 @@
       },
       "reconciliation": {
         "path": "custom-patches/reconciliation-2026.10.8.json",
-        "blob": "0fc0c4563f7a2dc0968cf9f58334d1d939e6fad0",
-        "sha256": "268c2bb2773f3221ed6c610870e5f970c7ad4d841cbc1d5753e9dcc5303c70e2"
+        "blob": "0fe9ebb97de15de40e62cd195dd63ab4de9decd1",
+        "sha256": "edeb18bbc6e19511c813fcbb863cb84980ce8c9d58e484f300e2a633227c9fab"
       }
     }
   },
@@ -66,7 +70,8 @@
       "ui/src/components/markdown-mermaid.test.ts",
       "ui/src/components/markdown-mermaid-native.browser.test.ts",
       "ui/src/components/markdown-mermaid.runtime.browser.test.ts",
-      "ui/src/e2e/chat-mermaid-load-errors.e2e.test.ts"
+      "ui/src/e2e/chat-mermaid-load-errors.e2e.test.ts",
+      "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts"
     ],
     "producerConsumer": [
       "test/body-parser-security.test.mjs",
@@ -90,7 +95,8 @@
       "src/agents/utility-completion.runtime.test.ts",
       "src/agents/model-catalog-scope.test.ts",
       "extensions/codex/src/app-server/provider-capabilities.test.ts",
-      "extensions/codex/src/app-server/inference-routing.test.ts"
+      "extensions/codex/src/app-server/inference-routing.test.ts",
+      "test/scripts/generate-npm-package-lock.test.ts"
     ]
   },
   "image": {

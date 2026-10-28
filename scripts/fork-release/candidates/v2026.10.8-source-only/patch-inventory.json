@@ -2,7 +2,7 @@
   "schema": "openclaw.fork-patch-inventory.v1",
   "repository": "fr-meyer/openclaw",
   "candidate": "v2026.10.8-source-only",
-  "manifestSha256": "802abd7c85ee123621d7cc96796ffcd0cf40d58c0d4db60f5f32304802a11f0b",
+  "manifestSha256": "39436d06465c651f63ded013530f91aaf549932dd32390d31b809f8982f527f0",
   "upstream": {
     "tag": "v2026.10.8",
     "tagObject": "e07a2f67d11717ed39aa2fa07bbe9342376ebfbf",
@@ -11,12 +11,12 @@
   },
   "patches": [
     {
-      "id": "remediation-2026.10.8-f5c198efedd7",
-      "originCommit": "2691ebb4610d5ff9f836c1587be3d6a9703a23e1",
+      "id": "five-gate-2026.10.8-84d9bd1c6187",
+      "originCommit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
       "disposition": "adapt",
-      "appliedCommit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
-      "rationale": "Retain the reviewed10.8 integration and original upstream/fork carry; apply only the approved dependency, Vitest patch, test-type and Doctor fixture successor. Reconcile every changed mode/blob including explicit versioned patch retirement. Source-only; prior execution and qualification are not transferred.",
-      "evidenceSha256": "268c2bb2773f3221ed6c610870e5f970c7ad4d841cbc1d5753e9dcc5303c70e2",
+      "appliedCommit": "84d9bd1c618708e9d5798a730d473ddecf99297a",
+      "rationale": "Retain the reviewed integration and security floors; narrow the required-generation and owned-loopback fixtures, add diagnostic-only npm-lock attribution and its focused regressions. Exact unchanged runtime/dependency bytes and explicitly reviewed carry-row transitions are source equivalence, not relabeled execution.",
+      "evidenceSha256": "edeb18bbc6e19511c813fcbb863cb84980ce8c9d58e484f300e2a633227c9fab",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",
         "extensions/workboard/src/gateway.test.ts",
@@ -125,7 +125,7 @@
           "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
           "sourceBlob": "6d9ba0cbc9f375645f5429937a2ce0b68c1af19f",
           "upstreamBlob": null,
-          "candidateBlob": "0fc0c4563f7a2dc0968cf9f58334d1d939e6fad0"
+          "candidateBlob": "0fe9ebb97de15de40e62cd195dd63ab4de9decd1"
         },
         {
           "path": "docs/cli/gateway/query.md",
@@ -1163,6 +1163,15 @@
           "candidateBlob": "4aa9aee8e12a71f5aa699fd2f36accd983c5f77e"
         },
         {
+          "path": "scripts/generate-npm-package-lock.mts",
+          "boundary": "tooling",
+          "sourceCommit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+          "sourceTree": "c4b245211ceaab98b397945bb0177770f1052c90",
+          "sourceBlob": "7238f62c06835eea41cdc9ad4a2e823a456c1762",
+          "upstreamBlob": "7238f62c06835eea41cdc9ad4a2e823a456c1762",
+          "candidateBlob": "975ae34594d2b358ff41d605461c257fdb43fb87"
+        },
+        {
           "path": "scripts/lib/ci-changed-node-test-plan.mts",
           "boundary": "tooling",
           "sourceCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
@@ -1241,7 +1250,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "9a920b423a0106e5781773d5e113e22b1b05f669",
           "upstreamBlob": "568293e5b9ca0f7e9920f4307fc212ce6266504e",
-          "candidateBlob": "9a920b423a0106e5781773d5e113e22b1b05f669"
+          "candidateBlob": "d1c94ee888c4a96d5237b885a4a961e9370e221c"
         },
         {
           "path": "src/agents/subagents/registry/subagent-registry-persistence.ts",
@@ -2123,7 +2132,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "989b5bf8a497427a081b441afdb4e27d13114d7e",
           "upstreamBlob": "35c8cf6437a6f5bda45847863551535810702185",
-          "candidateBlob": "989b5bf8a497427a081b441afdb4e27d13114d7e"
+          "candidateBlob": "909afc00db8db03b99d763d94ce36bf8d8f9f6ee"
         },
         {
           "path": "test/scripts/lint-suppressions.test.ts",
@@ -2213,7 +2222,7 @@
           "sourceTree": "51c0dbf2ea2bd80f09a7069296d132f564febcf4",
           "sourceBlob": "afc3283afd633e371c003d2c058f3c2a747b0167",
           "upstreamBlob": null,
-          "candidateBlob": "7b8d9b401730daea486a8e256a6505eb67ca97b4"
+          "candidateBlob": "9fd7dc20312f7e904adbacabc9fa4a0aa48085b9"
         },
         {
           "path": "test/vitest-projects-config.test-support.ts",

@@ -265,6 +265,50 @@ class V108MergeSourceTests(unittest.TestCase):
                      mutate_ledger=lambda x: x.update(paths=[r for r in x["paths"] if r["path"] != name])),
                      "coverage")
 
+    def test_approved_fixture_generator_successor_paths_pass_complete_graph(self):
+        f = self.fixture
+        writes = {
+            "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts": "owned fixture correction\n",
+            "scripts/generate-npm-package-lock.mts": "owned generator correction\n",
+            "test/scripts/generate-npm-package-lock.test.ts": "owned generator regression\n",
+        }
+        source = f.remediation_source(writes=writes)
+        release.check_source_graph(source, f.root)
+        self.assertEqual(json.loads(git(f.root, "show", f.integration + ":" + LEDGER)), f.ledger)
+        self.assertIs(f.manifest108["productionEligible"], False)
+
+    def test_approved_fixture_generator_paths_do_not_authorize_neighbors(self):
+        for name in (
+            "src/agents/subagents/registry/subagent-control.accepted-stop.ts",
+            "scripts/generate-npm-package-lock-other.mts",
+            "test/scripts/generate-npm-package-lock-other.test.ts",
+        ):
+            with self.subTest(path=name):
+                self.refused(self.fixture.remediation_source(writes={name: "unreviewed neighboring change\n"}),
+                             "unreviewed path")
+
+    def test_approved_fixture_generator_paths_keep_mode_blob_and_ledger_guards(self):
+        for name in (
+            "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+            "scripts/generate-npm-package-lock.mts",
+            "test/scripts/generate-npm-package-lock.test.ts",
+        ):
+            with self.subTest(path=name, guard="mode"):
+                self.refused(self.fixture.remediation_source(writes={name: "owned correction\n"}, modes=(name,)),
+                             "mode changed")
+            with self.subTest(path=name, guard="coverage"):
+                self.refused(self.fixture.remediation_source(writes={name: "owned correction\n"},
+                             mutate_ledger=lambda x: x.update(paths=[r for r in x["paths"] if r["path"] != name])),
+                             "coverage")
+            with self.subTest(path=name, guard="disposition"):
+                self.refused(self.fixture.remediation_source(writes={name: "owned correction\n"},
+                             mutate_ledger=lambda x: next(r for r in x["paths"] if r["path"] == name).update(
+                                 disposition="CARRIED_EXACT")), "disposition or mode")
+            with self.subTest(path=name, guard="blob"):
+                self.refused(self.fixture.remediation_source(writes={name: "owned correction\n"},
+                             mutate_ledger=lambda x: next(r for r in x["paths"] if r["path"] == name)["result"].update(
+                                 blob="0" * 40)), "mode/blob changed")
+
     def test_remediation_disposition_is_not_allowed_on_integration_or_other_paths(self):
         f = self.fixture
         self.changed_ledger_refused(lambda x: next(r for r in x["paths"] if r["path"] == SECURITY).update(

@@ -378,6 +378,9 @@ V108_REMEDIATION_PATHS = {
     "src/gateway/server-managed-task-flow-runtime.mergeguez-parity.test.ts",
     "src/gateway/server-managed-task-flow-runtime.mergeguez-recovery.test.ts",
     "src/commands/doctor-config-preflight.process.test.ts",
+    "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+    "scripts/generate-npm-package-lock.mts",
+    "test/scripts/generate-npm-package-lock.test.ts",
     "test/body-parser-security.test.mjs", "test/v108-remediation-security.test.mjs",
 }
 

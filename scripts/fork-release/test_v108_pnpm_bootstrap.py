@@ -1,6 +1,7 @@
 """Bootstrap boundary with inert files and mocked runtimes; no package execution."""
 
 from contextlib import redirect_stdout
+from datetime import datetime, timezone
 import errno
 import hashlib
 import importlib.util
@@ -15,7 +16,12 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-SPEC = importlib.util.spec_from_file_location("v108_bootstrap_driver", Path(__file__).with_name("source_validation_v108.py"))
+HERE = Path(__file__).resolve().parent
+DRIVER_PATH = HERE / "source_validation_v108.py"
+if not DRIVER_PATH.exists():
+    DRIVER_PATH = HERE.parent / "pipeline/scripts/fork-release/source_validation_v108.py"
+INPUT_PIPELINE = DRIVER_PATH.parents[2]
+SPEC = importlib.util.spec_from_file_location("v108_bootstrap_driver", DRIVER_PATH)
 driver = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(driver)
 
@@ -24,6 +30,15 @@ class PnpmBootstrapTests(unittest.TestCase):
     def invoke_main(self, mutation=None):
         """Exercise the registered run path, replacing every external runtime."""
         calls, output, failure = [], io.StringIO(), None
+        # Genuine tracked closed controls; only external admissions are stubbed.
+        req, manifest, manifest_hash = driver.metadata(INPUT_PIPELINE)
+        self.assertEqual(req["schema"], driver.V4_SCHEMA)
+        self.assertEqual(req["sourceSha"], driver.STAGE_PINS["sourceSha"])
+        self.assertEqual(req["sourceTree"], driver.STAGE_PINS["sourceTree"])
+        profile = "types-tests"
+        self.assertIn(profile, driver.profiles_for(req))
+        fixed_now = datetime(2026, 10, 29, 0, 10, tzinfo=timezone.utc)
+        epoch = int(fixed_now.timestamp())
         package = {"name": "pnpm", "version": "12.15.0", "type": "module",
                    "bin": {"pnpm": "pnpm", "pn": "pn", "pnpx": "pnpx", "pnx": "pnx"},
                    "optionalDependencies": {"@pnpm/exe.linux-x64": "12.15.0"}}
@@ -108,7 +123,7 @@ class PnpmBootstrapTests(unittest.TestCase):
                 else:
                     calls.append(("project-command", argv, kwargs))
                     self.assertEqual(Path(argv[0]), toolchain_seen[0] / "node_modules/pnpm/pnpm")
-                    self.assertEqual(argv[1:], ["tsgo:prod"])
+                    self.assertEqual(argv[1:], ["tsgo:test"])
                     self.assertEqual(kwargs["cwd"], source)
                 return SimpleNamespace(returncode=0)
 
@@ -125,27 +140,33 @@ class PnpmBootstrapTests(unittest.TestCase):
                 return "v24.22.0\n" if mutation == "node-version" else "v24.22.1\n"
 
             def phase_bridge(argv, cwd, env, context, phase, ordinal, **kwargs):
+                self.assertEqual(context["request"], req)
+                self.assertEqual(context["profile"], profile)
+                self.assertEqual(context["deadlineEpoch"], epoch - 30 + driver.V4_PROFILE_MINUTES[profile] * 60 - 60)
                 result = runner(argv, cwd=cwd, env=env, check=False)
                 result.timed_out = False
                 return result
 
             env = {"PATH": str(runtimes), "GITHUB_EVENT_PATH": str(event),
+                   "SOURCE_JOB_STARTED_EPOCH": str(epoch - 30),
+                   "SOURCE_DEADLINE_EPOCH": str(int(driver.timestamp(driver.V4_DEADLINE).timestamp())),
                    "GITHUB_TOKEN": "never-forward-this", "npm_lifecycle_event": "postinstall"}
-            req = {"round": 2, "sourceWitness": None}
             with patch.dict(os.environ, env, clear=True), redirect_stdout(output), \
                  patch.object(sys, "argv", ["source_validation_v108.py", "run", "--pipeline-dir", str(pipeline),
-                                            "--source-dir", str(source), "--profile", "types-production"]), \
+                                            "--source-dir", str(source), "--profile", profile]), \
                  patch.object(driver, "validate_event"), \
-                 patch.object(driver, "metadata", return_value=(req, {}, "d" * 64)), \
-                 patch.object(driver, "code_binding"), patch.object(driver, "deadline_check"), \
-                 patch.object(driver, "profile_deadline", return_value=9999999999), \
+                 patch.object(driver, "metadata", return_value=(req, manifest, manifest_hash)), \
+                 patch.object(driver, "code_binding"), \
+                 patch.object(driver, "datetime", wraps=datetime) as clock, \
+                 patch.object(driver.time, "time", return_value=epoch), \
+                 patch.object(driver, "verify_source_equivalence_v4", return_value={"syntheticBoundary": True}), \
                  patch.object(driver, "phase_process", side_effect=phase_bridge), \
                  patch.object(driver, "source_preflight"), patch.object(driver, "git", return_value=b""), \
-                 patch.object(driver, "commands", return_value=[["pnpm", "tsgo:prod"]]), \
                  patch.object(driver, "resource_check", return_value={"logicalCpus": 4}), \
                  patch.object(driver, "PNPM_BOOTSTRAP_FILES", pins), \
                  patch.object(driver.subprocess, "run", side_effect=runner), \
                  patch.object(driver.subprocess, "check_output", side_effect=version):
+                clock.now.return_value = fixed_now
                 try:
                     self.assertEqual(driver.main(), 0)
                 except (driver.release.Refusal, OSError, subprocess.CalledProcessError) as error:
@@ -203,11 +224,16 @@ class PnpmBootstrapTests(unittest.TestCase):
                 self.assertFalse(any(name.startswith("project-") for name, _, _ in calls))
                 last = next(r for r in reversed(records) if "bootstrapPhase" in r)
                 self.assertEqual(set(last), {"campaignId", "bootstrapPhase", "status", "errorClass",
-                                             "errno", "resolvedWithinOwnedToolchain", "exitCode", "signal"})
-                self.assertEqual(records[-1]["phase"], "profile")
+                                             "errno", "resolvedWithinOwnedToolchain", "exitCode", "signal",
+                                             "sourceSha", "sourceTree"})
+                self.assertEqual(last["sourceSha"], driver.STAGE_PINS["sourceSha"])
+                self.assertEqual(last["sourceTree"], driver.STAGE_PINS["sourceTree"])
+                profile_record = next(r for r in reversed(records) if r.get("phase") == "profile")
+                self.assertEqual(profile_record["status"], "refused")
+                self.assertFalse(profile_record["productionAuthorized"])
+                self.assertFalse(profile_record["imageBuilt"])
+                self.assertEqual(records[-1]["schema"], "openclaw.v108.admission-failure.v1")
                 self.assertEqual(records[-1]["status"], "refused")
-                self.assertFalse(records[-1]["productionAuthorized"])
-                self.assertFalse(records[-1]["imageBuilt"])
                 self.assertEqual(last["status"], "refused")
                 self.assertNotIn("never", json.dumps(records))
                 if mutation == "version-oserror":
