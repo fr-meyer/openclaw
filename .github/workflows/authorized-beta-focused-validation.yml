@@ -19,10 +19,6 @@ on:
         description: Reviewed public source manifest SHA256
         required: true
         type: string
-      exact_manifest_sha:
-        description: Reviewed synthetic exact worker source manifest SHA256
-        required: true
-        type: string
       mission_id:
         description: Nonsecret one-mission ledger identity
         required: true
@@ -52,13 +48,21 @@ jobs:
       OCV_EXPECTED_TREE: ${{ inputs.expected_tree }}
       OCV_WORKFLOW_SHA: ${{ inputs.workflow_sha }}
       OCV_SOURCE_MANIFEST_SHA: ${{ inputs.source_manifest_sha }}
-      OCV_EXACT_MANIFEST_SHA: ${{ inputs.exact_manifest_sha }}
       OCV_MISSION_ID: ${{ inputs.mission_id }}
     steps:
       - name: Admit exact utility dispatch
         shell: bash
         run: |
           set -euo pipefail
+          python3 -I -S -B - <<'OCV_JOB_CLOCK'
+          import json,os,time
+          raw=json.dumps({'schema':'ocv-job-clock-v1','monotonicNs':time.monotonic_ns()},sort_keys=True,separators=(',',':')).encode('ascii')
+          path=os.path.join(os.environ['RUNNER_TEMP'],'ocv-job-clock.json')
+          fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          try:
+              os.write(fd,raw);os.fsync(fd)
+          finally:os.close(fd)
+          OCV_JOB_CLOCK
           [[ "$GITHUB_REPOSITORY" == fr-meyer/openclaw ]]
           [[ "$GITHUB_REF" == refs/heads/retained-verifier-prerequisites ]]
           [[ "$GITHUB_RUN_ATTEMPT" == 1 ]]
@@ -66,7 +70,6 @@ jobs:
           [[ "$OCV_EXPECTED_TREE" =~ ^[a-f0-9]{40}$ ]]
           [[ "$OCV_WORKFLOW_SHA" =~ ^[a-f0-9]{64}$ ]]
           [[ "$OCV_SOURCE_MANIFEST_SHA" =~ ^[a-f0-9]{64}$ ]]
-          [[ "$OCV_EXACT_MANIFEST_SHA" =~ ^[a-f0-9]{64}$ ]]
           [[ "$OCV_MISSION_ID" =~ ^[a-f0-9]{32}$ ]]
           [[ "$GITHUB_SHA" == "$OCV_EXPECTED_SOURCE" ]]
       - name: Checkout only reviewed utility sources
@@ -79,18 +82,12 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             .github/utilities/retained-verifier
-            .github/utilities/retained-verifier-exact-worker
             .github/workflows/authorized-beta-focused-validation.yml
       - name: Build and prove synthetic Linux isolation
         shell: bash
         run: |
           set -euo pipefail
           python3 -I -S -B .github/utilities/retained-verifier/host/ci_host.py
-      - name: Prove exact worker on Linux with synthetic input
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo -n env RUNNER_TEMP="$RUNNER_TEMP" GITHUB_REPOSITORY="$GITHUB_REPOSITORY" GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" GITHUB_RUN_ID="$GITHUB_RUN_ID" GITHUB_SHA="$GITHUB_SHA" OCV_EXACT_MANIFEST_SHA="$OCV_EXACT_MANIFEST_SHA" /usr/bin/python3 -I -S -B .github/utilities/retained-verifier-exact-worker/host_linux.py
       - name: Attest public helper and Linux proof
         if: success()
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
@@ -98,7 +95,7 @@ jobs:
           subject-path: |
             ${{ runner.temp }}/ocv-ci-artifacts/public-tooling.tar.gz
             ${{ runner.temp }}/ocv-ci-artifacts/host-result.json
-            ${{ runner.temp }}/ocv-ci-artifacts/exact-worker-result.json
+            ${{ runner.temp }}/ocv-ci-artifacts/extra-tool-catalog.json
       - name: Retain bounded public proof and failure evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -107,11 +104,11 @@ jobs:
           path: |
             ${{ runner.temp }}/ocv-ci-artifacts/public-tooling.tar.gz
             ${{ runner.temp }}/ocv-ci-artifacts/host-result.json
-            ${{ runner.temp }}/ocv-ci-artifacts/exact-worker-result.json
             ${{ runner.temp }}/ocv-ci-artifacts/host-custody.json
             ${{ runner.temp }}/ocv-ci-artifacts/host-stdout.bin
             ${{ runner.temp }}/ocv-ci-artifacts/host-stderr.bin
             ${{ runner.temp }}/ocv-ci-artifacts/negative-stdout.bin
             ${{ runner.temp }}/ocv-ci-artifacts/negative-stderr.bin
+            ${{ runner.temp }}/ocv-ci-artifacts/extra-tool-catalog.json
           if-no-files-found: error
           retention-days: 1

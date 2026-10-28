@@ -4,7 +4,7 @@ import re
 
 HOST_PACKAGES=('mkosi=20.2-1','qemu-system-x86','fdisk','debian-archive-keyring','curl','gpgv',
                'systemd-boot','kmod','e2fsprogs')
-SUITES=('archive','outer','native','runtime','apt','build','bootstrap','host','consumer')
+SUITES=('archive','outer','native','runtime','apt','build','bootstrap','host','consumer','integrated')
 
 
 class Refusal(ValueError):pass
@@ -79,7 +79,9 @@ def dpkg_query(kind):
            'depmod_usr_owner':('--search','/usr/sbin/depmod'),
            'depmod_sbin_owner':('--search','/sbin/depmod'),
            'mkfs_usr_owner':('--search','/usr/sbin/mkfs.ext4'),
-           'mkfs_sbin_owner':('--search','/sbin/mkfs.ext4')}
+           'mkfs_sbin_owner':('--search','/sbin/mkfs.ext4'),
+           'mke2fs_usr_owner':('--search','/usr/sbin/mke2fs'),
+           'mke2fs_sbin_owner':('--search','/sbin/mke2fs')}
     require(kind in table,'dpkg_kind');return ('/usr/bin/dpkg-query',)+table[kind]
 
 
@@ -101,12 +103,12 @@ def own_mkosi_outputs(project, uid, gid):
     owner=str(uid)+':'+str(gid)
     return ('/usr/bin/sudo','-n','--','/usr/bin/chown','--from='+owner,'--','0:0',
             *(project_path(project,'out/'+name) for name in
-              ('ocv-test.raw','kernel.bin','initrd.img')))
+              ('ocv-test.raw','kernel.bin','initrd.img','integrated-test.raw')))
 
 
 def freeze_public_outputs(project):
     return ('/usr/bin/sudo','-n','--','/usr/bin/chmod','0444','--')+tuple(
-        project_path(project,'out/'+name)for name in ('ocv-test.raw','kernel.bin','initrd.img'))
+        project_path(project,'out/'+name)for name in ('ocv-test.raw','kernel.bin','initrd.img','integrated-test.raw'))
 
 
 def python_tests(source_root,suite):

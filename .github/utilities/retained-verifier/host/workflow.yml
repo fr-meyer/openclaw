@@ -54,6 +54,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 -I -S -B - <<'OCV_JOB_CLOCK'
+          import json,os,time
+          raw=json.dumps({'schema':'ocv-job-clock-v1','monotonicNs':time.monotonic_ns()},sort_keys=True,separators=(',',':')).encode('ascii')
+          path=os.path.join(os.environ['RUNNER_TEMP'],'ocv-job-clock.json')
+          fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          try:
+              os.write(fd,raw);os.fsync(fd)
+          finally:os.close(fd)
+          OCV_JOB_CLOCK
           [[ "$GITHUB_REPOSITORY" == fr-meyer/openclaw ]]
           [[ "$GITHUB_REF" == refs/heads/retained-verifier-prerequisites ]]
           [[ "$GITHUB_RUN_ATTEMPT" == 1 ]]
@@ -86,6 +95,7 @@ jobs:
           subject-path: |
             ${{ runner.temp }}/ocv-ci-artifacts/public-tooling.tar.gz
             ${{ runner.temp }}/ocv-ci-artifacts/host-result.json
+            ${{ runner.temp }}/ocv-ci-artifacts/extra-tool-catalog.json
       - name: Retain bounded public proof and failure evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -99,5 +109,6 @@ jobs:
             ${{ runner.temp }}/ocv-ci-artifacts/host-stderr.bin
             ${{ runner.temp }}/ocv-ci-artifacts/negative-stdout.bin
             ${{ runner.temp }}/ocv-ci-artifacts/negative-stderr.bin
+            ${{ runner.temp }}/ocv-ci-artifacts/extra-tool-catalog.json
           if-no-files-found: error
           retention-days: 1

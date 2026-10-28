@@ -29,7 +29,9 @@ SOURCE_MANIFEST=ROOT+'/PUBLIC-SOURCE-MANIFEST.json'
 WORKFLOW='fr-meyer/openclaw/.github/workflows/authorized-beta-focused-validation.yml@refs/heads/retained-verifier-prerequisites'
 TOOLS={'python':'/usr/bin/python3.11','systemd':'/usr/lib/systemd/systemd','gpgv':'/usr/bin/gpgv',
        'busctl':'/usr/bin/busctl','systemctl':'/usr/bin/systemctl','systemd-run':'/usr/bin/systemd-run',
-       'selinuxenabled':'/usr/sbin/selinuxenabled','dpkg-query':'/usr/bin/dpkg-query'}
+       'selinuxenabled':'/usr/sbin/selinuxenabled','dpkg-query':'/usr/bin/dpkg-query',
+       'mount':'/usr/bin/mount','umount':'/usr/bin/umount','findmnt':'/usr/bin/findmnt',
+       'blkid':'/usr/sbin/blkid','git':'/usr/bin/git'}
 COMPILER={'compiler':'/usr/bin/gcc-12','cc1':'/usr/lib/gcc/x86_64-linux-gnu/12/cc1',
           'collect2':'/usr/lib/gcc/x86_64-linux-gnu/12/collect2','assembler':'/usr/bin/as','linker':'/usr/bin/ld'}
 SHOW_FORMAT='${binary:Package}\t${Version}\t${Architecture}\t${db:Status-Status}\n'
@@ -267,7 +269,9 @@ def tool_row(role,path,ops,installed,show,lists,indexed,alias_evidence=None):
     # execution on the fixed /usr path and prove each registered alias is the
     # same immutable inode, owned by the exact signed-index package.
     aliases={'/usr/lib/systemd/systemd':'/lib/systemd/systemd',
-             '/usr/bin/systemctl':'/bin/systemctl'}
+             '/usr/bin/systemctl':'/bin/systemctl','/usr/bin/mount':'/bin/mount',
+             '/usr/bin/umount':'/bin/umount','/usr/bin/findmnt':'/bin/findmnt',
+             '/usr/sbin/blkid':'/sbin/blkid'}
     accepted=(path,aliases[path]) if path in aliases else (path,)
     listed=[(name,registered) for name,paths in lists.items() for registered in accepted if registered in paths]
     need(1<=len(listed)<=len(accepted) and len({name for name,_ in listed})==1,'build_entry.tool_filelist')
@@ -283,7 +287,7 @@ def tool_row(role,path,ops,installed,show,lists,indexed,alias_evidence=None):
         need(len(owner)==1 and ': 'in owner[0],'build_entry.tool_owner')
         binary,owned=owner[0].split(': ',1)
         need(owned==registered and binary==show[name]['binaryName'],'build_entry.tool_owner')
-        if registered!=path:
+        if registered!=path or role in ('mount','umount','findmnt','blkid','git'):
             projections.append({'role':role,'executionPath':path,'packagePath':registered,
                 'canonicalPath':original['sourcePath'],'dev':original['dev'],'ino':original['ino'],
                 'executionAliasProofSha256':original['aliasProofSha256'],
@@ -638,7 +642,8 @@ class NativeBuildOps:
             need(re.fullmatch('[a-z0-9][a-z0-9+.-]{0,80}(?::(?:amd64|all))?',argv[2]),'build_entry.package_arg')
             return 4*1024**2,8192
         if len(argv)==3 and argv[:2]==('/usr/bin/dpkg-query','--search'):
-            need((argv[2]=='/bin/systemctl' or argv[2].startswith(('/usr/','/lib/','/lib64/','/boot/')))
+            need((argv[2] in ('/bin/systemctl','/bin/mount','/bin/umount','/bin/findmnt','/sbin/blkid')
+                 or argv[2].startswith(('/usr/','/lib/','/lib64/','/boot/')))
                  and '..'not in argv[2].split('/'),
                  'build_entry.owner_arg');return 8192,8192
         if len(argv)==2 and argv[0]=='/usr/bin/ldd':

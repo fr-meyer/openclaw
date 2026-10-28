@@ -19,7 +19,7 @@ class NativeEvidenceIO:
   need(signal.getitimer(signal.ITIMER_REAL)==(0.0,0.0),'boot.outer_timer_present')
   previous=signal.getsignal(signal.SIGALRM)
   def expired(_signal,_frame):raise Refusal('boot.wrapper_deadline')
-  remaining=self.started+900-self.monotonic();need(remaining>0,'boot.wrapper_deadline')
+  remaining=self.started+2000-self.monotonic();need(remaining>0,'boot.wrapper_deadline')
   signal.signal(signal.SIGALRM,expired);signal.setitimer(signal.ITIMER_REAL,remaining)
   try:yield
   finally:
@@ -30,7 +30,7 @@ class NativeEvidenceIO:
   try:
    out=bytearray()
    while len(out)<=cap:
-    need(cleanup or time.monotonic()<self.started+900,'boot.wrapper_deadline')
+    need(cleanup or time.monotonic()<self.started+2000,'boot.wrapper_deadline')
     raw=os.read(fd,min(65536,cap+1-len(out)))
     if not raw:break
     out.extend(raw)
@@ -47,7 +47,7 @@ class NativeEvidenceIO:
   try:
    opened=os.fstat(fd);out=bytearray()
    while len(out)<=cap:
-    need(time.monotonic()<self.started+900,'boot.wrapper_deadline')
+    need(time.monotonic()<self.started+2000,'boot.wrapper_deadline')
     raw=os.read(fd,min(65536,cap+1-len(out)))
     if not raw:break
     out.extend(raw)
@@ -88,7 +88,7 @@ class NativeEvidenceIO:
  def command(self,argv,timeout=5):
   need(self.commands is not None,'boot.readonly_unbound')
   if tuple(argv)!=('/usr/bin/systemctl','poweroff','--no-block'):
-   remaining=self.started+900-self.monotonic();need(remaining>0,'boot.wrapper_deadline');timeout=min(timeout,remaining)
+   remaining=self.started+2000-self.monotonic();need(remaining>0,'boot.wrapper_deadline');timeout=min(timeout,remaining)
   return self.commands.command(tuple(argv),timeout)
  def claim_boot(self,session):
   need(self.own is not None and not self.claimed,'boot.claim_once')

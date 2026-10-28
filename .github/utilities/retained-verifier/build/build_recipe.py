@@ -25,7 +25,7 @@ REQUIRED_PACKAGES = frozenset((
     'systemd', 'systemd-sysv', 'libsystemd-shared', 'libsystemd0',
     'python3.11', 'gcc-12', 'binutils', 'libc6-dev', 'initramfs-tools',
     'apt', 'gpgv', 'debian-archive-keyring', 'dbus', 'util-linux',
-    'selinux-utils',
+    'selinux-utils', 'mount', 'e2fsprogs', 'udev', 'git',
 ))
 
 
@@ -159,8 +159,8 @@ ExecStart=/usr/bin/python3.11 -I -S -B /opt/ocv/source/bootstrap/guest_boot.py
 StandardInput=null
 StandardOutput=journal+console
 StandardError=journal+console
-TimeoutStartSec=900
-RuntimeMaxSec=900
+TimeoutStartSec=2000
+RuntimeMaxSec=2000
 RemainAfterExit=no
 
 [Install]

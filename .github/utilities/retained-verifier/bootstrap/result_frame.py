@@ -21,15 +21,23 @@ def custody_files(directory,read,context_raw=None,compatibility_raw=None,observa
   files.append({'role':role,'bytes':len(raw),'sha256':sha(raw),'base64':base64.b64encode(raw).decode(),
                 'sourceBytes':meta['bytes'],'sourceSha256':meta['sha256'],'truncated':meta['truncated']})
  extras=dict(observations or {})
- need(set(extras)<=set(EXTRA_CAPS)-{'controller-context','consumer-compatibility'},'boot.custody_extra_role')
+ extra_caps=dict(EXTRA_CAPS);binary_roles={'worker-stderr-raw'};raw_cap=131072
+ if any(role.startswith('integrated-') for role in extras):
+  import integrated_capture
+  need(set(integrated_capture.ROLE_CAPS)<=set(extras),'boot.integrated_custody_incomplete')
+  extra_caps.update(integrated_capture.ROLE_CAPS)
+  binary_roles.update(integrated_capture.BINARY_ROLES)
+  raw_cap=integrated_capture.RAW_CAP
+ need(set(extras)<=set(extra_caps)-{'controller-context','consumer-compatibility'},'boot.custody_extra_role')
  if context_raw is not None:extras['controller-context']=context_raw
  if compatibility_raw is not None:extras['consumer-compatibility']=compatibility_raw
  for role,raw in extras.items():
   need(type(raw)is bytes,'boot.custody_extra_bytes')
-  cap=EXTRA_CAPS[role]
-  if role!='worker-stderr-raw':decode(raw,cap)
+  cap=extra_caps[role]
+  if role not in binary_roles:decode(raw,cap)
+  if role.startswith('integrated-'):need(len(raw)<=cap,'boot.integrated_role_truncated')
   view=raw if len(raw)<=cap else raw[:cap//2]+raw[-(cap-cap//2):]
-  total+=len(view);need(total<=131072,'boot.custody_total')
+  total+=len(view);need(total<=raw_cap,'boot.custody_total')
   files.append({'role':role,'bytes':len(view),'sha256':sha(view),
     'base64':base64.b64encode(view).decode(),'sourceBytes':len(raw),'sourceSha256':sha(raw),'truncated':len(raw)>cap})
  return {'schema':'ocv.custody.v1','rawBytes':total,'files':files}
@@ -59,6 +67,7 @@ class Emitter:
   value={'schema':'ocv.ci-result.v1','sessionId':self.plan.markers['ocv.session'],'runIdentity':self.plan.build['runIdentity'],
    'sourceManifestSha256':self.plan.markers['ocv.source'],'buildControlSha256':self.plan.markers['ocv.build'],
    'status':status,'adapterResult':result,'custody':custody}
-  raw=canonical(value);need(len(raw)<=262144,'boot.envelope_cap')
-  frame=b'OCV_RESULT_V1:'+base64.b64encode(raw)+b'\n';need(len(frame)<=1048576,'boot.serial_cap');self.send(frame)
+  integrated=any(row['role'].startswith('integrated-') for row in custody['files'])
+  raw=canonical(value);need(len(raw)<=(4*1024*1024 if integrated else 262144),'boot.envelope_cap')
+  frame=b'OCV_RESULT_V1:'+base64.b64encode(raw)+b'\n';need(len(frame)<=(6*1024*1024 if integrated else 1048576),'boot.serial_cap');self.send(frame)
   return value

@@ -5,7 +5,7 @@ from guard import Refusal,need,sha
 
 
 def emit_once(ops,raw):
- need(not ops.claimed and type(raw)is bytes and len(raw)<=1048576,'boot.serial_once_or_cap')
+ need(not ops.claimed and type(raw)is bytes and len(raw)<=6*1024*1024,'boot.serial_once_or_cap')
  ops.claimed=True;fd=None;phase='identity';written=0
  try:
   identity=ops.identity();need(identity['char']is True and identity['uid']==0 and identity['rdev']==os.makedev(4,64) and
@@ -31,7 +31,7 @@ class NativeSerialOps:
  def __init__(self,owner):
   from native_io import NativeEvidenceIO
   need(type(owner)is NativeEvidenceIO and owner.own is not None,'boot.serial_owner')
-  self.claimed=False;self.deadline=owner.started+900
+  self.claimed=False;self.deadline=owner.started+2000
  def identity(self):
   p=Path('/dev/ttyS0');s=p.lstat()
   return {'char':stat.S_ISCHR(s.st_mode),'uid':s.st_uid,'rdev':s.st_rdev,'canonical':str(p.resolve())==str(p),

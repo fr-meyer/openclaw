@@ -18,6 +18,7 @@ import stat
 import sys
 import tarfile
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -45,6 +46,7 @@ import archive_policy as policy
 import archive_guard as apt
 import guard_project
 import build_recipe as build
+import integrated_fixture
 
 C=h.canonical
 SHA=h.sha
@@ -92,7 +94,18 @@ class SyntheticCommands:
  def seal_command(self,permit,role,arguments,*,cwd,environment):
   assert permit is self.fixture.permit
   if role=='mkosi_build':argv=('/usr/bin/sudo','-n','--')+build.mkosi_argv(arguments['project'])
-  elif role=='qemu_once':argv=build.qemu_argv(arguments['bound'],arguments['session'])
+  elif role=='qemu_once':
+   # Pure command model uses a relocated source-owned CI project; no command
+   # is run and no NativePermit accepts this temporary fixture directory.
+   original=arguments['bound']['directory'];fixed=integrated_fixture.project_path(self.fixture.mission)+'/out'
+   base=build.qemu_argv(arguments['bound'],arguments['session'])
+   argv=integrated_fixture.qemu_argv(tuple(a.replace(original,fixed) for a in base),
+    directory=fixed,test_record=arguments['test_record'])
+   argv=tuple(a.replace(fixed,original) for a in argv)
+  elif role=='integrated_test_image':
+   project=integrated_fixture.project_path(self.fixture.mission);fixed=project+'/integrated-seed'
+   argv=integrated_fixture.image_argv(fixed,project+'/out/integrated-test.raw')
+   argv=tuple(a.replace(fixed,arguments['seed_root']).replace(project+'/out/integrated-test.raw',arguments['output']) for a in argv)
   elif role=='partition_read':argv=build.partition_argv(arguments['image'])
   else:argv=getattr(commands,role)(**arguments)
   return SimpleNamespace(role=role,arguments=copy.deepcopy(arguments),argv=argv,cwd=cwd,environment=environment)
@@ -125,7 +138,13 @@ class ContractFixture:
   self.release,self.packages,self.gpg_status,self.policy_fixture=metadata()
   self.policy=SimpleNamespace(classify=lambda *args,**kw:policy.classify(*args,fixture=self.policy_fixture,**kw))
   self.modules=SimpleNamespace(context=self.commands,commands=commands,build=build,guard_project=guard_project,
-   apt=apt,policy=self.policy,serial=serial,validator=source_validator,artifact=artifact,source_expectation=source_expectation)
+   apt=apt,policy=self.policy,serial=serial,validator=source_validator,artifact=artifact,source_expectation=source_expectation,
+   integrated_fixture=integrated_fixture,
+   # Explicit non-native contract seam: this fixture has one inert runtime row
+   # and only the historical generic serial packet. Real integrated replay and
+   # its closed 26-role packet are tested separately and remain a Linux gate.
+   integrated_capture=SimpleNamespace(expected_runtime_rows=lambda runtime,control:(),
+    validate_combined=lambda rows,binding,*,generic_validator,runtime_rows:generic_validator(rows,binding)))
   self.environment={'RUNNER_TEMP':str(self.root),'GITHUB_WORKFLOW_REF':
    'fr-meyer/openclaw/.github/workflows/authorized-beta-focused-validation.yml@refs/heads/retained-verifier-prerequisites',
    'GITHUB_SHA':'c'*40,'GITHUB_RUN_ID':'123'}
@@ -136,13 +155,16 @@ class ContractFixture:
   target={'/usr/bin/bootctl':('/usr/bin/bootctl',1),
           '/usr/sbin/depmod':('/usr/bin/kmod',2),'/sbin/depmod':('/usr/bin/kmod',2),
           '/usr/sbin/mkfs.ext4':('/usr/sbin/mke2fs',3),
-          '/sbin/mkfs.ext4':('/usr/sbin/mke2fs',3)}[path]
+          '/sbin/mkfs.ext4':('/usr/sbin/mke2fs',3),
+          '/usr/sbin/mke2fs':('/usr/sbin/mke2fs',3),'/sbin/mke2fs':('/usr/sbin/mke2fs',3)}[path]
   canonical,ino=target
   if self.dpkg_missing=='depmod_substitute' and path=='/sbin/depmod':ino=99
   if self.dpkg_missing=='depmod_target' and path in ('/usr/sbin/depmod','/sbin/depmod'):
    canonical='/usr/bin/other'
   return {'canonical':canonical,'dev':1,'ino':ino,'bytes':128,'mode':0o755}
  def new_port(self):
+  clock=Path(self.environment['RUNNER_TEMP'])/'ocv-job-clock.json'
+  if not clock.exists():self.write(clock,C({'schema':'ocv-job-clock-v1','monotonicNs':time.monotonic_ns()}),0o600)
   with mock.patch.dict(os.environ,self.environment):
    self.port=h.NativePort(self.permit,self.modules,self.source,self.raw,self.rows)
   return self.port
@@ -150,6 +172,10 @@ class ContractFixture:
   if str(path) in TOOL_BYTES:
    assert owner==0 and len(TOOL_BYTES[str(path)])<=cap
    return TOOL_BYTES[str(path)]
+  if Path(path).name=='integrated-test.raw':
+   # Same explicit synthetic root-output identity seam as root_output_stat.
+   assert owner==0 and cap==integrated_fixture.TEST_IMAGE_BYTES
+   raw=Path(path).read_bytes();assert len(raw)==cap;return raw
   return self.real_read(path,cap,owner=owner)
  def root_output_stat(self,path,*args,**kw):
   actual=self.real_lstat(path,*args,**kw)
@@ -167,7 +193,7 @@ class ContractFixture:
   with image.open('wb') as stream:stream.truncate(2*1024**3)
   image.chmod(0o444)
   for name in ('kernel.bin','initrd.img'):self.write(out/name,('SYNTHETIC-NOT-A-'+name).encode())
-  self.output_paths={out/name for name in build.OUTPUT_FILES}
+  self.output_paths={out/name for name in (*build.OUTPUT_FILES,'integrated-test.raw')}
   helper=b'SYNTHETIC-UNCOMPILED-HELPER'
   runtime_bytes=b'SYNTHETIC-NONEXECUTED-DEBIAN-PYTHON'
   runtime={'schema':'ocv-runtime-v1','architecture':'linux-amd64',
@@ -175,12 +201,14 @@ class ContractFixture:
              'sha256':SHA(runtime_bytes),'mode':0o555}],
    'helper':{'path':'code/static-entry','bytes':len(helper),'sha256':SHA(helper)}}
   runtime_raw=C(runtime)
+  tools_raw=C({'tools':[],'synthetic':True,'notLinuxProof':True})
   control={'schema':'ocv-build-v1','sourceManifestSha256':SHA(self.raw),'runtimeManifestSha256':SHA(runtime_raw),
-   'toolManifestSha256':SHA(b'{}'),'importManifestSha256':SHA(b'{}'),'aptMetadataManifestSha256':SHA(b'{}'),
+   'toolManifestSha256':SHA(tools_raw),'importManifestSha256':SHA(b'{}'),'aptMetadataManifestSha256':SHA(b'{}'),
    'helperSha256':SHA(helper),'kernelVersion':'6.1.0-50-amd64','systemdVersion':build.SYSTEMD_VERSION,
    'runIdentity':self.port.run,'fixtureOnly':True,'candidateImage':False}
   for name in artifact.CONTROLS:self.write(out/name,C({'synthetic':True,'notLinuxProof':True}))
   self.write(out/'runtime.json',runtime_raw);self.write(out/'build.json',C(control))
+  self.write(out/'tools.json',tools_raw)
   self.write(out/'static-entry',helper,0o555)
   self.write(out/'runtime/usr/bin/python3.11',runtime_bytes,0o555)
   for name in artifact.APT_FILES:self.write(out/'apt-data'/name,b'SYNTHETIC-PUBLIC-APT-CONTROL:'+name.encode())
@@ -231,6 +259,7 @@ class ContractFixture:
      b'other: /sbin/depmod\n' if self.dpkg_missing=='depmod_owner' else b'kmod: /sbin/depmod\n')
    if args['kind']=='mkfs_usr_owner':return outer(
      b'other: /usr/sbin/mkfs.ext4\n' if self.dpkg_missing=='mkfs_owner' else b'e2fsprogs: /usr/sbin/mkfs.ext4\n')
+   if args['kind']=='mke2fs_usr_owner':return outer(b'e2fsprogs: /usr/sbin/mke2fs\n')
    raise AssertionError('unexpected synthetic dpkg query')
   if role=='debian_metadata_curl':
    self.write(self.port.project/'metadata'/('InRelease' if args['kind']=='release' else 'Packages.xz'),
@@ -245,6 +274,10 @@ class ContractFixture:
     'contextSha256':SHA(C(context)),'phase':'update','reason':'apt.keyring_pin'}
    return outer(stderr=C(record)+b'\n',status='refused',returncode=100,**self.negative_changes)
   if role=='mkosi_build':self.build_outputs();return outer()
+  if role=='integrated_test_image':
+   p=Path(args['output'])
+   with p.open('wb') as stream:stream.truncate(integrated_fixture.TEST_IMAGE_BYTES)
+   p.chmod(0o444);return outer()
   if role=='partition_read':return outer(self.partition(args['image']))
   if role=='qemu_once':
    self.qemu_calls+=1

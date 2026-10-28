@@ -224,8 +224,8 @@ def issue_native(plan,io,prepared):
    compatibility_result(__import__('guard').decode(evidence.raw,12288),plan)==evidence.raw,'boot.compatibility_required')
  actual=io.facts();need(actual['platform']=='linux' and actual['euid']==actual['egid']==0 and actual['pid']==plan.facts['pid'],'boot.native_root_changed')
  io.claim_boot(plan.markers['ocv.session'])
- need(io.monotonic()<io.started+900,'boot.wrapper_deadline')
- return NativeCapability(_SEAL,io,plan,prepared['aliases'],prepared['tools'],io.started+900)
+ need(io.monotonic()<io.started+2000,'boot.wrapper_deadline')
+ return NativeCapability(_SEAL,io,plan,prepared['aliases'],prepared['tools'],io.started+2000)
 
 
 def successor_ops(program,cap):

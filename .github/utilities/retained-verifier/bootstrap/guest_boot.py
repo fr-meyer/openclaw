@@ -51,6 +51,9 @@ def _load_checked_bootstrap():
 def handle_failure(io,plan,error,guard,issuer,frames,emitter=None):
  from types import SimpleNamespace
  code=error.code if isinstance(error,guard.Refusal)else 'boot.checked_entry_refused'
+ if type(error).__module__ in ('protocol','integrated_entry','integrated_materials','integrated_capture','integrated_fixture'):
+  candidate=getattr(error,'code',str(error))
+  if type(candidate)is str and __import__('re').fullmatch('[a-z][a-z0-9_.]{0,95}',candidate):code=candidate
  if code=='boot.claim_exists':
   sys.stderr.write('OCV_BOOT_REFUSED:boot.claim_exists\n');return  # Never stop a prior same-session owner.
  if io.own is None:
@@ -80,8 +83,15 @@ def run_owned(io,guard,issuer,frames):
   prepared=issuer.prepare(plan,io,program)
   prepared=issuer.complete_compatibility(plan,io,prepared,program,ROOT+'/consumer',io.compatibility_scratch(plan.markers['ocv.session']))
   cap=issuer.issue_native(plan,io,prepared);ops=issuer.successor_ops(program,cap)
+  integrated_row=next(r for r in plan.source['files'] if r['path']=='integrated/integrated_entry.py')
+  integrated_raw=guard.file_bytes(io,ROOT+'/integrated/integrated_entry.py',262144)
+  guard.need(len(integrated_raw)==integrated_row['bytes'] and guard.sha(integrated_raw)==integrated_row['sha256'],'boot.integrated_entry_source')
+  integrated_scope={'__name__':'ocv_checked_integrated_entry','__file__':ROOT+'/integrated/integrated_entry.py'}
+  exec(compile(integrated_raw,integrated_scope['__file__'],'exec'),integrated_scope)
+  integrated_roles=integrated_scope['run'](cap,prepared)
   manifest,context=issuer.plan_native_job(plan,prepared,program,io.utc())
   port=issuer.port_successor(program,ops,manifest,context,plan,prepared,io)
+  port.bootstrap_custody.update(integrated_roles)
   directory='/run/ocv/'+plan.markers['ocv.session'];io.mkdir(directory,0o700)
   emitter=frames.Emitter(plan,lambda p,c:io.read(p,c),io.emit,capability=cap,context_raw=guard.canonical(context),
     compatibility_raw=prepared.compatibility.raw,observations=port.bootstrap_custody)

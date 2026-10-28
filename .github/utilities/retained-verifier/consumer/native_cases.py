@@ -132,9 +132,8 @@ def _classify(case,record):
  elif case in ('unix-socket','mount'):
   passed=blocked and record['stdout']==record['stderr']==b''
  elif case in ('entry-bad-argv','entry-bad-env'):
-  expected=b'entry_refused_args\n' if case=='entry-bad-argv' else b'entry_refused_unknown_key\n'
   passed=(record['exitCode']==111 and record['signal']is None and record['errno']is None and
-          record['stdout']==b'' and record['stderr']==expected and record['detail']=='exec_refused')
+          record['stdout']==b'' and record['stderr']==b'entry_refused\n' and record['detail']=='exec_refused')
  else:
   passed=(record['exitCode']==0 and record['signal']is None and record['errno']is None and
           record['stdout']==TIMER_OUTPUT and record['stderr']==b'' and record['detail']=='timer_timeout')
@@ -222,8 +221,7 @@ def validate_result(value,expected_pid=None,expected_context_sha=None,allow_fail
        'native.case_shape')
   # Reconstruct only the two source-known outputs. Unknown bytes cannot clear.
   stdout=TIMER_OUTPUT if row['id']=='timer-late-zero' else b''
-  stderr=(b'entry_refused_args\n' if row['id']=='entry-bad-argv' else
-          b'entry_refused_unknown_key\n' if row['id']=='entry-bad-env' else b'')
+  stderr=b'entry_refused\n' if row['id']in('entry-bad-argv','entry-bad-env')else b''
   outputs=(row['stdoutBytes']==len(stdout)and row['stdoutSha256']==sha(stdout)and
            row['stderrBytes']==len(stderr)and row['stderrSha256']==sha(stderr))
   observed={key:row[key]for key in ('exitCode','signal','errno','timedOut','reaped','outputComplete','detail','errors')}

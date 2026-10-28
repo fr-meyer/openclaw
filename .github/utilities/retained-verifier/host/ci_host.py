@@ -16,7 +16,7 @@ import traceback
 import uuid
 
 ARTIFACT_CAP=64*1024**2
-TOOLING_CAP=60*1024**2
+TOOLING_CAP=48*1024**2
 
 
 class Refusal(RuntimeError):pass
@@ -176,16 +176,30 @@ class NativePort:
         self.permit=permit;self.m=modules;self.source=Path(source);self.manifest_raw=manifest_raw;self.rows=rows
         self.project=Path(permit.project);self.project.mkdir(mode=0o755)
         self.artifacts=Path(os.environ['RUNNER_TEMP'])/'ocv-ci-artifacts';self.artifacts.mkdir(mode=0o755)
-        self.deadline=time.monotonic()+2400;self.commands=[];self.first_failure=None;self.bound=None
+        clock_path=Path(os.environ['RUNNER_TEMP'])/'ocv-job-clock.json'
+        anchor=decode(read_regular(clock_path,4096),4096)
+        require(type(anchor)is dict and set(anchor)=={'schema','monotonicNs'} and
+                anchor['schema']=='ocv-job-clock-v1' and type(anchor['monotonicNs'])is int and
+                0<anchor['monotonicNs']<=time.monotonic_ns(),'host.job_clock')
+        self.started=anchor['monotonicNs']/1000000000
+        self.deadline=self.started+2700;self.phase_deadline=self.started+60
+        self.phases=set();self.commands=[];self.first_failure=None;self.bound=None
         self.run={'repository':'fr-meyer/openclaw','workflowRef':os.environ['GITHUB_WORKFLOW_REF'],
                   'sourceCommit':os.environ['GITHUB_SHA'],'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':'1'}
+    def _phase(self,name,seconds):
+        require(name not in self.phases and type(seconds)is int and seconds>0,'host.phase_consumed')
+        self.phases.add(name)
+        self.phase_deadline=min(self.deadline,time.monotonic()+seconds)
+        require(self.phase_deadline>time.monotonic(),'host.phase_deadline')
     def _run(self,role,arguments,timeout,*,allow_failure=False):
         remaining=self.deadline-time.monotonic();require(remaining>30,'host.whole_deadline')
+        phase_remaining=self.phase_deadline-time.monotonic()
+        require(phase_remaining>0,'host.phase_deadline')
         env=dict(self.m.context.ENV)
         if role.startswith('ubuntu_apt_'):env['DEBIAN_FRONTEND']='noninteractive'
         scope=self.m.context.seal_command(self.permit,role,arguments,cwd=str(self.project),environment=env)
         value=self.m.context.run_owned(self.permit,scope,cwd=str(self.project),environment=env,
-                                      deadline=time.monotonic()+min(timeout,remaining-30))
+                                      deadline=time.monotonic()+min(timeout,remaining-30,phase_remaining))
         row={'role':role,'argv':list(scope.argv),'status':value.get('status'),'returncode':value.get('returncode'),
              'timedOut':value.get('timedOut'),'ownershipRetained':value.get('ownershipRetained'),
              'spawned':value.get('spawned'),'outerReason':value.get('reason'),
@@ -196,7 +210,8 @@ class NativePort:
         if value.get('status')!='outer_exit_passed':
             if self.first_failure is None:
                 self.first_failure=row
-                self._write(self.artifacts/'host-stdout.bin',value['stdout'][:1048576])
+                cap=6*1024**2 if role=='qemu_once' else 1048576
+                self._write(self.artifacts/'host-stdout.bin',value['stdout'][:cap])
                 self._write(self.artifacts/'host-stderr.bin',value['stderr'][:1048576])
             if not allow_failure:raise Refusal('host.command_'+role)
         return value
@@ -211,8 +226,11 @@ class NativePort:
         require(self.permit.expected['source_manifest_sha']==sha(self.manifest_raw),'host.permit_manifest')
         require(os.statvfs(self.project).f_bavail*os.statvfs(self.project).f_frsize>=10*1024**3,'host.build_disk_floor')
     def test_sources(self):
-        for suite in self.m.commands.SUITES:self._run('python_tests',{'source_root':str(self.source),'suite':suite},120)
+        require(self.started+60>time.monotonic(),'host.source_phase_exhausted')
+        self._phase('source',max(1,int(self.started+60-time.monotonic())))
+        for suite in self.m.commands.SUITES:self._run('python_tests',{'source_root':str(self.source),'suite':suite},60)
     def install_host_tools(self):
+        self._phase('host',60)
         for relative in ('ubuntu-lists/partial','ubuntu-archives/partial','metadata','out'):
             (self.project/relative).mkdir(mode=0o755,parents=True)
         self._write(self.project/'ubuntu.sources.list',self.m.commands.ubuntu_sources())
@@ -237,7 +255,9 @@ class NativePort:
             ('systemd-boot','/usr/bin/bootctl','systemd_boot_files',('/usr/bin/bootctl',)),
             ('kmod','/usr/sbin/depmod','kmod_files',('/usr/sbin/depmod','/sbin/depmod')),
             ('e2fsprogs','/usr/sbin/mkfs.ext4','e2fsprogs_files',
-             ('/usr/sbin/mkfs.ext4','/sbin/mkfs.ext4'))):
+             ('/usr/sbin/mkfs.ext4','/sbin/mkfs.ext4')),
+            ('e2fsprogs','/usr/sbin/mke2fs','e2fsprogs_files',
+             ('/usr/sbin/mke2fs','/sbin/mke2fs'))):
             files=self._run('dpkg_query',{'kind':kind},20)['stdout']
             registered=[path for path in allowed if path.encode() in files.splitlines()]
             require(len(registered)==1,'host.package_filelist')
@@ -245,7 +265,7 @@ class NativePort:
             if package=='systemd-boot':
                 owner=b'\n'.join(line for line in owners.splitlines() if b'/usr/bin/bootctl' in line)+b'\n'
             else:
-                prefix='depmod' if package=='kmod' else 'mkfs'
+                prefix='depmod' if package=='kmod' else 'mke2fs' if executable.endswith('/mke2fs') else 'mkfs'
                 owner_kind=prefix+('_usr_owner' if path.startswith('/usr/') else '_sbin_owner')
                 owner=self._run('dpkg_query',{'kind':owner_kind},20)['stdout']
             proof.append(verify_host_package_binary(package,executable,path,files,owner))
@@ -317,6 +337,7 @@ class NativePort:
         self._run('own_project_chown',{'project':str(destination),'phase':'prepare','owner':'0:0'},30)
         return guard
     def negative_bootstrap(self):
+        self._phase('negative',30)
         negative=self.project/'negative';context=self._project_files(negative,True)
         outcome=self._run('mkosi_build',{'project':str(negative)},240,allow_failure=True)
         require(type(outcome.get('returncode'))is int and outcome['returncode']!=0 and
@@ -346,9 +367,16 @@ class NativePort:
         self.first_failure=None
         # Expected negative is retained separately, not mislabeled a positive failure.
     def build_once(self):
+        self._phase('build',400)
         self._project_files(self.project)
-        self._run('mkosi_build',{'project':str(self.project)},900)
+        self._run('mkosi_build',{'project':str(self.project)},400)
         self.m.context.normalize_mkosi_outputs(self.permit,str(self.project))
+        fixture_files={name[len('integrated/fixture/'):]:read_regular(self.source/name,row['bytes']+1)
+            for name,row in self.rows.items() if name.startswith('integrated/fixture/')}
+        for name,(raw,mode) in self.m.integrated_fixture.fixture_layout(fixture_files).items():
+            self._write(self.project/'integrated-seed'/name,raw,mode)
+        self._run('integrated_test_image',{'seed_root':str(self.project/'integrated-seed'),
+            'output':str(self.project/'out/integrated-test.raw')},30)
         self._run('own_mkosi_outputs',{'project':str(self.project),
             'uid':self.permit.uid,'gid':self.permit.gid},30)
         self._run('freeze_public_outputs',{'project':str(self.project)},30)
@@ -374,20 +402,33 @@ class NativePort:
         self.bound=self.m.build.bind_qemu_inputs(str(out),records,table,source_sha256=sha(self.manifest_raw),
             build_sha256=sha(read_regular(out/'build.json',32768)),kernel_version=self.build['kernelVersion'],run_identity=self.run)
         self.expected=self.m.source_expectation.expected(self.source,out,self.bound,self.permit.mission)
+        test=out/'integrated-test.raw';raw=read_regular(test,64*1024*1024,owner=0)
+        require(len(raw)==64*1024*1024 and stat.S_IMODE(test.stat().st_mode)==0o444,'host.integrated_image_size')
+        self.test_record={'name':'integrated-test.raw','bytes':len(raw),'sha256':sha(raw)}
+        self.base_records['integrated-test.raw']={'bytes':len(raw),'sha256':sha(raw)}
+        runtime_raw=read_regular(out/'runtime.json',4*1024**2)
+        require(sha(runtime_raw)==self.build['runtimeManifestSha256'],'host.integrated_runtime_control')
+        self.integrated_runtime_rows=self.m.integrated_capture.expected_runtime_rows(decode(runtime_raw,4*1024**2),self.build)
         return self.expected
     def boot_once(self):
-        require(self.deadline-time.monotonic()>=960,'host.guest_budget')
-        return self._run('qemu_once',{'bound':self.bound,'session':self.permit.mission},min(1800,self.deadline-time.monotonic()-60),allow_failure=True)
+        require(self.deadline-time.monotonic()>=2150,'host.guest_budget')
+        self._phase('guest',2000)
+        return self._run('qemu_once',{'bound':self.bound,'session':self.permit.mission,
+            'test_record':self.test_record},2000,allow_failure=True)
     def preserve_outer(self,value):
         # Keep first expected-negative logs separate; these exact guest streams
         # are retained before any frame/consumer parsing, including parse failure.
         for name,key in (('host-stdout.bin','stdout'),('host-stderr.bin','stderr')):
             p=self.artifacts/name
-            if p.exists():require(read_regular(p,1048576)==value[key][:1048576],'host.custody_changed')
-            else:self._write(p,value[key][:1048576])
+            cap=6*1024**2 if key=='stdout' else 1048576
+            require(len(value[key])<=cap,'host.outer_custody_cap')
+            if p.exists():require(read_regular(p,cap)==value[key],'host.custody_changed')
+            else:self._write(p,value[key])
     def verify_outer(self,value,expected):
         self.verify_base_unchanged()
-        return self.m.serial.verify(value,expected,source_validator=self.m.validator.validate)
+        return self.m.serial.verify(value,expected,source_validator=lambda rows,binding:
+            self.m.integrated_capture.validate_combined(rows,binding,generic_validator=self.m.validator.validate,
+                runtime_rows=self.integrated_runtime_rows))
     def verify_base_unchanged(self):
         for name,expected in self.base_records.items():
             p=self.project/'out'/name
@@ -405,9 +446,17 @@ class NativePort:
             identity=lambda v:(v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns)
             require(count==before.st_size and identity(before)==identity(after) and h.hexdigest()==expected['sha256'],'host.base_changed')
     def package_public_artifact(self,proof):
+        self._phase('artifact',120)
         self.m.artifact.package(self.source,self.project/'out',self.artifacts/'public-tooling.tar.gz',
                                 source_rows=self.rows,manifest_raw=self.manifest_raw,maximum=TOOLING_CAP)
         self._write(self.artifacts/'host-custody.json',canonical(proof))
+        tools_raw=read_regular(self.project/'out/tools.json',1048576)
+        require(sha(tools_raw)==self.build['toolManifestSha256'],'host.extra_tool_catalog_pin')
+        catalog={'schema':'ocv.bound-build-tool-catalog.v1','fixtureOnly':True,'candidateImage':False,
+            'nativeAuthority':False,'sourceManifestSha256':sha(self.manifest_raw),'runIdentity':self.run,
+            'toolManifestSha256':sha(tools_raw),'aptMetadataManifestSha256':self.build['aptMetadataManifestSha256'],
+            'tools':decode(tools_raw)['tools']}
+        self._write(self.artifacts/'extra-tool-catalog.json',canonical(catalog))
     def preserve_failure(self,phase,error):
         frames=[]
         for frame in traceback.extract_tb(error.__traceback__)[-12:]:
@@ -434,18 +483,19 @@ def main():
     source=Path(__file__).resolve().parents[1]
     try:
         manifest,rows=bootstrap_source(source,os.environ.get('OCV_SOURCE_MANIFEST_SHA'))
-        for directory in ('host','build','apt','native','runtime','bootstrap','consumer'):
+        for directory in ('host','build','apt','native','runtime','bootstrap','consumer','integrated'):
             sys.path.insert(0,str(source/directory))
         from types import SimpleNamespace
         import host_context,command_factories,build_recipe,guard_project,archive_guard,archive_policy,serial_receipt,source_validator
-        import artifact,source_expectation
+        import artifact,source_expectation,integrated_fixture,integrated_capture
         expected={'expected_source':os.environ['OCV_EXPECTED_SOURCE'],'expected_tree':os.environ['OCV_EXPECTED_TREE'],
                   'workflow_sha':os.environ['OCV_WORKFLOW_SHA'],'source_manifest_sha':os.environ['OCV_SOURCE_MANIFEST_SHA'],
                   'source_manifest_path':'PUBLIC-SOURCE-MANIFEST.json','run_id':os.environ['GITHUB_RUN_ID']}
         permit=host_context.make_native_permit(str(source),expected,os.environ['OCV_MISSION_ID'])
         modules=SimpleNamespace(context=host_context,commands=command_factories,build=build_recipe,guard_project=guard_project,
           apt=archive_guard,policy=archive_policy,serial=serial_receipt,validator=source_validator,
-          artifact=artifact,source_expectation=source_expectation)
+          artifact=artifact,source_expectation=source_expectation,
+          integrated_fixture=integrated_fixture,integrated_capture=integrated_capture)
         result=Controller(NativePort(permit,modules,source,manifest,rows)).run()
         return 0 if result['status']=='passed' else 1
     except BaseException as error:

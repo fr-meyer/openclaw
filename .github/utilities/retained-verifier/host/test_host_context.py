@@ -227,8 +227,14 @@ class ProjectAndSources(unittest.TestCase):
  def test_qemu_identity_is_canonical_digit_strings_only_and_positive_out(self):
   arguments={'session':self.permit.mission,'bound':{'directory':str(self.project/'out'),
    'sourceManifestSha256':expected()['source_manifest_sha'],'runIdentity':{'repository':h.REPOSITORY,
-    'workflowRef':h.WORKFLOW_REF,'sourceCommit':expected()['expected_source'],'runId':'42','runAttempt':'1'}}}
-  h._qemu_arguments(self.permit,arguments)
+    'workflowRef':h.WORKFLOW_REF,'sourceCommit':expected()['expected_source'],'runId':'42','runAttempt':'1'}},
+    'test_record':{'name':'integrated-test.raw','bytes':64*1024*1024,'sha256':h.sha(b'fixed-synthetic-image')}}
+  facts=types.SimpleNamespace(st_mode=stat.S_IFREG|0o444,st_uid=0,st_gid=0,st_nlink=1,st_size=64*1024*1024)
+  with mock.patch.object(h.Path,'lstat',return_value=facts),mock.patch.object(h.Path,'resolve',lambda p:p),\
+       mock.patch.object(h,'_read_regular',return_value=b'fixed-synthetic-image'):
+   h._qemu_arguments(self.permit,arguments)
+  with self.assertRaisesRegex(h.Refusal,'host.integrated_image_record'):
+   h._qemu_arguments(self.permit,{**arguments,'test_record':{**arguments['test_record'],'sha256':'0'}})
   for key,value in(('runId',42),('runAttempt',1)):
    changed={**arguments,'bound':{**arguments['bound'],'runIdentity':{**arguments['bound']['runIdentity'],key:value}}}
    with self.subTest(key=key),self.assertRaisesRegex(h.Refusal,'host.qemu_arg'):h._qemu_arguments(self.permit,changed)
@@ -240,7 +246,7 @@ class ProjectAndSources(unittest.TestCase):
    calls.append(str(path));return types.SimpleNamespace(st_mode=stat.S_IFREG|0o644,st_uid=0,st_gid=0,st_nlink=1)
   with mock.patch.object(h.Path,'resolve',lambda p:p),mock.patch.object(h.Path,'is_symlink',return_value=False), \
        mock.patch.object(h.Path,'lstat',info):h._freeze_outputs(str(self.project))
-  self.assertEqual(calls,[str(self.project/'out'/n)for n in('ocv-test.raw','kernel.bin','initrd.img')])
+  self.assertEqual(calls,[str(self.project/'out'/n)for n in('ocv-test.raw','kernel.bin','initrd.img','integrated-test.raw')])
   for field,value in(('st_uid',1001),('st_gid',1001),('st_nlink',2),('st_mode',stat.S_IFDIR|0o755),('st_mode',stat.S_IFREG|0o666)):
    bad=types.SimpleNamespace(st_mode=stat.S_IFREG|0o644,st_uid=0,st_gid=0,st_nlink=1);setattr(bad,field,value)
    with mock.patch.object(h.Path,'resolve',lambda p:p),mock.patch.object(h.Path,'is_symlink',return_value=False), \
@@ -248,13 +254,13 @@ class ProjectAndSources(unittest.TestCase):
     h._freeze_outputs(str(self.project))
   with mock.patch.object(h.Path,'resolve',lambda p:p),mock.patch.object(h.Path,'is_symlink',return_value=True), \
        self.assertRaisesRegex(h.Refusal,'host.freeze_target'):h._freeze_outputs(str(self.project))
- def test_mkosi_output_owner_correction_is_exact_three_file_vector(self):
+ def test_mkosi_output_owner_correction_is_exact_four_file_vector(self):
   import command_factories as factory
   args={'project':str(self.project),'uid':1001,'gid':1001}
   exact=factory.own_mkosi_outputs(**args)
   self.assertEqual(exact,('/usr/bin/sudo','-n','--','/usr/bin/chown','--from=1001:1001',
                           '--','0:0',*(str(self.project/'out'/name) for name in
-                           ('ocv-test.raw','kernel.bin','initrd.img'))))
+                           ('ocv-test.raw','kernel.bin','initrd.img','integrated-test.raw'))))
   good=types.SimpleNamespace(st_mode=stat.S_IFREG|0o644,st_uid=1001,st_gid=1001,st_nlink=1,st_size=100)
   with mock.patch.object(h.Path,'resolve',lambda p:p),mock.patch.object(h.Path,'is_symlink',return_value=False), \
        mock.patch.object(h.Path,'lstat',return_value=good):h._preflight_mkosi_outputs(self.permit,args)
@@ -310,15 +316,15 @@ class ProjectAndSources(unittest.TestCase):
     h._normalize_mkosi_roster(str(project),os.getuid(),os.getgid())
    self.assertTrue((out/'ocv-test-apt-data').exists())
    self.assertFalse((out/'apt-data').exists())
- def test_actual_current_factory_roles_nine_suites_and_exact_readonly_output_command(self):
+ def test_actual_current_factory_roles_ten_suites_and_exact_readonly_output_command(self):
   root=Path(__file__).resolve().parents[1];modules={}
   for relative,function in h.ROLE_MAP.values():
    tree=ast.parse((root/relative).read_bytes());functions={n.name for n in tree.body if isinstance(n,ast.FunctionDef)}
    self.assertIn(function,functions)
   import command_factories as factory
-  self.assertEqual(len(factory.SUITES),9);self.assertIn('build',factory.SUITES)
+  self.assertEqual(len(factory.SUITES),10);self.assertIn('integrated',factory.SUITES)
   self.assertEqual(factory.freeze_public_outputs(str(self.project)),('/usr/bin/sudo','-n','--','/usr/bin/chmod','0444','--',
-   *(str(self.project/'out'/n)for n in('ocv-test.raw','kernel.bin','initrd.img'))))
+   *(str(self.project/'out'/n)for n in('ocv-test.raw','kernel.bin','initrd.img','integrated-test.raw'))))
   self.assertEqual(h._ISSUED,{})
 
  def test_only_build_and_prepare_roles_can_admit_the_single_negative_project(self):

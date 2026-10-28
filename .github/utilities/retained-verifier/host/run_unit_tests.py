@@ -10,7 +10,7 @@ import time
 import unittest
 
 SUITE_PREFIX={'archive':'apt','apt':'apt','outer':'outer','native':'native','runtime':'runtime',
-              'build':'build','bootstrap':'bootstrap','host':'host','consumer':'consumer'}
+              'build':'build','bootstrap':'bootstrap','host':'host','consumer':'consumer','integrated':'integrated'}
 
 
 def selected_paths(rows,suite):
@@ -36,7 +36,7 @@ def main():
     paths=selected_paths(rows,args.suite)
     # Every inserted path is the separately checked immutable public source
     # tuple. No site/user/current-working-directory import path is added.
-    for leaf in ('host','native','apt','outer','runtime','build','consumer','bootstrap'):
+    for leaf in ('host','native','apt','outer','runtime','build','consumer','bootstrap','integrated'):
         sys.path.insert(0,str(root/leaf))
     sys.path.insert(0,str(root/SUITE_PREFIX[args.suite]))
     suite=unittest.TestSuite();started=time.monotonic()

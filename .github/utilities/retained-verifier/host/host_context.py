@@ -27,7 +27,7 @@ REPOSITORY='fr-meyer/openclaw'
 REF='refs/heads/retained-verifier-prerequisites'
 WORKFLOW_PATH='.github/workflows/authorized-beta-focused-validation.yml'
 WORKFLOW_REF=REPOSITORY+'/'+WORKFLOW_PATH+'@'+REF
-OUTER_SHA='78912c5d52f5a186fa3078b6768f7412356fd9d981c57f409e43dd037e8b9be6'
+OUTER_SHA='e8507c8c42fe05f9b9d3c90fa77c352d05dc7ec67ffa9dc65afecee216b4ed8c'
 EXPECTED_KEYS={'expected_source','expected_tree','workflow_sha','source_manifest_sha','source_manifest_path','run_id'}
 ENV={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C','HOME':'/nonexistent'}
 ROLE_MAP={
@@ -43,9 +43,10 @@ ROLE_MAP={
  'python_tests':('host/command_factories.py','python_tests'),
  'mkosi_build':('build/build_recipe.py','mkosi_argv'),
  'partition_read':('build/build_recipe.py','partition_argv'),
+ 'integrated_test_image':('integrated/integrated_fixture.py','image_argv'),
  'qemu_once':('build/build_recipe.py','qemu_argv')}
 PROGRAMS={'/usr/bin/git','/usr/bin/sudo','/usr/bin/mkosi','/usr/bin/curl','/usr/bin/gpgv',
- '/usr/bin/dpkg-query','/usr/bin/python3','/usr/sbin/sfdisk','/usr/bin/qemu-system-x86_64'}
+ '/usr/bin/dpkg-query','/usr/bin/python3','/usr/sbin/sfdisk','/usr/bin/qemu-system-x86_64','/usr/sbin/mke2fs'}
 _ISSUED={};_KEY=object()
 
 
@@ -294,6 +295,16 @@ def _public_project_root():
  return root
 
 
+def _public_project_path(source,rows,mission):
+ # The checked integrated factory owns the one project/session grammar used
+ # by native permit derivation, TEST-image construction and QEMU arguments.
+ relative='integrated/integrated_fixture.py'
+ helper=_load(source/relative,rows[relative]['sha256'])
+ path=Path(helper.project_path(mission));root=_public_project_root()
+ need(path.parent==root and path.name=='ocv-'+mission,'host.public_project_path')
+ return path
+
+
 def make_native_permit(source_root,expected_source,mission_id):
  facts=_actual_role(expected_source,mission_id)
  workspace=Path(os.environ.get('GITHUB_WORKSPACE',''));temp=Path(os.environ.get('RUNNER_TEMP',''))
@@ -315,7 +326,7 @@ def make_native_permit(source_root,expected_source,mission_id):
  need(_bootstrap_git(outer,str(workspace),'head').decode('ascii').strip()==expected_source['expected_source']
       and _bootstrap_git(outer,str(workspace),'tree').decode('ascii').strip()==expected_source['expected_tree']
       and _bootstrap_git(outer,str(workspace),'clean')==b'','host.git_source')
- permit=NativePermit(_KEY,source=source,workspace=workspace,temp=temp,project=_public_project_root()/('ocv-'+mission_id),
+ permit=NativePermit(_KEY,source=source,workspace=workspace,temp=temp,project=_public_project_path(source,rows,mission_id),
   expected=dict(expected_source),mission=mission_id,rows=rows,outer=outer,uid=facts['uid'],gid=facts['gid'],run_id=expected_source['run_id'])
  _ISSUED[id(permit)]=permit;return permit
 
@@ -375,17 +386,28 @@ def _prepare_chown(arguments):
 
 
 def _qemu_arguments(permit,arguments):
- need(arguments.get('session')==permit.mission and type(arguments.get('bound'))is dict
+ need(set(arguments)=={'bound','session','test_record'} and
+      arguments.get('session')==permit.mission and type(arguments.get('bound'))is dict
       and arguments['bound'].get('directory')==str(permit.project/'out')
       and arguments['bound'].get('sourceManifestSha256')==permit.expected['source_manifest_sha']
       and arguments['bound'].get('runIdentity')=={'repository':REPOSITORY,'workflowRef':WORKFLOW_REF,
         'sourceCommit':permit.expected['expected_source'],'runId':permit.run_id,'runAttempt':'1'},'host.qemu_arg')
+ record=arguments['test_record'];path=permit.project/'out/integrated-test.raw'
+ need(type(record)is dict and set(record)=={'name','bytes','sha256'} and
+      record['name']=='integrated-test.raw' and record['bytes']==64*1024*1024 and
+      type(record['sha256'])is str and re.fullmatch('[0-9a-f]{64}',record['sha256']),
+      'host.integrated_image_record')
+ info=path.lstat()
+ need(path.resolve()==path and stat.S_ISREG(info.st_mode) and info.st_uid==info.st_gid==0 and
+      info.st_nlink==1 and stat.S_IMODE(info.st_mode)==0o444 and info.st_size==record['bytes'],
+      'host.integrated_image_identity')
+ need(sha(_read_regular(path,64*1024*1024))==record['sha256'],'host.integrated_image_changed')
 
 
 def _freeze_outputs(project):
  # There is no mkosi20 OutputMode knob. Only these fresh root-owned public
  # artifacts receive exact0444, after checked build settlement, before QEMU.
- for name in('ocv-test.raw','kernel.bin','initrd.img'):
+ for name in('ocv-test.raw','kernel.bin','initrd.img','integrated-test.raw'):
   path=Path(project)/'out'/name
   need(path.resolve()==path and not path.is_symlink(),'host.freeze_target')
   info=path.lstat()
@@ -441,7 +463,7 @@ def _preflight_mkosi_outputs(permit,arguments):
  need(set(arguments)=={'project','uid','gid'} and arguments['uid']==permit.uid
       and arguments['gid']==permit.gid,'host.mkosi_outputs_owner')
  for name,cap in (('ocv-test.raw',6*1024**3),('kernel.bin',128*1024**2),
-                  ('initrd.img',512*1024**2)):
+                  ('initrd.img',512*1024**2),('integrated-test.raw',64*1024**2)):
   path=Path(arguments['project'])/'out'/name
   need(path.resolve()==path and not path.is_symlink(),'host.mkosi_outputs_path')
   info=path.lstat()
@@ -452,7 +474,7 @@ def _preflight_mkosi_outputs(permit,arguments):
 
 def _freeze_vector(project,argv):
  exact=('/usr/bin/sudo','-n','--','/usr/bin/chmod','0444','--')+tuple(
-  str(Path(project)/'out'/name)for name in('ocv-test.raw','kernel.bin','initrd.img'))
+  str(Path(project)/'out'/name)for name in('ocv-test.raw','kernel.bin','initrd.img','integrated-test.raw'))
  need(argv==exact,'host.freeze_argv')
 
 
@@ -485,8 +507,19 @@ def seal_command(permit,role,arguments,*,cwd,environment):
  if role=='own_mkosi_outputs':_preflight_mkosi_outputs(permit,arguments)
  if role=='freeze_public_outputs':_freeze_outputs(arguments['project'])
  if role=='partition_read':need(arguments.get('image')==str(permit.project/'out/ocv-test.raw'),'host.partition_arg')
+ if role=='integrated_test_image':
+  need(set(arguments)=={'seed_root','output'} and
+       arguments['seed_root']==str(permit.project/'integrated-seed') and
+       arguments['output']==str(permit.project/'out/integrated-test.raw') and
+       not Path(arguments['output']).exists(),'host.integrated_image_arguments')
  if role=='qemu_once':_qemu_arguments(permit,arguments)
- try:argv=factory(**arguments)
+ try:
+  if role=='qemu_once':
+   argv=factory(bound=arguments['bound'],session=arguments['session'])
+   extra=_load(permit.source/'integrated/integrated_fixture.py',
+       permit.rows['integrated/integrated_fixture.py']['sha256'])
+   argv=extra.qemu_argv(argv,directory=str(permit.project/'out'),test_record=arguments['test_record'])
+  else:argv=factory(**arguments)
  except (TypeError,ValueError) as error:raise Refusal('host.factory_arguments') from None
  need(type(argv)is tuple and argv and argv[0]in PROGRAMS and all(type(a)is str and a and '\x00'not in a for a in argv),
       'host.factory_argv')
@@ -495,7 +528,7 @@ def seal_command(permit,role,arguments,*,cwd,environment):
   need(argv==('/usr/bin/sudo','-n','--','/usr/bin/chown',
        '--from='+str(permit.uid)+':'+str(permit.gid),'--','0:0',
        *(str(permit.project/'out'/name) for name in
-         ('ocv-test.raw','kernel.bin','initrd.img'))),'host.mkosi_outputs_argv')
+         ('ocv-test.raw','kernel.bin','initrd.img','integrated-test.raw'))),'host.mkosi_outputs_argv')
  if argv[0]=='/usr/bin/sudo':need(len(argv)>4 and argv[:3]==('/usr/bin/sudo','-n','--')
   and (argv[3]in('/usr/bin/apt-get','/usr/bin/chown')
    or role=='freeze_public_outputs' and argv[3]=='/usr/bin/chmod'),'host.sudo_command')

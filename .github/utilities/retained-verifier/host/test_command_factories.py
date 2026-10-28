@@ -30,7 +30,8 @@ class FactoryTests(unittest.TestCase):
         with self.assertRaises(c.Refusal):c.own_project_chown('/tmp/x','outside','1001:1001')
         self.assertEqual(c.own_mkosi_outputs('/tmp/x',1001,1001),
           ('/usr/bin/sudo','-n','--','/usr/bin/chown','--from=1001:1001','--','0:0',
-           '/tmp/x/out/ocv-test.raw','/tmp/x/out/kernel.bin','/tmp/x/out/initrd.img'))
+           '/tmp/x/out/ocv-test.raw','/tmp/x/out/kernel.bin','/tmp/x/out/initrd.img',
+           '/tmp/x/out/integrated-test.raw'))
         for uid,gid in ((0,1001),(1001,0),('1001',1001),(1001,True)):
             with self.assertRaises(c.Refusal):c.own_mkosi_outputs('/tmp/x',uid,gid)
     def test_test_roster_comes_only_from_known_manifest_rows(self):

@@ -71,6 +71,8 @@ class CommandCapture:
     """
     def __init__(self,io):
         self.io=io;self.owned_commands={};self.command_results={};self.command_sequence=0
+    def _allowed_command(self,argv):
+        return argv[0] in ('/usr/bin/systemd-run','/usr/bin/systemctl','/usr/bin/busctl','/usr/bin/gpgv','/usr/sbin/selinuxenabled')
     def command(self,argv,timeout=5):
         import math
         self.command_sequence+=1;number=self.command_sequence
@@ -110,7 +112,7 @@ class CommandCapture:
                 else:append(label,raw)
         try:
             require(type(argv) is tuple and argv and all(type(v) is str and v and '\x00' not in v for v in argv) and
-              argv[0] in ('/usr/bin/systemd-run','/usr/bin/systemctl','/usr/bin/busctl','/usr/bin/gpgv','/usr/sbin/selinuxenabled'),
+              self._allowed_command(argv),
               'ci.native_command')
             require(type(timeout) in (int,float) and math.isfinite(timeout) and 0<timeout<=300,'ci.command_timeout')
             deadline=now()+timeout;phase='spawn';result['spawnOutcome']='unknown'

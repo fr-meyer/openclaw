@@ -27,9 +27,10 @@ def require(ok, reason):
         raise Refusal(reason)
 
 
-def append_bounded(record, channel, raw):
+def append_bounded(record, channel, raw, limit=STREAM_CAP):
     require(channel in ('stdout','stderr') and type(raw) is bytes, 'stream_shape')
-    room = STREAM_CAP - len(record[channel])
+    require(type(limit)is int and STREAM_CAP<=limit<=6*1024*1024,'stream_cap')
+    room = limit - len(record[channel])
     record[channel] += raw[:room]
     if len(raw) > room:
         record['truncated'] = True
@@ -40,7 +41,7 @@ def supervise(ops, argv, *, cwd, environment, deadline, grace=10.0):
             '\x00' not in v for v in argv), 'argv')
     remaining = deadline - ops.now() if type(deadline) in (int,float) else -1
     require(type(deadline) in (int,float) and math.isfinite(deadline) and
-            0 < remaining <= 1800 and type(grace) in (int,float) and
+            0 < remaining <= 2000 and type(grace) in (int,float) and
             math.isfinite(grace) and 0 < grace <= 30, 'deadline')
     result = {'spawned':False,'stdout':b'','stderr':b'','truncated':False,
               'timedOut':False,'returncode':None,'outerExited':False,
@@ -48,6 +49,8 @@ def supervise(ops, argv, *, cwd, environment, deadline, grace=10.0):
               'ownershipRetained':False,'status':'refused','synthetic':ops.synthetic,
               'shutdownRequestedByGuest':None}
     process = None
+    limits={'stdout':6*1024*1024 if argv[0]=='/usr/bin/qemu-system-x86_64' else STREAM_CAP,
+            'stderr':STREAM_CAP}
     reason = None
     errors = []
 
@@ -58,7 +61,7 @@ def supervise(ops, argv, *, cwd, environment, deadline, grace=10.0):
     def drain(duration):
         try:
             for channel, raw in ops.drain(process, duration):
-                append_bounded(result, channel, raw)
+                append_bounded(result, channel, raw, limits[channel])
         except BaseException as error:
             fail(error)
             # A failed read must not stall the bounded shutdown clock or skip

@@ -518,7 +518,7 @@ class NativeSourceBoundaryTests(unittest.TestCase):
    def __init__(self):self.started=0
   io=SyntheticRead();boot=b'aaaabbbb-1234-5678-9abc-123456789abc\n'
   with patch.object(native_io.os,'open',return_value=8),patch.object(native_io.os,'close'),\
-    patch.object(native_io.time,'monotonic',return_value=901),patch.object(native_io.os,'read',side_effect=[boot,b'']):
+    patch.object(native_io.time,'monotonic',return_value=2001),patch.object(native_io.os,'read',side_effect=[boot,b'']):
    with self.assertRaisesRegex(guard.Refusal,'boot.wrapper_deadline'):io.read('/fixed-synthetic',128)
    self.assertEqual(io.current_boot(cleanup=True),boot.decode().strip())
  def test_actual_wrapper_installs_exact_remaining_alarm_and_restores_with_injected_timer(self):
@@ -530,5 +530,5 @@ class NativeSourceBoundaryTests(unittest.TestCase):
     patch.object(native_io.signal,'signal',side_effect=lambda *a:events.append(('handler',a))),\
     patch.object(native_io.signal,'setitimer',side_effect=lambda *a:events.append(('timer',a))):
    with io.wrapper_limit():events.append(('body',))
-  self.assertEqual([e[1][1] for e in events if e[0]=='timer'],[888,0])
+  self.assertEqual([e[1][1] for e in events if e[0]=='timer'],[1988,0])
   self.assertEqual(events[-1][1][1],'previous')
