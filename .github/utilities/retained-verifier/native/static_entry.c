@@ -1,4 +1,6 @@
-/* SOURCE ONLY: unbuilt/unqualified Linux x86-64 freestanding entry.
+/* DIAGNOSTIC ONLY: unbuilt/unqualified Linux x86-64 freestanding entry.
+ * On unclassified key refusal, a bounded key NAME may be written to root-private
+ * stdout for host-side encryption. Never deploy this source to the private VM.
  * No headers, libc, loader, constructors, environment startup or other program.
  * The reviewed build must independently prove those properties in the ELF.
  */
@@ -18,7 +20,7 @@ static isize syscall3(isize number, isize a, isize b, isize c) {
 }
 
 __attribute__((noreturn)) static void stop(const char *message, usize length) {
-    /* Only fixed codes. No caller string, assignment name or value is emitted. */
+    /* Refusal stderr remains fixed codes only; no value is emitted. */
     (void)syscall3(1, 2, (isize)message, (isize)length);
     (void)syscall3(60, 111, 0, 0);
     for (;;) __asm__ volatile ("ud2");
@@ -82,9 +84,12 @@ void entry_main(usize *stack) {
     usize argc = stack[0], i, total = 0, seen = 0;
     char **argv = (char **)(stack + 1), **env;
     isize pid;
-    if (argc != 2 || argv[2] != (char *)0 ||
+    int diagnostic = (argc == 3);
+    if ((argc != 2 && argc != 3) || argv[argc] != (char *)0 ||
         !argv[0] || bounded_length(argv[0], 64) > 64 ||
-        !equal(argv[0], "/code/static-entry") || !name_valid(argv[1]))
+        !equal(argv[0], "/code/static-entry") || !name_valid(argv[1]) ||
+        (diagnostic && (!argv[2] ||
+         !equal(argv[2], "--encrypted-unknown-key-diagnostic-v1"))))
         REFUSE("args");
     pid = syscall3(39, 0, 0, 0); /* Actual PID, never an inherited claim. */
     if (pid <= 0 || pid > 2147483647) REFUSE("pid");
@@ -99,7 +104,7 @@ void entry_main(usize *stack) {
         if (k == 0 || k == length) REFUSE("env_syntax");
         for (which = 0; which < 9 && !key_equal(env[i], k, keys[which]); which++);
         if (which == 9) {
-            /* Diagnostic classifications remain fixed refusals; key and value are never emitted. */
+            /* Known classifications remain fixed refusals; their keys and values are never emitted. */
             if (key_equal(env[i], k, "MEMORY_PRESSURE_WATCH")) REFUSE("unknown_key_memory_pressure_watch");
             if (key_equal(env[i], k, "MEMORY_PRESSURE_WRITE")) REFUSE("unknown_key_memory_pressure_write");
             if (key_equal(env[i], k, "JOURNAL_STREAM")) REFUSE("unknown_key_journal_stream");
@@ -165,6 +170,25 @@ void entry_main(usize *stack) {
             if (key_equal(env[i], k, "GITHUB_ACTIONS")) REFUSE("unknown_key_github_actions");
             if (key_equal(env[i], k, "SYSTEMD_ACTIVATION_UNIT")) REFUSE("unknown_key_systemd_activation_unit");
             if (key_equal(env[i], k, "SYSTEMD_ACTIVATION_SCOPE")) REFUSE("unknown_key_systemd_activation_scope");
+            /* Preserve the public generic negative fixture's fixed refusal. */
+            if (key_equal(env[i], k, "OCV_UNEXPECTED")) REFUSE("unknown_key");
+            /* Only the exact host's third-argument path has private stdout.
+             * Generic two-argument proof runs keep fixed refusal and no output. */
+            if (diagnostic && k <= 64) {
+                usize j;
+                int valid = 1;
+                for (j = 0; j < k; j++) {
+                    char c = env[i][j];
+                    if (j == 0) {
+                        if (!((c >= 'A' && c <= 'Z') ||
+                              (c >= 'a' && c <= 'z') || c == '_')) valid = 0;
+                    } else if (!((c >= 'A' && c <= 'Z') ||
+                                 (c >= 'a' && c <= 'z') ||
+                                 (c >= '0' && c <= '9') || c == '_')) valid = 0;
+                }
+                if (valid && syscall3(1, 1, (isize)env[i], (isize)k) != (isize)k)
+                    REFUSE("diagnostic_write");
+            }
             REFUSE("unknown_key");
         }
         if (seen & ((usize)1 << which)) REFUSE("duplicate_key");
