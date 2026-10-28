@@ -1,4 +1,4 @@
-"""Published v4 owners with synthetic APIs; fixed read-only Git controls only."""
+"""Corrective driver owners, actual public P5 fixture and synthetic API; local Git controls only."""
 import base64
 import copy
 from datetime import datetime, timedelta, timezone
@@ -20,7 +20,7 @@ HEAD = "a" * 40
 NOW = datetime(2026, 10, 28, 12, tzinfo=timezone.utc)
 
 
-Refusal = RuntimeError  # Rebound to the actual adjacent driver refusal at load.
+Refusal = RuntimeError  # Rebound to the actual adjacent owner.
 
 
 class Clock(datetime):
@@ -30,10 +30,9 @@ class Clock(datetime):
 
 
 def load_fragment():
-    """Load actual published owners; never reconstruct selected definitions."""
     global Refusal
     spec = importlib.util.spec_from_file_location(
-        "published_v4_history_driver", HERE / "source_validation_v108.py")
+        "published_v4_corrective_history_driver", HERE / "source_validation_v108.py")
     module = importlib.util.module_from_spec(spec)
     sys.path.insert(0, str(HERE))
     try:
@@ -45,17 +44,18 @@ def load_fragment():
     return module.__dict__
 
 
-def historical_request(driver):
-    """A fixed local blob read; no lazy fetch, credentials, remotes or fallback."""
-    result = subprocess.run([
-        "git", "--no-replace-objects", "-C", str(PIPELINE), "cat-file", "blob",
-        driver["V4_PARENT_PIPELINE"] + ":" + driver["REQUEST"],
-    ], check=True, capture_output=True, timeout=5, env={
+def git_control(driver, commit, filename):
+    """Fixed public history controls only; no lazy fetch, credentials or fallback."""
+    if commit not in (driver["V4_PARENT_PIPELINE"], driver["FIRST_PIPELINE"]) or filename not in (
+            driver["REQUEST"], driver["WORKFLOW"]):
+        raise AssertionError("Control read outside the two fixed historical owners")
+    result = subprocess.run(["git", "--no-replace-objects", "-C", str(PIPELINE), "cat-file", "blob",
+        commit + ":" + filename], check=True, capture_output=True, timeout=5, env={
         "PATH": os.environ["PATH"], "GIT_NO_LAZY_FETCH": "1", "GIT_OPTIONAL_LOCKS": "0",
         "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_TERMINAL_PROMPT": "0",
     })
     if not 0 < len(result.stdout) <= 65536:
-        raise AssertionError("Historical request control must be a bounded local Git blob")
+        raise AssertionError("Historical control must be a bounded local Git blob")
     return result.stdout
 
 
@@ -78,12 +78,23 @@ class HistoryV4Tests(unittest.TestCase):
         w = self.root / self.ns["WORKFLOW"]
         w.parent.mkdir(parents=True)
         w.write_bytes(self.workflow)
-        pins = self.ns["STAGE_PINS"]
-        self.request = json.loads((PIPELINE / self.ns["REQUEST"]).read_bytes())
-        for filename, key in (("manifest.json", "manifestSha256"),
-                              ("patch-inventory.json", "inventorySha256")):
-            control = (PIPELINE / self.ns["CANDIDATE"] / filename).read_bytes()
-            self.assertEqual(hashlib.sha256(control).hexdigest(), pins[key])
+        self.current_pins = copy.deepcopy(self.ns["STAGE_PINS"])
+        self.current_request_raw = (PIPELINE / self.ns["REQUEST"]).read_bytes()
+        for filename, key in (("manifest.json", "manifestSha256"), ("patch-inventory.json", "inventorySha256")):
+            raw = (PIPELINE / self.ns["CANDIDATE"] / filename).read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), self.current_pins[key])
+        self.first_request_raw = git_control(self.ns, self.ns["FIRST_PIPELINE"], self.ns["REQUEST"])
+        self.first_workflow_raw = git_control(self.ns, self.ns["FIRST_PIPELINE"], self.ns["WORKFLOW"])
+        self.assertEqual(hashlib.sha256(self.first_request_raw).hexdigest(), self.ns["FIRST_REQUEST_SHA256"])
+        # Initial-path unit cases consume the genuine P5 request and its first-source
+        # pins. The current-correction cases below use the actual tracked P6 request.
+        self.request = json.loads(self.first_request_raw)
+        initial_pins = copy.deepcopy(self.current_pins)
+        initial_pins.update(sourceSha=initial_pins["firstSourceSha"], sourceTree=initial_pins["firstSourceTree"],
+            manifestSha256=initial_pins["firstManifestSha256"], inventorySha256=initial_pins["firstInventorySha256"],
+            priorRunIds=initial_pins["priorRunIds"][:5])
+        self.ns["STAGE_PINS"] = initial_pins
+        pins = initial_pins
         repo = {"full_name": self.ns["REPOSITORY"], "private": False}
         self.pr = {"number": 28, "state": "open", "draft": True,
             "head": {"repo": repo, "ref": self.ns["BRANCH"], "sha": HEAD},
@@ -95,7 +106,7 @@ class HistoryV4Tests(unittest.TestCase):
             "GITHUB_WORKFLOW_SHA": "b" * 40, "GITHUB_RUN_ID": CURRENT}
         self.history = {}
         for row in self.prefix["runs"]:
-            run = copy.deepcopy(row)
+            run = {key: copy.deepcopy(row[key]) for key in self.ns["V4_PROVIDER_RUN_HEADERS"]}
             run.update(repository=repo, head_repository=repo, display_title=self.ns["CAMPAIGN"], pull_requests=[{"number": 28}])
             self.history[str(run["id"])] = run
         self.history[CURRENT] = self.run_record(CURRENT, self.ns["WORKFLOW"], "in_progress", HEAD)
@@ -105,7 +116,7 @@ class HistoryV4Tests(unittest.TestCase):
         self.contents = {}
         self.source_tip = pins["sourceSha"]
         self.calls = []
-        old_request = historical_request(self.ns)
+        old_request = git_control(self.ns, self.ns["V4_PARENT_PIPELINE"], self.ns["REQUEST"])
         def fake_git(root, *args):
             self.calls.append(("git", args))
             if args == ("show", self.ns["V4_PARENT_PIPELINE"] + ":" + self.ns["REQUEST"]):
@@ -321,9 +332,9 @@ class HistoryV4Tests(unittest.TestCase):
         with self.assertRaises(Refusal):self.check()
 
     def test_actual_root_request_uses_current_pins_not_legacy_context(self):
-        actual = (PIPELINE / self.ns["REQUEST"]).read_bytes()
-        self.assertEqual(hashlib.sha256(actual).hexdigest(), self.ns["FIRST_REQUEST_SHA256"])
-        self.request = json.loads(actual)
+        self.assertEqual(hashlib.sha256(self.current_request_raw).hexdigest(),
+            "167466df439e6320f927681553ce7ad35f1b94afa5b2f81ab902a22b8a6a2d09")
+        self.apply_actual_corrective()
         facts = self.check()
         self.assertEqual(facts["campaignRunnerMinuteCeiling"], 18000)
         self.assertEqual(facts["deadlineEpoch"], int(datetime(2026, 10, 30, 0, 3, 19, tzinfo=timezone.utc).timestamp()))
@@ -365,6 +376,63 @@ class HistoryV4Tests(unittest.TestCase):
         self.tables[rid]["jobs"][0]["conclusion"] = "failure"
         self.tables[rid]["jobs"] = [j for j in self.tables[rid]["jobs"] if not j["name"].startswith("source (")]
         self.tables[rid]["total_count"] = len(self.tables[rid]["jobs"])
+        with self.assertRaises(Refusal):self.check()
+
+    def test_actual_provider_header_projection_excludes_derived_artifact_rows(self):
+        self.assertEqual(sum("artifactRows" in row for row in self.prefix["runs"]), 42)
+        self.assertTrue(all("artifactRows" not in row and "jobs" not in row and
+                            "observedRunnerMinutes" not in row for row in self.history.values()))
+        actual = next(row for row in self.prefix["runs"] if row["id"] == 40639371790)
+        self.assertEqual(actual["artifactRows"], [])
+        facts = self.check()
+        self.assertEqual(len(facts["closedPrefixHeaderFields"]), 12)
+        self.assertEqual(len(facts["historicalJobTableSha256"]), 99)
+        self.assertEqual(facts["actualSettledRunnerMinutes"], 886)
+        self.assertEqual(facts["closedArtifactBaselineProof"]["bytes"], 5600)
+
+    def apply_actual_corrective(self):
+        fixture_raw = (HERE / "test_history_v4_p5_failed_intake.json").read_bytes()
+        self.assertEqual(hashlib.sha256(fixture_raw).hexdigest(),
+            "6139e4b58edea66c7b514d89cba06522d9c72bbb96bc6f4167df5b456a18a9cd")
+        fixture = json.loads(fixture_raw)
+        self.assertEqual(fixture["sourceRunSha256"], "26c2108ebd9cf7880a4bc40f0ab07f66fc596e9be032423bc7f42518ba805e25")
+        self.assertEqual(fixture["sourceJobTableSha256"], "d0fed2461c9b80b23bbf389433415beadb300e3445014116772a3cf3d451fde1")
+        actual_run, actual_jobs = fixture["run"], fixture["jobs"]
+        self.ns["STAGE_PINS"] = copy.deepcopy(self.current_pins)
+        self.request = json.loads(self.current_request_raw)
+        first_id = str(actual_run["id"])
+        self.assertEqual(first_id, self.request["priorRunIds"][-1])
+        self.assertEqual(actual_run["head_sha"], self.ns["FIRST_PIPELINE"])
+        self.history[first_id] = actual_run
+        self.history[CURRENT]["created_at"] = "2026-10-28T11:59:00Z"
+        self.tables[first_id] = actual_jobs
+        self.contents[self.ns["REQUEST"] + "?ref=" + actual_run["head_sha"]] = self.first_request_raw
+        self.contents[self.ns["WORKFLOW"] + "?ref=" + actual_run["head_sha"]] = self.first_workflow_raw
+        return first_id
+
+    def test_actual_failed_p5_current_corrective_request_charges5_and_requires_all7(self):
+        first_id = self.apply_actual_corrective()
+        facts = self.check()
+        self.assertEqual(facts["observedNewPriorRunnerMinutes"], 5)
+        self.assertEqual(facts["bookedRunnerMinutes"], 1411)
+        self.assertEqual((facts["currentRoundBookedMinutes"], facts["operatorRoundsRemaining"]), (475, 0))
+        first = facts["firstSourceReceipt"]
+        self.assertEqual(first["profileResults"], {})
+        self.assertEqual(first["sourceProfilesAcquired"], 0)
+        self.assertTrue(first["initialValidationNeverStarted"])
+        self.assertEqual(set(first["unresolvedProfiles"]), set(self.request["profiles"]))
+        self.assertEqual(len(first["unresolvedProfiles"]), 7)
+        saved = copy.deepcopy(self.tables[first_id])
+        literal = next(job for job in self.tables[first_id]["jobs"] if job["name"] == "source (${{ matrix.profile }})")
+        literal["runner_id"] = 0
+        with self.assertRaises(Refusal):self.check()
+        self.tables[first_id] = copy.deepcopy(saved)
+        self.tables[first_id]["jobs"] = [job for job in self.tables[first_id]["jobs"]
+                                         if job["name"] != "source (${{ matrix.profile }})"]
+        self.tables[first_id]["total_count"] = 2
+        with self.assertRaises(Refusal):self.check()
+        self.tables[first_id] = saved
+        self.request["profiles"] = ["dependency", "types-tests", "types-scripts", "compatibility", "pipeline-contracts"]
         with self.assertRaises(Refusal):self.check()
 
 

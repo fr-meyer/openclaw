@@ -901,7 +901,8 @@ class FinalizeCoverageTests(unittest.TestCase):
     def test_v4_same_source_correction_keeps_targeted_profiles_and_original_witness(self):
         value=operational_v4_request()
         pins=copy.deepcopy(driver.STAGE_PINS)
-        pins["priorRunIds"].append("99998")
+        # Unit-only synthetic first-run ID; do not append to live corrective controls.
+        pins["priorRunIds"]=[*pins["priorRunIds"][:5], "99998"]
         value.update(round=5,lifetimeOperatorRound=6,profiles=["dependency"],priorRunIds=pins["priorRunIds"])
         self.assertIsNone(value["sourceWitness"]["corrective"])
         facts=self.finalize(value,pins)
