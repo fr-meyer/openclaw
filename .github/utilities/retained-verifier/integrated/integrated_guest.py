@@ -209,11 +209,15 @@ def _diagnostic_state(storage,unit,transport,server,bridge,journal):
     def operations(value,allowed):
         require(type(value) is set and value<=set(allowed),'integrated_guest.diagnostic_operations')
         return sorted(value)
-    def pending(value):
+    def mac_pending(value):
         require(value is None or type(value) is tuple and len(value)==2 and type(value[0]) is int and
-            0<=value[0]<durable_intent.MAX_CALLS and value[1] in durable_intent.METHODS,
-            'integrated_guest.diagnostic_pending')
+            0<=value[0]<durable_intent.MAX_CALLS and type(value[1]) is str and value[1] in durable_intent.METHODS and
+            value[0]==journal.sequence==bridge.sequence,'integrated_guest.diagnostic_mac_pending')
         return None if value is None else list(value)
+    guest_pending=server.journal.pending
+    require(guest_pending is None or type(guest_pending) is int and
+        0<=guest_pending<guest_server.MAX_CALLS and guest_pending==server.sequence==server.journal.sequence,
+        'integrated_guest.diagnostic_guest_pending')
     state={'bridgePhase':bridge.phase,'bridgeSequence':bridge.sequence,'serverSequence':server.sequence,
         'transportAttempts':len(transport._attempts),'transportSettled':len(transport._methods),
         'serverAttempted':operations(server.attempted,guest_server.METHODS),
@@ -221,7 +225,10 @@ def _diagnostic_state(storage,unit,transport,server,bridge,journal):
         'unitAttempted':operations(unit._attempted,guest_unit._INTENTS),
         'unitFinished':operations(unit._finished,guest_unit._INTENTS),
         'storageUsed':operations(storage._used,('preflight','prepare','context','unmount','release','report','remove')),
-        'macPending':pending(journal.pending),'guestPending':pending(server.journal.pending)}
+        'macPending':mac_pending(journal.pending),'guestPending':guest_pending}
+    unfinished=set(state['serverAttempted'])-set(state['serverFinished'])
+    require(len(unfinished)<=1,'integrated_guest.diagnostic_guest_pending')
+    state['guestUnfinishedMethods']=sorted(unfinished)  # Never invent a method from the guest integer.
     require(state['bridgePhase'] in ('new','preparing','prepared','started','admitted','closing','closed','copies_removed') and
         all(type(state[k]) is int and 0<=state[k]<=durable_intent.MAX_CALLS for k in
             ('bridgeSequence','serverSequence','transportAttempts','transportSettled')),
@@ -232,6 +239,11 @@ def _diagnostic_state(storage,unit,transport,server,bridge,journal):
         ('unitEmpty',unit._empty),('testMounted',storage._mounted),('serverUnmounted',server.unmounted)):
         require(type(value) is bool,'integrated_guest.diagnostic_boolean');state[name]=value
     return state
+
+
+def _diagnostic_state_view(storage,unit,transport,server,bridge,journal):
+    try:return _diagnostic_state(storage,unit,transport,server,bridge,journal)
+    except BaseException as error:return {'unavailable':integrated_failure.closed_failure(error,'state')}
 
 
 def _diagnostic_command(unit,storage):
@@ -275,9 +287,12 @@ def _diagnostic_command(unit,storage):
 
 def _failure_snapshot(error,parent,prepared,cap,storage,unit,transport,server,bridge,journal):
     index=_diagnostic_binding(parent,prepared,cap,storage,unit,transport,server,bridge,journal)
+    try:command=_diagnostic_command(unit,storage);unavailable=None
+    except BaseException as failed:
+        command=None;unavailable=integrated_failure.closed_failure(failed,'command')
     return {'primary':None if error is None else integrated_failure.exception_snapshot(error,index),'index':index,
-        'before':_diagnostic_state(storage,unit,transport,server,bridge,journal),
-        'command':_diagnostic_command(unit,storage)}
+        'before':_diagnostic_state_view(storage,unit,transport,server,bridge,journal),
+        'command':command,'commandUnavailable':unavailable}
 
 
 def _refuse_chain(primary,cleanup,snapshot,parent,prepared,cap,storage,unit,transport,server,bridge,journal):
@@ -289,13 +304,19 @@ def _refuse_chain(primary,cleanup,snapshot,parent,prepared,cap,storage,unit,tran
         first=snapshot['primary'] if snapshot['primary'] is not None else integrated_failure.exception_snapshot(primary,snapshot['index'])
         evidence=integrated_failure.render(first,
             [integrated_failure.exception_snapshot(error,snapshot['index'])for error in cleanup],
-            snapshot['before'],_diagnostic_state(storage,unit,transport,server,bridge,journal),snapshot['command'])
-    except BaseException:
+            snapshot['before'],_diagnostic_state_view(storage,unit,transport,server,bridge,journal),snapshot['command'],
+            command_unavailable=snapshot.get('commandUnavailable'))
+    except BaseException as error:
         # An invalid/foreign diagnostic object never gets serialized. Failure,
         # blocked state and the existing cleanup/outer poweroff remain mandatory.
+        rejection=integrated_failure.closed_failure(error,'render')
+        if type(snapshot) is dict and 'rejection'in snapshot:
+            try:rejection=integrated_failure.closed_failure_record(snapshot['rejection'])
+            except BaseException:pass
         evidence={'schema':'ocv.integrated-native-chain-failure.v1','syntheticOnly':True,
             'privateInputs':False,'environmentIncluded':False,'messagesIncluded':False,
-            'retryPermitted':False,'diagnosticUnavailable':True,'cleanupExceptionCount':len(cleanup)}
+            'retryPermitted':False,'diagnosticUnavailable':True,'cleanupExceptionCount':len(cleanup),
+            'diagnosticConstruction':rejection}
     raise guard.Refusal('integrated_guest.native_chain_uncertain',{'nativeChain':evidence}) from primary
 
 
@@ -382,13 +403,13 @@ def run_bound(parent, prepared, cap, bootstrap, peer, storage_io, unit_io, trans
     except BaseException as error:
         primary=error
         try:snapshot=_failure_snapshot(error,parent,prepared,cap,storage,unit,transport,server,bridge,journal)
-        except BaseException:snapshot={'unavailable':True}
+        except BaseException as failed:snapshot={'unavailable':True,'rejection':integrated_failure.closed_failure(failed,'snapshot')}
     finally:
         # Never replay a poisoned request or duplicate an ambiguous STOP. The
         # original outer bootstrap still independently requests guest poweroff.
         if snapshot is None:
             try:snapshot=_failure_snapshot(None,parent,prepared,cap,storage,unit,transport,server,bridge,journal)
-            except BaseException:snapshot={'unavailable':True}
+            except BaseException as failed:snapshot={'unavailable':True,'rejection':integrated_failure.closed_failure(failed,'snapshot')}
         cleanup=_cleanup_owned(unit,storage,journal,cap.owner)
         if primary is not None or cleanup:
             _refuse_chain(primary if primary is not None else cleanup[0],cleanup,snapshot,

@@ -14,6 +14,45 @@ FACTS_CAP=31*1024
 CONTROLS=frozenset(('exitCode','timedOut','spawned','spawnOutcome','captureComplete',
     'streamsEOF','streamsClosed','ownedChildExited','ownershipRetained','refusalCode',
     'failurePhase','operationId','errors'))
+FALLBACK_REASONS=frozenset(('integrated_guest.diagnostic_capability','integrated_guest.diagnostic_components',
+    'integrated_guest.diagnostic_graph','integrated_guest.diagnostic_collector','integrated_guest.diagnostic_generic',
+    'integrated_guest.diagnostic_operations','integrated_guest.diagnostic_mac_pending','integrated_guest.diagnostic_guest_pending',
+    'integrated_guest.diagnostic_pending','integrated_guest.diagnostic_state','integrated_guest.diagnostic_boolean',
+    'integrated_guest.diagnostic_command_record','integrated_guest.diagnostic_start_properties',
+    'integrated_guest.diagnostic_command_kind','integrated_guest.diagnostic_unsafe_argv',
+    'integrated_guest.diagnostic_capture_source','integrated_guest.diagnostic_unavailable',
+    'integrated_failure.modules','integrated_failure.code_cap','integrated_failure.code_identity',
+    'integrated_failure.module','integrated_failure.exception','integrated_failure.traceback',
+    'integrated_failure.capture_schema','integrated_failure.capture_operation','integrated_failure.capture_exit',
+    'integrated_failure.capture_control','integrated_failure.capture_ownership','integrated_failure.capture_code',
+    'integrated_failure.capture_errors','integrated_failure.capture_error','integrated_failure.capture_pid',
+    'integrated_failure.capture_stream','integrated_failure.capture_hash','integrated_failure.render',
+    'integrated_failure.facts_cap','integrated_failure.closed_failure_record',
+    'integrated_failure.unclassified_diagnostic_failure'))
+FALLBACK_TYPES=frozenset(('protocol.Refusal','OSError','PermissionError','FileNotFoundError','FileExistsError',
+    'TimeoutError','ValueError','TypeError','RuntimeError','AssertionError','KeyError','IndexError',
+    'unlisted-exception-type'))
+FALLBACK_PHASES=frozenset(('snapshot','state','command','render'))
+
+
+def closed_failure_record(value):
+    require(type(value) is dict and set(value)=={'phase','reason','type'} and
+        type(value['phase']) is str and value['phase'] in FALLBACK_PHASES and
+        type(value['reason']) is str and value['reason'] in FALLBACK_REASONS and
+        type(value['type']) is str and value['type'] in FALLBACK_TYPES,
+        'integrated_failure.closed_failure_record')
+    return dict(value)
+
+
+def closed_failure(error,phase):
+    from protocol import Refusal
+    require(isinstance(error,BaseException) and phase in FALLBACK_PHASES,'integrated_failure.closed_failure_record')
+    kind=type(error);args=BaseException.args.__get__(error,BaseException)
+    reason=args[0]if kind is Refusal and type(args) is tuple and len(args)>0 and type(args[0]) is str and args[0] in FALLBACK_REASONS else 'integrated_failure.unclassified_diagnostic_failure'
+    names={t:t.__name__ for t in (OSError,PermissionError,FileNotFoundError,FileExistsError,TimeoutError,
+        ValueError,TypeError,RuntimeError,AssertionError,KeyError,IndexError)}
+    return closed_failure_record({'phase':phase,'reason':reason,
+        'type':'protocol.Refusal'if kind is Refusal else names.get(kind,'unlisted-exception-type')})
 
 
 def source_index(modules):
@@ -120,7 +159,7 @@ def command_snapshot(result,operation,owned):
     return {'capture':controls,'streams':streams,'ownedCommandsRemaining':len(owned)}
 
 
-def render(primary,cleanup,before,after,command):
+def render(primary,cleanup,before,after,command,*,command_unavailable=None):
     require(type(primary) is dict and type(cleanup) is list and len(cleanup)<=3 and
         type(before) is dict and type(after) is dict and (command is None or type(command) is dict),
         'integrated_failure.render')
@@ -128,7 +167,8 @@ def render(primary,cleanup,before,after,command):
         'privateInputs':False,'environmentIncluded':False,'messagesIncluded':False,
         'retryPermitted':False,'primary':copy.deepcopy(primary),'cleanup':copy.deepcopy(cleanup),
         'stateBeforeCleanup':copy.deepcopy(before),'stateAfterCleanup':copy.deepcopy(after),
-        'latestSafeCommand':copy.deepcopy(command)}
+        'latestSafeCommand':copy.deepcopy(command),
+        'commandUnavailable':None if command_unavailable is None else closed_failure_record(command_unavailable)}
     if command is not None:
         stream=evidence['latestSafeCommand']['streams']['stdout'];original=base64.b64decode(stream['viewBase64'],validate=True)
         limit=len(original)

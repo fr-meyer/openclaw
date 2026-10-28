@@ -558,7 +558,23 @@ class IntegratedFailureTests(unittest.TestCase):
         self.assertIs(raised.exception.__cause__,original)
         self.assertEqual(raised.exception.code,'integrated_guest.native_chain_uncertain')
         self.assertFalse(raised.exception.facts['nativeChain']['retryPermitted'])
+        self.assertEqual(raised.exception.facts['nativeChain']['diagnosticConstruction']['reason'],
+            'integrated_guest.diagnostic_unavailable')
         self.assertNotIn(b'DO_NOT_PUBLISH',gprotocol.canonical(raised.exception.facts))
+    def test_fallback_exposes_only_closed_source_reason_phase_and_exact_exception_type(self):
+        error=gprotocol.Refusal('integrated_guest.diagnostic_guest_pending')
+        self.assertEqual(diagnostic.closed_failure(error,'snapshot'),{'phase':'snapshot',
+            'reason':'integrated_guest.diagnostic_guest_pending','type':'protocol.Refusal'})
+        class Foreign(gprotocol.Refusal):pass
+        for value in (Foreign('integrated_guest.diagnostic_guest_pending'),
+            gprotocol.Refusal('secret.value'),RuntimeError('DO_NOT_PUBLISH'),PermissionError(13,'DO_NOT_PUBLISH')):
+            record=diagnostic.closed_failure(value,'command');raw=gprotocol.canonical(record)
+            self.assertNotIn(b'DO_NOT_PUBLISH',raw);self.assertNotIn(b'secret.value',raw)
+            self.assertEqual(record['reason'],'integrated_failure.unclassified_diagnostic_failure')
+        for value in ({'phase':'snapshot','reason':'secret.value','type':'protocol.Refusal'},
+            {'phase':'snapshot','reason':'integrated_guest.diagnostic_guest_pending','type':'DO_NOT_PUBLISH'},
+            {'phase':'snapshot','reason':'integrated_guest.diagnostic_guest_pending','type':'protocol.Refusal','extra':'DO_NOT_PUBLISH'}):
+            with self.subTest(value=value),self.assertRaises(gprotocol.Refusal):diagnostic.closed_failure_record(value)
 
 
 class UnitStartDeadlineTests(unittest.TestCase):
@@ -605,6 +621,288 @@ class UnitStartDeadlineTests(unittest.TestCase):
             clock['utc']+=dt.timedelta(seconds=1000)
             self.assertEqual(io.spawn(('/usr/bin/systemctl','stop',native._cap.owner['unitName'])),'inert')
             self.assertEqual(popen.call_count,2)
+
+
+
+# Whole checked graph and inert constructor-chain contracts.
+"""Whole checked graph with actual constructors and explicitly inert native IO.
+
+Only temporary public-source/journal files are written. No native qualification
+authority is established: the boot, root and lease facts below are test seams.
+"""
+from contextlib import contextmanager
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+import subprocess
+from types import ModuleType,SimpleNamespace
+import unittest
+from unittest import mock
+
+import integrated_entry as construction_entry
+import integrated_guest as construction_guest
+
+
+@contextmanager
+def diagnostic_whole_factory():
+    here=Path(construction_guest.__file__).resolve().parent
+    public=here if (here/'PUBLIC-INTEGRATED-SOURCE-MANIFEST.json').exists() else here/'proposed-public-harness/integrated'
+    exported=json.loads((public/'PUBLIC-INTEGRATED-SOURCE-MANIFEST.json').read_bytes())
+    files={row['path']:(public/row['path']).read_bytes()for row in exported['files']}
+    import hashlib
+    for row in exported['files']:
+        assert len(files[row['path']])==row['bytes'] and hashlib.sha256(files[row['path']]).hexdigest()==row['sha256']
+    outer={};bootstrap_root=public.parent/'bootstrap'
+    with tempfile.TemporaryDirectory(prefix='ocv-source-construction-')as temp,mock.patch.dict(sys.modules),\
+         mock.patch.object(subprocess,'Popen',side_effect=AssertionError('native process forbidden in source construction test')):
+        temp=Path(temp).resolve();physical=temp/'source';physical.mkdir(mode=0o700)
+        for name in construction_entry.guest_module_names(files)|{'guard','issuer','native_io'}:sys.modules.pop(name,None)
+        for name in ('guard','native_io','issuer'):
+            path=bootstrap_root/(name+'.py');module=ModuleType(name);module.__file__=str(path)
+            sys.modules[name]=module;exec(compile(path.read_bytes(),str(path),'exec'),module.__dict__);outer[name]=module
+        # All bytes are the authenticated PUBLIC export. No private report,
+        # runtime input, provider observation or native effect enters this test.
+        raw_rows=[]
+        for name,raw in sorted(files.items()):
+            target=physical/'guest'/name;target.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+            target.write_bytes(raw);target.chmod(0o444)
+            raw_rows.append({'path':'guest/'+name,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'mode':0o444})
+        for directory in physical.rglob('*'):
+            if directory.is_dir():directory.chmod(0o700)
+        canonical=outer['guard'].canonical;closure=hashlib.sha256(canonical(raw_rows)).hexdigest()
+        manifest=canonical({'schema':'openclaw.native-guest-source-bundle.v1','files':raw_rows,'sourceClosureSha256':closure})
+        (physical/'SOURCE-MANIFEST.private.json').write_bytes(manifest);(physical/'SOURCE-MANIFEST.private.json').chmod(0o444)
+        root=Path('/var/lib/openclaw-retained-verifier-source')/closure
+        graph=construction_entry.CheckedGuestModules(construction_entry._GRAPH_KEY,root,files,outer)
+        modules=graph.load_all();m=lambda name:modules[name]
+        p=m('protocol');ci=m('ci_authority');native=m('native_authority');unit_module=m('guest_unit')
+        with mock.patch.object(outer['native_io'].sys,'platform','linux'),mock.patch.object(os,'geteuid',return_value=0),mock.patch.object(os,'getegid',return_value=0):
+            io=outer['native_io'].NativeEvidenceIO(outer['native_io'].ENTRY)
+        boot='aaaabbbb-1234-5678-9abc-123456789abc';now=dt.datetime(2030,1,1,tzinfo=dt.timezone.utc)
+        io.claimed=True;io.current_boot=lambda *,cleanup=False:boot;io.monotonic=lambda:10.
+        io._integrated_module_graph=graph
+        aliases={};tools={}
+        plan=outer['guard'].Plan({'ocv.source':'a'*64,'ocv.session':'b'*32},{'runIdentity':{}},{'files':[]},{},{},boot,now,{},True,outer['guard']._PLAN_SEAL,io)
+        compatibility=outer['issuer'].Compatibility(outer['issuer']._COMPATIBILITY_SEAL,io,plan,b'{}')
+        prepared=outer['issuer'].Prepared(outer['issuer']._PREPARED_SEAL,io,plan,aliases,tools,{'status':'synthetic-construction'}, {},compatibility)
+        parent=outer['issuer'].NativeCapability(outer['issuer']._SEAL,io,plan,aliases,tools,2000.)
+        session='c'*32;owner={'vmId':native.VM_ID,'bootId':boot,'sessionId':session,
+            'unitName':'ocv-'+session+'.service','guestSourceSha256':closure,
+            'providerStopAt':'2030-01-01T00:45:00Z','executionDeadlineUtc':'2030-01-01T00:55:00Z'}
+        worker=m('worker');profile=m('profile')
+        context={'schema':worker.CONTEXT_SCHEMA,'sessionId':session,'unitName':owner['unitName'],'bootId':boot,
+            'vmId':native.VM_ID,'identityName':'ocv-'+session[:24],'contextNonce':'d'*64,
+            'workerDeadlineUtc':None,'maxJobSeconds':300,'operation':'retained-report-only','mountPropagation':'private',
+            'sourceSha':worker.SOURCE,'scannerSha':worker.SCANNER,'indexDigest':worker.INDEX,
+            'privacySha256':worker.REPORT_SHA256,'privacyBytes':worker.REPORT_BYTES,'consumerCode':worker.CONSUMER,
+            'profileSha256':profile.DESIGN_PROFILE_SHA,'entrySha256':unit_module.HELPER_SHA256,
+            'workerSha256':p.sha(files['worker.py']),'runtimeManifestSha256':'e'*64,'inputManifestSha256':None}
+        mac_root=temp/'mac';mac_root.mkdir(mode=0o700)
+        core=graph.require_loaded_rows(root,{row['path']:row for row in raw_rows})
+        pins={key:context[key]for key in ('profileSha256','workerSha256','entrySha256','runtimeManifestSha256')}
+        pins.update(contextSha256=p.sha(p.canonical(context)),guestSourceSha256=closure,
+            contextContractSha256=p.sha(p.canonical(sorted(worker.CONTEXT_KEYS))),transportReceiptSha256='f'*64,
+            macJournalRoot=str(mac_root),sourceManifestSha256=p.sha(manifest),trustedCoreSources=core,
+            unitTools={path:('1'*64 if path!='/usr/sbin/selinuxenabled'else m('host_admission').SELINUX_TOOL_SHA256)for path in unit_module.TOOL_PATHS},
+            selinuxToolSha256=m('host_admission').SELINUX_TOOL_SHA256)
+        storage_io=m('guest_storage').NativeStorageIO();unit_io=unit_module.NativeUnitIO()
+        storage_io.now=unit_io.now=lambda:now
+        transport=m('integrated_guest').LocalGuestTransport();owner_io=m('owner_guard').NativeOwnerGuardIO()
+        owner_io.now=lambda:now;receipt={'syntheticNativeObjectConstruction':True}
+        owner_io.verify_lease=lambda owner_raw,receipt_raw:owner_raw==p.canonical(owner) and receipt_raw==p.canonical(receipt)
+        owner_guard=m('owner_guard').OwnerGuard(m('owner_guard')._KEY,owner,owner_io,receipt)
+        ios={'storage':storage_io,'unit':unit_io,'mac':transport,'owner_guard':owner_io}
+        runtime=ci.CIRuntimeSource(ci._KEY,parent,prepared,storage_io,{}, {})
+        grant=ci.CIGrant(ci._KEY,parent,prepared,owner,context,pins,ios,runtime)
+        bootstrap_cap=native._issue_bootstrap_from_verified_grant(grant,owner,context,pins,{'owner_guard':owner_io},runtime,transport)
+        fd=os.open(physical,os.O_RDONLY|os.O_DIRECTORY)
+        try:
+            source_grant=m('guest_bootstrap').GuestSourceGrant(m('guest_bootstrap')._KEY,bootstrap_cap,
+                'ci-native-proof',fd,p.sha(manifest),os.getuid(),transport,physical,dict(modules),owner_guard)
+        finally:os.close(fd)
+        bootstrap=m('guest_bootstrap').VerifiedBootstrap(source_grant)
+        cap=native._issue_operational_from_verified_grant(grant,owner,context,pins,
+            {role:ios[role]for role in ci.OPERATIONAL_ROLES},runtime,bootstrap,owner_guard,transport)
+        peer=m('guest_bootstrap').issue_peer_from_outer(bootstrap,transport)
+        storage=m('guest_storage').NativeStorageSession(cap,storage_io)
+        unit=unit_module.NativeUnitSession(cap,storage,unit_io)
+        guest_root=temp/'guest-journal';guest_root.mkdir(mode=0o700)
+        with mock.patch.object(m('guest_server'),'_dir',side_effect=lambda _path,_uid:os.open(guest_root,os.O_RDONLY|os.O_DIRECTORY)):
+            guest_journal=m('guest_server').GuestIntentJournal(Path(m('guest_server').CONTROL_BASE)/session/'rpc-intents',owner,uid=os.getuid())
+        server=m('guest_server').GuestServer(cap,storage,unit,bootstrap,peer,guest_journal,now=lambda:now)
+        transport.bind(cap,server,peer)
+        journal=m('durable_intent').DurableIntent(mac_root,owner,pins['contextSha256'],p.sha(p.canonical(pins)))
+        transport.bind_journal(journal);bridge=m('mac_bridge').MacBridge(cap,transport,journal,now=lambda:now)
+        fixture=SimpleNamespace(modules=modules,parent=parent,prepared=prepared,cap=cap,storage=storage,unit=unit,
+            transport=transport,server=server,bridge=bridge,journal=journal,bootstrap=bootstrap,
+            outer=outer,temporary_root=temp,physical=physical,context=context,owner=owner,public=public)
+        try:yield fixture
+        finally:
+            journal.close();os.close(guest_journal._fd);os.close(bootstrap._source_fd)
+
+
+def settle_synthetic_preparation(f):
+    """Six REAL wire/journal settlements; only storage effect ports are inert."""
+    p=f.modules['protocol'];bridge_module=f.modules['mac_bridge']
+    copy_manifest={'syntheticConstructionOnly':True}
+    digest=p.sha(p.canonical(copy_manifest));copy_manifest['manifestSha256']=digest
+    staged={'inputManifestSha256':digest,'inputManifest':copy_manifest,
+        'runtimeManifestSha256':f.context['runtimeManifestSha256'],'copiesRootOwned':True,'inputMode':0,
+        'propertiesSha256':'3'*64,'stagedAtUtc':'2030-01-01T00:00:00Z','workerDeadlineUtc':'2030-01-01T00:05:00Z'}
+    f.storage.preflight=lambda context:{'fresh':True,'vmId':f.owner['vmId'],'testReadOnly':True,
+        'bootFreeBytes':2*1024**3,'diskIds':list(bridge_module.DISK_IDS),'noOtherOwner':True,'runtimeAuthoritiesBound':True}
+    f.storage.prepare=lambda context:staged
+    f.storage.write_public_context_once=lambda raw:None
+    f.storage.unmount_test_normally=lambda:None
+    f.storage.test_is_unmounted=lambda:True
+    f.bridge.prepare()
+    assert f.bridge.sequence==f.server.sequence==f.journal.sequence==f.server.journal.sequence==6
+
+
+def native_chain_snapshot(f,error):
+    g=f.modules['integrated_guest']
+    snapshot=g._failure_snapshot(error,f.parent,f.prepared,f.cap,f.storage,f.unit,f.transport,f.server,f.bridge,f.journal)
+    try:g._refuse_chain(error,[],snapshot,f.parent,f.prepared,f.cap,f.storage,f.unit,f.transport,f.server,f.bridge,f.journal)
+    except f.outer['guard'].Refusal as refusal:
+        assert refusal.__cause__ is error
+        return snapshot,refusal.facts['nativeChain']
+    raise AssertionError('source failure must refuse')
+
+
+def attach_inert_collector(f):
+    """Actual Collector/CommandCapture; root/source reads map to public fixtures."""
+    host=f.modules['host_admission'];unit_module=f.modules['guest_unit']
+    physical=f.physical/'guest/attested_generic';original_source_pins=host.source_pins
+    def root_source_read_seam(path):
+        assert path==(f.cap.source_root/'guest/attested_generic').resolve()
+        original_source_pins(physical)  # Real complete signed six-file hash checks.
+    with mock.patch.object(host.os,'geteuid',return_value=0),\
+         mock.patch.object(host,'_root_owned_sources',side_effect=root_source_read_seam),\
+         mock.patch.object(host,'source_pins',side_effect=lambda directory=None:original_source_pins(physical)):
+        collector=host.Collector(host.HostOps(str(f.cap.session_root),f.owner['unitName']),f.owner['bootId'])
+    io=unit_module._UnitCommandIO(f.unit.io,f.bridge.context)
+    children=[];streams={};queues={}
+    def spawn(argv):
+        child=SimpleNamespace(pid=23,stdout=object(),stderr=object());children.append(argv)
+        # STATE output is harmless and bounded. A later direct Collector
+        # busctl returns wrong typed data to exercise its real failure path.
+        stdout=b'fixed synthetic state'if argv[0]=='/usr/bin/systemctl'else b'{"type":"b","data":true}'
+        queues[child.stdout]=[stdout,b''];queues[child.stderr]=[b''];return child
+    io.spawn=spawn;io.now=lambda:10.;io.selector=lambda:object();io.nonblocking=lambda stream:None
+    io.register=lambda selector,stream,label:streams.__setitem__(stream,label)
+    io.events=lambda selector,seconds:[(SimpleNamespace(fileobj=s,data=label),1)for s,label in list(streams.items())]
+    io.mapped=lambda selector:bool(streams);io.read=lambda stream:queues[stream].pop(0)
+    io.unregister=lambda selector,stream:streams.pop(stream);io.close_selector=lambda selector:None
+    io.close_stream=lambda stream:None;io.poll=lambda child:0;io.wait=lambda child,seconds:0
+    collector.ops.command_port.io=io;collector.prepared=True
+    f.unit.io._collector=collector;f.unit.io._before=True;f.unit.io._check=lambda **kwargs:None
+    return collector,children
+
+
+@unittest.skipUnless(hasattr(sys,'stdlib_module_names'),'checked whole graph needs the Python3.11+ stdlib roster used in CI')
+class WholeDiagnosticConstructionTests(unittest.TestCase):
+    def test_actual_factory_pending_zero_integer_survives_snapshot_to_genuine_refusal(self):
+        with diagnostic_whole_factory()as f:
+            final=dict(f.context,inputManifestSha256='2'*64,workerDeadlineUtc='2030-01-01T00:05:00Z')
+            f.server.staged={'inputManifestSha256':'2'*64,'stagedAtUtc':'2030-01-01T00:00:00Z','workerDeadlineUtc':final['workerDeadlineUtc']}
+            f.server.finished={'write_public_context_once','test_is_unmounted'};f.server.unmounted=True
+            f.server.context=final;f.bridge.context=final;f.bridge.phase='prepared'
+            with self.assertRaises(f.modules['mac_bridge'].UncertainOutcome)as caught:
+                f.bridge._exchange('start_worker_once',[final])
+            self.assertEqual(f.server.journal.pending,0)
+            self.assertEqual(f.journal.pending,(0,'start_worker_once'))
+            # This one explicit shortcut seeds source-equivalent prepared state
+            # at sequence0. The next test drives all six actual wire settlements.
+            snapshot,evidence=native_chain_snapshot(f,caught.exception)
+            self.assertEqual(snapshot['before']['guestPending'],0)
+            self.assertNotIn('diagnosticUnavailable',evidence)
+            self.assertEqual(evidence['primary']['innermostObservedCode'],'storage.worker_before_unmount')
+    def test_six_actual_preparation_rpc_settlements_then_native_failure_preserve_primary_and_state(self):
+        with diagnostic_whole_factory()as f:
+            settle_synthetic_preparation(f)
+            with self.assertRaises(f.modules['mac_bridge'].UncertainOutcome)as caught:f.bridge.start_and_replay()
+            snapshot,evidence=native_chain_snapshot(f,caught.exception)
+            self.assertEqual(snapshot['before']['macPending'],[6,'start_worker_once'])
+            self.assertEqual(snapshot['before']['guestPending'],6)
+            self.assertEqual(snapshot['before']['transportAttempts'],7)
+            self.assertEqual(snapshot['before']['transportSettled'],6)
+            self.assertFalse(snapshot['before']['unitSubmissionAttempted'])
+            self.assertIsNone(snapshot['command']);self.assertIsNone(evidence['commandUnavailable'])
+            self.assertFalse(evidence['retryPermitted']);self.assertNotIn('diagnosticUnavailable',evidence)
+    def test_closed_guest_pending_domain_and_endpoint_specific_sequence_joins(self):
+        with diagnostic_whole_factory()as f:
+            g=f.modules['integrated_guest'];p=f.modules['protocol']
+            state=lambda:g._diagnostic_state(f.storage,f.unit,f.transport,f.server,f.bridge,f.journal)
+            self.assertIsNone(state()['guestPending'])
+            f.server.attempted={'start_worker_once'}
+            for value in (0,31):
+                f.server.sequence=f.server.journal._seq=value;f.server.journal._pending=value
+                self.assertEqual(state()['guestPending'],value)
+            for value in (True,False,-1,32,'6',(6,'start_worker_once'),[] ):
+                f.server.journal._pending=value
+                with self.subTest(value=value),self.assertRaises(p.Refusal):state()
+            f.server.journal._pending=6;f.server.sequence=6;f.server.journal._seq=5
+            with self.assertRaises(p.Refusal):state()
+            f.server.journal._seq=6;f.journal.pending=6
+            with self.assertRaises(p.Refusal):state()
+    def test_before_guest_begin_and_after_guest_settlement_lost_response_remain_uncertain(self):
+        for phase in ('before-begin','after-settlement'):
+            with self.subTest(phase=phase),diagnostic_whole_factory()as f:
+                settle_synthetic_preparation(f);g=f.modules['integrated_guest'];p=f.modules['protocol']
+                if phase=='before-begin':
+                    def fail(raw):raise p.Refusal('server.blocked')
+                    seam=mock.patch.object(f.server,'handle',side_effect=fail)
+                else:
+                    original=type(f.transport).exchange_once
+                    def lost(self,raw,**kwargs):original(self,raw,**kwargs);raise p.Refusal('integrated_transport.response_cap_or_deadline')
+                    seam=mock.patch.object(type(f.transport),'exchange_once',lost)
+                with seam:
+                    with self.assertRaises(f.modules['mac_bridge'].UncertainOutcome)as caught:f.bridge._exchange('test_is_unmounted',[])
+                _snapshot,evidence=native_chain_snapshot(f,caught.exception)
+                state=evidence['stateBeforeCleanup']
+                self.assertIsNone(state['guestPending']);self.assertEqual(state['macPending'],[6,'test_is_unmounted'])
+                self.assertEqual(state['serverSequence'],6 if phase=='before-begin'else 7)
+                self.assertFalse(evidence['retryPermitted']);self.assertNotIn('diagnosticUnavailable',evidence)
+    def test_direct_collector_capture_stale_command_drops_only_unknown_command_not_primary_state(self):
+        with diagnostic_whole_factory()as f:
+            settle_synthetic_preparation(f);collector,children=attach_inert_collector(f)
+            f.unit.io._command('show');cached=f.unit.io._last_command
+            self.assertEqual(cached[2]['operationId'],1)
+            collector.ops.read=lambda path,cap:f.owner['bootId'].encode()
+            expected=(f.cap.source_root/'guest/PROFILE.template.private.json').resolve()
+            raw=(f.physical/'guest/PROFILE.template.private.json').read_bytes()
+            def profile_read(path):
+                if path!=expected:raise AssertionError('unlisted read in source construction fixture')
+                return raw
+            with mock.patch.object(Path,'read_bytes',autospec=True,side_effect=profile_read):
+                with self.assertRaises(f.modules['protocol'].Refusal)as caught:collector.capture(f.bridge.context)
+            self.assertGreater(collector.ops.command_port.command_sequence,1)
+            self.assertIs(f.unit.io._last_command,cached)
+            _snapshot,evidence=native_chain_snapshot(f,caught.exception)
+            self.assertIsNone(evidence['latestSafeCommand'])
+            self.assertEqual(evidence['commandUnavailable']['reason'],'integrated_guest.diagnostic_capture_source')
+            self.assertEqual(evidence['primary']['innermostObservedCode'],'host.typed_schema')
+            self.assertNotIn('diagnosticUnavailable',evidence);self.assertEqual(evidence['stateBeforeCleanup']['serverSequence'],6)
+            self.assertTrue(all(argv[0]in ('/usr/bin/systemctl','/usr/bin/busctl')for argv in children))
+    def test_whole_factory_closed_construction_refusal_survives_fallback_without_message(self):
+        with diagnostic_whole_factory()as f:
+            g=f.modules['integrated_guest'];p=f.modules['protocol'];diagnostic=f.modules['integrated_failure']
+            original=f.modules['mac_bridge'].UncertainOutcome('bridge.effect_or_response_uncertain')
+            f.server.storage=object()
+            with self.assertRaisesRegex(p.Refusal,'integrated_guest.diagnostic_components')as failed:
+                g._failure_snapshot(original,f.parent,f.prepared,f.cap,f.storage,f.unit,f.transport,f.server,f.bridge,f.journal)
+            f.server.storage=f.storage
+            snapshot={'unavailable':True,'rejection':diagnostic.closed_failure(failed.exception,'snapshot')}
+            with self.assertRaises(f.outer['guard'].Refusal)as raised:
+                g._refuse_chain(original,[],snapshot,f.parent,f.prepared,f.cap,f.storage,f.unit,f.transport,f.server,f.bridge,f.journal)
+            evidence=raised.exception.facts['nativeChain']
+            self.assertTrue(evidence['diagnosticUnavailable'])
+            self.assertEqual(evidence['diagnosticConstruction'],{'phase':'snapshot',
+                'reason':'integrated_guest.diagnostic_components','type':'protocol.Refusal'})
+            self.assertIs(raised.exception.__cause__,original);self.assertFalse(evidence['retryPermitted'])
 
 
 if __name__=='__main__':unittest.main()
