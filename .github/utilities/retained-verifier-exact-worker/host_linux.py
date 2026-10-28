@@ -8,7 +8,6 @@ VM admission, issue a private gate, or touch a candidate image.
 from __future__ import annotations
 
 import datetime as dt
-import base64
 import hashlib
 import json
 import os
@@ -29,15 +28,13 @@ ROOTS = Path('/var/lib/openclaw-retained-verifier')
 MAX_ARCHIVE = 64 * 1024 * 1024
 MAX_TOTAL = 100 * 1024 * 1024
 EXPECTED_FILES = 626
-EXPECTED_BYTES = 35563729
+EXPECTED_BYTES = 35563665
 EXPECTED_CLOSURE = '64da321e7e56a56599a15d7c20d660924d6ee44e4b3ac04638f9082579b11969'
 SOURCE = '8770609a78d68f6b53607ce3199baf0aa08687cf'
 SCANNER = 'd658c890f5684b2dbe8468449a7fed17bb46055d'
 INDEX = 'sha256:2577bfdfb50ee4411f69b90bf8b4347b8e476c2bc82bb982005515c46ebe59cc'
 REPORT_SHA = '0c2019ff9bd14f93681037d9961ac4c80a14600ef0fe0a99a5065a8aedc5b813'
-PROFILE_SHA = '7ce7839021a330be65a49fd15115a828323ac1eb399d19cbee08d2d73e2776f9'
-DIAGNOSTIC_KEY_SHA = '8964044ca390b9daac76db23d8ea519e427e78d83a147a792c1000c5c50e66c1'
-UNKNOWN_KEY_MARKER = b'entry_refused_unknown_key\n'
+PROFILE_SHA = 'ff54d00e6a466f8fea09ed48a5060a98036eccca648a4f4b47e609525f5702c1'
 
 
 def need(ok, code):
@@ -219,55 +216,6 @@ def failure_diagnostics(stderr, unit):
     return result
 
 
-def encrypted_unknown_key(stdout, stderr, unit, diagnostic):
-    """One-time synthetic CI diagnostic: ciphertext only leaves root-private evidence."""
-    try:
-        err = read(stderr, 128)
-        if err != UNKNOWN_KEY_MARKER:
-            return {'status': 'notApplicable'}
-        before = diagnostic.get('unit', {})
-        need(before.get('ExecMainStatus') == '111' and
-             before.get('MainPID') == '0' and before.get('ActiveState') == 'failed',
-             'exact.diagnostic_exit_binding')
-        after = show(unit, ('ActiveState', 'MainPID', 'ControlGroup'))
-        need(after['ActiveState'] in ('failed', 'inactive') and after['MainPID'] == '0',
-             'exact.diagnostic_unit_live')
-        group = after['ControlGroup']
-        need(group in ('', '/system.slice/' + unit), 'exact.diagnostic_cgroup_path')
-        if group:
-            members = Path('/sys/fs/cgroup' + group + '/cgroup.procs')
-            need(not members.exists() or read(members, 4096).strip() == b'',
-                 'exact.diagnostic_cgroup_live')
-        fd = os.open(stdout, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
-        try:
-            info = os.fstat(fd)
-            need(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and
-                 stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1 and
-                 1 <= info.st_size <= 64, 'exact.diagnostic_private_stdout')
-            name = os.read(fd, 65)
-        finally:
-            os.close(fd)
-        need(len(name) == info.st_size and
-             re.fullmatch(rb'[A-Za-z_][A-Za-z0-9_]{0,63}', name) is not None,
-             'exact.diagnostic_name_shape')
-        public_key = HERE / 'diagnostic-rsa.pub.pem'
-        need(sha(read(public_key, 4096)) == DIAGNOSTIC_KEY_SHA,
-             'exact.diagnostic_key_pin')
-        encrypted = subprocess.run(
-            ('/usr/bin/openssl', 'pkeyutl', '-encrypt', '-pubin', '-inkey', str(public_key),
-             '-pkeyopt', 'rsa_padding_mode:oaep', '-pkeyopt', 'rsa_oaep_md:sha256',
-             '-pkeyopt', 'rsa_mgf1_md:sha256'),
-            input=name.ljust(64, b'\0'), capture_output=True, timeout=5,
-            env={'PATH': '/usr/bin', 'LANG': 'C', 'LC_ALL': 'C'})
-        need(encrypted.returncode == 0 and len(encrypted.stdout) == 384 and
-             not encrypted.stderr, 'exact.diagnostic_encrypt')
-        return {'status': 'encrypted', 'algorithm': 'RSA-3072-OAEP-SHA256',
-                'publicKeySha256': DIAGNOSTIC_KEY_SHA,
-                'ciphertextBase64': base64.b64encode(encrypted.stdout).decode('ascii')}
-    except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError):
-        return {'status': 'unavailable'}
-
-
 def run():
     need(sys.platform == 'linux' and os.uname().machine == 'x86_64' and os.geteuid() == 0 and
          os.environ.get('GITHUB_REPOSITORY') == 'fr-meyer/openclaw' and
@@ -338,8 +286,7 @@ def run():
         for prop in props:
             if prop.startswith('ExecStart='): continue
             argv += ['--property', prop]
-        argv += ['/code/static-entry', identity,
-                 '--encrypted-unknown-key-diagnostic-v1']
+        argv += ['/code/static-entry', identity]
         submitted = True
         command(*argv, timeout=15)
         ready = wait_line(stderr, 'openclaw.retained-verifier-ready.v1', 30)
@@ -435,18 +382,6 @@ def run():
             except BaseException as error:
                 result['status'] = 'failed'
                 result['closeoutReason'] = ('exact.closeout_' + type(error).__name__)[:100]
-        if result['status'] == 'failed':
-            if submitted:
-                try:
-                    result['encryptedUnknownKey'] = encrypted_unknown_key(
-                        stdout, stderr, unit, result.get('diagnostics', {}))
-                except BaseException:
-                    result['encryptedUnknownKey'] = {'status': 'unavailable'}
-            try:
-                stdout.unlink()
-            except OSError:
-                result['encryptedUnknownKey'] = {'status': 'unavailable'}
-                result['diagnosticCleanup'] = 'failed'
         if result['status'] == 'consumer-passed-pending-closeout':
             if result.get('ownedUnitStopped') is True and result.get('ownedCgroupEmpty') is True:
                 result['status'] = 'passed'

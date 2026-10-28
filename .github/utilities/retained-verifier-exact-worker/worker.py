@@ -19,7 +19,7 @@ import types
 
 ARMED = True
 PROTOCOL_SHA256 = 'df3ad90e894610f05c25c4521c9bc702421b3c6bb5d70af2e5b888a8271651b9'
-PROFILE_SHA256 = '82a14f80bc5987bc1fc32b9e13de63fd113d1d7be9012d38ef78126608ce96e6'
+PROFILE_SHA256 = 'ff54d00e6a466f8fea09ed48a5060a98036eccca648a4f4b47e609525f5702c1'
 CONTEXT_PATH = '/control/context.json'
 GATE_PATH = '/control/admission.json'
 CODE_ROOT = '/code'
