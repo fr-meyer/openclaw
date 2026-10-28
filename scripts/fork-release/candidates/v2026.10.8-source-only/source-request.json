@@ -1,26 +1,20 @@
 {
-  "schema": "openclaw.fork-source-validation-request.v1",
+  "schema": "openclaw.fork-source-validation-request.v2",
   "campaignId": "future-v108-source-validation-20261027",
-  "round": 1,
-  "profiles": [
-    "dependency",
-    "types-production",
-    "types-tests",
-    "types-scripts",
-    "workboard-1",
-    "workboard-2",
-    "models-1",
-    "models-2",
-    "sqlite",
-    "doctor",
-    "memory",
-    "pipeline-contracts"
-  ],
-  "sourceSha": "61f924bdb7ed4f837096c87120087919ff0a6bdf",
-  "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
-  "manifestSha256": "7a874a5991ba1c2d15f145cfa1187ed10eb41cb35603fab75fe0ab0c62665266",
-  "inventorySha256": "250e4ad6954c9e4de0397c4f7a28d3deece0dd571809c4b2c1a1d9eb8aa502e0",
+  "round": 2,
+  "profiles": [],
+  "sourceSha": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+  "sourceTree": "c4b245211ceaab98b397945bb0177770f1052c90",
+  "firstSourceSha": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+  "firstSourceTree": "c4b245211ceaab98b397945bb0177770f1052c90",
+  "sourceAuthorization": "future-v108-remediation-20261028T0433Z",
+  "manifestSha256": "802abd7c85ee123621d7cc96796ffcd0cf40d58c0d4db60f5f32304802a11f0b",
+  "inventorySha256": "876afa1cf8c6398b1fe3f5cdaa031bf1796d96b3e3307352e5a5571b8e3a296e",
+  "settledUsageSha256": "002a360df2b4b65024e60647637841e5444bea828bb6e8a93780ef58b7eb6e2c",
   "priorRunIds": [
-    "40609889437"
-  ]
+    "40607329263",
+    "40609889437",
+    "40616416909"
+  ],
+  "sourceWitness": null
 }

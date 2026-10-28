@@ -21,6 +21,22 @@ RUNTIME = "src/plugins/loader-module-runtime.ts"
 WORKBOARD = "extensions/workboard/src/producer.ts"
 SECURITY = "test/native-security.test.mjs"
 PACKAGES = ("package.json", "extensions/workboard/package.json")
+UI_PACKAGE = "ui/package.json"
+WORKSPACE = "pnpm-workspace.yaml"
+OLD_PATCH, NEW_PATCH = release.V108_OLD_PATCH, release.V108_NEW_PATCH
+REPAIR_TESTS = tuple(sorted(release.V108_REMEDIATION_PATHS - {
+    *PACKAGES, UI_PACKAGE, WORKSPACE, "pnpm-lock.yaml", OLD_PATCH, NEW_PATCH,
+    "test/v108-remediation-security.test.mjs"}))
+WORKSPACE_BEFORE = ('minimumReleaseAgeStrict: true\noverrides:\n  fast-uri: 4.2.1\n'
+                    '  ip-address: 10.7.3\n  "mailauth@7.1.0>nodemailer": 10.0.13\n'
+                    '  qs: 6.16.0\npatchedDependencies:\n'
+                    '  vitest@5.0.1: patches/vitest@5.0.1.patch\n')
+WORKSPACE_AFTER = ('minimumReleaseAgeStrict: true\noverrides:\n  fast-uri: 4.2.3\n'
+                  '  ip-address: 10.7.4\n  "mailauth@7.1.0>nodemailer": 10.1.4\n'
+                  '  "mailparser@3.9.33>nodemailer": 10.1.4\n'
+                  '  "mermaid@12.1.0>katex": 0.18.2\n'
+                  '  qs: 6.16.1\npatchedDependencies:\n'
+                  '  vitest@5.0.5: patches/vitest@5.0.5.patch\n')
 
 
 class V108Fixture(MergeFixture):
@@ -33,11 +49,16 @@ class V108Fixture(MergeFixture):
         self.write("src/b.test.ts", "synthetic gate b\n")
         for name in PACKAGES:
             self.write(name, encoded(self.package("2026.10.7", "1.0.0")))
-        for name in (*DOCS, *ROUTES, RUNTIME, WORKBOARD, SECURITY):
+        self.write(UI_PACKAGE, encoded({"devDependencies": {
+            "vitest": "5.0.1", "@vitest/browser-playwright": "5.0.1", "@vitest/browser": "5.0.1"}}))
+        self.write(WORKSPACE, WORKSPACE_BEFORE)
+        self.write("pnpm-lock.yaml", "original multi-document lock\n")
+        for name in (*DOCS, *ROUTES, RUNTIME, WORKBOARD, SECURITY, *REPAIR_TESTS):
             self.write(name, "common fixture\n")
         self.common = self.commit("common 10.7")
-        for name in (*DOCS, *ROUTES, RUNTIME, WORKBOARD, SECURITY):
+        for name in (*DOCS, *ROUTES, RUNTIME, WORKBOARD, SECURITY, *REPAIR_TESTS):
             self.write(name, "reviewed fork behavior\n")
+        self.write(OLD_PATCH, "reviewed Vitest worker patch\n")
         for name in PACKAGES:
             self.write(name, encoded(self.package("2026.10.7", "2.0.0")))
         self.write(MANIFEST, encoded({"sourceOnly": "10.7"}))
@@ -107,6 +128,7 @@ class V108Fixture(MergeFixture):
     @staticmethod
     def package(version, dependency):
         return {"name": "synthetic", "version": version, "dependencies": {"security-parent": dependency},
+                "devDependencies": {"vitest": "5.0.1", "@vitest/browser-playwright": "5.0.1", "@vitest/coverage-v8": "5.0.1"},
                 "pnpm": {"overrides": {"security-child": dependency}}, "scripts": {"check": "synthetic"},
                 "peerDependencies": {"openclaw": ">=" + version},
                 "openclaw": {"compat": {"pluginApi": ">=" + version}, "build": {"openclawVersion": version}}}
@@ -154,6 +176,35 @@ class V108Fixture(MergeFixture):
         source.update(**self.identity(parent), patches=[self.identity(parent)])
         return source
 
+    def remediation_source(self, writes=None, removals=(), mutate_ledger=None, modes=()):
+        git(self.root, "reset", "--hard", self.integration)
+        git(self.root, "clean", "-fdq")
+        for name, content in (writes or {}).items():
+            self.write(name, content)
+        for name in removals:
+            (self.root / name).unlink()
+        for name in modes:
+            (self.root / name).chmod(0o755)
+        git(self.root, "add", ".")
+        tree = git(self.root, "write-tree")
+        changed = set(git(self.root, "diff", "--name-only", self.integration, tree).splitlines())
+        rows = {item["path"]: copy.deepcopy(item) for item in self.ledger["paths"]}
+        for name in changed - {LEDGER}:
+            rows[name] = {"path": name, "upstream107": self.entry(self.common, name),
+                          "fork107": self.entry(self.fork, name), "upstream108": self.entry(self.upstream, name),
+                          "result": self.entry(tree, name), "disposition": (
+                              release.V108_PATCH_RETIREMENT if name == OLD_PATCH else release.V108_REMEDIATION)}
+        ledger = {**copy.deepcopy(self.ledger), "paths": [rows[name] for name in sorted(rows)]}
+        if mutate_ledger:
+            mutate_ledger(ledger)
+        self.write(LEDGER, encoded(ledger))
+        git(self.root, "add", ".")
+        commit = self.commit_tree(git(self.root, "write-tree"), [self.integration])
+        source = copy.deepcopy(self.source108)
+        source.update(**self.identity(commit), patches=[self.identity(commit)])
+        source["merge"].update(successors=[self.identity(commit)], reconciliation=self.proof(commit))
+        return source
+
 
 class V108MergeSourceTests(unittest.TestCase):
     @classmethod
@@ -185,6 +236,122 @@ class V108MergeSourceTests(unittest.TestCase):
         for count in (1, 16):
             release.check_source_graph(f.successor_source(count), f.root)
         self.refused(f.successor_source(17), "successor count")
+
+    def package_repair(self, name):
+        document = json.loads(git(self.fixture.root, "show", self.fixture.integration + ":" + name))
+        for key in ("vitest", "@vitest/browser-playwright", "@vitest/coverage-v8"
+                    if name == "package.json" else "@vitest/browser"):
+            document["devDependencies"][key] = "5.0.5"
+        return document
+
+    def test_complete_finite_successor_repairs_pass_without_relabeling_history(self):
+        f = self.fixture
+        writes = {name: "narrow synthetic fixture correction\n" for name in REPAIR_TESTS}
+        writes.update({"package.json": encoded(self.package_repair("package.json")),
+                       UI_PACKAGE: encoded(self.package_repair(UI_PACKAGE)), WORKSPACE: WORKSPACE_AFTER,
+                       "pnpm-lock.yaml": "regenerated multi-document lock\n",
+                       NEW_PATCH: "rebased Vitest worker patch\n",
+                       "test/v108-remediation-security.test.mjs": "synthetic parent compatibility test\n"})
+        source = f.remediation_source(writes=writes, removals=(OLD_PATCH,))
+        release.check_source_graph(source, f.root)
+        self.assertEqual(json.loads(git(f.root, "show", f.integration + ":" + LEDGER)), f.ledger)
+
+    def test_new_remediation_test_requires_exact_ledger_coverage(self):
+        f = self.fixture
+        name = "test/v108-remediation-security.test.mjs"
+        source = f.remediation_source(writes={name: "synthetic new test\n"})
+        release.check_source_graph(source, f.root)
+        self.refused(f.remediation_source(writes={name: "synthetic new test\n"},
+                     mutate_ledger=lambda x: x.update(paths=[r for r in x["paths"] if r["path"] != name])),
+                     "coverage")
+
+    def test_remediation_disposition_is_not_allowed_on_integration_or_other_paths(self):
+        f = self.fixture
+        self.changed_ledger_refused(lambda x: next(r for r in x["paths"] if r["path"] == SECURITY).update(
+            disposition=release.V108_REMEDIATION), "unsupported 10.8 disposition")
+        self.refused(f.remediation_source(writes={SECURITY: "unreviewed runtime change\n"}),
+                     "unreviewed path")
+
+    def test_successor_cannot_change_an_unchanged_historical_row(self):
+        name = "test/v108-remediation-security.test.mjs"
+        self.refused(self.fixture.remediation_source(writes={name: "synthetic new test\n"},
+                     mutate_ledger=lambda x: next(r for r in x["paths"] if r["path"] == SECURITY).update(
+                         disposition=release.V108_REMEDIATION)), "historical reconciliation changed")
+
+    def test_successor_cannot_hide_an_invalid_original_integration(self):
+        f = self.fixture
+        ledger = copy.deepcopy(f.ledger)
+        changed = f.replaced_source(writes={SECURITY: "unreviewed historical change\n"})
+        next(r for r in ledger["paths"] if r["path"] == SECURITY)["result"] = f.entry(changed["commit"], SECURITY)
+        bad = f.replaced_source(ledger=ledger, writes={SECURITY: "unreviewed historical change\n"})
+        commit = f.commit_tree(f.tree(bad["commit"]), [bad["commit"]])
+        source = copy.deepcopy(bad)
+        source.update(**f.identity(commit), patches=[f.identity(commit)])
+        source["merge"]["successors"] = [f.identity(commit)]
+        self.refused(source, "exact fork carry")
+
+    def test_package_remediation_cannot_change_runtime_security_or_scripts(self):
+        for name in ("package.json", UI_PACKAGE):
+            document = self.package_repair(name)
+            document["scripts"] = {"check": "unreviewed"}
+            self.refused(self.fixture.remediation_source(writes={name: encoded(document)}),
+                         "unrelated package metadata")
+        document = self.package_repair("package.json")
+        document["dependencies"]["security-parent"] = "1.0.0"
+        self.refused(self.fixture.remediation_source(writes={"package.json": encoded(document)}),
+                     "unrelated package metadata")
+        document = self.package_repair("package.json")
+        document["devDependencies"]["vitest"] = "5.0.6"
+        self.refused(self.fixture.remediation_source(writes={"package.json": encoded(document)}),
+                     "unrelated package metadata")
+
+    def test_workspace_remediation_cannot_disable_security_or_add_overrides(self):
+        for value in (WORKSPACE_AFTER.replace("minimumReleaseAgeStrict: true", "minimumReleaseAgeStrict: false"),
+                      WORKSPACE_AFTER + "  unreviewed: 1.0.0\n", WORKSPACE_BEFORE):
+            source = self.fixture.remediation_source(writes={WORKSPACE: value})
+            if value == WORKSPACE_BEFORE:
+                release.check_source_graph(source, self.fixture.root)  # No workspace change to claim.
+            else:
+                self.refused(source, "unrelated workspace policy")
+
+    def test_patch_retirement_is_only_allowed_with_exact_versioned_replacement(self):
+        f = self.fixture
+        self.refused(f.remediation_source(removals=(OLD_PATCH,)), "no reviewed replacement")
+        self.refused(f.remediation_source(writes={NEW_PATCH: "replacement\n"}), "retained the obsolete")
+        self.refused(f.remediation_source(writes={NEW_PATCH: "replacement\n"}, removals=(OLD_PATCH,),
+                     mutate_ledger=lambda x: next(r for r in x["paths"] if r["path"] == OLD_PATCH).update(
+                         disposition=release.V108_REMEDIATION)), "no reviewed replacement")
+        self.refused(f.remediation_source(writes={NEW_PATCH: "replacement\n"},
+                     removals=(OLD_PATCH,), modes=(NEW_PATCH,)), "mode changed")
+
+    def test_patch_replacement_requires_all_metadata_alignment(self):
+        f = self.fixture
+        writes = {NEW_PATCH: "rebased Vitest worker patch\n",
+                  "package.json": encoded(self.package_repair("package.json")),
+                  UI_PACKAGE: encoded(self.package_repair(UI_PACKAGE)), WORKSPACE: WORKSPACE_AFTER}
+        for missing in ("package.json", UI_PACKAGE, WORKSPACE):
+            incomplete = {name: value for name, value in writes.items() if name != missing}
+            self.refused(f.remediation_source(writes=incomplete, removals=(OLD_PATCH,)),
+                         "unrelated package metadata|unrelated workspace policy")
+
+    def test_successor_mode_or_disposition_drift_is_rejected(self):
+        name = REPAIR_TESTS[0]
+        self.refused(self.fixture.remediation_source(writes={name: "fixture repair\n"}, modes=(name,)),
+                     "mode changed")
+        self.refused(self.fixture.remediation_source(writes={name: "fixture repair\n"},
+                     mutate_ledger=lambda x: next(r for r in x["paths"] if r["path"] == name).update(
+                         disposition="CARRIED_EXACT")), "disposition or mode")
+
+    def test_unreviewed_intermediate_change_is_rejected_even_after_revert(self):
+        f = self.fixture
+        git(f.root, "reset", "--hard", f.integration)
+        f.write("unreviewed.txt", "intermediate change\n")
+        first = f.commit("unreviewed intermediate")
+        final = f.commit_tree(f.tree(f.integration), [first])
+        source = copy.deepcopy(f.source108)
+        source.update(**f.identity(final), patches=[f.identity(final)])
+        source["merge"]["successors"] = [f.identity(first), f.identity(final)]
+        self.refused(source, "successor history changed")
 
     def test_zero_successors_require_integration_tip_and_v2_stays_strict(self):
         value = self.fixture.successor_source(1)

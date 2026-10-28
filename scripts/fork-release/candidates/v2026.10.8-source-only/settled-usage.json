@@ -1,0 +1,463 @@
+{
+  "schema": "openclaw.v108.settled-usage.v1",
+  "observedAt": "2026-10-28T04:15:41.707830+00:00",
+  "spentRunnerMinutes": 425,
+  "runs": [
+    {
+      "id": "40607227490",
+      "headSha": "c65eebf7d844d51762a95e56d234b8945981847b",
+      "path": ".github/workflows/fork-release-pipeline.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40607227949",
+      "headSha": "c65eebf7d844d51762a95e56d234b8945981847b",
+      "path": ".github/workflows/real-behavior-proof.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40607227959",
+      "headSha": "c65eebf7d844d51762a95e56d234b8945981847b",
+      "path": ".github/workflows/auto-response.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40607227982",
+      "headSha": "c65eebf7d844d51762a95e56d234b8945981847b",
+      "path": ".github/workflows/labeler.yml",
+      "event": "pull_request_target",
+      "conclusion": "failure",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40607227985",
+      "headSha": "c65eebf7d844d51762a95e56d234b8945981847b",
+      "path": ".github/workflows/security-review.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40607228074",
+      "headSha": "c65eebf7d844d51762a95e56d234b8945981847b",
+      "path": ".github/workflows/clawsweeper-dispatch.yml",
+      "event": "pull_request_target",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40607326475",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/labeler.yml",
+      "event": "pull_request_target",
+      "conclusion": "failure",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40607326519",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/real-behavior-proof.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40607326525",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/auto-response.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40607326562",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/clawsweeper-dispatch.yml",
+      "event": "pull_request_target",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40607326569",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/security-review.yml",
+      "event": "pull_request_target",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40607329161",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/workflow-sanity.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 3
+    },
+    {
+      "id": "40607329185",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/fork-release-pipeline.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40607329202",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/codeql.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40607329214",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/opengrep-precise.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40607329244",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/ci-build-artifacts-testbox.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40607329245",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/shared-openclawkit-periphery.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40607329259",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/ci.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40607329263",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/future-v108-source-validation.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40607329281",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/ios-periphery.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40607330335",
+      "headSha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3",
+      "path": ".github/workflows/macos-periphery.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40609887791",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/security-review.yml",
+      "event": "pull_request_target",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40609887896",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/auto-response.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40609887912",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/clawsweeper-dispatch.yml",
+      "event": "pull_request_target",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40609887919",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/labeler.yml",
+      "event": "pull_request_target",
+      "conclusion": "failure",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40609888061",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/real-behavior-proof.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40609889312",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/shared-openclawkit-periphery.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40609889430",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/macos-periphery.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40609889437",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/future-v108-source-validation.yml",
+      "event": "pull_request",
+      "conclusion": "cancelled",
+      "roundedMinutes": 92
+    },
+    {
+      "id": "40609889444",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/ci-build-artifacts-testbox.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40609889488",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/fork-release-pipeline.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40609889495",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/opengrep-precise.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40609889522",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/workflow-sanity.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 2
+    },
+    {
+      "id": "40609889554",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/ci.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40609889573",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/ios-periphery.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40609889590",
+      "headSha": "1328661613052dfa09902e1d1d080fa8e6ccd89d",
+      "path": ".github/workflows/codeql.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40616414559",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/clawsweeper-dispatch.yml",
+      "event": "pull_request_target",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40616414568",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/real-behavior-proof.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40616414585",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/security-review.yml",
+      "event": "pull_request_target",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40616414606",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/labeler.yml",
+      "event": "pull_request_target",
+      "conclusion": "failure",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40616414644",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/auto-response.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40616416899",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/fork-release-pipeline.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40616416909",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/future-v108-source-validation.yml",
+      "event": "pull_request",
+      "conclusion": "failure",
+      "roundedMinutes": 300
+    },
+    {
+      "id": "40616416914",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/shared-openclawkit-periphery.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40616416948",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/ios-periphery.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40616416949",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/ci-build-artifacts-testbox.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40616416976",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/codeql.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40616416982",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/ci.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40616417006",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/macos-periphery.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40616417075",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/workflow-sanity.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 2
+    },
+    {
+      "id": "40616417088",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/opengrep-precise.yml",
+      "event": "pull_request",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40629994037",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/fork-release-pipeline.yml",
+      "event": "pull_request",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40629994298",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/labeler.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40629994300",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/auto-response.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40629994302",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/clawsweeper-dispatch.yml",
+      "event": "pull_request_target",
+      "conclusion": "success",
+      "roundedMinutes": 1
+    },
+    {
+      "id": "40629994316",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/security-review.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    },
+    {
+      "id": "40629994610",
+      "headSha": "de5b35be1531ca14394f5457ae934ad268ddb941",
+      "path": ".github/workflows/real-behavior-proof.yml",
+      "event": "pull_request_target",
+      "conclusion": "skipped",
+      "roundedMinutes": 0
+    }
+  ]
+}

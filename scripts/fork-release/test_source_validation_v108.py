@@ -1,655 +1,551 @@
-"""Synthetic campaign boundaries; no network, source lifecycle or application execution."""
-
+"""Closed successor campaign boundaries; synthetic APIs/runtimes and temporary Git only."""
 import base64
 import copy
-from datetime import datetime, timezone
-import importlib.util
+from datetime import datetime, timedelta, timezone
 import hashlib
+import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-SPEC = importlib.util.spec_from_file_location("source_validation_v108", Path(__file__).with_name("source_validation_v108.py"))
+SPEC = importlib.util.spec_from_file_location("v108_successor_driver", Path(__file__).with_name("source_validation_v108.py"))
 driver = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(driver)
-NOW = datetime(2026, 10, 27, 12, tzinfo=timezone.utc)
-HEAD = "a" * 40
-OLD_HEAD = "b" * 40
-MERGE = "c" * 40
+SOURCE_LITERAL = driver.SOURCE
+SOURCE, TREE, HEAD, OLD_HEAD, MERGE = (c * 40 for c in "defab")
+NOW = datetime(2026, 10, 28, 5, tzinfo=timezone.utc)
 
 
-def request(round_number=0, profiles=None, prior=None):
-    return {"schema": "openclaw.fork-source-validation-request.v1", "campaignId": driver.CAMPAIGN,
-            "round": round_number, "profiles": profiles or [], "sourceSha": driver.SOURCE,
-            "sourceTree": driver.TREE, "manifestSha256": "d" * 64, "inventorySha256": "e" * 64,
-            "priorRunIds": prior or []}
+def request(round_number=2, profiles=None, prior=None):
+    return {"schema": "openclaw.fork-source-validation-request.v2", "campaignId": driver.CAMPAIGN,
+            "round": round_number, "profiles": [] if profiles is None else profiles,
+            "sourceSha": SOURCE, "sourceTree": TREE, "firstSourceSha": SOURCE,
+            "firstSourceTree": TREE, "sourceAuthorization": driver.SOURCE_AUTHORIZATION,
+            "manifestSha256": "d" * 64, "inventorySha256": "e" * 64,
+            "settledUsageSha256": "f" * 64, "sourceWitness": None,
+            "priorRunIds": list(driver.RETAINED_SOURCE_RUN_IDS) if prior is None else prior}
 
 
 def event_env():
     repository = {"full_name": driver.REPOSITORY, "private": False}
     event = {"action": "synchronize", "number": 28, "repository": repository,
-             "pull_request": {"number": 28, "state": "open", "draft": True,
-                              "head": {"ref": driver.BRANCH, "sha": HEAD, "repo": repository},
-                              "base": {"ref": driver.BASE_BRANCH, "sha": driver.BASE, "repo": repository}}}
+        "pull_request": {"number": 28, "state": "open", "draft": True,
+            "head": {"ref": driver.BRANCH, "sha": HEAD, "repo": repository},
+            "base": {"ref": driver.BASE_BRANCH, "sha": driver.BASE, "repo": repository}}}
     env = {"GITHUB_ACTIONS": "true", "RUNNER_OS": "Linux", "RUNNER_ENVIRONMENT": "github-hosted",
            "GITHUB_EVENT_NAME": "pull_request", "GITHUB_RUN_ATTEMPT": "1",
            "GITHUB_REPOSITORY": driver.REPOSITORY, "GITHUB_REF": "refs/pull/28/merge",
            "GITHUB_WORKFLOW_REF": driver.REPOSITORY + "/" + driver.WORKFLOW + "@refs/pull/28/merge",
-           "GITHUB_WORKFLOW_SHA": MERGE, "GITHUB_RUN_ID": "102"}
+           "GITHUB_WORKFLOW_SHA": MERGE, "GITHUB_RUN_ID": "999", "GITHUB_JOB": "admission"}
     return copy.deepcopy(event), env
 
 
-def run(run_id, sha, completed=False, created="2026-10-27T11:00:00Z"):
-    return {"id": int(run_id), "event": "pull_request", "path": driver.WORKFLOW,
-            "display_title": driver.CAMPAIGN, "run_attempt": 1,
-            "repository": {"full_name": driver.REPOSITORY, "private": False},
-            "head_repository": {"full_name": driver.REPOSITORY, "private": False}, "head_branch": driver.BRANCH,
-            "head_sha": sha, "pull_requests": [{"number": 28}], "created_at": created,
-            "status": "completed" if completed else "in_progress",
-            "conclusion": "failure" if completed else None}
-
-
-def job(name="admission", conclusion="success"):
+def job(name, minutes=1, conclusion="success", acquired=True, legacy_label=False):
+    start = NOW - timedelta(hours=3)
     return {"name": name, "status": "completed", "conclusion": conclusion, "run_attempt": 1,
-            "runner_id": 42, "runner_group_name": "GitHub Actions", "labels": ["ubuntu-24.04"],
-            "started_at": "2026-10-27T11:00:00Z", "completed_at": "2026-10-27T11:01:00Z"}
+            "runner_id": 42 if acquired else 0, "runner_name": "hosted" if acquired else "",
+            "runner_group_name": "GitHub Actions" if acquired else None,
+            "labels": ["ubuntu-latest" if legacy_label else "ubuntu-24.04"] if acquired else [],
+            "steps": [] if not acquired else [{"name": "synthetic"}],
+            "started_at": start.isoformat().replace("+00:00", "Z"),
+            "completed_at": (start + timedelta(minutes=minutes)).isoformat().replace("+00:00", "Z")}
 
 
-def content(raw):
-    return {"type": "file", "encoding": "base64", "size": len(raw),
-            "content": base64.b64encode(raw).decode()}
+def source_jobs(minutes=300, legacy=True):
+    caps = driver.LEGACY_PROFILE_MINUTES if legacy else driver.PROFILE_MINUTES
+    if minutes == 0:
+        return {"total_count": 3, "jobs": [job(n, 0, "skipped", False) for n in
+                    ("admission", "source (${{ matrix.profile }})", "final")]}
+    if legacy and minutes == 300:
+        amounts = [16,17,14,15,16,16,26,24,26,61,40,13]
+        # Profile ordering is fixed independently of actual source execution.
+        amounts = dict(zip(caps, amounts))
+        amounts["dependency"] = 13
+        amounts["types-production"] = 17
+        amounts["types-tests"] = 14
+        amounts["types-scripts"] = 15
+        amounts["workboard-1"] = amounts["workboard-2"] = 16
+        amounts["models-1"], amounts["models-2"] = 26,24
+        amounts["sqlite"], amounts["doctor"], amounts["memory"] = 26,61,40
+        amounts["pipeline-contracts"] = 13
+        jobs = [job("admission",13),job("final",6,"cancelled")]
+        jobs += [job("source ("+p+")",m,"cancelled" if p=="doctor" else "failure" if p in
+                     ("dependency","types-tests") else "success") for p,m in amounts.items()]
+    elif legacy and minutes == 92:
+        jobs = [job("admission",14),job("final",6,"cancelled")]
+        jobs += [job("source ("+p+")",6,"failure") for p in caps]
+    else:
+        jobs = [job("admission"),job("final")]+[job("source ("+p+")") for p in caps]
+    return {"total_count":len(jobs),"jobs":jobs}
+
+
+def run_record(run_id, head, path, conclusion="success", status="completed"):
+    repo={"full_name":driver.REPOSITORY,"private":False}
+    return {"id":int(run_id),"head_sha":head,"path":path,"event":"pull_request",
+            "status":status,"conclusion":conclusion,"run_attempt":1,
+            "repository":repo,"head_repository":repo,"head_branch":driver.BRANCH,
+            "display_title":driver.CAMPAIGN,"created_at":"2026-10-28T05:00:00Z","pull_requests":[{"number":28}]}
+
+
+def history_fixture(root, req):
+    event, env = event_env()
+    (root/driver.WORKFLOW).parent.mkdir(parents=True,exist_ok=True)
+    (root/driver.WORKFLOW).write_bytes(b"frozen workflow")
+    usage_rows=[]; runs=[]; tables={}
+    for i,rid in enumerate(driver.RETAINED_SOURCE_RUN_IDS):
+        head=format(i+1,"040x");conclusion=("skipped","cancelled","failure")[i]
+        run=run_record(rid,head,driver.WORKFLOW,conclusion)
+        table=source_jobs((0,92,300)[i]);tables[rid]=table;runs.append(run)
+        usage_rows.append({"id":rid,"headSha":head,"path":driver.WORKFLOW,"event":"pull_request",
+                          "conclusion":conclusion,"roundedMinutes":(0,92,300)[i]})
+    for i in range(54):
+        rid=str(2000+i);head=format(100+i,"040x");minutes=1 if i<33 else 0
+        conclusion="success" if minutes else "skipped"
+        path=".github/workflows/synthetic-metadata.yml";runs.append(run_record(rid,head,path,conclusion))
+        tables[rid]={"total_count":1,"jobs":[job("metadata",minutes,conclusion,bool(minutes),legacy_label=i==0)]}
+        usage_rows.append({"id":rid,"headSha":head,"path":path,"event":"pull_request",
+                          "conclusion":conclusion,"roundedMinutes":minutes})
+    usage={"schema":"openclaw.v108.settled-usage.v1","observedAt":"2026-10-28T04:15:41Z",
+           "spentRunnerMinutes":425,"runs":usage_rows}
+    raw=json.dumps(usage,sort_keys=True).encode();path=root/driver.SETTLED_USAGE;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+    req["settledUsageSha256"]=hashlib.sha256(raw).hexdigest()
+    runs.append(run_record("999",HEAD,driver.WORKFLOW,None,"in_progress"))
+    own_job=job("admission");own_job.update(run_id=999,status="in_progress",conclusion=None,
+        started_at=(NOW-timedelta(minutes=1)).isoformat().replace("+00:00","Z"),completed_at=None)
+    tables["999"]={"total_count":1,"jobs":[own_job]}
+    responses={"/pulls/28":event["pull_request"],"/git/ref/heads/"+driver.BASE_BRANCH:
+               {"ref":"refs/heads/"+driver.BASE_BRANCH,"object":{"type":"commit","sha":driver.TARGET_BRANCH_TIP}}}
+    def api(path):
+        prefix="/repos/"+driver.REPOSITORY;assert path.startswith(prefix);path=path[len(prefix):]
+        if path.startswith("/actions/runs?branch="):
+            return {"total_count":len(runs),"workflow_runs":runs}
+        if path.startswith("/actions/runs/") and "/jobs?" in path:
+            return tables[path.split("/")[3]]
+        return responses[path]
+    return req,event,env,responses,api,runs,tables
 
 
 class SourceValidationTests(unittest.TestCase):
-    def refused(self, fn, *args):
-        with self.assertRaises(driver.release.Refusal):
-            fn(*args)
-
-    def test_initial_and_two_targeted_requests_are_bounded(self):
-        self.assertEqual(driver.round_minutes(driver.validate_request(request())), 800)
-        second = request(1, ["types-production", "dependency"], ["101"])
-        self.assertEqual(driver.round_minutes(driver.validate_request(second)), 170)
-        third = request(2, ["workboard-1"], ["101", "102"])
-        self.assertEqual(driver.round_minutes(driver.validate_request(third)), 80)
-        self.assertEqual(len(driver.profiles_for(request())), 12)
-        self.assertEqual(800 + 180 * 2 + driver.ANCILLARY_MINUTES + driver.RESERVE_MINUTES, 1800)
-
-    def test_closed_request_rejects_commands_refs_urls_and_bad_types(self):
-        for key, value in (("command", "docker build ."), ("ref", "main"), ("url", "https://evil.test"),
-                           ("approval", True), ("secrets", [])):
-            bad = request()
-            bad[key] = value
-            self.refused(driver.validate_request, bad)
-        for field, value in (("round", True), ("round", 3), ("round", -1), ("sourceSha", HEAD),
-                             ("sourceTree", OLD_HEAD), ("manifestSha256", "x" * 64),
-                             ("inventorySha256", "e" * 64 + "\n"), ("campaignId", "different")):
-            bad = request()
-            bad[field] = value
-            self.refused(driver.validate_request, bad)
-        self.refused(driver.read_json, '{"round":0,"round":1}')
-
-    def test_profile_budget_duplicate_round_and_unsafe_selection(self):
-        for profiles in (["types-production", "types-tests"], ["dependency", "dependency"], [],
-                         ["$(curl bad)"], ["../dependency"], ["dependency\ncommand"], ["--profile"]):
-            self.refused(driver.validate_request, request(1, profiles, ["101"]))
-        for prior in (["101", "101"], [101], ["../101"], ["101\n"], []):
-            self.refused(driver.validate_request, request(1, ["dependency"], prior))
-        self.refused(driver.validate_request, request(0, ["dependency"]))
-
-    def test_only_exact_open_draft_public_same_repository_event(self):
-        event, env = event_env()
-        for action in ("opened", "reopened", "synchronize"):
-            event["action"] = action
-            self.assertEqual(driver.validate_event(event, env), HEAD)
-        mutations = [lambda e: e.update(action="edited"), lambda e: e.update(number=29),
-                     lambda e: e["pull_request"].update(draft=False),
-                     lambda e: e["pull_request"].update(state="closed"),
-                     lambda e: e["repository"].update(private=True),
-                     lambda e: e["pull_request"]["head"]["repo"].update(full_name="other/openclaw"),
-                     lambda e: e["pull_request"]["head"].update(ref="task/other"),
-                     lambda e: e["pull_request"]["base"].update(sha=HEAD),
-                     lambda e: e["pull_request"]["base"].update(ref="main")]
-        for mutate in mutations:
-            changed, _ = event_env()
-            mutate(changed)
-            self.refused(driver.validate_event, changed, env)
-
-    def test_pr_snapshot_and_actual_target_are_distinct_exact_bindings(self):
-        event, env = event_env()
-        self.assertEqual(driver.BASE, "a65f70c5dad17b39bc3ee26ba92cde6d00bfb259")
-        self.assertEqual(driver.TARGET_BRANCH_TIP, "918890b9f72b2d0372995362e8ea3088e0f87431")
-        workflow = Path(__file__).resolve().parents[2] / driver.WORKFLOW
-        self.assertIn("base.sha == '" + driver.BASE + "'", workflow.read_text())
-        self.assertEqual(driver.validate_event(event, env), HEAD)
-        event["pull_request"]["base"]["sha"] = driver.TARGET_BRANCH_TIP
-        self.refused(driver.validate_event, event, env)
-
-    def test_no_local_execution_dispatch_rerun_or_alternate_ref(self):
-        event, env = event_env()
-        for key, value in (("GITHUB_ACTIONS", "false"), ("RUNNER_OS", "macOS"),
-                           ("RUNNER_ENVIRONMENT", "self-hosted"), ("GITHUB_EVENT_NAME", "workflow_dispatch"),
-                           ("GITHUB_RUN_ATTEMPT", "2"), ("GITHUB_REF", "refs/heads/main"),
-                           ("GITHUB_WORKFLOW_REF", "other/workflow"), ("GITHUB_WORKFLOW_SHA", "main")):
-            self.refused(driver.validate_event, event, dict(env, **{key: value}))
-
-    def test_workflow_and_executable_owners_bind_synthetic_merge_to_head(self):
-        event, env = event_env()
+    def setUp(self):
+        self.pins=patch.multiple(driver,SOURCE=SOURCE,TREE=TREE,FIRST_SOURCE=SOURCE,FIRST_TREE=TREE)
+        self.pins.start();self.addCleanup(self.pins.stop)
+    def refused(self,fn,*args):
+        with self.assertRaises(driver.release.Refusal):fn(*args)
+    def test_full_and_targeted_booking_use_original_lifetime_allowance(self):
+        self.assertEqual(driver.round_minutes(driver.validate_request(request())),940)
+        req=request(3,["types-tests","doctor-1","doctor-2","doctor-3"],[*driver.RETAINED_SOURCE_RUN_IDS,"998"])
+        self.assertEqual(driver.round_minutes(driver.validate_request(req)),250)
+        self.assertEqual(425+940+300+135,1800)
+        self.assertEqual(len(driver.profiles_for(request())),15)
+        broad_types=request(3,["types-tests","types-production","types-scripts"],[*driver.RETAINED_SOURCE_RUN_IDS,"998"])
+        self.assertEqual(driver.round_minutes(driver.validate_request(broad_types)),295)
+    def test_closed_source_authorization_placeholders_rounds_and_extra_inputs_refuse(self):
+        for field,value in (("sourceAuthorization","different"),("schema","old"),("round",4),("round",True),
+                            ("sourceSha","PENDING_REVIEWED_SOURCE_SHA"),("sourceTree",HEAD),
+                            ("settledUsageSha256","x"*64),("profiles",["doctor"])):
+            req=request();req[field]=value;self.refused(driver.validate_request,req)
+        for extra in ("command","url","secret","ref"):
+            req=request();req[extra]="arbitrary";self.refused(driver.validate_request,req)
+        self.refused(driver.read_json,'{"round":2,"round":3}')
+        with patch.object(driver,"SOURCE","PENDING_REVIEWED_SOURCE_SHA"):
+            self.refused(driver.validate_request,request())
+    def test_prior_runs_are_complete_ordered_and_targeted_profiles_bounded(self):
+        for prior in ([],list(reversed(driver.RETAINED_SOURCE_RUN_IDS)),[*driver.RETAINED_SOURCE_RUN_IDS,"x"]):
+            self.refused(driver.validate_request,request(prior=prior))
+        for profiles in ([],["dependency","dependency"],["types-tests","types-production","types-scripts","dependency"],
+                         ["doctor"],["$(curl bad)"]):
+            self.refused(driver.validate_request,request(3,profiles,[*driver.RETAINED_SOURCE_RUN_IDS,"998"]))
+    def test_exact_pr_snapshot_is_not_replaced_by_canonical_target_tip(self):
+        event,env=event_env();self.assertEqual(driver.validate_event(event,env),HEAD)
+        event["pull_request"]["base"]["sha"]=driver.TARGET_BRANCH_TIP
+        self.refused(driver.validate_event,event,env)
+    def test_no_local_dispatch_rerun_private_repo_or_other_pr(self):
+        event,env=event_env()
+        for key,value in (("GITHUB_ACTIONS","false"),("RUNNER_OS","macOS"),("RUNNER_ENVIRONMENT","self-hosted"),
+                          ("GITHUB_EVENT_NAME","workflow_dispatch"),("GITHUB_RUN_ATTEMPT","2"),
+                          ("GITHUB_WORKFLOW_SHA","main"),("GITHUB_REF","refs/heads/main")):
+            self.refused(driver.validate_event,event,dict(env,**{key:value}))
+        for field,value in (("draft",False),("state","closed"),("number",29)):
+            changed=copy.deepcopy(event);changed["pull_request"][field]=value
+            self.refused(driver.validate_event,changed,env)
+        changed=copy.deepcopy(event);changed["repository"]["private"]=True
+        self.refused(driver.validate_event,changed,env)
+    def test_complete_actual425_is_rechecked_before_full940_and_targeted300_reserve(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            files = (driver.WORKFLOW, "scripts/fork-release/source_validation_v108.py",
-                     "scripts/fork-release/preflight.py", "scripts/fork-release/release.py",
-                     "scripts/fork-release/native_tests.mjs")
-            for path in files:
-                (root / path).parent.mkdir(parents=True, exist_ok=True)
-                (root / path).write_bytes(b"reviewed")
-            def git(_root, *args):
-                if args == ("rev-parse", "HEAD"):
-                    return (HEAD if _root == root else driver.SOURCE).encode()
-                if args == ("rev-parse", "HEAD^{tree}"):
-                    return driver.TREE.encode()
-                if args == ("rev-parse", MERGE + "^1"):
-                    return driver.TARGET_BRANCH_TIP.encode()
+            root=Path(directory);args=history_fixture(root,request());req,event,env,responses,api,runs,tables=args
+            with patch.object(driver.subprocess,"run"),patch.object(driver,"datetime",wraps=datetime) as clock:
+                clock.now.return_value=NOW;budget=driver.history_checks(req,event,env,root,api)
+            self.assertEqual(budget["actualSettledRunnerMinutes"],425)
+            self.assertEqual(budget["bookedRunnerMinutes"],1800)
+            self.assertEqual(budget["futureTargetedReserveMinutes"],300)
+            self.assertTrue(budget["historicalConclusionsRetained"])
+    def test_settled_state_head_job_usage_and_zero_evidence_cannot_be_discounted(self):
+        for mutation in ("running","head","rerun","duration","missing-zero","private","missing-run"):
+            with self.subTest(mutation=mutation),tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);req,event,env,responses,api,runs,tables=history_fixture(root,request())
+                if mutation=="running":runs[0]["status"]="in_progress"
+                elif mutation=="head":runs[0]["head_sha"]=HEAD
+                elif mutation=="rerun":runs[0]["run_attempt"]=2
+                elif mutation=="duration":tables[driver.RETAINED_SOURCE_RUN_IDS[2]]["jobs"][0]["completed_at"]="2026-10-28T02:14:00Z"
+                elif mutation=="missing-zero":tables[driver.RETAINED_SOURCE_RUN_IDS[0]]["jobs"][0].pop("runner_id")
+                elif mutation=="private":runs[0]["head_repository"]["private"]=True
+                else:runs.pop(0)
+                with patch.object(driver.subprocess,"run"),patch.object(driver,"datetime",wraps=datetime) as clock:
+                    clock.now.return_value=NOW;self.refused(driver.history_checks,req,event,env,root,api)
+    def test_unlisted_source_run_target_drift_expiry_or_preapproval_refuse(self):
+        for mutation in ("extra","target","expired","preapproval"):
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);req,event,env,responses,api,runs,tables=history_fixture(root,request())
+                if mutation=="extra":runs.append(run_record("998",OLD_HEAD,driver.WORKFLOW))
+                elif mutation=="target":responses["/git/ref/heads/"+driver.BASE_BRANCH]["object"]["sha"]=HEAD
+                elif mutation=="preapproval":runs[-1]["created_at"]="2026-10-28T04:00:00Z"
+                with patch.object(driver.subprocess,"run"),patch.object(driver,"datetime",wraps=datetime) as clock:
+                    clock.now.return_value=datetime(2026,10,29,1,tzinfo=timezone.utc) if mutation=="expired" else NOW
+                    self.refused(driver.history_checks,req,event,env,root,api)
+    def test_doctor_three_shards_are_disjoint_complete_and_spread_expensive_files(self):
+        paths=["src/commands/doctor-fixture-%03d.test.ts"%i for i in range(421)]
+        expensive=["src/commands/doctor-config-preflight.process.test.ts","src/commands/doctor-session.test.ts","src/flows/doctor/other-process.test.ts"]
+        paths+=expensive
+        full=driver.selected_tests(paths,"doctor");shards=[driver.selected_tests(paths,"doctor-"+str(i)) for i in (1,2,3)]
+        self.assertEqual(len(full),424);self.assertEqual(sorted(sum(shards,[])),full)
+        self.assertEqual(len(set(sum(shards,[]))),424)
+        self.assertTrue(all(len(set(s)&set(expensive))==1 for s in shards))
+    def test_compatibility_requires_node_browser_workers_imap_mcp_and_lock_mirror(self):
+        paths=[*driver.COMPATIBILITY_TESTS,"test/v108-remediation-security.test.mjs"]
+        argv=driver.commands(Path("pipeline"),Path("source"),"compatibility",paths)
+        self.assertIn("test/v108-remediation-security.test.mjs",argv[0])
+        self.assertEqual(argv[1][1:4],["--import","./scripts/tsx.mjs","scripts/test-projects.mts"])
+        self.assertEqual(set(argv[1][4:]),set(driver.COMPATIBILITY_TESTS))
+        self.assertEqual(argv[2],["pnpm","deps:npm-lock:check:changed","--base",driver.ORIGINAL_SOURCE,"--head",SOURCE])
+        for missing in paths:
+            self.refused(driver.commands,Path("pipeline"),Path("source"),"compatibility",[p for p in paths if p!=missing])
+    def test_audit_failures_do_not_erase_later_command_outcomes(self):
+        with patch.object(driver.subprocess,"run",side_effect=[SimpleNamespace(returncode=n) for n in (1,2,0)]):
+            self.assertEqual(driver.run_commands([["audit"],["production"],["regression"]],Path("source"),{}),[1,2,0])
+    def test_clean_child_environment_has_no_credentials_or_prebuilt_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env=driver.clean_env(Path(directory),{"PATH":"/usr/bin","GITHUB_TOKEN":"secret","HOME":"private", "GOOGLE_APPLICATION_CREDENTIALS":"private","OPENCLAW_SKIP_BUILD":"1"})
+            for key in ("GITHUB_TOKEN","GOOGLE_APPLICATION_CREDENTIALS","OPENCLAW_SKIP_BUILD"):
+                self.assertNotIn(key,env)
+            self.assertEqual(env["HOME"],directory)
+    def test_final_only_sparse_history_and_source_budget_bindings(self):
+        workflow=Path(__file__).resolve().parents[2]/driver.WORKFLOW;text=workflow.read_text();before,final=text.split("  final:\n",1)
+        self.assertNotIn("fetch-depth: 1",before);self.assertIn("fetch-depth: 1",final)
+        self.assertIn("sparse-checkout:",final);self.assertIn("timeout-minutes: 10",final)
+        self.assertIn("SOURCE_JOB_STARTED_EPOCH: ${{ steps.source-clock.outputs.started_epoch }}",text)
+        self.assertEqual(text.count("ref: "+SOURCE_LITERAL),2)
+        self.assertNotIn("workflow_dispatch:",text);self.assertNotIn("actions/upload-artifact",text)
+        self.assertNotIn("id-token:",text);self.assertNotIn("secrets.",text)
+    def test_minimal_merge_acquisition_fetches_two_levels_and_preserves_head(self):
+        event,env=event_env();env["PATH"]="/usr/bin";calls=[]
+        def git(root,*args):
+            if args==("cat-file","-t",MERGE):return b"commit"
+            if args==("cat-file","-e",MERGE+"^1^{commit}"):raise subprocess.CalledProcessError(1,args)
+            if args==("rev-parse","FETCH_HEAD^{commit}"):return MERGE.encode()
+            if args==("rev-parse","HEAD"):return HEAD.encode()
+            raise AssertionError(args)
+        with patch.object(driver,"git",side_effect=git),patch.object(driver.subprocess,"run",side_effect=lambda a,**kw:calls.append((a,kw))):
+            driver.acquire_workflow_commit(Path("pipeline"),HEAD,env,minimal=True)
+        self.assertIn("--depth=2",calls[0][0]);self.assertNotIn("GITHUB_TOKEN",calls[0][1]["env"])
+    def test_all_five_owner_bytes_and_first_parent_remain_checked(self):
+        event,env=event_env();files=(driver.WORKFLOW,"scripts/fork-release/source_validation_v108.py","scripts/fork-release/preflight.py","scripts/fork-release/release.py","scripts/fork-release/native_tests.mjs")
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            for name in files:(root/name).parent.mkdir(parents=True,exist_ok=True);(root/name).write_bytes(b"reviewed")
+            def git(where,*args):
+                if args==("rev-parse","HEAD"):return HEAD.encode()
+                if args==("rev-parse",MERGE+"^1"):return driver.TARGET_BRANCH_TIP.encode()
                 return b"reviewed"
-            with patch.object(driver, "git", side_effect=git), patch.object(driver, "acquire_workflow_commit"):
-                driver.code_binding(root, root / "source", event, env)
-            def drift(_root, *args):
-                if args[0] == "show" and args[1].startswith(MERGE):
-                    return b"synthetic merge drift"
-                return git(_root, *args)
-            with patch.object(driver, "git", side_effect=drift), patch.object(driver, "acquire_workflow_commit"):
-                self.refused(driver.code_binding, root, root / "source", event, env)
-            with patch.object(driver, "git", side_effect=lambda *a: b"wrong"):
-                self.refused(driver.code_binding, root, root / "source", event, env)
+            with patch.object(driver,"git",side_effect=git),patch.object(driver,"acquire_workflow_commit"):
+                driver.code_binding(root,None,event,env,minimal=True)
+            def drift(where,*args):
+                return b"wrong" if args==("show",MERGE+":"+files[-1]) else git(where,*args)
+            with patch.object(driver,"git",side_effect=drift),patch.object(driver,"acquire_workflow_commit"):
+                self.refused(driver.code_binding,root,None,event,env,True)
+    def test_profile_clock_budget_reserves_cleanup_and_original_absolute_deadline(self):
+        epoch=int(NOW.timestamp());env={"SOURCE_JOB_STARTED_EPOCH":str(epoch-60)}
+        with patch.object(driver.time,"time",return_value=epoch):
+            self.assertEqual(driver.profile_deadline(env,"doctor-1"),epoch-60+45*60-60)
+            self.refused(driver.profile_deadline,{},"doctor-1")
+    def test_command_timeout_records_result_and_settles_only_owned_group(self):
+        group=FakeOwnedGroup(leader_zero=False)
+        result,receipt=exercise_owned_timeout(group)
+        self.assertTrue(result.timed_out);self.assertEqual(result.returncode,124)
+        self.assertEqual(result.actual_returncode,-9);self.assertTrue(result.cleanup_settled)
+        self.assertTrue(group.start_new_session)
+        self.assertEqual(group.signals,[driver.signal.SIGTERM,driver.signal.SIGKILL])
+        self.assertEqual(receipt["status"],"timeout")
+    def test_timeout_with_zero_child_exit_is_still_failure_and_owned_escalation_is_bounded(self):
+        for zero in (True,False):
+            group=FakeOwnedGroup(leader_zero=zero)
+            result,receipt=exercise_owned_timeout(group)
+            self.assertEqual(result.returncode,124);self.assertTrue(result.timed_out)
+            self.assertEqual(group.signals,[driver.signal.SIGTERM,driver.signal.SIGKILL])
+            self.assertEqual(receipt["exitCode"],0 if zero else None)
+            self.assertLessEqual(group.now,15.1)
+    def test_no_remaining_budget_records_refusal_before_child_creation(self):
+        with patch.object(driver.subprocess,"Popen") as child,patch.object(driver.time,"time",return_value=20),patch.object(driver,"summarize") as report:
+            self.refused(driver.phase_process,["fixed"],Path("source"),{}, {"profile":"doctor-1","deadlineEpoch":12},"command",0)
+        child.assert_not_called();self.assertEqual(report.call_args.args[0]["status"],"budget_refused")
 
-    def test_absent_synthetic_merge_object_is_acquired_without_network_or_credentials(self):
+class FakeOwnedGroup:
+    """A TERM-handling leader and inherited-stdio descendant, with fake time."""
+    def __init__(self, leader_zero=True, foreign=False, never_settles=False):
+        self.pid=777;self.returncode=None;self.reaped=False;self.descendant_alive=True
+        self.leader_zero=leader_zero;self.foreign=foreign;self.never_settles=never_settles
+        self.now=0.0;self.signals=[];self.communications=0;self.term_seen=False
+    def communicate(self, timeout):
+        self.communications+=1
+        if self.communications==1:raise subprocess.TimeoutExpired(["fixed"],timeout)
+        if self.leader_zero and self.term_seen:self.returncode=0
+        elif not self.descendant_alive:self.returncode=-9
+        else:raise subprocess.TimeoutExpired(["fixed"],timeout)
+        self.reaped=True
+        return None,None
+    def group(self,pid):
+        if self.reaped:raise AssertionError("destructive ownership check after leader reap")
+        assert pid==self.pid
+        return self.pid+1 if self.foreign else self.pid
+    def killpg(self,pid,sig):
+        assert pid==self.pid
+        if sig==0:
+            if self.never_settles or self.descendant_alive or not self.reaped:return
+            raise ProcessLookupError()
+        if self.reaped:raise AssertionError("signal after leader reap risks reused process identity")
+        self.signals.append(sig)
+        if sig==driver.signal.SIGTERM:self.term_seen=True
+        elif sig==driver.signal.SIGKILL:self.descendant_alive=False
+        else:raise AssertionError(sig)
+    def monotonic(self):return self.now
+    def sleep(self,seconds):self.now+=seconds
+
+
+def exercise_owned_timeout(group):
+    with patch.object(driver.subprocess,"Popen",return_value=group) as launch, \
+         patch.object(driver.os,"getpgid",side_effect=group.group), \
+         patch.object(driver.os,"getsid",side_effect=group.group), \
+         patch.object(driver.os,"killpg",side_effect=group.killpg), \
+         patch.object(driver.time,"time",return_value=10), \
+         patch.object(driver.time,"monotonic",side_effect=group.monotonic), \
+         patch.object(driver.time,"sleep",side_effect=group.sleep), \
+         patch.object(driver,"summarize") as report:
+        result=driver.phase_process(["fixed"],Path("source"),{},
+            {"profile":"doctor-1","deadlineEpoch":12},"command",0)
+    group.start_new_session=launch.call_args.kwargs["start_new_session"]
+    return result,report.call_args.args[0]
+
+
+class P2CounterexampleTests(unittest.TestCase):
+    def setUp(self):
+        self.pins=patch.multiple(driver,SOURCE=SOURCE,TREE=TREE,FIRST_SOURCE=SOURCE,FIRST_TREE=TREE)
+        self.pins.start();self.addCleanup(self.pins.stop)
+    def add_ancillary(self,runs,tables,minutes=1,status="completed"):
+        run=run_record("8888",HEAD,".github/workflows/synthetic-metadata.yml",
+                       "success" if status=="completed" else None,status)
+        table={"total_count":1,"jobs":[job("metadata",minutes)]}
+        tables["8888"]=table;runs.append(run)
+        return run,table
+    def test_new_ancillary136_must_refuse_without_refunding_fixed425(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            donor, pipeline = root / "donor", root / "pipeline"
-            donor.mkdir()
-            pipeline.mkdir()
-            local_env = {"PATH": os.environ["PATH"], "GIT_CONFIG_NOSYSTEM": "1",
-                         "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_AUTHOR_NAME": "Synthetic Fixture",
-                         "GIT_AUTHOR_EMAIL": "fixture@example.invalid", "GIT_COMMITTER_NAME": "Synthetic Fixture",
-                         "GIT_COMMITTER_EMAIL": "fixture@example.invalid"}
-            def git_at(path, *args, input=None):
-                return subprocess.check_output(["git", "-C", str(path), *args], input=input,
-                                               env=local_env, stderr=subprocess.DEVNULL).decode().strip()
-            git_at(donor, "init", "-q")
-            tree = git_at(donor, "mktree", input=b"")
-            base = git_at(donor, "commit-tree", tree, "-m", "base")
-            head = git_at(donor, "commit-tree", tree, "-p", base, "-m", "head")
-            side = git_at(donor, "commit-tree", tree, "-p", base, "-m", "base advance")
-            merge = git_at(donor, "commit-tree", tree, "-p", side, "-p", head, "-m", "synthetic PR merge")
-            git_at(donor, "update-ref", "refs/heads/head", head)
-            git_at(donor, "update-ref", "refs/heads/pr-merge", merge)
-            git_at(pipeline, "init", "-q")
-            git_at(pipeline, "fetch", str(donor), "head")
-            git_at(pipeline, "checkout", "--detach", "FETCH_HEAD")
-            with self.assertRaises(subprocess.CalledProcessError):
-                git_at(pipeline, "cat-file", "-t", merge)
-            actual_run, fetches = subprocess.run, []
-            def local_transport(argv, **kwargs):
-                argv = list(argv)
-                public = "https://github.com/fr-meyer/openclaw.git"
-                if "fetch" in argv:
-                    self.assertIn(public, argv)
-                    self.assertEqual(argv[-1], merge)
-                    fetches.append((list(argv), dict(kwargs["env"])))
-                    argv[argv.index(public)] = str(donor)
-                self.assertFalse(any("https://" in str(arg) for arg in argv))
-                return actual_run(argv, **kwargs)
-            with patch.object(driver.subprocess, "run", side_effect=local_transport):
-                driver.acquire_workflow_commit(pipeline, head, {
-                    "PATH": os.environ["PATH"], "GITHUB_WORKFLOW_SHA": merge,
-                    "GH_SOURCE_READ_TOKEN": "never-forward-this", "HOME": "/operator/home"})
-            self.assertEqual(git_at(pipeline, "rev-parse", "HEAD"), head)
-            self.assertEqual(git_at(pipeline, "cat-file", "-t", merge), "commit")
-            self.assertEqual(len(fetches), 1)
-            self.assertEqual(set(fetches[0][1]), {"PATH", "GIT_TERMINAL_PROMPT", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL"})
-            with patch.object(driver.subprocess, "run") as never_fetch:
-                self.refused(driver.acquire_workflow_commit, pipeline, head,
-                             {"PATH": os.environ["PATH"], "GITHUB_WORKFLOW_SHA": "refs/pull/28/merge"})
-                never_fetch.assert_not_called()
-
-    def test_workflow_fetch_rejects_identity_drift(self):
-        def absent_then_wrong(_root, *args):
-            if args[0] == "cat-file":
-                raise subprocess.CalledProcessError(1, ["git"])
-            return OLD_HEAD.encode()
-        with patch.object(driver, "git", side_effect=absent_then_wrong), patch.object(driver.subprocess, "run"):
-            self.refused(driver.acquire_workflow_commit, Path("/synthetic"), HEAD,
-                         {"PATH": "/usr/bin", "GITHUB_WORKFLOW_SHA": MERGE})
-
-    def test_code_binding_checks_acquired_merge_first_parent_with_real_git(self):
+            root=Path(directory);req,event,env,responses,api,runs,tables=history_fixture(root,request())
+            self.add_ancillary(runs,tables,136)
+            with patch.object(driver.subprocess,"run"),patch.object(driver,"datetime",wraps=datetime) as clock:
+                clock.now.return_value=NOW
+                with self.assertRaises(driver.release.Refusal):driver.history_checks(req,event,env,root,api)
+    def test_leader_zero_exit_cannot_leave_term_ignoring_owned_descendant(self):
+        group=FakeOwnedGroup(leader_zero=True)
+        result,receipt=exercise_owned_timeout(group)
+        self.assertFalse(group.descendant_alive,"TERM-ignoring descendant survived leader communicate exit0")
+        self.assertEqual(group.signals,[driver.signal.SIGTERM,driver.signal.SIGKILL])
+        self.assertEqual(result.actual_returncode,0);self.assertEqual(result.returncode,124)
+        self.assertTrue(result.cleanup_settled);self.assertTrue(receipt["cleanupSettled"])
+    def test_new_ancillary_usage_is_inclusive_in135_not_added_twice(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            local_env = {"PATH": os.environ["PATH"], "GIT_CONFIG_NOSYSTEM": "1",
-                         "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_AUTHOR_NAME": "Synthetic Fixture",
-                         "GIT_AUTHOR_EMAIL": "fixture@example.invalid", "GIT_COMMITTER_NAME": "Synthetic Fixture",
-                         "GIT_COMMITTER_EMAIL": "fixture@example.invalid"}
-            def git_at(*args):
-                return subprocess.check_output(["git", "-C", str(root), *args],
-                                               env=local_env, stderr=subprocess.DEVNULL).decode().strip()
-            git_at("init", "-q")
-            for name in (driver.WORKFLOW, "scripts/fork-release/source_validation_v108.py",
-                         "scripts/fork-release/preflight.py", "scripts/fork-release/release.py",
-                         "scripts/fork-release/native_tests.mjs"):
-                path = root / name
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(b"fixed reviewed executable")
-            git_at("add", ".")
-            tree = git_at("write-tree")
-            target = git_at("commit-tree", tree, "-m", "target")
-            head = git_at("commit-tree", tree, "-p", target, "-m", "reviewed head")
-            merge = git_at("commit-tree", tree, "-p", target, "-p", head, "-m", "PR merge")
-            wrong = git_at("commit-tree", tree, "-p", head, "-p", target, "-m", "wrong target parent")
-            git_at("checkout", "--detach", head)
-            event, env = event_env()
-            event["pull_request"]["head"]["sha"] = head
-            env["GITHUB_WORKFLOW_SHA"] = merge
-            with patch.object(driver, "TARGET_BRANCH_TIP", target), patch.object(driver, "SOURCE", head), \
-                 patch.object(driver, "TREE", tree):
-                driver.code_binding(root, root, event, env)
-                self.refused(driver.code_binding, root, root, event, dict(env, GITHUB_WORKFLOW_SHA=wrong))
-            with patch.object(driver, "TARGET_BRANCH_TIP", head):
-                self.refused(driver.code_binding, root, None, event, env)
-
-    def history_fixture(self, root, current_request):
-        event, env = event_env()
-        (root / driver.WORKFLOW).parent.mkdir(parents=True)
-        (root / driver.WORKFLOW).write_bytes(b"fixed workflow")
-        previous = run("101", OLD_HEAD, completed=True)
-        current = run("102", HEAD, created="2026-10-27T11:30:00Z")
-        skipped = run(driver.SKIPPED_RUN_ID, driver.SKIPPED_HEAD, completed=True,
-                      created="2026-10-27T10:30:00Z")
-        skipped["conclusion"] = "skipped"
-        skipped_jobs = [dict(job(name, "skipped"), runner_id=None, runner_name=None, steps=[])
-                        for name in ("admission", "source (${{ matrix.profile }})", "final")]
-        frozen_workflow = (Path(__file__).resolve().parents[2] / driver.WORKFLOW).read_bytes().replace(
-            ("base.sha == '" + driver.BASE + "'").encode(),
-            ("base.sha == '" + driver.TARGET_BRANCH_TIP + "'").encode())
-        self.assertEqual(hashlib.sha256(frozen_workflow).hexdigest(), driver.SKIPPED_WORKFLOW_SHA256)
-        jobs = [job(), job("final"), *[job("source (" + p + ")") for p in driver.profiles_for(request())]]
-        runs = [current, *([previous] if current_request["round"] else []), skipped]
-        responses = {
-            "/pulls/28": event["pull_request"],
-            "/git/ref/heads/" + driver.BASE_BRANCH:
-                {"ref": "refs/heads/" + driver.BASE_BRANCH,
-                 "object": {"type": "commit", "sha": driver.TARGET_BRANCH_TIP}},
-            "/actions/workflows/" + Path(driver.WORKFLOW).name + "/runs?event=pull_request&per_page=100":
-                {"total_count": len(runs), "workflow_runs": runs},
-            "/contents/" + driver.REQUEST + "?ref=" + OLD_HEAD: content(json.dumps(request()).encode()),
-            "/contents/" + driver.WORKFLOW + "?ref=" + OLD_HEAD: content(b"fixed workflow"),
-            "/actions/runs/101/jobs?filter=all&per_page=100": {"total_count": len(jobs), "jobs": jobs},
-            "/contents/" + driver.REQUEST + "?ref=" + driver.SKIPPED_HEAD: content(json.dumps(request()).encode()),
-            "/contents/" + driver.WORKFLOW + "?ref=" + driver.SKIPPED_HEAD: content(frozen_workflow),
-            "/actions/runs/" + driver.SKIPPED_RUN_ID + "/jobs?filter=all&per_page=100":
-                {"total_count": len(skipped_jobs), "jobs": skipped_jobs},
-        }
-        def api(path):
-            prefix = "/repos/" + driver.REPOSITORY
-            self.assertTrue(path.startswith(prefix))
-            return responses[path[len(prefix):]]
-        return event, env, responses, api
-
-    def test_live_history_accepts_ordered_terminal_round_and_ancestor_correction(self):
+            root=Path(directory);req,event,env,responses,api,runs,tables=history_fixture(root,request())
+            self.add_ancillary(runs,tables,40)
+            with patch.object(driver.subprocess,"run"),patch.object(driver,"datetime",wraps=datetime) as clock:
+                clock.now.return_value=NOW;result=driver.history_checks(req,event,env,root,api)
+            self.assertEqual(result["actualSettledRunnerMinutes"],425)
+            self.assertEqual(result["observedNewAncillaryRunnerMinutes"],40)
+            self.assertEqual(result["newAncillaryRemainingReserveMinutes"],95)
+            self.assertEqual(result["bookedRunnerMinutes"],1800)
+    def test_new_ancillary_unknown_usage_or_identity_refuses(self):
+        for mutation in ("runner_id","started_at","private","foreign-head"):
+            with self.subTest(mutation=mutation),tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);req,event,env,responses,api,runs,tables=history_fixture(root,request())
+                run,table=self.add_ancillary(runs,tables)
+                if mutation=="private":run["head_repository"]["private"]=True
+                elif mutation=="foreign-head":run["head_sha"]="c"*40
+                else:table["jobs"][0].pop(mutation)
+                with patch.object(driver.subprocess,"run"),patch.object(driver,"datetime",wraps=datetime) as clock:
+                    clock.now.return_value=NOW
+                    with self.assertRaises(driver.release.Refusal):driver.history_checks(req,event,env,root,api)
+    def test_new_inprogress_ancillary_reports_elapsed_then_refuses_unbounded_remaining(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            req = request(1, ["dependency"], ["101"])
-            event, env, responses, api = self.history_fixture(root, req)
-            with patch.object(driver.subprocess, "run") as command, patch.object(driver, "datetime", wraps=datetime) as clock:
-                clock.now.return_value = NOW
-                budget = driver.history_checks(req, event, env, root, api)
-            self.assertEqual(budget["bookedRunnerMinutes"], 94)
-            self.assertEqual(budget["observedPriorRunnerMinutes"], 14)
-            self.assertIn(OLD_HEAD, command.call_args.args[0])
-            self.assertIn(HEAD, command.call_args.args[0])
-
-    def test_live_history_refuses_duplicate_unlisted_rerun_unsettled_and_stale(self):
-        for mutation in ("duplicate", "missing", "rerun", "running", "changed-pr", "changed-workflow",
-                         "wrong-round", "incomplete-pages", "expired", "source-change", "unknown-job"):
-            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                req = request(1, ["dependency"], ["101"])
-                event, env, responses, api = self.history_fixture(root, req)
-                listing = responses["/actions/workflows/" + Path(driver.WORKFLOW).name + "/runs?event=pull_request&per_page=100"]
-                old = listing["workflow_runs"][1]
-                if mutation == "duplicate":
-                    listing["workflow_runs"].append(run("103", HEAD))
-                    listing["total_count"] += 1
-                elif mutation == "missing":
-                    listing["workflow_runs"].remove(old)
-                    listing["total_count"] -= 1
-                elif mutation == "rerun":
-                    old["run_attempt"] = 2
-                elif mutation == "running":
-                    old["status"] = "in_progress"
-                elif mutation == "changed-pr":
-                    responses["/pulls/28"]["head"]["sha"] = MERGE
-                    event = copy.deepcopy(event)
-                    event["pull_request"]["head"]["sha"] = HEAD
-                elif mutation == "changed-workflow":
-                    responses["/contents/" + driver.WORKFLOW + "?ref=" + OLD_HEAD] = content(b"changed")
-                elif mutation in ("wrong-round", "source-change"):
-                    bad = request()
-                    bad["round" if mutation == "wrong-round" else "sourceSha"] = 1 if mutation == "wrong-round" else HEAD
-                    responses["/contents/" + driver.REQUEST + "?ref=" + OLD_HEAD] = content(json.dumps(bad).encode())
-                elif mutation == "incomplete-pages":
-                    listing["total_count"] = 101
-                elif mutation == "expired":
-                    old["created_at"] = "2026-10-25T10:00:00Z"
-                else:
-                    responses["/actions/runs/101/jobs?filter=all&per_page=100"]["jobs"][0]["name"] = "publish"
-                with patch.object(driver.subprocess, "run"), patch.object(driver, "datetime", wraps=datetime) as clock:
-                    clock.now.return_value = NOW
-                    self.refused(driver.history_checks, req, event, env, root, api)
-
-    def test_exact_skipped_admission_retained_without_consuming_initial_execution(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            req = request()
-            event, env, responses, api = self.history_fixture(root, req)
-            with patch.object(driver.subprocess, "run") as ancestry, \
-                 patch.object(driver, "datetime", wraps=datetime) as clock:
-                clock.now.return_value = NOW
-                budget = driver.history_checks(req, event, env, root, api)
-            ancestry.assert_not_called()
-            self.assertEqual(budget["bookedRunnerMinutes"], 800)
-            self.assertEqual(budget["observedPriorRunnerMinutes"], 0)
-            self.assertEqual(budget["retainedSkippedAdmissions"], [{
-                "runId": driver.SKIPPED_RUN_ID, "headSha": driver.SKIPPED_HEAD, "status": "skipped",
-                "bookedRunnerMinutes": 0, "observedRunnerMinutes": 0}])
-            skipped_jobs = responses["/actions/runs/" + driver.SKIPPED_RUN_ID + "/jobs?filter=all&per_page=100"]
-            for item in skipped_jobs["jobs"]:
-                item["runner_id"] = 0
-            with patch.object(driver, "datetime", wraps=datetime) as clock:
-                clock.now.return_value = NOW
-                self.assertEqual(driver.history_checks(req, event, env, root, api)["bookedRunnerMinutes"], 800)
-
-    def test_skipped_admission_retains_only_exact_run_request_workflow_and_zero_work(self):
-        mutations = ("missing-run", "unknown-run", "duplicate-run", "head", "status", "conclusion",
-                     "attempt", "event", "path", "title", "repository", "private", "head-repository",
-                     "head-private", "branch", "pr", "workflow", "missing-workflow", "manifest",
-                     "inventory", "source", "tree", "round", "profiles", "prior", "extra-request",
-                     "missing-request", "job-name", "duplicate-job", "missing-job", "extra-job",
-                     "job-status", "job-conclusion", "job-attempt", "runner", "runner-name", "steps",
-                     "missing-runner", "missing-runner-name", "missing-steps", "missing-jobs")
-        for mutation in mutations:
-            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                req = request()
-                event, env, responses, api = self.history_fixture(root, req)
-                listing = responses["/actions/workflows/" + Path(driver.WORKFLOW).name + "/runs?event=pull_request&per_page=100"]
-                skipped = listing["workflow_runs"][-1]
-                jobs = responses["/actions/runs/" + driver.SKIPPED_RUN_ID + "/jobs?filter=all&per_page=100"]
-                first = jobs["jobs"][0]
-                old_request = request()
-                if mutation == "missing-run":
-                    listing["workflow_runs"].pop()
-                    listing["total_count"] -= 1
-                elif mutation == "unknown-run":
-                    skipped["id"] += 1
-                elif mutation == "duplicate-run":
-                    listing["workflow_runs"].append(copy.deepcopy(skipped))
-                    listing["total_count"] += 1
-                elif mutation in ("head", "status", "conclusion", "attempt", "event", "path", "title", "branch"):
-                    key, value = {"head": ("head_sha", OLD_HEAD), "status": ("status", "in_progress"),
-                                  "conclusion": ("conclusion", "failure"), "attempt": ("run_attempt", 2),
-                                  "event": ("event", "workflow_dispatch"), "path": ("path", "other.yml"),
-                                  "title": ("display_title", "other"), "branch": ("head_branch", "other")}[mutation]
-                    skipped[key] = value
-                elif mutation in ("repository", "private", "head-repository", "head-private"):
-                    key = "head_repository" if mutation.startswith("head-") else "repository"
-                    skipped[key]["private" if mutation.endswith("private") else "full_name"] = (
-                        True if mutation.endswith("private") else "other/openclaw")
-                elif mutation == "pr":
-                    skipped["pull_requests"][0]["number"] = 29
-                elif mutation in ("workflow", "missing-workflow"):
-                    responses["/contents/" + driver.WORKFLOW + "?ref=" + driver.SKIPPED_HEAD] = (
-                        content(b"changed workflow") if mutation == "workflow" else {})
-                elif mutation in ("manifest", "inventory", "source", "tree", "round", "profiles", "prior", "extra-request", "missing-request"):
-                    if mutation == "missing-request":
-                        responses["/contents/" + driver.REQUEST + "?ref=" + driver.SKIPPED_HEAD] = {}
-                    else:
-                        key, value = {"manifest": ("manifestSha256", "f" * 64),
-                                      "inventory": ("inventorySha256", "f" * 64), "source": ("sourceSha", HEAD),
-                                      "tree": ("sourceTree", HEAD), "round": ("round", 1),
-                                      "profiles": ("profiles", ["dependency"]), "prior": ("priorRunIds", ["101"]),
-                                      "extra-request": ("command", "anything")}[mutation]
-                        old_request[key] = value
-                        responses["/contents/" + driver.REQUEST + "?ref=" + driver.SKIPPED_HEAD] = content(json.dumps(old_request).encode())
-                elif mutation == "job-name":
-                    first["name"] = "source (dependency)"
-                elif mutation == "duplicate-job":
-                    jobs["jobs"][1]["name"] = first["name"]
-                elif mutation in ("missing-job", "extra-job"):
-                    if mutation == "missing-job":
-                        jobs["jobs"].pop()
-                    else:
-                        jobs["jobs"].append(copy.deepcopy(first))
-                    jobs["total_count"] = len(jobs["jobs"])
-                elif mutation in ("job-status", "job-conclusion", "job-attempt", "runner", "runner-name", "steps"):
-                    key, value = {"job-status": ("status", "queued"), "job-conclusion": ("conclusion", "success"),
-                                  "job-attempt": ("run_attempt", 2), "runner": ("runner_id", 42),
-                                  "runner-name": ("runner_name", "acquired"),
-                                  "steps": ("steps", [{"name": "checkout", "conclusion": "skipped"}])}[mutation]
-                    first[key] = value
-                elif mutation == "missing-jobs":
-                    jobs.pop("jobs")
-                else:
-                    first.pop({"missing-runner": "runner_id", "missing-runner-name": "runner_name",
-                               "missing-steps": "steps"}[mutation])
-                with patch.object(driver.subprocess, "run"), patch.object(driver, "datetime", wraps=datetime) as clock:
-                    clock.now.return_value = NOW
-                    self.refused(driver.history_checks, req, event, env, root, api)
-
-    def test_live_target_ref_requires_exact_positive_commit_identity(self):
-        for target in ({}, {"ref": "refs/heads/other", "object": {"type": "commit", "sha": driver.TARGET_BRANCH_TIP}},
-                       {"ref": "refs/heads/" + driver.BASE_BRANCH, "object": {"type": "commit", "sha": driver.BASE}},
-                       {"ref": "refs/heads/" + driver.BASE_BRANCH, "object": {"type": "tag", "sha": driver.TARGET_BRANCH_TIP}}):
-            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                req = request()
-                event, env, responses, api = self.history_fixture(root, req)
-                responses["/git/ref/heads/" + driver.BASE_BRANCH] = target
-                self.refused(driver.history_checks, req, event, env, root, api)
-
-    def test_both_targeted_execution_rounds_remain_bounded_after_retained_skip(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            req = request(2, ["workboard-1"], ["101", "103"])
-            event, env, responses, api = self.history_fixture(root, req)
-            listing = responses["/actions/workflows/" + Path(driver.WORKFLOW).name + "/runs?event=pull_request&per_page=100"]
-            listing["workflow_runs"].insert(1, run("103", MERGE, completed=True, created="2026-10-27T11:15:00Z"))
-            listing["total_count"] += 1
-            previous = request(1, ["dependency"], ["101"])
-            responses["/contents/" + driver.REQUEST + "?ref=" + MERGE] = content(json.dumps(previous).encode())
-            responses["/contents/" + driver.WORKFLOW + "?ref=" + MERGE] = content(b"fixed workflow")
-            jobs = [job(), job("source (dependency)"), job("final")]
-            responses["/actions/runs/103/jobs?filter=all&per_page=100"] = {"total_count": 3, "jobs": jobs}
-            with patch.object(driver.subprocess, "run"), patch.object(driver, "datetime", wraps=datetime) as clock:
-                clock.now.return_value = NOW
-                budget = driver.history_checks(req, event, env, root, api)
-            self.assertEqual(budget["bookedRunnerMinutes"], 97)
-            self.assertEqual(budget["observedPriorRunnerMinutes"], 17)
-            self.assertEqual(len(budget["retainedSkippedAdmissions"]), 1)
-
-    def test_approval_deadline_caps_first_run_window_and_cannot_be_extended(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            req = request()
-            event, env, responses, api = self.history_fixture(root, req)
-            listing = responses["/actions/workflows/" + Path(driver.WORKFLOW).name + "/runs?event=pull_request&per_page=100"]
-            listing["workflow_runs"][-1]["created_at"] = "2026-10-28T00:13:04Z"
-            listing["workflow_runs"][0]["created_at"] = "2026-10-28T00:20:00Z"
-            with patch.object(driver, "datetime", wraps=datetime) as clock:
-                clock.now.return_value = datetime(2026, 10, 28, 1, tzinfo=timezone.utc)
-                budget = driver.history_checks(req, event, env, root, api)
-                self.assertEqual(budget["deadlineEpoch"], int(driver.timestamp(driver.APPROVAL_DEADLINE).timestamp()))
-                # The run is still inside 24h here; the explicit approval has expired.
-                clock.now.return_value = datetime(2026, 10, 29, 0, 3, 20, tzinfo=timezone.utc)
-                self.refused(driver.history_checks, req, event, env, root, api)
-                # An enlarged environment value cannot extend a source job either.
-                clock.now.return_value = datetime(2026, 10, 28, 23, 30, tzinfo=timezone.utc)
-                self.refused(driver.deadline_check, {"SOURCE_DEADLINE_EPOCH": "9999999999"}, "dependency")
-            with patch.object(driver, "datetime", wraps=datetime) as clock:
-                clock.now.return_value = NOW
-                listing["workflow_runs"][-1]["created_at"] = "2026-10-27T10:30:00Z"
-                listing["workflow_runs"][0]["created_at"] = "2026-10-27T11:30:00Z"
-                self.assertEqual(driver.history_checks(req, event, env, root, api)["deadlineEpoch"],
-                                 int(driver.timestamp("2026-10-28T10:30:00Z").timestamp()))
-
-    def test_observed_runner_minutes_fail_closed_for_attempt_duration_platform_and_pages(self):
-        base = {"total_count": 2, "jobs": [job(), job("final")]}
-        self.assertEqual(driver.observed_minutes(base, []), 2)
-        for mutate in (lambda j: j.update(total_count=101),
-                       lambda j: j["jobs"][0].update(run_attempt=2),
-                       lambda j: j["jobs"][0].update(completed_at="2026-10-27T12:00:00Z"),
-                       lambda j: j["jobs"][0].update(labels=["self-hosted", "ubuntu-24.04"]),
-                       lambda j: j["jobs"][0].update(runner_group_name="larger-runners")):
-            bad = copy.deepcopy(base)
-            mutate(bad)
-            self.refused(driver.observed_minutes, bad, [])
-
-    def test_child_environment_has_no_token_home_credentials_cloud_or_prebuilt_override(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            parent = {"PATH": "/usr/bin", "HOME": "/private/operator", "GITHUB_TOKEN": "secret",
-                      "GH_SOURCE_READ_TOKEN": "secret", "AWS_ACCESS_KEY_ID": "secret",
-                      "GOOGLE_APPLICATION_CREDENTIALS": "/private/key", "NODE_OPTIONS": "--import bad",
-                      "OPENCLAW_E2E_SKIP_BUILD": "1", "OPENAI_API_KEY": "secret"}
-            child = driver.clean_env(root, parent)
-            self.assertEqual(child["HOME"], directory)
-            self.assertEqual(child["PATH"], "/usr/bin")
-            for key in parent:
-                if key not in ("PATH", "HOME"):
-                    self.assertNotIn(key, child)
-            self.assertTrue(Path(child["OPENCLAW_STATE_DIR"]).is_dir())
-
-    def test_admission_output_and_job_environment_bind_both_source_commands_to_deadline(self):
-        event, env = event_env()
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            event_path, output = root / "event.json", root / "output"
-            event_path.write_text(json.dumps(event))
-            env.update(GITHUB_EVENT_PATH=str(event_path), GITHUB_OUTPUT=str(output),
-                       GH_SOURCE_READ_TOKEN="synthetic-read-only-token")
-            deadline = int(NOW.timestamp()) + 86400
-            with patch.dict(os.environ, env, clear=True), \
-                 patch.object(sys, "argv", ["source_validation_v108.py", "admit", "--pipeline-dir", directory,
-                                            "--source-dir", directory]), \
-                 patch.object(driver, "metadata", return_value=(request(), {}, "d" * 64)), \
-                 patch.object(driver, "code_binding"), patch.object(driver, "fetch_closure"), \
-                 patch.object(driver, "history_checks", return_value={"deadlineEpoch": deadline}), \
-                 patch.object(driver, "summarize"):
-                self.assertEqual(driver.main(), 0)
-            self.assertIn("deadline_epoch=" + str(deadline) + "\n", output.read_text())
-        workflow = (Path(__file__).resolve().parents[2] / driver.WORKFLOW).read_text()
-        self.assertIn("deadline_epoch: ${{ steps.admit.outputs.deadline_epoch }}", workflow)
-        source_job = workflow.split("\n  source:\n", 1)[1].split("\n  final:\n", 1)[0]
-        job_prefix = source_job.split("    strategy:\n", 1)[0]
-        self.assertIn("    env:\n      SOURCE_PROFILE: ${{ matrix.profile }}\n"
-                      "      SOURCE_DEADLINE_EPOCH: ${{ needs.admission.outputs.deadline_epoch }}", job_prefix)
-        self.assertIn("source_validation_v108.py fetch-closure", source_job)
-        self.assertIn("source_validation_v108.py run", source_job)
-        with patch.object(driver, "datetime", wraps=datetime) as clock:
-            clock.now.return_value = NOW
-            driver.deadline_check({"SOURCE_DEADLINE_EPOCH": str(int(NOW.timestamp()) + 5400)}, "types-production")
-            self.refused(driver.deadline_check, {"SOURCE_DEADLINE_EPOCH": str(int(NOW.timestamp()) + 5399)},
-                         "types-production")
-            self.refused(driver.deadline_check, {}, "dependency")
-
-    def test_fixed_argv_uses_maintained_owners_and_never_pr_commands_or_docker(self):
-        paths = ["extensions/workboard/src/store.test.ts", "extensions/workboard/src/cli.test.ts",
-                 "src/agents/model-fallback.test.ts", "src/agents/model-fallback.live.test.ts",
-                 "src/agents/utility-completion.runtime.test.ts", "extensions/workboard/../../bad.test.ts",
-                 "extensions/workboard/src/command.test.ts\n--eval"]
-        selected = driver.selected_tests(paths, "workboard-1") + driver.selected_tests(paths, "workboard-2")
-        self.assertEqual(set(selected), set(paths[:2]))
-        self.assertNotIn(paths[3], driver.selected_tests(paths, "models-1") + driver.selected_tests(paths, "models-2"))
-        argv = driver.commands(Path("/pipeline"), Path("/source"), "workboard-1", paths)[0]
-        self.assertEqual(argv[:4], ["node", "--import", "./scripts/tsx.mjs", "scripts/test-projects.mts"])
-        self.assertEqual(driver.commands(Path("/p"), Path("/s"), "types-tests", []), [["pnpm", "tsgo:test"]])
-        self.refused(driver.commands, Path("/p"), Path("/s"), "docker build", paths)
-        source = Path(driver.__file__).read_text()
-        self.assertNotIn("shell=True", source)
-        for command in ("docker", "buildx", "gcloud", "ssh", "npm publish"):
-            self.assertNotIn('["' + command + '"', source)
-
-    def test_full_and_production_audits_preserve_all_dependency_regressions_after_failure(self):
-        names = ("zod-container-bounds", "a2ui-native-zod-regression", "discord-native-zod-regression",
-                 "body-parser-security", "msal-parent-compat", "undici-security",
-                 "mcp-nowistay-schema-compatibility", "mcp-nowistay-sdk-regression", "http-cache-semantics-compat")
-        paths = ["test/" + name + ".test.mjs" for name in names]
-        planned = driver.commands(Path("/pipeline"), Path("/source"), "dependency", paths)
-        self.assertEqual(planned[:2], [["pnpm", "audit"], ["pnpm", "audit", "--prod"]])
-        self.assertEqual(set(planned[2][planned[2].index("--") + 1:]), set(paths))
-        with patch.object(driver.subprocess, "run", side_effect=[SimpleNamespace(returncode=c) for c in (1, 2, 0)]) as runner:
-            outcomes = driver.run_commands(planned, Path("/source"), {"PATH": "/synthetic"})
-        self.assertEqual(outcomes, [1, 2, 0])
-        self.assertTrue(any(outcomes))
-        self.assertEqual([call.args[0] for call in runner.call_args_list], planned)
-
-    def test_resource_floors_and_refusal_before_any_dependency_install(self):
-        with patch.object(Path, "read_text", return_value="MemAvailable: 8388608 kB\n"), \
-             patch.object(driver.shutil, "disk_usage", return_value=SimpleNamespace(free=8 * 1024 ** 3)), \
-             patch.object(driver.os, "cpu_count", return_value=4):
-            self.assertEqual(driver.resource_check(Path("/synthetic"))["logicalCpus"], 4)
-            for memory, disk, cpus in (("8388607", 8 * 1024 ** 3, 4), ("8388608", 8 * 1024 ** 3 - 1, 4),
-                                       ("8388608", 8 * 1024 ** 3, 3)):
-                with patch.object(Path, "read_text", return_value="MemAvailable: " + memory + " kB\n"), \
-                     patch.object(driver.shutil, "disk_usage", return_value=SimpleNamespace(free=disk)), \
-                     patch.object(driver.os, "cpu_count", return_value=cpus):
-                    self.refused(driver.resource_check, Path("/synthetic"))
-        event, env = event_env()
-        with tempfile.TemporaryDirectory() as directory:
-            event_path = Path(directory) / "event.json"
-            event_path.write_text(json.dumps(event))
-            env.update(GITHUB_EVENT_PATH=str(event_path))
-            with patch.dict(os.environ, env, clear=True), \
-                 patch.object(sys, "argv", ["source_validation_v108.py", "run", "--pipeline-dir", directory,
-                                            "--source-dir", directory, "--profile", "types-tests"]), \
-                 patch.object(driver, "metadata", return_value=(request(), {}, "d" * 64)), \
-                 patch.object(driver, "code_binding"), patch.object(driver, "deadline_check"), \
-                 patch.object(driver, "source_preflight"), patch.object(driver, "git", return_value=b""), \
-                 patch.object(driver, "resource_check", side_effect=driver.release.Refusal("insufficient fixture resources")), \
-                 patch.object(driver.subprocess, "run") as install:
-                self.refused(driver.main)
-                install.assert_not_called()
-
-    def test_new_workflow_has_only_fixed_source_surface_and_read_permissions(self):
-        root = Path(__file__).resolve().parents[2]
-        text = (root / driver.WORKFLOW).read_text()
-        self.assertIn("types: [opened, reopened, synchronize]", text)
-        self.assertIn("group: " + driver.CAMPAIGN, text)
-        self.assertIn("cancel-in-progress: false", text)
-        self.assertIn("max-parallel: 3", text)
-        self.assertIn("timeout-minutes: ${{ matrix.minutes }}", text)
-        for line in text.splitlines():
-            if "runs-on:" in line:
-                self.assertEqual(line.strip(), "runs-on: ubuntu-24.04")
-            if "persist-credentials:" in line:
-                self.assertTrue(line.endswith("false"))
-            if "uses:" in line:
-                self.assertTrue(any(pin in line for pin in (
-                    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-                    "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020")))
-            if line.strip().endswith(": write"):
-                self.fail("write permission")
-        for forbidden in ("workflow_dispatch:", "pull_request_target:", "secrets.", "id-token:",
-                          "attestations:", "upload-artifact@", "actions/cache@", "docker/", "buildx",
-                          "github.event.pull_request.body", "github.event.pull_request.title",
-                          "self-hosted", "OPENCLAW_E2E_SKIP_BUILD", "OPENCLAW_E2E_USE_PREBUILT_DIST"):
-            self.assertNotIn(forbidden, text)
-        self.assertEqual(text.count("GH_SOURCE_READ_TOKEN:"), 1)
-        self.assertIn("package-manager-cache: false", text)
+            root=Path(directory);req,event,env,responses,api,runs,tables=history_fixture(root,request())
+            run,table=self.add_ancillary(runs,tables,status="in_progress")
+            active=table["jobs"][0];active.update(status="in_progress",conclusion=None,
+                started_at=(NOW-timedelta(minutes=2)).isoformat().replace("+00:00","Z"),completed_at=None)
+            elapsed=[0]
+            def sleep(seconds):elapsed[0]+=seconds
+            with patch.object(driver.subprocess,"run"),patch.object(driver,"datetime",wraps=datetime) as clock,patch.object(driver,"summarize") as report,patch.object(driver.time,"monotonic",side_effect=lambda:elapsed[0]),patch.object(driver.time,"sleep",side_effect=sleep):
+                clock.now.side_effect=lambda zone:NOW+timedelta(seconds=elapsed[0])
+                with self.assertRaises(driver.release.Refusal):driver.history_checks(req,event,env,root,api)
+            record=next(call.args[0] for call in report.call_args_list if call.args[0].get("phase")=="new_ancillary")
+            self.assertEqual(record["observedAcquiredRunnerMinutes"],2)
+            self.assertFalse(record["usageComplete"]);self.assertIsNone(record["remainingReservationMinutes"])
+            self.assertEqual(elapsed[0],60)
+    def test_cleanup_refuses_foreign_session_and_never_signals_after_reap(self):
+        group=FakeOwnedGroup(foreign=True)
+        result,receipt=exercise_owned_timeout(group)
+        self.assertFalse(result.cleanup_settled);self.assertFalse(receipt["cleanupSettled"])
+        self.assertEqual(group.signals,[]);self.assertEqual(result.returncode,124)
+    def test_owned_group_surviving_after_kill_is_reported_unsettled_without_extra_signals(self):
+        group=FakeOwnedGroup(never_settles=True)
+        result,receipt=exercise_owned_timeout(group)
+        self.assertFalse(result.cleanup_settled);self.assertFalse(receipt["cleanupSettled"])
+        self.assertEqual(group.signals,[driver.signal.SIGTERM,driver.signal.SIGKILL])
+        self.assertLessEqual(group.now,15.1)
 
 
-if __name__ == "__main__":
-    unittest.main()
+class AncillaryObservationTests(unittest.TestCase):
+    def setUp(self):
+        self.pins=patch.multiple(driver,SOURCE=SOURCE,TREE=TREE,FIRST_SOURCE=SOURCE,FIRST_TREE=TREE)
+        self.pins.start();self.addCleanup(self.pins.stop)
+        self.temporary=tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
+        self.root=Path(self.temporary.name)
+        args=history_fixture(self.root,request())
+        self.req,self.event,self.env,self.responses,self.base_api,self.runs,self.tables=args
+        self.run,self.table=P2CounterexampleTests.add_ancillary(self,self.runs,self.tables,status="in_progress")
+        self.active=self.table["jobs"][0]
+        self.active.update(status="in_progress",conclusion=None,
+            started_at=(NOW-timedelta(minutes=2)).isoformat().replace("+00:00","Z"),completed_at=None)
+        self.elapsed=0;self.sleeps=[];self.calls=[];self.poll=None;self.list_count=0
+        self.clock=patch.object(driver,"datetime",wraps=datetime).start();self.addCleanup(patch.stopall)
+        self.clock.now.side_effect=lambda zone:NOW+timedelta(seconds=self.elapsed)
+        patch.object(driver.time,"monotonic",side_effect=lambda:self.elapsed).start()
+        patch.object(driver.time,"sleep",side_effect=self.sleep).start()
+        patch.object(driver.subprocess,"run").start()
+        self.report=patch.object(driver,"summarize").start()
+    def sleep(self,seconds):
+        self.sleeps.append(seconds);self.elapsed+=seconds
+    def api(self,path):
+        self.calls.append(path)
+        if "/actions/runs?branch=" in path:
+            self.list_count+=1
+            if self.list_count>1 and self.poll:self.poll()
+        return self.base_api(path)
+    def run_history(self):
+        return driver.history_checks(self.req,self.event,self.env,self.root,self.api)
+    def finish(self):
+        self.run.update(status="completed",conclusion="success")
+        self.active.update(status="completed",conclusion="success",
+            completed_at=(NOW+timedelta(seconds=self.elapsed)).isoformat().replace("+00:00","Z"))
+    def test_same_event_active_to_terminal_is_measured_without_refetching_old57(self):
+        self.poll=self.finish
+        result=self.run_history()
+        self.assertEqual(result["observedNewAncillaryRunnerMinutes"],3)
+        self.assertEqual(result["newAncillaryRemainingReserveMinutes"],132)
+        self.assertEqual(result["bookedRunnerMinutes"],1800)
+        self.assertEqual(self.elapsed,5);self.assertEqual(self.sleeps,[5])
+        for row in driver.read_json((self.root/driver.SETTLED_USAGE).read_bytes())["runs"]:
+            self.assertEqual(sum("/actions/runs/"+row["id"]+"/jobs?" in p for p in self.calls),1)
+        self.assertEqual(sum("/actions/runs/8888/jobs?" in p for p in self.calls),2)
+        self.assertTrue(result["newAncillaryRecords"][0]["usageComplete"])
+    def test_queued_owned_standard_job_can_settle_to_explicit_unacquired_terminal(self):
+        self.run["status"]="queued"
+        self.active.update(status="queued",runner_id=0,runner_name="",steps=[],started_at=None)
+        def finish():
+            self.run.update(status="completed",conclusion="skipped")
+            self.active.update(status="completed",conclusion="skipped")
+        self.poll=finish
+        result=self.run_history()
+        self.assertEqual(result["observedNewAncillaryRunnerMinutes"],0)
+        self.assertEqual(result["newAncillaryRemainingReserveMinutes"],135)
+        self.assertEqual(self.elapsed,5)
+    def test_pending_timeout_is_exactly60_and_never_a_zero_future_usage_pass(self):
+        with self.assertRaisesRegex(driver.release.Refusal,"bounded60"):
+            self.run_history()
+        self.assertEqual(self.elapsed,60);self.assertEqual(self.list_count,12)
+        last=self.report.call_args_list[-1].args[0]
+        self.assertEqual(last["pendingRunIds"],["8888"])
+        self.assertFalse(last["usageComplete"]);self.assertIsNone(last["remainingReservationMinutes"])
+        self.assertEqual(last["observedAcquiredRunnerMinutes"],3)
+    def test_invalid_provider_or_identity_or_no_headroom_refuses_before_wait(self):
+        original_run,original_table=copy.deepcopy(self.run),copy.deepcopy(self.table)
+        for mutation in ("runner","labels","queued-labels","start","empty","unknown-path","excess","headroom"):
+            with self.subTest(mutation=mutation):
+                self.run.clear();self.run.update(copy.deepcopy(original_run))
+                self.table.clear();self.table.update(copy.deepcopy(original_table));self.active=self.table["jobs"][0]
+                if mutation=="runner":self.active.pop("runner_id")
+                elif mutation=="labels":self.active["labels"]=["self-hosted"]
+                elif mutation=="queued-labels":self.active.update(status="queued",runner_id=0,runner_name="",steps=[],labels=[])
+                elif mutation=="start":self.active.pop("started_at")
+                elif mutation=="empty":self.table.update(total_count=0,jobs=[])
+                elif mutation=="unknown-path":self.run["path"]=".github/workflows/unknown.yml"
+                else:self.active["started_at"]=(NOW-timedelta(minutes=136 if mutation=="excess" else 135)).isoformat().replace("+00:00","Z")
+                with self.assertRaises(driver.release.Refusal):self.run_history()
+                self.assertEqual(self.sleeps,[])
+    def test_own_admission_or_original_deadline_insufficient_refuses_before_wait(self):
+        own=self.tables["999"]["jobs"][0];original=copy.deepcopy(own)
+        for mutation in ("old-admission","missing-run","wrong-job","unknown-runner","approval-expired"):
+            with self.subTest(mutation=mutation):
+                own.clear();own.update(copy.deepcopy(original));self.env["GITHUB_JOB"]="admission"
+                if mutation=="old-admission":own["started_at"]=(NOW-timedelta(minutes=14,seconds=1)).isoformat().replace("+00:00","Z")
+                elif mutation=="missing-run":own.pop("run_id")
+                elif mutation=="wrong-job":self.env["GITHUB_JOB"]="source"
+                elif mutation=="unknown-runner":own["labels"]=["self-hosted"]
+                with patch.object(driver,"APPROVAL_DEADLINE","2026-10-28T05:00:59Z" if mutation=="approval-expired" else driver.APPROVAL_DEADLINE):
+                    with self.assertRaises(driver.release.Refusal):self.run_history()
+                self.assertEqual(self.sleeps,[])
+    def test_newly_indexed_owned_run_is_measured_and_terminal_cache_not_refetched(self):
+        extra=run_record("8889",HEAD,".github/workflows/synthetic-metadata.yml",None,"queued")
+        extra_job=job("metadata",0,"skipped",False);extra_job.update(status="queued",conclusion=None,labels=["ubuntu-24.04"])
+        count=[0]
+        def poll():
+            count[0]+=1
+            if count[0]==1:
+                self.finish();self.runs.append(extra);self.tables["8889"]={"total_count":1,"jobs":[extra_job]}
+            else:
+                extra.update(status="completed",conclusion="skipped");extra_job.update(status="completed",conclusion="skipped")
+        self.poll=poll
+        result=self.run_history()
+        self.assertEqual(self.elapsed,10)
+        self.assertEqual(result["observedNewAncillaryRunnerMinutes"],3)
+        self.assertEqual(len(result["newAncillaryRecords"]),2)
+        self.assertEqual(sum("/actions/runs/8888/jobs?" in p for p in self.calls),2)
+    def test_identity_drift_on_poll_refuses_at_first_observation(self):
+        self.poll=lambda:self.run.update(head_sha="c"*40)
+        with self.assertRaises(driver.release.Refusal):self.run_history()
+        self.assertEqual(self.elapsed,5)
+    def test_duplicate_source_on_poll_refuses_without_rechecking_old_jobs(self):
+        self.poll=lambda:self.runs.append(run_record("1000",HEAD,driver.WORKFLOW,None,"queued"))
+        with self.assertRaises(driver.release.Refusal):self.run_history()
+        self.assertEqual(self.elapsed,5)
+        self.assertEqual(sum("/actions/runs/40616416909/jobs?" in p for p in self.calls),1)
+    def test_new_usage_exceeding135_on_poll_refuses_without_more_wait(self):
+        def poll():
+            self.finish()
+            extra=run_record("8889",HEAD,".github/workflows/synthetic-metadata.yml")
+            self.runs.append(extra);self.tables["8889"]={"total_count":1,"jobs":[job("metadata",133)]}
+        self.poll=poll
+        with self.assertRaisesRegex(driver.release.Refusal,"135-minute"):
+            self.run_history()
+        self.assertEqual(self.elapsed,5)
+    def test_blocked_provider_call_has_hard_alarm_bound_and_restores_handler(self):
+        old=driver.signal.getsignal(driver.signal.SIGALRM)
+        with self.assertRaises(driver.AncillaryObservationExpired):
+            with driver.ancillary_observation_window():
+                handler=driver.signal.getsignal(driver.signal.SIGALRM)
+                self.assertGreater(driver.signal.getitimer(driver.signal.ITIMER_REAL)[0],0)
+                handler(driver.signal.SIGALRM,None)
+        self.assertEqual(driver.signal.getitimer(driver.signal.ITIMER_REAL),(0.0,0.0))
+        self.assertEqual(driver.signal.getsignal(driver.signal.SIGALRM),old)
+
+if __name__=="__main__":unittest.main()

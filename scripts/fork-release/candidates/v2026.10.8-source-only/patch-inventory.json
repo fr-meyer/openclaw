@@ -2,7 +2,7 @@
   "schema": "openclaw.fork-patch-inventory.v1",
   "repository": "fr-meyer/openclaw",
   "candidate": "v2026.10.8-source-only",
-  "manifestSha256": "7a874a5991ba1c2d15f145cfa1187ed10eb41cb35603fab75fe0ab0c62665266",
+  "manifestSha256": "802abd7c85ee123621d7cc96796ffcd0cf40d58c0d4db60f5f32304802a11f0b",
   "upstream": {
     "tag": "v2026.10.8",
     "tagObject": "e07a2f67d11717ed39aa2fa07bbe9342376ebfbf",
@@ -11,12 +11,12 @@
   },
   "patches": [
     {
-      "id": "merge-2026.10.8-61f924bdb7ed",
-      "originCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
+      "id": "remediation-2026.10.8-f5c198efedd7",
+      "originCommit": "2691ebb4610d5ff9f836c1587be3d6a9703a23e1",
       "disposition": "adapt",
-      "appliedCommit": "61f924bdb7ed4f837096c87120087919ff0a6bdf",
-      "rationale": "Preserve all243 prior fork paths including18 Workboard repairs, exact security fixes and upstream10.8 containment; bind the complete244-row reconciliation plus its own ledger file. Source only; no transferred qualification.",
-      "evidenceSha256": "a26fdf4a3d6fbc0470e9e70919b339d0d7ca861fdd31ecf3cc1b62562ba62675",
+      "appliedCommit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+      "rationale": "Retain the reviewed10.8 integration and original upstream/fork carry; apply only the approved dependency, Vitest patch, test-type and Doctor fixture successor. Reconcile every changed mode/blob including explicit versioned patch retirement. Source-only; prior execution and qualification are not transferred.",
+      "evidenceSha256": "268c2bb2773f3221ed6c610870e5f970c7ad4d841cbc1d5753e9dcc5303c70e2",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",
         "extensions/workboard/src/gateway.test.ts",
@@ -125,7 +125,7 @@
           "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
           "sourceBlob": "6d9ba0cbc9f375645f5429937a2ce0b68c1af19f",
           "upstreamBlob": null,
-          "candidateBlob": "6d9ba0cbc9f375645f5429937a2ce0b68c1af19f"
+          "candidateBlob": "0fc0c4563f7a2dc0968cf9f58334d1d939e6fad0"
         },
         {
           "path": "docs/cli/gateway/query.md",
@@ -809,7 +809,7 @@
           "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
           "sourceBlob": "94d515001629ab574eeb79591e7d86ecc2bd3ef4",
           "upstreamBlob": "3513a5cb3da82bc70d1724b86c88da745eaddd03",
-          "candidateBlob": "94d515001629ab574eeb79591e7d86ecc2bd3ef4"
+          "candidateBlob": "8256d97438f10d8223b0bedadb0b9e2c3a8be51c"
         },
         {
           "path": "packages/gateway-protocol/src/core-request-params.ts",
@@ -938,6 +938,24 @@
           "candidateBlob": "f3205f3660832ce69984b1fd1974ad8617564065"
         },
         {
+          "path": "patches/vitest@5.0.1.patch",
+          "boundary": "container",
+          "sourceCommit": "61f924bdb7ed4f837096c87120087919ff0a6bdf",
+          "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
+          "sourceBlob": "0d637049b4305c0d56aa6f7528b45307d699ea9b",
+          "upstreamBlob": "0d637049b4305c0d56aa6f7528b45307d699ea9b",
+          "candidateBlob": null
+        },
+        {
+          "path": "patches/vitest@5.0.5.patch",
+          "boundary": "container",
+          "sourceCommit": "2691ebb4610d5ff9f836c1587be3d6a9703a23e1",
+          "sourceTree": "51c0dbf2ea2bd80f09a7069296d132f564febcf4",
+          "sourceBlob": "11a2815b0f081961316f99f2a1fa7d5076fc81b5",
+          "upstreamBlob": null,
+          "candidateBlob": "11a2815b0f081961316f99f2a1fa7d5076fc81b5"
+        },
+        {
           "path": "patches/zod@4.6.6.patch",
           "boundary": "container",
           "sourceCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
@@ -953,7 +971,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b",
           "upstreamBlob": "7aef13a8539d55a6bf137f9bd54fdb9f7062cb28",
-          "candidateBlob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b"
+          "candidateBlob": "14ba80c3f2e75ec9c3b7d01d549ebdf5aa32f7f6"
         },
         {
           "path": "pnpm-workspace.yaml",
@@ -962,7 +980,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "b5451b324bce188ce55030ac5473c05f3991162f",
           "upstreamBlob": "458e124e46478c6f8ecc760d0aba576ea9f29fb3",
-          "candidateBlob": "b5451b324bce188ce55030ac5473c05f3991162f"
+          "candidateBlob": "90272ea03ed2db476428cf4215bcaa4495176ca0"
         },
         {
           "path": "scripts/check-package-patches.mts",
@@ -1379,6 +1397,15 @@
           "candidateBlob": "058a2b32953753f672a6b2db242fb67b6f06bd34"
         },
         {
+          "path": "src/commands/doctor-config-preflight.process.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "61f924bdb7ed4f837096c87120087919ff0a6bdf",
+          "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
+          "sourceBlob": "50cc64b8ba3bf5411ff988eae4ce9344c3b7584f",
+          "upstreamBlob": "50cc64b8ba3bf5411ff988eae4ce9344c3b7584f",
+          "candidateBlob": "ba643c5626c8a735dd317153a75f3e2036581e4f"
+        },
+        {
           "path": "src/commands/doctor-migration-backup-artifacts.ts",
           "boundary": "container",
           "sourceCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
@@ -1511,7 +1538,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "770c3337d4e0c3078f3e92408aa2e2119ec80841",
           "upstreamBlob": null,
-          "candidateBlob": "770c3337d4e0c3078f3e92408aa2e2119ec80841"
+          "candidateBlob": "4f871f4d2487308074c616a4374544fe0ab12d6b"
         },
         {
           "path": "src/gateway/server-managed-task-flow-runtime.mergeguez-recovery.test.ts",
@@ -1520,7 +1547,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "48222cc1cddfdea9c2b400ca89e68866239d0b83",
           "upstreamBlob": null,
-          "candidateBlob": "48222cc1cddfdea9c2b400ca89e68866239d0b83"
+          "candidateBlob": "ba60c4a350606caba6ece2d02374b91cb5d571da"
         },
         {
           "path": "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
@@ -2015,7 +2042,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "8242d42dbd39579825a768019c7f496207f44aaa",
           "upstreamBlob": null,
-          "candidateBlob": "8242d42dbd39579825a768019c7f496207f44aaa"
+          "candidateBlob": "5d0ff6fb8c65b811b5a4f95d5ca5c83b5e4eeea9"
         },
         {
           "path": "test/discord-native-zod-regression.test.mjs",
@@ -2180,6 +2207,15 @@
           "candidateBlob": "01e6659de76d278d2b069ec18c18ea4f039a3705"
         },
         {
+          "path": "test/v108-remediation-security.test.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "2691ebb4610d5ff9f836c1587be3d6a9703a23e1",
+          "sourceTree": "51c0dbf2ea2bd80f09a7069296d132f564febcf4",
+          "sourceBlob": "afc3283afd633e371c003d2c058f3c2a747b0167",
+          "upstreamBlob": null,
+          "candidateBlob": "7b8d9b401730daea486a8e256a6505eb67ca97b4"
+        },
+        {
           "path": "test/vitest-projects-config.test-support.ts",
           "boundary": "tooling",
           "sourceCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
@@ -2249,7 +2285,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "5e31552fee7c0ff1e96be209711e151f3e58a0de",
           "upstreamBlob": "25a98d9a07f6a9d74f79b82bd84a2b195ef416fa",
-          "candidateBlob": "5e31552fee7c0ff1e96be209711e151f3e58a0de"
+          "candidateBlob": "e5159416b7a8e956e404aa8e1b10bb156b372585"
         }
       ]
     }

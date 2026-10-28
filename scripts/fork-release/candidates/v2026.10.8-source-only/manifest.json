@@ -6,12 +6,12 @@
   "source": {
     "baseCommit": "dc2523e5a5c7a309517fd7fa834add938231d526",
     "baseTree": "8e87ea041d88f72b77d83806b9ad05aa4f176d59",
-    "commit": "61f924bdb7ed4f837096c87120087919ff0a6bdf",
-    "tree": "416a77f6b89110883c41652f64c602ab989662d7",
+    "commit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+    "tree": "c4b245211ceaab98b397945bb0177770f1052c90",
     "patches": [
       {
-        "commit": "61f924bdb7ed4f837096c87120087919ff0a6bdf",
-        "tree": "416a77f6b89110883c41652f64c602ab989662d7"
+        "commit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+        "tree": "c4b245211ceaab98b397945bb0177770f1052c90"
       }
     ],
     "merge": {
@@ -24,15 +24,24 @@
         "commit": "61f924bdb7ed4f837096c87120087919ff0a6bdf",
         "tree": "416a77f6b89110883c41652f64c602ab989662d7"
       },
-      "successors": [],
+      "successors": [
+        {
+          "commit": "2691ebb4610d5ff9f836c1587be3d6a9703a23e1",
+          "tree": "51c0dbf2ea2bd80f09a7069296d132f564febcf4"
+        },
+        {
+          "commit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
+          "tree": "c4b245211ceaab98b397945bb0177770f1052c90"
+        }
+      ],
       "securitySource": {
         "commit": "85a9bdc1285c338f10f5ca818abc259f6d483b5b",
         "tree": "3e0d6fbf5bc015063dce3e4f0f353f0eac3aed6a"
       },
       "reconciliation": {
         "path": "custom-patches/reconciliation-2026.10.8.json",
-        "blob": "6d9ba0cbc9f375645f5429937a2ce0b68c1af19f",
-        "sha256": "a26fdf4a3d6fbc0470e9e70919b339d0d7ca861fdd31ecf3cc1b62562ba62675"
+        "blob": "0fc0c4563f7a2dc0968cf9f58334d1d939e6fad0",
+        "sha256": "268c2bb2773f3221ed6c610870e5f970c7ad4d841cbc1d5753e9dcc5303c70e2"
       }
     }
   },
@@ -50,7 +59,14 @@
       "src/state/agent-database-startup.lock-retry.test.ts",
       "src/state/agent-database-admission.test.ts",
       "extensions/codex/src/migration/native-assignment-repair.test.ts",
-      "src/agents/subagents/spawn/subagent-spawn-child-plan.sandbox-cli.test.ts"
+      "src/agents/subagents/spawn/subagent-spawn-child-plan.sandbox-cli.test.ts",
+      "test/v108-remediation-security.test.mjs",
+      "src/gateway/server-managed-task-flow-runtime.mergeguez-parity.test.ts",
+      "src/commands/doctor-config-preflight.process.test.ts",
+      "ui/src/components/markdown-mermaid.test.ts",
+      "ui/src/components/markdown-mermaid-native.browser.test.ts",
+      "ui/src/components/markdown-mermaid.runtime.browser.test.ts",
+      "ui/src/e2e/chat-mermaid-load-errors.e2e.test.ts"
     ],
     "producerConsumer": [
       "test/body-parser-security.test.mjs",

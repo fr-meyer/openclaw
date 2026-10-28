@@ -49,7 +49,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fr-meyer/openclaw
-          ref: 61f924bdb7ed4f837096c87120087919ff0a6bdf
+          ref: f5c198efedd78625e5a1b4a133d58ebfb3dae1c5
           path: source
           fetch-depth: 0
           persist-credentials: false
@@ -76,6 +76,9 @@ jobs:
       max-parallel: 3
       matrix: ${{ fromJSON(needs.admission.outputs.matrix) }}
     steps:
+      - name: Observe source job budget origin
+        id: source-clock
+        run: python3 -c 'import os,time; open(os.environ["GITHUB_OUTPUT"], "a").write("started_epoch=" + str(int(time.time())) + "\n")'
       - name: Checkout reviewed pipeline head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,7 +91,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fr-meyer/openclaw
-          ref: 61f924bdb7ed4f837096c87120087919ff0a6bdf
+          ref: f5c198efedd78625e5a1b4a133d58ebfb3dae1c5
           path: source
           fetch-depth: 0
           persist-credentials: false
@@ -102,6 +105,8 @@ jobs:
           python3 pipeline/scripts/fork-release/source_validation_v108.py fetch-closure
           --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
       - name: Run named source profile with synthetic state and credential-free environment
+        env:
+          SOURCE_JOB_STARTED_EPOCH: ${{ steps.source-clock.outputs.started_epoch }}
         run: >-
           python3 pipeline/scripts/fork-release/source_validation_v108.py run
           --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
@@ -112,7 +117,7 @@ jobs:
     needs: [admission, source]
     name: final
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -122,7 +127,11 @@ jobs:
           repository: fr-meyer/openclaw
           ref: ${{ github.event.pull_request.head.sha }}
           path: pipeline
-          fetch-depth: 0
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            .github/workflows/future-v108-source-validation.yml
+            scripts/fork-release
           persist-credentials: false
       - name: Record bounded source-only result in logs and job summary
         env:

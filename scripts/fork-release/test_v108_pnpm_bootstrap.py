@@ -124,15 +124,22 @@ class PnpmBootstrapTests(unittest.TestCase):
                 calls.append(("node-version", list(argv), kwargs))
                 return "v24.22.0\n" if mutation == "node-version" else "v24.22.1\n"
 
+            def phase_bridge(argv, cwd, env, context, phase, ordinal, **kwargs):
+                result = runner(argv, cwd=cwd, env=env, check=False)
+                result.timed_out = False
+                return result
+
             env = {"PATH": str(runtimes), "GITHUB_EVENT_PATH": str(event),
                    "GITHUB_TOKEN": "never-forward-this", "npm_lifecycle_event": "postinstall"}
-            req = {"round": 0}
+            req = {"round": 2, "sourceWitness": None}
             with patch.dict(os.environ, env, clear=True), redirect_stdout(output), \
                  patch.object(sys, "argv", ["source_validation_v108.py", "run", "--pipeline-dir", str(pipeline),
                                             "--source-dir", str(source), "--profile", "types-production"]), \
                  patch.object(driver, "validate_event"), \
                  patch.object(driver, "metadata", return_value=(req, {}, "d" * 64)), \
                  patch.object(driver, "code_binding"), patch.object(driver, "deadline_check"), \
+                 patch.object(driver, "profile_deadline", return_value=9999999999), \
+                 patch.object(driver, "phase_process", side_effect=phase_bridge), \
                  patch.object(driver, "source_preflight"), patch.object(driver, "git", return_value=b""), \
                  patch.object(driver, "commands", return_value=[["pnpm", "tsgo:prod"]]), \
                  patch.object(driver, "resource_check", return_value={"logicalCpus": 4}), \
@@ -177,7 +184,7 @@ class PnpmBootstrapTests(unittest.TestCase):
                 calls, records, failure = self.invoke_main(mutation)
                 self.assertIsNotNone(failure)
                 self.assertEqual([name for name, _, _ in calls], ["download"])
-                self.assertEqual(records[-1]["bootstrapPhase"], "verify-package")
+                self.assertEqual(next(r for r in reversed(records) if "bootstrapPhase" in r)["bootstrapPhase"], "verify-package")
 
     def test_failed_initializer_and_invalid_native_cannot_reach_project_install(self):
         for mutation in ("initializer-failure", "native-path", "native-format", "native-permission", "command-link"):
@@ -185,7 +192,7 @@ class PnpmBootstrapTests(unittest.TestCase):
                 calls, records, failure = self.invoke_main(mutation)
                 self.assertIsNotNone(failure)
                 self.assertEqual([name for name, _, _ in calls], ["download", "initialize"])
-                self.assertEqual(records[-1]["bootstrapPhase"],
+                self.assertEqual(next(r for r in reversed(records) if "bootstrapPhase" in r)["bootstrapPhase"],
                                  "initialize-native" if mutation == "initializer-failure" else "verify-native")
 
     def test_exact_versions_and_launch_errors_refuse_before_project_install(self):
@@ -194,9 +201,13 @@ class PnpmBootstrapTests(unittest.TestCase):
                 calls, records, failure = self.invoke_main(mutation)
                 self.assertIsNotNone(failure)
                 self.assertFalse(any(name.startswith("project-") for name, _, _ in calls))
-                last = records[-1]
+                last = next(r for r in reversed(records) if "bootstrapPhase" in r)
                 self.assertEqual(set(last), {"campaignId", "bootstrapPhase", "status", "errorClass",
-                                             "errno", "resolvedWithinOwnedToolchain"})
+                                             "errno", "resolvedWithinOwnedToolchain", "exitCode", "signal"})
+                self.assertEqual(records[-1]["phase"], "profile")
+                self.assertEqual(records[-1]["status"], "refused")
+                self.assertFalse(records[-1]["productionAuthorized"])
+                self.assertFalse(records[-1]["imageBuilt"])
                 self.assertEqual(last["status"], "refused")
                 self.assertNotIn("never", json.dumps(records))
                 if mutation == "version-oserror":

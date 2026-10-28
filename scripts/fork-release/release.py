@@ -368,6 +368,110 @@ def check_v108_metadata_carry(source_dir, name, fork_entry, upstream_entry, resu
     need(fork_entry["mode"] == result_entry["mode"], "10.8 package mode changed: " + name)
 
 
+V108_REMEDIATION = "REVIEWED_V108_SOURCE_REMEDIATION"
+V108_PATCH_RETIREMENT = "RETIRED_REPLACED_VITEST_PATCH"
+V108_OLD_PATCH = "patches/vitest@5.0.1.patch"
+V108_NEW_PATCH = "patches/vitest@5.0.5.patch"
+V108_REMEDIATION_PATHS = {
+    "package.json", "ui/package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml",
+    V108_OLD_PATCH, V108_NEW_PATCH,
+    "src/gateway/server-managed-task-flow-runtime.mergeguez-parity.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.mergeguez-recovery.test.ts",
+    "src/commands/doctor-config-preflight.process.test.ts",
+    "test/body-parser-security.test.mjs", "test/v108-remediation-security.test.mjs",
+}
+
+
+def check_v108_remediation_content(source_dir, name, integration, result):
+    """Keep unrelated package/security policy unchanged in this finite repair."""
+    if name in ("package.json", "ui/package.json"):
+        before = json.loads(git(source_dir, "show", integration + ":" + name))
+        after = json.loads(git(source_dir, "show", result + ":" + name))
+        keys = ({"vitest", "@vitest/browser-playwright", "@vitest/coverage-v8"}
+                if name == "package.json" else
+                {"vitest", "@vitest/browser-playwright", "@vitest/browser"})
+        need(type(before) is dict and type(after) is dict
+             and type(before.get("devDependencies")) is dict,
+             "invalid 10.8 remediation package: " + name)
+        expected = json.loads(json.dumps(before))
+        for key in keys:
+            need(expected["devDependencies"].get(key) == "5.0.1",
+                 "10.8 remediation Vitest origin changed: " + name)
+            expected["devDependencies"][key] = "5.0.5"
+        need(after == expected, "10.8 remediation changed unrelated package metadata: " + name)
+    elif name == "pnpm-workspace.yaml":
+        before = git(source_dir, "show", integration + ":" + name)
+        expected = before
+        for old, new in (
+            ("  fast-uri: 4.2.1", "  fast-uri: 4.2.3"),
+            ("  ip-address: 10.7.3", "  ip-address: 10.7.4"),
+            ('  "mailauth@7.1.0>nodemailer": 10.0.13',
+             '  "mailauth@7.1.0>nodemailer": 10.1.4\n'
+             '  "mailparser@3.9.33>nodemailer": 10.1.4\n'
+             '  "mermaid@12.1.0>katex": 0.18.2'),
+            ("  qs: 6.16.0", "  qs: 6.16.1"),
+            ("  vitest@5.0.1: patches/vitest@5.0.1.patch",
+             "  vitest@5.0.5: patches/vitest@5.0.5.patch"),
+        ):
+            need(expected.splitlines().count(old) == 1,
+                 "10.8 remediation workspace origin changed")
+            expected = "\n".join(new if line == old else line for line in expected.splitlines())
+        need(git(source_dir, "show", result + ":" + name) == expected,
+             "10.8 remediation changed unrelated workspace policy")
+
+
+def check_v108_successor_remediation(source, source_dir, ledger):
+    """Validate the old integration first; only named successor paths may adapt."""
+    merge, integration = source["merge"], source["merge"]["integration"]
+    if source["commit"] == integration["commit"]:
+        return set()
+    proof_path = merge["reconciliation"]["path"]
+    need(git(source_dir, "ls-tree", integration["commit"], "--", proof_path).startswith("100644 blob "),
+         "10.8 integration ledger mode changed")
+    raw = git(source_dir, "show", integration["commit"] + ":" + proof_path)
+    original = json.loads(raw)
+    historical = {**source, **integration, "patches": [integration],
+                  "merge": {**merge, "successors": []}}
+    check_v108_reconciliation(historical, source_dir, original)
+    parent = integration["commit"]
+    for successor in merge["successors"]:
+        step = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                    parent, successor["commit"]).split("\0")))
+        need(step <= V108_REMEDIATION_PATHS | {proof_path},
+             "10.8 successor history changed an unreviewed path")
+        parent = successor["commit"]
+    changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                   integration["commit"], source["commit"]).split("\0"))) - {proof_path}
+    need(changed <= V108_REMEDIATION_PATHS, "10.8 successor changed an unreviewed path")
+    old_rows = {item["path"]: item for item in original["paths"]}
+    new_rows = {item["path"]: item for item in ledger["paths"]}
+    for name, row in old_rows.items():
+        if name not in changed:
+            need(new_rows.get(name) == row, "10.8 historical reconciliation changed: " + name)
+    if V108_NEW_PATCH in changed:
+        need(V108_OLD_PATCH in changed and new_rows.get(V108_OLD_PATCH, {}).get("result") is None,
+             "10.8 replacement retained the obsolete Vitest patch")
+    for name in changed:
+        row = new_rows.get(name)
+        need(row is not None, "10.8 remediation path is not reconciled: " + name)
+        if name == V108_OLD_PATCH:
+            need(row["disposition"] == V108_PATCH_RETIREMENT and row["result"] is None
+                 and V108_NEW_PATCH in changed and new_rows.get(V108_NEW_PATCH, {}).get("result") is not None
+                 and git(source_dir, "ls-tree", integration["commit"], "--", name).startswith("100644 blob "),
+                 "10.8 Vitest retirement has no reviewed replacement")
+        else:
+            need(row["disposition"] == V108_REMEDIATION and row["result"] is not None
+                 and row["result"]["mode"] == "100644",
+                 "10.8 remediation disposition or mode changed: " + name)
+            old = git(source_dir, "ls-tree", integration["commit"], "--", name)
+            need(not old or old.startswith("100644 blob "), "10.8 remediation origin mode changed: " + name)
+            check_v108_remediation_content(source_dir, name, integration["commit"], source["commit"])
+    if V108_NEW_PATCH in changed:
+        for name in ("package.json", "ui/package.json", "pnpm-workspace.yaml"):
+            check_v108_remediation_content(source_dir, name, integration["commit"], source["commit"])
+    return changed
+
+
 def check_v108_reconciliation(source, source_dir, ledger):
     """Check the committed 10.8 ledger against complete, exact mode/blob trees.
 
@@ -439,10 +543,15 @@ def check_v108_reconciliation(source, source_dir, ledger):
         "MERGED_MAINTAINED_TEST_ROUTE_UNION": {
             "test/vitest/vitest.database-worker-core-paths.mjs", "test/vitest/vitest.gateway-server-paths.mjs"},
     }
+    remediation = check_v108_successor_remediation(source, source_dir, ledger)
     for item in paths:
         name, disposition = item["path"], item["disposition"]
         for key, tree in trees.items():
             need(tree.get(name) == item[key], "10.8 ledger mode/blob changed: " + name)
+        if name in remediation:
+            # The historical integration was checked independently above. These
+            # rows describe a reviewed successor, never an exact historical carry.
+            continue
         need(item["result"] is not None, "10.8 ledger cannot retire a fork or security path: " + name)
         need(isinstance(disposition, str), "unsupported 10.8 disposition")
         if disposition == "CARRIED_EXACT":
