@@ -15,6 +15,7 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 PIPELINE = HERE.parents[1]
+V4_CLOSED_PIPELINE = "2946a1678e712de90727a9e599a5f2cd47ad2151"
 CURRENT = "9000000099"
 HEAD = "a" * 40
 NOW = datetime(2026, 10, 28, 12, tzinfo=timezone.utc)
@@ -46,9 +47,9 @@ def load_fragment():
 
 def git_control(driver, commit, filename):
     """Fixed public history controls only; no lazy fetch, credentials or fallback."""
-    if commit not in (driver["V4_PARENT_PIPELINE"], driver["FIRST_PIPELINE"]) or filename not in (
+    if commit not in (driver["V4_PARENT_PIPELINE"], driver["FIRST_PIPELINE"], V4_CLOSED_PIPELINE) or filename not in (
             driver["REQUEST"], driver["WORKFLOW"]):
-        raise AssertionError("Control read outside the two fixed historical owners")
+        raise AssertionError("Control read outside the three fixed historical owners")
     result = subprocess.run(["git", "--no-replace-objects", "-C", str(PIPELINE), "cat-file", "blob",
         commit + ":" + filename], check=True, capture_output=True, timeout=5, env={
         "PATH": os.environ["PATH"], "GIT_NO_LAZY_FETCH": "1", "GIT_OPTIONAL_LOCKS": "0",
@@ -69,17 +70,20 @@ class HistoryV4Tests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.prefix_raw = (PIPELINE / self.ns["SETTLED_USAGE"]).read_bytes()
+        self.prefix_raw = (HERE / "fixtures/v108-settled-closed99.json").read_bytes()
+        self.assertEqual(hashlib.sha256(self.prefix_raw).hexdigest(), self.ns["V4_CLOSED_PREFIX_SHA256"])
         self.prefix = json.loads(self.prefix_raw)
         p = self.root / self.ns["SETTLED_USAGE"]
         p.parent.mkdir(parents=True)
         p.write_bytes(self.prefix_raw)
-        self.workflow = (PIPELINE / self.ns["WORKFLOW"]).read_bytes()
+        self.workflow = git_control(self.ns, V4_CLOSED_PIPELINE, self.ns["WORKFLOW"])
         w = self.root / self.ns["WORKFLOW"]
         w.parent.mkdir(parents=True)
         w.write_bytes(self.workflow)
         self.current_pins = copy.deepcopy(self.ns["STAGE_PINS"])
-        self.current_request_raw = (PIPELINE / self.ns["REQUEST"]).read_bytes()
+        self.current_request_raw = (HERE / "fixtures/v108-source-request-v4-2946.json").read_bytes()
+        self.assertEqual(hashlib.sha256(self.current_request_raw).hexdigest(),
+            "167466df439e6320f927681553ce7ad35f1b94afa5b2f81ab902a22b8a6a2d09")
         for filename, key in (("manifest.json", "manifestSha256"), ("patch-inventory.json", "inventorySha256")):
             raw = (PIPELINE / self.ns["CANDIDATE"] / filename).read_bytes()
             self.assertEqual(hashlib.sha256(raw).hexdigest(), self.current_pins[key])
