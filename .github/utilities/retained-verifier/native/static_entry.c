@@ -118,6 +118,19 @@ void entry_main(usize *stack) {
             if (key_equal(env[i], k, "XDG_RUNTIME_DIR")) REFUSE("unknown_key_xdg_runtime_dir");
             if (key_equal(env[i], k, "TERM")) REFUSE("unknown_key_term");
             if (key_equal(env[i], k, "FDSTORE")) REFUSE("unknown_key_fdstore");
+            if (key_equal(env[i], k, "LANGUAGE")) REFUSE("unknown_key_language");
+            if (key_equal(env[i], k, "LC_CTYPE")) REFUSE("unknown_key_lc_ctype");
+            if (key_equal(env[i], k, "LC_NUMERIC")) REFUSE("unknown_key_lc_numeric");
+            if (key_equal(env[i], k, "LC_TIME")) REFUSE("unknown_key_lc_time");
+            if (key_equal(env[i], k, "LC_COLLATE")) REFUSE("unknown_key_lc_collate");
+            if (key_equal(env[i], k, "LC_MONETARY")) REFUSE("unknown_key_lc_monetary");
+            if (key_equal(env[i], k, "LC_MESSAGES")) REFUSE("unknown_key_lc_messages");
+            if (key_equal(env[i], k, "LC_PAPER")) REFUSE("unknown_key_lc_paper");
+            if (key_equal(env[i], k, "LC_NAME")) REFUSE("unknown_key_lc_name");
+            if (key_equal(env[i], k, "LC_ADDRESS")) REFUSE("unknown_key_lc_address");
+            if (key_equal(env[i], k, "LC_TELEPHONE")) REFUSE("unknown_key_lc_telephone");
+            if (key_equal(env[i], k, "LC_MEASUREMENT")) REFUSE("unknown_key_lc_measurement");
+            if (key_equal(env[i], k, "LC_IDENTIFICATION")) REFUSE("unknown_key_lc_identification");
             REFUSE("unknown_key");
         }
         if (seen & ((usize)1 << which)) REFUSE("duplicate_key");
