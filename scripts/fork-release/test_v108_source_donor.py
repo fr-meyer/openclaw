@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 import ast
+import copy
 import importlib.util
 import hashlib
 import json
@@ -21,6 +22,30 @@ ROOT = HERE
 BASE = HERE / "source_validation_v108.py"
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(HERE))
+
+
+def historical_closure_ast_digest(node):
+    """Normalize only the verified empty Python 3.12 FunctionDef field.
+
+    All substantive syntax and every other AST field stay in the preservation
+    digest. Type parameters, missing values and malformed fields refuse rather
+    than being erased. This function never compiles or executes the syntax.
+    """
+    normalized = copy.deepcopy(node)
+    for item in ast.walk(normalized):
+        if not isinstance(item, ast.FunctionDef):
+            continue
+        field_present = "type_params" in item._fields
+        value_present = hasattr(item, "type_params")
+        if field_present != value_present:
+            raise AssertionError("historical_ast.type_params_shape")
+        if field_present:
+            value = item.type_params
+            if type(value) is not list or value:
+                raise AssertionError("historical_ast.type_params_nonempty_or_invalid")
+            item._fields = tuple(field for field in item._fields if field != "type_params")
+            del item.type_params
+    return hashlib.sha256(ast.dump(normalized, include_attributes=False).encode()).hexdigest()
 
 
 def load_driver():
@@ -251,7 +276,7 @@ class DonorCaller(TinyGitClosure):
         historical = next(n for n in maintained.body if isinstance(n, ast.FunctionDef) and n.name == "fetch_closure_historical")
         historical.name = "fetch_closure"
         # Canonical P6/3eb4 AST digest; no private adjacent baseline is needed.
-        self.assertEqual(hashlib.sha256(ast.dump(historical, include_attributes=False).encode()).hexdigest(),
+        self.assertEqual(historical_closure_ast_digest(historical),
                          "0c434f64b0323734d327bda8562ddc965b2008a0b8d3bca6dca41e1946ef8b7a")
         old_request = {"schema": "openclaw.fork-source-validation-request.v3"}
         with patch.object(self.driver, "metadata", return_value=(old_request, {}, "d" * 64)), \
@@ -316,6 +341,67 @@ class DonorCaller(TinyGitClosure):
                 history.assert_not_called()
                 equivalence.assert_not_called()
             self.assertNotIn("BENIGN_PRIVATE", stdout.getvalue())
+
+
+class HistoricalASTDigestTests(unittest.TestCase):
+    def syntax(self):
+        return ast.parse("def sample(value):\n    def nested():\n        return value\n    return nested()\n").body[0]
+
+    def python312_shape(self, syntax):
+        for item in ast.walk(syntax):
+            if isinstance(item, ast.FunctionDef):
+                if "type_params" not in item._fields:
+                    item._fields = (*item._fields, "type_params")
+                item.type_params = []
+        return syntax
+
+    def test_verified_empty_fields_preserve_digest_without_mutating_input(self):
+        before = self.syntax()
+        modeled = self.python312_shape(copy.deepcopy(before))
+        unmodified = ast.dump(modeled, include_attributes=False)
+        self.assertEqual(historical_closure_ast_digest(before), historical_closure_ast_digest(modeled))
+        self.assertEqual(ast.dump(modeled, include_attributes=False), unmodified)
+
+    def test_nonempty_type_parameters_refuse_for_outer_and_nested_functions(self):
+        for index in (0, 1):
+            syntax = self.python312_shape(self.syntax())
+            functions = [item for item in ast.walk(syntax) if isinstance(item, ast.FunctionDef)]
+            functions[index].type_params = [ast.Name(id="T", ctx=ast.Load())]
+            with self.subTest(index=index), self.assertRaisesRegex(AssertionError, "nonempty_or_invalid"):
+                historical_closure_ast_digest(syntax)
+
+    def test_missing_or_nonlist_field_values_refuse(self):
+        for value in (None, (), "", 0):
+            syntax = self.python312_shape(self.syntax()); syntax.type_params = value
+            with self.subTest(value=value), self.assertRaisesRegex(AssertionError, "nonempty_or_invalid"):
+                historical_closure_ast_digest(syntax)
+        syntax = self.python312_shape(self.syntax()); del syntax.type_params
+        with self.assertRaisesRegex(AssertionError, "shape"):
+            historical_closure_ast_digest(syntax)
+
+    def test_unserialized_parameter_attribute_refuses(self):
+        syntax = self.syntax()
+        syntax._fields = tuple(field for field in syntax._fields if field != "type_params")
+        syntax.type_params = []
+        with self.assertRaisesRegex(AssertionError, "shape"):
+            historical_closure_ast_digest(syntax)
+
+    def test_body_or_signature_drift_remains_in_digest(self):
+        baseline = historical_closure_ast_digest(self.syntax())
+        body_changed = self.python312_shape(self.syntax())
+        body_changed.body[-1].value = ast.Constant(value="changed")
+        signature_changed = self.python312_shape(self.syntax())
+        signature_changed.args.args[0].arg = "other"
+        for changed in (body_changed, signature_changed):
+            with self.subTest(changed=type(changed).__name__):
+                self.assertNotEqual(historical_closure_ast_digest(changed), baseline)
+
+    def test_other_ast_fields_are_not_normalized(self):
+        syntax = self.python312_shape(self.syntax())
+        baseline = historical_closure_ast_digest(syntax)
+        syntax._fields = (*syntax._fields, "unreviewed_future_field")
+        syntax.unreviewed_future_field = []
+        self.assertNotEqual(historical_closure_ast_digest(syntax), baseline)
 
 
 if __name__ == "__main__":

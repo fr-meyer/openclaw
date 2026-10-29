@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 PIPELINE = HERE.parents[1]
@@ -84,8 +85,12 @@ class HistoryV4Tests(unittest.TestCase):
         self.current_request_raw = (HERE / "fixtures/v108-source-request-v4-2946.json").read_bytes()
         self.assertEqual(hashlib.sha256(self.current_request_raw).hexdigest(),
             "167466df439e6320f927681553ce7ad35f1b94afa5b2f81ab902a22b8a6a2d09")
+        # These V4 contexts retain their original P7 controls even when the
+        # adjacent current candidate advances. The fixed helper authenticates
+        # both immutable inputs; the original assertions below remain binding.
+        from historical_v5_test_inputs import p7_input
         for filename, key in (("manifest.json", "manifestSha256"), ("patch-inventory.json", "inventorySha256")):
-            raw = (PIPELINE / self.ns["CANDIDATE"] / filename).read_bytes()
+            raw = p7_input(filename)
             self.assertEqual(hashlib.sha256(raw).hexdigest(), self.current_pins[key])
         self.first_request_raw = git_control(self.ns, self.ns["FIRST_PIPELINE"], self.ns["REQUEST"])
         self.first_workflow_raw = git_control(self.ns, self.ns["FIRST_PIPELINE"], self.ns["WORKFLOW"])
@@ -438,6 +443,46 @@ class HistoryV4Tests(unittest.TestCase):
         self.tables[first_id] = saved
         self.request["profiles"] = ["dependency", "types-tests", "types-scripts", "compatibility", "pipeline-contracts"]
         with self.assertRaises(Refusal):self.check()
+
+
+class HistoricalV4FixtureBindingTests(unittest.TestCase):
+    def case(self):
+        case = HistoryV4Tests("test_initial_exact99_reuses8_books475_475_45_without_prefix_api_jobs")
+        self.addCleanup(case.doCleanups)
+        return case
+
+    def test_setup_pairs_authenticated_historical_controls_with_original_pins(self):
+        from historical_v5_test_inputs import p7_input
+        with patch("historical_v5_test_inputs.p7_input", wraps=p7_input) as read:
+            case = self.case()
+            case.setUp()
+        self.assertEqual([call.args for call in read.call_args_list],
+            [("manifest.json",), ("patch-inventory.json",)])
+        self.assertEqual(case.current_pins["manifestSha256"],
+            "39436d06465c651f63ded013530f91aaf549932dd32390d31b809f8982f527f0")
+        self.assertEqual(case.current_pins["inventorySha256"],
+            "5f9f2f96f3303487daccb5a59177b7ee7ffa6457a0d5bac98187683b353d8ec7")
+
+    def test_changed_manifest_still_fails_original_setup_hash_assertion(self):
+        from historical_v5_test_inputs import p7_input
+        def changed(filename):
+            raw = p7_input(filename)
+            return raw + b" " if filename == "manifest.json" else raw
+        with patch("historical_v5_test_inputs.p7_input", side_effect=changed) as read:
+            with self.assertRaises(AssertionError):
+                self.case().setUp()
+        self.assertEqual([call.args for call in read.call_args_list], [("manifest.json",)])
+
+    def test_changed_inventory_still_fails_original_setup_hash_assertion(self):
+        from historical_v5_test_inputs import p7_input
+        def changed(filename):
+            raw = p7_input(filename)
+            return raw + b" " if filename == "patch-inventory.json" else raw
+        with patch("historical_v5_test_inputs.p7_input", side_effect=changed) as read:
+            with self.assertRaises(AssertionError):
+                self.case().setUp()
+        self.assertEqual([call.args for call in read.call_args_list],
+            [("manifest.json",), ("patch-inventory.json",)])
 
 
 if __name__ == "__main__":

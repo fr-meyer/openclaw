@@ -74,6 +74,7 @@ def p7_input(name):
 # Exact current release-owner compatibility, separate from immutable P7 PINS.
 # The successor literal is bound only after that exact canonical owner is reviewed.
 CURRENT_RELEASE_SUCCESSOR_SHA256 = "3bf47cc5a24e5c43ef3226e3e1fa9cf66c21a7e61bc5e698c71f411d86655d02"
+CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256 = "7d890adb43a03a44add07e8e66539bfc8319a688c8da6cef095f768a5877cb62"
 
 
 def _check_current_shared_owners():
@@ -84,8 +85,8 @@ def _check_current_shared_owners():
         current = path.read_bytes()
         original = p7_input(owner)
         successor = (owner == "release" and
-            type(CURRENT_RELEASE_SUCCESSOR_SHA256) is str and
-            hashlib.sha256(current).hexdigest() == CURRENT_RELEASE_SUCCESSOR_SHA256)
+            (hashlib.sha256(current).hexdigest() == CURRENT_RELEASE_SUCCESSOR_SHA256
+             or hashlib.sha256(current).hexdigest() == CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256))
         if current != original and not successor:
             raise AssertionError("historical_v5.shared_owner_changed")
 

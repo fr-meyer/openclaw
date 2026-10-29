@@ -6,12 +6,12 @@
   "source": {
     "baseCommit": "dc2523e5a5c7a309517fd7fa834add938231d526",
     "baseTree": "8e87ea041d88f72b77d83806b9ad05aa4f176d59",
-    "commit": "9b0a696bf62f045889d76044f84a0c372c8dddcc",
-    "tree": "b5905b54f4b70f45ea58ace4feccd30031200864",
+    "commit": "5ee477cf16b11325bca69423392a455859cd7862",
+    "tree": "cdd806366c79cffa5cad995af021bed54d5d80ed",
     "patches": [
       {
-        "commit": "9b0a696bf62f045889d76044f84a0c372c8dddcc",
-        "tree": "b5905b54f4b70f45ea58ace4feccd30031200864"
+        "commit": "5ee477cf16b11325bca69423392a455859cd7862",
+        "tree": "cdd806366c79cffa5cad995af021bed54d5d80ed"
       }
     ],
     "merge": {
@@ -40,6 +40,10 @@
         {
           "commit": "9b0a696bf62f045889d76044f84a0c372c8dddcc",
           "tree": "b5905b54f4b70f45ea58ace4feccd30031200864"
+        },
+        {
+          "commit": "5ee477cf16b11325bca69423392a455859cd7862",
+          "tree": "cdd806366c79cffa5cad995af021bed54d5d80ed"
         }
       ],
       "securitySource": {
@@ -48,8 +52,8 @@
       },
       "reconciliation": {
         "path": "custom-patches/reconciliation-2026.10.8.json",
-        "blob": "fcd6345ada6868e5afa255e1faf8d1300b2b2874",
-        "sha256": "5ddd91c1d5892ab6d33d8500ecace4a1d3f2050229698ddba2686cf2b1529ff8"
+        "blob": "be23030b0034154dde2fe8cf125b79d489ca9f37",
+        "sha256": "ceddaa033f8440d96aed322f823946553194de9f3f3744286596e81dac7220bd"
       }
     }
   },

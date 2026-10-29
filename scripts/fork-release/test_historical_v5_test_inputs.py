@@ -126,6 +126,8 @@ class HistoricalP7NamespaceTests(unittest.TestCase):
     def test_current_successor_binding_does_not_rebind_historical_p7_inputs(self):
         self.assertEqual(H.CURRENT_RELEASE_SUCCESSOR_SHA256,
             "3bf47cc5a24e5c43ef3226e3e1fa9cf66c21a7e61bc5e698c71f411d86655d02")
+        self.assertEqual(H.CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256,
+            "7d890adb43a03a44add07e8e66539bfc8319a688c8da6cef095f768a5877cb62")
         self.assertEqual(H.PINS["release"], ("scripts/fork-release/release.py", 65836,
             "6a183cbde1f2257b30440b34b781688e873ee2e2ed938a129e921d72ac667da3"))
         self.assertEqual(H.PINS["preflight"], ("scripts/fork-release/preflight.py", 21768,
@@ -178,6 +180,26 @@ class HistoricalP7NamespaceTests(unittest.TestCase):
                 driver, _ = H.load_p7_driver("historical_v5_successor")
                 self.assertEqual(driver.release.POLICY, "historical")
                 self.assertFalse(hasattr(driver.release, "APPROVED_CURRENT_POLICY"))
+
+    def test_exact_re2js_successor_runs_only_original_historical_policy(self):
+        successor = b"APPROVED_RE2JS_CURRENT_POLICY = True\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); read = self.fixture(root, successor)
+            with patch.object(H, "HERE", root), patch.object(H, "p7_input", side_effect=read), \
+                 patch.object(H, "CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256", hashlib.sha256(successor).hexdigest()):
+                driver, _ = H.load_p7_driver("historical_v5_re2js_successor")
+                self.assertEqual(driver.release.POLICY, "historical")
+                self.assertFalse(hasattr(driver.release, "APPROVED_RE2JS_CURRENT_POLICY"))
+
+    def test_changed_re2js_successor_refuses_before_historical_driver_read(self):
+        approved = b"APPROVED_RE2JS_CURRENT_POLICY = True\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); read = self.fixture(root, approved + b" ")
+            with patch.object(H, "HERE", root), patch.object(H, "p7_input", side_effect=read) as reads, \
+                 patch.object(H, "CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256", hashlib.sha256(approved).hexdigest()):
+                with self.assertRaisesRegex(AssertionError, "shared_owner_changed"):
+                    H.load_p7_driver("historical_v5_re2js_changed")
+                self.assertEqual([c.args for c in reads.call_args_list], [("release",)])
 
     def test_unknown_current_release_refuses_before_driver_read(self):
         with tempfile.TemporaryDirectory() as directory:

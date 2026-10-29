@@ -2,7 +2,7 @@
   "schema": "openclaw.fork-patch-inventory.v1",
   "repository": "fr-meyer/openclaw",
   "candidate": "v2026.10.8-source-only",
-  "manifestSha256": "1694932d3eca8357161671a0d62e319c48f2a3ea9b047ae447db2068ab56b997",
+  "manifestSha256": "bcdb3bab60d8780c7f9c3ad00232105c41934f65fe75834ad0a3a9f2bf9910f2",
   "upstream": {
     "tag": "v2026.10.8",
     "tagObject": "e07a2f67d11717ed39aa2fa07bbe9342376ebfbf",
@@ -11,12 +11,12 @@
   },
   "patches": [
     {
-      "id": "npm-fixture-remediation-2026.10.8-9b0a696bf62f",
+      "id": "re2js-security-preparation-2026.10.8-5ee477cf16b1",
       "originCommit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
       "disposition": "adapt",
-      "appliedCommit": "9b0a696bf62f045889d76044f84a0c372c8dddcc",
-      "rationale": "Extend the reviewed sourceB with the approved npm12.2.1 dependency and secretless CI-derived lock, exact vendor-bundle compatibility rows, and type-safe native ownership fixtures. Preserve all prior fork/security/claim-fencing and containment source, per-path origins, assertions and schema. All15synthetic profiles require fresh execution; derivation and prior-generation passes are not qualification.",
-      "evidenceSha256": "5ddd91c1d5892ab6d33d8500ecace4a1d3f2050229698ddba2686cf2b1529ff8",
+      "appliedCommit": "5ee477cf16b11325bca69423392a455859cd7862",
+      "rationale": "Prepare the approved exact Crabline0.1.29 child override RE2JS2.8.6 to2.8.7 and bounded actual-parent API regression in its existing test owner. Preserve every prior fork/security/claim-fencing and containment path, origin and assertion. CI-derived lock remains pending; no source, image or production qualification is transferred.",
+      "evidenceSha256": "ceddaa033f8440d96aed322f823946553194de9f3f3744286596e81dac7220bd",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",
         "extensions/workboard/src/gateway.test.ts",
@@ -125,7 +125,7 @@
           "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
           "sourceBlob": "6d9ba0cbc9f375645f5429937a2ce0b68c1af19f",
           "upstreamBlob": null,
-          "candidateBlob": "fcd6345ada6868e5afa255e1faf8d1300b2b2874"
+          "candidateBlob": "be23030b0034154dde2fe8cf125b79d489ca9f37"
         },
         {
           "path": "docs/cli/gateway/query.md",
@@ -980,7 +980,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "b5451b324bce188ce55030ac5473c05f3991162f",
           "upstreamBlob": "458e124e46478c6f8ecc760d0aba576ea9f29fb3",
-          "candidateBlob": "90272ea03ed2db476428cf4215bcaa4495176ca0"
+          "candidateBlob": "f759a960b1ea42b23d173aca142a8056e8689476"
         },
         {
           "path": "scripts/check-package-patches.mts",
@@ -2222,7 +2222,7 @@
           "sourceTree": "51c0dbf2ea2bd80f09a7069296d132f564febcf4",
           "sourceBlob": "afc3283afd633e371c003d2c058f3c2a747b0167",
           "upstreamBlob": null,
-          "candidateBlob": "9fd7dc20312f7e904adbacabc9fa4a0aa48085b9"
+          "candidateBlob": "c6e94b95c5b09e5bbd263cb7ff6c7170a93f90ba"
         },
         {
           "path": "test/vitest-projects-config.test-support.ts",

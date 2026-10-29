@@ -497,11 +497,114 @@ def check_v108_npm_successor(source, source_dir, ledger):
     return total
 
 
+# Insert inside the exact reviewed canonical release.py, not as a runtime import.
+# Root binds this literal only to genuine, independently reviewed source objects.
+# None intentionally admits no new source. No request or environment selects pins.
+V108_RE2JS_SUCCESSOR = {'final': None, 'preparation': {'blobs': {'pnpm-workspace.yaml': ['90272ea03ed2db476428cf4215bcaa4495176ca0', 'f759a960b1ea42b23d173aca142a8056e8689476'], 'test/v108-remediation-security.test.mjs': ['9fd7dc20312f7e904adbacabc9fa4a0aa48085b9', 'c6e94b95c5b09e5bbd263cb7ff6c7170a93f90ba']}, 'commit': '5ee477cf16b11325bca69423392a455859cd7862', 'ledgerBlob': 'be23030b0034154dde2fe8cf125b79d489ca9f37', 'ledgerSha256': 'ceddaa033f8440d96aed322f823946553194de9f3f3744286596e81dac7220bd', 'tree': 'cdd806366c79cffa5cad995af021bed54d5d80ed'}, 'schema': 'openclaw.v108.re2js-canonical-successor-pins.v1'}
+
+
+def _v108_re2js_records():
+    pins = V108_RE2JS_SUCCESSOR
+    need(type(pins) is dict and set(pins) == {"schema", "preparation", "final"}
+         and pins["schema"] == "openclaw.v108.re2js-canonical-successor-pins.v1",
+         "10.8 RE2JS successor pins are unbound or changed")
+    allowed = ({"pnpm-workspace.yaml", "test/v108-remediation-security.test.mjs"},
+               {"pnpm-lock.yaml"})
+    # The real preparation is checked before CI can produce the real final lock.
+    # An absent final is explicit, never a guessed commit or a wildcard target.
+    records = [pins["preparation"]] + ([] if pins["final"] is None else [pins["final"]])
+    for record, names in zip(records, allowed):
+        need(type(record) is dict and set(record) == {
+            "commit", "tree", "ledgerBlob", "ledgerSha256", "blobs"},
+            "10.8 RE2JS successor record fields changed")
+        need(all(matches(SHA, record.get(key)) for key in ("commit", "tree", "ledgerBlob"))
+             and matches(re.compile(r"[0-9a-f]{64}\Z"), record.get("ledgerSha256"))
+             and type(record["blobs"]) is dict and set(record["blobs"]) == names,
+             "10.8 RE2JS successor identity or paths changed")
+        for pair in record["blobs"].values():
+            need(type(pair) is list and len(pair) == 2
+                 and all(matches(SHA, blob) for blob in pair) and pair[0] != pair[1],
+                 "10.8 RE2JS successor blob pair changed")
+    need(len({V108_NPM_SUCCESSOR["commit"], *(r["commit"] for r in records)}) == len(records) + 1,
+         "10.8 RE2JS successor commits repeat")
+    return records
+
+
+def check_v108_re2js_successor(source, source_dir, ledger):
+    """Recognize only reviewed C→prep→lock; independently recheck the parent."""
+    records = _v108_re2js_records()
+    targets = [record["commit"] for record in records]
+    need(source["commit"] in targets, "10.8 RE2JS successor source is not pinned")
+    index = targets.index(source["commit"])
+    fixed = records[index]
+    parent = V108_NPM_SUCCESSOR if index == 0 else records[0]
+    merge = source["merge"]
+    proof_path = "custom-patches/reconciliation-2026.10.8.json"
+    tail = [{"commit": record["commit"], "tree": record["tree"]}
+            for record in records[:index + 1]]
+    need(source["tree"] == fixed["tree"]
+         and len(merge["successors"]) >= index + 3
+         and merge["successors"][-(index + 1):] == tail
+         and merge["successors"][-(index + 2)] == {
+             "commit": V108_NPM_SUCCESSOR["commit"], "tree": V108_NPM_SUCCESSOR["tree"]}
+         and merge["reconciliation"] == {
+             "path": proof_path, "blob": fixed["ledgerBlob"], "sha256": fixed["ledgerSha256"]},
+         "10.8 RE2JS successor metadata changed")
+    need(git(source_dir, "rev-parse", fixed["commit"] + "^{tree}") == fixed["tree"]
+         and git(source_dir, "show", "-s", "--format=%P", fixed["commit"]) == parent["commit"],
+         "10.8 RE2JS successor tree or single parent changed")
+    # Parent validation retains the complete published B/C checks and, for the
+    # final lock commit, recursively validates the exact preparation as well.
+    historical = {**source, "commit": parent["commit"], "tree": parent["tree"],
+                  "patches": [{"commit": parent["commit"], "tree": parent["tree"]}],
+                  "merge": {**merge, "successors": merge["successors"][:-1],
+                            "reconciliation": {"path": proof_path,
+                                "blob": parent["ledgerBlob"], "sha256": parent["ledgerSha256"]}}}
+    check_source_graph(historical, source_dir)
+    changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                  parent["commit"], fixed["commit"]).split("\0")))
+    need(changed == set(fixed["blobs"]) | {proof_path},
+         "10.8 RE2JS successor path set changed")
+    for commit, column in ((parent["commit"], 0), (fixed["commit"], 1)):
+        for name, pair in fixed["blobs"].items():
+            need(git(source_dir, "ls-tree", commit, "--", name) ==
+                 "100644 blob " + pair[column] + "\t" + name,
+                 "10.8 RE2JS successor mode/blob changed: " + name)
+    original = json.loads(git(source_dir, "show", parent["commit"] + ":" + proof_path))
+    expected = json.loads(json.dumps(original))
+    need(type(expected.get("paths")) is list and len(expected["paths"]) == 249,
+         "10.8 RE2JS historical ledger row count changed")
+    rows = {row["path"]: row for row in expected["paths"]}
+    need(len(rows) == 249, "10.8 RE2JS historical ledger repeats a path")
+    for name, (before, after) in fixed["blobs"].items():
+        need(name in rows and rows[name]["result"] == {"mode": "100644", "blob": before},
+             "10.8 RE2JS historical ledger result changed: " + name)
+        rows[name]["result"] = {"mode": "100644", "blob": after}
+        rows[name]["disposition"] = V108_REMEDIATION
+    try:
+        identical = (json.dumps(ledger, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                     == json.dumps(expected, sort_keys=True, separators=(",", ":"), allow_nan=False))
+    except (TypeError, ValueError):
+        identical = False
+    need(identical, "10.8 RE2JS derived ledger, row set or origins changed")
+    integration = merge["integration"]["commit"]
+    prior = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, parent["commit"]).split("\0"))) - {proof_path}
+    total = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, fixed["commit"]).split("\0"))) - {proof_path}
+    need(total == prior | set(fixed["blobs"]), "10.8 RE2JS total remediation delta changed")
+    return total
+
+
 def check_v108_successor_remediation(source, source_dir, ledger):
     """Validate the old integration first; only named successor paths may adapt."""
     merge, integration = source["merge"], source["merge"]["integration"]
     if source["commit"] == integration["commit"]:
         return set()
+    if V108_RE2JS_SUCCESSOR is not None:
+        records = _v108_re2js_records()
+        if source["commit"] in [record["commit"] for record in records]:
+            return check_v108_re2js_successor(source, source_dir, ledger)
     if source["commit"] == V108_NPM_SUCCESSOR["commit"]:
         return check_v108_npm_successor(source, source_dir, ledger)
     proof_path = merge["reconciliation"]["path"]

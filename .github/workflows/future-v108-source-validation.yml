@@ -1,5 +1,5 @@
 name: Future v108 source validation
-run-name: future-v108-source-validation-20261027
+run-name: future-v108-re2js-lock-preparation-20261029
 
 on:
   pull_request:
@@ -8,7 +8,6 @@ on:
 permissions:
   contents: read
 
-# One campaign, including corrections. Queued duplicates fail admission.
 concurrency:
   group: future-v108-source-validation-20261027
   cancel-in-progress: false
@@ -17,187 +16,86 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  admission:
+  lock-preparation:
     if: >-
-      ${{ github.actor == 'fr-meyer' && github.repository == 'fr-meyer/openclaw' && github.event.repository.private == false &&
+      ${{ github.repository == 'fr-meyer/openclaw' && github.event.repository.private == false &&
           github.event.pull_request.number == 28 && github.event.pull_request.draft == true &&
           github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' &&
           github.event.pull_request.head.ref == 'task/v107-source-binding' &&
           github.event.pull_request.base.ref == 'release-pipeline/v105-image-only-20261024' &&
           github.event.pull_request.base.sha == 'a65f70c5dad17b39bc3ee26ba92cde6d00bfb259' &&
-          github.run_attempt == 1 }}
-    name: admission
+          github.actor == 'fr-meyer' && github.run_attempt == 1 }}
+    name: lock-preparation
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       actions: read
       pull-requests: read
-    outputs:
-      matrix: ${{ steps.admit.outputs.matrix }}
-      deadline_epoch: ${{ steps.admit.outputs.deadline_epoch }}
     steps:
-      - name: Require full admission clock before either checkout
-        id: admission-clock
+      - name: Observe the shared45-minute job clock before checkouts
+        id: clock
         run: |
           /usr/bin/python3 -I -B - <<'PY'
-          import math, os, time
           from datetime import datetime, timezone
+          import os
+          import time
+          started = time.time()
           deadline = datetime(2026, 10, 30, 0, 3, 19, tzinfo=timezone.utc).timestamp()
-          now = time.time()
-          if not math.isfinite(now) or now < 0 or now + 30 * 60 > deadline:
-              raise SystemExit("v6.workflow.admission_deadline_refused")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write("started_epoch=" + str(int(now)) + "\n")
+          if not started + 45 * 60 <= deadline:
+              raise SystemExit("RE2JS lock preparation exceeds approved deadline")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("started_epoch=" + str(int(started)) + "\n")
           PY
-      - name: Checkout reviewed pipeline head and complete ancestry
+      - name: Checkout exact reviewed pipeline with its immediate parent
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fr-meyer/openclaw
           ref: ${{ github.event.pull_request.head.sha }}
           path: pipeline
-          fetch-depth: 0
+          fetch-depth: 2
           persist-credentials: false
-      - name: Bound product checkout by the same admission clock
-        id: checkout-budget
-        env:
-          SOURCE_ADMISSION_STARTED_EPOCH: ${{ steps.admission-clock.outputs.started_epoch }}
-        run: >-
-          python3 pipeline/scripts/fork-release/source_validation_v108.py checkout-budget
-          --pipeline-dir "$GITHUB_WORKSPACE/pipeline"
-      - name: Checkout frozen product source
-        timeout-minutes: ${{ fromJSON(steps.checkout-budget.outputs.checkout_minutes) }}
+      - name: Checkout exact reviewed RE2JS preparation source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fr-meyer/openclaw
-          ref: 9b0a696bf62f045889d76044f84a0c372c8dddcc
+          ref: 5ee477cf16b11325bca69423392a455859cd7862
           path: source
           fetch-depth: 1
           persist-credentials: false
-      - name: Admit exact campaign and source with read-only public metadata
-        id: admit
+      - name: Admit exact once-only lock preparation with read-only metadata
+        id: admission
         env:
           GH_SOURCE_READ_TOKEN: ${{ github.token }}
-          SOURCE_ADMISSION_STARTED_EPOCH: ${{ steps.admission-clock.outputs.started_epoch }}
-        run: >-
-          python3 pipeline/scripts/fork-release/source_validation_v108.py admit
-          --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
-
-  source:
-    needs: admission
-    if: ${{ github.actor == 'fr-meyer' && needs.admission.result == 'success' }}
-    name: source (${{ matrix.profile }})
-    runs-on: ubuntu-24.04
-    timeout-minutes: ${{ matrix.minutes }}
-    permissions:
-      contents: read
-    env:
-      SOURCE_PROFILE: ${{ matrix.profile }}
-      SOURCE_DEADLINE_EPOCH: ${{ needs.admission.outputs.deadline_epoch }}
-    strategy:
-      fail-fast: false
-      max-parallel: 3
-      matrix: ${{ fromJSON(needs.admission.outputs.matrix) }}
-    steps:
-      - name: Require full profile and final clocks before either checkout
-        id: source-clock
-        env:
-          SOURCE_CLOCK_MINUTES: ${{ matrix.minutes }}
-        run: |
-          /usr/bin/python3 -I -B - <<'PY'
-          import math, os, time
-          from datetime import datetime, timezone
-          profiles = ("dependency", "types-production", "types-tests", "types-scripts", "workboard-1", "workboard-2", "models-1", "models-2", "sqlite", "doctor-1", "doctor-2", "doctor-3", "memory", "pipeline-contracts", "compatibility")
-          caps = dict(zip(profiles, (60, 90, 90, 90, 60, 60, 60, 60, 60, 90, 45, 45, 60, 45, 60)))
-          profile = os.environ.get("SOURCE_PROFILE")
-          if profile not in caps or os.environ.get("SOURCE_CLOCK_MINUTES") != str(caps[profile]):
-              raise SystemExit("v6.workflow.profile_cap_refused")
-          deadline = datetime(2026, 10, 30, 0, 3, 19, tzinfo=timezone.utc).timestamp()
-          if os.environ.get("SOURCE_DEADLINE_EPOCH") != str(int(deadline)):
-              raise SystemExit("v6.workflow.profile_deadline_binding_refused")
-          now = time.time()
-          if not math.isfinite(now) or now < 0 or now + (caps[profile] + 10) * 60 > deadline:
-              raise SystemExit("v6.workflow.profile_deadline_refused")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write("started_epoch=" + str(int(now)) + "\n")
-          PY
-      - name: Checkout reviewed pipeline head
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: fr-meyer/openclaw
-          ref: ${{ github.event.pull_request.head.sha }}
-          path: pipeline
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Checkout frozen product source
-        timeout-minutes: 10
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: fr-meyer/openclaw
-          ref: 9b0a696bf62f045889d76044f84a0c372c8dddcc
-          path: source
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Setup fixed supported Node runtime without a cache
+          RE2JS_LOCK_STARTED_EPOCH: ${{ steps.clock.outputs.started_epoch }}
+        run: /usr/bin/python3 -I -B pipeline/scripts/fork-release/re2js_lock_prepare_v108.py admit
+      - name: Setup pinned supported Node without dependency cache
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.22.1
           package-manager-cache: false
-      - name: Verify complete public source closure through maintained preflight
+      - name: Derive only the approved RE2JS child lock through the maintained resolver
+        id: derivation
         env:
-          SOURCE_JOB_STARTED_EPOCH: ${{ steps.source-clock.outputs.started_epoch }}
+          RE2JS_LOCK_STARTED_EPOCH: ${{ steps.clock.outputs.started_epoch }}
+          RE2JS_LOCK_ADMISSION_SHA256: ${{ steps.admission.outputs.admission_sha256 }}
         run: >-
-          python3 pipeline/scripts/fork-release/source_validation_v108.py fetch-closure
-          --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
-      - name: Run named source profile with synthetic state and credential-free environment
-        env:
-          SOURCE_JOB_STARTED_EPOCH: ${{ steps.source-clock.outputs.started_epoch }}
-        run: >-
-          python3 pipeline/scripts/fork-release/source_validation_v108.py run
-          --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
-          --profile "$SOURCE_PROFILE"
-
-  final:
-    if: ${{ always() && github.actor == 'fr-meyer' && needs.admission.result == 'success' }}
-    needs: [admission, source]
-    name: final
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Require full final clock before checkout
-        run: |
-          /usr/bin/python3 -I -B - <<'PY'
-          import math, time
-          from datetime import datetime, timezone
-          deadline = datetime(2026, 10, 30, 0, 3, 19, tzinfo=timezone.utc).timestamp()
-          now = time.time()
-          if not math.isfinite(now) or now < 0 or now + 10 * 60 > deadline:
-              raise SystemExit("v6.workflow.final_deadline_refused")
-          PY
-      - name: Checkout reviewed pipeline head
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          /usr/bin/python3 -I -B pipeline/scripts/fork-release/re2js_lock_prepare_v108.py derive
+          --admission-sha256 "$RE2JS_LOCK_ADMISSION_SHA256"
+      - name: Retain only bounded public lock derivation files
+        if: ${{ always() && steps.derivation.outputs.artifact_ready == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          repository: fr-meyer/openclaw
-          ref: ${{ github.event.pull_request.head.sha }}
-          path: pipeline
-          fetch-depth: 1
-          filter: blob:none
-          sparse-checkout: |
-            .github/workflows/future-v108-source-validation.yml
-            scripts/fork-release
-          persist-credentials: false
-      - name: Record bounded source-only result in logs and job summary
-        env:
-          SOURCE_ADMISSION_RESULT: ${{ needs.admission.result }}
-          SOURCE_MATRIX_RESULT: ${{ needs.source.result }}
-        run: >-
-          python3 pipeline/scripts/fork-release/source_validation_v108.py finalize
-          --pipeline-dir "$GITHUB_WORKSPACE/pipeline"
+          name: v108-re2js-lock-preparation
+          path: |
+            ${{ runner.temp }}/v108-re2js-lock-output-${{ github.run_id }}/pnpm-lock.yaml
+            ${{ runner.temp }}/v108-re2js-lock-output-${{ github.run_id }}/re2js-lock.diff
+            ${{ runner.temp }}/v108-re2js-lock-output-${{ github.run_id }}/generation.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
 
-# No artifact upload or cache route. The owner captures allowlisted summaries
-# within one day; total retained diagnostic evidence is limited to 64 MiB.
-# Normal source postinstall and maintained test-owner qaRuntime/worker/facade
-# compilation use ephemeral job storage and remain inside these timeouts.
-# No image, registry, cloud, deployment or production approval is produced.
+# This one fixed45-minute job includes both checkouts, bootstrap, derivation,
+# artifact transfer and post-actions. Derivation is not candidate qualification.
+# Only public source/lock metadata is uploaded (three fixed entries, <=2MiB).
+# No cache, image, registry publication, cloud, private data or deployment route.
