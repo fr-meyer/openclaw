@@ -1,5 +1,85 @@
 {
-  "schema": "openclaw.v108.re2js-lock-preparation.v1",
-  "sourceSha": "5ee477cf16b11325bca69423392a455859cd7862",
-  "sourceTree": "cdd806366c79cffa5cad995af021bed54d5d80ed"
+  "campaignId": "future-v108-source-validation-20261027",
+  "inventorySha256": "cfcf6c1f97e9adc0d428186c63426c83afe3dbb94d9194f2b9389ebded75de57",
+  "lifetimeOperatorRound": 11,
+  "lockPreparation": {
+    "artifactId": 12887657070,
+    "artifactSha256": "e446f3c0e775362ebe622c88a88f3feec72f588394edf382756a0a7eb0603f0c",
+    "generationReceiptSha256": "aab54ccb07d2c0bb2dc55e3cf86929d73eae50adfe81f9f25fce3ea4c6bed1d1",
+    "lockSha256": "07cbdb13cc0fc5c6dd25b4acdfe927eabe4ec566e6cfab9fb63d224c25765002",
+    "packageSha256": "d5cb6bde3b3d5f032b09add3adcb16fb2ae6dab85ba375051376533c1ddbf8a1",
+    "pipelineHead": "1b26975c3c38b264632a1bc26577a71039cc23ae",
+    "runId": "40851844749"
+  },
+  "manifestSha256": "a4daac2453b3212d41fc7f2a910a5349dd066fde7abde344c911cbff3e96c257",
+  "priorRunIds": [
+    "40616416909",
+    "40609889437",
+    "40607329263",
+    "40639374411",
+    "40647629182",
+    "40681376480",
+    "40688279536",
+    "40706982753",
+    "40804517284",
+    "40808362032",
+    "40816927196",
+    "40851844749"
+  ],
+  "profilePolicy": "re2js-security-followup-v1",
+  "profiles": [
+    "dependency",
+    "types-production",
+    "types-tests",
+    "types-scripts",
+    "workboard-1",
+    "workboard-2",
+    "models-1",
+    "models-2",
+    "sqlite",
+    "doctor-1",
+    "doctor-2",
+    "doctor-3",
+    "memory",
+    "pipeline-contracts",
+    "compatibility"
+  ],
+  "schema": "openclaw.fork-source-validation-request.v7",
+  "settledUsageSha256": "c2438e2b10555f396f662c6fb8e142bafd61f7b32b172fd8a5cb982ccac567ec",
+  "sourceAuthorization": "future-v108-re2js-followup-20261029",
+  "sourceSha": "76522eaa2dd93a4933b5c87f7451eab1d458f8be",
+  "sourceTree": "28adf129927ab5f4589f90f599fe6b76d790a015",
+  "sourceWitness": {
+    "closedBaselineSha256": "c2438e2b10555f396f662c6fb8e142bafd61f7b32b172fd8a5cb982ccac567ec",
+    "hops": [
+      {
+        "sourceSha": "5ee477cf16b11325bca69423392a455859cd7862",
+        "sourceTree": "cdd806366c79cffa5cad995af021bed54d5d80ed",
+        "step": {
+          "changedPaths": [
+            "pnpm-workspace.yaml",
+            "test/v108-remediation-security.test.mjs"
+          ],
+          "parentSha": "9b0a696bf62f045889d76044f84a0c372c8dddcc",
+          "parentTree": "b5905b54f4b70f45ea58ace4feccd30031200864",
+          "unchangedTreeSha256": "2aa0bbb4982528e497286c99b37e6ae9120defd53f2bfbf9be336b4bbbc9ed28"
+        }
+      },
+      {
+        "sourceSha": "76522eaa2dd93a4933b5c87f7451eab1d458f8be",
+        "sourceTree": "28adf129927ab5f4589f90f599fe6b76d790a015",
+        "step": {
+          "changedPaths": [
+            "pnpm-lock.yaml"
+          ],
+          "parentSha": "5ee477cf16b11325bca69423392a455859cd7862",
+          "parentTree": "cdd806366c79cffa5cad995af021bed54d5d80ed",
+          "unchangedTreeSha256": "9d5edda27d4b9d024e7dec49953bffa1a51586bc77421967b51d08b5031152ac"
+        }
+      }
+    ],
+    "schema": "openclaw.v108.re2js-source-equivalence.v1",
+    "scope": "approved-re2js-child-override-only"
+  },
+  "stageRound": 1
 }

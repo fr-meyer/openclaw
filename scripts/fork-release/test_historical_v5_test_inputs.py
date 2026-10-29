@@ -128,6 +128,8 @@ class HistoricalP7NamespaceTests(unittest.TestCase):
             "3bf47cc5a24e5c43ef3226e3e1fa9cf66c21a7e61bc5e698c71f411d86655d02")
         self.assertEqual(H.CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256,
             "7d890adb43a03a44add07e8e66539bfc8319a688c8da6cef095f768a5877cb62")
+        self.assertEqual(H.CURRENT_RE2JS_FINAL_RELEASE_SUCCESSOR_SHA256,
+            "ae135a775adcedc1b2f77084a7557bcdd706c9a39ba5b75b4f766a93f988c22c")
         self.assertEqual(H.PINS["release"], ("scripts/fork-release/release.py", 65836,
             "6a183cbde1f2257b30440b34b781688e873ee2e2ed938a129e921d72ac667da3"))
         self.assertEqual(H.PINS["preflight"], ("scripts/fork-release/preflight.py", 21768,
@@ -142,6 +144,25 @@ class HistoricalP7NamespaceTests(unittest.TestCase):
         def read(name):
             return originals.get(name, ("control:" + name).encode())
         return read
+
+    def test_actual_final_release_exact_allowance_and_changed_owner_refusal(self):
+        current = (HERE / "release.py").read_bytes()
+        self.assertEqual(hashlib.sha256(current).hexdigest(), H.CURRENT_RE2JS_FINAL_RELEASE_SUCCESSOR_SHA256)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "release.py").write_bytes(current)
+            (root / "preflight.py").write_bytes(self.PREFLIGHT)
+            def read(name):
+                return {"release": self.RELEASE, "preflight": self.PREFLIGHT}[name]
+            with patch.object(H, "HERE", root), patch.object(H, "p7_input", side_effect=read):
+                H._check_current_shared_owners()
+                (root / "release.py").write_bytes(current + b"\n")
+                with self.assertRaisesRegex(AssertionError, "shared_owner_changed"):
+                    H._check_current_shared_owners()
+                (root / "release.py").write_bytes(current)
+                (root / "preflight.py").write_bytes(b"unexpected-preflight")
+                with self.assertRaisesRegex(AssertionError, "shared_owner_changed"):
+                    H._check_current_shared_owners()
 
     def test_private_policy_and_exception_identity_never_use_current_modules(self):
         current_release = ModuleType("release")

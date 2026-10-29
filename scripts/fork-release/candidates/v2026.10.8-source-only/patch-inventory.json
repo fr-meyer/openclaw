@@ -2,7 +2,7 @@
   "schema": "openclaw.fork-patch-inventory.v1",
   "repository": "fr-meyer/openclaw",
   "candidate": "v2026.10.8-source-only",
-  "manifestSha256": "bcdb3bab60d8780c7f9c3ad00232105c41934f65fe75834ad0a3a9f2bf9910f2",
+  "manifestSha256": "a4daac2453b3212d41fc7f2a910a5349dd066fde7abde344c911cbff3e96c257",
   "upstream": {
     "tag": "v2026.10.8",
     "tagObject": "e07a2f67d11717ed39aa2fa07bbe9342376ebfbf",
@@ -11,12 +11,12 @@
   },
   "patches": [
     {
-      "id": "re2js-security-preparation-2026.10.8-5ee477cf16b1",
+      "id": "re2js-security-final-2026.10.8-76522eaa2dd9",
       "originCommit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
       "disposition": "adapt",
-      "appliedCommit": "5ee477cf16b11325bca69423392a455859cd7862",
-      "rationale": "Prepare the approved exact Crabline0.1.29 child override RE2JS2.8.6 to2.8.7 and bounded actual-parent API regression in its existing test owner. Preserve every prior fork/security/claim-fencing and containment path, origin and assertion. CI-derived lock remains pending; no source, image or production qualification is transferred.",
-      "evidenceSha256": "ceddaa033f8440d96aed322f823946553194de9f3f3744286596e81dac7220bd",
+      "appliedCommit": "76522eaa2dd93a4933b5c87f7451eab1d458f8be",
+      "rationale": "Bind the reviewed RE2JS 2.8.7 override and genuine CI lock derivation from preparation run 40851844749. Preserve every earlier fork/security origin, claim-fencing assertion and original 24 inventory regressions. Full source, runtime, image and production qualification is not transferred.",
+      "evidenceSha256": "d97a12b7b63b2f333b5ed4fe42c408b1f70a2ec21dc6cd874882a16c4bc1b3d0",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",
         "extensions/workboard/src/gateway.test.ts",
@@ -125,7 +125,7 @@
           "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
           "sourceBlob": "6d9ba0cbc9f375645f5429937a2ce0b68c1af19f",
           "upstreamBlob": null,
-          "candidateBlob": "be23030b0034154dde2fe8cf125b79d489ca9f37"
+          "candidateBlob": "7249fa6a3841c312990d32868936f2f2ac191b2f"
         },
         {
           "path": "docs/cli/gateway/query.md",
@@ -971,7 +971,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b",
           "upstreamBlob": "7aef13a8539d55a6bf137f9bd54fdb9f7062cb28",
-          "candidateBlob": "a06aa66417fbad51438d74d5d462117d2bdd97eb"
+          "candidateBlob": "8082293541e7b0d60dfc53e171307f43ac216114"
         },
         {
           "path": "pnpm-workspace.yaml",

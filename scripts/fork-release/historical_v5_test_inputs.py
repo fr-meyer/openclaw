@@ -75,6 +75,7 @@ def p7_input(name):
 # The successor literal is bound only after that exact canonical owner is reviewed.
 CURRENT_RELEASE_SUCCESSOR_SHA256 = "3bf47cc5a24e5c43ef3226e3e1fa9cf66c21a7e61bc5e698c71f411d86655d02"
 CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256 = "7d890adb43a03a44add07e8e66539bfc8319a688c8da6cef095f768a5877cb62"
+CURRENT_RE2JS_FINAL_RELEASE_SUCCESSOR_SHA256 = "ae135a775adcedc1b2f77084a7557bcdd706c9a39ba5b75b4f766a93f988c22c"
 
 
 def _check_current_shared_owners():
@@ -86,7 +87,8 @@ def _check_current_shared_owners():
         original = p7_input(owner)
         successor = (owner == "release" and
             (hashlib.sha256(current).hexdigest() == CURRENT_RELEASE_SUCCESSOR_SHA256
-             or hashlib.sha256(current).hexdigest() == CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256))
+             or hashlib.sha256(current).hexdigest() == CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256
+             or hashlib.sha256(current).hexdigest() == CURRENT_RE2JS_FINAL_RELEASE_SUCCESSOR_SHA256))
         if current != original and not successor:
             raise AssertionError("historical_v5.shared_owner_changed")
 
