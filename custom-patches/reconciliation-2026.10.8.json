@@ -1624,7 +1624,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "8256d97438f10d8223b0bedadb0b9e2c3a8be51c"
+        "blob": "4bd1fb505dc14bcddb56f2fe7df1364f818bda98"
       },
       "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
@@ -1948,7 +1948,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "14ba80c3f2e75ec9c3b7d01d549ebdf5aa32f7f6"
+        "blob": "a06aa66417fbad51438d74d5d462117d2bdd97eb"
       },
       "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
@@ -2254,9 +2254,9 @@
       "upstream108": null,
       "result": {
         "mode": "100644",
-        "blob": "4aa9aee8e12a71f5aa699fd2f36accd983c5f77e"
+        "blob": "f57016be46f508c8a0068ce9cd57a729b4b0b7b6"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
     {
       "path": "scripts/generate-npm-package-lock.mts",
@@ -2274,7 +2274,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "975ae34594d2b358ff41d605461c257fdb43fb87"
+        "blob": "37a35e8a50cbb9698686b7a14e9bd8eada30ce10"
       },
       "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
@@ -4246,7 +4246,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "909afc00db8db03b99d763d94ce36bf8d8f9f6ee"
+        "blob": "44b3192d33589c3fa88eee00a43778257b664c73"
       },
       "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
@@ -4294,9 +4294,9 @@
       "upstream108": null,
       "result": {
         "mode": "100644",
-        "blob": "b669e8fa13f9b1a187f5e69a71a2b4db0c960e38"
+        "blob": "1a30bd8d683a31faf312cce2cdca81c7c6408118"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "REVIEWED_V108_SOURCE_REMEDIATION"
     },
     {
       "path": "test/scripts/native-security.test.ts",

@@ -873,9 +873,13 @@ describe("generate-npm-package-lock", () => {
   });
 
   it.each(
-    [{ name: "minimatch", version: "10.2.5", required: "10.2.6" }].flatMap((entry) =>
-      ["11.20.0", "12.1.0", "12.2.0"].map((npmVersion) => Object.assign({ npmVersion }, entry)),
-    ),
+    [
+      ...[{ name: "minimatch", version: "10.2.5", required: "10.2.6" }].flatMap((entry) =>
+        ["11.20.0", "12.1.0", "12.2.0"].map((npmVersion) => Object.assign({ npmVersion }, entry)),
+      ),
+      { npmVersion: "12.2.1", name: "minimatch", version: "10.2.5", required: "10.2.6" },
+      { npmVersion: "12.2.1", name: "ip-address", version: "10.7.2", required: "10.7.4" },
+    ],
   )(
     "limits the npm@$npmVersion bundled exception for $name to its approved occurrence",
     ({ name, version, required, npmVersion }) => {
@@ -886,10 +890,7 @@ describe("generate-npm-package-lock", () => {
         "path",
         "unbundled",
       ] as const) {
-        const installedNpmVersion =
-          change === "npm version"
-            ? `${npmVersion.slice(0, npmVersion.lastIndexOf(".") + 1)}1`
-            : npmVersion;
+        const installedNpmVersion = change === "npm version" ? "99.0.0" : npmVersion;
         const bundledVersion = change === "bundle version" ? "0.0.1" : version;
         const npmPath =
           change === "path" ? "node_modules/other/node_modules/npm" : "node_modules/npm";
@@ -933,7 +934,41 @@ describe("generate-npm-package-lock", () => {
     },
   );
 
-  it.each(["11.20.0", "12.1.0", "12.2.0"])(
+  it.each([
+    { name: "minimatch", version: "10.2.5", required: "10.2.6" },
+    { name: "ip-address", version: "10.7.2", required: "10.7.4" },
+  ])("requires a bundle marker for the npm@12.2.1 $name occurrence", ({ name, version, required }) => {
+    const childPath = `node_modules/npm/node_modules/${name}`;
+    const lockfile = {
+      packages: {
+        "node_modules/npm": { version: "12.2.1" },
+        [childPath]: { version },
+      },
+    };
+    expect(collectOverrideViolations(lockfile, { [name]: required }).map((entry) => entry.path)).toEqual([
+      childPath,
+    ]);
+  });
+
+  it.each(["4.2.0", "4.3.0"])(
+    "keeps the http-cache-semantics4.3.0 requirement for npm@12.2.1 (actual=%s)",
+    (version) => {
+      const childPath = "node_modules/npm/node_modules/http-cache-semantics";
+      const lockfile = {
+        packages: {
+          "node_modules/npm": { version: "12.2.1" },
+          [childPath]: { version, inBundle: true },
+        },
+      };
+      expect(
+        collectOverrideViolations(lockfile, { "http-cache-semantics": "4.3.0" }).map(
+          (entry) => entry.path,
+        ),
+      ).toEqual(version === "4.3.0" ? [] : [childPath]);
+    },
+  );
+
+  it.each(["11.20.0", "12.1.0", "12.2.0", "12.2.1"])(
     "authenticates npm@%s bundled lock entries against the pnpm-locked archive",
     (npmVersion) => {
       const root = tempDirs.make("openclaw-npm-bundle-");
@@ -966,6 +1001,18 @@ describe("generate-npm-package-lock", () => {
         hashes = integrities,
       ) => collectPnpmLockViolations(value, pins, hashes, [], tarball);
       expect(check()).toEqual([]);
+      expect(collectPnpmLockViolations(lockfile, pins, integrities).map((entry) => entry.path)).toEqual([
+        childPath,
+      ]);
+      for (const parent of [
+        { version: npmVersion },
+        { version: "99.0.0", integrity },
+        { name: "other", version: npmVersion, integrity },
+      ]) {
+        expect(() =>
+          check({ packages: { ...lockfile.packages, "node_modules/npm": parent } }),
+        ).toThrow("integrity");
+      }
       expect(() => check(lockfile, Buffer.concat([bytes, Buffer.from("changed")]))).toThrow(
         "integrity",
       );
