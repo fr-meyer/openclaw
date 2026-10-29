@@ -423,11 +423,87 @@ def check_v108_remediation_content(source_dir, name, integration, result):
              "10.8 remediation changed unrelated workspace policy")
 
 
+# This finite successor contains the independently reviewed npm 12.2.1 lock
+# preparation and ownership/controller fixtures. It grants no policy to another
+# commit, package version, path or successor. Historical B retains its original
+# remediation validation below; these identities do not transfer qualification.
+V108_NPM_SUCCESSOR = {
+    "commit": "9b0a696bf62f045889d76044f84a0c372c8dddcc",
+    "tree": "b5905b54f4b70f45ea58ace4feccd30031200864",
+    "parent": "84d9bd1c618708e9d5798a730d473ddecf99297a",
+    "parentTree": "ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4",
+    "ledgerBlob": "fcd6345ada6868e5afa255e1faf8d1300b2b2874",
+    "ledgerSha256": "5ddd91c1d5892ab6d33d8500ecace4a1d3f2050229698ddba2686cf2b1529ff8",
+    "parentLedgerBlob": "0fe9ebb97de15de40e62cd195dd63ab4de9decd1",
+    "parentLedgerSha256": "edeb18bbc6e19511c813fcbb863cb84980ce8c9d58e484f300e2a633227c9fab",
+}
+V108_NPM_BLOBS = {
+    "package.json": ("8256d97438f10d8223b0bedadb0b9e2c3a8be51c", "4bd1fb505dc14bcddb56f2fe7df1364f818bda98"),
+    "pnpm-lock.yaml": ("14ba80c3f2e75ec9c3b7d01d549ebdf5aa32f7f6", "a06aa66417fbad51438d74d5d462117d2bdd97eb"),
+    "scripts/fork-release/native_tests.mjs": ("4aa9aee8e12a71f5aa699fd2f36accd983c5f77e", "f57016be46f508c8a0068ce9cd57a729b4b0b7b6"),
+    "scripts/generate-npm-package-lock.mts": ("975ae34594d2b358ff41d605461c257fdb43fb87", "37a35e8a50cbb9698686b7a14e9bd8eada30ce10"),
+    "test/scripts/generate-npm-package-lock.test.ts": ("909afc00db8db03b99d763d94ce36bf8d8f9f6ee", "44b3192d33589c3fa88eee00a43778257b664c73"),
+    "test/scripts/native-security-ownership.test.ts": ("b669e8fa13f9b1a187f5e69a71a2b4db0c960e38", "1a30bd8d683a31faf312cce2cdca81c7c6408118"),
+}
+
+
+def check_v108_npm_successor(source, source_dir, ledger):
+    """Recognize only exact reviewed C after independently validating original B."""
+    fixed, merge = V108_NPM_SUCCESSOR, source["merge"]
+    proof_path = "custom-patches/reconciliation-2026.10.8.json"
+    need(source["commit"] == fixed["commit"] and source["tree"] == fixed["tree"]
+         and len(merge["successors"]) >= 2
+         and merge["successors"][-1] == {"commit": fixed["commit"], "tree": fixed["tree"]}
+         and merge["successors"][-2] == {"commit": fixed["parent"], "tree": fixed["parentTree"]}
+         and merge["reconciliation"] == {"path": proof_path, "blob": fixed["ledgerBlob"],
+                                         "sha256": fixed["ledgerSha256"]},
+         "10.8 npm successor metadata changed")
+    need(git(source_dir, "rev-parse", fixed["commit"] + "^{tree}") == fixed["tree"]
+         and git(source_dir, "show", "-s", "--format=%P", fixed["commit"]) == fixed["parent"],
+         "10.8 npm successor tree or parent changed")
+    # Reconstruct the earlier manifest from fixed historical identities rather
+    # than passing C to the older content policy or weakening that policy.
+    historical = {**source, "commit": fixed["parent"], "tree": fixed["parentTree"],
+                  "patches": [{"commit": fixed["parent"], "tree": fixed["parentTree"]}],
+                  "merge": {**merge, "successors": merge["successors"][:-1],
+                            "reconciliation": {"path": proof_path,
+                                "blob": fixed["parentLedgerBlob"],
+                                "sha256": fixed["parentLedgerSha256"]}}}
+    check_source_graph(historical, source_dir)
+    original = json.loads(git(source_dir, "show", fixed["parent"] + ":" + proof_path))
+    changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                  fixed["parent"], fixed["commit"]).split("\0")))
+    need(changed == set(V108_NPM_BLOBS) | {proof_path}, "10.8 npm successor path set changed")
+    for commit, column in ((fixed["parent"], 0), (fixed["commit"], 1)):
+        for name, blobs in V108_NPM_BLOBS.items():
+            need(git(source_dir, "ls-tree", commit, "--", name) ==
+                 "100644 blob " + blobs[column] + "\t" + name,
+                 "10.8 npm successor mode/blob changed: " + name)
+    expected = json.loads(json.dumps(original))
+    need(len(expected["paths"]) == 249, "10.8 npm historical ledger row count changed")
+    rows = {row["path"]: row for row in expected["paths"]}
+    for name, (before, after) in V108_NPM_BLOBS.items():
+        need(name in rows and rows[name]["result"] == {"mode": "100644", "blob": before},
+             "10.8 npm historical ledger result changed: " + name)
+        rows[name]["result"] = {"mode": "100644", "blob": after}
+        rows[name]["disposition"] = V108_REMEDIATION
+    need(ledger == expected, "10.8 npm derived ledger or origins changed")
+    integration = merge["integration"]["commit"]
+    prior = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, fixed["parent"]).split("\0"))) - {proof_path}
+    total = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, fixed["commit"]).split("\0"))) - {proof_path}
+    need(total == prior | set(V108_NPM_BLOBS), "10.8 npm total remediation delta changed")
+    return total
+
+
 def check_v108_successor_remediation(source, source_dir, ledger):
     """Validate the old integration first; only named successor paths may adapt."""
     merge, integration = source["merge"], source["merge"]["integration"]
     if source["commit"] == integration["commit"]:
         return set()
+    if source["commit"] == V108_NPM_SUCCESSOR["commit"]:
+        return check_v108_npm_successor(source, source_dir, ledger)
     proof_path = merge["reconciliation"]["path"]
     need(git(source_dir, "ls-tree", integration["commit"], "--", proof_path).startswith("100644 blob "),
          "10.8 integration ledger mode changed")

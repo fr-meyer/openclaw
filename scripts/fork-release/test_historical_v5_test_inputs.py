@@ -3,8 +3,9 @@ import hashlib
 import importlib.util
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -102,10 +103,12 @@ class HistoricalV5InputTests(unittest.TestCase):
     def test_fresh_test_module_keeps_historical_code_out_of_main(self):
         source = b"counter = []\nif __name__ == '__main__':\n    raise AssertionError('main must stay disarmed')\n"
         with tempfile.TemporaryDirectory() as directory, patch.object(H, "HERE", Path(directory)):
-            for owner in ("release", "preflight"):
-                (Path(directory) / (owner + ".py")).write_bytes(owner.encode())
+            owners = {"release": b"class Refusal(RuntimeError): pass\n",
+                      "preflight": b"import release\n"}
+            for owner, raw in owners.items():
+                (Path(directory) / (owner + ".py")).write_bytes(raw)
             def read(name):
-                return source if name == "driver" else name.encode()
+                return source if name == "driver" else owners.get(name, name.encode())
             with patch.object(H, "p7_input", side_effect=read):
                 first, controls = H.load_p7_driver("historical_v5_synthetic")
                 first.counter.append("changed")
@@ -113,6 +116,119 @@ class HistoricalV5InputTests(unittest.TestCase):
         self.assertEqual(second.counter, [])
         self.assertTrue(first.__file__.startswith("<historical-p7:"))
         self.assertEqual(set(controls), {"source-request.json", "manifest.json", "patch-inventory.json", "settled-usage.json"})
+
+
+class HistoricalP7NamespaceTests(unittest.TestCase):
+    RELEASE = b"class Refusal(RuntimeError): pass\nPOLICY = 'historical'\ndef lazy():\n import preflight\n return preflight.release\n"
+    PREFLIGHT = b"import release\nPOLICY = release.POLICY\ndef refuse():\n raise release.Refusal('historical')\n"
+    DRIVER = b"import release\nimport preflight\ndef lazy():\n import release\n return release\n"
+
+    def test_current_successor_binding_does_not_rebind_historical_p7_inputs(self):
+        self.assertEqual(H.CURRENT_RELEASE_SUCCESSOR_SHA256,
+            "3bf47cc5a24e5c43ef3226e3e1fa9cf66c21a7e61bc5e698c71f411d86655d02")
+        self.assertEqual(H.PINS["release"], ("scripts/fork-release/release.py", 65836,
+            "6a183cbde1f2257b30440b34b781688e873ee2e2ed938a129e921d72ac667da3"))
+        self.assertEqual(H.PINS["preflight"], ("scripts/fork-release/preflight.py", 21768,
+            "89b6ba41fc89131f33754104fdd0d3ebc08c20f252288651bc7d95038639103a"))
+
+    def fixture(self, root, current=None):
+        originals = {"release": self.RELEASE, "preflight": self.PREFLIGHT,
+                     "driver": self.DRIVER}
+        for owner in ("release", "preflight"):
+            (root / (owner + ".py")).write_bytes(
+                current if owner == "release" and current is not None else originals[owner])
+        def read(name):
+            return originals.get(name, ("control:" + name).encode())
+        return read
+
+    def test_private_policy_and_exception_identity_never_use_current_modules(self):
+        current_release = ModuleType("release")
+        current_release.POLICY = "current"
+        class CurrentRefusal(RuntimeError): pass
+        current_release.Refusal = CurrentRefusal
+        current_preflight = ModuleType("preflight")
+        current_preflight.release = current_release
+        before_builtins_import = __import__
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            read = self.fixture(root)
+            with patch.object(H, "HERE", root), patch.object(H, "p7_input", side_effect=read), \
+                 patch.dict(sys.modules, {"release": current_release, "preflight": current_preflight}):
+                before = dict(sys.modules)
+                driver, _ = H.load_p7_driver("historical_v5_private")
+                self.assertEqual(sys.modules, before)
+                self.assertEqual(driver.release.POLICY, "historical")
+                self.assertEqual(driver.preflight.POLICY, "historical")
+                self.assertIs(driver.preflight.release, driver.release)
+                self.assertIs(driver.lazy(), driver.release)
+                self.assertIs(driver.release.lazy(), driver.release)
+                self.assertIsNot(driver.release.Refusal, CurrentRefusal)
+                with self.assertRaises(driver.release.Refusal):
+                    driver.preflight.refuse()
+                self.assertIs(sys.modules["release"], current_release)
+                self.assertEqual(current_release.POLICY, "current")
+        self.assertIs(__import__, before_builtins_import)
+
+    def test_approved_current_successor_still_executes_only_original_policy(self):
+        successor = b"APPROVED_CURRENT_POLICY = True\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); read = self.fixture(root, successor)
+            with patch.object(H, "HERE", root), patch.object(H, "p7_input", side_effect=read), \
+                 patch.object(H, "CURRENT_RELEASE_SUCCESSOR_SHA256", hashlib.sha256(successor).hexdigest()):
+                driver, _ = H.load_p7_driver("historical_v5_successor")
+                self.assertEqual(driver.release.POLICY, "historical")
+                self.assertFalse(hasattr(driver.release, "APPROVED_CURRENT_POLICY"))
+
+    def test_unknown_current_release_refuses_before_driver_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); read = self.fixture(root, b"unknown current")
+            with patch.object(H, "HERE", root), patch.object(H, "p7_input", side_effect=read) as reads, \
+                 patch.object(H, "CURRENT_RELEASE_SUCCESSOR_SHA256", "a" * 64):
+                with self.assertRaisesRegex(AssertionError, "shared_owner_changed"):
+                    H.load_p7_driver("historical_v5_unknown")
+                self.assertEqual([c.args for c in reads.call_args_list], [("release",)])
+
+    def test_release_successor_permission_never_allows_preflight_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); read = self.fixture(root)
+            (root / "preflight.py").write_bytes(b"changed")
+            with patch.object(H, "HERE", root), patch.object(H, "p7_input", side_effect=read) as reads, \
+                 patch.object(H, "CURRENT_RELEASE_SUCCESSOR_SHA256", hashlib.sha256(self.RELEASE).hexdigest()):
+                with self.assertRaisesRegex(AssertionError, "shared_owner_changed"):
+                    H.load_p7_driver("historical_v5_unknown_preflight")
+                self.assertNotIn(("driver",), [c.args for c in reads.call_args_list])
+
+    def test_symlink_current_owner_refuses_even_with_exact_target_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); read = self.fixture(root)
+            (root / "release.py").rename(root / "release-real.py")
+            (root / "release.py").symlink_to("release-real.py")
+            with patch.object(H, "HERE", root), patch.object(H, "p7_input", side_effect=read) as reads:
+                with self.assertRaisesRegex(AssertionError, "shared_owner_changed"):
+                    H.load_p7_driver("historical_v5_link")
+                reads.assert_not_called()
+
+    def test_each_load_has_fresh_private_dependency_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); read = self.fixture(root)
+            with patch.object(H, "HERE", root), patch.object(H, "p7_input", side_effect=read):
+                first, _ = H.load_p7_driver("historical_v5_fresh")
+                first.release.POLICY = "mutated"
+                second, _ = H.load_p7_driver("historical_v5_fresh")
+                self.assertEqual(second.release.POLICY, "historical")
+                self.assertIsNot(first.release, second.release)
+                self.assertIsNot(first.release.Refusal, second.release.Refusal)
+
+    def test_compile_failure_does_not_mutate_global_modules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); read = self.fixture(root)
+            def broken(name):
+                return b"raise RuntimeError('synthetic compile failure')\n" if name == "driver" else read(name)
+            with patch.object(H, "HERE", root), patch.object(H, "p7_input", side_effect=broken):
+                before = dict(sys.modules)
+                with self.assertRaisesRegex(RuntimeError, "synthetic compile failure"):
+                    H.load_p7_driver("historical_v5_failure")
+                self.assertEqual(sys.modules, before)
 
 
 

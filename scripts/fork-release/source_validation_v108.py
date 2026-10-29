@@ -1128,7 +1128,7 @@ def commands(pipeline, source, profile, paths, request=None):
                       "test_v108_runtime_contract_v5.py", "test_v108_source_donor.py")
         if request is not None and request.get("schema") == V6_SCHEMA:
             names += ("test_historical_v5_test_inputs.py", "test_npm_lock_preparation_v108.py",
-                "test_request_contract_v6.py", "test_history_checks_v6.py", "test_v108_runtime_contract_v6.py")
+                "test_request_contract_v6.py", "test_history_checks_v6.py", "test_v108_runtime_contract_v6.py", "test_v108_intake_recovery_v6.py")
         return [["python3", "-m", "unittest", "discover", "-s", str(pipeline / "scripts/fork-release"),
                  "-p", name] for name in names]
     tests = selected_tests(paths, profile, request)
@@ -3420,7 +3420,17 @@ V6_SOURCE_PATHS = frozenset(("package.json", "pnpm-lock.yaml",
     "test/scripts/native-security-ownership.test.ts"))
 # This is deliberately unbound. Only the root's reviewed actual derivation and
 # source identities can replace it; it cannot admit an invented future source.
-V6_STAGE_PINS = {'sourceSha': '9b0a696bf62f045889d76044f84a0c372c8dddcc', 'sourceTree': 'b5905b54f4b70f45ea58ace4feccd30031200864', 'manifestSha256': '1694932d3eca8357161671a0d62e319c48f2a3ea9b047ae447db2068ab56b997', 'inventorySha256': '830baa2cc1ce989d1da4208a059a7704fd72fa0176305d9afb56785e25bdf893', 'settledUsageSha256': '6f6043f0a6e733fd00ffb3dedc8d14d5c21c5da8ce1db96303b70d3d403c7382', 'preparation': {'runId': '40804517284', 'pipelineHead': 'e96941f0c8c05a45d7df32ca7e45758e12609be7', 'artifactId': 12867024791, 'artifactSha256': 'f433194ae0b6927a21c8ba8a5be7bebb000a533a39a979905855d5cbb8b691e3', 'generationReceiptSha256': '662cb33cb91ab073b05f3cdf14ed1d0a8221e9d77c892f3668fac350c98324c6', 'packageSha256': 'd5cb6bde3b3d5f032b09add3adcb16fb2ae6dab85ba375051376533c1ddbf8a1', 'lockSha256': '5e631697caa53422d40dde5ae04a7ee0d84321921891062a4f580ca11b55fc50'}, 'priorValidationRuns': [], 'sourceHops': [{'sourceSha': '9b0a696bf62f045889d76044f84a0c372c8dddcc', 'sourceTree': 'b5905b54f4b70f45ea58ace4feccd30031200864'}], 'previousSourceHopCount': 0}
+V6_STAGE_PINS = {'sourceSha': '9b0a696bf62f045889d76044f84a0c372c8dddcc', 'sourceTree': 'b5905b54f4b70f45ea58ace4feccd30031200864', 'manifestSha256': '1694932d3eca8357161671a0d62e319c48f2a3ea9b047ae447db2068ab56b997', 'inventorySha256': '830baa2cc1ce989d1da4208a059a7704fd72fa0176305d9afb56785e25bdf893', 'settledUsageSha256': '6f6043f0a6e733fd00ffb3dedc8d14d5c21c5da8ce1db96303b70d3d403c7382', 'preparation': {'runId': '40804517284', 'pipelineHead': 'e96941f0c8c05a45d7df32ca7e45758e12609be7', 'artifactId': 12867024791, 'artifactSha256': 'f433194ae0b6927a21c8ba8a5be7bebb000a533a39a979905855d5cbb8b691e3', 'generationReceiptSha256': '662cb33cb91ab073b05f3cdf14ed1d0a8221e9d77c892f3668fac350c98324c6', 'packageSha256': 'd5cb6bde3b3d5f032b09add3adcb16fb2ae6dab85ba375051376533c1ddbf8a1', 'lockSha256': '5e631697caa53422d40dde5ae04a7ee0d84321921891062a4f580ca11b55fc50'}, 'priorValidationRuns': [{'runId': '40808362032', 'pipelineHead': '774c81d7ff22f962dcdef67a7a08f565846a4986', 'requestSha256': '2fed151bd3038f9ed80758dd23d3e655dbe281ee76ecb7a03987643903021740'}], 'sourceHops': [{'sourceSha': '9b0a696bf62f045889d76044f84a0c372c8dddcc', 'sourceTree': 'b5905b54f4b70f45ea58ace4feccd30031200864'}], 'previousSourceHopCount': 1}
+
+# One exact recovery of the unused first validation booking; never a generic
+# larger targeted allowance or permission for another correction.
+V6_RECOVERY_POLICY = "npm-intake-recovery-v1"
+V6_INTAKE_RECOVERY_PRIOR_PIN = {'runId': '40808362032', 'pipelineHead': '774c81d7ff22f962dcdef67a7a08f565846a4986', 'requestSha256': '2fed151bd3038f9ed80758dd23d3e655dbe281ee76ecb7a03987643903021740'}
+V6_INTAKE_RECOVERY_SOURCE_PINS = {'sourceSha': '9b0a696bf62f045889d76044f84a0c372c8dddcc', 'sourceTree': 'b5905b54f4b70f45ea58ace4feccd30031200864', 'manifestSha256': '1694932d3eca8357161671a0d62e319c48f2a3ea9b047ae447db2068ab56b997', 'inventorySha256': '830baa2cc1ce989d1da4208a059a7704fd72fa0176305d9afb56785e25bdf893', 'settledUsageSha256': '6f6043f0a6e733fd00ffb3dedc8d14d5c21c5da8ce1db96303b70d3d403c7382', 'preparation': {'runId': '40804517284', 'pipelineHead': 'e96941f0c8c05a45d7df32ca7e45758e12609be7', 'artifactId': 12867024791, 'artifactSha256': 'f433194ae0b6927a21c8ba8a5be7bebb000a533a39a979905855d5cbb8b691e3', 'generationReceiptSha256': '662cb33cb91ab073b05f3cdf14ed1d0a8221e9d77c892f3668fac350c98324c6', 'packageSha256': 'd5cb6bde3b3d5f032b09add3adcb16fb2ae6dab85ba375051376533c1ddbf8a1', 'lockSha256': '5e631697caa53422d40dde5ae04a7ee0d84321921891062a4f580ca11b55fc50'}}
+V6_INTAKE_RECOVERY_WITNESS_SHA256 = "89a1cbc90052e7d297c9b0c3e3efe8db7d3f14306caf69bc810a3438315ba1c3"
+V6_INTAKE_RECOVERY_MINUTES = 5
+V6_INTAKE_RECOVERY_JOB_PROJECTION_SHA256 = "1ecb68032249e5b5d42f029c63cd078fdca54d02d4e9238a994a95362f706fcb"
+V6_PREPARATION_TITLE = "future-v108-npm-lock-preparation-20261029"
 
 
 class V6ContractRefusal(ValueError):
@@ -3519,11 +3529,13 @@ def v6_required_correction_profiles(paths):
 
 def validation_budget_v6(request):
     _v6_need(type(request) is dict and request.get("schema") == V6_SCHEMA and
-        request.get("profilePolicy") == V6_POLICY and type(request.get("stageRound")) is int and
+        request.get("profilePolicy") in (V6_POLICY, V6_RECOVERY_POLICY) and type(request.get("stageRound")) is int and
         request["stageRound"] in (1, 2), "v6.budget_policy")
+    recovery = request["profilePolicy"] == V6_RECOVERY_POLICY
+    _v6_need(not recovery or request["stageRound"] == 2, "v6.recovery_round_only")
     return {"admissionMinutes": V6_ADMISSION_MINUTES, "finalMinutes": V6_FINAL_MINUTES,
         "profileMinutes": dict(V6_PROFILE_MINUTES),
-        "roundMaximumMinutes": V6_FULL_MINUTES if request["stageRound"] == 1 else V6_TARGETED_MINUTES,
+        "roundMaximumMinutes": V6_FULL_MINUTES if request["stageRound"] == 1 or recovery else V6_TARGETED_MINUTES,
         "ancillaryMinutes": V6_ANCILLARY_MINUTES, "stageMaximumMinutes": V6_NEW_MINUTES}
 
 
@@ -3540,7 +3552,7 @@ def validate_request_v6(value, pins):
         "lifetimeOperatorRound", "profiles", "sourceSha", "sourceTree", "manifestSha256",
         "inventorySha256", "settledUsageSha256", "priorRunIds", "lockPreparation", "sourceWitness"}
     _v6_need(type(value) is dict and set(value) == fields and value["schema"] == V6_SCHEMA and
-        value["campaignId"] == V6_CAMPAIGN and value["profilePolicy"] == V6_POLICY and
+        value["campaignId"] == V6_CAMPAIGN and value["profilePolicy"] in (V6_POLICY, V6_RECOVERY_POLICY) and
         value["sourceAuthorization"] == V6_AUTHORIZATION, "v6.closed_authorized_request")
     for key in ("sourceSha", "sourceTree", "manifestSha256", "inventorySha256", "settledUsageSha256"):
         _v6_need(type(value[key]) is str and value[key] == pins[key], "v6.exact_reviewed_pins")
@@ -3580,6 +3592,14 @@ def validate_request_v6(value, pins):
             _v6_need({"package.json", "pnpm-lock.yaml"} <= set(hop["step"]["changedPaths"]),
                 "v6.initial_dependency_change_required")
         parent_sha, parent_tree = trusted["sourceSha"], trusted["sourceTree"]
+    if value["profilePolicy"] == V6_RECOVERY_POLICY:
+        _v6_need(number == 2 and profiles == list(V6_PROFILES) and
+            pins["priorValidationRuns"] == [V6_INTAKE_RECOVERY_PRIOR_PIN] and
+            len(pins["sourceHops"]) == 1 and pins["previousSourceHopCount"] == 1 and
+            all(_v6_equal(pins[key], expected) for key, expected in V6_INTAKE_RECOVERY_SOURCE_PINS.items()) and
+            hashlib.sha256(json.dumps(witness, sort_keys=True, separators=(",", ":"),
+                allow_nan=False).encode()).hexdigest() == V6_INTAKE_RECOVERY_WITNESS_SHA256,
+            "v6.closed_failed_intake_recovery")
     affected = set()
     for hop in hops[pins["previousSourceHopCount"]:]:
         affected.update(v6_required_correction_profiles(hop["step"]["changedPaths"]))
@@ -3686,6 +3706,9 @@ def booking_v6(request, preparation_minutes, prior_validation_minutes, ancillary
     _v6_need(planned <= budget["roundMaximumMinutes"] and
         ((request["stageRound"] == 1 and prior_validation_minutes == 0) or
          (request["stageRound"] == 2 and prior_validation_minutes <= V6_FULL_MINUTES)), "v6.round_booking")
+    if request["profilePolicy"] == V6_RECOVERY_POLICY:
+        _v6_need(prior_validation_minutes == V6_INTAKE_RECOVERY_MINUTES and
+            request["profiles"] == list(V6_PROFILES), "v6.recovery_actual_intake_minutes")
     reserve = V6_TARGETED_MINUTES if request["stageRound"] == 1 else 0
     additional = preparation_minutes + prior_validation_minutes + planned + reserve + V6_ANCILLARY_MINUTES
     cumulative = V6_PRIOR_MINUTES + additional
@@ -3836,11 +3859,30 @@ def _h6_source_run_binding(run):
         "v6.history.source_run_binding")
 
 
+def _h6_preparation_run_binding(run, pin):
+    _v6_preparation_pin(pin)
+    _v6_need(_h5_public(run) and type(run.get("id")) is int and str(run["id"]) == pin["runId"] and
+        run.get("event") == "pull_request" and type(run.get("run_attempt")) is int and run["run_attempt"] == 1 and
+        run.get("head_branch") == BRANCH and run.get("display_title") == V6_PREPARATION_TITLE and
+        run.get("path") == WORKFLOW and run.get("head_sha") == pin["pipelineHead"] and
+        [pr.get("number") for pr in run.get("pull_requests", [])] == [28],
+        "v6.history.preparation_run_binding")
+
+
+def _h6_expected_run_role_binding(rid, run, pins):
+    _v6_need(type(rid) is str and type(run) is dict and type(run.get("id")) is int and
+        str(run["id"]) == rid, "v6.history.run_role_identity")
+    if rid == pins["preparation"]["runId"]:
+        _h6_preparation_run_binding(run, pins["preparation"])
+    else:
+        _h6_source_run_binding(run)
+
+
 def _h6_preparation(pins, history, current, generation, pipeline, api):
     pin = pins["preparation"]
     _v6_need(pin["runId"] in history, "v6.history.preparation_run_present")
     run = history[pin["runId"]]
-    _h6_source_run_binding(run)
+    _h6_preparation_run_binding(run, pin)
     _v6_need(run.get("path") == WORKFLOW and run.get("head_sha") == pin["pipelineHead"] and
         run.get("status") == "completed" and run.get("conclusion") == "success" and
         timestamp(run["updated_at"]) <= timestamp(current["created_at"]), "v6.history.preparation_terminal")
@@ -3874,6 +3916,36 @@ def _h6_preparation(pins, history, current, generation, pipeline, api):
         "currentCandidateQualification": False}
 
 
+def _h6_failed_intake_recovery(table, run, pin, minutes):
+    """Positive exact terminal job evidence, never absent-row coverage inference."""
+    _v6_need(pin == V6_INTAKE_RECOVERY_PRIOR_PIN and type(run.get("id")) is int and
+        str(run["id"]) == pin["runId"] and run.get("head_sha") == pin["pipelineHead"] and
+        run.get("status") == "completed" and run.get("conclusion") == "failure" and
+        type(minutes) is int and minutes == V6_INTAKE_RECOVERY_MINUTES and
+        type(table) is dict and type(table.get("total_count")) is int and table["total_count"] == 3 and
+        type(table.get("jobs")) is list and len(table["jobs"]) == 3 and
+        _h5_unexpanded_failed_initial(table["jobs"]), "v6.history.recovery_failed_intake_shape")
+    fields = ("id", "run_id", "run_attempt", "head_sha", "name", "status", "conclusion",
+        "runner_id", "runner_name", "runner_group_id", "runner_group_name", "labels",
+        "started_at", "completed_at", "steps")
+    _v6_need(all(type(job) is dict and set(fields) <= set(job) and type(job["id"]) is int and
+        job["id"] > 0 for job in table["jobs"]) and
+        len({job["id"] for job in table["jobs"]}) == 3, "v6.history.recovery_complete_job_fields")
+    projection = {"total_count": table["total_count"], "jobs": sorted(
+        [{key: job[key] for key in fields} for job in table["jobs"]], key=lambda job: job["id"])}
+    digest = hashlib.sha256(json.dumps(projection, sort_keys=True, separators=(",", ":"),
+        allow_nan=False).encode()).hexdigest()
+    _v6_need(digest == V6_INTAKE_RECOVERY_JOB_PROJECTION_SHA256,
+        "v6.history.recovery_actual_job_projection")
+    return {"runId": pin["runId"], "pipelineHead": pin["pipelineHead"],
+        "requestSha256": pin["requestSha256"], "sourceSha": V6_INTAKE_RECOVERY_SOURCE_PINS["sourceSha"],
+        "sourceTree": V6_INTAKE_RECOVERY_SOURCE_PINS["sourceTree"],
+        "observedRunnerMinutes": minutes, "conclusion": "failure", "profileResults": {},
+        "invalidatedPriorProfiles": [], "unresolvedProfiles": list(V6_PROFILES),
+        "validationNeverStarted": True, "sourceJobsAcquired": 0,
+        "failedIntakeJobProjectionSha256": digest, "oldF5EvidenceUsed": False}
+
+
 def _h6_previous_validation(request, pins, history, current, pipeline, api):
     if request["stageRound"] == 1:
         _v6_need(not pins["priorValidationRuns"] and pins["previousSourceHopCount"] == 0,
@@ -3905,6 +3977,9 @@ def _h6_previous_validation(request, pins, history, current, pipeline, api):
     workflow_security_v6(content_at(api, WORKFLOW, pin["pipelineHead"]), old["sourceSha"])
     table = _h5_jobs(api, run)
     minutes = observed_minutes_v6(table, old)
+    if request["profilePolicy"] == V6_RECOVERY_POLICY:
+        receipt = _h6_failed_intake_recovery(table, run, pin, minutes)
+        return minutes, [receipt], {}, list(V6_PROFILES)
     results = {job["name"][8:-1]: job["conclusion"] for job in table["jobs"] if
         job["name"].startswith("source (") and job["name"].endswith(")") and job["name"][8:-1] in old["profiles"]}
     unexpanded = _h5_unexpanded_failed_initial(table["jobs"])
@@ -3947,7 +4022,7 @@ def history_checks_v6(request, event, env, pipeline, api, pins):
     actual = {rid for rid, run in history.items() if run.get("path") == WORKFLOW}
     _v6_need(actual == set(expected) and len(expected) == len(set(expected)), "v6.history.exact_execution_set")
     for rid in actual:
-        _h6_source_run_binding(history[rid])
+        _h6_expected_run_role_binding(rid, history[rid], pins)
     current = history[env["GITHUB_RUN_ID"]]
     _v6_need(current.get("head_sha") == head and current.get("status") == "in_progress" and
         datetime.fromisoformat(baseline["closedAt"]) <= timestamp(current["created_at"]) <= now,
@@ -4049,7 +4124,7 @@ V6_BUNDLED_NPM_VERSION_CHECK = 'import { createRequire } from "node:module";\nim
 
 V6_SHARED_HISTORY_REFUSALS = {'source-validation: v5.history.artifact_identity_size': 'v6.shared.artifact_identity_size', 'source-validation: v5.history.artifacts_complete': 'v6.shared.artifacts_complete', 'source-validation: v5.history.fresh_job_binding': 'v6.shared.fresh_job_binding', 'source-validation: v5.history.fresh_jobs_complete': 'v6.shared.fresh_jobs_complete', 'source-validation: v5.history.terminal_admitted_profiles': 'v6.shared.terminal_admitted_profiles', 'source-validation: v5.history.terminal_boundary_jobs': 'v6.shared.terminal_boundary_jobs', 'source-validation: v5.history.terminal_job_duration': 'v6.shared.terminal_job_duration', 'source-validation: v5.history.terminal_job_identity': 'v6.shared.terminal_job_identity', 'source-validation: v5.history.terminal_jobs_complete': 'v6.shared.terminal_jobs_complete', 'source-validation: v5.history.terminal_profiles': 'v6.shared.terminal_profiles', 'source-validation: v5.history.terminal_public_runner': 'v6.shared.terminal_public_runner', 'source-validation: v5.history.terminal_round_booking': 'v6.shared.terminal_round_booking', 'source-validation: v5.history.terminal_unacquired_evidence': 'v6.shared.terminal_unacquired_evidence', 'source-validation: v5.history.workflow_concurrency': 'v6.shared.workflow_concurrency', 'source-validation: v5.history.workflow_credentials': 'v6.shared.workflow_credentials', 'source-validation: v5.history.workflow_fixed_actions': 'v6.shared.workflow_fixed_actions', 'source-validation: v5.history.workflow_job_caps': 'v6.shared.workflow_job_caps', 'source-validation: v5.history.workflow_job_permissions': 'v6.shared.workflow_job_permissions', 'source-validation: v5.history.workflow_jobs': 'v6.shared.workflow_jobs', 'source-validation: v5.history.workflow_literal_mapping': 'v6.shared.workflow_literal_mapping', 'source-validation: v5.history.workflow_matrix_policy': 'v6.shared.workflow_matrix_policy', 'source-validation: v5.history.workflow_permissions': 'v6.shared.workflow_permissions', 'source-validation: v5.history.workflow_runner_job_keys': 'v6.shared.workflow_runner_job_keys', 'source-validation: v5.history.workflow_size': 'v6.shared.workflow_size', 'source-validation: v5.history.workflow_source_refs': 'v6.shared.workflow_source_refs', 'source-validation: v5.history.workflow_token_surface': 'v6.shared.workflow_token_surface', 'source-validation: v5.history.workflow_top_level': 'v6.shared.workflow_top_level', 'source-validation: v5.history.workflow_trigger': 'v6.shared.workflow_trigger', 'source-validation: v5.history.workflow_yaml_shape': 'v6.shared.workflow_yaml_shape'}
 
-V6_RUNTIME_REFUSAL_CODES = frozenset(('v6.actual_usage_bounds', 'v6.affected_source_profiles', 'v6.approved_changed_paths', 'v6.base_dependency_digests', 'v6.base_npm_pin', 'v6.bounded_json', 'v6.budget_policy', 'v6.closed_authorized_request', 'v6.closed_source_witness', 'v6.duplicate_json_key', 'v6.exact_fresh_full_validation', 'v6.exact_generated_dependency_diff', 'v6.exact_preparation_pin', 'v6.exact_prior_runs', 'v6.exact_reviewed_pins', 'v6.fixed_unique_profiles', 'v6.generation_clock_bound', 'v6.generation_clock_shape', 'v6.generation_identity', 'v6.generation_outcome', 'v6.generation_receipt_digest', 'v6.generation_source_digests', 'v6.history.actual168_1237', 'v6.history.ancillary77_exceeded', 'v6.history.artifact_duplicate', 'v6.history.artifact_storage_bound', 'v6.history.baseline_actual_minutes', 'v6.history.baseline_capture_time', 'v6.history.baseline_envelope', 'v6.history.baseline_header_changed', 'v6.history.baseline_job_attempt', 'v6.history.baseline_run_projection', 'v6.history.baseline_source_ids', 'v6.history.branch_page', 'v6.history.complete_branch_pagination', 'v6.history.current_job_booking', 'v6.history.current_public_admission', 'v6.history.current_source_identity', 'v6.history.deadline', 'v6.history.duplicate_branch_header_changed', 'v6.history.exact_baseline_digest', 'v6.history.exact_execution_set', 'v6.history.initial_validation_identity', 'v6.history.live_pr_changed', 'v6.history.new_ancillary_binding', 'v6.history.original141_envelope', 'v6.history.original141_git_digest', 'v6.history.original141_subset_unchanged', 'v6.history.preparation_artifact_identity', 'v6.history.preparation_clock_bound', 'v6.history.preparation_public_job', 'v6.history.preparation_run_present', 'v6.history.preparation_single_artifact', 'v6.history.preparation_single_job', 'v6.history.preparation_terminal', 'v6.history.prior_positive_unexpanded_evidence', 'v6.history.prior_request_digest', 'v6.history.prior_request_shape', 'v6.history.prior_source_chain', 'v6.history.prior_validation_present', 'v6.history.prior_validation_terminal', 'v6.history.source_branch_tip', 'v6.history.source_run_binding', 'v6.history.target_tip', 'v6.history.unique_branch_ids', 'v6.history.unresolved_profiles_selected', 'v6.initial_dependency_change_required', 'v6.invalid_json', 'v6.invalid_json_constant', 'v6.only_exact_npm_dependency_change', 'v6.preparation_pin_digest', 'v6.preparation_pin_fields', 'v6.preparation_pin_identity', 'v6.previous_source_hop_count', 'v6.round_booking', 'v6.round_limit', 'v6.runtime_approval_deadline', 'v6.runtime_baseline_digest', 'v6.runtime_manifest_source', 'v6.runtime_metadata_digest', 'v6.runtime_verified_budget_and_fresh_coverage', 'v6.shared.artifact_identity_size', 'v6.shared.artifacts_complete', 'v6.shared.fresh_job_binding', 'v6.shared.fresh_jobs_complete', 'v6.shared.terminal_admitted_profiles', 'v6.shared.terminal_boundary_jobs', 'v6.shared.terminal_job_duration', 'v6.shared.terminal_job_identity', 'v6.shared.terminal_jobs_complete', 'v6.shared.terminal_profiles', 'v6.shared.terminal_public_runner', 'v6.shared.terminal_round_booking', 'v6.shared.terminal_unacquired_evidence', 'v6.shared.workflow_concurrency', 'v6.shared.workflow_credentials', 'v6.shared.workflow_fixed_actions', 'v6.shared.workflow_job_caps', 'v6.shared.workflow_job_permissions', 'v6.shared.workflow_jobs', 'v6.shared.workflow_literal_mapping', 'v6.shared.workflow_matrix_policy', 'v6.shared.workflow_permissions', 'v6.shared.workflow_runner_job_keys', 'v6.shared.workflow_size', 'v6.shared.workflow_source_refs', 'v6.shared.workflow_token_surface', 'v6.shared.workflow_top_level', 'v6.shared.workflow_trigger', 'v6.shared.workflow_yaml_shape', 'v6.total_minute_ceiling', 'v6.trusted_baseline_pin', 'v6.trusted_pin_fields', 'v6.trusted_previous_hop_count', 'v6.trusted_run_unique', 'v6.trusted_source_chain', 'v6.trusted_source_hops', 'v6.trusted_source_pins', 'v6.trusted_validation_runs', 'v6.unprojected', 'v6.witness_hop_binding', 'v6.witness_hop_count', 'v6.witness_parent_fields', 'v6.workspace_policy_unchanged'))
+V6_RUNTIME_REFUSAL_CODES = frozenset(('v6.actual_usage_bounds', 'v6.affected_source_profiles', 'v6.approved_changed_paths', 'v6.base_dependency_digests', 'v6.base_npm_pin', 'v6.bounded_json', 'v6.budget_policy', 'v6.closed_authorized_request', 'v6.closed_failed_intake_recovery', 'v6.closed_source_witness', 'v6.duplicate_json_key', 'v6.exact_fresh_full_validation', 'v6.exact_generated_dependency_diff', 'v6.exact_preparation_pin', 'v6.exact_prior_runs', 'v6.exact_reviewed_pins', 'v6.fixed_unique_profiles', 'v6.generation_clock_bound', 'v6.generation_clock_shape', 'v6.generation_identity', 'v6.generation_outcome', 'v6.generation_receipt_digest', 'v6.generation_source_digests', 'v6.history.actual168_1237', 'v6.history.ancillary77_exceeded', 'v6.history.artifact_duplicate', 'v6.history.artifact_storage_bound', 'v6.history.baseline_actual_minutes', 'v6.history.baseline_capture_time', 'v6.history.baseline_envelope', 'v6.history.baseline_header_changed', 'v6.history.baseline_job_attempt', 'v6.history.baseline_run_projection', 'v6.history.baseline_source_ids', 'v6.history.branch_page', 'v6.history.complete_branch_pagination', 'v6.history.current_job_booking', 'v6.history.current_public_admission', 'v6.history.current_source_identity', 'v6.history.deadline', 'v6.history.duplicate_branch_header_changed', 'v6.history.exact_baseline_digest', 'v6.history.exact_execution_set', 'v6.history.initial_validation_identity', 'v6.history.live_pr_changed', 'v6.history.new_ancillary_binding', 'v6.history.original141_envelope', 'v6.history.original141_git_digest', 'v6.history.original141_subset_unchanged', 'v6.history.preparation_artifact_identity', 'v6.history.preparation_clock_bound', 'v6.history.preparation_public_job', 'v6.history.preparation_run_binding', 'v6.history.preparation_run_present', 'v6.history.preparation_single_artifact', 'v6.history.preparation_single_job', 'v6.history.preparation_terminal', 'v6.history.prior_positive_unexpanded_evidence', 'v6.history.prior_request_digest', 'v6.history.prior_request_shape', 'v6.history.prior_source_chain', 'v6.history.prior_validation_present', 'v6.history.prior_validation_terminal', 'v6.history.recovery_actual_job_projection', 'v6.history.recovery_complete_job_fields', 'v6.history.recovery_failed_intake_shape', 'v6.history.run_role_identity', 'v6.history.source_branch_tip', 'v6.history.source_run_binding', 'v6.history.target_tip', 'v6.history.unique_branch_ids', 'v6.history.unresolved_profiles_selected', 'v6.initial_dependency_change_required', 'v6.invalid_json', 'v6.invalid_json_constant', 'v6.only_exact_npm_dependency_change', 'v6.preparation_pin_digest', 'v6.preparation_pin_fields', 'v6.preparation_pin_identity', 'v6.previous_source_hop_count', 'v6.recovery_actual_intake_minutes', 'v6.recovery_round_only', 'v6.round_booking', 'v6.round_limit', 'v6.runtime_approval_deadline', 'v6.runtime_baseline_digest', 'v6.runtime_manifest_source', 'v6.runtime_metadata_digest', 'v6.runtime_verified_budget_and_fresh_coverage', 'v6.shared.artifact_identity_size', 'v6.shared.artifacts_complete', 'v6.shared.fresh_job_binding', 'v6.shared.fresh_jobs_complete', 'v6.shared.terminal_admitted_profiles', 'v6.shared.terminal_boundary_jobs', 'v6.shared.terminal_job_duration', 'v6.shared.terminal_job_identity', 'v6.shared.terminal_jobs_complete', 'v6.shared.terminal_profiles', 'v6.shared.terminal_public_runner', 'v6.shared.terminal_round_booking', 'v6.shared.terminal_unacquired_evidence', 'v6.shared.workflow_concurrency', 'v6.shared.workflow_credentials', 'v6.shared.workflow_fixed_actions', 'v6.shared.workflow_job_caps', 'v6.shared.workflow_job_permissions', 'v6.shared.workflow_jobs', 'v6.shared.workflow_literal_mapping', 'v6.shared.workflow_matrix_policy', 'v6.shared.workflow_permissions', 'v6.shared.workflow_runner_job_keys', 'v6.shared.workflow_size', 'v6.shared.workflow_source_refs', 'v6.shared.workflow_token_surface', 'v6.shared.workflow_top_level', 'v6.shared.workflow_trigger', 'v6.shared.workflow_yaml_shape', 'v6.total_minute_ceiling', 'v6.trusted_baseline_pin', 'v6.trusted_pin_fields', 'v6.trusted_previous_hop_count', 'v6.trusted_run_unique', 'v6.trusted_source_chain', 'v6.trusted_source_hops', 'v6.trusted_source_pins', 'v6.trusted_validation_runs', 'v6.unprojected', 'v6.witness_hop_binding', 'v6.witness_hop_count', 'v6.witness_parent_fields', 'v6.workspace_policy_unchanged'))
 
 if __name__ == "__main__":
     raise SystemExit(entrypoint())

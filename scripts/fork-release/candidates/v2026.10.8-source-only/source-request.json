@@ -1,10 +1,10 @@
 {
   "schema": "openclaw.fork-source-validation-request.v6",
   "campaignId": "future-v108-source-validation-20261027",
-  "profilePolicy": "npm-remediation-v1",
+  "profilePolicy": "npm-intake-recovery-v1",
   "sourceAuthorization": "future-v108-npm-repair-20261029",
-  "stageRound": 1,
-  "lifetimeOperatorRound": 9,
+  "stageRound": 2,
+  "lifetimeOperatorRound": 10,
   "profiles": [
     "dependency",
     "types-production",
@@ -36,7 +36,8 @@
     "40681376480",
     "40688279536",
     "40706982753",
-    "40804517284"
+    "40804517284",
+    "40808362032"
   ],
   "lockPreparation": {
     "runId": "40804517284",

@@ -438,5 +438,167 @@ class ReleaseTests(unittest.TestCase):
                 pass
 
 
+class V108ClosedNpmSuccessorTests(unittest.TestCase):
+    def setUp(self):
+        self.fixed = release.V108_NPM_SUCCESSOR
+        self.proof = "custom-patches/reconciliation-2026.10.8.json"
+        self.integration = "61f924bdb7ed4f837096c87120087919ff0a6bdf"
+        f = self.fixed
+        self.source = {"commit": f["commit"], "tree": f["tree"],
+            "patches": [{"commit": f["commit"], "tree": f["tree"]}],
+            "merge": {"integration": {"commit": self.integration},
+                "successors": [{"commit": f["parent"], "tree": f["parentTree"]},
+                               {"commit": f["commit"], "tree": f["tree"]}],
+                "reconciliation": {"path": self.proof, "blob": f["ledgerBlob"],
+                                   "sha256": f["ledgerSha256"]}}}
+        self.old = {"schema": "synthetic-unit-fixture", "qualificationTransferred": False,
+                    "origin": {"unchanged": "positive historical input"}, "paths": []}
+        for name, (before, _) in release.V108_NPM_BLOBS.items():
+            self.old["paths"].append({"path": name,
+                "upstream107": {"mode": "100644", "blob": "1" * 40},
+                "fork107": {"mode": "100644", "blob": "2" * 40},
+                "upstream108": None, "result": {"mode": "100644", "blob": before},
+                "disposition": "CARRIED_EXACT"})
+        for i in range(249 - len(self.old["paths"])):
+            self.old["paths"].append({"path": "synthetic/" + str(i), "untouched": True})
+        self.ledger = copy.deepcopy(self.old)
+        for row in self.ledger["paths"][:6]:
+            row["result"]["blob"] = release.V108_NPM_BLOBS[row["path"]][1]
+            row["disposition"] = release.V108_REMEDIATION
+        self.overrides = {}
+        self.calls = []
+        self.prior = {"package.json", "pnpm-lock.yaml"}
+
+    def git(self, directory, *args):
+        self.calls.append(args)
+        if args in self.overrides:
+            return self.overrides[args]
+        f = self.fixed
+        if args == ("rev-parse", f["commit"] + "^{tree}"):
+            return f["tree"]
+        if args == ("show", "-s", "--format=%P", f["commit"]):
+            return f["parent"]
+        if args == ("show", f["parent"] + ":" + self.proof):
+            return json.dumps(self.old)
+        if args[:4] == ("diff", "--name-only", "--no-renames", "-z"):
+            before, after = args[4:]
+            if (before, after) == (f["parent"], f["commit"]):
+                return "\0".join(sorted(set(release.V108_NPM_BLOBS) | {self.proof}))
+            if (before, after) == (self.integration, f["parent"]):
+                return "\0".join(sorted(self.prior | {self.proof}))
+            if (before, after) == (self.integration, f["commit"]):
+                return "\0".join(sorted(self.prior | set(release.V108_NPM_BLOBS) | {self.proof}))
+        if args[0] == "ls-tree":
+            _, commit, separator, name = args
+            self.assertEqual(separator, "--")
+            column = 0 if commit == f["parent"] else 1
+            return "100644 blob " + release.V108_NPM_BLOBS[name][column] + "\t" + name
+        self.fail("unexpected Git read: " + repr(args))
+
+    def run_check(self):
+        with patch.object(release, "git", side_effect=self.git), \
+             patch.object(release, "check_source_graph") as old_graph:
+            result = release.check_v108_npm_successor(self.source, "synthetic-readonly-store", self.ledger)
+            old_graph.assert_called_once()
+            historical, directory = old_graph.call_args.args
+            self.assertEqual(directory, "synthetic-readonly-store")
+            self.assertEqual(historical["commit"], self.fixed["parent"])
+            self.assertEqual(historical["tree"], self.fixed["parentTree"])
+            self.assertEqual(historical["patches"], [{"commit": self.fixed["parent"],
+                                                    "tree": self.fixed["parentTree"]}])
+            self.assertEqual(historical["merge"]["successors"], self.source["merge"]["successors"][:-1])
+            self.assertEqual(historical["merge"]["reconciliation"], {"path": self.proof,
+                "blob": self.fixed["parentLedgerBlob"], "sha256": self.fixed["parentLedgerSha256"]})
+            return result
+
+    def test_exact_successor_reconstructs_original_policy_before_total_delta(self):
+        self.assertEqual(self.run_check(), self.prior | set(release.V108_NPM_BLOBS))
+
+    def test_wrong_source_commit_tree_parent_or_proof_refuses(self):
+        for field in ("commit", "tree"):
+            with self.subTest(field=field):
+                original = self.source[field]; self.source[field] = "f" * 40
+                with self.assertRaises(release.Refusal): self.run_check()
+                self.source[field] = original
+        for side in ("parent", "tip"):
+            index = -2 if side == "parent" else -1
+            original = self.source["merge"]["successors"][index]["tree"]
+            self.source["merge"]["successors"][index]["tree"] = "f" * 40
+            with self.subTest(side=side), self.assertRaises(release.Refusal): self.run_check()
+            self.source["merge"]["successors"][index]["tree"] = original
+        self.source["merge"]["reconciliation"]["sha256"] = "0" * 64
+        with self.assertRaises(release.Refusal): self.run_check()
+
+    def test_git_tree_or_parent_change_refuses(self):
+        f = self.fixed
+        for key in (("rev-parse", f["commit"] + "^{tree}"),
+                    ("show", "-s", "--format=%P", f["commit"])):
+            with self.subTest(key=key):
+                self.overrides[key] = "0" * 40
+                with self.assertRaisesRegex(release.Refusal, "tree or parent"): self.run_check()
+                self.overrides.clear()
+
+    def test_extra_or_missing_changed_path_refuses(self):
+        key = ("diff", "--name-only", "--no-renames", "-z", self.fixed["parent"], self.fixed["commit"])
+        for names in (set(release.V108_NPM_BLOBS) | {self.proof, "unreviewed.ts"},
+                      set(release.V108_NPM_BLOBS)):
+            self.overrides[key] = "\0".join(sorted(names))
+            with self.subTest(names=names), self.assertRaisesRegex(release.Refusal, "path set"): self.run_check()
+
+    def test_every_before_after_mode_and_blob_are_bound_including_package_lock(self):
+        for commit in (self.fixed["parent"], self.fixed["commit"]):
+            for name in release.V108_NPM_BLOBS:
+                key = ("ls-tree", commit, "--", name)
+                for wrong in ("100755 blob " + "0" * 40 + "\t" + name,
+                              "100644 blob " + "0" * 40 + "\t" + name):
+                    self.overrides[key] = wrong
+                    with self.subTest(commit=commit, name=name, wrong=wrong), \
+                         self.assertRaisesRegex(release.Refusal, "mode/blob"): self.run_check()
+                self.overrides.clear()
+
+    def test_original_policy_refusal_propagates_before_successor_diff(self):
+        with patch.object(release, "git", side_effect=self.git), \
+             patch.object(release, "check_source_graph", side_effect=release.Refusal("old B refused")):
+            with self.assertRaisesRegex(release.Refusal, "old B refused"):
+                release.check_v108_npm_successor(self.source, "synthetic-readonly-store", self.ledger)
+        self.assertFalse(any(call[0] == "diff" for call in self.calls))
+
+    def test_ledger_header_origin_order_disposition_and_untouched_rows_preserved(self):
+        variants = []
+        for change in (lambda d: d.update(origin={"changed": True}),
+                       lambda d: d["paths"][0].update(upstream107=None),
+                       lambda d: d["paths"].reverse(),
+                       lambda d: d["paths"][0].update(disposition="CARRIED_EXACT"),
+                       lambda d: d["paths"][-1].update(untouched=False)):
+            changed = copy.deepcopy(self.ledger); change(changed); variants.append(changed)
+        for changed in variants:
+            self.ledger = changed
+            with self.subTest(changed=changed.get("origin")), \
+                 self.assertRaisesRegex(release.Refusal, "derived ledger"): self.run_check()
+
+    def test_historical_result_and_row_count_cannot_be_fabricated(self):
+        self.old["paths"][0]["result"]["blob"] = "0" * 40
+        with self.assertRaisesRegex(release.Refusal, "historical ledger result"): self.run_check()
+        self.old["paths"].pop()
+        with self.assertRaisesRegex(release.Refusal, "row count"): self.run_check()
+
+    def test_total_delta_cannot_hide_reversion_or_extra_path(self):
+        key = ("diff", "--name-only", "--no-renames", "-z", self.integration, self.fixed["commit"])
+        self.overrides[key] = "\0".join(sorted(set(release.V108_NPM_BLOBS) | {"extra.ts"}))
+        with self.assertRaisesRegex(release.Refusal, "total remediation"): self.run_check()
+
+    def test_original_path_and_package_policy_remains_narrow_for_other_successors(self):
+        self.assertNotIn("scripts/fork-release/native_tests.mjs", release.V108_REMEDIATION_PATHS)
+        self.assertNotIn("test/scripts/native-security-ownership.test.ts", release.V108_REMEDIATION_PATHS)
+        before = {"devDependencies": {key: "5.0.1" for key in
+                  ("vitest", "@vitest/browser-playwright", "@vitest/coverage-v8")}, "dependencies": {"npm": "12.2.0"}}
+        after = copy.deepcopy(before)
+        after["devDependencies"] = {key: "5.0.5" for key in before["devDependencies"]}
+        after["dependencies"]["npm"] = "12.2.1"
+        with patch.object(release, "git", side_effect=(json.dumps(before), json.dumps(after))):
+            with self.assertRaisesRegex(release.Refusal, "unrelated package metadata"):
+                release.check_v108_remediation_content("synthetic", "package.json", "old", "other-successor")
+
+
 if __name__ == "__main__":
     unittest.main()

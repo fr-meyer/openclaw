@@ -61,6 +61,7 @@ class HistoryFixture:
         self.baseline, self.previous = actual_baseline_inputs()
         self.rows = headers_from_actual_rows(self.baseline)
         self.prep = run(self.f.pins["preparation"]["runId"], self.f.pins["preparation"]["pipelineHead"], D.WORKFLOW)
+        self.prep["display_title"] = D.V6_PREPARATION_TITLE
         self.current = run("93000000002", oid("current full pipeline"), D.WORKFLOW, "in_progress", None)
         self.current.update(created_at="2026-10-29T01:03:00Z", updated_at="2026-10-29T01:04:00Z")
         self.rows[str(self.prep["id"])] = self.prep

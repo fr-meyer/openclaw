@@ -5,6 +5,7 @@ the published V5 Python contract and inputs under their original identities.
 Missing objects or changed shared Python owners refuse; no fetch or fallback is
 available. Only immutable authenticated bytes are cached between test cases.
 """
+import builtins
 import hashlib
 import os
 from pathlib import Path
@@ -70,21 +71,54 @@ def p7_input(name):
     return _CACHE[name]
 
 
+# Exact current release-owner compatibility, separate from immutable P7 PINS.
+# The successor literal is bound only after that exact canonical owner is reviewed.
+CURRENT_RELEASE_SUCCESSOR_SHA256 = "3bf47cc5a24e5c43ef3226e3e1fa9cf66c21a7e61bc5e698c71f411d86655d02"
+
+
+def _check_current_shared_owners():
+    for owner in ("release", "preflight"):
+        path = HERE / (owner + ".py")
+        if not path.is_file() or path.is_symlink():
+            raise AssertionError("historical_v5.shared_owner_changed")
+        current = path.read_bytes()
+        original = p7_input(owner)
+        successor = (owner == "release" and
+            type(CURRENT_RELEASE_SUCCESSOR_SHA256) is str and
+            hashlib.sha256(current).hexdigest() == CURRENT_RELEASE_SUCCESSOR_SHA256)
+        if current != original and not successor:
+            raise AssertionError("historical_v5.shared_owner_changed")
+
+
+def _p7_namespace(name):
+    """Fresh authenticated P7 dependencies; no process-global module mutation."""
+    modules = {owner: types.ModuleType(name + "__" + owner)
+               for owner in ("release", "preflight")}
+    original_import = builtins.__import__
+
+    def historical_import(module_name, globals=None, locals=None, fromlist=(), level=0):
+        if level == 0 and module_name in modules:
+            return modules[module_name]
+        return original_import(module_name, globals, locals, fromlist, level)
+
+    def execute(module, owner, raw):
+        module.__file__ = "<historical-p7:" + P7 + ":" + owner + ".py>"
+        module.__dict__["__builtins__"] = dict(vars(builtins), __import__=historical_import)
+        exec(compile(raw, module.__file__, "exec"), module.__dict__)
+        return module
+
+    # Both policy and Refusal identity stay historical. Current caller modules
+    # retain their own class and globals; P7 callers catch driver.release.Refusal.
+    for owner in ("release", "preflight"):
+        execute(modules[owner], owner, p7_input(owner))
+    return execute(types.ModuleType(name), "source_validation_v108", p7_input("driver"))
+
+
 def load_p7_driver(name):
     if type(name) is not str or not name.startswith("historical_v5_") or not name.isidentifier():
         raise AssertionError("historical_v5.module_identity")
-    # The historical driver imports these adjacent maintained Python owners.
-    # Preserve their ABI only while their actual bytes remain exactly P7's.
-    for owner in ("release", "preflight"):
-        path = HERE / (owner + ".py")
-        if not path.is_file() or path.is_symlink() or path.read_bytes() != p7_input(owner):
-            raise AssertionError("historical_v5.shared_owner_changed")
-    raw = p7_input("driver")
-    module = types.ModuleType(name)
-    # A virtual historical name prevents a later file read from silently using
-    # the different current validator. The P7 owner itself does not read __file__.
-    module.__file__ = "<historical-p7:" + P7 + ":source_validation_v108.py>"
-    exec(compile(raw, module.__file__, "exec"), module.__dict__)
+    _check_current_shared_owners()
+    module = _p7_namespace(name)
     controls = {key: p7_input(key) for key in (
         "source-request.json", "manifest.json", "patch-inventory.json", "settled-usage.json")}
     return module, controls
