@@ -40,11 +40,10 @@ class Clock(datetime):
 
 
 def load_fragment():
-    # The adjacent maintained owner is imported as trusted Python only. Its
-    # guarded main is not invoked; all provider/Git functions below are fixtures.
-    spec = importlib.util.spec_from_file_location("v5_history_owner_fixture", HERE / "source_validation_v108.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Fresh module state per test, from exact immutable P7 Python bytes.
+    # V6 current controls/CLI never supply a historical V5 fixture.
+    from historical_v5_test_inputs import load_p7_driver
+    module, _ = load_p7_driver("historical_v5_history_owner_fixture")
     ns = module.__dict__
     ns["need"] = need
     ns["datetime"] = Clock
@@ -72,9 +71,10 @@ class HistoryV5Tests(unittest.TestCase):
         self.ns = load_fragment()
         self.temp = tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.raw = (PIPELINE / self.ns["V5_SETTLED_USAGE_PATH"]).read_bytes();self.prefix = json.loads(self.raw)
+        from historical_v5_test_inputs import p7_input
+        self.raw = p7_input("settled-usage.json");self.prefix = json.loads(self.raw)
         p = self.root / self.ns["V5_SETTLED_USAGE_PATH"];p.parent.mkdir(parents=True);p.write_bytes(self.raw)
-        self.workflow = (PIPELINE / self.ns["WORKFLOW"]).read_bytes()
+        self.workflow = p7_input("workflow")
         self.workflow = self.workflow.replace(b"    timeout-minutes: 15\n", b"    timeout-minutes: 30\n", 1)
         w = self.root / self.ns["WORKFLOW"];w.parent.mkdir(parents=True);w.write_bytes(self.workflow)
         pins = self.ns["V5_STAGE_PINS"]

@@ -1,9 +1,21 @@
-# npm12.2.1 lock derivation only
+# Future 2026.10.8 synthetic source validation
 
-This intermediate pipeline preserves sourceB `84d9bd1c618708e9d5798a730d473ddecf99297a` and the reviewed P7 bootstrap bytes. It generates the approved npm12.2.1 lock through pinned pnpm12.15.0 on secretless CI; it does not qualify or publish application source.
+This candidate is unqualified. The npm 12.2.1 lock was derived once in the
+reviewed secretless preparation job; derivation is not test qualification.
 
-One fixed `lock-preparation` job, including checkout/setup/upload/post-actions, is limited to45 runner-minutes. Its read-only admission binds the open draftPR28, exact head/immediate P7 parent, unchanged source branch, original eight terminal source runs, single current run/attempt1 and standard hosted job. The later resolver step receives no read token, uses a new HOME and existing reviewed process-group settlement, and must retain every other tracked source byte/mode. Existing7-day release-age policy is unchanged; npm12.2.1 was published October15.
+One fresh round selects all 15 profiles. Admission is capped at 30 minutes,
+individual profiles at their fixed reviewed caps, final aggregation at 10
+minutes, and at most three source jobs run concurrently. All operations must
+fit the October 30 00:03:19 UTC deadline. The approved npm stage allows 1,337
+additional runner-minutes including one targeted correction and incidental
+jobs, within the cumulative US$0.30 limit including tax allowance.
 
-The only artifact is `v108-npm-lock-preparation`. A successful derivation has three fixed regular entries: `pnpm-lock.yaml`, `npm-lock.diff`, `generation.json`. Plain payload is capped below2MiB with64KiB reserved for provider ZIP framing; retention is one day. On failure, the job stays failed and preserves an explicit refused receipt plus bounded public lock/diff bytes when actually available; unknown, oversized or unsettled-writer output produces metadata only. No empty replacement files or passing qualification are fabricated. No package tarball, environment, credential, private configuration or raw registry data is uploaded. The actual generated lock must equal the narrowly expected npm-only delta; the comparison guard never writes a lockfile. Root must authenticate the genuine artifact/run/digest, require a passed job and exact three-file derived-only receipt, and review its exact bytes before building a successor.
+Only public source and synthetic fixtures are allowed. No release image,
+Docker/OCI build, GCP/SDK use, private data, live provider credentials, new
+secrets, merge or production deployment is authorized. Original failures and
+previous candidate results remain under their original identities.
 
-Public source/workflow/logs and synthetic metadata only. No application test, image build, GCP/SDK, database, new access, merge or deployment is authorized by this derivation receipt. Full15-profile validation and any targeted correction remain separate, source-bound operations under the approved overall budget/deadline.
+The historical preparation.json, settled-usage.json and upstream-verification
+records keep their original source identities. Current operational bindings
+are source-request.json, manifest.json, patch-inventory.json,
+npm-settled-usage.json and lock-preparation-proof.json.

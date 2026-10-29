@@ -12,6 +12,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from historical_v5_test_inputs import p8_preparation_workflow
+
 HERE = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location("npm_lock_preparation_contract", HERE / "npm_lock_prepare_v108.py")
 M = importlib.util.module_from_spec(SPEC)
@@ -383,7 +385,7 @@ class Contracts(unittest.TestCase):
             command.assert_not_called(); driver.assert_not_called(); write.assert_not_called()
 
     def test_first_clock_accepts_full_job_before_writing_output(self):
-        workflow = (HERE.parents[1] / ".github/workflows/future-v108-source-validation.yml").read_text()
+        workflow = p8_preparation_workflow().decode("utf-8")
         first = workflow.split("    steps:\n", 1)[1].split("      - name: Checkout exact reviewed pipeline", 1)[0]
         self.assertTrue(first.startswith("      - name: Observe the shared45-minute job clock before checkouts\n"))
         raw = first.split("        run: |\n", 1)[1]
@@ -402,7 +404,7 @@ class Contracts(unittest.TestCase):
             self.assertEqual(output.read_text(), "started_epoch=" + str(int(started)) + "\n")
 
     def test_first_clock_expiry_writes_nothing_before_checkouts(self):
-        workflow = (HERE.parents[1] / ".github/workflows/future-v108-source-validation.yml").read_text()
+        workflow = p8_preparation_workflow().decode("utf-8")
         first = workflow.split("    steps:\n", 1)[1].split("      - name: Checkout exact reviewed pipeline", 1)[0]
         raw = first.split("        run: |\n", 1)[1]
         lines = [line[10:] for line in raw.splitlines()]

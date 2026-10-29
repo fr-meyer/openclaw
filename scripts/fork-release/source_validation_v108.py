@@ -169,7 +169,8 @@ def admission_diagnostics(env, enabled, operational=False):
         yield
     except (release.Refusal, OSError, ValueError, KeyError, TypeError,
             subprocess.CalledProcessError, ProfileInterrupted) as error:
-        classes = ((V5ContractRefusal, "V5ContractRefusal"),
+        classes = ((V6ContractRefusal, "V6ContractRefusal"),
+                   (V5ContractRefusal, "V5ContractRefusal"),
                    (V4ContractRefusal, "V4ContractRefusal"),
                    (urllib.error.HTTPError, "HTTPError"),
                    (subprocess.CalledProcessError, "CalledProcessError"),
@@ -181,9 +182,15 @@ def admission_diagnostics(env, enabled, operational=False):
         child_exit = error.returncode if isinstance(error, subprocess.CalledProcessError) else None
         # HTTPError may delegate unknown attributes to an absent file handle.
         # Read only our own annotation; never inspect/format exception payloads.
-        code = runtime_refusal_code_v5(error) if operational else vars(error).get("admission_need_code")
-        source_sha, source_tree = ((V5_STAGE_PINS["sourceSha"], V5_STAGE_PINS["sourceTree"])
-                                   if operational else (SOURCE, TREE))
+        code = runtime_refusal_code_v6(error) if operational else vars(error).get("admission_need_code")
+        if operational:
+            trusted = V6_STAGE_PINS if type(V6_STAGE_PINS) is dict else {}
+            source_sha = trusted.get("sourceSha")
+            source_tree = trusted.get("sourceTree")
+            source_sha = source_sha if _v6_matches(r"[0-9a-f]{40}\Z", source_sha) else None
+            source_tree = source_tree if _v6_matches(r"[0-9a-f]{40}\Z", source_tree) else None
+        else:
+            source_sha, source_tree = SOURCE, TREE
         summarize({"schema": "openclaw.v108.admission-failure.v1", "campaignId": CAMPAIGN,
             "status": "refused", **_ADMISSION_DIAGNOSTIC,
             "failedNeedCode": code if operational or code in ADMISSION_NEED_CODES.values() else "need.unprojected",
@@ -317,6 +324,8 @@ def profile_minutes_for(request=None):
     if request is None:
         return PROFILE_MINUTES
     need(type(request) is dict, "profile policy record required")
+    if request.get("schema") == V6_SCHEMA:
+        return validation_budget_v6(request)["profileMinutes"]
     if request.get("schema") == V5_SCHEMA:
         return validation_budget_for_record_v5(request)["profileMinutes"]
     if request.get("schema") == "openclaw.fork-source-validation-request.v4":
@@ -332,6 +341,9 @@ def profile_minutes_for(request=None):
 
 
 def profiles_for(request):
+    if request.get("schema") == V6_SCHEMA:
+        validate_request_v6(request, V6_STAGE_PINS)
+        return list(request["profiles"])
     if request.get("schema") == V5_SCHEMA:
         validate_request_v5(request, V5_STAGE_PINS)
         return list(request["profiles"])
@@ -951,19 +963,19 @@ def history_checks(request, event, env, pipeline, api):
 
 
 def metadata(pipeline):
-    """Operational metadata is exclusively the reviewed closed v5 request."""
-    request = validate_request_v5(_v5_json((pipeline / REQUEST).read_bytes()), V5_STAGE_PINS)
+    """Current operations require the exact reviewed V6 npm-repair request."""
+    request = validate_request_v6(_v6_json((pipeline / REQUEST).read_bytes()), V6_STAGE_PINS)
     directory = pipeline / CANDIDATE
     manifest, manifest_hash = release.manifest_at(directory / "manifest.json")
-    _v5_need(request["manifestSha256"] == manifest_hash and
-             request["inventorySha256"] == preflight.digest(directory / "patch-inventory.json"),
-             "v5.runtime_metadata_digest")
-    source_sha, source_tree = source_identity_for(request)
-    _v5_need(manifest["source"]["commit"] == source_sha and
-             manifest["source"]["tree"] == source_tree and manifest["productionEligible"] is False,
-             "v5.runtime_manifest_source")
-    _v5_need(preflight.digest(pipeline / SETTLED_USAGE) == request["settledUsageSha256"],
-             "v5.runtime_settled_usage_digest")
+    _v6_need(request["manifestSha256"] == manifest_hash and
+        request["inventorySha256"] == preflight.digest(directory / "patch-inventory.json"),
+        "v6.runtime_metadata_digest")
+    _v6_need(manifest["source"]["commit"] == request["sourceSha"] and
+        manifest["source"]["tree"] == request["sourceTree"] and manifest["productionEligible"] is False,
+        "v6.runtime_manifest_source")
+    _v6_need(preflight.digest(pipeline / V6_SETTLED_USAGE_PATH) == request["settledUsageSha256"],
+        "v6.runtime_baseline_digest")
+    validate_generation_receipt_v6((pipeline / V6_PREPARATION_PROOF_PATH).read_bytes(), V6_STAGE_PINS)
     return request, manifest, manifest_hash
 
 
@@ -982,8 +994,10 @@ def admission_deadline(env, request=None):
          "early admission clock required")
     # Historical helpers retain their original15-minute record policy. They do
     # not provide an operational CLI route to V3/V4.
-    minutes = (validation_budget_for_record_v5(request)["admissionMinutes"]
-               if request is not None and request.get("schema") == V5_SCHEMA else 15)
+    minutes = (validation_budget_v6(request)["admissionMinutes"]
+        if request is not None and request.get("schema") == V6_SCHEMA else
+        validation_budget_for_record_v5(request)["admissionMinutes"]
+        if request is not None and request.get("schema") == V5_SCHEMA else 15)
     now = time.time()
     need(int(start) <= now and now - int(start) < minutes * 60,
          "early admission clock freshness")
@@ -1042,6 +1056,8 @@ def selected_tests(paths, profile, request=None):
         rest = [p for p in family if p not in set(priority)]
         return sorted((priority + rest)[int(profile[-1]) - 1::3])
     if profile == "compatibility":
+        if request is not None and request.get("schema") == V6_SCHEMA:
+            return list(V6_RUNTIME_COMPATIBILITY_TESTS)
         if request is not None and request.get("schema") == V5_SCHEMA:
             return list(V5_RUNTIME_COMPATIBILITY_TESTS)
         return list(V4_RUNTIME_COMPATIBILITY_TESTS if request is not None and
@@ -1090,23 +1106,29 @@ def commands(pipeline, source, profile, paths, request=None):
         compatibility = selected_tests(paths, profile, request)
         required = set(compatibility) | {"test/v108-remediation-security.test.mjs"}
         need(required <= set(paths), "complete compatibility acceptance paths")
-        return [["node", str(pipeline / "scripts/fork-release/native_tests.mjs"),
+        result = [["node", str(pipeline / "scripts/fork-release/native_tests.mjs"),
                  "--source-root", str(source), "--", "test/v108-remediation-security.test.mjs"],
                 ["node", "--import", "./scripts/tsx.mjs", "scripts/test-projects.mts", *compatibility],
                 ["pnpm", "deps:npm-lock:check:changed", "--base", ORIGINAL_SOURCE, "--head", source_sha]]
+        if request is not None and request.get("schema") == V6_SCHEMA:
+            result.append(["node", "--input-type=module", "-e", V6_BUNDLED_NPM_VERSION_CHECK])
+        return result
     if profile == "pipeline-contracts":
         names = ("test_release.py", "test_preflight.py", "test_merge_source.py",
                                           "test_merge_source_v107.py", "test_merge_source_v108.py",
                                           "test_source_tests.py", "test_source_validation_v108.py",
                                           "test_v108_pnpm_bootstrap.py", "test_v108_recovery_budget.py",
                                           "test_v108_successor_witness.py")
-        if request is not None and request.get("schema") in (V4_SCHEMA, V5_SCHEMA):
+        if request is not None and request.get("schema") in (V4_SCHEMA, V5_SCHEMA, V6_SCHEMA):
             names += ("test_v108_runtime_contract_v4.py", "test_request_contract_v4.py",
                       "test_history_checks_v4.py")
-        if request is not None and request.get("schema") == V5_SCHEMA:
+        if request is not None and request.get("schema") in (V5_SCHEMA, V6_SCHEMA):
             names = tuple(name for name in names if name != "test_v108_runtime_contract_v4.py")
             names += ("test_request_contract_v5.py", "test_history_checks_v5.py",
                       "test_v108_runtime_contract_v5.py", "test_v108_source_donor.py")
+        if request is not None and request.get("schema") == V6_SCHEMA:
+            names += ("test_historical_v5_test_inputs.py", "test_npm_lock_preparation_v108.py",
+                "test_request_contract_v6.py", "test_history_checks_v6.py", "test_v108_runtime_contract_v6.py")
         return [["python3", "-m", "unittest", "discover", "-s", str(pipeline / "scripts/fork-release"),
                  "-p", name] for name in names]
     tests = selected_tests(paths, profile, request)
@@ -1370,7 +1392,7 @@ def main():
     parser.add_argument("command", choices=("admit", "checkout-budget", "fetch-closure", "run", "finalize"))
     parser.add_argument("--pipeline-dir", type=Path, required=True)
     parser.add_argument("--source-dir", type=Path)
-    parser.add_argument("--profile", choices=V5_PROFILE_MINUTES)
+    parser.add_argument("--profile", choices=V6_PROFILE_MINUTES)
     args = parser.parse_args()
     env = os.environ
     with admission_diagnostics(env, True, operational=True):
@@ -1386,21 +1408,21 @@ def command(args, env):
     validate_event(event, env)
     admission_stage("metadata", "manifest.request")
     request, manifest, manifest_hash = metadata(args.pipeline_dir)
-    validate_request_v5(request, V5_STAGE_PINS)
+    validate_request_v6(request, V6_STAGE_PINS)
     source_sha, source_tree = source_identity_for(request)
     if args.command == "finalize":
         code_binding(args.pipeline_dir, None, event, env, minimal=True, request=request)
         admission_passed = env.get("SOURCE_ADMISSION_RESULT") == "success"
         passed = env.get("SOURCE_MATRIX_RESULT") == "success" and admission_passed
-        summarize({"campaignId": CAMPAIGN, "stageRound": request["stageRound"], "lifetimeOperatorRound": request["lifetimeOperatorRound"], "sourceSha": source_sha,
+        summarize({"campaignId": CAMPAIGN, "stageRound": request["stageRound"],
+            "lifetimeOperatorRound": request["lifetimeOperatorRound"], "sourceSha": source_sha,
             "sourceTree": source_tree, "status": "passed" if passed else "failed",
-            "coverage": "affected_profiles_with_admission_verified_historical_reuse",
-            "affectedProfiles": profiles_for(request), "sourceWitness": request["sourceWitness"],
-            "historicalReuse": {"verificationOwner": "native_admission", "verified": admission_passed,
-                "profiles": list(V4_REUSED_PROFILES), "sourceSha": V4_PARENT_SOURCE,
-                "sourceTree": V4_PARENT_TREE, "pipelineHead": V4_PARENT_PIPELINE,
-                "runId": V4_PARENT_RUN, "closedPrefixSha256": V4_CLOSED_PREFIX_SHA256,
-                "relabeledAsCurrentSourcePass": False},
+            "coverage": "fresh_current_candidate_all15" if request["stageRound"] == 1 else
+                "current_candidate_with_admission_verified_targeted_completion",
+            "selectedProfiles": profiles_for(request), "requiredFullProfileCount": 15,
+            "sourceWitness": request["sourceWitness"], "lockPreparation": request["lockPreparation"],
+            "historicalF5CoverageReused": False, "historicalConclusionsRetained": True,
+            "targetedPriorCoverageVerificationOwner": "native_admission" if request["stageRound"] == 2 else None,
             "productionAuthorized": False, "imageBuilt": False}, env)
         return 0 if passed else 1
     if args.command == "checkout-budget":
@@ -1419,6 +1441,7 @@ def command(args, env):
         need(profile in profiles_for(request), "profile not in admitted request")
         deadline_check(env, profile, request)
     if args.command == "fetch-closure":
+        admission_stage("closure", "closure.acquire")
         fetch_closure(args.pipeline_dir, args.source_dir, request=request, env=env, event=event)
         return 0
     if args.command == "admit":
@@ -1426,20 +1449,21 @@ def command(args, env):
         admission_stage("history", "current-pr")
         token = env.get("GH_SOURCE_READ_TOKEN", "")
         need(bool(token), "read-only API token required")
-        budget = history_checks_v5(request, event, env, args.pipeline_dir, lambda p: api_json(p, token))
+        budget = history_checks_v6(request, event, env, args.pipeline_dir, lambda p: api_json(p, token), V6_STAGE_PINS)
         admission_stage("closure", "closure.acquire")
         fetch_closure(args.pipeline_dir, args.source_dir, request=request, env=env, event=event)
         admission_stage("equivalence", "equivalence.verify")
-        equivalence = verify_source_equivalence_v5(request, V5_STAGE_PINS, runtime_read_git(args.source_dir))
+        equivalence = verify_source_equivalence_v6(request, V6_STAGE_PINS, runtime_read_git(args.source_dir),
+            (args.pipeline_dir / V6_PREPARATION_PROOF_PATH).read_bytes())
         budget["sourceEquivalence"] = equivalence
         matrix = {"include": [{"profile": p, "minutes": profile_minutes_for(request)[p]}
                               for p in profiles_for(request)]}
-        _v5_need(budget["profileMatrix"] == matrix["include"] and
-                 budget["reusedProfileEvidence"]["profiles"] == list(V4_REUSED_PROFILES),
-                 "v5.runtime_verified_budget_and_reuse")
-        _v5_need(type(budget["deadlineEpoch"]) is int and
+        _v6_need(budget["profileMatrix"] == matrix["include"] and
+            budget["historicalCoverageReused"] is False and budget["reusedProfileCount"] == 0,
+            "v6.runtime_verified_budget_and_fresh_coverage")
+        _v6_need(type(budget["deadlineEpoch"]) is int and
                  budget["deadlineEpoch"] <= int(timestamp(approval_deadline_for(request)).timestamp()),
-                 "v5.runtime_approval_deadline")
+                 "v6.runtime_approval_deadline")
         closure_remaining(admission_deadline(env, request))
         admission_stage("matrix", "matrix.publish")
         with open(env["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
@@ -1456,7 +1480,9 @@ def command(args, env):
     with profile_signals():
         try:
             source_preflight(args.pipeline_dir, args.source_dir, manifest, manifest_hash)
-            witness = verify_source_equivalence_v5(request, V5_STAGE_PINS, runtime_read_git(args.source_dir))
+            admission_stage("equivalence", "equivalence.verify")
+            witness = verify_source_equivalence_v6(request, V6_STAGE_PINS, runtime_read_git(args.source_dir),
+            (args.pipeline_dir / V6_PREPARATION_PROOF_PATH).read_bytes())
             paths = git(args.source_dir, "ls-tree", "-r", "--name-only", source_sha).decode().splitlines()
             planned = commands(args.pipeline_dir, args.source_dir, args.profile, paths, request=request)
             resources = resource_check(args.source_dir)
@@ -1490,9 +1516,9 @@ def command(args, env):
             summarize({"campaignId": CAMPAIGN, "profile": args.profile, "phase": "profile",
                 "status": "interrupted" if isinstance(error, ProfileInterrupted) else "refused",
                 "errorClass": type(error).__name__ if type(error).__name__ in (
-                    "V5ContractRefusal", "V4ContractRefusal", "Refusal", "OSError", "ValueError", "KeyError", "TypeError",
+                    "V6ContractRefusal", "V5ContractRefusal", "V4ContractRefusal", "Refusal", "OSError", "ValueError", "KeyError", "TypeError",
                     "CalledProcessError", "ProfileInterrupted") else "UnprojectedError",
-                "failedNeedCode": runtime_refusal_code_v5(error), "sourceSha": source_sha,
+                "failedNeedCode": runtime_refusal_code_v6(error), "sourceSha": source_sha,
                 "sourceTree": source_tree, "signal": signal.SIGTERM if isinstance(error, ProfileInterrupted) else None,
                 "productionAuthorized": False, "imageBuilt": False}, {})
             raise
@@ -1525,6 +1551,9 @@ def source_identity_for(request=None):
     if request is None:
         return SOURCE, TREE
     _v4_need(type(request) is dict, "v4.runtime_request_type")
+    if request.get("schema") == V6_SCHEMA:
+        validate_request_v6(request, V6_STAGE_PINS)
+        return request["sourceSha"], request["sourceTree"]
     if request.get("schema") == V5_SCHEMA:
         validate_request_v5(request, V5_STAGE_PINS)
         return request["sourceSha"], request["sourceTree"]
@@ -1540,6 +1569,9 @@ def approval_deadline_for(request=None):
     if request is None:
         return APPROVAL_DEADLINE
     _v4_need(type(request) is dict, "v4.runtime_request_type")
+    if request.get("schema") == V6_SCHEMA:
+        validate_request_v6(request, V6_STAGE_PINS)
+        return V6_DEADLINE
     if request.get("schema") == V5_SCHEMA:
         validate_request_v5(request, V5_STAGE_PINS)
         return V5_DEADLINE
@@ -3207,7 +3239,7 @@ def fetch_closure(pipeline, source, request=None, env=None, event=None):
     if request.get("schema") in ("openclaw.fork-source-validation-request.v3",
                                   "openclaw.fork-source-validation-request.v4"):
         return fetch_closure_historical(pipeline, source, request=request, env=env)
-    need(request.get("schema") == V5_SCHEMA, "donor.current_schema")
+    need(request.get("schema") in (V5_SCHEMA, V6_SCHEMA), "donor.current_schema")
     env = os.environ if env is None else env
     need(type(event) is dict, "donor.validated_event")
     pipeline_head = validate_event(event, env)
@@ -3332,6 +3364,692 @@ ADMISSION_NEED_CODES.update({'v5.history.ancillary90_exceeded': 'v5.history.anci
  'v5.history.workflow_top_level': 'v5.history.workflow_top_level',
  'v5.history.workflow_trigger': 'v5.history.workflow_trigger',
  'v5.history.workflow_yaml_shape': 'v5.history.workflow_yaml_shape'})
+
+
+"""Closed npm-repair contract fragment for the maintained validation owner.
+
+The coordinating owner supplies actual reviewed pins after CI derivation. This
+file has no CLI, network, process, publication, or candidate-execution entrypoint.
+It reuses the existing strict Git/ledger and workflow/job measurement owners.
+"""
+
+V6_SCHEMA = "openclaw.fork-source-validation-request.v6"
+V6_POLICY = "npm-remediation-v1"
+V6_AUTHORIZATION = "future-v108-npm-repair-20261029"
+V6_CAMPAIGN = "future-v108-source-validation-20261027"
+V6_DEADLINE = "2026-10-30T00:03:19Z"
+V6_BASE_SOURCE = "84d9bd1c618708e9d5798a730d473ddecf99297a"
+V6_BASE_TREE = "ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4"
+V6_PREVIOUS_PIPELINE = "d213bb593b3e618d459dde6767bc93f716ac8493"
+V6_PREVIOUS_PREFIX_SHA256 = "b02f46b6c5404f33bf04a519190bc724843f901f3bd045ac47a82edaa845eb0d"
+V6_BASELINE_SHA256 = "6f6043f0a6e733fd00ffb3dedc8d14d5c21c5da8ce1db96303b70d3d403c7382"
+V6_PREVIOUS_PACKAGE_SHA256 = "289d42988293d8afd6a7ca133b0ffbbde7c0a466592dfe7b08565371bbcd60a4"
+V6_PREVIOUS_LOCK_SHA256 = "bfaafb73d19b61f0b5124791c05ae8c65a7436f0d6c9ef1dd6f79358e9c35334"
+V6_NPM_VERSION = "12.2.1"
+V6_NPM_INTEGRITY = "sha512-bKCmFRVT/BB+YPEYbZwQ1XUI3N5t4xKSpU1MxOjo7z3iWzKBJ0ZXRC1xFdEN+TC7N5TdywaBzf2dMXGJq/e2PQ=="
+V6_PROFILES = ("dependency", "types-production", "types-tests", "types-scripts",
+    "workboard-1", "workboard-2", "models-1", "models-2", "sqlite", "doctor-1",
+    "doctor-2", "doctor-3", "memory", "pipeline-contracts", "compatibility")
+V6_PROFILE_MINUTES = dict(zip(V6_PROFILES,
+    (60, 90, 90, 90, 60, 60, 60, 60, 60, 90, 45, 45, 60, 45, 60)))
+V6_ADMISSION_MINUTES = 30
+V6_FINAL_MINUTES = 10
+V6_FULL_MINUTES = 1015
+V6_TARGETED_MINUTES = 200
+V6_PREPARATION_MINUTES = 45
+V6_ANCILLARY_MINUTES = 77
+V6_NEW_MINUTES = 1337
+V6_PRIOR_MINUTES = 1237
+V6_PRIOR_RUNS = 168
+V6_PRIOR_SOURCE_IDS = ("40607329263", "40609889437", "40616416909", "40639374411",
+    "40647629182", "40681376480", "40688279536", "40706982753")
+V6_PREVIOUS_STAGE_MINUTES = 309
+V6_EXISTING_STAGE_LIMIT = 1650
+V6_OVERALL_MINUTES = 18000
+V6_DIAGNOSTIC_BYTES = 64 * 1024 * 1024
+V6_PREPARATION_ARTIFACT_BYTES = 2 * 1024 * 1024
+V6_ARTIFACT_BASELINE = {"count": 15, "bytes": 9335}
+V6_SETTLED_USAGE_PATH = "scripts/fork-release/candidates/v2026.10.8-source-only/npm-settled-usage.json"
+V6_PREPARATION_PROOF_PATH = "scripts/fork-release/candidates/v2026.10.8-source-only/lock-preparation-proof.json"
+V6_SOURCE_BRANCH = "prep/v2026.10.8-remediation"
+V6_SCOPE = "approved-npm-patch-and-fixture-remediation"
+V6_SOURCE_PATHS = frozenset(("package.json", "pnpm-lock.yaml",
+    "scripts/generate-npm-package-lock.mts", "test/scripts/generate-npm-package-lock.test.ts",
+    "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+    "test/v108-remediation-security.test.mjs", "scripts/fork-release/native_tests.mjs",
+    "test/scripts/native-security-ownership.test.ts"))
+# This is deliberately unbound. Only the root's reviewed actual derivation and
+# source identities can replace it; it cannot admit an invented future source.
+V6_STAGE_PINS = {'sourceSha': '9b0a696bf62f045889d76044f84a0c372c8dddcc', 'sourceTree': 'b5905b54f4b70f45ea58ace4feccd30031200864', 'manifestSha256': '1694932d3eca8357161671a0d62e319c48f2a3ea9b047ae447db2068ab56b997', 'inventorySha256': '830baa2cc1ce989d1da4208a059a7704fd72fa0176305d9afb56785e25bdf893', 'settledUsageSha256': '6f6043f0a6e733fd00ffb3dedc8d14d5c21c5da8ce1db96303b70d3d403c7382', 'preparation': {'runId': '40804517284', 'pipelineHead': 'e96941f0c8c05a45d7df32ca7e45758e12609be7', 'artifactId': 12867024791, 'artifactSha256': 'f433194ae0b6927a21c8ba8a5be7bebb000a533a39a979905855d5cbb8b691e3', 'generationReceiptSha256': '662cb33cb91ab073b05f3cdf14ed1d0a8221e9d77c892f3668fac350c98324c6', 'packageSha256': 'd5cb6bde3b3d5f032b09add3adcb16fb2ae6dab85ba375051376533c1ddbf8a1', 'lockSha256': '5e631697caa53422d40dde5ae04a7ee0d84321921891062a4f580ca11b55fc50'}, 'priorValidationRuns': [], 'sourceHops': [{'sourceSha': '9b0a696bf62f045889d76044f84a0c372c8dddcc', 'sourceTree': 'b5905b54f4b70f45ea58ace4feccd30031200864'}], 'previousSourceHopCount': 0}
+
+
+class V6ContractRefusal(ValueError):
+    pass
+
+
+def _v6_need(condition, code):
+    if not condition:
+        raise V6ContractRefusal(code)
+
+
+def _v6_matches(pattern, value):
+    return type(value) is str and re.fullmatch(pattern, value) is not None
+
+
+def _v6_json(raw):
+    _v6_need(type(raw) is bytes and 0 < len(raw) <= V6_DIAGNOSTIC_BYTES, "v6.bounded_json")
+    def pairs(values):
+        result = {}
+        for key, value in values:
+            _v6_need(key not in result, "v6.duplicate_json_key")
+            result[key] = value
+        return result
+    def constant(value):
+        raise V6ContractRefusal("v6.invalid_json_constant")
+    try:
+        return json.loads(raw, object_pairs_hook=pairs, parse_constant=constant)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise V6ContractRefusal("v6.invalid_json") from None
+
+
+def _v6_equal(left, right):
+    return json.dumps(left, sort_keys=True, separators=(",", ":"), allow_nan=False) == \
+        json.dumps(right, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _v6_preparation_pin(value):
+    fields = {"runId", "pipelineHead", "artifactId", "artifactSha256",
+        "generationReceiptSha256", "packageSha256", "lockSha256"}
+    _v6_need(type(value) is dict and set(value) == fields, "v6.preparation_pin_fields")
+    _v6_need(_v6_matches(r"[1-9][0-9]{0,19}\Z", value["runId"]) and
+        _v6_matches(r"[0-9a-f]{40}\Z", value["pipelineHead"]) and
+        type(value["artifactId"]) is int and value["artifactId"] > 0,
+        "v6.preparation_pin_identity")
+    _v6_need(all(_v6_matches(r"[0-9a-f]{64}\Z", value[key]) for key in
+        ("artifactSha256", "generationReceiptSha256", "packageSha256", "lockSha256")),
+        "v6.preparation_pin_digest")
+    return value
+
+
+def _v6_pins(value):
+    fields = {"sourceSha", "sourceTree", "manifestSha256", "inventorySha256",
+        "settledUsageSha256", "preparation", "priorValidationRuns", "sourceHops",
+        "previousSourceHopCount"}
+    _v6_need(type(value) is dict and set(value) == fields, "v6.trusted_pin_fields")
+    _v6_need(all(_v6_matches(r"[0-9a-f]{40}\Z", value[key]) for key in
+        ("sourceSha", "sourceTree")) and all(_v6_matches(r"[0-9a-f]{64}\Z", value[key])
+        for key in ("manifestSha256", "inventorySha256", "settledUsageSha256")),
+        "v6.trusted_source_pins")
+    _v6_need(value["settledUsageSha256"] == V6_BASELINE_SHA256, "v6.trusted_baseline_pin")
+    _v6_preparation_pin(value["preparation"])
+    runs = value["priorValidationRuns"]
+    _v6_need(type(runs) is list and len(runs) <= 1 and all(type(pin) is dict and
+        set(pin) == {"runId", "pipelineHead", "requestSha256"} and
+        _v6_matches(r"[1-9][0-9]{0,19}\Z", pin["runId"]) and
+        _v6_matches(r"[0-9a-f]{40}\Z", pin["pipelineHead"]) and
+        _v6_matches(r"[0-9a-f]{64}\Z", pin["requestSha256"]) for pin in runs),
+        "v6.trusted_validation_runs")
+    _v6_need(len({value["preparation"]["runId"], *[pin["runId"] for pin in runs]}) == 1 + len(runs)
+        and not ({value["preparation"]["runId"], *[pin["runId"] for pin in runs]} & set(V6_PRIOR_SOURCE_IDS)),
+        "v6.trusted_run_unique")
+    hops = value["sourceHops"]
+    _v6_need(type(hops) is list and 1 <= len(hops) <= 2 and all(type(hop) is dict and
+        set(hop) == {"sourceSha", "sourceTree"} and all(_v6_matches(r"[0-9a-f]{40}\Z", hop[key])
+        for key in ("sourceSha", "sourceTree")) for hop in hops), "v6.trusted_source_hops")
+    _v6_need(len({V6_BASE_SOURCE, *[hop["sourceSha"] for hop in hops]}) == 1 + len(hops) and
+        hops[-1] == {"sourceSha": value["sourceSha"], "sourceTree": value["sourceTree"]},
+        "v6.trusted_source_chain")
+    _v6_need(type(value["previousSourceHopCount"]) is int and
+        0 <= value["previousSourceHopCount"] <= len(hops), "v6.trusted_previous_hop_count")
+    return value
+
+
+def v6_required_correction_profiles(paths):
+    _v6_need(type(paths) is list and paths == sorted(set(paths)) and bool(paths) and
+        all(type(path) is str and path in V6_SOURCE_PATHS for path in paths), "v6.approved_changed_paths")
+    # Preserve the existing conservative affected-owner rule. The small targeted
+    # allowance never authorizes dropping a required owner merely to fit it.
+    if set(paths) & {"package.json", "pnpm-lock.yaml"}:
+        return set(V6_PROFILES)
+    result = {"dependency", "types-tests", "compatibility", "pipeline-contracts"}
+    if set(paths) & {"scripts/generate-npm-package-lock.mts", "scripts/fork-release/native_tests.mjs"}:
+        result.add("types-scripts")
+    return result
+
+
+def validation_budget_v6(request):
+    _v6_need(type(request) is dict and request.get("schema") == V6_SCHEMA and
+        request.get("profilePolicy") == V6_POLICY and type(request.get("stageRound")) is int and
+        request["stageRound"] in (1, 2), "v6.budget_policy")
+    return {"admissionMinutes": V6_ADMISSION_MINUTES, "finalMinutes": V6_FINAL_MINUTES,
+        "profileMinutes": dict(V6_PROFILE_MINUTES),
+        "roundMaximumMinutes": V6_FULL_MINUTES if request["stageRound"] == 1 else V6_TARGETED_MINUTES,
+        "ancillaryMinutes": V6_ANCILLARY_MINUTES, "stageMaximumMinutes": V6_NEW_MINUTES}
+
+
+def _v6_step(value, parent_sha, parent_tree):
+    _v6_need(type(value) is dict and set(value) == {"parentSha", "parentTree", "changedPaths",
+        "unchangedTreeSha256"} and value["parentSha"] == parent_sha and value["parentTree"] == parent_tree and
+        _v6_matches(r"[0-9a-f]{64}\Z", value["unchangedTreeSha256"]), "v6.witness_parent_fields")
+    v6_required_correction_profiles(value["changedPaths"])
+
+
+def validate_request_v6(value, pins):
+    pins = _v6_pins(pins)
+    fields = {"schema", "campaignId", "profilePolicy", "sourceAuthorization", "stageRound",
+        "lifetimeOperatorRound", "profiles", "sourceSha", "sourceTree", "manifestSha256",
+        "inventorySha256", "settledUsageSha256", "priorRunIds", "lockPreparation", "sourceWitness"}
+    _v6_need(type(value) is dict and set(value) == fields and value["schema"] == V6_SCHEMA and
+        value["campaignId"] == V6_CAMPAIGN and value["profilePolicy"] == V6_POLICY and
+        value["sourceAuthorization"] == V6_AUTHORIZATION, "v6.closed_authorized_request")
+    for key in ("sourceSha", "sourceTree", "manifestSha256", "inventorySha256", "settledUsageSha256"):
+        _v6_need(type(value[key]) is str and value[key] == pins[key], "v6.exact_reviewed_pins")
+    _v6_need(_v6_equal(value["lockPreparation"], pins["preparation"]), "v6.exact_preparation_pin")
+    number = value["stageRound"]
+    _v6_need(type(number) is int and number in (1, 2) and type(value["lifetimeOperatorRound"]) is int and
+        value["lifetimeOperatorRound"] == number + 8 and len(pins["priorValidationRuns"]) == number - 1,
+        "v6.round_limit")
+    prior = [*V6_PRIOR_SOURCE_IDS, pins["preparation"]["runId"],
+        *[pin["runId"] for pin in pins["priorValidationRuns"]]]
+    _v6_need(type(value["priorRunIds"]) is list and value["priorRunIds"] == prior, "v6.exact_prior_runs")
+    profiles = value["profiles"]
+    _v6_need(type(profiles) is list and bool(profiles) and len(profiles) == len(set(profiles)) and
+        all(type(profile) is str and profile in V6_PROFILE_MINUTES for profile in profiles),
+        "v6.fixed_unique_profiles")
+    budget = validation_budget_v6(value)
+    _v6_need(V6_ADMISSION_MINUTES + V6_FINAL_MINUTES + sum(V6_PROFILE_MINUTES[p] for p in profiles)
+        <= budget["roundMaximumMinutes"], "v6.round_booking")
+    if number == 1:
+        _v6_need(profiles == list(V6_PROFILES) and len(pins["sourceHops"]) == 1 and
+            pins["previousSourceHopCount"] == 0, "v6.exact_fresh_full_validation")
+    else:
+        _v6_need(pins["previousSourceHopCount"] == 1, "v6.previous_source_hop_count")
+    witness = value["sourceWitness"]
+    _v6_need(type(witness) is dict and set(witness) == {"schema", "scope", "closedBaselineSha256", "hops"} and
+        witness["schema"] == "openclaw.v108.npm-source-equivalence.v1" and witness["scope"] == V6_SCOPE and
+        witness["closedBaselineSha256"] == pins["settledUsageSha256"], "v6.closed_source_witness")
+    hops = witness["hops"]
+    _v6_need(type(hops) is list and len(hops) == len(pins["sourceHops"]), "v6.witness_hop_count")
+    parent_sha, parent_tree = V6_BASE_SOURCE, V6_BASE_TREE
+    for index, (hop, trusted) in enumerate(zip(hops, pins["sourceHops"])):
+        _v6_need(type(hop) is dict and set(hop) == {"sourceSha", "sourceTree", "step"} and
+            hop["sourceSha"] == trusted["sourceSha"] and hop["sourceTree"] == trusted["sourceTree"],
+            "v6.witness_hop_binding")
+        _v6_step(hop["step"], parent_sha, parent_tree)
+        if index == 0:
+            _v6_need({"package.json", "pnpm-lock.yaml"} <= set(hop["step"]["changedPaths"]),
+                "v6.initial_dependency_change_required")
+        parent_sha, parent_tree = trusted["sourceSha"], trusted["sourceTree"]
+    affected = set()
+    for hop in hops[pins["previousSourceHopCount"]:]:
+        affected.update(v6_required_correction_profiles(hop["step"]["changedPaths"]))
+    _v6_need(affected <= set(profiles), "v6.affected_source_profiles")
+    return value
+
+
+def validate_generation_receipt_v6(raw, pins):
+    pins = _v6_pins(pins)
+    _v6_need(type(raw) is bytes and len(raw) <= 65536 and
+        hashlib.sha256(raw).hexdigest() == pins["preparation"]["generationReceiptSha256"],
+        "v6.generation_receipt_digest")
+    value = _v6_json(raw)
+    fields = {"schema", "status", "sourceSha", "sourceTree", "pipelineHead", "runId", "runAttempt",
+        "sourcePackageSha256", "sourceLockSha256", "packageSha256", "lockSha256", "npmVersion",
+        "npmIntegrity", "nodeVersion", "pnpmVersion", "workspaceSha256", "changedPaths",
+        "gitDiffSha256", "allOtherTrackedEntriesUnchanged", "startedAt", "finishedAt", "commandSeconds",
+        "exitCode", "timedOut", "cleanupSettled", "qualified", "imageBuilt", "productionAuthorized"}
+    _v6_need(type(value) is dict and set(value) == fields and
+        value["schema"] == "openclaw.v108.npm-lock-derivation.v1" and value["status"] == "derived_only" and
+        value["sourceSha"] == V6_BASE_SOURCE and value["sourceTree"] == V6_BASE_TREE and
+        value["pipelineHead"] == pins["preparation"]["pipelineHead"] and
+        value["runId"] == pins["preparation"]["runId"] and type(value["runAttempt"]) is int and
+        value["runAttempt"] == 1, "v6.generation_identity")
+    _v6_need(value["sourcePackageSha256"] == V6_PREVIOUS_PACKAGE_SHA256 and
+        value["sourceLockSha256"] == V6_PREVIOUS_LOCK_SHA256 and
+        all(value[key] == pins["preparation"][key] for key in ("packageSha256", "lockSha256")) and
+        all(_v6_matches(r"[0-9a-f]{64}\Z", value[key]) for key in ("workspaceSha256", "gitDiffSha256")),
+        "v6.generation_source_digests")
+    _v6_need(value["npmVersion"] == V6_NPM_VERSION and value["npmIntegrity"] == V6_NPM_INTEGRITY and
+        value["nodeVersion"] == "24.22.1" and value["pnpmVersion"] == "12.15.0" and
+        value["changedPaths"] == ["package.json", "pnpm-lock.yaml"] and
+        value["allOtherTrackedEntriesUnchanged"] is True and type(value["exitCode"]) is int and
+        value["exitCode"] == 0 and value["timedOut"] is False and value["cleanupSettled"] is None and
+        all(value[key] is False for key in ("qualified", "imageBuilt", "productionAuthorized")),
+        "v6.generation_outcome")
+    _v6_need(type(value["commandSeconds"]) in (int, float) and math.isfinite(value["commandSeconds"]) and
+        0 <= value["commandSeconds"] <= V6_PREPARATION_MINUTES * 60 and
+        _v6_matches(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?Z\Z", value["startedAt"]) and
+        _v6_matches(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?Z\Z", value["finishedAt"]),
+        "v6.generation_clock_shape")
+    start, end = timestamp(value["startedAt"]), timestamp(value["finishedAt"])
+    _v6_need(0 <= (end - start).total_seconds() <= V6_PREPARATION_MINUTES * 60 and
+        end < timestamp(V6_DEADLINE), "v6.generation_clock_bound")
+    return value
+
+
+def verify_source_equivalence_v6(request, pins, read_git, generation_raw):
+    validate_request_v6(request, pins)
+    generation = validate_generation_receipt_v6(generation_raw, pins)
+    hops = [_v4_verify_step(read_git, hop["sourceSha"], hop["sourceTree"], hop["step"], initial=False)
+        for hop in request["sourceWitness"]["hops"]]
+    old_package_raw = _v4_git(read_git, "show", V6_BASE_SOURCE + ":package.json")
+    old_lock_raw = _v4_git(read_git, "show", V6_BASE_SOURCE + ":pnpm-lock.yaml")
+    _v6_need(hashlib.sha256(old_package_raw).hexdigest() == V6_PREVIOUS_PACKAGE_SHA256 and
+        hashlib.sha256(old_lock_raw).hexdigest() == V6_PREVIOUS_LOCK_SHA256, "v6.base_dependency_digests")
+    old_package = _v6_json(old_package_raw)
+    _v6_need(type(old_package) is dict and type(old_package.get("dependencies")) is dict and
+        old_package["dependencies"].get("npm") == "12.2.0", "v6.base_npm_pin")
+    expected_package = json.loads(json.dumps(old_package))
+    expected_package["dependencies"]["npm"] = V6_NPM_VERSION
+    for hop in request["sourceWitness"]["hops"]:
+        package_raw = _v4_git(read_git, "show", hop["sourceSha"] + ":package.json")
+        lock_raw = _v4_git(read_git, "show", hop["sourceSha"] + ":pnpm-lock.yaml")
+        _v6_need(hashlib.sha256(package_raw).hexdigest() == generation["packageSha256"] and
+            hashlib.sha256(lock_raw).hexdigest() == generation["lockSha256"] and
+            _v6_equal(_v6_json(package_raw), expected_package), "v6.only_exact_npm_dependency_change")
+        workspace_old = _v4_git(read_git, "show", V6_BASE_SOURCE + ":pnpm-workspace.yaml")
+        workspace_new = _v4_git(read_git, "show", hop["sourceSha"] + ":pnpm-workspace.yaml")
+        _v6_need(workspace_new == workspace_old and
+            hashlib.sha256(workspace_old).hexdigest() == generation["workspaceSha256"], "v6.workspace_policy_unchanged")
+        dependency_diff = _v4_git(read_git, "-c", "diff.algorithm=myers", "-c", "core.quotePath=true",
+            "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--full-index", "--binary",
+            V6_BASE_SOURCE, hop["sourceSha"], "--", "package.json", "pnpm-lock.yaml")
+        _v6_need(hashlib.sha256(dependency_diff).hexdigest() == generation["gitDiffSha256"],
+            "v6.exact_generated_dependency_diff")
+    return {"schema": "openclaw.v108.verified-npm-source-equivalence.v1", "scope": V6_SCOPE,
+        "sourceSha": request["sourceSha"], "sourceTree": request["sourceTree"], "hops": hops,
+        "baseSourceSha": V6_BASE_SOURCE, "baseSourceTree": V6_BASE_TREE,
+        "closedBaselineSha256": request["settledUsageSha256"],
+        "generationReceiptSha256": pins["preparation"]["generationReceiptSha256"],
+        "npmVersion": V6_NPM_VERSION, "lockSha256": generation["lockSha256"],
+        "unchangedOutsideApprovedSourceAndLedger": True, "historicalCoverageReused": False,
+        "sameSourceReceiptRelabeled": False, "productionAuthorized": False, "imageBuilt": False}
+
+
+def workflow_security_v6(raw, source_sha):
+    # The three validation jobs, token surface and closed read-only workflow
+    # structure are unchanged. Only their dynamic source-profile table expands.
+    return workflow_security_v5(raw, source_sha)
+
+
+def observed_minutes_v6(table, request):
+    return observed_minutes_v5(table, request["profiles"], validation_budget_v6(request))
+
+
+def booking_v6(request, preparation_minutes, prior_validation_minutes, ancillary_minutes):
+    _v6_need(all(type(value) is int and value >= 0 for value in
+        (preparation_minutes, prior_validation_minutes, ancillary_minutes)) and
+        preparation_minutes <= V6_PREPARATION_MINUTES and ancillary_minutes <= V6_ANCILLARY_MINUTES,
+        "v6.actual_usage_bounds")
+    budget = validation_budget_v6(request)
+    planned = V6_ADMISSION_MINUTES + V6_FINAL_MINUTES + sum(V6_PROFILE_MINUTES[p] for p in request["profiles"])
+    _v6_need(planned <= budget["roundMaximumMinutes"] and
+        ((request["stageRound"] == 1 and prior_validation_minutes == 0) or
+         (request["stageRound"] == 2 and prior_validation_minutes <= V6_FULL_MINUTES)), "v6.round_booking")
+    reserve = V6_TARGETED_MINUTES if request["stageRound"] == 1 else 0
+    additional = preparation_minutes + prior_validation_minutes + planned + reserve + V6_ANCILLARY_MINUTES
+    cumulative = V6_PRIOR_MINUTES + additional
+    _v6_need(additional <= V6_NEW_MINUTES and V6_PREVIOUS_STAGE_MINUTES + additional <=
+        V6_EXISTING_STAGE_LIMIT and cumulative <= V6_OVERALL_MINUTES, "v6.total_minute_ceiling")
+    return {"bookedRunnerMinutes": cumulative, "actualSettledRunnerMinutes": V6_PRIOR_MINUTES,
+        "newStageBookedMinutes": additional, "preparationObservedMinutes": preparation_minutes,
+        "priorValidationObservedMinutes": prior_validation_minutes, "currentRoundBookedMinutes": planned,
+        "futureTargetedReserveMinutes": reserve, "ancillaryReservationBookedMinutes": V6_ANCILLARY_MINUTES,
+        "observedNewAncillaryRunnerMinutes": ancillary_minutes,
+        "newAncillaryRemainingReserveMinutes": V6_ANCILLARY_MINUTES - ancillary_minutes,
+        "sourceFetchStageBookedMinutes": V6_PREVIOUS_STAGE_MINUTES + additional,
+        "overallMinuteCeiling": V6_OVERALL_MINUTES, "newScopeMinuteCeiling": V6_NEW_MINUTES,
+        "currentSourceCoverageReusedFromF5": False}
+
+
+"""V6 history/accounting fragment: fixed derivation plus fresh current-source CI.
+
+Shared historical measurement and API readers remain owned by the maintained
+driver. No source result from the closed prefix is current-candidate coverage.
+"""
+
+V6_HISTORY_MAX_RUNS = 300
+V6_PROVIDER_HEADERS = ("id", "name", "path", "event", "head_branch", "head_sha", "run_attempt",
+    "status", "conclusion", "created_at", "updated_at", "html_url")
+V6_PREFIX_DERIVED_FIELDS = {"jobs", "observedRunnerMinutes", "artifactRows"}
+
+
+def _h6_branch_history(api):
+    result = {}
+    for branch in ("task%2Fv107-source-binding", "prep%2Fv2026.10.8-remediation"):
+        route = ("/repos/" + REPOSITORY + "/actions/runs?branch=" + branch +
+            "&created=%3E%3D2026-10-28T00%3A03%3A19Z&per_page=100&page=")
+        first = api(route + "1")
+        _v6_need(type(first) is dict and type(first.get("total_count")) is int and
+            0 <= first["total_count"] <= V6_HISTORY_MAX_RUNS, "v6.history.branch_page")
+        total, rows = first["total_count"], []
+        for page in range(1, max(1, math.ceil(total / 100)) + 1):
+            table = first if page == 1 else api(route + str(page))
+            _v6_need(type(table) is dict and type(table.get("total_count")) is int and
+                table["total_count"] == total and type(table.get("workflow_runs")) is list and
+                len(table["workflow_runs"]) == min(100, max(0, total - (page - 1) * 100)),
+                "v6.history.complete_branch_pagination")
+            rows.extend(table["workflow_runs"])
+        ids = [row.get("id") for row in rows if type(row) is dict]
+        _v6_need(len(ids) == total and all(type(rid) is int and rid > 0 for rid in ids) and
+            len(set(ids)) == total, "v6.history.unique_branch_ids")
+        for row in rows:
+            rid = str(row["id"])
+            _v6_need(rid not in result or all(type(row.get(key)) is type(result[rid].get(key)) and
+                row.get(key) == result[rid].get(key) for key in V6_PROVIDER_HEADERS),
+                "v6.history.duplicate_branch_header_changed")
+            result[rid] = row
+    return result
+
+
+def validate_closed_baseline_v6(raw, read_git, history):
+    _v6_need(type(raw) is bytes and hashlib.sha256(raw).hexdigest() == V6_BASELINE_SHA256,
+        "v6.history.exact_baseline_digest")
+    baseline = _v6_json(raw)
+    fields = {"schema", "repository", "campaignId", "closedAt", "runnerMinutesObserved", "runCount",
+        "previousPrefixSha256", "previousPrefixRunCount", "previousPrefixMinutes", "previousPrefixPipeline",
+        "previousArtifactSnapshot", "currentArtifactSnapshot", "sourceRunIds", "runs"}
+    _v6_need(type(baseline) is dict and set(baseline) == fields and
+        baseline["schema"] == "openclaw.v108.closed-source-usage.v4" and baseline["repository"] == REPOSITORY and
+        baseline["campaignId"] == V6_CAMPAIGN and type(baseline["runCount"]) is int and
+        baseline["runCount"] == V6_PRIOR_RUNS and type(baseline["runnerMinutesObserved"]) is int and
+        baseline["runnerMinutesObserved"] == V6_PRIOR_MINUTES and type(baseline["runs"]) is list and
+        len(baseline["runs"]) == V6_PRIOR_RUNS and
+        baseline["previousPrefixSha256"] == V6_PREVIOUS_PREFIX_SHA256 and
+        type(baseline["previousPrefixRunCount"]) is int and baseline["previousPrefixRunCount"] == 141 and
+        type(baseline["previousPrefixMinutes"]) is int and baseline["previousPrefixMinutes"] == 928 and
+        baseline["previousPrefixPipeline"] == V6_PREVIOUS_PIPELINE and
+        _v6_equal(baseline["previousArtifactSnapshot"], {"count": 13, "bytes": 8090}) and
+        _v6_equal(baseline["currentArtifactSnapshot"], V6_ARTIFACT_BASELINE), "v6.history.baseline_envelope")
+    source_ids = baseline["sourceRunIds"]
+    _v6_need(type(source_ids) is list and len(source_ids) == len(V6_PRIOR_SOURCE_IDS) and
+        all(type(rid) is str for rid in source_ids) and len(set(source_ids)) == len(source_ids) and
+        set(source_ids) == set(V6_PRIOR_SOURCE_IDS), "v6.history.baseline_source_ids")
+    _v6_need(_v6_matches(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}\+00:00\Z",
+        baseline["closedAt"]), "v6.history.baseline_capture_time")
+    datetime.fromisoformat(baseline["closedAt"])
+    previous_raw = _v4_git(read_git, "show", V6_PREVIOUS_PIPELINE + ":" + V5_SETTLED_USAGE_PATH)
+    _v6_need(hashlib.sha256(previous_raw).hexdigest() == V6_PREVIOUS_PREFIX_SHA256,
+        "v6.history.original141_git_digest")
+    previous = _v6_json(previous_raw)
+    _v6_need(type(previous) is dict and type(previous.get("runs")) is list and
+        len(previous["runs"]) == 141 and previous.get("runnerMinutesObserved") == 928,
+        "v6.history.original141_envelope")
+    old_by_id = {str(row["id"]): row for row in previous["runs"]}
+    new_by_id = {str(row["id"]): row for row in baseline["runs"] if type(row) is dict and "id" in row}
+    _v6_need(len(old_by_id) == 141 and len(new_by_id) == V6_PRIOR_RUNS and set(old_by_id) <= set(new_by_id) and
+        all(_v6_equal(row, new_by_id[rid]) for rid, row in old_by_id.items()),
+        "v6.history.original141_subset_unchanged")
+    ids, measured_total, measured_source, hashes = set(), 0, set(), {}
+    for row in baseline["runs"]:
+        _v6_need(type(row) is dict and set(V6_PROVIDER_HEADERS) <= set(row) and
+            set(row) <= set(V6_PROVIDER_HEADERS) | V6_PREFIX_DERIVED_FIELDS and
+            type(row.get("id")) is int and row["id"] > 0 and str(row["id"]) not in ids and
+            row["status"] == "completed" and row["conclusion"] in V5_TERMINAL_CONCLUSIONS and
+            type(row["run_attempt"]) is int and row["run_attempt"] == 1 and type(row.get("jobs")) is list and
+            ("artifactRows" not in row or type(row["artifactRows"]) is list),
+            "v6.history.baseline_run_projection")
+        rid = str(row["id"])
+        ids.add(rid)
+        live = history.get(rid, {})
+        _v6_need(_h5_public(live) and all(type(live.get(key)) is type(row[key]) and
+            live.get(key) == row[key] for key in V6_PROVIDER_HEADERS), "v6.history.baseline_header_changed")
+        jobs = []
+        for item in row["jobs"]:
+            _v6_need(type(item) is dict and
+                ((rid in old_by_id and ("run_attempt" not in item or
+                    type(item["run_attempt"]) is int and item["run_attempt"] == 1)) or
+                 (rid not in old_by_id and type(item.get("run_attempt")) is int and item["run_attempt"] == 1)),
+                "v6.history.baseline_job_attempt")
+            # Only exact inherited historical bytes omit job attempt. Their
+            # authenticated parent run positively bound the original attempt1.
+            jobs.append(dict(item, run_attempt=1))
+        table = {"total_count": len(jobs), "jobs": jobs}
+        if row["path"] != WORKFLOW or rid in V6_PRIOR_SOURCE_IDS[:3]:
+            measured = observed_minutes(table,
+                list(LEGACY_PROFILE_MINUTES) if row["path"] == WORKFLOW else None, legacy=True)
+        else:
+            if rid == V6_PRIOR_SOURCE_IDS[-1]:
+                policy = validation_budget_for_record_v5({"schema": V5_SCHEMA, "profilePolicy": "donor-repair-v1"})
+            elif rid in V6_PRIOR_SOURCE_IDS[-3:-1]:
+                policy = validation_budget_for_record_v5({"schema": "openclaw.fork-source-validation-request.v4",
+                    "profilePolicy": "five-gate-repair-v1"})
+            else:
+                policy = validation_budget_for_record_v5({"schema": "openclaw.fork-source-validation-request.v3"})
+            measured = observed_minutes_v5(table, list(policy["profileMinutes"]), policy)
+        if row["path"] == WORKFLOW:
+            measured_source.add(rid)
+        _v6_need(type(row.get("observedRunnerMinutes")) is int and
+            row["observedRunnerMinutes"] == measured, "v6.history.baseline_actual_minutes")
+        measured_total += measured
+        hashes[rid] = hashlib.sha256(json.dumps(row["jobs"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    _v6_need(len(ids) == V6_PRIOR_RUNS and measured_total == V6_PRIOR_MINUTES and
+        measured_source == set(V6_PRIOR_SOURCE_IDS), "v6.history.actual168_1237")
+    return baseline, ids, hashes
+
+
+def _h6_source_run_binding(run):
+    _v6_need(_h5_public(run) and run.get("event") == "pull_request" and
+        type(run.get("run_attempt")) is int and run["run_attempt"] == 1 and
+        run.get("head_branch") == BRANCH and run.get("display_title") == CAMPAIGN and
+        [pr.get("number") for pr in run.get("pull_requests", [])] == [28],
+        "v6.history.source_run_binding")
+
+
+def _h6_preparation(pins, history, current, generation, pipeline, api):
+    pin = pins["preparation"]
+    _v6_need(pin["runId"] in history, "v6.history.preparation_run_present")
+    run = history[pin["runId"]]
+    _h6_source_run_binding(run)
+    _v6_need(run.get("path") == WORKFLOW and run.get("head_sha") == pin["pipelineHead"] and
+        run.get("status") == "completed" and run.get("conclusion") == "success" and
+        timestamp(run["updated_at"]) <= timestamp(current["created_at"]), "v6.history.preparation_terminal")
+    git(pipeline, "merge-base", "--is-ancestor", pin["pipelineHead"], current["head_sha"])
+    table = _h5_jobs(api, run)
+    _v6_need(table["total_count"] == 1, "v6.history.preparation_single_job")
+    job = table["jobs"][0]
+    _v6_need(job.get("name") == "lock-preparation" and job.get("status") == "completed" and
+        job.get("conclusion") == "success" and type(job.get("runner_id")) is int and job["runner_id"] > 0 and
+        type(job.get("runner_name")) is str and bool(job["runner_name"]) and
+        job.get("runner_group_name") == "GitHub Actions" and job.get("labels") == ["ubuntu-24.04"],
+        "v6.history.preparation_public_job")
+    start, end = timestamp(job["started_at"]), timestamp(job["completed_at"])
+    seconds = (end - start).total_seconds()
+    _v6_need(0 <= seconds and math.ceil(seconds / 60) <= V6_PREPARATION_MINUTES and
+        start <= timestamp(generation["startedAt"]) <= timestamp(generation["finishedAt"]) <= end,
+        "v6.history.preparation_clock_bound")
+    artifacts = api("/repos/" + REPOSITORY + "/actions/runs/" + pin["runId"] + "/artifacts?per_page=100")
+    _v6_need(type(artifacts) is dict and type(artifacts.get("total_count")) is int and
+        artifacts["total_count"] == 1 and type(artifacts.get("artifacts")) is list and len(artifacts["artifacts"]) == 1,
+        "v6.history.preparation_single_artifact")
+    artifact = artifacts["artifacts"][0]
+    _v6_need(type(artifact) is dict and type(artifact.get("id")) is int and artifact["id"] == pin["artifactId"] and
+        artifact.get("name") == "v108-npm-lock-preparation" and type(artifact.get("size_in_bytes")) is int and
+        0 < artifact["size_in_bytes"] <= V6_PREPARATION_ARTIFACT_BYTES and artifact.get("expired") is False and
+        artifact.get("digest") == "sha256:" + pin["artifactSha256"], "v6.history.preparation_artifact_identity")
+    return math.ceil(seconds / 60), {"runId": pin["runId"], "pipelineHead": pin["pipelineHead"],
+        "jobId": job["id"], "observedRunnerMinutes": math.ceil(seconds / 60), "artifactId": pin["artifactId"],
+        "artifactSha256": pin["artifactSha256"], "artifactBytes": artifact["size_in_bytes"],
+        "generationReceiptSha256": pin["generationReceiptSha256"], "status": "derived_only",
+        "currentCandidateQualification": False}
+
+
+def _h6_previous_validation(request, pins, history, current, pipeline, api):
+    if request["stageRound"] == 1:
+        _v6_need(not pins["priorValidationRuns"] and pins["previousSourceHopCount"] == 0,
+            "v6.history.initial_validation_identity")
+        return 0, [], {}, list(V6_PROFILES)
+    pin = pins["priorValidationRuns"][0]
+    _v6_need(pin["runId"] in history, "v6.history.prior_validation_present")
+    run = history[pin["runId"]]
+    _h6_source_run_binding(run)
+    _v6_need(run.get("path") == WORKFLOW and run.get("head_sha") == pin["pipelineHead"] and
+        run.get("status") == "completed" and run.get("conclusion") in V5_TERMINAL_CONCLUSIONS and
+        timestamp(run["updated_at"]) <= timestamp(current["created_at"]), "v6.history.prior_validation_terminal")
+    old_raw = content_at(api, REQUEST, pin["pipelineHead"])
+    _v6_need(hashlib.sha256(old_raw).hexdigest() == pin["requestSha256"],
+        "v6.history.prior_request_digest")
+    old = _v6_json(old_raw)
+    _v6_need(type(old) is dict and type(old.get("sourceWitness")) is dict and
+        type(old["sourceWitness"].get("hops")) is list, "v6.history.prior_request_shape")
+    old_hops = old["sourceWitness"]["hops"]
+    old_pins = dict(pins, sourceSha=old.get("sourceSha"), sourceTree=old.get("sourceTree"),
+        manifestSha256=old.get("manifestSha256"), inventorySha256=old.get("inventorySha256"),
+        sourceHops=[{"sourceSha": hop.get("sourceSha"), "sourceTree": hop.get("sourceTree")}
+            for hop in old_hops if type(hop) is dict], previousSourceHopCount=0, priorValidationRuns=[])
+    validate_request_v6(old, old_pins)
+    _v6_need(old["stageRound"] == 1 and pins["previousSourceHopCount"] == len(old_hops) and
+        _v6_equal(request["sourceWitness"]["hops"][:len(old_hops)], old_hops),
+        "v6.history.prior_source_chain")
+    git(pipeline, "merge-base", "--is-ancestor", pin["pipelineHead"], current["head_sha"])
+    workflow_security_v6(content_at(api, WORKFLOW, pin["pipelineHead"]), old["sourceSha"])
+    table = _h5_jobs(api, run)
+    minutes = observed_minutes_v6(table, old)
+    results = {job["name"][8:-1]: job["conclusion"] for job in table["jobs"] if
+        job["name"].startswith("source (") and job["name"].endswith(")") and job["name"][8:-1] in old["profiles"]}
+    unexpanded = _h5_unexpanded_failed_initial(table["jobs"])
+    _v6_need(bool(results) or unexpanded, "v6.history.prior_positive_unexpanded_evidence")
+    invalidated = set()
+    for hop in request["sourceWitness"]["hops"][len(old_hops):]:
+        invalidated.update(v6_required_correction_profiles(hop["step"]["changedPaths"]))
+    for profile in invalidated:
+        results.pop(profile, None)
+    unresolved = sorted(profile for profile in V6_PROFILES if results.get(profile) != "success")
+    _v6_need(set(unresolved) <= set(request["profiles"]), "v6.history.unresolved_profiles_selected")
+    receipt = {"runId": pin["runId"], "pipelineHead": pin["pipelineHead"],
+        "requestSha256": pin["requestSha256"], "sourceSha": old["sourceSha"], "sourceTree": old["sourceTree"],
+        "observedRunnerMinutes": minutes, "profileResults": results, "conclusion": run["conclusion"],
+        "invalidatedPriorProfiles": sorted(invalidated), "unresolvedProfiles": unresolved,
+        "validationNeverStarted": unexpanded, "oldF5EvidenceUsed": False}
+    return minutes, [receipt], results, unresolved
+
+
+def history_checks_v6(request, event, env, pipeline, api, pins):
+    request = validate_request_v6(request, pins)
+    head = validate_event(event, env)
+    now = datetime.now(timezone.utc)
+    _v6_need(now < timestamp(V6_DEADLINE), "v6.history.deadline")
+    live = api("/repos/" + REPOSITORY + "/pulls/28")
+    _v6_need(validate_event(dict(event, pull_request=live), env) == head, "v6.history.live_pr_changed")
+    target = api("/repos/" + REPOSITORY + "/git/ref/heads/" + BASE_BRANCH)
+    _v6_need(target.get("ref") == "refs/heads/" + BASE_BRANCH and
+        target.get("object", {}).get("type") == "commit" and
+        target["object"].get("sha") == TARGET_BRANCH_TIP, "v6.history.target_tip")
+    source_ref = api("/repos/" + REPOSITORY + "/git/ref/heads/" + V6_SOURCE_BRANCH)
+    _v6_need(source_ref.get("ref") == "refs/heads/" + V6_SOURCE_BRANCH and
+        source_ref.get("object", {}).get("type") == "commit" and
+        source_ref["object"].get("sha") == request["sourceSha"], "v6.history.source_branch_tip")
+    history = _h6_branch_history(api)
+    raw = (pipeline / V6_SETTLED_USAGE_PATH).read_bytes()
+    baseline, prefix_ids, hashes = validate_closed_baseline_v6(raw, lambda *args: git(pipeline, *args), history)
+    expected = [*V6_PRIOR_SOURCE_IDS, pins["preparation"]["runId"],
+        *[pin["runId"] for pin in pins["priorValidationRuns"]], env["GITHUB_RUN_ID"]]
+    actual = {rid for rid, run in history.items() if run.get("path") == WORKFLOW}
+    _v6_need(actual == set(expected) and len(expected) == len(set(expected)), "v6.history.exact_execution_set")
+    for rid in actual:
+        _h6_source_run_binding(history[rid])
+    current = history[env["GITHUB_RUN_ID"]]
+    _v6_need(current.get("head_sha") == head and current.get("status") == "in_progress" and
+        datetime.fromisoformat(baseline["closedAt"]) <= timestamp(current["created_at"]) <= now,
+        "v6.history.current_source_identity")
+    for rid in V6_PRIOR_SOURCE_IDS:
+        git(pipeline, "merge-base", "--is-ancestor", history[rid]["head_sha"], head)
+    workflow = workflow_security_v6((pipeline / WORKFLOW).read_bytes(), request["sourceSha"])
+    generation = validate_generation_receipt_v6((pipeline / V6_PREPARATION_PROOF_PATH).read_bytes(), pins)
+    preparation_minutes, preparation = _h6_preparation(pins, history, current, generation, pipeline, api)
+    previous_minutes, previous_receipts, results, unresolved = _h6_previous_validation(
+        request, pins, history, current, pipeline, api)
+    current_jobs = _h5_jobs(api, current)
+    admission = [job for job in current_jobs["jobs"] if job.get("name") == "admission"]
+    _v6_need(len(admission) == 1 and admission[0].get("status") == "in_progress" and
+        type(admission[0].get("runner_id")) is int and admission[0]["runner_id"] > 0 and
+        type(admission[0].get("runner_name")) is str and bool(admission[0]["runner_name"]) and
+        admission[0].get("runner_group_name") == "GitHub Actions" and admission[0].get("labels") == ["ubuntu-24.04"],
+        "v6.history.current_public_admission")
+    current_facts = ancillary_job_snapshot(current_jobs, now, False)
+    allowed_current = {"admission", "final", "source (${{ matrix.profile }})",
+        *["source (" + profile + ")" for profile in request["profiles"]]}
+    _v6_need(all(job.get("name") in allowed_current for job in current_jobs["jobs"]) and
+        current_facts["observedAcquiredRunnerMinutes"] <= V6_ADMISSION_MINUTES,
+        "v6.history.current_job_booking")
+    paths = {row["path"] for row in baseline["runs"] if row["path"] != WORKFLOW}
+    pipeline_heads = {row["head_sha"] for row in baseline["runs"] if row["head_branch"] == BRANCH} | \
+        {head, pins["preparation"]["pipelineHead"], *[pin["pipelineHead"] for pin in pins["priorValidationRuns"]]}
+    source_heads = {V6_BASE_SOURCE, *[hop["sourceSha"] for hop in pins["sourceHops"]]}
+    observed, ancillary, pending = 0, [], []
+    artifact_bytes, artifact_records, artifact_ids = V6_ARTIFACT_BASELINE["bytes"], [], set()
+    for rid, run in sorted(history.items()):
+        if rid in prefix_ids:
+            continue
+        if run.get("path") != WORKFLOW:
+            branch = run.get("head_branch")
+            correct_branch = (branch == BRANCH and run.get("head_sha") in pipeline_heads) or \
+                (branch == V6_SOURCE_BRANCH and run.get("head_sha") in source_heads)
+            events = ("pull_request", "pull_request_target") if branch == BRANCH else ("push",)
+            _v6_need(_h5_public(run) and correct_branch and run.get("event") in events and
+                run.get("path") in paths and type(run.get("run_attempt")) is int and run["run_attempt"] == 1 and
+                run.get("status") in ("completed", "in_progress", "queued", "waiting", "pending") and
+                (run["status"] != "completed" or run.get("conclusion") in V5_TERMINAL_CONCLUSIONS),
+                "v6.history.new_ancillary_binding")
+            facts = ancillary_job_snapshot(_h5_jobs(api, run), now, run["status"] == "completed")
+            observed += facts["observedAcquiredRunnerMinutes"]
+            ancillary.append({"runId": rid, **facts})
+            if not facts["usageComplete"]:
+                pending.append(rid)
+        artifacts = _h5_artifacts(api, run)
+        _v6_need(not artifact_ids.intersection(artifacts["ids"]), "v6.history.artifact_duplicate")
+        artifact_ids.update(artifacts["ids"])
+        artifact_bytes += artifacts["bytes"]
+        artifact_records.append({"runId": rid, **artifacts})
+    _v6_need(observed <= V6_ANCILLARY_MINUTES and (not pending or observed < V6_ANCILLARY_MINUTES),
+        "v6.history.ancillary77_exceeded")
+    _v6_need(artifact_bytes <= V6_DIAGNOSTIC_BYTES, "v6.history.artifact_storage_bound")
+    booking = booking_v6(request, preparation_minutes, previous_minutes, observed)
+    return {**booking, "deadlineEpoch": int(timestamp(V6_DEADLINE).timestamp()),
+        "profileMatrix": [{"profile": profile, "minutes": V6_PROFILE_MINUTES[profile]} for profile in request["profiles"]],
+        "selectedProfileCount": len(request["profiles"]), "preparationReceipt": preparation,
+        "priorValidationReceipts": previous_receipts, "priorValidationProfileResults": results,
+        "priorUnresolvedProfiles": unresolved, "historicalCoverageReused": False,
+        "reusedProfileCount": 0, "closedBaselineRuns": V6_PRIOR_RUNS,
+        "closedBaselineMinutes": V6_PRIOR_MINUTES, "closedBaselineSha256": V6_BASELINE_SHA256,
+        "historicalJobTableSha256": hashes, "newAncillaryRecords": ancillary,
+        "pendingAncillaryRunIds": pending, "ancillaryUsageComplete": not pending,
+        "artifactRecords": artifact_records, "observedRetainedWorkflowArtifactBytes": artifact_bytes,
+        "artifactObservationComplete": all(row["observationComplete"] for row in artifact_records),
+        "artifactBudgetIsNotWholeDiagnosticCustodyProof": True, "workflowSecurity": workflow,
+        "currentAdmissionObservation": current_facts, "historicalConclusionsRetained": True,
+        "productionAuthorized": False, "imageBuilt": False}
+
+
+
+V6_RUNTIME_COMPATIBILITY_TESTS = (*V4_RUNTIME_COMPATIBILITY_TESTS,
+    "test/scripts/native-runner.test.ts", "test/scripts/native-security-ownership.test.ts",
+    "src/infra/npm-command.test.ts", "src/infra/safe-package-install.test.ts",
+    "src/plugins/install.npm-spec.test.ts", "test/scripts/npm-runner.test.ts")
+
+
+def runtime_refusal_code_v6(error):
+    if isinstance(error, V6ContractRefusal):
+        code = error.args[0] if len(error.args) == 1 else None
+        return code if type(code) is str and code in V6_RUNTIME_REFUSAL_CODES else "v6.unprojected"
+    if isinstance(error, V4ContractRefusal):
+        return runtime_refusal_code_v4(error)
+    if isinstance(error, V5ContractRefusal):
+        # Retained V5 readers measure historical records only. Their controlled
+        # refusal enum remains useful evidence, not an operational fallback.
+        return runtime_refusal_code_v5(error)
+    if type(error) is release.Refusal and len(error.args) == 1 and type(error.args[0]) is str:
+        shared = V6_SHARED_HISTORY_REFUSALS.get(error.args[0])
+        if shared is not None:
+            return shared
+    code = vars(error).get("admission_need_code")
+    return code if code in ADMISSION_NEED_CODES.values() else "v6.unprojected"
+
+V6_BUNDLED_NPM_VERSION_CHECK = 'import { createRequire } from "node:module";\nimport { realpathSync, readFileSync, statSync } from "node:fs";\nimport { dirname, join, sep } from "node:path";\nimport { spawnSync } from "node:child_process";\nconst allowed = new Set(["node_version", "source_npm_scope", "npm_package_version", "npm_cli_scope", "npm_cli_exit", "npm_cli_version"]);\nconst requireCondition = (ok, code) => { if (!ok) throw { controlledCode: code }; };\nlet subcheck = "source_npm_scope";\ntry {\n  requireCondition(process.versions.node === "24.22.1", "node_version");\n  const source = realpathSync(process.cwd());\n  const modules = realpathSync(join(source, "node_modules"));\n  requireCondition(modules === join(source, "node_modules"), "source_npm_scope");\n  const requireSource = createRequire(join(source, "package.json"));\n  const manifest = realpathSync(requireSource.resolve("npm/package.json"));\n  requireCondition(manifest.startsWith(modules + sep), "source_npm_scope");\n  subcheck = "npm_package_version";\n  requireCondition(statSync(manifest).isFile() && statSync(manifest).size <= 65536, "npm_package_version");\n  const pkg = JSON.parse(readFileSync(manifest, "utf8"));\n  requireCondition(pkg.name === "npm" && pkg.version === "12.2.1", "npm_package_version");\n  const packageRoot = dirname(manifest);\n  subcheck = "npm_cli_scope";\n  const cli = realpathSync(join(packageRoot, "bin", "npm-cli.js"));\n  requireCondition(cli.startsWith(packageRoot + sep), "npm_cli_scope");\n  subcheck = "npm_cli_exit";\n  const child = spawnSync(process.execPath, [cli, "--version"], {\n    cwd: source, timeout: 10000, maxBuffer: 4096, encoding: "utf8",\n    env: { ...process.env, npm_config_offline: "true", npm_config_ignore_scripts: "true",\n      npm_config_audit: "false", npm_config_fund: "false", npm_config_update_notifier: "false" }\n  });\n  requireCondition(!child.error && !child.signal && child.status === 0, "npm_cli_exit");\n  subcheck = "npm_cli_version";\n  requireCondition(typeof child.stdout === "string" && child.stdout.trim() === "12.2.1", "npm_cli_version");\n  console.log(JSON.stringify({schema:"openclaw.v108.bundled-npm-version.v1", status:"verified", npmVersion:"12.2.1", nodeVersion:process.versions.node, sourceInstalledPackage:true, productionAuthorized:false, imageBuilt:false}));\n} catch (error) {\n  const code = allowed.has(error?.controlledCode) ? error.controlledCode : subcheck;\n  console.log(JSON.stringify({schema:"openclaw.v108.bundled-npm-version.v1", status:"refused", code, productionAuthorized:false, imageBuilt:false}));\n  process.exitCode = 1;\n}\n'
+
+V6_SHARED_HISTORY_REFUSALS = {'source-validation: v5.history.artifact_identity_size': 'v6.shared.artifact_identity_size', 'source-validation: v5.history.artifacts_complete': 'v6.shared.artifacts_complete', 'source-validation: v5.history.fresh_job_binding': 'v6.shared.fresh_job_binding', 'source-validation: v5.history.fresh_jobs_complete': 'v6.shared.fresh_jobs_complete', 'source-validation: v5.history.terminal_admitted_profiles': 'v6.shared.terminal_admitted_profiles', 'source-validation: v5.history.terminal_boundary_jobs': 'v6.shared.terminal_boundary_jobs', 'source-validation: v5.history.terminal_job_duration': 'v6.shared.terminal_job_duration', 'source-validation: v5.history.terminal_job_identity': 'v6.shared.terminal_job_identity', 'source-validation: v5.history.terminal_jobs_complete': 'v6.shared.terminal_jobs_complete', 'source-validation: v5.history.terminal_profiles': 'v6.shared.terminal_profiles', 'source-validation: v5.history.terminal_public_runner': 'v6.shared.terminal_public_runner', 'source-validation: v5.history.terminal_round_booking': 'v6.shared.terminal_round_booking', 'source-validation: v5.history.terminal_unacquired_evidence': 'v6.shared.terminal_unacquired_evidence', 'source-validation: v5.history.workflow_concurrency': 'v6.shared.workflow_concurrency', 'source-validation: v5.history.workflow_credentials': 'v6.shared.workflow_credentials', 'source-validation: v5.history.workflow_fixed_actions': 'v6.shared.workflow_fixed_actions', 'source-validation: v5.history.workflow_job_caps': 'v6.shared.workflow_job_caps', 'source-validation: v5.history.workflow_job_permissions': 'v6.shared.workflow_job_permissions', 'source-validation: v5.history.workflow_jobs': 'v6.shared.workflow_jobs', 'source-validation: v5.history.workflow_literal_mapping': 'v6.shared.workflow_literal_mapping', 'source-validation: v5.history.workflow_matrix_policy': 'v6.shared.workflow_matrix_policy', 'source-validation: v5.history.workflow_permissions': 'v6.shared.workflow_permissions', 'source-validation: v5.history.workflow_runner_job_keys': 'v6.shared.workflow_runner_job_keys', 'source-validation: v5.history.workflow_size': 'v6.shared.workflow_size', 'source-validation: v5.history.workflow_source_refs': 'v6.shared.workflow_source_refs', 'source-validation: v5.history.workflow_token_surface': 'v6.shared.workflow_token_surface', 'source-validation: v5.history.workflow_top_level': 'v6.shared.workflow_top_level', 'source-validation: v5.history.workflow_trigger': 'v6.shared.workflow_trigger', 'source-validation: v5.history.workflow_yaml_shape': 'v6.shared.workflow_yaml_shape'}
+
+V6_RUNTIME_REFUSAL_CODES = frozenset(('v6.actual_usage_bounds', 'v6.affected_source_profiles', 'v6.approved_changed_paths', 'v6.base_dependency_digests', 'v6.base_npm_pin', 'v6.bounded_json', 'v6.budget_policy', 'v6.closed_authorized_request', 'v6.closed_source_witness', 'v6.duplicate_json_key', 'v6.exact_fresh_full_validation', 'v6.exact_generated_dependency_diff', 'v6.exact_preparation_pin', 'v6.exact_prior_runs', 'v6.exact_reviewed_pins', 'v6.fixed_unique_profiles', 'v6.generation_clock_bound', 'v6.generation_clock_shape', 'v6.generation_identity', 'v6.generation_outcome', 'v6.generation_receipt_digest', 'v6.generation_source_digests', 'v6.history.actual168_1237', 'v6.history.ancillary77_exceeded', 'v6.history.artifact_duplicate', 'v6.history.artifact_storage_bound', 'v6.history.baseline_actual_minutes', 'v6.history.baseline_capture_time', 'v6.history.baseline_envelope', 'v6.history.baseline_header_changed', 'v6.history.baseline_job_attempt', 'v6.history.baseline_run_projection', 'v6.history.baseline_source_ids', 'v6.history.branch_page', 'v6.history.complete_branch_pagination', 'v6.history.current_job_booking', 'v6.history.current_public_admission', 'v6.history.current_source_identity', 'v6.history.deadline', 'v6.history.duplicate_branch_header_changed', 'v6.history.exact_baseline_digest', 'v6.history.exact_execution_set', 'v6.history.initial_validation_identity', 'v6.history.live_pr_changed', 'v6.history.new_ancillary_binding', 'v6.history.original141_envelope', 'v6.history.original141_git_digest', 'v6.history.original141_subset_unchanged', 'v6.history.preparation_artifact_identity', 'v6.history.preparation_clock_bound', 'v6.history.preparation_public_job', 'v6.history.preparation_run_present', 'v6.history.preparation_single_artifact', 'v6.history.preparation_single_job', 'v6.history.preparation_terminal', 'v6.history.prior_positive_unexpanded_evidence', 'v6.history.prior_request_digest', 'v6.history.prior_request_shape', 'v6.history.prior_source_chain', 'v6.history.prior_validation_present', 'v6.history.prior_validation_terminal', 'v6.history.source_branch_tip', 'v6.history.source_run_binding', 'v6.history.target_tip', 'v6.history.unique_branch_ids', 'v6.history.unresolved_profiles_selected', 'v6.initial_dependency_change_required', 'v6.invalid_json', 'v6.invalid_json_constant', 'v6.only_exact_npm_dependency_change', 'v6.preparation_pin_digest', 'v6.preparation_pin_fields', 'v6.preparation_pin_identity', 'v6.previous_source_hop_count', 'v6.round_booking', 'v6.round_limit', 'v6.runtime_approval_deadline', 'v6.runtime_baseline_digest', 'v6.runtime_manifest_source', 'v6.runtime_metadata_digest', 'v6.runtime_verified_budget_and_fresh_coverage', 'v6.shared.artifact_identity_size', 'v6.shared.artifacts_complete', 'v6.shared.fresh_job_binding', 'v6.shared.fresh_jobs_complete', 'v6.shared.terminal_admitted_profiles', 'v6.shared.terminal_boundary_jobs', 'v6.shared.terminal_job_duration', 'v6.shared.terminal_job_identity', 'v6.shared.terminal_jobs_complete', 'v6.shared.terminal_profiles', 'v6.shared.terminal_public_runner', 'v6.shared.terminal_round_booking', 'v6.shared.terminal_unacquired_evidence', 'v6.shared.workflow_concurrency', 'v6.shared.workflow_credentials', 'v6.shared.workflow_fixed_actions', 'v6.shared.workflow_job_caps', 'v6.shared.workflow_job_permissions', 'v6.shared.workflow_jobs', 'v6.shared.workflow_literal_mapping', 'v6.shared.workflow_matrix_policy', 'v6.shared.workflow_permissions', 'v6.shared.workflow_runner_job_keys', 'v6.shared.workflow_size', 'v6.shared.workflow_source_refs', 'v6.shared.workflow_token_surface', 'v6.shared.workflow_top_level', 'v6.shared.workflow_trigger', 'v6.shared.workflow_yaml_shape', 'v6.total_minute_ceiling', 'v6.trusted_baseline_pin', 'v6.trusted_pin_fields', 'v6.trusted_previous_hop_count', 'v6.trusted_run_unique', 'v6.trusted_source_chain', 'v6.trusted_source_hops', 'v6.trusted_source_pins', 'v6.trusted_validation_runs', 'v6.unprojected', 'v6.witness_hop_binding', 'v6.witness_hop_count', 'v6.witness_parent_fields', 'v6.workspace_policy_unchanged'))
 
 if __name__ == "__main__":
     raise SystemExit(entrypoint())

@@ -32,9 +32,12 @@ class PnpmBootstrapTests(unittest.TestCase):
         calls, output, failure = [], io.StringIO(), None
         # Genuine tracked closed controls; only external admissions are stubbed.
         req, manifest, manifest_hash = driver.metadata(INPUT_PIPELINE)
-        self.assertEqual(req["schema"], driver.V5_SCHEMA)
-        self.assertEqual(req["sourceSha"], driver.V5_STAGE_PINS["sourceSha"])
-        self.assertEqual(req["sourceTree"], driver.V5_STAGE_PINS["sourceTree"])
+        self.assertEqual(req["schema"], driver.V6_SCHEMA)
+        self.assertEqual(req["sourceSha"], driver.V6_STAGE_PINS["sourceSha"])
+        self.assertEqual(req["sourceTree"], driver.V6_STAGE_PINS["sourceTree"])
+        preparation_raw = (INPUT_PIPELINE / driver.V6_PREPARATION_PROOF_PATH).read_bytes()
+        self.assertEqual(hashlib.sha256(preparation_raw).hexdigest(),
+                         driver.V6_STAGE_PINS["preparation"]["generationReceiptSha256"])
         profile = "types-tests"
         self.assertIn(profile, driver.profiles_for(req))
         fixed_now = datetime(2026, 10, 29, 0, 10, tzinfo=timezone.utc)
@@ -64,6 +67,11 @@ class PnpmBootstrapTests(unittest.TestCase):
             runtimes, source, pipeline = root / "runtimes", root / "source", root / "pipeline"
             for path in (runtimes, source, pipeline):
                 path.mkdir()
+            # The run path rereads its derivation proof even though the costly
+            # source/equivalence boundary is mocked. Preserve the genuine bytes.
+            proof_path = pipeline / driver.V6_PREPARATION_PROOF_PATH
+            proof_path.parent.mkdir(parents=True)
+            proof_path.write_bytes(preparation_raw)
             for name in ("node", "npm"):
                 (runtimes / name).write_bytes(b"inert runtime fixture; never executed")
                 (runtimes / name).chmod(0o755)
@@ -142,14 +150,16 @@ class PnpmBootstrapTests(unittest.TestCase):
             def phase_bridge(argv, cwd, env, context, phase, ordinal, **kwargs):
                 self.assertEqual(context["request"], req)
                 self.assertEqual(context["profile"], profile)
-                self.assertEqual(context["deadlineEpoch"], epoch - 30 + driver.V5_PROFILE_MINUTES[profile] * 60 - 60)
+                self.assertEqual(context["deadlineEpoch"], min(
+                    epoch - 30 + driver.V6_PROFILE_MINUTES[profile] * 60 - 60,
+                    int(driver.timestamp(driver.V6_DEADLINE).timestamp()) - 60))
                 result = runner(argv, cwd=cwd, env=env, check=False)
                 result.timed_out = False
                 return result
 
             env = {"PATH": str(runtimes), "GITHUB_EVENT_PATH": str(event),
                    "SOURCE_JOB_STARTED_EPOCH": str(epoch - 30),
-                   "SOURCE_DEADLINE_EPOCH": str(int(driver.timestamp(driver.V5_DEADLINE).timestamp())),
+                   "SOURCE_DEADLINE_EPOCH": str(int(driver.timestamp(driver.V6_DEADLINE).timestamp())),
                    "GITHUB_TOKEN": "never-forward-this", "npm_lifecycle_event": "postinstall"}
             with patch.dict(os.environ, env, clear=True), redirect_stdout(output), \
                  patch.object(sys, "argv", ["source_validation_v108.py", "run", "--pipeline-dir", str(pipeline),
@@ -159,7 +169,8 @@ class PnpmBootstrapTests(unittest.TestCase):
                  patch.object(driver, "code_binding"), \
                  patch.object(driver, "datetime", wraps=datetime) as clock, \
                  patch.object(driver.time, "time", return_value=epoch), \
-                 patch.object(driver, "verify_source_equivalence_v5", return_value={"syntheticBoundary": True}), \
+                 patch.object(driver, "verify_source_equivalence_v6", return_value={"syntheticBoundary": True}) as equivalence, \
+                 patch.object(driver, "history_checks_v6") as history, \
                  patch.object(driver, "phase_process", side_effect=phase_bridge), \
                  patch.object(driver, "source_preflight"), patch.object(driver, "git", return_value=b""), \
                  patch.object(driver, "resource_check", return_value={"logicalCpus": 4}), \
@@ -169,8 +180,14 @@ class PnpmBootstrapTests(unittest.TestCase):
                 clock.now.return_value = fixed_now
                 try:
                     self.assertEqual(driver.main(), 0)
-                except (driver.release.Refusal, OSError, subprocess.CalledProcessError) as error:
+                except (driver.release.Refusal, driver.V6ContractRefusal, OSError,
+                        subprocess.CalledProcessError) as error:
                     failure = error
+            equivalence.assert_called_once()
+            self.assertIs(equivalence.call_args.args[0], req)
+            self.assertIs(equivalence.call_args.args[1], driver.V6_STAGE_PINS)
+            self.assertEqual(equivalence.call_args.args[3], preparation_raw)
+            history.assert_not_called()  # The source job consumes prior admission.
             for _, _, kwargs in calls:
                 child = kwargs["env"]
                 self.assertNotIn("GITHUB_TOKEN", child)
@@ -226,8 +243,8 @@ class PnpmBootstrapTests(unittest.TestCase):
                 self.assertEqual(set(last), {"campaignId", "bootstrapPhase", "status", "errorClass",
                                              "errno", "resolvedWithinOwnedToolchain", "exitCode", "signal",
                                              "sourceSha", "sourceTree"})
-                self.assertEqual(last["sourceSha"], driver.V5_STAGE_PINS["sourceSha"])
-                self.assertEqual(last["sourceTree"], driver.V5_STAGE_PINS["sourceTree"])
+                self.assertEqual(last["sourceSha"], driver.V6_STAGE_PINS["sourceSha"])
+                self.assertEqual(last["sourceTree"], driver.V6_STAGE_PINS["sourceTree"])
                 profile_record = next(r for r in reversed(records) if r.get("phase") == "profile")
                 self.assertEqual(profile_record["status"], "refused")
                 self.assertFalse(profile_record["productionAuthorized"])

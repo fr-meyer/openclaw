@@ -84,7 +84,7 @@ class DonorCaller(TinyGitClosure):
         for root in (self.target, self.pipeline):
             self.g("-C", str(root), "remote", "set-url", "origin", "https://github.com/fr-meyer/openclaw.git")
         self.driver = load_driver()
-        self.request = {"schema": self.driver.V5_SCHEMA, "sourceSha": self.commits[-1],
+        self.request = {"schema": self.driver.V6_SCHEMA, "sourceSha": self.commits[-1],
                         "sourceTree": self.g("-C", str(self.target), "rev-parse", "HEAD^{tree}").stdout.strip().decode()}
         self.event = {"trustedSyntheticHead": self.commits[-1]}
         self.runtime_env = {"PATH": os.environ["PATH"], "GITHUB_WORKSPACE": str(self.root),
@@ -171,7 +171,7 @@ class DonorCaller(TinyGitClosure):
         for blob in self.blobs:
             self.assertEqual(self.g("-C", str(self.target), "cat-file", "-t", blob).stdout.strip(), b"blob")
 
-    def test_v5_missing_event_refuses_before_acquisition(self):
+    def test_v6_missing_event_refuses_before_acquisition(self):
         with self.assertRaises(self.driver.release.Refusal):
             self.invoke(event=False)
         self.assertEqual(self.order, [])
@@ -246,7 +246,7 @@ class DonorCaller(TinyGitClosure):
         self.assertNotIn("BENIGN_PRIVATE", str(caught.exception))
         self.assertEqual(self.acquisitions, [])
 
-    def test_historical_helper_body_is_preserved_and_v5_never_falls_back(self):
+    def test_historical_helper_body_is_preserved_and_v6_never_falls_back(self):
         maintained = ast.parse(BASE.read_text())
         historical = next(n for n in maintained.body if isinstance(n, ast.FunctionDef) and n.name == "fetch_closure_historical")
         historical.name = "fetch_closure"
@@ -288,35 +288,33 @@ class DonorCaller(TinyGitClosure):
 
     def test_actual_cli_rejects_legacy_request_file_before_binding_or_acquisition(self):
         driver = self.driver
-        pins = {"sourceSha": driver.V5_FIRST_SOURCE, "sourceTree": driver.V5_FIRST_TREE,
-                "firstSourceSha": driver.V5_FIRST_SOURCE, "firstSourceTree": driver.V5_FIRST_TREE,
-                "manifestSha256": "c" * 64, "inventorySha256": "d" * 64,
-                "firstManifestSha256": "c" * 64, "firstInventorySha256": "d" * 64,
-                "settledUsageSha256": "b" * 64, "priorRunIds": [str(n) for n in range(1, 8)],
-                "sourceHops": [], "previousSourceHopCount": 0}
+        # The integrated test consumes only root-finalized current pins. It must
+        # not invent a future candidate to make historical CLI inputs admissible.
+        self.assertIsInstance(driver.V6_STAGE_PINS, dict)
         event_path = self.root / "synthetic-event.json"
         event_path.write_text(json.dumps(self.event))
         request_path = self.pipeline / driver.REQUEST
         request_path.parent.mkdir(parents=True, exist_ok=True)
-        for version in ("v3", "v4"):
+        for version in ("v2", "v3", "v4", "v5"):
             request_path.write_text(json.dumps({"schema": "openclaw.fork-source-validation-request." + version}))
             stdout = io.StringIO()
             with patch.dict(driver.os.environ, {**self.runtime_env, "GITHUB_EVENT_PATH": str(event_path)}, clear=True), \
-                    patch.object(driver, "V5_STAGE_PINS", pins), \
-                    patch.object(driver, "V5_BASELINE_SHA256", "b" * 64), \
-                    patch.object(driver, "V5_CLOSED_SOURCE_RUN_IDS", tuple(str(n) for n in range(1, 8))), \
                     patch.object(driver, "validate_event", return_value=self.commits[-1]), \
                     patch.object(driver, "fetch_closure") as fetch, \
                     patch.object(driver, "code_binding") as binding, \
                     patch.object(driver, "phase_process") as acquire, \
+                    patch.object(driver, "history_checks_v6") as history, \
+                    patch.object(driver, "verify_source_equivalence_v6") as equivalence, \
                     patch.object(sys, "argv", ["source_validation_v108.py", "admit", "--pipeline-dir", str(self.pipeline),
                                                "--source-dir", str(self.target)]), redirect_stdout(stdout):
-                with self.assertRaises(driver.V5ContractRefusal) as caught:
+                with self.assertRaises(driver.V6ContractRefusal) as caught:
                     driver.main()
-                self.assertEqual(caught.exception.args, ("v5.closed_authorized_request",))
+                self.assertEqual(caught.exception.args, ("v6.closed_authorized_request",))
                 binding.assert_not_called()
                 fetch.assert_not_called()
                 acquire.assert_not_called()
+                history.assert_not_called()
+                equivalence.assert_not_called()
             self.assertNotIn("BENIGN_PRIVATE", stdout.getvalue())
 
 

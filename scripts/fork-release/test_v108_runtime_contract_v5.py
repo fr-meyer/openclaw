@@ -1,4 +1,4 @@
-"""Operational v5 Python synthetics: no application/Node/API execution."""
+"""Published P7 V5 runtime synthetics, with authenticated historical inputs only."""
 import contextlib
 import copy
 from datetime import datetime, timezone
@@ -18,55 +18,9 @@ HERE = Path(__file__).resolve().parent
 
 
 def load_driver():
-    published = HERE / "source_validation_v108.py"
-    if published.exists():
-        spec = importlib.util.spec_from_file_location("runtime_v5_owner_under_test", published)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        pipeline = HERE.parents[1]
-        controls = {name: (pipeline / module.CANDIDATE / name).read_bytes()
-                    for name in ("source-request.json", "manifest.json", "patch-inventory.json", "settled-usage.json")}
-        return module, controls
-    # Local assembly only: actual frozen owner bytes and genuine public B/baseline
-    # metadata. This fixture is not the root's operational V5 pin/publication.
-    from install_runtime_v5 import apply_runtime_v5
-    stage, q = HERE.parent, HERE.parent.parent
-    current = apply_runtime_v5((HERE / "BASE-DRIVER.py.private").read_text(),
-                               (HERE / "runtime_contract_v5.py").read_text())
-    request_text = (stage / "request-contract/request_contract_v5.py").read_text()
-    marker = '\nif __name__ == "__main__":'
-    current = current.replace(marker, "\n" + request_text + '''
-def history_checks_v5(*args):
-    raise AssertionError("SYNTHETIC_HISTORY_MUST_BE_INJECTED")
-''' + marker, 1)
-    module = types.ModuleType("runtime_v5_owner_under_test")
-    module.__file__ = str(q / "targeted-correction-r1/pipeline/scripts/fork-release/source_validation_v108.py")
-    release = types.ModuleType("release")
-    class Refusal(ValueError):
-        pass
-    release.Refusal = Refusal
-    def require(condition, reason):
-        if not condition:
-            raise Refusal(reason)
-    release.need = require
-    release.matches = lambda pattern, value: type(value) is str and __import__("re").fullmatch(pattern, value) is not None
-    release.SHA = __import__("re").compile(r"[a-f0-9]{40}\Z")
-    release.manifest_at = lambda p: (json.loads(p.read_bytes()), hashlib.sha256(p.read_bytes()).hexdigest())
-    preflight = types.ModuleType("preflight")
-    preflight.digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-    with patch.dict(sys.modules, {"release": release, "preflight": preflight}):
-        exec(compile(current, module.__file__, "exec"), module.__dict__)
-    prior = q / "targeted-correction-r1/pipeline" / module.CANDIDATE
-    baseline = (stage / "CLOSED-141-BASELINE.private.json").read_bytes()
-    assert hashlib.sha256(baseline).hexdigest() == module.V5_BASELINE_SHA256
-    pins = json.loads((stage / "request-contract/INITIAL-V5-STAGE-PINS.private.json").read_bytes())
-    request = json.loads((stage / "request-contract/INITIAL-V5-REQUEST.template.json").read_bytes())
-    module.V5_STAGE_PINS = pins
-    module.validate_request_v5(request, pins)
-    controls = {"source-request.json": (json.dumps(request, indent=2) + "\n").encode(),
-                "settled-usage.json": baseline,
-                **{name: (prior / name).read_bytes() for name in ("manifest.json", "patch-inventory.json")}}
-    return module, controls
+    # P7 is retained as authenticated test data, never a current CLI fallback.
+    from historical_v5_test_inputs import load_p7_driver
+    return load_p7_driver("historical_v5_runtime_owner_under_test")
 
 
 D, INPUT_CONTROLS = load_driver()

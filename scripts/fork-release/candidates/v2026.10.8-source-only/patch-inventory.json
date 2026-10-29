@@ -2,7 +2,7 @@
   "schema": "openclaw.fork-patch-inventory.v1",
   "repository": "fr-meyer/openclaw",
   "candidate": "v2026.10.8-source-only",
-  "manifestSha256": "39436d06465c651f63ded013530f91aaf549932dd32390d31b809f8982f527f0",
+  "manifestSha256": "1694932d3eca8357161671a0d62e319c48f2a3ea9b047ae447db2068ab56b997",
   "upstream": {
     "tag": "v2026.10.8",
     "tagObject": "e07a2f67d11717ed39aa2fa07bbe9342376ebfbf",
@@ -11,12 +11,12 @@
   },
   "patches": [
     {
-      "id": "five-gate-2026.10.8-84d9bd1c6187",
+      "id": "npm-fixture-remediation-2026.10.8-9b0a696bf62f",
       "originCommit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
       "disposition": "adapt",
-      "appliedCommit": "84d9bd1c618708e9d5798a730d473ddecf99297a",
-      "rationale": "Retain the reviewed integration and security floors; narrow the required-generation and owned-loopback fixtures, add diagnostic-only npm-lock attribution and its focused regressions. Exact unchanged runtime/dependency bytes and explicitly reviewed carry-row transitions are source equivalence, not relabeled execution.",
-      "evidenceSha256": "edeb18bbc6e19511c813fcbb863cb84980ce8c9d58e484f300e2a633227c9fab",
+      "appliedCommit": "9b0a696bf62f045889d76044f84a0c372c8dddcc",
+      "rationale": "Extend the reviewed sourceB with the approved npm12.2.1 dependency and secretless CI-derived lock, exact vendor-bundle compatibility rows, and type-safe native ownership fixtures. Preserve all prior fork/security/claim-fencing and containment source, per-path origins, assertions and schema. All15synthetic profiles require fresh execution; derivation and prior-generation passes are not qualification.",
+      "evidenceSha256": "5ddd91c1d5892ab6d33d8500ecace4a1d3f2050229698ddba2686cf2b1529ff8",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",
         "extensions/workboard/src/gateway.test.ts",
@@ -125,7 +125,7 @@
           "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
           "sourceBlob": "6d9ba0cbc9f375645f5429937a2ce0b68c1af19f",
           "upstreamBlob": null,
-          "candidateBlob": "0fe9ebb97de15de40e62cd195dd63ab4de9decd1"
+          "candidateBlob": "fcd6345ada6868e5afa255e1faf8d1300b2b2874"
         },
         {
           "path": "docs/cli/gateway/query.md",
@@ -809,7 +809,7 @@
           "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
           "sourceBlob": "94d515001629ab574eeb79591e7d86ecc2bd3ef4",
           "upstreamBlob": "3513a5cb3da82bc70d1724b86c88da745eaddd03",
-          "candidateBlob": "8256d97438f10d8223b0bedadb0b9e2c3a8be51c"
+          "candidateBlob": "4bd1fb505dc14bcddb56f2fe7df1364f818bda98"
         },
         {
           "path": "packages/gateway-protocol/src/core-request-params.ts",
@@ -971,7 +971,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b",
           "upstreamBlob": "7aef13a8539d55a6bf137f9bd54fdb9f7062cb28",
-          "candidateBlob": "14ba80c3f2e75ec9c3b7d01d549ebdf5aa32f7f6"
+          "candidateBlob": "a06aa66417fbad51438d74d5d462117d2bdd97eb"
         },
         {
           "path": "pnpm-workspace.yaml",
@@ -1160,7 +1160,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "4aa9aee8e12a71f5aa699fd2f36accd983c5f77e",
           "upstreamBlob": null,
-          "candidateBlob": "4aa9aee8e12a71f5aa699fd2f36accd983c5f77e"
+          "candidateBlob": "f57016be46f508c8a0068ce9cd57a729b4b0b7b6"
         },
         {
           "path": "scripts/generate-npm-package-lock.mts",
@@ -1169,7 +1169,7 @@
           "sourceTree": "c4b245211ceaab98b397945bb0177770f1052c90",
           "sourceBlob": "7238f62c06835eea41cdc9ad4a2e823a456c1762",
           "upstreamBlob": "7238f62c06835eea41cdc9ad4a2e823a456c1762",
-          "candidateBlob": "975ae34594d2b358ff41d605461c257fdb43fb87"
+          "candidateBlob": "37a35e8a50cbb9698686b7a14e9bd8eada30ce10"
         },
         {
           "path": "scripts/lib/ci-changed-node-test-plan.mts",
@@ -2132,7 +2132,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "989b5bf8a497427a081b441afdb4e27d13114d7e",
           "upstreamBlob": "35c8cf6437a6f5bda45847863551535810702185",
-          "candidateBlob": "909afc00db8db03b99d763d94ce36bf8d8f9f6ee"
+          "candidateBlob": "44b3192d33589c3fa88eee00a43778257b664c73"
         },
         {
           "path": "test/scripts/lint-suppressions.test.ts",
@@ -2159,7 +2159,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "b669e8fa13f9b1a187f5e69a71a2b4db0c960e38",
           "upstreamBlob": null,
-          "candidateBlob": "b669e8fa13f9b1a187f5e69a71a2b4db0c960e38"
+          "candidateBlob": "1a30bd8d683a31faf312cce2cdca81c7c6408118"
         },
         {
           "path": "test/scripts/native-security.test.ts",

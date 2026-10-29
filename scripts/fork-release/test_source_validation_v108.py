@@ -35,10 +35,10 @@ def historical_v3_request():
     return driver.read_json(raw)
 
 
-def operational_v5_request():
-    """Actual tracked closed V5 request; legacy fixtures never stand in for it."""
+def operational_v6_request():
+    """Actual tracked closed V6 request; legacy fixtures never stand in for it."""
     value = driver.read_json((PIPELINE_ROOT / driver.REQUEST).read_bytes())
-    return copy.deepcopy(driver.validate_request_v5(value, driver.V5_STAGE_PINS))
+    return copy.deepcopy(driver.validate_request_v6(value, driver.V6_STAGE_PINS))
 
 
 def historical_v4_request():
@@ -272,7 +272,7 @@ class SourceValidationTests(unittest.TestCase):
         self.assertIn("sparse-checkout:",final);self.assertIn("timeout-minutes: 10",final)
         self.assertIn("SOURCE_JOB_STARTED_EPOCH: ${{ steps.source-clock.outputs.started_epoch }}",text)
         self.assertEqual(SOURCE_LITERAL, driver.V4_PARENT_SOURCE)
-        self.assertEqual(text.count("ref: "+driver.V5_STAGE_PINS["sourceSha"]),2)
+        self.assertEqual(text.count("ref: "+driver.V6_STAGE_PINS["sourceSha"]),2)
         self.assertNotIn("ref: "+SOURCE_LITERAL,text)
         self.assertNotIn("workflow_dispatch:",text);self.assertNotIn("actions/upload-artifact",text)
         self.assertNotIn("id-token:",text);self.assertNotIn("secrets.",text)
@@ -587,7 +587,7 @@ class AdmissionDiagnosticTests(unittest.TestCase):
     def setUp(self):
         self.pins=patch.multiple(driver,SOURCE=SOURCE,TREE=TREE,FIRST_SOURCE=SOURCE,FIRST_TREE=TREE)
         self.pins.start();self.addCleanup(self.pins.stop)
-    def admission(self, *, failed_owner="history_checks_v5", effect=None, mutate_env=None, mutate_event=None):
+    def admission(self, *, failed_owner="history_checks_v6", effect=None, mutate_env=None, mutate_event=None):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);event,env=event_env()
             if mutate_event:mutate_event(event)
@@ -597,18 +597,21 @@ class AdmissionDiagnosticTests(unittest.TestCase):
             if mutate_env:mutate_env(env)
             stdout,stderr=io.StringIO(),io.StringIO()
             owners={name:patch.object(driver,name) for name in
-                ("metadata","code_binding","history_checks_v5","fetch_closure",
-                 "verify_source_equivalence_v5","admission_deadline")}
+                ("metadata","code_binding","history_checks_v6","fetch_closure",
+                 "verify_source_equivalence_v6","admission_deadline")}
             mocks={name:owner.start() for name,owner in owners.items()}
-            current=operational_v5_request()
+            current=operational_v6_request()
             operation_epoch=int(datetime(2026,10,28,14,tzinfo=timezone.utc).timestamp())
+            proof=root/"pipeline"/driver.V6_PREPARATION_PROOF_PATH
+            proof.parent.mkdir(parents=True,exist_ok=True)
+            proof.write_bytes((PIPELINE_ROOT/driver.V6_PREPARATION_PROOF_PATH).read_bytes())
             mocks["metadata"].return_value=(current,{},"d"*64)
             mocks["admission_deadline"].return_value=operation_epoch+3600
-            mocks["history_checks_v5"].return_value={"deadlineEpoch":operation_epoch+3600,
+            mocks["history_checks_v6"].return_value={"deadlineEpoch":operation_epoch+3600,
                 "profileMatrix":[{"profile":profile,"minutes":driver.profile_minutes_for(current)[profile]}
                                  for profile in current["profiles"]],
-                "reusedProfileEvidence":{"profiles":list(driver.V4_REUSED_PROFILES)}}
-            mocks["verify_source_equivalence_v5"].return_value={"status":"synthetic_verified_equivalence"}
+                "historicalCoverageReused":False,"reusedProfileCount":0}
+            mocks["verify_source_equivalence_v6"].return_value={"status":"synthetic_verified_equivalence"}
             if effect is not None:mocks[failed_owner].side_effect=effect
             try:
                 with patch.dict(driver.os.environ,env,clear=True),patch.object(sys,"argv",[
@@ -644,7 +647,7 @@ class AdmissionDiagnosticTests(unittest.TestCase):
     def test_unknown_need_label_canary_is_explicitly_unprojected_not_exported(self):
         def fail(*args, **kwargs):driver.need(False,self.CANARY)
         _,failures,_,_,_=self.admission(effect=fail)
-        self.assertEqual(failures[0]["failedNeedCode"],"v5.unprojected")
+        self.assertEqual(failures[0]["failedNeedCode"],"v6.unprojected")
     def test_http_error_preserves_only_valid_status_and_fixed_api_location(self):
         def fail(*args, **kwargs):
             with driver.admission_api_read("/repos/fr-meyer/openclaw/actions/runs/40607329259/jobs?filter=all&per_page=100"):
@@ -652,7 +655,7 @@ class AdmissionDiagnosticTests(unittest.TestCase):
         _,failures,_,_,_=self.admission(effect=fail)
         f=failures[0];self.assertEqual((f["phase"],f["subcheck"]),("history","api.read"))
         self.assertEqual(f["relatedRunId"],40607329259);self.assertEqual(f["httpStatus"],403)
-        self.assertEqual(f["exceptionClass"],"HTTPError");self.assertEqual(f["failedNeedCode"],"v5.unprojected")
+        self.assertEqual(f["exceptionClass"],"HTTPError");self.assertEqual(f["failedNeedCode"],"v6.unprojected")
     def test_child_error_never_exports_argv_output_stderr_or_exception_text(self):
         error=subprocess.CalledProcessError(7,[self.CANARY],output=self.CANARY,stderr=self.CANARY)
         _,failures,_,_,_=self.admission(failed_owner="code_binding",effect=error)
@@ -688,11 +691,11 @@ class AdmissionDiagnosticTests(unittest.TestCase):
     def test_success_has_no_failure_projection_and_admits_matrix_once(self):
         code,failures,facts,mocks,exists=self.admission()
         self.assertEqual(code,0);self.assertEqual(failures,[]);self.assertTrue(exists)
-        mocks["fetch_closure"].assert_called_once();mocks["verify_source_equivalence_v5"].assert_called_once()
+        mocks["fetch_closure"].assert_called_once();mocks["verify_source_equivalence_v6"].assert_called_once()
         current=mocks["metadata"].return_value[0]
         self.assertEqual(mocks["fetch_closure"].call_args.kwargs["request"],current)
         self.assertIn("event",mocks["fetch_closure"].call_args.kwargs)
-        self.assertEqual(mocks["verify_source_equivalence_v5"].call_args.args[:2],(current,driver.V5_STAGE_PINS))
+        self.assertEqual(mocks["verify_source_equivalence_v6"].call_args.args[:2],(current,driver.V6_STAGE_PINS))
         self.assertEqual(facts[-1]["authorization"],"source-validation-only")
     def test_nonadmission_failure_uses_original_exception_without_admission_output(self):
         stdout=io.StringIO()
@@ -753,6 +756,7 @@ class AdmissionDiagnosticTests(unittest.TestCase):
         for label,code in driver.ADMISSION_NEED_CODES.items():
             if label in history_v5_codes:self.assertEqual(code,label)
             else:self.assertRegex(code,r"\Aneed\.[a-z0-9_]+\Z")
+
 
 
 class ProviderJobIdentityTests(unittest.TestCase):
@@ -900,47 +904,6 @@ class InitialResumeTests(unittest.TestCase):
                     finally:self.root=old
 
 
-class FinalizeCoverageTests(unittest.TestCase):
-    def finalize(self,value,pins=None):
-        with tempfile.TemporaryDirectory() as directory:
-            event,env=event_env();path=Path(directory)/"event.json";path.write_text(json.dumps(event))
-            env.update(GITHUB_EVENT_PATH=str(path),SOURCE_MATRIX_RESULT="success",SOURCE_ADMISSION_RESULT="success")
-            output=io.StringIO()
-            with patch.dict(driver.os.environ,env,clear=True),patch.object(sys,"argv",[
-                    "source_validation_v108.py","finalize","--pipeline-dir",directory]),\
-                    patch.object(driver,"metadata",return_value=(value,{},"d"*64)),\
-                    patch.object(driver,"V5_STAGE_PINS",driver.V5_STAGE_PINS if pins is None else pins),\
-                    patch.object(driver,"code_binding") as binding,redirect_stdout(output):
-                code=driver.entrypoint()
-            binding.assert_called_once()
-            self.assertEqual(binding.call_args.args[:3],(Path(directory),None,event))
-            self.assertTrue(binding.call_args.kwargs["minimal"])
-            self.assertEqual(binding.call_args.kwargs["request"],value)
-            self.assertEqual(code,0)
-            facts=json.loads(output.getvalue());self.assertEqual(facts["status"],"passed")
-            self.assertFalse(facts["productionAuthorized"]);self.assertFalse(facts["imageBuilt"])
-            return facts
-    def test_initial_v5_reports_affected_profiles_and_original_historical_reuse(self):
-        value=operational_v5_request()
-        facts=self.finalize(value)
-        self.assertEqual(facts["coverage"],"affected_profiles_with_admission_verified_historical_reuse")
-        self.assertEqual(facts["affectedProfiles"],value["profiles"])
-        reuse=facts["historicalReuse"]
-        self.assertTrue(reuse["verified"])
-        self.assertEqual(reuse["profiles"],list(driver.V4_REUSED_PROFILES))
-        self.assertEqual((reuse["sourceSha"],reuse["runId"]),(driver.V4_PARENT_SOURCE,driver.V4_PARENT_RUN))
-        self.assertFalse(reuse["relabeledAsCurrentSourcePass"])
-    def test_v5_same_source_correction_keeps_targeted_profiles_and_original_witness(self):
-        value=operational_v5_request()
-        pins=copy.deepcopy(driver.V5_STAGE_PINS)
-        # Unit-only synthetic first-run ID; do not append to live corrective controls.
-        pins["priorRunIds"]=[*driver.V5_CLOSED_SOURCE_RUN_IDS, "99998"]
-        value.update(stageRound=1,lifetimeOperatorRound=8,profiles=["dependency"],priorRunIds=pins["priorRunIds"])
-        self.assertEqual(value["sourceWitness"]["correctionHops"],[])
-        facts=self.finalize(value,pins)
-        self.assertEqual(facts["coverage"],"affected_profiles_with_admission_verified_historical_reuse")
-        self.assertEqual(facts["affectedProfiles"],["dependency"])
-        self.assertEqual(facts["sourceWitness"],value["sourceWitness"])
 
 
 
@@ -959,9 +922,9 @@ class CheckoutClosurePolicyTests(unittest.TestCase):
     def test_real_layout_uses_only_root_candidate_request(self):
         self.assertFalse(Path(__file__).with_name("source-request.json").exists())
         actual = driver.read_json((PIPELINE_ROOT / driver.REQUEST).read_bytes())
-        self.assertEqual(actual["schema"], driver.V5_SCHEMA)
-        self.assertEqual(actual["sourceSha"], driver.V5_STAGE_PINS["sourceSha"])
-        self.assertEqual(driver.validate_request_v5(actual, driver.V5_STAGE_PINS), actual)
+        self.assertEqual(actual["schema"], driver.V6_SCHEMA)
+        self.assertEqual(actual["sourceSha"], driver.V6_STAGE_PINS["sourceSha"])
+        self.assertEqual(driver.validate_request_v6(actual, driver.V6_STAGE_PINS), actual)
 
     def test_policy_version_preserves_historical45_and_repairs_only_doctor1(self):
         old = {"schema": "openclaw.fork-source-validation-request.v3"}
