@@ -1,5 +1,5 @@
 name: Future v108 source validation
-run-name: future-v108-source-validation-20261027
+run-name: future-v108-npm-lock-preparation-20261029
 
 on:
   pull_request:
@@ -8,7 +8,6 @@ on:
 permissions:
   contents: read
 
-# One campaign, including corrections. Queued duplicates fail admission.
 concurrency:
   group: future-v108-source-validation-20261027
   cancel-in-progress: false
@@ -17,7 +16,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  admission:
+  lock-preparation:
     if: >-
       ${{ github.repository == 'fr-meyer/openclaw' && github.event.repository.private == false &&
           github.event.pull_request.number == 28 && github.event.pull_request.draft == true &&
@@ -25,38 +24,38 @@ jobs:
           github.event.pull_request.head.ref == 'task/v107-source-binding' &&
           github.event.pull_request.base.ref == 'release-pipeline/v105-image-only-20261024' &&
           github.event.pull_request.base.sha == 'a65f70c5dad17b39bc3ee26ba92cde6d00bfb259' &&
-          github.run_attempt == 1 }}
-    name: admission
+          github.actor == 'fr-meyer' && github.run_attempt == 1 }}
+    name: lock-preparation
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       actions: read
       pull-requests: read
-    outputs:
-      matrix: ${{ steps.admit.outputs.matrix }}
-      deadline_epoch: ${{ steps.admit.outputs.deadline_epoch }}
     steps:
-      - name: Observe shared admission budget before either checkout
-        id: admission-clock
-        run: python3 -c 'import os,time; open(os.environ["GITHUB_OUTPUT"], "a").write("started_epoch=" + str(int(time.time())) + "\n")'
-      - name: Checkout reviewed pipeline head and complete ancestry
+      - name: Observe the shared45-minute job clock before checkouts
+        id: clock
+        run: |
+          /usr/bin/python3 -I -B - <<'PY'
+          from datetime import datetime, timezone
+          import os
+          import time
+          started = time.time()
+          deadline = datetime(2026, 10, 30, 0, 3, 19, tzinfo=timezone.utc).timestamp()
+          if not started + 45 * 60 <= deadline:
+              raise SystemExit("npm lock preparation exceeds approved deadline")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("started_epoch=" + str(int(started)) + "\n")
+          PY
+      - name: Checkout exact reviewed pipeline with its immediate parent
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fr-meyer/openclaw
           ref: ${{ github.event.pull_request.head.sha }}
           path: pipeline
-          fetch-depth: 0
+          fetch-depth: 2
           persist-credentials: false
-      - name: Bound product checkout by the same admission clock
-        id: checkout-budget
-        env:
-          SOURCE_ADMISSION_STARTED_EPOCH: ${{ steps.admission-clock.outputs.started_epoch }}
-        run: >-
-          python3 pipeline/scripts/fork-release/source_validation_v108.py checkout-budget
-          --pipeline-dir "$GITHUB_WORKSPACE/pipeline"
-      - name: Checkout frozen product source
-        timeout-minutes: ${{ fromJSON(steps.checkout-budget.outputs.checkout_minutes) }}
+      - name: Checkout exact immutable sourceB
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fr-meyer/openclaw
@@ -64,100 +63,39 @@ jobs:
           path: source
           fetch-depth: 1
           persist-credentials: false
-      - name: Admit exact campaign and source with read-only public metadata
-        id: admit
+      - name: Admit exact once-only lock preparation with read-only metadata
+        id: admission
         env:
           GH_SOURCE_READ_TOKEN: ${{ github.token }}
-          SOURCE_ADMISSION_STARTED_EPOCH: ${{ steps.admission-clock.outputs.started_epoch }}
-        run: >-
-          python3 pipeline/scripts/fork-release/source_validation_v108.py admit
-          --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
-
-  source:
-    needs: admission
-    name: source (${{ matrix.profile }})
-    runs-on: ubuntu-24.04
-    timeout-minutes: ${{ matrix.minutes }}
-    permissions:
-      contents: read
-    env:
-      SOURCE_PROFILE: ${{ matrix.profile }}
-      SOURCE_DEADLINE_EPOCH: ${{ needs.admission.outputs.deadline_epoch }}
-    strategy:
-      fail-fast: false
-      max-parallel: 3
-      matrix: ${{ fromJSON(needs.admission.outputs.matrix) }}
-    steps:
-      - name: Observe source job budget origin
-        id: source-clock
-        run: python3 -c 'import os,time; open(os.environ["GITHUB_OUTPUT"], "a").write("started_epoch=" + str(int(time.time())) + "\n")'
-      - name: Checkout reviewed pipeline head
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: fr-meyer/openclaw
-          ref: ${{ github.event.pull_request.head.sha }}
-          path: pipeline
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Checkout frozen product source
-        timeout-minutes: 10
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: fr-meyer/openclaw
-          ref: 84d9bd1c618708e9d5798a730d473ddecf99297a
-          path: source
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Setup fixed supported Node runtime without a cache
+          NPM_LOCK_STARTED_EPOCH: ${{ steps.clock.outputs.started_epoch }}
+        run: /usr/bin/python3 -I -B pipeline/scripts/fork-release/npm_lock_prepare_v108.py admit
+      - name: Setup pinned supported Node without dependency cache
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.22.1
           package-manager-cache: false
-      - name: Verify complete public source closure through maintained preflight
+      - name: Derive only the approved npm lock through the maintained resolver
+        id: derivation
         env:
-          SOURCE_JOB_STARTED_EPOCH: ${{ steps.source-clock.outputs.started_epoch }}
+          NPM_LOCK_STARTED_EPOCH: ${{ steps.clock.outputs.started_epoch }}
+          NPM_LOCK_ADMISSION_SHA256: ${{ steps.admission.outputs.admission_sha256 }}
         run: >-
-          python3 pipeline/scripts/fork-release/source_validation_v108.py fetch-closure
-          --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
-      - name: Run named source profile with synthetic state and credential-free environment
-        env:
-          SOURCE_JOB_STARTED_EPOCH: ${{ steps.source-clock.outputs.started_epoch }}
-        run: >-
-          python3 pipeline/scripts/fork-release/source_validation_v108.py run
-          --pipeline-dir "$GITHUB_WORKSPACE/pipeline" --source-dir "$GITHUB_WORKSPACE/source"
-          --profile "$SOURCE_PROFILE"
-
-  final:
-    if: ${{ always() && needs.admission.result == 'success' }}
-    needs: [admission, source]
-    name: final
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout reviewed pipeline head
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          /usr/bin/python3 -I -B pipeline/scripts/fork-release/npm_lock_prepare_v108.py derive
+          --admission-sha256 "$NPM_LOCK_ADMISSION_SHA256"
+      - name: Retain only bounded public lock derivation files
+        if: ${{ always() && steps.derivation.outputs.artifact_ready == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          repository: fr-meyer/openclaw
-          ref: ${{ github.event.pull_request.head.sha }}
-          path: pipeline
-          fetch-depth: 1
-          filter: blob:none
-          sparse-checkout: |
-            .github/workflows/future-v108-source-validation.yml
-            scripts/fork-release
-          persist-credentials: false
-      - name: Record bounded source-only result in logs and job summary
-        env:
-          SOURCE_ADMISSION_RESULT: ${{ needs.admission.result }}
-          SOURCE_MATRIX_RESULT: ${{ needs.source.result }}
-        run: >-
-          python3 pipeline/scripts/fork-release/source_validation_v108.py finalize
-          --pipeline-dir "$GITHUB_WORKSPACE/pipeline"
+          name: v108-npm-lock-preparation
+          path: |
+            ${{ runner.temp }}/v108-npm-lock-output-${{ github.run_id }}/pnpm-lock.yaml
+            ${{ runner.temp }}/v108-npm-lock-output-${{ github.run_id }}/npm-lock.diff
+            ${{ runner.temp }}/v108-npm-lock-output-${{ github.run_id }}/generation.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
 
-# No artifact upload or cache route. The owner captures allowlisted summaries
-# within one day; total retained diagnostic evidence is limited to 64 MiB.
-# Normal source postinstall and maintained test-owner qaRuntime/worker/facade
-# compilation use ephemeral job storage and remain inside these timeouts.
-# No image, registry, cloud, deployment or production approval is produced.
+# This one fixed45-minute job includes both checkouts, bootstrap, derivation,
+# artifact transfer and post-actions. Derivation is not candidate qualification.
+# Only public source/lock metadata is uploaded (three fixed entries, <=2MiB).
+# No cache, image, registry publication, cloud, private data or deployment route.
