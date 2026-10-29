@@ -36,6 +36,8 @@ verifyDepsBeforeRun: false
 blockExoticSubdeps: true
 
 overrides:
+  # GHSA-gg6h-894w-4m9c: patch only the retained Crabline child.
+  "@openclaw/crabline@0.1.29>re2js": 2.8.7
   # Development-only Sigstore chain: compatible refresh outside GHSA-ch52-4w7c-c8xp's range.
   "make-fetch-happen@16.0.1>http-cache-semantics": 4.3.0
   # GHSA-xcx6-jx8p-x3h5: reviewed real-parent compatibility for fixed MSAL.

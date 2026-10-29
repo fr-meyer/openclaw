@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import { once } from "node:events";
 import { Writable } from "node:stream";
+import { Worker } from "node:worker_threads";
 import http from "node:http";
 import https from "node:https";
 import { createRequire, syncBuiltinESMExports } from "node:module";
@@ -229,6 +230,191 @@ test("the actual aligned Vitest mock generator treats hostile registration value
     if (previousMarker) Object.defineProperty(globalThis, "__v108DependencyInjection", previousMarker);
     else delete globalThis.__v108DependencyInjection;
   }
+});
+
+
+// GHSA-gg6h-894w-4m9c: exercise the installed child through both consuming
+// parents. The fixed public fixtures are pinned to RE2JS release 6ba840014b19,
+// stability.test.js:78-122 and Lookbehind.test.js:220-268. This is bounded API
+// correctness/completion, not an internal Machine.step or universal latency proof.
+const re2jsRegressionWorker = String.raw`
+  const { parentPort, workerData } = require("node:worker_threads");
+  const { pathToFileURL } = require("node:url");
+  const { isAbsolute } = require("node:path");
+  const { syncBuiltinESMExports } = require("node:module");
+  let networkCalls = 0;
+  const denyNetwork = () => {
+    networkCalls++;
+    throw new Error("network forbidden in isolated RE2JS regression");
+  };
+  for (const name of ["node:http", "node:https"]) {
+    const owner = require(name);
+    owner.request = owner.get = denyNetwork;
+  }
+  const net = require("node:net");
+  net.connect = net.createConnection = denyNetwork;
+  require("node:tls").connect = denyNetwork;
+  globalThis.fetch = denyNetwork;
+  syncBuiltinESMExports();
+  let phase = "initialization";
+  const check = (value) => {
+    if (!value) throw new Error("RE2JS regression refused");
+  };
+  (async () => {
+    check(workerData && Object.keys(workerData).join(",") === "entries");
+    const entries = workerData.entries;
+    check(Array.isArray(entries) && entries.length >= 1 && entries.length <= 4);
+    let checks = 0;
+    for (const entry of entries) {
+      check(entry && Object.keys(entry).sort().join(",") === "format,path");
+      check((entry.format === "import" || entry.format === "require") &&
+        typeof entry.path === "string" && isAbsolute(entry.path));
+      phase = "import";
+      const api = entry.format === "import"
+        ? await import(pathToFileURL(entry.path).href)
+        : require(entry.path);
+      const { RE2JS } = api;
+      check(typeof RE2JS?.compile === "function" && Number.isInteger(RE2JS.LOOKBEHINDS));
+      const repeatCount = 8000;
+      const input = "ab".repeat(repeatCount);
+      check(input.length === 16000);
+      const pattern = RE2JS.compile("(?<=a)b", RE2JS.LOOKBEHINDS);
+      phase = "find";
+      const matcher = pattern.matcher(input);
+      let found = 0;
+      while (matcher.find()) {
+        found++;
+        check(found <= repeatCount);
+      }
+      check(found === repeatCount);
+      checks++;
+      phase = "matchAll";
+      let matched = 0;
+      let lastIndex = -1;
+      for (const match of pattern.matchAll(input)) {
+        matched++;
+        check(matched <= repeatCount);
+        lastIndex = match.index;
+      }
+      check(matched === repeatCount && lastIndex === input.length - 1);
+      checks++;
+      phase = "split";
+      const parts = pattern.split(input);
+      check(parts.length >= repeatCount && parts.length <= input.length + 1 && parts[0] === "a");
+      checks++;
+      phase = "replaceAll";
+      check(pattern.matcher(input).replaceAll("X") === "aX".repeat(repeatCount));
+      checks++;
+      phase = "backward";
+      const backward = pattern.matcher("ab".repeat(5));
+      for (const [start, expected] of [[0, 1], [4, 5], [9, 9], [2, 3]]) {
+        check(backward.find(start) === true && backward.start() === expected);
+      }
+      check(backward.find(10) === false);
+      checks++;
+      phase = "newInput";
+      const replacedInput = RE2JS.compile("(?<=x.*)b", RE2JS.LOOKBEHINDS).matcher("xab ab");
+      check(replacedInput.find() === true && replacedInput.find() === true && replacedInput.find() === false);
+      replacedInput.resetMatcherInput("ab ab");
+      check(replacedInput.find() === false);
+      replacedInput.resetMatcherInput("ab xab");
+      check(replacedInput.find() === true && replacedInput.start() === 5 && replacedInput.find() === false);
+      checks++;
+      phase = "reset";
+      const reset = RE2JS.compile("(?<!x)ab", RE2JS.LOOKBEHINDS).matcher("abab");
+      check(reset.find() === true && reset.start() === 0);
+      check(reset.find() === true && reset.start() === 2 && reset.find() === false);
+      check(reset.lookingAt() === true && reset.end() === 2 && reset.matches() === false);
+      reset.reset();
+      check(reset.find() === true && reset.start() === 0);
+      checks++;
+    }
+    check(networkCalls === 0);
+    parentPort.postMessage({ schema: "re2js-regression-v1", ok: true, phase: "complete",
+      entries: entries.length, checks, networkCalls });
+  })().catch(() => {
+    parentPort.postMessage({ schema: "re2js-regression-v1", ok: false, phase });
+    process.exitCode = 1;
+  });
+`;
+
+async function runOwnedRe2jsWorker(entries, signal) {
+  signal.throwIfAborted();
+  const worker = new Worker(re2jsRegressionWorker, {
+    eval: true,
+    execArgv: [],
+    workerData: { entries },
+    env: { NODE_ENV: "test", HOME: "/nonexistent", USERPROFILE: "/nonexistent", LANG: "C", LC_ALL: "C" },
+    resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16, stackSizeMb: 4 },
+  });
+  let timedOut = false;
+  let aborted = false;
+  let failed = false;
+  let duplicate = false;
+  let messages = 0;
+  let report;
+  let termination;
+  const stop = () => {
+    termination ??= worker.terminate().then(() => true, () => false);
+  };
+  const onAbort = () => { aborted = true; stop(); };
+  signal.addEventListener("abort", onAbort, { once: true });
+  // A real parent deadline is essential here: the algorithm under test may
+  // block its worker's event loop. Exit/termination, not this timer, settles it.
+  const timer = setTimeout(() => { timedOut = true; stop(); }, 20_000);
+  if (signal.aborted) onAbort();
+  return new Promise((resolve, reject) => {
+    worker.on("message", (message) => {
+      if (++messages !== 1) duplicate = true;
+      else report = message;
+    });
+    worker.once("error", () => { failed = true; });
+    worker.once("exit", async (code) => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      const settled = termination === undefined || await termination;
+      if (timedOut || aborted || failed || duplicate || code !== 0 || !settled) {
+        reject(new Error("isolated RE2JS worker failed or exceeded its owned deadline"));
+      } else {
+        resolve(report);
+      }
+    });
+  });
+}
+
+test("the actual Crabline parents use fixed RE2JS lookbehind behavior in an isolated worker", {
+  timeout: 30_000,
+}, async (t) => {
+  const qaLabRequire = createRequire(path.join(root, "extensions/qa-lab/package.json"));
+  const entries = new Map();
+  for (const parentRequire of [rootRequire, qaLabRequire]) {
+    const crabline = packageContext(parentRequire, "@openclaw/crabline");
+    assert.equal(crabline.manifest.version, "0.1.29");
+    const child = packageContext(crabline.require, "re2js");
+    assert.equal(child.manifest.version, "2.8.7");
+    const exports = child.manifest.exports?.["."];
+    assert.equal(exports?.require?.default, "./build/index.cjs");
+    assert.equal(exports?.import?.default, "./build/index.js");
+    const packageRoot = path.dirname(child.require.resolve("./package.json"));
+    for (const [format, relative] of [["require", exports.require.default], ["import", exports.import.default]]) {
+      const entry = fs.realpathSync(path.join(packageRoot, relative));
+      assert.equal(entry.startsWith(fs.realpathSync(packageRoot) + path.sep), true);
+      if (format === "require") assert.equal(entry, child.entry);
+      entries.set(`${format}:${entry}`, { format, path: entry });
+    }
+  }
+  assert.ok(entries.size >= 2 && entries.size <= 4);
+  const startedAt = performance.now();
+  const report = await runOwnedRe2jsWorker([...entries.values()], t.signal);
+  assert.deepEqual(Object.keys(report).sort(), ["checks", "entries", "networkCalls", "ok", "phase", "schema"]);
+  assert.equal(report.schema, "re2js-regression-v1");
+  assert.equal(report.ok, true);
+  assert.equal(report.phase, "complete");
+  assert.equal(report.entries, entries.size);
+  assert.equal(report.checks, entries.size * 7);
+  assert.equal(report.networkCalls, 0);
+  assert.equal(networkCalls, 0);
+  t.diagnostic(`isolated RE2JS API/state checks completed in ${Math.round(performance.now() - startedAt)}ms`);
 });
 
 test("no real network operation occurred", () => assert.equal(networkCalls, 0));
