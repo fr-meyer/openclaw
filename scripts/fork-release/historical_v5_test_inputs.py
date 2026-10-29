@@ -77,6 +77,7 @@ CURRENT_RELEASE_SUCCESSOR_SHA256 = "3bf47cc5a24e5c43ef3226e3e1fa9cf66c21a7e61bc5
 CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256 = "7d890adb43a03a44add07e8e66539bfc8319a688c8da6cef095f768a5877cb62"
 CURRENT_RE2JS_FINAL_RELEASE_SUCCESSOR_SHA256 = "ae135a775adcedc1b2f77084a7557bcdd706c9a39ba5b75b4f766a93f988c22c"
 
+CURRENT_CRABLINE_RELEASE_SUCCESSOR_SHA256 = "d809c07015cd86e717c750ae87fa7849baf7e27a86209d0ca55b068c236246ac"
 
 def _check_current_shared_owners():
     for owner in ("release", "preflight"):
@@ -88,7 +89,8 @@ def _check_current_shared_owners():
         successor = (owner == "release" and
             (hashlib.sha256(current).hexdigest() == CURRENT_RELEASE_SUCCESSOR_SHA256
              or hashlib.sha256(current).hexdigest() == CURRENT_RE2JS_RELEASE_SUCCESSOR_SHA256
-             or hashlib.sha256(current).hexdigest() == CURRENT_RE2JS_FINAL_RELEASE_SUCCESSOR_SHA256))
+             or hashlib.sha256(current).hexdigest() == CURRENT_RE2JS_FINAL_RELEASE_SUCCESSOR_SHA256
+             or hashlib.sha256(current).hexdigest() == CURRENT_CRABLINE_RELEASE_SUCCESSOR_SHA256))
         if current != original and not successor:
             raise AssertionError("historical_v5.shared_owner_changed")
 
@@ -158,4 +160,37 @@ def p8_preparation_workflow():
     if type(raw) is not bytes or len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
         raise AssertionError("historical_p8.workflow_pin")
     _P8_WORKFLOW_CACHE = raw
+    return raw
+
+
+# Fixed historical V6 controls, never an operational request or caller selector.
+V6_P10 = "5eb54e3c43ebf44de915574c1575c36df660847b"
+V6_P10_INPUTS = {'request': ('scripts/fork-release/candidates/v2026.10.8-source-only/source-request.json', 2680, 'e343bc68535cdb9a82106b3d876efcd660bea10576f9edcb991b2c2ac271fc7f'), 'manifest': ('scripts/fork-release/candidates/v2026.10.8-source-only/manifest.json', 4868, '1694932d3eca8357161671a0d62e319c48f2a3ea9b047ae447db2068ab56b997'), 'inventory': ('scripts/fork-release/candidates/v2026.10.8-source-only/patch-inventory.json', 116318, '830baa2cc1ce989d1da4208a059a7704fd72fa0176305d9afb56785e25bdf893'), 'generation': ('scripts/fork-release/candidates/v2026.10.8-source-only/lock-preparation-proof.json', 1422, '662cb33cb91ab073b05f3cdf14ed1d0a8221e9d77c892f3668fac350c98324c6'), 'workflow': ('.github/workflows/future-v108-source-validation.yml', 9156, '3a1255876fb297674b1e9701deed308fda366508c95736d8d3b8135d356fde4f')}
+_V6_P10_CACHE = {}
+
+
+def v6_p10_input(name):
+    """Read only immutable P10 bytes; current metadata never calls this fixture."""
+    if type(name) is not str or name not in V6_P10_INPUTS:
+        raise AssertionError("historical_v6_p10.input_not_allowlisted")
+    if name in _V6_P10_CACHE:
+        return _V6_P10_CACHE[name]
+    path, size, digest = V6_P10_INPUTS[name]
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(GIT_NO_LAZY_FETCH="1", GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0",
+               GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null")
+    try:
+        child = subprocess.run(
+            ["/usr/bin/git", "--no-replace-objects", "-c", "protocol.allow=never", "-c",
+             "core.hooksPath=/dev/null", "-c", "gc.auto=0", "-c", "maintenance.auto=false",
+             "-C", str(PIPELINE), "show", V6_P10 + ":" + path],
+            env=env, capture_output=True, timeout=20)
+    except subprocess.TimeoutExpired:
+        raise AssertionError("historical_v6_p10.git_timeout") from None
+    if type(child.returncode) is not int or child.returncode != 0:
+        raise AssertionError("historical_v6_p10.git_read_failed")
+    raw = child.stdout
+    if type(raw) is not bytes or len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
+        raise AssertionError("historical_v6_p10.input_pin")
+    _V6_P10_CACHE[name] = raw
     return raw

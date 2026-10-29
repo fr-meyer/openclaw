@@ -130,6 +130,8 @@ class HistoricalP7NamespaceTests(unittest.TestCase):
             "7d890adb43a03a44add07e8e66539bfc8319a688c8da6cef095f768a5877cb62")
         self.assertEqual(H.CURRENT_RE2JS_FINAL_RELEASE_SUCCESSOR_SHA256,
             "ae135a775adcedc1b2f77084a7557bcdd706c9a39ba5b75b4f766a93f988c22c")
+        self.assertEqual(H.CURRENT_CRABLINE_RELEASE_SUCCESSOR_SHA256,
+            "d809c07015cd86e717c750ae87fa7849baf7e27a86209d0ca55b068c236246ac")
         self.assertEqual(H.PINS["release"], ("scripts/fork-release/release.py", 65836,
             "6a183cbde1f2257b30440b34b781688e873ee2e2ed938a129e921d72ac667da3"))
         self.assertEqual(H.PINS["preflight"], ("scripts/fork-release/preflight.py", 21768,
@@ -147,7 +149,7 @@ class HistoricalP7NamespaceTests(unittest.TestCase):
 
     def test_actual_final_release_exact_allowance_and_changed_owner_refusal(self):
         current = (HERE / "release.py").read_bytes()
-        self.assertEqual(hashlib.sha256(current).hexdigest(), H.CURRENT_RE2JS_FINAL_RELEASE_SUCCESSOR_SHA256)
+        self.assertEqual(hashlib.sha256(current).hexdigest(), H.CURRENT_CRABLINE_RELEASE_SUCCESSOR_SHA256)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "release.py").write_bytes(current)
@@ -348,6 +350,71 @@ class HistoricalP8WorkflowTests(unittest.TestCase):
                 H.p8_preparation_workflow()
             child.assert_called_once(); self.assertIsNone(H._P8_WORKFLOW_CACHE)
             self.assertNotIn("PRIVATE", str(failure.exception))
+
+
+class HistoricalV6P10InputTests(unittest.TestCase):
+    def setUp(self):
+        H._V6_P10_CACHE.clear()
+        self.addCleanup(H._V6_P10_CACHE.clear)
+
+    def test_exact_legacy_origin_and_names_are_closed_before_process(self):
+        self.assertEqual(H.V6_P10, "5eb54e3c43ebf44de915574c1575c36df660847b")
+        self.assertEqual(set(H.V6_P10_INPUTS), {"request", "manifest", "inventory", "generation", "workflow"})
+        with patch.object(H.subprocess, "run") as child:
+            for value in (None, 1, "../request", "source-request.json", "current", "driver"):
+                with self.subTest(value=value), self.assertRaisesRegex(AssertionError, "input_not_allowlisted"):
+                    H.v6_p10_input(value)
+            child.assert_not_called()
+
+    def test_fixed_read_disables_network_and_hashes_before_cache(self):
+        raw = b"synthetic historical control"
+        pin = ("fixed/request.json", len(raw), hashlib.sha256(raw).hexdigest())
+        with patch.dict(H.V6_P10_INPUTS, {"request": pin}, clear=True), \
+             patch.object(H.os, "environ", {"PATH": "/synthetic", "GIT_DIR": "/private", "GIT_CONFIG_COUNT": "1"}), \
+             patch.object(H.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=raw)) as child:
+            self.assertIs(H.v6_p10_input("request"), raw)
+            self.assertIs(H.v6_p10_input("request"), raw)
+            child.assert_called_once()
+        argv = child.call_args.args[0]
+        self.assertEqual(argv[-2:], ["show", H.V6_P10 + ":fixed/request.json"])
+        self.assertIn("--no-replace-objects", argv)
+        self.assertIn("protocol.allow=never", argv)
+        self.assertIn("core.hooksPath=/dev/null", argv)
+        self.assertEqual(child.call_args.kwargs["timeout"], 20)
+        env = child.call_args.kwargs["env"]
+        self.assertNotIn("GIT_DIR", env)
+        self.assertNotIn("GIT_CONFIG_COUNT", env)
+        self.assertEqual(env["GIT_NO_LAZY_FETCH"], "1")
+        self.assertEqual(env["GIT_OPTIONAL_LOCKS"], "0")
+        self.assertEqual(env["GIT_TERMINAL_PROMPT"], "0")
+
+    def test_bad_bytes_failed_or_timeout_reads_never_fall_back_or_cache(self):
+        raw = b"synthetic historical control"
+        pin = ("fixed/request.json", len(raw), hashlib.sha256(raw).hexdigest())
+        for value in (raw + b"x", raw.decode(), b"X" * len(raw)):
+            with self.subTest(value=value), patch.dict(H.V6_P10_INPUTS, {"request": pin}, clear=True), \
+                 patch.object(H.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=value)):
+                with self.assertRaisesRegex(AssertionError, "input_pin"):
+                    H.v6_p10_input("request")
+                self.assertEqual(H._V6_P10_CACHE, {})
+        for error in (SimpleNamespace(returncode=1, stdout=raw, stderr=b"SYNTHETIC_PRIVATE"),
+                      subprocess.TimeoutExpired("inert", 20, output=raw)):
+            mock = patch.object(H.subprocess, "run", side_effect=error) if isinstance(error, Exception) else patch.object(H.subprocess, "run", return_value=error)
+            with mock as child, self.assertRaisesRegex(AssertionError, "historical_v6_p10.git_(read_failed|timeout)") as failure:
+                H.v6_p10_input("request")
+            child.assert_called_once()
+            self.assertNotIn("SYNTHETIC_PRIVATE", str(failure.exception))
+            self.assertEqual(H._V6_P10_CACHE, {})
+
+    def test_immutable_v6_request_does_not_use_current_root_controls(self):
+        raw = H.v6_p10_input("request")
+        import json
+        value = json.loads(raw)
+        self.assertEqual(value["schema"], "openclaw.fork-source-validation-request.v6")
+        self.assertEqual(value["sourceSha"], "9b0a696bf62f045889d76044f84a0c372c8dddcc")
+        self.assertEqual(len(raw), H.V6_P10_INPUTS["request"][1])
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), H.V6_P10_INPUTS["request"][2])
+        self.assertNotEqual(value["sourceSha"], "76522eaa2dd93a4933b5c87f7451eab1d458f8be")
 
 
 if __name__ == "__main__":

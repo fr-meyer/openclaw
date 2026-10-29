@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import io
 import itertools
+import historical_v5_test_inputs as historical_inputs
 import json
 import os
 from pathlib import Path
@@ -35,9 +36,9 @@ def historical_v3_request():
     return driver.read_json(raw)
 
 
-def operational_v6_request():
-    """Actual tracked closed V6 request; legacy fixtures never stand in for it."""
-    value = driver.read_json((PIPELINE_ROOT / driver.REQUEST).read_bytes())
+def historical_v6_request():
+    """Immutable P10 V6 protocol subject, never current operational metadata."""
+    value = driver.read_json(historical_inputs.v6_p10_input("request"))
     return copy.deepcopy(driver.validate_request_v6(value, driver.V6_STAGE_PINS))
 
 
@@ -272,7 +273,11 @@ class SourceValidationTests(unittest.TestCase):
         self.assertIn("sparse-checkout:",final);self.assertIn("timeout-minutes: 10",final)
         self.assertIn("SOURCE_JOB_STARTED_EPOCH: ${{ steps.source-clock.outputs.started_epoch }}",text)
         self.assertEqual(SOURCE_LITERAL, driver.V4_PARENT_SOURCE)
-        self.assertEqual(text.count("ref: "+driver.V6_STAGE_PINS["sourceSha"]),2)
+        current = driver.read_json((PIPELINE_ROOT / driver.REQUEST).read_bytes())
+        driver.validate_request_v8(current, driver.R8_STAGE_PINS)
+        self.assertEqual(text.count("ref: "+current["sourceSha"]),2)
+        legacy_workflow = historical_inputs.v6_p10_input("workflow").decode()
+        self.assertEqual(legacy_workflow.count("ref: "+driver.V6_STAGE_PINS["sourceSha"]),2)
         self.assertNotIn("ref: "+SOURCE_LITERAL,text)
         self.assertNotIn("workflow_dispatch:",text);self.assertNotIn("actions/upload-artifact",text)
         self.assertNotIn("id-token:",text);self.assertNotIn("secrets.",text)
@@ -600,11 +605,11 @@ class AdmissionDiagnosticTests(unittest.TestCase):
                 ("metadata","code_binding","history_checks_v6","fetch_closure",
                  "verify_source_equivalence_v6","admission_deadline")}
             mocks={name:owner.start() for name,owner in owners.items()}
-            current=operational_v6_request()
+            current=historical_v6_request()
             operation_epoch=int(datetime(2026,10,28,14,tzinfo=timezone.utc).timestamp())
             proof=root/"pipeline"/driver.V6_PREPARATION_PROOF_PATH
             proof.parent.mkdir(parents=True,exist_ok=True)
-            proof.write_bytes((PIPELINE_ROOT/driver.V6_PREPARATION_PROOF_PATH).read_bytes())
+            proof.write_bytes(historical_inputs.v6_p10_input("generation"))
             mocks["metadata"].return_value=(current,{},"d"*64)
             mocks["admission_deadline"].return_value=operation_epoch+3600
             mocks["history_checks_v6"].return_value={"deadlineEpoch":operation_epoch+3600,
@@ -922,9 +927,11 @@ class CheckoutClosurePolicyTests(unittest.TestCase):
     def test_real_layout_uses_only_root_candidate_request(self):
         self.assertFalse(Path(__file__).with_name("source-request.json").exists())
         actual = driver.read_json((PIPELINE_ROOT / driver.REQUEST).read_bytes())
-        self.assertEqual(actual["schema"], driver.V6_SCHEMA)
-        self.assertEqual(actual["sourceSha"], driver.V6_STAGE_PINS["sourceSha"])
-        self.assertEqual(driver.validate_request_v6(actual, driver.V6_STAGE_PINS), actual)
+        self.assertEqual(actual["schema"], driver.R8_SCHEMA)
+        self.assertEqual(actual["sourceSha"], driver.R8_STAGE_PINS["sourceSha"])
+        self.assertEqual(actual["sourceSha"], "e6c4786dafbc8308661ea8fa14a81e06873d1630")
+        self.assertEqual(driver.validate_request_v8(actual, driver.R8_STAGE_PINS), actual)
+        self.assertEqual(driver.profiles_for(actual), actual["profiles"])
 
     def test_policy_version_preserves_historical45_and_repairs_only_doctor1(self):
         old = {"schema": "openclaw.fork-source-validation-request.v3"}

@@ -596,11 +596,80 @@ def check_v108_re2js_successor(source, source_dir, ledger):
     return total
 
 
+
+# Exact source-F metadata only. Historical C/preparation/E records are unchanged.
+# Qualification is not inherited by a new source or selected from request/env.
+V108_CRABLINE_SUCCESSOR = {'commit': 'e6c4786dafbc8308661ea8fa14a81e06873d1630', 'tree': '318a14351a7049d9d613a928edb0cfe69311d201', 'parent': '76522eaa2dd93a4933b5c87f7451eab1d458f8be', 'parentTree': '28adf129927ab5f4589f90f599fe6b76d790a015', 'ledgerBlob': 'd4a2d9ec916848d7b0bcb98605d7a95cfbe1ab7c', 'ledgerSha256': '3fc1c483e77b36fef60b939fa9a797008cab3644d53b0fb3a22f70bd4337a71e', 'parentLedgerBlob': '7249fa6a3841c312990d32868936f2f2ac191b2f', 'parentLedgerSha256': 'd97a12b7b63b2f333b5ed4fe42c408b1f70a2ec21dc6cd874882a16c4bc1b3d0', 'blobs': {'pnpm-workspace.yaml': ['f759a960b1ea42b23d173aca142a8056e8689476', '14064a54d5e92de0b8ecf105d421d627ee44e514'], 'test/v108-remediation-security.test.mjs': ['c6e94b95c5b09e5bbd263cb7ff6c7170a93f90ba', '8ba3d514c0772fe7dfda5a0c19fbbb96a3d4114b']}}
+
+
+def check_v108_crabline_successor(source, source_dir, ledger):
+    """Recognize the one reviewed E-to-F fixture/policy successor only."""
+    fixed, merge = V108_CRABLINE_SUCCESSOR, source["merge"]
+    parent = V108_RE2JS_SUCCESSOR["final"]
+    proof_path = "custom-patches/reconciliation-2026.10.8.json"
+    need(parent is not None and parent["commit"] == fixed["parent"]
+         and parent["tree"] == fixed["parentTree"]
+         and parent["ledgerBlob"] == fixed["parentLedgerBlob"]
+         and parent["ledgerSha256"] == fixed["parentLedgerSha256"],
+         "10.8 Crabline historical parent pins changed")
+    need(source["commit"] == fixed["commit"] and source["tree"] == fixed["tree"]
+         and len(merge["successors"]) >= 2
+         and merge["successors"][-2:] == [
+             {"commit": fixed["parent"], "tree": fixed["parentTree"]},
+             {"commit": fixed["commit"], "tree": fixed["tree"]}]
+         and merge["reconciliation"] == {
+             "path": proof_path, "blob": fixed["ledgerBlob"], "sha256": fixed["ledgerSha256"]},
+         "10.8 Crabline successor metadata changed")
+    need(git(source_dir, "rev-parse", fixed["commit"] + "^{tree}") == fixed["tree"]
+         and git(source_dir, "show", "-s", "--format=%P", fixed["commit"]) == fixed["parent"],
+         "10.8 Crabline successor tree or single parent changed")
+    historical = {**source, "commit": fixed["parent"], "tree": fixed["parentTree"],
+                  "patches": [{"commit": fixed["parent"], "tree": fixed["parentTree"]}],
+                  "merge": {**merge, "successors": merge["successors"][:-1],
+                            "reconciliation": {"path": proof_path,
+                                "blob": fixed["parentLedgerBlob"], "sha256": fixed["parentLedgerSha256"]}}}
+    check_source_graph(historical, source_dir)
+    changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                  fixed["parent"], fixed["commit"]).split("\0")))
+    need(changed == set(fixed["blobs"]) | {proof_path}, "10.8 Crabline successor path set changed")
+    for commit, column in ((fixed["parent"], 0), (fixed["commit"], 1)):
+        for name, pair in fixed["blobs"].items():
+            need(git(source_dir, "ls-tree", commit, "--", name) ==
+                 "100644 blob " + pair[column] + "\t" + name,
+                 "10.8 Crabline successor mode/blob changed: " + name)
+    original = json.loads(git(source_dir, "show", fixed["parent"] + ":" + proof_path))
+    expected = json.loads(json.dumps(original))
+    need(type(expected.get("paths")) is list and len(expected["paths"]) == 249,
+         "10.8 Crabline historical ledger row count changed")
+    rows = {row["path"]: row for row in expected["paths"]}
+    need(len(rows) == 249, "10.8 Crabline historical ledger repeats a path")
+    for name, (before, after) in fixed["blobs"].items():
+        need(name in rows and rows[name]["result"] == {"mode": "100644", "blob": before},
+             "10.8 Crabline historical ledger result changed: " + name)
+        rows[name]["result"] = {"mode": "100644", "blob": after}
+        rows[name]["disposition"] = V108_REMEDIATION
+    try:
+        identical = (json.dumps(ledger, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                     == json.dumps(expected, sort_keys=True, separators=(",", ":"), allow_nan=False))
+    except (TypeError, ValueError):
+        identical = False
+    need(identical, "10.8 Crabline derived ledger, row set or origins changed")
+    integration = merge["integration"]["commit"]
+    prior = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, fixed["parent"]).split("\0"))) - {proof_path}
+    total = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, fixed["commit"]).split("\0"))) - {proof_path}
+    need(total == prior | set(fixed["blobs"]), "10.8 Crabline total remediation delta changed")
+    return total
+
+
 def check_v108_successor_remediation(source, source_dir, ledger):
     """Validate the old integration first; only named successor paths may adapt."""
     merge, integration = source["merge"], source["merge"]["integration"]
     if source["commit"] == integration["commit"]:
         return set()
+    if source["commit"] == V108_CRABLINE_SUCCESSOR["commit"]:
+        return check_v108_crabline_successor(source, source_dir, ledger)
     if V108_RE2JS_SUCCESSOR is not None:
         records = _v108_re2js_records()
         if source["commit"] in [record["commit"] for record in records]:

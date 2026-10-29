@@ -2,7 +2,7 @@
   "schema": "openclaw.fork-patch-inventory.v1",
   "repository": "fr-meyer/openclaw",
   "candidate": "v2026.10.8-source-only",
-  "manifestSha256": "a4daac2453b3212d41fc7f2a910a5349dd066fde7abde344c911cbff3e96c257",
+  "manifestSha256": "8f4bbce1f53bbe8d81462a14fe7c7118433844c506a8286062e01985040bb4a1",
   "upstream": {
     "tag": "v2026.10.8",
     "tagObject": "e07a2f67d11717ed39aa2fa07bbe9342376ebfbf",
@@ -11,12 +11,12 @@
   },
   "patches": [
     {
-      "id": "re2js-security-final-2026.10.8-76522eaa2dd9",
+      "id": "crabline-fixture-security-2026.10.8-e6c4786dafbc",
       "originCommit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
       "disposition": "adapt",
-      "appliedCommit": "76522eaa2dd93a4933b5c87f7451eab1d458f8be",
-      "rationale": "Bind the reviewed RE2JS 2.8.7 override and genuine CI lock derivation from preparation run 40851844749. Preserve every earlier fork/security origin, claim-fencing assertion and original 24 inventory regressions. Full source, runtime, image and production qualification is not transferred.",
-      "evidenceSha256": "d97a12b7b63b2f333b5ed4fe42c408b1f70a2ec21dc6cd874882a16c4bc1b3d0",
+      "appliedCommit": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
+      "rationale": "Bind only the reviewed Crabline ESM parent-discovery fixture correction and the bounded body-parser security-exception removal. Preserve all historical origins and the original 24 inventory regressions; prior passes remain historical. No runtime, image or production qualification is transferred.",
+      "evidenceSha256": "3fc1c483e77b36fef60b939fa9a797008cab3644d53b0fb3a22f70bd4337a71e",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",
         "extensions/workboard/src/gateway.test.ts",
@@ -125,7 +125,7 @@
           "sourceTree": "416a77f6b89110883c41652f64c602ab989662d7",
           "sourceBlob": "6d9ba0cbc9f375645f5429937a2ce0b68c1af19f",
           "upstreamBlob": null,
-          "candidateBlob": "7249fa6a3841c312990d32868936f2f2ac191b2f"
+          "candidateBlob": "d4a2d9ec916848d7b0bcb98605d7a95cfbe1ab7c"
         },
         {
           "path": "docs/cli/gateway/query.md",
@@ -980,7 +980,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "b5451b324bce188ce55030ac5473c05f3991162f",
           "upstreamBlob": "458e124e46478c6f8ecc760d0aba576ea9f29fb3",
-          "candidateBlob": "f759a960b1ea42b23d173aca142a8056e8689476"
+          "candidateBlob": "14064a54d5e92de0b8ecf105d421d627ee44e514"
         },
         {
           "path": "scripts/check-package-patches.mts",
@@ -2222,7 +2222,7 @@
           "sourceTree": "51c0dbf2ea2bd80f09a7069296d132f564febcf4",
           "sourceBlob": "afc3283afd633e371c003d2c058f3c2a747b0167",
           "upstreamBlob": null,
-          "candidateBlob": "c6e94b95c5b09e5bbd263cb7ff6c7170a93f90ba"
+          "candidateBlob": "8ba3d514c0772fe7dfda5a0c19fbbb96a3d4114b"
         },
         {
           "path": "test/vitest-projects-config.test-support.ts",

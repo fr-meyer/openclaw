@@ -128,7 +128,8 @@ class RuntimeV6Tests(unittest.TestCase):
         self.assertEqual(mocks["verify_source_equivalence_v6"].call_args.args[3], encoded(self.f.generation))
 
     def test_known_v6_refusal_is_fixed_private_and_before_closure_or_matrix(self):
-        code, rows, order, mocks, stderr = self.cli(failure=D.V6ContractRefusal("v6.history.preparation_artifact_identity"))
+        with patch.object(D, "R7_STAGE_PINS", None), patch.object(D, "R8_STAGE_PINS", None):
+            code, rows, order, mocks, stderr = self.cli(failure=D.V6ContractRefusal("v6.history.preparation_artifact_identity"))
         self.assertEqual(code, 2)
         self.assertEqual(order, ["binding", "history"])
         failure = rows[-1]
@@ -137,6 +138,19 @@ class RuntimeV6Tests(unittest.TestCase):
         self.assertEqual(failure["sourceSha"], self.f.current)
         self.assertFalse((self.root / "output").exists())
         mocks["fetch_closure"].assert_not_called()
+        self.assertEqual(stderr, "source-validation: refused; inspect bounded structured admission/step diagnostics\n")
+
+    def test_current_r7_identity_precedes_legacy_v6_diagnostic_subject(self):
+        current = copy.deepcopy(D.R8_STAGE_PINS)
+        self.assertEqual(current["sourceSha"], "e6c4786dafbc8308661ea8fa14a81e06873d1630")
+        code, rows, order, mocks, stderr = self.cli(failure=D.V6ContractRefusal(self.CANARY))
+        self.assertEqual(code, 2)
+        self.assertEqual((rows[-1]["sourceSha"], rows[-1]["sourceTree"]),
+                         (current["sourceSha"], current["sourceTree"]))
+        self.assertEqual(rows[-1]["failedNeedCode"], "v6.unprojected")
+        self.assertEqual(order, ["binding", "history"])
+        mocks["fetch_closure"].assert_not_called()
+        self.assertFalse((self.root / "output").exists())
         self.assertEqual(stderr, "source-validation: refused; inspect bounded structured admission/step diagnostics\n")
 
     def test_unknown_private_refusal_never_exports_error_text(self):
@@ -161,7 +175,7 @@ class RuntimeV6Tests(unittest.TestCase):
         mocks["history_checks_v6"].assert_not_called()
 
     def test_unbound_source_pins_project_null_without_exception_or_fallback(self):
-        with patch.object(D, "V6_STAGE_PINS", None):
+        with patch.object(D, "V6_STAGE_PINS", None), patch.object(D, "R7_STAGE_PINS", None), patch.object(D, "R8_STAGE_PINS", None):
             code, rows, order, _, _ = self.cli()
         self.assertEqual(code, 2)
         self.assertEqual(order, [])

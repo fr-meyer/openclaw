@@ -1,0 +1,46 @@
+{
+  "schema": "openclaw.v108.closed-usage-reference-composition.v1",
+  "repository": "fr-meyer/openclaw",
+  "campaignId": "future-v108-source-validation-20261027",
+  "closedAt": "2026-10-29T14:09:37.976704+00:00",
+  "segments": [
+    {
+      "kind": "closed-213-prefix",
+      "sha256": "c2438e2b10555f396f662c6fb8e142bafd61f7b32b172fd8a5cb982ccac567ec",
+      "bytes": 1376744,
+      "runCount": 213,
+      "runnerMinutesObserved": 1798
+    },
+    {
+      "kind": "closed-30-provider-projection",
+      "sha256": "0fe119c063939a29bb2b40b4af06bb0313532aef1133e07bf4ef11645a199619",
+      "bytes": 296173,
+      "originSha256": "b9b25f829010edac35df36a143043ae1ab0581bed8ba5de50b9f2517c8e9dcc7",
+      "runCount": 30,
+      "runnerMinutesObserved": 639
+    }
+  ],
+  "runCount": 243,
+  "runnerMinutesObserved": 2437,
+  "sourceRunIds": [
+    "40616416909",
+    "40609889437",
+    "40607329263",
+    "40639374411",
+    "40647629182",
+    "40681376480",
+    "40688279536",
+    "40706982753",
+    "40804517284",
+    "40808362032",
+    "40816927196",
+    "40851844749",
+    "40856125444"
+  ],
+  "artifactSnapshot": {
+    "count": 22,
+    "bytes": 387192
+  },
+  "oldUnusedAuthorityCarried": false,
+  "resolvedCanonicalSha256": "de4bede2d3c1bece03aa7093097c1fd89f9f8014f307507583a7a953dfeea9c3"
+}

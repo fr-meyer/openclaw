@@ -169,7 +169,8 @@ def admission_diagnostics(env, enabled, operational=False):
         yield
     except (release.Refusal, OSError, ValueError, KeyError, TypeError,
             subprocess.CalledProcessError, ProfileInterrupted) as error:
-        classes = ((R7ContractRefusal, "R7ContractRefusal"),
+        classes = ((R8ContractRefusal, "R8ContractRefusal"),
+                   (R7ContractRefusal, "R7ContractRefusal"),
                    (V6ContractRefusal, "V6ContractRefusal"),
                    (V5ContractRefusal, "V5ContractRefusal"),
                    (V4ContractRefusal, "V4ContractRefusal"),
@@ -185,7 +186,8 @@ def admission_diagnostics(env, enabled, operational=False):
         # Read only our own annotation; never inspect/format exception payloads.
         code = runtime_refusal_code_v7(error) if operational else vars(error).get("admission_need_code")
         if operational:
-            trusted = (R7_STAGE_PINS if type(R7_STAGE_PINS) is dict else
+            trusted = (R8_STAGE_PINS if type(R8_STAGE_PINS) is dict else
+                       R7_STAGE_PINS if type(R7_STAGE_PINS) is dict else
                        V6_STAGE_PINS if type(V6_STAGE_PINS) is dict else {})
             source_sha = trusted.get("sourceSha")
             source_tree = trusted.get("sourceTree")
@@ -486,9 +488,14 @@ def code_binding(pipeline, source, event, env, minimal=False, request=None):
          TARGET_BRANCH_TIP, "workflow merge target parent")
     # pull_request workflow code can be a synthetic merge. Bind every executable
     # owner used by this driver to reviewed head bytes before source code runs.
-    for path in (WORKFLOW, "scripts/fork-release/source_validation_v108.py",
-                 "scripts/fork-release/preflight.py", "scripts/fork-release/release.py",
-                 "scripts/fork-release/native_tests.mjs"):
+    bound_paths = (WORKFLOW, "scripts/fork-release/source_validation_v108.py",
+                   "scripts/fork-release/preflight.py", "scripts/fork-release/release.py",
+                   "scripts/fork-release/native_tests.mjs")
+    if not minimal and request is not None and ((request.get("schema") == R7_SCHEMA and request.get("stageRound") == 2) or request.get("schema") == R8_SCHEMA):
+        bound_paths += (R7_TAG_FIXTURE,)
+    if request is not None and request.get("schema") == R8_SCHEMA:
+        bound_paths += ("scripts/fork-release/composite_closed_usage.py",)
+    for path in bound_paths:
         actual = (pipeline / path).read_bytes()
         need(actual == git(pipeline, "show", head + ":" + path) ==
              git(pipeline, "show", env["GITHUB_WORKFLOW_SHA"] + ":" + path),
@@ -1066,7 +1073,7 @@ def selected_tests(paths, profile, request=None):
         rest = [p for p in family if p not in set(priority)]
         return sorted((priority + rest)[int(profile[-1]) - 1::3])
     if profile == "compatibility":
-        if request is not None and request.get("schema") in (V6_SCHEMA, R7_SCHEMA):
+        if request is not None and request.get("schema") in (V6_SCHEMA, R7_SCHEMA, R8_SCHEMA):
             return list(V6_RUNTIME_COMPATIBILITY_TESTS)
         if request is not None and request.get("schema") == V5_SCHEMA:
             return list(V5_RUNTIME_COMPATIBILITY_TESTS)
@@ -1120,7 +1127,7 @@ def commands(pipeline, source, profile, paths, request=None):
                  "--source-root", str(source), "--", "test/v108-remediation-security.test.mjs"],
                 ["node", "--import", "./scripts/tsx.mjs", "scripts/test-projects.mts", *compatibility],
                 ["pnpm", "deps:npm-lock:check:changed", "--base", ORIGINAL_SOURCE, "--head", source_sha]]
-        if request is not None and request.get("schema") in (V6_SCHEMA, R7_SCHEMA):
+        if request is not None and request.get("schema") in (V6_SCHEMA, R7_SCHEMA, R8_SCHEMA):
             result.append(["node", "--input-type=module", "-e", V6_BUNDLED_NPM_VERSION_CHECK])
         return result
     if profile == "pipeline-contracts":
@@ -1129,18 +1136,23 @@ def commands(pipeline, source, profile, paths, request=None):
                                           "test_source_tests.py", "test_source_validation_v108.py",
                                           "test_v108_pnpm_bootstrap.py", "test_v108_recovery_budget.py",
                                           "test_v108_successor_witness.py")
-        if request is not None and request.get("schema") in (V4_SCHEMA, V5_SCHEMA, V6_SCHEMA, R7_SCHEMA):
+        if request is not None and request.get("schema") in (V4_SCHEMA, V5_SCHEMA, V6_SCHEMA, R7_SCHEMA, R8_SCHEMA):
             names += ("test_v108_runtime_contract_v4.py", "test_request_contract_v4.py",
                       "test_history_checks_v4.py")
-        if request is not None and request.get("schema") in (V5_SCHEMA, V6_SCHEMA, R7_SCHEMA):
+        if request is not None and request.get("schema") in (V5_SCHEMA, V6_SCHEMA, R7_SCHEMA, R8_SCHEMA):
             names = tuple(name for name in names if name != "test_v108_runtime_contract_v4.py")
             names += ("test_request_contract_v5.py", "test_history_checks_v5.py",
                       "test_v108_runtime_contract_v5.py", "test_v108_source_donor.py")
-        if request is not None and request.get("schema") in (V6_SCHEMA, R7_SCHEMA):
+        if request is not None and request.get("schema") in (V6_SCHEMA, R7_SCHEMA, R8_SCHEMA):
             names += ("test_historical_v5_test_inputs.py", "test_npm_lock_preparation_v108.py",
                 "test_request_contract_v6.py", "test_history_checks_v6.py", "test_v108_runtime_contract_v6.py", "test_v108_intake_recovery_v6.py")
-        if request is not None and request.get("schema") == R7_SCHEMA:
+        if request is not None and request.get("schema") in (R7_SCHEMA, R8_SCHEMA):
             names += ("test_request_contract_v7.py", "test_re2js_lock_preparation_v108.py")
+            if request.get("stageRound") == 2 or request.get("schema") == R8_SCHEMA:
+                names += ("test_targeted_tag_reuse_v108.py",)
+        if request is not None and request.get("schema") == R8_SCHEMA:
+            names += ("test_request_contract_v8.py", "test_history_checks_v8.py",
+                      "test_runtime_contract_v8.py", "test_composite_closed_usage.py")
         return [["python3", "-m", "unittest", "discover", "-s", str(pipeline / "scripts/fork-release"),
                  "-p", name] for name in names]
     tests = selected_tests(paths, profile, request)
@@ -3244,7 +3256,7 @@ def fetch_closure_historical(pipeline, source, request=None, env=None):
         closure_remaining(deadline)
 
 def fetch_closure(pipeline, source, request=None, env=None, event=None):
-    """Current V5: one owned native donor fetch, then the original official tag.
+    """One owned donor fetch, then official tag fetch or exact V7 target fixture.
 
     Historical helper routing is reachable only from metadata explicitly supplying
     a historical request. Operational metadata/command reject those versions.
@@ -3258,7 +3270,7 @@ def fetch_closure(pipeline, source, request=None, env=None, event=None):
     if request.get("schema") in ("openclaw.fork-source-validation-request.v3",
                                   "openclaw.fork-source-validation-request.v4"):
         return fetch_closure_historical(pipeline, source, request=request, env=env)
-    need(request.get("schema") in (V5_SCHEMA, V6_SCHEMA, R7_SCHEMA), "donor.current_schema")
+    need(request.get("schema") in (V5_SCHEMA, V6_SCHEMA, R7_SCHEMA, R8_SCHEMA), "donor.current_schema")
     env = os.environ if env is None else env
     need(type(event) is dict, "donor.validated_event")
     pipeline_head = validate_event(event, env)
@@ -3278,6 +3290,10 @@ def fetch_closure(pipeline, source, request=None, env=None, event=None):
     need(type(commits) is list and 0 < len(commits) <= 16 and commits == sorted(set(commits)) and
          source_sha in commits and all(release.matches(release.SHA, commit) for commit in commits),
          "bounded exact source closure commits")
+    if request.get("schema") == R8_SCHEMA:
+        validate_request_v8(request, R8_STAGE_PINS)
+        _r8_need(len(commits) == 12 and R8_SOURCE in commits and R8_BASE_SOURCE in commits,
+            "r8.complete_twelve_commit_closure")
     shallow = inspect(source, "rev-parse", "--is-shallow-repository")
     need(shallow in (b"true", b"false"), "source shallow state")
     need(inventory["upstream"]["tag"] == "v2026.10.8" and
@@ -3306,12 +3322,17 @@ def fetch_closure(pipeline, source, request=None, env=None, event=None):
              "donor.uri_stability")
         for commit in commits:
             need(inspect(source, "cat-file", "-t", commit) == b"commit", "source closure commit type")
-        acquire("https://github.com/openclaw/openclaw.git", ["refs/tags/v2026.10.8"], 1)
-        tag = inventory["upstream"]["tagObject"]
-        need(inspect(source, "rev-parse", "FETCH_HEAD") == tag.encode() and
-             inspect(source, "cat-file", "-t", tag) == b"tag" and
-             inspect(source, "rev-parse", tag + "^{commit}") == inventory["upstream"]["commit"].encode(),
-             "exact annotated upstream tag binding")
+        if request.get("schema") == R8_SCHEMA:
+            reuse_upstream_tag_v8(pipeline, source, request, inventory, inspect, safe_env, context)
+        elif request.get("schema") == R7_SCHEMA and request.get("stageRound") == 2:
+            reuse_upstream_tag_v7(pipeline, source, request, inventory, inspect, safe_env, context)
+        else:
+            acquire("https://github.com/openclaw/openclaw.git", ["refs/tags/v2026.10.8"], 1)
+            tag = inventory["upstream"]["tagObject"]
+            need(inspect(source, "rev-parse", "FETCH_HEAD") == tag.encode() and
+                 inspect(source, "cat-file", "-t", tag) == b"tag" and
+                 inspect(source, "rev-parse", tag + "^{commit}") == inventory["upstream"]["commit"].encode(),
+                 "exact annotated upstream tag binding")
         closure_remaining(deadline)
         source_preflight(pipeline, source, manifest, manifest_hash)
         closure_remaining(deadline)
@@ -4785,6 +4806,739 @@ def runtime_refusal_code_v7(error):
 
 R7_RUNTIME_REFUSAL_CODES = frozenset(('r7.actual_usage', 'r7.all15_fresh', 'r7.all_unresolved_selected', 'r7.ancillary_limit', 'r7.artifact_duplicate', 'r7.artifact_storage_limit', 'r7.authentic_registry_binding', 'r7.baseline_actual_minutes', 'r7.baseline_capture_time', 'r7.baseline_digest', 'r7.baseline_envelope', 'r7.baseline_header_changed', 'r7.baseline_measured_total', 'r7.baseline_row', 'r7.baseline_source_runs', 'r7.budget_policy', 'r7.closed_baseline_pins', 'r7.closed_request', 'r7.current_job_booking', 'r7.current_public_admission', 'r7.current_validation_identity', 'r7.exact_base_dependencies', 'r7.exact_execution_set', 'r7.exact_original_lock_shape', 'r7.exact_parent_child_edge', 'r7.exact_parent_snapshot', 'r7.exact_prior_runs', 'r7.exact_reviewed_pins', 'r7.exact_two_source_hops', 'r7.fixed_profiles', 'r7.generated_lock_source_binding', 'r7.generation_clock_bound', 'r7.generation_clock_shape', 'r7.generation_digest', 'r7.generation_identity', 'r7.generation_outcome', 'r7.historical_full_head', 'r7.historical_preparation', 'r7.historical_preparation_clock', 'r7.historical_preparation_job', 'r7.historical_request_digest', 'r7.history_deadline', 'r7.hop_identity', 'r7.hop_scope', 'r7.live_branch_tip', 'r7.live_pr_changed', 'r7.lock_base_and_workspace', 'r7.new_ancillary_binding', 'r7.once_full_once_targeted', 'r7.original168_unchanged', 'r7.preparation_artifact', 'r7.preparation_clock', 'r7.preparation_context', 'r7.preparation_package_unchanged', 'r7.preparation_pins', 'r7.preparation_public_job', 'r7.preparation_role', 'r7.preparation_single_artifact', 'r7.preparation_single_job', 'r7.preparation_source_original_lock', 'r7.preparation_terminal', 'r7.preserved_package_and_prepared_controls', 'r7.prior_request_digest', 'r7.prior_validation_pins', 'r7.prior_validation_terminal', 'r7.registry_clock_shape', 'r7.registry_minimum_age', 'r7.round_booking', 'r7.same_frozen_source_only', 'r7.source_witness', 'r7.stage_pins', 'r7.total_minute_ceiling', 'r7.unique_executions', 'r7.unrelated_resolution_or_format_change', 'r7.unreviewed_historical_execution', 'r7.workflow_owner_actor'))
 
+
+# The official annotated tag is public, immutable review input. Its fixed bytes
+# were matched to the official GitHub ref/tag, verified payload and signature.
+# This is not a new local GPG-verification or full-source qualification claim.
+R7_TAG_FIXTURE = "scripts/fork-release/fixtures/v2026.10.8.official.tag.raw"
+R7_TAG_BYTES = 1028
+R7_TAG_SHA256 = "e675eff97e84b1a79c64a2e2b83d23bf03498ccdcf5bf41eede0af92ed1bad3c"
+R7_TAG_OBJECT = "e07a2f67d11717ed39aa2fa07bbe9342376ebfbf"
+R7_TAG_COMMIT = "dc2523e5a5c7a309517fd7fa834add938231d526"
+R7_TAG_NAME = "v2026.10.8"
+R7_TAG_REF = "refs/tags/v2026.10.8"
+
+
+def reuse_upstream_tag_v7(pipeline, source, request, inventory, inspect, env, context):
+    """Replace only the round-2 official-tag fetch after ordinary donor closure.
+
+    No caller-supplied path/ref/URL, alternate transport, object fallback or source
+    mutation is accepted. Only the fixed tag object and its exact tag ref may be
+    written; the already-complete required commit closure is still the donor's.
+    """
+    _r7_need(type(request) is dict and request.get("schema") == R7_SCHEMA and
+        request.get("profilePolicy") == R7_POLICY and type(request.get("stageRound")) is int and
+        request["stageRound"] == 2 and context.get("request") == request,
+        "r7.tag_reuse_context")
+    validate_request_v7(request, R7_STAGE_PINS)
+    _r7_need(inventory.get("upstream", {}).get("tag") == R7_TAG_NAME and
+        inventory["upstream"].get("tagObject") == R7_TAG_OBJECT and
+        inventory["upstream"].get("commit") == R7_TAG_COMMIT,
+        "r7.tag_reuse_inventory")
+    fixture = Path(pipeline) / R7_TAG_FIXTURE
+    _r7_need(fixture.is_file() and not fixture.is_symlink() and
+        fixture.resolve(strict=True) == fixture.absolute() and
+        fixture.stat().st_uid == os.geteuid() and fixture.stat().st_nlink == 1 and
+        fixture.stat().st_size == R7_TAG_BYTES, "r7.tag_reuse_fixture_file")
+    before = fixture.stat()
+    with fixture.open("rb") as handle:
+        raw = handle.read(R7_TAG_BYTES + 1)
+        after = os.fstat(handle.fileno())
+    def fixture_identity(info):
+        # stat_result sequence equality omits subsecond fields on some hosts.
+        # Reading may change atime; content/identity/ownership changes must refuse.
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+                info.st_mode, info.st_uid, info.st_gid, info.st_nlink)
+    _r7_need(fixture_identity(before) == fixture_identity(after) and
+        fixture_identity(fixture.stat()) == fixture_identity(after) and len(raw) == R7_TAG_BYTES and
+        hashlib.sha256(raw).hexdigest() == R7_TAG_SHA256 and
+        hashlib.sha1(b"tag " + str(len(raw)).encode() + b"\0" + raw).hexdigest() == R7_TAG_OBJECT and
+        raw.startswith(("object " + R7_TAG_COMMIT + "\ntype commit\ntag " + R7_TAG_NAME + "\n").encode()),
+        "r7.tag_reuse_fixture_identity")
+    try:
+        base_present = (inspect(source, "rev-parse", "--is-shallow-repository") == b"false" and
+            inspect(source, "cat-file", "-t", R7_TAG_COMMIT) == b"commit")
+    except subprocess.CalledProcessError:
+        base_present = False
+    _r7_need(base_present, "r7.tag_reuse_base_object")
+    expected = (request["sourceSha"].encode(), request["sourceTree"].encode(), b"")
+    def source_state():
+        return (inspect(source, "rev-parse", "HEAD"), inspect(source, "rev-parse", "HEAD^{tree}"),
+                inspect(source, "status", "--porcelain=v1", "--untracked-files=all"))
+    _r7_need(source_state() == expected, "r7.tag_reuse_source_identity")
+    # A symbolic tag ref, including a dangling one, is never treated as absence.
+    try:
+        inspect(source, "symbolic-ref", "--quiet", R7_TAG_REF)
+    except subprocess.CalledProcessError as error:
+        _r7_need(error.returncode == 1, "r7.tag_reuse_ref_read")
+    else:
+        _r7_need(False, "r7.tag_reuse_ref_conflict")
+    refs = inspect(source, "for-each-ref", "--format=%(refname) %(objectname)", R7_TAG_REF)
+    _r7_need(refs in (b"", (R7_TAG_REF + " " + R7_TAG_OBJECT).encode()),
+        "r7.tag_reuse_ref_conflict")
+    # Reuse the existing owned phase/session/deadline owner. Public fixed object
+    # hashes may appear in its ordinary Git output; no credential is provided.
+    with tempfile.TemporaryDirectory(prefix="v108-official-tag-", dir=Path(pipeline).parent) as private:
+        snapshot = Path(private) / "verified.tag"
+        fd = os.open(snapshot, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as handle:
+            _r7_need(handle.write(raw) == len(raw), "r7.tag_reuse_snapshot_write")
+            handle.flush()
+            os.fsync(handle.fileno())
+        for ordinal, args in enumerate((
+                ("hash-object", "-t", "tag", "-w", "--no-filters", "--", str(snapshot)),
+                ("update-ref", "--no-deref", R7_TAG_REF, R7_TAG_OBJECT,
+                 R7_TAG_OBJECT if refs else "0" * 40)), 1):
+            argv = ["git", "--no-replace-objects", "-C", str(source), "-c", "credential.helper=",
+                    "-c", "core.hooksPath=/dev/null", "-c", "maintenance.auto=0", "-c", "gc.auto=0",
+                    "-c", "protocol.allow=never", *args]
+            result = phase_process(argv, source, env, context, "source-tag-reuse", ordinal)
+            _r7_need(result.returncode == 0 and not result.timed_out, "r7.tag_reuse_write_failed")
+    _r7_need(inspect(source, "cat-file", "-t", R7_TAG_OBJECT) == b"tag" and
+        inspect(source, "cat-file", "-s", R7_TAG_OBJECT) == str(R7_TAG_BYTES).encode() and
+        inspect(source, "rev-parse", "--verify", R7_TAG_REF) == R7_TAG_OBJECT.encode() and
+        inspect(source, "rev-parse", "--verify", R7_TAG_REF + "^{commit}") == R7_TAG_COMMIT.encode() and
+        source_state() == expected and fixture_identity(fixture.stat()) == fixture_identity(after),
+        "r7.tag_reuse_final_binding")
+
+
+R7_RUNTIME_REFUSAL_CODES = R7_RUNTIME_REFUSAL_CODES | frozenset((
+    "r7.tag_reuse_context", "r7.tag_reuse_inventory", "r7.tag_reuse_fixture_file",
+    "r7.tag_reuse_fixture_identity", "r7.tag_reuse_base_object", "r7.tag_reuse_source_identity",
+    "r7.tag_reuse_ref_read", "r7.tag_reuse_ref_conflict", "r7.tag_reuse_write_failed",
+    "r7.tag_reuse_snapshot_write", "r7.tag_reuse_final_binding"))
+
+
+
+from composite_closed_usage import resolve_composite
+
+# Closed approved fixture-only successor. Historical R7/R6 contracts stay unchanged.
+R8_SCHEMA = "openclaw.fork-source-validation-request.v8"
+R8_POLICY = "crabline-fixture-successor-v1"
+R8_AUTHORIZATION = "future-v108-crabline-successor-20261029T1432Z"
+R8_DEADLINE = "2026-10-30T08:03:19Z"
+R8_SOURCE_SCOPE = "approved-crabline-locator-and-age-hygiene-only"
+R8_BASE_SOURCE = "76522eaa2dd93a4933b5c87f7451eab1d458f8be"
+R8_BASE_TREE = "28adf129927ab5f4589f90f599fe6b76d790a015"
+R8_SOURCE = "e6c4786dafbc8308661ea8fa14a81e06873d1630"
+R8_TREE = "318a14351a7049d9d613a928edb0cfe69311d201"
+R8_SOURCE_PATHS = ["pnpm-workspace.yaml", R7_SECURITY_TEST_PATH]
+R8_SOURCE_BLOBS = {
+    "pnpm-workspace.yaml": "ee9200c50d6bd8edd5ae522e3ab4033b85627227d6df8b7d1cf40140e114e934",
+    R7_SECURITY_TEST_PATH: "161df59dfaf3f8f3ed5cc48142e1c1b2cc051cd1698b4b8fdbfe881c99e9709e",
+    V4_LEDGER_PATH: "3fc1c483e77b36fef60b939fa9a797008cab3644d53b0fb3a22f70bd4337a71e",
+}
+R8_PROFILE_MINUTES = dict(R7_PROFILE_MINUTES)
+R8_ADMISSION_MINUTES = 30
+R8_FINAL_MINUTES = 10
+R8_FULL_MINUTES = 1075
+R8_TARGETED_MINUTES = 300
+R8_ANCILLARY_MINUTES = 50
+R8_NEW_MINUTES = 1425
+R8_DIAGNOSTIC_BYTES = V6_DIAGNOSTIC_BYTES
+R8_PRIOR_RUNS = 243
+R8_PRIOR_MINUTES = 2437
+R8_BASELINE_SHA256 = "2188800522988ac5837c554db7d4be01186f1031a86bd782deab839765919fd8"
+R8_RESOLVED_SHA256 = "de4bede2d3c1bece03aa7093097c1fd89f9f8014f307507583a7a953dfeea9c3"
+R8_ARTIFACT_BASELINE = {"count": 22, "bytes": 387192}
+R8_BASELINE_SOURCE_IDS = (*R7_BASELINE_SOURCE_IDS, "40851844749", "40856125444")
+R8_BASELINE_CLOSED_AT = "2026-10-29T14:09:37.976704+00:00"
+R8_SETTLED_USAGE_PATH = "scripts/fork-release/candidates/v2026.10.8-source-only/crabline-settled-usage.json"
+R8_PRIOR_STAGE_USAGE_PATH = "scripts/fork-release/candidates/v2026.10.8-source-only/re2js-closed-provider-usage.json"
+R8_STAGE_PINS = {'sourceSha': 'e6c4786dafbc8308661ea8fa14a81e06873d1630', 'sourceTree': '318a14351a7049d9d613a928edb0cfe69311d201', 'manifestSha256': '8f4bbce1f53bbe8d81462a14fe7c7118433844c506a8286062e01985040bb4a1', 'inventorySha256': '2f6f23348b029b1de52bef8a40fcfaee67a1fef8c2bd8cb6a4bcf9ff481d6a5d', 'baseline': {'sha256': '2188800522988ac5837c554db7d4be01186f1031a86bd782deab839765919fd8', 'resolvedSha256': 'de4bede2d3c1bece03aa7093097c1fd89f9f8014f307507583a7a953dfeea9c3', 'runCount': 243, 'runnerMinutesObserved': 2437, 'sourceRunIds': ['40616416909', '40609889437', '40607329263', '40639374411', '40647629182', '40681376480', '40688279536', '40706982753', '40804517284', '40808362032', '40816927196', '40851844749', '40856125444'], 'artifactSnapshot': {'count': 22, 'bytes': 387192}, 'closedAt': '2026-10-29T14:09:37.976704+00:00'}, 'priorValidationRuns': [], 'sourceWitness': {'schema': 'openclaw.v108.crabline-source-equivalence.v1', 'scope': 'approved-crabline-locator-and-age-hygiene-only', 'closedBaselineSha256': '2188800522988ac5837c554db7d4be01186f1031a86bd782deab839765919fd8', 'hops': [{'sourceSha': 'e6c4786dafbc8308661ea8fa14a81e06873d1630', 'sourceTree': '318a14351a7049d9d613a928edb0cfe69311d201', 'step': {'parentSha': '76522eaa2dd93a4933b5c87f7451eab1d458f8be', 'parentTree': '28adf129927ab5f4589f90f599fe6b76d790a015', 'changedPaths': ['pnpm-workspace.yaml', 'test/v108-remediation-security.test.mjs'], 'unchangedTreeSha256': 'c2e70ede5490be963a54e6aea479149fff222bd7611003337d43807d2c0decd4'}}]}}
+
+
+class R8ContractRefusal(ValueError):
+    pass
+
+
+def _r8_need(value, code):
+    if not value:
+        raise R8ContractRefusal(code)
+
+
+def _r8_pins(pins):
+    fields = {"sourceSha", "sourceTree", "manifestSha256", "inventorySha256", "baseline",
+              "priorValidationRuns", "sourceWitness"}
+    _r8_need(type(pins) is dict and set(pins) == fields and
+        pins["sourceSha"] == R8_SOURCE and pins["sourceTree"] == R8_TREE and
+        all(_r7_digest(pins[k]) for k in ("manifestSha256", "inventorySha256")), "r8.stage_pins")
+    b = pins["baseline"]
+    _r8_need(type(b) is dict and set(b) == {"sha256", "resolvedSha256", "runCount",
+        "runnerMinutesObserved", "sourceRunIds", "artifactSnapshot", "closedAt"} and
+        b["sha256"] == R8_BASELINE_SHA256 and b["resolvedSha256"] == R8_RESOLVED_SHA256 and
+        type(b["runCount"]) is int and b["runCount"] == R8_PRIOR_RUNS and
+        type(b["runnerMinutesObserved"]) is int and b["runnerMinutesObserved"] == R8_PRIOR_MINUTES and
+        _v6_equal(b["artifactSnapshot"], R8_ARTIFACT_BASELINE) and
+        b["sourceRunIds"] == list(R8_BASELINE_SOURCE_IDS) and b["closedAt"] == R8_BASELINE_CLOSED_AT,
+        "r8.closed_baseline_pins")
+    prior = pins["priorValidationRuns"]
+    _r8_need(type(prior) is list and len(prior) <= 1 and all(type(p) is dict and
+        set(p) == {"runId", "pipelineHead", "requestSha256"} and
+        _v6_matches(r"[1-9][0-9]{0,19}\Z", p["runId"]) and
+        _v6_matches(r"[0-9a-f]{40}\Z", p["pipelineHead"]) and _r7_digest(p["requestSha256"])
+        for p in prior), "r8.prior_validation_pins")
+    ids = [*R8_BASELINE_SOURCE_IDS, *[p["runId"] for p in prior]]
+    _r8_need(len(ids) == len(set(ids)), "r8.unique_executions")
+    w = pins["sourceWitness"]
+    _r8_need(type(w) is dict and set(w) == {"schema", "scope", "closedBaselineSha256", "hops"} and
+        w["schema"] == "openclaw.v108.crabline-source-equivalence.v1" and w["scope"] == R8_SOURCE_SCOPE and
+        w["closedBaselineSha256"] == R8_BASELINE_SHA256 and type(w["hops"]) is list and len(w["hops"]) == 1,
+        "r8.source_witness")
+    h = w["hops"][0]
+    _r8_need(type(h) is dict and set(h) == {"sourceSha", "sourceTree", "step"} and
+        h["sourceSha"] == R8_SOURCE and h["sourceTree"] == R8_TREE, "r8.hop_identity")
+    step = h["step"]
+    _r8_need(type(step) is dict and set(step) ==
+        {"parentSha", "parentTree", "changedPaths", "unchangedTreeSha256"} and
+        step["parentSha"] == R8_BASE_SOURCE and step["parentTree"] == R8_BASE_TREE and
+        step["changedPaths"] == R8_SOURCE_PATHS and _r7_digest(step["unchangedTreeSha256"]), "r8.hop_scope")
+    return pins
+
+
+def validation_budget_v8(value):
+    _r8_need(type(value) is dict and value.get("schema") == R8_SCHEMA and
+        value.get("profilePolicy") == R8_POLICY and type(value.get("stageRound")) is int and
+        value["stageRound"] in (1, 2), "r8.budget_policy")
+    return {"admissionMinutes": R8_ADMISSION_MINUTES, "finalMinutes": R8_FINAL_MINUTES,
+        "profileMinutes": dict(R8_PROFILE_MINUTES),
+        "roundMaximumMinutes": R8_FULL_MINUTES if value["stageRound"] == 1 else R8_TARGETED_MINUTES,
+        "ancillaryMinutes": R8_ANCILLARY_MINUTES, "stageMaximumMinutes": R8_NEW_MINUTES}
+
+
+def validate_request_v8(value, pins):
+    pins = _r8_pins(pins)
+    fields = {"schema", "campaignId", "profilePolicy", "sourceAuthorization", "stageRound",
+        "lifetimeOperatorRound", "profiles", "sourceSha", "sourceTree", "manifestSha256",
+        "inventorySha256", "settledUsageSha256", "priorRunIds", "lockPreparation", "sourceWitness"}
+    _r8_need(type(value) is dict and set(value) == fields and value["schema"] == R8_SCHEMA and
+        value["campaignId"] == V6_CAMPAIGN and value["profilePolicy"] == R8_POLICY and
+        value["sourceAuthorization"] == R8_AUTHORIZATION, "r8.closed_request")
+    _r8_need(all(value[k] == pins[k] for k in ("sourceSha", "sourceTree", "manifestSha256", "inventorySha256")) and
+        value["settledUsageSha256"] == R8_BASELINE_SHA256 and
+        _v6_equal(value["sourceWitness"], pins["sourceWitness"]) and
+        _v6_equal(value["lockPreparation"], R7_STAGE_PINS["preparation"]), "r8.exact_reviewed_pins")
+    number = value["stageRound"]
+    _r8_need(type(number) is int and number in (1, 2) and
+        type(value["lifetimeOperatorRound"]) is int and value["lifetimeOperatorRound"] == number + 11 and
+        len(pins["priorValidationRuns"]) == number - 1, "r8.once_full_once_targeted")
+    _r8_need(value["priorRunIds"] == [*R8_BASELINE_SOURCE_IDS,
+        *[p["runId"] for p in pins["priorValidationRuns"]]], "r8.exact_prior_runs")
+    p = value["profiles"]
+    _r8_need(type(p) is list and bool(p) and all(type(x) is str and x in R8_PROFILE_MINUTES for x in p) and
+        len(p) == len(set(p)), "r8.fixed_profiles")
+    budget = validation_budget_v8(value)
+    _r8_need(R8_ADMISSION_MINUTES + R8_FINAL_MINUTES + sum(R8_PROFILE_MINUTES[x] for x in p)
+        <= budget["roundMaximumMinutes"], "r8.round_booking")
+    _r8_need(number != 1 or p == list(V6_PROFILES), "r8.all15_fresh")
+    return value
+
+
+def verify_source_equivalence_v8(request, pins, read_git, generation_raw):
+    validate_request_v8(request, pins)
+    # This generation is immutable historical D evidence, already in the243-run
+    # baseline. It authorizes no new preparation or transferred qualification.
+    generation = validate_re2js_generation_receipt_v7(generation_raw, R7_STAGE_PINS)
+    h = request["sourceWitness"]["hops"][0]
+    proof = _v4_verify_step(read_git, h["sourceSha"], h["sourceTree"], h["step"], initial=False)
+    for path in ("package.json", "pnpm-lock.yaml"):
+        before = _v4_git(read_git, "show", R8_BASE_SOURCE + ":" + path)
+        after = _v4_git(read_git, "show", R8_SOURCE + ":" + path)
+        expected = R7_STAGE_PINS["preparation"]["packageSha256" if path == "package.json" else "lockSha256"]
+        _r8_need(before == after and hashlib.sha256(after).hexdigest() == expected,
+            "r8.dependencies_unchanged")
+    for path, expected in R8_SOURCE_BLOBS.items():
+        _r8_need(hashlib.sha256(_v4_git(read_git, "show", R8_SOURCE + ":" + path)).hexdigest() == expected,
+            "r8.exact_source_fixture_bytes")
+    return {"schema": "openclaw.v108.verified-crabline-source-equivalence.v1", "scope": R8_SOURCE_SCOPE,
+        "baseSourceSha": R8_BASE_SOURCE, "baseSourceTree": R8_BASE_TREE,
+        "sourceSha": R8_SOURCE, "sourceTree": R8_TREE, "hops": [proof],
+        "unchangedOutsideApprovedSourceAndLedger": True, "packageAndLockUnchanged": True,
+        "historicalGenerationReceiptSha256": R7_STAGE_PINS["preparation"]["generationReceiptSha256"],
+        "historicalCoverageReused": False, "sameSourceReceiptRelabeled": False,
+        "productionAuthorized": False, "imageBuilt": False}
+
+def reuse_upstream_tag_v8(pipeline, source, request, inventory, inspect, env, context):
+    """Use the fixed official tag in either approved R8 round after ordinary donor closure.
+
+    No caller-supplied path/ref/URL, alternate transport, object fallback or source
+    mutation is accepted. Only the fixed tag object and its exact tag ref may be
+    written; the already-complete required commit closure is still the donor's.
+    """
+    _r8_need(type(request) is dict and request.get("schema") == R8_SCHEMA and
+        context.get("request") == request, "r8.tag_reuse_context")
+    validate_request_v8(request, R8_STAGE_PINS)
+    _r7_need(inventory.get("upstream", {}).get("tag") == R7_TAG_NAME and
+        inventory["upstream"].get("tagObject") == R7_TAG_OBJECT and
+        inventory["upstream"].get("commit") == R7_TAG_COMMIT,
+        "r7.tag_reuse_inventory")
+    fixture = Path(pipeline) / R7_TAG_FIXTURE
+    _r7_need(fixture.is_file() and not fixture.is_symlink() and
+        fixture.resolve(strict=True) == fixture.absolute() and
+        fixture.stat().st_uid == os.geteuid() and fixture.stat().st_nlink == 1 and
+        fixture.stat().st_size == R7_TAG_BYTES, "r7.tag_reuse_fixture_file")
+    before = fixture.stat()
+    with fixture.open("rb") as handle:
+        raw = handle.read(R7_TAG_BYTES + 1)
+        after = os.fstat(handle.fileno())
+    def fixture_identity(info):
+        # stat_result sequence equality omits subsecond fields on some hosts.
+        # Reading may change atime; content/identity/ownership changes must refuse.
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+                info.st_mode, info.st_uid, info.st_gid, info.st_nlink)
+    _r7_need(fixture_identity(before) == fixture_identity(after) and
+        fixture_identity(fixture.stat()) == fixture_identity(after) and len(raw) == R7_TAG_BYTES and
+        hashlib.sha256(raw).hexdigest() == R7_TAG_SHA256 and
+        hashlib.sha1(b"tag " + str(len(raw)).encode() + b"\0" + raw).hexdigest() == R7_TAG_OBJECT and
+        raw.startswith(("object " + R7_TAG_COMMIT + "\ntype commit\ntag " + R7_TAG_NAME + "\n").encode()),
+        "r7.tag_reuse_fixture_identity")
+    try:
+        base_present = (inspect(source, "rev-parse", "--is-shallow-repository") == b"false" and
+            inspect(source, "cat-file", "-t", R7_TAG_COMMIT) == b"commit")
+    except subprocess.CalledProcessError:
+        base_present = False
+    _r7_need(base_present, "r7.tag_reuse_base_object")
+    expected = (request["sourceSha"].encode(), request["sourceTree"].encode(), b"")
+    def source_state():
+        return (inspect(source, "rev-parse", "HEAD"), inspect(source, "rev-parse", "HEAD^{tree}"),
+                inspect(source, "status", "--porcelain=v1", "--untracked-files=all"))
+    _r7_need(source_state() == expected, "r7.tag_reuse_source_identity")
+    # A symbolic tag ref, including a dangling one, is never treated as absence.
+    try:
+        inspect(source, "symbolic-ref", "--quiet", R7_TAG_REF)
+    except subprocess.CalledProcessError as error:
+        _r7_need(error.returncode == 1, "r7.tag_reuse_ref_read")
+    else:
+        _r7_need(False, "r7.tag_reuse_ref_conflict")
+    refs = inspect(source, "for-each-ref", "--format=%(refname) %(objectname)", R7_TAG_REF)
+    _r7_need(refs in (b"", (R7_TAG_REF + " " + R7_TAG_OBJECT).encode()),
+        "r7.tag_reuse_ref_conflict")
+    # Reuse the existing owned phase/session/deadline owner. Public fixed object
+    # hashes may appear in its ordinary Git output; no credential is provided.
+    with tempfile.TemporaryDirectory(prefix="v108-official-tag-", dir=Path(pipeline).parent) as private:
+        snapshot = Path(private) / "verified.tag"
+        fd = os.open(snapshot, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as handle:
+            _r7_need(handle.write(raw) == len(raw), "r7.tag_reuse_snapshot_write")
+            handle.flush()
+            os.fsync(handle.fileno())
+        for ordinal, args in enumerate((
+                ("hash-object", "-t", "tag", "-w", "--no-filters", "--", str(snapshot)),
+                ("update-ref", "--no-deref", R7_TAG_REF, R7_TAG_OBJECT,
+                 R7_TAG_OBJECT if refs else "0" * 40)), 1):
+            argv = ["git", "--no-replace-objects", "-C", str(source), "-c", "credential.helper=",
+                    "-c", "core.hooksPath=/dev/null", "-c", "maintenance.auto=0", "-c", "gc.auto=0",
+                    "-c", "protocol.allow=never", *args]
+            result = phase_process(argv, source, env, context, "source-tag-reuse", ordinal)
+            _r7_need(result.returncode == 0 and not result.timed_out, "r7.tag_reuse_write_failed")
+    _r7_need(inspect(source, "cat-file", "-t", R7_TAG_OBJECT) == b"tag" and
+        inspect(source, "cat-file", "-s", R7_TAG_OBJECT) == str(R7_TAG_BYTES).encode() and
+        inspect(source, "rev-parse", "--verify", R7_TAG_REF) == R7_TAG_OBJECT.encode() and
+        inspect(source, "rev-parse", "--verify", R7_TAG_REF + "^{commit}") == R7_TAG_COMMIT.encode() and
+        source_state() == expected and fixture_identity(fixture.stat()) == fixture_identity(after),
+        "r7.tag_reuse_final_binding")
+"""R8 insertion fragment: pure validation plus caller-injected read-only transport.
+
+The maintained owner supplies the reviewed R8 request/pins/constants, the unchanged
+R7/shared history helpers, and the separately reviewed resolve_composite function.
+This file neither imports a driver nor changes any historical policy or literal.
+"""
+
+import hashlib
+import json
+import math
+from datetime import datetime, timezone
+
+
+def booking_v8(request, pins, prior_minutes, ancillary_minutes):
+    validate_request_v8(request, pins)
+    _r8_need(all(type(v) is int and v >= 0 for v in (prior_minutes, ancillary_minutes)) and
+        ancillary_minutes <= R8_ANCILLARY_MINUTES and
+        ((request["stageRound"] == 1 and prior_minutes == 0) or
+         (request["stageRound"] == 2 and prior_minutes <= R8_FULL_MINUTES)), "r8.actual_usage")
+    current = R8_ADMISSION_MINUTES + R8_FINAL_MINUTES + sum(
+        R8_PROFILE_MINUTES[p] for p in request["profiles"])
+    reserve = R8_TARGETED_MINUTES if request["stageRound"] == 1 else 0
+    total = prior_minutes + current + reserve + R8_ANCILLARY_MINUTES
+    cumulative = pins["baseline"]["runnerMinutesObserved"] + total
+    _r8_need(total <= R8_NEW_MINUTES and cumulative <= V6_OVERALL_MINUTES,
+        "r8.total_minute_ceiling")
+    return {"bookedRunnerMinutes": cumulative,
+        "actualSettledRunnerMinutes": pins["baseline"]["runnerMinutesObserved"],
+        "newStageBookedMinutes": total, "priorValidationObservedMinutes": prior_minutes,
+        "currentRoundBookedMinutes": current, "futureTargetedReserveMinutes": reserve,
+        "ancillaryReservationBookedMinutes": R8_ANCILLARY_MINUTES,
+        "observedNewAncillaryRunnerMinutes": ancillary_minutes,
+        "newAncillaryRemainingReserveMinutes": R8_ANCILLARY_MINUTES - ancillary_minutes,
+        "overallMinuteCeiling": V6_OVERALL_MINUTES, "newScopeMinuteCeiling": R8_NEW_MINUTES,
+        "maximumStageExecutionsIncludingPreparation": 2,
+        "newPreparationExecutionAuthorized": False, "preparationChargedAgain": False,
+        "currentSourceCoverageReusedFromF5": False}
+
+
+def _h8_equal(left, right):
+    return json.dumps(left, sort_keys=True, separators=(",", ":"), allow_nan=False) == \
+        json.dumps(right, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _h8_actor(run):
+    _r8_need(type(run) is dict and all(type(run.get(k)) is dict and
+        run[k].get("login") == "fr-meyer" for k in ("actor", "triggering_actor")),
+        "r8.owner_actor")
+
+
+def _h8_source_binding(run):
+    _r8_need(type(run) is dict, "r8.source_role")
+    _h6_source_run_binding(run)
+    _h8_actor(run)
+    _r8_need(run.get("path") == WORKFLOW, "r8.source_role")
+
+
+def _h8_job_ids(table):
+    jobs = table["jobs"]
+    ids = [job.get("id") for job in jobs]
+    _r8_need(all(type(i) is int and i > 0 for i in ids) and len(set(ids)) == len(ids),
+        "r8.unique_job_ids")
+    return set(ids)
+
+
+def _h8_artifacts(api, run):
+    table = api("/repos/" + REPOSITORY + "/actions/runs/" + str(run["id"]) +
+        "/artifacts?per_page=100")
+    _r8_need(type(table) is dict and type(table.get("total_count")) is int and
+        type(table.get("artifacts")) is list and table["total_count"] == len(table["artifacts"]) <= 100,
+        "r8.artifacts_complete")
+    projected, ids, size = [], set(), 0
+    for artifact in table["artifacts"]:
+        _r8_need(type(artifact) is dict and type(artifact.get("id")) is int and
+            artifact["id"] > 0 and artifact["id"] not in ids and
+            type(artifact.get("name")) is str and bool(artifact["name"]) and
+            type(artifact.get("size_in_bytes")) is int and artifact["size_in_bytes"] >= 0 and
+            type(artifact.get("expired")) is bool, "r8.artifact_identity")
+        ids.add(artifact["id"]); size += artifact["size_in_bytes"]
+        projected.append({k: artifact[k] for k in ("id", "name", "size_in_bytes", "expired")})
+    return {"ids": sorted(ids), "count": len(ids), "bytes": size,
+        "rows": sorted(projected, key=lambda item: item["id"]),
+        "observationComplete": run["status"] == "completed"}
+
+
+def _h8_closed_baseline(pipeline, history, api, pins):
+    trusted = pins["baseline"]
+    proof_raw = (pipeline / R8_SETTLED_USAGE_PATH).read_bytes()
+    original_raw = (pipeline / R7_SETTLED_USAGE_PATH).read_bytes()
+    stage_raw = (pipeline / R8_PRIOR_STAGE_USAGE_PATH).read_bytes()
+    _r8_need(len(proof_raw) <= 16384 and len(original_raw) <= 2 * 1024 * 1024 and
+        len(stage_raw) <= 2 * 1024 * 1024 and
+        hashlib.sha256(proof_raw).hexdigest() == trusted["sha256"], "r8.baseline_proof_digest")
+    baseline = resolve_composite(proof_raw, original_raw, stage_raw)
+    _r8_need(hashlib.sha256(json.dumps(baseline, sort_keys=True, separators=(",", ":"),
+        allow_nan=False).encode()).hexdigest() == trusted["resolvedSha256"] and
+        baseline["runCount"] == trusted["runCount"] == R8_PRIOR_RUNS and
+        baseline["runnerMinutesObserved"] == trusted["runnerMinutesObserved"] == R8_PRIOR_MINUTES and
+        baseline["sourceRunIds"] == trusted["sourceRunIds"] and
+        _h8_equal(baseline["artifactSnapshot"], trusted["artifactSnapshot"]) and
+        baseline["closedAt"] == trusted["closedAt"], "r8.baseline_resolved_binding")
+    # Historical policy/objects are deliberately passed unchanged, not repinned
+    # to the current source and not charged as new preparation or validation.
+    original, original_ids, hashes = validate_closed_baseline_v7(original_raw,
+        lambda *args: git(pipeline, *args), history, api, R7_STAGE_PINS)
+    rows = {str(row["id"]): row for row in baseline["runs"]}
+    _r8_need(len(rows) == R8_PRIOR_RUNS and original_ids <= set(rows) and
+        all(_h8_equal(row, rows[str(row["id"])]) for row in original["runs"]),
+        "r8.original213_preserved")
+    measured = original["runnerMinutesObserved"]
+    known_jobs = {job["id"] for row in original["runs"] for job in row["jobs"]}
+    known_artifacts = {item["id"] for row in original["runs"] for item in row.get("artifactRows", [])}
+    for rid, row in rows.items():
+        if rid in original_ids:
+            continue
+        run = history.get(rid)
+        _r8_need(type(run) is dict and _h5_public(run) and
+            all(type(run.get(k)) is type(row[k]) and run.get(k) == row[k] for k in V6_PROVIDER_HEADERS) and
+            run.get("status") == "completed" and run.get("conclusion") in V5_TERMINAL_CONCLUSIONS and
+            row.get("actorLogin") == row.get("triggeringActorLogin") == "fr-meyer",
+            "r8.closed30_header_changed")
+        _h8_actor(run)
+        table = _h5_jobs(api, run)
+        ids = _h8_job_ids(table)
+        _r8_need(not known_jobs.intersection(ids) and
+            _h8_equal(sorted(table["jobs"], key=lambda j: j["id"]),
+                sorted(row["jobs"], key=lambda j: j["id"])), "r8.closed30_jobs_changed")
+        known_jobs.update(ids)
+        if rid == R7_STAGE_PINS["preparation"]["runId"]:
+            _h7_preparation_binding(run, R7_STAGE_PINS["preparation"])
+            _r8_need(table["total_count"] == 1 and table["jobs"][0].get("name") == "lock-preparation" and
+                run["conclusion"] == "success", "r8.closed_preparation_role")
+            minutes = observed_minutes(table, None, legacy=True)
+            _r8_need(minutes <= R7_PREPARATION_MINUTES, "r8.closed_preparation_clock")
+        elif run["path"] == WORKFLOW:
+            _r8_need(rid == "40856125444", "r8.closed_source_role")
+            _h8_source_binding(run)
+            prior = _v6_json(content_at(api, REQUEST, run["head_sha"]))
+            validate_request_v7(prior, R7_STAGE_PINS)
+            _r8_need(prior["stageRound"] == 1 and prior["profiles"] == list(V6_PROFILES),
+                "r8.closed_r7_full_request")
+            workflow_security_v7(content_at(api, WORKFLOW, run["head_sha"]), prior["sourceSha"])
+            minutes = observed_minutes_v5(table, prior["profiles"], validation_budget_v7(prior))
+        else:
+            minutes = observed_minutes(table, None, legacy=True)
+        _r8_need(type(row.get("observedRunnerMinutes")) is int and
+            row["observedRunnerMinutes"] == minutes, "r8.closed30_actual_minutes")
+        measured += minutes
+        artifacts = _h8_artifacts(api, run)
+        _r8_need(not known_artifacts.intersection(artifacts["ids"]) and
+            _h8_equal(artifacts["rows"], sorted(row["artifactRows"], key=lambda a: a["id"])),
+            "r8.closed30_artifacts_changed")
+        known_artifacts.update(artifacts["ids"])
+        hashes[rid] = hashlib.sha256(json.dumps(row["jobs"], sort_keys=True,
+            separators=(",", ":")).encode()).hexdigest()
+    _r8_need(measured == trusted["runnerMinutesObserved"], "r8.closed243_actual_minutes")
+    return baseline, set(rows), hashes, known_jobs, known_artifacts
+
+
+def workflow_security_v8(raw, source_sha):
+    return {**workflow_security_v7(raw, source_sha), "profilePolicy": R8_POLICY}
+
+
+def _h8_previous(request, pins, history, current, pipeline, api):
+    if request["stageRound"] == 1:
+        return 0, [], {}, list(V6_PROFILES), set()
+    pin = pins["priorValidationRuns"][0]
+    run = history.get(pin["runId"])
+    _h8_source_binding(run)
+    _r8_need(run.get("head_sha") == pin["pipelineHead"] and run.get("status") == "completed" and
+        run.get("conclusion") in V5_TERMINAL_CONCLUSIONS and
+        timestamp(run["updated_at"]) <= timestamp(current["created_at"]), "r8.prior_validation_terminal")
+    raw = content_at(api, REQUEST, pin["pipelineHead"])
+    _r8_need(hashlib.sha256(raw).hexdigest() == pin["requestSha256"], "r8.prior_request_digest")
+    prior = _v6_json(raw)
+    validate_request_v8(prior, dict(pins, priorValidationRuns=[]))
+    _r8_need(prior["stageRound"] == 1 and prior["profiles"] == list(V6_PROFILES) and
+        all(_h8_equal(prior[k], request[k]) for k in ("sourceSha", "sourceTree", "manifestSha256",
+            "inventorySha256", "settledUsageSha256", "lockPreparation", "sourceWitness")),
+        "r8.same_frozen_source_only")
+    git(pipeline, "merge-base", "--is-ancestor", pin["pipelineHead"], current["head_sha"])
+    workflow_security_v8(content_at(api, WORKFLOW, pin["pipelineHead"]), request["sourceSha"])
+    table = _h5_jobs(api, run)
+    minutes = observed_minutes_v5(table, prior["profiles"], validation_budget_v8(prior))
+    results = {job["name"][8:-1]: job["conclusion"] for job in table["jobs"]
+        if job["name"].startswith("source (") and job["name"].endswith(")") and
+        job["name"][8:-1] in V6_PROFILES}
+    unresolved = [p for p in V6_PROFILES if results.get(p) != "success"]
+    _r8_need(bool(unresolved) and set(unresolved) <= set(request["profiles"]),
+        "r8.all_unresolved_selected")
+    return minutes, [{"runId": pin["runId"], "pipelineHead": pin["pipelineHead"],
+        "requestSha256": pin["requestSha256"], "observedRunnerMinutes": minutes,
+        "sourceSha": request["sourceSha"], "profileResults": results,
+        "unresolvedProfiles": unresolved, "sourceUnchanged": True,
+        "oldF5OrR7EvidenceUsedForCurrentCoverage": False}], results, unresolved, _h8_job_ids(table)
+
+
+def history_checks_v8(request, event, env, pipeline, api, pins):
+    request = validate_request_v8(request, pins)
+    head = validate_event(event, env)
+    now = datetime.now(timezone.utc)
+    _r8_need(now < timestamp(R8_DEADLINE), "r8.history_deadline")
+    live = api("/repos/" + REPOSITORY + "/pulls/28")
+    _r8_need(validate_event(dict(event, pull_request=live), env) == head, "r8.live_pr_changed")
+    for branch, expected in ((BASE_BRANCH, TARGET_BRANCH_TIP), (V6_SOURCE_BRANCH, request["sourceSha"])):
+        ref = api("/repos/" + REPOSITORY + "/git/ref/heads/" + branch)
+        _r8_need(ref.get("ref") == "refs/heads/" + branch and
+            ref.get("object", {}).get("type") == "commit" and ref["object"].get("sha") == expected,
+            "r8.live_branch_tip")
+    history = _h6_branch_history(api)
+    baseline, prefix_ids, hashes, job_ids, artifact_ids = _h8_closed_baseline(pipeline, history, api, pins)
+    expected = [*pins["baseline"]["sourceRunIds"],
+        *[p["runId"] for p in pins["priorValidationRuns"]], env["GITHUB_RUN_ID"]]
+    actual = {rid for rid, run in history.items() if run.get("path") == WORKFLOW}
+    _r8_need(actual == set(expected) and len(expected) == len(set(expected)), "r8.exact_execution_set")
+    current = history[env["GITHUB_RUN_ID"]]
+    _h8_source_binding(current)
+    _r8_need(current.get("head_sha") == head and current.get("status") == "in_progress" and
+        datetime.fromisoformat(baseline["closedAt"]) <= timestamp(current["created_at"]) <= now,
+        "r8.current_validation_identity")
+    for rid in pins["baseline"]["sourceRunIds"]:
+        git(pipeline, "merge-base", "--is-ancestor", history[rid]["head_sha"], head)
+    workflow = workflow_security_v8((pipeline / WORKFLOW).read_bytes(), request["sourceSha"])
+    prior_minutes, previous, results, unresolved, prior_ids = _h8_previous(
+        request, pins, history, current, pipeline, api)
+    _r8_need(not job_ids.intersection(prior_ids), "r8.replayed_prior_job")
+    job_ids.update(prior_ids)
+    table = _h5_jobs(api, current)
+    current_ids = _h8_job_ids(table)
+    _r8_need(not job_ids.intersection(current_ids), "r8.replayed_current_job")
+    job_ids.update(current_ids)
+    admission = [j for j in table["jobs"] if j.get("name") == "admission"]
+    _r8_need(len(admission) == 1 and admission[0].get("status") == "in_progress" and
+        type(admission[0].get("runner_id")) is int and admission[0]["runner_id"] > 0 and
+        type(admission[0].get("runner_name")) is str and bool(admission[0]["runner_name"]) and
+        admission[0].get("runner_group_name") == "GitHub Actions" and
+        admission[0].get("labels") == ["ubuntu-24.04"], "r8.current_public_admission")
+    for job in table["jobs"]:
+        if job is admission[0]:
+            continue
+        _r8_need(job.get("name") in {"final", "source (${{ matrix.profile }})",
+            *["source (" + p + ")" for p in request["profiles"]]} and
+            (job.get("runner_id") is None or type(job.get("runner_id")) is int and job["runner_id"] == 0) and
+            job.get("runner_name") in (None, "") and type(job.get("steps")) is list and not job["steps"] and
+            (job.get("status") in ("queued", "waiting", "pending") or
+             job.get("status") == "completed" and job.get("conclusion") in ("skipped", "cancelled")),
+            "r8.jobs_before_admission")
+    current_facts = ancillary_job_snapshot(table, now, False)
+    _r8_need(current_facts["observedAcquiredRunnerMinutes"] <= R8_ADMISSION_MINUTES,
+        "r8.current_job_booking")
+    paths = {row["path"] for row in baseline["runs"] if row["path"] != WORKFLOW}
+    pipeline_heads = {head, *[p["pipelineHead"] for p in pins["priorValidationRuns"]]}
+    observed, ancillary, pending, artifacts = 0, [], [], []
+    artifact_bytes = pins["baseline"]["artifactSnapshot"]["bytes"]
+    for rid, run in sorted(history.items()):
+        if rid in prefix_ids:
+            continue
+        if run.get("path") != WORKFLOW:
+            _h8_actor(run)
+            branch = run.get("head_branch")
+            correct = (branch == BRANCH and run.get("head_sha") in pipeline_heads) or \
+                (branch == V6_SOURCE_BRANCH and run.get("head_sha") == request["sourceSha"])
+            events = ("pull_request", "pull_request_target") if branch == BRANCH else ("push",)
+            _r8_need(_h5_public(run) and correct and run.get("event") in events and run.get("path") in paths and
+                type(run.get("run_attempt")) is int and run["run_attempt"] == 1 and
+                run.get("status") in ("completed", "in_progress", "queued", "waiting", "pending") and
+                datetime.fromisoformat(baseline["closedAt"]) <= timestamp(run["created_at"]) <= now and
+                (run["status"] != "completed" or run.get("conclusion") in V5_TERMINAL_CONCLUSIONS),
+                "r8.new_ancillary_binding")
+            table = _h5_jobs(api, run)
+            ids = _h8_job_ids(table)
+            _r8_need(not job_ids.intersection(ids), "r8.replayed_new_job")
+            job_ids.update(ids)
+            facts = ancillary_job_snapshot(table, now, run["status"] == "completed")
+            observed += facts["observedAcquiredRunnerMinutes"]
+            ancillary.append({"runId": rid, **facts})
+            if not facts["usageComplete"]:
+                pending.append(rid)
+        row = _h8_artifacts(api, run)
+        _r8_need(not artifact_ids.intersection(row["ids"]), "r8.artifact_duplicate")
+        artifact_ids.update(row["ids"])
+        artifact_bytes += row["bytes"]
+        artifacts.append({"runId": rid, **row})
+    _r8_need(observed <= R8_ANCILLARY_MINUTES and (not pending or observed < R8_ANCILLARY_MINUTES),
+        "r8.ancillary_limit")
+    _r8_need(artifact_bytes <= R8_DIAGNOSTIC_BYTES, "r8.artifact_storage_limit")
+    return {**booking_v8(request, pins, prior_minutes, observed),
+        "deadlineEpoch": int(timestamp(R8_DEADLINE).timestamp()),
+        "profileMatrix": [{"profile": p, "minutes": R8_PROFILE_MINUTES[p]} for p in request["profiles"]],
+        "selectedProfileCount": len(request["profiles"]), "priorValidationReceipts": previous,
+        "priorValidationProfileResults": results, "priorUnresolvedProfiles": unresolved,
+        "historicalCoverageReused": False, "reusedProfileCount": 0,
+        "closedBaselineRuns": R8_PRIOR_RUNS, "closedBaselineMinutes": R8_PRIOR_MINUTES,
+        "closedBaselineProofSha256": pins["baseline"]["sha256"],
+        "closedBaselineResolvedSha256": pins["baseline"]["resolvedSha256"],
+        "historicalJobTableSha256": hashes, "newAncillaryRecords": ancillary,
+        "pendingAncillaryRunIds": pending, "ancillaryUsageComplete": not pending,
+        "artifactRecords": artifacts, "observedRetainedWorkflowArtifactBytes": artifact_bytes,
+        "artifactObservationComplete": all(row["observationComplete"] for row in artifacts),
+        "artifactBudgetIsNotWholeDiagnosticCustodyProof": True, "workflowSecurity": workflow,
+        "currentAdmissionObservation": current_facts, "historicalConclusionsRetained": True,
+        "productionAuthorized": False, "imageBuilt": False}
+
+# Explicit version dispatch adds R8 without mutating historical policy globals.
+_r8_historical_profile_minutes_for = profile_minutes_for
+_r8_historical_profiles_for = profiles_for
+_r8_historical_source_identity_for = source_identity_for
+_r8_historical_approval_deadline_for = approval_deadline_for
+_r8_historical_admission_deadline = admission_deadline
+_r8_historical_validate_operational_request = validate_operational_request
+_r8_historical_operational_input_paths = operational_input_paths
+_r8_historical_validate_operational_generation = validate_operational_generation
+_r8_historical_history_checks_for_operational_request = history_checks_for_operational_request
+_r8_historical_verify_operational_source = verify_operational_source
+_r8_historical_runtime_refusal_code_v7 = runtime_refusal_code_v7
+
+
+def _is_r8(value):
+    return type(value) is dict and value.get("schema") == R8_SCHEMA
+
+
+def profile_minutes_for(request=None):
+    if _is_r8(request):
+        return validation_budget_v8(request)["profileMinutes"]
+    return _r8_historical_profile_minutes_for(request)
+
+
+def profiles_for(request):
+    if _is_r8(request):
+        validate_request_v8(request, R8_STAGE_PINS)
+        return list(request["profiles"])
+    return _r8_historical_profiles_for(request)
+
+
+def source_identity_for(request=None):
+    if _is_r8(request):
+        validate_request_v8(request, R8_STAGE_PINS)
+        return request["sourceSha"], request["sourceTree"]
+    return _r8_historical_source_identity_for(request)
+
+
+def approval_deadline_for(request=None):
+    if _is_r8(request):
+        validate_request_v8(request, R8_STAGE_PINS)
+        return R8_DEADLINE
+    return _r8_historical_approval_deadline_for(request)
+
+
+def admission_deadline(env, request=None):
+    if not _is_r8(request):
+        return _r8_historical_admission_deadline(env, request)
+    validate_request_v8(request, R8_STAGE_PINS)
+    start = env.get("SOURCE_ADMISSION_STARTED_EPOCH", "")
+    _r8_need(env.get("GITHUB_JOB") == "admission" and
+        re.fullmatch(r"[0-9]{10}", start) is not None, "r8.admission_clock")
+    now = time.time()
+    _r8_need(int(start) <= now and now - int(start) < R8_ADMISSION_MINUTES * 60,
+        "r8.admission_clock_freshness")
+    return min(int(start) + R8_ADMISSION_MINUTES * 60 - 60,
+               int(timestamp(R8_DEADLINE).timestamp()) - 60)
+
+
+def validate_operational_request(request):
+    if _is_r8(request):
+        return validate_request_v8(request, R8_STAGE_PINS)
+    return _r8_historical_validate_operational_request(request)
+
+
+def operational_input_paths(request):
+    if _is_r8(request):
+        validate_request_v8(request, R8_STAGE_PINS)
+        return R8_SETTLED_USAGE_PATH, R7_PREPARATION_PROOF_PATH
+    return _r8_historical_operational_input_paths(request)
+
+
+def validate_operational_generation(request, raw):
+    if _is_r8(request):
+        validate_request_v8(request, R8_STAGE_PINS)
+        return validate_re2js_generation_receipt_v7(raw, R7_STAGE_PINS)
+    return _r8_historical_validate_operational_generation(request, raw)
+
+
+def history_checks_for_operational_request(request, event, env, pipeline, api):
+    if _is_r8(request):
+        return history_checks_v8(request, event, env, pipeline, api, R8_STAGE_PINS)
+    return _r8_historical_history_checks_for_operational_request(request, event, env, pipeline, api)
+
+
+def verify_operational_source(request, pipeline, read_git):
+    if _is_r8(request):
+        return verify_source_equivalence_v8(request, R8_STAGE_PINS, read_git,
+            (pipeline / R7_PREPARATION_PROOF_PATH).read_bytes())
+    return _r8_historical_verify_operational_source(request, pipeline, read_git)
+
+
+def runtime_refusal_code_v7(error):
+    if isinstance(error, R8ContractRefusal):
+        code = error.args[0] if len(error.args) == 1 else None
+        return code if type(code) is str and code in R8_RUNTIME_REFUSAL_CODES else "r8.unprojected"
+    return _r8_historical_runtime_refusal_code_v7(error)
+
+R8_RUNTIME_REFUSAL_CODES = frozenset(('r8.actual_usage', 'r8.admission_clock', 'r8.admission_clock_freshness', 'r8.all15_fresh', 'r8.all_unresolved_selected', 'r8.ancillary_limit', 'r8.artifact_duplicate', 'r8.artifact_identity', 'r8.artifact_storage_limit', 'r8.artifacts_complete', 'r8.baseline_proof_digest', 'r8.baseline_resolved_binding', 'r8.budget_policy', 'r8.closed243_actual_minutes', 'r8.closed30_actual_minutes', 'r8.closed30_artifacts_changed', 'r8.closed30_header_changed', 'r8.closed30_jobs_changed', 'r8.closed_baseline_pins', 'r8.closed_preparation_clock', 'r8.closed_preparation_role', 'r8.closed_r7_full_request', 'r8.closed_request', 'r8.closed_source_role', 'r8.current_job_booking', 'r8.current_public_admission', 'r8.current_validation_identity', 'r8.dependencies_unchanged', 'r8.exact_execution_set', 'r8.exact_prior_runs', 'r8.exact_reviewed_pins', 'r8.exact_source_fixture_bytes', 'r8.fixed_profiles', 'r8.history_deadline', 'r8.hop_identity', 'r8.hop_scope', 'r8.jobs_before_admission', 'r8.live_branch_tip', 'r8.live_pr_changed', 'r8.new_ancillary_binding', 'r8.once_full_once_targeted', 'r8.original213_preserved', 'r8.owner_actor', 'r8.prior_request_digest', 'r8.prior_validation_pins', 'r8.prior_validation_terminal', 'r8.replayed_current_job', 'r8.replayed_new_job', 'r8.replayed_prior_job', 'r8.round_booking', 'r8.same_frozen_source_only', 'r8.source_role', 'r8.source_witness', 'r8.stage_pins', 'r8.tag_reuse_context', 'r8.total_minute_ceiling', 'r8.unique_executions', 'r8.unique_job_ids'))
 
 if __name__ == "__main__":
     raise SystemExit(entrypoint())

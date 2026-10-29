@@ -43,7 +43,7 @@ jobs:
           /usr/bin/python3 -I -B - <<'PY'
           import math, os, time
           from datetime import datetime, timezone
-          deadline = datetime(2026, 10, 30, 0, 3, 19, tzinfo=timezone.utc).timestamp()
+          deadline = datetime(2026, 10, 30, 8, 3, 19, tzinfo=timezone.utc).timestamp()
           now = time.time()
           if not math.isfinite(now) or now < 0 or now + 30 * 60 > deadline:
               raise SystemExit("v6.workflow.admission_deadline_refused")
@@ -70,7 +70,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fr-meyer/openclaw
-          ref: 76522eaa2dd93a4933b5c87f7451eab1d458f8be
+          ref: e6c4786dafbc8308661ea8fa14a81e06873d1630
           path: source
           fetch-depth: 1
           persist-credentials: false
@@ -112,7 +112,7 @@ jobs:
           profile = os.environ.get("SOURCE_PROFILE")
           if profile not in caps or os.environ.get("SOURCE_CLOCK_MINUTES") != str(caps[profile]):
               raise SystemExit("v6.workflow.profile_cap_refused")
-          deadline = datetime(2026, 10, 30, 0, 3, 19, tzinfo=timezone.utc).timestamp()
+          deadline = datetime(2026, 10, 30, 8, 3, 19, tzinfo=timezone.utc).timestamp()
           if os.environ.get("SOURCE_DEADLINE_EPOCH") != str(int(deadline)):
               raise SystemExit("v6.workflow.profile_deadline_binding_refused")
           now = time.time()
@@ -134,7 +134,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fr-meyer/openclaw
-          ref: 76522eaa2dd93a4933b5c87f7451eab1d458f8be
+          ref: e6c4786dafbc8308661ea8fa14a81e06873d1630
           path: source
           fetch-depth: 1
           persist-credentials: false
@@ -171,7 +171,7 @@ jobs:
           /usr/bin/python3 -I -B - <<'PY'
           import math, time
           from datetime import datetime, timezone
-          deadline = datetime(2026, 10, 30, 0, 3, 19, tzinfo=timezone.utc).timestamp()
+          deadline = datetime(2026, 10, 30, 8, 3, 19, tzinfo=timezone.utc).timestamp()
           now = time.time()
           if not math.isfinite(now) or now < 0 or now + 10 * 60 > deadline:
               raise SystemExit("v6.workflow.final_deadline_refused")
