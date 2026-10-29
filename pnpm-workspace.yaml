@@ -10,8 +10,6 @@ minimumReleaseAgeStrict: true
 
 # Trusted Codex runtimes are outside the dependency cooldown.
 minimumReleaseAgeExclude:
-  # Reviewed GHSA-27r3-jxmh-p828 fix; remove after 2026-10-29T11:39:38.614Z.
-  - "body-parser@2.4.0"
   - "@openai/codex"
   - "@openai/codex-*"
   # Reviewed fs-safe 0.26.0 release and native helpers; remove after 2026-10-17T20:00:18.006Z.

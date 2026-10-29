@@ -6,7 +6,7 @@ import { Writable } from "node:stream";
 import { Worker } from "node:worker_threads";
 import http from "node:http";
 import https from "node:https";
-import { createRequire, syncBuiltinESMExports } from "node:module";
+import { createRequire, findPackageJSON, syncBuiltinESMExports } from "node:module";
 import net from "node:net";
 import path from "node:path";
 import test from "node:test";
@@ -47,6 +47,21 @@ function packageContext(requireFromParent, name, entry = name) {
     }
     assert.notEqual(path.dirname(current), current, `Missing installed parent ${name}`);
   }
+}
+
+// Crabline exposes only its ESM entry. Locate metadata from the real consuming
+// parent without requiring either its entry point or a package.json export.
+function crablinePackageContext(parentRequire) {
+  const manifestPath = findPackageJSON(
+    "@openclaw/crabline",
+    parentRequire.resolve("./package.json"),
+  );
+  assert.ok(typeof manifestPath === "string" && path.isAbsolute(manifestPath));
+  const realManifestPath = fs.realpathSync(manifestPath);
+  assert.equal(fs.statSync(realManifestPath).isFile(), true);
+  const manifest = JSON.parse(fs.readFileSync(realManifestPath, "utf8"));
+  assert.equal(manifest.name, "@openclaw/crabline");
+  return { manifest, require: createRequire(realManifestPath) };
 }
 
 const sdk = packageContext(
@@ -388,7 +403,7 @@ test("the actual Crabline parents use fixed RE2JS lookbehind behavior in an isol
   const qaLabRequire = createRequire(path.join(root, "extensions/qa-lab/package.json"));
   const entries = new Map();
   for (const parentRequire of [rootRequire, qaLabRequire]) {
-    const crabline = packageContext(parentRequire, "@openclaw/crabline");
+    const crabline = crablinePackageContext(parentRequire);
     assert.equal(crabline.manifest.version, "0.1.29");
     const child = packageContext(crabline.require, "re2js");
     assert.equal(child.manifest.version, "2.8.7");
