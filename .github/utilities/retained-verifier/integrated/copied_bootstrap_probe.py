@@ -86,7 +86,9 @@ def _root(root):
 
 
 def _rows(rows):
-    require(type(rows) is list and len(rows)==626,'copied.runtime_count')
+    # Representation only: the sealed origin still supplies the exact roster.
+    # 8192/100MiB are the existing upstream runtime envelope, not authority.
+    require(type(rows) is list and 0<len(rows)<=8192,'copied.runtime_count')
     result={}
     for row in rows:
         require(type(row) is dict and {'path','bytes','sha256','mode'}<=set(row) and

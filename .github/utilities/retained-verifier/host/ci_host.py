@@ -328,8 +328,23 @@ class NativePort:
                         'host.gpgv_failure_custody')
                 diagnostic.unlink()
             self.first_failure=None
+        for kind in ('release','packages'):
+            self._run('debian_metadata_curl',{'project':str(self.project),'kind':kind,'origin':'security'},130)
+        security_release=read_regular(self.project/'metadata/SecurityInRelease',196608)
+        security_compressed=read_regular(self.project/'metadata/SecurityPackages.xz',16777216)
+        self.security_packages=decompress_packages(security_compressed)
+        security_status=self._run('gpgv_metadata',{'project':str(self.project),'origin':'security'},30)
+        require(security_status.get('status')=='outer_exit_passed' and
+                security_status['returncode']==0,'host.security_gpgv_process_boundary')
+        self.security_metadata=self.m.policy.classify_security(security_release,self.security_packages,
+          returncode=security_status['returncode'],timed_out=security_status['timedOut'],
+          status=security_status['stdout'],checked_at=datetime.now(timezone.utc))
         self.records=self.m.apt.package_records(self.packages)
-        self.roots=select_roots(self.records,self.m.build.REQUIRED_PACKAGES,'linux-image-6.1.0-50-amd64')
+        security_records=self.m.apt.package_records(self.security_packages,origin='security')
+        python=self.m.apt.security_python_roots(security_records)
+        self.roots=select_roots(self.records,set(self.m.build.REQUIRED_PACKAGES)-set(self.m.policy.PYTHON_U9),
+                                'linux-image-6.1.0-50-amd64')+python
+        self.roots.sort(key=lambda row:row['name'])
         self.m.build.package_specs(self.roots)
         self._pre_qemu_budget()
     def _project_files(self,destination,negative=False):

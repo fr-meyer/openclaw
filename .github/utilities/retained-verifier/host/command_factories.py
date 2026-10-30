@@ -51,19 +51,24 @@ def ubuntu_apt_install(project):
     return ubuntu_apt_base(project)+('install','--yes','--no-install-recommends')+HOST_PACKAGES
 
 
-def debian_metadata_curl(project, kind):
+def debian_metadata_curl(project, kind, origin='main'):
     table={'release':('InRelease',196608),
            'packages':('main/binary-amd64/Packages.xz',16777216)}
     require(kind in table,'metadata_kind');name,cap=table[kind]
-    output=project_path(project,'metadata/'+('InRelease' if kind=='release' else 'Packages.xz'))
+    require(origin in ('main','security'),'metadata_origin')
+    stem='' if origin=='main' else 'Security'
+    output=project_path(project,'metadata/'+stem+('InRelease' if kind=='release' else 'Packages.xz'))
+    base=('https://deb.debian.org/debian/dists/bookworm/' if origin=='main' else
+          'https://security.debian.org/debian-security/dists/bookworm-security/')
     return ('/usr/bin/curl','--fail','--silent','--show-error','--proto','=https','--tlsv1.2',
       '--retry','0','--connect-timeout','20','--max-time','120','--max-filesize',str(cap),
-      '--output',output,'https://deb.debian.org/debian/dists/bookworm/'+name)
+      '--output',output,base+name)
 
 
-def gpgv_metadata(project):
+def gpgv_metadata(project, origin='main'):
+    require(origin in ('main','security'),'metadata_origin')
     return ('/usr/bin/gpgv','--status-fd','1','--keyring',project_path(project,'metadata/keyring.gpg'),
-            project_path(project,'metadata/InRelease'))
+            project_path(project,'metadata/'+('InRelease'if origin=='main'else'SecurityInRelease')))
 
 
 def dpkg_query(kind):

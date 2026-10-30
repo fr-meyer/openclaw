@@ -24,6 +24,7 @@ CONTROL='/opt/ocv/control'
 OUT='/work/out'
 DATA=CONTROL+'/apt-data'
 GPG_METADATA=('/usr/bin/gpgv','--status-fd=1','--keyring',DATA+'/keyring.gpg',DATA+'/InRelease')
+GPG_SECURITY=('/usr/bin/gpgv','--status-fd=1','--keyring',DATA+'/keyring.gpg',DATA+'/SecurityInRelease')
 HEADER=CONTROL+'/build-stage-context.json'
 SOURCE_MANIFEST=ROOT+'/PUBLIC-SOURCE-MANIFEST.json'
 WORKFLOW='fr-meyer/openclaw/.github/workflows/authorized-beta-focused-validation.yml@refs/heads/retained-verifier-prerequisites'
@@ -35,7 +36,8 @@ TOOLS={'python':'/usr/bin/python3.11','systemd':'/usr/lib/systemd/systemd','gpgv
 COMPILER={'compiler':'/usr/bin/gcc-12','cc1':'/usr/lib/gcc/x86_64-linux-gnu/12/cc1',
           'collect2':'/usr/lib/gcc/x86_64-linux-gnu/12/collect2','assembler':'/usr/bin/as','linker':'/usr/bin/ld'}
 SHOW_FORMAT='${binary:Package}\t${Version}\t${Architecture}\t${db:Status-Status}\n'
-FIXED_DATA=('InRelease','Packages','keyring.gpg','gpgv-status.txt','guard-proof.json','first-stage-ledger.json')
+FIXED_DATA=('InRelease','Packages','keyring.gpg','gpgv-status.txt','guard-proof.json','first-stage-ledger.json',
+            'SecurityInRelease','SecurityPackages','security-gpgv-status.txt','security-guard-proof.json')
 HEADER_KEYS={'schema','sourceManifestSha256','runIdentity','keyringSha256','kernelPackage','packageRoots','buildId'}
 RETAINED_HELPER_SOURCE_SHA256='29aa405e68a011d81dbf94d4aaf7e39899f62144eaaca6cceac884f183e335fe'
 RETAINED_HELPER_SHA256='0039f448059652d87fdfe49cf2de875a38bfe2224c2711c17cc2c837f9c7c88a'
@@ -334,16 +336,24 @@ def verify_metadata(ops,header,source_sha,leaves):
     """Fresh fixed-call cryptographic verification, never a saved verdict."""
     archive,policy=leaves['archive'],leaves['policy']
     descriptor=ops.read(CONTROL+'/apt-export.json',8*1024**2)
-    data={n:ops.read(DATA+'/'+n,64*1024**2 if n=='Packages' else 2*1024**2) for n in FIXED_DATA}
+    data={n:ops.read(DATA+'/'+n,64*1024**2 if n in ('Packages','SecurityPackages') else 2*1024**2) for n in FIXED_DATA}
+    need(archive.SECURITY_PROOF_FIELDS<=set(decode(data['guard-proof.json'])),
+         'build_entry.security_export_required')
     joined=archive.verify_export(descriptor,data,expected_keyring_sha256=header['keyringSha256'],
                                   expected_source_manifest_sha256=source_sha,expected_build_id=header['buildId'])
     result=ops.run(GPG_METADATA,30)
     status=command_ok(result,signature_status=True)
     classified=policy.classify(data['InRelease'],data['Packages'],returncode=result['exitCode'],
         timed_out=result['timedOut'],status=status,checked_at=ops.now())
+    second=ops.run(GPG_SECURITY,30);security_status=command_ok(second)
+    security=policy.classify_security(data['SecurityInRelease'],data['SecurityPackages'],
+        returncode=second['exitCode'],timed_out=second['timedOut'],
+        status=security_status,checked_at=ops.now())
+    archive.security_python_roots(archive.package_records(data['SecurityPackages'],origin='security'))
     if hasattr(ops,'deferred_gpg_failure'):ops.deferred_gpg_failure=None
     signature={'schema':'ocv-build-signature-v1','exportJoin':joined,'classification':classified,
-               'freshGpgStatusSha256':sha(status),'sourceManifestSha256':source_sha}
+               'freshGpgStatusSha256':sha(status),'securityClassification':security,
+               'freshSecurityGpgStatusSha256':sha(security_status),'sourceManifestSha256':source_sha}
     return data,joined,signature
 
 
@@ -373,6 +383,40 @@ def parse_installed_filelist(inventory,binary,raw):
         raise
 
 
+def export_selinux_repair(ops,data,tools,source_sha,apt_sha,archive):
+    """Export one already authenticated cached archive; never install it."""
+    records=archive.package_records(data['Packages'])
+    row=records.get(('selinux-utils','3.4-1+b6','amd64'))
+    filename='pool/main/libs/libselinux/selinux-utils_3.4-1+b6_amd64.deb'
+    depends='libc6 (>= 2.34), libpcre2-8-0 (>= 10.22), libselinux1 (>= 3.1~), libsepol2 (>= 3.4)'
+    digest='8357d8bfdbde73ff658129c1a6d25a02b4a244bddb2cc444c5a46835e3b8a31f'
+    need(type(row)is dict and row['filename']==filename and row['depends']==depends and
+         row['bytes']==126432 and row['debSha256']==digest,'build_entry.repair_signed_package')
+    matches=[r for r in tools['tools']if r['role']=='selinuxenabled']
+    need(len(matches)==1,'build_entry.repair_tool_roster');tool=matches[0]
+    need(tool['path']=='/usr/sbin/selinuxenabled' and tool['package']=='selinux-utils' and
+         tool['version']=='3.4-1+b6' and tool['debSha256']==digest and tool['bytes']==14576 and
+         tool['sha256']=='2d3c6a10650d380fde19ed7e5b0d80d6a8a99a3d950c1d7f424237a17d609148',
+         'build_entry.repair_tool_binding')
+    raw=ops.read('/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb',1048576)
+    need(type(raw)is bytes and len(raw)==126432 and sha(raw)==digest,'build_entry.repair_archive')
+    need(type(source_sha)is str and re.fullmatch('[0-9a-f]{64}',source_sha) is not None and
+         type(apt_sha)is str and re.fullmatch('[0-9a-f]{64}',apt_sha) is not None,
+         'build_entry.repair_source')
+    manifest={'schema':'ocv-offline-selinux-repair-payload-v1','fixtureOnly':True,
+        'privateVmInstallationPerformed':False,
+        'package':{'name':'selinux-utils','version':'3.4-1+b6','architecture':'amd64',
+            'bytes':126432,'sha256':digest,'filename':filename,'origin':'main',
+            'packagesSha256':sha(data['Packages']),'inReleaseSha256':sha(data['InRelease']),
+            'depends':depends},
+        'tool':{k:tool[k]for k in ('role','path','bytes','sha256')},
+        'sourceManifestSha256':source_sha,'aptMetadataManifestSha256':apt_sha}
+    encoded=canonical(manifest);need(len(encoded)<=8192,'build_entry.repair_manifest_cap')
+    ops.write_once(OUT+'/repair/selinux-utils.deb',raw,0o444)
+    ops.write_once(OUT+'/repair/manifest.json',encoded,0o444)
+    return manifest
+
+
 def run_checked(ops,header,source_sha,context_sha,leaves):
     """Concrete transaction, injectable for source-faithful no-command tests.
 
@@ -389,13 +433,23 @@ def run_checked(ops,header,source_sha,context_sha,leaves):
     ops.write_once(CONTROL+'/build-signature.json',canonical(signature),0o444)
     raw_show=command_ok(ops.run(('/usr/bin/dpkg-query','--show','--showformat='+SHOW_FORMAT),30))
     show=inventory.parse_show(raw_show)
-    indexed=inventory.parse_packages({sha(data['Packages']):data['Packages']})
+    indexes={sha(data[name]):data[name] for name in ('Packages','SecurityPackages')}
+    indexed=inventory.parse_packages(indexes)
+    main_records=leaves['archive'].package_records(data['Packages'])
+    security_records=leaves['archive'].package_records(data['SecurityPackages'],origin='security')
+    security_roots=leaves['archive'].security_python_roots(security_records)
+    actual_roots={row['name']:row for row in header['packageRoots']}
+    need(all(actual_roots.get(row['name'])==row for row in security_roots),
+         'build_entry.python_security_roots')
     # Positive exact roots and systemd target checks, not just version strings
     # from a caller manifest. The signed index identifies their archive bytes.
     for row in header['packageRoots']:
         need(row['name']in show and show[row['name']]['version']==row['version'],'build_entry.installed_root')
         ir=show[row['name']];signed=indexed.get((row['name'],row['version'],ir['architecture']))
         need(signed is not None and signed['sha256']==row['sha256'],'build_entry.root_archive')
+        origin=security_records if row['name'] in policy.PYTHON_U9 else main_records
+        bound=origin.get((row['name'],row['version'],ir['architecture']))
+        need(bound is not None and bound['debSha256']==row['sha256'],'build_entry.root_origin')
     filelists={r['binaryName']:command_ok(ops.run(('/usr/bin/dpkg-query','--listfiles',r['binaryName']),10))
                for r in show.values()}
     lists={n:parse_installed_filelist(inventory,r['binaryName'],filelists[r['binaryName']])
@@ -414,9 +468,9 @@ def run_checked(ops,header,source_sha,context_sha,leaves):
     required.update(dependency_paths)
     ownership={p:required_owner(ops,p,inventory.owner_lookup_path(p,lists,dependency_paths))
                for p in sorted(required)}
-    proof=inventory.input_binding(data['Packages'],raw_show,filelists,ownership,resolutions,{},
+    proof=inventory.input_binding(indexes,raw_show,filelists,ownership,resolutions,{},
         context_sha256=context_sha,signature_sha256=signature_sha,install_sha256=install_sha)
-    installed,evidence=inventory.build_inventory(data['Packages'],raw_show,filelists,ownership,resolutions,ops,proof,{})
+    installed,evidence=inventory.build_inventory(indexes,raw_show,filelists,ownership,resolutions,ops,proof,{})
     tool_aliases=[]
     toolchain={'schema':'ocv-toolchain-v1','architecture':'linux-amd64',
         'packageProofSha256':sha(canonical(evidence)),
@@ -441,12 +495,14 @@ def run_checked(ops,header,source_sha,context_sha,leaves):
         codefiles[target]={'bytes':len(raw),'sha256':sha(raw)}
     imports={'schema':'ocv-imports-v1','codeFiles':codefiles}
     apt={'schema':'ocv-apt-v1','paths':{'release':DATA+'/InRelease','packages':DATA+'/Packages',
-         'keyring':DATA+'/keyring.gpg'},'keyringSha256':header['keyringSha256'],
+         'keyring':DATA+'/keyring.gpg','securityRelease':DATA+'/SecurityInRelease',
+         'securityPackages':DATA+'/SecurityPackages'},'keyringSha256':header['keyringSha256'],
          'sourceProofSha256':installed['sourceProofSha256']}
     controls={'runtime':runtime_manifest,'tools':tools,'imports':imports,'apt':apt}
     hashes={}
     for name,value in controls.items():
         raw=canonical(value);ops.write_once(CONTROL+'/'+name+'.json',raw,0o444);hashes[name]=sha(raw)
+    export_selinux_repair(ops,data,tools,source_sha,hashes['apt'],archive)
     ops.write_once(CONTROL+'/package-inventory.json',canonical(evidence),0o444)
     ops.write_once(CONTROL+'/helper-proof.json',canonical(helper),0o444)
     ops.write_once(CONTROL+'/tool-aliases.json',canonical({'schema':'ocv-tool-alias-proof-v1','rows':tool_aliases}),0o444)
@@ -550,7 +606,8 @@ class NativeBuildOps:
                 if pending:need(stat.S_ISDIR(s.st_mode),'build_entry.parent_type')
                 parts.append(item)
         resolved='/'+('/'.join(parts))
-        allowed=resolved.startswith(('/usr/','/lib/','/lib64/','/boot/','/opt/ocv/','/etc/apt/','/work/out/'))
+        allowed=(resolved.startswith(('/usr/','/lib/','/lib64/','/boot/','/opt/ocv/','/etc/apt/','/work/out/')) or
+                 path==resolved=='/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb')
         if not allowed and path.startswith('/usr/lib/python3.11/') and len(path)<=1024 and len(resolved)<=1024:
             sys.stderr.write(canonical({'schema':'ocv-build-root-refusal-v1','packagePath':path,
                                         'resolvedPath':resolved}).decode()+'\n')
@@ -594,6 +651,16 @@ class NativeBuildOps:
         finally:os.close(fd)
 
     def read(self,path,cap):
+        if path=='/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb':
+            need(getattr(self,'metadata_ready',False)is True,'build_entry.metadata_not_verified')
+            need(cap==1048576,'build_entry.repair_read_cap')
+            before=self.stat_original(path)
+            need(before['sourcePath']==path and before['type']=='regular' and
+                 before['nlink']==1 and before['size']<=cap,'build_entry.repair_cache_identity')
+            raw=self._read_regular(path,cap,immutable=False)
+            need(self.stat_original(path)==before and len(raw)==before['size'],
+                 'build_entry.repair_cache_changed')
+            return raw
         if path.startswith((ROOT+'/',CONTROL+'/',OUT+'/')):
             resolved,_,_=self._resolve(path)
             need(resolved==path,'build_entry.control_alias')
@@ -621,9 +688,19 @@ class NativeBuildOps:
         names={'runtime.json','tools.json','imports.json','apt.json','package-inventory.json',
                'helper-proof.json','build-signature.json','build.json','kernel.bin','initrd.img',
                'build-stage-result.json','build-first-failure.json','static-entry','tool-aliases.json'}
-        need(type(path)is str and (path.startswith(CONTROL+'/') or path.startswith(OUT+'/'))
-             and path.rsplit('/',1)[1]in names and path.rsplit('/',1)[0]in (CONTROL,OUT)
+        repair=path in (OUT+'/repair/selinux-utils.deb',OUT+'/repair/manifest.json')
+        need(type(path)is str and (repair or (path.startswith(CONTROL+'/') or path.startswith(OUT+'/'))
+             and path.rsplit('/',1)[1]in names and path.rsplit('/',1)[0]in (CONTROL,OUT))
              and type(raw)is bytes and len(raw)<=512*1024**2 and mode==0o444,'build_entry.write_path')
+        if repair:
+            need(getattr(self,'metadata_ready',False)is True,'build_entry.metadata_not_verified')
+            need(len(raw)<=(1048576 if path.endswith('.deb') else 8192),'build_entry.repair_write_cap')
+            parent=OUT+'/repair'
+            root=os.lstat(OUT)
+            need(os.path.realpath(OUT)==OUT and stat.S_ISDIR(root.st_mode) and
+                 root.st_uid==root.st_gid==0 and stat.S_IMODE(root.st_mode)&0o022==0,
+                 'build_entry.repair_parent')
+            if not os.path.lexists(parent):os.mkdir(parent,0o755)
         parent=path.rsplit('/',1)[0];s=os.lstat(parent)
         need(os.path.realpath(parent)==parent and stat.S_ISDIR(s.st_mode) and s.st_uid==s.st_gid==0
              and stat.S_IMODE(s.st_mode)&0o022==0,'build_entry.write_parent')
@@ -662,7 +739,7 @@ class NativeBuildOps:
         need(type(argv)is tuple and all(type(a)is str and a and '\x00'not in a for a in argv),'build_entry.argv')
         gpg=GPG_METADATA
         if not self.metadata_ready:
-            need(argv==gpg,'build_entry.metadata_not_verified')
+            need(argv in (gpg,GPG_SECURITY),'build_entry.metadata_not_verified')
             return 16384,8192
         if argv==('/usr/bin/dpkg-query','--show','--showformat='+SHOW_FORMAT):return 262144,8192
         if len(argv)==3 and argv[:2]==('/usr/bin/dpkg-query','--listfiles'):
@@ -676,7 +753,7 @@ class NativeBuildOps:
         if len(argv)==2 and argv[0]=='/usr/bin/ldd':
             need(argv[1]=='/usr/bin/python3.11' or argv[1].startswith('/usr/lib/python3.11/') and argv[1].endswith('.so'),
                  'build_entry.ldd_arg');return 65536,8192
-        if argv==gpg:return 16384,8192
+        if argv in (gpg,GPG_SECURITY):return 16384,8192
         if argv[0]=='/usr/bin/gcc-12':
             need(argv==tuple(self.leaves['runtime'].compile_argv()),'build_entry.compile_argv');return 65536,65536
         if len(argv)==4 and argv[0]=='/usr/sbin/update-initramfs' and argv[1]in ('-c','-u') and argv[2]=='-k':

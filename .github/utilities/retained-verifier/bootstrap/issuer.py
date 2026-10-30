@@ -50,15 +50,16 @@ class NativeCapability:
 def load_program(plan,io):
  need(type(io)is NativeEvidenceIO,'boot.native_loader_required')
  # verify() has checked every immutable code row and exact source roster.
- for directory in (SOURCE+'/native',SOURCE+'/runtime',SOURCE+'/consumer'):
+ for directory in (SOURCE+'/native',SOURCE+'/runtime',SOURCE+'/consumer',SOURCE+'/apt'):
   if directory not in sys.path:sys.path.insert(0,directory)
  program=SimpleNamespace(native=importlib.import_module('ci_native_port'),metadata=importlib.import_module('ci_metadata'),
    entry=importlib.import_module('ci_entry'),worker=importlib.import_module('ci_worker'),profile=importlib.import_module('ci_profile'),
    fixture=importlib.import_module('ci_fixture'),runtime=importlib.import_module('runtime_prepare'),consumer=importlib.import_module('consumer_compat'),
-   native_cases=importlib.import_module('native_cases'))
+   native_cases=importlib.import_module('native_cases'),security_policy=importlib.import_module('archive_policy'))
  for name,directory in (('native','native/ci_native_port.py'),('metadata','native/ci_metadata.py'),('entry','native/ci_entry.py'),
    ('worker','native/ci_worker.py'),('profile','native/ci_profile.py'),('fixture','native/ci_fixture.py'),
-   ('runtime','runtime/runtime_prepare.py'),('consumer','consumer/consumer_compat.py'),('native_cases','consumer/native_cases.py')):
+   ('runtime','runtime/runtime_prepare.py'),('consumer','consumer/consumer_compat.py'),('native_cases','consumer/native_cases.py'),
+   ('security_policy','apt/archive_policy.py')):
   need(str(Path(getattr(program,name).__file__).resolve())==SOURCE+'/'+directory,'boot.ambient_module')
  return program
 
@@ -127,12 +128,14 @@ def verify_packages(io,plan,tools):
 class ExportAdmission:
  def __init__(self,program,ops,apt,clock):
   closed(apt,{'schema','paths','keyringSha256','sourceProofSha256'},'boot.apt_schema')
-  expected={'release':CONTROL+'/apt-data/InRelease','packages':CONTROL+'/apt-data/Packages','keyring':CONTROL+'/apt-data/keyring.gpg'}
+  expected={'release':CONTROL+'/apt-data/InRelease','packages':CONTROL+'/apt-data/Packages','keyring':CONTROL+'/apt-data/keyring.gpg',
+    'securityRelease':CONTROL+'/apt-data/SecurityInRelease','securityPackages':CONTROL+'/apt-data/SecurityPackages'}
   need(apt['schema']=='ocv-apt-v1' and apt['paths']==expected,'boot.apt_export_paths')
   virtual={'release':'/var/lib/apt/lists/ocv_InRelease','packages':'/var/lib/apt/lists/ocv_Packages',
     'keyring':'/usr/share/keyrings/debian-archive-keyring.gpg'}
   actual_argv=('/usr/bin/gpgv','--status-fd=1','--keyring',expected['keyring'],expected['release'])
   self.evidence=None;self.actual_argv=actual_argv
+  self.ops,self.expected,self.program,self.keyring_sha,self.clock=ops,expected,program,apt['keyringSha256'],clock
   class ExactCopies:
    def read(self,path,cap):
     matches=[k for k,v in virtual.items()if v==path];need(len(matches)==1,'boot.apt_alias_path')
@@ -142,12 +145,29 @@ class ExportAdmission:
     return ops.command(actual_argv,timeout)
   self.inner=program.metadata.Admission(ExactCopies(),virtual,apt['keyringSha256'],clock)
  def run(self):
-  try:return self.inner.run()
+  try:
+   main=self.inner.run()
+   expected=self.expected;ops=self.ops
+   key=ops.read(expected['keyring'],1048576);need(sha(key)==self.keyring_sha,'boot.security_keyring')
+   release=ops.read(expected['securityRelease'],196608);packages=ops.read(expected['securityPackages'],64*1024*1024)
+   argv=('/usr/bin/gpgv','--status-fd=1','--keyring',expected['keyring'],expected['securityRelease'])
+   try:outcome=ops.command(argv,10)
+   except BaseException as error:outcome=self.program.native.command_boundary_refusal(error)
+   self.evidence={'argv':list(argv),'outcome':outcome}
+   need(self.program.native.command_capture_ok(outcome) and outcome.get('exitCode')==0 and
+     outcome.get('stdoutFacts',{}).get('truncated') is False and
+     outcome.get('stderrFacts',{}).get('truncated') is False,'boot.security_gpgv_capture')
+   need(ops.read(expected['securityRelease'],196608)==release and
+     ops.read(expected['securityPackages'],64*1024*1024)==packages and
+     ops.read(expected['keyring'],1048576)==key,'boot.security_metadata_changed')
+   result=self.program.security_policy.classify_security(release,packages,
+     returncode=outcome['exitCode'],timed_out=outcome['timedOut'],status=outcome['stdout'],checked_at=self.clock.utc())
+   return dict(main,securityClassificationSha256=sha(canonical(result)))
   finally:
-   if self.inner.evidence is not None:self.evidence={'argv':list(self.actual_argv),'outcome':self.inner.evidence['outcome']}
+   if self.evidence is None and self.inner.evidence is not None:self.evidence={'argv':list(self.actual_argv),'outcome':self.inner.evidence['outcome']}
 
 
-def verify_signed_package_bindings(io,plan,tools):
+def verify_signed_package_bindings(io,plan,tools,security_policy):
  runtime=plan.controls['runtime'];packages=runtime['packages'];ownership=runtime['packageOwnership']
  need(type(packages)is list and 4<=len(packages)<=512 and type(ownership)is list,'boot.package_manifest')
  by_name={}
@@ -165,10 +185,28 @@ def verify_signed_package_bindings(io,plan,tools):
  for row in tools.values():
   need(row['package']in by_name and row['version']==by_name[row['package']]['version'] and
    row['debSha256']==by_name[row['package']]['debSha256'],'boot.tool_package_changed')
- raw=io.read(plan.controls['apt']['paths']['packages'],64*1024*1024)
+ indexes=[io.read(plan.controls['apt']['paths'][name],64*1024*1024)
+          for name in ('packages','securityPackages')]
+ security_rows={}
+ for stanza in indexes[1].split(b'\n\n'):
+  need(len(stanza)<=131072,'boot.security_index_stanza');fields={}
+  for line in stanza.splitlines():
+   if line.startswith((b' ',b'\t'))or b':'not in line:continue
+   key,value=line.split(b':',1)
+   if key in(b'Package',b'Version',b'Architecture',b'SHA256',b'Size',b'Filename'):
+    need(key not in fields,'boot.security_index_duplicate');fields[key]=value.strip().decode('ascii')
+  name=fields.get(b'Package')
+  if name in security_policy.PYTHON_U9 and fields.get(b'Version')==security_policy.PYTHON_U9_VERSION:
+   need(name not in security_rows,'boot.security_python_duplicate');security_rows[name]=fields
+ for name,(size,digest,filename) in security_policy.PYTHON_U9.items():
+  row=by_name.get(name);signed=security_rows.get(name,{})
+  need(type(row)is dict and row['version']==security_policy.PYTHON_U9_VERSION and
+   row['architecture']=='amd64' and row['debSha256']==digest and
+   signed.get(b'Architecture')=='amd64' and signed.get(b'SHA256')==digest and
+   signed.get(b'Size')==str(size) and signed.get(b'Filename')==filename,'boot.python_security_origin')
  # Fresh ExportAdmission has already authenticated/hash-bound these exact bytes.
  wanted={(r['name'],r['version'],r['architecture']):r['debSha256'] for r in packages};matched=set()
- for stanza in raw.split(b'\n\n'):
+ for stanza in b'\n\n'.join(indexes).split(b'\n\n'):
   need(len(stanza)<=131072,'boot.index_stanza_cap');fields={}
   for line in stanza.splitlines():
    if line.startswith((b' ',b'\t'))or b':'not in line:continue
@@ -188,7 +226,7 @@ def prepare(plan,io,program):
  admission=ExportAdmission(program,io,apt,io)
  proof=admission.run()  # fresh fixed gpgv process + literal BOOKWORM byte policy, not a saved verdict
  need(proof.get('status')=='classified' and proof.get('nativeAuthenticationIssued') is False,'boot.metadata_refused')
- verify_signed_package_bindings(io,plan,tools)
+ verify_signed_package_bindings(io,plan,tools,program.security_policy)
  verify_packages(io,plan,tools)
  helper=file_bytes(io,CONTROL+'/static-entry',8*1024*1024,readonly=False)
  elf=program.runtime.validate_static_elf(helper)

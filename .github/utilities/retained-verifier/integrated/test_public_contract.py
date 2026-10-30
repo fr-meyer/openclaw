@@ -59,6 +59,41 @@ class PublicContractTests(unittest.TestCase):
         self.assertIn(b'bool(children.strip())',source)
         self.assertIn(b"'/proc/self/task/'",source)
         self.assertNotIn(b'sys.path.insert',source)
+    def test_current_build_roster_is_exact_measured_payload_not_historical_file_count(self):
+        import copy
+        from unittest.mock import patch
+        payloads={'usr/bin/python3.11':b'python-u9-fixture',
+                  'lib64/ld-linux-x86-64.so.2':b'loader-fixture',
+                  'code/static-entry':b'helper-fixture'}
+        rows=[{'path':name,'archivePath':'static-entry'if name=='code/static-entry'else'runtime/'+name,
+               'bytes':len(raw),'sha256':sha(raw),'mode':0o555}for name,raw in sorted(payloads.items())]
+        archive,actual=integrated_materials.runtime_archive(rows,payloads)
+        self.assertTrue(archive);self.assertEqual(actual,rows)
+        self.assertEqual(set(copied_bootstrap_probe._rows(rows)),set(payloads))
+        for changed_rows,changed_payloads in ((rows,dict(payloads,**{'usr/extra':b'x'})),
+                (rows,{name:raw for name,raw in payloads.items()if name!='code/static-entry'}),
+                (rows+[dict(rows[0])],payloads),([],{}),(rows*2731,payloads)):
+            with self.subTest(rows=len(changed_rows)),self.assertRaises(integrated_materials.Refusal):
+                integrated_materials.runtime_archive(changed_rows,changed_payloads)
+        bad=copy.deepcopy(rows);bad[0]['sha256']='f'*64
+        with self.assertRaisesRegex(integrated_materials.Refusal,'runtime_pin'):
+            integrated_materials.runtime_archive(bad,payloads)
+        for bad in (rows+[dict(rows[0])],rows*2731,[]):
+            with self.assertRaises(Refusal):copied_bootstrap_probe._rows(bad)
+        bad=copy.deepcopy(rows);bad[0]['bytes']=32*1024*1024+1
+        with self.assertRaises(Refusal):copied_bootstrap_probe._rows(bad)
+        with patch.object(integrated_materials,'EXPANDED_CAP',2):
+            with self.assertRaisesRegex(integrated_materials.Refusal,'runtime_closure'):
+                integrated_materials.runtime_archive(rows,payloads)
+        self.assertEqual(integrated_materials.EXPANDED_CAP,100*1024*1024)
+        # Caller JSON and a representation alone never mint the opaque origin.
+        with self.assertRaises(Refusal):
+            ci_authority.current_runtime_source({'passed':True},{'files':rows},FakeIO())
+        with self.assertRaises(Refusal):runtime_sources._rows(rows,signed=True)
+        source=runtime_sources.synthetic_source(FakeIO(),
+            {role:role.encode()for role in runtime_sources.MATERIAL_CAPS},{'files':rows})
+        with self.assertRaises(Refusal):source.assert_for('ci-native-proof',FakeIO())
+
 # Source-owned device appearance contracts.
 """Pure actual readiness-loop contracts. No Linux device is read or created."""
 import stat

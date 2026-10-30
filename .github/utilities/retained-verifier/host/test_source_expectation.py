@@ -32,6 +32,8 @@ import build_entry
 import build_recipe
 import package_inventory
 import runtime_prepare
+import archive_guard
+import archive_policy as security_policy
 
 
 def prepared():
@@ -132,6 +134,8 @@ class BuildFixture:
         names=sorted(set(self.io.packages)|set(build_recipe.REQUIRED_PACKAGES)|{'dash','dpkg','linux-image-'+self.kv})
         self.packages={name:{'name':name,'version':build_recipe.SYSTEMD_VERSION if name.startswith(('systemd','libsystemd'))else'1',
           'architecture':'amd64','debSha256':m.sha(('synthetic archive '+name).encode())}for name in names}
+        for name,(_,digest,_)in security_policy.PYTHON_U9.items():
+            self.packages[name].update(version=security_policy.PYTHON_U9_VERSION,debSha256=digest)
         self.data={p:raw for p,raw in self.io.files.items()if p.startswith(('/usr/','/lib/','/lib64/'))}
         for path in (*build_entry.COMPILER.values(),*build_entry.TOOLS.values()):self.data.setdefault(path,('synthetic tool '+path).encode())
         self.data[runtime_prepare.LOADER]=self.data['/usr/lib/ld-linux-x86-64.so.2']
@@ -153,7 +157,7 @@ class BuildFixture:
                             b'package diverts others to: /usr/share/man/man1/sh.distrib.1.gz\n')
         self.lists['libpython3.11-minimal']+=package_inventory.SITE_CUSTOMIZE.encode()+b'\n'
         self.owners['/bin/systemctl']='systemd';self.owners['/lib/systemd/systemd']='systemd'
-        self.index=''.join('Package: '+n+'\nVersion: '+r['version']+'\nArchitecture: amd64\nFilename: pool/main/f/fixture/'+n+'_1_amd64.deb\nSize: 12\nSHA256: '+r['debSha256']+'\n\n'for n,r in self.packages.items()).encode()
+        self.index=''.join('Package: '+n+'\nVersion: '+r['version']+'\nArchitecture: amd64\nFilename: pool/main/f/fixture/'+n+'_1_amd64.deb\nSize: 12\nSHA256: '+r['debSha256']+('\nDepends: libc6 (>= 2.34)'if n=='selinux-utils'else'')+'\n\n'for n,r in self.packages.items()if n not in security_policy.PYTHON_U9).encode()
         release=('-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nOrigin: Debian\nCodename: bookworm\nVersion: fixture\nDate: Fri, 01 Jan 2010 00:00:00 UTC\nSHA256:\n '+m.sha(self.index)+' '+str(len(self.index))+' main/binary-amd64/Packages\n-----BEGIN PGP SIGNATURE-----\nsynthetic\n-----END PGP SIGNATURE-----\n').encode()
         self.io.put(build_entry.DATA+'/Packages',self.index);self.io.put(build_entry.DATA+'/InRelease',release)
         policy=ci_archive_policy.Fixture(m.sha(release),len(release),m.sha(self.index),len(self.index),
@@ -162,12 +166,13 @@ class BuildFixture:
             def run(self):return self._run_literal_policy(policy)
         self.program.metadata=SimpleNamespace(Admission=SyntheticAdmission)
         self.signature={'schema':'synthetic-signature-input-only','actualCryptographyPerformed':False}
-        self.header={'packageRoots':[{'name':n,'version':self.packages[n]['version'],'sha256':self.packages[n]['debSha256']}for n in sorted(build_recipe.REQUIRED_PACKAGES|{'linux-image-'+self.kv})],
+        self.header={'packageRoots':[{'name':n,'version':self.packages[n]['version'],'sha256':self.packages[n]['debSha256']}for n in sorted(build_recipe.REQUIRED_PACKAGES|set(security_policy.PYTHON_U9)|{'linux-image-'+self.kv})],
           'kernelPackage':{'name':'linux-image-'+self.kv,'version':'1'},'keyringSha256':m.sha(self.io.files[build_entry.DATA+'/keyring.gpg']),
           'runIdentity':{'repository':'fr-meyer/openclaw','workflowRef':build_entry.WORKFLOW,'sourceCommit':'a'*40,'runId':'1','runAttempt':'1'}}
         self.source_sha=m.sha(self.io.files[guard.SOURCE+'/PUBLIC-SOURCE-MANIFEST.json'])
         for name in ('runtime','tools','imports','apt','build'):self.io.files.pop(guard.CONTROL+'/'+name+'.json',None)
-    def metadata_inputs(self):return {'Packages':self.index}, {'firstStageLedgerSha256':'e'*64}, self.signature
+    def metadata_inputs(self):return {'Packages':self.index,'InRelease':self.io.files[build_entry.DATA+'/InRelease'],
+        'SecurityPackages':self.io.files[build_entry.DATA+'/SecurityPackages']}, {'firstStageLedgerSha256':'e'*64}, self.signature
     def now(self):return dt.datetime(2030,1,1,tzinfo=dt.timezone.utc)
     def read(self,path,cap):
         raw=self.io.files.get(path,self.data.get(path))
@@ -208,9 +213,13 @@ class BuildFixture:
         # inert ELF; production pins remain fixed and have independent tests.
         raw=self.io.files[guard.CONTROL+'/static-entry']
         with mock.patch.object(build_entry,'RETAINED_HELPER_SHA256',m.sha(raw)),\
-             mock.patch.object(build_entry,'RETAINED_HELPER_BYTES',len(raw)):
+             mock.patch.object(build_entry,'RETAINED_HELPER_BYTES',len(raw)),\
+             mock.patch.object(build_entry,'export_selinux_repair')as repair:
             result=build_entry.run_checked(self,self.header,self.source_sha,'d'*64,
-              {'recipe':build_recipe,'runtime':runtime_prepare,'inventory':package_inventory,'archive':None,'policy':None})
+              {'recipe':build_recipe,'runtime':runtime_prepare,'inventory':package_inventory,'archive':archive_guard,'policy':security_policy})
+            # This runtime/guest fixture has no authenticated .deb bytes. Exact
+            # repair byte/hash and NativeBuildOps boundaries have separate tests.
+            repair.assert_called_once()
         self.io.files.update(self.data)
         for path in self.data:self.io.modes.setdefault(path,0o755)
         self.io.put('/var/lib/dpkg/status',b'\n\n'.join(('Package: '+n+'\nStatus: install ok installed\nVersion: '+r['version']+'\nArchitecture: amd64').encode()for n,r in self.packages.items())+b'\n')
@@ -361,6 +370,113 @@ class BuildGuestJoinTests(unittest.TestCase):
         old=copy.deepcopy(apt);old['sourceProofSha256']=signature_hash
         broken=replace(plan,controls={**plan.controls,'apt':old})
         with self.assertRaisesRegex(guard.Refusal,'boot.apt_binding'):issuer.prepare(broken,f.io,f.program)
+
+
+class ForwardAuthBoundaries(unittest.TestCase):
+    def test_build_freshly_checks_both_origins_and_main_only_export_never_reaches_commands(self):
+        from test_archive_guard import DualOps
+        o=DualOps();records=[]
+        for phase in ('update','install','postinstall'):
+            proof,data=archive_guard._run_dual_guard(o,o.context,phase,o.fixture)
+            records.append(archive_guard.hook_record(proof,[]))
+        data.update({'guard-proof.json':archive_guard.canonical(proof),
+          'first-stage-ledger.json':archive_guard.canonical({'schema':'ocv-apt-first-stage-ledger-v1','records':records})})
+        descriptor=archive_guard.canonical(archive_guard.export_descriptor(data,proof,o.context))
+        calls=[]
+        class Ops:
+            def read(self,path,cap):return descriptor if path==build_entry.CONTROL+'/apt-export.json'else data[path.rsplit('/',1)[1]]
+            def now(self):return o.now()
+            def run(self,argv,timeout):
+                calls.append(argv)
+                target=archive_guard.SECURITY_RELEASE if argv==build_entry.GPG_SECURITY else archive_guard.RELEASE
+                return o.run(('/usr/bin/gpgv','--status-fd=1','--keyring',archive_guard.KEYRING,archive_guard.LISTS+'/'+target))
+        policy=SimpleNamespace(classify=lambda *a,**k:security_policy.classify(*a,fixture=o.fixture,**k),
+          classify_security=security_policy.classify_security)
+        header={'keyringSha256':o.context['keyringSha256'],'buildId':o.context['buildId']}
+        result=build_entry.verify_metadata(Ops(),header,o.context['sourceManifestSha256'],{'archive':archive_guard,'policy':policy})
+        self.assertEqual(calls,[build_entry.GPG_METADATA,build_entry.GPG_SECURITY])
+        self.assertIn('securityClassification',result[2])
+        original=data['guard-proof.json'];plain=json.loads(original)
+        for key in archive_guard.SECURITY_PROOF_FIELDS:plain.pop(key)
+        data['guard-proof.json']=archive_guard.canonical(plain);calls.clear()
+        with self.assertRaisesRegex(build_entry.Refusal,'security_export_required'):
+            build_entry.verify_metadata(Ops(),header,o.context['sourceManifestSha256'],{'archive':archive_guard,'policy':policy})
+        self.assertEqual(calls,[]);data['guard-proof.json']=original
+    def test_native_build_command_phase_has_only_two_fixed_preverification_calls(self):
+        obj=object.__new__(build_entry.NativeBuildOps);obj.metadata_ready=False
+        for argv in (build_entry.GPG_METADATA,build_entry.GPG_SECURITY):
+            self.assertEqual(obj._command_cap(argv),(16384,8192))
+        for argv in (build_entry.GPG_SECURITY[:-1]+(build_entry.DATA+'/ForeignInRelease',),
+                     ('/usr/bin/dpkg-query','--show','--showformat='+build_entry.SHOW_FORMAT),
+                     ('/usr/bin/gcc-12',)):
+            with self.subTest(argv=argv),self.assertRaises(build_entry.Refusal):obj._command_cap(argv)
+    def test_native_cache_read_exact_root_identity_and_metadata_phase(self):
+        import stat
+        from types import SimpleNamespace as S
+        obj=object.__new__(build_entry.NativeBuildOps);obj.metadata_ready=True;obj.header={}
+        path='/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb';blob=b'public fake deb'
+        def entry(probe):
+            return S(st_uid=0,st_gid=0,st_mode=(stat.S_IFREG|0o644)if probe==path else(stat.S_IFDIR|0o755),
+              st_size=len(blob)if probe==path else 0,st_dev=1,st_ino=11,st_nlink=1,st_mtime_ns=1,st_ctime_ns=1)
+        with mock.patch.object(build_entry.os,'lstat',side_effect=entry),mock.patch.object(build_entry.os,'open',return_value=81)as opened,\
+             mock.patch.object(build_entry.os,'fstat',side_effect=lambda fd:entry(path)),\
+             mock.patch.object(build_entry.os,'read',side_effect=[blob,b'']),mock.patch.object(build_entry.os,'close'):
+            self.assertEqual(obj.read(path,1048576),blob);self.assertEqual(opened.call_count,1)
+            obj.metadata_ready=False
+            with self.assertRaisesRegex(build_entry.Refusal,'metadata_not_verified'):obj.read(path,1048576)
+            self.assertEqual(opened.call_count,1)
+            obj.metadata_ready=True
+            with self.assertRaises(build_entry.Refusal):obj.read(path+'.other',1048576)
+            with self.assertRaises(build_entry.Refusal):obj.read(path,1048577)
+        with mock.patch.object(obj,'stat_original',return_value={'sourcePath':path,'type':'regular','nlink':2,'size':len(blob)}),\
+             mock.patch.object(build_entry.os,'open')as opened:
+            with self.assertRaisesRegex(build_entry.Refusal,'repair_cache_identity'):obj.read(path,1048576)
+            opened.assert_not_called()
+    def test_native_repair_write_scope_two_names_caps_and_owned_parent_only(self):
+        import stat
+        from types import SimpleNamespace as S
+        obj=object.__new__(build_entry.NativeBuildOps);obj.metadata_ready=True
+        parent=S(st_mode=stat.S_IFDIR|0o755,st_uid=0,st_gid=0)
+        with mock.patch.object(build_entry.os.path,'lexists',return_value=False),\
+             mock.patch.object(build_entry.os.path,'realpath',side_effect=lambda p:p),\
+             mock.patch.object(build_entry.os,'lstat',return_value=parent),\
+             mock.patch.object(build_entry.os,'mkdir')as made,mock.patch.object(build_entry.os,'open',return_value=82)as opened,\
+             mock.patch.object(build_entry.os,'write',side_effect=lambda fd,data:len(data)),\
+             mock.patch.object(build_entry.os,'fsync'),mock.patch.object(build_entry.os,'fchmod'),mock.patch.object(build_entry.os,'close'):
+            for name in ('selinux-utils.deb','manifest.json'):obj.write_once(build_entry.OUT+'/repair/'+name,b'public',0o444)
+            self.assertEqual(made.call_args_list,[mock.call(build_entry.OUT+'/repair',0o755)]*2)
+            self.assertEqual(opened.call_count,2)
+            for name,raw in [('other.deb',b'x'),('manifest.json',b'x'*8193),('selinux-utils.deb',b'x'*1048577)]:
+                with self.subTest(name=name),self.assertRaises(build_entry.Refusal):obj.write_once(build_entry.OUT+'/repair/'+name,raw,0o444)
+            obj.metadata_ready=False
+            with self.assertRaises(build_entry.Refusal):obj.write_once(build_entry.OUT+'/repair/manifest.json',b'{}',0o444)
+            self.assertEqual(opened.call_count,2)
+    def test_exact_repair_export_rejects_wrong_archive_and_preserves_signed_manifest(self):
+        digest='8357d8bfdbde73ff658129c1a6d25a02b4a244bddb2cc444c5a46835e3b8a31f'
+        filename='pool/main/libs/libselinux/selinux-utils_3.4-1+b6_amd64.deb'
+        depends='libc6 (>= 2.34), libpcre2-8-0 (>= 10.22), libselinux1 (>= 3.1~), libsepol2 (>= 3.4)'
+        index=('Package: selinux-utils\nVersion: 3.4-1+b6\nArchitecture: amd64\nFilename: '+filename+
+          '\nSize: 126432\nSHA256: '+digest+'\nDepends: '+depends+'\n\n').encode()
+        tools={'tools':[{'role':'selinuxenabled','path':'/usr/sbin/selinuxenabled','package':'selinux-utils',
+          'version':'3.4-1+b6','bytes':14576,'sha256':'2d3c6a10650d380fde19ed7e5b0d80d6a8a99a3d950c1d7f424237a17d609148','debSha256':digest}]}
+        writes=[];payload=b'SYNTHETIC-NOT-AN-AUTHENTICATED-DEB'.ljust(126432,b'!')
+        class Ops:
+            def read(self,path,cap):
+                self_path='/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb'
+                assert path==self_path and cap==1048576;return payload
+            def write_once(self,path,raw,mode):writes.append((path,raw,mode))
+        data={'Packages':index,'InRelease':b'explicit synthetic signed-input seam'}
+        with self.assertRaisesRegex(build_entry.Refusal,'repair_archive'):
+            build_entry.export_selinux_repair(Ops(),data,tools,'a'*64,'b'*64,archive_guard)
+        self.assertEqual(writes,[])
+        real_sha=build_entry.sha
+        # Explicit digest fixture for control flow only: real .deb bytes are not
+        # retained locally. The unpatched hash rejection above is mandatory.
+        with mock.patch.object(build_entry,'sha',side_effect=lambda raw:digest if raw is payload else real_sha(raw)):
+            value=build_entry.export_selinux_repair(Ops(),data,tools,'a'*64,'b'*64,archive_guard)
+        self.assertEqual(value['package']['filename'],filename);self.assertEqual(value['package']['depends'],depends)
+        self.assertIs(value['privateVmInstallationPerformed'],False)
+        self.assertEqual([r[0]for r in writes],[build_entry.OUT+'/repair/selinux-utils.deb',build_entry.OUT+'/repair/manifest.json'])
 
 
 if __name__=='__main__':unittest.main()

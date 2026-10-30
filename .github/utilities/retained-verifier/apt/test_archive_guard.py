@@ -98,7 +98,7 @@ class GuardTests(unittest.TestCase):
     def test_native_wrapper_is_literal_bookworm(self):
         import inspect
         self.assertIn('policy.BOOKWORM',inspect.getsource(g.run_guard))
-        with self.assertRaisesRegex(g.Refusal,'release_pin'):g.run_guard(self.ops,self.ops.context,'update')
+        with self.assertRaisesRegex(g.Refusal,'security_lists_missing'):g.run_guard(self.ops,self.ops.context,'update')
         self.assertEqual(self.ops.calls,[])
     def test_altered_release_refuses_before_tools(self):
         self.ops.files[g.LISTS+'/'+g.RELEASE]+=b'\n'
@@ -177,8 +177,11 @@ class GuardTests(unittest.TestCase):
         raw=path.read_bytes();self.assertEqual(sha(raw),'274acee6b686b0ccf21172024093fcf53afa891ecebb13c556d17ae0e945770d')
         spec=importlib.util.spec_from_file_location('frozen_apt_r1_regression',path)
         old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
+        historical=dict(self.ops.context,sourceRosterSha256=sha(old.SOURCE))
+        self.ops.files[g.ETC+'/sources.list']=old.SOURCE
         with self.assertRaisesRegex(old.Refusal,'directory_identity'):
-            old._run_guard(self.ops,self.ops.context,'update',self.ops.fixture)
+            old._run_guard(self.ops,historical,'update',self.ops.fixture)
+        self.ops.files[g.ETC+'/sources.list']=g.SOURCE
         proof,_=self.run_guard();self.assertEqual(proof['phase'],'update')
     def test_only_precise_standard_auxiliary_identity_is_allowed(self):
         for change in ({'uid':43},{'gid':42},{'mode':0o755},{'kind':'other'}):
@@ -346,6 +349,84 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(value['sourceManifestSha256'],o.context['sourceManifestSha256'])
         self.assertEqual(value['contextSha256'],sha(canonical(o.context)))
         self.assertEqual(recorded,[{'phase':'update','failure':'apt.keyring_pin','failure_facts':{}}])
+
+
+class DualOps(Ops):
+    def __init__(self):
+        super().__init__()
+        from test_archive_policy import security_fixture
+        self.security_release,self.security_packages,self.security_status=security_fixture()
+        self.files[g.LISTS+'/'+g.SECURITY_RELEASE]=self.security_release
+        self.directories[g.LISTS]+=[row(g.SECURITY_RELEASE,size=len(self.security_release)),
+                                    row(g.SECURITY_PACKAGES+'.xz',size=100)]
+        self.security_fault=None
+    def run(self,argv,**bounds):
+        security=(argv[-1].startswith(g.LISTS+'/'+g.SECURITY_RELEASE) or
+                  argv[-1].startswith(g.LISTS+'/'+g.SECURITY_PACKAGES))
+        if not security:return super().run(argv,**bounds)
+        self.calls.append((argv,bounds))
+        raw=self.security_status if argv[0]=='/usr/bin/gpgv' else self.security_packages
+        result={'exitCode':0,'timedOut':False,'captureComplete':True,'ownedChildExited':True,
+                'ownershipRetained':False,'stdout':raw,'stderr':b''}
+        if self.security_fault=='exit-two':result['exitCode']=2
+        if self.security_fault=='incomplete':result['captureComplete']=False
+        if self.security_fault=='pending':result['ownershipRetained']=True
+        if self.security_fault=='changed':self.directories[g.LISTS][-1]['identity'][1]+=1
+        return result
+
+
+class DualOriginTests(unittest.TestCase):
+    def test_dual_phase_authentication_and_export_bind_both_origins(self):
+        ops=DualOps();records=[]
+        for phase in ('update','install','postinstall'):
+            ops.events=[];proof,contents=g._run_dual_guard(ops,ops.context,phase,ops.fixture)
+            records.append(g.hook_record(proof,[]))  # Native entry sanitizes command events separately.
+            self.assertEqual(len(ops.events),4)
+            self.assertEqual(proof['securityVerifiedPrimaryFingerprints'],sorted(p.SECURITY_PRIMARIES))
+        ledger=canonical({'schema':'ocv-apt-first-stage-ledger-v1','records':records})
+        g.validate_ledger(ledger,ops.context,proof)
+        contents.update({'guard-proof.json':canonical(proof),'first-stage-ledger.json':ledger})
+        descriptor=canonical(g.export_descriptor(contents,proof,ops.context))
+        g.verify_export(descriptor,contents,expected_keyring_sha256=ops.context['keyringSha256'],
+            expected_source_manifest_sha256=ops.context['sourceManifestSha256'],expected_build_id=ops.context['buildId'])
+        for name in g.SECURITY_EXPORT_NAMES:
+            bad=dict(contents);bad.pop(name)
+            with self.subTest(name=name),self.assertRaises(g.Refusal):g.validate_export(descriptor,bad)
+        side=json.loads(contents['security-guard-proof.json'])
+        for key,value in [('extra','PUBLIC-UNLISTED'),('checkedAt','invalid'),
+                          ('checkedAt','2026-10-27T00:00:01+00:00'),('validUntil','invalid')]:
+            bad=dict(contents);changed=dict(side);changed[key]=value
+            bad['security-guard-proof.json']=canonical(changed)
+            rebound=canonical(g.export_descriptor(bad,proof,ops.context))
+            with self.subTest(key=key,value=value),self.assertRaises(g.Refusal):g.validate_export(rebound,bad)
+        for raw in (contents['security-guard-proof.json']+b' ',
+                    contents['security-guard-proof.json'][:-1]+b',"phase":"postinstall"}'):
+            bad=dict(contents,**{'security-guard-proof.json':raw})
+            with self.assertRaises(g.Refusal):g.validate_export(canonical(g.export_descriptor(bad,proof,ops.context)),bad)
+    def test_security_process_failure_or_metadata_churn_never_passes(self):
+        for fault in ('exit-two','incomplete','pending','changed'):
+            ops=DualOps();ops.security_fault=fault
+            with self.subTest(fault=fault),self.assertRaises(g.Refusal):
+                g._run_dual_guard(ops,ops.context,'install',ops.fixture)
+    def test_missing_duplicate_extra_or_wrong_security_file_refuses(self):
+        for fault in ('missing','duplicate','wrong-type','extra'):
+            ops=DualOps()
+            if fault=='missing':ops.directories[g.LISTS].pop()
+            if fault=='duplicate':ops.directories[g.LISTS].append(row(g.SECURITY_PACKAGES+'.lz4',size=100))
+            if fault=='wrong-type':ops.directories[g.LISTS][-2]['kind']='directory'
+            if fault=='extra':ops.directories[g.LISTS].append(row('foreign_InRelease'))
+            with self.subTest(fault=fault),self.assertRaises(g.Refusal):
+                g._run_dual_guard(ops,ops.context,'update',ops.fixture)
+    def test_four_security_python_roots_have_exact_hash_size_version_and_filename(self):
+        ops=DualOps();records=g.package_records(ops.security_packages,origin='security')
+        roots=g.security_python_roots(records);self.assertEqual(len(roots),4)
+        for key in records:
+            for field,value in [('bytes',0),('debSha256','0'*64),('filename',records[key]['filename'].replace('pool/updates/','pool/')),
+                                ('version','3.11.2-6+deb12u8')]:
+                bad=copy.deepcopy(records);bad[key][field]=value
+                with self.subTest(package=key[0],field=field),self.assertRaises(g.Refusal):g.security_python_roots(bad)
+            bad=copy.deepcopy(records);bad.pop(key)
+            with self.assertRaises(g.Refusal):g.security_python_roots(bad)
 
 
 if __name__=='__main__':unittest.main()

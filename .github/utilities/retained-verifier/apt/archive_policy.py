@@ -41,6 +41,24 @@ BOOKWORM = Fixture(
                '4D64FEC119C2029067D6E791F8D2585B8783D481')),
 )
 
+# A separate source-owned security origin. The main historical fixture and its
+# exact unknown co-signature exception below are intentionally unchanged.
+SECURITY_URL = 'https://security.debian.org/debian-security'
+SECURITY_CODENAME = 'bookworm-security'
+SECURITY_INDEX = 'main/binary-amd64/Packages'
+SECURITY_PRIMARIES = frozenset(('05AB90340C0C5E797F44A8C8254CF3B5AEC0A8F0',))
+PYTHON_U9_VERSION = '3.11.2-6+deb12u9'
+PYTHON_U9 = {
+    'python3.11-minimal': (2054684, 'b5f855ab922dfcd5d1a3223b2118c3dae13ffc7751b0cd5dc24740386323a33a',
+        'pool/updates/main/p/python3.11/python3.11-minimal_3.11.2-6+deb12u9_amd64.deb'),
+    'libpython3.11-minimal': (820928, '69f41cfa3f4ba17284e538f843069d7529c53c207d2ae17a5b02785944870e33',
+        'pool/updates/main/p/python3.11/libpython3.11-minimal_3.11.2-6+deb12u9_amd64.deb'),
+    'python3.11': (575032, '4facf334e0e0830a87013852f8c3a1cfee11ad702f72f240adf9ad5b9a334e7c',
+        'pool/updates/main/p/python3.11/python3.11_3.11.2-6+deb12u9_amd64.deb'),
+    'libpython3.11-stdlib': (1798408, '10f13e000ee757f5f2d2d3569f9e30546214a0c850acd78695feae373bfa3e53',
+        'pool/updates/main/p/python3.11/libpython3.11-stdlib_3.11.2-6+deb12u9_amd64.deb'),
+}
+
 
 def sha(raw):
     return hashlib.sha256(raw).hexdigest()
@@ -179,6 +197,71 @@ def classify(release, packages, *, returncode, timed_out, status, checked_at,
             'releaseSha256': fixture.release_sha256,
             'packagesSha256': fixture.packages_sha256,
             'releaseDate': date, 'verifiedPrimaryFingerprints': primaries}
+
+
+def classify_security(release, packages, *, returncode, timed_out, status, checked_at):
+    """Classify the fixed security origin only after fresh native gpgv.
+
+    No main-fixture co-signature exception applies. Release/index bytes are
+    bound by the independently required security signature and signed SHA256
+    entry; this return value never grants authentication by itself.
+    """
+    require(type(returncode) is int and returncode == 0 and timed_out is False,
+            'security_gpgv_exit')
+    require(type(status) is bytes and len(status) <= 16384, 'security_gpgv_status')
+    try:
+        lines = status.decode('ascii').splitlines()
+    except UnicodeError:
+        raise Refusal('security_gpgv_status') from None
+    valid = set()
+    for line in lines:
+        require(line.startswith('[GNUPG:] '), 'security_gpgv_prefix')
+        parts = line[9:].split()
+        require(parts and parts[0] in {'NEWSIG','KEY_CONSIDERED','SIG_ID','GOODSIG','VALIDSIG'},
+                'security_gpgv_status')
+        if parts[0] != 'VALIDSIG':
+            continue
+        require(len(parts) in (10,11), 'security_gpgv_validsig')
+        signer = parts[1]; primary = parts[10] if len(parts) == 11 else signer
+        require(re.fullmatch('[0-9A-F]{40}', signer) is not None and
+                re.fullmatch('[0-9A-F]{40}', primary) is not None and
+                primary not in valid, 'security_gpgv_fingerprint')
+        valid.add(primary)
+    require(valid == SECURITY_PRIMARIES, 'security_gpgv_primary')
+    require(type(release) is bytes and 0 < len(release) <= 196608 and
+            type(packages) is bytes and 0 < len(packages) <= 64*1024*1024,
+            'security_metadata_cap')
+    values = fields(signed_body(release))
+    require(one(values,'Origin') == 'Debian' and one(values,'Label') == 'Debian-Security' and
+            one(values,'Codename') == SECURITY_CODENAME and one(values,'Version') == '12',
+            'security_distribution')
+    require(type(checked_at) is datetime and checked_at.tzinfo is not None and
+            checked_at.utcoffset().total_seconds() == 0, 'security_check_time')
+    date, until_text = one(values,'Date'), one(values,'Valid-Until')
+    try:
+        released = datetime.strptime(date,'%a, %d %b %Y %H:%M:%S UTC').replace(tzinfo=timezone.utc)
+        until = datetime.strptime(until_text,'%a, %d %b %Y %H:%M:%S UTC').replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise Refusal('security_release_date') from None
+    require(released <= checked_at <= until and released < until, 'security_release_time')
+    require('SHA256' in values, 'security_sha256_field')
+    entries = {}
+    for line in values['SHA256']:
+        if not line:
+            continue
+        parts = line.split()
+        require(len(parts) == 3 and re.fullmatch('[0-9a-f]{64}',parts[0]) is not None and
+                re.fullmatch('[0-9]+',parts[1]) is not None and parts[2] not in entries,
+                'security_sha256_entry')
+        entries[parts[2]] = (parts[0],int(parts[1]))
+    require(entries.get(SECURITY_INDEX) == (sha(packages),len(packages)),
+            'security_signed_packages_entry')
+    return {'schema':'public-security-archive-contract.v1',
+            'classification':'fixed_security_origin_contract_matches',
+            'nativeAuthenticationIssued':False,'freshSecurityUpdateBase':False,
+            'releaseSha256':sha(release),'packagesSha256':sha(packages),
+            'releaseDate':date,'validUntil':until_text,
+            'verifiedPrimaryFingerprints':sorted(valid)}
 
 
 if __name__ == '__main__':

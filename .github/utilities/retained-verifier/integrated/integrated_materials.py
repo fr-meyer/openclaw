@@ -76,7 +76,7 @@ def archive_bytes(files):
 
 
 def runtime_archive(rows, payloads):
-    need(type(rows) is list and len(rows) == 626 and type(payloads) is dict,
+    need(type(rows) is list and 0 < len(rows) <= 8192 and type(payloads) is dict,
          'integrated_materials.runtime_count')
     files, result, total = {}, [], 0
     for row in rows:
@@ -95,7 +95,7 @@ def runtime_archive(rows, payloads):
              'integrated_materials.runtime_pin')
         files[archive_name] = (raw, row['mode']); result.append(dict(row)); total += len(raw)
     names = {row['path'] for row in result}
-    need(len(names) == 626 and names == set(payloads) and total <= EXPANDED_CAP and
+    need(len(names) == len(rows) and names == set(payloads) and total <= EXPANDED_CAP and
          {'usr/bin/python3.11', 'lib64/ld-linux-x86-64.so.2', 'code/static-entry'} <= names,
          'integrated_materials.runtime_closure')
     return archive_bytes(files), sorted(result, key=lambda row: row['path'])

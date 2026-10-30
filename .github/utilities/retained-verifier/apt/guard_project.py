@@ -4,7 +4,7 @@ import json
 import re
 import archive_guard as guard
 
-POLICY_SHA256='61d13310c96e63277b56a7514c6cf8789db891dad345342d9a5d8529fccad6b9'
+POLICY_SHA256='9a3f9005c68087c0082571b6e99df6625381d40a56528494e863dc543e5d8074'
 
 
 def canonical(value):

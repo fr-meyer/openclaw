@@ -81,7 +81,8 @@ class NativeEvidenceIO:
   class ReadOnlyCommands(program.native.NativeCommandIO):
    def __init__(self):pass  # Own-guest source/build checks above; no native unit capability.
    def spawn(self,argv):
-    allowed=(argv[0]=='/usr/bin/gpgv' and argv[1:4]==('--status-fd=1','--keyring','/opt/ocv/control/apt-data/keyring.gpg') and argv[4:] ==('/opt/ocv/control/apt-data/InRelease',) or
+    allowed=(argv[0]=='/usr/bin/gpgv' and argv[1:4]==('--status-fd=1','--keyring','/opt/ocv/control/apt-data/keyring.gpg') and argv[4:] in
+      (('/opt/ocv/control/apt-data/InRelease',),('/opt/ocv/control/apt-data/SecurityInRelease',)) or
       argv==('/usr/bin/systemctl','poweroff','--no-block'))
     need(allowed,'boot.readonly_command');return super().spawn(argv)
   self.commands=program.native.CommandCapture(ReadOnlyCommands());self.program=program

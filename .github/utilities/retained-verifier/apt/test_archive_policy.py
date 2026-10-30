@@ -153,5 +153,64 @@ class PolicyTests(unittest.TestCase):
             self.check()
 
 
+def security_fixture(packages=None, *, date='Sun, 25 Oct 2026 03:50:50 UTC',
+                     until='Sun, 01 Nov 2026 03:50:50 UTC'):
+    import archive_policy as p
+    if packages is None:
+        packages=''.join('Package: '+name+'\nVersion: '+p.PYTHON_U9_VERSION+
+            '\nArchitecture: amd64\nFilename: '+filename+'\nSize: '+str(size)+
+            '\nSHA256: '+digest+'\n\n' for name,(size,digest,filename) in p.PYTHON_U9.items()).encode()
+    body=('Origin: Debian\nLabel: Debian-Security\nSuite: oldstable-security\nVersion: 12\n'
+          'Codename: bookworm-security\nDate: '+date+'\nValid-Until: '+until+'\nSHA256:\n '+
+          p.sha(packages)+' '+str(len(packages))+' main/binary-amd64/Packages\n')
+    release=('-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\n'+body+
+             '-----BEGIN PGP SIGNATURE-----\nSYNTHETIC-NOT-A-SIGNATURE\n-----END PGP SIGNATURE-----\n').encode()
+    primary=next(iter(p.SECURITY_PRIMARIES))
+    status=('[GNUPG:] VALIDSIG '+primary+' 2026-10-25 1792899000 0 4 0 1 8 01 '+primary+'\n').encode()
+    return release,packages,status
+
+
+class SecurityPolicyTests(unittest.TestCase):
+    def setUp(self):
+        import archive_policy as p
+        self.p=p;self.release,self.packages,self.status=security_fixture()
+        self.now=datetime(2026,10,30,tzinfo=timezone.utc)
+    def check(self,**kw):
+        args=dict(returncode=0,timed_out=False,status=self.status,checked_at=self.now);args.update(kw)
+        return self.p.classify_security(self.release,self.packages,**args)
+    def test_independent_security_signature_hash_time_and_no_authority(self):
+        value=self.check();self.assertEqual(value['packagesSha256'],sha(self.packages))
+        self.assertEqual(value['verifiedPrimaryFingerprints'],sorted(self.p.SECURITY_PRIMARIES))
+        self.assertIs(value['nativeAuthenticationIssued'],False)
+    def test_main_signer_and_its_unknown_cosignature_exception_are_never_security_authority(self):
+        main=next(iter(BOOKWORM.primaries)).encode()
+        for status in (self.status.replace(next(iter(self.p.SECURITY_PRIMARIES)).encode(),main),
+                       self.status+b'[GNUPG:] NO_PUBKEY 78DBA3BC47EF2265\n',self.status*2):
+            with self.subTest(status=status[:40]),self.assertRaises(Refusal):self.check(status=status)
+        for value in (2,1,False,None):
+            with self.subTest(value=value),self.assertRaises(Refusal):self.check(returncode=value)
+    def test_security_distribution_label_codename_version_and_exact_index(self):
+        for old,new in ((b'Debian-Security',b'Debian'),(b'bookworm-security',b'bookworm'),
+                        (b'Version: 12\n',b'Version: 13\n'),
+                        (b'main/binary-amd64/Packages',b'updates/main/binary-amd64/Packages')):
+            original=self.release;self.release=original.replace(old,new)
+            with self.subTest(old=old),self.assertRaises(Refusal):self.check()
+            self.release=original
+    def test_security_requires_both_signed_dates_and_current_time(self):
+        for when in (datetime(2026,10,24,tzinfo=timezone.utc),datetime(2026,11,2,tzinfo=timezone.utc)):
+            with self.subTest(when=when),self.assertRaises(Refusal):self.check(checked_at=when)
+        self.release=self.release.replace(b'Valid-Until:',b'Other-Until:')
+        with self.assertRaises(Refusal):self.check()
+    def test_security_changed_index_duplicate_field_and_truncated_status_refuse(self):
+        self.packages+=b'changed'
+        with self.assertRaises(Refusal):self.check()
+        self.release,self.packages,self.status=security_fixture()
+        self.release=self.release.replace(b'Origin: Debian\n',b'Origin: Debian\nOrigin: Debian\n')
+        with self.assertRaises(Refusal):self.check()
+        self.release,self.packages,self.status=security_fixture()
+        for status in (b'',self.status[:30],b'x'*16385):
+            with self.subTest(status=status[:30]),self.assertRaises(Refusal):self.check(status=status)
+
+
 if __name__ == '__main__':
     unittest.main()

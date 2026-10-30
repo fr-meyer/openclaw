@@ -209,8 +209,11 @@ class NativeIO:
     def read_regular(self, path, cap):
         permitted = {self.guard.ETC+'/sources.list', self.guard.ETC+'/apt.conf.d/'+self.guard.GUARD_FILE,
                      self.guard.KEYRING, '/usr/bin/gpgv','/usr/lib/apt/apt-helper',
-                     self.guard.LISTS+'/'+self.guard.RELEASE}
-        permitted |= {self.guard.LISTS+'/'+self.guard.PACKAGES+s for s in self.guard.PACKAGE_SUFFIXES}
+                     self.guard.LISTS+'/'+self.guard.RELEASE,
+                     self.guard.LISTS+'/'+self.guard.SECURITY_RELEASE}
+        permitted |= {self.guard.LISTS+'/'+name+s for name in
+                      (self.guard.PACKAGES,self.guard.SECURITY_PACKAGES)
+                      for s in self.guard.PACKAGE_SUFFIXES}
         require(path in permitted, 'apt.native_read_role')
         return _safe_read(path,cap)
     def entries(self, path, cap):
@@ -229,9 +232,11 @@ class NativeIO:
         return sorted(rows,key=lambda x:x['name'])
     def run(self, argv, *, timeout, stdout_cap, stderr_cap):
         g=self.guard
-        valid_gpg=argv==('/usr/bin/gpgv','--status-fd=1','--keyring',g.KEYRING,g.LISTS+'/'+g.RELEASE)
+        valid_gpg=argv in tuple(('/usr/bin/gpgv','--status-fd=1','--keyring',g.KEYRING,g.LISTS+'/'+name)
+                               for name in (g.RELEASE,g.SECURITY_RELEASE))
         valid_cat=(len(argv)==3 and argv[:2]==('/usr/lib/apt/apt-helper','cat-file') and
-                   argv[2] in {g.LISTS+'/'+g.PACKAGES+s for s in g.PACKAGE_SUFFIXES})
+                   argv[2] in {g.LISTS+'/'+name+s for name in (g.PACKAGES,g.SECURITY_PACKAGES)
+                               for s in g.PACKAGE_SUFFIXES})
         require(valid_gpg or valid_cat,'apt.native_command_role')
         return capture_command(self.command_io,argv,timeout=timeout,stdout_cap=stdout_cap,stderr_cap=stderr_cap)
     def evidence(self, role, value):
@@ -367,7 +372,7 @@ def native_export(expected_context_sha, expected_guard_sha, expected_policy_sha)
     guard=io=None
     try:
         guard,context,io=_load(expected_context_sha,expected_guard_sha,expected_policy_sha)
-        proof,contents=guard._run_guard(io,context,'postinstall',guard.policy.BOOKWORM)
+        proof,contents=guard._run_dual_guard(io,context,'postinstall',guard.policy.BOOKWORM)
         _record(guard,io,proof,phase='postinstall')
         records=[]
         for path in _receipt_paths():

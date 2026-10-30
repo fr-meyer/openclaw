@@ -9,6 +9,7 @@ partition/superblock metadata; no filesystem or OS image is built.
 """
 import base64
 import copy
+import datetime as dt
 import importlib.util
 import io
 import json
@@ -51,9 +52,14 @@ import archive_guard as apt
 import guard_project
 import build_recipe as build
 import integrated_fixture
+from test_archive_policy import security_fixture
 
 C=h.canonical
 SHA=h.sha
+# Explicit non-native payload: only the artifact hash reference is substituted.
+# The unpatched production archive hash remains mandatory in actual CI.
+REPAIR_RAW=(b'public synthetic offline selinux-utils package'*3000)[:126432]
+REPAIR_SHA=SHA(REPAIR_RAW)
 TOOL_BYTES={
  '/usr/share/keyrings/debian-archive-keyring.gpg':b'SYNTHETIC-PUBLIC-KEYRING-NOT-A-KEY',
  '/usr/bin/gpgv':b'SYNTHETIC-PUBLIC-GPGV-NOT-AN-EXECUTABLE',
@@ -72,10 +78,16 @@ def metadata():
  names=build.REQUIRED_PACKAGES|{'linux-image-6.1.0-50-amd64'}
  data=b''
  for name in sorted(names):
+  if name=='selinux-utils':
+   data+=('Package: selinux-utils\nVersion: 3.4-1+b6\nArchitecture: amd64\n'
+     'Filename: pool/main/libs/libselinux/selinux-utils_3.4-1+b6_amd64.deb\n'
+     'SHA256: '+REPAIR_SHA+'\nSize: 126432\nDepends: '+artifact.REPAIR_PACKAGE_DEPENDS+'\n\n').encode()
+   continue
   version=build.SYSTEMD_VERSION if name in ('systemd','systemd-sysv','libsystemd0','libsystemd-shared') else '1.0-1'
   data+=(f'Package: {name}\nVersion: {version}\nArchitecture: amd64\n'
          f'Filename: pool/main/{name}/{name}_fixture_amd64.deb\n'
-         f'SHA256: {SHA(name.encode())}\nSize: 17\n\n').encode()
+         f'SHA256: {SHA(name.encode())}\nSize: 17\n'+
+         ('Depends: libc6 (>= 2.34)\n'if name=='selinux-utils'else'')+'\n').encode()
  date='Sat, 11 Jul 2026 10:16:37 UTC'
  release=('-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nOrigin: Debian\n'
   'Codename: bookworm\nVersion: synthetic-public-contract\nDate: '+date+'\nSHA256:\n '
@@ -171,7 +183,12 @@ class ContractFixture:
    uid=os.getuid(),gid=os.getgid(),expected={'source_manifest_sha':SHA(self.raw)})
   self.commands=SyntheticCommands(self)
   self.release,self.packages,self.gpg_status,self.policy_fixture=metadata()
-  self.policy=SimpleNamespace(classify=lambda *args,**kw:policy.classify(*args,fixture=self.policy_fixture,**kw))
+  now=dt.datetime.now(dt.timezone.utc)
+  self.security_release,self.security_packages,self.security_status=security_fixture(
+   date=(now-dt.timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S UTC'),
+   until=(now+dt.timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S UTC'))
+  self.policy=SimpleNamespace(classify=lambda *args,**kw:policy.classify(*args,fixture=self.policy_fixture,**kw),
+   classify_security=policy.classify_security,PYTHON_U9=policy.PYTHON_U9)
   self.modules=SimpleNamespace(context=self.commands,commands=commands,build=build,guard_project=guard_project,
    apt=apt,policy=self.policy,serial=serial,validator=source_validator,artifact=artifact,source_expectation=source_expectation,
    integrated_fixture=integrated_fixture,
@@ -236,7 +253,10 @@ class ContractFixture:
              'sha256':SHA(runtime_bytes),'mode':0o555}],
    'helper':{'path':'code/static-entry','bytes':len(helper),'sha256':SHA(helper)}}
   runtime_raw=C(runtime)
-  tools_raw=C({'tools':[],'synthetic':True,'notLinuxProof':True})
+  repair_tool={'role':'selinuxenabled','path':'/usr/sbin/selinuxenabled',
+   'bytes':14576,'sha256':artifact.REPAIR_TOOL_SHA256}
+  tools_raw=C({'schema':'ocv-tools-v1','tools':[dict(repair_tool,package='selinux-utils',version='3.4-1+b6',debSha256=REPAIR_SHA)],
+   'synthetic':True,'notLinuxProof':True})
   control={'schema':'ocv-build-v1','sourceManifestSha256':SHA(self.raw),'runtimeManifestSha256':SHA(runtime_raw),
    'toolManifestSha256':SHA(tools_raw),'importManifestSha256':SHA(b'{}'),'aptMetadataManifestSha256':SHA(b'{}'),
    'helperSha256':SHA(helper),'kernelVersion':'6.1.0-50-amd64','systemdVersion':build.SYSTEMD_VERSION,
@@ -247,6 +267,19 @@ class ContractFixture:
   self.write(out/'static-entry',helper,0o555)
   self.write(out/'runtime/usr/bin/python3.11',runtime_bytes,0o555)
   for name in artifact.APT_FILES:self.write(out/'apt-data'/name,b'SYNTHETIC-PUBLIC-APT-CONTROL:'+name.encode())
+  self.write(out/'apt-data/InRelease',self.release)
+  self.write(out/'apt-data/Packages',self.packages)
+  self.write(out/'apt-data/SecurityInRelease',self.security_release)
+  self.write(out/'apt-data/SecurityPackages',self.security_packages)
+  self.write(out/'repair/selinux-utils.deb',REPAIR_RAW)
+  repair={'schema':artifact.REPAIR_SCHEMA,'fixtureOnly':True,'privateVmInstallationPerformed':False,
+   'package':{'name':'selinux-utils','version':'3.4-1+b6','architecture':'amd64',
+    'bytes':126432,'sha256':REPAIR_SHA,
+    'filename':'pool/main/libs/libselinux/selinux-utils_3.4-1+b6_amd64.deb','origin':'main',
+    'packagesSha256':SHA(self.packages),'inReleaseSha256':SHA(self.release),
+    'depends':artifact.REPAIR_PACKAGE_DEPENDS},'tool':repair_tool,
+   'sourceManifestSha256':SHA(self.raw),'aptMetadataManifestSha256':control['aptMetadataManifestSha256']}
+  self.write(out/'repair/manifest.json',C(repair))
  def partition(self,image):
   return C({'partitiontable':{'label':'gpt','device':image,'unit':'sectors','sectorsize':512,
     'partitions':[{'node':image+'1','start':2048,'size':2*1024**3//512-4096,
@@ -297,9 +330,12 @@ class ContractFixture:
    if args['kind']=='mke2fs_usr_owner':return outer(b'e2fsprogs: /usr/sbin/mke2fs\n')
    raise AssertionError('unexpected synthetic dpkg query')
   if role=='debian_metadata_curl':
-   self.write(self.port.project/'metadata'/('InRelease' if args['kind']=='release' else 'Packages.xz'),
-    self.release if args['kind']=='release' else lzma.compress(self.packages));return outer()
+   security=args.get('origin')=='security';stem='Security'if security else''
+   release=self.security_release if security else self.release;packages=self.security_packages if security else self.packages
+   self.write(self.port.project/'metadata'/(stem+('InRelease' if args['kind']=='release' else 'Packages.xz')),
+    release if args['kind']=='release' else lzma.compress(packages));return outer()
   if role=='gpgv_metadata':
+   if args.get('origin')=='security':return outer(self.security_status)
    if self.gpg_exit==2:
     return outer(self.gpg_status,status='refused',returncode=2,reason='command_exit_nonzero',**self.gpg_changes)
    return outer(self.gpg_status)
@@ -334,7 +370,8 @@ class ContractFixture:
  def run(self,root_outputs=True):
   port=self.new_port()
   with mock.patch.object(h,'read_regular',side_effect=self.tool_read),\
-       mock.patch.object(h,'host_path_facts',side_effect=self.host_path_facts):
+       mock.patch.object(h,'host_path_facts',side_effect=self.host_path_facts),\
+       mock.patch.object(artifact,'REPAIR_PACKAGE_SHA256',REPAIR_SHA):
    if root_outputs:
     with mock.patch.object(Path,'lstat',new=lambda p,*a,**k:self.root_output_stat(p,*a,**k)):
      return h.Controller(port).run()
@@ -421,7 +458,7 @@ class NativePortContract(unittest.TestCase):
        mock.patch.object(self.fixture.policy,'classify',side_effect=checked):
    port.install_host_tools();port.authenticate_metadata()
   self.assertIsNone(port.first_failure)
-  self.assertEqual(port.commands[-1]['status'],'refused')
+  self.assertTrue(any(r['status']=='refused'for r in port.commands if r['role']=='gpgv_metadata'))
   self.assertFalse((port.artifacts/'host-stdout.bin').exists())
   self.assertFalse((port.artifacts/'host-stderr.bin').exists())
  def test_incomplete_gpg_exit_two_preserves_first_cause(self):
@@ -496,6 +533,11 @@ class NativePortContract(unittest.TestCase):
    names=archive.getnames()
    self.assertIn('PUBLIC-TOOLING-MANIFEST.json',names)
    self.assertIn('source/host/ci_host.py',names)
+   self.assertIn('repair/manifest.json',names)
+   self.assertEqual(archive.extractfile('repair/selinux-utils.deb').read(),REPAIR_RAW)
+   repair=json.loads(archive.extractfile('repair/manifest.json').read())
+   self.assertFalse(repair['privateVmInstallationPerformed'])
+   self.assertEqual(repair['package']['sha256'],REPAIR_SHA)
    self.assertFalse(any(Path(name).name in build.OUTPUT_FILES for name in names))
   final=json.loads((port.artifacts/'host-result.json').read_bytes())
   self.assertEqual(final['status'],'passed');self.assertIsNone(final['failure'])

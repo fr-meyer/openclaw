@@ -34,6 +34,18 @@ class FactoryTests(unittest.TestCase):
            '/tmp/x/out/integrated-test.raw'))
         for uid,gid in ((0,1001),(1001,0),('1001',1001),(1001,True)):
             with self.assertRaises(c.Refusal):c.own_mkosi_outputs('/tmp/x',uid,gid)
+    def test_security_origin_has_only_fixed_url_index_and_distinct_captured_paths(self):
+        for kind,leaf,output in [('release','InRelease','SecurityInRelease'),
+                                 ('packages','main/binary-amd64/Packages.xz','SecurityPackages.xz')]:
+            argv=c.debian_metadata_curl('/tmp/ocv-public',kind,origin='security')
+            self.assertEqual(argv[-1],'https://security.debian.org/debian-security/dists/bookworm-security/'+leaf)
+            self.assertEqual(argv[argv.index('--output')+1],'/tmp/ocv-public/metadata/'+output)
+            self.assertNotIn('--location',argv);self.assertEqual(argv[argv.index('--retry')+1],'0')
+        self.assertEqual(c.gpgv_metadata('/tmp/ocv-public',origin='security')[-1],
+                         '/tmp/ocv-public/metadata/SecurityInRelease')
+        for origin in ('other','security/../main','https://example.invalid'):
+            with self.subTest(origin=origin),self.assertRaises(c.Refusal):c.debian_metadata_curl('/tmp/ocv-public','release',origin)
+            with self.assertRaises(c.Refusal):c.gpgv_metadata('/tmp/ocv-public',origin)
     def test_test_roster_comes_only_from_known_manifest_rows(self):
         rows={'host/test_a.py':{},'host/not_a_test.py':{},'host/deep/test_b.py':{},'apt/test_archive_policy.py':{}}
         self.assertEqual(r.selected_paths(rows,'host'),['host/test_a.py'])

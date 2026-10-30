@@ -13,10 +13,12 @@ N=ASSEMBLY/'native' if (ASSEMBLY/'native').is_dir() else R/'native-ci-adapter-r3
 RT=ASSEMBLY/'runtime'
 CONSUMER=ASSEMBLY/'consumer'
 STATIC=N/'static_entry.c' if (N/'static_entry.c').is_file() else R.parent/'public-source-preparation-r1/export/static_entry.c'
-for path in (N,RT,CONSUMER):sys.path.insert(0,str(path))
+for path in (N,RT,CONSUMER,ASSEMBLY/'apt'):sys.path.insert(0,str(path))
 import ci_native_port,ci_metadata,ci_worker,ci_entry,ci_profile,ci_fixture,runtime_prepare
 import consumer_compat
 import native_cases
+import archive_policy as security_policy
+from test_archive_policy import security_fixture
 import copied_bootstrap_probe as copied_probe
 import serial_receipt as independent_serial
 import test_native_cases as native_case_fixtures
@@ -55,7 +57,7 @@ class FakeIO:
  def own_guest_checkpoint(self,markers,build,boot):self.own=(markers,build,boot)
  def command(self,argv,timeout):
   self.calls.append(('command',argv,timeout))
-  if argv[0]=='/usr/bin/gpgv':raw=self.status
+  if argv[0]=='/usr/bin/gpgv':raw=self.security_status if argv[-1].endswith('/SecurityInRelease') else self.status
   elif argv[0]=='/usr/bin/dpkg-query':
    p=self.packages[argv[-1]];raw=(p['name']+'\t'+p['version']+'\t'+p['architecture']+'\n').encode()
   elif argv==('/usr/bin/systemctl','poweroff','--no-block'):self.shutdown_intent=True;raw=b''
@@ -80,14 +82,17 @@ def setup_io():
   if p.name.startswith('test_'):continue
   raw=p.read_bytes();io.put(guard.SOURCE+'/native/'+p.name,raw);source.append({'path':'native/'+p.name,'bytes':len(raw),'sha256':guard.sha(raw),'mode':0o444})
  for relative,path in [('native/CI-PROFILE.json',N/'CI-PROFILE.json'),('native/static_entry.c',STATIC),
-                       ('runtime/runtime_prepare.py',RT/'runtime_prepare.py')]:
+                       ('runtime/runtime_prepare.py',RT/'runtime_prepare.py'),
+                       ('apt/archive_policy.py',ASSEMBLY/'apt/archive_policy.py')]:
   raw=path.read_bytes();io.put(guard.SOURCE+'/'+relative,raw);source.append({'path':relative,'bytes':len(raw),'sha256':guard.sha(raw),'mode':0o444})
  for name in ('consumer_compat.py','native_cases.py','hosted_export.py','hosted_privacy.py','public-member-comparisons-v105-workboard.json'):
   raw=(CONSUMER/name).read_bytes();relative='consumer/'+name
   io.put(guard.SOURCE+'/'+relative,raw);source.append({'path':relative,'bytes':len(raw),'sha256':guard.sha(raw),'mode':0o444})
  source_raw=guard.canonical({'schema':'ocv-public-source-v1','files':source});io.put(guard.SOURCE+'/PUBLIC-SOURCE-MANIFEST.json',source_raw)
- package_names=['python3.11-minimal','libpython3.11-minimal','libpython3.11-stdlib','libc6','systemd','gpgv','dpkg','selinux-utils']
+ package_names=['python3.11','python3.11-minimal','libpython3.11-minimal','libpython3.11-stdlib','libc6','systemd','gpgv','dpkg','selinux-utils']
  io.packages={n:{'name':n,'version':'252.39-1~deb12u2'if n=='systemd'else'1','architecture':'amd64','debSha256':guard.sha(n.encode())}for n in package_names}
+ for name,(_,digest,_) in security_policy.PYTHON_U9.items():
+  io.packages[name].update(version=security_policy.PYTHON_U9_VERSION,debSha256=digest)
  io.put('/var/lib/dpkg/status',b'\n\n'.join(('Package: '+p['name']+'\nStatus: install ok installed\nVersion: '+p['version']+
   '\nArchitecture: '+p['architecture']).encode()for p in io.packages.values())+b'\n')
  runtimes=[];ownership=[]
@@ -95,7 +100,7 @@ def setup_io():
   ('/usr/lib/python3.11/encodings/__init__.py','libpython3.11-minimal',b'#public encoding fixture'),('/usr/lib/python3.11/os.py','libpython3.11-stdlib',b'#public os fixture')]:
   io.put(path,raw,0o644);relative='lib64/ld-linux-x86-64.so.2'if'ld-linux'in path else path[1:]
   runtimes.append({'path':relative,'sourcePath':path,'bytes':len(raw),'sha256':guard.sha(raw),'mode':0o555 if relative in('usr/bin/python3.11','lib64/ld-linux-x86-64.so.2') else 0o444})
-  ownership.append({'path':relative,'package':pkg,'version':'1','packageFileSha256':guard.sha(raw),'symlinkChainSha256':'e'*64})
+  ownership.append({'path':relative,'package':pkg,'version':io.packages[pkg]['version'],'packageFileSha256':guard.sha(raw),'symlinkChainSha256':'e'*64})
  helper=elf_fixture.elf_fixture();io.put(guard.CONTROL+'/static-entry',helper,0o555)
  csha=next(r['sha256']for r in source if r['path']=='native/static_entry.c')
  proof=guard.sha(b'public historical-fixture proof')
@@ -111,11 +116,15 @@ def setup_io():
  for role,(path,pkg)in rolepaths.items():
   raw=io.files.get(path,('public-'+role).encode());io.put(path,raw,0o755);p=io.packages[pkg]
   tools.append({'role':role,'path':path,'bytes':len(raw),'sha256':guard.sha(raw),'package':pkg,'version':p['version'],'debSha256':p['debSha256']})
- packages=b'\n\n'.join(('Package: '+p['name']+'\nVersion: '+p['version']+'\nArchitecture: '+p['architecture']+'\nSHA256: '+p['debSha256']).encode()for p in io.packages.values())+b'\n'
+ packages=b'\n\n'.join(('Package: '+p['name']+'\nVersion: '+p['version']+'\nArchitecture: '+p['architecture']+'\nSHA256: '+p['debSha256']).encode()for p in io.packages.values()if p['name']not in security_policy.PYTHON_U9)+b'\n'
  body=('Origin: Debian\nCodename: bookworm\nVersion: fixture\nDate: Fri, 01 Jan 2010 00:00:00 UTC\nSHA256:\n '+guard.sha(packages)+' '+str(len(packages))+' main/binary-amd64/Packages\n')
  release=('-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\n'+body+'-----BEGIN PGP SIGNATURE-----\npublic-fake-signature\n-----END PGP SIGNATURE-----\n').encode()
  key=b'public fake keyring';paths={k:guard.CONTROL+'/apt-data/'+n for k,n in [('release','InRelease'),('packages','Packages'),('keyring','keyring.gpg')]}
  for k,raw in [('release',release),('packages',packages),('keyring',key)]:io.put(paths[k],raw)
+ security_release,security_packages,io.security_status=security_fixture(
+  date='Mon, 31 Dec 2029 00:00:00 UTC',until='Wed, 02 Jan 2030 00:00:00 UTC')
+ for role,name,raw in [('securityRelease','SecurityInRelease',security_release),('securityPackages','SecurityPackages',security_packages)]:
+  paths[role]=guard.CONTROL+'/apt-data/'+name;io.put(paths[role],raw)
  import ci_archive_policy
  fixture=ci_archive_policy.Fixture(guard.sha(release),len(release),guard.sha(packages),len(packages),'Fri, 01 Jan 2010 00:00:00 UTC','fixture',frozenset(['AB'*20]))
  io.status=('[GNUPG:] VALIDSIG '+'AB'*20+' 0 0 0 0 0 0 0 0\n').encode()
@@ -123,7 +132,8 @@ def setup_io():
   def run(self):return self._run_literal_policy(fixture)
  program=SimpleNamespace(native=ci_native_port,metadata=SimpleNamespace(Admission=SmallAdmission),entry=ci_entry,
   worker=ci_worker,profile=ci_profile,fixture=ci_fixture,runtime=runtime_prepare,consumer=consumer_compat,
-  native_cases=SimpleNamespace(validate_result=lambda value,**keys:native_cases.validate_result(value,allow_synthetic=True,**keys)))
+  native_cases=SimpleNamespace(validate_result=lambda value,**keys:native_cases.validate_result(value,allow_synthetic=True,**keys)),
+  security_policy=security_policy)
  codes={name:{'bytes':len(io.files[guard.SOURCE+'/native/'+source]),'sha256':guard.sha(io.files[guard.SOURCE+'/native/'+source])}
         for name,source in [('ci_protocol.py','ci_protocol.py'),('ci_profile.py','ci_profile.py'),('ci_fixture.py','ci_fixture.py'),('ci_worker_core.py','ci_worker.py')]}
  controls={'runtime':runtime,'tools':{'schema':'ocv-tools-v1','tools':tools},'imports':{'schema':'ocv-imports-v1','codeFiles':codes},
@@ -193,7 +203,9 @@ class Verification(unittest.TestCase):
   with self.assertRaises(guard.Refusal):issuer.prepare(guard.verify(io),io,program)
  def test_export_paths_are_exact_and_actual_gpg_argv_is_retained(self):
   plan=guard.verify(self.io);admission=issuer.ExportAdmission(self.program,self.io,plan.controls['apt'],self.io);admission.run()
-  self.assertEqual(admission.evidence['argv'][-1],guard.CONTROL+'/apt-data/InRelease')
+  self.assertEqual(admission.evidence['argv'][-1],guard.CONTROL+'/apt-data/SecurityInRelease')
+  self.assertEqual([r[1][-1]for r in self.io.calls if r[0]=='command' and r[1][0]=='/usr/bin/gpgv'],
+   [guard.CONTROL+'/apt-data/InRelease',guard.CONTROL+'/apt-data/SecurityInRelease'])
   bad=copy.deepcopy(plan.controls['apt']);bad['paths']['release']='/unbound/InRelease'
   with self.assertRaises(guard.Refusal):issuer.ExportAdmission(self.program,self.io,bad,self.io)
  def test_worker_plan_hashes_are_no_cycle_and_fixed_fixture(self):
@@ -207,6 +219,7 @@ class Verification(unittest.TestCase):
    root=Path(directory).resolve()
    groups={'bootstrap':list(B.glob('*.py')),'native':list(N.glob('*.py'))+[N/'CI-PROFILE.json'],
     'runtime':[RT/'runtime_prepare.py',RT/'test_runtime_prepare.py'],
+    'apt':[ASSEMBLY/'apt/archive_policy.py',ASSEMBLY/'apt/test_archive_policy.py'],
     'consumer':[CONSUMER/name for name in ('consumer_compat.py','native_cases.py','test_native_cases.py',
      'hosted_export.py','hosted_privacy.py','public-member-comparisons-v105-workboard.json')]}
    for prefix,paths in groups.items():
@@ -220,6 +233,42 @@ class Verification(unittest.TestCase):
    io,program=module.setup_io();plan=guard.verify(io);data=issuer.prepare(plan,io,program)
    self.assertFalse(plan.native_authority)
    with self.assertRaises(guard.Refusal):issuer.issue_native(plan,io,data)
+ def test_forward_runtime_rejects_old_main_python_and_security_origin_substitution(self):
+  from dataclasses import replace
+  plan=guard.verify(self.io);tools={r['role']:r for r in plan.controls['tools']['tools']}
+  issuer.verify_signed_package_bindings(self.io,plan,tools,security_policy)
+  controls=copy.deepcopy(plan.controls);changed_tools=copy.deepcopy(tools)
+  for row in controls['runtime']['packages']:
+   if row['name']in security_policy.PYTHON_U9:row.update(version='3.11.2-6+deb12u8',debSha256='0'*64)
+  for row in controls['runtime']['packageOwnership']:
+   if row['package']in security_policy.PYTHON_U9:row['version']='3.11.2-6+deb12u8'
+  for row in changed_tools.values():
+   if row['package']in security_policy.PYTHON_U9:row.update(version='3.11.2-6+deb12u8',debSha256='0'*64)
+  with self.assertRaisesRegex(guard.Refusal,'boot.python_security_origin'):
+   issuer.verify_signed_package_bindings(self.io,replace(plan,controls=controls),changed_tools,security_policy)
+  paths=plan.controls['apt']['paths'];self.io.files[paths['securityPackages']]=self.io.files[paths['packages']]
+  with self.assertRaisesRegex(guard.Refusal,'boot.python_security_origin'):
+   issuer.verify_signed_package_bindings(self.io,plan,tools,security_policy)
+ def test_main_only_export_missing_security_signature_and_expired_security_refuse(self):
+  plan=guard.verify(self.io);apt=copy.deepcopy(plan.controls['apt']);apt['paths'].pop('securityPackages')
+  with self.assertRaises(guard.Refusal):issuer.ExportAdmission(self.program,self.io,apt,self.io)
+  for status in (b'',self.io.status,self.io.security_status+b'[GNUPG:] NO_PUBKEY 78DBA3BC47EF2265\n'):
+   io,program=setup_io();io.security_status=status
+   with self.assertRaises(Exception):issuer.ExportAdmission(program,io,guard.verify(io).controls['apt'],io).run()
+  io,program=setup_io();io.seconds=3*86400
+  with self.assertRaises(Exception):issuer.ExportAdmission(program,io,guard.verify(io).controls['apt'],io).run()
+ def test_native_readonly_command_scope_adds_only_exact_security_release(self):
+  class NoEffect:
+   def spawn(self,argv):return argv
+  program=SimpleNamespace(native=SimpleNamespace(NativeCommandIO=NoEffect,
+    CommandCapture=lambda port:SimpleNamespace(port=port)))
+  io=object.__new__(native_io.NativeEvidenceIO);io.own=({}, {}, 'synthetic');io.commands=None
+  native_io.NativeEvidenceIO.bind_readonly_commands(io,program)
+  prefix=('/usr/bin/gpgv','--status-fd=1','--keyring',guard.CONTROL+'/apt-data/keyring.gpg')
+  for name in ('InRelease','SecurityInRelease'):
+   argv=prefix+(guard.CONTROL+'/apt-data/'+name,);self.assertEqual(io.commands.port.spawn(argv),argv)
+  for name in ('OtherInRelease','../SecurityInRelease','SecurityInRelease.extra'):
+   with self.subTest(name=name),self.assertRaises(guard.Refusal):io.commands.port.spawn(prefix+(guard.CONTROL+'/apt-data/'+name,))
  def test_installed_status_missing_duplicate_changed_or_uninstalled_refuses(self):
   for kind in ('missing','duplicate','version','uninstalled'):
    with self.subTest(kind=kind):
