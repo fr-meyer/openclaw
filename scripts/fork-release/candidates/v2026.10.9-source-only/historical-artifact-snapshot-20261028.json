@@ -1,0 +1,138 @@
+{
+  "schema": "openclaw.v108.complete-artifact-inventory.v2",
+  "observedAt": "2026-10-28T04:12:50.826777+00:00",
+  "completePagination": true,
+  "method": "All pages collected; consistent total_count; unique IDs; stable first-page IDs and total before/after. No date-order assumption.",
+  "repositoryArtifactRows": 885,
+  "pages": [
+    {
+      "page": 1,
+      "rows": 100,
+      "sha256": "e8b3f28c259f35c2cd52223018a7e81283c043cf9d24353b0722e65302e67824"
+    },
+    {
+      "page": 2,
+      "rows": 100,
+      "sha256": "d2534d55feffd97384514a08c8e434a9d515879824be1848dfbd9efbcee143cb"
+    },
+    {
+      "page": 3,
+      "rows": 100,
+      "sha256": "22a52736513815bcd2cde2c05a0367a024b19b906b9f681a8bfe6b69f55aa706"
+    },
+    {
+      "page": 4,
+      "rows": 100,
+      "sha256": "88e6ca71d49e0c8b497e3b8ff89c649f8e8ab4ba15c2a69d39764c90c3eeda97"
+    },
+    {
+      "page": 5,
+      "rows": 100,
+      "sha256": "e8cb3343565f67c4763bd061a68d8f975203fae5d0e7915bec3346c977e10746"
+    },
+    {
+      "page": 6,
+      "rows": 100,
+      "sha256": "350f9660ba1dda7dd4f71fe5d731bc5d1d91e774309221fdaf703e5d64771939"
+    },
+    {
+      "page": 7,
+      "rows": 100,
+      "sha256": "5c94c992f770f52ff12138e525d70a2c04cc959c412b5abde645d2a5bf2985e0"
+    },
+    {
+      "page": 8,
+      "rows": 100,
+      "sha256": "c9a58e8b11d9d821829a6567276e7138e3afaa813efe8bbafbeadf9216641163"
+    },
+    {
+      "page": 9,
+      "rows": 85,
+      "sha256": "8fb54b2752767b0efbdb67405090f65ed31c8a7067dd92f1c612370b51f9b948"
+    }
+  ],
+  "campaignRunCount": 57,
+  "artifactCount": 5,
+  "totalBytes": 3111,
+  "artifacts": [
+    {
+      "id": 12790189565,
+      "name": "fork-pr-28-de5b35be1531ca14394f5457ae934ad268ddb941-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-40629994037-1",
+      "size_in_bytes": 623,
+      "expired": false,
+      "created_at": "2026-10-28T04:02:05Z",
+      "expires_at": "2026-11-11T04:02:04Z",
+      "workflow_run": {
+        "id": 40629994037,
+        "repository_id": 1309456040,
+        "head_repository_id": 1309456040,
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "de5b35be1531ca14394f5457ae934ad268ddb941"
+      }
+    },
+    {
+      "id": 12784774801,
+      "name": "fork-pr-28-de5b35be1531ca14394f5457ae934ad268ddb941-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-40616416899-1",
+      "size_in_bytes": 622,
+      "expired": false,
+      "created_at": "2026-10-28T01:40:22Z",
+      "expires_at": "2026-11-11T01:40:21Z",
+      "workflow_run": {
+        "id": 40616416899,
+        "repository_id": 1309456040,
+        "head_repository_id": 1309456040,
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "de5b35be1531ca14394f5457ae934ad268ddb941"
+      }
+    },
+    {
+      "id": 12782516442,
+      "name": "fork-pr-28-1328661613052dfa09902e1d1d080fa8e6ccd89d-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-40609889488-1",
+      "size_in_bytes": 621,
+      "expired": false,
+      "created_at": "2026-10-28T00:37:12Z",
+      "expires_at": "2026-11-11T00:37:12Z",
+      "workflow_run": {
+        "id": 40609889488,
+        "repository_id": 1309456040,
+        "head_repository_id": 1309456040,
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "1328661613052dfa09902e1d1d080fa8e6ccd89d"
+      }
+    },
+    {
+      "id": 12782140460,
+      "name": "fork-pr-28-c65eebf7d844d51762a95e56d234b8945981847b-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-40607227490-1",
+      "size_in_bytes": 622,
+      "expired": false,
+      "created_at": "2026-10-28T00:12:16Z",
+      "expires_at": "2026-11-11T00:12:15Z",
+      "workflow_run": {
+        "id": 40607227490,
+        "repository_id": 1309456040,
+        "head_repository_id": 1309456040,
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "c65eebf7d844d51762a95e56d234b8945981847b"
+      }
+    },
+    {
+      "id": 12781571279,
+      "name": "fork-pr-28-fb136445c313fdd94b2e3a615acb2a16ea9bf1e3-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-40607329185-1",
+      "size_in_bytes": 623,
+      "expired": false,
+      "created_at": "2026-10-28T00:13:13Z",
+      "expires_at": "2026-11-11T00:13:12Z",
+      "workflow_run": {
+        "id": 40607329185,
+        "repository_id": 1309456040,
+        "head_repository_id": 1309456040,
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "fb136445c313fdd94b2e3a615acb2a16ea9bf1e3"
+      }
+    }
+  ],
+  "sourceWorkflowArtifacts": 0,
+  "supersedes": "FINAL-ARTIFACT-INVENTORY.private.json completeness claim; original retained with its first-page-only limitation",
+  "modeledArtifactStorage14DayUSDWith20PercentAllowance": "4.056282341480255e-07",
+  "actualBillingVerified": false
+}

@@ -10,6 +10,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import bounded_run_contract_v109 as run_allowance
 import re
 
 
@@ -29,6 +30,17 @@ PREPARATION_FAILURE_EVIDENCE = "scripts/fork-release/candidates/v2026.10.9-sourc
 PREPARATION_FAILURE_EVIDENCE_SHA256 = "af64a6728b88d0e520f24722871ef760c5181e1492b9142b1f9af0944c060856"
 FAILED_PREPARATION_PIN = {"runId": "40997868140", "pipelineHead": "84b825aca15a58191e718a958a356dcc305d4e47",
     "requestSha256": "cf52903c8a20e94684e3a6fcb5e947b8336eca62e66f0744efcda4d4d054a9ef"}
+ADDITIONAL_PIPELINE_RECOVERY_SCHEMA = "openclaw.v109.additional-pipeline-preparation-recovery.v1"
+ADDITIONAL_APPROVAL_SCHEMA = "openclaw.v109.additional-preparation-approval.v1"
+ADDITIONAL_PREPARATION_FAILURE_EVIDENCE = "scripts/fork-release/candidates/v2026.10.9-source-only/preparation-failure-41003661031.json"
+ADDITIONAL_PREPARATION_FAILURE_EVIDENCE_SHA256 = "15efc4c98e7caccc8f532ec58f676ed642a9aa8670cf0d7a9a7d42f62a87897d"
+SECOND_FAILED_PREPARATION_PIN = {"runId": "41003661031", "pipelineHead": "409704dd078c83d2f41ed709660633c619b172be",
+    "requestSha256": "5c4f7d4a56d959ba21d77dd00ca6868a49eb18519ada393e639d002fe68ae5ff"}
+ORIGINAL_AUTHORIZATION_SHA256 = "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8"
+ORIGINAL_APPROVAL_PACKET_SHA256 = "204817fab9a8f6fc8c9f670e728e7e349e1376a46740efb504ab4c957c87da76"
+ORIGINAL_RECOVERY_SOURCE_SHA = "ba04217f6642091b94f396669318d068e6007ed7"
+ADDITIONAL_RECOVERY_NOT_BEFORE = "2026-10-30T04:40:43Z"
+PREPARATION_FAMILY_MINUTES = 90
 BASELINE_SOURCE = "e6c4786dafbc8308661ea8fa14a81e06873d1630"
 BASELINE_PIPELINE = "37400d942839bee0b92852037d6f8bf99e60358c"
 BASELINE_RUN = "40901336241"
@@ -173,10 +185,101 @@ def generation_pin(value):
     return value
 
 
+def run_grant(bindings):
+    return bindings.get("ciRunGrant")
+
+
+def prepare_run_grant_binding(bindings, grant):
+    """Pure binding proposal; never writes or invents a review/approval/request."""
+    validate_bindings(bindings)
+    result = deepcopy(bindings)
+    result["preparationCorrection"] = {"schema": ADDITIONAL_PIPELINE_RECOVERY_SCHEMA,
+        "source": deepcopy(result["preparation"]), "priorPhase": "lock-preparation",
+        "priorFailures": [deepcopy(FAILED_PREPARATION_PIN), deepcopy(SECOND_FAILED_PREPARATION_PIN)],
+        "failedPreparationAttempts": [1, 2], "nextPreparationAttempt": 3,
+        "evidenceSha256": {"1": PREPARATION_FAILURE_EVIDENCE_SHA256,
+            "2": ADDITIONAL_PREPARATION_FAILURE_EVIDENCE_SHA256},
+        "approval": {"schema": ADDITIONAL_APPROVAL_SCHEMA, "status": "DISARMED",
+            "approvalEvidenceSha256": None, "approvedAt": None,
+            "expiresAt": result["authorization"]["expiresAt"],
+            "originalAuthorizationSha256": ORIGINAL_AUTHORIZATION_SHA256,
+            "additionalPipelineCorrections": 1, "additionalLockPreparations": 1,
+            "additionalSourceCampaigns": 0, "optionalCorrectionsAllowed": False}}
+    result["correction"] = None
+    result["ciRunGrant"] = deepcopy(grant)
+    result["status"] = "APPROVED_CI" if grant["status"] == "APPROVED" else "DISARMED"
+    validate_bindings(result)
+    return result
+
+
+def validate_run_grant(bindings, active=False, now=None):
+    value = run_grant(bindings)
+    if value is None:
+        return None
+    try:
+        run_allowance.validate_grant(value, bindings["authorization"], active, now)
+    except ValueError as exc:
+        raise Refusal(str(exc))
+    source_pin(value["nextExecution"]["source"])
+    return value
+
+
+def additional_pipeline_preparation_recovery(value):
+    """Closed discriminator only; it never supplies approval or a request."""
+    return type(value) is dict and value.get("schema") == ADDITIONAL_PIPELINE_RECOVERY_SCHEMA
+
+
+def validate_additional_approval(value, original, active=False, now=None):
+    fields(value, ("schema", "status", "approvalEvidenceSha256", "approvedAt", "expiresAt",
+        "originalAuthorizationSha256", "additionalPipelineCorrections", "additionalLockPreparations",
+        "additionalSourceCampaigns", "optionalCorrectionsAllowed"), "v9.additional_approval_fields")
+    need(type(original) is dict and digest(canonical(original)) == ORIGINAL_AUTHORIZATION_SHA256 and
+        value["schema"] == ADDITIONAL_APPROVAL_SCHEMA and value["status"] in ("DISARMED", "APPROVED_RECOVERY") and
+        value["originalAuthorizationSha256"] == ORIGINAL_AUTHORIZATION_SHA256 and
+        value["expiresAt"] == original["expiresAt"] and
+        type(value["additionalPipelineCorrections"]) is int and value["additionalPipelineCorrections"] == 1 and
+        type(value["additionalLockPreparations"]) is int and value["additionalLockPreparations"] == 1 and
+        type(value["additionalSourceCampaigns"]) is int and value["additionalSourceCampaigns"] == 0 and
+        value["optionalCorrectionsAllowed"] is False, "v9.additional_approval_scope")
+    if value["status"] == "DISARMED":
+        need(value["approvalEvidenceSha256"] is None and value["approvedAt"] is None and not active,
+            "v9.additional_approval_disarmed")
+        return value
+    need(pin(value["approvalEvidenceSha256"]) and value["approvalEvidenceSha256"] not in
+        (ORIGINAL_AUTHORIZATION_SHA256, ORIGINAL_APPROVAL_PACKET_SHA256), "v9.genuine_new_approval_required")
+    approved, expires = utc(value["approvedAt"]), utc(value["expiresAt"])
+    need(utc(ADDITIONAL_RECOVERY_NOT_BEFORE) < approved < expires,
+        "v9.additional_approval_after_both_failures")
+    if now is not None:
+        need(type(now) in (int, float) and approved.timestamp() <= now < expires.timestamp(),
+            "v9.additional_approval_clock")
+    return value
+
+
+def validate_additional_recovery(value, bindings, active=False, now=None):
+    fields(value, ("schema", "source", "priorPhase", "priorFailures", "failedPreparationAttempts",
+        "nextPreparationAttempt", "evidenceSha256", "approval"), "v9.additional_recovery_fields")
+    source_pin(value["source"])
+    need(value["source"] == bindings["preparation"] and value["source"]["sourceSha"] == ORIGINAL_RECOVERY_SOURCE_SHA and
+        value["priorPhase"] == "lock-preparation" and
+        value["priorFailures"] == [FAILED_PREPARATION_PIN, SECOND_FAILED_PREPARATION_PIN] and
+        value["failedPreparationAttempts"] == [1, 2] and all(type(n) is int for n in value["failedPreparationAttempts"]) and
+        type(value["nextPreparationAttempt"]) is int and value["nextPreparationAttempt"] == 3 and
+        value["evidenceSha256"] == {"1": PREPARATION_FAILURE_EVIDENCE_SHA256,
+            "2": ADDITIONAL_PREPARATION_FAILURE_EVIDENCE_SHA256} and bindings["correction"] is None,
+        "v9.exact_additional_pipeline_recovery")
+    for prior in value["priorFailures"]:
+        run_pin(prior)
+    validate_additional_approval(value["approval"], bindings["authorization"],
+        active and run_grant(bindings) is None, now if run_grant(bindings) is None else None)
+    return value
+
+
 def validate_bindings(value, active=False, now=None):
     fields(value, ("schema", "status", "campaignId", "repository", "workflow", "pipelineBranch",
         "sourceBranch", "baseBranch", "baseSha", "upstream", "baseline", "preparation", "preparationCorrection",
-        "validation", "correction", "authorization", "newRecoveryTests"), "v9.bindings_fields")
+        "validation", "correction", "authorization", "newRecoveryTests") +
+        (("ciRunGrant",) if type(value) is dict and "ciRunGrant" in value else ()), "v9.bindings_fields")
     need(value["schema"] == BINDINGS_SCHEMA and value["status"] in ("DISARMED", "APPROVED_CI") and
         value["campaignId"] == CAMPAIGN and value["repository"] == REPOSITORY and
         value["workflow"] == WORKFLOW and value["pipelineBranch"] == PIPELINE_BRANCH and
@@ -189,9 +292,12 @@ def validate_bindings(value, active=False, now=None):
         type(b["runnerMinutes"]) is int and b["runnerMinutes"] == 2944 and pin(b["publicProofSha256"]),
         "v9.baseline_binding")
     source_pin(value["preparation"])
+    grant = validate_run_grant(value, active, now)
     pc = value["preparationCorrection"]
     if pc is not None:
-        if pipeline_preparation_recovery(pc):
+        if additional_pipeline_preparation_recovery(pc):
+            validate_additional_recovery(pc, value, active, now)
+        elif pipeline_preparation_recovery(pc):
             fields(pc, ("schema", "source", "priorPhase", "priorFailure", "failedPreparationAttempt",
                 "nextPreparationAttempt", "reasonCode", "evidenceSha256"), "v9.pipeline_recovery_fields")
             source_pin(pc["source"]); run_pin(pc["priorFailure"])
@@ -224,6 +330,8 @@ def validate_bindings(value, active=False, now=None):
         source_pin(v["source"]); generation_pin(v["generation"])
         need(pin(v["unchangedTreeSha256"]), "v9.validation_tree_witness")
         prep = preparation_for(value, v["preparationAttempt"])
+        if additional_pipeline_preparation_recovery(pc) and grant is None:
+            need(v["preparationAttempt"] == 3, "v9.additional_single_validation_from_third")
         need(v["preparationAttempt"] == 1 or pc["priorPhase"] == "lock-preparation", "v9.initial_validation_preparation")
         need(v["source"]["sourceSha"] != prep["sourceSha"] and
             all(v["source"]["fileSha256"][p] == prep["fileSha256"][p]
@@ -255,7 +363,10 @@ def validate_bindings(value, active=False, now=None):
             need(c["source"]["fileSha256"]["pnpm-lock.yaml"] == c["generation"]["generatedLockSha256"],
                 "v9.corrected_generation_lock")
     if value["status"] == "DISARMED":
-        need(value["authorization"] is None and not active, "v9.disarmed")
+        preserved_only = (((additional_pipeline_preparation_recovery(pc) and
+            pc["approval"]["status"] == "DISARMED") or grant is not None) and
+            digest(canonical(value["authorization"])) == ORIGINAL_AUTHORIZATION_SHA256)
+        need(not active and (value["authorization"] is None or preserved_only), "v9.disarmed")
     else:
         validate_authorization(value["authorization"], now)
     if active:
@@ -309,6 +420,51 @@ def validate_pipeline_recovery_evidence(raw, bindings):
     return value
 
 
+def validate_additional_pipeline_recovery_evidence(first_raw, second_raw, bindings):
+    """Authenticate both immutable failed intakes; no generation is invented."""
+    validate_bindings(bindings)
+    pc = bindings["preparationCorrection"]
+    need(additional_pipeline_preparation_recovery(pc), "v9.additional_recovery_not_bound")
+    legacy = deepcopy(bindings)
+    legacy["preparationCorrection"] = {"schema": PIPELINE_RECOVERY_SCHEMA,
+        "source": deepcopy(bindings["preparation"]), "priorPhase": "lock-preparation",
+        "priorFailure": deepcopy(FAILED_PREPARATION_PIN), "failedPreparationAttempt": 1,
+        "nextPreparationAttempt": 2, "reasonCode": "v9.workflow_merge_parents",
+        "evidenceSha256": PREPARATION_FAILURE_EVIDENCE_SHA256}
+    legacy["validation"], legacy["correction"] = None, None
+    legacy.pop("ciRunGrant", None)
+    # This in-memory view describes the already approved first recovery. It
+    # carries no supplemental approval or third request.
+    legacy["status"] = "APPROVED_CI"
+    first = validate_pipeline_recovery_evidence(first_raw, legacy)
+    need(digest(second_raw) == ADDITIONAL_PREPARATION_FAILURE_EVIDENCE_SHA256,
+        "v9.second_failure_evidence_digest")
+    second = parse(second_raw, 65536)
+    fields(second, tuple(first), "v9.second_failure_evidence_fields")
+    same = ("schema", "repository", "runAttempt", "workflow", "runName", "headBranch", "event",
+        "runConclusion", "source", "jobName", "jobConclusion", "failedStep", "skippedCandidateSteps",
+        "artifactCount", "sourceCheckoutPerformed", "lockGenerationExecuted", "generationProduced",
+        "nativeImageExecuted", "productionAuthorized", "producerWorkflowSha256")
+    need(all(type(second[k]) is type(first[k]) and second[k] == first[k] for k in same) and
+        all(second[k] == v for k,v in SECOND_FAILED_PREPARATION_PIN.items()) and
+        type(second["preparationAttempt"]) is int and second["preparationAttempt"] == 2 and
+        type(second["jobId"]) is int and second["jobId"] == 123893555647 and
+        second["failureCode"] == "v9.closed_provider_jobs_changed" and
+        second["nativeStartedAt"] == "2026-10-30T04:34:39Z" and
+        second["nativeCompletedAt"] == ADDITIONAL_RECOVERY_NOT_BEFORE and
+        second["producerRuntimeSha256"] == "8d734768690be68e8b02f49096631bf37d68619a7ed46edb5512a675bd1cf0a7",
+        "v9.exact_second_failed_intake_without_generation")
+    # The producer runtime pin is independently checked against the actual
+    # hosted commit by the caller, along with native jobs and zero artifacts.
+    fields(second["nativeEvidenceSha256"], ("run", "jobs", "artifacts", "log"),
+        "v9.second_failure_native_evidence_fields")
+    need(all(pin(v) for v in second["nativeEvidenceSha256"].values()) and
+        utc(first["nativeCompletedAt"]) < utc(second["nativeStartedAt"]) < utc(second["nativeCompletedAt"]) and
+        (utc(second["nativeCompletedAt"]) - utc(second["nativeStartedAt"])).total_seconds() <= PREPARATION_MINUTES * 60,
+        "v9.second_failed_intake_native_clock")
+    return [first, second]
+
+
 def correction_paths(value):
     changed = value["changedPaths"]
     need(type(changed) is list and changed == sorted(set(changed)) and bool(changed) and
@@ -321,9 +477,17 @@ def correction_paths(value):
 
 
 def preparation_for(bindings, attempt):
-    need(type(attempt) is int and attempt in (1, 2), "v9.preparation_attempt")
+    grant = run_grant(bindings)
+    if grant is not None and type(attempt) is int and 3 <= attempt <= 1002:
+        return bindings["preparation"]
+    need(type(attempt) is int and attempt in (1, 2, 3), "v9.preparation_attempt")
     if attempt == 1:
         return bindings["preparation"]
+    if additional_pipeline_preparation_recovery(bindings["preparationCorrection"]):
+        need(attempt == 3 and bindings["preparationCorrection"]["approval"]["status"] == "APPROVED_RECOVERY",
+            "v9.third_preparation_new_approval_required")
+        return bindings["preparation"]
+    need(attempt == 2, "v9.third_preparation_not_bound")
     need(type(bindings["preparationCorrection"]) is dict, "v9.second_preparation_not_bound")
     return bindings["preparationCorrection"]["source"]
 
@@ -338,9 +502,15 @@ def run_pin(value):
 def request_for(bindings, phase, preparation_attempt=1):
     validate_bindings(bindings)
     need(phase in PHASES, "v9.phase")
+    additional = additional_pipeline_preparation_recovery(bindings["preparationCorrection"])
+    grant = run_grant(bindings)
+    if additional and grant is None:
+        need(phase != "correction" and (phase != "lock-preparation" or preparation_attempt == 3),
+            "v9.additional_only_third_and_single_validation")
     if phase == "lock-preparation":
         source, generation = preparation_for(bindings, preparation_attempt), None
-        prior = [] if preparation_attempt == 1 else [bindings["preparationCorrection"]["priorFailure"]]
+        prior = (deepcopy(bindings["preparationCorrection"]["priorFailures"]) if additional else
+            ([] if preparation_attempt == 1 else [bindings["preparationCorrection"]["priorFailure"]]))
     elif phase == "validation":
         need(bindings["validation"] is not None, "v9.validation_not_bound")
         v = bindings["validation"]
@@ -351,32 +521,69 @@ def request_for(bindings, phase, preparation_attempt=1):
         c = bindings["correction"]
         source, generation, prior = c["source"], c["generation"], [c["priorValidation"]]
         preparation_attempt = c["preparationAttempt"]
-    return {"schema": SCHEMA, "campaignId": CAMPAIGN, "phase": phase,
+    result = {"schema": SCHEMA, "campaignId": CAMPAIGN, "phase": phase,
         "source": deepcopy(source), "settledUsageSha256": bindings["baseline"]["publicProofSha256"],
         "generation": deepcopy(generation), "priorRunPins": deepcopy(prior), "preparationAttempt": preparation_attempt,
         "profiles": [] if phase == "lock-preparation" else list(PROFILES),
         "authorizationSha256": digest(canonical(bindings["authorization"])) if bindings["authorization"] else None}
+    if additional and grant is None:
+        need(bindings["preparationCorrection"]["approval"]["status"] == "APPROVED_RECOVERY",
+            "v9.third_preparation_new_approval_required")
+        result["additionalApprovalSha256"] = digest(canonical(bindings["preparationCorrection"]["approval"]))
+    if grant is not None:
+        plan = grant["nextExecution"]
+        need(phase == plan["phase"] and phase != "correction" and
+            preparation_attempt == plan["preparationAttempt"] and source == plan["source"], "v9.run_grant.plan_request")
+        result["priorRunPins"] = [deepcopy(plan["priorSourceRun"])]
+        result["executionSequence"] = plan["sequence"]
+        result["runAllowanceSha256"] = run_allowance.AUTHORITY_SHA256
+        result["executionReservations"] = deepcopy(plan["reservations"])
+    return result
 
 
 def validate_request(value, bindings, active=False, now=None):
     validate_bindings(bindings, active, now)
     need(type(value) is dict and value.get("phase") in PHASES and
         value == request_for(bindings, value["phase"], value.get("preparationAttempt")), "v9.closed_request")
+    grant = run_grant(bindings)
+    if grant is not None and (active or grant["nextExecution"]["requestSha256"] is not None):
+        need(digest(encode(value)) == grant["nextExecution"]["requestSha256"], "v9.run_grant.reviewed_request_hash")
     return value
 
 
 def budget(request):
     need(type(request) is dict and request.get("schema") == SCHEMA and request.get("phase") in PHASES,
          "v9.budget_request")
-    return {"phase": request["phase"], "phaseMaximumMinutes": PREPARATION_MINUTES if
+    if "runAllowanceSha256" in request:
+        need(request["runAllowanceSha256"] == run_allowance.AUTHORITY_SHA256 and
+            request["phase"] in ("lock-preparation", "validation"), "v9.run_grant.budget_scope")
+        return {"phase": request["phase"], "phaseMaximumMinutes": PREPARATION_MINUTES if
+            request["phase"] == "lock-preparation" else SOURCE_MINUTES,
+            "preparationMinutesPerJob": PREPARATION_MINUTES, "maximumLockPreparations": 1002,
+            "admissionMinutes": ADMISSION_MINUTES, "profileMinutes": dict(PROFILE_MINUTES),
+            "finalMinutes": FINAL_MINUTES, "maximumSourceCampaigns": 1000, "maximumParallelSourceJobs": 3,
+            "separateImageFamilyReserveMinutes": IMAGE_FAMILY_MINUTES, "maximumNewMinutes": MAXIMUM_NEW_MINUTES,
+            "incidentalMinutes": request["executionReservations"]["incidental"],
+            "currentPlanReservationMinutes": sum(request["executionReservations"].values()),
+            "maximumBookedMinutes": MAXIMUM_NEW_MINUTES,
+            "maximumAdditionalWorkflowAttempts": 1000, "maximumStageWorkflowAttempts": 1042}
+    additional = "additionalApprovalSha256" in request
+    if additional:
+        need(pin(request["additionalApprovalSha256"]) and request.get("preparationAttempt") == 3 and
+            type(request["preparationAttempt"]) is int and request["phase"] != "correction",
+            "v9.additional_budget_scope")
+    result = {"phase": request["phase"], "phaseMaximumMinutes": PREPARATION_MINUTES if
         request["phase"] == "lock-preparation" else SOURCE_MINUTES,
-        "preparationMinutesPerJob": PREPARATION_MINUTES, "maximumLockPreparations": MAXIMUM_PREPARATIONS,
+        "preparationMinutesPerJob": PREPARATION_MINUTES, "maximumLockPreparations": 3 if additional else MAXIMUM_PREPARATIONS,
         "admissionMinutes": ADMISSION_MINUTES,
         "profileMinutes": dict(PROFILE_MINUTES), "finalMinutes": FINAL_MINUTES,
-        "maximumSourceCampaigns": 2, "maximumParallelSourceJobs": 3,
+        "maximumSourceCampaigns": 1 if additional else 2, "maximumParallelSourceJobs": 3,
         "separateImageFamilyReserveMinutes": IMAGE_FAMILY_MINUTES,
         "incidentalMinutes": INCIDENTAL_MINUTES, "maximumNewMinutes": MAXIMUM_NEW_MINUTES,
-        "maximumBookedMinutes": MAXIMUM_PREPARATIONS * PREPARATION_MINUTES + 2 * SOURCE_MINUTES + IMAGE_FAMILY_MINUTES + INCIDENTAL_MINUTES}
+        "maximumBookedMinutes": MAXIMUM_PREPARATIONS * PREPARATION_MINUTES + (1 if additional else 2) * SOURCE_MINUTES + IMAGE_FAMILY_MINUTES + INCIDENTAL_MINUTES}
+    if additional:
+        result["preparationFamilyMinutes"] = PREPARATION_FAMILY_MINUTES
+    return result
 
 
 def remaining_deadline(bindings, started_epoch, phase, now):
@@ -564,6 +771,11 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
     attempt = step["preparationAttempt"]
     prep = preparation_for(bindings, attempt)
     before = initial_tree
+    if attempt >= 3:
+        pc = bindings["preparationCorrection"]
+        need(additional_pipeline_preparation_recovery(pc) and prep == initial and
+            pc["priorPhase"] == "lock-preparation" and bindings["correction"] is None,
+            "v9.additional_recovery_original_source")
     if attempt == 2:
         pc = bindings["preparationCorrection"]
         if pipeline_preparation_recovery(pc):

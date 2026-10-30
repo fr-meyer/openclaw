@@ -86,6 +86,10 @@ PIPELINE_CONTRACT_TESTS = (
     "test_source_derivation_v109.py", "test_source_correction_artifact_v109.py",
     "test_source_validation_selection_v109.py",
     "test_source_validation_runtime_v109.py",
+    "test_historical_jobs_v109.py", "test_historical_reconciliation_v109.py",
+    "test_third_preparation_contract_v109.py", "test_third_preparation_runtime_v109.py",
+    "test_bounded_run_contract_v109.py", "test_bounded_run_runtime_v109.py",
+    "test_history_pagination_v109.py",
     "test_composite_closed_usage.py", "test_composite_closed_usage_v109.py",
     "test_shared_owner_hook_v109.py",
 )

@@ -114,6 +114,12 @@ class SelectionTests(unittest.TestCase):
     def test_pipeline_contracts_do_not_run_active_historical_campaign_contracts(self):
         self.assertIn('test_source_reconciliation_v109.py',selection.PIPELINE_CONTRACT_TESTS)
         self.assertIn('test_shared_owner_hook_v109.py',selection.PIPELINE_CONTRACT_TESTS)
+        for name in ('test_historical_jobs_v109.py', 'test_historical_reconciliation_v109.py',
+                'test_third_preparation_contract_v109.py', 'test_third_preparation_runtime_v109.py',
+                'test_bounded_run_contract_v109.py', 'test_bounded_run_runtime_v109.py',
+                'test_history_pagination_v109.py'):
+            self.assertIn(name, selection.PIPELINE_CONTRACT_TESTS)
+            self.assertEqual(selection.PIPELINE_CONTRACT_TESTS.count(name), 1)
         self.assertNotIn('test_runtime_contract_v8.py',selection.PIPELINE_CONTRACT_TESTS)
         result=selection.commands('/pipeline','/source','pipeline-contracts',paths(),{'phase':'validation'},
             {'newRecoveryTests':list(selection.REQUIRED_SOURCE_TESTS)})

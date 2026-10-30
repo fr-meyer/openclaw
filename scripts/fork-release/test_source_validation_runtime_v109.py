@@ -59,6 +59,46 @@ def job(name='admission',status='in_progress',jid=7):
         'labels':['ubuntu-24.04'],'steps':[], 'started_at':'2026-11-01T00:04:00Z','completed_at':None}
 
 
+def synthetic_historical_provider_job(run, recorded):
+    """Explicit synthetic native envelope for fakeAPI, never an observation.
+
+    Historical recorded facts are copied without modifying the frozen record;
+    unrecorded provider envelope fields are modeled test values. The actual
+    retained774-response replay independently checks real provider data.
+    """
+    value={"id":recorded["id"],"run_id":run["id"],"workflow_name":"synthetic provider envelope",
+        "head_branch":run["head_branch"],"run_url":"https://example.invalid/synthetic/run",
+        "run_attempt":run["run_attempt"],"node_id":"synthetic provider node","head_sha":run["head_sha"],
+        "url":"https://example.invalid/synthetic/job","html_url":"https://example.invalid/synthetic/html",
+        "status":recorded["status"],"conclusion":recorded["conclusion"],
+        "created_at":"2026-01-01T00:00:00Z","started_at":recorded["started_at"],"completed_at":recorded["completed_at"],
+        "name":recorded["name"],"steps":[],"check_run_url":"https://example.invalid/synthetic/check",
+        "labels":deepcopy(recorded["labels"]),"runner_id":recorded["runner_id"],
+        "runner_name":recorded["runner_name"],"runner_group_id":None,"runner_group_name":recorded["runner_group_name"]}
+    for key,item in recorded.items():
+        if key not in ("_fieldsPresent","steps"):
+            value[key]=deepcopy(item)
+    for step in recorded["steps"]:
+        native={"started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:00:01Z"}
+        native.update(deepcopy(step));value["steps"].append(native)
+    return value
+
+
+def legacy_first_preparation_view(current, proof):
+    """Historical test view only; never select its mode from the current PC."""
+    if current["preparation"] != proof["source"]:
+        raise AssertionError("historical source binding changed")
+    value=deepcopy(current)
+    value.pop("ciRunGrant",None)  # Historical view must not inherit a later allowance.
+    value["validation"],value["correction"]=None,None
+    value["preparationCorrection"]={"schema":policy.PIPELINE_RECOVERY_SCHEMA,
+        "source":deepcopy(value["preparation"]),"priorPhase":"lock-preparation",
+        "priorFailure":deepcopy(policy.FAILED_PREPARATION_PIN),"failedPreparationAttempt":1,
+        "nextPreparationAttempt":2,"reasonCode":"v9.workflow_merge_parents",
+        "evidenceSha256":policy.PREPARATION_FAILURE_EVIDENCE_SHA256}
+    return value
+
+
 class RuntimeTests(unittest.TestCase):
     def test_exact_public_event(self):
         e,v=event_env();self.assertEqual(owner.event_binding(e,v),'d'*40)
@@ -213,7 +253,8 @@ class RuntimeTests(unittest.TestCase):
 
     def test_pipeline_intake_recovery_fresh_native_metadata_and_no_artifacts(self):
         proof=policy.parse((OWNERS/policy.PREPARATION_FAILURE_EVIDENCE.removeprefix('scripts/fork-release/')).read_bytes())
-        b=policy.parse((OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json').read_bytes())
+        current=policy.parse((OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json').read_bytes())
+        b=legacy_first_preparation_view(current,proof)
         q=policy.request_for(b,'lock-preparation',1);raw=policy.encode(q)
         self.assertEqual(policy.digest(raw),proof['requestSha256'])
         run={'id':int(proof['runId']),'head_sha':proof['pipelineHead'],'status':'completed','conclusion':'failure',
@@ -252,6 +293,28 @@ class RuntimeTests(unittest.TestCase):
                         result=call();self.assertIs(result['sourceUnchanged'],True);self.assertIs(result['priorMinutesRemainCharged'],True)
                     else:
                         with self.assertRaises(policy.Refusal):call()
+
+    def test_entire_historical_fixture_ignores_current_active_supplemental_variant(self):
+        # This is an in-memory approval model only, never an operational file.
+        path=OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json'
+        current=policy.parse(path.read_bytes())
+        before=deepcopy(current)
+        from test_third_preparation_contract_v109 import recovery_binding
+        supplemental=recovery_binding(True)
+        current["status"]="APPROVED_CI"
+        current["validation"],current["correction"]=None,None
+        current["preparationCorrection"]=deepcopy(supplemental["preparationCorrection"])
+        current["preparationCorrection"]["source"]=deepcopy(current["preparation"])
+        policy.validate_bindings(current)
+        with self.assertRaises(policy.Refusal):policy.request_for(current,"lock-preparation",1)
+        in_memory=policy.encode(current);original_read=Path.read_bytes
+        def read(candidate):
+            return in_memory if candidate==path else original_read(candidate)
+        with patch.object(Path,"read_bytes",new=read):
+            self.test_pipeline_intake_recovery_fresh_native_metadata_and_no_artifacts()
+        self.assertEqual(policy.encode(current),in_memory)
+        self.assertEqual(policy.parse(original_read(path)),before)
+        self.assertEqual(current["preparationCorrection"]["schema"],policy.ADDITIONAL_PIPELINE_RECOVERY_SCHEMA)
 
     def test_metadata_overlay_preserves_both_sides_equal_add_delete(self):
         entry=lambda char:('100644','blob',char*40)
@@ -454,7 +517,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(owner.historical_artifacts_match([],frozen))
         self.assertFalse(owner.historical_artifacts_match(actual+actual,frozen))
 
-    def test_actual_258_composition_fresh_provider_fake_and_tamper(self):
+    def test_actual_258_composition_with_explicit_synthetic_provider_envelopes(self):
         view=BASELINE_VIEW
         sys.path.insert(0,str(view/'scripts/fork-release'))
         sys.path.insert(0,str(BASELINE_OWNER))
@@ -465,21 +528,29 @@ class RuntimeTests(unittest.TestCase):
             'repository':{'full_name':policy.REPOSITORY,'private':False},
             'actor':{'login':'fr-meyer'},'triggering_actor':{'login':'fr-meyer'}} for r in baseline['runs']}
         rows={str(r['id']):r for r in baseline['runs']}
+        witness=owner.policy.parse((view/owner.HISTORICAL_JOB_WITNESS).read_bytes())
+        supplement={row['runId']:row['extraJobs'] for row in witness['runs']}
+        note=owner.policy.parse((view/owner.HISTORICAL_ARTIFACT_NOTE).read_bytes())
+        note_artifacts={}
+        for item in note['artifacts']:note_artifacts.setdefault(str(item['workflow_run']['id']),[]).append(item)
         calls=[]
         def api(path):
             calls.append(path)
             match=__import__('re').search(r'/actions/runs/(\d+)/(jobs|artifacts)',path)
             rid,kind=match.groups();row=rows[rid]
-            result=deepcopy(row['jobs'] if kind=='jobs' else row.get('artifactRows',[]))
+            result=([synthetic_historical_provider_job(row,j) for j in row['jobs']]+deepcopy(supplement.get(rid,[])) if kind=='jobs' else deepcopy(row.get('artifactRows',[])+note_artifacts.get(rid,[])))
             # Native APIs include extra artifact metadata; the frozen projection
             # must compare exactly its own retained fields, not invent others.
             if kind=='artifacts':
                 for a in result:a['url']='https://api.github.com/private-not-printed'
             return {'total_count':len(result),kind:result}
-        with patch.object(owner,'regular',side_effect=lambda path,maximum=0:(view/Path(path).relative_to('/synthetic')).read_bytes()):
+        with patch.object(owner,'regular',side_effect=lambda path,maximum=0:(view/Path(path).relative_to('/synthetic')).read_bytes()),patch.object(owner,'emit') as emitted:
             ids,jobs,arts=owner.closed_baseline(Path('/synthetic'),history,api,resolver)
-            self.assertEqual(len(ids),258);self.assertGreater(len(jobs),258)
+            self.assertEqual(len(ids),258);self.assertEqual(len(jobs),1072);self.assertEqual(len(arts),23)
+            self.assertEqual(emitted.call_args.args[0]['originalRunnerMinutes'],2944)
+            self.assertEqual(len(emitted.call_args.args[0]['zeroAcquisitionJobFacts']),25)
             self.assertEqual(len(calls),516)
+            self.assertEqual(resolver.resolve_baseline_258(*raw),baseline)  # no frozen record normalized
             history[next(iter(history))]['conclusion']='changed'
             with self.assertRaisesRegex(policy.Refusal,'closed_provider_header_changed'):
                 owner.closed_baseline(Path('/synthetic'),history,api,resolver)

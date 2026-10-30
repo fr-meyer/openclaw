@@ -301,6 +301,16 @@ class PipelinePreparationRecoveryTests(unittest.TestCase):
         # Later all15 CI uses a real H validation binding; it must not change this
         # fixture's phase or be mistaken for missing live evidence.
         value["validation"]=None;value["correction"]=None
+        value.pop("ciRunGrant",None)  # Historical view excludes later mutable allowance.
+        raw=(Path(__file__).parent/"candidates/v2026.10.9-source-only/preparation-failure-40997868140.json").read_bytes()
+        self.assertEqual(m.digest(raw),m.PREPARATION_FAILURE_EVIDENCE_SHA256)
+        first=m.parse(raw)
+        value["preparation"]=deepcopy(first["source"])
+        value["preparationCorrection"]={"schema":m.PIPELINE_RECOVERY_SCHEMA,
+            "source":deepcopy(first["source"]),"priorPhase":"lock-preparation",
+            "priorFailure":deepcopy(m.FAILED_PREPARATION_PIN),"failedPreparationAttempt":1,
+            "nextPreparationAttempt":2,"reasonCode":first["failureCode"],
+            "evidenceSha256":m.PREPARATION_FAILURE_EVIDENCE_SHA256}
         return value
 
     def test_attempt2_reuses_original_real_g_without_h_or_empty_commit(self):
