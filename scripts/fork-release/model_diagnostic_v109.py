@@ -16,6 +16,11 @@ CAMPAIGN = "future-v109-model-cleanliness-diagnostic-20261030"
 REQUEST_PATH = "scripts/fork-release/candidates/v2026.10.9-model-diagnostic/request.json"
 HOLD_MARKER = "<!-- openclaw-v109-model-diagnostic-only -->"
 SCHEMA = "openclaw.v109.fixed-model-diagnostic-request.v1"
+CONTINUATION_SCHEMA = "openclaw.v109.fixed-model-diagnostic-request.v2"
+FIRST_DIAGNOSTIC = {"runId": "41079925426", "pipelineHead": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+    "requestSha256": "42900d52c9776de99fedaf704f50e8d824da981e9ece6e8e9d996289964db95e"}
+DIAGNOSTIC_TERMINAL = frozenset(("success", "failure", "neutral", "cancelled", "skipped", "timed_out",
+    "action_required", "stale", "startup_failure"))
 H = "edd010829dcb622d7dc60dc90f7097048cb78819"
 H_TREE = "2e553992d3f93937dcb4b85683e4aae24a087074"
 H_REQUEST = "139ef96602ea6920715a9802a829e60424e0ddc3187e1d6a8196e7e9d2470cb9"
@@ -57,9 +62,19 @@ def template():
         "publicManifestCapture": CAPTURE}
 
 
+def template_continuation():
+    """Disarmed second diagnostic only; prior terminal/cost proof is still needed."""
+    value = template()
+    value.update(schema=CONTINUATION_SCHEMA, diagnosticId="model-cleanliness-r2",
+        priorDiagnosticRun=dict(FIRST_DIAGNOSTIC))
+    return value
+
+
 def validate(value, source_raw=None, active=False, now=None):
-    policy.fields(value, REQUEST_FIELDS, "v9.model_diagnostic_request_fields")
-    expected = template()
+    continuation = type(value) is dict and value.get("schema") == CONTINUATION_SCHEMA
+    policy.fields(value, REQUEST_FIELDS + (("priorDiagnosticRun",) if continuation else ()),
+        "v9.model_diagnostic_request_fields")
+    expected = template_continuation() if continuation else template()
     variable = {"status", "routingMode", "reviewSha256", "reservations"}
     need(all(value[k] == expected[k] for k in expected if k not in variable), "fixed_request")
     need(value["status"] in ("DISARMED", "REVIEWED") and value["routingMode"] in ("SOURCE", "DIAGNOSTIC"), "routing")
@@ -148,10 +163,47 @@ def predecessor(source_rows, value):
     return rid
 
 
-def once_current(rows, current_id):
-    selected = [rid for rid, run, value in rows if run.get("path") == WORKFLOW and
-        value["routingMode"] == "DIAGNOSTIC"]
-    need(selected == [current_id], "single_reviewed_diagnostic")
+def once_current(rows, current_id, grant=None, run_minutes=None):
+    need(type(rows) is list and all(type(row) in (tuple, list) and len(row) in (3, 4) and
+        type(row[0]) is str and type(row[1]) is dict and type(row[2]) is dict for row in rows), "history_row_shape")
+    selected = [row for row in rows if row[1].get("path") == WORKFLOW and
+        row[2]["routingMode"] == "DIAGNOSTIC"]
+    current = [row for row in selected if row[0] == current_id]
+    need(len(current) == 1, "single_current_diagnostic")
+    value = validate(current[0][2])
+    if value["schema"] == SCHEMA:
+        need([row[0] for row in selected] == [current_id], "single_reviewed_diagnostic")
+        return None
+    need(value["status"] == "REVIEWED" and current_id != FIRST_DIAGNOSTIC["runId"] and
+        len(selected) == 2 and {row[0] for row in selected} == {FIRST_DIAGNOSTIC["runId"], current_id} and
+        all(len(row) == 4 and type(row[3]) is bytes for row in selected), "closed_second_diagnostic")
+    current_row = current[0]
+    need(type(current_row[1].get("id")) is int and str(current_row[1]["id"]) == current_id and
+        type(current_row[1].get("run_attempt")) is int and current_row[1]["run_attempt"] == 1 and
+        policy.parse(current_row[3]) == value, "current_second_request")
+    prior = next(row for row in selected if row[0] == FIRST_DIAGNOSTIC["runId"])
+    rid, run, old_value, raw = prior
+    need(type(run.get("id")) is int and str(run["id"]) == rid and
+        type(run.get("run_attempt")) is int and run["run_attempt"] == 1 and
+        run.get("head_sha") == FIRST_DIAGNOSTIC["pipelineHead"] and
+        run.get("status") == "completed" and run.get("conclusion") in DIAGNOSTIC_TERMINAL and
+        policy.digest(raw) == FIRST_DIAGNOSTIC["requestSha256"] and policy.parse(raw) == old_value and
+        validate(old_value)["schema"] == SCHEMA and old_value["status"] == "REVIEWED",
+        "actual_terminal_first_diagnostic")
+    need(type(grant) is dict and type(grant.get("bookedAdditionalAttempts")) is list and
+        type(run_minutes) is dict and type(run_minutes.get((rid, 1))) is int and run_minutes[(rid, 1)] >= 0,
+        "prior_diagnostic_observed_charge")
+    booked = [row for row in grant["bookedAdditionalAttempts"] if type(row) is dict and row.get("runId") == rid]
+    need(len(booked) == 1, "prior_diagnostic_booked_once")
+    policy.fields(booked[0], ("runId", "nativeAttempt", "runnerMinutes"), "v9.model_diagnostic_prior_booking_fields")
+    need(type(booked[0]["nativeAttempt"]) is int and booked[0]["nativeAttempt"] == 1 and
+        type(booked[0]["runnerMinutes"]) is int and booked[0]["runnerMinutes"] >= run_minutes[(rid, 1)],
+        "prior_diagnostic_booked_floor")
+    # This gate proves existing custody/accounting only. budget() applies the
+    # same per-attempt max once; no old debit is appended or refunded here.
+    return {"continuationOnly": True, "priorDiagnosticRunId": rid,
+        "priorObservedMinutes": run_minutes[(rid, 1)], "priorBookedMinutes": booked[0]["runnerMinutes"],
+        "sourceExecutionAdvanced": False, "additionalChargeAppliedHere": 0}
 
 
 def budget(runtime, grant, run_minutes, current_id, current_minutes, value):

@@ -49,7 +49,7 @@ def issue(error):
 
 def safe_path(raw):
     require(type(raw) is bytes and 0 < len(raw) <= 512, "path_encoding")
-    require(re.fullmatch(rb"[A-Za-z0-9_.@+ /-]+", raw) is not None and
+    require(re.fullmatch(rb"[A-Za-z0-9_.@+ /,\[\]-]+", raw) is not None and
         all(p not in (b"", b".", b"..") for p in raw.split(b"/")), "path_encoding")
     return raw.decode("ascii")
 

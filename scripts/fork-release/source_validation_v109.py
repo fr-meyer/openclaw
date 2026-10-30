@@ -69,6 +69,7 @@ CODE_PATHS = (
     "scripts/fork-release/fixtures/v109-model-diagnostic.yml",
     "scripts/fork-release/fixtures/v109-h-diagnostic-source-request.json",
     "scripts/fork-release/fixtures/v109-published-H-ci-bindings.json",
+    "scripts/fork-release/fixtures/v109-published-first-diagnostic-request.json",
     "scripts/fork-release/composite_closed_usage.py",
     "scripts/fork-release/composite_closed_usage_v109.py",
     "scripts/fork-release/preflight.py", "scripts/fork-release/release.py",
@@ -1091,9 +1092,10 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
         policy.need(created >= auth_start and public_run(run), "v9.unaccounted_postbaseline_run")
         is_source = run.get("path") == policy.WORKFLOW
         diagnostic_value = None
+        diagnostic_raw = None
         held_source = False
         if run.get("path") == model_diagnostic.WORKFLOW or is_source and run["head_sha"] in diagnostic_heads:
-            diagnostic_value, _ = model_diagnostic.at_head(sys.modules[__name__],api,run["head_sha"])
+            diagnostic_value, diagnostic_raw = model_diagnostic.at_head(sys.modules[__name__],api,run["head_sha"])
             held_source = is_source and diagnostic_value["routingMode"] == "DIAGNOSTIC"
         is_source = is_source and not held_source
         if is_source:
@@ -1112,7 +1114,7 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
             source_rows.append((rid, run, q, rr))
         elif diagnostic_value is not None and (held_source or run.get("path") == model_diagnostic.WORKFLOW):
             limits = SOURCE_JOBS if held_source else model_diagnostic.native_role(sys.modules[__name__],run,diagnostic_value)
-            diagnostic_rows.append((rid,run,diagnostic_value))
+            diagnostic_rows.append((rid,run,diagnostic_value,diagnostic_raw))
         else:
             # No other executable role is selected or authorized here. Existing
             # incidental runs must remain public read-only policy/intake jobs.
@@ -1193,7 +1195,7 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
     charged_total=total
     if grant is not None:
         if diagnostic is not None:
-            model_diagnostic.once_current(diagnostic_rows,env["GITHUB_RUN_ID"])
+            model_diagnostic.once_current(diagnostic_rows,env["GITHUB_RUN_ID"],grant,run_minutes)
             charged_total,additional_booking=model_diagnostic.budget(sys.modules[__name__],grant,run_minutes,
                 env["GITHUB_RUN_ID"],current_minutes,diagnostic)
         else:

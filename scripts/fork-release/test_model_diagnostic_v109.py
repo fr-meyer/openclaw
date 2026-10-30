@@ -47,8 +47,13 @@ def actual_held_names():
 
 class ModelDiagnostic(unittest.TestCase):
     def test_disarmed_template_exact_and_no_source_execution_or_approval_created(self):
-        path = HERE / model.REQUEST_PATH.removeprefix("scripts/fork-release/")
-        self.assertEqual(policy.parse(path.read_bytes()), model.template())
+        # This is the immutable first-route fixture, never the mutable current
+        # operational request (which may later be the closed continuation).
+        raw = (HERE / "fixtures/v109-published-first-diagnostic-request.json").read_bytes()
+        self.assertEqual(policy.digest(raw), model.FIRST_DIAGNOSTIC["requestSha256"])
+        legacy = policy.parse(raw)
+        legacy.update(status="DISARMED", routingMode="SOURCE", reviewSha256=None)
+        self.assertEqual(legacy, model.template())
         self.assertEqual(model.validate(model.template(), SOURCE_RAW), model.template())
         self.assertNotIn("executionSequence", model.template())
         self.assertIsNone(model.template()["reviewSha256"])

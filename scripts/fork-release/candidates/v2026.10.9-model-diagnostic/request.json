@@ -1,9 +1,14 @@
 {
   "approvedAt": "2026-10-30T03:14:21Z",
   "authorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
-  "diagnosticId": "model-cleanliness-r1",
+  "diagnosticId": "model-cleanliness-r2",
   "expiresAt": "2026-11-03T03:14:21Z",
   "generationSha256": "83dfb391140b1f575cc9cdc012422125a263b58fce516b80b1852045be4f5262",
+  "priorDiagnosticRun": {
+    "pipelineHead": "4a1ce1dfc3bc3c3dd59df79596ce7f2ca3dd13f8",
+    "requestSha256": "42900d52c9776de99fedaf704f50e8d824da981e9ece6e8e9d996289964db95e",
+    "runId": "41079925426"
+  },
   "priorValidation": {
     "pipelineHead": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
     "requestSha256": "139ef96602ea6920715a9802a829e60424e0ddc3187e1d6a8196e7e9d2470cb9",
@@ -20,10 +25,10 @@
     "incidental": 50,
     "pendingCorrection": 1075
   },
-  "reviewSha256": "a64f64de98c59268cfd762b08b5a3831149fa4f0b98bcd9b7dc1cdaa54742050",
+  "reviewSha256": "fa5907eb26511eb18004982e901ccb3ca595d474c92f64ca7f7db42d346e1af7",
   "routingMode": "DIAGNOSTIC",
   "runAllowanceSha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
-  "schema": "openclaw.v109.fixed-model-diagnostic-request.v1",
+  "schema": "openclaw.v109.fixed-model-diagnostic-request.v2",
   "sourceDescriptorSha256": "3c9f36ea1d45f9787cf08198a4de869e57f689311521acfe4f10295962eb0a63",
   "sourceRequestSha256": "139ef96602ea6920715a9802a829e60424e0ddc3187e1d6a8196e7e9d2470cb9",
   "sourceSha": "edd010829dcb622d7dc60dc90f7097048cb78819",
