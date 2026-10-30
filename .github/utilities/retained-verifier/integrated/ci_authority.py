@@ -16,7 +16,7 @@ import re
 import stat
 import sys
 import time
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType, SimpleNamespace
 
 import integrated_fixture
 import integrated_materials
@@ -126,11 +126,18 @@ def _parent(parent, prepared):
               compatibility._seal is issuer._COMPATIBILITY_SEAL and
               compatibility.io is parent.io and compatibility.plan is parent.plan,
               'ci_authority.actual_compatibility_required')
-    for name, module in (('issuer', issuer), ('guard', guard), ('native_io', native_io)):
-        expected = SOURCE_ROOT + '/bootstrap/' + name + '.py'
+    program = getattr(parent.io, 'program', None)
+    p.require(type(program) is SimpleNamespace and
+              type(getattr(program, 'security_policy', None)) is ModuleType,
+              'ci_authority.checked_security_policy_required')
+    security_policy = program.security_policy
+    for name, module, relative in (('issuer', issuer, 'bootstrap/issuer.py'),
+            ('guard', guard, 'bootstrap/guard.py'), ('native_io', native_io, 'bootstrap/native_io.py'),
+            ('archive_policy', security_policy, 'apt/archive_policy.py')):
+        expected = SOURCE_ROOT + '/' + relative
         p.require(sys.modules.get(name) is module and str(Path(module.__file__).resolve()) == expected,
                   'ci_authority.bootstrap_module_path')
-        source = _source_file(parent.io, parent.plan, 'bootstrap/' + name + '.py')
+        source = _source_file(parent.io, parent.plan, relative)
         # Do not let a sys.modules lookalike certify its own fictitious file IO.
         # The outer loader already established this tree; rejoin that physical
         # immutable file directly before accepting its class/seal universe.
@@ -190,7 +197,7 @@ def _parent(parent, prepared):
                   package is not None and row['version'] == package['version'] and
                   row['debSha256'] == package['debSha256'], 'ci_authority.tool_package_join')
     # These source-owned checks re-read the installed/status/index/hash chain.
-    issuer.verify_signed_package_bindings(io, plan, prepared.tools)
+    issuer.verify_signed_package_bindings(io, plan, prepared.tools, security_policy)
     issuer.verify_packages(io, plan, prepared.tools)
     aliases, tools = guard.validate_runtime(io, plan)
     p.require(all(prepared.aliases.get(k) == row for k, row in aliases.items()) and

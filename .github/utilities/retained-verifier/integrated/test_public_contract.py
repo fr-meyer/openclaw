@@ -94,6 +94,54 @@ class PublicContractTests(unittest.TestCase):
             {role:role.encode()for role in runtime_sources.MATERIAL_CAPS},{'files':rows})
         with self.assertRaises(Refusal):source.assert_for('ci-native-proof',FakeIO())
 
+    def test_checked_parent_current_runtime_and_later_apis_use_the_mandatory_policy(self):
+        with checked_parent_policy_flow() as f:
+            ci=f.modules['ci_authority'];p=f.modules['protocol']
+            runtime=ci.current_runtime_source(f.parent,f.prepared,f.storage)
+            self.assertEqual(runtime.materials,f.materials)
+            self.assertIs(runtime.require_parent(f.parent,f.prepared),runtime)
+            with mock.patch.object(ci.os,'stat',return_value=SimpleNamespace(st_mode=stat.S_IFBLK|0o660,st_uid=0,st_gid=6)):
+                appearance=ci.wait_for_device_appearance(f.parent,f.prepared)
+            self.assertTrue(appearance['appearanceOnly']);self.assertFalse(appearance['identityValidated'])
+            owner,context,pins=ci.session_descriptor(f.parent,f.prepared,f.binding,runtime)
+            grant=ci.issue_ci_grant(f.parent,f.prepared,owner,context,pins,f.ios,runtime)
+            self.assertTrue(grant.require_live())
+            with mock.patch.object(f.modules['owner_guard'],'acquire',side_effect=p.Refusal('test.owner_lease_boundary')):
+                with self.assertRaisesRegex(p.Refusal,'test.owner_lease_boundary'):
+                    ci.issue_session(f.parent,f.prepared,owner,context,pins,f.ios,runtime)
+            self.assertEqual(f.policy_calls,[f.program.security_policy]*5)
+            self.assertTrue(all(row[-1].endswith(('InRelease','SecurityInRelease')) for row in f.commands))
+
+    def test_checked_parent_refuses_missing_swapped_ambient_or_changed_policy(self):
+        with checked_parent_policy_flow() as f:
+            ci=f.modules['ci_authority'];p=f.modules['protocol'];real=f.program.security_policy
+            for changed in (None,SimpleNamespace(security_policy=object()),
+                            SimpleNamespace(security_policy=ModuleType('unissued_policy'))):
+                old=f.io.program;f.io.program=changed
+                with self.subTest(value=type(changed).__name__),self.assertRaises(p.Refusal):
+                    ci.current_runtime_source(f.parent,f.prepared,f.storage)
+                f.io.program=old
+            with mock.patch.dict(sys.modules,{'archive_policy':ModuleType('ambient_policy')}):
+                with self.assertRaisesRegex(p.Refusal,'bootstrap_module_path'):
+                    ci.current_runtime_source(f.parent,f.prepared,f.storage)
+            with mock.patch.object(real,'__file__','/tmp/ambient-policy.py'):
+                with self.assertRaisesRegex(p.Refusal,'bootstrap_module_path'):
+                    ci.current_runtime_source(f.parent,f.prepared,f.storage)
+            path='/opt/ocv/source/apt/archive_policy.py';old=f.backing.files[path]
+            f.backing.files[path]=old+b'\n# changed after prepare\n'
+            with self.assertRaisesRegex(p.Refusal,'source_file_changed'):
+                ci.current_runtime_source(f.parent,f.prepared,f.storage)
+            f.backing.files[path]=old
+            self.assertEqual(f.policy_calls,[])
+
+    def test_parent_reread_keeps_exact_python_security_origin_refusal(self):
+        with checked_parent_policy_flow() as f:
+            ci=f.modules['ci_authority'];path='/opt/ocv/control/apt-data/SecurityPackages'
+            f.backing.files[path]=f.backing.files[path].replace(b'pool/updates/main/',b'pool/main/')
+            with self.assertRaisesRegex(f.outer['guard'].Refusal,'boot.python_security_origin'):
+                ci.current_runtime_source(f.parent,f.prepared,f.storage)
+            self.assertEqual(f.policy_calls,[f.program.security_policy])
+
 # Source-owned device appearance contracts.
 """Pure actual readiness-loop contracts. No Linux device is read or created."""
 import stat
@@ -669,7 +717,7 @@ class UnitStartDeadlineTests(unittest.TestCase):
 Only temporary public-source/journal files are written. No native qualification
 authority is established: the boot, root and lease facts below are test seams.
 """
-from contextlib import contextmanager
+from contextlib import contextmanager,ExitStack
 import datetime as dt
 import json
 import os
@@ -685,6 +733,119 @@ import integrated_entry as construction_entry
 import integrated_guest as construction_guest
 
 RETAINED_ENTRY_SHA256='0039f448059652d87fdfe49cf2de875a38bfe2224c2711c17cc2c837f9c7c88a'
+
+
+@contextmanager
+def checked_parent_policy_flow(public=None):
+    """Real prepare/parent/checked graph; only native effects/facts are fake.
+
+    Files and controls are the actual public source/build fixture bytes. This
+    is neither cryptographic authentication nor a genuine root/boot/lease.
+    The optional public root is only a test rebase seam for exact old-source
+    regression; it cannot enter an operational constructor or source grant.
+    """
+    from test_source_expectation import BuildFixture
+    public=HERE.parent if public is None else Path(public)
+    build=BuildFixture()
+    for spec in integrated_fixture.EXTRA_TOOL_SPECS.values():
+        path=spec['path'];old=build.owners[path];new=spec['package']
+        build.lists[old]=build.lists[old].replace((path+'\n').encode(),b'')
+        build.lists[new]+=(path+'\n').encode();build.owners[path]=new
+    build.build();backing=build.io
+    manifest_raw=(public/'PUBLIC-SOURCE-MANIFEST.json').read_bytes()
+    manifest=json.loads(manifest_raw)
+    for row in manifest['files']:
+        raw=(public/row['path']).read_bytes()
+        assert len(raw)==row['bytes'] and sha(raw)==row['sha256']
+        backing.put('/opt/ocv/source/'+row['path'],raw)
+    backing.put('/opt/ocv/source/PUBLIC-SOURCE-MANIFEST.json',manifest_raw)
+    doc=json.loads(backing.files['/opt/ocv/control/build.json'])
+    doc['sourceManifestSha256']=sha(manifest_raw)
+    backing.put('/opt/ocv/control/build.json',canonical(doc))
+    backing.cmdline=('ocv.source='+sha(manifest_raw)+' ocv.build='+sha(canonical(doc))+
+                     ' ocv.session='+backing.session).encode()
+    outer={};policy_calls=[]
+    with tempfile.TemporaryDirectory(prefix='ocv-parent-policy-')as temp,ExitStack()as stack:
+        temp=Path(temp).resolve()
+        stack.enter_context(mock.patch.dict(sys.modules))
+        stack.enter_context(mock.patch.object(sys,'path',list(sys.path)))
+        stack.enter_context(mock.patch.object(subprocess,'Popen',side_effect=AssertionError('native process forbidden')))
+        stack.enter_context(mock.patch.object(sys,'platform','linux'))
+        stack.enter_context(mock.patch.object(os,'geteuid',return_value=0))
+        stack.enter_context(mock.patch.object(os,'getegid',return_value=0))
+        exported_doc=json.loads((public/'integrated/PUBLIC-INTEGRATED-SOURCE-MANIFEST.json').read_bytes())
+        exported={r['path']:(public/'integrated'/r['path']).read_bytes()for r in exported_doc['files']}
+        for name in construction_entry.guest_module_names(exported)|{'guard','issuer','native_io'}:sys.modules.pop(name,None)
+        for name in('guard','native_io','issuer'):
+            module=ModuleType(name);module.__file__='/opt/ocv/source/bootstrap/'+name+'.py'
+            sys.modules[name]=module;exec(compile((public/'bootstrap'/(name+'.py')).read_bytes(),module.__file__,'exec'),module.__dict__)
+            outer[name]=module
+        io=outer['native_io'].NativeEvidenceIO(outer['native_io'].ENTRY);io.started=0
+        for name in('file','read','readlink','facts','utc','monotonic','check_source_roster','command'):
+            setattr(io,name,getattr(backing,name))
+        io.current_boot=lambda *,cleanup=False:backing.boot
+        plan=outer['guard'].verify(io)
+        # Real load_program path/registry checks, with only fixture source
+        # locations mapped to the source-owned canonical guest paths.
+        import ci_native_port,ci_metadata,ci_entry,ci_worker,ci_profile,ci_fixture
+        import runtime_prepare,consumer_compat,native_cases,archive_policy
+        members={'native':(ci_native_port,'native/ci_native_port.py'),
+          'metadata':(ci_metadata,'native/ci_metadata.py'),'entry':(ci_entry,'native/ci_entry.py'),
+          'worker':(ci_worker,'native/ci_worker.py'),'profile':(ci_profile,'native/ci_profile.py'),
+          'fixture':(ci_fixture,'native/ci_fixture.py'),'runtime':(runtime_prepare,'runtime/runtime_prepare.py'),
+          'consumer':(consumer_compat,'consumer/consumer_compat.py'),
+          'native_cases':(native_cases,'consumer/native_cases.py'),'security_policy':(archive_policy,'apt/archive_policy.py')}
+        for module,relative in members.values():
+            stack.enter_context(mock.patch.object(module,'__file__','/opt/ocv/source/'+relative))
+        stack.enter_context(mock.patch.object(ci_metadata,'Admission',build.program.metadata.Admission))
+        program=outer['issuer'].load_program(plan,io);io.bind_readonly_commands(program)
+        prepared=outer['issuer'].prepare(plan,io,program)
+        real_suite=program.consumer.run_suite
+        stack.enter_context(mock.patch.object(program.consumer,'run_suite',
+          side_effect=lambda root,scratch:real_suite(str(public/'consumer'),scratch)))
+        prepared=outer['issuer'].complete_compatibility(plan,io,prepared,program,
+          '/opt/ocv/source/consumer',str(Path(temp)/'compatibility'))
+        def claim(session):
+            assert session==plan.markers['ocv.session'] and io.own[2]==plan.boot_id
+            io.claimed=True
+        io.claim_boot=claim
+        parent=outer['issuer'].issue_native(plan,io,prepared)
+        materials=construction_entry._materials(parent,prepared,integrated_materials,outer['guard'])
+        exported['PUBLIC-INTEGRATED-SOURCE-MANIFEST.json']=(public/'integrated/PUBLIC-INTEGRATED-SOURCE-MANIFEST.json').read_bytes()
+        files,binding=integrated_materials.bundle_payloads(exported,materials)
+        root=Path('/var/lib/openclaw-retained-verifier-source')/binding['sourceClosureSha256']
+        graph=construction_entry.CheckedGuestModules(construction_entry._GRAPH_KEY,root,exported,outer)
+        modules=graph.load_all();ci=modules['ci_authority'];p=modules['protocol']
+        io._integrated_module_graph=graph
+        source_manifest=json.loads(files['SOURCE-MANIFEST.private.json'])
+        rows={r['path']:r for r in source_manifest['files']}
+        values={name:raw for name,raw in files.items()if name!='SOURCE-MANIFEST.private.json'}
+        stack.enter_context(mock.patch.object(ci,'_physical_bundle',return_value=(root,rows,values)))
+        original_stat=os.lstat
+        def physical_identity(path,*args,**kwargs):
+            name=str(path)
+            if name.startswith('/opt/ocv/source/'):
+                return SimpleNamespace(st_mode=stat.S_IFREG|0o444,st_uid=0,st_gid=0,st_nlink=1)
+            if name in ci._device_appearance_paths():
+                return SimpleNamespace(st_mode=stat.S_IFLNK|0o777,st_uid=0,st_gid=0)
+            return original_stat(path,*args,**kwargs)
+        stack.enter_context(mock.patch.object(os,'lstat',side_effect=physical_identity))
+        def physical_read(path,cap,**options):
+            raw=backing.file(str(path),cap)['raw']
+            assert options.get('expected_sha',sha(raw))==sha(raw)
+            return raw
+        stack.enter_context(mock.patch.object(p,'read_regular',side_effect=physical_read))
+        real_verify=outer['issuer'].verify_signed_package_bindings
+        def audited(*args):
+            if len(args)>3:policy_calls.append(args[3])
+            return real_verify(*args)
+        stack.enter_context(mock.patch.object(outer['issuer'],'verify_signed_package_bindings',side_effect=audited))
+        storage=modules['guest_storage'].NativeStorageIO();unit=modules['guest_unit'].NativeUnitIO()
+        transport=modules['integrated_guest'].LocalGuestTransport();owner=modules['owner_guard'].NativeOwnerGuardIO()
+        ios={'storage':storage,'unit':unit,'mac':transport,'owner_guard':owner}
+        yield SimpleNamespace(parent=parent,prepared=prepared,io=io,backing=backing,outer=outer,
+          program=program,modules=modules,storage=storage,ios=ios,materials=materials,binding=binding,
+          policy_calls=policy_calls,commands=[r[1]for r in backing.calls if r[0]=='command'])
 
 
 @contextmanager
