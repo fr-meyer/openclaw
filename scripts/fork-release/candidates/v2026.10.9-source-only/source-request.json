@@ -1,38 +1,32 @@
 {
-  "schema": "openclaw.fork-source-validation-request.v9",
+  "authorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
   "campaignId": "future-v109-grouped-validation-20261030",
-  "phase": "correction",
-  "source": {
-    "sourceSha": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
-    "sourceTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f",
-    "manifestSha256": "1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13",
-    "inventorySha256": "2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb",
-    "fileSha256": {
-      "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
-      "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
-      "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-      "custom-patches/reconciliation-2026.10.9.json": "9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77"
-    }
+  "executionReservations": {
+    "conditionalImage": 180,
+    "current": 740,
+    "incidental": 50,
+    "pendingValidation": 0
   },
-  "settledUsageSha256": "dfc2cda1a2c7c5f3f4e1bc235e8a6e2aca615e62c5ce20a79102a794779770df",
+  "executionSequence": 10,
   "generation": {
-    "runId": "41043479025",
-    "runAttempt": 1,
-    "pipelineHead": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
     "artifactId": 12972087389,
     "artifactSha256": "4b5386aa4d4f37b378658309f6e58239a1ddc949550d416cc2f6b6ca9ab4cc7c",
-    "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87",
     "generatedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-    "gitDiffSha256": "b3bc34958fd1c467d18a21ace7e9b1e9d64e3af577f043e9fa5553a5a91ef612"
+    "gitDiffSha256": "b3bc34958fd1c467d18a21ace7e9b1e9d64e3af577f043e9fa5553a5a91ef612",
+    "pipelineHead": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+    "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87",
+    "runAttempt": 1,
+    "runId": "41043479025"
   },
+  "phase": "correction",
+  "preparationAttempt": 6,
   "priorRunPins": [
     {
-      "runId": "41110346597",
-      "pipelineHead": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
-      "requestSha256": "23a4c66f2d8cf29c89aa0944bab7e72128af41b7ff8ec9e1fce6fdced270cbd4"
+      "pipelineHead": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+      "requestSha256": "89d0bb0c2ad510164fb7d0397cfa8f6dcb26f717fd93b797165f8f9c67e7bec1",
+      "runId": "41115387068"
     }
   ],
-  "preparationAttempt": 6,
   "profiles": [
     "dependency",
     "types-production",
@@ -50,13 +44,19 @@
     "pipeline-contracts",
     "compatibility"
   ],
-  "authorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
-  "executionSequence": 9,
   "runAllowanceSha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
-  "executionReservations": {
-    "current": 1075,
-    "pendingValidation": 0,
-    "conditionalImage": 180,
-    "incidental": 50
+  "schema": "openclaw.fork-source-validation-request.v9",
+  "settledUsageSha256": "dfc2cda1a2c7c5f3f4e1bc235e8a6e2aca615e62c5ce20a79102a794779770df",
+  "source": {
+    "fileSha256": {
+      "custom-patches/reconciliation-2026.10.9.json": "9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77",
+      "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+      "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+      "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19"
+    },
+    "inventorySha256": "2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb",
+    "manifestSha256": "1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13",
+    "sourceSha": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
+    "sourceTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f"
   }
 }

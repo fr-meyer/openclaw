@@ -312,7 +312,7 @@ def job_deadline(bindings, request, env, profile=None, clock=None):
     policy.need(type(value) is str and value.isdigit(), "v9.explicit_job_clock")
     start = int(value)
     policy.validate_bindings(bindings, active=True, now=clock)
-    cap = policy.PROFILE_MINUTES[profile] if profile is not None else (
+    cap = policy.profile_minutes_for(request)[profile] if profile is not None else (
         45 if request["phase"] == "lock-preparation" else 30)
     policy.need(start <= clock < start + cap * 60 - 60 and clock - start < cap * 60,
         "v9.job_clock_expired")
@@ -992,7 +992,9 @@ def role(run, request):
         run.get("head_branch") == policy.PIPELINE_BRANCH and run.get("path") == policy.WORKFLOW and
         run.get("name") == policy.CAMPAIGN and run.get("display_title") == policy.CAMPAIGN,
         "v9.source_run_role")
-    return {"lock-preparation":45} if request["phase"] == "lock-preparation" else SOURCE_JOBS
+    if request["phase"] == "lock-preparation":
+        return {"lock-preparation":45}
+    return {**SOURCE_JOBS, **{"source (" + p + ")": n for p, n in policy.profile_minutes_for(request).items()}}
 
 
 def replay_failed_preparation(proof, bindings, source_rows, api, expected_attempt, expected_prior):
@@ -1303,7 +1305,7 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
         policy.need(len(rows) == 1 and rows[0][1]["status"] == "completed" and rows[0][1]["conclusion"] == "success" and
             rows[0][1]["head_sha"] == gen["pipelineHead"] and rows[0][2]["preparationAttempt"] == request["preparationAttempt"],
             "v9.genuine_generation_run_required")
-    booking = 160 if diagnostic is not None else 45 if request["phase"] == "lock-preparation" else 1075
+    booking = 160 if diagnostic is not None else policy.budget(request)["phaseMaximumMinutes"]
     current_jobs = jobs_for(api,current)
     allowed_active = "lock-preparation" if diagnostic is None and request["phase"] == "lock-preparation" else "admission"
     active = [j for j in current_jobs if j.get("name") == allowed_active]

@@ -77,6 +77,10 @@ MAXIMUM_PREPARATIONS = 2  # The second job belongs to the one reviewed source co
 ADMISSION_MINUTES = 30
 FINAL_MINUTES = 10
 SOURCE_MINUTES = 1075
+# One reviewed lower ceiling for future same-source corrections; historical
+# requests retain their original map and1075-minute reservation.
+LOWER_PROFILE_MINUTES = dict(zip(PROFILES, (30, 35, 60, 30, 30, 30, 45, 45, 50, 70, 65, 60, 60, 30, 60)))
+LOWER_SOURCE_MINUTES = 740
 IMAGE_FAMILY_MINUTES = 180  # Reserved to a separate image owner; never executable here.
 INCIDENTAL_MINUTES = 50
 MAXIMUM_NEW_MINUTES = 2500
@@ -676,6 +680,28 @@ def validate_request(value, bindings, active=False, now=None):
     return value
 
 
+def profile_minutes_for(request):
+    """Select only a closed prospective schedule; never rewrite old history."""
+    need(type(request) is dict, "v9.profile_schedule_request")
+    if "executionReservations" not in request:
+        return dict(PROFILE_MINUTES)
+    reservations = request["executionReservations"]
+    need(type(reservations) is dict and type(reservations.get("current")) is int and
+        reservations["current"] in (PREPARATION_MINUTES, SOURCE_MINUTES, LOWER_SOURCE_MINUTES),
+        "v9.profile_schedule_reservation")
+    if reservations["current"] == LOWER_SOURCE_MINUTES:
+        need(request.get("runAllowanceSha256") == run_allowance.AUTHORITY_SHA256 and
+            request.get("phase") == "correction" and type(request.get("executionSequence")) is int and
+            10 <= request["executionSequence"] <= 1000 and request.get("profiles") == list(PROFILES),
+            "v9.lower_source_schedule_scope")
+        return dict(LOWER_PROFILE_MINUTES)
+    return dict(PROFILE_MINUTES)
+
+
+def source_minutes_for(request):
+    return ADMISSION_MINUTES + sum(profile_minutes_for(request).values()) + FINAL_MINUTES
+
+
 def budget(request):
     need(type(request) is dict and request.get("schema") == SCHEMA and request.get("phase") in PHASES,
          "v9.budget_request")
@@ -683,9 +709,9 @@ def budget(request):
         need(request["runAllowanceSha256"] == run_allowance.AUTHORITY_SHA256 and
             request["phase"] in ("lock-preparation", "validation", "correction"), "v9.run_grant.budget_scope")
         return {"phase": request["phase"], "phaseMaximumMinutes": PREPARATION_MINUTES if
-            request["phase"] == "lock-preparation" else SOURCE_MINUTES,
+            request["phase"] == "lock-preparation" else source_minutes_for(request),
             "preparationMinutesPerJob": PREPARATION_MINUTES, "maximumLockPreparations": 1002,
-            "admissionMinutes": ADMISSION_MINUTES, "profileMinutes": dict(PROFILE_MINUTES),
+            "admissionMinutes": ADMISSION_MINUTES, "profileMinutes": profile_minutes_for(request),
             "finalMinutes": FINAL_MINUTES, "maximumSourceCampaigns": 1000, "maximumParallelSourceJobs": 3,
             "separateImageFamilyReserveMinutes": IMAGE_FAMILY_MINUTES, "maximumNewMinutes": MAXIMUM_NEW_MINUTES,
             "incidentalMinutes": request["executionReservations"]["incidental"],
@@ -698,10 +724,10 @@ def budget(request):
             type(request["preparationAttempt"]) is int and request["phase"] != "correction",
             "v9.additional_budget_scope")
     result = {"phase": request["phase"], "phaseMaximumMinutes": PREPARATION_MINUTES if
-        request["phase"] == "lock-preparation" else SOURCE_MINUTES,
+        request["phase"] == "lock-preparation" else source_minutes_for(request),
         "preparationMinutesPerJob": PREPARATION_MINUTES, "maximumLockPreparations": 3 if additional else MAXIMUM_PREPARATIONS,
         "admissionMinutes": ADMISSION_MINUTES,
-        "profileMinutes": dict(PROFILE_MINUTES), "finalMinutes": FINAL_MINUTES,
+        "profileMinutes": profile_minutes_for(request), "finalMinutes": FINAL_MINUTES,
         "maximumSourceCampaigns": 1 if additional else 2, "maximumParallelSourceJobs": 3,
         "separateImageFamilyReserveMinutes": IMAGE_FAMILY_MINUTES,
         "incidentalMinutes": INCIDENTAL_MINUTES, "maximumNewMinutes": MAXIMUM_NEW_MINUTES,

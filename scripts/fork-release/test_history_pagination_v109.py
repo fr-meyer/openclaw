@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import math
 import re
+import subprocess
 import time
 import types
 import unittest
@@ -17,6 +18,9 @@ PATH = Path(__file__).with_name("source_validation_v109.py")
 TREE = ast.parse(PATH.read_text())
 CONSTANTS = {"HISTORY_START", "HISTORY_MAXIMUM", "HISTORY_QUERY_MAXIMUM", "HISTORY_SEARCH_CAP", "OLD_SOURCE_BRANCH"}
 FUNCTIONS = {"history_rows", "history_created_range", "now_utc", "provider_epoch"}
+ORIGINAL_API_AST_SHA256 = "e117e534d6b935f2374206e991dcddffa316a820a7d19036a1bc6b221e4edd81"
+CURRENT_API_AST_SHA256 = "7145390b5e7b6222a50205d1bfdeb32282bb45ea90dcecb26d84c909ca4a3fd7"
+HISTORICAL_API_SHA256 = "a4a17794bbe6f490e3e2b339986dbed13885bdc8f7a02fd72fafbba35185e692"
 
 
 class Refusal(RuntimeError):
@@ -63,9 +67,18 @@ def api_owner():
         need(type(raw) is bytes and 0<len(raw)<=maximum,"bounded_json")
         return json.loads(raw)
     module.__dict__.update(time=types.SimpleNamespace(time=lambda:100),urllib=urllib,
-        policy=types.SimpleNamespace(need=need,parse=parse,REPOSITORY="fr-meyer/openclaw",CAMPAIGN="synthetic-control-only"))
-    nodes=[node for node in TREE.body if isinstance(node,ast.ClassDef) and node.name in ("API","NoRedirect")]
-    assert {node.name for node in nodes}=={"API","NoRedirect"}
+        re=re,subprocess=subprocess,RunGrantRefusal=Refusal,LockRefusal=Refusal,
+        diagnostics=[],policy=types.SimpleNamespace(need=need,parse=parse,Refusal=Refusal,
+            REPOSITORY="fr-meyer/openclaw",CAMPAIGN="synthetic-control-only"))
+    module.emit=module.diagnostics.append
+    functions={"failure_category","emit_failure_diagnostic","provider_call_family"}
+    constants={"_FAILURE_PHASE","_FAILURE_PHASES"}
+    nodes=[node for node in TREE.body if
+        isinstance(node,ast.ClassDef) and node.name in ("API","NoRedirect") or
+        isinstance(node,ast.FunctionDef) and node.name in functions or
+        isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id in constants for t in node.targets)]
+    assert {node.name for node in nodes if isinstance(node,ast.ClassDef)}=={"API","NoRedirect"}
+    assert {node.name for node in nodes if isinstance(node,ast.FunctionDef)}==functions
     exec(compile(ast.Module(body=nodes,type_ignores=[]),str(PATH),"exec"),module.__dict__)
     return module
 
@@ -215,11 +228,19 @@ class HistoryPaginationTests(unittest.TestCase):
 
     def test_original_api_fixed_route_and_redirect_guards_unchanged(self):
         current_class = next(n for n in TREE.body if isinstance(n, ast.ClassDef) and n.name == "API")
-        # The class source remains byte-identical to aa438c36. Python3.12+
-        # adds three explicit empty type_params fields; normalize only those,
-        # preserving the original security pin and every executable AST field.
+        # Preserve the authentic historical pin separately from the exact
+        # reviewed diagnostic/HTTP502 successor. Normalize only positively
+        # empty type_params; every other executable AST field remains pinned.
+        raw=PATH.with_name('fixtures').joinpath('v109-api-before-admission-diagnostics.py.txt').read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),HISTORICAL_API_SHA256)
+        historical=ast.parse(raw)
+        self.assertEqual(len(historical.body),1)
+        self.assertIsInstance(historical.body[0],ast.ClassDef)
+        self.assertEqual(historical.body[0].name,'API')
+        self.assertEqual(hashlib.sha256(portable_api_ast(historical.body[0]).encode()).hexdigest(),
+            ORIGINAL_API_AST_SHA256)
         self.assertEqual(hashlib.sha256(portable_api_ast(current_class).encode()).hexdigest(),
-            "e117e534d6b935f2374206e991dcddffa316a820a7d19036a1bc6b221e4edd81")
+            CURRENT_API_AST_SHA256)
 
 
 class ApiSecurityTests(unittest.TestCase):
@@ -251,6 +272,10 @@ class ApiSecurityTests(unittest.TestCase):
         response=Response("https://other.invalid/");opener=Opener(response)
         with self.assertRaisesRegex(Refusal,"api_redirect"):m.API("SYNTHETIC_ONLY",130,opener)(path)
         self.assertEqual(len(opener.calls),1);self.assertEqual(response.reads,[])
+        self.assertEqual(len(m.diagnostics),1)
+        self.assertEqual(m.diagnostics[0]['operation'],'open')
+        self.assertEqual(m.diagnostics[0]['getAttempt'],1)
+        self.assertEqual(m.diagnostics[0]['status'],'refused')
 
     def test_missing_token_or_expired_deadline_refuses_before_transport(self):
         m=api_owner();opener=Opener(Response("https://api.github.com/synthetic"))
@@ -267,6 +292,11 @@ class ApiSecurityTests(unittest.TestCase):
         api=m.API("SYNTHETIC_ONLY",130,opener)
         with self.assertRaisesRegex(Refusal,"bounded_json"):api(path)
         self.assertEqual(api.cache,{})
+        self.assertEqual(len(opener.calls),1)
+        self.assertEqual(len(m.diagnostics),1)
+        self.assertEqual(m.diagnostics[0]['operation'],'parse')
+        self.assertEqual(m.diagnostics[0]['getAttempt'],1)
+        self.assertEqual(m.diagnostics[0]['status'],'refused')
 
     def test_only_explicit_empty_new_ast_fields_normalize_and_input_stays_unchanged(self):
         original=next(n for n in TREE.body if isinstance(n,ast.ClassDef)and n.name=="API")
@@ -287,7 +317,16 @@ class ApiSecurityTests(unittest.TestCase):
         method=next(n for n in weakened.body if isinstance(n,ast.FunctionDef)and n.name=="__call__")
         method.body[0].value.args[0]=ast.Constant(value=True)
         self.assertNotEqual(hashlib.sha256(portable_api_ast(weakened).encode()).hexdigest(),
-            "e117e534d6b935f2374206e991dcddffa316a820a7d19036a1bc6b221e4edd81")
+            CURRENT_API_AST_SHA256)
+
+    def test_historical_api_pin_rejects_guard_tampering(self):
+        raw=PATH.with_name('fixtures').joinpath('v109-api-before-admission-diagnostics.py.txt').read_bytes()
+        historical=ast.parse(raw).body[0]
+        self.assertEqual(hashlib.sha256(portable_api_ast(historical).encode()).hexdigest(),ORIGINAL_API_AST_SHA256)
+        weakened=deepcopy(historical)
+        method=next(n for n in weakened.body if isinstance(n,ast.FunctionDef)and n.name=='__call__')
+        method.body[0].value.args[0]=ast.Constant(value=True)
+        self.assertNotEqual(hashlib.sha256(portable_api_ast(weakened).encode()).hexdigest(),ORIGINAL_API_AST_SHA256)
 
 
 if __name__ == "__main__":

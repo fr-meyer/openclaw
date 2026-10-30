@@ -90,33 +90,33 @@ jobs:
       matrix:
         include:
           - profile: dependency
-            minutes: 60
+            minutes: 30
           - profile: types-production
-            minutes: 90
+            minutes: 35
           - profile: types-tests
-            minutes: 90
+            minutes: 60
           - profile: types-scripts
-            minutes: 90
+            minutes: 30
           - profile: workboard-1
-            minutes: 60
+            minutes: 30
           - profile: workboard-2
-            minutes: 60
+            minutes: 30
           - profile: models-1
-            minutes: 60
+            minutes: 45
           - profile: models-2
-            minutes: 60
+            minutes: 45
           - profile: sqlite
-            minutes: 60
+            minutes: 50
           - profile: doctor-1
-            minutes: 90
+            minutes: 70
           - profile: doctor-2
-            minutes: 75
+            minutes: 65
           - profile: doctor-3
-            minutes: 75
+            minutes: 60
           - profile: memory
             minutes: 60
           - profile: pipeline-contracts
-            minutes: 45
+            minutes: 30
           - profile: compatibility
             minutes: 60
     env:

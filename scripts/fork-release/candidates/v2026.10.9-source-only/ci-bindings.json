@@ -1,170 +1,1216 @@
 {
-  "schema": "openclaw.v109.ci-bindings.v1",
-  "status": "APPROVED_CI",
-  "campaignId": "future-v109-grouped-validation-20261030",
-  "repository": "fr-meyer/openclaw",
-  "workflow": ".github/workflows/future-v109-source-validation.yml",
-  "pipelineBranch": "task/v107-source-binding",
-  "sourceBranch": "prep/v2026.10.9-remediation",
+  "authorization": {
+    "approvedAt": "2026-10-30T03:14:21Z",
+    "cloudAccessAllowedHere": false,
+    "diagnosticByteCeiling": 67108864,
+    "expiresAt": "2026-11-03T03:14:21Z",
+    "imageExecutionAllowedHere": false,
+    "label": "future-v109-grouped-20261030T031421Z",
+    "lockArtifactByteCeiling": 2097152,
+    "maximumLockPreparations": 2,
+    "maximumParallelSourceJobs": 3,
+    "maximumRunnerMinutes": 2500,
+    "maximumSourceCampaigns": 2,
+    "newSecretsAllowedHere": false,
+    "schema": "openclaw.v109.public-ci-authorization.v1"
+  },
   "baseBranch": "release-pipeline/v105-image-only-20261024",
   "baseSha": "a65f70c5dad17b39bc3ee26ba92cde6d00bfb259",
-  "upstream": {
-    "tag": "v2026.10.9",
-    "tagObject": "88a19e0d8677804d8ec98e30a3a3a3a9308ebee0",
-    "commit": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
-    "tree": "3ccfb9632d8f30196d0f9d94f92f8cc7f07b2be7"
-  },
   "baseline": {
-    "sourceSha": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
     "pipelineHead": "37400d942839bee0b92852037d6f8bf99e60358c",
-    "sourceRunId": "40901336241",
+    "publicProofSha256": "dfc2cda1a2c7c5f3f4e1bc235e8a6e2aca615e62c5ce20a79102a794779770df",
     "runCount": 258,
     "runnerMinutes": 2944,
-    "publicProofSha256": "dfc2cda1a2c7c5f3f4e1bc235e8a6e2aca615e62c5ce20a79102a794779770df"
+    "sourceRunId": "40901336241",
+    "sourceSha": "e6c4786dafbc8308661ea8fa14a81e06873d1630"
   },
-  "preparation": {
-    "sourceSha": "ba04217f6642091b94f396669318d068e6007ed7",
-    "sourceTree": "ed8cc0d741194e7627b875ea256dfd7c5de43640",
-    "manifestSha256": "4ad3b13c2fb90650f618727f0508f4168c269820525d3629e801722c09287778",
-    "inventorySha256": "2f3eee5c7e4a145b64962560c85ff8718eb2fe4bd603e56c417bc9bcd245c497",
-    "fileSha256": {
-      "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
-      "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
-      "pnpm-lock.yaml": "07cbdb13cc0fc5c6dd25b4acdfe927eabe4ec566e6cfab9fb63d224c25765002",
-      "custom-patches/reconciliation-2026.10.9.json": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591"
-    }
-  },
-  "preparationCorrection": {
-    "schema": "openclaw.v109.additional-pipeline-preparation-recovery.v1",
-    "source": {
-      "sourceSha": "ba04217f6642091b94f396669318d068e6007ed7",
-      "sourceTree": "ed8cc0d741194e7627b875ea256dfd7c5de43640",
-      "manifestSha256": "4ad3b13c2fb90650f618727f0508f4168c269820525d3629e801722c09287778",
-      "inventorySha256": "2f3eee5c7e4a145b64962560c85ff8718eb2fe4bd603e56c417bc9bcd245c497",
-      "fileSha256": {
-        "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
-        "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
-        "pnpm-lock.yaml": "07cbdb13cc0fc5c6dd25b4acdfe927eabe4ec566e6cfab9fb63d224c25765002",
-        "custom-patches/reconciliation-2026.10.9.json": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591"
-      }
-    },
-    "priorPhase": "lock-preparation",
-    "priorFailures": [
+  "campaignId": "future-v109-grouped-validation-20261030",
+  "ciRunGrant": {
+    "approvedAt": "2026-10-30T06:12:01Z",
+    "authoritySha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
+    "bookedAdditionalAttempts": [
       {
-        "runId": "40997868140",
-        "pipelineHead": "84b825aca15a58191e718a958a356dcc305d4e47",
-        "requestSha256": "cf52903c8a20e94684e3a6fcb5e947b8336eca62e66f0744efcda4d4d054a9ef"
+        "nativeAttempt": 1,
+        "runId": "41019222766",
+        "runnerMinutes": 1
       },
       {
-        "runId": "41003661031",
-        "pipelineHead": "409704dd078c83d2f41ed709660633c619b172be",
-        "requestSha256": "5c4f7d4a56d959ba21d77dd00ca6868a49eb18519ada393e639d002fe68ae5ff"
+        "nativeAttempt": 1,
+        "runId": "41019222867",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019222870",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019222915",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019222926",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019223073",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019227755",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019227757",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019227758",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019227867",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019227904",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019231323",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019231335",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019231411",
+        "runnerMinutes": 18
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019231423",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019231438",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019231465",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019231486",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019231510",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019231519",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41019231580",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026683372",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026683762",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026683808",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026683809",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026683852",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026683914",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026690227",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026690247",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026690282",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026690360",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026690452",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026693759",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026693763",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026693769",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026693776",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026693778",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026693798",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026693830",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026693844",
+        "runnerMinutes": 17
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026693912",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41026693943",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034927657",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034928083",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034928084",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034928102",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034928168",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034928174",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034935067",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034935105",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034935124",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034935130",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034935318",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034937488",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034937548",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034937551",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034937553",
+        "runnerMinutes": 9
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034937557",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034937590",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034937617",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034937637",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034937644",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41034937668",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043466837",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043467094",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043467097",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043467117",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043467129",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043467136",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043475484",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043475538",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043475547",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043475635",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043475779",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043478952",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043479025",
+        "runnerMinutes": 18
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043479202",
+        "runnerMinutes": 3
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043479251",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043479278",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043479314",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043479336",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043479355",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043479374",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41043479426",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052072101",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052072112",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052072171",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052072217",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052072224",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052072349",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052088075",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052088140",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052088173",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052088231",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052088309",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052090696",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052090723",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052090817",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052090922",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052090936",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052090949",
+        "runnerMinutes": 426
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052090981",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052090991",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052091074",
+        "runnerMinutes": 3
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41052091105",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079896528",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079896574",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079896613",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079896799",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079896819",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079897120",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079918272",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079918283",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079918435",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079918661",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079918804",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925031",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925114",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925118",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925135",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925136",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925140",
+        "runnerMinutes": 3
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925183",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925204",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925249",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925410",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41079925426",
+        "runnerMinutes": 70
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092680256",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092680268",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092680300",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092680466",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092680588",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092681030",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092694666",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092694681",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092694704",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092694846",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092695065",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698129",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698155",
+        "runnerMinutes": 64
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698192",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698229",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698243",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698300",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698306",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698380",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698397",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698452",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41092698498",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101620150",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101620249",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101620255",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101620534",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101622203",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101625553",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101634569",
+        "runnerMinutes": 3
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101634587",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101634723",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101634878",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101634910",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101636619",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101636656",
+        "runnerMinutes": 7
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101636676",
+        "runnerMinutes": 4
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101636703",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101636739",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101636749",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101636785",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101636793",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101636804",
+        "runnerMinutes": 14
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101636921",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41101637062",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107778312",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107778357",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107778443",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107778533",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107778598",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107783948",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107783951",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107783974",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107784007",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107784020",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107784043",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107784072",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107784075",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107784086",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107784105",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41107784263",
+        "runnerMinutes": 12
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110341833",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110341847",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110341957",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110342045",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110342531",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110346159",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110346251",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110346313",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110346337",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110346408",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110346446",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110346539",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110346547",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110346597",
+        "runnerMinutes": 14
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110346873",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41110348364",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115382365",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115382398",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115382453",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115382585",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115382629",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115386540",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115386670",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115386750",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115386841",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115386852",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115386992",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115387068",
+        "runnerMinutes": 443
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115387082",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115387085",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115387094",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41115387375",
+        "runnerMinutes": 1
       }
     ],
-    "failedPreparationAttempts": [
-      1,
-      2
-    ],
-    "nextPreparationAttempt": 3,
-    "evidenceSha256": {
-      "1": "af64a6728b88d0e520f24722871ef760c5181e1492b9142b1f9af0944c060856",
-      "2": "15efc4c98e7caccc8f532ec58f676ed642a9aa8670cf0d7a9a7d42f62a87897d"
+    "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
+    "diagnosticBytes": 67108864,
+    "expiresAt": "2026-11-03T03:14:21Z",
+    "maximumAdditionalAttempts": 1000,
+    "maximumNewRunnerMinutes": 2500,
+    "maximumSourceParallelJobs": 3,
+    "maximumStageAttempts": 1042,
+    "moneyCeilingUSD": "2.25",
+    "nextExecution": {
+      "phase": "correction",
+      "preparationAttempt": 6,
+      "priorSourceRun": {
+        "pipelineHead": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
+        "requestSha256": "89d0bb0c2ad510164fb7d0397cfa8f6dcb26f717fd93b797165f8f9c67e7bec1",
+        "runId": "41115387068"
+      },
+      "reasonCode": "reviewed_pipeline_correction",
+      "requestSha256": "96777886e2a7fde1bdd3dbe914e91e5ada977f786964f0d9008174546074a725",
+      "reservations": {
+        "conditionalImage": 180,
+        "current": 740,
+        "incidental": 50,
+        "pendingValidation": 0
+      },
+      "reviewSha256": "51326a8af7ed926c78dde9c88aff6346d5731ce629d10627b71a08b09dfc1b27",
+      "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
+      "sequence": 10,
+      "source": {
+        "fileSha256": {
+          "custom-patches/reconciliation-2026.10.9.json": "9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77",
+          "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+          "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+          "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19"
+        },
+        "inventorySha256": "2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb",
+        "manifestSha256": "1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13",
+        "sourceSha": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
+        "sourceTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f"
+      },
+      "status": "REVIEWED"
     },
-    "approval": {
-      "schema": "openclaw.v109.additional-preparation-approval.v1",
-      "status": "DISARMED",
-      "approvalEvidenceSha256": null,
-      "approvedAt": null,
-      "expiresAt": "2026-11-03T03:14:21Z",
-      "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
-      "additionalPipelineCorrections": 1,
-      "additionalLockPreparations": 1,
-      "additionalSourceCampaigns": 0,
-      "optionalCorrectionsAllowed": false
-    }
-  },
-  "validation": {
-    "source": {
-      "sourceSha": "edd010829dcb622d7dc60dc90f7097048cb78819",
-      "sourceTree": "2e553992d3f93937dcb4b85683e4aae24a087074",
-      "manifestSha256": "9032a1666ee82ae7882d280c5bbb5a6e02e127c7c1526b61aef3667973621c58",
-      "inventorySha256": "07d0d8e96cb428ce8151e36d8c08eb4bc0cd055f4185186a1f40ac0a6f1add71",
-      "fileSha256": {
-        "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
-        "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
-        "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-        "custom-patches/reconciliation-2026.10.9.json": "7f3ef17a22f8afaf709ae252f96068ae49e9037f52e0cd9cb29c479b74850303"
-      }
-    },
-    "generation": {
-      "runId": "41043479025",
-      "runAttempt": 1,
-      "pipelineHead": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
-      "artifactId": 12972087389,
-      "artifactSha256": "4b5386aa4d4f37b378658309f6e58239a1ddc949550d416cc2f6b6ca9ab4cc7c",
-      "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87",
-      "generatedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-      "gitDiffSha256": "b3bc34958fd1c467d18a21ace7e9b1e9d64e3af577f043e9fa5553a5a91ef612"
-    },
-    "unchangedTreeSha256": "3981f4ab7a5e4736c11ce4356b65b706e04a6bad6e313f176791f4e93149e3f3",
-    "preparationAttempt": 6
+    "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
+    "schema": "openclaw.v109.bounded-ci-run-grant.v1",
+    "status": "APPROVED"
   },
   "correction": {
-    "source": {
-      "sourceSha": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
-      "sourceTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f",
-      "manifestSha256": "1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13",
-      "inventorySha256": "2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb",
-      "fileSha256": {
-        "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
-        "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
-        "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-        "custom-patches/reconciliation-2026.10.9.json": "9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77"
-      }
-    },
-    "parentSource": "edd010829dcb622d7dc60dc90f7097048cb78819",
     "changedPaths": [
       "custom-patches/reconciliation-2026.10.9.json",
       "extensions/workboard/openclaw.plugin.json",
       "src/state/openclaw-agent-db-lease.exited-owner.test.ts"
     ],
     "contentSha256": {
-      "src/state/openclaw-agent-db-lease.exited-owner.test.ts": "5cbe5159cb2b7b4f38cf123b881f59a69ea4103ded371d06845ba5589703bffa",
       "custom-patches/reconciliation-2026.10.9.json": "9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77",
-      "extensions/workboard/openclaw.plugin.json": "77d6f990b46a29a60d7a6670ce9f23c58def23621355168900471ab7b574a226"
+      "extensions/workboard/openclaw.plugin.json": "77d6f990b46a29a60d7a6670ce9f23c58def23621355168900471ab7b574a226",
+      "src/state/openclaw-agent-db-lease.exited-owner.test.ts": "5cbe5159cb2b7b4f38cf123b881f59a69ea4103ded371d06845ba5589703bffa"
     },
-    "unchangedTreeSha256": "c2077e4d491e08cb86a4f70dbc62832396becfa8b76e564c5b39fae5ddedfbfe",
-    "priorValidation": {
-      "runId": "41052090949",
-      "pipelineHead": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
-      "requestSha256": "139ef96602ea6920715a9802a829e60424e0ddc3187e1d6a8196e7e9d2470cb9"
-    },
-    "preparationAttempt": 6,
     "generation": {
-      "runId": "41043479025",
-      "runAttempt": 1,
-      "pipelineHead": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
       "artifactId": 12972087389,
       "artifactSha256": "4b5386aa4d4f37b378658309f6e58239a1ddc949550d416cc2f6b6ca9ab4cc7c",
-      "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87",
       "generatedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-      "gitDiffSha256": "b3bc34958fd1c467d18a21ace7e9b1e9d64e3af577f043e9fa5553a5a91ef612"
-    }
-  },
-  "authorization": {
-    "schema": "openclaw.v109.public-ci-authorization.v1",
-    "label": "future-v109-grouped-20261030T031421Z",
-    "approvedAt": "2026-10-30T03:14:21Z",
-    "expiresAt": "2026-11-03T03:14:21Z",
-    "maximumRunnerMinutes": 2500,
-    "maximumSourceCampaigns": 2,
-    "maximumParallelSourceJobs": 3,
-    "maximumLockPreparations": 2,
-    "diagnosticByteCeiling": 67108864,
-    "lockArtifactByteCeiling": 2097152,
-    "imageExecutionAllowedHere": false,
-    "cloudAccessAllowedHere": false,
-    "newSecretsAllowedHere": false
+      "gitDiffSha256": "b3bc34958fd1c467d18a21ace7e9b1e9d64e3af577f043e9fa5553a5a91ef612",
+      "pipelineHead": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87",
+      "runAttempt": 1,
+      "runId": "41043479025"
+    },
+    "parentSource": "edd010829dcb622d7dc60dc90f7097048cb78819",
+    "preparationAttempt": 6,
+    "priorValidation": {
+      "pipelineHead": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+      "requestSha256": "139ef96602ea6920715a9802a829e60424e0ddc3187e1d6a8196e7e9d2470cb9",
+      "runId": "41052090949"
+    },
+    "source": {
+      "fileSha256": {
+        "custom-patches/reconciliation-2026.10.9.json": "9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77",
+        "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+        "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+        "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19"
+      },
+      "inventorySha256": "2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb",
+      "manifestSha256": "1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13",
+      "sourceSha": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
+      "sourceTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f"
+    },
+    "unchangedTreeSha256": "c2077e4d491e08cb86a4f70dbc62832396becfa8b76e564c5b39fae5ddedfbfe"
   },
   "newRecoveryTests": [
     "extensions/codex/src/app-server/run-attempt.steering-media.test.ts",
@@ -204,1069 +1250,103 @@
     "test/scripts/clawhub-cli-security-pin.test.ts",
     "test/scripts/discord-sdk-zod.test.ts"
   ],
-  "ciRunGrant": {
-    "approvedAt": "2026-10-30T06:12:01Z",
-    "authoritySha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
-    "bookedAdditionalAttempts": [
-      {
-        "runId": "41019222766",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41019222867",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41019222870",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41019222915",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41019222926",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41019223073",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41019227755",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41019227757",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41019227758",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41019227867",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41019227904",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41019231323",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41019231335",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41019231411",
-        "nativeAttempt": 1,
-        "runnerMinutes": 18
-      },
-      {
-        "runId": "41019231423",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41019231438",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41019231465",
-        "nativeAttempt": 1,
-        "runnerMinutes": 2
-      },
-      {
-        "runId": "41019231486",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41019231510",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41019231519",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41019231580",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41026683372",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41026683762",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41026683808",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41026683809",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41026683852",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41026683914",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41026690227",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41026690247",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41026690282",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41026690360",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41026690452",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41026693759",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41026693763",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41026693769",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41026693776",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41026693778",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41026693798",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41026693830",
-        "nativeAttempt": 1,
-        "runnerMinutes": 2
-      },
-      {
-        "runId": "41026693844",
-        "nativeAttempt": 1,
-        "runnerMinutes": 17
-      },
-      {
-        "runId": "41026693912",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41026693943",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41034927657",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41034928083",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41034928084",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41034928102",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41034928168",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41034928174",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41034935067",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41034935105",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41034935124",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41034935130",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41034935318",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41034937488",
-        "nativeAttempt": 1,
-        "runnerMinutes": 2
-      },
-      {
-        "runId": "41034937548",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41034937551",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41034937553",
-        "nativeAttempt": 1,
-        "runnerMinutes": 9
-      },
-      {
-        "runId": "41034937557",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41034937590",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41034937617",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41034937637",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41034937644",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41034937668",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043466837",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41043467094",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043467097",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043467117",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043467129",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043467136",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41043475484",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043475538",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41043475547",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41043475635",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41043475779",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043478952",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41043479025",
-        "nativeAttempt": 1,
-        "runnerMinutes": 18
-      },
-      {
-        "runId": "41043479202",
-        "nativeAttempt": 1,
-        "runnerMinutes": 3
-      },
-      {
-        "runId": "41043479251",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043479278",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41043479314",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043479336",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41043479355",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043479374",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41043479426",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41052072101",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41052072112",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41052072171",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41052072217",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41052072224",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41052072349",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41052088075",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41052088140",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41052088173",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41052088231",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41052088309",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41052090696",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41052090723",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41052090817",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41052090922",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41052090936",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41052090949",
-        "nativeAttempt": 1,
-        "runnerMinutes": 426
-      },
-      {
-        "runId": "41052090981",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41052090991",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41052091074",
-        "nativeAttempt": 1,
-        "runnerMinutes": 3
-      },
-      {
-        "runId": "41052091105",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079896528",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41079896574",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079896613",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079896799",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079896819",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079897120",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41079918272",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079918283",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079918435",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41079918661",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41079918804",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41079925031",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079925114",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41079925118",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079925135",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41079925136",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079925140",
-        "nativeAttempt": 1,
-        "runnerMinutes": 3
-      },
-      {
-        "runId": "41079925183",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41079925204",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41079925249",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079925410",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41079925426",
-        "nativeAttempt": 1,
-        "runnerMinutes": 70
-      },
-      {
-        "runId": "41092680256",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092680268",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092680300",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41092680466",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41092680588",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092681030",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092694666",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092694681",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092694704",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41092694846",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41092695065",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41092698129",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41092698155",
-        "nativeAttempt": 1,
-        "runnerMinutes": 64
-      },
-      {
-        "runId": "41092698192",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092698229",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41092698243",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092698300",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092698306",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092698380",
-        "nativeAttempt": 1,
-        "runnerMinutes": 2
-      },
-      {
-        "runId": "41092698397",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41092698452",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41092698498",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41101620150",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41101620249",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41101620255",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101620534",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101622203",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101625553",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101634569",
-        "nativeAttempt": 1,
-        "runnerMinutes": 3
-      },
-      {
-        "runId": "41101634587",
-        "nativeAttempt": 1,
-        "runnerMinutes": 2
-      },
-      {
-        "runId": "41101634723",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101634878",
-        "nativeAttempt": 1,
-        "runnerMinutes": 2
-      },
-      {
-        "runId": "41101634910",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101636619",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41101636656",
-        "nativeAttempt": 1,
-        "runnerMinutes": 7
-      },
-      {
-        "runId": "41101636676",
-        "nativeAttempt": 1,
-        "runnerMinutes": 4
-      },
-      {
-        "runId": "41101636703",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41101636739",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101636749",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101636785",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101636793",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101636804",
-        "nativeAttempt": 1,
-        "runnerMinutes": 14
-      },
-      {
-        "runId": "41101636921",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41101637062",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41107778312",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41107778357",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41107778443",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41107778533",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41107778598",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41107783948",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41107783951",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41107783974",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41107784007",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41107784020",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41107784043",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41107784072",
-        "nativeAttempt": 1,
-        "runnerMinutes": 2
-      },
-      {
-        "runId": "41107784075",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41107784086",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41107784105",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41107784263",
-        "nativeAttempt": 1,
-        "runnerMinutes": 12
-      },
-      {
-        "runId": "41110341833",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41110341847",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41110341957",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41110342045",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41110342531",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41110346159",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41110346251",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41110346313",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
-      },
-      {
-        "runId": "41110346337",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41110346408",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41110346446",
-        "nativeAttempt": 1,
-        "runnerMinutes": 2
-      },
-      {
-        "runId": "41110346539",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41110346547",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41110346597",
-        "nativeAttempt": 1,
-        "runnerMinutes": 14
-      },
-      {
-        "runId": "41110346873",
-        "nativeAttempt": 1,
-        "runnerMinutes": 0
-      },
-      {
-        "runId": "41110348364",
-        "nativeAttempt": 1,
-        "runnerMinutes": 1
+  "pipelineBranch": "task/v107-source-binding",
+  "preparation": {
+    "fileSha256": {
+      "custom-patches/reconciliation-2026.10.9.json": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591",
+      "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+      "pnpm-lock.yaml": "07cbdb13cc0fc5c6dd25b4acdfe927eabe4ec566e6cfab9fb63d224c25765002",
+      "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19"
+    },
+    "inventorySha256": "2f3eee5c7e4a145b64962560c85ff8718eb2fe4bd603e56c417bc9bcd245c497",
+    "manifestSha256": "4ad3b13c2fb90650f618727f0508f4168c269820525d3629e801722c09287778",
+    "sourceSha": "ba04217f6642091b94f396669318d068e6007ed7",
+    "sourceTree": "ed8cc0d741194e7627b875ea256dfd7c5de43640"
+  },
+  "preparationCorrection": {
+    "approval": {
+      "additionalLockPreparations": 1,
+      "additionalPipelineCorrections": 1,
+      "additionalSourceCampaigns": 0,
+      "approvalEvidenceSha256": null,
+      "approvedAt": null,
+      "expiresAt": "2026-11-03T03:14:21Z",
+      "optionalCorrectionsAllowed": false,
+      "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
+      "schema": "openclaw.v109.additional-preparation-approval.v1",
+      "status": "DISARMED"
+    },
+    "evidenceSha256": {
+      "1": "af64a6728b88d0e520f24722871ef760c5181e1492b9142b1f9af0944c060856",
+      "2": "15efc4c98e7caccc8f532ec58f676ed642a9aa8670cf0d7a9a7d42f62a87897d"
+    },
+    "failedPreparationAttempts": [
+      1,
+      2
+    ],
+    "nextPreparationAttempt": 3,
+    "priorFailures": [
+      {
+        "pipelineHead": "84b825aca15a58191e718a958a356dcc305d4e47",
+        "requestSha256": "cf52903c8a20e94684e3a6fcb5e947b8336eca62e66f0744efcda4d4d054a9ef",
+        "runId": "40997868140"
+      },
+      {
+        "pipelineHead": "409704dd078c83d2f41ed709660633c619b172be",
+        "requestSha256": "5c4f7d4a56d959ba21d77dd00ca6868a49eb18519ada393e639d002fe68ae5ff",
+        "runId": "41003661031"
       }
     ],
-    "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
-    "diagnosticBytes": 67108864,
-    "expiresAt": "2026-11-03T03:14:21Z",
-    "maximumAdditionalAttempts": 1000,
-    "maximumNewRunnerMinutes": 2500,
-    "maximumSourceParallelJobs": 3,
-    "maximumStageAttempts": 1042,
-    "moneyCeilingUSD": "2.25",
-    "nextExecution": {
-      "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
-      "status": "REVIEWED",
-      "sequence": 9,
-      "phase": "correction",
-      "preparationAttempt": 6,
-      "source": {
-        "sourceSha": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
-        "sourceTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f",
-        "manifestSha256": "1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13",
-        "inventorySha256": "2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb",
-        "fileSha256": {
-          "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
-          "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
-          "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-          "custom-patches/reconciliation-2026.10.9.json": "9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77"
-        }
+    "priorPhase": "lock-preparation",
+    "schema": "openclaw.v109.additional-pipeline-preparation-recovery.v1",
+    "source": {
+      "fileSha256": {
+        "custom-patches/reconciliation-2026.10.9.json": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591",
+        "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+        "pnpm-lock.yaml": "07cbdb13cc0fc5c6dd25b4acdfe927eabe4ec566e6cfab9fb63d224c25765002",
+        "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19"
       },
-      "priorSourceRun": {
-        "runId": "41110346597",
-        "pipelineHead": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
-        "requestSha256": "23a4c66f2d8cf29c89aa0944bab7e72128af41b7ff8ec9e1fce6fdced270cbd4"
-      },
-      "reasonCode": "prior_failure",
-      "reviewSha256": "6ec939733632467dd38ad89f2e8af56e5c5eeca36e9176ae2b76f2e8fbfb7215",
-      "requestSha256": "89d0bb0c2ad510164fb7d0397cfa8f6dcb26f717fd93b797165f8f9c67e7bec1",
-      "reservations": {
-        "current": 1075,
-        "pendingValidation": 0,
-        "conditionalImage": 180,
-        "incidental": 50
-      }
+      "inventorySha256": "2f3eee5c7e4a145b64962560c85ff8718eb2fe4bd603e56c417bc9bcd245c497",
+      "manifestSha256": "4ad3b13c2fb90650f618727f0508f4168c269820525d3629e801722c09287778",
+      "sourceSha": "ba04217f6642091b94f396669318d068e6007ed7",
+      "sourceTree": "ed8cc0d741194e7627b875ea256dfd7c5de43640"
+    }
+  },
+  "repository": "fr-meyer/openclaw",
+  "schema": "openclaw.v109.ci-bindings.v1",
+  "sourceBranch": "prep/v2026.10.9-remediation",
+  "status": "APPROVED_CI",
+  "upstream": {
+    "commit": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
+    "tag": "v2026.10.9",
+    "tagObject": "88a19e0d8677804d8ec98e30a3a3a3a9308ebee0",
+    "tree": "3ccfb9632d8f30196d0f9d94f92f8cc7f07b2be7"
+  },
+  "validation": {
+    "generation": {
+      "artifactId": 12972087389,
+      "artifactSha256": "4b5386aa4d4f37b378658309f6e58239a1ddc949550d416cc2f6b6ca9ab4cc7c",
+      "generatedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+      "gitDiffSha256": "b3bc34958fd1c467d18a21ace7e9b1e9d64e3af577f043e9fa5553a5a91ef612",
+      "pipelineHead": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87",
+      "runAttempt": 1,
+      "runId": "41043479025"
     },
-    "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
-    "schema": "openclaw.v109.bounded-ci-run-grant.v1",
-    "status": "APPROVED"
-  }
+    "preparationAttempt": 6,
+    "source": {
+      "fileSha256": {
+        "custom-patches/reconciliation-2026.10.9.json": "7f3ef17a22f8afaf709ae252f96068ae49e9037f52e0cd9cb29c479b74850303",
+        "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+        "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+        "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19"
+      },
+      "inventorySha256": "07d0d8e96cb428ce8151e36d8c08eb4bc0cd055f4185186a1f40ac0a6f1add71",
+      "manifestSha256": "9032a1666ee82ae7882d280c5bbb5a6e02e127c7c1526b61aef3667973621c58",
+      "sourceSha": "edd010829dcb622d7dc60dc90f7097048cb78819",
+      "sourceTree": "2e553992d3f93937dcb4b85683e4aae24a087074"
+    },
+    "unchangedTreeSha256": "3981f4ab7a5e4736c11ce4356b65b706e04a6bad6e313f176791f4e93149e3f3"
+  },
+  "workflow": ".github/workflows/future-v109-source-validation.yml"
 }

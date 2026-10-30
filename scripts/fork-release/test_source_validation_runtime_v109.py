@@ -299,6 +299,10 @@ class RuntimeTests(unittest.TestCase):
         path=OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json'
         current=policy.parse(path.read_bytes())
         before=deepcopy(current)
+        # The historical supplemental model predates the later execution grant.
+        # Never carry its current correction plan into a view with no correction.
+        later_grant=deepcopy(current.pop("ciRunGrant",None))
+        self.assertIsInstance(later_grant,dict)
         from test_third_preparation_contract_v109 import recovery_binding
         supplemental=recovery_binding(True)
         current["status"]="APPROVED_CI"
@@ -306,6 +310,9 @@ class RuntimeTests(unittest.TestCase):
         current["preparationCorrection"]=deepcopy(supplemental["preparationCorrection"])
         current["preparationCorrection"]["source"]=deepcopy(current["preparation"])
         policy.validate_bindings(current)
+        inconsistent=deepcopy(current);inconsistent["ciRunGrant"]=later_grant
+        with self.assertRaisesRegex(policy.Refusal,"closed_fixture_correction_plan"):
+            policy.validate_bindings(inconsistent)
         with self.assertRaises(policy.Refusal):policy.request_for(current,"lock-preparation",1)
         in_memory=policy.encode(current);original_read=Path.read_bytes
         def read(candidate):
@@ -349,16 +356,34 @@ class RuntimeTests(unittest.TestCase):
         e,v=event_env();b=binding();r=policy.request_for(b,'lock-preparation')
         read,core,head,merge=fake_merge_graph('actual-tree')
         self.assertEqual(head,e['pull_request']['head']['sha']);self.assertEqual(merge,v['GITHUB_WORKFLOW_SHA'])
+        import model_diagnostic_v109 as diagnostic
+        pipeline=Path('/synthetic/pipeline')
+        route_files={path:(ROOT/path).read_bytes() for path in
+            (diagnostic.REQUEST_PATH,policy.WORKFLOW,diagnostic.WORKFLOW)}
+        def regular(path,maximum=2*1024*1024):
+            raw=route_files.get(path.relative_to(pipeline).as_posix(),b'fixed tracked bytes')
+            self.assertLessEqual(len(raw),maximum)
+            return raw
         def git(root,*args,**kwargs):
             if args==('rev-parse','HEAD'):return (head+'\n').encode()
             if args[:2]==('cat-file','-e'):return b''
-            if args and args[0]=='show' and len(args)==2:return b'fixed tracked bytes'
+            if args and args[0]=='show' and len(args)==2:
+                return route_files.get(args[1].partition(':')[2],b'fixed tracked bytes')
             return read(*args)
         core.phase_process=unittest.mock.Mock()
-        with patch.object(owner,'regular',return_value=b'fixed tracked bytes'),patch.object(owner,'git_read',side_effect=git):
+        with patch.object(owner,'regular',side_effect=regular),patch.object(owner,'git_read',side_effect=git):
             with self.assertRaisesRegex(policy.Refusal,'workflow_full_merge_tree_changed'):
-                owner.code_binding(Path('/synthetic/pipeline'),None,e,v,r,core,{'deadlineEpoch':time_future(),'gitEnv':{}})
+                owner.code_binding(pipeline,None,e,v,r,core,{'deadlineEpoch':time_future(),'gitEnv':{}})
         core.phase_process.assert_not_called()
+
+    def test_invalid_route_refuses_before_merge_or_any_candidate_action(self):
+        e,v=event_env();b=binding();r=policy.request_for(b,'lock-preparation')
+        _,core,_,_=fake_merge_graph(None);core.phase_process=unittest.mock.Mock()
+        with patch.object(owner,'regular',return_value=b'not JSON'),\
+             patch.object(owner,'git_read') as git,patch.object(owner,'workflow_merge_binding') as merge:
+            with self.assertRaisesRegex(policy.Refusal,'invalid_json'):
+                owner.code_binding(Path('/synthetic/pipeline'),None,e,v,r,core,{'deadlineEpoch':time_future(),'gitEnv':{}})
+        git.assert_not_called();merge.assert_not_called();core.phase_process.assert_not_called()
 
     def test_duplicate_incidental_display_names_not_native_identity(self):
         skipped=[]
