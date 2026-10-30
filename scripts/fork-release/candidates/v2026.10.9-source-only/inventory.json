@@ -2,7 +2,7 @@
   "schema": "openclaw.fork-patch-inventory.v1",
   "repository": "fr-meyer/openclaw",
   "candidate": "v2026.10.9-source-only",
-  "manifestSha256": "4ad3b13c2fb90650f618727f0508f4168c269820525d3629e801722c09287778",
+  "manifestSha256": "9032a1666ee82ae7882d280c5bbb5a6e02e127c7c1526b61aef3667973621c58",
   "upstream": {
     "tag": "v2026.10.9",
     "tagObject": "88a19e0d8677804d8ec98e30a3a3a3a9308ebee0",
@@ -14,9 +14,9 @@
       "id": "grouped-v109-preparation-ba04217f6642",
       "originCommit": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
       "disposition": "adapt",
-      "appliedCommit": "ba04217f6642091b94f396669318d068e6007ed7",
-      "rationale": "Integrate exact stable10.9 with preserved fork Workboard, claim-fencing, task, security and provider behavior. Bind complete253-row reconciliation and focused security/API adaptations; dependency lock remains a pinned baseline preparation input pending separately authorized secretless CI derivation. No older source/runtime/image qualification transfers.",
-      "evidenceSha256": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591",
+      "appliedCommit": "edd010829dcb622d7dc60dc90f7097048cb78819",
+      "rationale": "Integrate exact stable 10.9 with preserved fork Workboard, claim fencing, task, security and provider behavior. Bind the complete 253-row reconciliation and reviewed security/API adaptations. Dependency lock derives from authenticated successful public CI run 41043479025 attempt 1, artifact 12972087389; only the lock and deterministic reconciliation receipt change from integration G. Fresh complete source validation is required; older source/runtime/image qualification does not transfer.",
+      "evidenceSha256": "7f3ef17a22f8afaf709ae252f96068ae49e9037f52e0cd9cb29c479b74850303",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",
         "extensions/workboard/src/gateway.test.ts",
@@ -134,7 +134,7 @@
           "sourceTree": "ed8cc0d741194e7627b875ea256dfd7c5de43640",
           "sourceBlob": "1c60a3a4d7f929c4e376654e2832a330a5e2e99b",
           "upstreamBlob": null,
-          "candidateBlob": "1c60a3a4d7f929c4e376654e2832a330a5e2e99b"
+          "candidateBlob": "af9fb9d9956b7e663265a339efcff311724f59bd"
         },
         {
           "path": "docs/cli/gateway/query.md",
@@ -980,7 +980,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b",
           "upstreamBlob": "4e30a12c4e67e6fe59d51339ff864cc0770dc069",
-          "candidateBlob": "8082293541e7b0d60dfc53e171307f43ac216114"
+          "candidateBlob": "8fa3ddcf5e9465095981bb0f11b24e2d00bb7862"
         },
         {
           "path": "pnpm-workspace.yaml",

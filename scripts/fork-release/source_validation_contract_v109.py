@@ -695,7 +695,7 @@ def expected_derived_ledger(before, generated_lock_blob, generation):
         rows[0]["result"].get("mode") == "100644", "v9.unique_lock_ledger_row")
     rows[0]["result"] = {"mode": "100644", "blob": generated_lock_blob}
     result["lockState"] = "ci_derived"
-    result["lockDerivation"] = {"runId": generation["runId"], "attempt": 1,
+    result["lockDerivation"] = {"runId": int(generation["runId"]), "attempt": 1,
         "artifactSha256": generation["artifactSha256"], "generatedLockSha256": generation["generatedLockSha256"],
         "receiptSha256": generation["receiptSha256"]}
     return encode(result)

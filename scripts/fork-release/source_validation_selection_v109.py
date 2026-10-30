@@ -84,6 +84,7 @@ PIPELINE_CONTRACT_TESTS = (
     "test_security_regression_name_v109.py",
     "test_source_validation_contract_v109.py", "test_lockfile_policy_v109.py",
     "test_source_derivation_v109.py", "test_source_correction_artifact_v109.py",
+    "test_derived_ledger_runid_v109.py",
     "test_source_validation_selection_v109.py",
     "test_source_validation_runtime_v109.py",
     "test_lock_diagnostic_v109.py",

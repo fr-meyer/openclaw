@@ -6,12 +6,12 @@
   "source": {
     "baseCommit": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
     "baseTree": "3ccfb9632d8f30196d0f9d94f92f8cc7f07b2be7",
-    "commit": "ba04217f6642091b94f396669318d068e6007ed7",
-    "tree": "ed8cc0d741194e7627b875ea256dfd7c5de43640",
+    "commit": "edd010829dcb622d7dc60dc90f7097048cb78819",
+    "tree": "2e553992d3f93937dcb4b85683e4aae24a087074",
     "patches": [
       {
-        "commit": "ba04217f6642091b94f396669318d068e6007ed7",
-        "tree": "ed8cc0d741194e7627b875ea256dfd7c5de43640"
+        "commit": "edd010829dcb622d7dc60dc90f7097048cb78819",
+        "tree": "2e553992d3f93937dcb4b85683e4aae24a087074"
       }
     ],
     "merge": {
@@ -24,15 +24,20 @@
         "commit": "ba04217f6642091b94f396669318d068e6007ed7",
         "tree": "ed8cc0d741194e7627b875ea256dfd7c5de43640"
       },
-      "successors": [],
+      "successors": [
+        {
+          "commit": "edd010829dcb622d7dc60dc90f7097048cb78819",
+          "tree": "2e553992d3f93937dcb4b85683e4aae24a087074"
+        }
+      ],
       "securitySource": {
         "commit": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
         "tree": "318a14351a7049d9d613a928edb0cfe69311d201"
       },
       "reconciliation": {
         "path": "custom-patches/reconciliation-2026.10.9.json",
-        "blob": "1c60a3a4d7f929c4e376654e2832a330a5e2e99b",
-        "sha256": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591"
+        "blob": "af9fb9d9956b7e663265a339efcff311724f59bd",
+        "sha256": "7f3ef17a22f8afaf709ae252f96068ae49e9037f52e0cd9cb29c479b74850303"
       }
     }
   },
