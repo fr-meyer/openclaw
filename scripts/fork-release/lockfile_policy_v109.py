@@ -87,6 +87,49 @@ def versions(table, package):
     return result
 
 
+def common_edges(snapshots):
+    """Exact direct Common consumers in the fixed pnpm writer dialect."""
+    result = {}
+    for parent, entry in snapshots.items():
+        lines = entry.splitlines()[1:]
+        mentions = [line for line in lines if "@azure/msal-common" in line]
+        values = re.findall(r"^      '@azure/msal-common': ([^\n]+)$", entry, re.M)
+        need(len(mentions) == len(values) and len(values) <= 1, "v9.explicit_msal_common_edges")
+        if values:
+            need(values[0] in ("16.14.2", "16.14.3"), "v9.selected_msal_common_16_14_3")
+            result[parent] = values[0]
+    return result
+
+
+def verify_common_consumers(old, new):
+    old_edges, new_edges = common_edges(old["snapshots"]), common_edges(new["snapshots"])
+    node_versions = versions(old["snapshots"], "@azure/msal-node")
+    need(node_versions in ({"7.1.0"}, {"7.1.1"}), "v9.selected_msal_7_1_1")
+    old_node = "@azure/msal-node@" + next(iter(node_versions))
+    old_child = "16.14.2" if node_versions == {"7.1.0"} else "16.14.3"
+    need(old_edges.get(old_node) == old_child, "v9.exact_msal_parent_child_edge")
+    carried = {parent: child for parent, child in old_edges.items() if parent != old_node}
+    need(carried in ({}, {"@azure/msal-browser@5.24.0": "16.14.2"}),
+         "v9.carried_msal_common_consumers")
+    expected = {**carried, "@azure/msal-node@7.1.1": "16.14.3"}
+    need(new_edges == expected, "v9.exact_msal_parent_child_edge")
+    for parent in carried:
+        need(new["snapshots"].get(parent) == old["snapshots"][parent],
+             "v9.carried_msal_consumer_unchanged")
+        package = parent.split("(", 1)[0]
+        need(package in old["packages"] and new["packages"].get(package) == old["packages"][package],
+             "v9.carried_msal_consumer_unchanged")
+    for table in ("packages", "snapshots"):
+        need(versions(old[table], "@azure/msal-common") == set(old_edges.values()) and
+            versions(new[table], "@azure/msal-common") == set(expected.values()),
+             "v9.selected_msal_common_16_14_3")
+        for child in set(carried.values()):
+            key = "@azure/msal-common@" + child
+            need(key in old[table] and new[table].get(key) == old[table][key],
+                 "v9.carried_msal_common_unchanged")
+    return carried
+
+
 def verify_lock_security(before, generated, expected_msal_integrity, expected_common_integrity):
     old_bootstrap, old_doc = documents(before)
     new_bootstrap, new_doc = documents(generated)
@@ -102,9 +145,8 @@ def verify_lock_security(before, generated, expected_msal_integrity, expected_co
              "v9.carried_security_versions_preserved")
         need(versions(old[name], "@azure/msal-node") in ({"7.1.0"}, {"7.1.1"}) and
             versions(new[name], "@azure/msal-node") == {"7.1.1"}, "v9.selected_msal_7_1_1")
-        need(versions(old[name], "@azure/msal-common") in ({"16.14.2"}, {"16.14.3"}) and
-            versions(new[name], "@azure/msal-common") == {"16.14.3"}, "v9.selected_msal_common_16_14_3")
         catalogs[name] = {p: sorted(v) for p, v in after_versions.items()}
+    carried_common = verify_common_consumers(old, new)
     need("zod@4.6.6(patch_hash=" + ZOD_HASH + ")" in new["snapshots"] and
         len([key for key in new["snapshots"] if key.startswith("zod@")]) == 1,
         "v9.zod4_patch_snapshot_preserved")
@@ -123,5 +165,6 @@ def verify_lock_security(before, generated, expected_msal_integrity, expected_co
         "zod4PatchHash": ZOD_HASH, "newUnpatchedZod3Absent": True,
         "selectedMsalNodeVersion": "7.1.1", "selectedMsalNodeIntegrity": expected_msal_integrity,
         "selectedMsalCommonVersion": "16.14.3", "selectedMsalCommonIntegrity": expected_common_integrity,
+        "carriedMsalCommonConsumers": carried_common, "unexpectedMsalCommonConsumerAbsent": True,
         "unrelatedGeneratedDiffAutomaticallyApproved": False,
         "exactGeneratedDiffReviewRequiredBeforeCommit": True}
