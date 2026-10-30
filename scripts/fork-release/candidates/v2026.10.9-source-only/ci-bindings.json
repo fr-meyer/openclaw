@@ -1142,6 +1142,86 @@
         "runId": "41107784263",
         "nativeAttempt": 1,
         "runnerMinutes": 12
+      },
+      {
+        "runId": "41110341833",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41110341847",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41110341957",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41110342045",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41110342531",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41110346159",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41110346251",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41110346313",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41110346337",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41110346408",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41110346446",
+        "nativeAttempt": 1,
+        "runnerMinutes": 2
+      },
+      {
+        "runId": "41110346539",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41110346547",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41110346597",
+        "nativeAttempt": 1,
+        "runnerMinutes": 14
+      },
+      {
+        "runId": "41110346873",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41110348364",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
       }
     ],
     "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
@@ -1155,7 +1235,7 @@
     "nextExecution": {
       "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
       "status": "REVIEWED",
-      "sequence": 8,
+      "sequence": 9,
       "phase": "correction",
       "preparationAttempt": 6,
       "source": {
@@ -1171,13 +1251,13 @@
         }
       },
       "priorSourceRun": {
-        "runId": "41107784263",
-        "pipelineHead": "949e99e06f166e6c9e93d7e3d4c2da778f45240d",
-        "requestSha256": "a035be5f74cdbb0afa0c1030e56de8aba60b62406da0866cde59e0a58a05d5eb"
+        "runId": "41110346597",
+        "pipelineHead": "4e7cb93fdf22eb5be7bb40cc2715584cde0b07f4",
+        "requestSha256": "23a4c66f2d8cf29c89aa0944bab7e72128af41b7ff8ec9e1fce6fdced270cbd4"
       },
       "reasonCode": "prior_failure",
-      "reviewSha256": "52902fb87bcbedd22acaa721245cefbfaa7f5441960ba712608149ed64bdfa58",
-      "requestSha256": "23a4c66f2d8cf29c89aa0944bab7e72128af41b7ff8ec9e1fce6fdced270cbd4",
+      "reviewSha256": "6ec939733632467dd38ad89f2e8af56e5c5eeca36e9176ae2b76f2e8fbfb7215",
+      "requestSha256": "89d0bb0c2ad510164fb7d0397cfa8f6dcb26f717fd93b797165f8f9c67e7bec1",
       "reservations": {
         "current": 1075,
         "pendingValidation": 0,
