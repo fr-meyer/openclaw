@@ -98,83 +98,57 @@ Remove the noVNC patch, its registration, and its exact-version guard exception 
 
 Remove the Matrix patch, its registration, and its exact-version guard exception when an upstream release passes `node scripts/run-vitest.mjs extensions/matrix/src/matrix/client/file-sync-store.sdk.test.ts` and the full Matrix QA catalog, including the original DM SAS-to-QR sequence. The regression exercises the real SQLite sync store, SDK cache hydration, and crypto event wiring; it observes crypto input rather than substituting for native verification proof.
 
-`vitest@5.0.1` has one approved exact-version pnpm patch. Vitest 5 bundles the
-runner, and `@vitest/runner@5.0.0` is not published, so no standalone runner
-dependency or patch remains. The published package integrity is
-`sha512-iA95lQbKEkvrtTkdAgnWbXfbipWiiWe/hDl2P5tMi6WFwD76G0NxXAGp/M9EOcYupeGJRr6wppMc7CoA41TQjg==`.
-The patch SHA-256 is
-`90ba2969491e095cc2e92a4d38256dfcf64f85078ec29e1762b9429a00b35901`
-and it changes exactly these eight published files:
+## Vitest 5.0.5 selected patch
 
-| Target | Published SHA-256 | Patched SHA-256 |
+`vitest@5.0.5` is selected. Its unchanged retained pnpm patch is SHA-256
+`5ab1f247d7051105fd2967cc6b22e50cb97a289a73d73afbd24cdf4439c40d4d`. The existing frozen fork lock records integrity
+`sha512-cPODOMF8YnkiiYtDdHo6n4wWmBrOBBbOIYH2d33M4l3CdNn72h+qMmO6uXffUN6A5AZFXNND/d+krS9mgkXRfg==`; successor CI lock derivation must preserve the selected package
+identity. No standalone runner patch is registered. The retired `5.0.1` patch
+is not selected or allowed by the current package-patch guard.
+
+The reviewed 5.0.5 rebase changes these nine targets. These are Git blob IDs
+recorded in the patch, not SHA-256 integrity values or fresh installed proof:
+
+| Target | Preimage Git blob | Patched Git blob |
 | --- | --- | --- |
-| `dist/chunks/cac.fSuRXrAx.js` | `0290aaa6677cb20fb472b7d101e66b879e982d3799e9eb69ae84652cb8ecacd4` | `36e72e47372bc2c77fdaa9725675644db84ce6f34f86ceb8422b2ac7f9c7ec39` |
-| `dist/chunks/index.D4dXTzh9.js` | `70e7ab020f7f03ae96797ad10b46549cd2edb61e4a4d975ba08d10fe41a0bb9e` | `e45d5d5babb300e099fb955b2af65aea5604db6019d9f0bc1b397a323466b063` |
-| `dist/chunks/index.DzobfTyw.js` | `26c9c3d31efea8bb6e5f6f495db89968ba820a26c0676341f3682ec5377d584d` | `a41a0c84d88ab4aaddf92eb7b11234fc4c72bae7386b63c91898e692e1a81a95` |
-| `dist/chunks/index.m3L2HgmY.js` | `f56631635acaf90deb3b99e037afd8a2431ef685781ae3aa1109bb33d1d02702` | `5c0b1653ddd88eff204dccc35289f66eca06ec43878a6ec73bfc601c3e66be71` |
-| `dist/chunks/init-forks.DgHqDQHC.js` | `7e424d9f059e2343698c78c082469198e05cc8b189484dbdd6b5236b21f9b443` | `2f0f61b0e41cbb3d44bfaff0ddb903c047b175c1e0494bd08f95cfd7b9b2848f` |
-| `dist/chunks/plugin.d.CN87HSxv.d.ts` | `a93d72194894d0eb54e7c43bd41167195dcf6a17800ce18fcee1716e1905dda5` | `2491673a5b9de8255f53dd7e573763d35776e1ff42e0096f98ba31b431fd55e8` |
-| `dist/chunks/run.C5UmxDPh.js` | `890fef0254ad442f55902adc9a7d0e639bb9ba5a78ef4fc53a30f10f1aa9f77c` | `6412031b0068dbe300b7af1ba27056be77c914d067cee69b3dc396b7da8df8cd` |
-| `dist/node.d.ts` | `09b5ab06e7b242132974144474b24a0fddde568e0fb20d69215d156d78ac0d7f` | `7ffe96f8dd9ffcdf5f3d67e56c02f509a516072cd523c9dcef596ada77afd06f` |
+| `dist/chunks/cac.CLrZKo1g.js` | `ea61b3c5bfa263708d356eefb3b6217af7d301f4` | `1523fcaeb9802e4823922f9de9aed238799c633a` |
+| `dist/chunks/cli-api.De07GUeT.js` | `ff6e63043ff8fa0b821d4b0b382d1fd998d85dbb` | `8b527adb355c8e7397939baece62749f3f334d1e` |
+| `dist/chunks/index.1TqnEahn.js` | `50dd001b7b24be2eac6f37eeb1929ad4645aa1a9` | `a4942f2ece3dc13bb54142c9809ae19d6401510c` |
+| `dist/chunks/index.CK-t0WMg.js` | `bf563f92484d59695a49772f94a6ea68e10bcee2` | `d8bfb9b46212c2cfe2d86a5269e43fc5ac7686e3` |
+| `dist/chunks/index.aTZaPVhf.js` | `4c481d259556a3c3c974c9504047df161e7feef3` | `965432354a76ab4d79e10519a886171f26349cd2` |
+| `dist/chunks/init-forks.CRxIPOJR.js` | `d405dea2b5c03f70ef94a82d5e4e10c104164154` | `01e6099aabf7fb6e53249327d53d062277f00e52` |
+| `dist/chunks/plugin.d.C8mmycim.d.ts` | `b8af1e7401b5b418cd49ab017d9bc3fdbe590ae3` | `09cdb33f80bd1596bf4081b8855f0448b08ff938` |
+| `dist/chunks/run.BPv-BBRv.js` | `5c235b31744aebca14b9a79dd0836fa0faa9740f` | `703abcdac3d6196667a6c69509ca5bfd7025fd8b` |
+| `dist/node.d.ts` | `fce7738ae75bb25bdf007f95074c964e62186def` | `07e0682338342763adedcc34c713dd38bd61c7a5` |
 
-Vitest 5.0.1 writes replacement cache metadata upstream; the patch uses that
-`writeMetadata` owner and retains the remaining generation and invalidation
-repairs. The patch owns these temporary invariants and removal gates:
+The retained repairs cover serialized mock resolution, CLI validation without
+execution, lockfile-aware cache generations/invalidation, graceful and
+already-exited fork settlement, file-backed project roots/names, trailing
+runner updates and fake-timer heap ordering. Failed or timed-out cleanup must
+still fail; an exited worker cannot be reused. Remove a repair only when the
+corresponding stock version passes these existing boundary regressions:
 
-- **Mock resolution (`index.D4dXTzh9.js`):** module fetches join the mocker's
-  serialized resolution before reading its registry, even after the pending-id
-  queue is emptied by an in-flight pass. Resolution drains ids queued during a
-  pass; failed callers retain their errors without poisoning later callers.
-  Shared-worker cleanup joins the native completion tail. Remove this hunk when
-  stock Vitest passes `test/scripts/vitest-mock-resolution.test.ts` and the
-  original cold Gateway CI group containing
-  `authenticated-request-dispatch.lifetime.test.ts`.
-- **CLI validation (`cac.fSuRXrAx.js`):** public `parseCLI` validates unknown
-  options, required values, and required arguments without executing a command.
-  Help/version and `allowUnknownOptions` retain native semantics. Remove this
-  hunk when stock Vitest passes the native validation cases in
-  `test/scripts/run-vitest-profile.test.ts` and
-  `test/scripts/vitest-report-owner.test.ts`.
-- **Filesystem cache generations (`index.DzobfTyw.js`):** persistence remains
-  disabled until lockfile integrity completes; generation participates in cache
-  keys; lock transitions rewrite metadata and reset retained roots, keys, and
-  transform temporary markers; invalidation covers the root and selected
-  projects. Remove these hunks when stock Vitest passes the four cache-generation
-  and invalidation regressions in `test/vitest-performance-config.test.ts`.
-- **Graceful fork shutdown (`index.DzobfTyw.js`,
-  `init-forks.DgHqDQHC.js`, `plugin.d.CN87HSxv.d.ts`, `dist/node.d.ts`):**
-  built-in fork workers flush a `willExit` response, exit explicitly, and are
-  joined before run completion. Deadline and abnormal-exit paths still fail and
-  terminate the worker; custom transports remain parent-owned unless they opt
-  into the contract. Remove these hunks when stock Vitest passes
-  `test/scripts/vitest-fork-shutdown.test.ts`,
-  `test/scripts/run-vitest-state-cleanup.test.ts`, and
-  `test/scripts/run-vitest-profile.test.ts`.
-- **File-backed report projects (`index.DzobfTyw.js`,
-  `plugin.d.CN87HSxv.d.ts`):** a Vitest-owned
-  `{ config, root?, namePrefix? }` descriptor loads its config exactly once,
-  keeps the file-owned root when omitted, preserves the explicit root when
-  supplied, and derives its final name after Vite hooks. A replayed prefix
-  retains the container-owned identity and marks the executed config as a
-  standalone project so its children are not rediscovered. Remove these hunks
-  when stock Vitest passes
-  `test/scripts/vitest-report-owner.test.ts` without pre-resolving configs or
-  injecting captured names and `test/vitest-ui-package-config.test.ts` without
-  losing omitted or explicit project roots.
-- **Trailing task updates (`run.C5UmxDPh.js`):** the bundled runner accepts the
-  exact batching deadline and clears a consumed timer before re-entering the
-  throttle, so an early callback can rearm without losing the trailing update.
-  Remove this hunk when stock Vitest passes
-  `test/scripts/vitest-runner-task-updates.test.ts`.
-- **Fake timer heap order (`index.m3L2HgmY.js`):** refresh removes a timer from
-  the heap before mutating its ordering key, then reinserts it. Remove this hunk
-  when stock Vitest passes `test/scripts/vitest-fake-timers.test.ts` and
-  `extensions/telegram/src/probe.response-body-timeout.test.ts`.
+- `test/scripts/vitest-mock-resolution.test.ts`
+- `test/scripts/run-vitest-profile.test.ts`
+- `test/scripts/vitest-report-owner.test.ts`
+- `test/vitest-performance-config.test.ts`
+- `test/scripts/vitest-fork-shutdown.test.ts`
+- `test/scripts/run-vitest-state-cleanup.test.ts`
+- `test/vitest-ui-package-config.test.ts`
+- `test/scripts/vitest-runner-task-updates.test.ts`
+- `test/scripts/vitest-fake-timers.test.ts`
+- `extensions/telegram/src/probe.response-body-timeout.test.ts`
 
-Generate and register dependency patches through pnpm; never edit installed
-dependency files manually. A clean `pnpm install --frozen-lockfile` must apply
-the recorded patch hash to the published integrity and reproduce every patched
-target hash above.
+Also retain the original cold Gateway group containing
+`authenticated-request-dispatch.lifetime.test.ts`. The actual API-mode
+private-file/token denial in `test/v108-remediation-security.test.mjs` is a
+separate required regression: the custom lifecycle patch must not weaken the
+upstream HTTP filesystem deny policy or substitute for that proof.
+
+Generate/register dependency patches through pnpm in the approved CI lane;
+never edit installed dependency files. A frozen installation must apply the
+recorded patch and verify installed targets before runtime checks. Local
+merge preparation has not executed those tests or regenerated this patch.
 
 `baileys@7.0.0-rc14` needs a two-line adapter for `audio-decode@3.12.0`:
 read the first decoded channel from `channelData[0]` and require the matching
@@ -193,3 +167,38 @@ The plugin package owner bundles patched runtime dependencies so installed
 WhatsApp plugins retain the adapter. Remove this patch and its registration
 when an upstream Baileys version accepts the current decoder and passes the
 same voice-note regression.
+
+## 10.9 upstream Zod 3 patch and the selected fork graph
+
+Official 10.9 adds `patches/zod@3.25.76.patch`, SHA-256
+`2f14d2000a3645bf519c1a1cc4848a71d55185327a9a976a4f033e7d507b727d`. It is a local Zod-3 adaptation of Colin McDonnell's early
+upper-size rejection in upstream commit
+`a0ebf970f2d752e5f58527cd2942ff48be4f46bd`
+([colinhacks/zod#6652](https://github.com/colinhacks/zod/pull/6652)), not an
+upstream Zod-3 release or blanket advisory clearance. That source patch and
+its original attribution remain unchanged in this tree.
+
+This fork selects Zod `4.6.6`, whose exact patch applies the same early-abort
+intent to the retained `zod/v3` compatibility parser in ESM, CommonJS and
+TypeScript. A2UI uses native v4. The Discord SDK's ESM and CommonJS embedded
+parser entrypoints are replaced by external v4 bridges, so the upstream six
+Zod-3 SDK hunks cannot be appended to those removed parser bodies. The
+unchanged selected Discord migration patch is SHA-256
+`571102cd0329706f1c9edf2dd5cd7f50bfcb8c4336809c961e0c12f43760ab87`; it also preserves v4 declarations, scope fallback and RPC behavior
+covered by the existing native SDK regression.
+
+The retained pre-derivation fork lock contains no `zod@3.25.76` package. The
+workspace therefore does not register an unused Zod-3 patch. The upstream
+source file is retained but dormant; the guard recognizes only its exact
+version/path. CI lock admission must reject a new unpatched Zod-3 resolution,
+not assume this dormant file is applied. A graph requiring it needs explicit
+reviewed registration or a complete compatible migration before qualification.
+Do not use `allowUnusedPatches`, an audit exception or a broad override to hide
+that condition. Successor lock generation and installation remain unrun here.
+
+Keep the container-bound, A2UI, Discord, MCP/converter, runtime/type and strict
+audit regressions listed above. Early rejection changes oversized bounded
+arrays/sets from dirty to aborted before visiting children; valid, unbounded
+and minimum-only behavior must remain. Retaining source adaptations is not
+proof that every installed copy is fixed. CI graph and installed-package
+owners supply that proof.

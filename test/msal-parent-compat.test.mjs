@@ -124,11 +124,11 @@ const logger = {
   loggerOptions: { level: "error" },
 };
 
-void test("both actual parent resolvers use fixed MSAL 7.1.0 and common 16.14.2", () => {
+void test("both actual parent resolvers use fixed MSAL 7.1.1 and common 16.14.3", () => {
   for (const parent of [identityRequire, teamsRequire]) {
-    assert.equal(parent("@azure/msal-node/package.json").version, "7.1.0");
+    assert.equal(parent("@azure/msal-node/package.json").version, "7.1.1");
     const child = createRequire(parent.resolve("@azure/msal-node/package.json"));
-    assert.equal(child("@azure/msal-common/package.json").version, "16.14.2");
+    assert.equal(child("@azure/msal-common/package.json").version, "16.14.3");
   }
   assert.equal(require("@azure/identity/package.json").version, "4.13.3");
   assert.equal(require("@microsoft/teams.apps/package.json").version, "2.1.0");
