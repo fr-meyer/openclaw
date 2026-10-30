@@ -1,0 +1,69 @@
+name: Qualification Sysfs Block Attribute Proof
+
+on:
+  push:
+    branches:
+      - retained-verifier-prerequisites
+    paths:
+      - tools/qualification-sysfs-proof/sysfs_block_attribute.py
+      - tools/qualification-sysfs-proof/test_sysfs_block_attribute.py
+      - tools/qualification-sysfs-proof/linux_proof.py
+      - tools/qualification-sysfs-proof/SOURCE-MANIFEST.json
+      - .github/workflows/qualification-sysfs-proof.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-sysfs-proof
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  sysfs-proof:
+    if: github.repository == 'fr-meyer/openclaw' && github.event_name == 'push' && github.ref == 'refs/heads/retained-verifier-prerequisites'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      OCV_SOURCE_MANIFEST_SHA: 7730f4b2e63dfc1d93252918774f325d43220d5a8dfa219f0b40a18e8445f0fd
+    steps:
+      - name: Admit one exact qualification push
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == fr-meyer/openclaw ]]
+          [[ "$GITHUB_REF" == refs/heads/retained-verifier-prerequisites ]]
+          [[ "$GITHUB_EVENT_NAME" == push ]]
+          [[ "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$OCV_SOURCE_MANIFEST_SHA" =~ ^[a-f0-9]{64}$ ]]
+      - name: Checkout only reviewed generic sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            tools/qualification-sysfs-proof
+            .github/workflows/qualification-sysfs-proof.yml
+      - name: Verify source identity and bounded sysfs contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          source_tree="$(git rev-parse HEAD^{tree})"
+          [[ "$source_tree" =~ ^[a-f0-9]{40}$ ]]
+          export OCV_SOURCE_TREE="$source_tree"
+          timeout 90s /usr/bin/python3 -I -S -B tools/qualification-sysfs-proof/linux_proof.py
+      - name: Retain only bounded generic proof summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: qualification-sysfs-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sysfs-block-attribute-proof.json
+          if-no-files-found: error
+          retention-days: 1
