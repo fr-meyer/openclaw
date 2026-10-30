@@ -376,6 +376,8 @@ class ForwardAuthBoundaries(unittest.TestCase):
     def test_build_freshly_checks_both_origins_and_main_only_export_never_reaches_commands(self):
         from test_archive_guard import DualOps
         o=DualOps();records=[]
+        from test_archive_policy import extra_valid_security_signature
+        o.security_status=extra_valid_security_signature(o.security_status)
         for phase in ('update','install','postinstall'):
             proof,data=archive_guard._run_dual_guard(o,o.context,phase,o.fixture)
             records.append(archive_guard.hook_record(proof,[]))

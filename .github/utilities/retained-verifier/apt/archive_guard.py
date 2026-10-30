@@ -358,7 +358,7 @@ def _proof_checked(proof):
     if SECURITY_PROOF_FIELDS <= set(proof):
         require(type(proof['securityReleaseSha256'])is str and SHA.fullmatch(proof['securityReleaseSha256']) and
                 type(proof['securityPackagesSha256'])is str and SHA.fullmatch(proof['securityPackagesSha256']) and
-                proof['securityVerifiedPrimaryFingerprints']==sorted(policy.SECURITY_PRIMARIES),
+                policy.security_primary_roster_ok(proof['securityVerifiedPrimaryFingerprints']),
                 'apt.security_proof_identity')
     try:
         checked=datetime.fromisoformat(proof['checkedAt'])
@@ -445,8 +445,7 @@ def validate_export(raw, contents):
         require(all(type(security[k])is str and SHA.fullmatch(security[k]) for k in
                 ('sourceManifestSha256','keyringSha256','releaseSha256','packagesSha256','gpgStatusSha256')) and
                 type(security['buildId'])is str and re.fullmatch('[0-9a-f]{32}',security['buildId']) and
-                type(security['verifiedPrimaryFingerprints'])is list and
-                security['verifiedPrimaryFingerprints']==sorted(policy.SECURITY_PRIMARIES) and
+                policy.security_primary_roster_ok(security['verifiedPrimaryFingerprints']) and
                 all(type(security[k])is str and 0<len(security[k])<=128 for k in
                     ('releaseDate','validUntil','checkedAt')),'apt.security_export_types')
         try:
@@ -467,7 +466,8 @@ def validate_export(raw, contents):
                 security['releaseSha256']==proof['securityReleaseSha256']==sha(contents['SecurityInRelease']) and
                 security['packagesSha256']==proof['securityPackagesSha256']==sha(contents['SecurityPackages']) and
                 security['gpgStatusSha256']==sha(contents['security-gpgv-status.txt']) and
-                security['verifiedPrimaryFingerprints']==proof['securityVerifiedPrimaryFingerprints'],
+                security['verifiedPrimaryFingerprints']==proof['securityVerifiedPrimaryFingerprints']==
+                    classified['verifiedPrimaryFingerprints'],
                 'apt.security_export_join')
     else:require(set(contents)==set(EXPORT_NAMES),'apt.security_export_without_proof')
     require(proof['proofSha256'] == value['sourceProofSha256'] and proof['buildId'] == value['buildId'],

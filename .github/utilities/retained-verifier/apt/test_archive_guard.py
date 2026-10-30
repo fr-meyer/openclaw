@@ -376,6 +376,49 @@ class DualOps(Ops):
 
 
 class DualOriginTests(unittest.TestCase):
+    def extra_signer_export(self):
+        ops=DualOps();extra='C'*40
+        ops.security_status+=('[GNUPG:] VALIDSIG '+extra+' 2026-10-25 1792899000 0 4 0 1 8 01 '+extra+'\n').encode()
+        records=[]
+        for phase in ('update','install','postinstall'):
+            proof,contents=g._run_dual_guard(ops,ops.context,phase,ops.fixture)
+            records.append(g.hook_record(proof,[]))
+        contents.update({'guard-proof.json':canonical(proof),'first-stage-ledger.json':canonical(
+            {'schema':'ocv-apt-first-stage-ledger-v1','records':records})})
+        return ops,proof,contents,sorted(set(p.SECURITY_PRIMARIES)|{extra})
+    def test_required_plus_additional_valid_signer_survives_guard_ledger_and_export(self):
+        ops,proof,contents,expected=self.extra_signer_export()
+        self.assertEqual(proof['securityVerifiedPrimaryFingerprints'],expected)
+        self.assertEqual(json.loads(contents['security-guard-proof.json'])['verifiedPrimaryFingerprints'],expected)
+        descriptor=canonical(g.export_descriptor(contents,proof,ops.context))
+        value=g.verify_export(descriptor,contents,expected_keyring_sha256=ops.context['keyringSha256'],
+            expected_source_manifest_sha256=ops.context['sourceManifestSha256'],expected_build_id=ops.context['buildId'])
+        self.assertIs(value['freshSignatureStillRequired'],True)
+        self.assertIs(proof['nativeAuthenticationIssued'],False)
+    def test_missing_required_duplicate_invalid_unsorted_rosters_refuse_in_consumers(self):
+        ops,proof,contents,expected=self.extra_signer_export();required=next(iter(p.SECURITY_PRIMARIES))
+        for roster in (['C'*40],[required,required],[required,'invalid'],list(reversed(expected)),None,tuple(expected)):
+            badproof=copy.deepcopy(proof);badproof['securityVerifiedPrimaryFingerprints']=roster
+            badproof['proofSha256']=g.sha(g.canonical({k:v for k,v in badproof.items()if k!='proofSha256'}))
+            with self.subTest(roster=roster),self.assertRaises(g.Refusal):g._proof_checked(badproof)
+            if type(roster)is tuple:continue  # JSON has lists, never tuple provenance.
+            bad=dict(contents);side=json.loads(bad['security-guard-proof.json']);side['verifiedPrimaryFingerprints']=roster
+            bad['security-guard-proof.json']=canonical(side)
+            descriptor=canonical(g.export_descriptor(bad,proof,ops.context))
+            with self.assertRaises(g.Refusal):g.validate_export(descriptor,bad)
+    def test_export_full_roster_must_equal_saved_status_even_when_all_required_signers_present(self):
+        ops,proof,contents,expected=self.extra_signer_export();required=next(iter(p.SECURITY_PRIMARIES))
+        for roster in ([required],sorted(expected+['D'*40])):
+            # Rebind both public proof hashes so only the captured status/full
+            # roster join can reject dropped or invented valid primaries.
+            badproof=copy.deepcopy(proof);badproof['securityVerifiedPrimaryFingerprints']=roster
+            badproof['proofSha256']=g.sha(g.canonical({k:v for k,v in badproof.items()if k!='proofSha256'}))
+            bad=dict(contents);bad['guard-proof.json']=canonical(badproof)
+            side=json.loads(bad['security-guard-proof.json']);side['verifiedPrimaryFingerprints']=roster
+            bad['security-guard-proof.json']=canonical(side)
+            descriptor=canonical(g.export_descriptor(bad,badproof,ops.context))
+            with self.subTest(roster=roster),self.assertRaisesRegex(g.Refusal,'security_export_join'):
+                g.validate_export(descriptor,bad)
     def test_dual_phase_authentication_and_export_bind_both_origins(self):
         ops=DualOps();records=[]
         for phase in ('update','install','postinstall'):

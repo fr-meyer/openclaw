@@ -336,6 +336,8 @@ class NativePort:
         security_status=self._run('gpgv_metadata',{'project':str(self.project),'origin':'security'},30)
         require(security_status.get('status')=='outer_exit_passed' and
                 security_status['returncode']==0,'host.security_gpgv_process_boundary')
+        # Same returned status bytes as the classifier; no raw status/UID export.
+        self.security_signature_facts=self.m.policy.security_signature_evidence(security_status['stdout'])
         self.security_metadata=self.m.policy.classify_security(security_release,self.security_packages,
           returncode=security_status['returncode'],timed_out=security_status['timedOut'],
           status=security_status['stdout'],checked_at=datetime.now(timezone.utc))
@@ -524,6 +526,10 @@ class NativePort:
         self.failure={'phase':phase,'type':type(error).__name__,
                       'reason':str(error) if re.fullmatch('[A-Za-z0-9_.-]{1,160}',str(error))else'boundary_unknown',
                       'errno':getattr(error,'errno',None),'path':relative,'frames':frames,'firstCommand':self.first_failure}
+        if phase=='signed-metadata' and hasattr(self,'security_signature_facts'):
+            facts=self.security_signature_facts
+            require(len(canonical(facts))<=1024,'host.security_signer_evidence_cap')
+            self.failure['securitySignatures']=facts
     def save_final(self,value):
         record=dict(value,commands=self.commands,negativeAPT=getattr(self,'negative_proof',None),
                     failure=getattr(self,'failure',None),runIdentity=self.run,sourceManifestSha256=sha(self.manifest_raw))

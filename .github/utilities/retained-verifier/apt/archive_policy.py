@@ -199,15 +199,8 @@ def classify(release, packages, *, returncode, timed_out, status, checked_at,
             'releaseDate': date, 'verifiedPrimaryFingerprints': primaries}
 
 
-def classify_security(release, packages, *, returncode, timed_out, status, checked_at):
-    """Classify the fixed security origin only after fresh native gpgv.
-
-    No main-fixture co-signature exception applies. Release/index bytes are
-    bound by the independently required security signature and signed SHA256
-    entry; this return value never grants authentication by itself.
-    """
-    require(type(returncode) is int and returncode == 0 and timed_out is False,
-            'security_gpgv_exit')
+def _security_valid_primaries(status):
+    """Parse only successful native-gpgv status vocabulary; no key authority."""
     require(type(status) is bytes and len(status) <= 16384, 'security_gpgv_status')
     try:
         lines = status.decode('ascii').splitlines()
@@ -227,7 +220,49 @@ def classify_security(release, packages, *, returncode, timed_out, status, check
                 re.fullmatch('[0-9A-F]{40}', primary) is not None and
                 primary not in valid, 'security_gpgv_fingerprint')
         valid.add(primary)
-    require(valid == SECURITY_PRIMARIES, 'security_gpgv_primary')
+    return valid
+
+
+def security_primary_roster_ok(value):
+    # Every distinct 40-hex primary consumed at least 40 bytes of the existing
+    # 16-KiB status budget. This derived bound grants no additional capacity.
+    return (type(value) is list and 0 < len(value) <= 16384 // 40 and
+            all(type(item) is str and re.fullmatch('[0-9A-F]{40}',item) is not None
+                for item in value) and value == sorted(set(value)) and
+            SECURITY_PRIMARIES <= set(value))
+
+
+def security_signature_evidence(status):
+    """Bounded public signer facts only; never an authentication decision.
+
+    The first eight validated public fingerprints are an explicit diagnostic
+    projection. The classifier and saved proof always retain the complete set.
+    Missing-required and malformed statuses still refuse operational admission.
+    """
+    raw=status if type(status) is bytes else b''
+    parsed=False;valid=[]
+    try:
+        valid=sorted(_security_valid_primaries(status));parsed=True
+    except Refusal:
+        pass
+    return {'schema':'ocv-security-signature-facts-v1','statusBytes':len(raw),
+            'statusSha256':sha(raw),'statusParsed':parsed,
+            'requiredPrimaryPresent':parsed and SECURITY_PRIMARIES <= set(valid),
+            'verifiedPrimaryCount':len(valid),'verifiedPrimaryFingerprints':valid[:8],
+            'fingerprintsTruncated':len(valid)>8,'newAuthenticationAuthority':False}
+
+
+def classify_security(release, packages, *, returncode, timed_out, status, checked_at):
+    """Require the fixed security key in a completely successful gpgv result.
+
+    Extra fully validated signatures add no authority. No main-fixture
+    co-signature exception applies; unknown/bad status tokens still refuse.
+    Release/index/date binding and the required Bookworm security key remain.
+    """
+    require(type(returncode) is int and returncode == 0 and timed_out is False,
+            'security_gpgv_exit')
+    valid=_security_valid_primaries(status)
+    require(SECURITY_PRIMARIES <= valid, 'security_gpgv_primary')
     require(type(release) is bytes and 0 < len(release) <= 196608 and
             type(packages) is bytes and 0 < len(packages) <= 64*1024*1024,
             'security_metadata_cap')

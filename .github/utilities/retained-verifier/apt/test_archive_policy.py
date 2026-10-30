@@ -170,6 +170,11 @@ def security_fixture(packages=None, *, date='Sun, 25 Oct 2026 03:50:50 UTC',
     return release,packages,status
 
 
+def extra_valid_security_signature(status, primary='C'*40):
+    """Synthetic successful co-signature, never an actual release signer claim."""
+    return status+('[GNUPG:] VALIDSIG '+primary+' 2026-10-25 1792899000 0 4 0 1 8 01 '+primary+'\n').encode()
+
+
 class SecurityPolicyTests(unittest.TestCase):
     def setUp(self):
         import archive_policy as p
@@ -210,6 +215,49 @@ class SecurityPolicyTests(unittest.TestCase):
         self.release,self.packages,self.status=security_fixture()
         for status in (b'',self.status[:30],b'x'*16385):
             with self.subTest(status=status[:30]),self.assertRaises(Refusal):self.check(status=status)
+
+
+    def test_required_plus_successful_extra_signatures_preserve_full_sorted_provenance(self):
+        status=extra_valid_security_signature(self.status)
+        got=self.check(status=status)
+        self.assertEqual(got['verifiedPrimaryFingerprints'],sorted(set(self.p.SECURITY_PRIMARIES)|{'C'*40}))
+        self.assertFalse(got['nativeAuthenticationIssued'])
+        self.assertTrue(self.p.security_primary_roster_ok(got['verifiedPrimaryFingerprints']))
+        with self.assertRaisesRegex(Refusal,'security_gpgv_primary'):
+            self.check(status=extra_valid_security_signature(b''))
+    def test_successful_extra_signatures_never_override_bad_or_unknown_status_or_exit(self):
+        status=extra_valid_security_signature(self.status)
+        for token in ('BADSIG','EXPSIG','REVKEYSIG','ERRSIG','NO_PUBKEY','EXPKEYSIG','KEYEXPIRED',
+                      'SIGEXPIRED','FAILURE','ERROR','NODATA','UNEXPECTED'):
+            with self.subTest(token=token),self.assertRaisesRegex(Refusal,'security_gpgv_status'):
+                self.check(status=status+('[GNUPG:] '+token+'\n').encode())
+        for code in (2,1,False,None):
+            with self.subTest(code=code),self.assertRaises(Refusal):self.check(status=status,returncode=code)
+        with self.assertRaises(Refusal):self.check(status=status,timed_out=True)
+        for invalid in (status+self.status,b'x'*16385,status+b'[GNUPG:] VALIDSIG short\n',b'\xff'):
+            with self.subTest(invalid=invalid[:30]),self.assertRaises(Refusal):self.check(status=invalid)
+    def test_primary_roster_is_exact_sorted_unique_bounded_hex_and_required(self):
+        required=sorted(self.p.SECURITY_PRIMARIES)
+        for value in (None,set(required),[],['C'*40],required*2,required+[True],
+                      required+['c'*40],list(reversed(required+['C'*40])),required+['short']):
+            with self.subTest(value=value):self.assertFalse(self.p.security_primary_roster_ok(value))
+        self.assertFalse(self.p.security_primary_roster_ok([f'{i:040X}'for i in range(410)]))
+    def test_signer_failure_projection_is_bounded_public_hex_only_and_not_authority(self):
+        import json
+        status=self.status+b'[GNUPG:] GOODSIG ABCD PRIVATE_UID_NOT_EXPORTED\n'
+        for index in range(12):status=extra_valid_security_signature(status,f'{index:040X}')
+        facts=self.p.security_signature_evidence(status)
+        self.assertTrue(facts['statusParsed']);self.assertTrue(facts['requiredPrimaryPresent'])
+        self.assertEqual(facts['verifiedPrimaryCount'],13);self.assertEqual(len(facts['verifiedPrimaryFingerprints']),8)
+        self.assertTrue(facts['fingerprintsTruncated']);self.assertFalse(facts['newAuthenticationAuthority'])
+        raw=json.dumps(facts,sort_keys=True,separators=(',',':')).encode()
+        self.assertLessEqual(len(raw),1024);self.assertNotIn(b'PRIVATE_UID',raw)
+        self.assertEqual(facts['statusSha256'],sha(status));self.assertEqual(facts['statusBytes'],len(status))
+        missing=self.p.security_signature_evidence(extra_valid_security_signature(b''))
+        self.assertTrue(missing['statusParsed']);self.assertFalse(missing['requiredPrimaryPresent'])
+        malformed=self.p.security_signature_evidence(status+b'[GNUPG:] NO_PUBKEY private value\n')
+        self.assertFalse(malformed['statusParsed']);self.assertEqual(malformed['verifiedPrimaryFingerprints'],[])
+        self.assertNotIn('private value',repr(malformed))
 
 
 if __name__ == '__main__':

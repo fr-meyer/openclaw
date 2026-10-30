@@ -18,7 +18,7 @@ import ci_native_port,ci_metadata,ci_worker,ci_entry,ci_profile,ci_fixture,runti
 import consumer_compat
 import native_cases
 import archive_policy as security_policy
-from test_archive_policy import security_fixture
+from test_archive_policy import security_fixture,extra_valid_security_signature
 import copied_bootstrap_probe as copied_probe
 import serial_receipt as independent_serial
 import test_native_cases as native_case_fixtures
@@ -249,6 +249,13 @@ class Verification(unittest.TestCase):
   paths=plan.controls['apt']['paths'];self.io.files[paths['securityPackages']]=self.io.files[paths['packages']]
   with self.assertRaisesRegex(guard.Refusal,'boot.python_security_origin'):
    issuer.verify_signed_package_bindings(self.io,plan,tools,security_policy)
+ def test_required_security_key_with_extra_valid_signature_reaches_real_preparation(self):
+  self.io.security_status=extra_valid_security_signature(self.io.security_status)
+  plan=guard.verify(self.io)
+  admission=issuer.ExportAdmission(self.program,self.io,plan.controls['apt'],self.io);admission.run()
+  prepared=issuer.prepare(plan,self.io,self.program)
+  self.assertTrue(prepared.aliases)
+  self.assertEqual(admission.evidence['argv'][-1],guard.CONTROL+'/apt-data/SecurityInRelease')
  def test_main_only_export_missing_security_signature_and_expired_security_refuse(self):
   plan=guard.verify(self.io);apt=copy.deepcopy(plan.controls['apt']);apt['paths'].pop('securityPackages')
   with self.assertRaises(guard.Refusal):issuer.ExportAdmission(self.program,self.io,apt,self.io)

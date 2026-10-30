@@ -52,7 +52,7 @@ import archive_guard as apt
 import guard_project
 import build_recipe as build
 import integrated_fixture
-from test_archive_policy import security_fixture
+from test_archive_policy import security_fixture,extra_valid_security_signature
 
 C=h.canonical
 SHA=h.sha
@@ -188,7 +188,8 @@ class ContractFixture:
    date=(now-dt.timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S UTC'),
    until=(now+dt.timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S UTC'))
   self.policy=SimpleNamespace(classify=lambda *args,**kw:policy.classify(*args,fixture=self.policy_fixture,**kw),
-   classify_security=policy.classify_security,PYTHON_U9=policy.PYTHON_U9)
+   classify_security=policy.classify_security,security_signature_evidence=policy.security_signature_evidence,
+   PYTHON_U9=policy.PYTHON_U9)
   self.modules=SimpleNamespace(context=self.commands,commands=commands,build=build,guard_project=guard_project,
    apt=apt,policy=self.policy,serial=serial,validator=source_validator,artifact=artifact,source_expectation=source_expectation,
    integrated_fixture=integrated_fixture,
@@ -544,6 +545,28 @@ class NativePortContract(unittest.TestCase):
   # This deliberately synthetic path result cannot establish actual Linux proof.
   self.assertTrue(all(scope.environment==SyntheticCommands.ENV or scope.role.startswith('ubuntu_apt_')
    for scope in self.fixture.commands.calls))
+ def test_required_security_key_with_extra_valid_signer_runs_complete_controller_and_packer(self):
+  self.fixture.security_status=extra_valid_security_signature(self.fixture.security_status)
+  result=self.fixture.run()
+  self.assertEqual(result['status'],'passed',getattr(self.fixture.port,'failure',result))
+  self.assertEqual(self.fixture.port.security_metadata['verifiedPrimaryFingerprints'],
+   sorted(set(policy.SECURITY_PRIMARIES)|{'C'*40}))
+  self.assertEqual(self.fixture.qemu_calls,1)
+ def test_missing_required_and_bad_security_signers_refuse_before_build_with_exact_bounded_facts(self):
+  original=self.fixture.security_status
+  for status,parsed in ((extra_valid_security_signature(b''),True),
+    (original+b'[GNUPG:] BADSIG PRIVATE_UID_NEVER_EXPORTED\n',False)):
+   with self.subTest(parsed=parsed),tempfile.TemporaryDirectory(prefix='ocv-security-refusal-')as root:
+    fixture=ContractFixture(root);fixture.security_status=status
+    result=fixture.run();self.assertEqual(result['phase'],'signed-metadata')
+    failure=fixture.port.failure;facts=failure['securitySignatures']
+    self.assertEqual(facts['statusBytes'],len(status));self.assertEqual(facts['statusSha256'],SHA(status))
+    self.assertIs(facts['statusParsed'],parsed);self.assertFalse(facts['requiredPrimaryPresent'])
+    self.assertFalse(facts['newAuthenticationAuthority']);self.assertLessEqual(len(C(facts)),1024)
+    self.assertNotIn(b'PRIVATE_UID',C(facts));self.assertEqual(fixture.qemu_calls,0)
+    self.assertFalse(any(row.role=='mkosi_build'for row in fixture.commands.calls))
+    saved=json.loads((fixture.port.artifacts/'host-result.json').read_bytes())
+    self.assertEqual(saved['failure']['securitySignatures'],facts)
  def test_exported_tree_needs_only_its_manifest_not_preparation_materializer(self):
   destination=self.fixture.root/'exported-case';destination.mkdir()
   with mock.patch.dict(globals(),{'publication':None,'A':self.fixture.source}):
