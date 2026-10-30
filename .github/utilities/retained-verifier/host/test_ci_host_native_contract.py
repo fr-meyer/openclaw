@@ -28,6 +28,7 @@ from uuid import UUID
 from unittest import mock
 
 import ci_host as h
+import build_entry as native_build
 import command_factories as commands
 import serial_receipt as serial
 import source_expectation
@@ -56,7 +57,8 @@ from test_archive_policy import security_fixture,extra_valid_security_signature
 
 C=h.canonical
 SHA=h.sha
-# Explicit non-native payload: only the artifact hash reference is substituted.
+# Explicit non-native payload: only the three expected hash references are
+# substituted in host fetch, native export and artifact packaging tests.
 # The unpatched production archive hash remains mandatory in actual CI.
 REPAIR_RAW=(b'public synthetic offline selinux-utils package'*3000)[:126432]
 REPAIR_SHA=SHA(REPAIR_RAW)
@@ -103,7 +105,7 @@ def metadata():
 class SyntheticCommands:
  """Factory-shaped command seam. It cannot mint a NativePermit or execute."""
  ENV={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C','HOME':'/nonexistent'}
- def __init__(self,fixture):self.fixture=fixture;self.calls=[]
+ def __init__(self,fixture):self.fixture=fixture;self.calls=[];self.deadlines=[]
  def normalize_mkosi_outputs(self,permit,project):
   # This simulator writes its bounded public outputs under the final names.
   assert permit is self.fixture.permit and project==str(self.fixture.port.project)
@@ -138,6 +140,7 @@ class SyntheticCommands:
  def run_owned(self,permit,scope,*,cwd,environment,deadline):
   assert permit is self.fixture.permit and cwd==scope.cwd and environment==scope.environment
   self.calls.append(scope)
+  self.deadlines.append((scope.role,deadline))
   return self.fixture.execute(scope)
 
 
@@ -204,6 +207,7 @@ class ContractFixture:
   self.negative_changes={};self.qemu_mode='valid';self.qemu_calls=0;self.output_paths=set()
   self.short_stream=False;self.real_read=h.read_regular;self.real_lstat=Path.lstat
   self.gpg_exit=0;self.gpg_changes={};self.dpkg_missing=None
+  self.repair_download_mode='valid'
  def host_path_facts(self,path):
   target={'/usr/bin/bootctl':('/usr/bin/bootctl',1),
           '/usr/sbin/depmod':('/usr/bin/kmod',2),'/sbin/depmod':('/usr/bin/kmod',2),
@@ -241,6 +245,9 @@ class ContractFixture:
   if path.exists():path.chmod(0o644)
   path.write_bytes(raw);path.chmod(mode)
  def build_outputs(self):
+  staged=self.port.project/'extra/opt/ocv/control/repair-input.deb'
+  assert staged.read_bytes()==REPAIR_RAW and staged.stat().st_mode&0o777==0o444
+  assert not (self.port.project/'cache/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb').exists()
   out=self.port.project/'out';out.mkdir(exist_ok=True)
   image=out/'ocv-test.raw'
   with image.open('wb') as stream:stream.truncate(2*1024**3)
@@ -272,15 +279,29 @@ class ContractFixture:
   self.write(out/'apt-data/Packages',self.packages)
   self.write(out/'apt-data/SecurityInRelease',self.security_release)
   self.write(out/'apt-data/SecurityPackages',self.security_packages)
-  self.write(out/'repair/selinux-utils.deb',REPAIR_RAW)
-  repair={'schema':artifact.REPAIR_SCHEMA,'fixtureOnly':True,'privateVmInstallationPerformed':False,
-   'package':{'name':'selinux-utils','version':'3.4-1+b6','architecture':'amd64',
-    'bytes':126432,'sha256':REPAIR_SHA,
-    'filename':'pool/main/libs/libselinux/selinux-utils_3.4-1+b6_amd64.deb','origin':'main',
-    'packagesSha256':SHA(self.packages),'inReleaseSha256':SHA(self.release),
-    'depends':artifact.REPAIR_PACKAGE_DEPENDS},'tool':repair_tool,
-   'sourceManifestSha256':SHA(self.raw),'aptMetadataManifestSha256':control['aptMetadataManifestSha256']}
-  self.write(out/'repair/manifest.json',C(repair))
+  # Real native read scope and exporter consume the physically host-staged
+  # bytes. Only the external root identity/read location is modeled; this
+  # fixture is not a chroot, signature, archive or Linux execution proof.
+  native=object.__new__(native_build.NativeBuildOps);native.metadata_ready=True
+  def identity(path):
+   assert path==native_build.CONTROL+'/repair-input.deb'
+   info=staged.lstat()
+   return {'sourcePath':path,'type':'regular','dev':info.st_dev,'ino':info.st_ino,
+    'size':info.st_size,'uid':0,'gid':0,'mode':stat.S_IMODE(info.st_mode),
+    'nlink':info.st_nlink,'mtimeNs':info.st_mtime_ns,'ctimeNs':info.st_ctime_ns,'aliasProofSha256':'a'*64}
+  def bounded_read(path,cap,immutable=True):
+   assert path==native_build.CONTROL+'/repair-input.deb'and immutable is True
+   return h.read_regular(staged,cap)
+  native.stat_original=identity;native._read_regular=bounded_read
+  outer=self
+  class ExportOps:
+   def read(self,path,cap):return native.read(path,cap)
+   def write_once(self,path,raw,mode):
+    assert path in(native_build.OUT+'/repair/selinux-utils.deb',native_build.OUT+'/repair/manifest.json')
+    target=out/path.removeprefix(native_build.OUT+'/');assert not target.exists()
+    outer.write(target,raw,mode)
+  native_build.export_selinux_repair(ExportOps(),{'Packages':self.packages,'InRelease':self.release},
+   json.loads(tools_raw),SHA(self.raw),control['aptMetadataManifestSha256'],apt)
  def partition(self,image):
   return C({'partitiontable':{'label':'gpt','device':image,'unit':'sectors','sectorsize':512,
     'partitions':[{'node':image+'1','start':2048,'size':2*1024**3//512-4096,
@@ -331,6 +352,14 @@ class ContractFixture:
    if args['kind']=='mke2fs_usr_owner':return outer(b'e2fsprogs: /usr/sbin/mke2fs\n')
    raise AssertionError('unexpected synthetic dpkg query')
   if role=='debian_metadata_curl':
+   if args['kind']=='repair':
+    target=self.port.project/'metadata/SelinuxUtils.deb'
+    if self.repair_download_mode=='missing':return outer()
+    if self.repair_download_mode=='symlink':
+     elsewhere=self.port.project/'metadata/substitute.deb';self.write(elsewhere,REPAIR_RAW)
+     target.symlink_to(elsewhere);return outer()
+    self.write(target,b'BAD-PUBLIC-ARCHIVE'if self.repair_download_mode=='bad'else REPAIR_RAW)
+    return outer()
    security=args.get('origin')=='security';stem='Security'if security else''
    release=self.security_release if security else self.release;packages=self.security_packages if security else self.packages
    self.write(self.port.project/'metadata'/(stem+('InRelease' if args['kind']=='release' else 'Packages.xz')),
@@ -372,6 +401,8 @@ class ContractFixture:
   port=self.new_port()
   with mock.patch.object(h,'read_regular',side_effect=self.tool_read),\
        mock.patch.object(h,'host_path_facts',side_effect=self.host_path_facts),\
+       mock.patch.object(h,'REPAIR_PACKAGE_SHA256',REPAIR_SHA),\
+       mock.patch.object(native_build,'REPAIR_PACKAGE_SHA256',REPAIR_SHA),\
        mock.patch.object(artifact,'REPAIR_PACKAGE_SHA256',REPAIR_SHA):
    if root_outputs:
     with mock.patch.object(Path,'lstat',new=lambda p,*a,**k:self.root_output_stat(p,*a,**k)):
@@ -517,12 +548,24 @@ class NativePortContract(unittest.TestCase):
   with self.assertRaises(FileExistsError):self.fixture.new_port()
   self.assertFalse(self.fixture.commands.calls)
  def test_actual_controller_metadata_negative_build_serial_replay_and_public_artifact(self):
+  self.assertEqual(h.REPAIR_PACKAGE_SHA256,'8357d8bfdbde73ff658129c1a6d25a02b4a244bddb2cc444c5a46835e3b8a31f')
+  self.assertEqual(native_build.REPAIR_PACKAGE_SHA256,h.REPAIR_PACKAGE_SHA256)
   result=self.fixture.run()
   self.assertEqual(result['status'],'passed',getattr(self.fixture.port,'failure',result))
   self.assertEqual(result['phase'],'complete');self.assertFalse(result['candidateQualified'])
   self.assertEqual(self.fixture.qemu_calls,1)
   commands_done=[scope.role for scope in self.fixture.commands.calls]
   self.assertEqual(commands_done.count('mkosi_build'),2);self.assertEqual(commands_done.count('qemu_once'),1)
+  repair_calls=[(i,s)for i,s in enumerate(self.fixture.commands.calls)
+                if s.role=='debian_metadata_curl'and s.arguments.get('kind')=='repair']
+  self.assertEqual(len(repair_calls),1)
+  negative=next(i for i,s in enumerate(self.fixture.commands.calls)
+                if s.role=='mkosi_build'and Path(s.arguments['project']).name=='negative')
+  positive=next(i for i,s in enumerate(self.fixture.commands.calls)
+                if s.role=='mkosi_build'and Path(s.arguments['project']).name!='negative')
+  self.assertLess(negative,repair_calls[0][0]);self.assertLess(repair_calls[0][0],positive)
+  self.assertTrue(all(i<repair_calls[0][0]for i,s in enumerate(self.fixture.commands.calls)if s.role=='gpgv_metadata'))
+  self.assertFalse((self.fixture.port.project/'negative/extra/opt/ocv/control/repair-input.deb').exists())
   qemu=next(scope.argv for scope in self.fixture.commands.calls if scope.role=='qemu_once')
   self.assertIn('-snapshot',qemu);self.assertEqual(qemu[qemu.index('-nic')+1],'none')
   port=self.fixture.port
@@ -565,8 +608,68 @@ class NativePortContract(unittest.TestCase):
     self.assertFalse(facts['newAuthenticationAuthority']);self.assertLessEqual(len(C(facts)),1024)
     self.assertNotIn(b'PRIVATE_UID',C(facts));self.assertEqual(fixture.qemu_calls,0)
     self.assertFalse(any(row.role=='mkosi_build'for row in fixture.commands.calls))
+    self.assertFalse(any(row.role=='debian_metadata_curl'and row.arguments.get('kind')=='repair'
+                         for row in fixture.commands.calls))
     saved=json.loads((fixture.port.artifacts/'host-result.json').read_bytes())
     self.assertEqual(saved['failure']['securitySignatures'],facts)
+ def test_missing_bad_or_symlink_repair_download_refuses_before_positive_build_and_qemu(self):
+  for defect in ('missing','bad','symlink'):
+   with self.subTest(defect=defect),tempfile.TemporaryDirectory(prefix='ocv-repair-refusal-')as root:
+    fixture=ContractFixture(root);fixture.repair_download_mode=defect
+    result=fixture.run();self.assertEqual((result['status'],result['phase']),('refused','build'))
+    self.assertEqual(sum(s.role=='mkosi_build'for s in fixture.commands.calls),1)
+    self.assertEqual(fixture.qemu_calls,0)
+    self.assertFalse((fixture.port.project/'extra/opt/ocv/control/repair-input.deb').exists())
+    self.assertFalse((fixture.port.artifacts/'public-tooling.tar.gz').exists())
+ def test_repair_signature_record_and_input_substitution_guards_precede_effects(self):
+  port=self.fixture.new_port()
+  with self.assertRaisesRegex(h.Refusal,'host.repair_signed_package'):port.build_once()
+  self.assertFalse(self.fixture.commands.calls)
+  with tempfile.TemporaryDirectory(prefix='ocv-repair-substitution-')as root:
+   fixture=ContractFixture(root);original=fixture.new_port
+   def wired():
+    port=original();project=port._project_files
+    def changed(destination,negative=False):
+     if not negative:fixture.write(port.project/'metadata/SelinuxUtils.deb',b'PUBLIC-SUBSTITUTION')
+     return project(destination,negative)
+    port._project_files=changed;return port
+   fixture.new_port=wired;result=fixture.run()
+   self.assertEqual((result['status'],result['phase'],result['reason']),('refused','build','host.repair_archive'))
+   self.assertEqual(sum(s.role=='mkosi_build'for s in fixture.commands.calls),1)
+   self.assertEqual(fixture.qemu_calls,0)
+ def test_repair_download_consumes_the_same_original_build_phase_budget(self):
+  clock=[time.monotonic()];original=self.fixture.execute;phase_ends=[]
+  def delayed(scope):
+   if scope.role=='debian_metadata_curl'and scope.arguments.get('kind')=='repair':
+    phase_ends.append(self.fixture.port.phase_deadline);clock[0]+=120
+   return original(scope)
+  self.fixture.execute=delayed
+  with mock.patch.object(h.time,'monotonic',side_effect=lambda:clock[0]):result=self.fixture.run()
+  self.assertEqual(result['status'],'passed',getattr(self.fixture.port,'failure',result))
+  self.assertEqual(len(phase_ends),1)
+  positive=next(i for i,s in enumerate(self.fixture.commands.calls)
+                if s.role=='mkosi_build'and Path(s.arguments['project']).name!='negative')
+  self.assertEqual(self.fixture.commands.deadlines[positive][1],phase_ends[0])
+  self.assertLessEqual(phase_ends[0]-clock[0],280)
+  self.assertEqual(h.PRE_QEMU_PHASE_SECONDS['build'],400)
+ def test_changed_signed_repair_row_or_preexisting_download_target_never_fetches(self):
+  for defect in('bytes','debSha256','filename','depends','existing'):
+   with self.subTest(defect=defect),tempfile.TemporaryDirectory(prefix='ocv-repair-binding-')as root:
+    fixture=ContractFixture(root);original=fixture.new_port
+    def wired():
+     port=original();negative=port.negative_bootstrap
+     def changed():
+      negative()
+      if defect=='existing':fixture.write(port.project/'metadata/SelinuxUtils.deb',REPAIR_RAW)
+      else:
+       row=port.records[('selinux-utils','3.4-1+b6','amd64')]
+       row[defect]=1 if defect=='bytes'else '0'*64 if defect=='debSha256'else 'substituted'
+     port.negative_bootstrap=changed;return port
+    fixture.new_port=wired;result=fixture.run()
+    self.assertEqual((result['status'],result['phase']),('refused','build'))
+    self.assertEqual(result['reason'],'host.repair_input_exists'if defect=='existing'else'host.repair_signed_package')
+    self.assertFalse(any(s.role=='debian_metadata_curl'and s.arguments.get('kind')=='repair'for s in fixture.commands.calls))
+    self.assertEqual(sum(s.role=='mkosi_build'for s in fixture.commands.calls),1)
  def test_exported_tree_needs_only_its_manifest_not_preparation_materializer(self):
   destination=self.fixture.root/'exported-case';destination.mkdir()
   with mock.patch.dict(globals(),{'publication':None,'A':self.fixture.source}):

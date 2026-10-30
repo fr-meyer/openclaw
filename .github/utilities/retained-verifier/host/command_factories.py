@@ -53,13 +53,17 @@ def ubuntu_apt_install(project):
 
 def debian_metadata_curl(project, kind, origin='main'):
     table={'release':('InRelease',196608),
-           'packages':('main/binary-amd64/Packages.xz',16777216)}
+           'packages':('main/binary-amd64/Packages.xz',16777216),
+           'repair':('pool/main/libs/libselinux/selinux-utils_3.4-1+b6_amd64.deb',126432)}
     require(kind in table,'metadata_kind');name,cap=table[kind]
     require(origin in ('main','security'),'metadata_origin')
+    require(kind!='repair' or origin=='main','repair_origin')
     stem='' if origin=='main' else 'Security'
-    output=project_path(project,'metadata/'+stem+('InRelease' if kind=='release' else 'Packages.xz'))
+    leaf='SelinuxUtils.deb' if kind=='repair' else stem+('InRelease' if kind=='release' else 'Packages.xz')
+    output=project_path(project,'metadata/'+leaf)
     base=('https://deb.debian.org/debian/dists/bookworm/' if origin=='main' else
           'https://security.debian.org/debian-security/dists/bookworm-security/')
+    if kind=='repair':base='https://deb.debian.org/debian/'
     return ('/usr/bin/curl','--fail','--silent','--show-error','--proto','=https','--tlsv1.2',
       '--retry','0','--connect-timeout','20','--max-time','120','--max-filesize',str(cap),
       '--output',output,base+name)

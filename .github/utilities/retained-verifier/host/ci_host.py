@@ -20,6 +20,7 @@ TOOLING_CAP=48*1024**2
 JOB_SECONDS=2700
 PRE_QEMU_RESERVE_SECONDS=2150
 PRE_QEMU_PHASE_SECONDS={'source':60,'host':360,'metadata':270,'negative':30,'build':400}
+REPAIR_PACKAGE_SHA256='8357d8bfdbde73ff658129c1a6d25a02b4a244bddb2cc444c5a46835e3b8a31f'
 
 
 class Refusal(RuntimeError):pass
@@ -349,6 +350,21 @@ class NativePort:
         self.roots.sort(key=lambda row:row['name'])
         self.m.build.package_specs(self.roots)
         self._pre_qemu_budget()
+    def _repair_record(self):
+        records=getattr(self,'records',None)
+        require(type(records)is dict,'host.repair_signed_package')
+        row=records.get(('selinux-utils','3.4-1+b6','amd64'))
+        require(type(row)is dict and row['filename']==
+          'pool/main/libs/libselinux/selinux-utils_3.4-1+b6_amd64.deb' and
+          row['bytes']==126432 and row['debSha256']==REPAIR_PACKAGE_SHA256 and row['depends']==
+          'libc6 (>= 2.34), libpcre2-8-0 (>= 10.22), libselinux1 (>= 3.1~), libsepol2 (>= 3.4)',
+          'host.repair_signed_package')
+        return row
+    def _repair_input(self):
+        row=self._repair_record()
+        raw=read_regular(self.project/'metadata/SelinuxUtils.deb',126432)
+        require(len(raw)==row['bytes'] and sha(raw)==row['debSha256'],'host.repair_archive')
+        return raw
     def _project_files(self,destination,negative=False):
         self._pre_qemu_budget()
         destination=Path(destination)
@@ -377,6 +393,8 @@ class NativePort:
             self._write(destination/'extra/opt/ocv/source'/name,read_regular(self.source/name,row['bytes']+1),0o444)
         self._write(destination/'extra/opt/ocv/source/PUBLIC-SOURCE-MANIFEST.json',self.manifest_raw,0o444)
         self._write(destination/'extra/opt/ocv/control/build-stage-context.json',canonical(header),0o444)
+        if not negative:
+            self._write(destination/'extra/opt/ocv/control/repair-input.deb',self._repair_input(),0o444)
         for name,target in self.m.build.recipe_symlinks().items():
             link=destination/name;link.parent.mkdir(mode=0o755,parents=True,exist_ok=True)
             os.symlink(target,link)
@@ -416,6 +434,11 @@ class NativePort:
         # Expected negative is retained separately, not mislabeled a positive failure.
     def build_once(self):
         self._phase('build',400)
+        self._repair_record()
+        target=self.project/'metadata/SelinuxUtils.deb'
+        require(not os.path.lexists(target),'host.repair_input_exists')
+        self._run('debian_metadata_curl',{'project':str(self.project),'kind':'repair'},130)
+        self._repair_input()
         self._project_files(self.project)
         self._run('mkosi_build',{'project':str(self.project)},400)
         self.m.context.normalize_mkosi_outputs(self.permit,str(self.project))

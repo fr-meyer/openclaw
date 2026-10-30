@@ -27,6 +27,7 @@ GPG_METADATA=('/usr/bin/gpgv','--status-fd=1','--keyring',DATA+'/keyring.gpg',DA
 GPG_SECURITY=('/usr/bin/gpgv','--status-fd=1','--keyring',DATA+'/keyring.gpg',DATA+'/SecurityInRelease')
 HEADER=CONTROL+'/build-stage-context.json'
 SOURCE_MANIFEST=ROOT+'/PUBLIC-SOURCE-MANIFEST.json'
+REPAIR_PACKAGE_SHA256='8357d8bfdbde73ff658129c1a6d25a02b4a244bddb2cc444c5a46835e3b8a31f'
 WORKFLOW='fr-meyer/openclaw/.github/workflows/authorized-beta-focused-validation.yml@refs/heads/retained-verifier-prerequisites'
 TOOLS={'python':'/usr/bin/python3.11','systemd':'/usr/lib/systemd/systemd','gpgv':'/usr/bin/gpgv',
        'busctl':'/usr/bin/busctl','systemctl':'/usr/bin/systemctl','systemd-run':'/usr/bin/systemd-run',
@@ -384,12 +385,12 @@ def parse_installed_filelist(inventory,binary,raw):
 
 
 def export_selinux_repair(ops,data,tools,source_sha,apt_sha,archive):
-    """Export one already authenticated cached archive; never install it."""
+    """Export the exact authenticated host-staged archive; never install it."""
     records=archive.package_records(data['Packages'])
     row=records.get(('selinux-utils','3.4-1+b6','amd64'))
     filename='pool/main/libs/libselinux/selinux-utils_3.4-1+b6_amd64.deb'
     depends='libc6 (>= 2.34), libpcre2-8-0 (>= 10.22), libselinux1 (>= 3.1~), libsepol2 (>= 3.4)'
-    digest='8357d8bfdbde73ff658129c1a6d25a02b4a244bddb2cc444c5a46835e3b8a31f'
+    digest=REPAIR_PACKAGE_SHA256
     need(type(row)is dict and row['filename']==filename and row['depends']==depends and
          row['bytes']==126432 and row['debSha256']==digest,'build_entry.repair_signed_package')
     matches=[r for r in tools['tools']if r['role']=='selinuxenabled']
@@ -398,7 +399,7 @@ def export_selinux_repair(ops,data,tools,source_sha,apt_sha,archive):
          tool['version']=='3.4-1+b6' and tool['debSha256']==digest and tool['bytes']==14576 and
          tool['sha256']=='2d3c6a10650d380fde19ed7e5b0d80d6a8a99a3d950c1d7f424237a17d609148',
          'build_entry.repair_tool_binding')
-    raw=ops.read('/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb',1048576)
+    raw=ops.read(CONTROL+'/repair-input.deb',1048576)
     need(type(raw)is bytes and len(raw)==126432 and sha(raw)==digest,'build_entry.repair_archive')
     need(type(source_sha)is str and re.fullmatch('[0-9a-f]{64}',source_sha) is not None and
          type(apt_sha)is str and re.fullmatch('[0-9a-f]{64}',apt_sha) is not None,
@@ -606,8 +607,7 @@ class NativeBuildOps:
                 if pending:need(stat.S_ISDIR(s.st_mode),'build_entry.parent_type')
                 parts.append(item)
         resolved='/'+('/'.join(parts))
-        allowed=(resolved.startswith(('/usr/','/lib/','/lib64/','/boot/','/opt/ocv/','/etc/apt/','/work/out/')) or
-                 path==resolved=='/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb')
+        allowed=resolved.startswith(('/usr/','/lib/','/lib64/','/boot/','/opt/ocv/','/etc/apt/','/work/out/'))
         if not allowed and path.startswith('/usr/lib/python3.11/') and len(path)<=1024 and len(resolved)<=1024:
             sys.stderr.write(canonical({'schema':'ocv-build-root-refusal-v1','packagePath':path,
                                         'resolvedPath':resolved}).decode()+'\n')
@@ -651,15 +651,16 @@ class NativeBuildOps:
         finally:os.close(fd)
 
     def read(self,path,cap):
-        if path=='/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb':
+        if path==CONTROL+'/repair-input.deb':
             need(getattr(self,'metadata_ready',False)is True,'build_entry.metadata_not_verified')
             need(cap==1048576,'build_entry.repair_read_cap')
             before=self.stat_original(path)
             need(before['sourcePath']==path and before['type']=='regular' and
-                 before['nlink']==1 and before['size']<=cap,'build_entry.repair_cache_identity')
-            raw=self._read_regular(path,cap,immutable=False)
+                 before['nlink']==1 and before['size']==126432 and before['mode']&0o222==0,
+                 'build_entry.repair_input_identity')
+            raw=self._read_regular(path,cap,immutable=True)
             need(self.stat_original(path)==before and len(raw)==before['size'],
-                 'build_entry.repair_cache_changed')
+                 'build_entry.repair_input_changed')
             return raw
         if path.startswith((ROOT+'/',CONTROL+'/',OUT+'/')):
             resolved,_,_=self._resolve(path)

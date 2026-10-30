@@ -46,6 +46,14 @@ class FactoryTests(unittest.TestCase):
         for origin in ('other','security/../main','https://example.invalid'):
             with self.subTest(origin=origin),self.assertRaises(c.Refusal):c.debian_metadata_curl('/tmp/ocv-public','release',origin)
             with self.assertRaises(c.Refusal):c.gpgv_metadata('/tmp/ocv-public',origin)
+    def test_repair_download_has_one_fixed_main_url_output_size_and_no_redirect_or_retry(self):
+        argv=c.debian_metadata_curl('/tmp/ocv-public','repair')
+        self.assertEqual(argv[-1],'https://deb.debian.org/debian/pool/main/libs/libselinux/selinux-utils_3.4-1+b6_amd64.deb')
+        self.assertEqual(argv[argv.index('--output')+1],'/tmp/ocv-public/metadata/SelinuxUtils.deb')
+        self.assertEqual(argv[argv.index('--max-filesize')+1],'126432')
+        self.assertEqual(argv[argv.index('--retry')+1],'0');self.assertNotIn('--location',argv)
+        for origin in ('security','other','https://example.invalid'):
+            with self.subTest(origin=origin),self.assertRaises(c.Refusal):c.debian_metadata_curl('/tmp/ocv-public','repair',origin)
     def test_test_roster_comes_only_from_known_manifest_rows(self):
         rows={'host/test_a.py':{},'host/not_a_test.py':{},'host/deep/test_b.py':{},'apt/test_archive_policy.py':{}}
         self.assertEqual(r.selected_paths(rows,'host'),['host/test_a.py'])

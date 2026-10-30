@@ -449,13 +449,13 @@ class ForwardAuthBoundaries(unittest.TestCase):
                      ('/usr/bin/dpkg-query','--show','--showformat='+build_entry.SHOW_FORMAT),
                      ('/usr/bin/gcc-12',)):
             with self.subTest(argv=argv),self.assertRaises(build_entry.Refusal):obj._command_cap(argv)
-    def test_native_cache_read_exact_root_identity_and_metadata_phase(self):
+    def test_native_repair_input_read_exact_immutable_root_identity_and_metadata_phase(self):
         import stat
         from types import SimpleNamespace as S
         obj=object.__new__(build_entry.NativeBuildOps);obj.metadata_ready=True;obj.header={}
-        path='/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb';blob=b'public fake deb'
+        path=build_entry.CONTROL+'/repair-input.deb';blob=b'public fake deb'.ljust(126432,b'!')
         def entry(probe):
-            return S(st_uid=0,st_gid=0,st_mode=(stat.S_IFREG|0o644)if probe==path else(stat.S_IFDIR|0o755),
+            return S(st_uid=0,st_gid=0,st_mode=(stat.S_IFREG|0o444)if probe==path else(stat.S_IFDIR|0o755),
               st_size=len(blob)if probe==path else 0,st_dev=1,st_ino=11,st_nlink=1,st_mtime_ns=1,st_ctime_ns=1)
         with mock.patch.object(build_entry.os,'lstat',side_effect=entry),mock.patch.object(build_entry.os,'open',return_value=81)as opened,\
              mock.patch.object(build_entry.os,'fstat',side_effect=lambda fd:entry(path)),\
@@ -465,11 +465,11 @@ class ForwardAuthBoundaries(unittest.TestCase):
             with self.assertRaisesRegex(build_entry.Refusal,'metadata_not_verified'):obj.read(path,1048576)
             self.assertEqual(opened.call_count,1)
             obj.metadata_ready=True
-            with self.assertRaises(build_entry.Refusal):obj.read(path+'.other',1048576)
+            with self.assertRaises(build_entry.Refusal):obj.read('/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb',1048576)
             with self.assertRaises(build_entry.Refusal):obj.read(path,1048577)
         with mock.patch.object(obj,'stat_original',return_value={'sourcePath':path,'type':'regular','nlink':2,'size':len(blob)}),\
              mock.patch.object(build_entry.os,'open')as opened:
-            with self.assertRaisesRegex(build_entry.Refusal,'repair_cache_identity'):obj.read(path,1048576)
+            with self.assertRaisesRegex(build_entry.Refusal,'repair_input_identity'):obj.read(path,1048576)
             opened.assert_not_called()
     def test_native_repair_write_scope_two_names_caps_and_owned_parent_only(self):
         import stat
@@ -501,7 +501,7 @@ class ForwardAuthBoundaries(unittest.TestCase):
         writes=[];payload=b'SYNTHETIC-NOT-AN-AUTHENTICATED-DEB'.ljust(126432,b'!')
         class Ops:
             def read(self,path,cap):
-                self_path='/var/cache/apt/archives/selinux-utils_3.4-1+b6_amd64.deb'
+                self_path=build_entry.CONTROL+'/repair-input.deb'
                 assert path==self_path and cap==1048576;return payload
             def write_once(self,path,raw,mode):writes.append((path,raw,mode))
         data={'Packages':index,'InRelease':b'explicit synthetic signed-input seam'}
