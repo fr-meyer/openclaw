@@ -1205,9 +1205,24 @@ def owned_pnpm_file(toolchain, relative):
     return path
 
 
-def bootstrap_pnpm(home, env, request=None):
+def operation_identity_for(request=None, operation_identity=None):
+    """Logging identity only; the caller must separately admit every operation."""
+    if operation_identity is None:
+        source_sha, source_tree = source_identity_for(request)
+        return source_sha, source_tree, CAMPAIGN
+    need(type(operation_identity) is dict and set(operation_identity) ==
+        {"campaignId", "sourceSha", "sourceTree"} and
+        operation_identity["campaignId"] == "future-v109-grouped-validation-20261030" and
+        all(type(operation_identity[k]) is str and
+            re.fullmatch(r"[0-9a-f]{40}", operation_identity[k]) is not None
+            for k in ("sourceSha", "sourceTree")), "fixed explicit operation identity")
+    return (operation_identity["sourceSha"], operation_identity["sourceTree"],
+            operation_identity["campaignId"])
+
+
+def bootstrap_pnpm(home, env, request=None, *, operation_identity=None):
     """Initialize only pinned pnpm, then return its owned native executable."""
-    source_sha, source_tree = source_identity_for(request)
+    source_sha, source_tree, operation_campaign = operation_identity_for(request, operation_identity)
     phase, owned = "resolve-runtimes", False
     try:
         toolchain = home.resolve(strict=True) / "toolchain"
@@ -1259,7 +1274,7 @@ def bootstrap_pnpm(home, env, request=None):
                        "OSError" if isinstance(error, OSError) else "MetadataError")
         code = getattr(error, "errno", None)
         returncode = getattr(error, "returncode", None)
-        summarize({"campaignId": CAMPAIGN, "bootstrapPhase": phase,
+        summarize({"campaignId": operation_campaign, "bootstrapPhase": phase,
                    "sourceSha": source_sha, "sourceTree": source_tree,
                    "status": "interrupted" if isinstance(error, ProfileInterrupted) else "refused",
                    "errorClass": error_class, "errno": code if type(code) is int else None,
@@ -1356,9 +1371,10 @@ def settle_owned_timeout_group(child):
 
 def phase_process(argv, cwd, env, context, phase, ordinal):
     """One owned process session; emit bounded facts before every terminal path."""
-    source_sha, source_tree = source_identity_for(context.get("request"))
+    source_sha, source_tree, operation_campaign = operation_identity_for(
+        context.get("request"), context.get("operationIdentity"))
     remaining = context["deadlineEpoch"] - time.time()
-    fact = {"campaignId": CAMPAIGN, "profile": context["profile"], "phase": phase,
+    fact = {"campaignId": operation_campaign, "profile": context["profile"], "phase": phase,
             "commandIndex": ordinal, "sourceSha": source_sha, "sourceTree": source_tree}
     if remaining <= 0:
         summarize(dict(fact, status="budget_refused", exitCode=None, signal=None, timedOut=True), {})

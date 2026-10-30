@@ -1,0 +1,32 @@
+{
+  "schema": "openclaw.v109.private-image-request.v1",
+  "state": "DISARMED",
+  "campaignId": "future-v109-grouped-validation-20261030",
+  "repository": "fr-meyer/openclaw",
+  "workflow": ".github/workflows/future-v109-image-build.yml",
+  "workflowBranch": "task/v107-source-binding",
+  "operationId": "hosted-private-grouped-20261030-01",
+  "preparationSourceSha": "ba04217f6642091b94f396669318d068e6007ed7",
+  "previousPipelineHead": null,
+  "sourceSha": null,
+  "sourceTree": null,
+  "sourceBindingsSha256": null,
+  "sourceRequestSha256": null,
+  "generationReceiptSha256": null,
+  "manifestSha256": null,
+  "inventorySha256": null,
+  "builtAt": null,
+  "sourceValidation": null,
+  "privateObject": {
+    "bucket": "openclaw-build-guard-source-1046324571444",
+    "object": null,
+    "signer": "openclaw-build-submitter@openclaw-family-gateway.iam.gserviceaccount.com",
+    "secretName": "OPENCLAW_PRIVATE_OCI_CAPABILITY_V109",
+    "maximumBytes": 2147483648,
+    "putMaximumSeconds": 3600,
+    "getMaximumSeconds": 900,
+    "uploadGrantMaximumSeconds": 7200,
+    "readerGrantMaximumSeconds": 900
+  },
+  "authorization": null
+}

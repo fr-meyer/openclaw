@@ -1,0 +1,4547 @@
+{
+  "schema": "openclaw.v109.closed-v108-provider-stage.v1",
+  "repository": "fr-meyer/openclaw",
+  "historicalCampaignId": "future-v108-source-validation-20261027",
+  "closedAt": "2026-10-29T18:26:15.518985+00:00",
+  "runCount": 15,
+  "runnerMinutesObserved": 507,
+  "incidentalMinutesObserved": 11,
+  "sourceRunIds": [
+    "40901336241"
+  ],
+  "artifactSnapshot": {
+    "count": 1,
+    "bytes": 622
+  },
+  "closedSourceExecutions": [
+    {
+      "runId": 40901336241,
+      "pipelineHead": "37400d942839bee0b92852037d6f8bf99e60358c",
+      "sourceHead": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
+      "terminal": true,
+      "conclusion": "success"
+    }
+  ],
+  "records": [
+    {
+      "run": {
+        "id": 40901328541,
+        "name": "PR context and evidence",
+        "path": ".github/workflows/real-behavior-proof.yml",
+        "event": "pull_request_target",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "skipped",
+        "created_at": "2026-10-29T15:25:00Z",
+        "updated_at": "2026-10-29T15:25:09Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328541"
+      },
+      "jobs": [
+        {
+          "id": 123544104813,
+          "run_id": 40901328541,
+          "workflow_name": "PR context and evidence",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901328541",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw81vbQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544104813",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328541/job/123544104813",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:01Z",
+          "started_at": "2026-10-29T15:25:01Z",
+          "completed_at": "2026-10-29T15:25:01Z",
+          "name": "PR context and evidence",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544104813",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 0,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901328553,
+        "name": "Labeler",
+        "path": ".github/workflows/labeler.yml",
+        "event": "pull_request_target",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-10-29T15:25:00Z",
+        "updated_at": "2026-10-29T15:26:14Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328553"
+      },
+      "jobs": [
+        {
+          "id": 123544101667,
+          "run_id": 40901328553,
+          "workflow_name": "Labeler",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901328553",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw81jIw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544101667",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328553/job/123544101667",
+          "status": "completed",
+          "conclusion": "failure",
+          "created_at": "2026-10-29T15:25:01Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:26:13Z",
+          "name": "label",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:25:05Z",
+              "completed_at": "2026-10-29T15:25:08Z"
+            },
+            {
+              "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T15:25:08Z",
+              "completed_at": "2026-10-29T15:26:09Z"
+            },
+            {
+              "name": "Run actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:26:09Z",
+              "completed_at": "2026-10-29T15:26:09Z"
+            },
+            {
+              "name": "Run actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
+              "status": "completed",
+              "conclusion": "failure",
+              "number": 4,
+              "started_at": "2026-10-29T15:26:09Z",
+              "completed_at": "2026-10-29T15:26:09Z"
+            },
+            {
+              "name": "Run actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 5,
+              "started_at": "2026-10-29T15:26:09Z",
+              "completed_at": "2026-10-29T15:26:09Z"
+            },
+            {
+              "name": "Apply PR size label",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 6,
+              "started_at": "2026-10-29T15:26:09Z",
+              "completed_at": "2026-10-29T15:26:09Z"
+            },
+            {
+              "name": "Apply maintainer or trusted-contributor label",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 7,
+              "started_at": "2026-10-29T15:26:09Z",
+              "completed_at": "2026-10-29T15:26:09Z"
+            },
+            {
+              "name": "Apply beta-blocker title label",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 8,
+              "started_at": "2026-10-29T15:26:09Z",
+              "completed_at": "2026-10-29T15:26:09Z"
+            },
+            {
+              "name": "Apply too-many-prs label",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 9,
+              "started_at": "2026-10-29T15:26:09Z",
+              "completed_at": "2026-10-29T15:26:09Z"
+            },
+            {
+              "name": "Post Run actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-10-29T15:26:09Z",
+              "completed_at": "2026-10-29T15:26:09Z"
+            },
+            {
+              "name": "Post Run actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 17,
+              "started_at": "2026-10-29T15:26:09Z",
+              "completed_at": "2026-10-29T15:26:10Z"
+            },
+            {
+              "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 18,
+              "started_at": "2026-10-29T15:26:10Z",
+              "completed_at": "2026-10-29T15:26:10Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 19,
+              "started_at": "2026-10-29T15:26:10Z",
+              "completed_at": "2026-10-29T15:26:10Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544101667",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023531,
+          "runner_name": "GitHub Actions 1000023531",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123544104239,
+          "run_id": 40901328553,
+          "workflow_name": "Labeler",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901328553",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw81tLw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544104239",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328553/job/123544104239",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:01Z",
+          "started_at": "2026-10-29T15:25:01Z",
+          "completed_at": "2026-10-29T15:25:01Z",
+          "name": "label-issues",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544104239",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544195487,
+          "run_id": 40901328553,
+          "workflow_name": "Labeler",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901328553",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw87Rnw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544195487",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328553/job/123544195487",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:10Z",
+          "started_at": "2026-10-29T15:25:10Z",
+          "completed_at": "2026-10-29T15:25:01Z",
+          "name": "backfill-pr-labels",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544195487",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 2,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901328554,
+        "name": "Auto response",
+        "path": ".github/workflows/auto-response.yml",
+        "event": "pull_request_target",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "skipped",
+        "created_at": "2026-10-29T15:25:00Z",
+        "updated_at": "2026-10-29T15:25:02Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328554"
+      },
+      "jobs": [
+        {
+          "id": 123544105985,
+          "run_id": 40901328554,
+          "workflow_name": "Auto response",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901328554",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw810AQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544105985",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328554/job/123544105985",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:02Z",
+          "started_at": "2026-10-29T15:25:02Z",
+          "completed_at": "2026-10-29T15:25:01Z",
+          "name": "auto-response",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544105985",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 0,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901328563,
+        "name": "ClawSweeper Dispatch",
+        "path": ".github/workflows/clawsweeper-dispatch.yml",
+        "event": "pull_request_target",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-29T15:25:00Z",
+        "updated_at": "2026-10-29T15:25:14Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328563"
+      },
+      "jobs": [
+        {
+          "id": 123544102656,
+          "run_id": 40901328563,
+          "workflow_name": "ClawSweeper Dispatch",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901328563",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw81nAA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544102656",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328563/job/123544102656",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:25:01Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:13Z",
+          "name": "dispatch",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:25:05Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Debounce bursty metadata events",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 2,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Debounce main push dispatch",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 3,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Install GitHub API backoff helper",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Create ClawSweeper dispatch token",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 5,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Pre-filter ClawSweeper comment",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 6,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Create target comment token",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 7,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Create target PR acknowledgement token",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 8,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Acknowledge received pull request",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 9,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Dispatch GitHub activity to ClawSweeper",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Setup supported Node runtime",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:11Z"
+            },
+            {
+              "name": "Dispatch exact ClawSweeper review",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T15:25:11Z",
+              "completed_at": "2026-10-29T15:25:11Z"
+            },
+            {
+              "name": "Acknowledge and dispatch ClawSweeper comment",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 13,
+              "started_at": "2026-10-29T15:25:11Z",
+              "completed_at": "2026-10-29T15:25:11Z"
+            },
+            {
+              "name": "Post Setup supported Node runtime",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 26,
+              "started_at": "2026-10-29T15:25:11Z",
+              "completed_at": "2026-10-29T15:25:11Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 27,
+              "started_at": "2026-10-29T15:25:11Z",
+              "completed_at": "2026-10-29T15:25:11Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544102656",
+          "labels": [
+            "ubuntu-latest"
+          ],
+          "runner_id": 1000023533,
+          "runner_name": "GitHub Actions 1000023533",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 1,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901328625,
+        "name": "Security Review",
+        "path": ".github/workflows/security-review.yml",
+        "event": "pull_request_target",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-29T15:25:00Z",
+        "updated_at": "2026-10-29T15:25:21Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328625"
+      },
+      "jobs": [
+        {
+          "id": 123544101827,
+          "run_id": 40901328625,
+          "workflow_name": "Security Review",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901328625",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw81jww",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544101827",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328625/job/123544101827",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:25:01Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:20Z",
+          "name": "resolve",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:25:05Z",
+              "completed_at": "2026-10-29T15:25:06Z"
+            },
+            {
+              "name": "Check out trusted workflow scripts",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T15:25:06Z",
+              "completed_at": "2026-10-29T15:25:10Z"
+            },
+            {
+              "name": "Report checkout infrastructure retry",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 3,
+              "started_at": "2026-10-29T15:25:10Z",
+              "completed_at": "2026-10-29T15:25:10Z"
+            },
+            {
+              "name": "Retry trusted workflow checkout",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 4,
+              "started_at": "2026-10-29T15:25:10Z",
+              "completed_at": "2026-10-29T15:25:10Z"
+            },
+            {
+              "name": "Stage trusted workflow scripts",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T15:25:10Z",
+              "completed_at": "2026-10-29T15:25:10Z"
+            },
+            {
+              "name": "Setup supported Node runtime",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T15:25:10Z",
+              "completed_at": "2026-10-29T15:25:15Z"
+            },
+            {
+              "name": "Resolve current pull requests",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T15:25:15Z",
+              "completed_at": "2026-10-29T15:25:17Z"
+            },
+            {
+              "name": "Post Setup supported Node runtime",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T15:25:17Z",
+              "completed_at": "2026-10-29T15:25:17Z"
+            },
+            {
+              "name": "Post Check out trusted workflow scripts",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T15:25:17Z",
+              "completed_at": "2026-10-29T15:25:17Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T15:25:17Z",
+              "completed_at": "2026-10-29T15:25:17Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544101827",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023532,
+          "runner_name": "GitHub Actions 1000023532",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123544306182,
+          "run_id": 40901328625,
+          "workflow_name": "Security Review",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901328625",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw9CCBg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544306182",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901328625/job/123544306182",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:21Z",
+          "started_at": "2026-10-29T15:25:21Z",
+          "completed_at": "2026-10-29T15:25:20Z",
+          "name": "review",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544306182",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 1,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901335945,
+        "name": "Workflow Sanity",
+        "path": ".github/workflows/workflow-sanity.yml",
+        "event": "pull_request",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-29T15:25:03Z",
+        "updated_at": "2026-10-29T15:27:15Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901335945"
+      },
+      "jobs": [
+        {
+          "id": 123544127198,
+          "run_id": 40901335945,
+          "workflow_name": "Workflow Sanity",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901335945",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83G3g",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544127198",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901335945/job/123544127198",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:06Z",
+          "completed_at": "2026-10-29T15:27:14Z",
+          "name": "actionlint",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:25:07Z",
+              "completed_at": "2026-10-29T15:25:30Z"
+            },
+            {
+              "name": "Checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T15:25:30Z",
+              "completed_at": "2026-10-29T15:26:18Z"
+            },
+            {
+              "name": "Setup supported Node runtime",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:26:18Z",
+              "completed_at": "2026-10-29T15:26:23Z"
+            },
+            {
+              "name": "Disallow tracked merge conflict markers",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:26:23Z",
+              "completed_at": "2026-10-29T15:26:23Z"
+            },
+            {
+              "name": "Detect workflow audit changes",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T15:26:23Z",
+              "completed_at": "2026-10-29T15:26:24Z"
+            },
+            {
+              "name": "Fail on tabs in workflow files",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T15:26:24Z",
+              "completed_at": "2026-10-29T15:26:24Z"
+            },
+            {
+              "name": "Setup Python",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T15:26:24Z",
+              "completed_at": "2026-10-29T15:26:25Z"
+            },
+            {
+              "name": "Prepare Git owner",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-10-29T15:26:25Z",
+              "completed_at": "2026-10-29T15:26:25Z"
+            },
+            {
+              "name": "Prepare trusted workflow audit configs",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9,
+              "started_at": "2026-10-29T15:26:25Z",
+              "completed_at": "2026-10-29T15:26:26Z"
+            },
+            {
+              "name": "Install pre-commit",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10,
+              "started_at": "2026-10-29T15:26:26Z",
+              "completed_at": "2026-10-29T15:26:28Z"
+            },
+            {
+              "name": "Install ShellCheck",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11,
+              "started_at": "2026-10-29T15:26:28Z",
+              "completed_at": "2026-10-29T15:26:28Z"
+            },
+            {
+              "name": "Setup Go",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T15:26:28Z",
+              "completed_at": "2026-10-29T15:26:36Z"
+            },
+            {
+              "name": "Install actionlint",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T15:26:36Z",
+              "completed_at": "2026-10-29T15:26:45Z"
+            },
+            {
+              "name": "Lint workflows",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T15:26:45Z",
+              "completed_at": "2026-10-29T15:27:03Z"
+            },
+            {
+              "name": "Audit all workflows with zizmor",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T15:27:03Z",
+              "completed_at": "2026-10-29T15:27:11Z"
+            },
+            {
+              "name": "Disallow direct inputs interpolation in composite run blocks",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 16,
+              "started_at": "2026-10-29T15:27:11Z",
+              "completed_at": "2026-10-29T15:27:11Z"
+            },
+            {
+              "name": "Post Setup Go",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 29,
+              "started_at": "2026-10-29T15:27:11Z",
+              "completed_at": "2026-10-29T15:27:11Z"
+            },
+            {
+              "name": "Post Setup Python",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 30,
+              "started_at": "2026-10-29T15:27:11Z",
+              "completed_at": "2026-10-29T15:27:11Z"
+            },
+            {
+              "name": "Post Setup supported Node runtime",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 31,
+              "started_at": "2026-10-29T15:27:11Z",
+              "completed_at": "2026-10-29T15:27:11Z"
+            },
+            {
+              "name": "Post Checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 32,
+              "started_at": "2026-10-29T15:27:11Z",
+              "completed_at": "2026-10-29T15:27:12Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 33,
+              "started_at": "2026-10-29T15:27:12Z",
+              "completed_at": "2026-10-29T15:27:12Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544127198",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023538,
+          "runner_name": "GitHub Actions 1000023538",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123544130599,
+          "run_id": 40901335945,
+          "workflow_name": "Workflow Sanity",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901335945",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83UJw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544130599",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901335945/job/123544130599",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:03Z",
+          "name": "generated-doc-baselines",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544130599",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 3,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901335957,
+        "name": "OpenGrep \u2014 PR Diff",
+        "path": ".github/workflows/opengrep-precise.yml",
+        "event": "pull_request",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "skipped",
+        "created_at": "2026-10-29T15:25:03Z",
+        "updated_at": "2026-10-29T15:25:04Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901335957"
+      },
+      "jobs": [
+        {
+          "id": 123544127847,
+          "run_id": 40901335957,
+          "workflow_name": "OpenGrep \u2014 PR Diff",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901335957",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83JZw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544127847",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901335957/job/123544127847",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:03Z",
+          "name": "Scan changed paths (precise)",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544127847",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 0,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901336024,
+        "name": "Fork PR and release qualification",
+        "path": ".github/workflows/fork-release-pipeline.yml",
+        "event": "pull_request",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-29T15:25:03Z",
+        "updated_at": "2026-10-29T15:25:16Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336024"
+      },
+      "jobs": [
+        {
+          "id": 123544124302,
+          "run_id": 40901336024,
+          "workflow_name": "Fork PR and release qualification",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336024",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw827jg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544124302",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336024/job/123544124302",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:25:03Z",
+          "started_at": "2026-10-29T15:25:06Z",
+          "completed_at": "2026-10-29T15:25:16Z",
+          "name": "pr-intake",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:25:07Z",
+              "completed_at": "2026-10-29T15:25:08Z"
+            },
+            {
+              "name": "Checkout trusted PR contract from exact base",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T15:25:08Z",
+              "completed_at": "2026-10-29T15:25:11Z"
+            },
+            {
+              "name": "Bind declared owner, dependencies and check to head/base",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:25:11Z",
+              "completed_at": "2026-10-29T15:25:12Z"
+            },
+            {
+              "name": "Retain exact PR intake evidence",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:25:12Z",
+              "completed_at": "2026-10-29T15:25:13Z"
+            },
+            {
+              "name": "Post Checkout trusted PR contract from exact base",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-10-29T15:25:13Z",
+              "completed_at": "2026-10-29T15:25:13Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9,
+              "started_at": "2026-10-29T15:25:13Z",
+              "completed_at": "2026-10-29T15:25:13Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544124302",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023534,
+          "runner_name": "GitHub Actions 1000023534",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123544126946,
+          "run_id": 40901336024,
+          "workflow_name": "Fork PR and release qualification",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336024",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83F4g",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544126946",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336024/job/123544126946",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:03Z",
+          "name": "hosted-capacity-assessment",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544126946",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544127437,
+          "run_id": 40901336024,
+          "workflow_name": "Fork PR and release qualification",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336024",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83HzQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544127437",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336024/job/123544127437",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:03Z",
+          "name": "qualify-and-prepare",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544127437",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544258232,
+          "run_id": 40901336024,
+          "workflow_name": "Fork PR and release qualification",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336024",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw8_GuA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544258232",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336024/job/123544258232",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:16Z",
+          "started_at": "2026-10-29T15:25:16Z",
+          "completed_at": "2026-10-29T15:25:16Z",
+          "name": "release-pr-contracts",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544258232",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12909741139,
+          "name": "fork-pr-28-37400d942839bee0b92852037d6f8bf99e60358c-a65f70c5dad17b39bc3ee26ba92cde6d00bfb259-40901336024-1",
+          "size_in_bytes": 622,
+          "expired": false
+        }
+      ],
+      "observedMinutes": 1,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901336063,
+        "name": "macOS Periphery Dead Code [passive]",
+        "path": ".github/workflows/macos-periphery.yml",
+        "event": "pull_request",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-29T15:25:03Z",
+        "updated_at": "2026-10-29T15:25:12Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336063"
+      },
+      "jobs": [
+        {
+          "id": 123544126844,
+          "run_id": 40901336063,
+          "workflow_name": "macOS Periphery Dead Code [passive]",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336063",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83FfA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544126844",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336063/job/123544126844",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:06Z",
+          "completed_at": "2026-10-29T15:25:11Z",
+          "name": "Detect macOS scan scope",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:25:07Z",
+              "completed_at": "2026-10-29T15:25:08Z"
+            },
+            {
+              "name": "Checkout",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 2,
+              "started_at": "2026-10-29T15:25:08Z",
+              "completed_at": "2026-10-29T15:25:08Z"
+            },
+            {
+              "name": "Detect changed paths",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:25:08Z",
+              "completed_at": "2026-10-29T15:25:09Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:25:09Z",
+              "completed_at": "2026-10-29T15:25:09Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544126844",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023539,
+          "runner_name": "GitHub Actions 1000023539",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123544204754,
+          "run_id": 40901336063,
+          "workflow_name": "macOS Periphery Dead Code [passive]",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336063",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw8710g",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544204754",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336063/job/123544204754",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:11Z",
+          "started_at": "2026-10-29T15:25:11Z",
+          "completed_at": "2026-10-29T15:25:11Z",
+          "name": "Scan macOS dead code",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544204754",
+          "labels": [
+            "xcode-27"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 1,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901336183,
+        "name": "CodeQL",
+        "path": ".github/workflows/codeql.yml",
+        "event": "pull_request",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "skipped",
+        "created_at": "2026-10-29T15:25:03Z",
+        "updated_at": "2026-10-29T15:25:04Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336183"
+      },
+      "jobs": [
+        {
+          "id": 123544130426,
+          "run_id": 40901336183,
+          "workflow_name": "CodeQL",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336183",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83Teg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544130426",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336183/job/123544130426",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:03Z",
+          "name": "Security High (${{ matrix.category }})",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544130426",
+          "labels": [],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 0,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901336296,
+        "name": "CI",
+        "path": ".github/workflows/ci.yml",
+        "event": "pull_request",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "skipped",
+        "created_at": "2026-10-29T15:25:03Z",
+        "updated_at": "2026-10-29T15:25:05Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296"
+      },
+      "jobs": [
+        {
+          "id": 123544133612,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83f7A",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544133612",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544133612",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "preflight",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544133612",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544134914,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83lAg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544134914",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544134914",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "build-artifacts",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544134914",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135015,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83lZw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135015",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135015",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "matrix.check_name || 'android'",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135015",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135031,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83ldw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135031",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135031",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "native-i18n",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135031",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135034,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83leg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135034",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135034",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "check-docs",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135034",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135062,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83llg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135062",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135062",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "matrix.check_name || 'checks-fast-core'",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135062",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135132,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83l3A",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135132",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135132",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "checks-fast-baseline-ratchets",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135132",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135187,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83mEw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135187",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135187",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "check-plan",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135187",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135405,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83m7Q",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135405",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135405",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "checks-node-compat-node24",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135405",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135411,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83m8w",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135411",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135411",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "matrix.checkName",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135411",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135419,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83m-w",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135419",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135419",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "android-access-native",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135419",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135460,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83nJA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135460",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135460",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "matrix.check_name || 'checks-windows'",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135460",
+          "labels": [
+            "windows-2025"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135520,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83nYA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135520",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135520",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "needs.preflight.outputs.compatibility_target == 'true' && 'checks-ui' || format('checks-ui ({0}/3)', matrix.shard)",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135520",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135546,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83neg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135546",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135546",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "control-ui-performance",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135546",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135616,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83nwA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135616",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135616",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "matrix.checkName",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135616",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135898,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83o2g",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135898",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135898",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "matrix.check_name || 'macos-node'",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135898",
+          "labels": [
+            "macos-15"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135938,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83pAg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135938",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135938",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "skills-python",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135938",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544135954,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83pEg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544135954",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544135954",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "ios-build (${{ matrix.phase }})",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544135954",
+          "labels": [
+            "xcode-27"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544136062,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83pfg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544136062",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544136062",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "QA Smoke CI (${{ matrix.name }})",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544136062",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544136251,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83qOw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544136251",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544136251",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "check-lint-extensions-${{ matrix.stripe }}",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544136251",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544136347,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83qmw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544136347",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544136347",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "matrix.check_name || 'check-shard'",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544136347",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544136405,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83q1Q",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544136405",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544136405",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:04Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "matrix.check_name || 'check-additional-shard'",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544136405",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544136660,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83r1A",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544136660",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544136660",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:05Z",
+          "started_at": "2026-10-29T15:25:05Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "docker-seed-e2e",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544136660",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544136739,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83sIw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544136739",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544136739",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:05Z",
+          "started_at": "2026-10-29T15:25:05Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "matrix.check_name || 'checks-node-core-test-nondist-shard'",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544136739",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544136986,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83tGg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544136986",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544136986",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:05Z",
+          "started_at": "2026-10-29T15:25:05Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "check-lint-core-${{ matrix.stripe }}",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544136986",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544137064,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83taA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544137064",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544137064",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:05Z",
+          "started_at": "2026-10-29T15:25:05Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "ios-screenshot-evidence",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544137064",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544137129,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83tqQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544137129",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544137129",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:05Z",
+          "started_at": "2026-10-29T15:25:05Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "check-test-types-core-${{ matrix.stripe }}",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544137129",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544137447,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83u5w",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544137447",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544137447",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:05Z",
+          "started_at": "2026-10-29T15:25:05Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "openclaw/ci-gate",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544137447",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544138883,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw830gw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544138883",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544138883",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:05Z",
+          "started_at": "2026-10-29T15:25:05Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "Seal full release child evidence",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544138883",
+          "labels": [],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544190242,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw869Ig",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544190242",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544190242",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:10Z",
+          "started_at": "2026-10-29T15:25:10Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "security-fast",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544190242",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544200510,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw87lPg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544200510",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544200510",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:11Z",
+          "started_at": "2026-10-29T15:25:11Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "macos-swift (${{ matrix.phase }})",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544200510",
+          "labels": [
+            "xcode-27"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544213153,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw88WoQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544213153",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544213153",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:12Z",
+          "started_at": "2026-10-29T15:25:12Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "matrix.shard_count == 1 && 'checks-ui-e2e-real-gateway' || format('checks-ui-e2e-real-gateway ({0}/{1})', matrix.shard, matrix.shard_count)",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544213153",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544214228,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw88a1A",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544214228",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544214228",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:12Z",
+          "started_at": "2026-10-29T15:25:12Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "checks-ui-e2e (${{ matrix.shard }}/${{ matrix.shard_count }})",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544214228",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544223313,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw88-UQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544223313",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544223313",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:13Z",
+          "started_at": "2026-10-29T15:25:13Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "ios-screenshots-${{ matrix.device_family }}",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544223313",
+          "labels": [
+            "xcode-27"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544223341,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw88-bQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544223341",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544223341",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:13Z",
+          "started_at": "2026-10-29T15:25:13Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "pr-fail-fast",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544223341",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544226566,
+          "run_id": 40901336296,
+          "workflow_name": "CI",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336296",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw89LBg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544226566",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336296/job/123544226566",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:13Z",
+          "started_at": "2026-10-29T15:25:13Z",
+          "completed_at": "2026-10-29T15:25:04Z",
+          "name": "control-ui-i18n",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544226566",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 0,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901336405,
+        "name": "iOS Periphery Dead Code [passive]",
+        "path": ".github/workflows/ios-periphery.yml",
+        "event": "pull_request",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-29T15:25:03Z",
+        "updated_at": "2026-10-29T15:25:11Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336405"
+      },
+      "jobs": [
+        {
+          "id": 123544126869,
+          "run_id": 40901336405,
+          "workflow_name": "iOS Periphery Dead Code [passive]",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336405",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83FlQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544126869",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336405/job/123544126869",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:06Z",
+          "completed_at": "2026-10-29T15:25:10Z",
+          "name": "Detect iOS scan scope",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:25:07Z",
+              "completed_at": "2026-10-29T15:25:08Z"
+            },
+            {
+              "name": "Checkout",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 2,
+              "started_at": "2026-10-29T15:25:08Z",
+              "completed_at": "2026-10-29T15:25:08Z"
+            },
+            {
+              "name": "Detect changed paths",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:25:08Z",
+              "completed_at": "2026-10-29T15:25:08Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:25:08Z",
+              "completed_at": "2026-10-29T15:25:08Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544126869",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023536,
+          "runner_name": "GitHub Actions 1000023536",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123544197910,
+          "run_id": 40901336405,
+          "workflow_name": "iOS Periphery Dead Code [passive]",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336405",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw87bFg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544197910",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336405/job/123544197910",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:10Z",
+          "started_at": "2026-10-29T15:25:10Z",
+          "completed_at": "2026-10-29T15:25:10Z",
+          "name": "Scan iOS dead code",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544197910",
+          "labels": [
+            "xcode-27"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 1,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901336408,
+        "name": "Blacksmith Build Artifacts Testbox",
+        "path": ".github/workflows/ci-build-artifacts-testbox.yml",
+        "event": "pull_request",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "skipped",
+        "created_at": "2026-10-29T15:25:03Z",
+        "updated_at": "2026-10-29T15:25:04Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336408"
+      },
+      "jobs": [
+        {
+          "id": 123544212601,
+          "run_id": 40901336408,
+          "workflow_name": "Blacksmith Build Artifacts Testbox",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336408",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw88UeQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544212601",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336408/job/123544212601",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:12Z",
+          "started_at": "2026-10-29T15:25:12Z",
+          "completed_at": "2026-10-29T15:25:03Z",
+          "name": "build-artifacts",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544212601",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 0,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901336545,
+        "name": "Shared OpenClawKit Periphery",
+        "path": ".github/workflows/shared-openclawkit-periphery.yml",
+        "event": "pull_request",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-29T15:25:03Z",
+        "updated_at": "2026-10-29T15:25:13Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336545"
+      },
+      "jobs": [
+        {
+          "id": 123544125616,
+          "run_id": 40901336545,
+          "workflow_name": "Shared OpenClawKit Periphery",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336545",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83AsA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544125616",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336545/job/123544125616",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:25:03Z",
+          "started_at": "2026-10-29T15:25:07Z",
+          "completed_at": "2026-10-29T15:25:12Z",
+          "name": "Detect shared OpenClawKit scan scope",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:25:07Z",
+              "completed_at": "2026-10-29T15:25:08Z"
+            },
+            {
+              "name": "Checkout",
+              "status": "completed",
+              "conclusion": "skipped",
+              "number": 2,
+              "started_at": "2026-10-29T15:25:08Z",
+              "completed_at": "2026-10-29T15:25:08Z"
+            },
+            {
+              "name": "Detect changed paths",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:25:08Z",
+              "completed_at": "2026-10-29T15:25:10Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:25:10Z",
+              "completed_at": "2026-10-29T15:25:10Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544125616",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023535,
+          "runner_name": "GitHub Actions 1000023535",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123544218592,
+          "run_id": 40901336545,
+          "workflow_name": "Shared OpenClawKit Periphery",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336545",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw88r4A",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544218592",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336545/job/123544218592",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:12Z",
+          "started_at": "2026-10-29T15:25:12Z",
+          "completed_at": "2026-10-29T15:25:12Z",
+          "name": "Scan shared kit from iOS",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544218592",
+          "labels": [
+            "xcode-27"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544218791,
+          "run_id": 40901336545,
+          "workflow_name": "Shared OpenClawKit Periphery",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336545",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw88spw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544218791",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336545/job/123544218791",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:12Z",
+          "started_at": "2026-10-29T15:25:12Z",
+          "completed_at": "2026-10-29T15:25:12Z",
+          "name": "Scan shared kit from macOS",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544218791",
+          "labels": [
+            "xcode-27"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        },
+        {
+          "id": 123544219287,
+          "run_id": 40901336545,
+          "workflow_name": "Shared OpenClawKit Periphery",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336545",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw88ulw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544219287",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336545/job/123544219287",
+          "status": "completed",
+          "conclusion": "skipped",
+          "created_at": "2026-10-29T15:25:12Z",
+          "started_at": "2026-10-29T15:25:12Z",
+          "completed_at": "2026-10-29T15:25:12Z",
+          "name": "Intersect shared OpenClawKit dead code",
+          "steps": [],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544219287",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": null,
+          "runner_name": null,
+          "runner_group_id": null,
+          "runner_group_name": null
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 1,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    },
+    {
+      "run": {
+        "id": 40901336241,
+        "name": "future-v108-source-validation-20261027",
+        "path": ".github/workflows/future-v108-source-validation.yml",
+        "event": "pull_request",
+        "head_branch": "task/v107-source-binding",
+        "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+        "run_attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-29T15:25:03Z",
+        "updated_at": "2026-10-29T18:24:52Z",
+        "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241"
+      },
+      "jobs": [
+        {
+          "id": 123544127089,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcw83GcQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123544127089",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123544127089",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:25:04Z",
+          "started_at": "2026-10-29T15:25:06Z",
+          "completed_at": "2026-10-29T15:37:40Z",
+          "name": "admission",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:25:07Z",
+              "completed_at": "2026-10-29T15:25:07Z"
+            },
+            {
+              "name": "Require full admission clock before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T15:25:07Z",
+              "completed_at": "2026-10-29T15:25:07Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head and complete ancestry",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:25:07Z",
+              "completed_at": "2026-10-29T15:30:00Z"
+            },
+            {
+              "name": "Bound product checkout by the same admission clock",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:30:00Z",
+              "completed_at": "2026-10-29T15:30:01Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T15:30:01Z",
+              "completed_at": "2026-10-29T15:30:30Z"
+            },
+            {
+              "name": "Admit exact campaign and source with read-only public metadata",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T15:30:30Z",
+              "completed_at": "2026-10-29T15:37:38Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11,
+              "started_at": "2026-10-29T15:37:38Z",
+              "completed_at": "2026-10-29T15:37:39Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head and complete ancestry",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T15:37:39Z",
+              "completed_at": "2026-10-29T15:37:39Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T15:37:39Z",
+              "completed_at": "2026-10-29T15:37:39Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123544127089",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023537,
+          "runner_name": "GitHub Actions 1000023537",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798620,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELVXA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798620",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798620",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T16:15:53Z",
+          "completed_at": "2026-10-29T16:38:26Z",
+          "name": "source (models-1)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T16:15:54Z",
+              "completed_at": "2026-10-29T16:15:55Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T16:15:55Z",
+              "completed_at": "2026-10-29T16:15:55Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T16:15:55Z",
+              "completed_at": "2026-10-29T16:21:19Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T16:21:19Z",
+              "completed_at": "2026-10-29T16:21:49Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T16:21:49Z",
+              "completed_at": "2026-10-29T16:21:50Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T16:21:50Z",
+              "completed_at": "2026-10-29T16:26:59Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T16:26:59Z",
+              "completed_at": "2026-10-29T16:38:23Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T16:38:23Z",
+              "completed_at": "2026-10-29T16:38:23Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T16:38:23Z",
+              "completed_at": "2026-10-29T16:38:23Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T16:38:23Z",
+              "completed_at": "2026-10-29T16:38:23Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T16:38:23Z",
+              "completed_at": "2026-10-29T16:38:24Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798620",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023558,
+          "runner_name": "GitHub Actions 1000023558",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798673,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELVkQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798673",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798673",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T15:56:29Z",
+          "completed_at": "2026-10-29T16:15:51Z",
+          "name": "source (workboard-1)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:56:30Z",
+              "completed_at": "2026-10-29T15:56:31Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T15:56:31Z",
+              "completed_at": "2026-10-29T15:56:31Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:56:31Z",
+              "completed_at": "2026-10-29T16:03:30Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T16:03:30Z",
+              "completed_at": "2026-10-29T16:04:34Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T16:04:34Z",
+              "completed_at": "2026-10-29T16:04:34Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T16:04:34Z",
+              "completed_at": "2026-10-29T16:12:39Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T16:12:39Z",
+              "completed_at": "2026-10-29T16:15:47Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T16:15:47Z",
+              "completed_at": "2026-10-29T16:15:47Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T16:15:47Z",
+              "completed_at": "2026-10-29T16:15:47Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T16:15:47Z",
+              "completed_at": "2026-10-29T16:15:47Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T16:15:47Z",
+              "completed_at": "2026-10-29T16:15:47Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798673",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023545,
+          "runner_name": "GitHub Actions 1000023545",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798709,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELVtQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798709",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798709",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T16:05:54Z",
+          "completed_at": "2026-10-29T16:23:45Z",
+          "name": "source (workboard-2)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T16:05:55Z",
+              "completed_at": "2026-10-29T16:05:56Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T16:05:56Z",
+              "completed_at": "2026-10-29T16:05:56Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T16:05:56Z",
+              "completed_at": "2026-10-29T16:12:06Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T16:12:06Z",
+              "completed_at": "2026-10-29T16:12:37Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T16:12:37Z",
+              "completed_at": "2026-10-29T16:12:38Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T16:12:38Z",
+              "completed_at": "2026-10-29T16:20:14Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T16:20:14Z",
+              "completed_at": "2026-10-29T16:23:42Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T16:23:42Z",
+              "completed_at": "2026-10-29T16:23:42Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T16:23:42Z",
+              "completed_at": "2026-10-29T16:23:42Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T16:23:42Z",
+              "completed_at": "2026-10-29T16:23:42Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T16:23:42Z",
+              "completed_at": "2026-10-29T16:23:42Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798709",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023557,
+          "runner_name": "GitHub Actions 1000023557",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798729,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELVyQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798729",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798729",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T15:37:43Z",
+          "completed_at": "2026-10-29T15:51:51Z",
+          "name": "source (dependency)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:37:44Z",
+              "completed_at": "2026-10-29T15:37:45Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T15:37:45Z",
+              "completed_at": "2026-10-29T15:37:45Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:37:45Z",
+              "completed_at": "2026-10-29T15:43:11Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:43:11Z",
+              "completed_at": "2026-10-29T15:43:42Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T15:43:42Z",
+              "completed_at": "2026-10-29T15:43:43Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T15:43:43Z",
+              "completed_at": "2026-10-29T15:50:45Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T15:50:45Z",
+              "completed_at": "2026-10-29T15:51:47Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T15:51:47Z",
+              "completed_at": "2026-10-29T15:51:47Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T15:51:47Z",
+              "completed_at": "2026-10-29T15:51:48Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T15:51:48Z",
+              "completed_at": "2026-10-29T15:51:48Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T15:51:48Z",
+              "completed_at": "2026-10-29T15:51:48Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798729",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023542,
+          "runner_name": "GitHub Actions 1000023542",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798774,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELV9g",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798774",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798774",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T15:51:54Z",
+          "completed_at": "2026-10-29T16:05:52Z",
+          "name": "source (types-scripts)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:51:54Z",
+              "completed_at": "2026-10-29T15:51:55Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T15:51:55Z",
+              "completed_at": "2026-10-29T15:51:55Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:51:55Z",
+              "completed_at": "2026-10-29T15:56:51Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:56:51Z",
+              "completed_at": "2026-10-29T15:57:19Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T15:57:19Z",
+              "completed_at": "2026-10-29T15:57:20Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T15:57:20Z",
+              "completed_at": "2026-10-29T16:03:32Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T16:03:32Z",
+              "completed_at": "2026-10-29T16:05:48Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T16:05:48Z",
+              "completed_at": "2026-10-29T16:05:48Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T16:05:48Z",
+              "completed_at": "2026-10-29T16:05:48Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T16:05:48Z",
+              "completed_at": "2026-10-29T16:05:49Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T16:05:49Z",
+              "completed_at": "2026-10-29T16:05:49Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798774",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023544,
+          "runner_name": "GitHub Actions 1000023544",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798802,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELWEg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798802",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798802",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T17:20:13Z",
+          "completed_at": "2026-10-29T18:01:01Z",
+          "name": "source (doctor-3)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T17:20:14Z",
+              "completed_at": "2026-10-29T17:20:14Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T17:20:14Z",
+              "completed_at": "2026-10-29T17:20:14Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T17:20:14Z",
+              "completed_at": "2026-10-29T17:32:10Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T17:32:10Z",
+              "completed_at": "2026-10-29T17:32:38Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T17:32:38Z",
+              "completed_at": "2026-10-29T17:32:38Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T17:32:38Z",
+              "completed_at": "2026-10-29T17:39:11Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T17:39:11Z",
+              "completed_at": "2026-10-29T18:00:57Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T18:00:57Z",
+              "completed_at": "2026-10-29T18:00:57Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T18:00:57Z",
+              "completed_at": "2026-10-29T18:00:58Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T18:00:58Z",
+              "completed_at": "2026-10-29T18:00:58Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T18:00:58Z",
+              "completed_at": "2026-10-29T18:00:58Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798802",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023563,
+          "runner_name": "GitHub Actions 1000023563",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798818,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELWIg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798818",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798818",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T16:23:48Z",
+          "completed_at": "2026-10-29T16:58:25Z",
+          "name": "source (models-2)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T16:23:49Z",
+              "completed_at": "2026-10-29T16:23:50Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T16:23:50Z",
+              "completed_at": "2026-10-29T16:23:50Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T16:23:50Z",
+              "completed_at": "2026-10-29T16:34:29Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T16:34:29Z",
+              "completed_at": "2026-10-29T16:35:00Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T16:35:00Z",
+              "completed_at": "2026-10-29T16:35:00Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T16:35:00Z",
+              "completed_at": "2026-10-29T16:42:01Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T16:42:01Z",
+              "completed_at": "2026-10-29T16:58:22Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T16:58:22Z",
+              "completed_at": "2026-10-29T16:58:22Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T16:58:22Z",
+              "completed_at": "2026-10-29T16:58:22Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T16:58:22Z",
+              "completed_at": "2026-10-29T16:58:23Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T16:58:23Z",
+              "completed_at": "2026-10-29T16:58:23Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798818",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023559,
+          "runner_name": "GitHub Actions 1000023559",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798886,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELWZg",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798886",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798886",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T15:37:43Z",
+          "completed_at": "2026-10-29T15:56:26Z",
+          "name": "source (types-production)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:37:45Z",
+              "completed_at": "2026-10-29T15:37:45Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T15:37:45Z",
+              "completed_at": "2026-10-29T15:37:45Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:37:45Z",
+              "completed_at": "2026-10-29T15:43:35Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:43:35Z",
+              "completed_at": "2026-10-29T15:44:04Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T15:44:04Z",
+              "completed_at": "2026-10-29T15:44:05Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T15:44:05Z",
+              "completed_at": "2026-10-29T15:51:01Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T15:51:01Z",
+              "completed_at": "2026-10-29T15:56:21Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T15:56:21Z",
+              "completed_at": "2026-10-29T15:56:22Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T15:56:22Z",
+              "completed_at": "2026-10-29T15:56:22Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T15:56:22Z",
+              "completed_at": "2026-10-29T15:56:22Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T15:56:22Z",
+              "completed_at": "2026-10-29T15:56:22Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798886",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023541,
+          "runner_name": "GitHub Actions 1000023541",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798932,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELWlA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798932",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798932",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T16:58:28Z",
+          "completed_at": "2026-10-29T17:48:36Z",
+          "name": "source (doctor-2)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T16:58:29Z",
+              "completed_at": "2026-10-29T16:58:29Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T16:58:29Z",
+              "completed_at": "2026-10-29T16:58:29Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T16:58:29Z",
+              "completed_at": "2026-10-29T17:08:12Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T17:08:12Z",
+              "completed_at": "2026-10-29T17:08:43Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T17:08:43Z",
+              "completed_at": "2026-10-29T17:08:46Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T17:08:46Z",
+              "completed_at": "2026-10-29T17:15:48Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T17:15:48Z",
+              "completed_at": "2026-10-29T17:48:33Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T17:48:33Z",
+              "completed_at": "2026-10-29T17:48:34Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T17:48:34Z",
+              "completed_at": "2026-10-29T17:48:34Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T17:48:34Z",
+              "completed_at": "2026-10-29T17:48:34Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T17:48:34Z",
+              "completed_at": "2026-10-29T17:48:34Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798932",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023562,
+          "runner_name": "GitHub Actions 1000023562",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798936,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELWmA",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798936",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798936",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T17:36:12Z",
+          "completed_at": "2026-10-29T18:19:42Z",
+          "name": "source (memory)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T17:36:13Z",
+              "completed_at": "2026-10-29T17:36:13Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T17:36:13Z",
+              "completed_at": "2026-10-29T17:36:14Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T17:36:14Z",
+              "completed_at": "2026-10-29T17:43:48Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T17:43:48Z",
+              "completed_at": "2026-10-29T17:44:16Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T17:44:16Z",
+              "completed_at": "2026-10-29T17:44:17Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T17:44:17Z",
+              "completed_at": "2026-10-29T17:51:44Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T17:51:44Z",
+              "completed_at": "2026-10-29T18:19:38Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T18:19:38Z",
+              "completed_at": "2026-10-29T18:19:38Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T18:19:38Z",
+              "completed_at": "2026-10-29T18:19:39Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T18:19:39Z",
+              "completed_at": "2026-10-29T18:19:39Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T18:19:39Z",
+              "completed_at": "2026-10-29T18:19:39Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798936",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023564,
+          "runner_name": "GitHub Actions 1000023564",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551798939,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELWmw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551798939",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551798939",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T16:38:29Z",
+          "completed_at": "2026-10-29T17:36:09Z",
+          "name": "source (doctor-1)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T16:38:30Z",
+              "completed_at": "2026-10-29T16:38:31Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T16:38:31Z",
+              "completed_at": "2026-10-29T16:38:31Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T16:38:31Z",
+              "completed_at": "2026-10-29T16:46:29Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T16:46:29Z",
+              "completed_at": "2026-10-29T16:46:57Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T16:46:57Z",
+              "completed_at": "2026-10-29T16:47:08Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T16:47:08Z",
+              "completed_at": "2026-10-29T16:54:14Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T16:54:14Z",
+              "completed_at": "2026-10-29T17:36:06Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T17:36:06Z",
+              "completed_at": "2026-10-29T17:36:06Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T17:36:06Z",
+              "completed_at": "2026-10-29T17:36:06Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T17:36:06Z",
+              "completed_at": "2026-10-29T17:36:07Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T17:36:07Z",
+              "completed_at": "2026-10-29T17:36:07Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551798939",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023561,
+          "runner_name": "GitHub Actions 1000023561",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551799087,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELXLw",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551799087",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551799087",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T16:35:10Z",
+          "completed_at": "2026-10-29T17:20:11Z",
+          "name": "source (sqlite)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T16:35:11Z",
+              "completed_at": "2026-10-29T16:35:12Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T16:35:12Z",
+              "completed_at": "2026-10-29T16:35:12Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T16:35:12Z",
+              "completed_at": "2026-10-29T16:43:39Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T16:43:39Z",
+              "completed_at": "2026-10-29T16:44:09Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T16:44:09Z",
+              "completed_at": "2026-10-29T16:44:11Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T16:44:11Z",
+              "completed_at": "2026-10-29T16:51:23Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T16:51:23Z",
+              "completed_at": "2026-10-29T17:20:08Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T17:20:08Z",
+              "completed_at": "2026-10-29T17:20:08Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T17:20:08Z",
+              "completed_at": "2026-10-29T17:20:08Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T17:20:08Z",
+              "completed_at": "2026-10-29T17:20:09Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T17:20:09Z",
+              "completed_at": "2026-10-29T17:20:09Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551799087",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023560,
+          "runner_name": "GitHub Actions 1000023560",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551799221,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELXtQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551799221",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551799221",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:40Z",
+          "started_at": "2026-10-29T15:37:44Z",
+          "completed_at": "2026-10-29T16:35:08Z",
+          "name": "source (types-tests)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T15:37:45Z",
+              "completed_at": "2026-10-29T15:37:46Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T15:37:46Z",
+              "completed_at": "2026-10-29T15:37:46Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T15:37:46Z",
+              "completed_at": "2026-10-29T15:43:55Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T15:43:55Z",
+              "completed_at": "2026-10-29T15:44:29Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T15:44:29Z",
+              "completed_at": "2026-10-29T15:44:30Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T15:44:30Z",
+              "completed_at": "2026-10-29T15:51:55Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T15:51:55Z",
+              "completed_at": "2026-10-29T16:35:03Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T16:35:03Z",
+              "completed_at": "2026-10-29T16:35:03Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T16:35:03Z",
+              "completed_at": "2026-10-29T16:35:04Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T16:35:04Z",
+              "completed_at": "2026-10-29T16:35:04Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T16:35:04Z",
+              "completed_at": "2026-10-29T16:35:04Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551799221",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023543,
+          "runner_name": "GitHub Actions 1000023543",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551802169,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELjOQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551802169",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551802169",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:41Z",
+          "started_at": "2026-10-29T18:01:04Z",
+          "completed_at": "2026-10-29T18:24:15Z",
+          "name": "source (compatibility)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T18:01:04Z",
+              "completed_at": "2026-10-29T18:01:05Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T18:01:05Z",
+              "completed_at": "2026-10-29T18:01:05Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T18:01:05Z",
+              "completed_at": "2026-10-29T18:06:51Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T18:06:51Z",
+              "completed_at": "2026-10-29T18:07:22Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T18:07:22Z",
+              "completed_at": "2026-10-29T18:07:23Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T18:07:23Z",
+              "completed_at": "2026-10-29T18:14:17Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T18:14:17Z",
+              "completed_at": "2026-10-29T18:24:12Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T18:24:12Z",
+              "completed_at": "2026-10-29T18:24:12Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T18:24:12Z",
+              "completed_at": "2026-10-29T18:24:12Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T18:24:12Z",
+              "completed_at": "2026-10-29T18:24:12Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T18:24:12Z",
+              "completed_at": "2026-10-29T18:24:12Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551802169",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023566,
+          "runner_name": "GitHub Actions 1000023566",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123551802189,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcxELjTQ",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123551802189",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123551802189",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T15:37:41Z",
+          "started_at": "2026-10-29T17:48:39Z",
+          "completed_at": "2026-10-29T18:04:35Z",
+          "name": "source (pipeline-contracts)",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T17:48:39Z",
+              "completed_at": "2026-10-29T17:48:40Z"
+            },
+            {
+              "name": "Require full profile and final clocks before either checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T17:48:40Z",
+              "completed_at": "2026-10-29T17:48:40Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T17:48:40Z",
+              "completed_at": "2026-10-29T17:54:55Z"
+            },
+            {
+              "name": "Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T17:54:55Z",
+              "completed_at": "2026-10-29T17:55:29Z"
+            },
+            {
+              "name": "Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-29T17:55:29Z",
+              "completed_at": "2026-10-29T17:55:29Z"
+            },
+            {
+              "name": "Verify complete public source closure through maintained preflight",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-29T17:55:29Z",
+              "completed_at": "2026-10-29T18:02:58Z"
+            },
+            {
+              "name": "Run named source profile with synthetic state and credential-free environment",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-29T18:02:58Z",
+              "completed_at": "2026-10-29T18:04:32Z"
+            },
+            {
+              "name": "Post Setup fixed supported Node runtime without a cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-10-29T18:04:32Z",
+              "completed_at": "2026-10-29T18:04:32Z"
+            },
+            {
+              "name": "Post Checkout frozen product source",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-10-29T18:04:32Z",
+              "completed_at": "2026-10-29T18:04:32Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14,
+              "started_at": "2026-10-29T18:04:32Z",
+              "completed_at": "2026-10-29T18:04:33Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 15,
+              "started_at": "2026-10-29T18:04:33Z",
+              "completed_at": "2026-10-29T18:04:33Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123551802189",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023565,
+          "runner_name": "GitHub Actions 1000023565",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123647233790,
+          "run_id": 40901336241,
+          "workflow_name": "future-v108-source-validation-20261027",
+          "head_branch": "task/v107-source-binding",
+          "run_url": "https://api.github.com/repos/fr-meyer/openclaw/actions/runs/40901336241",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOTgy2qM8AAAAcyfMO_g",
+          "head_sha": "37400d942839bee0b92852037d6f8bf99e60358c",
+          "url": "https://api.github.com/repos/fr-meyer/openclaw/actions/jobs/123647233790",
+          "html_url": "https://github.com/fr-meyer/openclaw/actions/runs/40901336241/job/123647233790",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-29T18:24:15Z",
+          "started_at": "2026-10-29T18:24:18Z",
+          "completed_at": "2026-10-29T18:24:51Z",
+          "name": "final",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-29T18:24:18Z",
+              "completed_at": "2026-10-29T18:24:19Z"
+            },
+            {
+              "name": "Require full final clock before checkout",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-29T18:24:19Z",
+              "completed_at": "2026-10-29T18:24:19Z"
+            },
+            {
+              "name": "Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-29T18:24:19Z",
+              "completed_at": "2026-10-29T18:24:22Z"
+            },
+            {
+              "name": "Record bounded source-only result in logs and job summary",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4,
+              "started_at": "2026-10-29T18:24:22Z",
+              "completed_at": "2026-10-29T18:24:49Z"
+            },
+            {
+              "name": "Post Checkout reviewed pipeline head",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-10-29T18:24:49Z",
+              "completed_at": "2026-10-29T18:24:49Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9,
+              "started_at": "2026-10-29T18:24:49Z",
+              "completed_at": "2026-10-29T18:24:49Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/fr-meyer/openclaw/check-runs/123647233790",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000023567,
+          "runner_name": "GitHub Actions 1000023567",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        }
+      ],
+      "artifacts": [],
+      "observedMinutes": 496,
+      "actorLogin": "fr-meyer",
+      "triggeringActorLogin": "fr-meyer"
+    }
+  ]
+}

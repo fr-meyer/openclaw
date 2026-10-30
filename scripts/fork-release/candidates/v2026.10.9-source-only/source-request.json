@@ -1,0 +1,23 @@
+{
+  "schema": "openclaw.fork-source-validation-request.v9",
+  "campaignId": "future-v109-grouped-validation-20261030",
+  "phase": "lock-preparation",
+  "source": {
+    "sourceSha": "ba04217f6642091b94f396669318d068e6007ed7",
+    "sourceTree": "ed8cc0d741194e7627b875ea256dfd7c5de43640",
+    "manifestSha256": "4ad3b13c2fb90650f618727f0508f4168c269820525d3629e801722c09287778",
+    "inventorySha256": "2f3eee5c7e4a145b64962560c85ff8718eb2fe4bd603e56c417bc9bcd245c497",
+    "fileSha256": {
+      "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+      "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
+      "pnpm-lock.yaml": "07cbdb13cc0fc5c6dd25b4acdfe927eabe4ec566e6cfab9fb63d224c25765002",
+      "custom-patches/reconciliation-2026.10.9.json": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591"
+    }
+  },
+  "settledUsageSha256": "dfc2cda1a2c7c5f3f4e1bc235e8a6e2aca615e62c5ce20a79102a794779770df",
+  "generation": null,
+  "priorRunPins": [],
+  "preparationAttempt": 1,
+  "profiles": [],
+  "authorizationSha256": null
+}

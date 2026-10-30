@@ -103,7 +103,8 @@ def validate_merge_shape(source):
         "schema", "integration", "successors", "securitySource"} if versioned else fields),
         "invalid merge proof fields")
     if versioned:
-        need(merge["schema"] in ("openclaw.fork-source-merge.v2", "openclaw.fork-source-merge.v3"),
+        need(merge["schema"] in ("openclaw.fork-source-merge.v2", "openclaw.fork-source-merge.v3",
+                                 "openclaw.fork-source-merge.v4"),
              "unsupported merge proof schema")
         for name in ("integration", "securitySource"):
             item = merge[name]
@@ -112,6 +113,9 @@ def validate_merge_shape(source):
                  "invalid merge " + name)
         successors = merge["successors"]
         minimum = 0 if merge["schema"] == "openclaw.fork-source-merge.v3" else 1
+        if merge["schema"] == "openclaw.fork-source-merge.v4":
+            minimum = 0
+            need(type(successors) is list and len(successors) <= 3, "invalid 10.9 merge successor count")
         need(type(successors) is list and minimum <= len(successors) <= 16,
              "invalid merge successor count")
         for item in successors:
@@ -144,6 +148,10 @@ def check_merge_reconciliation(source, source_dir):
     complete path coverage, exact carries and derived counts are checked here.
     """
     merge, proof = source["merge"], source["merge"]["reconciliation"]
+    if merge.get("schema") == "openclaw.fork-source-merge.v4":
+        from source_reconciliation_v109 import check_v109_reconciliation
+        check_v109_reconciliation(source, source_dir, git=git, need=need)
+        return
     observed = git(source_dir, "ls-tree", source["commit"], "--", proof["path"])
     need(observed.split("\t", 1)[0] == "100644 blob " + proof["blob"],
          "merge reconciliation blob or mode changed")
@@ -1217,7 +1225,7 @@ def human_status(state):
 def validation_node_version(inventory):
     """Keep retained workflow runtime; select the supported future stable lanes."""
     upstream = inventory.get("upstream")
-    return "24.22.1" if upstream and upstream["tag"] in ("v2026.10.6", "v2026.10.7", "v2026.10.8") else "24.21.0"
+    return "24.22.1" if upstream and upstream["tag"] in ("v2026.10.6", "v2026.10.7", "v2026.10.8", "v2026.10.9") else "24.21.0"
 
 
 def main():
