@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -123,6 +124,88 @@ HISTORY_START = "2026-10-28T00:12:07Z"  # Earliest created_at in the pinned258 b
 HISTORY_MAXIMUM = 2000
 HISTORY_QUERY_MAXIMUM = 256
 HISTORY_SEARCH_CAP = 1000
+# Diagnostic labels only. They never select a command, route, retry or gate.
+_FAILURE_PHASE = "not_started"
+_FAILURE_PHASES = frozenset(("not_started", "metadata", "event_binding", "code_binding",
+    "live_identity_initial", "history_collection", "closed_historical_inputs",
+    "closed_historical_native", "postbaseline_history", "generation_provider",
+    "live_identity_final", "write_outputs", "non_admission"))
+
+
+def failure_category(error):
+    # Never inspect exception messages/reasons/URLs or subprocess streams.
+    if isinstance(error, urllib.error.HTTPError):
+        return "http_error"
+    if isinstance(error, urllib.error.URLError):
+        return "url_error"
+    if isinstance(error, subprocess.TimeoutExpired):
+        return "process_timeout"
+    if isinstance(error, subprocess.CalledProcessError):
+        return "process_nonzero"
+    if isinstance(error, TimeoutError):
+        return "timeout"
+    if isinstance(error, (policy.Refusal, RunGrantRefusal, LockRefusal)):
+        return "owned_refusal"
+    if isinstance(error, KeyError):
+        return "key_error"
+    if isinstance(error, TypeError):
+        return "type_error"
+    if isinstance(error, OSError):
+        return "os_error"
+    if isinstance(error, ValueError):
+        return "value_error"
+    return "unclassified"
+
+
+def emit_failure_diagnostic(error, *, family=None, ordinal=None, operation=None):
+    # Best-effort fixed synthetic-safe fields, separate from the unchanged
+    # fail-closed runtime-refusal envelope. Never output body, stderr, endpoint,
+    # token, error string, traceback, header or URL (including redirect URLs).
+    value = {"schema": "openclaw.v109.admission-failure-diagnostic.v1",
+        "status": "refused", "phase": _FAILURE_PHASE if _FAILURE_PHASE in _FAILURE_PHASES else "unclassified",
+        "exceptionCategory": failure_category(error), "imageBuilt": False,
+        "productionAuthorized": False}
+    if family in ("history", "run_header", "run_jobs", "run_artifacts", "pull_request", "branch_ref", "public_content", "fixed_repository_other"):
+        value["callFamily"] = family
+    if type(ordinal) is int and ordinal > 0:
+        value["readOrdinal"] = ordinal
+    if operation in ("open", "read", "parse"):
+        value["operation"] = operation
+    if isinstance(error, urllib.error.HTTPError) and type(error.code) is int and 100 <= error.code <= 599:
+        value["httpStatus"] = error.code
+        # Only exact numeric rate-limit fields; never arbitrary headers/text.
+        try:
+            for header, name in (("X-RateLimit-Limit", "rateLimitLimit"),
+                    ("X-RateLimit-Remaining", "rateLimitRemaining"), ("X-RateLimit-Reset", "rateLimitReset")):
+                raw = error.headers.get(header) if error.headers is not None else None
+                if type(raw) is str and re.fullmatch(r"[0-9]{1,10}", raw):
+                    value[name] = int(raw)
+        except Exception:
+            pass
+    try:
+        emit(value)
+    except Exception:
+        # Output loss cannot replace the original failure or grant acceptance.
+        pass
+
+
+def provider_call_family(path):
+    relative = path.removeprefix("/repos/" + policy.REPOSITORY)
+    if relative.startswith("/actions/runs?"):
+        return "history"
+    if re.fullmatch(r"/actions/runs/[1-9][0-9]*/jobs\?filter=all&per_page=100&page=[1-9][0-9]*", relative):
+        return "run_jobs"
+    if re.fullmatch(r"/actions/runs/[1-9][0-9]*/artifacts\?per_page=100&page=[1-9][0-9]*", relative):
+        return "run_artifacts"
+    if re.fullmatch(r"/actions/runs/[1-9][0-9]*", relative):
+        return "run_header"
+    if relative == "/pulls/28":
+        return "pull_request"
+    if relative.startswith("/git/ref/heads/"):
+        return "branch_ref"
+    if relative.startswith("/contents/"):
+        return "public_content"
+    return "fixed_repository_other"
 
 
 def now_utc(epoch=None):
@@ -393,6 +476,7 @@ class API:
         self.token, self.deadline = token, deadline
         self.opener = opener or urllib.request.build_opener(NoRedirect)
         self.cache = {}
+        self.read_ordinal = 0
 
     def __call__(self, path):
         policy.need(type(path) is str and path.startswith("/repos/" + policy.REPOSITORY + "/") and
@@ -404,10 +488,19 @@ class API:
             req = urllib.request.Request("https://api.github.com" + path, headers={
                 "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
                 "User-Agent": policy.CAMPAIGN, "Authorization": "Bearer " + self.token})
-            with self.opener.open(req, timeout=seconds) as response:
-                policy.need(response.geturl() == "https://api.github.com" + path, "v9.api_redirect")
-                raw = response.read(4 * 1024 * 1024 + 1)
-            self.cache[path] = policy.parse(raw, 4 * 1024 * 1024)
+            self.read_ordinal += 1
+            operation = "open"
+            try:
+                with self.opener.open(req, timeout=seconds) as response:
+                    policy.need(response.geturl() == "https://api.github.com" + path, "v9.api_redirect")
+                    operation = "read"
+                    raw = response.read(4 * 1024 * 1024 + 1)
+                operation = "parse"
+                self.cache[path] = policy.parse(raw, 4 * 1024 * 1024)
+            except (policy.Refusal, ValueError, KeyError, TypeError, OSError) as error:
+                emit_failure_diagnostic(error, family=provider_call_family(path),
+                    ordinal=self.read_ordinal, operation=operation)
+                raise
         return self.cache[path]
 
 
@@ -804,10 +897,13 @@ def reconcile_historical_artifacts(actual, expected, run, observed_epoch):
 
 
 def closed_baseline(pipeline, history, api, resolver, observed_epoch=None):
+    global _FAILURE_PHASE
+    _FAILURE_PHASE = "closed_historical_inputs"
     baseline=resolver.resolve_baseline_258(*(regular(pipeline/path) for path in BASELINE_FILES))
     proof=load_historical_reconciliation(*(regular(pipeline/path,65536) for path in HISTORICAL_RECONCILIATION_INPUTS),baseline)
     observed_epoch=time.time() if observed_epoch is None else observed_epoch
     ids,alljobs,allartifacts=set(),set(),set();job_facts=[];missing_artifacts=[]
+    _FAILURE_PHASE = "closed_historical_native"
     for row in baseline["runs"]:
         rid=str(row["id"]);run=history.get(rid)
         policy.need(type(run) is dict and public_run(run) and run.get("status")=="completed" and
@@ -1047,7 +1143,9 @@ def bounded_minute_booking(grant,run_minutes,current_id,current_minutes):
 
 
 def history_checks(pipeline, bindings, request, rraw, head, event, env, api, resolver, clock, diagnostic=None):
+    global _FAILURE_PHASE
     import model_diagnostic_v109 as model_diagnostic
+    _FAILURE_PHASE = "history_collection"
     history = history_rows(api, clock)
     grant=policy.run_grant(bindings)
     attempt_facts=None
@@ -1067,6 +1165,7 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
             attempt_facts["unsupportedNativeReruns"]==[] and attempt_facts["missingPrefixIds"]==[] and
             attempt_facts["missingBookedAttempts"]==[],"v9.run_grant_attempt_observation")
     baseline_ids, alljobs, allartifacts = closed_baseline(pipeline, history, api, resolver)
+    _FAILURE_PHASE = "postbaseline_history"
     current = history.get(env["GITHUB_RUN_ID"])
     policy.need(type(current) is dict and current["head_sha"] == head and current.get("status") in
         ("queued", "in_progress", "waiting", "pending") and public_run(current), "v9.current_provider_run")
@@ -1522,6 +1621,8 @@ def source_result(request,rraw,env,head,admission,matrix):
 
 
 def main(argv=None,environment=None):
+    global _FAILURE_PHASE
+    _FAILURE_PHASE = "metadata"
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command",choices=("admit","fetch-closure","derive","run","finalize"))
     parser.add_argument("--profile",choices=policy.PROFILES)
@@ -1531,6 +1632,7 @@ def main(argv=None,environment=None):
     bindings,request,rraw=load_metadata(pipeline,active=True,now=time.time())
     policy.need(env.get("V109_APPROVED_AT") == bindings["authorization"]["approvedAt"] and
         env.get("V109_EXPIRES_AT") == bindings["authorization"]["expiresAt"], "v9.workflow_authorization_clock_binding")
+    _FAILURE_PHASE = "event_binding"
     event=policy.parse(regular(Path(env["GITHUB_EVENT_PATH"]),1024*1024))
     head=event_binding(event,env)
     core=load_owner(pipeline,"v109_shared_execution_owner",CORE,CORE_HASH)
@@ -1539,18 +1641,24 @@ def main(argv=None,environment=None):
         context["deadlineEpoch"] = min(context["deadlineEpoch"], int(env[CLOCK]) + 10 * 60 - 60)
     core.profile_signals()
     if args.command=="admit":
+        _FAILURE_PHASE = "code_binding"
         code_binding(pipeline,None,event,env,request,core,context)
         api=API(env.get("GH_TOKEN"),context["deadlineEpoch"])
+        _FAILURE_PHASE = "live_identity_initial"
         live_identity(api,head,request,event)
         resolver=load_owner(pipeline,"v109_closed_usage","scripts/fork-release/composite_closed_usage_v109.py")
         facts=history_checks(pipeline,bindings,request,rraw,head,event,env,api,resolver,time.time())
+        _FAILURE_PHASE = "generation_provider"
         validate_generation_provider(pipeline,bindings,request,api)
         # Fresh uncached exact head reads immediately before exporting selection.
+        _FAILURE_PHASE = "live_identity_final"
         api.cache.clear(); live_identity(api,head,request,event)
+        _FAILURE_PHASE = "write_outputs"
         write_outputs(env,{"source_sha":request["source"]["sourceSha"],"request_sha":policy.digest(rraw),
             "pipeline_head":head,"run_id":env["GITHUB_RUN_ID"],"phase":request["phase"]})
         emit({"schema":"openclaw.v109.admission.v1","status":"admitted",**facts,"imageBuilt":False})
         return 0
+    _FAILURE_PHASE = "non_admission"
     code_binding(pipeline,None,event,env,request,core,context)
     if args.command=="finalize":
         value=source_result(request,rraw,env,head,env.get("V109_ADMISSION_RESULT"),env.get("V109_SOURCE_RESULT"))
@@ -1578,6 +1686,7 @@ if __name__=="__main__":
         raise SystemExit(main())
     except (policy.Refusal,ValueError,KeyError,TypeError,OSError,subprocess.SubprocessError) as error:
         code=safe_refusal_code(error)
+        emit_failure_diagnostic(error)
         emit({"schema":"openclaw.v109.runtime-refusal.v1","status":"refused","code":code,
             "imageBuilt":False,"productionAuthorized":False})
         raise SystemExit(1)

@@ -88,6 +88,7 @@ PIPELINE_CONTRACT_TESTS = (
     "test_source_validation_selection_v109.py",
     "test_source_validation_runtime_v109.py",
     "test_lock_diagnostic_v109.py",
+    "test_admission_failure_diagnostic_v109.py",
     "test_historical_jobs_v109.py", "test_historical_reconciliation_v109.py",
     "test_third_preparation_contract_v109.py", "test_third_preparation_runtime_v109.py",
     "test_bounded_run_contract_v109.py", "test_bounded_run_runtime_v109.py",
