@@ -1246,6 +1246,26 @@
       "disposition": "ADAPTED_RELEASE_BINDING"
     },
     {
+      "path": "extensions/workboard/openclaw.plugin.json",
+      "base108": {
+        "mode": "100644",
+        "blob": "53477ffdf5f1c0bf8ac99a8e8b4d215b835ad5a7"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "53477ffdf5f1c0bf8ac99a8e8b4d215b835ad5a7"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "53477ffdf5f1c0bf8ac99a8e8b4d215b835ad5a7"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "a2973475da4d0da075224b1734a5380bcc84c5f0"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "extensions/workboard/package.json",
       "base108": {
         "mode": "100644",
@@ -3824,9 +3844,9 @@
       "upstream109": null,
       "result": {
         "mode": "100644",
-        "blob": "fca5a1d4f0d1778310f27b2ddb2877148a1cb7ed"
+        "blob": "ddbfc567415e9d6fbc01648f1e4e620b7c9fca0d"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "ADAPTED_SECURITY_TEST"
     },
     {
       "path": "src/state/openclaw-state-lease-heartbeat.test.ts",
