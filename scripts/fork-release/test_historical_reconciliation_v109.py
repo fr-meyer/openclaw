@@ -116,6 +116,56 @@ class ReconciliationTests(unittest.TestCase):
         run=self.rows['40804517284'];expected=deepcopy(self.proof['artifacts']['40804517284']);expected[0]['id']+=1
         with self.assertRaises(m.policy.Refusal):m.reconcile_historical_artifacts([],expected,run,m.provider_epoch('2026-11-01T00:00:00Z'))
 
+    def test_second_native_expiry_witness_does_not_rewrite_omitted_baseline_fields(self):
+        run=self.rows['40851844749'];expected=self.proof['artifacts']['40851844749'];before=deepcopy(expected)
+        self.assertEqual([row['id'] for row in expected],[12887657070])
+        for key in ('digest','created_at','expires_at'):self.assertNotIn(key,expected[0])
+        expiry=m.provider_epoch('2026-10-30T09:44:47Z')
+        with self.assertRaises(m.policy.Refusal):m.reconcile_historical_artifacts([],expected,run,expiry-1)
+        facts=m.reconcile_historical_artifacts([],expected,run,expiry)
+        self.assertEqual(facts[0]['bookedBytes'],187670)
+        self.assertEqual(facts[0]['recordedExpiresAt'],'2026-10-30T09:44:47Z')
+        self.assertEqual(facts[0]['nativeMetadataSha256'],'f14c61dee214b661b8dcc0bdaa80eb109960b6562dbed26d8fbb306c3d13702c')
+        self.assertFalse(facts[0]['baselineExpiryFieldPresent']);self.assertFalse(facts[0]['custodyClaimed'])
+        self.assertEqual(facts[0]['absenceCause'],'unproved');self.assertTrue(facts[0]['originalBookingPreserved'])
+        self.assertEqual(expected,before)
+
+    def test_second_witness_cannot_accept_identity_drift_or_inserted_baseline_defaults(self):
+        run=self.rows['40851844749'];expected=self.proof['artifacts']['40851844749'];clock=m.provider_epoch('2026-10-30T10:00:00Z')
+        for key,value in [('id',12887657071),('name','other'),('size_in_bytes',187669),
+                          ('digest',m.HISTORICAL_UNAVAILABLE_PAYLOADS[12887657070]['digest']),
+                          ('created_at','2026-10-29T09:44:48Z'),('expires_at','2026-10-30T09:44:47Z')]:
+            bad=deepcopy(expected);bad[0][key]=value
+            with self.subTest(key=key),self.assertRaises(m.policy.Refusal):
+                m.reconcile_historical_artifacts([],bad,run,clock)
+        for key,value in [('id',40851844750),('head_sha','f'*40)]:
+            bad=deepcopy(run);bad[key]=value
+            with self.subTest(key=key),self.assertRaises(m.policy.Refusal):
+                m.reconcile_historical_artifacts([],expected,bad,clock)
+
+    def test_original23_booking_is_preserved_when_both_witnessed_payloads_are_missing(self):
+        before=deepcopy(self.proof['artifacts']);facts=[];clock=m.provider_epoch('2026-10-30T10:00:00Z')
+        for rid,expected in self.proof['artifacts'].items():
+            actual=[deepcopy(row) for row in expected if row['id'] not in m.HISTORICAL_UNAVAILABLE_PAYLOADS]
+            facts+=m.reconcile_historical_artifacts(actual,expected,self.rows[rid],clock)
+        self.assertEqual({row['artifactId'] for row in facts},{12867024791,12887657070})
+        self.assertEqual(sum(row['bookedBytes'] for row in facts),374746)
+        allrows=[row for group in self.proof['artifacts'].values()for row in group]
+        self.assertEqual(len(allrows),23);self.assertEqual(sum(row['size_in_bytes']for row in allrows),387814)
+        self.assertEqual(self.proof['artifacts'],before)
+        self.assertTrue(all(row['originalBookingPreserved'] and not row['custodyClaimed'] for row in facts))
+
+    def test_other21_missing_artifacts_are_not_grandfathered_even_after_future_expiry(self):
+        refused=0
+        for rid,expected in self.proof['artifacts'].items():
+            for row in expected:
+                if row['id'] in m.HISTORICAL_UNAVAILABLE_PAYLOADS:continue
+                actual=[deepcopy(item)for item in expected if item['id']!=row['id']]
+                with self.subTest(artifactId=row['id']),self.assertRaises(m.policy.Refusal):
+                    m.reconcile_historical_artifacts(actual,expected,self.rows[rid],m.provider_epoch('2026-11-20T00:00:00Z'))
+                refused+=1
+        self.assertEqual(refused,21)
+
     def test_known_note_artifact_immutable_facts_and_unknown_additions_refuse(self):
         rid=next(rid for rid,group in self.proof['artifacts'].items() if any(a['id'] in self.proof['noteIds'] for a in group))
         expected=self.proof['artifacts'][rid];run=self.rows[rid];actual=deepcopy(expected);clock=m.provider_epoch('2026-10-30T05:00:00Z')

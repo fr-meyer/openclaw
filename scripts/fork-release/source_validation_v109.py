@@ -80,6 +80,25 @@ HISTORICAL_ARTIFACT_PRODUCER = CANDIDATE + "/historical-artifact-closeout-202610
 HISTORICAL_ARTIFACT_PRODUCER_SHA256 = "38962ed7beed7c875e2fbad72ae82668898f6776c92903675bc202d5b994665d"
 HISTORICAL_RECONCILIATION_INPUTS = (HISTORICAL_JOB_WITNESS,HISTORICAL_ARTIFACT_NOTE,HISTORICAL_ARTIFACT_PRODUCER)
 HISTORICAL_ABSENCE_ARTIFACT = 12867024791
+# The complete original23 audit has only these two payload expiries before the
+# unchanged Nov3 campaign deadline; the other21 expire Nov11/12. Supplemental
+# native dates/digests never rewrite fields omitted by the original booking.
+HISTORICAL_UNAVAILABLE_PAYLOADS = {
+    HISTORICAL_ABSENCE_ARTIFACT: {
+        "runId": 40804517284, "headSha": "e96941f0c8c05a45d7df32ca7e45758e12609be7",
+        "name": "v108-npm-lock-preparation", "bytes": 187076,
+        "digest": "sha256:f433194ae0b6927a21c8ba8a5be7bebb000a533a39a979905855d5cbb8b691e3",
+        "created_at": "2026-10-29T02:09:23Z", "expires_at": "2026-10-30T02:09:22Z",
+        "baselineDigestPresent": True, "baselineDatesPresent": True,
+        "nativeMetadataSha256": "ff041ef767f62dc301870459b0c36fb86fc1ad54c48d4881cfcddb557694d8f9"},
+    12887657070: {
+        "runId": 40851844749, "headSha": "1b26975c3c38b264632a1bc26577a71039cc23ae",
+        "name": "v108-re2js-lock-preparation", "bytes": 187670,
+        "digest": "sha256:e446f3c0e775362ebe622c88a88f3feec72f588394edf382756a0a7eb0603f0c",
+        "created_at": "2026-10-29T09:44:48Z", "expires_at": "2026-10-30T09:44:47Z",
+        "baselineDigestPresent": False, "baselineDatesPresent": False,
+        "nativeMetadataSha256": "f14c61dee214b661b8dcc0bdaa80eb109960b6562dbed26d8fbb306c3d13702c"},
+}
 
 TERMINAL = frozenset(("success", "failure", "neutral", "cancelled", "skipped", "timed_out",
     "action_required", "stale", "startup_failure"))
@@ -726,7 +745,7 @@ def reconcile_historical_jobs(actual, recorded, run, expected_extras):
 
 
 def reconcile_historical_artifacts(actual, expected, run, observed_epoch):
-    """Conservative historical booking, with one explicit dated payload absence."""
+    """Keep the complete old booking; only two witnessed, dated absences qualify."""
     policy.need(type(observed_epoch) in (int,float) and math.isfinite(observed_epoch) and
         type(actual) is list,"v9.historical_artifact_observation_clock")
     native={a["id"]:a for a in actual if type(a) is dict and type(a.get("id")) is int}
@@ -736,13 +755,23 @@ def reconcile_historical_artifacts(actual, expected, run, observed_epoch):
     missing=[]
     for aid,old in wanted.items():
         if aid not in native:
-            policy.need(aid==HISTORICAL_ABSENCE_ARTIFACT and run["id"]==40804517284 and
-                old["name"]=="v108-npm-lock-preparation" and old["size_in_bytes"]==187076 and
-                old["digest"]=="sha256:f433194ae0b6927a21c8ba8a5be7bebb000a533a39a979905855d5cbb8b691e3" and
-                old["expires_at"]=="2026-10-30T02:09:22Z" and
-                observed_epoch>=provider_epoch(old["expires_at"]),"v9.historical_artifact_missing_before_or_without_expiry")
+            witness=HISTORICAL_UNAVAILABLE_PAYLOADS.get(aid)
+            policy.need(witness is not None and run["id"]==witness["runId"] and
+                run["head_sha"]==witness["headSha"] and old["name"]==witness["name"] and
+                old["size_in_bytes"]==witness["bytes"] and
+                ("digest" in old)==witness["baselineDigestPresent"] and
+                ("created_at" in old)==("expires_at" in old)==witness["baselineDatesPresent"],
+                "v9.historical_artifact_missing_before_or_without_expiry")
+            if witness["baselineDigestPresent"]:
+                policy.need(old["digest"]==witness["digest"],"v9.historical_artifact_recorded_fact_changed")
+            if witness["baselineDatesPresent"]:
+                policy.need(old["created_at"]==witness["created_at"] and old["expires_at"]==witness["expires_at"],
+                    "v9.historical_artifact_recorded_fact_changed")
+            policy.need(provider_epoch(witness["created_at"])<=provider_epoch(witness["expires_at"])<=observed_epoch,
+                "v9.historical_artifact_missing_before_or_without_expiry")
             missing.append({"runId":str(run["id"]),"artifactId":aid,"bookedBytes":old["size_in_bytes"],
-                "recordedExpiresAt":old["expires_at"],"payloadAvailability":"unavailable",
+                "recordedExpiresAt":witness["expires_at"],"nativeMetadataSha256":witness["nativeMetadataSha256"],
+                "baselineExpiryFieldPresent":"expires_at" in old,"payloadAvailability":"unavailable",
                 "absenceCause":"unproved","originalBookingPreserved":True,"custodyClaimed":False})
         else:
             policy.need(historical_artifacts_match([native[aid]],[old]),"v9.historical_artifact_recorded_fact_changed")
