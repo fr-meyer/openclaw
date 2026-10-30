@@ -24,6 +24,11 @@ PIPELINE_BRANCH = "task/v107-source-binding"
 SOURCE_BRANCH = "prep/v2026.10.9-remediation"
 BASE_BRANCH = "release-pipeline/v105-image-only-20261024"
 BASE = "a65f70c5dad17b39bc3ee26ba92cde6d00bfb259"
+PIPELINE_RECOVERY_SCHEMA = "openclaw.v109.pipeline-preparation-recovery.v1"
+PREPARATION_FAILURE_EVIDENCE = "scripts/fork-release/candidates/v2026.10.9-source-only/preparation-failure-40997868140.json"
+PREPARATION_FAILURE_EVIDENCE_SHA256 = "af64a6728b88d0e520f24722871ef760c5181e1492b9142b1f9af0944c060856"
+FAILED_PREPARATION_PIN = {"runId": "40997868140", "pipelineHead": "84b825aca15a58191e718a958a356dcc305d4e47",
+    "requestSha256": "cf52903c8a20e94684e3a6fcb5e947b8336eca62e66f0744efcda4d4d054a9ef"}
 BASELINE_SOURCE = "e6c4786dafbc8308661ea8fa14a81e06873d1630"
 BASELINE_PIPELINE = "37400d942839bee0b92852037d6f8bf99e60358c"
 BASELINE_RUN = "40901336241"
@@ -186,16 +191,29 @@ def validate_bindings(value, active=False, now=None):
     source_pin(value["preparation"])
     pc = value["preparationCorrection"]
     if pc is not None:
-        fields(pc, ("source", "parentSource", "changedPaths", "contentSha256", "unchangedTreeSha256",
-            "priorFailure", "priorPhase"), "v9.preparation_correction_fields")
-        source_pin(pc["source"]); run_pin(pc["priorFailure"])
-        need(pc["priorPhase"] in ("lock-preparation", "validation"), "v9.preparation_correction_phase")
-        parent = value["preparation"] if pc["priorPhase"] == "lock-preparation" else (
-            value["validation"]["source"] if type(value["validation"]) is dict else None)
-        need(parent is not None and pc["parentSource"] == parent["sourceSha"] and
-            pin(pc["unchangedTreeSha256"]) and pc["source"]["fileSha256"]["package.json"] ==
-            value["preparation"]["fileSha256"]["package.json"], "v9.preparation_correction_parent")
-        correction_paths(pc)
+        if pipeline_preparation_recovery(pc):
+            fields(pc, ("schema", "source", "priorPhase", "priorFailure", "failedPreparationAttempt",
+                "nextPreparationAttempt", "reasonCode", "evidenceSha256"), "v9.pipeline_recovery_fields")
+            source_pin(pc["source"]); run_pin(pc["priorFailure"])
+            need(pc["source"] == value["preparation"] and pc["priorPhase"] == "lock-preparation" and
+                pc["priorFailure"] == FAILED_PREPARATION_PIN and
+                type(pc["failedPreparationAttempt"]) is int and pc["failedPreparationAttempt"] == 1 and
+                type(pc["nextPreparationAttempt"]) is int and pc["nextPreparationAttempt"] == 2 and
+                pc["reasonCode"] == "v9.workflow_merge_parents" and
+                pc["evidenceSha256"] == PREPARATION_FAILURE_EVIDENCE_SHA256,
+                "v9.exact_pipeline_only_preparation_recovery")
+            need(value["correction"] is None, "v9.pipeline_correction_already_consumed")
+        else:
+            fields(pc, ("source", "parentSource", "changedPaths", "contentSha256", "unchangedTreeSha256",
+                "priorFailure", "priorPhase"), "v9.preparation_correction_fields")
+            source_pin(pc["source"]); run_pin(pc["priorFailure"])
+            need(pc["priorPhase"] in ("lock-preparation", "validation"), "v9.preparation_correction_phase")
+            parent = value["preparation"] if pc["priorPhase"] == "lock-preparation" else (
+                value["validation"]["source"] if type(value["validation"]) is dict else None)
+            need(parent is not None and pc["parentSource"] == parent["sourceSha"] and
+                pin(pc["unchangedTreeSha256"]) and pc["source"]["fileSha256"]["package.json"] ==
+                value["preparation"]["fileSha256"]["package.json"], "v9.preparation_correction_parent")
+            correction_paths(pc)
     tests = value["newRecoveryTests"]
     need(type(tests) is list and tests == sorted(set(tests)) and bool(tests) and all(
         type(p) is str and TEST_PATH.fullmatch(p) and not p.startswith("/") and
@@ -242,6 +260,52 @@ def validate_bindings(value, active=False, now=None):
         validate_authorization(value["authorization"], now)
     if active:
         need(value["status"] == "APPROVED_CI", "v9.disarmed")
+    return value
+
+
+
+def pipeline_preparation_recovery(value):
+    """Closed discriminator, not proof: validation still checks exact fields/facts."""
+    return type(value) is dict and value.get("schema") == PIPELINE_RECOVERY_SCHEMA
+
+
+def validate_pipeline_recovery_evidence(raw, bindings):
+    validate_bindings(bindings)
+    pc = bindings["preparationCorrection"]
+    need(pipeline_preparation_recovery(pc) and digest(raw) == pc["evidenceSha256"] ==
+        PREPARATION_FAILURE_EVIDENCE_SHA256, "v9.pipeline_failure_evidence_digest")
+    value = parse(raw, 65536)
+    fields(value, ("schema", "repository", "runId", "runAttempt", "pipelineHead", "requestSha256",
+        "workflow", "runName", "headBranch", "event", "runConclusion", "source", "preparationAttempt",
+        "jobId", "jobName", "jobConclusion", "nativeStartedAt", "nativeCompletedAt", "failedStep", "failureCode",
+        "skippedCandidateSteps", "artifactCount", "sourceCheckoutPerformed", "lockGenerationExecuted",
+        "generationProduced", "nativeImageExecuted", "productionAuthorized", "producerRuntimeSha256",
+        "producerWorkflowSha256", "nativeEvidenceSha256"), "v9.pipeline_failure_evidence_fields")
+    need(value["schema"] == "openclaw.v109.preparation-intake-failure.v1" and
+        value["repository"] == REPOSITORY and all(value[k] == v for k,v in FAILED_PREPARATION_PIN.items()) and
+        type(value["runAttempt"]) is int and value["runAttempt"] == 1 and value["workflow"] == WORKFLOW and
+        value["runName"] == CAMPAIGN and value["headBranch"] == PIPELINE_BRANCH and
+        value["event"] == "pull_request" and value["runConclusion"] == "failure" and
+        value["source"] == bindings["preparation"] == pc["source"] and
+        type(value["preparationAttempt"]) is int and value["preparationAttempt"] == 1 and
+        value["jobId"] == 123875131632 and type(value["jobId"]) is int and
+        value["jobName"] == "lock-preparation" and value["jobConclusion"] == "failure" and
+        value["failedStep"] == "Exact public admission and cumulative accounting" and
+        value["failureCode"] == pc["reasonCode"] == "v9.workflow_merge_parents" and
+        value["skippedCandidateSteps"] == ["Checkout exact admitted source", "Pinned public Node runtime",
+            "Verify and acquire local public closure", "Derive lock only with secretless pinned pnpm",
+            "Retain exact lock derivation for review"] and type(value["artifactCount"]) is int and
+        value["artifactCount"] == 0 and all(value[k] is False for k in ("sourceCheckoutPerformed",
+            "lockGenerationExecuted", "generationProduced", "nativeImageExecuted", "productionAuthorized")) and
+        value["producerRuntimeSha256"] == "96be043eae4bd47dcda2d51784ef95562cb3b568bf29231c19a95276ae824807" and
+        value["producerWorkflowSha256"] == "8741d7bb20253276ed13967ab61147d4b61a4520268c1fd41440005d020878c6",
+        "v9.exact_failed_intake_without_generation")
+    start, end = utc(value["nativeStartedAt"]), utc(value["nativeCompletedAt"])
+    need(start <= end and (end-start).total_seconds() <= PREPARATION_MINUTES*60,
+        "v9.failed_intake_native_clock")
+    fields(value["nativeEvidenceSha256"], ("run", "jobs", "artifacts", "log", "canonicalMergeGraph",
+        "executableClosure"), "v9.pipeline_failure_native_evidence_fields")
+    need(all(pin(v) for v in value["nativeEvidenceSha256"].values()), "v9.pipeline_failure_native_evidence_hashes")
     return value
 
 
@@ -502,16 +566,23 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
     before = initial_tree
     if attempt == 2:
         pc = bindings["preparationCorrection"]
-        if pc["priorPhase"] == "validation":
-            need(type(initial_generation_raw) is bytes, "v9.initial_generation_receipt_required")
-            verify_derived_source(read_git, bindings, "validation", initial_generation_raw,
-                read_tree=read_tree, verify_lock=verify_lock)
-            before = tree(bindings["validation"]["source"])
-        need(parents(prep["sourceSha"]) == [pc["parentSource"]], "v9.single_preparation_correction_parent")
-        after = tree(prep)
-        _verify_reviewed_step(read, before, after, {**pc, "source": prep})
-        before = after
-        inputs(prep)
+        if pipeline_preparation_recovery(pc):
+            # No invented G2: only the pipeline changed after an authenticated
+            # failed intake. Its native failure is independently replayed by
+            # admission; this owner proves the unchanged G/H source relation.
+            need(prep == initial and pc["priorPhase"] == "lock-preparation",
+                "v9.pipeline_recovery_original_source")
+        else:
+            if pc["priorPhase"] == "validation":
+                need(type(initial_generation_raw) is bytes, "v9.initial_generation_receipt_required")
+                verify_derived_source(read_git, bindings, "validation", initial_generation_raw,
+                    read_tree=read_tree, verify_lock=verify_lock)
+                before = tree(bindings["validation"]["source"])
+            need(parents(prep["sourceSha"]) == [pc["parentSource"]], "v9.single_preparation_correction_parent")
+            after = tree(prep)
+            _verify_reviewed_step(read, before, after, {**pc, "source": prep})
+            before = after
+            inputs(prep)
     generation = validate_generation(generation_raw, bindings, phase)
     target = step["source"]
     need(parents(target["sourceSha"]) == [prep["sourceSha"]], "v9.single_generated_source_parent")
@@ -539,7 +610,8 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
         "sourceTree": target["sourceTree"], "preparationSource": prep["sourceSha"], "preparationAttempt": attempt,
         "generationReceiptSha256": digest(generation_raw), "changedPaths": changed,
         "lockSecuritySha256": generation["lockSecuritySha256"],
-        "allOtherTrackedBytesUnchanged": True, "sourceCorrectionVerified": attempt == 2,
+        "allOtherTrackedBytesUnchanged": True, "sourceCorrectionVerified": attempt == 2 and
+            not pipeline_preparation_recovery(bindings["preparationCorrection"]),
         "freshSourceCoverageRequired": True, "imageBuilt": False, "productionAuthorized": False}
 
 

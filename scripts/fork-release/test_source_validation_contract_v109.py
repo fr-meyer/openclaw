@@ -134,7 +134,7 @@ class ContractTests(unittest.TestCase):
 
     def test_future_or_expired_clock_refused(self):
         a = authorization()
-        for now in (0, datetime(2026,11,4,tzinfo=timezone.utc).timestamp()):
+        for now in (0, m.utc(a["expiresAt"]).timestamp()):
             with self.subTest(now=now), self.assertRaisesRegex(m.Refusal,"authorization_clock"):
                 m.validate_authorization(a, now)
 
@@ -291,6 +291,108 @@ class ReviewedInterfaceDeltaTests(unittest.TestCase):
         with patch.object(m,"validate_generation",return_value=receipt) as validate:
             m.verify_generated_artifact(files,{})
             validate.assert_called_once_with(b"receipt",{},"validation")
+
+
+class PipelinePreparationRecoveryTests(unittest.TestCase):
+    def actual_binding(self):
+        path=Path(__file__).parent/"candidates/v2026.10.9-source-only/ci-bindings.json"
+        value=m.parse(path.read_bytes())
+        # Replay the historical pre-H intake state in an isolated unit fixture.
+        # Later all15 CI uses a real H validation binding; it must not change this
+        # fixture's phase or be mistaken for missing live evidence.
+        value["validation"]=None;value["correction"]=None
+        return value
+
+    def test_attempt2_reuses_original_real_g_without_h_or_empty_commit(self):
+        b=self.actual_binding();m.validate_bindings(b,active=True)
+        self.assertEqual(m.preparation_for(b,2),b["preparation"])
+        self.assertIsNone(b["validation"]);self.assertIsNone(b["correction"])
+        self.assertEqual(b["preparation"]["sourceSha"],"ba04217f6642091b94f396669318d068e6007ed7")
+        q=m.request_for(b,"lock-preparation",2)
+        self.assertEqual(q["source"],b["preparation"]);self.assertEqual(q["preparationAttempt"],2)
+        self.assertEqual(q["priorRunPins"],[m.FAILED_PREPARATION_PIN]);self.assertIsNone(q["generation"])
+
+    def test_original_attempt1_remains_valid_historical_request(self):
+        b=self.actual_binding();b["preparationCorrection"]=None
+        q=m.request_for(b,"lock-preparation",1)
+        self.assertEqual(m.digest(m.encode(q)),m.FAILED_PREPARATION_PIN["requestSha256"])
+        m.validate_request(q,b,active=True)
+
+    def test_attempt2_without_closed_recovery_refuses(self):
+        b=self.actual_binding();b["preparationCorrection"]=None
+        with self.assertRaisesRegex(m.Refusal,"second_preparation_not_bound"):
+            m.request_for(b,"lock-preparation",2)
+
+    def test_changed_g_cannot_be_called_pipeline_only_recovery(self):
+        b=self.actual_binding();b["preparationCorrection"]["source"]["sourceSha"]="f"*40
+        with self.assertRaisesRegex(m.Refusal,"exact_pipeline_only"):
+            m.validate_bindings(b)
+
+    def test_other_prior_run_code_evidence_or_attempt_refuses(self):
+        for field,value in (("reasonCode","v9.any_failure"),("evidenceSha256","a"*64),
+                ("failedPreparationAttempt",2),("failedPreparationAttempt",True),
+                ("nextPreparationAttempt",1),("nextPreparationAttempt",3)):
+            b=self.actual_binding();b["preparationCorrection"][field]=value
+            with self.subTest(field=field,value=value),self.assertRaises(m.Refusal):m.validate_bindings(b)
+        b=self.actual_binding();b["preparationCorrection"]["priorFailure"]["runId"]="1234"
+        with self.assertRaises(m.Refusal):m.validate_bindings(b)
+
+    def test_closed_pipeline_shape_does_not_accept_source_edit_or_extra_fields(self):
+        for extra in ({"changedPaths":[]},{"parentSource":"a"*40},{"sourceChanged":False}):
+            b=self.actual_binding();b["preparationCorrection"].update(extra)
+            with self.subTest(extra=extra),self.assertRaisesRegex(m.Refusal,"pipeline_recovery_fields"):
+                m.validate_bindings(b)
+
+    def test_source_correction_variant_retains_nonempty_path_requirement(self):
+        b=self.actual_binding();b["preparationCorrection"]={"source":deepcopy(b["preparation"]),
+            "parentSource":b["preparation"]["sourceSha"],"changedPaths":[],"contentSha256":{},
+            "unchangedTreeSha256":"a"*64,"priorFailure":deepcopy(m.FAILED_PREPARATION_PIN),
+            "priorPhase":"lock-preparation"}
+        with self.assertRaisesRegex(m.Refusal,"correction_changed_paths"):m.validate_bindings(b)
+
+    def test_one_correction_is_consumed_before_validation(self):
+        b=self.actual_binding();b["correction"]={}
+        with self.assertRaisesRegex(m.Refusal,"pipeline_correction_already_consumed"):
+            m.validate_bindings(b)
+
+    def test_actual_public_failure_evidence_is_closed_and_cannot_be_tampered(self):
+        b=self.actual_binding();path=Path(__file__).parent/m.PREPARATION_FAILURE_EVIDENCE.split('/')[-1]
+        path=Path(__file__).parent/"candidates/v2026.10.9-source-only"/path.name
+        raw=path.read_bytes();e=m.validate_pipeline_recovery_evidence(raw,b)
+        self.assertEqual(e["runId"],"40997868140");self.assertEqual(e["artifactCount"],0)
+        for field in ("sourceCheckoutPerformed","lockGenerationExecuted","generationProduced"):
+            self.assertIs(e[field],False)
+        with self.assertRaisesRegex(m.Refusal,"evidence_digest"):
+            m.validate_pipeline_recovery_evidence(raw+b" ",b)
+
+    def test_advertised_pr_base_remains_unchanged_by_pipeline_recovery(self):
+        self.assertEqual(m.BASE,"a65f70c5dad17b39bc3ee26ba92cde6d00bfb259")
+        self.assertEqual(self.actual_binding()["baseSha"],m.BASE)
+        # Actual merge-target/tree ownership is the runtime's typed DAG proof;
+        # this request field continues to bind the advertised PR metadata.
+
+    def test_time_money_attempt_privilege_envelope_not_expanded(self):
+        b=self.actual_binding();q=m.request_for(b,"lock-preparation",2);v=m.budget(q)
+        self.assertEqual(m.AUTH_HOURS,96);self.assertEqual(v["maximumNewMinutes"],2500)
+        self.assertEqual(v["maximumLockPreparations"],2);self.assertEqual(v["maximumSourceCampaigns"],2)
+        for k in ("imageExecutionAllowedHere","cloudAccessAllowedHere","newSecretsAllowedHere"):
+            self.assertIs(b["authorization"][k],False)
+
+    def test_pure_generated_source_proof_does_not_require_a_fake_g2(self):
+        # Synthetic Git model only, not real H or native recovery evidence.
+        from test_source_derivation_v109 import repository
+        b,files,read,trees,gate,entries,content,parents=repository()
+        b["preparationCorrection"]={"schema":m.PIPELINE_RECOVERY_SCHEMA,
+            "source":deepcopy(b["preparation"]),"priorPhase":"lock-preparation",
+            "priorFailure":deepcopy(m.FAILED_PREPARATION_PIN),"failedPreparationAttempt":1,
+            "nextPreparationAttempt":2,"reasonCode":"v9.workflow_merge_parents",
+            "evidenceSha256":m.PREPARATION_FAILURE_EVIDENCE_SHA256}
+        b["validation"]["preparationAttempt"]=2
+        proof=m.verify_derived_source(read,b,"validation",files["generation.json"],
+            read_tree=trees,verify_lock=gate)
+        self.assertEqual(proof["preparationAttempt"],2)
+        self.assertFalse(proof["sourceCorrectionVerified"])
+        self.assertEqual(proof["preparationSource"],b["preparation"]["sourceSha"])
 
 
 if __name__ == "__main__":

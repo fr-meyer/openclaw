@@ -36,6 +36,10 @@ TAG_BYTES = 1028
 TAG_SHA256 = "3574aa376a8372d0305a4040e0ea027fead4fed15d5587654d0af755a1fb3f5e"
 CLOCK = "V109_JOB_STARTED_EPOCH"
 OPERATION = "V109_ADMISSION_REQUEST_SHA256"
+WORKFLOW_TARGET = "918890b9f72b2d0372995362e8ea3088e0f87431"
+WORKFLOW_TARGET_TREE = "d8ce67a5b48c1f5e2ccf56e7f47dabccb4511df1"
+WORKFLOW_MERGE_BASE = "c5f6ea725b69740582e8051c974a798feda792ba"
+WORKFLOW_MERGE_BASE_TREE = "38a532f0cf67e887db788f98dd90aed0f8d8d572"
 BASELINE_FILES = (
     CANDIDATE + "/closed-258-proof.json",
     "scripts/fork-release/candidates/v2026.10.8-source-only/crabline-settled-usage.json",
@@ -59,7 +63,7 @@ CODE_PATHS = (
     "scripts/fork-release/fixtures/v109-lock-preparation.yml",
     "scripts/fork-release/fixtures/v109-source-validation.yml",
     BINDINGS, REQUEST, CANDIDATE + "/manifest.json", CANDIDATE + "/inventory.json",
-    CANDIDATE + "/registry-metadata.json", *BASELINE_FILES,
+    CANDIDATE + "/registry-metadata.json", policy.PREPARATION_FAILURE_EVIDENCE, *BASELINE_FILES,
 )
 TERMINAL = frozenset(("success", "failure", "neutral", "cancelled", "skipped", "timed_out",
     "action_required", "stale", "startup_failure"))
@@ -170,6 +174,72 @@ def job_deadline(bindings, request, env, profile=None, clock=None):
     return min(start + cap * 60 - 60, expiry - 60)
 
 
+def deterministic_merge_entries(base, head, target):
+    """Metadata-only3way overlay; divergent paths refuse, never content-merge.
+
+    Entries come from the maintained strict recursive Git tree parser. This
+    deliberately covers only the reviewed conflict-free per-path merge graph;
+    it is not a replacement implementation of Git's general merge strategy.
+    """
+    policy.need(all(type(tree) is dict and bool(tree) for tree in (base,head,target)),
+        "v9.workflow_complete_trees")
+    result={}
+    for path in sorted(set(base)|set(head)|set(target)):
+        b,h,t=base.get(path),head.get(path),target.get(path)
+        if h==b:
+            chosen=t
+        elif t==b or h==t:
+            chosen=h
+        else:
+            raise policy.Refusal("v9.workflow_divergent_path")
+        if chosen is not None:
+            result[path]=chosen
+    # A directory/file collision cannot be represented by a valid Git tree.
+    # Refuse it directly rather than relying on comparison to omit one side.
+    paths=set(result)
+    policy.need(all(not any('/'.join(path.split('/')[:i]) in paths for i in range(1,len(path.split('/'))))
+        for path in paths),"v9.workflow_path_collision")
+    return result
+
+
+def workflow_merge_binding(read, core, head, merge):
+    """Prove the fixed physical graph and complete conflict-free merge entries.
+
+    PR's advertisedbasea65 and the current merge-target918 are separate pinned
+    identities. No Git object/ref writer, formatter heuristic or fetched ref is
+    accepted as the expected merge; only complete typed metadata is compared.
+    """
+    policy.need(read("rev-parse","--is-shallow-repository").strip()==b"false",
+        "v9.workflow_shallow_graph")
+    try:
+        read("config","--get-regexp",r"^(extensions\.partialclone|remote\..*\.promisor)$")
+    except subprocess.CalledProcessError as error:
+        policy.need(error.returncode==1,"v9.workflow_graph_config")
+    else:
+        raise policy.Refusal("v9.workflow_partial_graph")
+    for commit in (head,merge,WORKFLOW_TARGET,WORKFLOW_MERGE_BASE):
+        policy.need(policy.pin(commit,160) and read("cat-file","-t",commit).strip()==b"commit",
+            "v9.workflow_typed_commit_graph")
+    policy.need(read("show","-s","--format=%P",merge).strip().split()==
+        [WORKFLOW_TARGET.encode(),head.encode()],"v9.workflow_merge_parents")
+    policy.need(read("merge-base","--all",WORKFLOW_TARGET,head).strip().split()==
+        [WORKFLOW_MERGE_BASE.encode()],"v9.workflow_unique_fixed_merge_base")
+    def tree_id(commit):
+        value=read("rev-parse",commit+"^{tree}").strip().decode("ascii")
+        policy.need(policy.pin(value,160),"v9.workflow_tree_identity")
+        return value
+    policy.need(tree_id(WORKFLOW_TARGET)==WORKFLOW_TARGET_TREE and
+        tree_id(WORKFLOW_MERGE_BASE)==WORKFLOW_MERGE_BASE_TREE,"v9.workflow_fixed_graph_trees")
+    base=core._v4_tree(read,WORKFLOW_MERGE_BASE,WORKFLOW_MERGE_BASE_TREE)
+    head_entries=core._v4_tree(read,head,tree_id(head))
+    target=core._v4_tree(read,WORKFLOW_TARGET,WORKFLOW_TARGET_TREE)
+    actual=core._v4_tree(read,merge,tree_id(merge))
+    expected=deterministic_merge_entries(base,head_entries,target)
+    policy.need(actual==expected,"v9.workflow_full_merge_tree_changed")
+    return {"target":WORKFLOW_TARGET,"mergeBase":WORKFLOW_MERGE_BASE,
+        "entryCount":len(expected),"completeTreeCompared":True,"gitObjectWritten":False}
+
+
 def code_binding(pipeline, source, event, env, request, core, context):
     head = event_binding(event, env)
     read = lambda *args: git_read(pipeline, *args, deadline=context["deadlineEpoch"])
@@ -188,14 +258,17 @@ def code_binding(pipeline, source, event, env, request, core, context):
         read("cat-file", "-e", merge + "^{commit}")
     except subprocess.CalledProcessError:
         result = core.phase_process(["git", "-C", str(pipeline), "-c", "credential.helper=",
-            "-c", "maintenance.auto=0", "-c", "gc.auto=0", "-c", "protocol.https.allow=always", "fetch", "--no-tags", "--depth=2",
+            "-c", "maintenance.auto=0", "-c", "gc.auto=0", "-c", "protocol.https.allow=always", "fetch", "--no-tags",
             "https://github.com/fr-meyer/openclaw.git", merge], pipeline, context["gitEnv"],
             context, "workflow-object", 0)
         policy.need(result.returncode == 0 and not getattr(result, "timed_out", False), "v9.workflow_fetch_refused")
-    policy.need(read("show", "-s", "--format=%P", merge).strip().split() ==
-        [policy.BASE.encode(), head.encode()], "v9.workflow_merge_parents")
-    policy.need(read("rev-parse", merge + "^{tree}") == read("rev-parse", head + "^{tree}"),
-        "v9.workflow_full_tree_changed")
+    workflow_merge_binding(read,core,head,merge)
+    if request["phase"] == "lock-preparation" and request["preparationAttempt"] == 2:
+        bindings=context.get("bindings") or policy.parse(regular(pipeline/BINDINGS,131072))
+        pc=bindings["preparationCorrection"]
+        if policy.pipeline_preparation_recovery(pc):
+            policy.need(read("show","-s","--format=%P",head).strip().split()==
+                [pc["priorFailure"]["pipelineHead"].encode()],"v9.pipeline_recovery_direct_parent")
     for path in paths:
         policy.need(read("show", head + ":" + path) == read("show", merge + ":" + path),
             "v9.workflow_reviewed_code")
@@ -305,7 +378,8 @@ def observed_jobs(jobs, clock, terminal=False, limits=None):
     for job in jobs:
         jid, name = job.get("id"), job.get("name")
         policy.need(type(jid) is int and jid > 0 and jid not in ids and type(name) is str and
-            name not in names and job.get("run_attempt") == 1, "v9.unique_native_job")
+            0 < len(name) <= 300 and (limits is None or name not in names) and
+            job.get("run_attempt") == 1, "v9.unique_native_job")
         ids.add(jid); names.add(name)
         if limits is not None:
             policy.need(name in limits, "v9.unexpected_source_job")
@@ -320,7 +394,8 @@ def observed_jobs(jobs, clock, terminal=False, limits=None):
             policy.need(job.get("runner_name") in (None, "") and job.get("steps") == [], "v9.positive_unacquired_job")
             continue
         policy.need(type(job.get("runner_id")) is int and job["runner_id"] > 0 and
-            job.get("runner_group_name") == "GitHub Actions" and job.get("labels") == ["ubuntu-24.04"],
+            job.get("runner_group_name") == "GitHub Actions" and (job.get("labels") == ["ubuntu-24.04"] or
+                limits is None and job.get("labels") == ["ubuntu-latest"]),
             "v9.standard_free_public_runner")
         start = provider_epoch(job["started_at"])
         finish = provider_epoch(job["completed_at"]) if status == "completed" else clock
@@ -382,7 +457,7 @@ def closed_baseline(pipeline, history, api, resolver):
 
 
 def content(api, path, commit, maximum=131072):
-    policy.need(path in (BINDINGS, REQUEST, policy.WORKFLOW) and policy.pin(commit, 160), "v9.fixed_content_read")
+    policy.need(path in (BINDINGS, REQUEST, policy.WORKFLOW, "scripts/fork-release/source_validation_v109.py") and policy.pin(commit, 160), "v9.fixed_content_read")
     obj = api("/repos/" + policy.REPOSITORY + "/contents/" + path + "?ref=" + commit)
     policy.need(obj.get("type") == "file" and obj.get("encoding") == "base64" and
         type(obj.get("size")) is int and 0 < obj["size"] <= maximum, "v9.public_content_metadata")
@@ -401,9 +476,11 @@ def live_identity(api, head, request, event):
         pr.get("head", {}).get("repo", {}).get("full_name") == policy.REPOSITORY and
         pr.get("base", {}).get("sha") == policy.BASE and pr.get("base", {}).get("ref") == policy.BASE_BRANCH,
         "v9.live_pr_changed")
-    for branch, sha in ((policy.PIPELINE_BRANCH, head), (policy.SOURCE_BRANCH, request["source"]["sourceSha"])):
+    for branch, sha in ((policy.PIPELINE_BRANCH, head), (policy.SOURCE_BRANCH, request["source"]["sourceSha"]),
+                        (policy.BASE_BRANCH, WORKFLOW_TARGET)):
         ref = api("/repos/" + policy.REPOSITORY + "/git/ref/heads/" + urllib.parse.quote(branch,safe="/"))
-        policy.need(ref.get("object", {}).get("sha") == sha, "v9.live_branch_tip")
+        policy.need(ref.get("ref") == "refs/heads/" + branch and ref.get("object", {}).get("type") == "commit" and
+            ref.get("object", {}).get("sha") == sha, "v9.live_branch_tip")
 
 
 def role(run, request):
@@ -412,6 +489,45 @@ def role(run, request):
         run.get("name") == policy.CAMPAIGN and run.get("display_title") == policy.CAMPAIGN,
         "v9.source_run_role")
     return {"lock-preparation":45} if request["phase"] == "lock-preparation" else SOURCE_JOBS
+
+
+def pipeline_recovery_history(pipeline, bindings, source_rows, api):
+    pc=bindings["preparationCorrection"]
+    if not policy.pipeline_preparation_recovery(pc):
+        return None
+    proof=policy.validate_pipeline_recovery_evidence(regular(pipeline/policy.PREPARATION_FAILURE_EVIDENCE,16384),bindings)
+    rows=[row for row in source_rows if row[0]==proof["runId"]]
+    policy.need(len(rows)==1,"v9.pipeline_recovery_prior_missing")
+    _,run,q,raw=rows[0]
+    policy.need(public_run(run) and run.get("status")=="completed" and run.get("conclusion")=="failure" and
+        run.get("head_sha")==proof["pipelineHead"] and policy.digest(raw)==proof["requestSha256"] and
+        q["phase"]=="lock-preparation" and q["preparationAttempt"]==1 and q["source"]==bindings["preparation"] and
+        q["generation"] is None and q["priorRunPins"]==[],"v9.pipeline_recovery_prior_identity")
+    role(run,q)
+    policy.need(policy.digest(content(api,policy.WORKFLOW,run["head_sha"]))==proof["producerWorkflowSha256"] and
+        policy.digest(content(api,"scripts/fork-release/source_validation_v109.py",run["head_sha"]))==
+            proof["producerRuntimeSha256"],"v9.pipeline_recovery_producer_identity")
+    jobs=jobs_for(api,run)
+    policy.need(len(jobs)==1 and jobs[0].get("id")==proof["jobId"] and jobs[0].get("name")=="lock-preparation" and
+        jobs[0].get("status")=="completed" and jobs[0].get("conclusion")=="failure" and
+        jobs[0].get("run_attempt")==1 and jobs[0].get("started_at")==proof["nativeStartedAt"] and
+        jobs[0].get("completed_at")==proof["nativeCompletedAt"],"v9.pipeline_recovery_native_job")
+    steps=jobs[0].get("steps")
+    policy.need(type(steps) is list and all(type(step) is dict and type(step.get("name")) is str for step in steps),
+        "v9.pipeline_recovery_native_steps")
+    by_name={step["name"]:step for step in steps}
+    skipped=proof["skippedCandidateSteps"]
+    allowed={"Set up job","Start shared deadline before checkout","Checkout reviewed pipeline closure",
+        proof["failedStep"],*skipped,"Post Checkout reviewed pipeline closure","Complete job"}
+    policy.need(len(by_name)==len(steps) and set(by_name)==allowed and all(
+        step.get("status")=="completed" for step in steps) and
+        by_name[proof["failedStep"]].get("conclusion")=="failure" and all(
+        by_name[name].get("conclusion")=="skipped" for name in skipped) and all(
+        by_name[name].get("conclusion")=="success" for name in allowed-set(skipped)-{proof["failedStep"]}),
+        "v9.pipeline_recovery_no_candidate_execution")
+    policy.need(artifacts_for(api,run)==[],"v9.pipeline_recovery_zero_artifacts")
+    return {"runId":proof["runId"],"jobId":proof["jobId"],"sourceUnchanged":True,
+        "sourceCheckoutPerformed":False,"generationProduced":False,"priorMinutesRemainCharged":True}
 
 
 def history_checks(pipeline, bindings, request, rraw, head, event, env, api, resolver, clock):
@@ -474,6 +590,7 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
             seen_artifacts.add(aid)
         artifact_bytes += sum(a["size_in_bytes"] for a in arts)
         policy.need(artifact_bytes <= policy.DIAGNOSTIC_BYTES, "v9.cumulative_artifact_limit")
+    recovery=pipeline_recovery_history(pipeline,bindings,source_rows,api)
     locks = [row for row in source_rows if row[2]["phase"] == "lock-preparation"]
     validations = [row for row in source_rows if row[2]["phase"] in ("validation", "correction")]
     policy.need(len(locks) <= 2 and len(validations) <= 2 and len(source_rows) <= 4,
@@ -514,7 +631,8 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
         "v9.cumulative_booking_ceiling")
     return {"historicalRecords":258, "historicalMinutes":2944, "newObservedMinutes":total,
         "incidentalMinutes":incidental,"currentBookingMinutes":booking,"maximumNewMinutes":2500,
-        "sourceExecutions":len(validations),"lockPreparations":len(locks),"observedArtifactBytes":artifact_bytes}
+        "sourceExecutions":len(validations),"lockPreparations":len(locks),"observedArtifactBytes":artifact_bytes,
+        "pipelinePreparationRecovery":recovery}
 
 
 def validate_generation_provider(pipeline, bindings, request, api):
@@ -546,7 +664,7 @@ def write_outputs(env, value):
 
 def prepare_context(pipeline, request, bindings, env, profile=None):
     deadline = job_deadline(bindings,request,env,profile)
-    return {"deadlineEpoch":deadline,"profile":profile or request["phase"],
+    return {"deadlineEpoch":deadline,"profile":profile or request["phase"],"bindings":bindings,
         "operationIdentity":owned_identity(request),"gitEnv":{"PATH":env["PATH"],"GIT_TERMINAL_PROMPT":"0",
             "GIT_CONFIG_NOSYSTEM":"1","GIT_CONFIG_GLOBAL":"/dev/null","GIT_NO_LAZY_FETCH":"1",
             "GIT_NO_REPLACE_OBJECTS":"1","GIT_GRAFT_FILE":"/dev/null",
@@ -660,7 +778,7 @@ def static_source(pipeline,source,bindings,request,core,context):
     if request["phase"] == "lock-preparation":
         prep = policy.preparation_for(bindings,request["preparationAttempt"])
         parents = read("show","-s","--format=%P",prep["sourceSha"]).strip().split()
-        if request["preparationAttempt"] == 1:
+        if request["preparationAttempt"] == 1 or policy.pipeline_preparation_recovery(bindings["preparationCorrection"]):
             policy.need(parents == [policy.BASELINE_SOURCE.encode(),policy.UPSTREAM["commit"].encode()],
                 "v9.initial_source_parents")
         else:

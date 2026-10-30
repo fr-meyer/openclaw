@@ -211,22 +211,115 @@ class RuntimeTests(unittest.TestCase):
                     self.assertLessEqual(state['calls'],1)
                     if scenario in ('wrong-raw','wrong-type','wrong-commit','wrong-peel','shallow'):self.assertEqual(state['calls'],0)
 
+    def test_pipeline_intake_recovery_fresh_native_metadata_and_no_artifacts(self):
+        proof=policy.parse((OWNERS/policy.PREPARATION_FAILURE_EVIDENCE.removeprefix('scripts/fork-release/')).read_bytes())
+        b=policy.parse((OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json').read_bytes())
+        q=policy.request_for(b,'lock-preparation',1);raw=policy.encode(q)
+        self.assertEqual(policy.digest(raw),proof['requestSha256'])
+        run={'id':int(proof['runId']),'head_sha':proof['pipelineHead'],'status':'completed','conclusion':'failure',
+            'event':'pull_request','run_attempt':1,'head_branch':policy.PIPELINE_BRANCH,'path':policy.WORKFLOW,
+            'name':policy.CAMPAIGN,'display_title':policy.CAMPAIGN,'repository':{'full_name':policy.REPOSITORY,'private':False},
+            'actor':{'login':'fr-meyer'},'triggering_actor':{'login':'fr-meyer'}}
+        native=job('lock-preparation',status='completed',jid=proof['jobId'])
+        native.update(conclusion='failure',started_at=proof['nativeStartedAt'],completed_at=proof['nativeCompletedAt'])
+        names=['Set up job','Start shared deadline before checkout','Checkout reviewed pipeline closure',proof['failedStep'],
+            *proof['skippedCandidateSteps'],'Post Checkout reviewed pipeline closure','Complete job']
+        native['steps']=[{'name':name,'status':'completed','conclusion':('failure' if name==proof['failedStep'] else
+            'skipped' if name in proof['skippedCandidateSteps'] else 'success')} for name in names]
+        original_digest=policy.digest
+        def digest(value):
+            if value==b'producer-workflow':return proof['producerWorkflowSha256']
+            if value==b'producer-runtime':return proof['producerRuntimeSha256']
+            return original_digest(value)
+        for defect in (None,'candidate-ran','extra-step','artifacts','wrong-job','wrong-producer','wrong-source','prior-pass'):
+            with self.subTest(defect=defect):
+                table=deepcopy(native);r=deepcopy(run);request=deepcopy(q);arts=[]
+                if defect=='candidate-ran':table['steps'][4]['conclusion']='success'
+                if defect=='extra-step':table['steps'].append({'name':'not-approved','status':'completed','conclusion':'success'})
+                if defect=='artifacts':arts=[{'id':1}]
+                if defect=='wrong-job':table['id']+=1
+                if defect=='wrong-source':request['source']['sourceSha']='f'*40
+                if defect=='prior-pass':r['conclusion']='success'
+                def content(api,path,sha,maximum=131072):
+                    if defect=='wrong-producer':return b'wrong-producer'
+                    return b'producer-workflow' if path==policy.WORKFLOW else b'producer-runtime'
+                with patch.object(owner,'regular',return_value=policy.encode(proof)),\
+                     patch.object(policy,'validate_pipeline_recovery_evidence',return_value=proof),\
+                     patch.object(owner,'content',side_effect=content),patch.object(policy,'digest',side_effect=digest),\
+                     patch.object(owner,'jobs_for',return_value=[table]),patch.object(owner,'artifacts_for',return_value=arts):
+                    call=lambda:owner.pipeline_recovery_history(ROOT,b,[(proof['runId'],r,request,raw)],None)
+                    if defect is None:
+                        result=call();self.assertIs(result['sourceUnchanged'],True);self.assertIs(result['priorMinutesRemainCharged'],True)
+                    else:
+                        with self.assertRaises(policy.Refusal):call()
+
+    def test_metadata_overlay_preserves_both_sides_equal_add_delete(self):
+        entry=lambda char:('100644','blob',char*40)
+        base={'target-only':entry('a'),'head-only':entry('b'),'equal':entry('c'),'deleted':entry('d')}
+        head={**base,'head-only':entry('e'),'equal':entry('f'),'new':entry('1')}
+        target={k:v for k,v in base.items() if k!='deleted'}
+        target.update({'target-only':entry('2'),'equal':entry('f')})
+        before=deepcopy((base,head,target))
+        expected={'target-only':entry('2'),'head-only':entry('e'),'equal':entry('f'),'new':entry('1')}
+        self.assertEqual(owner.deterministic_merge_entries(base,head,target),expected)
+        self.assertEqual((base,head,target),before)
+
+    def test_metadata_overlay_refuses_content_divergence_and_path_collision(self):
+        e=lambda char:('100644','blob',char*40)
+        with self.assertRaisesRegex(policy.Refusal,'workflow_divergent_path'):
+            owner.deterministic_merge_entries({'x':e('a')},{'x':e('b')},{'x':e('c')})
+        with self.assertRaisesRegex(policy.Refusal,'workflow_path_collision'):
+            owner.deterministic_merge_entries({'old':e('a')},{'old':e('a'),'x':e('b')},{'old':e('a'),'x/y':e('c')})
+
+    def test_workflow_merge_fixed_target_graph_and_complete_tree(self):
+        for defect in (None,'parents','merge-base','multi-base','target-tree','base-tree','shallow','partial','actual-tree','type'):
+            with self.subTest(defect=defect):
+                read,core,head,merge=fake_merge_graph(defect)
+                if defect is None:
+                    result=owner.workflow_merge_binding(read,core,head,merge)
+                    self.assertEqual(result['target'],owner.WORKFLOW_TARGET)
+                    self.assertTrue(result['completeTreeCompared']);self.assertFalse(result['gitObjectWritten'])
+                else:
+                    with self.assertRaises(policy.Refusal):owner.workflow_merge_binding(read,core,head,merge)
+
     def test_exact_merge_tree_drift_refuses_before_any_candidate_action(self):
-        e,v=event_env();head=e['pull_request']['head']['sha'];merge=v['GITHUB_WORKFLOW_SHA']
-        b=binding();r=policy.request_for(b,'lock-preparation')
-        def read(root,*args,**kwargs):
+        e,v=event_env();b=binding();r=policy.request_for(b,'lock-preparation')
+        read,core,head,merge=fake_merge_graph('actual-tree')
+        self.assertEqual(head,e['pull_request']['head']['sha']);self.assertEqual(merge,v['GITHUB_WORKFLOW_SHA'])
+        def git(root,*args,**kwargs):
             if args==('rev-parse','HEAD'):return (head+'\n').encode()
-            if args==('show','-s','--format=%P',merge):return (policy.BASE+' '+head+'\n').encode()
-            if args==('rev-parse',merge+'^{tree}'):return b'2'*40+b'\n'
-            if args==('rev-parse',head+'^{tree}'):return b'1'*40+b'\n'
             if args[:2]==('cat-file','-e'):return b''
-            if args and args[0]=='show':return b'fixed tracked bytes'
-            raise AssertionError('unexpected Git read '+repr(args))
-        core=types.SimpleNamespace(phase_process=unittest.mock.Mock())
-        with patch.object(owner,'regular',return_value=b'fixed tracked bytes'),patch.object(owner,'git_read',side_effect=read):
-            with self.assertRaisesRegex(policy.Refusal,'workflow_full_tree_changed'):
+            if args and args[0]=='show' and len(args)==2:return b'fixed tracked bytes'
+            return read(*args)
+        core.phase_process=unittest.mock.Mock()
+        with patch.object(owner,'regular',return_value=b'fixed tracked bytes'),patch.object(owner,'git_read',side_effect=git):
+            with self.assertRaisesRegex(policy.Refusal,'workflow_full_merge_tree_changed'):
                 owner.code_binding(Path('/synthetic/pipeline'),None,e,v,r,core,{'deadlineEpoch':time_future(),'gitEnv':{}})
         core.phase_process.assert_not_called()
+
+    def test_duplicate_incidental_display_names_not_native_identity(self):
+        skipped=[]
+        for ident in range(1,37):
+            value=job('unexpanded (${{ matrix.platform }})',status='completed',jid=ident)
+            value.update(conclusion='skipped',runner_id=None,runner_name=None,steps=[],started_at=None,completed_at=None)
+            skipped.append(value)
+        self.assertEqual(owner.observed_jobs(skipped,NOW,terminal=True)[0],0)
+        with self.assertRaisesRegex(policy.Refusal,'unique_native_job'):
+            owner.observed_jobs(skipped+[deepcopy(skipped[0])],NOW,terminal=True)
+        source=[job('admission',jid=1),job('admission',jid=2)]
+        with self.assertRaisesRegex(policy.Refusal,'unique_native_job'):
+            owner.observed_jobs(source,NOW,limits=owner.SOURCE_JOBS)
+
+    def test_only_incidental_standard_ubuntu_latest_addition(self):
+        native=job('dispatch');native['labels']=['ubuntu-latest']
+        self.assertEqual(owner.observed_jobs([native],NOW)[0],1)
+        native['name']='admission'
+        with self.assertRaisesRegex(policy.Refusal,'standard_free_public_runner'):
+            owner.observed_jobs([native],NOW,limits=owner.SOURCE_JOBS)
+        for labels,group in [(['ubuntu-latest','large'],'GitHub Actions'),(['self-hosted'],'GitHub Actions'),
+                             (['ubuntu-latest'],'Custom'),(['ubuntu-22.04'],'GitHub Actions')]:
+            bad=deepcopy(native);bad.update(labels=labels,runner_group_name=group)
+            with self.subTest(labels=labels,group=group),self.assertRaises(policy.Refusal):owner.observed_jobs([bad],NOW)
 
     def test_git_metadata_ignores_replacements_and_forbids_transports(self):
         with patch.object(subprocess,'run',return_value=types.SimpleNamespace(stdout=b'fixed')) as run:
@@ -419,6 +512,43 @@ class RuntimeTests(unittest.TestCase):
             self.assertNotIn('workflow_dispatch',s);self.assertNotIn('workflow_run',s)
             self.assertNotIn('candidates/v2026.10.9-image-only',s);self.assertNotIn('secrets.',s);self.assertNotIn('docker',s.lower())
             self.assertNotIn('persist-credentials: true',s);self.assertNotIn('pull_request_target:',s)
+
+
+def fake_merge_graph(defect=None):
+    head,merge='d'*40,'e'*40
+    blob=lambda c:('100644','blob',c*40)
+    base={'inherited':blob('a'),'unchanged':blob('b')}
+    target={**base,'inherited':blob('c')}
+    h={**base,'new-controller':blob('d')}
+    actual={**h,'inherited':blob('c')}
+    if defect=='actual-tree':actual['unexpected']=blob('f')
+    trees={owner.WORKFLOW_MERGE_BASE:base,owner.WORKFLOW_TARGET:target,head:h,merge:actual}
+    treeids={owner.WORKFLOW_TARGET:owner.WORKFLOW_TARGET_TREE,
+        owner.WORKFLOW_MERGE_BASE:owner.WORKFLOW_MERGE_BASE_TREE,head:'1'*40,merge:'2'*40}
+    def read(*args):
+        if args==('rev-parse','--is-shallow-repository'):return b'true\n' if defect=='shallow' else b'false\n'
+        if args[:2]==('config','--get-regexp'):
+            if defect=='partial':return b'remote.origin.promisor true\n'
+            raise subprocess.CalledProcessError(1,['fixed local metadata read'])
+        if args[:2]==('cat-file','-t'):return b'blob\n' if defect=='type' else b'commit\n'
+        if args==('show','-s','--format=%P',merge):
+            first=policy.BASE if defect=='parents' else owner.WORKFLOW_TARGET
+            return (first+' '+head+'\n').encode()
+        if args==('merge-base','--all',owner.WORKFLOW_TARGET,head):
+            if defect=='merge-base':return b'f'*40+b'\n'
+            if defect=='multi-base':return (owner.WORKFLOW_MERGE_BASE+'\n'+'f'*40+'\n').encode()
+            return (owner.WORKFLOW_MERGE_BASE+'\n').encode()
+        if args[0]=='rev-parse' and args[1].endswith('^{tree}'):
+            commit=args[1][:-7]
+            value=treeids[commit]
+            if defect=='target-tree' and commit==owner.WORKFLOW_TARGET:value='f'*40
+            if defect=='base-tree' and commit==owner.WORKFLOW_MERGE_BASE:value='f'*40
+            return (value+'\n').encode()
+        raise AssertionError('unexpected metadata read '+repr(args))
+    def tree(read,commit,expected):
+        if treeids[commit]!=expected:raise AssertionError('tree identity mismatch')
+        return deepcopy(trees[commit])
+    return read,types.SimpleNamespace(_v4_tree=tree),head,merge
 
 
 def time_future():

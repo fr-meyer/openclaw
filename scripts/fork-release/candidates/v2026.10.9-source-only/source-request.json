@@ -16,8 +16,14 @@
   },
   "settledUsageSha256": "dfc2cda1a2c7c5f3f4e1bc235e8a6e2aca615e62c5ce20a79102a794779770df",
   "generation": null,
-  "priorRunPins": [],
-  "preparationAttempt": 1,
+  "priorRunPins": [
+    {
+      "runId": "40997868140",
+      "pipelineHead": "84b825aca15a58191e718a958a356dcc305d4e47",
+      "requestSha256": "cf52903c8a20e94684e3a6fcb5e947b8336eca62e66f0744efcda4d4d054a9ef"
+    }
+  ],
+  "preparationAttempt": 2,
   "profiles": [],
   "authorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8"
 }
