@@ -25,13 +25,13 @@
     "incidental": 50,
     "pendingCorrection": 1075
   },
-  "reviewSha256": "fa5907eb26511eb18004982e901ccb3ca595d474c92f64ca7f7db42d346e1af7",
-  "routingMode": "DIAGNOSTIC",
+  "reviewSha256": null,
+  "routingMode": "SOURCE",
   "runAllowanceSha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
   "schema": "openclaw.v109.fixed-model-diagnostic-request.v2",
   "sourceDescriptorSha256": "3c9f36ea1d45f9787cf08198a4de869e57f689311521acfe4f10295962eb0a63",
   "sourceRequestSha256": "139ef96602ea6920715a9802a829e60424e0ddc3187e1d6a8196e7e9d2470cb9",
   "sourceSha": "edd010829dcb622d7dc60dc90f7097048cb78819",
   "sourceTree": "2e553992d3f93937dcb4b85683e4aae24a087074",
-  "status": "REVIEWED"
+  "status": "DISARMED"
 }

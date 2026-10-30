@@ -93,6 +93,7 @@ PIPELINE_CONTRACT_TESTS = (
     "test_bounded_run_contract_v109.py", "test_bounded_run_runtime_v109.py",
     "test_history_pagination_v109.py",
     "test_h_fixture_correction_contract_v109.py", "test_same_generation_fixture_runtime_v109.py",
+    "test_h_generated_manifest_correction_v109.py",
     "test_source_profile_diagnostic_v109.py",
     "test_model_diagnostic_v109.py",
     "test_model_diagnostic_continuation_v109.py",

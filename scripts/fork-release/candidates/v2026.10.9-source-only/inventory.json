@@ -2,7 +2,7 @@
   "schema": "openclaw.fork-patch-inventory.v1",
   "repository": "fr-meyer/openclaw",
   "candidate": "v2026.10.9-source-only",
-  "manifestSha256": "9032a1666ee82ae7882d280c5bbb5a6e02e127c7c1526b61aef3667973621c58",
+  "manifestSha256": "1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13",
   "upstream": {
     "tag": "v2026.10.9",
     "tagObject": "88a19e0d8677804d8ec98e30a3a3a3a9308ebee0",
@@ -14,9 +14,9 @@
       "id": "grouped-v109-preparation-ba04217f6642",
       "originCommit": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
       "disposition": "adapt",
-      "appliedCommit": "edd010829dcb622d7dc60dc90f7097048cb78819",
-      "rationale": "Integrate exact stable 10.9 with preserved fork Workboard, claim fencing, task, security and provider behavior. Bind the complete 253-row reconciliation and reviewed security/API adaptations. Dependency lock derives from authenticated successful public CI run 41043479025 attempt 1, artifact 12972087389; only the lock and deterministic reconciliation receipt change from integration G. Fresh complete source validation is required; older source/runtime/image qualification does not transfer.",
-      "evidenceSha256": "7f3ef17a22f8afaf709ae252f96068ae49e9037f52e0cd9cb29c479b74850303",
+      "appliedCommit": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
+      "rationale": "Integrate exact stable 10.9 with preserved fork Workboard, claim fencing, task, security and provider behavior. Bind the complete 253-row reconciliation and reviewed security/API adaptations. Dependency lock derives from authenticated successful public CI run 41043479025 attempt 1, artifact 12972087389; only the lock and deterministic reconciliation receipt change from integration G. Fresh complete source validation is required; older source/runtime/image qualification does not transfer. One combined reviewed H2 correction fixes only the lease fixture type import and the Workboard controlUi manifest bytes authenticated from both fixed diagnostic jobs in run 41092698155. The new metadata path originates at H, not an invented historical fork commit. Existing package/workspace/lock, generation and all other source bytes remain unchanged. Diagnostic agreement does not authenticate UI assets or prove cross-head determinism; fresh all 15 source coverage is required.",
+      "evidenceSha256": "9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",
         "extensions/workboard/src/gateway.test.ts",
@@ -134,7 +134,7 @@
           "sourceTree": "ed8cc0d741194e7627b875ea256dfd7c5de43640",
           "sourceBlob": "1c60a3a4d7f929c4e376654e2832a330a5e2e99b",
           "upstreamBlob": null,
-          "candidateBlob": "af9fb9d9956b7e663265a339efcff311724f59bd"
+          "candidateBlob": "58eb6c94e4ca05e1b89e609e2f934214c32f8fb5"
         },
         {
           "path": "docs/cli/gateway/query.md",
@@ -630,6 +630,15 @@
           "sourceBlob": "eec7ce6ac4b7f6992de94544b5277e09473b7853",
           "upstreamBlob": "c432d68ab7acc13baba270b4b15512b35ad709d4",
           "candidateBlob": "8475e673f6c4d96dbfc0bae67369c7198d319108"
+        },
+        {
+          "path": "extensions/workboard/openclaw.plugin.json",
+          "boundary": "container",
+          "sourceCommit": "edd010829dcb622d7dc60dc90f7097048cb78819",
+          "sourceTree": "2e553992d3f93937dcb4b85683e4aae24a087074",
+          "sourceBlob": "53477ffdf5f1c0bf8ac99a8e8b4d215b835ad5a7",
+          "upstreamBlob": "53477ffdf5f1c0bf8ac99a8e8b4d215b835ad5a7",
+          "candidateBlob": "a2973475da4d0da075224b1734a5380bcc84c5f0"
         },
         {
           "path": "extensions/workboard/package.json",
@@ -1898,7 +1907,7 @@
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "sourceBlob": "fca5a1d4f0d1778310f27b2ddb2877148a1cb7ed",
           "upstreamBlob": null,
-          "candidateBlob": "fca5a1d4f0d1778310f27b2ddb2877148a1cb7ed"
+          "candidateBlob": "ddbfc567415e9d6fbc01648f1e4e620b7c9fca0d"
         },
         {
           "path": "src/state/openclaw-state-lease-heartbeat.test.ts",

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import bounded_run_contract_v109 as run_allowance
+import manifest_capture
 import re
 
 
@@ -60,6 +61,13 @@ FIXTURE_CORRECTION_AFTER_BLOB = "ddbfc567415e9d6fbc01648f1e4e620b7c9fca0d"
 FIXTURE_CORRECTION_PRIOR_VALIDATION = {"runId": "41052090949",
     "pipelineHead": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
     "requestSha256": "139ef96602ea6920715a9802a829e60424e0ddc3187e1d6a8196e7e9d2470cb9"}
+GENERATED_MANIFEST_ORIGINS = {
+    "extensions/workboard/openclaw.plugin.json": {"plugin": "workboard",
+        "blob": "53477ffdf5f1c0bf8ac99a8e8b4d215b835ad5a7"},
+    "extensions/x/openclaw.plugin.json": {"plugin": "x",
+        "blob": "88ce225a08964044087c98fbb9f1e0d4b6cc98c7"},
+}
+GENERATED_MANIFEST_PARENT_TREE = "2e553992d3f93937dcb4b85683e4aae24a087074"
 PROFILES = ("dependency", "types-production", "types-tests", "types-scripts",
             "workboard-1", "workboard-2", "models-1", "models-2", "sqlite",
             "doctor-1", "doctor-2", "doctor-3", "memory", "pipeline-contracts", "compatibility")
@@ -284,7 +292,8 @@ def validate_same_generation_fixture_correction(bindings):
         digest(canonical(v["generation"])) == FIXTURE_CORRECTION_GENERATION_SHA256 and
         c["priorValidation"] == FIXTURE_CORRECTION_PRIOR_VALIDATION and
         c["source"]["sourceSha"] not in (FIXTURE_CORRECTION_PARENT, ORIGINAL_RECOVERY_SOURCE_SHA) and
-        c["changedPaths"] == sorted((FIXTURE_CORRECTION_PATH, LEDGER)) and
+        set(c["changedPaths"]) >= {FIXTURE_CORRECTION_PATH, LEDGER} and
+        set(c["changedPaths"]) <= {FIXTURE_CORRECTION_PATH, LEDGER, *GENERATED_MANIFEST_ORIGINS} and
         c["contentSha256"][FIXTURE_CORRECTION_PATH] == FIXTURE_CORRECTION_AFTER_SHA256 and
         c["source"]["fileSha256"][LEDGER] == c["contentSha256"][LEDGER] and
         all(c["source"]["fileSha256"][p] == v["source"]["fileSha256"][p]
@@ -293,9 +302,47 @@ def validate_same_generation_fixture_correction(bindings):
     return c
 
 
-def expected_fixture_correction_ledger(before, fixture_blob):
-    """One existing row only; lock derivation and every other JSON fact survive."""
+def generated_manifest_results(pairs):
+    """Validate fixed public before/after bytes, not artifact origin or UI assets.
+
+    The execution owner must authenticate and compare the diagnostic artifacts
+    before selecting these exact bytes for a reviewed correction record.
+    """
+    need(type(pairs) is dict and set(pairs) <= set(GENERATED_MANIFEST_ORIGINS),
+        "v9.generated_manifest_selection")
+    results = {}
+    for path in sorted(pairs):
+        pair = pairs[path]
+        need(type(pair) in (tuple, list) and len(pair) == 2 and
+            all(type(raw) is bytes and len(raw) <= manifest_capture.MAX_FILE_BYTES for raw in pair),
+            "v9.generated_manifest_pair")
+        before, after = pair
+        origin = GENERATED_MANIFEST_ORIGINS[path]
+        before_blob = hashlib.sha1(b"blob " + str(len(before)).encode() + b"\0" + before).hexdigest()
+        need(before_blob == origin["blob"] and before != after, "v9.generated_manifest_original")
+        try:
+            manifest_capture.validate_pair(before, after, origin["plugin"])
+        except manifest_capture.Refusal:
+            raise Refusal("v9.generated_manifest_bytes") from None
+        blob = hashlib.sha1(b"blob " + str(len(after)).encode() + b"\0" + after).hexdigest()
+        results[path] = {"mode": "100644", "blob": blob, "sha256": digest(after)}
+    return results
+
+
+def generated_manifest_inventory_rows(pairs):
+    """New result-delta origins are H itself; no historical fork origin invented."""
+    return [{"path": path, "boundary": "container", "sourceCommit": FIXTURE_CORRECTION_PARENT,
+        "sourceTree": GENERATED_MANIFEST_PARENT_TREE,
+        "sourceBlob": GENERATED_MANIFEST_ORIGINS[path]["blob"],
+        "upstreamBlob": GENERATED_MANIFEST_ORIGINS[path]["blob"],
+        "candidateBlob": result["blob"]}
+        for path, result in generated_manifest_results(pairs).items()]
+
+
+def expected_fixture_correction_ledger(before, fixture_blob, generated_pairs=None):
+    """One fixture row plus selected generated rows; preserve all other facts."""
     need(fixture_blob == FIXTURE_CORRECTION_AFTER_BLOB, "v9.fixture_correction_blob")
+    generated = generated_manifest_results({} if generated_pairs is None else generated_pairs)
     value = parse(before)
     need(type(value) is dict and value.get("schema") == "openclaw.v109.fork-carry-reconciliation.v1" and
         value.get("lockState") == "ci_derived" and type(value.get("sourcePaths")) is list and
@@ -310,6 +357,17 @@ def expected_fixture_correction_ledger(before, fixture_blob):
     row = next(row for row in result["sourcePaths"] if row["path"] == FIXTURE_CORRECTION_PATH)
     row["result"] = {"mode": "100644", "blob": fixture_blob}
     row["disposition"] = "ADAPTED_SECURITY_TEST"
+    if generated:
+        need([row["path"] for row in value["sourcePaths"]] == sorted(row["path"] for row in value["sourcePaths"]) and
+            not (set(GENERATED_MANIFEST_ORIGINS) & {row["path"] for row in value["sourcePaths"]}),
+            "v9.generated_manifest_new_coverage")
+        for path, entry in generated.items():
+            origin = {"mode": "100644", "blob": GENERATED_MANIFEST_ORIGINS[path]["blob"]}
+            result["sourcePaths"].append({"path": path, "base108": deepcopy(origin),
+                "fork108": deepcopy(origin), "upstream109": deepcopy(origin),
+                "result": {"mode": "100644", "blob": entry["blob"]},
+                "disposition": "MERGED_SOURCE_REVIEWED"})
+        result["sourcePaths"].sort(key=lambda row: row["path"])
     return encode(result)
 
 
@@ -838,9 +896,13 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
                 FIXTURE_CORRECTION_BEFORE_SHA256, "v9.fixture_correction_parent_bytes")
             fixture = read("show", step["source"]["sourceSha"] + ":" + FIXTURE_CORRECTION_PATH)
             fixture_blob = hashlib.sha1(b"blob " + str(len(fixture)).encode() + b"\0" + fixture).hexdigest()
+            generated_pairs = {path: (read("show", step["parentSource"] + ":" + path),
+                read("show", step["source"]["sourceSha"] + ":" + path))
+                for path in step["changedPaths"] if path in GENERATED_MANIFEST_ORIGINS}
             need(fixture_blob == FIXTURE_CORRECTION_AFTER_BLOB and
                 read("show", step["source"]["sourceSha"] + ":" + LEDGER) ==
-                expected_fixture_correction_ledger(read("show", step["parentSource"] + ":" + LEDGER), fixture_blob),
+                expected_fixture_correction_ledger(read("show", step["parentSource"] + ":" + LEDGER),
+                    fixture_blob, generated_pairs),
                 "v9.exact_fixture_correction_ledger")
         inputs(step["source"])
         result = {**verified, "sourceSha": step["source"]["sourceSha"], "sourceTree": step["source"]["sourceTree"],
@@ -849,6 +911,11 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
             result.update(generatedSourceSha=verified["sourceSha"], generatedChangedPaths=verified["changedPaths"],
                 changedPaths=deepcopy(step["changedPaths"]), correctionParentSource=step["parentSource"],
                 unchangedTreeBase=step["parentSource"], fixtureOnlyCorrectionVerified=True)
+            if generated_pairs:
+                result.update(generatedManifestChangedPaths=sorted(generated_pairs),
+                    fixtureOnlyCorrectionVerified=False, combinedFixtureManifestCorrectionVerified=True,
+                    generatedManifestBytesVerified=True, generatedManifestArtifactOriginAuthenticated=False,
+                    assetContentAuthenticated=False)
         return result
     attempt = step["preparationAttempt"]
     prep = preparation_for(bindings, attempt)
