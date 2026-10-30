@@ -26,7 +26,7 @@ permissions:
   actions: read
   pull-requests: read
 concurrency:
-  group: future-v109-source-validation-pr28
+  group: ${{ contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->') && 'future-v109-source-hold-pr28' || 'future-v109-source-validation-pr28' }}
   cancel-in-progress: false
 # DISARMED preparation only. Replace these two literals together with genuine
 # approved bindings; their exact equality is independently checked by the owner.
@@ -39,7 +39,7 @@ defaults:
     shell: bash
 jobs:
   admission:
-    if: github.repository == 'fr-meyer/openclaw' && github.actor == 'fr-meyer' && github.event.pull_request.number == 28 && github.event.pull_request.draft == true && github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' && github.event.pull_request.head.ref == 'task/v107-source-binding'
+    if: github.repository == 'fr-meyer/openclaw' && github.actor == 'fr-meyer' && github.event.pull_request.number == 28 && github.event.pull_request.draft == true && github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' && github.event.pull_request.head.ref == 'task/v107-source-binding' && !contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
@@ -80,6 +80,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 pipeline/scripts/fork-release/source_validation_v109.py admit
   source:
+    if: ${{ !contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->') }}
     name: source (${{ matrix.profile }})
     needs: admission
     runs-on: ubuntu-24.04
@@ -169,7 +170,7 @@ jobs:
       - name: Run fresh secretless source profile
         run: python3 pipeline/scripts/fork-release/source_validation_v109.py run --profile '${{ matrix.profile }}'
   final:
-    if: always()
+    if: always() && !contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->')
     needs: [admission, source]
     runs-on: ubuntu-24.04
     timeout-minutes: 10

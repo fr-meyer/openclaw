@@ -49,6 +49,17 @@ UPSTREAM = {"tag": "v2026.10.9", "tagObject": "88a19e0d8677804d8ec98e30a3a3a3a93
             "tree": "3ccfb9632d8f30196d0f9d94f92f8cc7f07b2be7"}
 LEDGER = "custom-patches/reconciliation-2026.10.9.json"
 INPUTS = ("package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", LEDGER)
+FIXTURE_CORRECTION_PATH = "src/state/openclaw-agent-db-lease.exited-owner.test.ts"
+FIXTURE_CORRECTION_PARENT = "edd010829dcb622d7dc60dc90f7097048cb78819"
+FIXTURE_CORRECTION_SOURCE_PIN_SHA256 = "3c9f36ea1d45f9787cf08198a4de869e57f689311521acfe4f10295962eb0a63"
+FIXTURE_CORRECTION_GENERATION_SHA256 = "83dfb391140b1f575cc9cdc012422125a263b58fce516b80b1852045be4f5262"
+FIXTURE_CORRECTION_BEFORE_SHA256 = "ebb1325d8c877db46fe005093bfa29bff7e27069bcd9a3915ccb7ed90e80ac72"
+FIXTURE_CORRECTION_AFTER_SHA256 = "5cbe5159cb2b7b4f38cf123b881f59a69ea4103ded371d06845ba5589703bffa"
+FIXTURE_CORRECTION_BEFORE_BLOB = "fca5a1d4f0d1778310f27b2ddb2877148a1cb7ed"
+FIXTURE_CORRECTION_AFTER_BLOB = "ddbfc567415e9d6fbc01648f1e4e620b7c9fca0d"
+FIXTURE_CORRECTION_PRIOR_VALIDATION = {"runId": "41052090949",
+    "pipelineHead": "3722c8935ded3b3e249054fe6db2f3a50def8b8c",
+    "requestSha256": "139ef96602ea6920715a9802a829e60424e0ddc3187e1d6a8196e7e9d2470cb9"}
 PROFILES = ("dependency", "types-production", "types-tests", "types-scripts",
             "workboard-1", "workboard-2", "models-1", "models-2", "sqlite",
             "doctor-1", "doctor-2", "doctor-3", "memory", "pipeline-contracts", "compatibility")
@@ -256,6 +267,52 @@ def validate_additional_approval(value, original, active=False, now=None):
     return value
 
 
+def same_generation_fixture_correction(bindings):
+    """Closed branch discriminator; validate_bindings still proves every field."""
+    c, v = bindings.get("correction"), bindings.get("validation")
+    return (run_grant(bindings) is not None and type(c) is dict and type(v) is dict and
+        type(c.get("preparationAttempt")) is int and c["preparationAttempt"] == 6 and
+        type(v.get("preparationAttempt")) is int and v["preparationAttempt"] == 6 and
+        type(v.get("source")) is dict and v["source"].get("sourceSha") == FIXTURE_CORRECTION_PARENT and
+        c.get("parentSource") == FIXTURE_CORRECTION_PARENT and c.get("generation") == v.get("generation"))
+
+
+def validate_same_generation_fixture_correction(bindings):
+    c, v = bindings["correction"], bindings["validation"]
+    need(same_generation_fixture_correction(bindings), "v9.fixture_correction_not_bound")
+    need(digest(canonical(v["source"])) == FIXTURE_CORRECTION_SOURCE_PIN_SHA256 and
+        digest(canonical(v["generation"])) == FIXTURE_CORRECTION_GENERATION_SHA256 and
+        c["priorValidation"] == FIXTURE_CORRECTION_PRIOR_VALIDATION and
+        c["source"]["sourceSha"] not in (FIXTURE_CORRECTION_PARENT, ORIGINAL_RECOVERY_SOURCE_SHA) and
+        c["changedPaths"] == sorted((FIXTURE_CORRECTION_PATH, LEDGER)) and
+        c["contentSha256"][FIXTURE_CORRECTION_PATH] == FIXTURE_CORRECTION_AFTER_SHA256 and
+        c["source"]["fileSha256"][LEDGER] == c["contentSha256"][LEDGER] and
+        all(c["source"]["fileSha256"][p] == v["source"]["fileSha256"][p]
+            for p in ("package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml")),
+        "v9.exact_same_generation_fixture_correction")
+    return c
+
+
+def expected_fixture_correction_ledger(before, fixture_blob):
+    """One existing row only; lock derivation and every other JSON fact survive."""
+    need(fixture_blob == FIXTURE_CORRECTION_AFTER_BLOB, "v9.fixture_correction_blob")
+    value = parse(before)
+    need(type(value) is dict and value.get("schema") == "openclaw.v109.fork-carry-reconciliation.v1" and
+        value.get("lockState") == "ci_derived" and type(value.get("sourcePaths")) is list and
+        all(type(row) is dict and type(row.get("path")) is str for row in value["sourcePaths"]) and
+        len({row["path"] for row in value["sourcePaths"]}) == len(value["sourcePaths"]),
+        "v9.fixture_correction_ledger_state")
+    rows = [row for row in value["sourcePaths"] if type(row) is dict and row.get("path") == FIXTURE_CORRECTION_PATH]
+    need(len(rows) == 1 and rows[0].get("disposition") == "CARRIED_EXACT" and
+        rows[0].get("result") == {"mode": "100644", "blob": FIXTURE_CORRECTION_BEFORE_BLOB},
+        "v9.fixture_correction_original_row")
+    result = deepcopy(value)
+    row = next(row for row in result["sourcePaths"] if row["path"] == FIXTURE_CORRECTION_PATH)
+    row["result"] = {"mode": "100644", "blob": fixture_blob}
+    row["disposition"] = "ADAPTED_SECURITY_TEST"
+    return encode(result)
+
+
 def validate_additional_recovery(value, bindings, active=False, now=None):
     fields(value, ("schema", "source", "priorPhase", "priorFailures", "failedPreparationAttempts",
         "nextPreparationAttempt", "evidenceSha256", "approval"), "v9.additional_recovery_fields")
@@ -266,7 +323,8 @@ def validate_additional_recovery(value, bindings, active=False, now=None):
         value["failedPreparationAttempts"] == [1, 2] and all(type(n) is int for n in value["failedPreparationAttempts"]) and
         type(value["nextPreparationAttempt"]) is int and value["nextPreparationAttempt"] == 3 and
         value["evidenceSha256"] == {"1": PREPARATION_FAILURE_EVIDENCE_SHA256,
-            "2": ADDITIONAL_PREPARATION_FAILURE_EVIDENCE_SHA256} and bindings["correction"] is None,
+            "2": ADDITIONAL_PREPARATION_FAILURE_EVIDENCE_SHA256} and
+        (bindings["correction"] is None or same_generation_fixture_correction(bindings)),
         "v9.exact_additional_pipeline_recovery")
     for prior in value["priorFailures"]:
         run_pin(prior)
@@ -345,8 +403,11 @@ def validate_bindings(value, active=False, now=None):
         source_pin(c["source"])
         run_pin(c["priorValidation"])
         correction_paths(c)
-        need(value["validation"]["preparationAttempt"] == 1, "v9.only_one_source_correction")
-        if c["preparationAttempt"] == 1:
+        fixture_only = same_generation_fixture_correction(value)
+        need(fixture_only or value["validation"]["preparationAttempt"] == 1, "v9.only_one_source_correction")
+        if fixture_only:
+            validate_same_generation_fixture_correction(value)
+        elif c["preparationAttempt"] == 1:
             need(pc is None and c["parentSource"] == value["validation"]["source"]["sourceSha"] and
                 c["generation"] == value["validation"]["generation"] and
                 all(c["source"]["fileSha256"][p] == value["validation"]["source"]["fileSha256"][p]
@@ -362,6 +423,12 @@ def validate_bindings(value, active=False, now=None):
             generation_pin(c["generation"])
             need(c["source"]["fileSha256"]["pnpm-lock.yaml"] == c["generation"]["generatedLockSha256"],
                 "v9.corrected_generation_lock")
+    if grant is not None and grant["nextExecution"]["phase"] == "correction":
+        need(same_generation_fixture_correction(value) and
+            grant["nextExecution"]["source"] == value["correction"]["source"] and
+            grant["nextExecution"]["preparationAttempt"] == 6 and
+            grant["nextExecution"]["reasonCode"] in ("prior_failure", "reviewed_pipeline_correction"),
+            "v9.closed_fixture_correction_plan")
     if value["status"] == "DISARMED":
         preserved_only = (((additional_pipeline_preparation_recovery(pc) and
             pc["approval"]["status"] == "DISARMED") or grant is not None) and
@@ -532,7 +599,7 @@ def request_for(bindings, phase, preparation_attempt=1):
         result["additionalApprovalSha256"] = digest(canonical(bindings["preparationCorrection"]["approval"]))
     if grant is not None:
         plan = grant["nextExecution"]
-        need(phase == plan["phase"] and phase != "correction" and
+        need(phase == plan["phase"] and (phase != "correction" or same_generation_fixture_correction(bindings)) and
             preparation_attempt == plan["preparationAttempt"] and source == plan["source"], "v9.run_grant.plan_request")
         result["priorRunPins"] = [deepcopy(plan["priorSourceRun"])]
         result["executionSequence"] = plan["sequence"]
@@ -556,7 +623,7 @@ def budget(request):
          "v9.budget_request")
     if "runAllowanceSha256" in request:
         need(request["runAllowanceSha256"] == run_allowance.AUTHORITY_SHA256 and
-            request["phase"] in ("lock-preparation", "validation"), "v9.run_grant.budget_scope")
+            request["phase"] in ("lock-preparation", "validation", "correction"), "v9.run_grant.budget_scope")
         return {"phase": request["phase"], "phaseMaximumMinutes": PREPARATION_MINUTES if
             request["phase"] == "lock-preparation" else SOURCE_MINUTES,
             "preparationMinutesPerJob": PREPARATION_MINUTES, "maximumLockPreparations": 1002,
@@ -756,7 +823,8 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
          "v9.initial_integration_parents")
     initial_tree = tree(initial); inputs(initial)
     step = bindings[phase]
-    if phase == "correction" and step["preparationAttempt"] == 1:
+    fixture_only = same_generation_fixture_correction(bindings)
+    if phase == "correction" and (step["preparationAttempt"] == 1 or fixture_only):
         # A test/control-only source correction reuses the same already derived
         # dependency bytes, while requiring fresh all15 coverage for its new head.
         verified = verify_derived_source(read_git, bindings, "validation", generation_raw,
@@ -765,16 +833,30 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
         after = tree(step["source"])
         need(parents(step["source"]["sourceSha"]) == [step["parentSource"]], "v9.single_correction_parent")
         _verify_reviewed_step(read, before, after, step)
+        if fixture_only:
+            need(digest(read("show", step["parentSource"] + ":" + FIXTURE_CORRECTION_PATH)) ==
+                FIXTURE_CORRECTION_BEFORE_SHA256, "v9.fixture_correction_parent_bytes")
+            fixture = read("show", step["source"]["sourceSha"] + ":" + FIXTURE_CORRECTION_PATH)
+            fixture_blob = hashlib.sha1(b"blob " + str(len(fixture)).encode() + b"\0" + fixture).hexdigest()
+            need(fixture_blob == FIXTURE_CORRECTION_AFTER_BLOB and
+                read("show", step["source"]["sourceSha"] + ":" + LEDGER) ==
+                expected_fixture_correction_ledger(read("show", step["parentSource"] + ":" + LEDGER), fixture_blob),
+                "v9.exact_fixture_correction_ledger")
         inputs(step["source"])
-        return {**verified, "sourceSha": step["source"]["sourceSha"], "sourceTree": step["source"]["sourceTree"],
+        result = {**verified, "sourceSha": step["source"]["sourceSha"], "sourceTree": step["source"]["sourceTree"],
             "sourceCorrectionVerified": True, "freshSourceCoverageRequired": True}
+        if fixture_only:
+            result.update(generatedSourceSha=verified["sourceSha"], generatedChangedPaths=verified["changedPaths"],
+                changedPaths=deepcopy(step["changedPaths"]), correctionParentSource=step["parentSource"],
+                unchangedTreeBase=step["parentSource"], fixtureOnlyCorrectionVerified=True)
+        return result
     attempt = step["preparationAttempt"]
     prep = preparation_for(bindings, attempt)
     before = initial_tree
     if attempt >= 3:
         pc = bindings["preparationCorrection"]
         need(additional_pipeline_preparation_recovery(pc) and prep == initial and
-            pc["priorPhase"] == "lock-preparation" and bindings["correction"] is None,
+            pc["priorPhase"] == "lock-preparation" and (bindings["correction"] is None or fixture_only),
             "v9.additional_recovery_original_source")
     if attempt == 2:
         pc = bindings["preparationCorrection"]

@@ -117,7 +117,8 @@ class SelectionTests(unittest.TestCase):
         for name in ('test_historical_jobs_v109.py', 'test_historical_reconciliation_v109.py',
                 'test_third_preparation_contract_v109.py', 'test_third_preparation_runtime_v109.py',
                 'test_bounded_run_contract_v109.py', 'test_bounded_run_runtime_v109.py',
-                'test_history_pagination_v109.py'):
+                'test_history_pagination_v109.py', 'test_h_fixture_correction_contract_v109.py',
+                'test_same_generation_fixture_runtime_v109.py'):
             self.assertIn(name, selection.PIPELINE_CONTRACT_TESTS)
             self.assertEqual(selection.PIPELINE_CONTRACT_TESTS.count(name), 1)
         self.assertNotIn('test_runtime_contract_v8.py',selection.PIPELINE_CONTRACT_TESTS)

@@ -3,6 +3,7 @@ import ast
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
+import json
 from pathlib import Path
 import math
 import re
@@ -10,6 +11,7 @@ import time
 import types
 import unittest
 import urllib.parse
+import urllib.request
 
 PATH = Path(__file__).with_name("source_validation_v109.py")
 TREE = ast.parse(PATH.read_text())
@@ -37,6 +39,49 @@ def owner():
         isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id in CONSTANTS for t in node.targets)]
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(PATH), "exec"), module.__dict__)
     return module
+
+
+def portable_api_ast(node):
+    """Ignore only the newer AST's positively empty generic-parameter field.
+
+    This is a test serialization adapter, never an executable-code rewrite.
+    Every other field and every nonempty type-parameter list stays significant.
+    """
+    node=deepcopy(node)
+    for child in ast.walk(node):
+        if "type_params" in child._fields:
+            if not hasattr(child,"type_params") or type(child.type_params) is not list or child.type_params:
+                raise ValueError("nonempty_missing_or_wrong_type_params")
+            del child.type_params
+    return ast.dump(node)
+
+
+def api_owner():
+    """Execute only the actual API/NoRedirect definitions with fake transport."""
+    module=types.ModuleType("actual_api_security_under_test")
+    def parse(raw,maximum):
+        need(type(raw) is bytes and 0<len(raw)<=maximum,"bounded_json")
+        return json.loads(raw)
+    module.__dict__.update(time=types.SimpleNamespace(time=lambda:100),urllib=urllib,
+        policy=types.SimpleNamespace(need=need,parse=parse,REPOSITORY="fr-meyer/openclaw",CAMPAIGN="synthetic-control-only"))
+    nodes=[node for node in TREE.body if isinstance(node,ast.ClassDef) and node.name in ("API","NoRedirect")]
+    assert {node.name for node in nodes}=={"API","NoRedirect"}
+    exec(compile(ast.Module(body=nodes,type_ignores=[]),str(PATH),"exec"),module.__dict__)
+    return module
+
+
+class Response:
+    def __init__(self,url,raw=b'{"synthetic":true}'):
+        self.url,self.raw,self.reads=url,raw,[]
+    def __enter__(self):return self
+    def __exit__(self,*args):return False
+    def geturl(self):return self.url
+    def read(self,maximum):self.reads.append(maximum);return self.raw[:maximum]
+
+
+class Opener:
+    def __init__(self,response):self.response,self.calls=response,[]
+    def open(self,request,timeout):self.calls.append((request,timeout));return self.response
 
 
 def row(m, rid, second, branch=None):
@@ -170,9 +215,78 @@ class HistoryPaginationTests(unittest.TestCase):
 
     def test_original_api_fixed_route_and_redirect_guards_unchanged(self):
         current_class = next(n for n in TREE.body if isinstance(n, ast.ClassDef) and n.name == "API")
-        # AST pin was measured from the immutable aa438c36 ancestor; no private
-        # source path is required by the later physical public test layout.
-        self.assertEqual(hashlib.sha256(ast.dump(current_class).encode()).hexdigest(),
+        # The class source remains byte-identical to aa438c36. Python3.12+
+        # adds three explicit empty type_params fields; normalize only those,
+        # preserving the original security pin and every executable AST field.
+        self.assertEqual(hashlib.sha256(portable_api_ast(current_class).encode()).hexdigest(),
+            "e117e534d6b935f2374206e991dcddffa316a820a7d19036a1bc6b221e4edd81")
+
+
+class ApiSecurityTests(unittest.TestCase):
+    def test_fixed_host_get_headers_cache_and_bounded_body(self):
+        m=api_owner();path="/repos/fr-meyer/openclaw/actions/runs?branch=task%2Fv107-source-binding"
+        response=Response("https://api.github.com"+path);opener=Opener(response);api=m.API("SYNTHETIC_ONLY",101,opener)
+        self.assertEqual(api(path),{"synthetic":True});self.assertEqual(api(path),{"synthetic":True})
+        self.assertEqual(len(opener.calls),1)
+        request,timeout=opener.calls[0]
+        self.assertEqual(request.full_url,"https://api.github.com"+path)
+        self.assertEqual(request.get_method(),"GET");self.assertIsNone(request.data)
+        self.assertEqual(request.get_header("Authorization"),"Bearer SYNTHETIC_ONLY")
+        self.assertEqual(request.get_header("Accept"),"application/vnd.github+json")
+        self.assertEqual(request.get_header("X-github-api-version"),"2022-11-28")
+        self.assertEqual(timeout,1);self.assertEqual(response.reads,[4*1024*1024+1])
+
+    def test_nonfixed_routes_traversal_controls_fragment_and_oversize_refuse_before_transport(self):
+        for path in ("https://other.invalid/", "//api.github.com/repos/fr-meyer/openclaw/actions/runs",
+                "/repos/other/openclaw/actions/runs", "/repos/fr-meyer/openclaw", "/repos/fr-meyer/openclaw/../x",
+                "/repos/fr-meyer/openclaw/x\r", "/repos/fr-meyer/openclaw/x\n", "/repos/fr-meyer/openclaw/x#fragment",
+                "/repos/fr-meyer/openclaw/"+"x"*1024, None):
+            m=api_owner();opener=Opener(Response("https://api.github.com/synthetic"));api=m.API("SYNTHETIC_ONLY",130,opener)
+            with self.subTest(path=path),self.assertRaisesRegex(Refusal,"fixed_api_route"):api(path)
+            self.assertEqual(opener.calls,[])
+
+    def test_redirect_handler_never_follows_and_mismatched_final_url_refuses_before_body(self):
+        m=api_owner();path="/repos/fr-meyer/openclaw/actions/runs"
+        self.assertIsNone(m.NoRedirect().redirect_request(None,None,302,"Found",{},"https://other.invalid/"))
+        response=Response("https://other.invalid/");opener=Opener(response)
+        with self.assertRaisesRegex(Refusal,"api_redirect"):m.API("SYNTHETIC_ONLY",130,opener)(path)
+        self.assertEqual(len(opener.calls),1);self.assertEqual(response.reads,[])
+
+    def test_missing_token_or_expired_deadline_refuses_before_transport(self):
+        m=api_owner();opener=Opener(Response("https://api.github.com/synthetic"))
+        for token in ("",None,"x"*4097,True):
+            with self.subTest(token_type=type(token).__name__),self.assertRaisesRegex(Refusal,"token_required"):
+                m.API(token,130,opener)
+        with self.assertRaisesRegex(Refusal,"api_deadline"):
+            m.API("SYNTHETIC_ONLY",100,opener)("/repos/fr-meyer/openclaw/actions/runs")
+        self.assertEqual(opener.calls,[])
+
+    def test_oversize_reply_refuses_and_is_not_cached(self):
+        m=api_owner();path="/repos/fr-meyer/openclaw/actions/runs"
+        response=Response("https://api.github.com"+path,b"x"*(4*1024*1024+1));opener=Opener(response)
+        api=m.API("SYNTHETIC_ONLY",130,opener)
+        with self.assertRaisesRegex(Refusal,"bounded_json"):api(path)
+        self.assertEqual(api.cache,{})
+
+    def test_only_explicit_empty_new_ast_fields_normalize_and_input_stays_unchanged(self):
+        original=next(n for n in TREE.body if isinstance(n,ast.ClassDef)and n.name=="API")
+        modeled=deepcopy(original)
+        for child in ast.walk(modeled):
+            if isinstance(child,(ast.ClassDef,ast.FunctionDef,ast.AsyncFunctionDef)):
+                if "type_params"not in child._fields:child._fields=child._fields+("type_params",)
+                child.type_params=[]
+        before=ast.dump(modeled)
+        self.assertEqual(portable_api_ast(modeled),portable_api_ast(original))
+        self.assertEqual(ast.dump(modeled),before)
+        for value in (None,(),[ast.Name(id="T",ctx=ast.Load())]):
+            changed=deepcopy(modeled);changed.type_params=value
+            with self.subTest(value=type(value).__name__),self.assertRaises(ValueError):portable_api_ast(changed)
+        missing=deepcopy(modeled);del missing.type_params
+        with self.assertRaises(ValueError):portable_api_ast(missing)
+        weakened=deepcopy(modeled)
+        method=next(n for n in weakened.body if isinstance(n,ast.FunctionDef)and n.name=="__call__")
+        method.body[0].value.args[0]=ast.Constant(value=True)
+        self.assertNotEqual(hashlib.sha256(portable_api_ast(weakened).encode()).hexdigest(),
             "e117e534d6b935f2374206e991dcddffa316a820a7d19036a1bc6b221e4edd81")
 
 

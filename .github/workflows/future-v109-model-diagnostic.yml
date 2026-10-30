@@ -1,0 +1,189 @@
+name: future-v109-model-cleanliness-diagnostic-20261030
+run-name: future-v109-model-cleanliness-diagnostic-20261030
+on:
+  pull_request:
+    branches: [release-pipeline/v105-image-only-20261024]
+    types: [opened, reopened, synchronize]
+    paths:
+      - .github/workflows/future-v109-model-diagnostic.yml
+      - scripts/fork-release/model_diagnostic_v109.py
+      - scripts/fork-release/source_validation_v109.py
+      - scripts/fork-release/source_profile_diagnostic_v109.py
+      - scripts/fork-release/candidates/v2026.10.9-model-diagnostic/**
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: ${{ contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->') && 'future-v109-source-validation-pr28' || 'future-v109-model-diagnostic-hold-pr28' }}
+  cancel-in-progress: false
+env:
+  V109_APPROVED_AT: '2026-10-30T03:14:21Z'
+  V109_EXPIRES_AT: '2026-11-03T03:14:21Z'
+  PYTHONDONTWRITEBYTECODE: '1'
+defaults:
+  run:
+    shell: bash
+jobs:
+  admission:
+    if: github.repository == 'fr-meyer/openclaw' && github.actor == 'fr-meyer' && github.event.pull_request.number == 28 && github.event.pull_request.draft == true && github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' && github.event.pull_request.head.ref == 'task/v107-source-binding' && contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      source_sha: ${{ steps.admission.outputs.source_sha }}
+      request_sha: ${{ steps.admission.outputs.request_sha }}
+      pipeline_head: ${{ steps.admission.outputs.pipeline_head }}
+      run_id: ${{ steps.admission.outputs.run_id }}
+      diagnostic_request_sha: ${{ steps.admission.outputs.diagnostic_request_sha }}
+    steps:
+      - name: Start shared deadline before checkout
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import os, time
+          def utc(v):
+              if not isinstance(v, str) or len(v) != 20 or not v.endswith('Z'):
+                  raise SystemExit('v9.disarmed_or_invalid_clock')
+              return datetime.strptime(v, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
+          start, end = utc(os.environ['V109_APPROVED_AT']), utc(os.environ['V109_EXPIRES_AT'])
+          now = int(time.time())
+          if end-start != 96*3600 or not start <= now < end-60:
+              raise SystemExit('v9.authorization_clock')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('V109_JOB_STARTED_EPOCH=' + str(now) + '\n')
+          PY
+      - name: Checkout reviewed pipeline closure
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+      - name: Exact diagnostic-only admission and accounting
+        id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 pipeline/scripts/fork-release/model_diagnostic_v109.py admit
+  models:
+    name: diagnostic (${{ matrix.profile }})
+    if: github.repository == 'fr-meyer/openclaw' && github.actor == 'fr-meyer' && github.event.pull_request.number == 28 && github.event.pull_request.draft == true && github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' && github.event.pull_request.head.ref == 'task/v107-source-binding' && contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->')
+    needs: admission
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        profile: [models-1, models-2]
+    env:
+      V109_ADMISSION_REQUEST_SHA256: ${{ needs.admission.outputs.request_sha }}
+      V109_ADMISSION_PIPELINE_HEAD: ${{ needs.admission.outputs.pipeline_head }}
+      V109_ADMISSION_SOURCE_SHA: ${{ needs.admission.outputs.source_sha }}
+      V109_ADMISSION_RUN_ID: ${{ needs.admission.outputs.run_id }}
+      V109_DIAGNOSTIC_REQUEST_SHA256: ${{ needs.admission.outputs.diagnostic_request_sha }}
+    steps:
+      - name: Start shared deadline before checkout
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import os, time
+          def utc(v):
+              if not isinstance(v, str) or len(v) != 20 or not v.endswith('Z'):
+                  raise SystemExit('v9.disarmed_or_invalid_clock')
+              return datetime.strptime(v, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
+          start, end = utc(os.environ['V109_APPROVED_AT']), utc(os.environ['V109_EXPIRES_AT'])
+          now = int(time.time())
+          if end-start != 96*3600 or not start <= now < end-60:
+              raise SystemExit('v9.authorization_clock')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('V109_JOB_STARTED_EPOCH=' + str(now) + '\n')
+          PY
+      - name: Checkout reviewed pipeline closure
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+      - name: Checkout exact unchanged H
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ needs.admission.outputs.source_sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+      - name: Pinned public Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.22.1
+          check-latest: false
+      - name: Acquire existing public local donor closure
+        run: python3 pipeline/scripts/fork-release/model_diagnostic_v109.py fetch-closure --profile '${{ matrix.profile }}'
+      - name: Fixed synthetic model command and safe metadata
+        id: model
+        run: python3 pipeline/scripts/fork-release/model_diagnostic_v109.py run --profile '${{ matrix.profile }}'
+      - name: Upload only validator-accepted public manifest payload
+        if: always() && steps.model.outputs.public_payload == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: v109-model-public-manifests-${{ github.run_id }}-${{ matrix.profile }}-attempt1
+          path: |
+            ${{ runner.temp }}/v109-model-manifest-capture-${{ matrix.profile }}/validated-payload/workboard.after.json
+            ${{ runner.temp }}/v109-model-manifest-capture-${{ matrix.profile }}/validated-payload/workboard.diff
+            ${{ runner.temp }}/v109-model-manifest-capture-${{ matrix.profile }}/validated-payload/x.after.json
+            ${{ runner.temp }}/v109-model-manifest-capture-${{ matrix.profile }}/validated-payload/x.diff
+            ${{ runner.temp }}/v109-model-manifest-capture-${{ matrix.profile }}/validated-payload/manifest-capture-receipt.json
+          if-no-files-found: error
+          retention-days: 3
+          include-hidden-files: false
+  final:
+    if: always() && github.repository == 'fr-meyer/openclaw' && github.actor == 'fr-meyer' && github.event.pull_request.number == 28 && github.event.pull_request.draft == true && github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' && github.event.pull_request.head.ref == 'task/v107-source-binding' && contains(github.event.pull_request.body, '<!-- openclaw-v109-model-diagnostic-only -->')
+    needs: [admission, models]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      V109_DIAGNOSTIC_ADMISSION_RESULT: ${{ needs.admission.result }}
+      V109_DIAGNOSTIC_MODELS_RESULT: ${{ needs.models.result }}
+    steps:
+      - name: Start shared deadline before checkout
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import os, time
+          def utc(v):
+              if not isinstance(v, str) or len(v) != 20 or not v.endswith('Z'):
+                  raise SystemExit('v9.disarmed_or_invalid_clock')
+              return datetime.strptime(v, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
+          start, end = utc(os.environ['V109_APPROVED_AT']), utc(os.environ['V109_EXPIRES_AT'])
+          now = int(time.time())
+          if end-start != 96*3600 or not start <= now < end-60:
+              raise SystemExit('v9.authorization_clock')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('V109_JOB_STARTED_EPOCH=' + str(now) + '\n')
+          PY
+      - name: Checkout reviewed pipeline closure
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+      - name: Retain nonqualifying diagnostic summary
+        run: python3 pipeline/scripts/fork-release/model_diagnostic_v109.py finalize
+      - name: Upload bounded safe summary only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: v109-model-diagnostic-${{ github.run_id }}-attempt1
+          path: ${{ runner.temp }}/v109-model-diagnostic/diagnostic-result.json
+          if-no-files-found: error
+          retention-days: 3
+          include-hidden-files: false

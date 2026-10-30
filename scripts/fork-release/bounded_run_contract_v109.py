@@ -68,7 +68,7 @@ def validate_plan(plan, active=False):
         "priorSourceRun", "reasonCode", "reviewSha256", "requestSha256", "reservations"), "plan_fields")
     need(plan["schema"] == PLAN_SCHEMA and plan["status"] in ("DISARMED", "REVIEWED") and
         type(plan["sequence"]) is int and 1 <= plan["sequence"] <= MAXIMUM_ADDITIONAL_ATTEMPTS and
-        plan["phase"] in ("lock-preparation", "validation") and
+        plan["phase"] in ("lock-preparation", "validation", "correction") and
         type(plan["preparationAttempt"]) is int and 3 <= plan["preparationAttempt"] <= 1002 and
         plan["reasonCode"] in ("initial_recovery", "prior_failure", "generation_ready", "reviewed_pipeline_correction"),
         "plan_scope")

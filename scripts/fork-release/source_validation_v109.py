@@ -57,6 +57,18 @@ CODE_PATHS = (
     "scripts/fork-release/bounded_run_contract_v109.py",
     "scripts/fork-release/lockfile_policy_v109.py",
     "scripts/fork-release/source_validation_selection_v109.py",
+    "scripts/fork-release/source_profile_diagnostic_v109.py",
+    "scripts/fork-release/model_diagnostic_v109.py",
+    "scripts/fork-release/manifest_capture.py",
+    "scripts/fork-release/public-originals/workboard.json",
+    "scripts/fork-release/public-originals/x.json",
+    ".github/workflows/future-v109-model-diagnostic.yml",
+    "scripts/fork-release/candidates/v2026.10.9-model-diagnostic/request.json",
+    "scripts/fork-release/fixtures/v109-source-validation-restored.yml",
+    "scripts/fork-release/fixtures/v109-source-validation-held.yml",
+    "scripts/fork-release/fixtures/v109-model-diagnostic.yml",
+    "scripts/fork-release/fixtures/v109-h-diagnostic-source-request.json",
+    "scripts/fork-release/fixtures/v109-published-H-ci-bindings.json",
     "scripts/fork-release/composite_closed_usage.py",
     "scripts/fork-release/composite_closed_usage_v109.py",
     "scripts/fork-release/preflight.py", "scripts/fork-release/release.py",
@@ -148,12 +160,14 @@ def load_metadata(pipeline, active=True, now=None):
     return bindings, request, rraw
 
 
-def event_binding(event, env):
+def event_binding(event, env, diagnostic=False):
+    from model_diagnostic_v109 import WORKFLOW as DIAGNOSTIC_WORKFLOW, route_event
+    workflow = DIAGNOSTIC_WORKFLOW if diagnostic else policy.WORKFLOW
     policy.need(env.get("GITHUB_ACTIONS") == "true" and env.get("RUNNER_OS") == "Linux" and
         env.get("RUNNER_ENVIRONMENT") == "github-hosted" and env.get("GITHUB_EVENT_NAME") == "pull_request" and
         env.get("GITHUB_RUN_ATTEMPT") == "1" and env.get("GITHUB_REPOSITORY") == policy.REPOSITORY and
         env.get("GITHUB_ACTOR") == "fr-meyer" and env.get("GITHUB_REF") == "refs/pull/28/merge" and
-        env.get("GITHUB_WORKFLOW_REF") == policy.REPOSITORY + "/" + policy.WORKFLOW + "@refs/pull/28/merge" and
+        env.get("GITHUB_WORKFLOW_REF") == policy.REPOSITORY + "/" + workflow + "@refs/pull/28/merge" and
         policy.pin(env.get("GITHUB_WORKFLOW_SHA"), 160) and
         type(env.get("GITHUB_RUN_ID")) is str and policy.RUN_ID.fullmatch(env["GITHUB_RUN_ID"]),
         "v9.public_hosted_first_attempt")
@@ -166,6 +180,7 @@ def event_binding(event, env):
         head.get("ref") == policy.PIPELINE_BRANCH and policy.pin(head.get("sha"), 160) and
         base.get("repo", {}).get("full_name") == policy.REPOSITORY and base.get("ref") == policy.BASE_BRANCH and
         base.get("sha") == policy.BASE, "v9.fixed_draft_pr")
+    route_event(event, diagnostic)
     return head["sha"]
 
 
@@ -288,7 +303,10 @@ def preparation_pipeline_ancestry(read, head, request, bindings):
             "v9.run_grant_reviewed_plan")
         try:
             read("merge-base","--is-ancestor",plan["priorSourceRun"]["pipelineHead"],head)
-            if request["phase"]=="validation":
+            if request["phase"]=="correction":
+                policy.need(policy.same_generation_fixture_correction(bindings),
+                    "v9.same_generation_fixture_correction_not_bound")
+            if request["phase"] in ("validation","correction"):
                 read("merge-base","--is-ancestor",request["generation"]["pipelineHead"],head)
         except subprocess.CalledProcessError:
             raise policy.Refusal("v9.run_grant_pipeline_ancestry")
@@ -311,7 +329,13 @@ def preparation_pipeline_ancestry(read, head, request, bindings):
 
 
 def code_binding(pipeline, source, event, env, request, core, context):
-    head = event_binding(event, env)
+    from model_diagnostic_v109 import workflow_routing
+    diagnostic = context.get("modelDiagnosticRequest")
+    if diagnostic is not None:
+        from model_diagnostic_v109 import validate as validate_diagnostic
+        validate_diagnostic(diagnostic, regular(pipeline/REQUEST,65536), active=True, now=time.time())
+    head = event_binding(event, env, diagnostic=diagnostic is not None)
+    workflow_routing(sys.modules[__name__],pipeline,diagnostic is not None)
     read = lambda *args: git_read(pipeline, *args, deadline=context["deadlineEpoch"])
     policy.need(read("rev-parse", "HEAD").strip() == head.encode(), "v9.pipeline_head")
     # Verify current head closure before the reviewed fetch helper is used.
@@ -810,7 +834,9 @@ def closed_baseline(pipeline, history, api, resolver, observed_epoch=None):
 
 
 def content(api, path, commit, maximum=131072):
-    policy.need(path in (BINDINGS, REQUEST, policy.WORKFLOW, "scripts/fork-release/source_validation_v109.py") and policy.pin(commit, 160), "v9.fixed_content_read")
+    policy.need(path in (BINDINGS, REQUEST, policy.WORKFLOW, "scripts/fork-release/source_validation_v109.py",
+        "scripts/fork-release/candidates/v2026.10.9-model-diagnostic/request.json") and
+        policy.pin(commit, 160), "v9.fixed_content_read")
     obj = api("/repos/" + policy.REPOSITORY + "/contents/" + path + "?ref=" + commit)
     policy.need(obj.get("type") == "file" and obj.get("encoding") == "base64" and
         type(obj.get("size")) is int and 0 < obj["size"] <= maximum, "v9.public_content_metadata")
@@ -927,6 +953,8 @@ def bounded_source_history(bindings,request,source_rows,current_id):
     grant=policy.run_grant(bindings)
     policy.need(grant is not None,"v9.run_grant_required")
     plan=grant["nextExecution"]
+    fixture_correction=policy.same_generation_fixture_correction(bindings)
+    correction=bindings["correction"] if fixture_correction else None
     legacy={policy.FAILED_PREPARATION_PIN["runId"],policy.SECOND_FAILED_PREPARATION_PIN["runId"]}
     sequence_rows={}
     for rid,run,q,raw in source_rows:
@@ -936,14 +964,19 @@ def bounded_source_history(bindings,request,source_rows,current_id):
         sequence=q["executionSequence"]
         policy.need(type(sequence) is int and sequence>0 and sequence not in sequence_rows and
             q.get("runAllowanceSha256")==grant["authoritySha256"] and
-            q["phase"] in ("lock-preparation","validation"),"v9.run_grant_source_sequence")
+            q["phase"] in (("lock-preparation","validation","correction") if fixture_correction else
+                ("lock-preparation","validation")),"v9.run_grant_source_sequence")
         if q["phase"]=="lock-preparation":
             policy.need(q["source"]==bindings["preparation"] and q["generation"] is None,
                 "v9.run_grant_unchanged_preparation_source")
-        else:
+        elif q["phase"]=="validation":
             validation=bindings["validation"]
             policy.need(type(validation) is dict and q["source"]==validation["source"] and
                 q["generation"]==validation["generation"],"v9.run_grant_same_derived_source")
+        else:
+            policy.need(q["source"]==correction["source"] and q["generation"]==correction["generation"] and
+                q["preparationAttempt"]==correction["preparationAttempt"]==6,
+                "v9.same_generation_fixture_correction_source")
         policy.need(rid==current_id or run.get("status")=="completed" and run.get("conclusion") in TERMINAL,
             "v9.run_grant_prior_source_terminal")
         sequence_rows[sequence]=(rid,run,q,raw)
@@ -956,6 +989,24 @@ def bounded_source_history(bindings,request,source_rows,current_id):
         rid,run,q,raw=sequence_rows[sequence]
         policy.need(q["priorRunPins"]==[prior],"v9.run_grant_exact_prior_source")
         prior={"runId":rid,"pipelineHead":run["head_sha"],"requestSha256":policy.digest(raw)}
+    corrected_rows=[(seq,row) for seq,row in sorted(sequence_rows.items()) if row[2]["phase"]=="correction"]
+    if corrected_rows:
+        first_sequence,first_correction=corrected_rows[0]
+        prior_validation=correction["priorValidation"]
+        prior_row=sequence_rows.get(first_sequence-1)
+        policy.need(prior_validation["runId"]=="41052090949" and prior_row is not None and
+            prior_row[0]==prior_validation["runId"] and
+            prior_row[1].get("status")=="completed" and prior_row[1].get("conclusion")=="failure" and
+            prior_row[1].get("head_sha")==prior_validation["pipelineHead"] and
+            policy.digest(prior_row[3])==prior_validation["requestSha256"] and
+            prior_row[2]["phase"]=="validation" and
+            prior_row[2]["source"]==bindings["validation"]["source"] and
+            prior_row[2]["generation"]==correction["generation"] and
+            prior_row[2]["preparationAttempt"]==6 and
+            first_correction[2]["priorRunPins"]==[prior_validation],
+            "v9.same_generation_fixture_correction_failed_validation")
+        policy.need(all(row[2]["phase"]=="correction" for seq,row in sequence_rows.items() if seq>=first_sequence),
+            "v9.same_generation_fixture_correction_no_source_rebind")
     previous_pin=plan["priorSourceRun"]
     candidates=[row for row in source_rows if row[0]==previous_pin["runId"]]
     policy.need(len(candidates)==1,"v9.run_grant_prior_source_missing")
@@ -970,7 +1021,10 @@ def bounded_source_history(bindings,request,source_rows,current_id):
             run["conclusion"]=="success" and request["generation"]["runId"]==rid,
             "v9.run_grant_generation_ready")
     return {"sourceExecutionSequence":plan["sequence"],"reviewedLogicalExecutions":len(sequence_rows),
-        "freshNativeFirstAttemptOnly":True,"unchangedPreparationSource":True}
+        "freshNativeFirstAttemptOnly":True,"unchangedPreparationSource":True,
+        "sameGenerationFixtureCorrection":bool(corrected_rows),
+        "correctedApplicationCandidates":1 if corrected_rows else 0,
+        "sameCorrectedCandidateExecutions":len(corrected_rows)}
 
 
 def bounded_minute_booking(grant,run_minutes,current_id,current_minutes):
@@ -991,7 +1045,8 @@ def bounded_minute_booking(grant,run_minutes,current_id,current_minutes):
     return charged_total,facts
 
 
-def history_checks(pipeline, bindings, request, rraw, head, event, env, api, resolver, clock):
+def history_checks(pipeline, bindings, request, rraw, head, event, env, api, resolver, clock, diagnostic=None):
+    import model_diagnostic_v109 as model_diagnostic
     history = history_rows(api, clock)
     grant=policy.run_grant(bindings)
     attempt_facts=None
@@ -1014,7 +1069,11 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
     current = history.get(env["GITHUB_RUN_ID"])
     policy.need(type(current) is dict and current["head_sha"] == head and current.get("status") in
         ("queued", "in_progress", "waiting", "pending") and public_run(current), "v9.current_provider_run")
-    role(current, request)
+    if diagnostic is None:
+        role(current, request)
+    else:
+        model_diagnostic.validate(diagnostic,rraw,active=True,now=clock)
+        model_diagnostic.native_role(sys.modules[__name__],current,diagnostic)
     # Same publication can cause unrelated fixed public workflows. Count every
     # post-baseline record, even failed intake, without inventing retry rights.
     total, incidental, source_rows, seen_artifacts = 0, 0, [], set(allartifacts)
@@ -1023,12 +1082,20 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
     baseline = resolver.resolve_baseline_258(*(regular(pipeline / path) for path in BASELINE_FILES))
     incidental_paths = {r["path"] for r in baseline["runs"] if r["path"] != resolver.WORKFLOW}
     auth_start = policy.utc(bindings["authorization"]["approvedAt"]).timestamp()
+    diagnostic_heads = model_diagnostic.diagnostic_heads(history)
+    diagnostic_rows = []
     for rid, run in history.items():
         if rid in baseline_ids:
             continue
         created = provider_epoch(run["created_at"])
         policy.need(created >= auth_start and public_run(run), "v9.unaccounted_postbaseline_run")
         is_source = run.get("path") == policy.WORKFLOW
+        diagnostic_value = None
+        held_source = False
+        if run.get("path") == model_diagnostic.WORKFLOW or is_source and run["head_sha"] in diagnostic_heads:
+            diagnostic_value, _ = model_diagnostic.at_head(sys.modules[__name__],api,run["head_sha"])
+            held_source = is_source and diagnostic_value["routingMode"] == "DIAGNOSTIC"
+        is_source = is_source and not held_source
         if is_source:
             b = policy.validate_bindings(policy.parse(content(api, BINDINGS, run["head_sha"])))
             rr = content(api, REQUEST, run["head_sha"], 65536)
@@ -1043,6 +1110,9 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
                     "v9.run_grant_historical_reviewed_request")
             limits = role(run, q)
             source_rows.append((rid, run, q, rr))
+        elif diagnostic_value is not None and (held_source or run.get("path") == model_diagnostic.WORKFLOW):
+            limits = SOURCE_JOBS if held_source else model_diagnostic.native_role(sys.modules[__name__],run,diagnostic_value)
+            diagnostic_rows.append((rid,run,diagnostic_value))
         else:
             # No other executable role is selected or authorized here. Existing
             # incidental runs must remain public read-only policy/intake jobs.
@@ -1069,6 +1139,8 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
         else:
             policy.need(run.get("status") == "completed" or rid == env["GITHUB_RUN_ID"], "v9.concurrent_source_execution")
         arts = artifacts_for(api, run)
+        if diagnostic_value is not None and not is_source:
+            model_diagnostic.validate_record(sys.modules[__name__],run,diagnostic_value,jobs,arts,env["GITHUB_RUN_ID"])
         for artifact in arts:
             aid = artifact.get("id")
             policy.need(type(aid) is int and aid > 0 and aid not in seen_artifacts and
@@ -1082,7 +1154,8 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
     validations = [row for row in source_rows if row[2]["phase"] in ("validation", "correction")]
     additional=policy.additional_pipeline_preparation_recovery(bindings["preparationCorrection"])
     if grant is not None:
-        bounded_source_facts=bounded_source_history(bindings,request,source_rows,env["GITHUB_RUN_ID"])
+        source_current = (model_diagnostic.predecessor(source_rows,diagnostic) if diagnostic is not None else env["GITHUB_RUN_ID"])
+        bounded_source_facts=bounded_source_history(bindings,request,source_rows,source_current)
     else:
         bounded_source_facts=None
         policy.need(len(locks) <= (3 if additional else 2) and len(validations) <= (1 if additional else 2) and len(source_rows) <= 4,
@@ -1101,9 +1174,9 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
         policy.need(len(rows) == 1 and rows[0][1]["status"] == "completed" and rows[0][1]["conclusion"] == "success" and
             rows[0][1]["head_sha"] == gen["pipelineHead"] and rows[0][2]["preparationAttempt"] == request["preparationAttempt"],
             "v9.genuine_generation_run_required")
-    booking = 45 if request["phase"] == "lock-preparation" else 1075
+    booking = 160 if diagnostic is not None else 45 if request["phase"] == "lock-preparation" else 1075
     current_jobs = jobs_for(api,current)
-    allowed_active = "lock-preparation" if request["phase"] == "lock-preparation" else "admission"
+    allowed_active = "lock-preparation" if diagnostic is None and request["phase"] == "lock-preparation" else "admission"
     active = [j for j in current_jobs if j.get("name") == allowed_active]
     policy.need(len(active) == 1 and active[0].get("status") == "in_progress" and
         type(active[0].get("runner_id")) is int and active[0]["runner_id"] > 0, "v9.current_admission_job")
@@ -1112,13 +1185,19 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
             continue
         policy.need(job.get("status") in ("queued", "waiting", "pending") and
             job.get("runner_id") in (None, 0) and job.get("steps") == [], "v9.no_candidate_before_admission")
-    current_minutes = observed_jobs(current_jobs, clock, False, role(current,request))[0]
+    current_minutes = observed_jobs(current_jobs, clock, False,
+        model_diagnostic.NATIVE_LIMITS if diagnostic is not None else role(current,request))[0]
     other_total = total - current_minutes
     # Future source and image slots remain reserved even if the current run is
     # cheaper; failures and incidental jobs are never refunded or forgotten.
     charged_total=total
     if grant is not None:
-        charged_total,additional_booking=bounded_minute_booking(grant,run_minutes,env["GITHUB_RUN_ID"],current_minutes)
+        if diagnostic is not None:
+            model_diagnostic.once_current(diagnostic_rows,env["GITHUB_RUN_ID"])
+            charged_total,additional_booking=model_diagnostic.budget(sys.modules[__name__],grant,run_minutes,
+                env["GITHUB_RUN_ID"],current_minutes,diagnostic)
+        else:
+            charged_total,additional_booking=bounded_minute_booking(grant,run_minutes,env["GITHUB_RUN_ID"],current_minutes)
     elif additional:
         additional_booking=additional_history_booking(bindings,request,locks,validations,env["GITHUB_RUN_ID"],
             current_minutes,total,incidental,api,clock)
@@ -1134,7 +1213,8 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
         "boundedSourceExecution":bounded_source_facts,
         "incidentalMinutes":incidental,"currentBookingMinutes":booking,"maximumNewMinutes":2500,
         "sourceExecutions":len(validations),"lockPreparations":len(locks),"observedArtifactBytes":artifact_bytes,
-        "pipelinePreparationRecovery":recovery,"additionalPreparationBooking":additional_booking}
+        "pipelinePreparationRecovery":recovery,"additionalPreparationBooking":additional_booking,
+        "separateDiagnosticRecords":len(diagnostic_rows),"sourceExecutionAdvanced":diagnostic is None}
 
 
 def validate_generation_provider(pipeline, bindings, request, api):
@@ -1375,12 +1455,34 @@ def derive(pipeline,source,bindings,request,env,core,context):
             "imageBuilt":False,"productionAuthorized":False})
 
 
-def post_profile_binding(source, request, deadline):
+def post_profile_binding(source, request, deadline, diagnostic_context=None):
     read = lambda *args: git_read(source, *args, deadline=deadline)
-    policy.need(read("rev-parse", "HEAD").strip() == request["source"]["sourceSha"].encode() and
-        read("rev-parse", "HEAD^{tree}").strip() == request["source"]["sourceTree"].encode() and
-        read("status", "--porcelain=v1", "--untracked-files=no").strip() == b"",
-        "v9.profile_changed_tracked_source")
+    observed = {}
+    for name, args in (("head", ("rev-parse", "HEAD")), ("tree", ("rev-parse", "HEAD^{tree}")),
+            ("status", ("status", "--porcelain=v1", "--untracked-files=no"))):
+        try:
+            observed[name] = read(*args)
+        except Exception:
+            observed[name] = None
+    unchanged = (all(type(observed[name]) is bytes for name in ("head", "tree", "status")) and
+        observed["head"].strip() == request["source"]["sourceSha"].encode() and
+        observed["tree"].strip() == request["source"]["sourceTree"].encode() and
+        observed["status"].strip() == b"")
+    if not unchanged:
+        try:
+            from source_profile_diagnostic_v109 import report
+            emit(report(source, request, observed, read, diagnostic_context, deadline))
+        except Exception:
+            # A diagnostic/import/output failure cannot turn this refusal into
+            # success or expose exception text, file contents or Git stderr.
+            try:
+                emit({"schema": "openclaw.v109.profile-cleanliness-diagnostic.v1",
+                    "status": "unavailable", "gate": "v9.profile_changed_tracked_source",
+                    "issueCodes": ["diagnostic_unavailable"], "rawContentReturned": False,
+                    "acceptanceGranted": False})
+            except Exception:
+                pass
+    policy.need(unchanged, "v9.profile_changed_tracked_source")
 
 
 def run_profile(pipeline,source,bindings,request,profile,env,core,context):
@@ -1400,7 +1502,8 @@ def run_profile(pipeline,source,bindings,request,profile,env,core,context):
         planned=selector.commands(pipeline,source,profile,paths,request,bindings)
         outcomes=core.run_commands(planned,source,child_env,context)
         policy.need(bool(outcomes) and all(type(x)is int and x==0 for x in outcomes),"v9.profile_failed")
-        post_profile_binding(source,request,context["deadlineEpoch"])
+        post_profile_binding(source,request,context["deadlineEpoch"],
+            {"runId": env.get("GITHUB_RUN_ID"), "runAttempt": 1, "profile": profile})
 
 
 def source_result(request,rraw,env,head,admission,matrix):
