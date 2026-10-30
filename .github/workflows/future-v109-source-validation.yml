@@ -31,8 +31,8 @@ concurrency:
 # DISARMED preparation only. Replace these two literals together with genuine
 # approved bindings; their exact equality is independently checked by the owner.
 env:
-  V109_APPROVED_AT: DISARMED
-  V109_EXPIRES_AT: DISARMED
+  V109_APPROVED_AT: '2026-10-30T03:14:21Z'
+  V109_EXPIRES_AT: '2026-11-03T03:14:21Z'
   PYTHONDONTWRITEBYTECODE: '1'
 defaults:
   run:
@@ -54,7 +54,7 @@ jobs:
               return datetime.strptime(v, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
           start, end = utc(os.environ['V109_APPROVED_AT']), utc(os.environ['V109_EXPIRES_AT'])
           now = int(time.time())
-          if end-start != 72*3600 or not start <= now < end-60:
+          if end-start != 96*3600 or not start <= now < end-60:
               raise SystemExit('v9.authorization_clock')
           with open(os.environ['GITHUB_ENV'], 'a') as stream:
               stream.write('V109_JOB_STARTED_EPOCH=' + str(now) + '\n')

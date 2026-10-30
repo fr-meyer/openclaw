@@ -398,7 +398,7 @@ class RuntimeTests(unittest.TestCase):
         code=textwrap.dedent(body)
         with tempfile.TemporaryDirectory() as d:
             path=Path(d)/'env'
-            env={'GITHUB_ENV':str(path),'V109_APPROVED_AT':'2026-11-01T00:00:00Z','V109_EXPIRES_AT':'2026-11-04T00:00:00Z'}
+            env={'GITHUB_ENV':str(path),'V109_APPROVED_AT':'2026-11-01T00:00:00Z','V109_EXPIRES_AT':'2026-11-05T00:00:00Z'}
             with patch.dict(os.environ,env,clear=True),patch('time.time',return_value=NOW):
                 exec(compile(code,'actual-workflow-clock','exec'),{})
             self.assertEqual(path.read_bytes(),('V109_JOB_STARTED_EPOCH='+str(NOW)+'\n').encode())

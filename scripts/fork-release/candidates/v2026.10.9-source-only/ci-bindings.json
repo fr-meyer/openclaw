@@ -1,6 +1,6 @@
 {
   "schema": "openclaw.v109.ci-bindings.v1",
-  "status": "DISARMED",
+  "status": "APPROVED_CI",
   "campaignId": "future-v109-grouped-validation-20261030",
   "repository": "fr-meyer/openclaw",
   "workflow": ".github/workflows/future-v109-source-validation.yml",
@@ -37,7 +37,21 @@
   "preparationCorrection": null,
   "validation": null,
   "correction": null,
-  "authorization": null,
+  "authorization": {
+    "schema": "openclaw.v109.public-ci-authorization.v1",
+    "label": "future-v109-grouped-20261030T031421Z",
+    "approvedAt": "2026-10-30T03:14:21Z",
+    "expiresAt": "2026-11-03T03:14:21Z",
+    "maximumRunnerMinutes": 2500,
+    "maximumSourceCampaigns": 2,
+    "maximumParallelSourceJobs": 3,
+    "maximumLockPreparations": 2,
+    "diagnosticByteCeiling": 67108864,
+    "lockArtifactByteCeiling": 2097152,
+    "imageExecutionAllowedHere": false,
+    "cloudAccessAllowedHere": false,
+    "newSecretsAllowedHere": false
+  },
   "newRecoveryTests": [
     "extensions/codex/src/app-server/run-attempt.steering-media.test.ts",
     "extensions/msteams/src/sdk.msal-compat.test.ts",

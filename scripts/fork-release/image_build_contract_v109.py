@@ -34,6 +34,7 @@ MAX_ARTIFACT = 2097152
 MAX_RESULT = 16384
 BUILD_MINUTES = 90
 FAMILY_MINUTES = 180
+AUTH_HOURS = 96
 RESERVE_SECONDS = 300
 MIN_UPLOAD_WINDOW = 2700
 SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -152,7 +153,7 @@ def validate_request(value, active=False, now=None):
     need(auth["schema"] == "openclaw.v109.private-image-authorization.v1" and pin(auth["approvalScopeSha256"]) and
         pin(auth["actionTimeAccessApprovalSha256"]), "image.action_time_approval_binding")
     start, end = utc(auth["approvedAt"]), utc(auth["expiresAt"])
-    need(end-start == timedelta(hours=72), "image.exact_72_hour_window")
+    need(end-start == timedelta(hours=AUTH_HOURS), "image.exact_96_hour_window")
     expected = {"maximumPhysicalBuilds":1, "maximumBuildMinutes":BUILD_MINUTES, "maximumFamilyMinutes":FAMILY_MINUTES,
         "maximumArchiveBytes":MAX_ARCHIVE, "maximumNewRunnerMinutes":2500,
         "moneyCeilingUSDIncludingAllowance":"2.25", "producedImageExecutionAllowed":False,

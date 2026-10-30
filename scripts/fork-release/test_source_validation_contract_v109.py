@@ -36,7 +36,7 @@ def binding():
 def authorization():
     # Synthetic dates and facts; never written into the prepared operational input.
     return {"schema": m.AUTH_SCHEMA, "label": "future-v109-grouped-20261101T000000Z",
-        "approvedAt": "2026-11-01T00:00:00Z", "expiresAt": "2026-11-04T00:00:00Z",
+        "approvedAt": "2026-11-01T00:00:00Z", "expiresAt": "2026-11-05T00:00:00Z",
         "maximumRunnerMinutes": 2500, "maximumSourceCampaigns": 2,
         "maximumParallelSourceJobs": 3, "maximumLockPreparations": 2,
         "diagnosticByteCeiling": m.DIAGNOSTIC_BYTES, "lockArtifactByteCeiling": m.ARTIFACT_BYTES,
@@ -117,10 +117,10 @@ class ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(m.Refusal, "closed_request"):
             m.validate_request(r, b)
 
-    def test_exact_72_hour_clock(self):
+    def test_exact_96_hour_clock(self):
         a = authorization(); self.assertEqual(m.validate_authorization(a), a)
-        a["expiresAt"] = "2026-11-04T00:00:01Z"
-        with self.assertRaisesRegex(m.Refusal, "72_hour"):
+        a["expiresAt"] = "2026-11-05T00:00:01Z"
+        with self.assertRaisesRegex(m.Refusal, "96_hour"):
             m.validate_authorization(a)
 
     def test_authorization_boolean_minute_refused(self):

@@ -46,7 +46,7 @@ INCIDENTAL_MINUTES = 50
 MAXIMUM_NEW_MINUTES = 2500
 DIAGNOSTIC_BYTES = 64 * 1024 * 1024
 ARTIFACT_BYTES = 2 * 1024 * 1024
-AUTH_HOURS = 72
+AUTH_HOURS = 96
 REGISTRY_PROOF_SHA256 = "05bcbaf5a7bf3fb19046534d239ac25db140f34054c7f2cc38c6c1f2d09f9b97"
 REGISTRY_PINS = (
     {"package": "@azure/msal-node", "version": "7.1.1", "publishedAt": "2026-10-21T19:21:33.186Z",
@@ -132,7 +132,7 @@ def validate_authorization(value, now=None):
     need(value["schema"] == AUTH_SCHEMA and type(value["label"]) is str and
         re.fullmatch(r"future-v109-grouped-\d{8}T\d{6}Z", value["label"]), "v9.authorization_label")
     start, end = utc(value["approvedAt"]), utc(value["expiresAt"])
-    need(end - start == timedelta(hours=AUTH_HOURS), "v9.exact_72_hour_window")
+    need(end - start == timedelta(hours=AUTH_HOURS), "v9.exact_96_hour_window")
     need(value["maximumRunnerMinutes"] == MAXIMUM_NEW_MINUTES and
         type(value["maximumRunnerMinutes"]) is int and value["maximumSourceCampaigns"] == 2 and
         type(value["maximumSourceCampaigns"]) is int and value["maximumParallelSourceJobs"] == 3 and

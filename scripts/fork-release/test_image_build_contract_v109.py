@@ -20,7 +20,7 @@ def armed():
   sourceValidation={'runId':'123','attempt':1,'pipelineHead':'a'*40,'phase':'validation','artifactId':456,
     'artifactSha256':'b'*64,'resultSha256':'c'*64},
   authorization={'schema':'openclaw.v109.private-image-authorization.v1','approvedAt':'2026-10-30T00:00:00Z',
-    'expiresAt':'2026-11-02T00:00:00Z','approvalScopeSha256':'d'*64,'actionTimeAccessApprovalSha256':'e'*64,
+    'expiresAt':'2026-11-03T00:00:00Z','approvalScopeSha256':'d'*64,'actionTimeAccessApprovalSha256':'e'*64,
     'maximumPhysicalBuilds':1,'maximumBuildMinutes':90,'maximumFamilyMinutes':180,'maximumArchiveBytes':c.MAX_ARCHIVE,
     'maximumNewRunnerMinutes':2500,'moneyCeilingUSDIncludingAllowance':'2.25','producedImageExecutionAllowed':False,
     'publicImageExportAllowed':False,'cloudGrantFromRunnerAllowed':False})
@@ -59,6 +59,19 @@ def history():
 class ContractTests(unittest.TestCase):
  def refuses(self,fn,*a):
   with self.assertRaises(c.Refusal):fn(*a)
+ def test_exact_extended96_and_actual_deadline(self):
+  r=armed();r['authorization']['approvedAt']='2026-10-30T03:14:21Z';r['authorization']['expiresAt']='2026-11-03T03:14:21Z'
+  now=c.utc('2026-11-02T04:00:00Z').timestamp();c.validate_request(r,True,now)
+  self.assertEqual(c.AUTH_HOURS,96)
+ def test_old72_or_widened96_refused(self):
+  for end in ['2026-11-02T00:00:00Z','2026-11-03T00:00:01Z','2026-11-04T00:00:00Z']:
+   r=armed();r['authorization']['expiresAt']=end;self.refuses(c.validate_request,r,True,NOW)
+ def test_time_extension_does_not_widen_access_attempt_or_money(self):
+  r=armed();self.assertEqual(r['privateObject']['putMaximumSeconds'],3600)
+  self.assertEqual(r['privateObject']['uploadGrantMaximumSeconds'],7200)
+  self.assertEqual(r['privateObject']['getMaximumSeconds'],900);self.assertEqual(r['privateObject']['readerGrantMaximumSeconds'],900)
+  self.assertEqual(r['authorization']['maximumPhysicalBuilds'],1);self.assertEqual(r['authorization']['maximumNewRunnerMinutes'],2500)
+  self.assertEqual(r['authorization']['moneyCeilingUSDIncludingAllowance'],'2.25')
  def test_prepared_is_not_authority(self):
   r=armed();r['state']='PREPARED_BUILD';r['authorization']=None;c.validate_request(r)
   self.refuses(c.validate_request,r,True,NOW)
