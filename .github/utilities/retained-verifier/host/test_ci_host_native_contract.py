@@ -107,8 +107,21 @@ class SyntheticCommands:
  ENV={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C','HOME':'/nonexistent'}
  def __init__(self,fixture):self.fixture=fixture;self.calls=[];self.deadlines=[]
  def normalize_mkosi_outputs(self,permit,project):
-  # This simulator writes its bounded public outputs under the final names.
+  # Reuse the actual normalizer after modeling mkosi20.2's top-level prefix.
+  # Directory ownership alone is a synthetic fact; no NativePermit is issued.
   assert permit is self.fixture.permit and project==str(self.fixture.port.project)
+  original=Path.lstat
+  def staged_identity(path,*args,**kwargs):
+   info=original(path,*args,**kwargs)
+   if path.parent==Path(project)/'out':
+    name=path.name.removeprefix('ocv-test-')
+    if name in('apt-data','runtime','repair')or name in actual_host.MKOSI_STAGE_FILES:
+     directory=name in('apt-data','runtime','repair')
+     return SimpleNamespace(**{**{key:getattr(info,key)for key in dir(info)if key.startswith('st_')},
+       'st_uid':0 if directory else permit.uid,'st_gid':0 if directory else permit.gid})
+   return info
+  with mock.patch.object(Path,'lstat',staged_identity):
+   actual_host._normalize_mkosi_roster(project,permit.uid,permit.gid)
  def initialize_integrated_test_image(self,permit,project):
   # This explicit non-native seam creates only the reviewed sparse prefill.
   assert permit is self.fixture.permit and project==str(self.fixture.port.project)
@@ -302,6 +315,12 @@ class ContractFixture:
     outer.write(target,raw,mode)
   native_build.export_selinux_repair(ExportOps(),{'Packages':self.packages,'InRelease':self.release},
    json.loads(tools_raw),SHA(self.raw),control['aptMetadataManifestSha256'],apt)
+  # mkosi20.2 binds /work/out to staging, prefixes every top-level child
+  # except an already-prefixed image, then exports it. Never write final
+  # sidecar names directly past the real normalizer under test.
+  self.staged_output_names=tuple(sorted(path.name for path in out.iterdir()))
+  for path in tuple(out.iterdir()):
+   if not path.name.startswith('ocv-test'):path.rename(out/('ocv-test-'+path.name))
  def partition(self,image):
   return C({'partitiontable':{'label':'gpt','device':image,'unit':'sectors','sectorsize':512,
     'partitions':[{'node':image+'1','start':2048,'size':2*1024**3//512-4096,
@@ -554,6 +573,12 @@ class NativePortContract(unittest.TestCase):
   self.assertEqual(result['status'],'passed',getattr(self.fixture.port,'failure',result))
   self.assertEqual(result['phase'],'complete');self.assertFalse(result['candidateQualified'])
   self.assertEqual(self.fixture.qemu_calls,1)
+  # Closed producer/export roster includes both exact repair members and
+  # every sibling sidecar; no unnormalized staged directory survives.
+  self.assertEqual(set(self.fixture.staged_output_names),
+   {'ocv-test.raw','apt-data','runtime','repair'}|set(actual_host.MKOSI_STAGE_FILES))
+  self.assertFalse(any((self.fixture.port.project/'out'/('ocv-test-'+name)).exists()
+   for name in('apt-data','runtime','repair',*actual_host.MKOSI_STAGE_FILES)))
   commands_done=[scope.role for scope in self.fixture.commands.calls]
   self.assertEqual(commands_done.count('mkosi_build'),2);self.assertEqual(commands_done.count('qemu_once'),1)
   repair_calls=[(i,s)for i,s in enumerate(self.fixture.commands.calls)

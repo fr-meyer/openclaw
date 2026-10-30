@@ -441,7 +441,7 @@ MKOSI_STAGE_FILES={
  'helper-proof.json':16*1024**2,'build-signature.json':16*1024**2,
  'tool-aliases.json':16*1024**2,'build-stage-result.json':16*1024**2,
  'kernel.bin':128*1024**2,'initrd.img':512*1024**2,'build.json':16*1024**2}
-MKOSI_STAGE_DIRS=('apt-data','runtime')
+MKOSI_STAGE_DIRS=('apt-data','runtime','repair')
 
 
 def _normalize_mkosi_roster(project,uid,gid):

@@ -333,6 +333,33 @@ class ProjectAndSources(unittest.TestCase):
     h._normalize_mkosi_roster(str(project),os.getuid(),os.getgid())
    self.assertTrue((out/'ocv-test-apt-data').exists())
    self.assertFalse((out/'apt-data').exists())
+ def test_repair_staging_directory_refuses_missing_alias_owner_mode_and_existing_target_before_rename(self):
+  self.assertIn('repair',h.MKOSI_STAGE_DIRS)
+  for defect in('missing','symlink','not_directory','owner','mode','existing_target'):
+   with self.subTest(defect=defect),tempfile.TemporaryDirectory()as directory:
+    project=Path(directory).resolve();out=project/'out';out.mkdir(mode=0o755)
+    for name in('apt-data','runtime','repair'):(out/('ocv-test-'+name)).mkdir(mode=0o755)
+    for name in h.MKOSI_STAGE_FILES:(out/('ocv-test-'+name)).write_bytes(b'public')
+    repair=out/'ocv-test-repair'
+    if defect=='missing':repair.rmdir()
+    if defect=='symlink':
+     repair.rmdir();target=project/'foreign';target.mkdir();repair.symlink_to(target,target_is_directory=True)
+    if defect=='not_directory':repair.rmdir();repair.write_bytes(b'public')
+    if defect=='mode':repair.chmod(0o777)
+    if defect=='existing_target':(out/'repair').mkdir()
+    original=h.Path.lstat
+    def staged_stat(path):
+     info=original(path)
+     if path.name in('ocv-test-apt-data','ocv-test-runtime','ocv-test-repair'):
+      return types.SimpleNamespace(**{**{key:getattr(info,key)for key in
+       ('st_dev','st_ino','st_mode','st_uid','st_gid','st_size')},
+       'st_uid':123456 if path==repair and defect=='owner'else 0,'st_gid':0})
+     return info
+    code='host.mkosi_stage_path'if defect in('missing','symlink','existing_target')else'host.mkosi_stage_directory'
+    with mock.patch.object(h.Path,'lstat',staged_stat),self.assertRaisesRegex(h.Refusal,code):
+     h._normalize_mkosi_roster(str(project),os.getuid(),os.getgid())
+    self.assertTrue((out/'ocv-test-apt-data').exists());self.assertFalse((out/'apt-data').exists())
+    self.assertTrue((out/'ocv-test-build.json').exists());self.assertFalse((out/'build.json').exists())
  def test_actual_current_factory_roles_ten_suites_and_exact_readonly_output_command(self):
   root=Path(__file__).resolve().parents[1];modules={}
   for relative,function in h.ROLE_MAP.values():
