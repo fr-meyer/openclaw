@@ -18,20 +18,20 @@
   "generation": null,
   "priorRunPins": [
     {
-      "pipelineHead": "409704dd078c83d2f41ed709660633c619b172be",
-      "requestSha256": "5c4f7d4a56d959ba21d77dd00ca6868a49eb18519ada393e639d002fe68ae5ff",
-      "runId": "41003661031"
+      "runId": "41019231411",
+      "pipelineHead": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+      "requestSha256": "3fe0bf8301a18aeeae123cf87cdae4692db976c067e578d79ed4235a4cf616e1"
     }
   ],
-  "preparationAttempt": 3,
+  "preparationAttempt": 4,
   "profiles": [],
   "authorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
-  "executionSequence": 1,
+  "executionSequence": 2,
   "runAllowanceSha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
   "executionReservations": {
-    "conditionalImage": 180,
     "current": 45,
-    "incidental": 28,
-    "pendingValidation": 1075
+    "pendingValidation": 1075,
+    "conditionalImage": 180,
+    "incidental": 50
   }
 }

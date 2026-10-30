@@ -95,12 +95,25 @@ jobs:
           V109_ADMISSION_RUN_ID: ${{ steps.admission.outputs.run_id }}
         run: python3 pipeline/scripts/fork-release/source_validation_v109.py fetch-closure
       - name: Derive lock only with secretless pinned pnpm
+        id: derivation
         env:
           V109_ADMISSION_REQUEST_SHA256: ${{ steps.admission.outputs.request_sha }}
           V109_ADMISSION_PIPELINE_HEAD: ${{ steps.admission.outputs.pipeline_head }}
           V109_ADMISSION_SOURCE_SHA: ${{ steps.admission.outputs.source_sha }}
           V109_ADMISSION_RUN_ID: ${{ steps.admission.outputs.run_id }}
         run: python3 pipeline/scripts/fork-release/source_validation_v109.py derive
+      - name: Retain bounded unvalidated lock diagnostic on refusal
+        if: failure() && steps.derivation.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: v109-lock-diagnostic-${{ github.run_id }}-attempt1
+          path: |
+            ${{ runner.temp }}/v109-lock-diagnostic/pnpm-lock.yaml
+            ${{ runner.temp }}/v109-lock-diagnostic/lock.diff
+            ${{ runner.temp }}/v109-lock-diagnostic/lock-diagnostic.json
+          if-no-files-found: ignore
+          retention-days: 3
+          include-hidden-files: false
       - name: Retain exact lock derivation for review
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

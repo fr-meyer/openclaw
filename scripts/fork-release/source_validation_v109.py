@@ -25,6 +25,7 @@ import urllib.request
 
 import source_validation_contract_v109 as policy
 from bounded_run_contract_v109 import Refusal as RunGrantRefusal
+from lockfile_policy_v109 import LockRefusal
 
 CANDIDATE = "scripts/fork-release/candidates/v2026.10.9-source-only"
 REQUEST = CANDIDATE + "/source-request.json"
@@ -1282,6 +1283,26 @@ def internal_bootstrap(core, home, env, request, context):
     return core.bootstrap_pnpm(home,env,operation_identity=owned_identity(request))
 
 
+def retain_unvalidated_lock(generated,diff,request,env,started):
+    """Retain public generated data before validation; this is never generation proof."""
+    metadata={"schema":"openclaw.v109.unvalidated-lock-diagnostic.v1",
+        "status":"unvalidated","acceptedAsGeneration":False,
+        "sourceSha":request["source"]["sourceSha"],"sourceTree":request["source"]["sourceTree"],
+        "sourceLockSha256":request["source"]["fileSha256"]["pnpm-lock.yaml"],
+        "runId":env["GITHUB_RUN_ID"],"runAttempt":1,
+        "generatedLockSha256":policy.digest(generated),"generatedLockBytes":len(generated),
+        "gitDiffSha256":policy.digest(diff),"gitDiffBytes":len(diff),
+        "pnpmExitCode":0,"changedPaths":["pnpm-lock.yaml"],
+        "allOtherTrackedEntriesUnchanged":True,"startedAt":started,"capturedAt":now_utc(),
+        "securityCheckCompleted":False,"exactGeneratedDiffReviewRequiredBeforeCommit":True,
+        "imageBuilt":False,"qualified":False,"productionAuthorized":False}
+    files={"pnpm-lock.yaml":generated,"lock.diff":diff,"lock-diagnostic.json":policy.encode(metadata)}
+    policy.need(sum(map(len,files.values()))<=policy.ARTIFACT_BYTES-65536,"v9.lock_diagnostic_size")
+    out=Path(env["RUNNER_TEMP"])/"v109-lock-diagnostic"
+    policy.need(not out.exists(),"v9.lock_diagnostic_output_fresh")
+    for name,raw in files.items():private_write(out/name,raw)
+
+
 def derive(pipeline,source,bindings,request,env,core,context):
     policy.need(request["phase"]=="lock-preparation","v9.lock_phase_only")
     static_source(pipeline,source,bindings,request,core,context)
@@ -1300,8 +1321,9 @@ def derive(pipeline,source,bindings,request,env,core,context):
         policy.need(read("diff","--name-only").decode().splitlines()==["pnpm-lock.yaml"] and
             read("ls-files","--others","--exclude-standard").strip()==b"","v9.lock_only_worktree_delta")
         generated=regular(source/"pnpm-lock.yaml",16*1024*1024)
-        security=verify_lock_security(before,generated,policy.REGISTRY_PINS[0]["distIntegrity"],policy.REGISTRY_PINS[1]["distIntegrity"])
         diff=read("diff","--no-ext-diff","--no-textconv","--binary","--","pnpm-lock.yaml")
+        retain_unvalidated_lock(generated,diff,request,env,started)
+        security=verify_lock_security(before,generated,policy.REGISTRY_PINS[0]["distIntegrity"],policy.REGISTRY_PINS[1]["distIntegrity"])
         receipt={"schema":policy.GENERATION_SCHEMA,"status":"derived_only",**{
             k:request["source"][k] for k in ("sourceSha","sourceTree")},"pipelineHead":event_binding(policy.parse(
             regular(Path(env["GITHUB_EVENT_PATH"]),1024*1024)),env),"runId":env["GITHUB_RUN_ID"],"runAttempt":1,
@@ -1413,7 +1435,7 @@ def main(argv=None,environment=None):
 
 def safe_refusal_code(error):
     """Expose only fixed, owned controller refusals under the existing grammar."""
-    return (str(error) if isinstance(error,(policy.Refusal,RunGrantRefusal)) and
+    return (str(error) if isinstance(error,(policy.Refusal,RunGrantRefusal,LockRefusal)) and
         re.fullmatch(r"v9\.[a-z0-9_]+",str(error)) else "v9.runtime_refused")
 
 

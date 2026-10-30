@@ -141,7 +141,113 @@
   "ciRunGrant": {
     "approvedAt": "2026-10-30T06:12:01Z",
     "authoritySha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
-    "bookedAdditionalAttempts": [],
+    "bookedAdditionalAttempts": [
+      {
+        "runId": "41019222766",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019222867",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019222870",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019222915",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019222926",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019223073",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019227755",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019227757",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019227758",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019227867",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019227904",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019231323",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019231335",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019231411",
+        "nativeAttempt": 1,
+        "runnerMinutes": 18
+      },
+      {
+        "runId": "41019231423",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019231438",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019231465",
+        "nativeAttempt": 1,
+        "runnerMinutes": 2
+      },
+      {
+        "runId": "41019231486",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019231510",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019231519",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019231580",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      }
+    ],
     "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
     "diagnosticBytes": 67108864,
     "expiresAt": "2026-11-03T03:14:21Z",
@@ -152,23 +258,23 @@
     "moneyCeilingUSD": "2.25",
     "nextExecution": {
       "phase": "lock-preparation",
-      "preparationAttempt": 3,
+      "preparationAttempt": 4,
       "priorSourceRun": {
-        "pipelineHead": "409704dd078c83d2f41ed709660633c619b172be",
-        "requestSha256": "5c4f7d4a56d959ba21d77dd00ca6868a49eb18519ada393e639d002fe68ae5ff",
-        "runId": "41003661031"
+        "runId": "41019231411",
+        "pipelineHead": "73841cd5ee7ba21b49f12514dce685e4bfd383a6",
+        "requestSha256": "3fe0bf8301a18aeeae123cf87cdae4692db976c067e578d79ed4235a4cf616e1"
       },
-      "reasonCode": "initial_recovery",
-      "requestSha256": "3fe0bf8301a18aeeae123cf87cdae4692db976c067e578d79ed4235a4cf616e1",
+      "reasonCode": "prior_failure",
+      "requestSha256": "334aecc35ea3856068319226356f8a86b57f402b3b95cf9acb603c499a25956f",
       "reservations": {
-        "conditionalImage": 180,
         "current": 45,
-        "incidental": 28,
-        "pendingValidation": 1075
+        "pendingValidation": 1075,
+        "conditionalImage": 180,
+        "incidental": 50
       },
-      "reviewSha256": "27bddbf3186c1599a08714b5aca4be19af0d459765f4922422be60b3fb1f826e",
+      "reviewSha256": "02262634147c31b640bacccc69bbb05eb7e892c6bd42d4c4bfbb397dd9f172c6",
       "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
-      "sequence": 1,
+      "sequence": 2,
       "source": {
         "fileSha256": {
           "custom-patches/reconciliation-2026.10.9.json": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591",
