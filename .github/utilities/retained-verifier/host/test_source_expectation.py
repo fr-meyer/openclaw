@@ -228,6 +228,43 @@ class BuildFixture:
 
 
 class BuildGuestJoinTests(unittest.TestCase):
+    def test_actual_build_and_guest_join_keep_same_payload_origin_filename_aliases(self):
+        f=BuildFixture();name='systemd'
+        record=next(r for r in f.index.split(b'\n\n')if r.startswith(b'Package: systemd\n'))+b'\n\n'
+        old=f.io.files[build_entry.DATA+'/SecurityPackages']
+        extra=record.replace(b'pool/main/f/fixture/',b'pool/updates/main/f/fixture/')
+        new=old+extra
+        release=f.io.files[build_entry.DATA+'/SecurityInRelease']
+        marker=(m.sha(old)+' '+str(len(old))+' main/binary-amd64/Packages').encode()
+        self.assertEqual(release.count(marker),1)
+        f.io.put(build_entry.DATA+'/SecurityPackages',new)
+        f.io.put(build_entry.DATA+'/SecurityInRelease',release.replace(marker,
+          (m.sha(new)+' '+str(len(new))+' main/binary-amd64/Packages').encode()))
+        f.build();plan=guard.verify(f.io);issuer.prepare(plan,f.io,f.program)
+        evidence=json.loads(f.io.files[guard.CONTROL+'/package-inventory.json'])
+        row=next(r for r in evidence['archives']if r['package']==name)
+        self.assertEqual(row['filenameByIndexSha256'],{
+          m.sha(f.index):'pool/main/f/fixture/systemd_1_amd64.deb',
+          m.sha(new):'pool/updates/main/f/fixture/systemd_1_amd64.deb'})
+        self.assertEqual(row['indexSha256'],sorted(row['filenameByIndexSha256']))
+        tools=json.loads(f.io.files[guard.CONTROL+'/tools.json'])
+        self.assertEqual(next(r for r in tools['tools']if r['role']=='systemd')['debSha256'],
+                         f.packages[name]['debSha256'])
+
+    def test_filename_alias_merge_does_not_replace_required_python_security_origin(self):
+        for defect,code in (('filename','apt.package_filename'),('missing','apt.security_python_pin')):
+            f=BuildFixture();name='python3.11-minimal'
+            raw=f.io.files[build_entry.DATA+'/SecurityPackages']
+            record=next(r for r in raw.split(b'\n\n')if r.startswith(('Package: '+name+'\n').encode()))
+            f.index+=record.replace(b'pool/updates/main/',b'pool/main/')+b'\n\n'
+            # Identical payloads in main cannot replace the independently fixed
+            # security Filename or missing security row.
+            new=(raw.replace(b'pool/updates/main/',b'pool/main/')if defect=='filename'else
+                 b'\n\n'.join(r for r in raw.split(b'\n\n')if r!=record))
+            f.io.put(build_entry.DATA+'/SecurityPackages',new)
+            with self.subTest(defect=defect),self.assertRaisesRegex(archive_guard.Refusal,code):f.build()
+            self.assertFalse(any(argv[0]=='/usr/bin/gcc-12'for argv in f.calls))
+
     def test_large_read_cap_is_only_for_pinned_generated_initrd(self):
         header={'kernelPackage':{'name':'linux-image-6.1.0-39-amd64'}}
         allowed=build_entry.regular_read_cap_allowed

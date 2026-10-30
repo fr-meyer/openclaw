@@ -57,7 +57,7 @@ def _indexes(raw):
 
 def parse_packages(indexes):
  result={}
- for index_sha,raw in indexes.items():
+ for index_sha,raw in _indexes(indexes).items():
   try:lines=raw.decode('utf-8','strict').splitlines()
   except UnicodeError:raise runtime.Refusal('inventory.index_encoding') from None
   stanza={};records=0
@@ -73,10 +73,15 @@ def parse_packages(indexes):
    need(filename.startswith('pool/') and filename.endswith('.deb') and posixpath.normpath(filename)==filename
         and '..'not in filename.split('/') and len(filename)<=512 and hexdigest(digest)
         and re.fullmatch('[1-9][0-9]{0,9}',size) and int(size)<=16*1024*1024*1024,'inventory.index_archive')
-   key=(name,version,arch);value={'filename':filename,'bytes':int(size),'sha256':digest,'indexSha256':[index_sha]}
+   key=(name,version,arch);value={'bytes':int(size),'sha256':digest,'indexSha256':[index_sha],
+     'filenameByIndexSha256':{index_sha:filename}}
    if key in result:
-    need(all(result[key][k]==value[k] for k in('filename','bytes','sha256')),'inventory.index_conflict')
-    result[key]['indexSha256'].append(index_sha)
+    need(index_sha not in result[key]['filenameByIndexSha256'],'inventory.index_duplicate_identity')
+    # Repositories may publish identical archive bytes at different signed
+    # paths. Preserve every index/path join; neither path selects an origin.
+    need(all(result[key][k]==value[k] for k in('bytes','sha256')),'inventory.index_conflict')
+    result[key]['filenameByIndexSha256'][index_sha]=filename
+    result[key]['indexSha256']=sorted(result[key]['filenameByIndexSha256'])
    else:result[key]=value
    records+=1;need(records<=250000,'inventory.index_records')
   previous=None
@@ -254,13 +259,14 @@ def build_inventory(packages_raw,installed_show_raw,filelists,ownership,resoluti
    data,info=_read_checked(reader,cached,128*1024*1024)
    need(info['sourcePath']==cached and len(data)==entry['bytes'] and sha(data)==entry['sha256'],'inventory.cached_deb_changed')
    observed=sha(data)
-  archives.append({'package':name,'version':installed[name]['version'],'filename':entry['filename'],
+  archives.append({'package':name,'version':installed[name]['version'],
+   'filenameByIndexSha256':dict(entry['filenameByIndexSha256']),
    'expectedBytes':entry['bytes'],'expectedSha256':entry['sha256'],'indexSha256':entry['indexSha256'],
    'cachedPath':cached,'observedSha256':observed,'archiveBytesRehashed':observed is not None,
    'hashSource':'signed-index-and-cache-rehash' if observed is not None else 'signed-index-expectation'})
  manifest={'schema':'ocv-authenticated-installed-files-v1','sourceProofSha256':sha(canonical(proof)),
            'packages':sorted(packages,key=lambda r:r['name']),'files':files}
- return manifest,{'schema':'ocv-installed-file-inventory-evidence-v1','inputBinding':dict(proof),
+ return manifest,{'schema':'ocv-installed-file-inventory-evidence-v2','inputBinding':dict(proof),
    'installedManifestSha256':sha(canonical(manifest)),'archives':archives,'files':evidence,'readBytes':total,
    'authenticationPerformedHere':False,'nativeCommandsExecutedHere':False}
 

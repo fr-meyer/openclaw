@@ -91,6 +91,57 @@ class Inventory(unittest.TestCase):
   extra=self.index+b'\n';self.index={m.sha(self.index):self.index,m.sha(extra):extra};self.bind()
   manifest,evidence=self.build();self.assertEqual(len(manifest['packages']),len(self.names))
   self.assertEqual(len(evidence['archives'][0]['indexSha256']),2)
+ def test_same_payload_filename_aliases_preserve_every_exact_index_path_join(self):
+  main=self.index;other=main.replace(b'pool/main/f/fixture/',b'pool/updates/main/f/fixture/')
+  expected={m.sha(raw):raw for raw in (main,other)}
+  results=[]
+  for raws in (expected,dict(reversed(list(expected.items())))):
+   self.index=raws;self.bind();manifest,evidence=self.build();results.append((manifest,evidence))
+   self.assertEqual(evidence['schema'],'ocv-installed-file-inventory-evidence-v2')
+   for row in evidence['archives']:
+    name=row['package'];self.assertNotIn('filename',row)
+    self.assertEqual(row['indexSha256'],sorted(expected))
+    self.assertEqual(row['filenameByIndexSha256'],{
+     m.sha(main):'pool/main/f/fixture/'+name+'_fixture_amd64.deb',
+     m.sha(other):'pool/updates/main/f/fixture/'+name+'_fixture_amd64.deb'})
+    self.assertFalse(row['archiveBytesRehashed'])
+  self.assertEqual(results[0],results[1])
+ def test_same_payload_alias_with_actual_cached_bytes_keeps_both_signed_paths(self):
+  main=self.index;other=main.replace(b'pool/main/f/fixture/',b'pool/updates/main/f/fixture/')
+  path='/var/cache/apt/archives/libc6_fixture_amd64.deb'
+  self.index={m.sha(main):main,m.sha(other):other};self.cache={'libc6':path};self.data[path]=self.archive['libc6'];self.bind()
+  _,evidence=self.build();row=next(r for r in evidence['archives']if r['package']=='libc6')
+  self.assertTrue(row['archiveBytesRehashed']);self.assertEqual(row['observedSha256'],m.sha(self.archive['libc6']))
+  self.assertEqual(set(row['filenameByIndexSha256']),set(self.index))
+  self.data[path]=b'wrong archive';self.refused('inventory.cached_deb_changed')
+ def test_filename_alias_never_allows_size_or_sha_conflict_even_if_unselected(self):
+  original=self.index
+  for selected in (True,False):
+   for field in ('Size','SHA256'):
+    self.setUp();main=original
+    if not selected:
+     main+=b'Package: unselected-fixture\nVersion: 1\nArchitecture: all\nFilename: pool/main/f/fixture/unused.deb\nSize: 1\nSHA256: '+b'f'*64+b'\n\n'
+    records=main.split(b'\n\n');position=0 if selected else len(records)-2
+    row=records[position];line=next(v for v in row.splitlines()if v.startswith(field.encode()+b': '))
+    replacement=b'Size: 999'if field=='Size'else b'SHA256: '+b'0'*64
+    records[position]=row.replace(line,replacement)
+    other=b'\n\n'.join(records).replace(b'pool/main/f/fixture/',b'pool/updates/main/f/fixture/')
+    self.index={m.sha(main):main,m.sha(other):other};self.bind()
+    self.refused('inventory.index_conflict');self.assertEqual(self.reader.calls,[])
+ def test_one_index_duplicate_identity_and_forged_index_digest_refuse(self):
+  first=self.index.split(b'\n\n')[0]+b'\n\n'
+  for extra in (first,first.replace(b'pool/main/f/fixture/',b'pool/updates/main/f/fixture/')):
+   self.setUp();self.index+=extra;self.bind();self.refused('inventory.index_duplicate_identity')
+   self.assertEqual(self.reader.calls,[])
+  with self.assertRaisesRegex(runtime.Refusal,'inventory.index_hash'):
+   m.parse_packages({'0'*64:first})
+ def test_malformed_alias_path_or_duplicate_field_stays_fatal(self):
+  main=self.index
+  for old,new in ((b'pool/main/f/fixture/',b'pool/../escape/'),
+                  (b'Architecture: amd64\n',b'Architecture: amd64\nArchitecture: amd64\n')):
+   self.setUp();other=main.replace(old,new,1);self.index={m.sha(main):main,m.sha(other):other};self.bind()
+   self.refused('inventory.index_archive'if old.startswith(b'pool/')else'inventory.index_duplicate')
+   self.assertEqual(self.reader.calls,[])
  def test_missing_ambiguous_or_diverted_ownership_and_filelist_refuse(self):
   self.ownership[runtime.PYTHON]=b'diversion by other: /usr/bin/python3.11\n';self.bind();self.refused('inventory.owner_identity')
   self.setUp();self.ownership[runtime.PYTHON]+=self.ownership[runtime.PYTHON];self.bind();self.refused('inventory.owner_shape')
