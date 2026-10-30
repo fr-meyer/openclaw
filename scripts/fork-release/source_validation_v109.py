@@ -157,7 +157,7 @@ def failure_category(error):
     return "unclassified"
 
 
-def emit_failure_diagnostic(error, *, family=None, ordinal=None, operation=None):
+def emit_failure_diagnostic(error, *, family=None, ordinal=None, operation=None, get_attempt=None, retry_delay=None):
     # Best-effort fixed synthetic-safe fields, separate from the unchanged
     # fail-closed runtime-refusal envelope. Never output body, stderr, endpoint,
     # token, error string, traceback, header or URL (including redirect URLs).
@@ -171,6 +171,13 @@ def emit_failure_diagnostic(error, *, family=None, ordinal=None, operation=None)
         value["readOrdinal"] = ordinal
     if operation in ("open", "read", "parse"):
         value["operation"] = operation
+    if type(get_attempt) is int and 1 <= get_attempt <= 3:
+        value["getAttempt"] = get_attempt
+        value["maximumGetAttempts"] = 3
+    if (isinstance(error, urllib.error.HTTPError) and type(error.code) is int and error.code == 502 and
+            type(retry_delay) is int and retry_delay in (1, 2) and get_attempt == retry_delay):
+        value.update(schema="openclaw.v109.provider-read-retry.v1", status="retry_scheduled",
+            retryDelaySeconds=retry_delay)
     if isinstance(error, urllib.error.HTTPError) and type(error.code) is int and 100 <= error.code <= 599:
         value["httpStatus"] = error.code
         # Only exact numeric rate-limit fields; never arbitrary headers/text.
@@ -184,9 +191,10 @@ def emit_failure_diagnostic(error, *, family=None, ordinal=None, operation=None)
             pass
     try:
         emit(value)
+        return True
     except Exception:
-        # Output loss cannot replace the original failure or grant acceptance.
-        pass
+        # Lost failure evidence cannot authorize a retry or acceptance.
+        return False
 
 
 def provider_call_family(path):
@@ -483,24 +491,44 @@ class API:
             len(path) <= 1024 and not any(c in path for c in "\r\n#") and ".." not in path,
             "v9.fixed_api_route")
         if path not in self.cache:
-            seconds = min(30, self.deadline - time.time())
-            policy.need(seconds > 0, "v9.api_deadline")
             req = urllib.request.Request("https://api.github.com" + path, headers={
                 "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
                 "User-Agent": policy.CAMPAIGN, "Authorization": "Bearer " + self.token})
-            self.read_ordinal += 1
-            operation = "open"
-            try:
-                with self.opener.open(req, timeout=seconds) as response:
-                    policy.need(response.geturl() == "https://api.github.com" + path, "v9.api_redirect")
-                    operation = "read"
-                    raw = response.read(4 * 1024 * 1024 + 1)
-                operation = "parse"
-                self.cache[path] = policy.parse(raw, 4 * 1024 * 1024)
-            except (policy.Refusal, ValueError, KeyError, TypeError, OSError) as error:
-                emit_failure_diagnostic(error, family=provider_call_family(path),
-                    ordinal=self.read_ordinal, operation=operation)
-                raise
+            # The observed502 is a transient fixed-read transport failure. This
+            # never starts another CI attempt and never retries an authority,
+            # rate-limit, missing-resource, parse or security refusal.
+            for get_attempt in range(1, 4):
+                seconds = min(30, self.deadline - time.time())
+                policy.need(seconds > 0, "v9.api_deadline")
+                self.read_ordinal += 1
+                operation = "open"
+                try:
+                    with self.opener.open(req, timeout=seconds) as response:
+                        policy.need(response.geturl() == "https://api.github.com" + path, "v9.api_redirect")
+                        operation = "read"
+                        raw = response.read(4 * 1024 * 1024 + 1)
+                    operation = "parse"
+                    self.cache[path] = policy.parse(raw, 4 * 1024 * 1024)
+                    break
+                except (policy.Refusal, ValueError, KeyError, TypeError, OSError) as error:
+                    delay = get_attempt  # Fixed1s then2s; no third backoff.
+                    retry = (isinstance(error, urllib.error.HTTPError) and type(error.code) is int and
+                        error.code == 502 and get_attempt < 3 and self.deadline - time.time() > delay)
+                    recorded = emit_failure_diagnostic(error, family=provider_call_family(path),
+                        ordinal=self.read_ordinal, operation=operation, get_attempt=get_attempt,
+                        retry_delay=delay if retry else None)
+                    if not retry or recorded is not True:
+                        raise
+                    # Do not read an error body or leave its owned stream open.
+                    closed = False
+                    try:
+                        error.close()
+                        closed = True
+                    except Exception:
+                        pass
+                    if not closed or self.deadline - time.time() <= delay:
+                        raise
+                    time.sleep(delay)
         return self.cache[path]
 
 

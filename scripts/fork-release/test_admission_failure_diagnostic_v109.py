@@ -168,4 +168,103 @@ class Diagnostics(unittest.TestCase):
         for path, family in paths.items(): self.assertEqual(runtime.provider_call_family(prefix + path), family)
 
 
+class SequencedOpener:
+    def __init__(self, outcomes): self.outcomes, self.requests, self.timeouts = list(outcomes), [], []
+    def open(self, request, timeout):
+        self.requests.append(request); self.timeouts.append(timeout)
+        value = self.outcomes.pop(0)
+        if isinstance(value, Exception): raise value
+        return value
+
+
+class Http502Transport(unittest.TestCase):
+    PATH = Diagnostics.PATH
+    def error(self, code):
+        return urllib.error.HTTPError("https://private-error", code, "private-error", {
+            "X-RateLimit-Limit":"5000", "X-RateLimit-Remaining":"4897", "X-RateLimit-Reset":"1793386106"}, io.BytesIO(b"private-error"))
+    def test_observed502_recovers_only_same_get_with_fixed_two_delays(self):
+        first, second = self.error(502), self.error(502)
+        opener = SequencedOpener([first, second, Response(b'{"accepted":true}')])
+        api = runtime.API("SYNTHETIC_BEARER", runtime.time.time()+60, opener)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.object(runtime.time, 'sleep') as sleep:
+            self.assertEqual(api(self.PATH), {"accepted":True})
+            self.assertEqual(api(self.PATH), {"accepted":True})
+        self.assertEqual([c.args for c in sleep.call_args_list], [(1,), (2,)])
+        self.assertEqual(len(opener.requests), 3)
+        self.assertTrue(all(request is opener.requests[0] for request in opener.requests))
+        self.assertEqual(api.read_ordinal, 3)
+        diagnostics = [json.loads(line) for line in out.getvalue().splitlines()]
+        self.assertEqual([d['getAttempt'] for d in diagnostics], [1,2])
+        self.assertTrue(all(d['schema']=='openclaw.v109.provider-read-retry.v1' and d['status']=='retry_scheduled' for d in diagnostics))
+        self.assertEqual([d['retryDelaySeconds'] for d in diagnostics], [1,2])
+        self.assertEqual([d['readOrdinal'] for d in diagnostics], [1,2])
+        self.assertTrue(all(d['httpStatus']==502 and d['maximumGetAttempts']==3 for d in diagnostics))
+        self.assertNotIn('private-error', out.getvalue())
+    def test_third502_terminal_preserves_failed_diagnostics_no_cache(self):
+        errors = [self.error(502) for _ in range(3)]
+        opener = SequencedOpener(errors)
+        api = runtime.API("SYNTHETIC_BEARER", runtime.time.time()+60, opener)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.object(runtime.time,'sleep') as sleep:
+            with self.assertRaises(urllib.error.HTTPError) as raised: api(self.PATH)
+        self.assertIs(raised.exception, errors[-1]); self.assertEqual(api.cache, {})
+        self.assertEqual(len(opener.requests), 3)
+        self.assertEqual([c.args for c in sleep.call_args_list], [(1,), (2,)])
+        self.assertEqual([json.loads(line)['getAttempt'] for line in out.getvalue().splitlines()], [1,2,3])
+        self.assertEqual([json.loads(line)['status'] for line in out.getvalue().splitlines()], ['retry_scheduled','retry_scheduled','refused'])
+    def test_authority_rate_resource_and_other_server_errors_never_retried(self):
+        for code in (401,403,404,429,500,503,504):
+            with self.subTest(code=code):
+                opener = SequencedOpener([self.error(code)])
+                api = runtime.API("SYNTHETIC_BEARER", runtime.time.time()+60, opener)
+                with contextlib.redirect_stdout(io.StringIO()), patch.object(runtime.time,'sleep') as sleep:
+                    with self.assertRaises(urllib.error.HTTPError): api(self.PATH)
+                self.assertEqual(len(opener.requests),1); sleep.assert_not_called(); self.assertEqual(api.cache,{})
+    def test_502_with_insufficient_backoff_deadline_never_retried(self):
+        error=self.error(502); opener=SequencedOpener([error]); api=runtime.API('SYNTHETIC_BEARER',0.5,opener)
+        with patch.object(runtime.time,'time',return_value=0),patch.object(runtime.time,'sleep') as sleep,contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(urllib.error.HTTPError) as raised: api(self.PATH)
+        self.assertIs(raised.exception,error);self.assertEqual(len(opener.requests),1);sleep.assert_not_called()
+    def test_deadline_rechecked_after_backoff_before_another_open(self):
+        opener=SequencedOpener([self.error(502)]);api=runtime.API('SYNTHETIC_BEARER',1.5,opener)
+        with patch.object(runtime.time,'time',side_effect=[0,0,0,2]),patch.object(runtime.time,'sleep') as sleep,contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(runtime.policy.Refusal) as raised:api(self.PATH)
+        self.assertEqual(str(raised.exception),'v9.api_deadline');self.assertEqual(len(opener.requests),1);sleep.assert_called_once_with(1)
+    def test_lost_failed_attempt_diagnostic_refuses_without_retry(self):
+        error=self.error(502);opener=SequencedOpener([error]);api=runtime.API('SYNTHETIC_BEARER',runtime.time.time()+60,opener)
+        with patch.object(runtime,'emit',side_effect=OSError('write failed')),patch.object(runtime.time,'sleep') as sleep:
+            with self.assertRaises(urllib.error.HTTPError) as raised:api(self.PATH)
+        self.assertIs(raised.exception,error);self.assertEqual(len(opener.requests),1);sleep.assert_not_called();self.assertEqual(api.cache,{})
+    def test_timeout_and_owned_redirect_refusal_never_retried(self):
+        for value in (TimeoutError('private-error'), runtime.policy.Refusal('v9.api_redirect')):
+            with self.subTest(kind=type(value).__name__):
+                opener=SequencedOpener([value]);api=runtime.API('SYNTHETIC_BEARER',runtime.time.time()+60,opener)
+                with patch.object(runtime.time,'sleep') as sleep,contextlib.redirect_stdout(io.StringIO()):
+                    with self.assertRaises(type(value)):api(self.PATH)
+                self.assertEqual(len(opener.requests),1);sleep.assert_not_called();self.assertEqual(api.cache,{})
+    def test_deadline_crossing_before_pause_refuses_without_sleep_or_new_open(self):
+        error=self.error(502);opener=SequencedOpener([error]);api=runtime.API('SYNTHETIC_BEARER',1.5,opener)
+        with patch.object(runtime.time,'time',side_effect=[0,0,2]),patch.object(runtime.time,'sleep') as sleep,contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(urllib.error.HTTPError) as raised:api(self.PATH)
+        self.assertIs(raised.exception,error);self.assertEqual(len(opener.requests),1);sleep.assert_not_called()
+    def test_failed_error_stream_close_prevents_retry(self):
+        error=self.error(502);opener=SequencedOpener([error]);api=runtime.API('SYNTHETIC_BEARER',runtime.time.time()+60,opener)
+        with patch.object(error,'close',side_effect=OSError('private-error')),patch.object(runtime.time,'sleep') as sleep,contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(urllib.error.HTTPError) as raised:api(self.PATH)
+        self.assertIs(raised.exception,error);self.assertEqual(len(opener.requests),1);sleep.assert_not_called()
+    def test_failed_error_body_closed_without_read_before_successful_retry(self):
+        error=self.error(502);body=error.fp;opener=SequencedOpener([error,Response(b'{}')]);api=runtime.API('SYNTHETIC_BEARER',runtime.time.time()+60,opener)
+        with patch.object(body,'read',side_effect=AssertionError('error body must not be read')) as read,patch.object(runtime.time,'sleep'),contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(api(self.PATH),{})
+        read.assert_not_called();self.assertTrue(body.closed)
+    def test_malformed_response_after502_still_fails_without_third_attempt(self):
+        opener=SequencedOpener([self.error(502),Response(b'{')]);api=runtime.API('SYNTHETIC_BEARER',runtime.time.time()+60,opener)
+        out=io.StringIO()
+        with contextlib.redirect_stdout(out),patch.object(runtime.time,'sleep') as sleep:
+            with self.assertRaises(runtime.policy.Refusal):api(self.PATH)
+        self.assertEqual(len(opener.requests),2);sleep.assert_called_once_with(1);self.assertEqual(api.cache,{})
+        self.assertEqual([json.loads(line)['exceptionCategory'] for line in out.getvalue().splitlines()],['http_error','owned_refusal'])
+
+
 if __name__ == "__main__": unittest.main()
