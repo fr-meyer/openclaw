@@ -99,6 +99,19 @@ def legacy_first_preparation_view(current, proof):
     return value
 
 
+def legacy_first_preparation_request(current, proof):
+    """Replay pinned producer bytes, not a serialization of mutable input order."""
+    value=legacy_first_preparation_view(current,proof)
+    raw=(OWNERS/'fixtures/v109-first-preparation-source-request.json').read_bytes()
+    expected=policy.FAILED_PREPARATION_PIN['requestSha256']
+    if policy.digest(raw)!=expected or proof['requestSha256']!=expected:
+        raise AssertionError('historical request bytes changed')
+    request=policy.parse(raw)
+    if request!=policy.request_for(value,'lock-preparation',1):
+        raise AssertionError('historical request semantic binding changed')
+    return value,request,raw
+
+
 class RuntimeTests(unittest.TestCase):
     def test_exact_public_event(self):
         e,v=event_env();self.assertEqual(owner.event_binding(e,v),'d'*40)
@@ -254,8 +267,7 @@ class RuntimeTests(unittest.TestCase):
     def test_pipeline_intake_recovery_fresh_native_metadata_and_no_artifacts(self):
         proof=policy.parse((OWNERS/policy.PREPARATION_FAILURE_EVIDENCE.removeprefix('scripts/fork-release/')).read_bytes())
         current=policy.parse((OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json').read_bytes())
-        b=legacy_first_preparation_view(current,proof)
-        q=policy.request_for(b,'lock-preparation',1);raw=policy.encode(q)
+        b,q,raw=legacy_first_preparation_request(current,proof)
         self.assertEqual(policy.digest(raw),proof['requestSha256'])
         run={'id':int(proof['runId']),'head_sha':proof['pipelineHead'],'status':'completed','conclusion':'failure',
             'event':'pull_request','run_attempt':1,'head_branch':policy.PIPELINE_BRANCH,'path':policy.WORKFLOW,
@@ -293,6 +305,32 @@ class RuntimeTests(unittest.TestCase):
                         result=call();self.assertIs(result['sourceUnchanged'],True);self.assertIs(result['priorMinutesRemainCharged'],True)
                     else:
                         with self.assertRaises(policy.Refusal):call()
+
+    def test_historical_request_reencoding_is_not_original_producer_bytes(self):
+        proof=policy.parse((OWNERS/policy.PREPARATION_FAILURE_EVIDENCE.removeprefix('scripts/fork-release/')).read_bytes())
+        current=policy.parse((OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json').read_bytes())
+        before=deepcopy(current)
+        _,request,raw=legacy_first_preparation_request(current,proof)
+        reencoded=(json.dumps(request,sort_keys=True,indent=2)+'\n').encode()
+        self.assertEqual(policy.parse(reencoded),request)
+        self.assertNotEqual(reencoded,raw)
+        path=OWNERS/'fixtures/v109-first-preparation-source-request.json'
+        original_read=Path.read_bytes
+        def read(candidate):
+            return reencoded if candidate==path else original_read(candidate)
+        with patch.object(Path,'read_bytes',new=read),self.assertRaisesRegex(AssertionError,'historical request bytes changed'):
+            legacy_first_preparation_request(current,proof)
+        self.assertEqual(current,before)
+
+    def test_historical_request_keeps_semantic_and_proof_digest_bindings(self):
+        proof=policy.parse((OWNERS/policy.PREPARATION_FAILURE_EVIDENCE.removeprefix('scripts/fork-release/')).read_bytes())
+        current=policy.parse((OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json').read_bytes())
+        changed=deepcopy(current);changed['baseline']['publicProofSha256']='0'*64
+        with self.assertRaisesRegex(AssertionError,'historical request semantic binding changed'):
+            legacy_first_preparation_request(changed,proof)
+        changed_proof=deepcopy(proof);changed_proof['requestSha256']='0'*64
+        with self.assertRaisesRegex(AssertionError,'historical request bytes changed'):
+            legacy_first_preparation_request(current,changed_proof)
 
     def test_entire_historical_fixture_ignores_current_active_supplemental_variant(self):
         # This is an in-memory approval model only, never an operational file.

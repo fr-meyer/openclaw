@@ -90,13 +90,13 @@ jobs:
       matrix:
         include:
           - profile: dependency
-            minutes: 30
+            minutes: 25
           - profile: types-production
             minutes: 35
           - profile: types-tests
             minutes: 60
           - profile: types-scripts
-            minutes: 30
+            minutes: 25
           - profile: workboard-1
             minutes: 30
           - profile: workboard-2
@@ -108,17 +108,17 @@ jobs:
           - profile: sqlite
             minutes: 50
           - profile: doctor-1
-            minutes: 70
-          - profile: doctor-2
-            minutes: 65
-          - profile: doctor-3
             minutes: 60
+          - profile: doctor-2
+            minutes: 55
+          - profile: doctor-3
+            minutes: 50
           - profile: memory
             minutes: 60
           - profile: pipeline-contracts
             minutes: 30
           - profile: compatibility
-            minutes: 60
+            minutes: 50
     env:
       V109_ADMISSION_REQUEST_SHA256: ${{ needs.admission.outputs.request_sha }}
       V109_ADMISSION_PIPELINE_HEAD: ${{ needs.admission.outputs.pipeline_head }}

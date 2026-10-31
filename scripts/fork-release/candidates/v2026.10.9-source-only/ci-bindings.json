@@ -1123,6 +1123,86 @@
         "nativeAttempt": 1,
         "runId": "41115387375",
         "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137979452",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137979464",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137979468",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137979473",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137979489",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985265",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985312",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985357",
+        "runnerMinutes": 452
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985367",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985370",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985396",
+        "runnerMinutes": 1
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985405",
+        "runnerMinutes": 2
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985418",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985439",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985466",
+        "runnerMinutes": 0
+      },
+      {
+        "nativeAttempt": 1,
+        "runId": "41137985559",
+        "runnerMinutes": 1
       }
     ],
     "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
@@ -1137,21 +1217,21 @@
       "phase": "correction",
       "preparationAttempt": 6,
       "priorSourceRun": {
-        "pipelineHead": "d2715032294f27e60d0e9da7ca62c8c847cb995a",
-        "requestSha256": "89d0bb0c2ad510164fb7d0397cfa8f6dcb26f717fd93b797165f8f9c67e7bec1",
-        "runId": "41115387068"
+        "pipelineHead": "efc3018b6867c9e1a98808fbc6592001cc3603b5",
+        "requestSha256": "96777886e2a7fde1bdd3dbe914e91e5ada977f786964f0d9008174546074a725",
+        "runId": "41137985357"
       },
       "reasonCode": "reviewed_pipeline_correction",
-      "requestSha256": "96777886e2a7fde1bdd3dbe914e91e5ada977f786964f0d9008174546074a725",
+      "requestSha256": "8ad6e9ebff2ae2e2ffe12182a04c7bf3dcb0fa2efc81c71496685af9791b35d8",
       "reservations": {
-        "conditionalImage": 180,
-        "current": 740,
+        "conditionalImage": 0,
+        "current": 690,
         "incidental": 50,
         "pendingValidation": 0
       },
-      "reviewSha256": "51326a8af7ed926c78dde9c88aff6346d5731ce629d10627b71a08b09dfc1b27",
+      "reviewSha256": "3cd5a4f9e455f5cdfca0337a76e5dbbf8b2c9a9a8dda2e45a9e24dd3bac7ade8",
       "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
-      "sequence": 10,
+      "sequence": 11,
       "source": {
         "fileSha256": {
           "custom-patches/reconciliation-2026.10.9.json": "9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77",

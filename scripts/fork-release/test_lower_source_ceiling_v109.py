@@ -22,6 +22,7 @@ import source_validation_selection_v109 as selection
 
 LEGACY = dict(zip(policy.PROFILES, (60, 90, 90, 90, 60, 60, 60, 60, 60, 90, 75, 75, 60, 45, 60)))
 LOWER = dict(zip(policy.PROFILES, (30, 35, 60, 30, 30, 30, 45, 45, 50, 70, 65, 60, 60, 30, 60)))
+NEXT = dict(zip(policy.PROFILES, (25, 35, 60, 25, 30, 30, 45, 45, 50, 60, 55, 50, 60, 30, 50)))
 
 
 class LowerCeilingTests(unittest.TestCase):
@@ -43,6 +44,13 @@ class LowerCeilingTests(unittest.TestCase):
         self.lower_request = deepcopy(self.legacy_request)
         self.lower_request['executionSequence'] = 10
         self.lower_request['executionReservations']['current'] = 740
+        self.next_plan = deepcopy(self.plan)
+        self.next_plan['sequence'] = 11
+        self.next_plan['reservations'] = {'current': 690, 'pendingValidation': 0,
+            'conditionalImage': 0, 'incidental': 50}
+        self.next_request = deepcopy(self.lower_request)
+        self.next_request['executionSequence'] = 11
+        self.next_request['executionReservations'] = deepcopy(self.next_plan['reservations'])
 
     def test_legacy_constants_and_request_budget_are_unchanged(self):
         self.assertEqual(policy.PROFILE_MINUTES, LEGACY)
@@ -114,6 +122,71 @@ class LowerCeilingTests(unittest.TestCase):
         value['dependency'] = 200
         self.assertEqual(policy.profile_minutes_for(self.lower_request), LOWER)
 
+    def test_next_map_is_closed_full15_and_only_six_caps_are_lower(self):
+        self.assertEqual(policy.NEXT_PROFILE_MINUTES, NEXT)
+        self.assertEqual(policy.NEXT_SOURCE_MINUTES, 690)
+        self.assertEqual(policy.profile_minutes_for(self.next_request), NEXT)
+        self.assertEqual(sum(NEXT.values()) + 30 + 10, 690)
+        self.assertEqual({k for k in LOWER if NEXT[k] != LOWER[k]},
+            {'dependency', 'types-scripts', 'doctor-1', 'doctor-2', 'doctor-3', 'compatibility'})
+        self.assertTrue(all(0 < NEXT[k] <= LOWER[k] for k in LOWER))
+        for key in ('types-tests', 'sqlite', 'memory'):
+            self.assertEqual(NEXT[key], LOWER[key])
+        value = policy.profile_minutes_for(self.next_request)
+        value['dependency'] = 200
+        self.assertEqual(policy.profile_minutes_for(self.next_request), NEXT)
+
+    def test_next_plan_and_closed_request_validate_without_activation(self):
+        allowance.validate_plan(self.next_plan)
+        b = deepcopy(self.bindings)
+        b['status'] = b['ciRunGrant']['status'] = 'DISARMED'
+        b['ciRunGrant']['nextExecution'] = deepcopy(self.next_plan)
+        q = policy.request_for(b, 'correction', 6)
+        self.assertEqual(q, self.next_request)
+        self.assertIs(policy.validate_request(q, b), q)
+        budget = policy.budget(q)
+        self.assertEqual(budget['phaseMaximumMinutes'], 690)
+        self.assertEqual(budget['currentPlanReservationMinutes'], 740)
+        self.assertEqual(budget['maximumParallelSourceJobs'], 3)
+        self.assertEqual(budget['maximumNewMinutes'], 2500)
+        self.assertEqual(budget['separateImageFamilyReserveMinutes'], 180)
+        with self.assertRaises(policy.Refusal):
+            policy.validate_request(q, b, active=True, now=policy.utc('2026-10-31T00:00:00Z').timestamp())
+
+    def test_next_plan_wrong_phase_sequence_and_arbitrary_fields_refuse(self):
+        for key, value in (('phase', 'validation'), ('phase', 'lock-preparation'),
+                ('sequence', 10), ('sequence', True), ('sequence', 1001),
+                ('profileMinutes', NEXT)):
+            p = deepcopy(self.next_plan); p[key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(allowance.Refusal):
+                allowance.validate_plan(p)
+        for minutes in (689, 691, True, '690'):
+            p = deepcopy(self.next_plan); p['reservations']['current'] = minutes
+            with self.subTest(minutes=minutes), self.assertRaises(allowance.Refusal):
+                allowance.validate_plan(p)
+
+    def test_next_request_requires_exact_authority_phase_sequence_and_all15(self):
+        for key, value in (('runAllowanceSha256', '0' * 64), ('phase', 'validation'),
+                ('executionSequence', 10), ('executionSequence', True),
+                ('executionSequence', 1001), ('profiles', list(policy.PROFILES)[:-1])):
+            q = deepcopy(self.next_request); q[key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(policy.Refusal):
+                policy.profile_minutes_for(q)
+        q = deepcopy(self.next_request); q['executionReservations']['current'] = 689
+        with self.assertRaises(policy.Refusal): policy.profile_minutes_for(q)
+
+    def test_next_budget_requires_closed_ledger_at_most1760_with_image_deferred(self):
+        grant = self.bindings['ciRunGrant']
+        result = allowance.validate_budget(grant, self.next_plan, 1760, 0)
+        self.assertEqual(result['maximumNewMinutesBooked'], 2500)
+        with self.assertRaises(allowance.Refusal):
+            allowance.validate_budget(grant, self.next_plan, 1761, 0)
+        with_image = deepcopy(self.next_plan); with_image['reservations']['conditionalImage'] = 180
+        with self.assertRaises(allowance.Refusal):
+            allowance.validate_budget(grant, with_image, 1760, 0)
+        booked = allowance.PREFIX_MINUTES + sum(r['runnerMinutes'] for r in grant['bookedAdditionalAttempts'])
+        self.assertEqual(allowance.validate_budget(grant, self.next_plan, 0, 0)['otherMinutesCharged'], booked)
+
     @staticmethod
     def native_run():
         return {'repository': {'full_name': 'fr-meyer/openclaw', 'private': False},
@@ -134,6 +207,18 @@ class LowerCeilingTests(unittest.TestCase):
         self.assertEqual(runtime.observed_jobs([job], 0, True, old_limits)[0], 50)
         with self.assertRaises(policy.Refusal): runtime.observed_jobs([job], 0, True, new_limits)
 
+    def test_historical740_native_caps_are_never_reinterpreted_as690(self):
+        job = {'id': 13, 'name': 'source (doctor-2)', 'run_attempt': 1,
+            'status': 'completed', 'conclusion': 'success', 'runner_id': 1,
+            'runner_group_name': 'GitHub Actions', 'labels': ['ubuntu-24.04'],
+            'started_at': '2026-10-30T12:00:00Z', 'completed_at': '2026-10-30T13:00:00Z'}
+        old_limits = runtime.role(self.native_run(), self.lower_request)
+        new_limits = runtime.role(self.native_run(), self.next_request)
+        self.assertEqual(old_limits['source (doctor-2)'], 65)
+        self.assertEqual(new_limits['source (doctor-2)'], 55)
+        self.assertEqual(runtime.observed_jobs([job], 0, True, old_limits)[0], 60)
+        with self.assertRaises(policy.Refusal): runtime.observed_jobs([job], 0, True, new_limits)
+
     def test_job_deadline_uses_selected_map_and_keeps_absolute_expiry(self):
         start = int(datetime(2026, 10, 31, tzinfo=timezone.utc).timestamp())
         with mock.patch.object(policy, 'validate_bindings'):
@@ -144,6 +229,16 @@ class LowerCeilingTests(unittest.TestCase):
         self.assertEqual(old, start + 90 * 60 - 60)
         self.assertEqual(new, start + 35 * 60 - 60)
 
+    def test_next_job_deadline_uses690_without_rewriting740(self):
+        start = int(datetime(2026, 10, 31, tzinfo=timezone.utc).timestamp())
+        with mock.patch.object(policy, 'validate_bindings'):
+            old = runtime.job_deadline(self.bindings, self.lower_request,
+                {runtime.CLOCK: str(start)}, 'doctor-2', start)
+            new = runtime.job_deadline(self.bindings, self.next_request,
+                {runtime.CLOCK: str(start)}, 'doctor-2', start)
+        self.assertEqual(old, start + 65 * 60 - 60)
+        self.assertEqual(new, start + 55 * 60 - 60)
+
     def test_exact_active_workflow_matrix_and_route_binding(self):
         raw = (ROOT / policy.WORKFLOW).read_bytes()
         restored = (HERE / 'fixtures/v109-source-validation-restored.yml').read_bytes()
@@ -151,15 +246,15 @@ class LowerCeilingTests(unittest.TestCase):
         self.assertEqual(policy.digest(raw), diagnostic.SOURCE_WORKFLOW_RESTORED)
         matrix = dict((name, int(minutes)) for name, minutes in re.findall(
             rb'- profile: ([a-z0-9-]+)\n\s+minutes: ([0-9]+)', raw))
-        self.assertEqual({k.decode(): v for k, v in matrix.items()}, LOWER)
+        self.assertEqual({k.decode(): v for k, v in matrix.items()}, NEXT)
         diagnostic.workflow_routing(type('R', (), {'regular': staticmethod(lambda p, cap: p.read_bytes())}), ROOT, False)
 
     def test_tampered_workflow_map_refuses_at_same_route_guard(self):
         target = ROOT / policy.WORKFLOW
         def read(p, cap):
             raw = p.read_bytes()
-            return raw.replace(b'- profile: dependency\n            minutes: 30',
-                b'- profile: dependency\n            minutes: 31') if p == target else raw
+            return raw.replace(b'- profile: dependency\n            minutes: 25',
+                b'- profile: dependency\n            minutes: 26') if p == target else raw
         with self.assertRaises(policy.Refusal):
             diagnostic.workflow_routing(type('R', (), {'regular': staticmethod(read)}), ROOT, False)
 
@@ -173,6 +268,17 @@ class LowerCeilingTests(unittest.TestCase):
         self.assertTrue(value['all15Required'] and value['freshCoverage'])
         self.assertFalse(value['historicalCoverageReused'])
         blocked = runtime.source_result(self.lower_request, policy.encode(self.lower_request),
+            {'GITHUB_RUN_ID': '123'}, 'a' * 40, 'success', 'failure')
+        self.assertEqual(blocked['status'], 'failed')
+        self.assertFalse(blocked['freshCoverage'])
+
+    def test_next_all17_results_still_require_fresh_same_caller_success(self):
+        value = runtime.source_result(self.next_request, policy.encode(self.next_request),
+            {'GITHUB_RUN_ID': '123'}, 'a' * 40, 'success', 'success')
+        self.assertEqual(value['selectedProfiles'], list(policy.PROFILES))
+        self.assertTrue(value['all15Required'] and value['freshCoverage'])
+        self.assertFalse(value['historicalCoverageReused'])
+        blocked = runtime.source_result(self.next_request, policy.encode(self.next_request),
             {'GITHUB_RUN_ID': '123'}, 'a' * 40, 'success', 'failure')
         self.assertEqual(blocked['status'], 'failed')
         self.assertFalse(blocked['freshCoverage'])

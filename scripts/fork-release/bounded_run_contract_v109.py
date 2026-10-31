@@ -78,12 +78,14 @@ def validate_plan(plan, active=False):
     need(type(plan["source"]) is dict and pin(plan["source"].get("sourceSha"), 160), "source_pin")
     r = fields(plan["reservations"], ("current", "pendingValidation", "conditionalImage", "incidental"), "reservation_fields")
     need(all(type(v) is int and 0 <= v <= MAXIMUM_NEW_MINUTES for v in r.values()) and
-        r["current"] in ((45,) if plan["phase"] == "lock-preparation" else (1075, 740)) and
+        r["current"] in ((45,) if plan["phase"] == "lock-preparation" else (1075, 740, 690)) and
         r["pendingValidation"] == (1075 if plan["phase"] == "lock-preparation" else 0) and
         r["conditionalImage"] in (0, 180) and sum(r.values()) <= MAXIMUM_NEW_MINUTES,
         "reservation_scope")
     if r["current"] == 740:
         need(plan["phase"] == "correction" and plan["sequence"] >= 10, "lower_source_schedule_scope")
+    if r["current"] == 690:
+        need(plan["phase"] == "correction" and plan["sequence"] >= 11, "next_source_schedule_scope")
     if plan["sequence"] == 1:
         need(plan["phase"] == "lock-preparation" and plan["preparationAttempt"] == 3 and
             plan["source"]["sourceSha"] == FIRST_SOURCE and plan["priorSourceRun"] == LAST_PREFIX_SOURCE and

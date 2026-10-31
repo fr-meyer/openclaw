@@ -81,6 +81,9 @@ SOURCE_MINUTES = 1075
 # requests retain their original map and1075-minute reservation.
 LOWER_PROFILE_MINUTES = dict(zip(PROFILES, (30, 35, 60, 30, 30, 30, 45, 45, 50, 70, 65, 60, 60, 30, 60)))
 LOWER_SOURCE_MINUTES = 740
+# A second closed prospective ceiling; both prior maps remain historical facts.
+NEXT_PROFILE_MINUTES = dict(zip(PROFILES, (25, 35, 60, 25, 30, 30, 45, 45, 50, 60, 55, 50, 60, 30, 50)))
+NEXT_SOURCE_MINUTES = 690
 IMAGE_FAMILY_MINUTES = 180  # Reserved to a separate image owner; never executable here.
 INCIDENTAL_MINUTES = 50
 MAXIMUM_NEW_MINUTES = 2500
@@ -687,8 +690,14 @@ def profile_minutes_for(request):
         return dict(PROFILE_MINUTES)
     reservations = request["executionReservations"]
     need(type(reservations) is dict and type(reservations.get("current")) is int and
-        reservations["current"] in (PREPARATION_MINUTES, SOURCE_MINUTES, LOWER_SOURCE_MINUTES),
+        reservations["current"] in (PREPARATION_MINUTES, SOURCE_MINUTES, LOWER_SOURCE_MINUTES, NEXT_SOURCE_MINUTES),
         "v9.profile_schedule_reservation")
+    if reservations["current"] == NEXT_SOURCE_MINUTES:
+        need(request.get("runAllowanceSha256") == run_allowance.AUTHORITY_SHA256 and
+            request.get("phase") == "correction" and type(request.get("executionSequence")) is int and
+            11 <= request["executionSequence"] <= 1000 and request.get("profiles") == list(PROFILES),
+            "v9.next_source_schedule_scope")
+        return dict(NEXT_PROFILE_MINUTES)
     if reservations["current"] == LOWER_SOURCE_MINUTES:
         need(request.get("runAllowanceSha256") == run_allowance.AUTHORITY_SHA256 and
             request.get("phase") == "correction" and type(request.get("executionSequence")) is int and
