@@ -301,6 +301,43 @@ class BootstrapTests(unittest.TestCase):
 
     def test_no_real_network_or_unowned_process_attempt(self): self.assertEqual(HOST_ATTEMPTS, [])
 
+    def config_custody_refuses_without_text(self, body, marker):
+        for code in (0, 2):
+            output = self.case / ('config-' + str(code)); output.mkdir()
+            self.owner.output = output
+            err = b'unknown diagnostic ' + marker + b'\n'
+            class Child:
+                returncode = code
+                def communicate(self, timeout): return body, err
+            def child(argv, *args, **kwargs):
+                if 'config' in argv and '--get-regexp' in argv:
+                    return Child()
+                return local_git_only(argv, *args, **kwargs)
+            with patch.object(subprocess, 'Popen', side_effect=child), \
+                 contextlib.redirect_stdout(io.StringIO()) as printed, self.assertRaises(b.Refusal):
+                b.repository_state(self.owner, self.fixture.head, True)
+            custody = b''.join(path.read_bytes() for path in output.iterdir())
+            self.assertNotIn(marker, custody)
+            self.assertNotIn(marker.decode(), printed.getvalue())
+            facts = [json.loads(path.read_bytes()) for path in output.glob('*.status.private.json')]
+            last = max(facts, key=lambda value: value['ordinal'])
+            self.assertTrue(last['outputSuppressed'])
+            self.assertEqual(last['exitCode'], code)
+            self.assertEqual(last['stdout']['bytes'], len(body))
+            self.assertEqual(last['stdout']['sha256'], hashlib.sha256(body).hexdigest())
+            self.assertEqual(last['stderr']['bytes'], len(err))
+            self.assertEqual(last['stdout']['redactedPrefixBytes'], 0)
+            self.assertEqual(last['stderr']['redactedPrefixBytes'], 0)
+
+    def test_unknown_credential_helper_value_is_never_persisted_or_printed(self):
+        marker = b'FAKE_UNRELATED_HELPER_CREDENTIAL_97cc'
+        self.config_custody_refuses_without_text(b'credential.helper !printf ' + marker + b'\n', marker)
+
+    def test_credential_bearing_config_key_is_never_persisted_or_printed(self):
+        marker = b'FAKE_CREDENTIAL_IN_URL_KEY_183a'
+        self.config_custody_refuses_without_text(
+            b'url.https://example.invalid/' + marker + b'.insteadof https://github.com/\n', marker)
+
     def test_actual_workflow_hash_fixture_selector_and_clock_caps_are_consistent(self):
         root = HERE.parents[1]
         workflow = (root / '.github/workflows/future-v109-source-validation.yml').read_bytes()

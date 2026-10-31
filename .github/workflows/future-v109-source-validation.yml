@@ -79,7 +79,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          printf '%s\n' '277b5e7bf9c6f047a919cc87f1a0972e851caeb24a94c5bb962605a771e3bf1b  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
+          printf '%s\n' 'bed61ce5e9ba9d62742a591f5673c03ddf1f2fd09323c93b3e97479419279426  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
           python3 pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py --job admission
       - name: Exact public admission and cumulative accounting
         id: admission
@@ -162,7 +162,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          printf '%s\n' '277b5e7bf9c6f047a919cc87f1a0972e851caeb24a94c5bb962605a771e3bf1b  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
+          printf '%s\n' 'bed61ce5e9ba9d62742a591f5673c03ddf1f2fd09323c93b3e97479419279426  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
           python3 pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py --job source --profile '${{ matrix.profile }}'
       - name: Checkout exact admitted source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -221,7 +221,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          printf '%s\n' '277b5e7bf9c6f047a919cc87f1a0972e851caeb24a94c5bb962605a771e3bf1b  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
+          printf '%s\n' 'bed61ce5e9ba9d62742a591f5673c03ddf1f2fd09323c93b3e97479419279426  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
           python3 pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py --job final
       - name: Retain truthful fresh-coverage result
         run: python3 pipeline/scripts/fork-release/source_validation_v109.py finalize

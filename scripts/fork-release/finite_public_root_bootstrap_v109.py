@@ -138,7 +138,7 @@ class OwnedGit:
         self.output, self.core, self.secrets = output, core, secrets
         self.ordinal = 0
 
-    def run(self, argv, *, env=None, fetch=False):
+    def run(self, argv, *, env=None, fetch=False, suppress_output=False):
         remaining = min(self.deadline - time.time(), HELPER_SECONDS if fetch else 60)
         need(remaining > 0, "shared_deadline")
         self.ordinal += 1
@@ -153,7 +153,7 @@ class OwnedGit:
             fact = {"schema": "openclaw.v109.finite-root-child.v1", "ordinal": self.ordinal,
                 "kind": "finite_fetch" if fetch else "local_metadata", "exitCode": None,
                 "launchErrno": error.errno, "timedOut": False, "interrupted": False,
-                "childStarted": False, "stdout": {"bytes": 0, "sha256": sha(b"")},
+                "childStarted": False, "outputSuppressed": suppress_output, "stdout": {"bytes": 0, "sha256": sha(b"")},
                 "stderr": {"bytes": 0, "sha256": sha(b"")}}
             save(Path(str(stem) + ".stdout.redacted.private"), b"")
             save(Path(str(stem) + ".stderr.redacted.private"), b"")
@@ -168,27 +168,28 @@ class OwnedGit:
         fact = {"schema": "openclaw.v109.finite-root-child.v1", "ordinal": self.ordinal,
             "kind": "finite_fetch" if fetch else "local_metadata", "exitCode": child.returncode,
             "timedOut": timed_out, "interrupted": interrupted,
-            "cleanupSettled": settled, "cleanupReason": reason}
+            "cleanupSettled": settled, "cleanupReason": reason, "outputSuppressed": suppress_output}
         for key, raw in (("stdout", child.stdout), ("stderr", child.stderr)):
-            prefix = redacted_prefix(raw, self.secrets)
+            prefix = b"" if suppress_output else redacted_prefix(raw, self.secrets)
             save(Path(str(stem) + "." + key + ".redacted.private"), prefix)
             fact[key] = {"bytes": len(raw), "sha256": sha(raw), "redactedPrefixBytes": len(prefix)}
         save(Path(str(stem) + ".status.private.json"), (json.dumps(fact, sort_keys=True) + "\n").encode())
         # Only sanitized prefixes and fixed metadata may reach public CI logs.
         if timed_out or interrupted or child.returncode not in (0, 1) or (fetch and child.returncode != 0):
             print(json.dumps({**fact,
-                "stdoutRedactedPrefix": redacted_prefix(child.stdout, self.secrets).decode("utf-8", "replace"),
-                "stderrRedactedPrefix": redacted_prefix(child.stderr, self.secrets).decode("utf-8", "replace")}), flush=True)
+                "stdoutRedactedPrefix": "" if suppress_output else redacted_prefix(child.stdout, self.secrets).decode("utf-8", "replace"),
+                "stderrRedactedPrefix": "" if suppress_output else redacted_prefix(child.stderr, self.secrets).decode("utf-8", "replace")}), flush=True)
         need(not timed_out and not interrupted, "owned_child_incomplete")
         need(len(child.stdout) <= (FETCH_OUTPUT_BYTES if fetch else METADATA_BYTES) and
              len(child.stderr) <= FETCH_OUTPUT_BYTES, "child_output_cap")
-        return subprocess.CompletedProcess(argv, child.returncode, child.stdout, child.stderr)
+        return subprocess.CompletedProcess(argv, child.returncode,
+            b"" if suppress_output else child.stdout, b"" if suppress_output else child.stderr)
 
     def read(self, *args):
         argv = [GIT, "--no-replace-objects", "-C", str(self.root),
             "-c", "protocol.allow=never", "-c", "credential.helper=",
             "-c", "core.hooksPath=/dev/null", "-c", "maintenance.auto=0", "-c", "gc.auto=0", *args]
-        result = self.run(argv)
+        result = self.run(argv, suppress_output=bool(args and args[0] == "config"))
         if result.returncode != 0:
             raise subprocess.CalledProcessError(result.returncode, argv, output=result.stdout)
         return result.stdout
