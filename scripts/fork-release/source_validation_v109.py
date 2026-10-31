@@ -53,6 +53,7 @@ BASELINE_FILES = (
 # A closed reviewed import/execution closure; every byte must also match the PR
 # workflow merge, before candidate install/preflight/test code can execute.
 CODE_PATHS = (
+    "scripts/fork-release/finite_public_root_bootstrap_v109.py",
     policy.WORKFLOW, CORE, "scripts/fork-release/source_validation_v109.py",
     "scripts/fork-release/source_validation_contract_v109.py",
     "scripts/fork-release/bounded_run_contract_v109.py",
