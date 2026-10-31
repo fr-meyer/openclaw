@@ -670,6 +670,8 @@ def request_for(bindings, phase, preparation_attempt=1):
         result["executionSequence"] = plan["sequence"]
         result["runAllowanceSha256"] = run_allowance.AUTHORITY_SHA256
         result["executionReservations"] = deepcopy(plan["reservations"])
+        if run_allowance.has_budget_amendment(grant):
+            result["budgetCeilingAmendmentSha256"] = run_allowance.BUDGET_AMENDMENT_SHA256
     return result
 
 
@@ -711,21 +713,37 @@ def source_minutes_for(request):
     return ADMISSION_MINUTES + sum(profile_minutes_for(request).values()) + FINAL_MINUTES
 
 
+def maximum_new_minutes_for(request):
+    need(type(request) is dict, "v9.budget_ceiling_request")
+    if "budgetCeilingAmendmentSha256" not in request:
+        return MAXIMUM_NEW_MINUTES
+    need(request["budgetCeilingAmendmentSha256"] == run_allowance.BUDGET_AMENDMENT_SHA256 and
+        request.get("runAllowanceSha256") == run_allowance.AUTHORITY_SHA256,
+        "v9.budget_ceiling_amendment_request")
+    try:
+        run_allowance.amended_source_scope({"phase": request.get("phase"),
+            "sequence": request.get("executionSequence"), "source": request.get("source")})
+    except ValueError as exc:
+        raise Refusal(str(exc))
+    return run_allowance.AMENDED_MAXIMUM_NEW_MINUTES
+
+
 def budget(request):
     need(type(request) is dict and request.get("schema") == SCHEMA and request.get("phase") in PHASES,
          "v9.budget_request")
     if "runAllowanceSha256" in request:
         need(request["runAllowanceSha256"] == run_allowance.AUTHORITY_SHA256 and
             request["phase"] in ("lock-preparation", "validation", "correction"), "v9.run_grant.budget_scope")
+        maximum = maximum_new_minutes_for(request)
         return {"phase": request["phase"], "phaseMaximumMinutes": PREPARATION_MINUTES if
             request["phase"] == "lock-preparation" else source_minutes_for(request),
             "preparationMinutesPerJob": PREPARATION_MINUTES, "maximumLockPreparations": 1002,
             "admissionMinutes": ADMISSION_MINUTES, "profileMinutes": profile_minutes_for(request),
             "finalMinutes": FINAL_MINUTES, "maximumSourceCampaigns": 1000, "maximumParallelSourceJobs": 3,
-            "separateImageFamilyReserveMinutes": IMAGE_FAMILY_MINUTES, "maximumNewMinutes": MAXIMUM_NEW_MINUTES,
+            "separateImageFamilyReserveMinutes": IMAGE_FAMILY_MINUTES, "maximumNewMinutes": maximum,
             "incidentalMinutes": request["executionReservations"]["incidental"],
             "currentPlanReservationMinutes": sum(request["executionReservations"].values()),
-            "maximumBookedMinutes": MAXIMUM_NEW_MINUTES,
+            "maximumBookedMinutes": maximum,
             "maximumAdditionalWorkflowAttempts": 1000, "maximumStageWorkflowAttempts": 1042}
     additional = "additionalApprovalSha256" in request
     if additional:

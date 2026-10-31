@@ -19,6 +19,14 @@ MAXIMUM_NEW_MINUTES = 2500
 MAXIMUM_SOURCE_PARALLEL = 3
 DIAGNOSTIC_BYTES = 67108864
 MONEY_USD = "2.25"
+BUDGET_AMENDMENT_SCHEMA = "openclaw.v109.budget-ceiling-amendment-binding.v1"
+BUDGET_AMENDMENT_SHA256 = "fabe093988e258a99b7cccc83e812d274200880cc300f78a73f795905e507f6e"
+MINUTE_AMENDMENT_SHA256 = "a87532d38ff05c0d5d8e253d76abac4a2ea191a603037f22f553099b3c379cf2"
+SPENDING_AMENDMENT_SHA256 = "c31ba60a02c44ef2525b187ea058a8de45c8e2199c60630bd4601d30d8acabc6"
+AMENDED_MAXIMUM_NEW_MINUTES = 25000  # Total, not an additional allocation.
+AMENDED_MONEY_USD = "25.00"
+AMENDED_SOURCE = "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f"
+AMENDED_SOURCE_TREE = "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f"
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 ID = re.compile(r"[1-9][0-9]{0,19}\Z")
@@ -63,6 +71,46 @@ def utc(value):
     return result
 
 
+def validate_budget_amendment(value):
+    fields(value, ("schema", "scope", "publicAmendmentSha256", "minuteAmendmentSha256",
+        "spendingAmendmentSha256", "isTotalNotAdditional"), "budget_amendment_fields")
+    need(value == {"schema": BUDGET_AMENDMENT_SCHEMA, "scope": "minute-and-spending-ceilings-only",
+        "publicAmendmentSha256": BUDGET_AMENDMENT_SHA256, "minuteAmendmentSha256": MINUTE_AMENDMENT_SHA256,
+        "spendingAmendmentSha256": SPENDING_AMENDMENT_SHA256, "isTotalNotAdditional": True} and
+        value["isTotalNotAdditional"] is True, "budget_amendment_binding")
+    return value
+
+
+def amended_source_scope(value):
+    need(type(value) is dict and value.get("phase") == "correction" and
+        type(value.get("sequence")) is int and 12 <= value["sequence"] <= MAXIMUM_ADDITIONAL_ATTEMPTS and
+        type(value.get("source")) is dict and value["source"].get("sourceSha") == AMENDED_SOURCE and
+        value["source"].get("sourceTree") == AMENDED_SOURCE_TREE, "budget_amendment_source_scope")
+
+
+def has_budget_amendment(grant):
+    need(type(grant) is dict, "budget_grant_type")
+    if "budgetCeilingAmendment" not in grant:
+        return False
+    validate_budget_amendment(grant["budgetCeilingAmendment"])
+    need(grant.get("authoritySha256") == AUTHORITY_SHA256 and
+        grant.get("originalAuthorizationSha256") == ORIGINAL_AUTHORIZATION_SHA256 and
+        grant.get("expiresAt") == EXPIRES_AT and grant.get("moneyCeilingUSD") == AMENDED_MONEY_USD and
+        type(grant.get("maximumNewRunnerMinutes")) is int and
+        grant["maximumNewRunnerMinutes"] == AMENDED_MAXIMUM_NEW_MINUTES and
+        type(grant.get("maximumAdditionalAttempts")) is int and grant["maximumAdditionalAttempts"] == 1000 and
+        type(grant.get("maximumStageAttempts")) is int and grant["maximumStageAttempts"] == 1042 and
+        type(grant.get("maximumSourceParallelJobs")) is int and grant["maximumSourceParallelJobs"] == 3 and
+        type(grant.get("diagnosticBytes")) is int and grant["diagnosticBytes"] == DIAGNOSTIC_BYTES,
+        "budget_amendment_unchanged_scope")
+    amended_source_scope(grant.get("nextExecution"))
+    return True
+
+
+def maximum_new_minutes(grant):
+    return AMENDED_MAXIMUM_NEW_MINUTES if has_budget_amendment(grant) else MAXIMUM_NEW_MINUTES
+
+
 def validate_plan(plan, active=False):
     fields(plan, ("schema", "status", "sequence", "phase", "preparationAttempt", "source",
         "priorSourceRun", "reasonCode", "reviewSha256", "requestSha256", "reservations"), "plan_fields")
@@ -103,7 +151,10 @@ def validate_grant(grant, original_authorization, active=False, now=None):
     fields(grant, ("schema", "status", "authoritySha256", "approvedAt", "expiresAt",
         "originalAuthorizationSha256", "closedPrefixProducerSha256", "maximumAdditionalAttempts",
         "maximumStageAttempts", "maximumNewRunnerMinutes", "maximumSourceParallelJobs",
-        "diagnosticBytes", "moneyCeilingUSD", "bookedAdditionalAttempts", "nextExecution"), "fields")
+        "diagnosticBytes", "moneyCeilingUSD", "bookedAdditionalAttempts", "nextExecution") +
+        (("budgetCeilingAmendment",) if type(grant) is dict and "budgetCeilingAmendment" in grant else ()), "fields")
+    amended = has_budget_amendment(grant)
+    maximum = maximum_new_minutes(grant)
     need(grant["schema"] == SCHEMA and grant["status"] in ("DISARMED", "APPROVED") and
         grant["authoritySha256"] == AUTHORITY_SHA256 and grant["approvedAt"] == APPROVED_AT and
         grant["expiresAt"] == EXPIRES_AT and grant["originalAuthorizationSha256"] ==
@@ -111,10 +162,10 @@ def validate_grant(grant, original_authorization, active=False, now=None):
         grant["closedPrefixProducerSha256"] == PREFIX_PRODUCER_SHA256 and
         type(grant["maximumAdditionalAttempts"]) is int and grant["maximumAdditionalAttempts"] == 1000 and
         type(grant["maximumStageAttempts"]) is int and grant["maximumStageAttempts"] == 1042 and
-        type(grant["maximumNewRunnerMinutes"]) is int and grant["maximumNewRunnerMinutes"] == 2500 and
+        type(grant["maximumNewRunnerMinutes"]) is int and grant["maximumNewRunnerMinutes"] == maximum and
         type(grant["maximumSourceParallelJobs"]) is int and grant["maximumSourceParallelJobs"] == 3 and
         type(grant["diagnosticBytes"]) is int and grant["diagnosticBytes"] == DIAGNOSTIC_BYTES and
-        grant["moneyCeilingUSD"] == MONEY_USD, "exact_scope")
+        grant["moneyCeilingUSD"] == (AMENDED_MONEY_USD if amended else MONEY_USD), "exact_scope")
     need(type(grant["bookedAdditionalAttempts"]) is list and len(grant["bookedAdditionalAttempts"]) <= 1000,
         "booked_attempt_list")
     keys = set()
@@ -122,7 +173,7 @@ def validate_grant(grant, original_authorization, active=False, now=None):
         fields(row, ("runId", "nativeAttempt", "runnerMinutes"), "booked_attempt_fields")
         need(type(row["runId"]) is str and ID.fullmatch(row["runId"]) and
             type(row["nativeAttempt"]) is int and 1 <= row["nativeAttempt"] <= 1001 and
-            type(row["runnerMinutes"]) is int and 0 <= row["runnerMinutes"] <= MAXIMUM_NEW_MINUTES,
+            type(row["runnerMinutes"]) is int and 0 <= row["runnerMinutes"] <= maximum,
             "booked_attempt_identity")
         key = (row["runId"], row["nativeAttempt"])
         need(key not in keys and not (key[0] in PREFIX_RUN_IDS and key[1] == 1), "booked_attempt_duplicate")
@@ -168,6 +219,10 @@ def count_attempts(history, historical_ids, grant):
 
 
 def validate_budget(grant, plan, new_observed_minutes, current_observed_minutes):
+    ceiling = maximum_new_minutes(grant)
+    if has_budget_amendment(grant):
+        need(plan == grant["nextExecution"], "budget_amendment_exact_plan")
+        validate_plan(plan)
     need(type(new_observed_minutes) is int and type(current_observed_minutes) is int and
         0 <= current_observed_minutes <= new_observed_minutes, "observed_minutes")
     booked = PREFIX_MINUTES + sum(r["runnerMinutes"] for r in grant["bookedAdditionalAttempts"])
@@ -177,10 +232,10 @@ def validate_budget(grant, plan, new_observed_minutes, current_observed_minutes)
     other = max(new_observed_minutes - current_observed_minutes, booked)
     observed = other + current_observed_minutes
     maximum = other + sum(plan["reservations"].values())
-    need(maximum <= MAXIMUM_NEW_MINUTES, "cumulative_runner_budget")
+    need(maximum <= ceiling, "cumulative_runner_budget")
     return {"newObservedOrBookedMinutes": observed, "otherMinutesCharged": other,
         "reservedMinutes": sum(plan["reservations"].values()), "maximumNewMinutesBooked": maximum,
-        "maximumNewRunnerMinutes": MAXIMUM_NEW_MINUTES, "noConsumedMinuteRefund": True}
+        "maximumNewRunnerMinutes": ceiling, "noConsumedMinuteRefund": True}
 
 
 # Inserted from the fixed, hash-verified closed 42-record producer, not API input.

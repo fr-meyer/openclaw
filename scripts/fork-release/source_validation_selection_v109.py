@@ -93,6 +93,7 @@ PIPELINE_CONTRACT_TESTS = (
     "test_third_preparation_contract_v109.py", "test_third_preparation_runtime_v109.py",
     "test_bounded_run_contract_v109.py", "test_bounded_run_runtime_v109.py",
     "test_lower_source_ceiling_v109.py",
+    "test_budget_ceiling_amendment_v109.py",
     "test_history_pagination_v109.py",
     "test_h_fixture_correction_contract_v109.py", "test_same_generation_fixture_runtime_v109.py",
     "test_h_generated_manifest_correction_v109.py",

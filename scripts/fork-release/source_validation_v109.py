@@ -1342,7 +1342,8 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
     return {"historicalRecords":258, "historicalMinutes":2944, "newObservedMinutes":total,
         "newChargedMinutes":charged_total,"workflowAttemptAccounting":attempt_facts,
         "boundedSourceExecution":bounded_source_facts,
-        "incidentalMinutes":incidental,"currentBookingMinutes":booking,"maximumNewMinutes":2500,
+        "incidentalMinutes":incidental,"currentBookingMinutes":booking,
+        "maximumNewMinutes":policy.maximum_new_minutes_for(request),
         "sourceExecutions":len(validations),"lockPreparations":len(locks),"observedArtifactBytes":artifact_bytes,
         "pipelinePreparationRecovery":recovery,"additionalPreparationBooking":additional_booking,
         "separateDiagnosticRecords":len(diagnostic_rows),"sourceExecutionAdvanced":diagnostic is None}
