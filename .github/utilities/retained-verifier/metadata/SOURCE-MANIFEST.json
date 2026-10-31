@@ -1,0 +1,40 @@
+{
+  "files": [
+    {
+      "bytes": 3304,
+      "path": "linux_fixture.cjs",
+      "sha256": "e32ffa12a1d78739b596c651cbee19021995f80ce80eb2073a65647239f00b88"
+    },
+    {
+      "bytes": 9643,
+      "path": "linux_proof.py",
+      "sha256": "1feca57ee331d4bd2f06d884c39f7c3054fd2d0c8dac474b455d3620a17d7ac8"
+    },
+    {
+      "bytes": 16726,
+      "path": "metadata_reader.cjs",
+      "sha256": "2839b2fdadf569d74d271b6a78ed20d345135a4481d6c0da41a74d9c11a14278"
+    },
+    {
+      "bytes": 5527,
+      "path": "metadata_supervisor.cjs",
+      "sha256": "41244af8d5bd7813760e07dfd8047a62a62e90242d1eca02069d7f2440aeb553"
+    },
+    {
+      "bytes": 13232,
+      "path": "test_metadata_reader.cjs",
+      "sha256": "e2439e142fcb52a2cb52aab90a982163537dca27ae8dae3a1e68b37cc1c98b81"
+    },
+    {
+      "bytes": 4836,
+      "path": "test_metadata_supervisor.cjs",
+      "sha256": "92985cbff4ea8c37aea94d391cf82121fd48e11b52d6b4569c4e5bf63ef2a09f"
+    },
+    {
+      "bytes": 1420,
+      "path": "test_supervisor_actual_child.cjs",
+      "sha256": "acebd79aa38e71392bea9500005bf586d39a09a0a2b6a69b616ddb8508d16ff4"
+    }
+  ],
+  "schema": "ocv.generic-retained-metadata-proof-source.v1"
+}

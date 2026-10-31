@@ -35,6 +35,8 @@ ROLE_MAP={
  'ubuntu_apt_update':('host/command_factories.py','ubuntu_apt_update'),
  'ubuntu_apt_install':('host/command_factories.py','ubuntu_apt_install'),
  'debian_metadata_curl':('host/command_factories.py','debian_metadata_curl'),
+ 'metadata_node_download':('host/command_factories.py','metadata_node_download'),
+ 'metadata_sqlite_namespace':('host/command_factories.py','metadata_sqlite_namespace'),
  'gpgv_metadata':('host/command_factories.py','gpgv_metadata'),
  'dpkg_query':('host/command_factories.py','dpkg_query'),
  'own_project_chown':('host/command_factories.py','own_project_chown'),
@@ -598,6 +600,14 @@ def seal_command(permit,role,arguments,*,cwd,environment,launch_deadline=None):
  if 'project'in arguments:_project(permit,arguments['project'],allow_negative=_allow_negative(role,arguments))
  if 'workspace'in arguments:need(arguments['workspace']==str(permit.workspace),'host.workspace_arg')
  if 'source_root'in arguments:need(arguments['source_root']==str(permit.source),'host.source_arg')
+ if role=='metadata_sqlite_namespace':
+  need(set(arguments)=={'project','source_root','source_manifest_sha'} and
+       arguments['source_manifest_sha']==permit.rows['metadata/SOURCE-MANIFEST.json']['sha256'],
+       'host.metadata_source_manifest')
+  for name in ('metadata/linux_proof.py','metadata/SOURCE-MANIFEST.json'):
+   row=permit.rows[name]
+   need(sha(_read_regular(permit.source/name,row['bytes']+1))==row['sha256'],
+        'host.metadata_source_changed')
  if role=='own_project_chown':_prepare_chown(arguments)
  if role=='own_mkosi_outputs':_preflight_mkosi_outputs(permit,arguments)
  if role=='freeze_public_outputs':_freeze_outputs(arguments['project'])
@@ -626,7 +636,8 @@ def seal_command(permit,role,arguments,*,cwd,environment,launch_deadline=None):
          ('ocv-test.raw','kernel.bin','initrd.img','integrated-test.raw'))),'host.mkosi_outputs_argv')
  if argv[0]=='/usr/bin/sudo':need(len(argv)>4 and argv[:3]==('/usr/bin/sudo','-n','--')
   and (argv[3]in('/usr/bin/apt-get','/usr/bin/chown')
-   or role=='freeze_public_outputs' and argv[3]=='/usr/bin/chmod'),'host.sudo_command')
+   or role=='freeze_public_outputs' and argv[3]=='/usr/bin/chmod'
+   or role=='metadata_sqlite_namespace' and argv[3]=='/usr/bin/env'),'host.sudo_command')
  if role=='mkosi_build':argv=('/usr/bin/sudo','-n','--')+argv
  cwdpath=Path(cwd)
  negative_allowed=_allow_negative(role,arguments)

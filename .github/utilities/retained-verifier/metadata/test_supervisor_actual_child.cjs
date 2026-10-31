@@ -1,0 +1,7 @@
+'use strict';
+// Linux proof: actual exact Node child/SIGKILL/close; virtual deadline advance
+// avoids an unnecessary60-second wait. No SQLite query or real data is used.
+const assert=require('node:assert/strict'),{spawn}=require('node:child_process');
+const {supervise}=require('./metadata_supervisor.cjs');
+let now=0,kills=0,actual;
+supervise('a'.repeat(64),{execPath:process.execPath,now:()=>now,spawn:(exe,args,options)=>{assert.deepEqual(args,['--no-warnings','/run/metadata-reader.cjs','a'.repeat(64)]);actual=spawn(exe,['--no-warnings','-e','setInterval(()=>{},1000)'],options);const kill=actual.kill.bind(actual);actual.kill=s=>{kills++;return kill(s);};return actual;},setTimer:(fn,ms)=>{assert.equal(ms,60000);queueMicrotask(()=>{now=60000;fn();});return 1;},clearTimer:()=>{},waitClose:(child,record)=>new Promise(resolve=>child.once('close',(code,signal)=>{record(code,signal);resolve();}))}).then(result=>{assert.equal(result.status,'REFUSED');assert.equal(result.deadlineReached,true);assert.equal(result.childCloseObserved,true);assert.equal(result.childSignal,'SIGKILL');assert.equal(kills,1);assert.throws(()=>process.kill(actual.pid,0),e=>e.code==='ESRCH');process.stdout.write(JSON.stringify({actualNodeChild:true,actualSigkillAndClose:true,virtualSixtySecondClock:true,noSQLiteOrRetainedData:true})+'\n');}).catch(()=>{process.stderr.write('synthetic_actual_child_refused\n');process.exitCode=1;});

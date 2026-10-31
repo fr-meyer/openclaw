@@ -69,6 +69,25 @@ def debian_metadata_curl(project, kind, origin='main'):
       '--output',output,base+name)
 
 
+def metadata_node_download(project):
+    return ('/usr/bin/curl','--fail','--silent','--show-error','--proto','=https','--tlsv1.2',
+      '--retry','0','--connect-timeout','20','--max-time','120','--max-filesize','100663296',
+      '--output',project_path(project,'metadata-node.tar.xz'),
+      'https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-x64.tar.xz')
+
+
+def metadata_sqlite_namespace(project,source_root,source_manifest_sha):
+    path(source_root)
+    require(type(source_manifest_sha)is str and re.fullmatch('[0-9a-f]{64}',source_manifest_sha),
+            'metadata_source_manifest')
+    return ('/usr/bin/sudo','-n','--','/usr/bin/env','-i','PATH=/usr/bin:/bin',
+      'HOME=/nonexistent','LANG=C','LC_ALL=C','TZ=UTC','/usr/bin/unshare',
+      '--mount','--net','--pid','--fork','--mount-proc','--kill-child=KILL','--',
+      '/usr/bin/python3','-I','-S','-B',project_path(source_root,'metadata/linux_proof.py'),
+      '--node',project_path(project,'metadata-node'),
+      '--source-manifest-sha256',source_manifest_sha)
+
+
 def gpgv_metadata(project, origin='main'):
     require(origin in ('main','security'),'metadata_origin')
     return ('/usr/bin/gpgv','--status-fd','1','--keyring',project_path(project,'metadata/keyring.gpg'),

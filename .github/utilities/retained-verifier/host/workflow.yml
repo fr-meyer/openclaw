@@ -23,6 +23,14 @@ on:
         description: Nonsecret one-mission ledger identity
         required: true
         type: string
+      proof_mode:
+        description: Reviewed synthetic proof entry
+        required: true
+        default: standard
+        type: choice
+        options:
+          - standard
+          - metadata_sqlite
 
 permissions:
   contents: read
@@ -49,6 +57,7 @@ jobs:
       OCV_WORKFLOW_SHA: ${{ inputs.workflow_sha }}
       OCV_SOURCE_MANIFEST_SHA: ${{ inputs.source_manifest_sha }}
       OCV_MISSION_ID: ${{ inputs.mission_id }}
+      OCV_PROOF_MODE: ${{ inputs.proof_mode }}
     steps:
       - name: Admit exact utility dispatch
         shell: bash
@@ -71,6 +80,7 @@ jobs:
           [[ "$OCV_WORKFLOW_SHA" =~ ^[a-f0-9]{64}$ ]]
           [[ "$OCV_SOURCE_MANIFEST_SHA" =~ ^[a-f0-9]{64}$ ]]
           [[ "$OCV_MISSION_ID" =~ ^[a-f0-9]{32}$ ]]
+          [[ "$OCV_PROOF_MODE" == standard || "$OCV_PROOF_MODE" == metadata_sqlite ]]
           [[ "$GITHUB_SHA" == "$OCV_EXPECTED_SOURCE" ]]
       - name: Checkout only reviewed utility sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -84,18 +94,30 @@ jobs:
             .github/utilities/retained-verifier
             .github/workflows/authorized-beta-focused-validation.yml
       - name: Build and prove synthetic Linux isolation
+        if: inputs.proof_mode == 'standard'
         shell: bash
         run: |
           set -euo pipefail
           python3 -I -S -B .github/utilities/retained-verifier/host/ci_host.py
+      - name: Prove synthetic read-only SQLite runtime
+        if: inputs.proof_mode == 'metadata_sqlite'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -S -B .github/utilities/retained-verifier/metadata/run_linux_proof.py
       - name: Attest public helper and Linux proof
-        if: success()
+        if: success() && inputs.proof_mode == 'standard'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: |
             ${{ runner.temp }}/ocv-ci-artifacts/public-tooling.tar.gz
             ${{ runner.temp }}/ocv-ci-artifacts/host-result.json
             ${{ runner.temp }}/ocv-ci-artifacts/extra-tool-catalog.json
+      - name: Attest synthetic SQLite proof
+        if: success() && inputs.proof_mode == 'metadata_sqlite'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ runner.temp }}/ocv-ci-artifacts/metadata-result.json
       - name: Retain bounded public proof and failure evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -110,5 +132,8 @@ jobs:
             ${{ runner.temp }}/ocv-ci-artifacts/negative-stdout.bin
             ${{ runner.temp }}/ocv-ci-artifacts/negative-stderr.bin
             ${{ runner.temp }}/ocv-ci-artifacts/extra-tool-catalog.json
+            ${{ runner.temp }}/ocv-ci-artifacts/metadata-result.json
+            ${{ runner.temp }}/ocv-ci-artifacts/metadata-stdout.bin
+            ${{ runner.temp }}/ocv-ci-artifacts/metadata-stderr.bin
           if-no-files-found: error
           retention-days: 1
