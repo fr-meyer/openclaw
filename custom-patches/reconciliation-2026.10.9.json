@@ -11,7 +11,7 @@
   "forkDeltaPathCount": 250,
   "upstreamChangedPathCount": 441,
   "overlapPathCount": 55,
-  "lockState": "ci_derived",
+  "lockState": "pending_ci_derivation",
   "sourcePaths": [
     {
       "path": "Dockerfile",
@@ -544,6 +544,26 @@
         "blob": "f89a1037a674da218a63274297102099515783b2"
       },
       "disposition": "ADAPTED_RELEASE_BINDING"
+    },
+    {
+      "path": "extensions/file-transfer/package.json",
+      "base108": {
+        "mode": "100644",
+        "blob": "e431d90b0fe09cc1a0c7c370ed394157167e5600"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "e431d90b0fe09cc1a0c7c370ed394157167e5600"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "496aad7015d5d934c5dbfbfd67fa2cc800227cef"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "2f33eb45f78630fede9612f25407d6539bfb3e48"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "extensions/googlechat/package.json",
@@ -1663,9 +1683,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "37d2381172c9e60bd04e7c843565cf6260b99ca8"
+        "blob": "a89268b9a6b50740b9c51d16b8186523620fa961"
       },
-      "disposition": "ADAPTED_RELEASE_BINDING"
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "packages/gateway-protocol/src/core-request-params.ts",
@@ -2010,7 +2030,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "08fe23a5b6b1b0c9ea60c627296a0e3eb5108c2e"
+        "blob": "8572393dc11e7617122cf0a9d4f715fca1721e71"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -4494,9 +4514,9 @@
       "upstream109": null,
       "result": {
         "mode": "100644",
-        "blob": "8ba3d514c0772fe7dfda5a0c19fbbb96a3d4114b"
+        "blob": "5f5e3282961c6488c6da07be4ca31470522a9103"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "ADAPTED_SECURITY_TEST"
     },
     {
       "path": "test/vitest-projects-config.test-support.ts",
@@ -4653,11 +4673,22 @@
       "disposition": "CARRIED_EXACT"
     }
   ],
-  "lockDerivation": {
-    "runId": 41043479025,
-    "attempt": 1,
-    "artifactSha256": "4b5386aa4d4f37b378658309f6e58239a1ddc949550d416cc2f6b6ca9ab4cc7c",
-    "generatedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-    "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87"
+  "sourceSuccessor": {
+    "schema": "openclaw.v109.successor-lock-seed.v1",
+    "amendmentSha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520",
+    "generation": 1,
+    "parentSource": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
+    "parentTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f",
+    "seedSource": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
+    "seedTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f",
+    "seedLockBlob": "8fa3ddcf5e9465095981bb0f11b24e2d00bb7862",
+    "seedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+    "seedLockDerivation": {
+      "runId": 41043479025,
+      "attempt": 1,
+      "artifactSha256": "4b5386aa4d4f37b378658309f6e58239a1ddc949550d416cc2f6b6ca9ab4cc7c",
+      "generatedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+      "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87"
+    }
   }
 }

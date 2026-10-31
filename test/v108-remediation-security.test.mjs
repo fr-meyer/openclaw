@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { Writable } from "node:stream";
 import { Worker } from "node:worker_threads";
 import http from "node:http";
@@ -11,10 +11,11 @@ import net from "node:net";
 import path from "node:path";
 import test from "node:test";
 import tls from "node:tls";
+import { runInNewContext } from "node:vm";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 // This file is run in its own secretless native-test child. Every message and
-// schema below is synthetic; even an accidental provider/network path refuses.
+// schema below is synthetic; even an accidental provider/unowned network path refuses.
 const ownedLoopbackHttpRequest = http.request;
 const ownedLoopbackConnect = net.connect;
 let networkCalls = 0;
@@ -432,7 +433,331 @@ test("the actual Crabline parents use fixed RE2JS lookbehind behavior in an isol
   t.diagnostic(`isolated RE2JS API/state checks completed in ${Math.round(performance.now() - startedAt)}ms`);
 });
 
-test("no real network operation occurred", () => assert.equal(networkCalls, 0));
+
+// These H3 fixtures use the public package APIs from the same installed parents
+// selected by OpenClaw. They do not claim optional production routes are enabled.
+const fileTransferRequire = createRequire(path.join(root, "extensions/file-transfer/package.json"));
+const feishuRequire = createRequire(path.join(root, "extensions/feishu/package.json"));
+const h3MatcherParents = [rootRequire, fileTransferRequire].map((parent) => ({
+  context: packageContext(parent, "minimatch"),
+  api: parent("minimatch"),
+}));
+const h3JoiContext = packageContext(mailauth.require, "joi");
+const h3Joi = mailauth.require("joi");
+const h3Sigstore = packageContext(rootRequire, "sigstore");
+const h3Signer = packageContext(h3Sigstore.require, "@sigstore/sign");
+const h3MakeFetch = packageContext(h3Signer.require, "make-fetch-happen");
+const h3Cache = packageContext(h3MakeFetch.require, "cacache");
+const h3GlobContext = packageContext(h3Cache.require, "glob");
+const h3HttpParents = [
+  packageContext(feishuRequire, "@larksuiteoapi/node-sdk"),
+  packageContext(teamsRequire, "@microsoft/teams.apps"),
+  packageContext(packageContext(teamsRequire, "@microsoft/teams.api").require, "@microsoft/teams.common"),
+].map((parent) => {
+  const axios = packageContext(parent.require, "axios");
+  return { axios, child: packageContext(axios.require, "follow-redirects") };
+});
+
+test("the actual retained HTTP, mail, matcher and cache parents resolve the four H3 fixes", () => {
+  for (const { context } of h3MatcherParents) assert.equal(context.manifest.version, "11.0.1");
+  assert.equal(h3JoiContext.manifest.version, "18.3.1");
+  assert.equal(h3Cache.manifest.version, "21.0.1");
+  assert.equal(h3GlobContext.manifest.version, "14.0.2");
+  for (const { axios, child } of h3HttpParents) {
+    assert.equal(axios.manifest.version, "1.20.0");
+    assert.equal(child.manifest.version, "1.16.2");
+  }
+});
+
+test("both installed matchers preserve bootstrap, transfer and service path semantics", () => {
+  for (const { api } of h3MatcherParents) {
+    const { minimatch, escape } = api;
+    const bootstrap = { nocomment: true, nonegate: true, windowsPathsNoEscape: true };
+    assert.equal(minimatch("src/fixture.ts", "src/**/*.ts", bootstrap), true);
+    assert.equal(minimatch("other/fixture.ts", "src/**/*.ts", bootstrap), false);
+    assert.equal(minimatch("!fixture.txt", "!fixture.txt", bootstrap), true);
+    assert.equal(minimatch("C:/fixture/private.txt", "C:/fixture/*.txt", { ...bootstrap, platform: "win32" }), true);
+    assert.equal(minimatch("C:/other/private.txt", "C:/fixture/*.txt", { ...bootstrap, platform: "win32" }), false);
+    assert.equal(minimatch("nested/.fixture", "**/*", { dot: true }), true);
+    assert.equal(minimatch("nested/.fixture", "**/*.txt", { dot: true }), false);
+    assert.equal(minimatch("a/fixture.ts", "{a,b}/**/*.ts", { dot: true }), true);
+    assert.equal(minimatch("c/fixture.ts", "{a,b}/**/*.ts", { dot: true }), false);
+    const literal = "[synthetic]*?.env";
+    assert.equal(minimatch(literal, escape(literal), { optimizationLevel: 0 }), true);
+    assert.equal(minimatch("ordinary.env", escape(literal), { optimizationLevel: 0 }), false);
+  }
+});
+
+test("the installed matcher bounds parent-segment expansion without changing matches", () => {
+  for (const { api } of h3MatcherParents) {
+    const { Minimatch } = api;
+    // Ten segments remain bounded even on the pre-fix package, while exceeding
+    // the explicit limit proves the affected preprocessing contract.
+    const expanded = new Minimatch(Array(10).fill("**/../a/b").join("/"), {
+      optimizationLevel: 2, braceExpandMax: 64,
+    });
+    assert.equal(expanded.set.length, 64);
+    const ordinary = new Minimatch("**/../a/b/**/../c/d", { optimizationLevel: 2 });
+    assert.equal(ordinary.match("../a/b/../c/d"), true);
+    assert.equal(ordinary.match("x/a/b/y/c/d"), true);
+    // This exercises the >1000-pattern branch with only 1002 bounded patterns.
+    const large = new Minimatch("{x,*}/{0..500}", { optimizationLevel: 2 });
+    assert.equal(large.set.length, 1002);
+    assert.equal(large.match("x/5"), true);
+    assert.equal(large.match("y/500"), true);
+    assert.equal(large.match(".y/5"), false);
+  }
+});
+
+test("mailauth's installed Joi preserves multiple-email separation and malformed-input rejection", () => {
+  assert.equal(h3Joi.string().email().validate("first@example.com").error, undefined);
+  assert.equal(h3Joi.string().email({ multiple: true }).validate("first@example.com, second@example.org").error, undefined);
+  assert.equal(h3Joi.string().email({ multiple: true, separator: ";" }).validate("first@example.com; second@example.org").error, undefined);
+  const spaces = " ".repeat(1024);
+  const mixed = `first@example.com${spaces}second@example.org`;
+  for (const [options, input, expectedInvalids] of [
+    [{}, spaces, [spaces]],
+    [{ separator: ";" }, mixed, [mixed]],
+    [{ separator: ", " }, spaces, ["", ""]],
+  ]) {
+    const { error } = h3Joi.string().email({ multiple: true, ...options }).validate(input);
+    assert.ok(error, "malformed synthetic address list must be rejected");
+    assert.equal(error.details[0].type, "string.email");
+    assert.deepEqual(error.details[0].context.invalids, expectedInvalids);
+  }
+  assert.equal(h3Joi.string().email({ multiple: true, separator: ", " }).validate(mixed).error, undefined);
+  // Bounded API correctness only; no universal latency/asymptotic claim.
+});
+
+test("mailauth's Joi rejects prototype message languages and preserves existing rename targets", () => {
+  const messages = JSON.parse('{"__proto__":{"number.min":"SYNTHETIC_H3_MESSAGE"}}');
+  const baseline = Object.getOwnPropertyDescriptor(Object.prototype, "number.min");
+  try {
+    for (const invoke of [
+      () => h3Joi.number().min(10).messages(messages),
+      () => h3Joi.number().min(10).prefs({ messages }),
+      () => h3Joi.number().min(10).validate(1, { messages }),
+    ]) assert.throws(invoke, /Cannot use __proto__ as a language/);
+    assert.deepEqual(h3Joi.object().rename("a", "toString").unknown().validate({ a: 1 }), {
+      value: { toString: 1 },
+    });
+    for (const [schema, input, target] of [
+      [h3Joi.object().rename("a", "constructor", { multiple: true }).unknown(),
+        { a: "synthetic", constructor: "original" }, "constructor"],
+      [h3Joi.object().rename(/^k_(.*)$/, h3Joi.expression("{#1}"), { multiple: true }).unknown(),
+        { k_hasOwnProperty: "synthetic", hasOwnProperty: "original" }, "hasOwnProperty"],
+    ]) {
+      const result = schema.validate(input);
+      assert.ok(result.error, "an existing synthetic target must not be overwritten");
+      assert.equal(result.error.details[0].type, "object.rename.override");
+      assert.equal(result.value[target], "original");
+    }
+    assert.deepEqual(Object.getOwnPropertyDescriptor(Object.prototype, "number.min"), baseline);
+  } finally {
+    if (baseline) Object.defineProperty(Object.prototype, "number.min", baseline);
+    else delete Object.prototype["number.min"];
+  }
+});
+
+test("real redirect handling strips cross-realm sensitive headers between owned origins", {
+  timeout: 10_000,
+}, async (t) => {
+  const received = [];
+  const ownedPorts = new Set();
+  let target;
+  let redirect;
+  const previousRequest = http.request;
+  async function listenOwned(server) {
+    const listening = once(server, "listening", { signal: t.signal });
+    server.listen({ host: "127.0.0.1", port: 0, signal: t.signal });
+    await listening;
+    const address = server.address();
+    assert.equal(address.address, "127.0.0.1");
+    ownedPorts.add(address.port);
+    return address.port;
+  }
+  try {
+    target = http.createServer((request, response) => {
+      received.push({
+        secret: request.headers["x-synthetic-secret"],
+        authorization: request.headers.authorization,
+        kept: request.headers["x-synthetic-kept"],
+      });
+      response.end("SYNTHETIC_H3_TARGET");
+    });
+    const targetPort = await listenOwned(target);
+    redirect = http.createServer((_request, response) => {
+      response.writeHead(302, { location: `http://127.0.0.1:${targetPort}/target` });
+      response.end();
+    });
+    const redirectPort = await listenOwned(redirect);
+    // The global denial remains for HTTPS, DNS and every unowned destination.
+    // Only these two servers can be reached through the captured native socket.
+    http.request = (options, callback) => {
+      assert.equal(options.protocol, "http:");
+      assert.equal(options.hostname, "127.0.0.1");
+      assert.equal(options.socketPath, undefined);
+      assert.equal(ownedPorts.has(Number(options.port)), true);
+      return ownedLoopbackHttpRequest({
+        ...options,
+        agent: undefined,
+        createConnection: () => ownedLoopbackConnect({ host: "127.0.0.1", port: Number(options.port) }),
+      }, callback);
+    };
+    syncBuiltinESMExports();
+    const entries = new Map(h3HttpParents.map(({ axios, child }) => [child.entry, axios.require("follow-redirects")]));
+    for (const api of entries.values()) {
+      for (const sensitiveHeaders of [
+        ["x-synthetic-secret"],
+        runInNewContext('["x-synthetic-secret"]'),
+      ]) {
+        assert.equal(Array.isArray(sensitiveHeaders), true);
+        await new Promise((resolve, reject) => {
+          const request = api.http.get({
+            hostname: "127.0.0.1", port: redirectPort, path: "/redirect", signal: t.signal,
+            sensitiveHeaders,
+            headers: { authorization: "SYNTHETIC_AUTH", "x-synthetic-secret": "SYNTHETIC_SECRET", "x-synthetic-kept": "retained" },
+          }, (response) => {
+            const chunks = [];
+            let bytes = 0;
+            response.on("data", (chunk) => {
+              bytes += chunk.length;
+              if (bytes > 1024) response.destroy(new Error("bounded synthetic redirect body exceeded"));
+              else chunks.push(chunk);
+            });
+            response.on("error", reject);
+            response.on("end", () => {
+              try {
+                assert.equal(response.statusCode, 200);
+                assert.equal(Buffer.concat(chunks).toString("utf8"), "SYNTHETIC_H3_TARGET");
+                resolve();
+              } catch (error) { reject(error); }
+            });
+          });
+          request.on("error", reject);
+        });
+      }
+    }
+    assert.equal(received.length, entries.size * 2);
+    for (const observed of received) {
+      assert.deepEqual(observed, { secret: undefined, authorization: undefined, kept: "retained" });
+    }
+    assert.equal(networkCalls, 0);
+  } finally {
+    try {
+      const closing = [];
+      for (const server of [redirect, target]) {
+        if (server) {
+          server.closeAllConnections();
+          closing.push(new Promise((resolve, reject) => server.close((error) =>
+            error && error.code !== "ERR_SERVER_NOT_RUNNING" ? reject(error) : resolve(),
+          )));
+        }
+      }
+      const outcomes = await Promise.allSettled(closing);
+      for (const outcome of outcomes) if (outcome.status === "rejected") throw outcome.reason;
+    } finally {
+      http.request = previousRequest;
+      syncBuiltinESMExports();
+    }
+  }
+});
+
+test("the real cache keeps content across verification and its glob stops at aborted reads", {
+  timeout: 10_000,
+}, async (t) => {
+  const cache = h3MakeFetch.require("cacache");
+  const { glob, globSync, globStreamSync } = h3Cache.require("glob");
+  // openclaw-temp-dir: allow owns an external dependency filesystem adapter and cleanup.
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "v109-glob-cache-"));
+  try {
+    const walkRoot = path.join(fixture, "walk");
+    for (const relative of ["a/one.txt", "a/b/two.txt", "c/three.txt", "c/d/ignored.bin"]) {
+      const file = path.join(walkRoot, relative);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, "SYNTHETIC_H3_FILE");
+    }
+    assert.deepEqual(globSync("**/*.txt", { cwd: walkRoot, nodir: true }).sort(), [
+      "a/b/two.txt", "a/one.txt", "c/three.txt",
+    ]);
+    const cacheRoot = path.join(fixture, "cache");
+    const payload = Buffer.from("SYNTHETIC_H3_CACHE_PAYLOAD");
+    await cache.put(cacheRoot, "synthetic-key", payload);
+    await cache.verify(cacheRoot);
+    assert.deepEqual((await cache.get(cacheRoot, "synthetic-key")).data, payload);
+
+    const aborted = new Error("SYNTHETIC_H3_ABORT");
+    const asyncController = new AbortController();
+    const asyncReads = new EventEmitter();
+    const firstRead = once(asyncReads, "read", { signal: t.signal });
+    const pending = [];
+    let asyncCount = 0;
+    const ownedDirectory = (directory) => {
+      assert.equal(typeof directory, "string");
+      const resolved = path.resolve(directory);
+      assert.equal(resolved === walkRoot || resolved.startsWith(walkRoot + path.sep), true);
+    };
+    const asyncFs = {
+      ...fs,
+      readdir(directory, options, callback) {
+        if (typeof options === "function") { callback = options; options = undefined; }
+        assert.equal(typeof callback, "function");
+        ownedDirectory(directory);
+        asyncCount++;
+        assert.equal(asyncCount, 1, "no directory read may begin after the owned abort");
+        pending.push((error) => error ? callback(error) : callback(null, fs.readdirSync(directory, options)));
+        if (asyncCount === 1) {
+          asyncController.abort(aborted);
+          asyncReads.emit("read");
+        }
+      },
+    };
+    const walking = glob("**", { cwd: walkRoot, signal: asyncController.signal, fs: asyncFs });
+    const rejected = assert.rejects(walking, (error) => error === aborted);
+    try {
+      await Promise.race([firstRead, rejected]);
+      // Release actual directory data only after abort. The callbacks are owned
+      // fixture work, not sleeps or a predicted traversal result.
+      let delivered = 0;
+      while (pending.length) {
+        assert.ok(++delivered <= 32, "bounded synthetic traversal callbacks");
+        pending.shift()();
+      }
+      await rejected;
+      assert.equal(asyncCount, 1);
+      assert.equal(pending.length, 0);
+    } finally {
+      asyncController.abort(aborted);
+      while (pending.length) pending.shift()(aborted);
+      await rejected;
+    }
+
+    const syncController = new AbortController();
+    let syncCount = 0;
+    const syncFs = {
+      ...fs,
+      readdirSync(directory, options) {
+        ownedDirectory(directory);
+        if (++syncCount === 1) syncController.abort(aborted);
+        return fs.readdirSync(directory, options);
+      },
+    };
+    const stream = globStreamSync("**", { cwd: walkRoot, signal: syncController.signal, fs: syncFs });
+    const error = once(stream, "error", { signal: t.signal });
+    try {
+      stream.resume();
+      assert.equal((await error)[0], aborted);
+      assert.equal(syncCount, 1);
+    } finally {
+      stream.destroy();
+    }
+    assert.equal(networkCalls, 0);
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test("no unowned network operation occurred", () => assert.equal(networkCalls, 0));
 
 
 test("actual Vitest API-mode HTTP denies synthetic private files and its token", {
