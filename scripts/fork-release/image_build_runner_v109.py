@@ -99,6 +99,7 @@ def source_inputs(request):
         data[name]=b
     bindings=source_contract.validate_bindings(source_contract.parse(data['ci-bindings.json']))
     selected=source_contract.validate_request(source_contract.parse(data['source-request.json']),bindings)
+    contract.validate_source_budget_binding(request,bindings,selected)
     contract.need(selected['phase']==request['sourceValidation']['phase'] and selected['phase']in('validation','correction'),
                   "image.source_phase")
     source_contract.validate_generation(data['generation-receipt.json'],bindings,selected['phase'])

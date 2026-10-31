@@ -35,6 +35,11 @@ MAX_RESULT = 16384
 BUILD_MINUTES = 90
 FAMILY_MINUTES = 180
 AUTH_HOURS = 96
+BUDGET_AMENDMENT_SHA256 = "fabe093988e258a99b7cccc83e812d274200880cc300f78a73f795905e507f6e"
+AMENDED_SOURCE = "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f"
+AMENDED_SOURCE_TREE = "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f"
+AMENDED_APPROVED_AT = "2026-10-30T03:14:21Z"
+AMENDED_EXPIRES_AT = "2026-11-03T03:14:21Z"
 RESERVE_SECONDS = 300
 MIN_UPLOAD_WINDOW = 2700
 SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -117,7 +122,8 @@ def expected_object(source):
 
 def validate_request(value, active=False, now=None):
     template = disarmed_request()
-    fields(value, template, "image.request_fields")
+    amended = type(value) is dict and "sourceBudgetCeilingAmendmentSha256" in value
+    fields(value, (*template, *(("sourceBudgetCeilingAmendmentSha256",) if amended else ())), "image.request_fields")
     for key in ("schema", "campaignId", "repository", "workflow", "workflowBranch", "operationId"):
         need(value[key] == template[key], "image.fixed_scope")
     need(value["state"] in ("DISARMED", "PREPARED_BUILD", "APPROVED_BUILD"), "image.state")
@@ -143,20 +149,29 @@ def validate_request(value, active=False, now=None):
         proof["phase"] in ("validation", "correction") and type(proof["artifactId"]) is int and proof["artifactId"] > 0 and
         pin(proof["artifactSha256"]) and pin(proof["resultSha256"]) and
         value["previousPipelineHead"] == proof["pipelineHead"], "image.validation_pins")
+    if amended:
+        need(value["sourceBudgetCeilingAmendmentSha256"] == BUDGET_AMENDMENT_SHA256 and
+            value["sourceSha"] == AMENDED_SOURCE and value["sourceTree"] == AMENDED_SOURCE_TREE and
+            proof["phase"] == "correction", "image.budget_amendment_source_scope")
     if value["state"] == "PREPARED_BUILD":
         need(value["authorization"] is None and not active, "image.prepared_not_authorized")
         return value
     auth = fields(value["authorization"], ("schema", "approvedAt", "expiresAt", "approvalScopeSha256",
         "actionTimeAccessApprovalSha256", "maximumPhysicalBuilds", "maximumBuildMinutes", "maximumFamilyMinutes",
         "maximumArchiveBytes", "maximumNewRunnerMinutes", "moneyCeilingUSDIncludingAllowance",
-        "producedImageExecutionAllowed", "publicImageExportAllowed", "cloudGrantFromRunnerAllowed"), "image.authorization_fields")
+        "producedImageExecutionAllowed", "publicImageExportAllowed", "cloudGrantFromRunnerAllowed") +
+        (("budgetCeilingAmendmentSha256",) if amended else ()), "image.authorization_fields")
     need(auth["schema"] == "openclaw.v109.private-image-authorization.v1" and pin(auth["approvalScopeSha256"]) and
         pin(auth["actionTimeAccessApprovalSha256"]), "image.action_time_approval_binding")
     start, end = utc(auth["approvedAt"]), utc(auth["expiresAt"])
     need(end-start == timedelta(hours=AUTH_HOURS), "image.exact_96_hour_window")
+    if amended:
+        need(auth["budgetCeilingAmendmentSha256"] == value["sourceBudgetCeilingAmendmentSha256"] and
+            auth["approvedAt"] == AMENDED_APPROVED_AT and auth["expiresAt"] == AMENDED_EXPIRES_AT,
+            "image.budget_amendment_authorization")
     expected = {"maximumPhysicalBuilds":1, "maximumBuildMinutes":BUILD_MINUTES, "maximumFamilyMinutes":FAMILY_MINUTES,
-        "maximumArchiveBytes":MAX_ARCHIVE, "maximumNewRunnerMinutes":2500,
-        "moneyCeilingUSDIncludingAllowance":"2.25", "producedImageExecutionAllowed":False,
+        "maximumArchiveBytes":MAX_ARCHIVE, "maximumNewRunnerMinutes":25000 if amended else 2500,
+        "moneyCeilingUSDIncludingAllowance":"25.00" if amended else "2.25", "producedImageExecutionAllowed":False,
         "publicImageExportAllowed":False, "cloudGrantFromRunnerAllowed":False}
     need(all(type(auth[k]) is type(v) and auth[k] == v for k,v in expected.items()), "image.exact_limits")
     if now is not None:
@@ -322,6 +337,43 @@ def validate_transfer_plan(plan, request, context, archive_sha, archive_bytes):
     return plan
 
 
+def source_budget_amendment(bindings, selected):
+    """Derive only the exact closed route using the maintained source validator.
+
+    Shape/hash recognition is not a new source pass or access approval. The
+    constructor and existing runner both bind the same raw five source controls.
+    """
+    import source_validation_contract_v109 as source_owner
+    try:
+        source_owner.validate_request(selected, bindings)
+        grant = bindings.get("ciRunGrant")
+        amended = type(grant) is dict and "budgetCeilingAmendment" in grant
+        if not amended:
+            need("budgetCeilingAmendmentSha256" not in selected, "image.source_budget_link")
+            return None
+        # The maintained validator authenticates the exact six-field amendment,
+        # original authority/authorization, H2/tree, sequence12+, totals and all
+        # unchanged count/deadline/parallel/diagnostic restrictions.
+        need(selected.get("budgetCeilingAmendmentSha256") == BUDGET_AMENDMENT_SHA256 and
+            source_owner.budget(selected)["maximumNewMinutes"] == 25000 and
+            grant["maximumNewRunnerMinutes"] == 25000 and grant["moneyCeilingUSD"] == "25.00" and
+            selected["source"]["sourceSha"] == AMENDED_SOURCE and
+            selected["source"]["sourceTree"] == AMENDED_SOURCE_TREE,
+            "image.source_budget_link")
+        return BUDGET_AMENDMENT_SHA256
+    except (ValueError, KeyError, TypeError):
+        raise Refusal("image.source_budget_binding") from None
+
+
+def validate_source_budget_binding(request, bindings, selected):
+    """The existing raw-control consumer independently rechecks this link."""
+    expected = source_budget_amendment(bindings, selected)
+    need(request.get("sourceBudgetCeilingAmendmentSha256") == expected and
+        (("sourceBudgetCeilingAmendmentSha256" in request) is (expected is not None)),
+        "image.source_budget_snapshot_link")
+    return expected
+
+
 def prepare_from_passed_source(bindings_raw, source_request_raw, generation_raw, manifest_raw, inventory_raw,
                                run, jobs, artifacts, zip_raw, *, built_at):
     """Pure constructor over captured genuine facts; it creates no authority.
@@ -347,6 +399,9 @@ def prepare_from_passed_source(bindings_raw, source_request_raw, generation_raw,
         manifestSha256=sha(manifest_raw),inventorySha256=sha(inventory_raw),builtAt=built_at,
         sourceValidation={"runId":str(run.get("id")),"attempt":1,"pipelineHead":run.get("head_sha"),"phase":selected["phase"],
             "artifactId":a.get("id"),"artifactSha256":sha(zip_raw),"resultSha256":sha(result_raw)})
+    amendment = source_budget_amendment(bindings, selected)
+    if amendment is not None:
+        request["sourceBudgetCeilingAmendmentSha256"] = amendment
     request["privateObject"]["object"]=expected_object(source["sourceSha"])
     validate_request(request)
     expected={"runId":str(run.get("id")),"runAttempt":1,"pipelineHead":run.get("head_sha"),"requestSha256":sha(source_request_raw)}

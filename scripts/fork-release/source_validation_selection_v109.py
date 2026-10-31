@@ -78,6 +78,7 @@ MOCKED_HELPERS = {
     "src/agents/tool-search.live-diagnostics.ts": "9fdb79fd8af10453aac556e2f2393aeed60100486821851a1643f2681fb52bbb",
 }
 PIPELINE_CONTRACT_TESTS = (
+    "test_image_budget_ceiling_amendment_v109.py",
     "test_release.py", "test_preflight.py", "test_source_tests.py",
     "test_merge_source.py", "test_merge_source_v107.py", "test_merge_source_v108.py",
     "test_source_reconciliation_v109.py", "test_validation_node_v109.py",
