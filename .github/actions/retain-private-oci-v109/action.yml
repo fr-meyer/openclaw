@@ -1,0 +1,47 @@
+name: Retain one private unqualified 10.9 OCI archive
+description: One exact opaque archive; no source, image, access or production authorization is created here
+inputs:
+  upload-capability:
+    description: Narrow separately approved one-object capability supplied only from the distinct temporary secret
+    required: true
+outputs:
+  archive-sha256:
+    description: Original archive hash, never an image qualification
+    value: ${{ steps.prepare.outputs.archive_sha256 }}
+  archive-bytes:
+    description: Complete original archive byte count
+    value: ${{ steps.prepare.outputs.archive_bytes }}
+  attestation-outcome:
+    description: Attestation step outcome only; receiver authenticates it independently
+    value: ${{ steps.attest.outcome }}
+  transfer-outcome:
+    description: Exact single private PUT step outcome
+    value: ${{ steps.transfer.outcome }}
+runs:
+  using: composite
+  steps:
+    - name: Prepare exact opaque archive from original controls
+      id: prepare
+      shell: bash
+      run: |
+        set -euo pipefail
+        umask 077
+        python3 "$GITHUB_ACTION_PATH/../../../scripts/fork-release/image_build_runner_v109.py" prepare
+    - name: Attest the retained archive digest
+      id: attest
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      with:
+        subject-digest: sha256:${{ steps.prepare.outputs.archive_sha256 }}
+        subject-name: retained-oci.tar
+        push-to-registry: false
+        create-storage-record: false
+        show-summary: false
+    - name: Transfer the single approved private object once
+      id: transfer
+      shell: bash
+      env:
+        OCI_UPLOAD_ENVELOPE: ${{ inputs.upload-capability }}
+      run: |
+        set -euo pipefail
+        umask 077
+        python3 "$GITHUB_ACTION_PATH/../../../scripts/fork-release/image_build_runner_v109.py" put

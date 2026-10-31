@@ -95,11 +95,37 @@ def git(source_dir, *args):
 
 
 def validate_merge_shape(source):
-    """Only an explicitly pinned two-parent integration, never an implicit DAG."""
+    """Only an explicitly pinned integration and bounded, declared successors."""
     merge = source["merge"]
-    need(type(merge) is dict and set(merge) == {
-        "commonCommit", "commonTree", "forkCommit", "forkTree", "reconciliation"},
+    fields = {"commonCommit", "commonTree", "forkCommit", "forkTree", "reconciliation"}
+    versioned = type(merge) is dict and "schema" in merge
+    need(type(merge) is dict and set(merge) == (fields | {
+        "schema", "integration", "successors", "securitySource"} if versioned else fields),
         "invalid merge proof fields")
+    if versioned:
+        need(merge["schema"] in ("openclaw.fork-source-merge.v2", "openclaw.fork-source-merge.v3",
+                                 "openclaw.fork-source-merge.v4"),
+             "unsupported merge proof schema")
+        for name in ("integration", "securitySource"):
+            item = merge[name]
+            need(type(item) is dict and set(item) == {"commit", "tree"}
+                 and all(matches(SHA, item[key]) for key in ("commit", "tree")),
+                 "invalid merge " + name)
+        successors = merge["successors"]
+        minimum = 0 if merge["schema"] == "openclaw.fork-source-merge.v3" else 1
+        if merge["schema"] == "openclaw.fork-source-merge.v4":
+            minimum = 0
+            need(type(successors) is list and len(successors) <= 3, "invalid 10.9 merge successor count")
+        need(type(successors) is list and minimum <= len(successors) <= 16,
+             "invalid merge successor count")
+        for item in successors:
+            need(type(item) is dict and set(item) == {"commit", "tree"}
+                 and all(matches(SHA, item[key]) for key in ("commit", "tree")),
+                 "invalid merge successor")
+        commits = [merge["integration"]["commit"]] + [item["commit"] for item in successors]
+        tip = successors[-1] if successors else merge["integration"]
+        need(len(set(commits)) == len(commits) and tip == {
+            "commit": source["commit"], "tree": source["tree"]}, "merge successor tip changed")
     for name in ("commonCommit", "commonTree", "forkCommit", "forkTree"):
         need(matches(SHA, merge[name]), "invalid merge " + name)
     proof = merge["reconciliation"]
@@ -112,7 +138,7 @@ def validate_merge_shape(source):
     need(matches(SHA, proof["blob"]) and matches(re.compile(r"[0-9a-f]{64}\Z"), proof["sha256"]),
          "invalid merge reconciliation identity")
     need(source["patches"] == [{"commit": source["commit"], "tree": source["tree"]}],
-         "merge proof requires exactly one integration commit")
+         "merge proof requires exactly one applied result")
 
 
 def check_merge_reconciliation(source, source_dir):
@@ -122,6 +148,10 @@ def check_merge_reconciliation(source, source_dir):
     complete path coverage, exact carries and derived counts are checked here.
     """
     merge, proof = source["merge"], source["merge"]["reconciliation"]
+    if merge.get("schema") == "openclaw.fork-source-merge.v4":
+        from source_reconciliation_v109 import check_v109_reconciliation
+        check_v109_reconciliation(source, source_dir, git=git, need=need)
+        return
     observed = git(source_dir, "ls-tree", source["commit"], "--", proof["path"])
     need(observed.split("\t", 1)[0] == "100644 blob " + proof["blob"],
          "merge reconciliation blob or mode changed")
@@ -129,6 +159,12 @@ def check_merge_reconciliation(source, source_dir):
                          capture_output=True, check=True, env={**os.environ, "GIT_NO_LAZY_FETCH": "1"}).stdout
     need(sha256(raw) == proof["sha256"], "merge reconciliation digest changed")
     ledger = json.loads(raw)
+    if merge.get("schema") == "openclaw.fork-source-merge.v3":
+        check_v108_reconciliation(source, source_dir, ledger)
+        return
+    if "schema" in merge:
+        check_v107_reconciliation(source, source_dir, ledger)
+        return
     need(type(ledger) is dict and set(ledger) == {
         "schema", "method", "upstream105", "fork105", "upstream106", "qualificationTransferred",
         "summary", "carryForwardCommits", "conflictPaths", "paths"}, "invalid merge ledger fields")
@@ -199,6 +235,605 @@ def check_merge_reconciliation(source, source_dir):
          "upstreamedExact": 0, "retired": 0}, "merge ledger summary changed")
 
 
+def check_v107_reconciliation(source, source_dir, ledger):
+    """Consume the committed 10.7 security-union ledger without rewriting it.
+
+    Dispositions remain independent source-review judgments. This validates the
+    exact source objects, complete result coverage and claimed byte-for-byte
+    carries, never transfers an older runtime qualification.
+    """
+    merge = source["merge"]
+    need(type(ledger) is dict and set(ledger) == {
+        "schema", "method", "upstream106", "fork106", "fork106Security", "upstream107",
+        "approvedSecuritySource", "previousInventory", "qualificationTransferred", "summary",
+        "paths", "devDependencyRefresh", "focusedTestSuccessor"}, "invalid 10.7 merge ledger fields")
+    need(ledger["schema"] == "openclaw-v107-fork-patch-reconciliation-v1"
+         and ledger["qualificationTransferred"] is False, "unsupported 10.7 ledger or qualification")
+    need(isinstance(ledger["method"], str) and bool(ledger["method"].strip()), "invalid 10.7 ledger method")
+    need(ledger["upstream106"] == merge["commonCommit"]
+         and ledger["fork106Security"] == merge["forkCommit"]
+         and ledger["upstream107"] == source["baseCommit"]
+         and ledger["approvedSecuritySource"] == merge["securitySource"]["commit"],
+         "10.7 ledger source binding changed")
+    need(matches(SHA, ledger["fork106"]) and git(source_dir, "merge-base", "--all",
+         ledger["fork106"], merge["forkCommit"]).splitlines() == [ledger["fork106"]],
+         "10.7 prior fork is not an ancestor")
+    need(ledger["previousInventory"] == "custom-patches/reconciliation-2026.10.6.json"
+         and git(source_dir, "cat-file", "-t", ledger["fork106"] + ":" + ledger["previousInventory"]) == "blob",
+         "10.7 prior inventory changed or missing")
+    proof_path = "custom-patches/reconciliation-2026.10.7.json"
+    need(merge["reconciliation"]["path"] == proof_path, "unsupported 10.7 ledger path")
+    support = {proof_path, "custom-patches/NEXT-RELEASE-2026.10.7.md"}
+    paths = ledger["paths"]
+    need(type(paths) is list and 1 <= len(paths) <= 4096, "invalid 10.7 ledger paths")
+    names = []
+    for item in paths:
+        need(type(item) is dict and set(item) == {
+            "path", "upstream106Blob", "fork106SecurityBlob", "upstream107Blob",
+            "approvedSecuritySourceBlob", "resultBlob", "upstream107Changed", "disposition", "reason"},
+            "invalid 10.7 ledger path fields")
+        name = item["path"]
+        need(isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_./@+-]+", name)
+             and not name.startswith("/") and not any(part in ("", ".", "..") for part in name.split("/")),
+             "invalid 10.7 ledger path")
+        need(type(item["upstream107Changed"]) is bool and isinstance(item["reason"], str)
+             and bool(item["reason"].strip()), "invalid 10.7 ledger decision")
+        names.append(name)
+    changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                  source["baseCommit"], source["commit"]).split("\0")))
+    fork_changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                      merge["commonCommit"], merge["forkCommit"]).split("\0")))
+    need(len(names) == len(set(names)) and set(names) == changed - support
+         and support <= changed and fork_changed <= set(names), "10.7 ledger coverage changed")
+    trees = {}
+    for key, commit in (("upstream106Blob", merge["commonCommit"]),
+                        ("fork106SecurityBlob", merge["forkCommit"]),
+                        ("upstream107Blob", source["baseCommit"]),
+                        ("approvedSecuritySourceBlob", merge["securitySource"]["commit"]),
+                        ("resultBlob", source["commit"])):
+        entries = git(source_dir, "--literal-pathspecs", "ls-tree", "-r", "-z", commit, "--", *names)
+        trees[key] = dict((name, header.split()) for entry in entries.split("\0") if entry
+                          for header, name in [entry.split("\t", 1)])
+    allowed = {"CARRIED_EXACT", "ADAPTED_RELEASE_BINDING", "SECURITY_MERGED_SOURCE",
+               "SECURITY_CARRIED_EXACT", "ADAPTED_DEV_DEPENDENCY_AND_TEST_BINDING",
+               "ADDED_FOCUSED_CONTRACT_TEST", "MERGED_SOURCE_REVIEWED",
+               "ADDED_DEV_DEPENDENCY_COMPATIBILITY_TEST", "ADAPTED_FOCUSED_TEST_OWNERSHIP",
+               "ADAPTED_COMPATIBILITY_TESTS"}
+    dispositions, overlaps, security_count = {}, [], 0
+    for item in paths:
+        name, disposition = item["path"], item["disposition"]
+        need(disposition in allowed, "unsupported 10.7 disposition")
+        for key, tree in trees.items():
+            # Null in the security column means this path was not selected for
+            # security carry, rather than asserting absence from that source.
+            if key == "approvedSecuritySourceBlob" and item[key] is None:
+                continue
+            entry = tree.get(name)
+            need((entry[2] if entry else None) == item[key], "10.7 ledger blob changed: " + name)
+        need(item["resultBlob"] is not None, "10.7 ledger cannot retire a path")
+        overlap = (name in trees["fork106SecurityBlob"] and trees["upstream106Blob"].get(name) !=
+                   trees["upstream107Blob"].get(name))
+        need(item["upstream107Changed"] == overlap, "10.7 upstream overlap changed: " + name)
+        if disposition == "CARRIED_EXACT":
+            need(trees["fork106SecurityBlob"].get(name) == trees["resultBlob"].get(name),
+                 "10.7 exact fork carry changed: " + name)
+        if disposition.startswith("SECURITY_"):
+            need(item["approvedSecuritySourceBlob"] is not None, "10.7 security carry has no source")
+        if disposition == "SECURITY_CARRIED_EXACT":
+            need(trees["approvedSecuritySourceBlob"].get(name) == trees["resultBlob"].get(name),
+                 "10.7 exact security carry changed: " + name)
+        security_count += item["approvedSecuritySourceBlob"] is not None
+        if disposition == "MERGED_SOURCE_REVIEWED":
+            need(overlap, "10.7 reviewed overlap is not an upstream change")
+            overlaps.append(name)
+        dispositions[disposition] = dispositions.get(disposition, 0) + 1
+    summary = ledger["summary"]
+    need(type(summary) is dict and set(summary) == {
+        "paths", "previousForkPaths", "newUpstreamOverlapPaths", "securityCarryPaths",
+        "textualConflicts", "dispositions", "upstreamedClaimed", "retired"}
+         and summary["paths"] == len(paths) and summary["previousForkPaths"] == len(fork_changed)
+         and summary["newUpstreamOverlapPaths"] == sorted(overlaps)
+         and summary["securityCarryPaths"] == security_count and summary["dispositions"] == dispositions
+         and type(summary["textualConflicts"]) is int and summary["textualConflicts"] >= 0
+         and summary["upstreamedClaimed"] == 0 and summary["retired"] == 0,
+         "10.7 ledger summary changed")
+    successor = ledger["focusedTestSuccessor"]
+    need(type(successor) is dict and successor.get("base") in
+         [item["commit"] for item in merge["successors"][:-1]]
+         and successor.get("runtimeChanged") is False and successor.get("dependenciesChanged") is False,
+         "10.7 focused-test successor binding changed")
+    focused_paths = git(source_dir, "diff", "--name-only", "--no-renames",
+                        successor["base"], source["commit"]).splitlines()
+    need(all(matches(TEST_PATH, name) or name.startswith("test/") or name in support
+             for name in focused_paths), "10.7 focused successor changed runtime or dependencies")
+
+
+
+def check_v108_metadata_carry(source_dir, name, fork_entry, upstream_entry, result_entry):
+    """Only release metadata may change in a claimed dependency-security carry.
+
+    This preserves the reviewed fork's dependency selections, overrides, scripts
+    and plugin configuration. It does not evaluate dependency vulnerability or
+    transfer the historical security source's qualification.
+    """
+    documents = [json.loads(git(source_dir, "cat-file", "blob", entry["blob"]))
+                 for entry in (fork_entry, upstream_entry, result_entry)]
+    need(all(type(item) is dict for item in documents), "invalid 10.8 package metadata: " + name)
+    fork, upstream, result = documents
+    # These exact fields are the release metadata that changed from 10.7 to 10.8.
+    # Copy their values from the pinned upstream; every other fork field is kept.
+    expected = json.loads(json.dumps(fork))
+    for keys in (("version",), ("peerDependencies", "openclaw"),
+                 ("openclaw", "compat", "pluginApi"),
+                 ("openclaw", "build", "openclawVersion")):
+        target, incoming = expected, upstream
+        for key in keys[:-1]:
+            target = target.get(key) if type(target) is dict else None
+            incoming = incoming.get(key) if type(incoming) is dict else None
+        if type(target) is dict and type(incoming) is dict and keys[-1] in incoming:
+            target[keys[-1]] = incoming[keys[-1]]
+    need(result == expected, "10.8 dependency security or fork metadata changed: " + name)
+    need(fork_entry["mode"] == result_entry["mode"], "10.8 package mode changed: " + name)
+
+
+V108_REMEDIATION = "REVIEWED_V108_SOURCE_REMEDIATION"
+V108_PATCH_RETIREMENT = "RETIRED_REPLACED_VITEST_PATCH"
+V108_OLD_PATCH = "patches/vitest@5.0.1.patch"
+V108_NEW_PATCH = "patches/vitest@5.0.5.patch"
+V108_REMEDIATION_PATHS = {
+    "package.json", "ui/package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml",
+    V108_OLD_PATCH, V108_NEW_PATCH,
+    "src/gateway/server-managed-task-flow-runtime.mergeguez-parity.test.ts",
+    "src/gateway/server-managed-task-flow-runtime.mergeguez-recovery.test.ts",
+    "src/commands/doctor-config-preflight.process.test.ts",
+    "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+    "scripts/generate-npm-package-lock.mts",
+    "test/scripts/generate-npm-package-lock.test.ts",
+    "test/body-parser-security.test.mjs", "test/v108-remediation-security.test.mjs",
+}
+
+
+def check_v108_remediation_content(source_dir, name, integration, result):
+    """Keep unrelated package/security policy unchanged in this finite repair."""
+    if name in ("package.json", "ui/package.json"):
+        before = json.loads(git(source_dir, "show", integration + ":" + name))
+        after = json.loads(git(source_dir, "show", result + ":" + name))
+        keys = ({"vitest", "@vitest/browser-playwright", "@vitest/coverage-v8"}
+                if name == "package.json" else
+                {"vitest", "@vitest/browser-playwright", "@vitest/browser"})
+        need(type(before) is dict and type(after) is dict
+             and type(before.get("devDependencies")) is dict,
+             "invalid 10.8 remediation package: " + name)
+        expected = json.loads(json.dumps(before))
+        for key in keys:
+            need(expected["devDependencies"].get(key) == "5.0.1",
+                 "10.8 remediation Vitest origin changed: " + name)
+            expected["devDependencies"][key] = "5.0.5"
+        need(after == expected, "10.8 remediation changed unrelated package metadata: " + name)
+    elif name == "pnpm-workspace.yaml":
+        before = git(source_dir, "show", integration + ":" + name)
+        expected = before
+        for old, new in (
+            ("  fast-uri: 4.2.1", "  fast-uri: 4.2.3"),
+            ("  ip-address: 10.7.3", "  ip-address: 10.7.4"),
+            ('  "mailauth@7.1.0>nodemailer": 10.0.13',
+             '  "mailauth@7.1.0>nodemailer": 10.1.4\n'
+             '  "mailparser@3.9.33>nodemailer": 10.1.4\n'
+             '  "mermaid@12.1.0>katex": 0.18.2'),
+            ("  qs: 6.16.0", "  qs: 6.16.1"),
+            ("  vitest@5.0.1: patches/vitest@5.0.1.patch",
+             "  vitest@5.0.5: patches/vitest@5.0.5.patch"),
+        ):
+            need(expected.splitlines().count(old) == 1,
+                 "10.8 remediation workspace origin changed")
+            expected = "\n".join(new if line == old else line for line in expected.splitlines())
+        need(git(source_dir, "show", result + ":" + name) == expected,
+             "10.8 remediation changed unrelated workspace policy")
+
+
+# This finite successor contains the independently reviewed npm 12.2.1 lock
+# preparation and ownership/controller fixtures. It grants no policy to another
+# commit, package version, path or successor. Historical B retains its original
+# remediation validation below; these identities do not transfer qualification.
+V108_NPM_SUCCESSOR = {
+    "commit": "9b0a696bf62f045889d76044f84a0c372c8dddcc",
+    "tree": "b5905b54f4b70f45ea58ace4feccd30031200864",
+    "parent": "84d9bd1c618708e9d5798a730d473ddecf99297a",
+    "parentTree": "ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4",
+    "ledgerBlob": "fcd6345ada6868e5afa255e1faf8d1300b2b2874",
+    "ledgerSha256": "5ddd91c1d5892ab6d33d8500ecace4a1d3f2050229698ddba2686cf2b1529ff8",
+    "parentLedgerBlob": "0fe9ebb97de15de40e62cd195dd63ab4de9decd1",
+    "parentLedgerSha256": "edeb18bbc6e19511c813fcbb863cb84980ce8c9d58e484f300e2a633227c9fab",
+}
+V108_NPM_BLOBS = {
+    "package.json": ("8256d97438f10d8223b0bedadb0b9e2c3a8be51c", "4bd1fb505dc14bcddb56f2fe7df1364f818bda98"),
+    "pnpm-lock.yaml": ("14ba80c3f2e75ec9c3b7d01d549ebdf5aa32f7f6", "a06aa66417fbad51438d74d5d462117d2bdd97eb"),
+    "scripts/fork-release/native_tests.mjs": ("4aa9aee8e12a71f5aa699fd2f36accd983c5f77e", "f57016be46f508c8a0068ce9cd57a729b4b0b7b6"),
+    "scripts/generate-npm-package-lock.mts": ("975ae34594d2b358ff41d605461c257fdb43fb87", "37a35e8a50cbb9698686b7a14e9bd8eada30ce10"),
+    "test/scripts/generate-npm-package-lock.test.ts": ("909afc00db8db03b99d763d94ce36bf8d8f9f6ee", "44b3192d33589c3fa88eee00a43778257b664c73"),
+    "test/scripts/native-security-ownership.test.ts": ("b669e8fa13f9b1a187f5e69a71a2b4db0c960e38", "1a30bd8d683a31faf312cce2cdca81c7c6408118"),
+}
+
+
+def check_v108_npm_successor(source, source_dir, ledger):
+    """Recognize only exact reviewed C after independently validating original B."""
+    fixed, merge = V108_NPM_SUCCESSOR, source["merge"]
+    proof_path = "custom-patches/reconciliation-2026.10.8.json"
+    need(source["commit"] == fixed["commit"] and source["tree"] == fixed["tree"]
+         and len(merge["successors"]) >= 2
+         and merge["successors"][-1] == {"commit": fixed["commit"], "tree": fixed["tree"]}
+         and merge["successors"][-2] == {"commit": fixed["parent"], "tree": fixed["parentTree"]}
+         and merge["reconciliation"] == {"path": proof_path, "blob": fixed["ledgerBlob"],
+                                         "sha256": fixed["ledgerSha256"]},
+         "10.8 npm successor metadata changed")
+    need(git(source_dir, "rev-parse", fixed["commit"] + "^{tree}") == fixed["tree"]
+         and git(source_dir, "show", "-s", "--format=%P", fixed["commit"]) == fixed["parent"],
+         "10.8 npm successor tree or parent changed")
+    # Reconstruct the earlier manifest from fixed historical identities rather
+    # than passing C to the older content policy or weakening that policy.
+    historical = {**source, "commit": fixed["parent"], "tree": fixed["parentTree"],
+                  "patches": [{"commit": fixed["parent"], "tree": fixed["parentTree"]}],
+                  "merge": {**merge, "successors": merge["successors"][:-1],
+                            "reconciliation": {"path": proof_path,
+                                "blob": fixed["parentLedgerBlob"],
+                                "sha256": fixed["parentLedgerSha256"]}}}
+    check_source_graph(historical, source_dir)
+    original = json.loads(git(source_dir, "show", fixed["parent"] + ":" + proof_path))
+    changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                  fixed["parent"], fixed["commit"]).split("\0")))
+    need(changed == set(V108_NPM_BLOBS) | {proof_path}, "10.8 npm successor path set changed")
+    for commit, column in ((fixed["parent"], 0), (fixed["commit"], 1)):
+        for name, blobs in V108_NPM_BLOBS.items():
+            need(git(source_dir, "ls-tree", commit, "--", name) ==
+                 "100644 blob " + blobs[column] + "\t" + name,
+                 "10.8 npm successor mode/blob changed: " + name)
+    expected = json.loads(json.dumps(original))
+    need(len(expected["paths"]) == 249, "10.8 npm historical ledger row count changed")
+    rows = {row["path"]: row for row in expected["paths"]}
+    for name, (before, after) in V108_NPM_BLOBS.items():
+        need(name in rows and rows[name]["result"] == {"mode": "100644", "blob": before},
+             "10.8 npm historical ledger result changed: " + name)
+        rows[name]["result"] = {"mode": "100644", "blob": after}
+        rows[name]["disposition"] = V108_REMEDIATION
+    need(ledger == expected, "10.8 npm derived ledger or origins changed")
+    integration = merge["integration"]["commit"]
+    prior = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, fixed["parent"]).split("\0"))) - {proof_path}
+    total = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, fixed["commit"]).split("\0"))) - {proof_path}
+    need(total == prior | set(V108_NPM_BLOBS), "10.8 npm total remediation delta changed")
+    return total
+
+
+# Insert inside the exact reviewed canonical release.py, not as a runtime import.
+# Root binds this literal only to genuine, independently reviewed source objects.
+# None intentionally admits no new source. No request or environment selects pins.
+V108_RE2JS_SUCCESSOR = {'final': {'blobs': {'pnpm-lock.yaml': ['a06aa66417fbad51438d74d5d462117d2bdd97eb', '8082293541e7b0d60dfc53e171307f43ac216114']}, 'commit': '76522eaa2dd93a4933b5c87f7451eab1d458f8be', 'ledgerBlob': '7249fa6a3841c312990d32868936f2f2ac191b2f', 'ledgerSha256': 'd97a12b7b63b2f333b5ed4fe42c408b1f70a2ec21dc6cd874882a16c4bc1b3d0', 'tree': '28adf129927ab5f4589f90f599fe6b76d790a015'}, 'preparation': {'blobs': {'pnpm-workspace.yaml': ['90272ea03ed2db476428cf4215bcaa4495176ca0', 'f759a960b1ea42b23d173aca142a8056e8689476'], 'test/v108-remediation-security.test.mjs': ['9fd7dc20312f7e904adbacabc9fa4a0aa48085b9', 'c6e94b95c5b09e5bbd263cb7ff6c7170a93f90ba']}, 'commit': '5ee477cf16b11325bca69423392a455859cd7862', 'ledgerBlob': 'be23030b0034154dde2fe8cf125b79d489ca9f37', 'ledgerSha256': 'ceddaa033f8440d96aed322f823946553194de9f3f3744286596e81dac7220bd', 'tree': 'cdd806366c79cffa5cad995af021bed54d5d80ed'}, 'schema': 'openclaw.v108.re2js-canonical-successor-pins.v1'}
+
+
+def _v108_re2js_records():
+    pins = V108_RE2JS_SUCCESSOR
+    need(type(pins) is dict and set(pins) == {"schema", "preparation", "final"}
+         and pins["schema"] == "openclaw.v108.re2js-canonical-successor-pins.v1",
+         "10.8 RE2JS successor pins are unbound or changed")
+    allowed = ({"pnpm-workspace.yaml", "test/v108-remediation-security.test.mjs"},
+               {"pnpm-lock.yaml"})
+    # The real preparation is checked before CI can produce the real final lock.
+    # An absent final is explicit, never a guessed commit or a wildcard target.
+    records = [pins["preparation"]] + ([] if pins["final"] is None else [pins["final"]])
+    for record, names in zip(records, allowed):
+        need(type(record) is dict and set(record) == {
+            "commit", "tree", "ledgerBlob", "ledgerSha256", "blobs"},
+            "10.8 RE2JS successor record fields changed")
+        need(all(matches(SHA, record.get(key)) for key in ("commit", "tree", "ledgerBlob"))
+             and matches(re.compile(r"[0-9a-f]{64}\Z"), record.get("ledgerSha256"))
+             and type(record["blobs"]) is dict and set(record["blobs"]) == names,
+             "10.8 RE2JS successor identity or paths changed")
+        for pair in record["blobs"].values():
+            need(type(pair) is list and len(pair) == 2
+                 and all(matches(SHA, blob) for blob in pair) and pair[0] != pair[1],
+                 "10.8 RE2JS successor blob pair changed")
+    need(len({V108_NPM_SUCCESSOR["commit"], *(r["commit"] for r in records)}) == len(records) + 1,
+         "10.8 RE2JS successor commits repeat")
+    return records
+
+
+def check_v108_re2js_successor(source, source_dir, ledger):
+    """Recognize only reviewed C→prep→lock; independently recheck the parent."""
+    records = _v108_re2js_records()
+    targets = [record["commit"] for record in records]
+    need(source["commit"] in targets, "10.8 RE2JS successor source is not pinned")
+    index = targets.index(source["commit"])
+    fixed = records[index]
+    parent = V108_NPM_SUCCESSOR if index == 0 else records[0]
+    merge = source["merge"]
+    proof_path = "custom-patches/reconciliation-2026.10.8.json"
+    tail = [{"commit": record["commit"], "tree": record["tree"]}
+            for record in records[:index + 1]]
+    need(source["tree"] == fixed["tree"]
+         and len(merge["successors"]) >= index + 3
+         and merge["successors"][-(index + 1):] == tail
+         and merge["successors"][-(index + 2)] == {
+             "commit": V108_NPM_SUCCESSOR["commit"], "tree": V108_NPM_SUCCESSOR["tree"]}
+         and merge["reconciliation"] == {
+             "path": proof_path, "blob": fixed["ledgerBlob"], "sha256": fixed["ledgerSha256"]},
+         "10.8 RE2JS successor metadata changed")
+    need(git(source_dir, "rev-parse", fixed["commit"] + "^{tree}") == fixed["tree"]
+         and git(source_dir, "show", "-s", "--format=%P", fixed["commit"]) == parent["commit"],
+         "10.8 RE2JS successor tree or single parent changed")
+    # Parent validation retains the complete published B/C checks and, for the
+    # final lock commit, recursively validates the exact preparation as well.
+    historical = {**source, "commit": parent["commit"], "tree": parent["tree"],
+                  "patches": [{"commit": parent["commit"], "tree": parent["tree"]}],
+                  "merge": {**merge, "successors": merge["successors"][:-1],
+                            "reconciliation": {"path": proof_path,
+                                "blob": parent["ledgerBlob"], "sha256": parent["ledgerSha256"]}}}
+    check_source_graph(historical, source_dir)
+    changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                  parent["commit"], fixed["commit"]).split("\0")))
+    need(changed == set(fixed["blobs"]) | {proof_path},
+         "10.8 RE2JS successor path set changed")
+    for commit, column in ((parent["commit"], 0), (fixed["commit"], 1)):
+        for name, pair in fixed["blobs"].items():
+            need(git(source_dir, "ls-tree", commit, "--", name) ==
+                 "100644 blob " + pair[column] + "\t" + name,
+                 "10.8 RE2JS successor mode/blob changed: " + name)
+    original = json.loads(git(source_dir, "show", parent["commit"] + ":" + proof_path))
+    expected = json.loads(json.dumps(original))
+    need(type(expected.get("paths")) is list and len(expected["paths"]) == 249,
+         "10.8 RE2JS historical ledger row count changed")
+    rows = {row["path"]: row for row in expected["paths"]}
+    need(len(rows) == 249, "10.8 RE2JS historical ledger repeats a path")
+    for name, (before, after) in fixed["blobs"].items():
+        need(name in rows and rows[name]["result"] == {"mode": "100644", "blob": before},
+             "10.8 RE2JS historical ledger result changed: " + name)
+        rows[name]["result"] = {"mode": "100644", "blob": after}
+        rows[name]["disposition"] = V108_REMEDIATION
+    try:
+        identical = (json.dumps(ledger, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                     == json.dumps(expected, sort_keys=True, separators=(",", ":"), allow_nan=False))
+    except (TypeError, ValueError):
+        identical = False
+    need(identical, "10.8 RE2JS derived ledger, row set or origins changed")
+    integration = merge["integration"]["commit"]
+    prior = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, parent["commit"]).split("\0"))) - {proof_path}
+    total = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, fixed["commit"]).split("\0"))) - {proof_path}
+    need(total == prior | set(fixed["blobs"]), "10.8 RE2JS total remediation delta changed")
+    return total
+
+
+
+# Exact source-F metadata only. Historical C/preparation/E records are unchanged.
+# Qualification is not inherited by a new source or selected from request/env.
+V108_CRABLINE_SUCCESSOR = {'commit': 'e6c4786dafbc8308661ea8fa14a81e06873d1630', 'tree': '318a14351a7049d9d613a928edb0cfe69311d201', 'parent': '76522eaa2dd93a4933b5c87f7451eab1d458f8be', 'parentTree': '28adf129927ab5f4589f90f599fe6b76d790a015', 'ledgerBlob': 'd4a2d9ec916848d7b0bcb98605d7a95cfbe1ab7c', 'ledgerSha256': '3fc1c483e77b36fef60b939fa9a797008cab3644d53b0fb3a22f70bd4337a71e', 'parentLedgerBlob': '7249fa6a3841c312990d32868936f2f2ac191b2f', 'parentLedgerSha256': 'd97a12b7b63b2f333b5ed4fe42c408b1f70a2ec21dc6cd874882a16c4bc1b3d0', 'blobs': {'pnpm-workspace.yaml': ['f759a960b1ea42b23d173aca142a8056e8689476', '14064a54d5e92de0b8ecf105d421d627ee44e514'], 'test/v108-remediation-security.test.mjs': ['c6e94b95c5b09e5bbd263cb7ff6c7170a93f90ba', '8ba3d514c0772fe7dfda5a0c19fbbb96a3d4114b']}}
+
+
+def check_v108_crabline_successor(source, source_dir, ledger):
+    """Recognize the one reviewed E-to-F fixture/policy successor only."""
+    fixed, merge = V108_CRABLINE_SUCCESSOR, source["merge"]
+    parent = V108_RE2JS_SUCCESSOR["final"]
+    proof_path = "custom-patches/reconciliation-2026.10.8.json"
+    need(parent is not None and parent["commit"] == fixed["parent"]
+         and parent["tree"] == fixed["parentTree"]
+         and parent["ledgerBlob"] == fixed["parentLedgerBlob"]
+         and parent["ledgerSha256"] == fixed["parentLedgerSha256"],
+         "10.8 Crabline historical parent pins changed")
+    need(source["commit"] == fixed["commit"] and source["tree"] == fixed["tree"]
+         and len(merge["successors"]) >= 2
+         and merge["successors"][-2:] == [
+             {"commit": fixed["parent"], "tree": fixed["parentTree"]},
+             {"commit": fixed["commit"], "tree": fixed["tree"]}]
+         and merge["reconciliation"] == {
+             "path": proof_path, "blob": fixed["ledgerBlob"], "sha256": fixed["ledgerSha256"]},
+         "10.8 Crabline successor metadata changed")
+    need(git(source_dir, "rev-parse", fixed["commit"] + "^{tree}") == fixed["tree"]
+         and git(source_dir, "show", "-s", "--format=%P", fixed["commit"]) == fixed["parent"],
+         "10.8 Crabline successor tree or single parent changed")
+    historical = {**source, "commit": fixed["parent"], "tree": fixed["parentTree"],
+                  "patches": [{"commit": fixed["parent"], "tree": fixed["parentTree"]}],
+                  "merge": {**merge, "successors": merge["successors"][:-1],
+                            "reconciliation": {"path": proof_path,
+                                "blob": fixed["parentLedgerBlob"], "sha256": fixed["parentLedgerSha256"]}}}
+    check_source_graph(historical, source_dir)
+    changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                  fixed["parent"], fixed["commit"]).split("\0")))
+    need(changed == set(fixed["blobs"]) | {proof_path}, "10.8 Crabline successor path set changed")
+    for commit, column in ((fixed["parent"], 0), (fixed["commit"], 1)):
+        for name, pair in fixed["blobs"].items():
+            need(git(source_dir, "ls-tree", commit, "--", name) ==
+                 "100644 blob " + pair[column] + "\t" + name,
+                 "10.8 Crabline successor mode/blob changed: " + name)
+    original = json.loads(git(source_dir, "show", fixed["parent"] + ":" + proof_path))
+    expected = json.loads(json.dumps(original))
+    need(type(expected.get("paths")) is list and len(expected["paths"]) == 249,
+         "10.8 Crabline historical ledger row count changed")
+    rows = {row["path"]: row for row in expected["paths"]}
+    need(len(rows) == 249, "10.8 Crabline historical ledger repeats a path")
+    for name, (before, after) in fixed["blobs"].items():
+        need(name in rows and rows[name]["result"] == {"mode": "100644", "blob": before},
+             "10.8 Crabline historical ledger result changed: " + name)
+        rows[name]["result"] = {"mode": "100644", "blob": after}
+        rows[name]["disposition"] = V108_REMEDIATION
+    try:
+        identical = (json.dumps(ledger, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                     == json.dumps(expected, sort_keys=True, separators=(",", ":"), allow_nan=False))
+    except (TypeError, ValueError):
+        identical = False
+    need(identical, "10.8 Crabline derived ledger, row set or origins changed")
+    integration = merge["integration"]["commit"]
+    prior = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, fixed["parent"]).split("\0"))) - {proof_path}
+    total = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                integration, fixed["commit"]).split("\0"))) - {proof_path}
+    need(total == prior | set(fixed["blobs"]), "10.8 Crabline total remediation delta changed")
+    return total
+
+
+def check_v108_successor_remediation(source, source_dir, ledger):
+    """Validate the old integration first; only named successor paths may adapt."""
+    merge, integration = source["merge"], source["merge"]["integration"]
+    if source["commit"] == integration["commit"]:
+        return set()
+    if source["commit"] == V108_CRABLINE_SUCCESSOR["commit"]:
+        return check_v108_crabline_successor(source, source_dir, ledger)
+    if V108_RE2JS_SUCCESSOR is not None:
+        records = _v108_re2js_records()
+        if source["commit"] in [record["commit"] for record in records]:
+            return check_v108_re2js_successor(source, source_dir, ledger)
+    if source["commit"] == V108_NPM_SUCCESSOR["commit"]:
+        return check_v108_npm_successor(source, source_dir, ledger)
+    proof_path = merge["reconciliation"]["path"]
+    need(git(source_dir, "ls-tree", integration["commit"], "--", proof_path).startswith("100644 blob "),
+         "10.8 integration ledger mode changed")
+    raw = git(source_dir, "show", integration["commit"] + ":" + proof_path)
+    original = json.loads(raw)
+    historical = {**source, **integration, "patches": [integration],
+                  "merge": {**merge, "successors": []}}
+    check_v108_reconciliation(historical, source_dir, original)
+    parent = integration["commit"]
+    for successor in merge["successors"]:
+        step = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                    parent, successor["commit"]).split("\0")))
+        need(step <= V108_REMEDIATION_PATHS | {proof_path},
+             "10.8 successor history changed an unreviewed path")
+        parent = successor["commit"]
+    changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                   integration["commit"], source["commit"]).split("\0"))) - {proof_path}
+    need(changed <= V108_REMEDIATION_PATHS, "10.8 successor changed an unreviewed path")
+    old_rows = {item["path"]: item for item in original["paths"]}
+    new_rows = {item["path"]: item for item in ledger["paths"]}
+    for name, row in old_rows.items():
+        if name not in changed:
+            need(new_rows.get(name) == row, "10.8 historical reconciliation changed: " + name)
+    if V108_NEW_PATCH in changed:
+        need(V108_OLD_PATCH in changed and new_rows.get(V108_OLD_PATCH, {}).get("result") is None,
+             "10.8 replacement retained the obsolete Vitest patch")
+    for name in changed:
+        row = new_rows.get(name)
+        need(row is not None, "10.8 remediation path is not reconciled: " + name)
+        if name == V108_OLD_PATCH:
+            need(row["disposition"] == V108_PATCH_RETIREMENT and row["result"] is None
+                 and V108_NEW_PATCH in changed and new_rows.get(V108_NEW_PATCH, {}).get("result") is not None
+                 and git(source_dir, "ls-tree", integration["commit"], "--", name).startswith("100644 blob "),
+                 "10.8 Vitest retirement has no reviewed replacement")
+        else:
+            need(row["disposition"] == V108_REMEDIATION and row["result"] is not None
+                 and row["result"]["mode"] == "100644",
+                 "10.8 remediation disposition or mode changed: " + name)
+            old = git(source_dir, "ls-tree", integration["commit"], "--", name)
+            need(not old or old.startswith("100644 blob "), "10.8 remediation origin mode changed: " + name)
+            check_v108_remediation_content(source_dir, name, integration["commit"], source["commit"])
+    if V108_NEW_PATCH in changed:
+        for name in ("package.json", "ui/package.json", "pnpm-workspace.yaml"):
+            check_v108_remediation_content(source_dir, name, integration["commit"], source["commit"])
+    return changed
+
+
+def check_v108_reconciliation(source, source_dir, ledger):
+    """Check the committed 10.8 ledger against complete, exact mode/blob trees.
+
+    Reconciliation of overlapping source and documentation remains a reviewed
+    judgment. This proves identities and path preservation, not runtime behavior.
+    """
+    merge = source["merge"]
+    proof_path = "custom-patches/reconciliation-2026.10.8.json"
+    note_path = "custom-patches/NEXT-RELEASE-2026.10.8.md"
+    need(type(ledger) is dict and set(ledger) == {
+        "schema", "upstream107", "fork107Source", "upstream108", "priorForkDeltaPaths",
+        "textualConflicts", "qualificationTransferred", "selfExclusion", "paths"},
+        "invalid 10.8 merge ledger fields")
+    need(ledger["schema"] == "openclaw-v108-source-reconciliation-v1"
+         and ledger["qualificationTransferred"] is False,
+         "unsupported 10.8 ledger or qualification")
+    need(ledger["upstream107"] == merge["commonCommit"]
+         and ledger["fork107Source"] == merge["forkCommit"]
+         and ledger["upstream108"] == source["baseCommit"], "10.8 ledger source binding changed")
+    need(merge["reconciliation"]["path"] == proof_path
+         and ledger["selfExclusion"] == {"path": proof_path, "reason": "result-blob self-reference excluded"},
+         "unsupported 10.8 ledger self-exclusion")
+    need(type(ledger["textualConflicts"]) is int and ledger["textualConflicts"] == 0,
+         "unsupported 10.8 textual conflict claim")
+    paths = ledger["paths"]
+    need(type(paths) is list and 1 <= len(paths) <= 4096, "invalid 10.8 ledger paths")
+    names = []
+    for item in paths:
+        need(type(item) is dict and set(item) == {
+            "path", "upstream107", "fork107", "upstream108", "result", "disposition"},
+            "invalid 10.8 ledger path fields")
+        name = item["path"]
+        need(isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_./@+-]+", name)
+             and not name.startswith("/") and not any(part in ("", ".", "..") for part in name.split("/")),
+             "invalid 10.8 ledger path")
+        for key in ("upstream107", "fork107", "upstream108", "result"):
+            entry = item[key]
+            need(entry is None or (type(entry) is dict and set(entry) == {"mode", "blob"}
+                 and entry["mode"] in ("100644", "100755", "120000") and matches(SHA, entry["blob"])),
+                 "invalid 10.8 ledger mode/blob: " + name)
+        names.append(name)
+    fork_changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                      merge["commonCommit"], merge["forkCommit"]).split("\0")))
+    result_changed = set(filter(None, git(source_dir, "diff", "--name-only", "--no-renames", "-z",
+                                        source["baseCommit"], source["commit"]).split("\0")))
+    need(len(names) == len(set(names)) and proof_path not in names
+         and set(names) == fork_changed | (result_changed - {proof_path})
+         and proof_path in result_changed and note_path in names,
+         "10.8 ledger coverage differs from prior fork or result delta")
+    need(type(ledger["priorForkDeltaPaths"]) is int and ledger["priorForkDeltaPaths"] == len(fork_changed),
+         "10.8 prior fork path count changed")
+    trees = {}
+    for key, commit in (("upstream107", merge["commonCommit"]), ("fork107", merge["forkCommit"]),
+                        ("upstream108", source["baseCommit"]), ("result", source["commit"])):
+        entries = git(source_dir, "--literal-pathspecs", "ls-tree", "-r", "-z", commit, "--", *names)
+        tree = {}
+        for entry in filter(None, entries.split("\0")):
+            header, name = entry.split("\t", 1)
+            mode, kind, blob = header.split()
+            need(kind == "blob", "10.8 ledger entry is not a blob: " + name)
+            tree[name] = {"mode": mode, "blob": blob}
+        trees[key] = tree
+    special = {
+        "ADDED_SOURCE_ONLY_RUNBOOK": {note_path},
+        "ADAPTED_SOURCE_ONLY_RELEASE_BINDING": {"custom-patches/manifest.json"},
+        "MERGED_SDK_CONTRACT_DOCUMENTATION": {
+            "docs/plugins/sdk-runtime.md", "docs/plugins/sdk-runtime/config-and-utilities.md"},
+        "MERGED_TASK_ACCESS_AND_IMMUTABLE_INSPECTION": {"src/plugins/loader-module-runtime.ts"},
+        "MERGED_MAINTAINED_TEST_ROUTE_UNION": {
+            "test/vitest/vitest.database-worker-core-paths.mjs", "test/vitest/vitest.gateway-server-paths.mjs"},
+    }
+    remediation = check_v108_successor_remediation(source, source_dir, ledger)
+    for item in paths:
+        name, disposition = item["path"], item["disposition"]
+        for key, tree in trees.items():
+            need(tree.get(name) == item[key], "10.8 ledger mode/blob changed: " + name)
+        if name in remediation:
+            # The historical integration was checked independently above. These
+            # rows describe a reviewed successor, never an exact historical carry.
+            continue
+        need(item["result"] is not None, "10.8 ledger cannot retire a fork or security path: " + name)
+        need(isinstance(disposition, str), "unsupported 10.8 disposition")
+        if disposition == "CARRIED_EXACT":
+            need(item["fork107"] is not None and item["fork107"] == item["result"],
+                 "10.8 exact fork carry changed: " + name)
+        elif disposition == "MERGED_UPSTREAM_METADATA_AND_FORK_SECURITY":
+            need(name == "package.json" or re.fullmatch(r"extensions/[A-Za-z0-9._-]+/package\.json", name),
+                 "10.8 metadata disposition path changed: " + name)
+            need(all(item[key] is not None for key in ("upstream107", "fork107", "upstream108"))
+                 and item["upstream107"] != item["upstream108"], "10.8 metadata overlap changed: " + name)
+            check_v108_metadata_carry(source_dir, name, item["fork107"], item["upstream108"], item["result"])
+        else:
+            need(disposition in special and name in special[disposition], "unsupported 10.8 disposition: " + name)
+            if disposition == "ADDED_SOURCE_ONLY_RUNBOOK":
+                need(all(item[key] is None for key in ("upstream107", "fork107", "upstream108")),
+                     "10.8 runbook was not newly added")
+            elif disposition != "ADAPTED_SOURCE_ONLY_RELEASE_BINDING":
+                need(all(item[key] is not None for key in ("upstream107", "fork107", "upstream108"))
+                     and item["upstream107"] != item["upstream108"], "10.8 reviewed overlap changed: " + name)
+            else:
+                need(item["fork107"] is not None, "10.8 release binding has no fork source")
+
+
 def check_merge_ancestry(source, source_dir):
     """Missing shallow ancestry must not invent a unique common ancestor."""
     common = source["merge"]["commonCommit"]
@@ -222,8 +857,20 @@ def check_source_graph(source, source_dir):
         for name in ("common", "fork"):
             need(git(source_dir, "rev-parse", merge[name + "Commit"] + "^{tree}") == merge[name + "Tree"],
                  "merge " + name + " tree changed")
-        need(git(source_dir, "show", "-s", "--format=%P", source["commit"]).split() ==
+        integration = merge.get("integration", {"commit": source["commit"], "tree": source["tree"]})
+        need(git(source_dir, "rev-parse", integration["commit"] + "^{tree}") == integration["tree"],
+             "merge integration tree changed")
+        need(git(source_dir, "show", "-s", "--format=%P", integration["commit"]).split() ==
              [merge["forkCommit"], source["baseCommit"]], "merge ordered parents changed")
+        if "schema" in merge:
+            need(git(source_dir, "rev-parse", merge["securitySource"]["commit"] + "^{tree}") ==
+                 merge["securitySource"]["tree"], "merge security source tree changed")
+            parent = integration["commit"]
+            for item in merge["successors"]:
+                need(git(source_dir, "rev-parse", item["commit"] + "^{tree}") == item["tree"]
+                     and git(source_dir, "show", "-s", "--format=%P", item["commit"]) == parent,
+                     "merge successor parent or tree changed")
+                parent = item["commit"]
         need(git(source_dir, "merge-base", "--all", merge["forkCommit"], source["baseCommit"]).splitlines() ==
              [merge["commonCommit"]], "merge common ancestor changed or unavailable")
         check_merge_reconciliation(source, source_dir)
@@ -576,9 +1223,9 @@ def human_status(state):
 
 
 def validation_node_version(inventory):
-    """Keep retained workflow runtime; pin the separate stable 10.6 lane."""
+    """Keep retained workflow runtime; select the supported future stable lanes."""
     upstream = inventory.get("upstream")
-    return "24.22.1" if upstream and upstream["tag"] == "v2026.10.6" else "24.21.0"
+    return "24.22.1" if upstream and upstream["tag"] in ("v2026.10.6", "v2026.10.7", "v2026.10.8", "v2026.10.9") else "24.21.0"
 
 
 def main():

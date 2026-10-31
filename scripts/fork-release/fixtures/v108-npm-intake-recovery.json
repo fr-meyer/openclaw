@@ -1,0 +1,367 @@
+{
+  "schema": "openclaw.v108.npm-intake-recovery-provider.v1",
+  "provenance": {
+    "validationRunRawSha256": "13d0f1b46304aca3294b4df6446b983ccca703da14025ee174c84c8965e6396c",
+    "validationObservedInProgressRawSha256": "97bc6f29e7700c2b6aa484ebd3c6a7522c0bd6143137eff776e0c58ac0aec97e",
+    "validationJobsRawSha256": "1248f64bcd561d62fd4eb1cac1e92f58caeee7495091db8095afac1f055b7399",
+    "preparationRunRawSha256": "72acddd195222be9f7a7a02562954bf7c01c978bc27b2c4354869a25859e3d19",
+    "preparationJobsRawSha256": "0bf310713690589a114497ab9c496d4fc47035f059cf7004b1d4823f4bad2858",
+    "preparationArtifactsRawSha256": "3743100daa88eb1e4eb90d58312bff0d021f6fb9ab245385bb39061f21d60edc",
+    "priorRequestSha256": "2fed151bd3038f9ed80758dd23d3e655dbe281ee76ecb7a03987643903021740",
+    "generationReceiptSha256": "662cb33cb91ab073b05f3cdf14ed1d0a8221e9d77c892f3668fac350c98324c6"
+  },
+  "validationRun": {
+    "id": 40808362032,
+    "name": "future-v108-source-validation-20261027",
+    "path": ".github/workflows/future-v108-source-validation.yml",
+    "event": "pull_request",
+    "head_branch": "task/v107-source-binding",
+    "head_sha": "774c81d7ff22f962dcdef67a7a08f565846a4986",
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "created_at": "2026-10-29T02:46:43Z",
+    "updated_at": "2026-10-29T02:51:29Z",
+    "display_title": "future-v108-source-validation-20261027",
+    "repository": {
+      "full_name": "fr-meyer/openclaw",
+      "private": false
+    },
+    "head_repository": {
+      "full_name": "fr-meyer/openclaw",
+      "private": false
+    },
+    "pull_requests": [
+      {
+        "number": 28
+      }
+    ]
+  },
+  "validationObservedInProgress": {
+    "id": 40808362032,
+    "name": "future-v108-source-validation-20261027",
+    "path": ".github/workflows/future-v108-source-validation.yml",
+    "event": "pull_request",
+    "head_branch": "task/v107-source-binding",
+    "head_sha": "774c81d7ff22f962dcdef67a7a08f565846a4986",
+    "run_attempt": 1,
+    "status": "in_progress",
+    "conclusion": null,
+    "created_at": "2026-10-29T02:46:43Z",
+    "updated_at": "2026-10-29T02:46:47Z",
+    "display_title": "future-v108-source-validation-20261027",
+    "repository": {
+      "full_name": "fr-meyer/openclaw",
+      "private": false
+    },
+    "head_repository": {
+      "full_name": "fr-meyer/openclaw",
+      "private": false
+    },
+    "pull_requests": [
+      {
+        "number": 28
+      }
+    ]
+  },
+  "validationJobs": {
+    "total_count": 3,
+    "jobs": [
+      {
+        "id": 123232576408,
+        "run_id": 40808362032,
+        "run_attempt": 1,
+        "head_sha": "774c81d7ff22f962dcdef67a7a08f565846a4986",
+        "name": "admission",
+        "status": "completed",
+        "conclusion": "failure",
+        "runner_id": 1000023420,
+        "runner_name": "GitHub Actions 1000023420",
+        "runner_group_id": 0,
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ],
+        "started_at": "2026-10-29T02:46:46Z",
+        "completed_at": "2026-10-29T02:51:28Z",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-10-29T02:46:47Z",
+            "completed_at": "2026-10-29T02:46:47Z"
+          },
+          {
+            "name": "Require full admission clock before either checkout",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-10-29T02:46:47Z",
+            "completed_at": "2026-10-29T02:46:47Z"
+          },
+          {
+            "name": "Checkout reviewed pipeline head and complete ancestry",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-10-29T02:46:47Z",
+            "completed_at": "2026-10-29T02:50:52Z"
+          },
+          {
+            "name": "Bound product checkout by the same admission clock",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-10-29T02:50:52Z",
+            "completed_at": "2026-10-29T02:50:53Z"
+          },
+          {
+            "name": "Checkout frozen product source",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5,
+            "started_at": "2026-10-29T02:50:53Z",
+            "completed_at": "2026-10-29T02:51:20Z"
+          },
+          {
+            "name": "Admit exact campaign and source with read-only public metadata",
+            "status": "completed",
+            "conclusion": "failure",
+            "number": 6,
+            "started_at": "2026-10-29T02:51:20Z",
+            "completed_at": "2026-10-29T02:51:26Z"
+          },
+          {
+            "name": "Post Checkout frozen product source",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11,
+            "started_at": "2026-10-29T02:51:26Z",
+            "completed_at": "2026-10-29T02:51:26Z"
+          },
+          {
+            "name": "Post Checkout reviewed pipeline head and complete ancestry",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 12,
+            "started_at": "2026-10-29T02:51:26Z",
+            "completed_at": "2026-10-29T02:51:27Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13,
+            "started_at": "2026-10-29T02:51:27Z",
+            "completed_at": "2026-10-29T02:51:27Z"
+          }
+        ]
+      },
+      {
+        "id": 123234031366,
+        "run_id": 40808362032,
+        "run_attempt": 1,
+        "head_sha": "774c81d7ff22f962dcdef67a7a08f565846a4986",
+        "name": "source (${{ matrix.profile }})",
+        "status": "completed",
+        "conclusion": "skipped",
+        "runner_id": null,
+        "runner_name": null,
+        "runner_group_id": null,
+        "runner_group_name": null,
+        "labels": [
+          "ubuntu-24.04"
+        ],
+        "started_at": "2026-10-29T02:51:29Z",
+        "completed_at": "2026-10-29T02:51:29Z",
+        "steps": []
+      },
+      {
+        "id": 123234031783,
+        "run_id": 40808362032,
+        "run_attempt": 1,
+        "head_sha": "774c81d7ff22f962dcdef67a7a08f565846a4986",
+        "name": "final",
+        "status": "completed",
+        "conclusion": "skipped",
+        "runner_id": null,
+        "runner_name": null,
+        "runner_group_id": null,
+        "runner_group_name": null,
+        "labels": [
+          "ubuntu-24.04"
+        ],
+        "started_at": "2026-10-29T02:51:29Z",
+        "completed_at": "2026-10-29T02:51:29Z",
+        "steps": []
+      }
+    ]
+  },
+  "preparationRun": {
+    "id": 40804517284,
+    "name": "future-v108-npm-lock-preparation-20261029",
+    "path": ".github/workflows/future-v108-source-validation.yml",
+    "event": "pull_request",
+    "head_branch": "task/v107-source-binding",
+    "head_sha": "e96941f0c8c05a45d7df32ca7e45758e12609be7",
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-29T02:07:49Z",
+    "updated_at": "2026-10-29T02:09:26Z",
+    "display_title": "future-v108-npm-lock-preparation-20261029",
+    "repository": {
+      "full_name": "fr-meyer/openclaw",
+      "private": false
+    },
+    "head_repository": {
+      "full_name": "fr-meyer/openclaw",
+      "private": false
+    },
+    "pull_requests": [
+      {
+        "number": 28
+      }
+    ]
+  },
+  "preparationJobs": {
+    "total_count": 1,
+    "jobs": [
+      {
+        "id": 123220132580,
+        "run_id": 40804517284,
+        "run_attempt": 1,
+        "head_sha": "e96941f0c8c05a45d7df32ca7e45758e12609be7",
+        "name": "lock-preparation",
+        "status": "completed",
+        "conclusion": "success",
+        "runner_id": 1000023411,
+        "runner_name": "GitHub Actions 1000023411",
+        "runner_group_id": 0,
+        "runner_group_name": "GitHub Actions",
+        "labels": [
+          "ubuntu-24.04"
+        ],
+        "started_at": "2026-10-29T02:07:52Z",
+        "completed_at": "2026-10-29T02:09:25Z",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-10-29T02:07:53Z",
+            "completed_at": "2026-10-29T02:07:54Z"
+          },
+          {
+            "name": "Observe the shared45-minute job clock before checkouts",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-10-29T02:07:54Z",
+            "completed_at": "2026-10-29T02:07:54Z"
+          },
+          {
+            "name": "Checkout exact reviewed pipeline with its immediate parent",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-10-29T02:07:54Z",
+            "completed_at": "2026-10-29T02:08:35Z"
+          },
+          {
+            "name": "Checkout exact immutable sourceB",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-10-29T02:08:35Z",
+            "completed_at": "2026-10-29T02:09:03Z"
+          },
+          {
+            "name": "Admit exact once-only lock preparation with read-only metadata",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5,
+            "started_at": "2026-10-29T02:09:03Z",
+            "completed_at": "2026-10-29T02:09:08Z"
+          },
+          {
+            "name": "Setup pinned supported Node without dependency cache",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6,
+            "started_at": "2026-10-29T02:09:08Z",
+            "completed_at": "2026-10-29T02:09:08Z"
+          },
+          {
+            "name": "Derive only the approved npm lock through the maintained resolver",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7,
+            "started_at": "2026-10-29T02:09:08Z",
+            "completed_at": "2026-10-29T02:09:22Z"
+          },
+          {
+            "name": "Retain only bounded public lock derivation files",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8,
+            "started_at": "2026-10-29T02:09:22Z",
+            "completed_at": "2026-10-29T02:09:23Z"
+          },
+          {
+            "name": "Post Setup pinned supported Node without dependency cache",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 14,
+            "started_at": "2026-10-29T02:09:23Z",
+            "completed_at": "2026-10-29T02:09:23Z"
+          },
+          {
+            "name": "Post Checkout exact immutable sourceB",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 15,
+            "started_at": "2026-10-29T02:09:23Z",
+            "completed_at": "2026-10-29T02:09:23Z"
+          },
+          {
+            "name": "Post Checkout exact reviewed pipeline with its immediate parent",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 16,
+            "started_at": "2026-10-29T02:09:23Z",
+            "completed_at": "2026-10-29T02:09:23Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 17,
+            "started_at": "2026-10-29T02:09:23Z",
+            "completed_at": "2026-10-29T02:09:24Z"
+          }
+        ]
+      }
+    ]
+  },
+  "preparationArtifacts": {
+    "total_count": 1,
+    "artifacts": [
+      {
+        "id": 12867024791,
+        "name": "v108-npm-lock-preparation",
+        "size_in_bytes": 187076,
+        "expired": false,
+        "digest": "sha256:f433194ae0b6927a21c8ba8a5be7bebb000a533a39a979905855d5cbb8b691e3"
+      }
+    ]
+  },
+  "generationWindow": {
+    "startedAt": "2026-10-29T02:09:10.825853Z",
+    "finishedAt": "2026-10-29T02:09:22.195409Z"
+  },
+  "priorRequestUtf8": "{\n  \"schema\": \"openclaw.fork-source-validation-request.v6\",\n  \"campaignId\": \"future-v108-source-validation-20261027\",\n  \"profilePolicy\": \"npm-remediation-v1\",\n  \"sourceAuthorization\": \"future-v108-npm-repair-20261029\",\n  \"stageRound\": 1,\n  \"lifetimeOperatorRound\": 9,\n  \"profiles\": [\n    \"dependency\",\n    \"types-production\",\n    \"types-tests\",\n    \"types-scripts\",\n    \"workboard-1\",\n    \"workboard-2\",\n    \"models-1\",\n    \"models-2\",\n    \"sqlite\",\n    \"doctor-1\",\n    \"doctor-2\",\n    \"doctor-3\",\n    \"memory\",\n    \"pipeline-contracts\",\n    \"compatibility\"\n  ],\n  \"sourceSha\": \"9b0a696bf62f045889d76044f84a0c372c8dddcc\",\n  \"sourceTree\": \"b5905b54f4b70f45ea58ace4feccd30031200864\",\n  \"manifestSha256\": \"1694932d3eca8357161671a0d62e319c48f2a3ea9b047ae447db2068ab56b997\",\n  \"inventorySha256\": \"830baa2cc1ce989d1da4208a059a7704fd72fa0176305d9afb56785e25bdf893\",\n  \"settledUsageSha256\": \"6f6043f0a6e733fd00ffb3dedc8d14d5c21c5da8ce1db96303b70d3d403c7382\",\n  \"priorRunIds\": [\n    \"40607329263\",\n    \"40609889437\",\n    \"40616416909\",\n    \"40639374411\",\n    \"40647629182\",\n    \"40681376480\",\n    \"40688279536\",\n    \"40706982753\",\n    \"40804517284\"\n  ],\n  \"lockPreparation\": {\n    \"runId\": \"40804517284\",\n    \"pipelineHead\": \"e96941f0c8c05a45d7df32ca7e45758e12609be7\",\n    \"artifactId\": 12867024791,\n    \"artifactSha256\": \"f433194ae0b6927a21c8ba8a5be7bebb000a533a39a979905855d5cbb8b691e3\",\n    \"generationReceiptSha256\": \"662cb33cb91ab073b05f3cdf14ed1d0a8221e9d77c892f3668fac350c98324c6\",\n    \"packageSha256\": \"d5cb6bde3b3d5f032b09add3adcb16fb2ae6dab85ba375051376533c1ddbf8a1\",\n    \"lockSha256\": \"5e631697caa53422d40dde5ae04a7ee0d84321921891062a4f580ca11b55fc50\"\n  },\n  \"sourceWitness\": {\n    \"schema\": \"openclaw.v108.npm-source-equivalence.v1\",\n    \"scope\": \"approved-npm-patch-and-fixture-remediation\",\n    \"closedBaselineSha256\": \"6f6043f0a6e733fd00ffb3dedc8d14d5c21c5da8ce1db96303b70d3d403c7382\",\n    \"hops\": [\n      {\n        \"sourceSha\": \"9b0a696bf62f045889d76044f84a0c372c8dddcc\",\n        \"sourceTree\": \"b5905b54f4b70f45ea58ace4feccd30031200864\",\n        \"step\": {\n          \"parentSha\": \"84d9bd1c618708e9d5798a730d473ddecf99297a\",\n          \"parentTree\": \"ca3ce016d7429e7ef42f6fed99b58f6c6ec623f4\",\n          \"changedPaths\": [\n            \"package.json\",\n            \"pnpm-lock.yaml\",\n            \"scripts/fork-release/native_tests.mjs\",\n            \"scripts/generate-npm-package-lock.mts\",\n            \"test/scripts/generate-npm-package-lock.test.ts\",\n            \"test/scripts/native-security-ownership.test.ts\"\n          ],\n          \"unchangedTreeSha256\": \"403e52593940f851e8ab28bd874db9885af4effcba6e4c5dc5fa88ac16cadedc\"\n        }\n      }\n    ]\n  }\n}\n"
+}
