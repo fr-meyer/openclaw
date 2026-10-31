@@ -115,6 +115,22 @@ def redacted_prefix(raw, secrets):
     return b"".join(result)[:PREFIX_BYTES]
 
 
+def identity_output(mode, code, raw, head):
+    """Only these five repository queries may enter closed identity custody."""
+    need(mode in ("origin", "head", "shallow", "config", "replacement_refs"), "identity_mode")
+    if mode == "origin":
+        return (type(code) is int and code == 0 and raw in
+                (ORIGIN.encode() + b"\n", (ORIGIN + ".git").encode() + b"\n")), "fixed_origin"
+    if mode == "head":
+        return (type(code) is int and code == 0 and raw == head.encode() + b"\n"), "head_must_remain_P"
+    if mode == "shallow":
+        return (type(code) is int and code == 0 and raw in (b"true\n", b"false\n")), "full_nonshallow"
+    if mode == "replacement_refs":
+        return (type(code) is int and code == 0 and raw == b""), "replacement_or_graft"
+    return (type(code) is int and code == 1 and raw == b""), (
+        "partial_or_redirect_config" if code == 0 else "config_unavailable")
+
+
 class CapturedChild:
     """Keep stderr while reusing the existing verified owned-group cleanup."""
     def __init__(self, child):
@@ -138,7 +154,7 @@ class OwnedGit:
         self.output, self.core, self.secrets = output, core, secrets
         self.ordinal = 0
 
-    def run(self, argv, *, env=None, fetch=False, suppress_output=False):
+    def run(self, argv, *, env=None, fetch=False, suppress_output=False, identity_mode=None, expected_head=None):
         remaining = min(self.deadline - time.time(), HELPER_SECONDS if fetch else 60)
         need(remaining > 0, "shared_deadline")
         self.ordinal += 1
@@ -165,34 +181,54 @@ class OwnedGit:
             timed_out = isinstance(error, subprocess.TimeoutExpired)
             interrupted = not timed_out
             _, settled, reason = self.core.settle_owned_timeout_group(child)
+        identity_ok, identity_code = (True, "identity_mode") if identity_mode is None else identity_output(
+            identity_mode, child.returncode, child.stdout, expected_head)
+        hide_stdout = suppress_output or not identity_ok
+        hide_stderr = suppress_output or identity_mode is not None
         fact = {"schema": "openclaw.v109.finite-root-child.v1", "ordinal": self.ordinal,
             "kind": "finite_fetch" if fetch else "local_metadata", "exitCode": child.returncode,
             "timedOut": timed_out, "interrupted": interrupted,
-            "cleanupSettled": settled, "cleanupReason": reason, "outputSuppressed": suppress_output}
+            "cleanupSettled": settled, "cleanupReason": reason, "outputSuppressed": hide_stdout,
+            "repositoryIdentityMode": identity_mode, "identityAccepted": identity_ok if identity_mode else None}
         for key, raw in (("stdout", child.stdout), ("stderr", child.stderr)):
-            prefix = b"" if suppress_output else redacted_prefix(raw, self.secrets)
+            prefix = b"" if (hide_stdout if key == "stdout" else hide_stderr) else redacted_prefix(raw, self.secrets)
             save(Path(str(stem) + "." + key + ".redacted.private"), prefix)
             fact[key] = {"bytes": len(raw), "sha256": sha(raw), "redactedPrefixBytes": len(prefix)}
         save(Path(str(stem) + ".status.private.json"), (json.dumps(fact, sort_keys=True) + "\n").encode())
         # Only sanitized prefixes and fixed metadata may reach public CI logs.
-        if timed_out or interrupted or child.returncode not in (0, 1) or (fetch and child.returncode != 0):
+        if timed_out or interrupted or child.returncode not in (0, 1) or (fetch and child.returncode != 0) or not identity_ok:
             print(json.dumps({**fact,
-                "stdoutRedactedPrefix": "" if suppress_output else redacted_prefix(child.stdout, self.secrets).decode("utf-8", "replace"),
-                "stderrRedactedPrefix": "" if suppress_output else redacted_prefix(child.stderr, self.secrets).decode("utf-8", "replace")}), flush=True)
+                "stdoutRedactedPrefix": "" if hide_stdout else redacted_prefix(child.stdout, self.secrets).decode("utf-8", "replace"),
+                "stderrRedactedPrefix": "" if hide_stderr else redacted_prefix(child.stderr, self.secrets).decode("utf-8", "replace")}), flush=True)
         need(not timed_out and not interrupted, "owned_child_incomplete")
         need(len(child.stdout) <= (FETCH_OUTPUT_BYTES if fetch else METADATA_BYTES) and
              len(child.stderr) <= FETCH_OUTPUT_BYTES, "child_output_cap")
+        need(identity_ok, identity_code)
         return subprocess.CompletedProcess(argv, child.returncode,
-            b"" if suppress_output else child.stdout, b"" if suppress_output else child.stderr)
+            b"" if hide_stdout else child.stdout, b"" if hide_stderr else child.stderr)
 
-    def read(self, *args):
+    def read(self, *args, repository_identity=None, expected_head=None):
         argv = [GIT, "--no-replace-objects", "-C", str(self.root),
             "-c", "protocol.allow=never", "-c", "credential.helper=",
             "-c", "core.hooksPath=/dev/null", "-c", "maintenance.auto=0", "-c", "gc.auto=0", *args]
-        result = self.run(argv, suppress_output=bool(args and args[0] == "config"))
+        result = self.run(argv, suppress_output=bool(args and args[0] == "config"),
+            identity_mode=repository_identity, expected_head=expected_head)
         if result.returncode != 0:
             raise subprocess.CalledProcessError(result.returncode, argv, output=result.stdout)
         return result.stdout
+
+
+    def read_identity(self, mode, head=None):
+        queries = {
+            "origin": ("remote", "get-url", "origin"),
+            "head": ("rev-parse", "HEAD"),
+            "shallow": ("rev-parse", "--is-shallow-repository"),
+            "config": ("config", "--local", "--get-regexp", r"^(extensions\.partialclone|remote\..*\.promisor|url\.|include\.|includeif\.|http\.|credential\.|core\.sshcommand|remote\..*\.(proxy|vcs|uploadpack)|protocol\.)"),
+            "replacement_refs": ("for-each-ref", "--format=%(refname)", "refs/replace"),
+        }
+        need(mode in queries, "identity_mode")
+        need(mode != "head" or type(head) is str and re.fullmatch(r"[0-9a-f]{40}", head), "identity_expected_head")
+        return self.read(*queries[mode], repository_identity=mode, expected_head=head)
 
 
 def repository_state(owner, head, allow_shallow):
@@ -202,12 +238,12 @@ def repository_state(owner, head, allow_shallow):
     gd = root / ".git"
     need(gd.is_dir() and not gd.is_symlink() and gd.resolve() == gd and
          not (gd / "commondir").exists(), "independent_pipeline_git")
-    need(owner.read("remote", "get-url", "origin").strip() in (ORIGIN.encode(), (ORIGIN + ".git").encode()), "fixed_origin")
-    need(owner.read("rev-parse", "HEAD").strip() == head.encode(), "head_must_remain_P")
-    shallow = owner.read("rev-parse", "--is-shallow-repository").strip()
+    need(owner.read_identity("origin").strip() in (ORIGIN.encode(), (ORIGIN + ".git").encode()), "fixed_origin")
+    need(owner.read_identity("head", head).strip() == head.encode(), "head_must_remain_P")
+    shallow = owner.read_identity("shallow").strip()
     need(shallow in (b"true", b"false") and (allow_shallow or shallow == b"false"), "full_nonshallow")
     try:
-        owner.read("config", "--local", "--get-regexp", r"^(extensions\.partialclone|remote\..*\.promisor|url\.|include\.|includeif\.|http\.|credential\.|core\.sshcommand|remote\..*\.(proxy|vcs|uploadpack)|protocol\.)")
+        owner.read_identity("config")
     except subprocess.CalledProcessError as error:
         need(error.returncode == 1, "config_unavailable")
     else:
@@ -230,7 +266,7 @@ def repository_state(owner, head, allow_shallow):
             need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and
                  info.st_uid == os.geteuid(), "git_control_file")
     need(not (gd / "info/grafts").exists() and not (gd / "info/grafts").is_symlink() and
-         owner.read("for-each-ref", "--format=%(refname)", "refs/replace").strip() == b"",
+         owner.read_identity("replacement_refs").strip() == b"",
          "replacement_or_graft")
     for name in ("alternates", "http-alternates"):
         need(not (gd / "objects/info" / name).exists() and not (gd / "objects/info" / name).is_symlink(), "alternate_objects")
@@ -266,7 +302,7 @@ def acquire(owner, runtime, core, head, merge, selected, fetch_env):
         return raw
     proof = runtime.workflow_merge_binding(graph_read, core, head, merge)
     need(observed.get("parents") == [runtime.WORKFLOW_TARGET.encode(), head.encode()], "actual_parent_evidence")
-    need(owner.read("rev-parse", "HEAD").strip() == head.encode(), "head_changed")
+    need(owner.read_identity("head", head).strip() == head.encode(), "head_changed")
     return {"schema": "openclaw.v109.finite-root-bootstrap.v1", "status": "full_closure_only",
         "pipelineHead": head, "workflowMerge": merge, "sourceSha": selected["source"]["sourceSha"],
         "sourceTree": selected["source"]["sourceTree"], "mergeProof": proof,

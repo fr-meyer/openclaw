@@ -338,6 +338,55 @@ class BootstrapTests(unittest.TestCase):
         self.config_custody_refuses_without_text(
             b'url.https://example.invalid/' + marker + b'.insteadof https://github.com/\n', marker)
 
+    def identity_custody_case(self, query, body, marker, mode, *, accepted=False):
+        output = self.case / ('identity-' + mode); output.mkdir()
+        self.owner.output = output
+        err = b'unknown synthetic stderr ' + marker + b'\n'
+        class Child:
+            returncode = 0
+            def communicate(self, timeout): return body, err
+        def child(argv, *args, **kwargs):
+            if tuple(argv[-len(query):]) == query: return Child()
+            return local_git_only(argv, *args, **kwargs)
+        with patch.object(subprocess, 'Popen', side_effect=child), contextlib.redirect_stdout(io.StringIO()) as printed:
+            if accepted:
+                self.assertTrue(b.repository_state(self.owner, self.fixture.head, True))
+            else:
+                with self.assertRaises(b.Refusal):
+                    b.repository_state(self.owner, self.fixture.head, True)
+        custody = b''.join(path.read_bytes() for path in output.iterdir())
+        self.assertNotIn(marker, custody)
+        self.assertNotIn(marker.decode(), printed.getvalue())
+        frames = [json.loads(path.read_bytes()) for path in output.glob('*.status.private.json')]
+        frame = next(value for value in frames if value.get('repositoryIdentityMode') == mode)
+        self.assertIs(frame['identityAccepted'], accepted)
+        self.assertEqual(frame['stdout']['bytes'], len(body))
+        self.assertEqual(frame['stdout']['sha256'], hashlib.sha256(body).hexdigest())
+        self.assertEqual(frame['stderr']['redactedPrefixBytes'], 0)
+        if not accepted: self.assertEqual(frame['stdout']['redactedPrefixBytes'], 0)
+
+    def test_wrong_origin_unknown_access_token_is_suppressed_before_refusal(self):
+        marker = b'FAKE_UNKNOWN_ORIGIN_ACCESS_TOKEN_4b69'
+        self.identity_custody_case(('remote', 'get-url', 'origin'),
+            b'https://github.com/fr-meyer/openclaw?access_token=' + marker + b'\n', marker, 'origin')
+
+    def test_replacement_ref_name_is_suppressed_before_refusal(self):
+        marker = b'FAKE_UNKNOWN_REPLACEMENT_CREDENTIAL_191a'
+        self.identity_custody_case(('for-each-ref', '--format=%(refname)', 'refs/replace'),
+            b'refs/replace/' + marker + b'\n', marker, 'replacement_refs')
+
+    def test_malformed_head_and_shallow_outputs_are_suppressed(self):
+        marker = b'FAKE_UNKNOWN_IDENTITY_CONTROL_17c9'
+        self.identity_custody_case(('rev-parse', 'HEAD'),
+            self.fixture.head.encode() + b'\n' + marker + b'\n', marker, 'head')
+        self.identity_custody_case(('rev-parse', '--is-shallow-repository'),
+            b'true\n' + marker + b'\n', marker, 'shallow')
+
+    def test_valid_fixed_origin_keeps_no_arbitrary_stderr(self):
+        marker = b'FAKE_UNKNOWN_IDENTITY_STDERR_07ee'
+        self.identity_custody_case(('remote', 'get-url', 'origin'),
+            b.ORIGIN.encode() + b'\n', marker, 'origin', accepted=True)
+
     def test_actual_workflow_hash_fixture_selector_and_clock_caps_are_consistent(self):
         root = HERE.parents[1]
         workflow = (root / '.github/workflows/future-v109-source-validation.yml').read_bytes()
