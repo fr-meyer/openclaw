@@ -127,7 +127,8 @@ def build_roles(*, identity, checks, capture, context, owner, ready, proof,
         'integrated-closeout': canonical(closeout), 'integrated-durable-audit': canonical(audit),
         'integrated-copied-bootstrap': canonical({'proof': copied_bootstrap['proof'],
             'wire': decode(copied_bootstrap['raw'], 16384),
-            'scriptSha256': copied_bootstrap['scriptSha256'],'placement':copied_bootstrap['placement']}),
+            'scriptSha256': copied_bootstrap['scriptSha256'],'placement':copied_bootstrap['placement'],
+            'providedSelinux':copied_bootstrap['providedSelinux']}),
     }
     validate_roles(roles)
     return roles
@@ -234,11 +235,14 @@ def verify_roles(roles, expected, *, source_replay, runtime_rows=None, expected_
             'privateVmAdmission': False, 'candidateQualified': False}
 
 
-def replay_copied_controller(raw,runtime_rows,expected_root,boot_id):
+def replay_copied_controller(raw,runtime_rows,expected_root,boot_id,*,historical=False):
     import copied_bootstrap_probe
     import copied_location
+    need(type(historical)is bool,'integrated_capture.historical_mode')
     copied=decode(raw,65536)
-    need(type(copied) is dict and set(copied)=={'proof','wire','scriptSha256','placement'} and
+    need(historical or (type(copied)is dict and 'providedSelinux'in copied),
+        'integrated_capture.current_provided_probe_required')
+    need(type(copied) is dict and set(copied)in({'proof','wire','scriptSha256','placement'},{'proof','wire','scriptSha256','placement','providedSelinux'}) and
         type(copied['proof']) is dict and type(copied['scriptSha256']) is str,
         'integrated_capture.copied_controller_shape')
     need(type(expected_root) is str and copied['proof'].get('root')==expected_root,
@@ -248,6 +252,8 @@ def replay_copied_controller(raw,runtime_rows,expected_root,boot_id):
     need(proof==copied['proof'] and copied['scriptSha256']==
         sha(copied_bootstrap_probe.probe_script(expected_root,runtime_rows)),
         'integrated_capture.copied_controller_binding')
+    if 'providedSelinux'in copied:
+        copied_bootstrap_probe.validate_provided_selinux_proof(copied['providedSelinux'],expected_root,runtime_rows,boot_id)
     return proof
 
 

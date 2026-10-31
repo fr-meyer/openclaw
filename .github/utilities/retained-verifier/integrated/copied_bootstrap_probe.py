@@ -441,7 +441,160 @@ def run_native_proof(parent,prepared,runtime_source):
     except BaseException as error:
         code=error.code if isinstance(error,Refusal) else 'copied.adjudication_failed'
         refuse_captured(code,evidence)
-    return {'proof':proof,'raw':result['stdout'],'scriptSha256':sha(script),'placement':placement}
+    provided=run_provided_selinux_proof(parent,prepared,runtime_source,str(root),rows)
+    return {'proof':proof,'raw':result['stdout'],'scriptSha256':sha(script),'placement':placement,
+        'providedSelinux':provided}
+
+
+def run_provided_selinux_proof(parent,prepared,runtime_source,root,rows):
+    """Actual fixed Linux physical path; no private role/admission is issued.
+
+    Reuse the already authenticated copied BOOT runtime and the exact public
+    HostOps/Collector/CommandCapture entry. Mutations below are negative tests
+    solely on that synthetic owned copy, after both read-only children close.
+    """
+    import ci_authority, copied_location, host_admission
+    ci_authority._parent(parent,prepared);runtime_source.require_parent(parent,prepared)
+    session=sha(('integrated:'+parent.plan.markers['ocv.session']).encode('ascii'))[:32]
+    require(root==copied_location.root_for(rows,session),'provided.ci_copy_origin')
+    indexed={r['path']:r for r in rows}
+    for name,(size,digest)in host_admission.PROVIDED_SELINUX_FILES.items():
+        row=indexed.get(name)
+        require(type(row)is dict and row['bytes']==size and row['sha256']==digest and
+            row['mode']==host_admission.PROVIDED_SELINUX_MODES[name], 'provided.ci_member_origin')
+    selected=host_admission.ProvidedSelinuxProbe(root)
+    ops=host_admission.HostOps('/var/lib/openclaw-retained-verifier/'+session,
+        'ocv-'+session+'.service',provided_selinux=selected)
+    collector=host_admission.Collector(ops,parent.plan.boot_id)
+    base=host_admission._GuestCommandIO
+    class CheckedIO(base):
+        def spawn(self,argv):
+            parent.check();runtime_source.require_parent(parent,prepared)
+            require(argv in selected.commands,'provided.ci_fixed_command')
+            selected.validate()
+            return super().spawn(argv)
+    ops.command_port.io=CheckedIO()
+    before=collector.before()
+    require(not ops.command_port.owned_commands and len(ops.command_port.command_results)==2,
+        'provided.ci_commands_not_closed')
+    outcomes=[]
+    for argv,result in ((selected.argv(True),selected._loader_result),(selected.argv(False),selected._probe_result)):
+        require(host_admission._capture_ok(result),'provided.ci_capture')
+        outcomes.append({'argv':list(argv),'exitCode':result['exitCode'],
+            'stdoutFacts':result['stdoutFacts'],'stderrFacts':result['stderrFacts'],
+            'captureComplete':result['captureComplete'],'streamsEOF':result['streamsEOF'],
+            'streamsClosed':result['streamsClosed'],'ownedChildExited':result['ownedChildExited'],
+            'ownershipRetained':result['ownershipRetained'],'childPid':result['childPid']})
+    refused=[]
+    def reject(label,action):
+        try:action()
+        except Refusal:refused.append(label)
+        else:raise Refusal('provided.ci_negative_accepted')
+    # Same real entry denies installed fallback even when the legacy tool exists.
+    reject('installed-command-fallback',lambda:ops.command(('/usr/sbin/selinuxenabled',),5))
+    reject('installed-read-fallback',lambda:ops.read('/usr/sbin/selinuxenabled',1048576))
+    denied=ops.command_port.command(('/tmp/ld.so','--list',selected.binary),5)
+    require(denied.get('spawned')is False and denied.get('spawnOutcome')=='not_attempted'and
+        denied.get('captureComplete')is False and not ops.command_port.owned_commands,
+        'provided.ci_arbitrary_loader_accepted')
+    refused.append('arbitrary-loader')
+    # Real filesystem negative: special/writable mode cannot satisfy the pin.
+    binary=Path(selected.binary)
+    try:
+        os.chmod(binary,0o755)
+        reject('altered-executable-mode',lambda:host_admission.ProvidedSelinuxProbe(root))
+    finally:os.chmod(binary,0o555)
+    library=Path(selected.library)/'libpcre2-8.so.0';saved=library.with_name('provided-negative-original')
+    require(not os.path.lexists(saved),'provided.ci_negative_collision')
+    try:
+        os.replace(library,saved);os.symlink(saved.name,library)
+        reject('library-symlink-substitution',lambda:host_admission.ProvidedSelinuxProbe(root))
+    finally:
+        if library.is_symlink():library.unlink()
+        if saved.exists():os.replace(saved,library)
+    # Parser and capture negatives use genuine complete result shapes, never an
+    # authority token. Loader formats are pinned to the same authenticated file.
+    import copy
+    genuine=selected._loader_result
+    for label,text in (('standalone-loader',selected.loader),
+                       ('interpreter-alias','/lib64/ld-linux-x86-64.so.2 => '+selected.loader)):
+        probe=host_admission.ProvidedSelinuxProbe(root);changed=copy.deepcopy(genuine)
+        lines=changed['stdout'].decode('ascii').splitlines()
+        lines=[line for line in lines if 'ld-linux-x86-64.so.2'not in line]
+        changed['stdout']=('\n'.join(lines)+'\n\t'+text+' (0x1234)\n').encode('ascii')
+        changed['stdoutFacts']={'bytes':len(changed['stdout']),'sha256':sha(changed['stdout']),
+            'truncated':False,'complete':True}
+        require(probe.loader_result(changed),'provided.ci_loader_variant')
+    probe=host_admission.ProvidedSelinuxProbe(root);bad=copy.deepcopy(genuine)
+    bad['stdout']=bad['stdout'].replace(selected.loader.encode(),b'/tmp/untrusted-loader')
+    bad['stdoutFacts']={'bytes':len(bad['stdout']),'sha256':sha(bad['stdout']),'truncated':False,'complete':True}
+    reject('loader-resolution-substitution',lambda:probe.loader_result(bad))
+    probe=host_admission.ProvidedSelinuxProbe(root);bad=copy.deepcopy(genuine)
+    text=bad['stdout'].decode('ascii');lines=[line for line in text.splitlines()if 'ld-linux-x86-64.so.2'not in line]
+    bad['stdout']=('\n'.join(lines)+'\n/evil/interpreter => '+selected.loader+' (0x1234)\n').encode('ascii')
+    bad['stdoutFacts']={'bytes':len(bad['stdout']),'sha256':sha(bad['stdout']),'truncated':False,'complete':True}
+    reject('interpreter-alias-substitution',lambda:probe.loader_result(bad))
+    probe=host_admission.ProvidedSelinuxProbe(root);probe._loader_result=genuine
+    bad=copy.deepcopy(selected._probe_result);bad['exitCode']=1;bad['stderr']=b'loader failure'
+    bad['stderrFacts']={'bytes':len(bad['stderr']),'sha256':sha(bad['stderr']),'truncated':False,'complete':True}
+    reject('exit-one-loader-diagnostic',lambda:probe.probe_result(bad))
+    final=host_admission.ProvidedSelinuxProbe(root);final.validate()
+    require(final.host_view()==selected._view,'provided.ci_final_host_view')
+    proof={'schema':'ocv.provided-selinux-physical-host-probe-proof.v1','status':'passed',
+        'syntheticOnly':True,'privateRoleIssued':False,'privateVmAdmission':False,
+        'root':root,'members':{n:indexed[n]for n in host_admission.PROVIDED_SELINUX_FILES},
+        'hostView':final._view,'physicalCommands':outcomes,'collectorBefore':before,
+        'negativeCases':refused,'loaderFormatCases':['standalone-loader','interpreter-alias'],
+        'ownedCommandsRemaining':0,'validationBudget':32}
+    return validate_provided_selinux_proof(proof,root,rows,parent.plan.boot_id)
+
+
+def validate_provided_selinux_proof(value,root,rows,boot_id):
+    import host_admission
+    require(type(value)is dict and set(value)=={'schema','status','syntheticOnly','privateRoleIssued',
+        'privateVmAdmission','root','members','hostView','physicalCommands','collectorBefore',
+        'negativeCases','loaderFormatCases','ownedCommandsRemaining','validationBudget'}and
+        value['schema']=='ocv.provided-selinux-physical-host-probe-proof.v1'and value['status']=='passed'and
+        value['syntheticOnly']is True and value['privateRoleIssued']is False and
+        value['privateVmAdmission']is False and value['root']==root and value['ownedCommandsRemaining']==0 and
+        value['validationBudget']==32,'provided.proof_scope')
+    indexed={r['path']:r for r in rows}
+    require(value['members']=={n:indexed[n]for n in host_admission.PROVIDED_SELINUX_FILES},'provided.proof_members')
+    for name,(size,digest)in host_admission.PROVIDED_SELINUX_FILES.items():
+        row=value['members'][name]
+        require(row['bytes']==size and row['sha256']==digest and row['mode']==host_admission.PROVIDED_SELINUX_MODES[name],
+            'provided.proof_origin')
+    expected=(root+'/lib64/ld-linux-x86-64.so.2','--inhibit-cache','--library-path',root+'/lib/x86_64-linux-gnu')
+    commands=value['physicalCommands'];require(type(commands)is list and len(commands)==2,'provided.proof_commands')
+    for index,outcome in enumerate(commands):
+        argv=expected+(('--list',root+'/usr/sbin/selinuxenabled')if index==0 else(root+'/usr/sbin/selinuxenabled',))
+        require(type(outcome)is dict and set(outcome)=={'argv','exitCode','stdoutFacts','stderrFacts',
+            'captureComplete','streamsEOF','streamsClosed','ownedChildExited','ownershipRetained','childPid'}and
+            outcome['argv']==list(argv)and type(outcome['childPid'])is int and outcome['childPid']>1 and
+            type(outcome['exitCode'])is int and outcome['exitCode']in((0,)if index==0 else(0,1))and
+            all(outcome[k]is True for k in('captureComplete','streamsEOF','streamsClosed','ownedChildExited'))and
+            outcome['ownershipRetained']is False,'provided.proof_capture')
+        for stream in('stdout','stderr'):
+            fact=outcome[stream+'Facts']
+            require(type(fact)is dict and set(fact)=={'bytes','sha256','truncated','complete'}and
+                type(fact.get('sha256'))is str and re.fullmatch('[0-9a-f]{64}',fact['sha256'])and
+                fact.get('truncated')is False and fact.get('complete')is True and type(fact.get('bytes'))is int and 0<=fact['bytes']<=(16384 if stream=='stdout' else 4096),
+                'provided.proof_stream')
+            if index==1 or stream=='stderr':require(fact['bytes']==0 and fact['sha256']==sha(b''),'provided.proof_empty_stream')
+    view=value['hostView'];require(type(view)is dict and set(view)=={'namespaces','root'}and
+        type(view['root'])in(list,tuple)and len(view['root'])==2 and all(type(x)is int and x>0 for x in view['root'])and
+        type(view['namespaces'])is dict and set(view['namespaces'])=={'mnt','net','ipc','pid','user','uts','cgroup'}and
+        all(re.fullmatch(name+r':\[[1-9][0-9]*\]',text)for name,text in view['namespaces'].items()),'provided.proof_host_view')
+    before=value['collectorBefore'];session=root.split('/')[-2]
+    require(type(before)is dict and set(before)=={'managerNamespaces','selinuxExitCode','root','unit','bootId'}and
+        before['managerNamespaces']=={n:view['namespaces'][n]for n in('mnt','user')}and
+        before['selinuxExitCode']==commands[1]['exitCode']and before['root']=='/var/lib/openclaw-retained-verifier/'+session and
+        before['unit']=='ocv-'+session+'.service'and before['bootId']==boot_id,'provided.proof_collector_before')
+    require(value['negativeCases']==['installed-command-fallback','installed-read-fallback','arbitrary-loader',
+        'altered-executable-mode','library-symlink-substitution','loader-resolution-substitution',
+        'interpreter-alias-substitution','exit-one-loader-diagnostic']and
+        value['loaderFormatCases']==['standalone-loader','interpreter-alias'],'provided.proof_cases')
+    return value
 
 
 if __name__=='__main__':raise SystemExit('copied_bootstrap_probe_no_cli')

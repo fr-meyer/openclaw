@@ -23,6 +23,27 @@ REQUIRED_PACKAGES={'python3.11-minimal','libpython3.11-minimal','libpython3.11-s
 PYTHON='/usr/bin/python3.11'
 LOADER='/lib64/ld-linux-x86-64.so.2'
 STDLIB='/usr/lib/python3.11/'
+PROVIDED_SELINUX=(
+ {'role':'selinuxenabled','path':'/usr/sbin/selinuxenabled','packagePath':'/usr/sbin/selinuxenabled',
+  'package':'selinux-utils','version':'3.4-1+b6','origin':'main','sourceMode':0o755,'bytes':14576,
+  'sha256':'2d3c6a10650d380fde19ed7e5b0d80d6a8a99a3d950c1d7f424237a17d609148',
+  'debBytes':126432,'debSha256':'8357d8bfdbde73ff658129c1a6d25a02b4a244bddb2cc444c5a46835e3b8a31f',
+  'filename':'pool/main/libs/libselinux/selinux-utils_3.4-1+b6_amd64.deb'},
+ {'role':'libselinux.so.1','path':'/lib/x86_64-linux-gnu/libselinux.so.1',
+  'packagePath':'/lib/x86_64-linux-gnu/libselinux.so.1','package':'libselinux1','version':'3.4-1+b6',
+  'origin':'main','sourceMode':0o644,'bytes':174312,
+  'sha256':'0207e4908ea384e186c75925b0e56996a3eccecd48c99252aeb757d0d3451c93',
+  'debBytes':73720,'debSha256':'2b07f5287b9105f40158b56e4d70cc1652dac56a408f3507b4ab3d061eed425f',
+  'filename':'pool/main/libs/libselinux/libselinux1_3.4-1+b6_amd64.deb'},
+ {'role':'libpcre2-8.so.0','path':'/lib/x86_64-linux-gnu/libpcre2-8.so.0',
+  'packagePath':'/usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.11.2',
+  'package':'libpcre2-8-0','version':'10.42-1+deb12u2','origin':'security','sourceMode':0o644,'bytes':629384,
+  'sha256':'092bc945140e65c691c7c717d71083111f46813f31a76dd848bf82e91450778b',
+  'debBytes':261628,'debSha256':'d2f7edfcc7689b9e0761c2742cc824ac86a20768bc5e8057818dc6875291fe76',
+  'filename':'pool/updates/main/p/pcre2/libpcre2-8-0_10.42-1+deb12u2_amd64.deb'})
+PROVIDED_REUSED={
+ LOADER:(215000,'02bcda52c1a5dfc236f94d9e5255b4a0e26347d8a372a5223b650e31f291ce3c'),
+ '/lib/x86_64-linux-gnu/libc.so.6':(1926232,'6b4a45352fd0c540a9c7c718f35ce8c8e46a4e482f9d3885a910c32d1a0e1421')}
 
 
 class Refusal(RuntimeError):
@@ -168,7 +189,7 @@ def parse_ldd(raw, *, allow_no_dependencies=False):
  return sorted(paths)
 
 
-def collect_runtime(installed,resolutions,reader,helper):
+def collect_runtime(installed,resolutions,reader,helper,*,provided_tools=None):
  """Collect package-owned bytes from authenticated guest metadata only.
 
     installed is issued by the normal signed-package bootstrap after install;
@@ -207,20 +228,50 @@ def collect_runtime(installed,resolutions,reader,helper):
  required=set(primary)|{LOADER}
  for path,out in resolutions.items():required.update(parse_ldd(out,allow_no_dependencies=path!=PYTHON))
  need(required<=set(by_path),'runtime.unowned_dependency')
+ selections={path:(by_path[path],path,None) for path in required}
+ if provided_tools is not None:
+  need(type(provided_tools)is list and len(provided_tools)==len(PROVIDED_SELINUX),
+       'runtime.provided_roster')
+  by_role={}
+  for tool in provided_tools:
+   need(type(tool)is dict and set(tool)=={'role','path','bytes','sha256','package','version','debSha256'}
+        and type(tool['role'])is str and tool['role']not in by_role,'runtime.provided_tool')
+   by_role[tool['role']]=tool
+  need(set(by_role)=={s['role'] for s in PROVIDED_SELINUX},'runtime.provided_roster')
+  for spec in PROVIDED_SELINUX:
+   tool=by_role[spec['role']]
+   expected={k:spec[k] for k in ('role','bytes','sha256','package','version','debSha256')}
+   expected['path']=spec['packagePath']
+   need(tool==expected,'runtime.provided_member_pin')
+   package=by_package.get(spec['package'])
+   need(type(package)is dict and package['architecture']=='amd64' and
+        package['version']==spec['version'] and package['debSha256']==spec['debSha256'],
+        'runtime.provided_package_pin')
+   need(spec['path']not in selections,'runtime.provided_duplicate')
+   # The PCRE package's .so.0 alias is not extracted. Copy its exact regular
+   # versioned member to the fixed runtime SONAME path, retaining sourcePath.
+   selections[spec['path']]=(dict(tool,path=spec['path']),spec['packagePath'],spec)
+  for path,(size,digest) in PROVIDED_REUSED.items():
+   need(path in required and by_path[path]['bytes']==size and by_path[path]['sha256']==digest,
+        'runtime.provided_reused_pin')
  result=[];ownership=[];total=0
- for path in sorted(required):
-  row=by_path[path];view=reader.read_original(path,FILE_MAX)
+ for path in sorted(selections):
+  row,read_path,spec=selections[path];view=reader.read_original(read_path,FILE_MAX)
   need(type(view)is dict and set(view)=={'bytes','sourcePath','uid','gid','mode','regular','symlinkChainSha256'}
        and type(view['bytes'])is bytes and view['regular'] is True and view['uid']==view['gid']==0
        and type(view['mode'])is int and view['mode']&0o022==0 and hexsha(view['symlinkChainSha256'])
        and type(view['sourcePath'])is str and view['sourcePath'].startswith(('/usr/','/lib/','/lib64/'))
        and posixpath.normpath(view['sourcePath'])==view['sourcePath'],'runtime.source_identity')
+  if spec is not None:
+   need(view['mode']==spec['sourceMode'] and view['sourcePath']in
+        (spec['packagePath'],'/usr'+spec['packagePath'] if spec['packagePath'].startswith('/lib/') else spec['packagePath']),
+        'runtime.provided_source_identity')
   data=view['bytes'];need(len(data)==row['bytes'] and sha(data)==row['sha256'],'runtime.installed_bytes_changed')
   total+=len(data);need(total<=RUNTIME_MAX and len(result)<20000,'runtime.runtime_cap')
   # Materialize checked aliases as new regular copied bytes at original paths;
   # no hardlink or broad /usr,/lib bind is ever part of this manifest.
   result.append({'path':path.lstrip('/'),'sourcePath':view['sourcePath'],'bytes':len(data),'sha256':sha(data),
-                 'mode':0o555 if path in(PYTHON,LOADER) else 0o444})
+                 'mode':0o555 if path in(PYTHON,LOADER,'/usr/sbin/selinuxenabled') else 0o444})
   ownership.append({'path':path.lstrip('/'),'package':row['package'],'version':row['version'],
                     'packageFileSha256':row['sha256'],'symlinkChainSha256':view['symlinkChainSha256']})
  need(type(helper)is dict and helper.get('path')=='code/static-entry' and hexsha(helper.get('sha256'))

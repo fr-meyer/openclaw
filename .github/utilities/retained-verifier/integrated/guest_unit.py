@@ -380,6 +380,14 @@ class _UnitCommandIO(host_admission._GuestCommandIO):
         self.start_argv=argv;self.start_endpoint=self.owner.monotonic()+15
 
     def spawn(self,argv):
+        if self.owner._cap.kind=='private-native':
+            role=self.owner._provided_selinux
+            require(role is not None,'unit.provided_unbound')
+            if argv in role.probe.commands:
+                import private_issuance
+                private_issuance.require_provided_selinux(role,unit=self.owner._cap.owner['unitName'],io=self.owner,cap=self.owner._cap)
+                self.owner._check();role.probe.validate()
+            require(argv!=('/usr/sbin/selinuxenabled',),'unit.provided_no_legacy_fallback')
         if argv[0]=='/usr/bin/systemd-run':
             require(type(argv) is tuple and argv==self.start_argv and not self.start_attempted and
                 self.start_endpoint is not None,'unit.start_dispatch_unissued')
@@ -404,6 +412,7 @@ class NativeUnitIO:
     def __init__(self):
         self._cap = None
         self._collector = None
+        self._provided_selinux = None
         self._before = False
         self._anchors = {}
         self._last_command = None  # Diagnostic provenance only; never authority.
@@ -500,7 +509,17 @@ class NativeUnitIO:
         pending=root/'control/admission.json'
         require(self._owned_read(pending,16384,0o600)==b'', 'unit.preexisting_gate')
         tools=_tool_pins(self._cap)
+        provided=None
+        if self._cap.kind=='private-native':
+            import private_issuance
+            provided=private_issuance.provided_selinux_for_cap(self._cap)
+            private_issuance.require_provided_selinux(provided,io=self,cap=self._cap)
+            provided.probe.validate()
         for name in TOOL_PATHS:
+            if name=='/usr/sbin/selinuxenabled' and provided is not None:
+                require(tools[name]==host_admission.PROVIDED_SELINUX_FILES['usr/sbin/selinuxenabled'][1],
+                    'unit.provided_source_pin')
+                continue
             path=Path(name);self._directory(path.parent)
             mode=stat.S_IMODE(path.lstat().st_mode)
             require(mode in (0o555,0o755),'unit.tool_mode')
@@ -508,7 +527,14 @@ class NativeUnitIO:
 
     def collector_before(self, context):
         self._check();require(self._collector is None,'unit.collector_once')
-        ops=host_admission.HostOps(str(self._cap.session_root),self._cap.owner['unitName'])
+        provided=None
+        if self._cap.kind=='private-native':
+            import private_issuance
+            provided=private_issuance.provided_selinux_for_cap(self._cap)
+            private_issuance.require_provided_selinux(provided,io=self,cap=self._cap)
+            self._provided_selinux=provided
+        ops=host_admission.HostOps(str(self._cap.session_root),self._cap.owner['unitName'],
+            provided_selinux=provided.probe if provided is not None else None)
         self._collector=host_admission.Collector(ops,self._cap.owner['bootId'])
         self._collector.ops.command_port.io=_UnitCommandIO(self,context)
         self._collector.before();self._before=True

@@ -69,8 +69,24 @@ class CommandCapture:
     NativeOps inherits this exact method. Tests construct this core with inert
     process/selector I/O, never NativeOps or NativeCommandIO capability objects.
     """
-    def __init__(self,io):
+    def __init__(self,io,*,readonly_selinux_commands=()):
         self.io=io;self.owned_commands={};self.command_results={};self.command_sequence=0
+        require(type(readonly_selinux_commands)is tuple and len(readonly_selinux_commands)in(0,2),'ci.provided_command_roster')
+        if readonly_selinux_commands:
+            roots=[]
+            for argv in readonly_selinux_commands:
+                require(type(argv)is tuple and len(argv)in(5,6)and all(type(v)is str and v and '\x00'not in v for v in argv),'ci.provided_command_shape')
+                suffix='/lib64/ld-linux-x86-64.so.2';require(argv[0].endswith(suffix),'ci.provided_loader_path');root=argv[0][:-len(suffix)]
+                import re
+                require(re.fullmatch('/var/lib/openclaw-retained-bootstrap/[0-9a-f]{64}/[0-9a-f]{32}/root',root)and
+                    argv[:4]==(root+suffix,'--inhibit-cache','--library-path',root+'/lib/x86_64-linux-gnu')and
+                    argv[4:]==(('--list',root+'/usr/sbin/selinuxenabled')if len(argv)==6 else(root+'/usr/sbin/selinuxenabled',)),
+                    'ci.provided_command_scope');roots.append(root)
+            require(roots[0]==roots[1]and len(readonly_selinux_commands[0])==6 and len(readonly_selinux_commands[1])==5,'ci.provided_command_order')
+        self.readonly_selinux_commands=readonly_selinux_commands
+    def _allowed_command(self,argv):
+        return (argv[0] in ('/usr/bin/systemd-run','/usr/bin/systemctl','/usr/bin/busctl','/usr/bin/gpgv','/usr/sbin/selinuxenabled')or
+            argv in self.readonly_selinux_commands)
     def command(self,argv,timeout=5):
         import math
         self.command_sequence+=1;number=self.command_sequence
@@ -110,7 +126,7 @@ class CommandCapture:
                 else:append(label,raw)
         try:
             require(type(argv) is tuple and argv and all(type(v) is str and v and '\x00' not in v for v in argv) and
-              argv[0] in ('/usr/bin/systemd-run','/usr/bin/systemctl','/usr/bin/busctl','/usr/bin/gpgv','/usr/sbin/selinuxenabled'),
+              self._allowed_command(argv),
               'ci.native_command')
             require(type(timeout) in (int,float) and math.isfinite(timeout) and 0<timeout<=300,'ci.command_timeout')
             deadline=now()+timeout;phase='spawn';result['spawnOutcome']='unknown'
@@ -332,7 +348,7 @@ class Port:
             if capture is not None:
                 failed=not command_capture_ok(capture) or capture.get('exitCode') not in (0,1) or any(
                   capture.get(k,{}).get('truncated') is not False for k in ('stdoutFacts','stderrFacts'))
-                self.remember_command(('/usr/sbin/selinuxenabled',),capture,failed=failed)
+                self.remember_command(self.anchors.selinux_argv,capture,failed=failed)
         manifest={'report':fixture.REPORT_SHA,'blob':fixture.BLOB_SHA}
         return {'manifest':manifest,'propertiesSha256':sha(canonical(props))}
     def start_unit_once(self,context):

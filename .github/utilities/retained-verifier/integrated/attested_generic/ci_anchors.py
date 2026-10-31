@@ -18,9 +18,11 @@ def ident(info):return probe.identity(info)
 
 
 class Sources:
-    def __init__(self,ops,root,unit,boot_id,selinux_tool_sha256,*,propagation_policy):
+    def __init__(self,ops,root,unit,boot_id,selinux_tool_sha256,*,propagation_policy,provided_selinux=None):
         self.ops,self.root,self.unit,self.boot=ops,root,unit,boot_id
         self.selinux_tool_sha=selinux_tool_sha256
+        self.provided_selinux=provided_selinux
+        self.selinux_argv=provided_selinux.argv(False)if provided_selinux is not None else('/usr/sbin/selinuxenabled',)
         require(propagation_policy=='private','ci.private_policy_required')
         self.propagation_policy=propagation_policy;self.host_propagation={}
         require(re.fullmatch('ocv-[0-9a-f]{32}\\.service',unit) and
@@ -69,9 +71,13 @@ class Sources:
         from ci_protocol import sha
         require(type(self.selinux_tool_sha) is str and re.fullmatch('[0-9a-f]{64}',self.selinux_tool_sha),
                 'ci.selinux_tool_pin_unbound')
-        require(sha(self.ops.read('/usr/sbin/selinuxenabled',1048576))==self.selinux_tool_sha,'ci.selinux_tool_changed')
+        path=self.provided_selinux.binary if self.provided_selinux is not None else '/usr/sbin/selinuxenabled'
+        require(sha(self.ops.read(path,1048576))==self.selinux_tool_sha,'ci.selinux_tool_changed')
         from ci_native_port import command_boundary_refusal,command_capture_ok
-        try:result=self.ops.command(('/usr/sbin/selinuxenabled',),5)
+        if self.provided_selinux is not None:
+            listed=self.ops.command(self.provided_selinux.argv(True),5)
+            require(command_capture_ok(listed),'ci.selinux_loader_capture')
+        try:result=self.ops.command(self.selinux_argv,5)
         except BaseException as error:result=command_boundary_refusal(error)
         self.selinux_evidence=result
         require(command_capture_ok(result),'ci.selinux_capture_refused')

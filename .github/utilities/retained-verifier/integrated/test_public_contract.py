@@ -307,7 +307,7 @@ class CopiedLocationTests(unittest.TestCase):
             with self.subTest(field=field),self.assertRaises(Refusal):location.validate_pair(changed,root,rows,boot)
     def test_independent_host_replay_refuses_fully_rehashed_foreign_root_roster_or_session(self):
         rows,session,boot,root,placement=fixture();raw=packet(rows,root,placement)
-        self.assertEqual(integrated_capture.replay_copied_controller(raw,rows,root,boot)['status'],'passed')
+        self.assertEqual(integrated_capture.replay_copied_controller(raw,rows,root,boot,historical=True)['status'],'passed')
         for kind in ('session','roster'):
             foreign=copy.deepcopy(rows)
             if kind=='roster':foreign[0]['sha256']='f'*64
@@ -318,7 +318,7 @@ class CopiedLocationTests(unittest.TestCase):
             location.validate_pair(moved,other,foreign,boot)
             forged=packet(foreign,other,moved)
             with self.subTest(kind=kind),self.assertRaises(ValueError):
-                integrated_capture.replay_copied_controller(forged,rows,root,boot)
+                integrated_capture.replay_copied_controller(forged,rows,root,boot,historical=True)
     def test_original_dispatch_endpoint_survives_slow_parent_check(self):
         clock=[10.];launched=[]
         def slow():clock[0]=41.

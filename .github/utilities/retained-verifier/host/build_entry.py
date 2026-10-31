@@ -418,6 +418,27 @@ def export_selinux_repair(ops,data,tools,source_sha,apt_sha,archive):
     return manifest
 
 
+def provided_selinux_tools(runtime,ops,installed,show,lists,indexed,main_records,security_records):
+    """Join three fixed regular package members to their exact signed origins.
+
+    These are runtime selections from the authenticated build chroot. They do
+    not add installed-tool roles or assert installation on a later target.
+    """
+    result=[]
+    for spec in runtime.PROVIDED_SELINUX:
+        records=main_records if spec['origin']=='main' else security_records
+        signed=records.get((spec['package'],spec['version'],'amd64'))
+        need(type(signed)is dict and signed['name']==spec['package'] and
+             signed['version']==spec['version'] and signed['architecture']=='amd64' and
+             signed['bytes']==spec['debBytes'] and signed['debSha256']==spec['debSha256'] and
+             signed['filename']==spec['filename'],'build_entry.provided_signed_origin')
+        tool=tool_row(spec['role'],spec['packagePath'],ops,installed,show,lists,indexed)
+        need(tool=={**{k:spec[k] for k in ('role','bytes','sha256','package','version','debSha256')},
+                    'path':spec['packagePath']},'build_entry.provided_member_pin')
+        result.append(tool)
+    return result
+
+
 def run_checked(ops,header,source_sha,context_sha,leaves):
     """Concrete transaction, injectable for source-faithful no-command tests.
 
@@ -480,10 +501,14 @@ def run_checked(ops,header,source_sha,context_sha,leaves):
     helper=build_retained_helper(runtime,source,toolchain,RuntimeOps(ops))
     # The static helper is compiled once. All later joins only revalidate it.
     ops.chmod(CONTROL+'/static-entry',0o555)
-    runtime_manifest=runtime.collect_runtime(installed,resolutions,ops,helper)
+    provided=provided_selinux_tools(runtime,ops,installed,show,lists,indexed,main_records,security_records)
+    runtime_manifest=runtime.collect_runtime(installed,resolutions,ops,helper,provided_tools=provided)
+    provided_paths={s['path'].lstrip('/'):s['packagePath'] for s in runtime.PROVIDED_SELINUX}
     for row in runtime_manifest['files']:
-        copied=ops.read_original('/'+row['path'],32*1024**2)['bytes']
-        need(len(copied)==row['bytes'] and sha(copied)==row['sha256'],'build_entry.export_runtime_changed')
+        view=ops.read_original(provided_paths.get(row['path'],'/'+row['path']),32*1024**2)
+        copied=view['bytes']
+        need(view['sourcePath']==row['sourcePath'] and len(copied)==row['bytes'] and
+             sha(copied)==row['sha256'],'build_entry.export_runtime_changed')
         ops.write_runtime(row['path'],copied,row['mode'])
     helper_raw=ops.read(CONTROL+'/static-entry',8*1024**2)
     need(sha(helper_raw)==helper['sha256'],'build_entry.export_helper_changed')

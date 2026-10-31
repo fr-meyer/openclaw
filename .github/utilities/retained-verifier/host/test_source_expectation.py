@@ -131,21 +131,33 @@ class BuildFixture:
     def __init__(self):
         self.io,self.program=fixture.setup_io();self.calls=[];self.kv='6.1.0-39-amd64'
         self.io.values['kernelVersion']=self.kv
-        names=sorted(set(self.io.packages)|set(build_recipe.REQUIRED_PACKAGES)|{'dash','dpkg','linux-image-'+self.kv})
+        self.provided=copy.deepcopy(runtime_prepare.PROVIDED_SELINUX)
+        by_package={s['package']:s for s in self.provided}
+        names=sorted(set(self.io.packages)|set(build_recipe.REQUIRED_PACKAGES)|set(by_package)|{'dash','dpkg','linux-image-'+self.kv})
         self.packages={name:{'name':name,'version':build_recipe.SYSTEMD_VERSION if name.startswith(('systemd','libsystemd'))else'1',
           'architecture':'amd64','debSha256':m.sha(('synthetic archive '+name).encode())}for name in names}
         for name,(_,digest,_)in security_policy.PYTHON_U9.items():
             self.packages[name].update(version=security_policy.PYTHON_U9_VERSION,debSha256=digest)
+        for name,spec in by_package.items():
+            self.packages[name].update(version=spec['version'],debSha256=spec['debSha256'])
         self.data={p:raw for p,raw in self.io.files.items()if p.startswith(('/usr/','/lib/','/lib64/'))}
         for path in (*build_entry.COMPILER.values(),*build_entry.TOOLS.values()):self.data.setdefault(path,('synthetic tool '+path).encode())
         self.data[runtime_prepare.LOADER]=self.data['/usr/lib/ld-linux-x86-64.so.2']
         self.data['/lib/x86_64-linux-gnu/libc.so.6']=b'public synthetic libc'
         self.data['/boot/vmlinuz-'+self.kv]=b'public synthetic kernel'
+        self.member_modes={}
+        for spec in self.provided:
+            path=spec['packagePath']
+            self.data.setdefault(path,('public synthetic provided member '+path).encode())
+            spec.update(bytes=len(self.data[path]),sha256=m.sha(self.data[path]))
+            self.member_modes[path]=spec['sourceMode']
+        self.reused={p:(len(self.data[p]),m.sha(self.data[p])) for p in runtime_prepare.PROVIDED_REUSED}
         self.owners={p:'gcc-12'if p in build_entry.COMPILER.values()else'python3.11-minimal'if p==runtime_prepare.PYTHON else
           'libpython3.11-minimal'if p.endswith('encodings/__init__.py')else'libpython3.11-stdlib'if p.startswith(runtime_prepare.STDLIB)else
           'systemd'if p in ('/usr/lib/systemd/systemd','/usr/bin/busctl','/usr/bin/systemctl','/usr/bin/systemd-run')else
           'gpgv'if p=='/usr/bin/gpgv'else'dpkg'if p=='/usr/bin/dpkg-query'else'selinux-utils'if p=='/usr/sbin/selinuxenabled'else
           'linux-image-'+self.kv if p.startswith('/boot/')else'libc6'for p in self.data}
+        self.owners.update({s['packagePath']:s['package'] for s in self.provided})
         self.show=''.join(n+'\t'+r['version']+'\tamd64\tinstalled\n'for n,r in self.packages.items()).encode()
         self.lists={n:('\n'.join(['/.','/usr']+sorted(p for p,owner in self.owners.items()if owner==n))+'\n').encode()for n in names}
         # Exact pinned Bookworm systemd package paths; the execution path is
@@ -157,7 +169,23 @@ class BuildFixture:
                             b'package diverts others to: /usr/share/man/man1/sh.distrib.1.gz\n')
         self.lists['libpython3.11-minimal']+=package_inventory.SITE_CUSTOMIZE.encode()+b'\n'
         self.owners['/bin/systemctl']='systemd';self.owners['/lib/systemd/systemd']='systemd'
-        self.index=''.join('Package: '+n+'\nVersion: '+r['version']+'\nArchitecture: amd64\nFilename: pool/main/f/fixture/'+n+'_1_amd64.deb\nSize: 12\nSHA256: '+r['debSha256']+('\nDepends: libc6 (>= 2.34)'if n=='selinux-utils'else'')+'\n\n'for n,r in self.packages.items()if n not in security_policy.PYTHON_U9).encode()
+        def record(n,r):
+            spec=by_package.get(n)
+            filename=spec['filename'] if spec else 'pool/main/f/fixture/'+n+'_1_amd64.deb'
+            size=spec['debBytes'] if spec else 12
+            return ('Package: '+n+'\nVersion: '+r['version']+'\nArchitecture: amd64\nFilename: '+filename+
+                    '\nSize: '+str(size)+'\nSHA256: '+r['debSha256']+
+                    ('\nDepends: libc6 (>= 2.34)'if n=='selinux-utils'else'')+'\n\n').encode()
+        self.index=b''.join(record(n,r) for n,r in self.packages.items()if n not in security_policy.PYTHON_U9
+                           and (n not in by_package or by_package[n]['origin']=='main'))
+        old_security=self.io.files[build_entry.DATA+'/SecurityPackages']
+        security=old_security+b''.join(record(n,self.packages[n]) for n,s in by_package.items()if s['origin']=='security')
+        security_release=self.io.files[build_entry.DATA+'/SecurityInRelease']
+        marker=(m.sha(old_security)+' '+str(len(old_security))+' main/binary-amd64/Packages').encode()
+        assert security_release.count(marker)==1
+        self.io.put(build_entry.DATA+'/SecurityPackages',security)
+        self.io.put(build_entry.DATA+'/SecurityInRelease',security_release.replace(marker,
+                    (m.sha(security)+' '+str(len(security))+' main/binary-amd64/Packages').encode()))
         release=('-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nOrigin: Debian\nCodename: bookworm\nVersion: fixture\nDate: Fri, 01 Jan 2010 00:00:00 UTC\nSHA256:\n '+m.sha(self.index)+' '+str(len(self.index))+' main/binary-amd64/Packages\n-----BEGIN PGP SIGNATURE-----\nsynthetic\n-----END PGP SIGNATURE-----\n').encode()
         self.io.put(build_entry.DATA+'/Packages',self.index);self.io.put(build_entry.DATA+'/InRelease',release)
         policy=ci_archive_policy.Fixture(m.sha(release),len(release),m.sha(self.index),len(self.index),
@@ -182,11 +210,11 @@ class BuildFixture:
         canonical={'/bin/systemctl':'/usr/bin/systemctl',
                    '/lib/systemd/systemd':'/usr/lib/systemd/systemd'}.get(path,path)
         raw=self.data.get(canonical,self.io.files.get(canonical));assert raw is not None and len(raw)<=cap
-        return {'bytes':raw,'sourcePath':canonical,'uid':0,'gid':0,'mode':0o755,'regular':True,'symlinkChainSha256':'c'*64}
+        return {'bytes':raw,'sourcePath':canonical,'uid':0,'gid':0,'mode':self.member_modes.get(canonical,0o755),'regular':True,'symlinkChainSha256':'c'*64}
     def stat_original(self,path):
         view=self.read_original(path,64*1024**2)
         return {'sourcePath':view['sourcePath'],'type':'regular','dev':1,'ino':101,'size':len(view['bytes']),'uid':0,'gid':0,
-          'mode':0o755,'nlink':1,'mtimeNs':1,'ctimeNs':1,'aliasProofSha256':'c'*64}
+          'mode':view['mode'],'nlink':1,'mtimeNs':1,'ctimeNs':1,'aliasProofSha256':'c'*64}
     def facts(self,path):
         raw=self.io.files.get(path,self.data.get(path))
         if raw is None:raise FileNotFoundError(path)
@@ -214,6 +242,8 @@ class BuildFixture:
         raw=self.io.files[guard.CONTROL+'/static-entry']
         with mock.patch.object(build_entry,'RETAINED_HELPER_SHA256',m.sha(raw)),\
              mock.patch.object(build_entry,'RETAINED_HELPER_BYTES',len(raw)),\
+             mock.patch.object(runtime_prepare,'PROVIDED_SELINUX',self.provided),\
+             mock.patch.object(runtime_prepare,'PROVIDED_REUSED',self.reused),\
              mock.patch.object(build_entry,'export_selinux_repair')as repair:
             result=build_entry.run_checked(self,self.header,self.source_sha,'d'*64,
               {'recipe':build_recipe,'runtime':runtime_prepare,'inventory':package_inventory,'archive':archive_guard,'policy':security_policy})
@@ -221,13 +251,32 @@ class BuildFixture:
             # repair byte/hash and NativeBuildOps boundaries have separate tests.
             repair.assert_called_once()
         self.io.files.update(self.data)
-        for path in self.data:self.io.modes.setdefault(path,0o755)
+        for path in self.data:self.io.modes.setdefault(path,self.member_modes.get(path,0o755))
         self.io.put('/var/lib/dpkg/status',b'\n\n'.join(('Package: '+n+'\nStatus: install ok installed\nVersion: '+r['version']+'\nArchitecture: amd64').encode()for n,r in self.packages.items())+b'\n')
         self.io.cmdline=('console=ttyS0 ocv.source='+self.source_sha+' ocv.build='+m.sha(self.io.files[guard.CONTROL+'/build.json'])+' ocv.session='+self.io.session).encode()
         return result
 
 
 class BuildGuestJoinTests(unittest.TestCase):
+    def test_actual_build_export_and_bootstrap_preserve_provided_member_sources(self):
+        original=copy.deepcopy(runtime_prepare.PROVIDED_SELINUX)
+        f=BuildFixture();f.build();plan=guard.verify(f.io);issuer.prepare(plan,f.io,f.program)
+        rows={r['path']:r for r in plan.controls['runtime']['files']}
+        for spec in f.provided:
+            row=rows[spec['path'].lstrip('/')]
+            self.assertEqual(row['sourcePath'],spec['packagePath'])
+            self.assertEqual(row['sha256'],spec['sha256'])
+            exported='/work/out/runtime-root/'+row['path']
+            self.assertEqual(f.io.files[exported],f.data[spec['packagePath']])
+            self.assertEqual(f.io.modes[exported],0o555 if spec['role']=='selinuxenabled'else 0o444)
+        self.assertEqual(runtime_prepare.PROVIDED_SELINUX,original)
+        for defect,reason in (('bytes','build_entry.provided_member_pin'),('mode','runtime.provided_source_identity')):
+            f=BuildFixture();spec=f.provided[2]
+            if defect=='bytes':f.data[spec['packagePath']]+=b'changed'
+            else:f.member_modes[spec['packagePath']]=0o755
+            with self.subTest(defect=defect),self.assertRaisesRegex((build_entry.Refusal,runtime_prepare.Refusal),reason):f.build()
+            self.assertNotIn('/work/out/runtime-root/'+spec['path'].lstrip('/'),f.io.files)
+
     def test_actual_build_and_guest_join_keep_same_payload_origin_filename_aliases(self):
         f=BuildFixture();name='systemd'
         record=next(r for r in f.index.split(b'\n\n')if r.startswith(b'Package: systemd\n'))+b'\n\n'

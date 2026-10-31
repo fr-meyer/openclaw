@@ -25,10 +25,10 @@ import probe
 import profile
 
 GENERIC_PINS = {
-    'ci_anchors.py': 'b097216d028f9aa0e637d152d862743b2a22d8658b84d900c7886041f5eb8c11',
+    'ci_anchors.py': '8658db838fb8ded8550b6c8eae4f74062e0e5cb7e9b0b5b358d08dec0e047689',
     'ci_probe.py': '766472d5d5e724f742ccdb9a76dd689f46aa20771057ed764f43fce0daddf3a3',
     'ci_protocol.py': '03c29e4b17dea1114b7dd4af5fbb91eefd1e9e07bf67c9971f86b70f59c02339',
-    'ci_native_port.py': 'ce18ee2a11e364f1b7331a390abfea8dc036baa9587c4ee7c400eaafb0a0d646',
+    'ci_native_port.py': '7fc345b51fa6ecea3dc2c1a46229554c3291b0c5b26ecdb33ff273fb3c72d4b5',
     'ci_profile.py': '9d9b9b90f54ba6fad05c8621329bd0f6c9aae6e0797a3d88ba99f2cfc9f5c804',
     'ci_fixture.py': '7ae1f7e08470235dfe735c4d7ca2633758f65e5842989d635c8446e52cde7818',
 }
@@ -109,15 +109,188 @@ def load_generic(directory=None):
     return modules
 
 
+PROVIDED_SELINUX_FILES = {
+    'usr/sbin/selinuxenabled':(14576,SELINUX_TOOL_SHA256),
+    'lib64/ld-linux-x86-64.so.2':(215000,'02bcda52c1a5dfc236f94d9e5255b4a0e26347d8a372a5223b650e31f291ce3c'),
+    'lib/x86_64-linux-gnu/libc.so.6':(1926232,'6b4a45352fd0c540a9c7c718f35ce8c8e46a4e482f9d3885a910c32d1a0e1421'),
+    'lib/x86_64-linux-gnu/libselinux.so.1':(174312,'0207e4908ea384e186c75925b0e56996a3eccecd48c99252aeb757d0d3451c93'),
+    'lib/x86_64-linux-gnu/libpcre2-8.so.0':(629384,'092bc945140e65c691c7c717d71083111f46813f31a76dd848bf82e91450778b')}
+PROVIDED_SELINUX_NEEDED = {
+    'usr/sbin/selinuxenabled':('libselinux.so.1','libc.so.6'),
+    'lib/x86_64-linux-gnu/libselinux.so.1':('libpcre2-8.so.0','libc.so.6','ld-linux-x86-64.so.2'),
+    'lib/x86_64-linux-gnu/libpcre2-8.so.0':('libc.so.6',),
+    'lib/x86_64-linux-gnu/libc.so.6':('ld-linux-x86-64.so.2',),
+    'lib64/ld-linux-x86-64.so.2':()}
+PROVIDED_ENV = {'PATH':'/usr/bin','LANG':'C','LC_ALL':'C'}
+PROVIDED_SELINUX_MODES = {p:(0o555 if p in ('usr/sbin/selinuxenabled','lib64/ld-linux-x86-64.so.2')else 0o444)for p in PROVIDED_SELINUX_FILES}
+
+
+def _provided_elf(raw):
+    """Passive closed ELF64 graph; no loader execution or interpretation grant."""
+    import struct
+    require(type(raw)is bytes and len(raw)>=64 and raw[:6]==b'\x7fELF\x02\x01' and
+        struct.unpack_from('<H',raw,18)[0]==62,'host.provided_elf')
+    start=struct.unpack_from('<Q',raw,32)[0];size,count=struct.unpack_from('<HH',raw,54)
+    require(size==56 and count<=256 and start+size*count<=len(raw),'host.provided_elf_headers')
+    loads=[];dynamic=None;interpreter=''
+    for index in range(count):
+        kind,flags,offset,address,physical,files,mem,align=struct.unpack_from('<IIQQQQQQ',raw,start+index*size)
+        require(offset+files<=len(raw),'host.provided_elf_segment')
+        if kind==1:loads.append((address,files,offset))
+        elif kind==2:require(dynamic is None,'host.provided_dynamic_duplicate');dynamic=(offset,files)
+        elif kind==3:interpreter=raw[offset:offset+files].rstrip(b'\0').decode('ascii')
+    require(dynamic is not None,'host.provided_dynamic_missing')
+    offset,size=dynamic;require(size<=65536 and size%16==0,'host.provided_dynamic_cap');tags=[]
+    for position in range(offset,offset+size,16):
+        tag,value=struct.unpack_from('<qQ',raw,position)
+        if tag==0:break
+        require(tag not in (15,29,0x7ffffffd,0x7fffffff,0x6ffffefb,0x6ffffefc),
+            'host.provided_unreviewed_dynamic_path');tags.append((tag,value))
+    strings=[v for t,v in tags if t==5];lengths=[v for t,v in tags if t==10]
+    require(len(strings)==len(lengths)==1 and lengths[0]<=1024*1024,'host.provided_strings')
+    matches=[o+strings[0]-a for a,n,o in loads if a<=strings[0] and strings[0]+lengths[0]<=a+n]
+    require(len(matches)==1,'host.provided_strings_mapping');table=raw[matches[0]:matches[0]+lengths[0]]
+    needed=[]
+    for tag,index in tags:
+        if tag!=1:continue
+        require(index<len(table),'host.provided_needed_offset');end=table.find(b'\0',index)
+        require(end>=index,'host.provided_needed_termination');name=table[index:end].decode('ascii')
+        require(re.fullmatch('[A-Za-z0-9_.+-]{1,64}',name) and name not in needed,'host.provided_needed')
+        needed.append(name)
+    return tuple(needed),interpreter
+
+
+class ProvidedSelinuxProbe:
+    """Read-only evidence/physical command description, NOT native authority.
+
+    Private callers must additionally hold the source-issued runtime/owner role.
+    Linux fixtures may exercise this evidence class without minting that role.
+    """
+    __slots__=('root','binary','loader','library','_selected','_validation_count','_view','_files','_loader_result','_probe_result')
+    def __init__(self,root):
+        require(type(root)is str and re.fullmatch('/var/lib/openclaw-retained-bootstrap/[0-9a-f]{64}/[0-9a-f]{32}/root',root),
+            'host.provided_root')
+        self.root=root;self.binary=root+'/usr/sbin/selinuxenabled'
+        self.loader=root+'/lib64/ld-linux-x86-64.so.2';self.library=root+'/lib/x86_64-linux-gnu'
+        self._selected=(self.root,self.binary,self.loader,self.library)
+        self._validation_count=0
+        self._view=self.host_view();self._files=None;self._loader_result=None;self._probe_result=None
+        self.validate()
+    def argv(self,listing=False):
+        require(type(listing)is bool,'host.provided_listing')
+        return (self.loader,'--inhibit-cache','--library-path',self.library)+ (('--list',)if listing else ())+(self.binary,)
+    @property
+    def commands(self):return (self.argv(True),self.argv(False))
+    @staticmethod
+    def host_view():
+        require(sys.platform=='linux' and os.geteuid()==0,'host.provided_host_required')
+        names=('mnt','net','ipc','pid','user','uts','cgroup')
+        own={n:os.readlink('/proc/self/ns/'+n)for n in names}
+        manager={n:os.readlink('/proc/1/ns/'+n)for n in names}
+        identity=lambda s:(s.st_dev,s.st_ino)
+        require(own==manager and identity(os.stat('/'))==identity(os.stat('/proc/1/root')),
+            'host.provided_host_view')
+        return {'namespaces':own,'root':identity(os.stat('/'))}
+    def read(self,relative):
+        require(relative in PROVIDED_SELINUX_FILES,'host.provided_file_scope')
+        path=Path(self.root)/relative
+        _root_owned_sources_parent(path.parent)
+        before=path.lstat();size,digest=PROVIDED_SELINUX_FILES[relative]
+        require(stat.S_ISREG(before.st_mode) and before.st_uid==before.st_gid==0 and
+            before.st_nlink==1 and stat.S_IMODE(before.st_mode)==PROVIDED_SELINUX_MODES[relative] and
+            before.st_size==size and before.st_dev==os.stat('/').st_dev and
+            (relative not in ('usr/sbin/selinuxenabled','lib64/ld-linux-x86-64.so.2')or
+             stat.S_IMODE(before.st_mode)&0o111),'host.provided_file_identity')
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            opened=os.fstat(fd);raw=b''
+            while len(raw)<=size:
+                block=os.read(fd,min(65536,size+1-len(raw)))
+                if not block:break
+                raw+=block
+            after=os.fstat(fd)
+        finally:os.close(fd)
+        key=lambda s:(s.st_dev,s.st_ino,s.st_uid,s.st_gid,s.st_mode,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+        require(key(before)==key(opened)==key(after)==key(path.lstat())and len(raw)==size and sha(raw)==digest,
+            'host.provided_file_changed')
+        return raw,{k:int(getattr(before,k))for k in ('st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns')}
+    def validate(self):
+        require((self.root,self.binary,self.loader,self.library)==self._selected,'host.provided_path_changed')
+        require(self._validation_count<32,'host.provided_validation_budget');self._validation_count+=1
+        require(self.host_view()==self._view,'host.provided_view_changed')
+        require(not os.path.lexists('/etc/ld.so.preload') and
+            not any(k.startswith('LD_')or k in ('GLIBC_TUNABLES','SELINUX_PATH','SELINUX_DEBUG')for k in os.environ),
+            'host.provided_loader_environment')
+        require(not os.path.lexists(self.library+'/glibc-hwcaps')and
+            not os.path.lexists(self.root+'/lib64/glibc-hwcaps'),'host.provided_hwcaps')
+        rows={}
+        for name in PROVIDED_SELINUX_FILES:
+            raw,identity=self.read(name);needed,interpreter=_provided_elf(raw)
+            require(needed==PROVIDED_SELINUX_NEEDED[name] and
+                interpreter==('/lib64/ld-linux-x86-64.so.2'if name in ('usr/sbin/selinuxenabled','lib/x86_64-linux-gnu/libc.so.6')else ''),
+                'host.provided_elf_closure');rows[name]=identity
+        if self._files is not None:require(rows==self._files,'host.provided_identity_changed')
+        self._files=rows;return True
+    def loader_result(self,result):
+        require(self._loader_result is None,'host.provided_loader_replayed');self.validate()
+        require(_capture_ok(result)and type(result['exitCode'])is int and result['exitCode']==0 and result['stderr']==b'',
+            'host.provided_loader_capture')
+        text=result['stdout'].decode('ascii');rows={};vdso=0
+        for line in text.splitlines():
+            line=line.strip()
+            if re.fullmatch(r'linux-vdso\.so\.1 \(0x[0-9a-f]+\)',line):vdso+=1;continue
+            match=re.fullmatch(r'([A-Za-z0-9_.+-]+) => (/[^\s]+) \(0x[0-9a-f]+\)',line)
+            if match:name,path=match.groups()
+            elif line.startswith('/lib64/ld-linux-x86-64.so.2 => '):
+                match=re.fullmatch(r'/lib64/ld-linux-x86-64.so.2 => (/[^\s]+) \(0x[0-9a-f]+\)',line)
+                require(match is not None,'host.provided_loader_alias');name,path='@loader',match.group(1)
+            else:
+                match=re.fullmatch(r'(/[^\s]+) \(0x[0-9a-f]+\)',line)
+                require(match is not None,'host.provided_loader_row');name,path='@loader',match.group(1)
+            if name=='ld-linux-x86-64.so.2':name='@loader'
+            require(name not in rows,'host.provided_loader_duplicate');rows[name]=path
+        require(vdso==1 and rows=={'libselinux.so.1':self.library+'/libselinux.so.1',
+            'libpcre2-8.so.0':self.library+'/libpcre2-8.so.0','libc.so.6':self.library+'/libc.so.6',
+            '@loader':self.loader},'host.provided_loader_resolution')
+        self._loader_result=result;return True
+    def probe_result(self,result):
+        require(self._loader_result is not None and self._probe_result is None,'host.provided_probe_order');self.validate()
+        require(_capture_ok(result)and type(result['exitCode'])is int and result['exitCode']in(0,1)and
+            result['stdout']==result['stderr']==b'',
+            'host.provided_probe_capture');self._probe_result=result;return True
+
+
+def _root_owned_sources_parent(path):
+    require(path.is_absolute()and path.resolve()==path,'host.provided_parent')
+    for item in (*reversed(path.parents),path):
+        info=item.lstat();require(stat.S_ISDIR(info.st_mode)and info.st_uid==info.st_gid==0 and
+            not stat.S_IMODE(info.st_mode)&0o022,'host.provided_parent')
+
+
+def _capture_ok(result):
+    return (type(result)is dict and result.get('captureComplete')is True and
+        result.get('streamsEOF')is True and result.get('streamsClosed')is True and
+        result.get('ownedChildExited')is True and result.get('ownershipRetained')is False and
+        result.get('refusalCode')is None and result.get('timedOut')is False and
+        type(result.get('stdout'))is bytes and type(result.get('stderr'))is bytes and
+        all(type(result.get(k+'Facts'))is dict and result[k+'Facts'].get('truncated')is False and
+            result[k+'Facts'].get('complete')is True and result[k+'Facts'].get('bytes')==len(result[k])and
+            result[k+'Facts'].get('sha256')==sha(result[k])for k in('stdout','stderr')))
+
+
 class HostOps:
     """Actual Linux reads constrained to the one root and anchor paths."""
-    def __init__(self, session_root, unit):
+    def __init__(self, session_root, unit, *, provided_selinux=None):
         require(type(session_root) is str and re.fullmatch(ROOT_PREFIX + '[0-9a-f]{32}', session_root)
                 and type(unit) is str and unit == 'ocv-' + session_root[-32:] + '.service',
                 'host.session_root')
         self.root, self.unit = session_root, unit
         self.incoming = '/run/systemd/propagate/' + unit
         self.command_port = None
+        self.provided_selinux=provided_selinux
+        if provided_selinux is not None:
+            require(type(provided_selinux)is ProvidedSelinuxProbe,'host.provided_evidence_type')
+            provided_selinux.validate()
 
     def _within(self, path):
         _absolute(path)
@@ -152,6 +325,11 @@ class HostOps:
         return os.readlink(path)
 
     def read(self, path, cap):
+        require(not(self.provided_selinux is not None and path=='/usr/sbin/selinuxenabled'),'host.provided_no_legacy_fallback')
+        if self.provided_selinux is not None and path==self.provided_selinux.binary:
+            self.provided_selinux.validate()
+            value,_=self.provided_selinux.read('usr/sbin/selinuxenabled')
+            require(len(value)<=cap,'host.provided_read_cap');return value
         require(path in ('/proc/self/mountinfo', '/proc/sys/kernel/random/boot_id',
                          '/usr/sbin/selinuxenabled') or
                 re.fullmatch('/proc/[1-9][0-9]*/(?:status|stat)', path) or
@@ -170,6 +348,14 @@ class HostOps:
             os.close(fd)
 
     def command(self, argv, timeout):
+        require(not(self.provided_selinux is not None and argv==('/usr/sbin/selinuxenabled',)),'host.provided_no_legacy_fallback')
+        if self.provided_selinux is not None and argv in self.provided_selinux.commands:
+            require(timeout==5,'host.provided_command_time');self.provided_selinux.validate()
+            require(self.command_port is not None,'host.command_unissued')
+            result=self.command_port.command(argv,timeout)
+            if argv==self.provided_selinux.argv(True):self.provided_selinux.loader_result(result)
+            else:self.provided_selinux.probe_result(result)
+            return result
         require(type(argv) is tuple and type(timeout) is int and timeout == 5 and
                 (argv == ('/usr/sbin/selinuxenabled',) or
                  (len(argv) == 8 and argv[:4] ==
@@ -249,10 +435,12 @@ class Collector:
         _root_owned_sources(Path(__file__).resolve().parent / 'attested_generic')
         self.generic = load_generic()
         require(ops.command_port is None, 'host.command_port_already_issued')
-        ops.command_port = self.generic['ci_native_port'].CommandCapture(_GuestCommandIO())
+        commands=ops.provided_selinux.commands if ops.provided_selinux is not None else ()
+        ops.command_port = self.generic['ci_native_port'].CommandCapture(_GuestCommandIO(),readonly_selinux_commands=commands)
         self.sources = self.generic['ci_anchors'].Sources(ops, ops.root, ops.unit, boot_id,
                                                           SELINUX_TOOL_SHA256,
-                                                          propagation_policy='private')
+                                                          propagation_policy='private',
+                                                          provided_selinux=ops.provided_selinux if ops.provided_selinux is not None else None)
         self.prepared = False
         self.captured = False
 
