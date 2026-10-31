@@ -27,6 +27,25 @@ AMENDED_MAXIMUM_NEW_MINUTES = 25000  # Total, not an additional allocation.
 AMENDED_MONEY_USD = "25.00"
 AMENDED_SOURCE = "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f"
 AMENDED_SOURCE_TREE = "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f"
+
+# The H3 amendment extends material-source scope and time, never old receipt bytes.
+H3_AMENDMENT_SHA256 = "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520"
+H3_PRIVATE_AUTHORIZATION_SHA256 = "8df97c688f5273be12a4dad408b282660df2473bdbd1e02260c5613d04958446"
+H3_PREFIX_LEDGER_SHA256 = "56f29f04c138fd06ea1ecfbd38ab27acfd24e99a48269066f7e2f57ad7a1043b"
+H3_PREFIX_PROOF_SHA256 = "f06d0031f82f06b155ca9e1c93e60da1fb5bc3bd88dc9ca218a2ed9fea3b7153"
+H3_NOT_BEFORE = "2026-11-04T09:59:50Z"  # Ceiling of the recorded .641s direct-patch floor, not full closure proof.
+H3_EXPIRES_AT = "2026-11-06T03:14:21Z"
+H3_PREFIX_MINUTES = 2215
+H3_STAGE_MINUTES = 3700
+H3_MAXIMUM_BOOKED_MINUTES = H3_PREFIX_MINUTES + H3_STAGE_MINUTES
+H3_MAXIMUM_SOURCE_GENERATIONS = 3
+H3_STAGE_POOLS = {"source": 3225, "preparation": 135, "incidental": 160, "image": 180}
+H3_DESCRIPTOR_FIELDS = ("publicAmendmentSha256", "privateAuthorizationSha256", "expiresAt",
+    "minimumPackageUseAt", "stagePrefixLedgerSha256", "stagePrefixNewMinutes",
+    "maximumStageRunnerMinutes", "maximumStageBookedMinutes", "maximumSourceGenerations")
+H3_ARTIFACT_FIELDS = ("id", "name", "size_in_bytes", "expired", "digest", "created_at",
+    "expires_at", "updated_at", "workflow_run")
+H3_ARTIFACT_CONTEXT_FIELDS = ("id", "repository_id", "head_repository_id", "head_branch", "head_sha")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 ID = re.compile(r"[1-9][0-9]{0,19}\Z")
@@ -81,6 +100,87 @@ def validate_budget_amendment(value):
     return value
 
 
+def h3_stage_descriptor():
+    return {"publicAmendmentSha256": H3_AMENDMENT_SHA256,
+        "privateAuthorizationSha256": H3_PRIVATE_AUTHORIZATION_SHA256,
+        "expiresAt": H3_EXPIRES_AT, "minimumPackageUseAt": H3_NOT_BEFORE,
+        "stagePrefixLedgerSha256": H3_PREFIX_LEDGER_SHA256,
+        "stagePrefixNewMinutes": H3_PREFIX_MINUTES, "maximumStageRunnerMinutes": H3_STAGE_MINUTES,
+        "maximumStageBookedMinutes": H3_MAXIMUM_BOOKED_MINUTES,
+        "maximumSourceGenerations": H3_MAXIMUM_SOURCE_GENERATIONS}
+
+
+def validate_h3_stage_descriptor(value):
+    fields(value, H3_DESCRIPTOR_FIELDS, "h3_stage_descriptor_fields")
+    expected = h3_stage_descriptor()
+    need(all(type(value[k]) is type(v) and value[k] == v for k, v in expected.items()),
+        "h3_stage_descriptor_scope")
+    return value
+
+
+def validate_h3_artifact_booking(row):
+    fields(row, ("producerRunId", "producerHead", "nativeResponseSha256", "metadata",
+        "fieldPresence", "workflowRunFieldPresence"), "h3_artifact_booking_fields")
+    need(type(row["producerRunId"]) is str and ID.fullmatch(row["producerRunId"]) and
+        pin(row["producerHead"], 160) and pin(row["nativeResponseSha256"]), "h3_artifact_producer")
+    meta = row["metadata"]
+    presence = fields(row["fieldPresence"], H3_ARTIFACT_FIELDS, "h3_artifact_presence_fields")
+    context_presence = fields(row["workflowRunFieldPresence"], H3_ARTIFACT_CONTEXT_FIELDS,
+        "h3_artifact_context_presence_fields")
+    need(all(type(x) is bool for x in (*presence.values(), *context_presence.values())) and
+        type(meta) is dict and set(meta) == {k for k, present in presence.items() if present} and
+        all(presence[k] for k in ("id", "name", "size_in_bytes", "expired")), "h3_artifact_presence")
+    need(type(meta["id"]) is int and meta["id"] > 0 and type(meta["name"]) is str and
+        0 < len(meta["name"]) <= 300 and type(meta["size_in_bytes"]) is int and
+        0 <= meta["size_in_bytes"] <= DIAGNOSTIC_BYTES and type(meta["expired"]) is bool,
+        "h3_artifact_metadata")
+    if presence["digest"]:
+        need(type(meta["digest"]) is str and re.fullmatch(r"sha256:[0-9a-f]{64}", meta["digest"]),
+            "h3_artifact_digest")
+    for key in ("created_at", "expires_at", "updated_at"):
+        if presence[key]: utc(meta[key])
+    if presence["created_at"] and presence["expires_at"]:
+        need(utc(meta["created_at"]) <= utc(meta["expires_at"]), "h3_artifact_expiry_order")
+    if presence["workflow_run"]:
+        context = meta["workflow_run"]
+        need(type(context) is dict and set(context) == {k for k, present in context_presence.items() if present},
+            "h3_artifact_context_presence")
+        expected = {"id": int(row["producerRunId"]), "repository_id": 1309456040,
+            "head_repository_id": 1309456040, "head_sha": row["producerHead"]}
+        need(all(k not in context or type(context[k]) is type(v) and context[k] == v
+            for k, v in expected.items()), "h3_artifact_context")
+        if "head_branch" in context:
+            need(context["head_branch"] in ("task/v107-source-binding", "prep/v2026.10.9-remediation"),
+                "h3_artifact_context_branch")
+    else:
+        need(not any(context_presence.values()), "h3_artifact_absent_context")
+    return row
+
+
+def source_successor_amendment(grant):
+    need(type(grant) is dict, "h3_grant_type")
+    if "sourceSuccessorAmendment" not in grant:
+        return None
+    value = fields(grant["sourceSuccessorAmendment"], (*H3_DESCRIPTOR_FIELDS,
+        "sourceFamilySha256", "sourceGeneration", "bookedArtifacts"), "h3_amendment_fields")
+    validate_h3_stage_descriptor({k: value[k] for k in H3_DESCRIPTOR_FIELDS})
+    need(pin(value["sourceFamilySha256"]) and type(value["sourceGeneration"]) is int and
+        1 <= value["sourceGeneration"] <= 3 and type(value["bookedArtifacts"]) is list and
+        26 <= len(value["bookedArtifacts"]) <= 4096, "h3_amendment_family")
+    ids = set()
+    for row in value["bookedArtifacts"]:
+        validate_h3_artifact_booking(row)
+        aid = row["metadata"]["id"]
+        need(aid not in ids, "h3_artifact_duplicate"); ids.add(aid)
+    need(sum(r["metadata"]["size_in_bytes"] for r in value["bookedArtifacts"]) <= DIAGNOSTIC_BYTES,
+        "h3_booked_artifact_bytes")
+    return value
+
+
+def effective_expires_at(grant):
+    return H3_EXPIRES_AT if source_successor_amendment(grant) is not None else EXPIRES_AT
+
+
 def amended_source_scope(value):
     need(type(value) is dict and value.get("phase") == "correction" and
         type(value.get("sequence")) is int and 12 <= value["sequence"] <= MAXIMUM_ADDITIONAL_ATTEMPTS and
@@ -95,7 +195,7 @@ def has_budget_amendment(grant):
     validate_budget_amendment(grant["budgetCeilingAmendment"])
     need(grant.get("authoritySha256") == AUTHORITY_SHA256 and
         grant.get("originalAuthorizationSha256") == ORIGINAL_AUTHORIZATION_SHA256 and
-        grant.get("expiresAt") == EXPIRES_AT and grant.get("moneyCeilingUSD") == AMENDED_MONEY_USD and
+        grant.get("expiresAt") == effective_expires_at(grant) and grant.get("moneyCeilingUSD") == AMENDED_MONEY_USD and
         type(grant.get("maximumNewRunnerMinutes")) is int and
         grant["maximumNewRunnerMinutes"] == AMENDED_MAXIMUM_NEW_MINUTES and
         type(grant.get("maximumAdditionalAttempts")) is int and grant["maximumAdditionalAttempts"] == 1000 and
@@ -103,7 +203,20 @@ def has_budget_amendment(grant):
         type(grant.get("maximumSourceParallelJobs")) is int and grant["maximumSourceParallelJobs"] == 3 and
         type(grant.get("diagnosticBytes")) is int and grant["diagnosticBytes"] == DIAGNOSTIC_BYTES,
         "budget_amendment_unchanged_scope")
-    amended_source_scope(grant.get("nextExecution"))
+    h3 = source_successor_amendment(grant)
+    if h3 is None:
+        amended_source_scope(grant.get("nextExecution"))
+    else:
+        plan = grant.get("nextExecution")
+        need(type(plan) is dict and type(plan.get("sequence")) is int and 12 <= plan["sequence"] <= 1000 and
+            plan.get("phase") in ("lock-preparation", "validation") and
+            plan.get("sourceGeneration") == h3["sourceGeneration"] and
+            type(plan.get("sourceGeneration")) is int and
+            plan.get("sourceFamilySha256") == h3["sourceFamilySha256"], "h3_plan_binding")
+        r = plan.get("reservations")
+        need(type(r) is dict and r.get("current") == (45 if plan["phase"] == "lock-preparation" else 1075) and
+            r.get("pendingValidation") == (1075 if plan["phase"] == "lock-preparation" else 0) and
+            r.get("conditionalImage") == 180 and r.get("incidental") == 160, "h3_plan_reservations")
     return True
 
 
@@ -113,13 +226,20 @@ def maximum_new_minutes(grant):
 
 def validate_plan(plan, active=False):
     fields(plan, ("schema", "status", "sequence", "phase", "preparationAttempt", "source",
-        "priorSourceRun", "reasonCode", "reviewSha256", "requestSha256", "reservations"), "plan_fields")
+        "priorSourceRun", "reasonCode", "reviewSha256", "requestSha256", "reservations") +
+        (("sourceGeneration", "sourceFamilySha256") if type(plan) is dict and
+            ("sourceGeneration" in plan or "sourceFamilySha256" in plan) else ()), "plan_fields")
     need(plan["schema"] == PLAN_SCHEMA and plan["status"] in ("DISARMED", "REVIEWED") and
         type(plan["sequence"]) is int and 1 <= plan["sequence"] <= MAXIMUM_ADDITIONAL_ATTEMPTS and
         plan["phase"] in ("lock-preparation", "validation", "correction") and
         type(plan["preparationAttempt"]) is int and 3 <= plan["preparationAttempt"] <= 1002 and
-        plan["reasonCode"] in ("initial_recovery", "prior_failure", "generation_ready", "reviewed_pipeline_correction"),
+        plan["reasonCode"] in ("initial_recovery", "prior_failure", "generation_ready", "reviewed_pipeline_correction", "approved_source_successor"),
         "plan_scope")
+    if "sourceGeneration" in plan:
+        need(type(plan["sourceGeneration"]) is int and 1 <= plan["sourceGeneration"] <= 3 and
+            pin(plan["sourceFamilySha256"]) and plan["sequence"] >= 12, "h3_plan_family")
+    else:
+        need(plan["reasonCode"] != "approved_source_successor", "h3_reason_requires_binding")
     prior = fields(plan["priorSourceRun"], ("runId", "pipelineHead", "requestSha256"), "prior_source_fields")
     need(type(prior["runId"]) is str and ID.fullmatch(prior["runId"]) and
         pin(prior["pipelineHead"], 160) and pin(prior["requestSha256"]), "prior_source_identity")
@@ -152,12 +272,15 @@ def validate_grant(grant, original_authorization, active=False, now=None):
         "originalAuthorizationSha256", "closedPrefixProducerSha256", "maximumAdditionalAttempts",
         "maximumStageAttempts", "maximumNewRunnerMinutes", "maximumSourceParallelJobs",
         "diagnosticBytes", "moneyCeilingUSD", "bookedAdditionalAttempts", "nextExecution") +
-        (("budgetCeilingAmendment",) if type(grant) is dict and "budgetCeilingAmendment" in grant else ()), "fields")
+        (("budgetCeilingAmendment",) if type(grant) is dict and "budgetCeilingAmendment" in grant else ()) +
+        (("sourceSuccessorAmendment",) if type(grant) is dict and "sourceSuccessorAmendment" in grant else ()), "fields")
+    h3 = source_successor_amendment(grant)
+    need(h3 is None or "budgetCeilingAmendment" in grant, "h3_requires_total_amendment")
     amended = has_budget_amendment(grant)
     maximum = maximum_new_minutes(grant)
     need(grant["schema"] == SCHEMA and grant["status"] in ("DISARMED", "APPROVED") and
         grant["authoritySha256"] == AUTHORITY_SHA256 and grant["approvedAt"] == APPROVED_AT and
-        grant["expiresAt"] == EXPIRES_AT and grant["originalAuthorizationSha256"] ==
+        grant["expiresAt"] == effective_expires_at(grant) and grant["originalAuthorizationSha256"] ==
         ORIGINAL_AUTHORIZATION_SHA256 == digest(original_authorization) and
         grant["closedPrefixProducerSha256"] == PREFIX_PRODUCER_SHA256 and
         type(grant["maximumAdditionalAttempts"]) is int and grant["maximumAdditionalAttempts"] == 1000 and
@@ -179,9 +302,17 @@ def validate_grant(grant, original_authorization, active=False, now=None):
         need(key not in keys and not (key[0] in PREFIX_RUN_IDS and key[1] == 1), "booked_attempt_duplicate")
         keys.add(key)
     validate_plan(grant["nextExecution"], active=active)
+    if h3 is None:
+        need("sourceGeneration" not in grant["nextExecution"] and "sourceFamilySha256" not in grant["nextExecution"],
+            "h3_family_requires_amendment")
+    else:
+        need(PREFIX_MINUTES + sum(r["runnerMinutes"] for r in grant["bookedAdditionalAttempts"]) >=
+            H3_PREFIX_MINUTES and len(grant["bookedAdditionalAttempts"]) >= 251, "h3_prefix_booking_floor")
     if active:
         need(grant["status"] == "APPROVED" and grant["nextExecution"]["status"] == "REVIEWED" and
-            type(now) in (int, float) and utc(APPROVED_AT).timestamp() <= now < utc(EXPIRES_AT).timestamp(),
+            type(now) in (int, float) and
+            utc(H3_NOT_BEFORE if h3 is not None else APPROVED_AT).timestamp() <= now <
+            utc(effective_expires_at(grant)).timestamp(),
             "active_clock_or_review")
     return grant
 
@@ -240,3 +371,35 @@ def validate_budget(grant, plan, new_observed_minutes, current_observed_minutes)
 
 # Inserted from the fixed, hash-verified closed 42-record producer, not API input.
 PREFIX_RUN_IDS = ('40997862688', '40997862829', '40997862875', '40997862939', '40997862991', '40997863063', '40997866196', '40997866229', '40997866323', '40997866357', '40997866390', '40997868003', '40997868027', '40997868031', '40997868050', '40997868053', '40997868069', '40997868135', '40997868140', '40997868144', '40997868160', '41003655563', '41003655675', '41003655688', '41003655715', '41003655723', '41003655733', '41003658923', '41003658958', '41003659018', '41003659182', '41003659256', '41003660893', '41003660895', '41003660898', '41003660902', '41003660906', '41003660952', '41003660969', '41003660972', '41003661031', '41003661223')
+
+
+def validate_h3_budget(grant, plan, charged_total, current_minutes, components):
+    """Book all retained debits and the remaining approved component pools."""
+    h3 = source_successor_amendment(grant)
+    need(h3 is not None, "h3_budget_requires_authority")
+    validate_plan(plan)
+    fields(components, ("preparationObservedMinutes", "sourceObservedMinutes", "incidentalObservedMinutes",
+        "imageObservedMinutes", "remainingImageFamilyReserveMinutes", "remainingIncidentalReserveMinutes"), "h3_budget_component_fields")
+    need(type(charged_total) is int and charged_total >= H3_PREFIX_MINUTES and type(current_minutes) is int and
+        0 <= current_minutes <= charged_total and all(type(v) is int and v >= 0 for v in components.values()),
+        "h3_budget_positive_native_facts")
+    observed = {"preparation": components["preparationObservedMinutes"], "source": components["sourceObservedMinutes"],
+        "incidental": components["incidentalObservedMinutes"], "image": components["imageObservedMinutes"]}
+    need(all(observed[k] <= H3_STAGE_POOLS[k] for k in observed) and
+        sum(observed.values()) <= charged_total - H3_PREFIX_MINUTES and
+        components["remainingImageFamilyReserveMinutes"] == H3_STAGE_POOLS["image"] - observed["image"] and
+        components["remainingIncidentalReserveMinutes"] == H3_STAGE_POOLS["incidental"] - observed["incidental"],
+        "h3_budget_pool_bounds")
+    pool = "preparation" if plan["phase"] == "lock-preparation" else "source"
+    need(current_minutes <= plan["reservations"]["current"] and observed[pool] >= current_minutes and
+        observed[pool] - current_minutes + plan["reservations"]["current"] <= H3_STAGE_POOLS[pool] and
+        (plan["phase"] != "lock-preparation" or observed["source"] + plan["reservations"]["pendingValidation"] <= H3_STAGE_POOLS["source"]),
+        "h3_budget_next_operation_pool")
+    remaining = sum(H3_STAGE_POOLS[k] - observed[k] for k in observed)
+    booked = charged_total + remaining
+    need(booked <= min(maximum_new_minutes(grant), H3_MAXIMUM_BOOKED_MINUTES), "h3_budget_cumulative_ceiling")
+    return {"newObservedOrBookedMinutes": charged_total, "currentObservedMinutes": current_minutes,
+        "remainingStagePoolReservationMinutes": remaining, "totalBookedMinutes": booked,
+        "maximumStageBookedMinutes": H3_MAXIMUM_BOOKED_MINUTES,
+        "maximumNewMinutes": maximum_new_minutes(grant), "perAttemptBookedMinuteFloorsApplied": True,
+        "stagePoolObservedMinutes": observed}

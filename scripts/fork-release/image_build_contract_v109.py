@@ -103,6 +103,21 @@ def utc(value):
     return stamp
 
 
+def source_stage(value):
+    """Consume the source owner's closed stage, never an image-specific grant."""
+    from bounded_run_contract_v109 import validate_h3_stage_descriptor
+    try:
+        validate_h3_stage_descriptor(value)
+    except (ValueError, KeyError, TypeError):
+        raise Refusal("image.source_stage_descriptor") from None
+    return value
+
+
+def source_stage_digest(value):
+    source_stage(value)
+    return sha(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
+
+
 def disarmed_request():
     return {"schema": SCHEMA, "state": "DISARMED", "campaignId": CAMPAIGN, "repository": REPOSITORY,
         "workflow": WORKFLOW, "workflowBranch": BRANCH, "operationId": OPERATION,
@@ -123,7 +138,9 @@ def expected_object(source):
 def validate_request(value, active=False, now=None):
     template = disarmed_request()
     amended = type(value) is dict and "sourceBudgetCeilingAmendmentSha256" in value
-    fields(value, (*template, *(("sourceBudgetCeilingAmendmentSha256",) if amended else ())), "image.request_fields")
+    successor = type(value) is dict and "sourceStage" in value
+    fields(value, (*template, *(("sourceBudgetCeilingAmendmentSha256",) if amended else ()),
+        *(("sourceStage",) if successor else ())), "image.request_fields")
     for key in ("schema", "campaignId", "repository", "workflow", "workflowBranch", "operationId"):
         need(value[key] == template[key], "image.fixed_scope")
     need(value["state"] in ("DISARMED", "PREPARED_BUILD", "APPROVED_BUILD"), "image.state")
@@ -133,6 +150,8 @@ def validate_request(value, active=False, now=None):
     if value["state"] == "DISARMED":
         need(value == template and not active, "image.disarmed")
         return value
+    stage = source_stage(value["sourceStage"]) if successor else None
+    need(not successor or amended, "image.source_stage_budget_link")
     need(all(pin(value[k], True) for k in ("preparationSourceSha", "previousPipelineHead", "sourceSha", "sourceTree")),
          "image.source_identity")
     need(all(pin(value[k]) for k in ("sourceBindingsSha256", "sourceRequestSha256", "generationReceiptSha256",
@@ -140,6 +159,9 @@ def validate_request(value, active=False, now=None):
     need(obj["object"] == expected_object(value["sourceSha"]), "image.exact_object")
     need(value["sourceSha"] != value["preparationSourceSha"], "image.prelock_source_refused")
     built = utc(value["builtAt"])
+    if successor:
+        need(utc(stage["minimumPackageUseAt"]) <= built < utc(stage["expiresAt"]),
+            "image.source_stage_build_clock")
     if now is not None:
         need(built.timestamp() <= now, "image.future_build_input")
     proof = fields(value["sourceValidation"], ("runId", "attempt", "pipelineHead", "phase", "artifactId",
@@ -151,8 +173,10 @@ def validate_request(value, active=False, now=None):
         value["previousPipelineHead"] == proof["pipelineHead"], "image.validation_pins")
     if amended:
         need(value["sourceBudgetCeilingAmendmentSha256"] == BUDGET_AMENDMENT_SHA256 and
-            value["sourceSha"] == AMENDED_SOURCE and value["sourceTree"] == AMENDED_SOURCE_TREE and
-            proof["phase"] == "correction", "image.budget_amendment_source_scope")
+            ((successor and value["sourceSha"] != AMENDED_SOURCE and value["sourceTree"] != AMENDED_SOURCE_TREE) or
+             (not successor and value["sourceSha"] == AMENDED_SOURCE and
+              value["sourceTree"] == AMENDED_SOURCE_TREE and proof["phase"] == "correction")),
+            "image.budget_amendment_source_scope")
     if value["state"] == "PREPARED_BUILD":
         need(value["authorization"] is None and not active, "image.prepared_not_authorized")
         return value
@@ -160,14 +184,20 @@ def validate_request(value, active=False, now=None):
         "actionTimeAccessApprovalSha256", "maximumPhysicalBuilds", "maximumBuildMinutes", "maximumFamilyMinutes",
         "maximumArchiveBytes", "maximumNewRunnerMinutes", "moneyCeilingUSDIncludingAllowance",
         "producedImageExecutionAllowed", "publicImageExportAllowed", "cloudGrantFromRunnerAllowed") +
-        (("budgetCeilingAmendmentSha256",) if amended else ()), "image.authorization_fields")
+        (("budgetCeilingAmendmentSha256",) if amended else ()) +
+        (("sourceStageSha256",) if successor else ()), "image.authorization_fields")
     need(auth["schema"] == "openclaw.v109.private-image-authorization.v1" and pin(auth["approvalScopeSha256"]) and
         pin(auth["actionTimeAccessApprovalSha256"]), "image.action_time_approval_binding")
     start, end = utc(auth["approvedAt"]), utc(auth["expiresAt"])
-    need(end-start == timedelta(hours=AUTH_HOURS), "image.exact_96_hour_window")
+    if successor:
+        need(auth["approvedAt"] == AMENDED_APPROVED_AT and auth["expiresAt"] == stage["expiresAt"] and
+            auth["sourceStageSha256"] == source_stage_digest(stage), "image.source_stage_authorization")
+    else:
+        need(end-start == timedelta(hours=AUTH_HOURS), "image.exact_96_hour_window")
     if amended:
         need(auth["budgetCeilingAmendmentSha256"] == value["sourceBudgetCeilingAmendmentSha256"] and
-            auth["approvedAt"] == AMENDED_APPROVED_AT and auth["expiresAt"] == AMENDED_EXPIRES_AT,
+            auth["approvedAt"] == AMENDED_APPROVED_AT and
+            auth["expiresAt"] == (stage["expiresAt"] if successor else AMENDED_EXPIRES_AT),
             "image.budget_amendment_authorization")
     expected = {"maximumPhysicalBuilds":1, "maximumBuildMinutes":BUILD_MINUTES, "maximumFamilyMinutes":FAMILY_MINUTES,
         "maximumArchiveBytes":MAX_ARCHIVE, "maximumNewRunnerMinutes":25000 if amended else 2500,
@@ -176,6 +206,8 @@ def validate_request(value, active=False, now=None):
     need(all(type(auth[k]) is type(v) and auth[k] == v for k,v in expected.items()), "image.exact_limits")
     if now is not None:
         need(type(now) in (int,float) and start.timestamp() <= now < end.timestamp(), "image.authorization_clock")
+        if successor:
+            need(now >= utc(stage["minimumPackageUseAt"]).timestamp(), "image.source_stage_not_before")
     if active:
         need(now is not None, "image.live_clock_required")
     return value
@@ -228,6 +260,12 @@ def validate_source_snapshot(request, run, jobs, artifacts, zip_raw, result_vali
     need({j.get("name") for j in rows} == expected and len({j.get("id") for j in rows}) == 17 and
         all(j.get("status") == "completed" and j.get("conclusion") == "success" and
             str(j.get("run_id")) == p["runId"] for j in rows), "image.all15_actual_source_passed")
+    if "sourceStage" in request:
+        stage = source_stage(request["sourceStage"])
+        first, last = utc(stage["minimumPackageUseAt"]), utc(stage["expiresAt"])
+        for job in rows:
+            a, b = utc(job.get("started_at")), utc(job.get("completed_at"))
+            need(first <= a <= b <= last, "image.source_stage_job_clock")
     need(type(artifacts) is dict and type(artifacts.get("total_count")) is int and
         artifacts["total_count"] == len(artifacts.get("artifacts", [])) == 1, "image.single_source_artifact")
     a = artifacts["artifacts"][0]
@@ -293,6 +331,40 @@ def family_budget(prior_minutes):
             "maximumFamilyMinutes":FAMILY_MINUTES}
 
 
+def cumulative_stage_budget(request, observed_or_booked_minutes, current_minutes,
+                            prior_family_minutes, remaining_incidental_minutes):
+    """Reserve the current image inside the source owner's measured H3 stage.
+
+    The caller must acquire usage through the maintained history owner. This
+    pure check does not establish provider facts or create admission authority.
+    """
+    validate_request(request)
+    need("sourceStage" in request, "image.source_stage_required")
+    stage = source_stage(request["sourceStage"])
+    need(type(observed_or_booked_minutes) is int and type(current_minutes) is int and
+        type(prior_family_minutes) is int and type(remaining_incidental_minutes) is int and
+        0 <= current_minutes <= 15 + BUILD_MINUTES and current_minutes <= observed_or_booked_minutes,
+        "image.measured_cumulative_minutes")
+    family = family_budget([prior_family_minutes])
+    need(0 <= remaining_incidental_minutes <= 160, "image.measured_incidental_reserve")
+    prior = observed_or_booked_minutes - current_minutes
+    need(prior >= stage["stagePrefixNewMinutes"] + prior_family_minutes, "image.source_stage_minute_floor")
+    # The whole approved family remains booked; a smaller job cap or a missing
+    # incidental observation does not release the carried stage reservations.
+    reserve = FAMILY_MINUTES - family["priorRunnerMinutes"]
+    ceiling = min(25000, stage["maximumStageBookedMinutes"])
+    maximum = prior + reserve + remaining_incidental_minutes
+    need(maximum <= ceiling, "image.source_stage_budget_exhausted")
+    return {"newObservedOrBookedMinutes": observed_or_booked_minutes,
+        "currentObservedMinutes": current_minutes, "priorMinutesCharged": prior,
+        "currentJobReservationMinutes": family["currentReservedMinutes"],
+        "remainingImageFamilyReservationMinutes": reserve,
+        "remainingIncidentalReserveMinutes": remaining_incidental_minutes,
+        "maximumCumulativeBookedMinutes": maximum,
+        "effectiveCumulativeMinuteCeiling": ceiling, "maximumNewRunnerMinutes": 25000,
+        "noConsumedMinuteRefund": True}
+
+
 def validate_envelope(envelope_raw, request, context, transfer_validator, now, *, before_build=True):
     envelope=parse(envelope_raw,32768)
     fields(envelope,("schema","sourceSha","workflowSha","bucket","object","signer","url"),"image.capability_fields")
@@ -346,19 +418,22 @@ def source_budget_amendment(bindings, selected):
     import source_validation_contract_v109 as source_owner
     try:
         source_owner.validate_request(selected, bindings)
+        stage = source_owner.h3_stage_contract(bindings, selected)
+        if stage is not None:
+            source_stage(stage)
         grant = bindings.get("ciRunGrant")
         amended = type(grant) is dict and "budgetCeilingAmendment" in grant
         if not amended:
             need("budgetCeilingAmendmentSha256" not in selected, "image.source_budget_link")
             return None
-        # The maintained validator authenticates the exact six-field amendment,
-        # original authority/authorization, H2/tree, sequence12+, totals and all
-        # unchanged count/deadline/parallel/diagnostic restrictions.
+        # The maintained validator authenticates the original budget amendment
+        # and its H2 identity or closed H3 successor, including unchanged count,
+        # parallel, diagnostic and source-generation restrictions.
         need(selected.get("budgetCeilingAmendmentSha256") == BUDGET_AMENDMENT_SHA256 and
             source_owner.budget(selected)["maximumNewMinutes"] == 25000 and
             grant["maximumNewRunnerMinutes"] == 25000 and grant["moneyCeilingUSD"] == "25.00" and
-            selected["source"]["sourceSha"] == AMENDED_SOURCE and
-            selected["source"]["sourceTree"] == AMENDED_SOURCE_TREE,
+            (stage is not None or selected["source"]["sourceSha"] == AMENDED_SOURCE and
+             selected["source"]["sourceTree"] == AMENDED_SOURCE_TREE),
             "image.source_budget_link")
         return BUDGET_AMENDMENT_SHA256
     except (ValueError, KeyError, TypeError):
@@ -371,6 +446,12 @@ def validate_source_budget_binding(request, bindings, selected):
     need(request.get("sourceBudgetCeilingAmendmentSha256") == expected and
         (("sourceBudgetCeilingAmendmentSha256" in request) is (expected is not None)),
         "image.source_budget_snapshot_link")
+    import source_validation_contract_v109 as source_owner
+    stage = source_owner.h3_stage_contract(bindings, selected)
+    if stage is not None:
+        source_stage(stage)
+    need(request.get("sourceStage") == stage and
+        (("sourceStage" in request) is (stage is not None)), "image.source_stage_snapshot_link")
     return expected
 
 
@@ -402,6 +483,9 @@ def prepare_from_passed_source(bindings_raw, source_request_raw, generation_raw,
     amendment = source_budget_amendment(bindings, selected)
     if amendment is not None:
         request["sourceBudgetCeilingAmendmentSha256"] = amendment
+    stage = source_owner.h3_stage_contract(bindings, selected)
+    if stage is not None:
+        request["sourceStage"] = deepcopy(source_stage(stage))
     request["privateObject"]["object"]=expected_object(source["sourceSha"])
     validate_request(request)
     expected={"runId":str(run.get("id")),"runAttempt":1,"pipelineHead":run.get("head_sha"),"requestSha256":sha(source_request_raw)}

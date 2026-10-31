@@ -55,6 +55,12 @@ COMPAT_EXTRA = (
     "src/gateway/server-methods/nodes.test.ts",
     "test/scripts/ci-hydrate-live-auth.test.ts",
 )
+H3_COMPAT_EXTRA = (
+    "src/agents/workspace-bootstrap-policy.test.ts",
+    "src/agents/workspace-bootstrap-policy.platform.test.ts",
+    "src/daemon/systemd-scalar-paths.test.ts",
+    "extensions/file-transfer/src/shared/policy.test.ts",
+)
 REQUIRED_SOURCE_TESTS = tuple(sorted(set(SQLITE_EXTRA + DOCTOR_EXTRA + MODEL_EXTRA + COMPAT_EXTRA)))
 REQUIRED_HELPERS = ("test/scripts/a2ui-zod-bounds.regression.mjs",)
 NATIVE_DEPENDENCY_NAMES = frozenset((
@@ -79,6 +85,9 @@ MOCKED_HELPERS = {
 }
 PIPELINE_CONTRACT_TESTS = (
     "test_finite_public_root_bootstrap_v109.py",
+    "test_h3_image_stage_v109.py",
+    "test_h3_source_stage_v109.py",
+    "test_h3_history_accounting_v109.py",
     "test_image_budget_ceiling_amendment_v109.py",
     "test_release.py", "test_preflight.py", "test_source_tests.py",
     "test_merge_source.py", "test_merge_source_v107.py", "test_merge_source_v108.py",
@@ -147,7 +156,7 @@ def verify_pipeline_contract_files(read_file):
     return {"fixedTestModules": list(PIPELINE_CONTRACT_TESTS), "missingModuleAccepted": False}
 
 
-def selected_tests(paths, profile):
+def selected_tests(paths, profile, source_successor=False):
     known = _paths(paths)
     _need(profile in contract.PROFILES, "fixed_profile")
     legacy_request = {"schema": legacy.R8_SCHEMA}
@@ -166,17 +175,18 @@ def selected_tests(paths, profile):
     if profile == "sqlite":
         return sorted(set(legacy.selected_tests(paths, profile, legacy_request)) | set(SQLITE_EXTRA))
     if profile == "compatibility":
-        return sorted(set(legacy.V6_RUNTIME_COMPATIBILITY_TESTS) | set(COMPAT_EXTRA))
+        return sorted(set(legacy.V6_RUNTIME_COMPATIBILITY_TESTS) | set(COMPAT_EXTRA) | (set(H3_COMPAT_EXTRA) if source_successor else set()))
     result = legacy.selected_tests(paths, profile, legacy_request)
     _need(set(result) <= known, "maintained_selection_tracked")
     return result
 
 
-def coverage(paths):
+def coverage(paths, source_successor=False):
+    required = tuple(sorted(set(REQUIRED_SOURCE_TESTS) | (set(H3_COMPAT_EXTRA) if source_successor else set())))
     known = _paths(paths)
-    _need(set(REQUIRED_SOURCE_TESTS + REQUIRED_HELPERS) <= known, "complete_changed_recovery_security_paths")
-    _need(all(contract.TEST_PATH.fullmatch(p) for p in REQUIRED_SOURCE_TESTS), "fixed_test_paths")
-    families = {p: selected_tests(paths, p) for p in contract.PROFILES
+    _need(set(required + REQUIRED_HELPERS) <= known, "complete_changed_recovery_security_paths")
+    _need(all(contract.TEST_PATH.fullmatch(p) for p in required), "fixed_test_paths")
+    families = {p: selected_tests(paths, p, source_successor) for p in contract.PROFILES
         if p.startswith(("models-", "doctor-", "workboard-")) or p in ("sqlite", "memory", "compatibility")}
     _need(all(set(v) <= known for v in families.values()), "no_missing_selection")
     for prefixes in (("models-1", "models-2"), ("doctor-1", "doctor-2", "doctor-3"),
@@ -184,11 +194,11 @@ def coverage(paths):
         all_paths = [p for group in prefixes for p in families[group]]
         _need(len(all_paths) == len(set(all_paths)), "disjoint_family_shards")
     selected = set(p for group in families.values() for p in group)
-    _need(set(REQUIRED_SOURCE_TESTS) <= selected, "complete_new_owner_coverage")
+    _need(set(required) <= selected, "complete_new_owner_coverage")
     allowed = set(MOCKED_UNITS)
     _need(not any(re.search(r"(?:^|[./-])live(?:[./-]|$)", p) and p not in allowed for p in selected),
         "no_unreviewed_live_tests")
-    return {"requiredNewOrChangedTests": list(REQUIRED_SOURCE_TESTS),
+    return {"requiredNewOrChangedTests": list(required),
         "requiredNativeHelperFiles": list(REQUIRED_HELPERS),
         "familyCounts": {k: len(v) for k, v in families.items()},
         "freshSourceCoverageRequired": True, "priorGenerationCoverageReused": False}
@@ -196,8 +206,10 @@ def coverage(paths):
 
 def commands(pipeline, source, profile, tracked_paths, request, bindings):
     _need(profile in contract.PROFILES and request["phase"] in ("validation", "correction"), "execution_profile")
-    _need(bindings["newRecoveryTests"] == list(REQUIRED_SOURCE_TESTS), "binding_complete_changed_roots")
-    coverage(tracked_paths)
+    h3 = contract.source_successor_family(bindings) is not None
+    required = sorted(set(REQUIRED_SOURCE_TESTS) | (set(H3_COMPAT_EXTRA) if h3 else set()))
+    _need(bindings["newRecoveryTests"] == required, "binding_complete_changed_roots")
+    coverage(tracked_paths, h3)
     pipeline, source = Path(pipeline), Path(source)
     if profile.startswith("types-"):
         return [["pnpm", {"types-production": "tsgo:prod", "types-tests": "tsgo:test",
@@ -216,10 +228,10 @@ def commands(pipeline, source, profile, tracked_paths, request, bindings):
     if profile == "compatibility":
         _need("test/v108-remediation-security.test.mjs" in tracked_paths, "native_fork_security_suite")
         return [["node", native_owner, "--source-root", str(source), "--", "test/v108-remediation-security.test.mjs"],
-            ["node", "--import", "./scripts/tsx.mjs", "scripts/test-projects.mts", *selected_tests(tracked_paths, profile)],
+            ["node", "--import", "./scripts/tsx.mjs", "scripts/test-projects.mts", *selected_tests(tracked_paths, profile, h3)],
             ["pnpm", "deps:npm-lock:check:changed", "--base", contract.BASELINE_SOURCE,
                 "--head", request["source"]["sourceSha"]],
             ["node", "--input-type=module", "-e", legacy.V6_BUNDLED_NPM_VERSION_CHECK]]
-    selected = selected_tests(tracked_paths, profile)
+    selected = selected_tests(tracked_paths, profile, h3)
     _need(bool(selected), "nonempty_owner_family")
     return [["node", "--import", "./scripts/tsx.mjs", "scripts/test-projects.mts", *selected]]

@@ -1,3 +1,4 @@
+from test_source_validation_contract_v109 import historical_control
 """Fake host/provider tests only; no Git, Node, application, HTTP or CI runs."""
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -266,7 +267,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_pipeline_intake_recovery_fresh_native_metadata_and_no_artifacts(self):
         proof=policy.parse((OWNERS/policy.PREPARATION_FAILURE_EVIDENCE.removeprefix('scripts/fork-release/')).read_bytes())
-        current=policy.parse((OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json').read_bytes())
+        current=policy.parse(historical_control('ci-bindings.json'))
         b,q,raw=legacy_first_preparation_request(current,proof)
         self.assertEqual(policy.digest(raw),proof['requestSha256'])
         run={'id':int(proof['runId']),'head_sha':proof['pipelineHead'],'status':'completed','conclusion':'failure',
@@ -308,7 +309,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_historical_request_reencoding_is_not_original_producer_bytes(self):
         proof=policy.parse((OWNERS/policy.PREPARATION_FAILURE_EVIDENCE.removeprefix('scripts/fork-release/')).read_bytes())
-        current=policy.parse((OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json').read_bytes())
+        current=policy.parse(historical_control('ci-bindings.json'))
         before=deepcopy(current)
         _,request,raw=legacy_first_preparation_request(current,proof)
         reencoded=(json.dumps(request,sort_keys=True,indent=2)+'\n').encode()
@@ -324,7 +325,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_historical_request_keeps_semantic_and_proof_digest_bindings(self):
         proof=policy.parse((OWNERS/policy.PREPARATION_FAILURE_EVIDENCE.removeprefix('scripts/fork-release/')).read_bytes())
-        current=policy.parse((OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json').read_bytes())
+        current=policy.parse(historical_control('ci-bindings.json'))
         changed=deepcopy(current);changed['baseline']['publicProofSha256']='0'*64
         with self.assertRaisesRegex(AssertionError,'historical request semantic binding changed'):
             legacy_first_preparation_request(changed,proof)
@@ -335,7 +336,8 @@ class RuntimeTests(unittest.TestCase):
     def test_entire_historical_fixture_ignores_current_active_supplemental_variant(self):
         # This is an in-memory approval model only, never an operational file.
         path=OWNERS/'candidates/v2026.10.9-source-only/ci-bindings.json'
-        current=policy.parse(path.read_bytes())
+        operational_before=path.read_bytes()
+        current=policy.parse(historical_control("ci-bindings.json"))
         before=deepcopy(current)
         # The historical supplemental model predates the later execution grant.
         # Never carry its current correction plan into a view with no correction.
@@ -358,7 +360,7 @@ class RuntimeTests(unittest.TestCase):
         with patch.object(Path,"read_bytes",new=read):
             self.test_pipeline_intake_recovery_fresh_native_metadata_and_no_artifacts()
         self.assertEqual(policy.encode(current),in_memory)
-        self.assertEqual(policy.parse(original_read(path)),before)
+        self.assertEqual(original_read(path),operational_before)
         self.assertEqual(current["preparationCorrection"]["schema"],policy.ADDITIONAL_PIPELINE_RECOVERY_SCHEMA)
 
     def test_metadata_overlay_preserves_both_sides_equal_add_delete(self):

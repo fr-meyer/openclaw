@@ -159,4 +159,87 @@ class LockPolicyTests(unittest.TestCase):
                 m.verify_lock_security(browser_lock(),bad,NODE_SRI,COMMON_SRI)
 
 
+
+
+class H3LockPolicyTests(unittest.TestCase):
+    def context(self):
+        import json
+        proof=P.parent/"candidates/v2026.10.9-source-only/h3-selected-excluded-ages.json"
+        value = {"amendmentSha256":m.authority.H3_AMENDMENT_SHA256,"sourceGeneration":1,
+            "checkedAt":m.authority.H3_NOT_BEFORE,"packageBytes":json.dumps({"dependencies":{"minimatch":"11.0.1"}}).encode(),
+            "fileTransferPackageBytes":json.dumps({"dependencies":{"minimatch":"11.0.1"}}).encode(),
+            "workspaceBytes":b'minimumReleaseAge: 10080\nminimumReleaseAgeStrict: true\noverrides:\n  follow-redirects: 1.16.2\n  "mailauth@7.1.0>joi": 18.3.1\n  minimatch: 11.0.1\n  "cacache@21.0.1>glob": 14.0.2\n',
+            "excludedAgeProofBytes":proof.read_bytes(),"excludedAgeProofSha256":m.H3_EXCLUDED_AGE_PROOF_SHA256,
+            "targetMetadataProofBytes":(P.parent/"candidates/v2026.10.9-source-only/h3-target-package-metadata.json").read_bytes(),
+            "targetMetadataProofSha256":m.H3_TARGET_METADATA_PROOF_SHA256}
+        excludes=["@openai/codex","@openai/codex-*"]+[row["name"]+"@"+row["version"] for row in json.loads(value["excludedAgeProofBytes"])["tuples"] if row["name"].startswith("@openclaw/fs-safe")]
+        block="minimumReleaseAgeExclude:\n"+"".join('  - "'+name+'"\n' for name in excludes)
+        value["workspaceBytes"]=value["workspaceBytes"].replace(b"overrides:\n",block.encode()+b"overrides:\n")
+        return value
+    def graph(self, upgraded):
+        import json
+        base=lock("7.1.1","16.14.3").decode()
+        extra_packages="";extra_snapshots=""
+        versions={name:pair[1 if upgraded else 0] for name,pair in m.H3_TARGETS.items()}
+        target_metadata={row["name"]:row for row in json.loads(self.context()["targetMetadataProofBytes"])["tuples"]}
+        for name,version in versions.items():
+            integrity=target_metadata[name]["integrity"] if upgraded else NODE_SRI
+            extra_packages+="\n  '"+name+"@"+version+"':\n    resolution: {integrity: "+integrity+"}\n"
+            extra_snapshots+="\n  '"+name+"@"+version+"': {}\n"
+        for row in json.loads(self.context()["excludedAgeProofBytes"])["tuples"]:
+            key=row["name"]+"@"+row["version"]
+            extra_packages+="\n  '"+key+"':\n    resolution: {integrity: "+row["integrity"]+"}\n"
+            extra_snapshots+="\n  '"+key+"': {}\n"
+        for parent,child in (("mailauth@7.1.0","joi"),("cacache@21.0.1","glob")):
+            extra_packages+="\n  '"+parent+"':\n    resolution: {integrity: "+NODE_SRI+"}\n"
+            extra_snapshots+="\n  '"+parent+"':\n    dependencies:\n      "+child+": "+versions[child]+"\n"
+        overrides="\noverrides:\n  follow-redirects: "+versions["follow-redirects"]+"\n  minimatch: "+versions["minimatch"]+"\n"
+        if upgraded:overrides+="  'mailauth@7.1.0>joi': 18.3.1\n  'cacache@21.0.1>glob': 14.0.2\n"
+        importers="\nimporters:\n\n  .:\n    dependencies:\n      minimatch:\n        specifier: "+versions["minimatch"]+"\n        version: "+versions["minimatch"]+"\n\n  extensions/file-transfer:\n    dependencies:\n      minimatch:\n        specifier: "+versions["minimatch"]+"\n        version: "+versions["minimatch"]+"\n"
+        head,body=base.rsplit("---\n",1)
+        body=body.replace("\npackages:\n",overrides+importers+"\npackages:\n")
+        body=body.replace("\nsnapshots:\n",extra_packages+"\nsnapshots:\n")+extra_snapshots
+        return (head+"---\n"+body).encode()
+    def verify(self, raw=None, context=None):
+        return m.verify_lock_security(self.graph(False),self.graph(True) if raw is None else raw,NODE_SRI,COMMON_SRI,h3=self.context() if context is None else context)
+    def test_h3_exact_four_pins_parent_selectors_and_age_proof(self):
+        got=self.verify();self.assertEqual(got["sourceSuccessor"]["excludedSelectedTupleCount"],18)
+        self.assertFalse(got["unrelatedGeneratedDiffAutomaticallyApproved"])
+    def test_h3_wrong_selectors_refuse(self):
+        for before,after in ((b"mailauth@7.1.0>joi",b"mailauth@7.0.0>joi"),(b"cacache@21.0.1>glob",b"glob")):
+            h=self.context();h["workspaceBytes"]=h["workspaceBytes"].replace(before,after)
+            with self.subTest(before=before),self.assertRaises(m.LockRefusal):self.verify(context=h)
+    def test_h3_wrong_target_or_stale_h2_lock_refuses(self):
+        for raw in (self.graph(False),self.graph(True).replace(b"joi@18.3.1",b"joi@18.3.0")):
+            with self.subTest(raw=raw[-30:]),self.assertRaises(m.LockRefusal):self.verify(raw)
+    def test_h3_unrelated_integrity_and_graph_drift_refuse(self):
+        raw=self.graph(True)
+        for bad in (raw.replace(b"'mailauth@7.1.0':\n    resolution: {integrity: "+NODE_SRI.encode()+b"}",b"'mailauth@7.1.0':\n    resolution: {integrity: "+COMMON_SRI.encode()+b"}"),raw+b"\n  'unrelated@1.0.0': {}\n"):
+            with self.assertRaises(m.LockRefusal):self.verify(bad)
+    def test_h3_unknown_excluded_tuple_wrong_integrity_or_absence_refuse(self):
+        raw=self.graph(True)
+        for bad in (raw.replace(b"@openai/codex@0.160.0-darwin-arm64",b"@openai/codex@0.160.1-darwin-arm64"),raw.replace(b"@openai/codex@0.160.0'",b"@openai/codex@0.160.1'")):
+            with self.assertRaises(m.LockRefusal):self.verify(bad)
+        h=self.context();h["excludedAgeProofBytes"]=h["excludedAgeProofBytes"]+b" "
+        with self.assertRaises(m.LockRefusal):self.verify(context=h)
+    def test_h3_no_package_use_before_conservative_floor(self):
+        h=self.context();h["checkedAt"]="2026-11-04T09:59:49Z"
+        with self.assertRaises(m.LockRefusal):m.verify_h3_before_package_use(self.graph(False),h)
+    def test_h3_positive_selected_exclusion_check_is_not_fullclosure_claim(self):
+        got=m.verify_h3_before_package_use(self.graph(False),self.context())
+        self.assertEqual(got["excludedSelectedTupleCount"],18);self.assertFalse(got["fullResolvedClosureProven"])
+    def test_h3_cannot_weaken_global_age_policy(self):
+        for before,after in ((b"10080",b"0"),(b"Strict: true",b"Strict: false")):
+            h=self.context();h["workspaceBytes"]=h["workspaceBytes"].replace(before,after)
+            with self.assertRaises(m.LockRefusal):self.verify(context=h)
+    def test_h3_direct_minimatch_both_consumers_required(self):
+        for key in ("packageBytes","fileTransferPackageBytes"):
+            h=self.context();h[key]=h[key].replace(b"11.0.1",b"10.2.6")
+            with self.assertRaises(m.LockRefusal):self.verify(context=h)
+    def test_h3_wrong_or_unbound_authority_refuses(self):
+        for key,value in (("amendmentSha256","0"*64),("sourceGeneration",4),("sourceGeneration",True)):
+            h=self.context();h[key]=value
+            with self.assertRaises(m.LockRefusal):self.verify(context=h)
+
+
 if __name__=="__main__":unittest.main()

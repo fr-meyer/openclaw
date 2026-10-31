@@ -338,7 +338,9 @@ class ModelDiagnostic(unittest.TestCase):
                     captured.append({"ids":{r[0]for r in rows},"current":current,"request":q})
                     return {"sourceExecutionSequence":q["executionSequence"]}
                 tree=ast.parse((HERE/"source_validation_v109.py").read_text())
-                node=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=="history_checks")
+                nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef)and
+                    n.name in {"history_checks","collect_history_accounting"}]
+                self.assertEqual({n.name for n in nodes},{"history_checks","collect_history_accounting"})
                 module=types.ModuleType("synthetic_model_history_composition")
                 module.__dict__.update(runtime.__dict__)
                 module.__name__="synthetic_model_history_composition"
@@ -353,7 +355,7 @@ class ModelDiagnostic(unittest.TestCase):
                 module.emit=lambda value:None
                 resolver=types.SimpleNamespace(WORKFLOW=policy.WORKFLOW,resolve_baseline_258=lambda *a:{"runs":[
                     {"id":987654,"path":".github/workflows/synthetic-incidental.yml"}]})
-                exec(compile(ast.Module(body=[node],type_ignores=[]),"actual-history-checks","exec"),module.__dict__)
+                exec(compile(ast.Module(body=nodes,type_ignores=[]),"actual-history-checks","exec"),module.__dict__)
                 with patch.dict(sys.modules,{module.__name__:module}),patch.object(policy,"validate_bindings",side_effect=lambda x:x),\
                      patch.object(policy,"validate_request",side_effect=lambda x,b:x),patch.object(grants,"validate_grant",return_value=grant):
                     facts=module.history_checks(Path("/not-read"),binding,current_request,policy.encode(current_request),

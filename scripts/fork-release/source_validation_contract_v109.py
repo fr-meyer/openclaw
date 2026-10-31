@@ -97,6 +97,9 @@ REGISTRY_PINS = (
     {"package": "@azure/msal-common", "version": "16.14.3", "publishedAt": "2026-10-21T19:12:59.113Z",
      "distIntegrity": "sha512-tz3GvMrR9V/plb2lDdW8qaO8CPpfZevdExBKjltzzbAtyhK0eB2UIvji1aU+gkyHj3fxQ2ie+LNHyMXdmo8wOg=="},
 )
+H3_FAMILY_SCHEMA = "openclaw.v109.material-source-family.v1"
+H3_ANCHOR = {'fileSha256': {'custom-patches/reconciliation-2026.10.9.json': '9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77', 'package.json': '557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0', 'pnpm-lock.yaml': '32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068', 'pnpm-workspace.yaml': 'd7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19'}, 'inventorySha256': '2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb', 'manifestSha256': '1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13', 'sourceSha': '0d0b3dbcbb571509df403e98d7e9be69a8f46f4f', 'sourceTree': '30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f'}
+H3_MATERIAL_PATHS = frozenset(("package.json", "pnpm-workspace.yaml", "extensions/file-transfer/package.json", "test/v108-remediation-security.test.mjs"))
 PHASES = ("lock-preparation", "validation", "correction")
 SYNTHETIC_LIVE_UNIT_PATHS = frozenset((
     "src/agents/tool-search.live-diagnostics.test.ts",
@@ -398,7 +401,103 @@ def validate_additional_recovery(value, bindings, active=False, now=None):
     return value
 
 
+def source_successor_family(bindings):
+    return bindings.get("sourceSuccessor")
+
+
+def source_authorization_window(bindings):
+    """Preserve the original authority bytes; select the bound successor end."""
+    end = run_allowance.H3_EXPIRES_AT if source_successor_family(bindings) is not None else bindings["authorization"]["expiresAt"]
+    return bindings["authorization"]["approvedAt"], end
+
+
+def h3_stage_contract(bindings, selected):
+    validate_request(selected, bindings)
+    if source_successor_family(bindings) is None:
+        return None
+    return run_allowance.h3_stage_descriptor()
+
+
+def validate_h3_family(value):
+    fields(value, ("schema", "publicAmendmentSha256", "anchor", "generations"), "v9.h3_family_fields")
+    need(value["schema"] == H3_FAMILY_SCHEMA and value["publicAmendmentSha256"] == run_allowance.H3_AMENDMENT_SHA256 and
+        value["anchor"] == H3_ANCHOR and type(value["generations"]) is list and
+        1 <= len(value["generations"]) <= 3, "v9.h3_family_scope")
+    source_pin(value["anchor"])
+    previous = value["anchor"]
+    seen = {previous["sourceSha"]}
+    for number, item in enumerate(value["generations"], 1):
+        fields(item, ("number", "parentSource", "preparation", "changedPaths", "contentSha256",
+            "unchangedTreeSha256", "validation"), "v9.h3_generation_fields")
+        source_pin(item["parentSource"]); source_pin(item["preparation"])
+        changed = item["changedPaths"]
+        need(type(item["number"]) is int and item["number"] == number and item["parentSource"] == previous and
+            type(changed) is list and changed == sorted(set(changed)) and LEDGER in changed and
+            bool(set(changed) & H3_MATERIAL_PATHS) and set(changed) <= H3_MATERIAL_PATHS | {LEDGER} and
+            type(item["contentSha256"]) is dict and set(item["contentSha256"]) == set(changed) and
+            all(pin(v) for v in item["contentSha256"].values()) and pin(item["unchangedTreeSha256"]) and
+            item["preparation"]["sourceSha"] not in seen and
+            item["preparation"]["fileSha256"]["pnpm-lock.yaml"] == previous["fileSha256"]["pnpm-lock.yaml"],
+            "v9.h3_reviewed_material_step")
+        seen.add(item["preparation"]["sourceSha"])
+        previous = item["preparation"]
+        v = item["validation"]
+        if v is not None:
+            fields(v, ("source", "generation", "unchangedTreeSha256", "preparationAttempt"), "v9.validation_binding_fields")
+            source_pin(v["source"]); generation_pin(v["generation"])
+            need(pin(v["unchangedTreeSha256"]) and type(v["preparationAttempt"]) is int and
+                3 <= v["preparationAttempt"] <= 1002 and v["source"]["sourceSha"] not in seen and
+                all(v["source"]["fileSha256"][p] == previous["fileSha256"][p] for p in ("package.json", "pnpm-workspace.yaml")) and
+                v["source"]["fileSha256"]["pnpm-lock.yaml"] == v["generation"]["generatedLockSha256"],
+                "v9.h3_actual_lock_derivation")
+            previous = v["source"]; seen.add(previous["sourceSha"])
+    return value
+
+
+def validate_h3_bindings(value, active=False, now=None):
+    fields(value, ("schema", "status", "campaignId", "repository", "workflow", "pipelineBranch", "sourceBranch",
+        "baseBranch", "baseSha", "upstream", "baseline", "preparation", "preparationCorrection", "validation",
+        "correction", "authorization", "newRecoveryTests", "ciRunGrant", "sourceSuccessor"), "v9.bindings_fields")
+    need(value["schema"] == BINDINGS_SCHEMA and value["status"] in ("DISARMED", "APPROVED_CI") and
+        value["campaignId"] == CAMPAIGN and value["repository"] == REPOSITORY and value["workflow"] == WORKFLOW and
+        value["pipelineBranch"] == PIPELINE_BRANCH and value["sourceBranch"] == SOURCE_BRANCH and
+        value["baseBranch"] == BASE_BRANCH and value["baseSha"] == BASE and value["upstream"] == UPSTREAM,
+        "v9.fixed_binding_scope")
+    baseline = fields(value["baseline"], ("sourceSha", "pipelineHead", "sourceRunId", "runCount", "runnerMinutes", "publicProofSha256"), "v9.baseline_fields")
+    need(baseline["sourceSha"] == BASELINE_SOURCE and baseline["pipelineHead"] == BASELINE_PIPELINE and
+        baseline["sourceRunId"] == BASELINE_RUN and type(baseline["runCount"]) is int and baseline["runCount"] == 258 and
+        type(baseline["runnerMinutes"]) is int and baseline["runnerMinutes"] == 2944 and pin(baseline["publicProofSha256"]), "v9.baseline_binding")
+    validate_authorization(value["authorization"])
+    family = validate_h3_family(value["sourceSuccessor"])
+    last = family["generations"][-1]
+    need(value["preparation"] == last["preparation"] and value["validation"] == last["validation"] and
+        value["preparationCorrection"] is None and value["correction"] is None, "v9.h3_current_family_mirror")
+    tests = value["newRecoveryTests"]
+    need(type(tests) is list and tests == sorted(set(tests)) and bool(tests) and all(type(p) is str and
+        TEST_PATH.fullmatch(p) and not p.startswith("/") and not any(x in ("", ".", "..") for x in p.split("/")) and
+        (not re.search(r"(?:^|[./-])live(?:[./-]|$)", p) or p in SYNTHETIC_LIVE_UNIT_PATHS) for p in tests), "v9.reviewed_new_recovery_tests")
+    grant = validate_run_grant(value, active, now)
+    need(grant is not None, "v9.h3_grant_required")
+    amendment = run_allowance.source_successor_amendment(grant)
+    need(amendment is not None and amendment["sourceFamilySha256"] == digest(canonical(family)) and
+        amendment["sourceGeneration"] == last["number"], "v9.h3_authority_family_binding")
+    plan = grant["nextExecution"]
+    need(plan["sourceGeneration"] == last["number"] and plan["sourceFamilySha256"] == digest(canonical(family)) and
+        plan["phase"] in ("lock-preparation", "validation") and plan["source"] ==
+        (last["preparation"] if plan["phase"] == "lock-preparation" else (last["validation"]["source"] if last["validation"] is not None else None)),
+        "v9.h3_plan_source_binding")
+    if plan["phase"] == "validation":
+        need(last["validation"]["preparationAttempt"] == plan["preparationAttempt"], "v9.h3_preparation_attempt_binding")
+    if active:
+        need(value["status"] == "APPROVED_CI", "v9.disarmed")
+    else:
+        need(value["status"] != "DISARMED" or grant["status"] == "DISARMED", "v9.h3_disarmed")
+    return value
+
+
 def validate_bindings(value, active=False, now=None):
+    if type(value) is dict and "sourceSuccessor" in value:
+        return validate_h3_bindings(value, active, now)
     fields(value, ("schema", "status", "campaignId", "repository", "workflow", "pipelineBranch",
         "sourceBranch", "baseBranch", "baseSha", "upstream", "baseline", "preparation", "preparationCorrection",
         "validation", "correction", "authorization", "newRecoveryTests") +
@@ -636,13 +735,14 @@ def request_for(bindings, phase, preparation_attempt=1):
     need(phase in PHASES, "v9.phase")
     additional = additional_pipeline_preparation_recovery(bindings["preparationCorrection"])
     grant = run_grant(bindings)
+    h3 = source_successor_family(bindings)
     if additional and grant is None:
         need(phase != "correction" and (phase != "lock-preparation" or preparation_attempt == 3),
             "v9.additional_only_third_and_single_validation")
     if phase == "lock-preparation":
         source, generation = preparation_for(bindings, preparation_attempt), None
-        prior = (deepcopy(bindings["preparationCorrection"]["priorFailures"]) if additional else
-            ([] if preparation_attempt == 1 else [bindings["preparationCorrection"]["priorFailure"]]))
+        prior = ([] if h3 is not None else (deepcopy(bindings["preparationCorrection"]["priorFailures"]) if additional else
+            ([] if preparation_attempt == 1 else [bindings["preparationCorrection"]["priorFailure"]])))
     elif phase == "validation":
         need(bindings["validation"] is not None, "v9.validation_not_bound")
         v = bindings["validation"]
@@ -670,6 +770,9 @@ def request_for(bindings, phase, preparation_attempt=1):
         result["executionSequence"] = plan["sequence"]
         result["runAllowanceSha256"] = run_allowance.AUTHORITY_SHA256
         result["executionReservations"] = deepcopy(plan["reservations"])
+        if h3 is not None:
+            result.update(sourceGeneration=plan["sourceGeneration"], sourceFamilySha256=plan["sourceFamilySha256"],
+                sourceSuccessorAmendmentSha256=run_allowance.H3_AMENDMENT_SHA256)
         if run_allowance.has_budget_amendment(grant):
             result["budgetCeilingAmendmentSha256"] = run_allowance.BUDGET_AMENDMENT_SHA256
     return result
@@ -715,6 +818,14 @@ def source_minutes_for(request):
 
 def maximum_new_minutes_for(request):
     need(type(request) is dict, "v9.budget_ceiling_request")
+    if "sourceSuccessorAmendmentSha256" in request:
+        need(request["sourceSuccessorAmendmentSha256"] == run_allowance.H3_AMENDMENT_SHA256 and
+            request.get("budgetCeilingAmendmentSha256") == run_allowance.BUDGET_AMENDMENT_SHA256 and
+            request.get("runAllowanceSha256") == run_allowance.AUTHORITY_SHA256 and
+            type(request.get("sourceGeneration")) is int and 1 <= request["sourceGeneration"] <= 3 and
+            pin(request.get("sourceFamilySha256")) and request.get("phase") in ("lock-preparation", "validation") and
+            type(request.get("executionSequence")) is int and 12 <= request["executionSequence"] <= 1000, "v9.h3_budget_request")
+        return run_allowance.AMENDED_MAXIMUM_NEW_MINUTES
     if "budgetCeilingAmendmentSha256" not in request:
         return MAXIMUM_NEW_MINUTES
     need(request["budgetCeilingAmendmentSha256"] == run_allowance.BUDGET_AMENDMENT_SHA256 and
@@ -735,7 +846,7 @@ def budget(request):
         need(request["runAllowanceSha256"] == run_allowance.AUTHORITY_SHA256 and
             request["phase"] in ("lock-preparation", "validation", "correction"), "v9.run_grant.budget_scope")
         maximum = maximum_new_minutes_for(request)
-        return {"phase": request["phase"], "phaseMaximumMinutes": PREPARATION_MINUTES if
+        result = {"phase": request["phase"], "phaseMaximumMinutes": PREPARATION_MINUTES if
             request["phase"] == "lock-preparation" else source_minutes_for(request),
             "preparationMinutesPerJob": PREPARATION_MINUTES, "maximumLockPreparations": 1002,
             "admissionMinutes": ADMISSION_MINUTES, "profileMinutes": profile_minutes_for(request),
@@ -745,6 +856,11 @@ def budget(request):
             "currentPlanReservationMinutes": sum(request["executionReservations"].values()),
             "maximumBookedMinutes": maximum,
             "maximumAdditionalWorkflowAttempts": 1000, "maximumStageWorkflowAttempts": 1042}
+        if "sourceSuccessorAmendmentSha256" in request:
+            result.update(maximumMaterialSourceGenerations=3, stagePools=deepcopy(run_allowance.H3_STAGE_POOLS),
+                stagePrefixBookedMinutes=run_allowance.H3_PREFIX_MINUTES,
+                maximumStageBookedMinutes=run_allowance.H3_MAXIMUM_BOOKED_MINUTES)
+        return result
     additional = "additionalApprovalSha256" in request
     if additional:
         need(pin(request["additionalApprovalSha256"]) and request.get("preparationAttempt") == 3 and
@@ -770,7 +886,7 @@ def remaining_deadline(bindings, started_epoch, phase, now):
          "v9.phase_clock")
     minutes = PREPARATION_MINUTES if phase == "lock-preparation" else ADMISSION_MINUTES
     need(phase in PHASES and now - started_epoch < minutes * 60, "v9.phase_clock")
-    return min(started_epoch + minutes * 60 - 60, int(utc(bindings["authorization"]["expiresAt"]).timestamp()) - 60)
+    return min(started_epoch + minutes * 60 - 60, int(utc(source_authorization_window(bindings)[1]).timestamp()) - 60)
 
 
 def validate_generation(raw, bindings, phase="validation"):
@@ -797,7 +913,8 @@ def validate_generation(raw, bindings, phase="validation"):
         value["generatedLockSha256"] == pinset["generatedLockSha256"] and
         value["gitDiffSha256"] == pinset["gitDiffSha256"] and
         value["nodeVersion"] == "24.22.1" and value["pnpmVersion"] == "12.15.0" and
-        value["changedPaths"] == ["pnpm-lock.yaml"] and value["allOtherTrackedEntriesUnchanged"] is True and
+        value["changedPaths"] == ([] if source_successor_family(bindings) is not None and
+            value["sourceLockSha256"] == value["generatedLockSha256"] else ["pnpm-lock.yaml"]) and value["allOtherTrackedEntriesUnchanged"] is True and
         type(value["exitCode"]) is int and value["exitCode"] == 0 and value["timedOut"] is False and
         (value["cleanupSettled"] is None or value["cleanupSettled"] is True) and value["imageBuilt"] is False and
         value["qualified"] is False and value["productionAuthorized"] is False and
@@ -807,7 +924,9 @@ def validate_generation(raw, bindings, phase="validation"):
          "v9.generation_clock")
     if bindings["authorization"] is not None:
         need(utc(bindings["authorization"]["approvedAt"]) <= start <= finish <=
-            utc(bindings["authorization"]["expiresAt"]), "v9.generation_authorization_clock")
+            utc(source_authorization_window(bindings)[1]), "v9.generation_authorization_clock")
+        if source_successor_family(bindings) is not None:
+            need(start >= utc(run_allowance.H3_NOT_BEFORE), "v9.h3_generation_package_use_floor")
     validate_registry_evidence(value["registryEvidence"], finish.timestamp())
     return value
 
@@ -896,6 +1015,51 @@ def tree_digest(entries, ignored=()):
     return digest(canonical([[p, *entries[p]] for p in sorted(entries) if p not in set(ignored)]))
 
 
+def verify_h3_preparations(read, bindings, *, read_tree):
+    """Prove each reviewed material step and truthful pending seed from Git bytes."""
+    import source_reconciliation_v109 as reconciliation
+    family = validate_h3_family(bindings["sourceSuccessor"])
+    for item in family["generations"]:
+        parent, prep = item["parentSource"], item["preparation"]
+        need(read("show", "-s", "--format=%P", prep["sourceSha"]).decode().strip().split() == [parent["sourceSha"]], "v9.h3_single_material_parent")
+        for source in (parent, prep):
+            need(read("rev-parse", source["sourceSha"] + "^{tree}") == (source["sourceTree"] + "\n").encode(), "v9.h3_material_tree")
+            for path, expected in source["fileSha256"].items():
+                need(digest(read("show", source["sourceSha"] + ":" + path)) == expected, "v9.h3_material_input")
+        before, after = read_tree(parent["sourceSha"], parent["sourceTree"]), read_tree(prep["sourceSha"], prep["sourceTree"])
+        _verify_reviewed_step(read, before, after, {**item, "source": prep})
+        old_raw = read("show", parent["sourceSha"] + ":" + LEDGER)
+        old = parse(old_raw)
+        existing = {row["path"] for row in old["sourcePaths"]}
+        material = set(item["changedPaths"]) - {LEDGER}
+        added = material - existing
+        origins = {name: {} for name in added}
+        for key, commit in (("base108", old["upstream108"]), ("fork108", old["fork108"]), ("upstream109", old["upstream109"])):
+            if added:
+                tree_id = read("rev-parse", commit + "^{tree}").decode().strip()
+                entries = read_tree(commit, tree_id)
+                for name in added:
+                    entry = entries.get(name)
+                    origins[name][key] = None if entry is None else {"mode": entry[0], "blob": entry[2]}
+        expected = reconciliation.pending_successor_ledger(old_raw,
+            {name: {"mode": after[name][0], "blob": after[name][2]} for name in material},
+            parent["sourceSha"], parent["sourceTree"], item["number"], run_allowance.H3_AMENDMENT_SHA256,
+            need=need, origin_entries=origins)
+        need(read("show", prep["sourceSha"] + ":" + LEDGER) == expected, "v9.h3_exact_pending_seed")
+        if item["validation"] is not None:
+            v = item["validation"]; target = v["source"]
+            need(read("show", "-s", "--format=%P", target["sourceSha"]).decode().strip().split() == [prep["sourceSha"]], "v9.single_generated_source_parent")
+            final = read_tree(target["sourceSha"], target["sourceTree"])
+            changed = sorted(name for name in after if after[name] != final.get(name))
+            need(set(final) == set(after) and changed == sorted((LEDGER,) if v["source"]["fileSha256"]["pnpm-lock.yaml"] == prep["fileSha256"]["pnpm-lock.yaml"] else ("pnpm-lock.yaml", LEDGER)) and
+                tree_digest(after, changed) == tree_digest(final, changed) == v["unchangedTreeSha256"], "v9.h3_generated_exact_delta")
+            lock = read("show", target["sourceSha"] + ":pnpm-lock.yaml")
+            need(digest(lock) == v["generation"]["generatedLockSha256"] and
+                read("show", target["sourceSha"] + ":" + LEDGER) == expected_derived_ledger(expected, final["pnpm-lock.yaml"][2], v["generation"]),
+                "v9.h3_derived_receipt_ledger")
+    return family
+
+
 def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tree, verify_lock,
                           initial_generation_raw=None):
     """Read-only G/H proof using the maintained prebound Git-tree parser.
@@ -929,6 +1093,23 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
         for path, expected in source["fileSha256"].items():
             need(digest(read("show", source["sourceSha"] + ":" + path)) == expected,
                  "v9.source_input_byte_pin")
+    if source_successor_family(bindings) is not None:
+        need(phase == "validation", "v9.h3_validation_only")
+        family = verify_h3_preparations(read, bindings, read_tree=read_tree)
+        item = family["generations"][-1]; prep = item["preparation"]; step = item["validation"]
+        generation = validate_generation(generation_raw, bindings, phase)
+        before = tree(prep); target = step["source"]; after = tree(target); inputs(target)
+        lock = read("show", target["sourceSha"] + ":pnpm-lock.yaml")
+        before_lock = read("show", prep["sourceSha"] + ":pnpm-lock.yaml")
+        # The bound H3 caller supplies the maintained H3 lock verifier closure.
+        security = verify_lock(before_lock, lock, REGISTRY_PINS[0]["distIntegrity"], REGISTRY_PINS[1]["distIntegrity"])
+        need(digest(canonical(security)) == generation["lockSecuritySha256"], "v9.generated_lock_security_binding")
+        return {"schema": "openclaw.v109.verified-generated-source.v1", "sourceSha": target["sourceSha"],
+            "sourceTree": target["sourceTree"], "preparationSource": prep["sourceSha"], "preparationAttempt": step["preparationAttempt"],
+            "generationReceiptSha256": digest(generation_raw), "changedPaths": sorted(name for name in before if before[name] != after[name]),
+            "lockSecuritySha256": generation["lockSecuritySha256"], "allOtherTrackedBytesUnchanged": True,
+            "sourceCorrectionVerified": True, "materialSourceGeneration": item["number"],
+            "freshSourceCoverageRequired": True, "imageBuilt": False, "productionAuthorized": False}
     initial = bindings["preparation"]
     need(parents(initial["sourceSha"]) == [BASELINE_SOURCE, UPSTREAM["commit"]],
          "v9.initial_integration_parents")

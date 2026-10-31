@@ -10,6 +10,7 @@ import json
 import os
 import re
 import subprocess
+from copy import deepcopy
 
 
 SCHEMA = "openclaw.v109.fork-carry-reconciliation.v1"
@@ -17,6 +18,11 @@ MERGE_SCHEMA = "openclaw.fork-source-merge.v4"
 PROOF_PATH = "custom-patches/reconciliation-2026.10.9.json"
 HISTORICAL_PROOF_PATH = "custom-patches/reconciliation-2026.10.8.json"
 LOCK_PATH = "pnpm-lock.yaml"
+SUCCESSOR_SEED_SCHEMA = "openclaw.v109.successor-lock-seed.v1"
+SUCCESSOR_ANCHOR = {"commit": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
+    "tree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f"}
+SUCCESSOR_SOURCE_PATHS = frozenset(("package.json", "pnpm-workspace.yaml",
+    "extensions/file-transfer/package.json", "test/v108-remediation-security.test.mjs"))
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 PATH = re.compile(r"[A-Za-z0-9_./@+-]+\Z")
@@ -102,6 +108,106 @@ def _tree(source_dir, commit, names, git, need):
     return result
 
 
+def successor_seed(value, need):
+    """Source facts only; the CI owner separately authenticates stage authority."""
+    need(type(value) is dict and set(value) == {"schema", "amendmentSha256", "generation",
+        "parentSource", "parentTree", "seedSource", "seedTree", "seedLockBlob",
+        "seedLockSha256", "seedLockDerivation"} and value["schema"] == SUCCESSOR_SEED_SCHEMA,
+        "invalid 10.9 successor lock seed fields")
+    need(_matches(SHA256, value["amendmentSha256"]) and type(value["generation"]) is int and
+        1 <= value["generation"] <= 3 and
+        all(_matches(SHA, value[k]) for k in ("parentSource", "parentTree", "seedSource",
+            "seedTree", "seedLockBlob")) and _matches(SHA256, value["seedLockSha256"]),
+        "invalid 10.9 successor lock seed identity")
+    receipt = value["seedLockDerivation"]
+    need(type(receipt) is dict and set(receipt) == {"runId", "attempt", "artifactSha256",
+        "generatedLockSha256", "receiptSha256"} and type(receipt["runId"]) is int and
+        receipt["runId"] > 0 and type(receipt["attempt"]) is int and receipt["attempt"] == 1 and
+        all(_matches(SHA256, receipt[k]) for k in ("artifactSha256", "generatedLockSha256", "receiptSha256")) and
+        receipt["generatedLockSha256"] == value["seedLockSha256"],
+        "invalid 10.9 successor seed receipt")
+    return value
+
+
+def pending_successor_ledger(before, changed_entries, parent_source, parent_tree, generation,
+                             amendment_sha256, *, need, origin_entries=None):
+    """Prepare truthful pending metadata without changing or re-sealing the seed lock.
+
+    The caller supplies actual Git mode/blob entries and the actual parent. The
+    native reader below rechecks that parent/seed and the CI controller proves
+    the complete reviewed source delta before package use.
+    """
+    value = _strict_json(before, need)
+    need(type(value) is dict and value.get("schema") == SCHEMA and
+        value.get("lockState") in ("ci_derived", "pending_ci_derivation") and
+        type(value.get("sourcePaths")) is list and
+        type(changed_entries) is dict and bool(changed_entries) and
+        set(changed_entries) <= SUCCESSOR_SOURCE_PATHS and
+        _matches(SHA, parent_source) and _matches(SHA, parent_tree) and
+        _matches(SHA256, amendment_sha256) and type(generation) is int and 1 <= generation <= 3,
+        "invalid 10.9 pending successor input")
+    rows = {row.get("path"): row for row in value["sourcePaths"] if type(row) is dict}
+    need(len(rows) == len(value["sourcePaths"]) and
+        LOCK_PATH in rows and rows[LOCK_PATH].get("disposition") == "LOCK_CONTROLLED_DERIVATION" and
+        type(rows[LOCK_PATH].get("result")) is dict and rows[LOCK_PATH]["result"].get("mode") == "100644",
+        "invalid 10.9 pending successor source rows")
+    added = set(changed_entries) - set(rows)
+    if added:
+        need(type(origin_entries) is dict and set(origin_entries) == added,
+            "10.9 new reviewed paths require exact origin entries")
+        for name in sorted(added):
+            origins = origin_entries[name]
+            need(type(origins) is dict and set(origins) == {"base108", "fork108", "upstream109"},
+                "10.9 new source origin fields")
+            for entry in origins.values():
+                need(entry is None or (type(entry) is dict and set(entry) == {"mode", "blob"} and
+                    entry["mode"] in MODES and _matches(SHA, entry["blob"])),
+                    "10.9 new source origin identity")
+            rows[name] = {"path": name, **deepcopy(origins), "result": None,
+                "disposition": "MERGED_SOURCE_REVIEWED"}
+    else:
+        need(origin_entries is None or origin_entries == {}, "10.9 unrelated origin entries")
+    if value["lockState"] == "ci_derived":
+        receipt = value.get("lockDerivation")
+        need(type(receipt) is dict, "missing 10.9 seed derivation")
+        seed_source, seed_tree = parent_source, parent_tree
+        seed_blob, seed_sha = rows[LOCK_PATH]["result"]["blob"], receipt.get("generatedLockSha256")
+        if "sourceSuccessor" in value:
+            prior_generation = successor_seed(value["sourceSuccessor"], need)["generation"]
+        else:
+            need(parent_source == SUCCESSOR_ANCHOR["commit"] and parent_tree == SUCCESSOR_ANCHOR["tree"],
+                "10.9 first successor must use the exact H2 seed")
+            prior_generation = 0
+    else:
+        prior = successor_seed(value.get("sourceSuccessor"), need)
+        receipt = prior["seedLockDerivation"]
+        seed_source, seed_tree = prior["seedSource"], prior["seedTree"]
+        seed_blob, seed_sha = prior["seedLockBlob"], prior["seedLockSha256"]
+        need(rows[LOCK_PATH]["result"] == {"mode": "100644", "blob": seed_blob},
+            "10.9 pending successor changed seed lock")
+        prior_generation = prior["generation"]
+    need(generation == prior_generation + 1, "10.9 successor generation must advance once")
+    seed = {"schema": SUCCESSOR_SEED_SCHEMA, "amendmentSha256": amendment_sha256,
+        "generation": generation, "parentSource": parent_source, "parentTree": parent_tree,
+        "seedSource": seed_source, "seedTree": seed_tree, "seedLockBlob": seed_blob,
+        "seedLockSha256": seed_sha, "seedLockDerivation": deepcopy(receipt)}
+    successor_seed(seed, need)
+    result = deepcopy(value)
+    result["lockState"] = "pending_ci_derivation"
+    result.pop("lockDerivation", None)
+    result["sourceSuccessor"] = seed
+    result["sourcePaths"] = [deepcopy(rows[name]) for name in sorted(rows)]
+    for row in result["sourcePaths"]:
+        if row["path"] not in changed_entries: continue
+        entry = changed_entries[row["path"]]
+        need(type(entry) is dict and set(entry) == {"mode", "blob"} and
+            entry["mode"] == "100644" and _matches(SHA, entry["blob"]) and
+            entry != row["result"], "invalid 10.9 reviewed successor entry")
+        row["result"] = deepcopy(entry)
+        row["disposition"] = "ADAPTED_SECURITY_TEST" if row["path"].endswith(".test.mjs") else "MERGED_SOURCE_REVIEWED"
+    return (json.dumps(result, indent=2, ensure_ascii=True, allow_nan=False) + "\n").encode()
+
+
 def check_v109_reconciliation(source, source_dir, ledger=None, *, git, need):
     """Check the actual tip, all four origin/result trees, and full path coverage."""
     source_fields = {"baseCommit", "baseTree", "patches", "commit", "tree", "merge"}
@@ -123,7 +229,7 @@ def check_v109_reconciliation(source, source_dir, ledger=None, *, git, need):
     need(merge["securitySource"] == {"commit": merge["forkCommit"], "tree": merge["forkTree"]},
          "10.9 security source differs from the pinned fork")
     successors = merge["successors"]
-    need(type(successors) is list and len(successors) <= 3, "invalid 10.9 successor count")
+    need(type(successors) is list and len(successors) <= 8, "invalid 10.9 successor count")
     for item in successors:
         need(type(item) is dict and set(item) == {"commit", "tree"}
              and all(_matches(SHA, item[key]) for key in ("commit", "tree")),
@@ -168,7 +274,29 @@ def check_v109_reconciliation(source, source_dir, ledger=None, *, git, need):
               "lockState", "sourcePaths"}
     need(type(ledger) is dict and ledger.get("lockState") in ("pending_ci_derivation", "ci_derived"),
          "invalid 10.9 lock state")
-    expected_fields = fields | ({"lockDerivation"} if ledger["lockState"] == "ci_derived" else set())
+    seed = successor_seed(ledger["sourceSuccessor"], need) if "sourceSuccessor" in ledger else None
+    expected_fields = fields | ({"lockDerivation"} if ledger["lockState"] == "ci_derived" else set()) | (
+        {"sourceSuccessor"} if seed is not None else set())
+    if seed is None:
+        need(len(successors) <= 3, "invalid historical 10.9 successor count")
+    else:
+        need(2 + seed["generation"] + (1 if ledger["lockState"] == "ci_derived" else 0) <=
+            len(successors) <= 2 + 2 * seed["generation"] and
+            len(lineage) >= 4 and lineage[2] == SUCCESSOR_ANCHOR,
+            "10.9 successor stage lineage changed")
+        parent_index = -2 if ledger["lockState"] == "pending_ci_derivation" else -3
+        need(lineage[parent_index] == {"commit": seed["parentSource"], "tree": seed["parentTree"]} and
+            {"commit": seed["seedSource"], "tree": seed["seedTree"]} in lineage[2:parent_index + 1 or None],
+            "10.9 successor seed parent changed")
+        seed_raw = git(source_dir, "show", seed["seedSource"] + ":" + PROOF_PATH)
+        seed_ledger = _strict_json(seed_raw.encode() if type(seed_raw) is str else seed_raw, need)
+        need(type(seed_ledger) is dict and seed_ledger.get("lockState") == "ci_derived" and
+            seed_ledger.get("lockDerivation") == seed["seedLockDerivation"],
+            "10.9 seed derivation differs from historical source")
+        seed_lock = _tree(source_dir, seed["seedSource"], {LOCK_PATH}, git, need).get(LOCK_PATH)
+        need(seed_lock == {"mode": "100644", "blob": seed["seedLockBlob"]} and
+            hashlib.sha256(_raw_blob(source_dir, seed["seedLockBlob"], need, maximum=2097152)).hexdigest() ==
+            seed["seedLockSha256"], "10.9 seed lock bytes changed")
     need(set(ledger) == expected_fields and ledger["schema"] == SCHEMA
          and ledger["qualificationTransferred"] is False, "invalid 10.9 ledger fields or qualification")
     need((ledger["upstream108"], ledger["fork108"], ledger["upstream109"]) ==
@@ -235,8 +363,9 @@ def check_v109_reconciliation(source, source_dir, ledger=None, *, git, need):
     need(lock is not None and lock["disposition"] == "LOCK_CONTROLLED_DERIVATION",
          "10.9 lock is not controlled derivation")
     if ledger["lockState"] == "pending_ci_derivation":
-        need(lock["fork108"] is not None and lock["result"] == lock["fork108"],
-             "10.9 pending lock differs from the pinned fork")
+        need((seed is None and lock["fork108"] is not None and lock["result"] == lock["fork108"]) or
+             (seed is not None and lock["result"] == {"mode": "100644", "blob": seed["seedLockBlob"]}),
+             "10.9 pending lock differs from its proved seed")
     else:
         receipt = ledger["lockDerivation"]
         need(type(receipt) is dict and set(receipt) == {

@@ -1,3 +1,4 @@
+from test_source_validation_contract_v109 import historical_control
 """Closed approved totals; synthetic only, no process/provider/runtime authority."""
 from copy import deepcopy
 from pathlib import Path
@@ -26,7 +27,7 @@ class BudgetAmendmentTests(unittest.TestCase):
                 (urllib.request, 'urlopen'), (urllib.request, 'build_opener')]:
             blocker = mock.patch.object(target, name, side_effect=AssertionError('real process/network forbidden'))
             blocker.start(); self.addCleanup(blocker.stop)
-        self.old = p.parse((HERE / 'candidates/v2026.10.9-source-only/ci-bindings.json').read_bytes())
+        self.old = p.parse(historical_control('ci-bindings.json'))
         self.b = deepcopy(self.old); self.b['status'] = self.b['ciRunGrant']['status'] = 'DISARMED'
         self.g = self.b['ciRunGrant']; self.g.update(budgetCeilingAmendment=amendment(),
             maximumNewRunnerMinutes=25000, moneyCeilingUSD='25.00')
@@ -56,7 +57,7 @@ class BudgetAmendmentTests(unittest.TestCase):
         self.assertEqual(self.old['authorization']['maximumRunnerMinutes'], 2500)
         self.assertEqual(a.maximum_new_minutes(self.old['ciRunGrant']), 2500)
         self.assertEqual((a.MONEY_USD, a.MAXIMUM_NEW_MINUTES), ('2.25', 2500))
-        q = p.parse((HERE / 'candidates/v2026.10.9-source-only/source-request.json').read_bytes())
+        q = p.parse(historical_control('source-request.json'))
         self.assertIs(p.validate_request(q, self.old), q)
         self.assertNotIn('budgetCeilingAmendmentSha256', q)
         for seq, minutes, caps in [(9,1075,p.PROFILE_MINUTES),(10,740,p.LOWER_PROFILE_MINUTES),(11,690,p.NEXT_PROFILE_MINUTES)]:
@@ -123,7 +124,7 @@ class BudgetAmendmentTests(unittest.TestCase):
             if value is None: del bad['budgetCeilingAmendmentSha256']
             else: bad['budgetCeilingAmendmentSha256'] = value
             with self.subTest(value=value), self.assertRaises(ValueError): p.validate_request(bad,self.b)
-        old = p.parse((HERE / 'candidates/v2026.10.9-source-only/source-request.json').read_bytes())
+        old = p.parse(historical_control('source-request.json'))
         old['budgetCeilingAmendmentSha256'] = amendment()['publicAmendmentSha256']
         with self.assertRaises(ValueError): p.validate_request(old,self.old)
 

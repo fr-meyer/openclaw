@@ -136,7 +136,7 @@ class GitHub:
         return stdout if binary else contract.parse(stdout)
 
 
-def history(api,request,ctx):
+def history(api,request,ctx,bindings=None,selected=None):
     runs=api.get('actions/workflows/future-v109-image-build.yml/runs?branch='+contract.BRANCH+'&per_page=100')
     contract.need(type(runs)is dict and type(runs.get('workflow_runs'))is list and len(runs['workflow_runs'])<=64,
                   "image.history_bound")
@@ -149,7 +149,25 @@ def history(api,request,ctx):
     import source_validation_v109 as source_owner
     measured=[source_owner.observed_jobs(page["jobs"],time.time(),True,
         {"image-admission":15,"build-private-image":90})[0]for page in prior.values()]
-    return contract.family_budget(measured)
+    family=contract.family_budget(measured)
+    if 'sourceStage' in request:
+        if bindings is None and selected is None:
+            _,bindings,selected,_=source_inputs(request)
+        contract.need(type(bindings)is dict and type(selected)is dict,"image.source_stage_controls_required")
+        contract.validate_source_budget_binding(request,bindings,selected)
+        prefix='/repos/'+contract.REPOSITORY+'/'
+        def owned_api(path):
+            contract.need(type(path)is str and path.startswith(prefix),"image.source_stage_api_scope")
+            return api.get(path[len(prefix):])
+        booking=source_owner.image_cumulative_booking(root(),owned_api,bindings,selected,ctx['runId'],time.time())
+        contract.need(type(booking)is dict and {'newObservedOrBookedMinutes','currentObservedMinutes',
+            'perAttemptBookedMinuteFloorsApplied','remainingIncidentalReserveMinutes'}<=set(booking) and
+            booking['perAttemptBookedMinuteFloorsApplied']is True,
+                      "image.source_stage_minute_floor_proof")
+        family['cumulativeStageBooking']=contract.cumulative_stage_budget(request,
+            booking['newObservedOrBookedMinutes'],booking['currentObservedMinutes'],
+            family['priorRunnerMinutes'],booking['remainingIncidentalReserveMinutes'])
+    return family
 
 
 def source_snapshot(api,request,source_contract,bindings,selected,data):
@@ -168,8 +186,13 @@ def source_snapshot(api,request,source_contract,bindings,selected,data):
     value=contract.validate_source_snapshot(request,run,jobs,artifacts,archive,validator)
     # Historical source authority is checked at the actual immutable job times,
     # not made current again by an image approval.
-    auth=bindings['authorization'];contract.need(type(auth)is dict,"image.source_authorization_missing")
-    start,end=source_contract.utc(auth['approvedAt']),source_contract.utc(auth['expiresAt'])
+    if 'sourceStage' in request:
+        start_raw,end_raw=source_contract.source_authorization_window(bindings)
+    else:
+        auth=bindings['authorization']
+        contract.need(type(auth)is dict,"image.source_authorization_missing")
+        start_raw,end_raw=auth['approvedAt'],auth['expiresAt']
+    start,end=source_contract.utc(start_raw),source_contract.utc(end_raw)
     for job in jobs['jobs']:
         a,b=contract.utc(job.get('started_at')),contract.utc(job.get('completed_at'))
         contract.need(start<=a<=b<=end,"image.source_job_clock")
@@ -185,7 +208,7 @@ def admission():
     now=time.time();ctx=contract.validate_context(context(),request,now)
     source_contract,bindings,selected,data=source_inputs(request)
     api=GitHub(Path(os.environ['RUNNER_TEMP'])/'v109-image-admission')
-    source_snapshot(api,request,source_contract,bindings,selected,data);history(api,request,ctx)
+    source_snapshot(api,request,source_contract,bindings,selected,data);history(api,request,ctx,bindings,selected)
     import private_oci_transfer as transfer
     deadline=contract.validate_envelope(envelope,request,ctx,transfer.validate_capability,time.time())
     window=contract.build_window(deadline,time.time(),request['authorization']['expiresAt'])

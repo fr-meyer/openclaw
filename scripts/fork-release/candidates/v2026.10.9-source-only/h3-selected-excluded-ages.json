@@ -1,0 +1,195 @@
+{
+  "createdAt": "2026-10-31T06:35:47Z",
+  "eligibleAtIsConservativeWholeSecondCeiling": true,
+  "fullResolvedH3ClosureProven": false,
+  "metadataClaimsOnlyPackageBodiesAuthenticated": false,
+  "minimumReleaseAgeMinutes": 10080,
+  "newAgeExceptionOrPackagePin": false,
+  "schema": "openclaw.v109.selected-excluded-package-ages.v1",
+  "scope": "Actual selected H2 tuples covered by unchanged native cooldown exclusions; H3 must verify every selected excluded tuple and integrity against this fixed evidence or refuse. Remaining full closure stays under native strict cooldown.",
+  "sourceApplicationSha": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
+  "sourceLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+  "tupleCount": 18,
+  "tuples": [
+    {
+      "eligibleAt": "2026-10-08T20:26:20Z",
+      "integrity": "sha512-kEtVGzjRAYAMOwJxN39bGcna7LT3IDQgq64NNJ/dDTfu4OzZaocJcyNb5/gGJ/IVF/Vj7oK7E2m3nmTan7lpjg==",
+      "name": "@openai/codex",
+      "publishedAt": "2026-10-01T20:26:19.286Z",
+      "sourceResponseSha256": "86da76f934c806348eca95874a072fcb04130ac4e3912cfd5a9139dbd7126125",
+      "sourceRoute": "https://registry.npmjs.org/%40openai%2Fcodex",
+      "sourceSummarySha256": "33dced2261d3439d3be227f17b43e097aac3db1807f1a6636266913bb977588e",
+      "version": "0.160.0"
+    },
+    {
+      "eligibleAt": "2026-10-08T20:26:10Z",
+      "integrity": "sha512-aefV6cqZA2REZgR//4McyXlp7zLcTti4CI2v3j9IVgNndPBv2kCeNEcz07qeelXcwOdSFPUKb6roA48vZmDgrQ==",
+      "name": "@openai/codex",
+      "publishedAt": "2026-10-01T20:26:09.414Z",
+      "sourceResponseSha256": "86da76f934c806348eca95874a072fcb04130ac4e3912cfd5a9139dbd7126125",
+      "sourceRoute": "https://registry.npmjs.org/%40openai%2Fcodex",
+      "sourceSummarySha256": "33dced2261d3439d3be227f17b43e097aac3db1807f1a6636266913bb977588e",
+      "version": "0.160.0-darwin-arm64"
+    },
+    {
+      "eligibleAt": "2026-10-08T20:25:52Z",
+      "integrity": "sha512-ir7cdsPrb9VkqNqpTECoTiomv04xws/FQ968mHQzuL+2J5Da0Dkh2Qlxp7sguDDZJab4YpYmNjQvBVMXbTeQaQ==",
+      "name": "@openai/codex",
+      "publishedAt": "2026-10-01T20:25:51.592Z",
+      "sourceResponseSha256": "86da76f934c806348eca95874a072fcb04130ac4e3912cfd5a9139dbd7126125",
+      "sourceRoute": "https://registry.npmjs.org/%40openai%2Fcodex",
+      "sourceSummarySha256": "33dced2261d3439d3be227f17b43e097aac3db1807f1a6636266913bb977588e",
+      "version": "0.160.0-darwin-x64"
+    },
+    {
+      "eligibleAt": "2026-10-08T20:25:10Z",
+      "integrity": "sha512-VnVdsS06YlDsL8OwaJjQ3xdqdJNG4i+eBJBV3LytddknzSaF/urijLzVg3ptkwvoj8C7Gn7iWpVE+y8WEaPiCg==",
+      "name": "@openai/codex",
+      "publishedAt": "2026-10-01T20:25:09.632Z",
+      "sourceResponseSha256": "86da76f934c806348eca95874a072fcb04130ac4e3912cfd5a9139dbd7126125",
+      "sourceRoute": "https://registry.npmjs.org/%40openai%2Fcodex",
+      "sourceSummarySha256": "33dced2261d3439d3be227f17b43e097aac3db1807f1a6636266913bb977588e",
+      "version": "0.160.0-linux-arm64"
+    },
+    {
+      "eligibleAt": "2026-10-08T20:25:38Z",
+      "integrity": "sha512-KI/73OqGrHmR18s7ya7E1NqV6rT0y3lxr0s8S1qR2m6zU6QRF/HlR529jALLh5vjdUnsRT4Ahoxt0axb4kY99g==",
+      "name": "@openai/codex",
+      "publishedAt": "2026-10-01T20:25:37.793Z",
+      "sourceResponseSha256": "86da76f934c806348eca95874a072fcb04130ac4e3912cfd5a9139dbd7126125",
+      "sourceRoute": "https://registry.npmjs.org/%40openai%2Fcodex",
+      "sourceSummarySha256": "33dced2261d3439d3be227f17b43e097aac3db1807f1a6636266913bb977588e",
+      "version": "0.160.0-linux-x64"
+    },
+    {
+      "eligibleAt": "2026-10-08T20:34:12Z",
+      "integrity": "sha512-tTvK9ZIGuj9WnYaYOAnfjJVSfPV7dKqWtDHqUPLf0Hadp6SgynTxx7S7iMXRieFeXVOI2XH76KxEHSOTOnz3zw==",
+      "name": "@openai/codex",
+      "publishedAt": "2026-10-01T20:34:11.032Z",
+      "sourceResponseSha256": "86da76f934c806348eca95874a072fcb04130ac4e3912cfd5a9139dbd7126125",
+      "sourceRoute": "https://registry.npmjs.org/%40openai%2Fcodex",
+      "sourceSummarySha256": "33dced2261d3439d3be227f17b43e097aac3db1807f1a6636266913bb977588e",
+      "version": "0.160.0-win32-arm64"
+    },
+    {
+      "eligibleAt": "2026-10-08T20:26:43Z",
+      "integrity": "sha512-/gCFcuOmGlQkgGivWCtY8BNEDixh70Pue0HZOk9S8bj2vUIE1GLD9zcNB/KqqDJmn0S+lIttauLpzQnw6HOCHA==",
+      "name": "@openai/codex",
+      "publishedAt": "2026-10-01T20:26:42.081Z",
+      "sourceResponseSha256": "86da76f934c806348eca95874a072fcb04130ac4e3912cfd5a9139dbd7126125",
+      "sourceRoute": "https://registry.npmjs.org/%40openai%2Fcodex",
+      "sourceSummarySha256": "33dced2261d3439d3be227f17b43e097aac3db1807f1a6636266913bb977588e",
+      "version": "0.160.0-win32-x64"
+    },
+    {
+      "eligibleAt": "2026-10-17T20:00:19Z",
+      "integrity": "sha512-tLpVEBUEcFS4YtT43DwM4R8XqPNcJxJzIb23+v8Lyj0vElEHUox2t5+4buv0OiSZ3r3EsVXe5odI3FZDZWcHqg==",
+      "name": "@openclaw/fs-safe",
+      "publishedAt": "2026-10-10T20:00:18.006Z",
+      "sourceResponseSha256": "364a36fe4842abe0ac35cf20279d25d91667e217d2d3ec8cc3fd829b373787ed",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    },
+    {
+      "eligibleAt": "2026-10-17T19:52:36Z",
+      "integrity": "sha512-Lyt1rhoDUxCikH7CdkXzYqGdinKGZy3f8MC+D1/VAngXYIGUMSBu6AuR7pTo/vqrdyOI7vHpAW7QEDFobaG2ww==",
+      "name": "@openclaw/fs-safe-darwin-arm64",
+      "publishedAt": "2026-10-10T19:52:35.793Z",
+      "sourceResponseSha256": "366fe995b6c56ab5187a8919cf8a06d9af67e3d9890bc7db1274968429428b6c",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe-darwin-arm64",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    },
+    {
+      "eligibleAt": "2026-10-17T19:52:43Z",
+      "integrity": "sha512-pX8E6FW9xF1INFXyp8rSv9PQyj7LFNovhgytmZD2/EdFlG2OXu1VZ6UQfcfDOwFARtoy0bwqqgEMkQZEBFH9PA==",
+      "name": "@openclaw/fs-safe-darwin-x64",
+      "publishedAt": "2026-10-10T19:52:42.985Z",
+      "sourceResponseSha256": "0e3df0ed5d34f79534d3a93886540135f120efd58010dd166ca64a9bb37d0023",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe-darwin-x64",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    },
+    {
+      "eligibleAt": "2026-10-17T19:57:52Z",
+      "integrity": "sha512-UNPfDJhOTArrNuKVG+a15UpKsQSH2m7ZnOl+KbKwGFHSHSrVqF0RUwBueooBbuuc+xzH1Y47HmUvQkM+T39K0Q==",
+      "name": "@openclaw/fs-safe-freebsd-arm64",
+      "publishedAt": "2026-10-10T19:57:51.761Z",
+      "sourceResponseSha256": "25cbfe81319d07469e8bde3e71a05ea06b9bb74f84831a0aec898ab66a47d264",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe-freebsd-arm64",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    },
+    {
+      "eligibleAt": "2026-10-17T19:55:34Z",
+      "integrity": "sha512-MSrO0yeScP6Gs2GvUTGeSAdTXJSGRtaDkwwM1LIxwc0Ja2lICUmSpAAsArOnvR7asEi+vAJ3KYlJgcHzcW3J4g==",
+      "name": "@openclaw/fs-safe-freebsd-x64",
+      "publishedAt": "2026-10-10T19:55:33.896Z",
+      "sourceResponseSha256": "243912d22f8188714a5707fb795d4abef8d5dd66e1ef455129a63e55bdf9edc4",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe-freebsd-x64",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    },
+    {
+      "eligibleAt": "2026-10-17T18:24:52Z",
+      "integrity": "sha512-P78xFe+KQ9z2Tqb8p7eou22CUNbywO5qyiUS6VlfOxo5Qwpj1O1RNw2xIoPWqxGpBnK+R0OEzTT0NXCu7Nz/8g==",
+      "name": "@openclaw/fs-safe-linux-arm64-gnu",
+      "publishedAt": "2026-10-10T18:24:51.625Z",
+      "sourceResponseSha256": "d6d3ce0fe71b8b0ffacac4ebf5d1ba0a50ef5faa9593ee58988eb186e7b3f304",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe-linux-arm64-gnu",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    },
+    {
+      "eligibleAt": "2026-10-17T19:53:36Z",
+      "integrity": "sha512-5ZHnjuW4vWZrSWI+6JDFrjc8QUcQ+1BnAjk+etnMeYhtJhnxau4Q9hJASWjvLsGcNrhHyNR4OmppRYvMxr5iwQ==",
+      "name": "@openclaw/fs-safe-linux-arm64-musl",
+      "publishedAt": "2026-10-10T19:53:35.991Z",
+      "sourceResponseSha256": "16ba0728351c39cc91a3f2c50d306bc22311ed79531888e5c7e9c1647549d2b7",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe-linux-arm64-musl",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    },
+    {
+      "eligibleAt": "2026-10-17T18:24:47Z",
+      "integrity": "sha512-yZC6kP/EnTAFFLuws25nCy4iS4wy1l4bDGvJRFtAcdLBl+M9FOLIWM6p/TcliezYmaezWGb1i+VgxghJ3uB/mg==",
+      "name": "@openclaw/fs-safe-linux-x64-gnu",
+      "publishedAt": "2026-10-10T18:24:46.426Z",
+      "sourceResponseSha256": "30cc3b647363eb98769d08d9a65c8a244cd50405df0165e8d6045c3efbcc4305",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe-linux-x64-gnu",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    },
+    {
+      "eligibleAt": "2026-10-17T18:25:00Z",
+      "integrity": "sha512-kxcOv7ANmdpHXD5PdNrRFrbcesZ04x9T4JYNV55eKDbiIgK4Xe2Uo9GmaMcGouDeTrX0Oh+subsOZtUXZnFeFg==",
+      "name": "@openclaw/fs-safe-linux-x64-musl",
+      "publishedAt": "2026-10-10T18:24:59.886Z",
+      "sourceResponseSha256": "52defafa7724af775ab6c201d92b7bd1367e9285085d76431f87ef4c8a03dd48",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe-linux-x64-musl",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    },
+    {
+      "eligibleAt": "2026-10-17T19:51:09Z",
+      "integrity": "sha512-cKUMfA1rlsimftCZrbxc1UfZ2h9u9ktoPTxY9LQkSOsTlnANVO83XBurY79rv4wq9xl4SgAppOTArP18ET7A6Q==",
+      "name": "@openclaw/fs-safe-win32-arm64-msvc",
+      "publishedAt": "2026-10-10T19:51:08.644Z",
+      "sourceResponseSha256": "06b8cdac32faa3c2aca52c2fcc35424226087430a5b7274c8f0141dc1560a0aa",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe-win32-arm64-msvc",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    },
+    {
+      "eligibleAt": "2026-10-17T19:53:44Z",
+      "integrity": "sha512-kNZIpWO7ydMpVS0rFGrmux89LYakG+i/rKuxUIUeB/zK8S35MMAJKmif4w0Px4WSG/FYlxPogav0MXkvgd0/yw==",
+      "name": "@openclaw/fs-safe-win32-x64-msvc",
+      "publishedAt": "2026-10-10T19:53:43.178Z",
+      "sourceResponseSha256": "5b49461878d6f4c574743eda50bc54272f66a6bf7b130027c280f735b6837d54",
+      "sourceRoute": "https://registry.npmjs.org/%40openclaw%2Ffs-safe-win32-x64-msvc",
+      "sourceSummarySha256": "887715f639f5a05438ab4fd1295bb032c7e43cbf9f456368538ad293f9301c7a",
+      "version": "0.26.0"
+    }
+  ]
+}

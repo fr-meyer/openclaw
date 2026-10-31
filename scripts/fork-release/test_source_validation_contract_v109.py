@@ -15,6 +15,35 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 
+def historical_control(name):
+    """Freeze historical H2 replay when the operational candidate advances to H3.
+
+    This test-only reader never substitutes old evidence into an H3 source gate.
+    Legacy injection tests still exercise their supplied pre-H3 controls.
+    """
+    here = Path(__file__).parent
+    candidate = here / "candidates/v2026.10.9-source-only"
+    current_raw = (candidate / "ci-bindings.json").read_bytes()
+    current = m.parse(current_raw)
+    allowed = {
+        "ci-bindings.json": ("bindings", "e3b1d1a9e926a424e35f9ed1138d9aebfd7657283b8f3d6e5144a0399c0e8471"),
+        "source-request.json": ("request", "8ad6e9ebff2ae2e2ffe12182a04c7bf3dcb0fa2efc81c71496685af9791b35d8"),
+        "generation-receipt.json": ("generation", "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87"),
+        "manifest.json": ("manifest", "1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13"),
+        "inventory.json": ("inventory", "2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb"),
+    }
+    if name not in allowed:
+        raise AssertionError("unknown historical control")
+    if "sourceSuccessor" not in current:
+        return current_raw if name == "ci-bindings.json" else (candidate / name).read_bytes()
+    m.validate_bindings(current)
+    label, expected = allowed[name]
+    raw = (here / "fixtures" / ("v109-h3-anchor-" + label + ".json")).read_bytes()
+    if m.digest(raw) != expected:
+        raise AssertionError("historical H2 control bytes changed")
+    return raw
+
+
 def source(sha="a", tree="b"):
     return {"sourceSha": sha * 40, "sourceTree": tree * 40,
         "manifestSha256": "1" * 64, "inventorySha256": "2" * 64,
@@ -296,7 +325,7 @@ class ReviewedInterfaceDeltaTests(unittest.TestCase):
 class PipelinePreparationRecoveryTests(unittest.TestCase):
     def actual_binding(self):
         path=Path(__file__).parent/"candidates/v2026.10.9-source-only/ci-bindings.json"
-        value=m.parse(path.read_bytes())
+        value=m.parse(historical_control("ci-bindings.json"))
         # Replay the historical pre-H intake state in an isolated unit fixture.
         # Later all15 CI uses a real H validation binding; it must not change this
         # fixture's phase or be mistaken for missing live evidence.

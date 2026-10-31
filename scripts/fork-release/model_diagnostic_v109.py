@@ -35,7 +35,7 @@ MODELS = ("models-1", "models-2")
 LIMITS = {"admission": 30, "diagnostic (models-1)": 60, "diagnostic (models-2)": 60, "final": 10}
 UNEXPANDED = "diagnostic (${{ matrix.profile }})"
 NATIVE_LIMITS = {**LIMITS, UNEXPANDED: 60}
-SOURCE_WORKFLOW_RESTORED = "d38b9cc6b4349606513a5a0ba09cc2be8a088a922d8299ec153fb30a69a44570"
+SOURCE_WORKFLOW_RESTORED = "aae03443e27475e1c6f55bac24215767384970342545a6422ad1148af44b5c59"
 SOURCE_WORKFLOW_HELD = "3f47abf66812703f36df874443865c0c54766fc0040f0517cefa0aeb22c7123c"
 DIAGNOSTIC_WORKFLOW_SHA256 = "df300028082b34beb89db8199adb402d9af550cfd37f0264702e3dc3f95bc27b"
 CAPTURE = "workboard-x-public-r2"
@@ -228,11 +228,20 @@ def route_event(event, diagnostic):
     need(present is diagnostic, "mutual_workflow_hold")
 
 
-def workflow_routing(runtime, pipeline, diagnostic):
+H3_SOURCE_WORKFLOW_SHA256 = "5142f74514f09ea35ba8706be8f259284a2312c7d23326c95fd142b896993c09"
+H3_PREPARATION_WORKFLOW_SHA256 = "82c0d3f62bca832fae7ef8ff21a47921b0697750005b433fd4597d02205ad911"
+
+
+def workflow_routing(runtime, pipeline, diagnostic, *, source_request=None, source_bindings=None):
     value = validate(policy.parse(runtime.regular(pipeline / REQUEST_PATH, 16384)))
     need((value["routingMode"] == "DIAGNOSTIC") is diagnostic, "request_workflow_route")
-    need(policy.digest(runtime.regular(pipeline / policy.WORKFLOW, 32768)) ==
-        (SOURCE_WORKFLOW_HELD if diagnostic else SOURCE_WORKFLOW_RESTORED), "exact_full_source_hold_or_restore")
+    expected = SOURCE_WORKFLOW_HELD if diagnostic else SOURCE_WORKFLOW_RESTORED
+    if source_request is not None or source_bindings is not None:
+        need(not diagnostic and type(source_request) is dict and type(source_bindings) is dict and
+            policy.h3_stage_contract(source_bindings, source_request) is not None, "h3_source_route_binding")
+        expected = H3_PREPARATION_WORKFLOW_SHA256 if source_request["phase"] == "lock-preparation" else H3_SOURCE_WORKFLOW_SHA256
+    need(policy.digest(runtime.regular(pipeline / policy.WORKFLOW, 32768)) == expected,
+        "exact_full_source_hold_or_restore")
     need(policy.digest(runtime.regular(pipeline / WORKFLOW, 32768)) == DIAGNOSTIC_WORKFLOW_SHA256,
         "exact_diagnostic_workflow")
 

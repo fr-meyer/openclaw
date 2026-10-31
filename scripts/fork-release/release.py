@@ -115,7 +115,9 @@ def validate_merge_shape(source):
         minimum = 0 if merge["schema"] == "openclaw.fork-source-merge.v3" else 1
         if merge["schema"] == "openclaw.fork-source-merge.v4":
             minimum = 0
-            need(type(successors) is list and len(successors) <= 3, "invalid 10.9 merge successor count")
+            # Shape only. The native v109 reconciliation owner below retains
+            # legacy<=3 and authenticates H2+at most3 material/derived pairs.
+            need(type(successors) is list and len(successors) <= 8, "invalid 10.9 merge successor count")
         need(type(successors) is list and minimum <= len(successors) <= 16,
              "invalid merge successor count")
         for item in successors:

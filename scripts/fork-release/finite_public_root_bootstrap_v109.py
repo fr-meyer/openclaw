@@ -25,14 +25,14 @@ PREFIX_BYTES = 16384
 FETCH_OUTPUT_BYTES = 2097152
 METADATA_BYTES = 67108864
 OWNER_PINS = {
-    "bounded_run_contract_v109.py": "56efad92bfd88e8a7b82d3c6e8b470077b4b64d2d45434e9d51949c2b058b8fe",
+    "bounded_run_contract_v109.py": "381781d940f04af764a68e8967f0794e3ecb2cc12c17128a5310fb6af921bfe2",
     "composite_closed_usage.py": "b5c923e0205a4d49ae81dced385398199725185249a81711ac371d07e624bdb4",
     "manifest_capture.py": "d5fd42317bf538720b48949a9503dc3c58df6a0035f200ac30a20400c1ed3eac",
     "preflight.py": "89b6ba41fc89131f33754104fdd0d3ebc08c20f252288651bc7d95038639103a",
-    "release.py": "ecdb1be6a137f679dd05bf015145d57d222d8a7eff4ac8d876753e56cec5d443",
-    "source_validation_contract_v109.py": "fc05750393bf869e7c2fedc30d6f8ff2abf5ff4031d2ae6044c0d522eee5589e",
+    "release.py": "5026178bb85a9ff51a36f7512a899c8cd4beab2f5b3ed146e1e0d87c0dc3a639",
+    "source_validation_contract_v109.py": "2e8fd0741ad3e0830974c10ff50bd1a34f4cbf8f9a36e871854191e67d05c102",
     "source_validation_v108.py": "d2e014f20f5227b183ea217d9874ef7159c90a894debe5a6581bd4696145f965",
-    "source_validation_v109.py": "e7088d41140ed3f73c725d26901ffa94981bdf2e8b443e458642215fd01f34df",
+    "source_validation_v109.py": "a74b9bb90955ac4e87c7c3c9cafe5a926d4ef3516b07aff076c17f187a350f00",
 }
 
 
@@ -328,7 +328,7 @@ def main(argv=None, environment=None):
     runtime, core = owners(folder)
     bindings, selected, request_raw = runtime.load_metadata(pipeline, active=True, now=time.time())
     need(env.get("V109_APPROVED_AT") == bindings["authorization"]["approvedAt"] and
-         env.get("V109_EXPIRES_AT") == bindings["authorization"]["expiresAt"], "workflow_clock_binding")
+         env.get("V109_EXPIRES_AT") == runtime.policy.source_authorization_window(bindings)[1], "workflow_clock_binding")
     need((args.job == "source") == (args.profile in runtime.policy.PROFILES) and
          (args.job == "source" or args.profile is None), "fixed_job_profile")
     event = runtime.policy.parse(regular(Path(env["GITHUB_EVENT_PATH"]), 1048576))

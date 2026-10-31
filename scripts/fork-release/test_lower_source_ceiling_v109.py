@@ -1,3 +1,4 @@
+from test_source_validation_contract_v109 import historical_control
 """Prospective-only lower ceilings; no provider, process, or runtime access."""
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -33,11 +34,11 @@ class LowerCeilingTests(unittest.TestCase):
             mock.patch.object(urllib.request, 'build_opener', side_effect=AssertionError('network forbidden'))]
         for blocker in self.blockers:
             blocker.start(); self.addCleanup(blocker.stop)
-        self.legacy_request = json.loads((HERE / 'candidates/v2026.10.9-source-only' / 'source-request.json').read_bytes())
+        self.legacy_request = json.loads(historical_control('source-request.json'))
         # A synthetic legacy schedule view stays stable when the active request advances.
         self.legacy_request['executionSequence'] = 9
         self.legacy_request['executionReservations']['current'] = 1075
-        self.bindings = json.loads((HERE / 'candidates/v2026.10.9-source-only' / 'ci-bindings.json').read_bytes())
+        self.bindings = json.loads(historical_control('ci-bindings.json'))
         self.plan = deepcopy(self.bindings['ciRunGrant']['nextExecution'])
         self.plan.update(status='DISARMED', sequence=10, reviewSha256=None, requestSha256=None)
         self.plan['reservations']['current'] = 740

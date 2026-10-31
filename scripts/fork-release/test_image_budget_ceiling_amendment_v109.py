@@ -1,3 +1,4 @@
+from test_source_validation_contract_v109 import historical_control
 """R5 integration: synthetic provider facts only, never a source/image pass."""
 from copy import deepcopy
 import ast
@@ -32,7 +33,7 @@ def amendment():
 def fixture(amended=True):
     """Use maintained source controls, normalize only synthetic grant selection."""
     folder = HERE / 'candidates/v2026.10.9-source-only'
-    b = source.parse((folder / 'ci-bindings.json').read_bytes())
+    b = source.parse(historical_control('ci-bindings.json'))
     b['status'] = b['ciRunGrant']['status'] = 'DISARMED'
     grant = b['ciRunGrant']
     grant.pop('budgetCeilingAmendment', None)
@@ -45,9 +46,9 @@ def fixture(amended=True):
         grant['nextExecution']['sequence'] = 12
     q = source.request_for(b, 'correction', 6)
     request_raw = source.encode(q)
-    generation = (folder / 'generation-receipt.json').read_bytes()
-    manifest = (folder / 'manifest.json').read_bytes()
-    inventory = (folder / 'inventory.json').read_bytes()
+    generation = historical_control('generation-receipt.json')
+    manifest = historical_control('manifest.json')
+    inventory = historical_control('inventory.json')
     result = {'schema': 'openclaw.v109.source-validation-result.v1',
         'repository': source.REPOSITORY, 'campaignId': source.CAMPAIGN,
         'phase': q['phase'], 'status': 'passed', 'runId': '123', 'runAttempt': 1,
@@ -224,16 +225,25 @@ class ImageBudgetAmendmentTests(unittest.TestCase):
         r = prepared(False); r['sourceBudgetCeilingAmendmentSha256'] = image.BUDGET_AMENDMENT_SHA256
         with self.assertRaises(image.Refusal): image.validate_source_budget_binding(r, b, q)
 
-    def test_blueprint_api_stays_unchanged_and_no_capability_is_signed(self):
-        import private_oci_upload_blueprint_v109 as blueprint
+    def test_public_r5_transfer_scope_is_unchanged(self):
         r = image.arm_prepared(prepared(), authorization(), NOW)
-        value = blueprint.prepare(r, 'f' * 40, 'synthetic@example.invalid', 3600, NOW)
-        self.assertFalse(value['authorityCreated'])
-        self.assertFalse(value['signedCapabilityCreated'])
-        self.assertEqual(value['headers']['x-goog-if-generation-match'], '0')
-        self.assertEqual(value['headers']['x-goog-content-length-range'], '1,2147483648')
-        self.assertEqual((r['privateObject']['getMaximumSeconds'],
-                          r['privateObject']['uploadGrantMaximumSeconds']), (900, 7200))
+        self.assertEqual(r['privateObject'], image.disarmed_request()['privateObject'] | {
+            'object': image.expected_object(r['sourceSha'])})
+        self.assertEqual((r['privateObject']['maximumBytes'], r['privateObject']['putMaximumSeconds'],
+                          r['privateObject']['getMaximumSeconds'], r['privateObject']['uploadGrantMaximumSeconds'],
+                          r['privateObject']['readerGrantMaximumSeconds']),
+                         (2147483648, 3600, 900, 7200, 900))
+        ctx = {'sha': 'f' * 40, 'runId': '123'}
+        plan = {'schema': 'openclaw.private-oci-transfer-plan.v1', 'sourceSha': r['sourceSha'],
+            'toolingSha': ctx['sha'], 'runId': ctx['runId'], 'attempt': '1',
+            'archiveSha256': 'b' * 64, 'archiveBytes': 1,
+            **{k: r['privateObject'][k] for k in ('bucket', 'object', 'signer')}, 'generation': None}
+        self.assertIs(image.validate_transfer_plan(plan, r, ctx, 'b' * 64, 1), plan)
+        for field, value in [('generation', '1'), ('object', 'synthetic-other-object'),
+                             ('signer', 'synthetic-other@example.invalid')]:
+            changed = deepcopy(plan); changed[field] = value
+            with self.subTest(field=field), self.assertRaises(image.Refusal):
+                image.validate_transfer_plan(changed, r, ctx, 'b' * 64, 1)
 
     def test_new_guard_selected_once_for_future_source_ci(self):
         tree = ast.parse((HERE / 'source_validation_selection_v109.py').read_bytes())

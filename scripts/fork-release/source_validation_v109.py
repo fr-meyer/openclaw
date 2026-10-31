@@ -86,6 +86,18 @@ CODE_PATHS = (
     CANDIDATE + "/historical-unacquired-jobs-20261030.json",
     CANDIDATE + "/historical-artifact-snapshot-20261028.json",
     CANDIDATE + "/historical-artifact-closeout-20261028.json", *BASELINE_FILES,
+    CANDIDATE + "/h3-stage-prefix.json", CANDIDATE + "/h3-source-amendment.json",
+    CANDIDATE + "/h3-selected-excluded-ages.json",
+    CANDIDATE + "/h3-target-package-metadata.json",
+    "scripts/fork-release/fixtures/v109-h3-anchor-bindings.json",
+    "scripts/fork-release/fixtures/v109-h3-anchor-request.json",
+    "scripts/fork-release/fixtures/v109-h3-anchor-generation.json",
+    "scripts/fork-release/fixtures/v109-h3-anchor-manifest.json",
+    "scripts/fork-release/fixtures/v109-h3-anchor-inventory.json",
+    "scripts/fork-release/test_h3_source_stage_v109.py",
+    "scripts/fork-release/test_h3_history_accounting_v109.py",
+    "scripts/fork-release/fixtures/v109-h3-source-validation.yml",
+    "scripts/fork-release/fixtures/v109-h3-lock-preparation.yml",
 )
 HISTORICAL_JOB_WITNESS = CANDIDATE + "/historical-unacquired-jobs-20261030.json"
 HISTORICAL_JOB_WITNESS_SHA256 = "a3d1cdeddc6af9bd469c069cd52a4c80b3e8565d175944b8b1bef1d3a07bdc23"
@@ -317,7 +329,7 @@ def job_deadline(bindings, request, env, profile=None, clock=None):
         45 if request["phase"] == "lock-preparation" else 30)
     policy.need(start <= clock < start + cap * 60 - 60 and clock - start < cap * 60,
         "v9.job_clock_expired")
-    expiry = policy.utc(bindings["authorization"]["expiresAt"]).timestamp()
+    expiry = policy.utc(policy.source_authorization_window(bindings)[1]).timestamp()
     return min(start + cap * 60 - 60, expiry - 60)
 
 
@@ -428,7 +440,11 @@ def code_binding(pipeline, source, event, env, request, core, context):
         from model_diagnostic_v109 import validate as validate_diagnostic
         validate_diagnostic(diagnostic, regular(pipeline/REQUEST,65536), active=True, now=time.time())
     head = event_binding(event, env, diagnostic=diagnostic is not None)
-    workflow_routing(sys.modules[__name__],pipeline,diagnostic is not None)
+    if "sourceSuccessorAmendmentSha256" in request:
+        workflow_routing(sys.modules[__name__],pipeline,diagnostic is not None,
+            source_request=request,source_bindings=context["bindings"])
+    else:
+        workflow_routing(sys.modules[__name__],pipeline,diagnostic is not None)
     read = lambda *args: git_read(pipeline, *args, deadline=context["deadlineEpoch"])
     policy.need(read("rev-parse", "HEAD").strip() == head.encode(), "v9.pipeline_head")
     # Verify current head closure before the reviewed fetch helper is used.
@@ -1076,8 +1092,199 @@ def additional_history_booking(bindings,request,locks,validations,current_id,cur
         "maximumSourceCampaigns":1,"optionalCorrectionAllowed":False,"bookedMinutes":booked}
 
 
-def bounded_source_history(bindings,request,source_rows,current_id):
+H3_PREFIX_PATH = CANDIDATE + "/h3-stage-prefix.json"
+H3_ANCHOR_PATHS = {
+    "bindings": ("scripts/fork-release/fixtures/v109-h3-anchor-bindings.json", "e3b1d1a9e926a424e35f9ed1138d9aebfd7657283b8f3d6e5144a0399c0e8471"),
+    "request": ("scripts/fork-release/fixtures/v109-h3-anchor-request.json", "8ad6e9ebff2ae2e2ffe12182a04c7bf3dcb0fa2efc81c71496685af9791b35d8"),
+    "generation": ("scripts/fork-release/fixtures/v109-h3-anchor-generation.json", "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87"),
+}
+
+
+def h3_prefix(pipeline):
+    """Read the exact public closed prefix; its floors never become live facts."""
+    from bounded_run_contract_v109 import H3_PREFIX_PROOF_SHA256, H3_PREFIX_LEDGER_SHA256, validate_h3_artifact_booking
+    raw = regular(Path(pipeline) / H3_PREFIX_PATH, 2 * 1024 * 1024)
+    policy.need(policy.digest(raw) == H3_PREFIX_PROOF_SHA256, "v9.h3_prefix_pin")
+    value = policy.parse(raw, 2 * 1024 * 1024)
+    policy.need(value.get("schema") == "openclaw.v109.h3-stage-prefix.v1" and
+        value.get("sourceLedgerSha256") == H3_PREFIX_LEDGER_SHA256 and
+        value.get("newRunnerMinutes") == 2215 and value.get("recordCount") == 293 and
+        value.get("nativeJobCount") == 1150 and value.get("lastSourceExecutionSequence") == 11 and
+        value.get("conservativeBookedArtifactBytes") == 783765 and
+        value.get("postBaselineArtifactBytes") == 395951 and value.get("postBaselineArtifactCount") == 26 and
+        value.get("unknownAbsenceWaiver") is False and value.get("payloadCustodyClaim") is False,
+        "v9.h3_prefix_scope")
+    rows = value.get("records")
+    policy.need(type(rows) is list and len(rows) == 293, "v9.h3_prefix_records")
+    ids, jobs = set(), set()
+    for row in rows:
+        policy.need(type(row) is dict and set(row) == {"runId", "head", "name", "conclusion", "nativeJobIds", "runnerMinutes"} and
+            type(row["runId"]) is str and policy.RUN_ID.fullmatch(row["runId"]) and row["runId"] not in ids and
+            policy.pin(row["head"], 160) and type(row["name"]) is str and row["conclusion"] in TERMINAL and
+            type(row["runnerMinutes"]) is int and row["runnerMinutes"] >= 0 and
+            type(row["nativeJobIds"]) is list and len(set(row["nativeJobIds"])) == len(row["nativeJobIds"]) and
+            all(type(j) is int and j > 0 and j not in jobs for j in row["nativeJobIds"]), "v9.h3_prefix_record")
+        ids.add(row["runId"]); jobs.update(row["nativeJobIds"])
+    policy.need(len(jobs) == 1150 and sum(row["runnerMinutes"] for row in rows) == 2215,
+        "v9.h3_prefix_totals")
+    expiry = value.get("expiryObservations")
+    policy.need(type(expiry) is list and len(expiry) == 49 and
+        len({r.get("artifactId") for r in expiry if type(r) is dict}) == 49, "v9.h3_expiry_catalog")
+    expiry_by_id = {}
+    for row in expiry:
+        policy.need(type(row) is dict and type(row.get("artifactId")) is int and row["artifactId"] > 0 and
+            type(row.get("bookedBytes")) is int and row["bookedBytes"] >= 0 and
+            type(row.get("producerRunId")) is str and policy.RUN_ID.fullmatch(row["producerRunId"]),
+            "v9.h3_expiry_identity")
+        policy.utc(row.get("recordedExpiresAt")); expiry_by_id[row["artifactId"]] = row
+    artifacts = value.get("artifacts")
+    policy.need(type(artifacts) is list and len(artifacts) == 26 and
+        len({a.get("metadata", {}).get("id") for a in artifacts}) == 26, "v9.h3_prefix_artifacts")
+    for row in artifacts:
+        validate_h3_artifact_booking(row)
+        meta = row["metadata"]; known = expiry_by_id.get(meta["id"])
+        policy.need(known is not None and row["producerRunId"] in ids and
+            row["fieldPresence"]["expires_at"] is True and known["recordedExpiresAt"] == meta["expires_at"] and
+            known["bookedBytes"] == meta["size_in_bytes"] and known["producerRunId"] == row["producerRunId"],
+            "v9.h3_prefix_artifact_expiry")
+    policy.need(sum(a["metadata"]["size_in_bytes"] for a in artifacts) == 395951, "v9.h3_prefix_artifact_floor")
+    return value
+
+
+def h3_prefix_floors(prefix, history, run_minutes, native_jobs):
+    """Apply all293 positive native-attempt floors individually, including zero."""
+    charges = dict(run_minutes)
+    for row in prefix["records"]:
+        rid = row["runId"]; run = history.get(rid)
+        policy.need(type(run) is dict and public_run(run) and run.get("status") == "completed" and
+            run.get("head_sha") == row["head"] and run.get("name") == row["name"] and
+            run.get("conclusion") == row["conclusion"] and (rid, 1) in charges and
+            set(native_jobs.get(rid, ())) == set(row["nativeJobIds"]), "v9.h3_prefix_native_changed")
+        charges[(rid, 1)] = max(charges[(rid, 1)], row["runnerMinutes"])
+    policy.need(sum(charges[(r["runId"], 1)] for r in prefix["records"]) >= 2215,
+        "v9.h3_prefix_minute_floor")
+    return charges
+
+
+def h3_artifact_bookings(prefix, grant):
+    from bounded_run_contract_v109 import source_successor_amendment
+    amendment = source_successor_amendment(grant)
+    policy.need(amendment is not None, "v9.h3_artifact_authority")
+    booked = {r["metadata"]["id"]: r for r in amendment["bookedArtifacts"]}
+    for old in prefix["artifacts"]:
+        policy.need(old["metadata"]["id"] in booked and
+            _historical_fact_equal(booked[old["metadata"]["id"]], old), "v9.h3_artifact_floor_missing")
+    by_run = {}
+    for row in booked.values():
+        by_run.setdefault(row["producerRunId"], []).append(row)
+    return by_run
+
+
+def reconcile_h3_artifacts(actual, bookings, run, clock):
+    """Keep booked bytes after positively dated expiry; unknown absence refuses."""
+    policy.need(type(actual) is list and type(clock) in (int, float) and math.isfinite(clock), "v9.h3_artifact_observation")
+    native = {a.get("id"): a for a in actual if type(a) is dict}
+    policy.need(len(native) == len(actual), "v9.h3_artifact_duplicate")
+    missing = []
+    for row in bookings:
+        old = row["metadata"]; aid = old["id"]
+        policy.need(str(run["id"]) == row["producerRunId"] and run["head_sha"] == row["producerHead"],
+            "v9.h3_artifact_producer_changed")
+        if aid not in native:
+            policy.need(row["fieldPresence"]["expires_at"] is True and provider_epoch(old["expires_at"]) <= clock,
+                "v9.h3_artifact_missing_before_or_without_expiry")
+            missing.append({"artifactId": aid, "bookedBytes": old["size_in_bytes"],
+                "recordedExpiresAt": old["expires_at"], "payloadAvailability": "unavailable",
+                "absenceCause": "unproved", "originalBookingPreserved": True, "custodyClaimed": False})
+            continue
+        current = native[aid]
+        policy.need(type(current.get("expired")) is bool and not (old["expired"] and not current["expired"]),
+            "v9.h3_artifact_expiry_reversed")
+        for key, value in old.items():
+            if key == "expired": continue
+            if key == "workflow_run":
+                policy.need(type(current.get(key)) is dict and all(k in current[key] and
+                    _historical_fact_equal(current[key][k], v) for k, v in value.items()), "v9.h3_artifact_context_changed")
+            else:
+                policy.need(key in current and _historical_fact_equal(current[key], value), "v9.h3_artifact_fact_changed")
+    return missing
+
+
+def h3_source_history(pipeline, bindings, request, source_rows, current_id, source_bindings):
+    """Replay the pinned H2 prefix, then bind every new source-family sequence."""
+    policy.need(pipeline is not None and type(source_bindings) is dict, "v9.h3_source_history_inputs")
+    anchor = {}
+    for key, (path, pin) in H3_ANCHOR_PATHS.items():
+        raw = regular(Path(pipeline) / path, 131072)
+        policy.need(policy.digest(raw) == pin, "v9.h3_anchor_pin")
+        anchor[key] = raw
+    old_bindings = policy.validate_bindings(policy.parse(anchor["bindings"]))
+    old_request = policy.validate_request(policy.parse(anchor["request"]), old_bindings)
+    policy.validate_generation(anchor["generation"], old_bindings, old_request["phase"])
+    old_rows = [r for r in source_rows if "executionSequence" not in r[2] or r[2]["executionSequence"] <= 11]
+    previous = bounded_source_history(old_bindings, old_request, old_rows, "41154711378")
+    policy.need(previous["sourceExecutionSequence"] == 11, "v9.h3_anchor_sequence")
+    family = policy.validate_h3_family(policy.source_successor_family(bindings))
+    grant = policy.run_grant(bindings); plan = grant["nextExecution"]
+    rows = {}
+    for rid, run, q, raw in source_rows:
+        sequence = q.get("executionSequence")
+        if sequence is None or sequence <= 11: continue
+        policy.need(type(sequence) is int and sequence not in rows and q["phase"] in ("lock-preparation", "validation") and
+            q["runAllowanceSha256"] == grant["authoritySha256"] and
+            q.get("sourceSuccessorAmendmentSha256") == family["publicAmendmentSha256"], "v9.h3_source_sequence")
+        historical = source_bindings.get(rid)
+        policy.need(type(historical) is dict, "v9.h3_historical_family_missing")
+        old_family = policy.validate_h3_family(policy.source_successor_family(historical))
+        number = q.get("sourceGeneration")
+        policy.need(type(number) is int and 1 <= number <= len(family["generations"]) and
+            len(old_family["generations"]) == number and
+            q["sourceFamilySha256"] == policy.digest(policy.canonical(old_family)), "v9.h3_historical_family_pin")
+        for earlier, current in zip(old_family["generations"], family["generations"]):
+            old_copy, current_copy = dict(earlier), dict(current)
+            old_validation = old_copy.pop("validation"); current_validation = current_copy.pop("validation")
+            policy.need(old_copy == current_copy and (old_validation == current_validation or
+                old_validation is None and current_validation is not None), "v9.h3_historical_family_rewritten")
+        entry = family["generations"][number - 1]
+        if q["phase"] == "lock-preparation":
+            policy.need(q["source"] == entry["preparation"] and q["generation"] is None,
+                "v9.h3_unchanged_preparation_source")
+        else:
+            v = entry["validation"]
+            policy.need(type(v) is dict and q["source"] == v["source"] and q["generation"] == v["generation"] and
+                q["preparationAttempt"] == v["preparationAttempt"], "v9.h3_derived_source_changed")
+        policy.need(rid == current_id or run.get("status") == "completed" and run.get("conclusion") in TERMINAL,
+            "v9.h3_prior_source_unsettled")
+        rows[sequence] = (rid, run, q, raw)
+    policy.need(set(rows) == set(range(12, plan["sequence"] + 1)) and rows[plan["sequence"]][0] == current_id and
+        rows[plan["sequence"]][2] == request, "v9.h3_contiguous_source_sequence")
+    pin = {"runId": "41154711378", "pipelineHead": "9922a9505b772c407406b0275bbf74d6d2a31c54",
+        "requestSha256": H3_ANCHOR_PATHS["request"][1]}
+    for sequence in sorted(rows):
+        rid, run, q, raw = rows[sequence]
+        policy.need(q["priorRunPins"] == [pin], "v9.h3_exact_prior_source")
+        pin = {"runId": rid, "pipelineHead": run["head_sha"], "requestSha256": policy.digest(raw)}
+    prior_pin = plan["priorSourceRun"]
+    found = [r for r in source_rows if r[0] == prior_pin["runId"]]
+    policy.need(len(found) == 1 and found[0][1].get("status") == "completed" and
+        found[0][1].get("conclusion") in TERMINAL and found[0][1]["head_sha"] == prior_pin["pipelineHead"] and
+        policy.digest(found[0][3]) == prior_pin["requestSha256"], "v9.h3_prior_source_identity")
+    if plan["reasonCode"] == "prior_failure":
+        policy.need(found[0][1]["conclusion"] in ("failure", "cancelled", "timed_out"), "v9.h3_prior_failure")
+    elif plan["reasonCode"] == "generation_ready":
+        policy.need(request["phase"] == "validation" and found[0][2]["phase"] == "lock-preparation" and
+            found[0][1]["conclusion"] == "success" and request["generation"]["runId"] == found[0][0],
+            "v9.h3_generation_ready")
+    return {"sourceExecutionSequence": plan["sequence"], "reviewedLogicalExecutions": plan["sequence"],
+        "freshNativeFirstAttemptOnly": True, "unchangedPreparationSource": True,
+        "sameGenerationFixtureCorrection": False, "materialSourceGenerations": len(family["generations"]),
+        "maximumMaterialSourceGenerations": 3, "legacyAnchorSequencePreserved": 11}
+
+
+def bounded_source_history(bindings,request,source_rows,current_id,*,pipeline=None,source_bindings=None):
     """Reviewed logical source sequence; never a generic retry scheduler."""
+    if "sourceSuccessor" in bindings:
+        return h3_source_history(pipeline, bindings, request, source_rows, current_id, source_bindings)
     grant=policy.run_grant(bindings)
     policy.need(grant is not None,"v9.run_grant_required")
     plan=grant["nextExecution"]
@@ -1173,12 +1380,50 @@ def bounded_minute_booking(grant,run_minutes,current_id,current_minutes):
     return charged_total,facts
 
 
-def history_checks(pipeline, bindings, request, rraw, head, event, env, api, resolver, clock, diagnostic=None):
+def h3_minute_facts(facts, current_id, current_minutes):
+    """Classify observed use once and retain every native-attempt booking floor."""
+    from bounded_run_contract_v109 import H3_STAGE_POOLS
+    grant,prefix=facts["grant"],facts["prefix"]
+    policy.need(prefix is not None and (current_id,1) in facts["run_minutes"] and
+        facts["run_minutes"][(current_id,1)]==current_minutes,"v9.h3_current_minute_identity")
+    charges=dict(facts["run_minutes"])
+    for row in grant["bookedAdditionalAttempts"]:
+        key=(row["runId"],row["nativeAttempt"])
+        policy.need(key in charges,"v9.h3_booked_attempt_missing")
+        if key==(current_id,1):
+            policy.need(row["runnerMinutes"]<=current_minutes,"v9.h3_current_previously_booked")
+        charges[key]=max(charges[key],row["runnerMinutes"])
+    old={r["runId"]:r["runnerMinutes"] for r in prefix["records"]}
+    policy.need(current_id not in old,"v9.h3_current_reuses_prefix")
+    used={k:0 for k in H3_STAGE_POOLS}
+    for (rid,attempt),minutes in charges.items():
+        policy.need(attempt==1 and rid in facts["run_pools"],"v9.h3_component_native_identity")
+        kind=facts["run_pools"][rid]
+        policy.need(kind in used,"v9.h3_component_role")
+        used[kind]+=minutes-old.get(rid,0)
+    policy.need(all(type(v)is int and 0<=v<=H3_STAGE_POOLS[k] for k,v in used.items()),
+        "v9.h3_stage_component_ceiling")
+    total=sum(charges.values())
+    policy.need(total==2215+sum(used.values()) and total<=5915 and total<=25000,
+        "v9.h3_stage_total_floor")
+    components={"preparationObservedMinutes":used["preparation"],"sourceObservedMinutes":used["source"],
+        "incidentalObservedMinutes":used["incidental"],"imageObservedMinutes":used["image"],
+        "remainingImageFamilyReserveMinutes":180-used["image"],
+        "remainingIncidentalReserveMinutes":160-used["incidental"]}
+    return total,components
+
+
+def collect_history_accounting(pipeline, bindings, request, head, env, api, resolver, clock, diagnostic=None, image=False, rraw=None):
+    """The single native history/artifact collector shared by source and image."""
     global _FAILURE_PHASE
     import model_diagnostic_v109 as model_diagnostic
     _FAILURE_PHASE = "history_collection"
     history = history_rows(api, clock)
     grant=policy.run_grant(bindings)
+    stage=policy.h3_stage_contract(bindings,request) if policy.source_successor_family(bindings) is not None else None
+    prefix=h3_prefix(pipeline) if stage is not None else None
+    prefix_ids={r["runId"] for r in prefix["records"]} if prefix is not None else set()
+    booked_artifacts=h3_artifact_bookings(prefix,grant) if prefix is not None else {}
     attempt_facts=None
     if grant is not None:
         from bounded_run_contract_v109 import count_attempts
@@ -1198,9 +1443,13 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
     baseline_ids, alljobs, allartifacts = closed_baseline(pipeline, history, api, resolver)
     _FAILURE_PHASE = "postbaseline_history"
     current = history.get(env["GITHUB_RUN_ID"])
-    policy.need(type(current) is dict and current["head_sha"] == head and current.get("status") in
+    policy.need(type(current) is dict and (head is None and image or current["head_sha"] == head) and current.get("status") in
         ("queued", "in_progress", "waiting", "pending") and public_run(current), "v9.current_provider_run")
-    if diagnostic is None:
+    if image:
+        policy.need(stage is not None and current.get("path")==".github/workflows/future-v109-image-build.yml" and
+            current.get("event")=="push" and current.get("head_branch")==policy.PIPELINE_BRANCH and
+            current.get("display_title")=="future-v109-private-image-20261030", "v9.image_current_role")
+    elif diagnostic is None:
         role(current, request)
     else:
         model_diagnostic.validate(diagnostic,rraw,active=True,now=clock)
@@ -1208,12 +1457,14 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
     # Same publication can cause unrelated fixed public workflows. Count every
     # post-baseline record, even failed intake, without inventing retry rights.
     total, incidental, source_rows, seen_artifacts = 0, 0, [], set(allartifacts)
-    run_minutes={}
+    run_minutes={};native_jobs={};run_pools={};source_bindings={};artifact_absences=[]
     artifact_bytes = 387814
     baseline = resolver.resolve_baseline_258(*(regular(pipeline / path) for path in BASELINE_FILES))
     incidental_paths = {r["path"] for r in baseline["runs"] if r["path"] != resolver.WORKFLOW}
     auth_start = policy.utc(bindings["authorization"]["approvedAt"]).timestamp()
     diagnostic_heads = model_diagnostic.diagnostic_heads(history)
+    image_heads={r["head_sha"] for r in history.values() if stage is not None and
+        r.get("path")==".github/workflows/future-v109-image-build.yml"}
     diagnostic_rows = []
     for rid, run in history.items():
         if rid in baseline_ids:
@@ -1221,13 +1472,19 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
         created = provider_epoch(run["created_at"])
         policy.need(created >= auth_start and public_run(run), "v9.unaccounted_postbaseline_run")
         is_source = run.get("path") == policy.WORKFLOW
+        is_image = stage is not None and run.get("path")==".github/workflows/future-v109-image-build.yml"
+        jobs = jobs_for(api, run)
+        image_hold=(is_source and run["head_sha"] in image_heads and
+            {j.get("name") for j in jobs}=={"admission","source (${{ matrix.profile }})","final"} and
+            len(jobs)==3 and all(j.get("status")=="completed" and j.get("conclusion")=="skipped" and
+                j.get("runner_id") in (None,0) and j.get("runner_name") in (None,"") and j.get("steps")==[] for j in jobs))
         diagnostic_value = None
         diagnostic_raw = None
         held_source = False
         if run.get("path") == model_diagnostic.WORKFLOW or is_source and run["head_sha"] in diagnostic_heads:
             diagnostic_value, diagnostic_raw = model_diagnostic.at_head(sys.modules[__name__],api,run["head_sha"])
             held_source = is_source and diagnostic_value["routingMode"] == "DIAGNOSTIC"
-        is_source = is_source and not held_source
+        is_source = is_source and not held_source and not image_hold
         if is_source:
             b = policy.validate_bindings(policy.parse(content(api, BINDINGS, run["head_sha"])))
             rr = content(api, REQUEST, run["head_sha"], 65536)
@@ -1242,9 +1499,23 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
                     "v9.run_grant_historical_reviewed_request")
             limits = role(run, q)
             source_rows.append((rid, run, q, rr))
+            source_bindings[rid]=b
+            run_pools[rid]="preparation" if q["phase"]=="lock-preparation" else "source"
+        elif is_image:
+            policy.need(run.get("event")=="push" and run.get("head_branch")==policy.PIPELINE_BRANCH and
+                run.get("display_title")=="future-v109-private-image-20261030", "v9.image_native_role")
+            limits={"image-admission":15,"build-private-image":90}
+            policy.need({j.get("name") for j in jobs}<=set(limits) and
+                (run.get("status")!="completed" or {j.get("name") for j in jobs}==set(limits)), "v9.image_native_job_shape")
+            run_pools[rid]="image"
+        elif image_hold:
+            policy.need(run.get("event")=="pull_request" and run.get("head_branch")==policy.PIPELINE_BRANCH and
+                run.get("display_title")==policy.CAMPAIGN, "v9.image_source_hold_role")
+            limits=SOURCE_JOBS;run_pools[rid]="incidental"
         elif diagnostic_value is not None and (held_source or run.get("path") == model_diagnostic.WORKFLOW):
             limits = SOURCE_JOBS if held_source else model_diagnostic.native_role(sys.modules[__name__],run,diagnostic_value)
             diagnostic_rows.append((rid,run,diagnostic_value,diagnostic_raw))
+            run_pools[rid]="incidental"
         else:
             # No other executable role is selected or authorized here. Existing
             # incidental runs must remain public read-only policy/intake jobs.
@@ -1253,7 +1524,7 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
                 (("pull_request", "pull_request_target") if run.get("head_branch") == policy.PIPELINE_BRANCH else ("push",)),
                 "v9.unknown_incidental_workflow")
             limits = None
-        jobs = jobs_for(api, run)
+            run_pools[rid]="incidental"
         minutes, jobids = observed_jobs(jobs, clock, run.get("status") == "completed", limits)
         if is_source:
             names = {j["name"] for j in jobs}
@@ -1264,6 +1535,7 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
                 policy.need(names == set(SOURCE_JOBS) - {"source (${{ matrix.profile }})"}, "v9.all15_job_shape")
         policy.need(not alljobs.intersection(jobids), "v9.duplicate_new_job")
         alljobs.update(jobids); total += minutes
+        native_jobs[rid]=jobids
         run_minutes[(rid,run["run_attempt"])]=minutes
         if not is_source:
             # Reserve a whole bounded50-minute incidental family while it runs.
@@ -1271,6 +1543,12 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
         else:
             policy.need(run.get("status") == "completed" or rid == env["GITHUB_RUN_ID"], "v9.concurrent_source_execution")
         arts = artifacts_for(api, run)
+        if prefix is not None:
+            booked=booked_artifacts.get(rid,[])
+            if rid in prefix_ids:
+                policy.need({a.get("id") for a in arts}<={a["metadata"]["id"] for a in booked},
+                    "v9.h3_prefix_unknown_artifact")
+            artifact_absences+=reconcile_h3_artifacts(arts,booked,run,clock)
         if diagnostic_value is not None and not is_source:
             model_diagnostic.validate_record(sys.modules[__name__],run,diagnostic_value,jobs,arts,env["GITHUB_RUN_ID"])
         for artifact in arts:
@@ -1279,15 +1557,39 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
                 type(artifact.get("size_in_bytes")) is int and artifact["size_in_bytes"] >= 0,
                 "v9.new_artifact_identity")
             seen_artifacts.add(aid)
-        artifact_bytes += sum(a["size_in_bytes"] for a in arts)
+        missing=[r for r in booked_artifacts.get(rid,[]) if r["metadata"]["id"] not in {a["id"] for a in arts}]
+        missing_ids={r["metadata"]["id"] for r in missing}
+        policy.need(not missing_ids.intersection(seen_artifacts),"v9.h3_duplicate_booked_artifact")
+        seen_artifacts.update(missing_ids)
+        artifact_bytes += sum(a["size_in_bytes"] for a in arts)+sum(r["metadata"]["size_in_bytes"] for r in missing)
         policy.need(artifact_bytes <= policy.DIAGNOSTIC_BYTES, "v9.cumulative_artifact_limit")
+    if prefix is not None:
+        policy.need(set(booked_artifacts)<=set(history)-baseline_ids,"v9.h3_booked_artifact_producer_missing")
+        run_minutes=h3_prefix_floors(prefix,history,run_minutes,native_jobs)
+    return {"history":history,"grant":grant,"stage":stage,"prefix":prefix,"current":current,
+        "total":total,"incidental":incidental,"source_rows":source_rows,"run_minutes":run_minutes,
+        "run_pools":run_pools,"source_bindings":source_bindings,"artifact_bytes":artifact_bytes,
+        "artifact_absences":artifact_absences,"diagnostic_rows":diagnostic_rows,"attempt_facts":attempt_facts}
+
+
+def history_checks(pipeline, bindings, request, rraw, head, event, env, api, resolver, clock, diagnostic=None):
+    import model_diagnostic_v109 as model_diagnostic
+    facts=collect_history_accounting(pipeline,bindings,request,head,env,api,resolver,clock,diagnostic,rraw=rraw)
+    history,grant,current=facts["history"],facts["grant"],facts["current"]
+    total,incidental,source_rows=facts["total"],facts["incidental"],facts["source_rows"]
+    run_minutes=facts["run_minutes"];diagnostic_rows=facts["diagnostic_rows"]
+    artifact_bytes,attempt_facts=facts["artifact_bytes"],facts["attempt_facts"]
     recovery=pipeline_recovery_history(pipeline,bindings,source_rows,api)
     locks = [row for row in source_rows if row[2]["phase"] == "lock-preparation"]
     validations = [row for row in source_rows if row[2]["phase"] in ("validation", "correction")]
     additional=policy.additional_pipeline_preparation_recovery(bindings["preparationCorrection"])
     if grant is not None:
         source_current = (model_diagnostic.predecessor(source_rows,diagnostic) if diagnostic is not None else env["GITHUB_RUN_ID"])
-        bounded_source_facts=bounded_source_history(bindings,request,source_rows,source_current)
+        if facts["stage"] is not None:
+            bounded_source_facts=bounded_source_history(bindings,request,source_rows,source_current,
+                pipeline=pipeline,source_bindings=facts["source_bindings"])
+        else:
+            bounded_source_facts=bounded_source_history(bindings,request,source_rows,source_current)
     else:
         bounded_source_facts=None
         policy.need(len(locks) <= (3 if additional else 2) and len(validations) <= (1 if additional else 2) and len(source_rows) <= 4,
@@ -1324,7 +1626,14 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
     # cheaper; failures and incidental jobs are never refunded or forgotten.
     charged_total=total
     if grant is not None:
-        if diagnostic is not None:
+        if facts["stage"] is not None:
+            from bounded_run_contract_v109 import validate_h3_budget
+            policy.need(diagnostic is None,"v9.h3_no_diagnostic_execution_authority")
+            charged_total,components=h3_minute_facts(facts,env["GITHUB_RUN_ID"],current_minutes)
+            additional_booking=validate_h3_budget(grant,grant["nextExecution"],charged_total,current_minutes,components)
+            additional_booking.update({"perAttemptBookedMinuteFloorsApplied":True,
+                "stagePrefixNewMinutes":2215,"stageComponents":components})
+        elif diagnostic is not None:
             model_diagnostic.once_current(diagnostic_rows,env["GITHUB_RUN_ID"],grant,run_minutes)
             charged_total,additional_booking=model_diagnostic.budget(sys.modules[__name__],grant,run_minutes,
                 env["GITHUB_RUN_ID"],current_minutes,diagnostic)
@@ -1347,7 +1656,47 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
         "maximumNewMinutes":policy.maximum_new_minutes_for(request),
         "sourceExecutions":len(validations),"lockPreparations":len(locks),"observedArtifactBytes":artifact_bytes,
         "pipelinePreparationRecovery":recovery,"additionalPreparationBooking":additional_booking,
-        "separateDiagnosticRecords":len(diagnostic_rows),"sourceExecutionAdvanced":diagnostic is None}
+        "separateDiagnosticRecords":len(diagnostic_rows),"sourceExecutionAdvanced":diagnostic is None,
+        **({"historicalH3PayloadAbsences":facts["artifact_absences"]} if facts["stage"] is not None else {})}
+
+
+def image_cumulative_booking(pipeline, api_get, bindings, selected, current_id, clock):
+    """Read the same closed history for image admission; never start a job."""
+    policy.need(type(current_id)is str and policy.RUN_ID.fullmatch(current_id) and
+        type(clock)in(int,float) and math.isfinite(clock),"v9.image_accounting_inputs")
+    policy.need(policy.h3_stage_contract(bindings,selected)is not None,"v9.image_h3_stage_required")
+    resolver=load_owner(pipeline,"v109_closed_usage","scripts/fork-release/composite_closed_usage_v109.py")
+    env={"GITHUB_RUN_ID":current_id}
+    facts=collect_history_accounting(pipeline,bindings,selected,None,env,api_get,resolver,clock,image=True)
+    candidates=[r for r in facts["source_rows"] if r[2]==selected]
+    policy.need(len(candidates)==1 and candidates[0][1].get("status")=="completed" and
+        candidates[0][1].get("conclusion")=="success","v9.image_last_source_required")
+    bounded_source_history(bindings,selected,facts["source_rows"],candidates[0][0],pipeline=pipeline,
+        source_bindings=facts["source_bindings"])
+    jobs=jobs_for(api_get,facts["current"])
+    active=[j for j in jobs if j.get("status")=="in_progress"]
+    policy.need(len(active)==1 and active[0].get("status")=="in_progress" and
+        active[0].get("name")in("image-admission","build-private-image") and
+        type(active[0].get("runner_id"))is int and active[0]["runner_id"]>0,"v9.image_current_active_job")
+    for job in jobs:
+        if job is active[0]:continue
+        if active[0]["name"]=="image-admission":
+            policy.need(job.get("name")=="build-private-image" and job.get("status")in("queued","waiting","pending") and
+                job.get("runner_id")in(None,0) and job.get("steps")==[],"v9.image_no_build_before_admission")
+        else:
+            policy.need(job.get("name")=="image-admission" and job.get("status")=="completed" and
+                job.get("conclusion")=="success","v9.image_admission_success_required")
+    current=observed_jobs(jobs,clock,False,{"image-admission":15,"build-private-image":90})[0]
+    total,components=h3_minute_facts(facts,current_id,current)
+    # The image owner separately reserves image/incidental remainders. Retain
+    # the unspent source/preparation pools here rather than releasing them from
+    # a missing observation or fewer material generations.
+    booked=total+(3225-components["sourceObservedMinutes"])+(135-components["preparationObservedMinutes"])
+    return {"newObservedOrBookedMinutes":booked,"currentObservedMinutes":current,
+        "nativeObservedOrBookedMinutes":total,"perAttemptBookedMinuteFloorsApplied":True,
+        "H3stageIncidentalObservedMinutes":components["incidentalObservedMinutes"],
+        "remainingIncidentalReserveMinutes":components["remainingIncidentalReserveMinutes"],
+        "stageComponents":components,"historicalH3PayloadAbsences":facts["artifact_absences"]}
 
 
 def validate_generation_provider(pipeline, bindings, request, api):
@@ -1487,10 +1836,35 @@ def fetch_closure(pipeline, source, bindings, request, event, env, core, context
     return source_binding(source,request,context["deadlineEpoch"])
 
 
+def h3_lock_context(pipeline, bindings, read, checked_at):
+    from bounded_run_contract_v109 import H3_AMENDMENT_SHA256
+    from lockfile_policy_v109 import H3_EXCLUDED_AGE_PROOF_SHA256, H3_TARGET_METADATA_PROOF_SHA256
+    amendment = regular(pipeline/CANDIDATE/"h3-source-amendment.json", 65536)
+    policy.need(policy.digest(amendment) == H3_AMENDMENT_SHA256, "v9.h3_public_amendment_bytes")
+    return {"amendmentSha256": H3_AMENDMENT_SHA256,
+        "sourceGeneration": bindings["sourceSuccessor"]["generations"][-1]["number"],
+        "checkedAt": checked_at, "packageBytes": read("show", bindings["preparation"]["sourceSha"] + ":package.json"),
+        "workspaceBytes": read("show", bindings["preparation"]["sourceSha"] + ":pnpm-workspace.yaml"),
+        "fileTransferPackageBytes": read("show", bindings["preparation"]["sourceSha"] + ":extensions/file-transfer/package.json"),
+        "excludedAgeProofBytes": regular(pipeline/CANDIDATE/"h3-selected-excluded-ages.json", 65536),
+        "excludedAgeProofSha256": H3_EXCLUDED_AGE_PROOF_SHA256,
+        "targetMetadataProofBytes": regular(pipeline/CANDIDATE/"h3-target-package-metadata.json", 65536),
+        "targetMetadataProofSha256": H3_TARGET_METADATA_PROOF_SHA256}
+
+
 def static_source(pipeline,source,bindings,request,core,context):
     from lockfile_policy_v109 import verify_lock_security
     read = source_binding(source,request,context["deadlineEpoch"])
-    if request["phase"] == "lock-preparation":
+    h3 = None
+    if "sourceSuccessor" in bindings:
+        from lockfile_policy_v109 import verify_h3_before_package_use
+        policy.verify_h3_preparations(read, bindings,
+            read_tree=lambda commit,tree:core._v4_tree(read,commit,tree))
+        h3 = h3_lock_context(pipeline, bindings, read, now_utc())
+        verify_h3_before_package_use(read("show", request["source"]["sourceSha"] + ":pnpm-lock.yaml"), h3)
+    if request["phase"] == "lock-preparation" and h3 is not None:
+        pass  # Exact material/seed proof above; no historical initial-merge assumption.
+    elif request["phase"] == "lock-preparation":
         prep = policy.preparation_for(bindings,request["preparationAttempt"])
         parents = read("show","-s","--format=%P",prep["sourceSha"]).strip().split()
         if (request["preparationAttempt"] == 1 or policy.pipeline_preparation_recovery(bindings["preparationCorrection"]) or
@@ -1507,7 +1881,8 @@ def static_source(pipeline,source,bindings,request,core,context):
         initial = pipeline/CANDIDATE/"generation-receipt-initial.json"
         policy.verify_derived_source(read,bindings,request["phase"],
             regular(pipeline/CANDIDATE/"generation-receipt.json",65536),
-            read_tree=lambda commit,tree:core._v4_tree(read,commit,tree),verify_lock=verify_lock_security,
+            read_tree=lambda commit,tree:core._v4_tree(read,commit,tree),
+            verify_lock=(verify_lock_security if h3 is None else lambda *args:verify_lock_security(*args,h3=h3)),
             initial_generation_raw=regular(initial,65536) if initial.exists() else None)
     mraw,iraw = regular(pipeline/CANDIDATE/"manifest.json",131072),regular(pipeline/CANDIDATE/"inventory.json")
     policy.need(policy.digest(mraw)==request["source"]["manifestSha256"] and
@@ -1525,7 +1900,7 @@ def internal_bootstrap(core, home, env, request, context):
     return core.bootstrap_pnpm(home,env,operation_identity=owned_identity(request))
 
 
-def retain_unvalidated_lock(generated,diff,request,env,started):
+def retain_unvalidated_lock(generated,diff,request,env,started,changed_paths=None):
     """Retain public generated data before validation; this is never generation proof."""
     metadata={"schema":"openclaw.v109.unvalidated-lock-diagnostic.v1",
         "status":"unvalidated","acceptedAsGeneration":False,
@@ -1534,7 +1909,7 @@ def retain_unvalidated_lock(generated,diff,request,env,started):
         "runId":env["GITHUB_RUN_ID"],"runAttempt":1,
         "generatedLockSha256":policy.digest(generated),"generatedLockBytes":len(generated),
         "gitDiffSha256":policy.digest(diff),"gitDiffBytes":len(diff),
-        "pnpmExitCode":0,"changedPaths":["pnpm-lock.yaml"],
+        "pnpmExitCode":0,"changedPaths":["pnpm-lock.yaml"] if changed_paths is None else changed_paths,
         "allOtherTrackedEntriesUnchanged":True,"startedAt":started,"capturedAt":now_utc(),
         "securityCheckCompleted":False,"exactGeneratedDiffReviewRequiredBeforeCommit":True,
         "imageBuilt":False,"qualified":False,"productionAuthorized":False}
@@ -1552,6 +1927,7 @@ def derive(pipeline,source,bindings,request,env,core,context):
     started = now_utc()
     registry = policy.recheck_registry_proof(regular(pipeline/CANDIDATE/"registry-metadata.json",65536),started)
     before = regular(source/"pnpm-lock.yaml",16*1024*1024)
+    h3 = h3_lock_context(pipeline,bindings,lambda *args:git_read(source,*args,deadline=context["deadlineEpoch"]),started) if "sourceSuccessor" in bindings else None
     with tempfile.TemporaryDirectory(prefix="v109-lock-",dir=env["RUNNER_TEMP"]) as temporary:
         home=Path(temporary); child_env=core.clean_env(home,env)
         internal_bootstrap(core,home,child_env,request,context)
@@ -1560,12 +1936,13 @@ def derive(pipeline,source,bindings,request,env,core,context):
             source,child_env,context,"lock-derivation",0)
         policy.need(result.returncode==0 and not getattr(result,"timed_out",False),"v9.lock_derivation_failed")
         read=lambda *a:git_read(source,*a,deadline=context["deadlineEpoch"])
-        policy.need(read("diff","--name-only").decode().splitlines()==["pnpm-lock.yaml"] and
+        changed_paths = read("diff","--name-only").decode().splitlines()
+        policy.need(changed_paths in ([[],["pnpm-lock.yaml"]] if h3 is not None else [["pnpm-lock.yaml"]]) and
             read("ls-files","--others","--exclude-standard").strip()==b"","v9.lock_only_worktree_delta")
         generated=regular(source/"pnpm-lock.yaml",16*1024*1024)
         diff=read("diff","--no-ext-diff","--no-textconv","--binary","--","pnpm-lock.yaml")
-        retain_unvalidated_lock(generated,diff,request,env,started)
-        security=verify_lock_security(before,generated,policy.REGISTRY_PINS[0]["distIntegrity"],policy.REGISTRY_PINS[1]["distIntegrity"])
+        retain_unvalidated_lock(generated,diff,request,env,started,**({"changed_paths":changed_paths} if h3 is not None else {}))
+        security=verify_lock_security(before,generated,policy.REGISTRY_PINS[0]["distIntegrity"],policy.REGISTRY_PINS[1]["distIntegrity"],**({"h3":h3} if h3 is not None else {}))
         receipt={"schema":policy.GENERATION_SCHEMA,"status":"derived_only",**{
             k:request["source"][k] for k in ("sourceSha","sourceTree")},"pipelineHead":event_binding(policy.parse(
             regular(Path(env["GITHUB_EVENT_PATH"]),1024*1024)),env),"runId":env["GITHUB_RUN_ID"],"runAttempt":1,
@@ -1573,7 +1950,7 @@ def derive(pipeline,source,bindings,request,env,core,context):
             "workspaceSha256":request["source"]["fileSha256"]["pnpm-workspace.yaml"],
             "sourceLockSha256":request["source"]["fileSha256"]["pnpm-lock.yaml"],
             "generatedLockSha256":policy.digest(generated),"ledgerSha256":request["source"]["fileSha256"][policy.LEDGER],
-            "nodeVersion":"24.22.1","pnpmVersion":"12.15.0","changedPaths":["pnpm-lock.yaml"],
+            "nodeVersion":"24.22.1","pnpmVersion":"12.15.0","changedPaths":changed_paths,
             "gitDiffSha256":policy.digest(diff),"allOtherTrackedEntriesUnchanged":True,"startedAt":started,
             "finishedAt":now_utc(),"exitCode":0,"timedOut":False,"cleanupSettled":getattr(result,"cleanup_settled",None),
             "imageBuilt":False,"qualified":False,"productionAuthorized":False,"registryEvidence":registry,
@@ -1663,7 +2040,7 @@ def main(argv=None,environment=None):
     workspace=Path(env["GITHUB_WORKSPACE"]); pipeline=workspace/"pipeline"; source=workspace/"source"
     bindings,request,rraw=load_metadata(pipeline,active=True,now=time.time())
     policy.need(env.get("V109_APPROVED_AT") == bindings["authorization"]["approvedAt"] and
-        env.get("V109_EXPIRES_AT") == bindings["authorization"]["expiresAt"], "v9.workflow_authorization_clock_binding")
+        env.get("V109_EXPIRES_AT") == policy.source_authorization_window(bindings)[1], "v9.workflow_authorization_clock_binding")
     _FAILURE_PHASE = "event_binding"
     event=policy.parse(regular(Path(env["GITHUB_EVENT_PATH"]),1024*1024))
     head=event_binding(event,env)
