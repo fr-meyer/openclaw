@@ -16,7 +16,7 @@ def need(value):
     if value is not True: raise RuntimeError('synthetic_metadata_proof_refused')
 
 SCHEMA_STAGES=('schema-build','schema-probe','schema-full-long','schema-full-public_table',
-               'schema-full-generated_function','schema-full-expression_index')
+               'schema-full-generated_function','schema-full-expression_index','schema-full-above_limit')
 
 def schema_failure(stage,code,stdout,stderr,*,timed_out=False):
     need(stage in SCHEMA_STAGES and type(code)is int)
@@ -185,11 +185,11 @@ def main():
         try:
             schema_require(r,'schema-probe');initialization=json.loads(r.stdout)
             need(initialization['schema']=='ocv.synthetic-sqlite-schema-init-witness.v1' and
-                 initialization['limits']=={'length':262144,'sqlLength':4096,'attach':0} and
+                 initialization['limits']=={'length':262144,'sqlLength':8192,'attach':0} and
                  initialization['readonly'] is True and initialization['extensionsDisabled'] is True and
                  initialization['authorizerUnchanged'] is True and initialization['sourceCopiesReadableByReader']is True and initialization['privateDataAccessed'] is False and
                  initialization['applicationRowsReturned'] is False and
-                 initialization['cases'][0]['initializationPassed'] is True and
+                 all(x['initializationPassed']is True and x['versionValidated']is True for x in initialization['cases'])and
                  [x['name']for x in initialization['cases']]==['small','long','public_table','generated_function','expression_index'] and
                  all(x['statementCloseFailureCode']is None and x['databaseCloseFailureCode']is None and
                      (x['connectionReturned']is True and x['connectionClosed']is True or
@@ -216,7 +216,7 @@ def main():
             need(run(['/usr/bin/umount','--',str(target)]).returncode==0);mounts.remove(target)
             if suffix:target.unlink();owned.remove(target)
         full_cases=[];main_target=metadata/'db-00/main.sqlite'
-        for name in ('long','public_table','generated_function','expression_index'):
+        for name in ('long','public_table','generated_function','expression_index','above_limit'):
             if main_target in mounts:
                 need(run(['/usr/bin/umount','--',str(main_target)]).returncode==0);mounts.remove(main_target)
             bind(init_root/(name+'.sqlite'),main_target)
@@ -232,14 +232,13 @@ def main():
                      full['deadlineReached']is False and full['killSubmitted']is False and full['errorClass']==0)
                 failure=full['failure']
                 if full['status']=='COMPLETED':
-                    need(r.returncode==full['childExitCode']==0 and failure is None and
+                    need(name!='above_limit' and r.returncode==full['childExitCode']==0 and failure is None and
                          full['value']['status']=='METADATA_CONSISTENT' and len(full['value']['rows'])==11)
                 else:
-                    need(full['status']=='REFUSED' and r.returncode==full['childExitCode']==1 and full['value']is None and
-                         type(failure)is dict and failure['ordinal']==0 and
-                         set(failure)=={'ordinal','pathSha256','stage','code','sqliteVersion'} and
-                         type(failure['stage'])is int and 3<=failure['stage']<=8 and
-                         type(failure['code'])is int and 0<=failure['code']<=65535)
+                    need(name=='above_limit' and full['status']=='REFUSED' and
+                         r.returncode==full['childExitCode']==1 and full['value']is None and
+                         type(failure)is dict and failure['ordinal']==0 and failure['stage']==4 and failure['code']==11 and
+                         set(failure)=={'ordinal','pathSha256','stage','code','sqliteVersion'})
             except BaseException:
                 if r.returncode in(0,1)and r.stderr==b'':schema_failure('schema-full-'+name,r.returncode,r.stdout,r.stderr)
                 raise
@@ -253,7 +252,7 @@ def main():
             'actualAuthorizerRefusals':True,'actualChildKillAndReapVirtualDeadline':True,
             'schemaInitFullReaderOptionsExercised':True,'schemaInitPublicSourceFixtureExercised':True,
             'schemaInitPrimitiveAndAuthorizerDiagnosticsComplete':True,'schemaInitSyntheticFilesUnchanged':True,
-            'schemaInitNoLimitOrAuthorizerRelaxation':True,'schemaInitialization':initialization,
+            'schemaInitBoundedSqlLength8192AuthorizerUnchanged':True,'schemaInitWithinBoundAllCompleted':True,'schemaInitAbove8192Refused':True,'schemaInitialization':initialization,
             'schemaInitFullReaderPersistedCasesExercised':True,'fullReaderSchemaInitialization':full_cases,
             'retainedDataAccessed':False,'privateAdmissionEstablished':False}
     finally:

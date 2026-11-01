@@ -116,7 +116,7 @@ function collect(profile,io) {
     for(const r of p.rows){
       ordinal=r.ordinal;stage=3;tick();let db,primary;
       try {
-        db=new io.DatabaseSync(target(r,'main'),{readOnly:true,allowExtension:false,enableForeignKeyConstraints:false,enableDoubleQuotedStringLiterals:false,timeout:0,defensive:true,limits:{length:262144,sqlLength:4096,attach:0}});
+        db=new io.DatabaseSync(target(r,'main'),{readOnly:true,allowExtension:false,enableForeignKeyConstraints:false,enableDoubleQuotedStringLiterals:false,timeout:0,defensive:true,limits:{length:262144,sqlLength:8192,attach:0}});
         need(typeof db.setAuthorizer==='function'&&typeof db.enableLoadExtension==='function',123);
         db.setAuthorizer(authorizer(io.constants,r.role==='global'));db.enableLoadExtension(false);
         stage=4;db.exec(SQL.only);db.exec(SQL.trusted);need(scalar(db,'onlyRead')===1&&scalar(db,'trustedRead')===0,124);
