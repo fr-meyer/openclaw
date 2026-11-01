@@ -160,17 +160,19 @@ class MetadataHost(unittest.TestCase):
         init={'schema':'ocv.synthetic-sqlite-schema-init-witness.v1','nodeVersion':'24.22.1','sqliteVersion':'3.51.0',
           'limits':{'length':262144,'sqlLength':4096,'attach':0},'readonly':True,'extensionsDisabled':True,
           'authorizerUnchanged':True,'sourceReaderSha256':'e'*64,'publicSourceCreateBytes':4644,
-          'syntheticLongCreateBytes':5144,'fixedPrimitiveIds':list(range(1,9)),
-          'exactReadonlyAuthorizerNegativeCases':7,'privateDataAccessed':False,'applicationRowsReturned':False,
-          'cases':[{'name':n,'initializationPassed':n=='small','failure':None if n=='small'else{'primitive':6,'code':11},
-            'connectionClosed':True,'authorizerCallbacks':3,'denied':[]}for n in names]}
+          'syntheticLongCreateBytes':5144,'fixedPrimitiveIds':list(range(1,10)),
+          'exactReadonlyAuthorizerNegativeCases':7,'negativeCheckFailureCode':None,'privateDataAccessed':False,'applicationRowsReturned':False,
+          'cases':[{'name':n,'initializationPassed':n=='small','failure':None if n=='small'else{'primitive':6,'code':11,'kind':1},
+            'connectionReturned':True,'connectionClosed':True,'statementCloseFailureCode':None,'databaseCloseFailureCode':None,'versionValidated':n=='small','authorizerCallbacks':3,'denied':[]}for n in names]}
         full=[{'name':n,'status':'REFUSED','failure':{'ordinal':0,'pathSha256':'a'*64,'stage':4,'code':11,'sqliteVersion':None},
           'childClosedAndReaped':True,'deadlineReached':False}for n in names[1:]]
         good={'schemaInitialization':init,'fullReaderSchemaInitialization':full}
         entry.require_schema_initialization(good,rows)
         positive=copy.deepcopy(good);positive['fullReaderSchemaInitialization'][0].update(status='COMPLETED',failure=None)
         entry.require_schema_initialization(positive,rows)
-        for defect in('limit','baseline','missing','source','private','uncertain','deadline','boolcode'):
+        unopened=copy.deepcopy(good);unopened['schemaInitialization']['cases'][1].update(connectionReturned=False,connectionClosed=False,failure={'primitive':1,'code':11,'kind':1})
+        entry.require_schema_initialization(unopened,rows)
+        for defect in('limit','baseline','missing','source','private','uncertain','deadline','boolcode','unclosed','closefailure','unopenedpass','missingversion'):
             bad=copy.deepcopy(good)
             if defect=='limit':bad['schemaInitialization']['limits']['sqlLength']=8192
             elif defect=='baseline':bad['schemaInitialization']['cases'][0]['initializationPassed']=False
@@ -179,8 +181,35 @@ class MetadataHost(unittest.TestCase):
             elif defect=='private':bad['schemaInitialization']['privateDataAccessed']=True
             elif defect=='uncertain':bad['fullReaderSchemaInitialization'][0]['childClosedAndReaped']=False
             elif defect=='deadline':bad['fullReaderSchemaInitialization'][0]['deadlineReached']=True
-            else:bad['fullReaderSchemaInitialization'][0]['failure']['code']=True
+            elif defect=='boolcode':bad['fullReaderSchemaInitialization'][0]['failure']['code']=True
+            elif defect=='unclosed':bad['schemaInitialization']['cases'][1]['connectionClosed']=False
+            elif defect=='closefailure':bad['schemaInitialization']['cases'][1]['databaseCloseFailureCode']=5
+            elif defect=='unopenedpass':bad['schemaInitialization']['cases'][0].update(connectionReturned=False,connectionClosed=False)
+            else:bad['schemaInitialization']['cases'][0]['versionValidated']=False
             with self.subTest(defect=defect),self.assertRaises(RuntimeError):entry.require_schema_initialization(bad,rows)
+
+    def test_synthetic_nested_child_failure_retains_bounded_diagnostics_without_becoming_pass(self):
+        proof=load('schema_diagnostic_source_test',SOURCE/'metadata/linux_proof.py')
+        import json,base64,subprocess,types
+        for stdout,stderr in((b'{"cases":[{"primitive":1,"code":11}]}',b'AssertionError: synthetic constructor lifecycle'),(b'x'*16385,b'y'*4097)):
+            result=types.SimpleNamespace(returncode=1,stdout=stdout,stderr=stderr)
+            capture=io.StringIO()
+            with patch('sys.stdout',capture),self.assertRaises(RuntimeError):proof.schema_require(result,'schema-probe')
+            value=json.loads(capture.getvalue());self.assertEqual(value['schema'],'ocv.synthetic-schema-child-failure.v1')
+            self.assertEqual(value['exitCode'],1);self.assertTrue(value['syntheticOnly']);self.assertFalse(value['retainedDataAccessed']);self.assertLessEqual(len(capture.getvalue().encode()),16384)
+            for name,raw in(('stdout',stdout),('stderr',stderr)):
+                self.assertEqual(value[name]['bytes'],len(raw));self.assertEqual(base64.b64decode(value[name]['base64']),raw[:4096]);self.assertIs(value[name]['truncated'],len(raw)>4096)
+        good=types.SimpleNamespace(returncode=0,stdout=b'{}',stderr=b'')
+        capture=io.StringIO()
+        with patch('sys.stdout',capture):self.assertIs(proof.schema_require(good,'schema-probe'),good)
+        self.assertEqual(capture.getvalue(),'')
+        capture=io.StringIO()
+        error=subprocess.TimeoutExpired(['synthetic'],70,output=b'partial-synthetic',stderr=b'synthetic-timeout')
+        with patch.object(proof.subprocess,'run',side_effect=error),patch('sys.stdout',capture),self.assertRaises(subprocess.TimeoutExpired):proof.run(['synthetic'],diagnostic='schema-probe')
+        self.assertTrue(json.loads(capture.getvalue())['timedOut'])
+        capture=io.StringIO()
+        with patch.object(proof.subprocess,'run',return_value=types.SimpleNamespace(returncode=0,stdout=b'x'*16385,stderr=b'')),patch('sys.stdout',capture),self.assertRaises(RuntimeError):proof.run(['synthetic'],diagnostic='schema-probe')
+        self.assertEqual(json.loads(capture.getvalue())['stdout']['bytes'],16385)
 
 
 if __name__=='__main__':unittest.main()

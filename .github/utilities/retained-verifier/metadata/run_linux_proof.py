@@ -117,22 +117,29 @@ def require_schema_initialization(actual,rows):
       init.get('sourceReaderSha256')==rows['metadata/metadata_reader.cjs']['sha256'] and
       init.get('publicSourceCreateBytes')==rows['metadata/source_table.sql']['bytes']==4644 and
       type(init.get('syntheticLongCreateBytes'))is int and 4096<init['syntheticLongCreateBytes']<=16384 and
-      init.get('fixedPrimitiveIds')==list(range(1,9)) and
-      init.get('exactReadonlyAuthorizerNegativeCases')==7 and
+      init.get('fixedPrimitiveIds')==list(range(1,10)) and
+      init.get('exactReadonlyAuthorizerNegativeCases')==7 and init.get('negativeCheckFailureCode')is None and
       init.get('privateDataAccessed')is False and init.get('applicationRowsReturned')is False,
       'metadata.schema_init_binding')
     cases=init.get('cases')
     need(type(cases)is list and [x.get('name')for x in cases]==
       ['small','long','public_table','generated_function','expression_index'],'metadata.schema_init_roster')
     for case in cases:
-        need(type(case)is dict and set(case)=={'name','initializationPassed','failure','connectionClosed','authorizerCallbacks','denied'} and
-          type(case['initializationPassed'])is bool and case['connectionClosed']is True and
+        need(type(case)is dict and set(case)=={'name','initializationPassed','failure','connectionReturned','connectionClosed','statementCloseFailureCode','databaseCloseFailureCode','versionValidated','authorizerCallbacks','denied'} and
+          type(case['initializationPassed'])is bool and type(case['versionValidated'])is bool and
+          (case['initializationPassed']is False or case['versionValidated']is True)and type(case['connectionReturned'])is bool and
+          type(case['connectionClosed'])is bool and case['statementCloseFailureCode']is None and
+          case['databaseCloseFailureCode']is None and
           type(case['authorizerCallbacks'])is int and 0<=case['authorizerCallbacks']<=4096 and
           type(case['denied'])is list and len(case['denied'])<=32,'metadata.schema_init_case')
+        need((case['connectionReturned']is True and case['connectionClosed']is True)or
+          (case['connectionReturned']is False and case['connectionClosed']is False and
+           type(case['failure'])is dict and case['failure'].get('primitive')==1),'metadata.schema_init_connection')
         failure=case['failure']
         need((case['initializationPassed']is True and failure is None)or
-          (case['initializationPassed']is False and type(failure)is dict and set(failure)=={'primitive','code'} and
-           type(failure['primitive'])is int and 1<=failure['primitive']<=8 and
+          (case['initializationPassed']is False and type(failure)is dict and set(failure)=={'primitive','code','kind'} and
+           type(failure['kind'])is int and 1<=failure['kind']<=4 and
+           type(failure['primitive'])is int and 1<=failure['primitive']<=9 and
            type(failure['code'])is int and 0<=failure['code']<=65535),'metadata.schema_init_failure')
         for denied in case['denied']:
             need(type(denied)is dict and set(denied)=={'action','functionCode'} and

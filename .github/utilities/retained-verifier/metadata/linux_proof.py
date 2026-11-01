@@ -4,7 +4,7 @@ The existing host source/command owner verifies its complete public manifest
 before this entry. Root privileges are required only in its isolated mount,
 network and PID namespace; this is not a direct workflow sudo entry.
 """
-import argparse, hashlib, json, os, pathlib, shutil, stat, subprocess, sys, tempfile
+import argparse, base64, hashlib, json, os, pathlib, shutil, stat, subprocess, sys, tempfile
 
 NODE_SHA='e32e2d16081cf644f88392934288086e7662529d0d43277c34f7aad2207cfafb'
 NODE_BYTES=126879696
@@ -15,11 +15,38 @@ LEAVES=('metadata_reader.cjs','metadata_supervisor.cjs','test_metadata_reader.cj
 def need(value):
     if value is not True: raise RuntimeError('synthetic_metadata_proof_refused')
 
-def run(argv, *, user=False, seconds=70):
+SCHEMA_STAGES=('schema-build','schema-probe','schema-full-long','schema-full-public_table',
+               'schema-full-generated_function','schema-full-expression_index')
+
+def schema_failure(stage,code,stdout,stderr,*,timed_out=False):
+    need(stage in SCHEMA_STAGES and type(code)is int)
+    stdout=stdout if type(stdout)is bytes else b'';stderr=stderr if type(stderr)is bytes else b''
+    def stream(raw):
+        return {'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),
+                'base64':base64.b64encode(raw[:4096]).decode('ascii'),'truncated':len(raw)>4096}
+    value={'schema':'ocv.synthetic-schema-child-failure.v1','stage':stage,'exitCode':code,
+           'timedOut':timed_out,'stdout':stream(stdout),'stderr':stream(stderr),
+           'syntheticOnly':True,'retainedDataAccessed':False,'qualificationEstablished':False}
+    raw=json.dumps(value,separators=(',',':'));need(len(raw.encode())<=16384)
+    print(raw,flush=True)
+
+def schema_require(result,stage,*,codes=(0,),empty_stdout=False):
+    if result.returncode not in codes or result.stderr!=b'' or empty_stdout and result.stdout!=b'':
+        schema_failure(stage,result.returncode,result.stdout,result.stderr)
+        raise RuntimeError('synthetic_schema_child_refused')
+    return result
+
+def run(argv, *, user=False, seconds=70, diagnostic=None):
     def demote(): os.setgroups([]); os.setgid(1000); os.setuid(1000)
-    result=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
-        env={'PATH':'/usr/bin:/bin','HOME':'/nonexistent','LANG':'C','LC_ALL':'C','TZ':'UTC'},
-        timeout=seconds,check=False,preexec_fn=demote if user else None)
+    try:
+        result=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+            env={'PATH':'/usr/bin:/bin','HOME':'/nonexistent','LANG':'C','LC_ALL':'C','TZ':'UTC'},
+            timeout=seconds,check=False,preexec_fn=demote if user else None)
+    except subprocess.TimeoutExpired as error:
+        if diagnostic is not None:schema_failure(diagnostic,-1,error.stdout,error.stderr,timed_out=True)
+        raise
+    if diagnostic is not None and (len(result.stdout)>16384 or len(result.stderr)>4096):
+        schema_failure(diagnostic,result.returncode,result.stdout,result.stderr)
     need(len(result.stdout)<=16384 and len(result.stderr)<=4096)
     return result
 
@@ -120,20 +147,27 @@ def main():
         # full reader's exact constructor limits and authorizer, not CI78's
         # earlier tiny persisted-schema inputs. No retained database is accessed.
         init_root=work/'schema-init'
-        r=run([str(node),'--no-warnings',str(here/'schema_init_probe.cjs'),'build',str(init_root)])
-        need(r.returncode==0 and r.stdout==r.stderr==b'')
+        r=run([str(node),'--no-warnings',str(here/'schema_init_probe.cjs'),'build',str(init_root)],diagnostic='schema-build')
+        schema_require(r,'schema-build',empty_stdout=True)
         init_before={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in init_root.iterdir()}
-        r=run([str(node),'--no-warnings',str(here/'schema_init_probe.cjs'),'run',str(init_root)],user=True)
-        need(r.returncode==0 and r.stderr==b'');initialization=json.loads(r.stdout)
-        need(initialization['schema']=='ocv.synthetic-sqlite-schema-init-witness.v1' and
-             initialization['limits']=={'length':262144,'sqlLength':4096,'attach':0} and
-             initialization['readonly'] is True and initialization['extensionsDisabled'] is True and
-             initialization['authorizerUnchanged'] is True and initialization['privateDataAccessed'] is False and
-             initialization['applicationRowsReturned'] is False and
-             initialization['cases'][0]['initializationPassed'] is True and
-             [x['name']for x in initialization['cases']]==['small','long','public_table','generated_function','expression_index'] and
-             all(x['connectionClosed'] is True for x in initialization['cases']) and
-             initialization['exactReadonlyAuthorizerNegativeCases']==7)
+        r=run([str(node),'--no-warnings',str(here/'schema_init_probe.cjs'),'run',str(init_root)],user=True,diagnostic='schema-probe')
+        try:
+            schema_require(r,'schema-probe');initialization=json.loads(r.stdout)
+            need(initialization['schema']=='ocv.synthetic-sqlite-schema-init-witness.v1' and
+                 initialization['limits']=={'length':262144,'sqlLength':4096,'attach':0} and
+                 initialization['readonly'] is True and initialization['extensionsDisabled'] is True and
+                 initialization['authorizerUnchanged'] is True and initialization['privateDataAccessed'] is False and
+                 initialization['applicationRowsReturned'] is False and
+                 initialization['cases'][0]['initializationPassed'] is True and
+                 [x['name']for x in initialization['cases']]==['small','long','public_table','generated_function','expression_index'] and
+                 all(x['statementCloseFailureCode']is None and x['databaseCloseFailureCode']is None and
+                     (x['connectionReturned']is True and x['connectionClosed']is True or
+                      x['connectionReturned']is False and x['connectionClosed']is False and
+                      type(x['failure'])is dict and x['failure']['primitive']==1)for x in initialization['cases']) and
+                 initialization['exactReadonlyAuthorizerNegativeCases']==7 and initialization['negativeCheckFailureCode']is None)
+        except BaseException:
+            if r.returncode==0 and r.stderr==b'':schema_failure('schema-probe',r.returncode,r.stdout,r.stderr)
+            raise
         need(init_before=={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in init_root.iterdir()})
         # Existing-mounted WAL works; removing that required SHM from the
         # profile refuses before any SQLite database can be opened.
@@ -159,21 +193,25 @@ def main():
               'main':ident(main_target),**{k:{'state':'absent','identity':None}for k in('wal','shm','journal')}}
             profile_source.chmod(0o644);profile_source.write_text(json.dumps(current,separators=(',',':')));profile_source.chmod(0o444)
             current_pin=hashlib.sha256(profile_source.read_bytes()).hexdigest()
-            r=run([str(node),'--no-warnings','/run/metadata-supervisor.cjs',current_pin],user=True)
-            full=json.loads(r.stdout)
-            need(r.stderr==b'' and full['childCloseObserved']is True and full['ownedChildUncertain']is False and
-                 full['streamsEOF']is True and full['streamsClosed']is True and full['childSignal']is None and
-                 full['deadlineReached']is False and full['killSubmitted']is False and full['errorClass']==0)
-            failure=full['failure']
-            if full['status']=='COMPLETED':
-                need(r.returncode==full['childExitCode']==0 and failure is None and
-                     full['value']['status']=='METADATA_CONSISTENT' and len(full['value']['rows'])==11)
-            else:
-                need(full['status']=='REFUSED' and r.returncode==full['childExitCode']==1 and full['value']is None and
-                     type(failure)is dict and failure['ordinal']==0 and
-                     set(failure)=={'ordinal','pathSha256','stage','code','sqliteVersion'} and
-                     type(failure['stage'])is int and 3<=failure['stage']<=8 and
-                     type(failure['code'])is int and 0<=failure['code']<=65535)
+            r=run([str(node),'--no-warnings','/run/metadata-supervisor.cjs',current_pin],user=True,diagnostic='schema-full-'+name)
+            try:
+                schema_require(r,'schema-full-'+name,codes=(0,1));full=json.loads(r.stdout)
+                need(r.stderr==b'' and full['childCloseObserved']is True and full['ownedChildUncertain']is False and
+                     full['streamsEOF']is True and full['streamsClosed']is True and full['childSignal']is None and
+                     full['deadlineReached']is False and full['killSubmitted']is False and full['errorClass']==0)
+                failure=full['failure']
+                if full['status']=='COMPLETED':
+                    need(r.returncode==full['childExitCode']==0 and failure is None and
+                         full['value']['status']=='METADATA_CONSISTENT' and len(full['value']['rows'])==11)
+                else:
+                    need(full['status']=='REFUSED' and r.returncode==full['childExitCode']==1 and full['value']is None and
+                         type(failure)is dict and failure['ordinal']==0 and
+                         set(failure)=={'ordinal','pathSha256','stage','code','sqliteVersion'} and
+                         type(failure['stage'])is int and 3<=failure['stage']<=8 and
+                         type(failure['code'])is int and 0<=failure['code']<=65535)
+            except BaseException:
+                if r.returncode in(0,1)and r.stderr==b'':schema_failure('schema-full-'+name,r.returncode,r.stdout,r.stderr)
+                raise
             full_cases.append({'name':name,'status':full['status'],'failure':failure,
               'childClosedAndReaped':True,'deadlineReached':False})
         need(init_before=={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in init_root.iterdir()})

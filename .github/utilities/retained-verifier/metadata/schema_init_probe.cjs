@@ -26,9 +26,11 @@ function build(root){
   fs.chmodSync(file,0o600);fs.chownSync(file,1000,1000);
  }
 }
+function kind(error){return Number.isInteger(error.errcode)?1:error instanceof assert.AssertionError?2:error instanceof TypeError?3:4;}
 function number(error){return Number.isInteger(error.errcode)&&error.errcode>=0&&error.errcode<=65535?error.errcode:0;}
-function probe(file,name){
+function probe(file,name,versionState){
  let db,primitive=0,failure=null,closed=false,callbacks=0;
+ let statementCloseFailureCode=null,databaseCloseFailureCode=null,versionValidated=false;
  const denied=[];
  try{
   primitive=1;db=new DatabaseSync(file,OPTIONS);
@@ -40,15 +42,16 @@ function probe(file,name){
    return value;
   });
   primitive=3;db.enableLoadExtension(false);
-  // The same four primitives that comprise stage4 in the full reader.
+  // All five operations in stage4, including the version query/validation.
   primitive=4;db.exec(reader.SQL.only);
   primitive=5;db.exec(reader.SQL.trusted);
-  function scalar(key){const s=db.prepare(reader.SQL[key]),rows=[];try{for(const row of s.iterate())rows.push(row);assert.equal(rows.length,1);return Object.values(rows[0])[0];}finally{s.close();}}
+  function scalar(key){const s=db.prepare(reader.SQL[key]),rows=[];let primary;try{for(const row of s.iterate())rows.push(row);assert.equal(rows.length,1);return Object.values(rows[0])[0];}catch(error){primary=error;throw error;}finally{try{s.close();}catch(error){statementCloseFailureCode=number(error);if(primary===undefined)throw error;}}}
   primitive=6;assert.equal(scalar('onlyRead'),1);
   primitive=7;assert.equal(scalar('trustedRead'),0);
- }catch(error){failure={primitive,code:number(error)};}
- finally{if(db!==undefined){try{db.close();closed=true;}catch(error){failure=failure||{primitive:8,code:number(error)};}}}
- return {name,initializationPassed:failure===null,failure,connectionClosed:closed,authorizerCallbacks:callbacks,denied};
+  primitive=8;const version=scalar('version');assert.ok(typeof version==='string'&&/^3\.[0-9]{1,3}\.[0-9]{1,3}$/.test(version));if(versionState.value===null)versionState.value=version;assert.equal(versionState.value,version);versionValidated=true;
+ }catch(error){failure={primitive,code:number(error),kind:kind(error)};}
+ finally{if(db!==undefined){try{db.close();closed=true;}catch(error){databaseCloseFailureCode=number(error);failure=failure||{primitive:9,code:number(error),kind:kind(error)};}}}
+ return {name,initializationPassed:failure===null,failure,connectionReturned:db!==undefined,connectionClosed:closed,statementCloseFailureCode,databaseCloseFailureCode,versionValidated,authorizerCallbacks:callbacks,denied};
 }
 function deny(file){
  const db=new DatabaseSync(file,OPTIONS);let denials=0;
@@ -62,16 +65,22 @@ function deny(file){
 }
 function run(root){
  assert.equal(process.getuid(),1000);assert.equal(process.getgid(),1000);
- const rows=CASES.map(([name])=>probe(path.join(root,name+'.sqlite'),name));
- assert.equal(rows[0].initializationPassed,true);assert.ok(rows.every(r=>r.connectionClosed));
- const denials=deny(path.join(root,'small.sqlite'));assert.equal(denials,7);
+ const versionState={value:null};
+ const rows=CASES.map(([name])=>probe(path.join(root,name+'.sqlite'),name,versionState));
+ let denials=0,negativeCheckFailureCode=null;
+ try{denials=deny(path.join(root,'small.sqlite'));}catch(error){negativeCheckFailureCode=number(error);}
  const result={schema:'ocv.synthetic-sqlite-schema-init-witness.v1',nodeVersion:process.versions.node,
   sqliteVersion:process.versions.sqlite,limits:LIMITS,readonly:true,extensionsDisabled:true,
   authorizerUnchanged:true,sourceReaderSha256:require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(__dirname,'metadata_reader.cjs'))).digest('hex'),
   publicSourceCreateBytes:fs.statSync(path.join(__dirname,'source_table.sql')).size,
-  syntheticLongCreateBytes:Buffer.byteLength(LONG),fixedPrimitiveIds:[1,2,3,4,5,6,7,8],cases:rows,
-  exactReadonlyAuthorizerNegativeCases:denials,privateDataAccessed:false,applicationRowsReturned:false};
+  syntheticLongCreateBytes:Buffer.byteLength(LONG),fixedPrimitiveIds:[1,2,3,4,5,6,7,8,9],cases:rows,
+  exactReadonlyAuthorizerNegativeCases:denials,negativeCheckFailureCode,privateDataAccessed:false,applicationRowsReturned:false};
  const raw=JSON.stringify(result);assert.ok(Buffer.byteLength(raw)<=16384);process.stdout.write(raw+'\n');
+ // Emit every case before aggregate assertions, including a constructor with
+ // no returned handle. No opened handle or close failure is silently waived.
+ assert.equal(rows[0].initializationPassed,true);assert.equal(negativeCheckFailureCode,null);assert.equal(denials,7);
+ assert.ok(rows.every(r=>r.statementCloseFailureCode===null&&r.databaseCloseFailureCode===null&&
+  (r.connectionReturned?r.connectionClosed:r.failure!==null&&r.failure.primitive===1)));
 }
 assert.equal(process.argv.length,4);
 if(process.argv[2]==='build')build(process.argv[3]);else{assert.equal(process.argv[2],'run');run(process.argv[3]);}
