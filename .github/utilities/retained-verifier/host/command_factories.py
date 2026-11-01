@@ -151,3 +151,21 @@ def ubuntu_sources():
 
 
 if __name__=='__main__':raise SystemExit('inert_source_factories_only')
+
+
+def formatter_docker_download(project):
+ return ('/usr/bin/curl','--fail','--silent','--show-error','--proto','=https','--tlsv1.2',
+  '--retry','0','--connect-timeout','20','--max-time','120','--max-filesize','100663296',
+  '--output',project_path(project,'formatter-docker.tgz'),
+  'https://download.docker.com/linux/static/stable/x86_64/docker-29.8.2.tgz')
+
+
+def formatter_namespace(project,source_root,source_manifest_sha):
+ path(source_root)
+ require(type(source_manifest_sha)is str and re.fullmatch('[0-9a-f]{64}',source_manifest_sha),'formatter_source_manifest')
+ return ('/usr/bin/sudo','-n','--','/usr/bin/env','-i','PATH=/usr/bin:/bin',
+  'HOME=/nonexistent','LANG=C','LC_ALL=C','TZ=UTC','/usr/bin/unshare',
+  '--mount','--net','--pid','--fork','--mount-proc','--kill-child=KILL','--',
+  '/usr/bin/python3','-I','-S','-B',project_path(source_root,'inspect_formatter/linux_proof.py'),
+  '--docker',project_path(project,'formatter-docker'),
+  '--source-manifest-sha256',source_manifest_sha)

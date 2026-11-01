@@ -35,6 +35,8 @@ ROLE_MAP={
  'ubuntu_apt_update':('host/command_factories.py','ubuntu_apt_update'),
  'ubuntu_apt_install':('host/command_factories.py','ubuntu_apt_install'),
  'debian_metadata_curl':('host/command_factories.py','debian_metadata_curl'),
+ 'formatter_docker_download':('host/command_factories.py','formatter_docker_download'),
+ 'formatter_namespace':('host/command_factories.py','formatter_namespace'),
  'metadata_node_download':('host/command_factories.py','metadata_node_download'),
  'metadata_sqlite_namespace':('host/command_factories.py','metadata_sqlite_namespace'),
  'gpgv_metadata':('host/command_factories.py','gpgv_metadata'),
@@ -608,6 +610,14 @@ def seal_command(permit,role,arguments,*,cwd,environment,launch_deadline=None):
    row=permit.rows[name]
    need(sha(_read_regular(permit.source/name,row['bytes']+1))==row['sha256'],
         'host.metadata_source_changed')
+ if role=='formatter_namespace':
+  need(set(arguments)=={'project','source_root','source_manifest_sha'} and
+       arguments['source_manifest_sha']==permit.rows['inspect_formatter/SOURCE-MANIFEST.json']['sha256'],
+       'host.formatter_source_manifest')
+  for name in ('inspect_formatter/linux_proof.py','inspect_formatter/SOURCE-MANIFEST.json'):
+   row=permit.rows[name]
+   need(sha(_read_regular(permit.source/name,row['bytes']+1))==row['sha256'],
+        'host.formatter_source_changed')
  if role=='own_project_chown':_prepare_chown(arguments)
  if role=='own_mkosi_outputs':_preflight_mkosi_outputs(permit,arguments)
  if role=='freeze_public_outputs':_freeze_outputs(arguments['project'])
@@ -637,7 +647,7 @@ def seal_command(permit,role,arguments,*,cwd,environment,launch_deadline=None):
  if argv[0]=='/usr/bin/sudo':need(len(argv)>4 and argv[:3]==('/usr/bin/sudo','-n','--')
   and (argv[3]in('/usr/bin/apt-get','/usr/bin/chown')
    or role=='freeze_public_outputs' and argv[3]=='/usr/bin/chmod'
-   or role=='metadata_sqlite_namespace' and argv[3]=='/usr/bin/env'),'host.sudo_command')
+   or role in('metadata_sqlite_namespace','formatter_namespace') and argv[3]=='/usr/bin/env'),'host.sudo_command')
  if role=='mkosi_build':argv=('/usr/bin/sudo','-n','--')+argv
  cwdpath=Path(cwd)
  negative_allowed=_allow_negative(role,arguments)

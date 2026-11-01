@@ -31,6 +31,7 @@ on:
         options:
           - standard
           - metadata_sqlite
+          - docker_inspect_formatter
 
 permissions:
   contents: read
@@ -80,7 +81,7 @@ jobs:
           [[ "$OCV_WORKFLOW_SHA" =~ ^[a-f0-9]{64}$ ]]
           [[ "$OCV_SOURCE_MANIFEST_SHA" =~ ^[a-f0-9]{64}$ ]]
           [[ "$OCV_MISSION_ID" =~ ^[a-f0-9]{32}$ ]]
-          [[ "$OCV_PROOF_MODE" == standard || "$OCV_PROOF_MODE" == metadata_sqlite ]]
+          [[ "$OCV_PROOF_MODE" == standard || "$OCV_PROOF_MODE" == metadata_sqlite || "$OCV_PROOF_MODE" == docker_inspect_formatter ]]
           [[ "$GITHUB_SHA" == "$OCV_EXPECTED_SOURCE" ]]
       - name: Checkout only reviewed utility sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -105,6 +106,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 -I -S -B .github/utilities/retained-verifier/metadata/run_linux_proof.py
+      - name: Prove fixed Docker inspect formatters
+        if: inputs.proof_mode == 'docker_inspect_formatter'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -S -B .github/utilities/retained-verifier/inspect_formatter/run_linux_proof.py
       - name: Attest public helper and Linux proof
         if: success() && inputs.proof_mode == 'standard'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
@@ -118,6 +125,11 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: ${{ runner.temp }}/ocv-ci-artifacts/metadata-result.json
+      - name: Attest fixed Docker inspect formatter proof
+        if: success() && inputs.proof_mode == 'docker_inspect_formatter'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ runner.temp }}/ocv-ci-artifacts/formatter-result.json
       - name: Retain bounded public proof and failure evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -135,5 +147,8 @@ jobs:
             ${{ runner.temp }}/ocv-ci-artifacts/metadata-result.json
             ${{ runner.temp }}/ocv-ci-artifacts/metadata-stdout.bin
             ${{ runner.temp }}/ocv-ci-artifacts/metadata-stderr.bin
+            ${{ runner.temp }}/ocv-ci-artifacts/formatter-result.json
+            ${{ runner.temp }}/ocv-ci-artifacts/formatter-stdout.bin
+            ${{ runner.temp }}/ocv-ci-artifacts/formatter-stderr.bin
           if-no-files-found: error
           retention-days: 1
