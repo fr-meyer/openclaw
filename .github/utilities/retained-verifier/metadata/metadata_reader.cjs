@@ -47,7 +47,7 @@ function validateProfile(p) {
     need(fields(r.files,['main','wal','shm','journal']) && validPin(r.files.main),103);
     for(const k of ['wal','shm','journal'])need(fields(r.files[k],['state','identity']) && ((r.files[k].state==='absent' && r.files[k].identity===null)||(r.files[k].state==='present' && validPin(r.files[k].identity))),103);
     need(r.files.journal.state==='absent' && r.files.wal.state===r.files.shm.state,103);
-    if(r.files.wal.state==='present')need(BigInt(r.files.wal.identity.size)>=32n && BigInt(r.files.shm.identity.size)>0n,103);
+    if(r.files.wal.state==='present')need((BigInt(r.files.wal.identity.size)===0n || BigInt(r.files.wal.identity.size)>=32n) && BigInt(r.files.shm.identity.size)>0n,103);
   });
   return p;
 }

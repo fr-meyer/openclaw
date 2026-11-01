@@ -20,8 +20,13 @@ function build(root){
  for(let n=0;n<11;n++){
   const dir=path.join(root,String(n).padStart(2,'0'));fs.mkdirSync(dir,{mode:0o755});
   const name=path.join(dir,'main.sqlite'),db=new DatabaseSync(name);
-  if(n===0)db.exec('PRAGMA journal_mode=WAL');schema(db,n);
-  if(n===0){
+  if(n<=1)db.exec('PRAGMA journal_mode=WAL');schema(db,n);
+  if(n<=1){
+   if(n===1){
+    // A documented empty-WAL state, generated only in this synthetic fixture.
+    const result=db.prepare('PRAGMA wal_checkpoint(TRUNCATE)');const row=result.get();result.close();
+    assert.equal(row.busy,0);assert.equal(fs.statSync(name+'-wal').size,0);assert.ok(fs.statSync(name+'-shm').size>0);
+   }
    // Copy one closed synthetic point-in-time WAL image; the eventual copies
    // have no writer, and are the only files mounted to the reader namespace.
    const copies=['','-wal','-shm'].map(s=>{const to=name+s+'.copy';fs.copyFileSync(name+s,to);return[to,name+s];});

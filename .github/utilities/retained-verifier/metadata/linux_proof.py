@@ -93,6 +93,13 @@ def main():
                 'role':'global' if n==0 else 'agent','agentId':agent,'files':files})
         profile_source=work/'profile.json';profile_source.write_text(json.dumps(profile,separators=(',',':')))
         profile_source.chmod(0o444);bind(profile_source,pathlib.Path('/run/metadata-profile.json'))
+        need(int(profile['rows'][0]['files']['wal']['identity']['size'])>=32 and
+             profile['rows'][1]['files']['wal']['identity']['size']=='0' and
+             int(profile['rows'][1]['files']['shm']['identity']['size'])>0 and
+             profile['rows'][2]['files']['wal']['state']=='absent')
+        # Only tiny synthetic fixture files are hashed; no retained data route.
+        synthetic_before={str(p.relative_to(source)):hashlib.sha256(p.read_bytes()).hexdigest()
+                          for p in source.rglob('*') if p.is_file()}
         pin=hashlib.sha256(profile_source.read_bytes()).hexdigest()
         actual=run([str(node),'--no-warnings','/run/metadata-supervisor.cjs',pin],user=True)
         need(actual.returncode==0 and actual.stderr==b'');value=json.loads(actual.stdout)
@@ -101,7 +108,11 @@ def main():
             value['value']['status']=='METADATA_CONSISTENT' and len(value['value']['rows'])==11 and
             value['value']['integrityFreshnessMigrationProductionEstablished'] is False)
         need(b'synthetic-application-record' not in actual.stdout and b'synthetic-01' not in actual.stdout)
-        for argv in ([str(node),'--no-warnings',str(here/'linux_fixture.cjs'),'deny'],
+        need(synthetic_before=={str(p.relative_to(source)):hashlib.sha256(p.read_bytes()).hexdigest()
+                                for p in source.rglob('*') if p.is_file()})
+        for argv in ([str(node),'--no-warnings',str(here/'test_metadata_reader.cjs')],
+                     [str(node),'--no-warnings',str(here/'test_metadata_supervisor.cjs')],
+                     [str(node),'--no-warnings',str(here/'linux_fixture.cjs'),'deny'],
                      [str(node),'--no-warnings',str(here/'test_supervisor_actual_child.cjs')]):
             r=run(argv);need(r.returncode==0 and r.stderr==b'')
         # Existing-mounted WAL works; removing that required SHM from the
@@ -114,7 +125,8 @@ def main():
         need(refused.returncode==1 and refusal['status']=='REFUSED'and refusal['failure']['code']==103 and refusal['failure']['ordinal']==-1)
         proof={'schema':'ocv.generic-retained-metadata-linux-proof.v1','status':'PASS',
             'nodeSha256':NODE_SHA,'sourceManifestSha256':args.source_manifest_sha256,
-            'syntheticDatabases':11,'existingWalAndShmReadonlyPositive':True,'partialWalRefused':True,
+            'syntheticDatabases':11,'existingWalAndShmReadonlyPositive':True,'zeroWalWithExistingShmReadonlyPositive':True,
+            'syntheticDatabaseFilesUnchanged':True,'sourcePortSuitesExecuted':True,'partialWalRefused':True,
             'actualAuthorizerRefusals':True,'actualChildKillAndReapVirtualDeadline':True,
             'retainedDataAccessed':False,'privateAdmissionEstablished':False}
     finally:

@@ -162,7 +162,8 @@ def main():
           and actual.get('status')=='PASS' and actual.get('nodeSha256')==NODE_SHA
           and actual.get('sourceManifestSha256')==rows['metadata/SOURCE-MANIFEST.json']['sha256']
           and type(actual.get('syntheticDatabases'))is int and actual['syntheticDatabases']==11
-          and all(actual.get(k)is True for k in ('existingWalAndShmReadonlyPositive','partialWalRefused',
+          and all(actual.get(k)is True for k in ('existingWalAndShmReadonlyPositive','zeroWalWithExistingShmReadonlyPositive',
+            'syntheticDatabaseFilesUnchanged','sourcePortSuitesExecuted','partialWalRefused',
             'actualAuthorizerRefusals','actualChildKillAndReapVirtualDeadline','allOwnedMountsAndPathsRemoved'))
           and actual.get('retainedDataAccessed')is False and actual.get('privateAdmissionEstablished')is False,
           'metadata.proof_assertions')
