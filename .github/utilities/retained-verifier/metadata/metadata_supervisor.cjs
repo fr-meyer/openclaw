@@ -42,7 +42,16 @@ async function supervise(pin,io){
   try{
    const data=JSON.parse(Buffer.concat(parts[0]).toString('utf8')),failure=data.failure;
    need(data.schema==='ocv.retained-clone-schema-registry-hygiene.v1'&&data.status==='INCOMPLETE'&&data.integrityFreshnessMigrationProductionEstablished===false);
-   need(failure!==null&&typeof failure==='object'&&!Array.isArray(failure)&&Object.keys(failure).sort().join('|')==='code|ordinal|pathSha256|sqliteVersion|stage');
+   need(failure!==null&&typeof failure==='object'&&!Array.isArray(failure));
+   const stamp=Object.hasOwn(failure,'writerStamp');
+   need(!stamp||(failure.stage===6&&Number.isInteger(failure.code)&&failure.code>=12916&&failure.code<=12931));
+   need(Object.keys(failure).sort().join('|')===(stamp?'code|ordinal|pathSha256|sqliteVersion|stage|writerStamp':'code|ordinal|pathSha256|sqliteVersion|stage'));
+   if(stamp){
+    const d=failure.writerStamp;
+    need(failure.ordinal>=0&&d!==null&&typeof d==='object'&&!Array.isArray(d)&&Object.keys(d).sort().join('|')==='kind|sha256|utf8Bytes');
+    need(d.kind==='text'?(Number.isInteger(d.utf8Bytes)&&d.utf8Bytes>=0&&d.utf8Bytes<=128&&typeof d.sha256==='string'&&/^[a-f0-9]{64}$/.test(d.sha256)):
+      (['null','nontext','oversized'].includes(d.kind)&&d.utf8Bytes===null&&d.sha256===null));
+   }
    need(Number.isInteger(failure.ordinal)&&failure.ordinal>=-1&&failure.ordinal<=10&&Number.isInteger(failure.stage)&&failure.stage>=0&&failure.stage<=11&&Number.isInteger(failure.code)&&failure.code>=0&&failure.code<=65535);
    need((failure.ordinal===-1&&failure.pathSha256===null)||(failure.ordinal>=0&&typeof failure.pathSha256==='string'&&/^[a-f0-9]{64}$/.test(failure.pathSha256)));
    need(failure.sqliteVersion===null||(typeof failure.sqliteVersion==='string'&&/^3\.[0-9]{1,3}\.[0-9]{1,3}$/.test(failure.sqliteVersion)));

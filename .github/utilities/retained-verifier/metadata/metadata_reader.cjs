@@ -60,10 +60,16 @@ function authorizer(constants,global) {
     return constants.SQLITE_DENY;
   };
 }
+function writerStamp(value) {
+  if(value===null)return {kind:'null',utf8Bytes:null,sha256:null};
+  if(typeof value!=='string')return {kind:'nontext',utf8Bytes:null,sha256:null};
+  const bytes=Buffer.byteLength(value);
+  return bytes>128?{kind:'oversized',utf8Bytes:null,sha256:null}:{kind:'text',utf8Bytes:bytes,sha256:hash(value)};
+}
 function collect(profile,io) {
   const p=validateProfile(profile);need(io.nodeVersion==='24.22.1' && Number.isInteger(io.uid) && io.uid>0 && Number.isInteger(io.gid) && io.gid>=0,104);
   const files=new Map(), held=[], result={schema:'ocv.retained-clone-schema-registry-hygiene.v1',status:'INCOMPLETE',sqliteVersion:null,rows:[],integrityFreshnessMigrationProductionEstablished:false};
-  let ordinal=-1,stage=0;
+  let ordinal=-1,stage=0,selectedWriter;
   const end=io.now()+60000;
   const tick=()=>need(io.now()<end,105);
   function stat(name) { return io.fs.lstatSync(name,{bigint:true}); }
@@ -112,7 +118,7 @@ function collect(profile,io) {
       }
     }
     for(const r of p.rows){
-      ordinal=r.ordinal;stage=3;tick();let db,primary;
+      ordinal=r.ordinal;stage=3;tick();let db,primary;selectedWriter=undefined;
       try {
         db=new io.DatabaseSync(target(r,'main'),{readOnly:true,allowExtension:false,enableForeignKeyConstraints:false,enableDoubleQuotedStringLiterals:false,timeout:0,defensive:true,limits:{length:262144,sqlLength:8192,attach:0}});
         need(typeof db.setAuthorizer==='function'&&typeof db.enableLoadExtension==='function',123);
@@ -124,7 +130,7 @@ function collect(profile,io) {
         for(const row of objects){need(Object.hasOwn(counts,row.type),126);counts[row.type]++;}
         const tables=query(db,'tables',512);const required=r.role==='global'?['schema_meta','agent_databases','agent_deletion_journal','migration_sources']:['schema_meta'];
         for(const name of required){const t=tables.filter(t=>t.schema==='main'&&t.name===name);need(t.length===1&&t[0].type==='table'&&t[0].strict===1,127);}
-        stage=6;const uv=scalar(db,'uv'), values=query(db,'schema',2);need(values.length===1,128);const s=values[0],expected=r.role==='global'?20:25;
+        stage=6;const uv=scalar(db,'uv'), values=query(db,'schema',2);need(values.length===1,128);const s=values[0],expected=r.role==='global'?20:25;selectedWriter=s.app_version;
         const m=(s.role!==r.role)|((s.schema_version!==expected)<<1)|((uv!==expected)<<2)|((s.agent_id!==r.agentId)<<3)|((s.app_version!=='2026.10.5')<<4);need(m===0,12900+m);
         const hygiene={registryRows:0,deletionRows:0,heldRows:0};
         if(r.role==='global'){
@@ -152,6 +158,7 @@ function collect(profile,io) {
   } catch(error) {
     const code=Number.isInteger(error.metadataCode)?error.metadataCode:(Number.isInteger(error.errcode)&&error.errcode>=0&&error.errcode<=65535?error.errcode:0);
     result.failure={ordinal,pathSha256:ordinal>=0?p.rows[ordinal].pathSha256:null,stage,code,sqliteVersion:result.sqliteVersion};
+    if(error instanceof Refused&&stage===6&&code>=12916&&code<=12931)try{result.failure.writerStamp=writerStamp(selectedWriter);}catch(_){}
   } finally {for(const fd of held)try{io.fs.closeSync(fd);}catch(error){result.cleanupFailureCode=0;result.status='INCOMPLETE';if(result.failure===undefined)result.failure={ordinal,pathSha256:ordinal>=0?p.rows[ordinal].pathSha256:null,stage:11,code:0,sqliteVersion:result.sqliteVersion};}}
   need(Buffer.byteLength(JSON.stringify(result))<=16384,140);return result;
 }

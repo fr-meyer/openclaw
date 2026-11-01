@@ -5,8 +5,8 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const {DatabaseSync,constants}=require('node:sqlite');
 const reader=require('./metadata_reader.cjs');
 assert.equal(process.versions.node,'24.22.1');
-function schema(db,n){
- db.exec('CREATE TABLE schema_meta(meta_key TEXT PRIMARY KEY,role TEXT,schema_version INTEGER,agent_id TEXT,app_version TEXT) STRICT;CREATE TABLE app_records(secret TEXT) STRICT;INSERT INTO app_records VALUES(\'synthetic-application-record-must-not-appear\');');
+function schema(db,n,writerAny=false){
+ db.exec('CREATE TABLE schema_meta(meta_key TEXT PRIMARY KEY,role TEXT,schema_version INTEGER,agent_id TEXT,app_version '+(writerAny?'ANY':'TEXT')+') STRICT;CREATE TABLE app_records(secret TEXT) STRICT;INSERT INTO app_records VALUES(\'synthetic-application-record-must-not-appear\');');
  db.prepare('INSERT INTO schema_meta VALUES(?,?,?,?,?)').run('primary',n===0?'global':'agent',n===0?20:25,n===0?null:'synthetic-'+String(n).padStart(2,'0'),'2026.10.5');
  db.exec('PRAGMA user_version='+(n===0?20:25));
  if(n===0){
@@ -47,6 +47,13 @@ function marker(root){
   db.close();fs.chownSync(name,1000,1000);fs.chmodSync(name,0o600);
  }
 }
+function writer(root){
+ fs.mkdirSync(root,{mode:0o755});
+ for(const [name,value]of [['null',null],['empty',''],['synthetic','synthetic-previous-build'],['nontext',17],['blob',Buffer.from('synthetic-blob')],['ascii128','x'.repeat(128)],['ascii129','x'.repeat(129)],['utf8_128','é'.repeat(64)],['utf8_129','é'.repeat(64)+'x']]){
+  const file=path.join(root,name+'.sqlite'),db=new DatabaseSync(file);schema(db,0,typeof value!=='string'&&value!==null);
+  const s=db.prepare("UPDATE schema_meta SET app_version=? WHERE meta_key='primary'");s.run(value);s.close();db.close();fs.chownSync(file,1000,1000);fs.chmodSync(file,0o600);
+ }
+}
 function deny(){
  const db=new DatabaseSync(':memory:',{allowExtension:false,defensive:true});schema(db,0);
  db.setAuthorizer(reader.authorizer(constants,true));db.exec(reader.SQL.only);db.exec(reader.SQL.trusted);
@@ -56,7 +63,8 @@ function deny(){
 }
 module.exports={schema};
 if(require.main===module){
- if(process.argv.length===4&&process.argv[2]==='marker')marker(process.argv[3]);
+ if(process.argv.length===4&&process.argv[2]==='writer')writer(process.argv[3]);
+ else if(process.argv.length===4&&process.argv[2]==='marker')marker(process.argv[3]);
  else if(process.argv.length===4&&process.argv[2]==='build')build(process.argv[3]);
  else if(process.argv.length===3&&process.argv[2]==='deny')deny();
  else throw Error('synthetic_fixture_arguments');

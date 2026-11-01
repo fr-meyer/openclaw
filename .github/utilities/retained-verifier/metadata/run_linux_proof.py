@@ -107,14 +107,37 @@ def command_settled(value):
       all(value.get(k)is True for k in ('outerExited','ownedGroupGone','streamsEOF','streamsClosed')))
 
 
+def require_writer_stamp(value):
+    need(type(value)is dict and set(value)=={'kind','utf8Bytes','sha256'},'metadata.writer_stamp_shape')
+    if value['kind']=='text':
+        need(type(value['utf8Bytes'])is int and 0<=value['utf8Bytes']<=128 and type(value['sha256'])is str and
+          re.fullmatch('[a-f0-9]{64}',value['sha256'])is not None,'metadata.writer_stamp_text')
+    else:need(value['kind']in('null','nontext','oversized')and value['utf8Bytes']is None and value['sha256']is None,'metadata.writer_stamp_nontext')
+
+def require_writer_stamp_cases(actual):
+    expected={
+      'null':{'kind':'null','utf8Bytes':None,'sha256':None},'empty':{'kind':'text','utf8Bytes':0,'sha256':hashlib.sha256(b'').hexdigest()},
+      'synthetic':{'kind':'text','utf8Bytes':24,'sha256':hashlib.sha256(b'synthetic-previous-build').hexdigest()},
+      'nontext':{'kind':'nontext','utf8Bytes':None,'sha256':None},'blob':{'kind':'nontext','utf8Bytes':None,'sha256':None},
+      'ascii128':{'kind':'text','utf8Bytes':128,'sha256':hashlib.sha256(b'x'*128).hexdigest()},'ascii129':{'kind':'oversized','utf8Bytes':None,'sha256':None},
+      'utf8_128':{'kind':'text','utf8Bytes':128,'sha256':hashlib.sha256(('é'*64).encode()).hexdigest()},'utf8_129':{'kind':'oversized','utf8Bytes':None,'sha256':None}}
+    rows=actual.get('writerStampCases');need(actual.get('writerStampFailureOnlyPrivacyAndByteBounds')is True and type(rows)is list and len(rows)==len(expected),'metadata.writer_stamp_cases')
+    for row,(name,stamp)in zip(rows,expected.items()):
+        need(type(row)is dict and set(row)=={'name','status','code','writerStamp','childClosedAndReaped','deadlineReached'}and row['name']==name and
+          row['status']=='REFUSED'and type(row['code'])is int and row['code']==12916 and row['childClosedAndReaped']is True and row['deadlineReached']is False,'metadata.writer_stamp_case')
+        require_writer_stamp(row['writerStamp']);need(row['writerStamp']==stamp,'metadata.writer_stamp_binding')
+
 def require_schema_markers(actual):
     cases=actual.get('schemaMarkerCases')
     need(actual.get('schemaMarkerAllFiveStrictPredicatesAndMasks')is True and type(cases)is list and len(cases)==7,'metadata.schema_markers')
     for row,mask in zip(cases,(0,1,2,4,8,16,31)):
-        need(type(row)is dict and set(row)=={'mask','status','code','childClosedAndReaped','deadlineReached'}and
+        need(type(row)is dict and set(row)=={'mask','status','code','childClosedAndReaped','deadlineReached','writerStamp'}and
           type(row['mask'])is int and row['mask']==mask and row['status']==('REFUSED'if mask else'COMPLETED')and
           (row['code']is None if mask==0 else type(row['code'])is int and row['code']==12900+mask)and
           row['childClosedAndReaped']is True and row['deadlineReached']is False,'metadata.schema_marker_case')
+        if mask&16:
+            require_writer_stamp(row['writerStamp']);need(row['writerStamp']=={'kind':'text','utf8Bytes':23,'sha256':hashlib.sha256(b'synthetic-other-release').hexdigest()},'metadata.schema_marker_writer')
+        else:need(row['writerStamp']is None,'metadata.schema_marker_no_writer')
 
 def require_schema_initialization(actual,rows):
     init=actual.get('schemaInitialization')
@@ -252,6 +275,7 @@ def main():
           'metadata.proof_assertions')
         require_schema_initialization(actual,rows)
         require_schema_markers(actual)
+        require_writer_stamp_cases(actual)
         result.update(status='passed',proof=actual)
     except BaseException as error:
         text=str(error)

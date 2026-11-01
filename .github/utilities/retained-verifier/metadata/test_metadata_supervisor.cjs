@@ -31,4 +31,25 @@ async function diagnostic(kind){
  assert.equal(result.status,'REFUSED');assert.equal(result.value,null);assert.ok(!JSON.stringify(result).includes('private')&&!JSON.stringify(result).includes('application-record'));
  if(kind==='good')assert.deepEqual(result.failure,failure);else assert.equal(result.failure,null);cases++;
 }
-(async()=>{for(const kind of ['good','timeout','lateclose','oversize','fault','streamerror','malformed','stderr','nonzero','unclosed','missingpid','badstream','badclock','spawnthrow'])await run(kind);for(const kind of['good','extra','ordinal','hash','code','version','mismatch','partial','deadline','signal'])await diagnostic(kind);console.log(JSON.stringify({sourceOnly:true,realTimersOrProcesses:false,cases,allPassed:true}));})().catch(()=>{process.stderr.write('synthetic_supervisor_test_refused\n');process.exitCode=1;});
+async function writerDiagnostic(kind){
+ const child=new EventEmitter();child.pid=42;child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>true;
+ const d={kind:'text',utf8Bytes:0,sha256:'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'};
+ if(['null','nontext','oversized'].includes(kind))Object.assign(d,{kind,utf8Bytes:null,sha256:null});
+ const failure={ordinal:0,pathSha256:'b'.repeat(64),stage:6,code:12916,sqliteVersion:'3.50.4',writerStamp:d};
+ if(kind==='missing')delete failure.writerStamp;if(kind==='extra')d.raw='not-permitted';if(kind==='boolbytes')d.utf8Bytes=true;if(kind==='bytes129')d.utf8Bytes=129;
+ if(kind==='wronghash')d.sha256='not-a-hash';if(kind==='nontexthash')d.kind='nontext';if(kind==='wrongstage')failure.stage=5;if(kind==='wrongmask')failure.code=12901;
+ const result=await supervise('a'.repeat(64),{execPath:'/node',now:()=>20,spawn:()=>child,setTimer:()=>1,clearTimer:()=>{},waitClose:async(_child,record)=>{await Promise.resolve();const data={schema:'ocv.retained-clone-schema-registry-hygiene.v1',status:'INCOMPLETE',rows:[],failure,integrityFreshnessMigrationProductionEstablished:false};child.stdout.emit('data',Buffer.from(JSON.stringify(data)));child.stderr.emit('data',Buffer.from(JSON.stringify(kind==='substitution'?{...failure,writerStamp:{kind:'null',utf8Bytes:null,sha256:null}}:failure)+'\n'));for(const s of[child.stdout,child.stderr]){s.emit('end');s.emit('close');}record(1,null);}});
+ assert.equal(result.status,'REFUSED');assert.equal(result.value,null);
+ if(['text','null','nontext','oversized','missing'].includes(kind)){assert.deepEqual(result.failure,failure);assert.equal(result.errorClass,0);}else{assert.equal(result.failure,null);assert.equal(result.errorClass,5);}assert.ok(!JSON.stringify(result).includes('not-permitted'));cases++;
+}
+async function derivativeFault(){
+ const {fixture}=require('./test_metadata_reader.cjs'),reader=require('./metadata_reader.cjs'),crypto=require('node:crypto');
+ const x=fixture({rows:(k,v,n)=>k==='schema'&&n===0?v.map(row=>({...row,app_version:'synthetic-hash-fault'})):v});
+ const createHash=crypto.createHash;let actual;
+ try{crypto.createHash=(...args)=>{const h=createHash(...args),update=h.update.bind(h);h.update=(value,...rest)=>{if(value==='synthetic-hash-fault')throw Error('synthetic-derivative-fault');return update(value,...rest);};return h;};actual=reader.collect(x.profile,x.io);}finally{crypto.createHash=createHash;}
+ assert.equal(actual.status,'INCOMPLETE');assert.equal(actual.failure.code,12916);assert.equal(actual.failure.stage,6);assert.ok(!Object.hasOwn(actual.failure,'writerStamp'));
+ const child=new EventEmitter();child.pid=42;child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>true;
+ const result=await supervise('a'.repeat(64),{execPath:'/node',now:()=>20,spawn:()=>child,setTimer:()=>1,clearTimer:()=>{},waitClose:async(_child,record)=>{await Promise.resolve();child.stdout.emit('data',Buffer.from(JSON.stringify(actual)));child.stderr.emit('data',Buffer.from(JSON.stringify(actual.failure)+'\n'));for(const s of[child.stdout,child.stderr]){s.emit('end');s.emit('close');}record(1,null);}});
+ assert.equal(result.status,'REFUSED');assert.equal(result.value,null);assert.equal(result.errorClass,0);assert.deepEqual(result.failure,actual.failure);assert.ok(!JSON.stringify(result).includes('synthetic-hash-fault'));cases++;
+}
+(async()=>{for(const kind of ['good','timeout','lateclose','oversize','fault','streamerror','malformed','stderr','nonzero','unclosed','missingpid','badstream','badclock','spawnthrow'])await run(kind);for(const kind of['good','extra','ordinal','hash','code','version','mismatch','partial','deadline','signal'])await diagnostic(kind);for(const kind of['text','null','nontext','oversized','missing','extra','boolbytes','bytes129','wronghash','nontexthash','wrongstage','wrongmask','substitution'])await writerDiagnostic(kind);await derivativeFault();console.log(JSON.stringify({sourceOnly:true,realTimersOrProcesses:false,cases,allPassed:true}));})().catch(()=>{process.stderr.write('synthetic_supervisor_test_refused\n');process.exitCode=1;});
