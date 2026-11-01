@@ -112,32 +112,51 @@ def require_writer_stamp(value):
     if value['kind']=='text':
         need(type(value['utf8Bytes'])is int and 0<=value['utf8Bytes']<=128 and type(value['sha256'])is str and
           re.fullmatch('[a-f0-9]{64}',value['sha256'])is not None,'metadata.writer_stamp_text')
-    else:need(value['kind']in('null','nontext','oversized')and value['utf8Bytes']is None and value['sha256']is None,'metadata.writer_stamp_nontext')
+        need((value['utf8Bytes']==0)==(value['sha256']==hashlib.sha256(b'').hexdigest())and
+          (value['sha256']!=hashlib.sha256(b'2026.10.5').hexdigest()or value['utf8Bytes']==9),'metadata.writer_stamp_length')
+    else:need(value['kind']=='null'and value['utf8Bytes']is None and value['sha256']is None,'metadata.writer_stamp_null')
+
+def require_observation_rows(rows):
+    need(type(rows)is list and len(rows)==11,'metadata.writer_rows')
+    for n,row in enumerate(rows):
+        need(type(row)is dict and set(row)=={'ordinal','writerStamp','appVersionMatches'}and
+          type(row['ordinal'])is int and row['ordinal']==n and type(row['appVersionMatches'])is bool,'metadata.writer_row')
+        d=row['writerStamp'];require_writer_stamp(d)
+        need(row['appVersionMatches']is(d['kind']=='text'and d['utf8Bytes']==9 and
+          d['sha256']==hashlib.sha256(b'2026.10.5').hexdigest()),'metadata.writer_match')
+
+def synthetic_stamp(value):
+    return {'kind':'null','utf8Bytes':None,'sha256':None}if value is None else {
+      'kind':'text','utf8Bytes':len(value.encode()),'sha256':hashlib.sha256(value.encode()).hexdigest()}
 
 def require_writer_stamp_cases(actual):
-    expected={
-      'null':{'kind':'null','utf8Bytes':None,'sha256':None},'empty':{'kind':'text','utf8Bytes':0,'sha256':hashlib.sha256(b'').hexdigest()},
-      'synthetic':{'kind':'text','utf8Bytes':24,'sha256':hashlib.sha256(b'synthetic-previous-build').hexdigest()},
-      'nontext':{'kind':'nontext','utf8Bytes':None,'sha256':None},'blob':{'kind':'nontext','utf8Bytes':None,'sha256':None},
-      'ascii128':{'kind':'text','utf8Bytes':128,'sha256':hashlib.sha256(b'x'*128).hexdigest()},'ascii129':{'kind':'oversized','utf8Bytes':None,'sha256':None},
-      'utf8_128':{'kind':'text','utf8Bytes':128,'sha256':hashlib.sha256(('é'*64).encode()).hexdigest()},'utf8_129':{'kind':'oversized','utf8Bytes':None,'sha256':None}}
-    rows=actual.get('writerStampCases');need(actual.get('writerStampFailureOnlyPrivacyAndByteBounds')is True and type(rows)is list and len(rows)==len(expected),'metadata.writer_stamp_cases')
-    for row,(name,stamp)in zip(rows,expected.items()):
-        need(type(row)is dict and set(row)=={'name','status','code','writerStamp','childClosedAndReaped','deadlineReached'}and row['name']==name and
-          row['status']=='REFUSED'and type(row['code'])is int and row['code']==12916 and row['childClosedAndReaped']is True and row['deadlineReached']is False,'metadata.writer_stamp_case')
-        require_writer_stamp(row['writerStamp']);need(row['writerStamp']==stamp,'metadata.writer_stamp_binding')
+    expected={'current':('2026.10.5',None),'null':(None,None),'empty':('',None),
+      'synthetic':('synthetic-previous-build',None),'unknown':('synthetic-unknown-build',None),
+      'nontext':(None,12932),'blob':(None,12932),'ascii128':('x'*128,None),'ascii129':(None,12933),
+      'utf8_128':('é'*64,None),'utf8_129':(None,12933)}
+    rows=actual.get('writerStampCases')
+    need(actual.get('writerStampOptionalMetadataAndByteBounds')is True and type(rows)is list and len(rows)==len(expected),'metadata.writer_stamp_cases')
+    for row,(name,(text,code))in zip(rows,expected.items()):
+        need(type(row)is dict and set(row)=={'name','status','code','writerStamp','appVersionMatches','childClosedAndReaped','deadlineReached'}and row['name']==name and
+          row['childClosedAndReaped']is True and row['deadlineReached']is False,'metadata.writer_stamp_case')
+        if code is not None:
+            need(row['status']=='REFUSED'and type(row['code'])is int and row['code']==code and row['writerStamp']is None and row['appVersionMatches']is None,'metadata.writer_stamp_refusal')
+        else:
+            need(row['status']=='COMPLETED'and row['code']is None and type(row['appVersionMatches'])is bool,'metadata.writer_stamp_completed')
+            require_writer_stamp(row['writerStamp'])
+            need(row['writerStamp']==synthetic_stamp(text)and row['appVersionMatches']is(text=='2026.10.5'),'metadata.writer_stamp_binding')
+    observed=actual.get('writerObservationRows');require_observation_rows(observed)
+    values=['2026.10.5','synthetic-previous-build','synthetic-unknown-build',None,'','x'*128,'é'*64,'2026.10.5',None,'','synthetic-other']
+    need([r['writerStamp']for r in observed]==[synthetic_stamp(v)for v in values],'metadata.writer_all11_binding')
 
 def require_schema_markers(actual):
     cases=actual.get('schemaMarkerCases')
-    need(actual.get('schemaMarkerAllFiveStrictPredicatesAndMasks')is True and type(cases)is list and len(cases)==7,'metadata.schema_markers')
-    for row,mask in zip(cases,(0,1,2,4,8,16,31)):
-        need(type(row)is dict and set(row)=={'mask','status','code','childClosedAndReaped','deadlineReached','writerStamp'}and
+    need(actual.get('schemaMarkerFourStrictPredicatesAndMasks')is True and type(cases)is list and len(cases)==6,'metadata.schema_markers')
+    for row,mask in zip(cases,(0,1,2,4,8,15)):
+        need(type(row)is dict and set(row)=={'mask','status','code','childClosedAndReaped','deadlineReached'}and
           type(row['mask'])is int and row['mask']==mask and row['status']==('REFUSED'if mask else'COMPLETED')and
           (row['code']is None if mask==0 else type(row['code'])is int and row['code']==12900+mask)and
           row['childClosedAndReaped']is True and row['deadlineReached']is False,'metadata.schema_marker_case')
-        if mask&16:
-            require_writer_stamp(row['writerStamp']);need(row['writerStamp']=={'kind':'text','utf8Bytes':23,'sha256':hashlib.sha256(b'synthetic-other-release').hexdigest()},'metadata.schema_marker_writer')
-        else:need(row['writerStamp']is None,'metadata.schema_marker_no_writer')
 
 def require_schema_initialization(actual,rows):
     init=actual.get('schemaInitialization')
@@ -271,7 +290,8 @@ def main():
             'schemaInitFullReaderOptionsExercised','schemaInitPublicSourceFixtureExercised',
             'schemaInitPrimitiveAndAuthorizerDiagnosticsComplete','schemaInitSyntheticFilesUnchanged',
             'schemaInitBoundedSqlLength8192AuthorizerUnchanged','schemaInitWithinBoundAllCompleted','schemaInitAbove8192Refused','schemaInitFullReaderPersistedCasesExercised'))
-          and actual.get('retainedDataAccessed')is False and actual.get('privateAdmissionEstablished')is False,
+          and actual.get('retainedDataAccessed')is False and actual.get('privateAdmissionEstablished')is False
+          and actual.get('metadataCountsAsReleaseQualification')is False and actual.get('productionQualified')is False,
           'metadata.proof_assertions')
         require_schema_initialization(actual,rows)
         require_schema_markers(actual)

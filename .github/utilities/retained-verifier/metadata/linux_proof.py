@@ -50,6 +50,20 @@ def run(argv, *, user=False, seconds=70, diagnostic=None):
     need(len(result.stdout)<=16384 and len(result.stderr)<=4096)
     return result
 
+def observations(value):
+    need(type(value)is dict and value.get('status')=='METADATA_CONSISTENT'and type(value.get('rows'))is list and len(value['rows'])==11)
+    out=[]
+    for n,row in enumerate(value['rows']):
+        need(type(row)is dict and type(row.get('ordinal'))is int and row.get('ordinal')==n and type(row.get('appVersionMatches'))is bool)
+        d=row.get('writerStamp');need(type(d)is dict and set(d)=={'kind','utf8Bytes','sha256'})
+        need((d['kind']=='null'and d['utf8Bytes']is None and d['sha256']is None)or
+          (d['kind']=='text'and type(d['utf8Bytes'])is int and 0<=d['utf8Bytes']<=128 and type(d['sha256'])is str and len(d['sha256'])==64 and all(c in '0123456789abcdef'for c in d['sha256'])))
+        if d['kind']=='text':need((d['utf8Bytes']==0)==(d['sha256']==hashlib.sha256(b'').hexdigest())and
+          (d['sha256']!=hashlib.sha256(b'2026.10.5').hexdigest()or d['utf8Bytes']==9))
+        need(row['appVersionMatches']is(d['kind']=='text'and d['utf8Bytes']==9 and d['sha256']==hashlib.sha256(b'2026.10.5').hexdigest()))
+        out.append({k:row[k]for k in('ordinal','writerStamp','appVersionMatches')})
+    return out
+
 SCHEMA_SOURCE_LEAVES=('schema_init_probe.cjs','metadata_reader.cjs','linux_fixture.cjs','source_table.sql')
 
 def copy_schema_sources(here,work,manifest):
@@ -165,6 +179,7 @@ def main():
             value['streamsEOF'] is True and value['streamsClosed'] is True and
             value['value']['status']=='METADATA_CONSISTENT' and len(value['value']['rows'])==11 and
             value['value']['integrityFreshnessMigrationProductionEstablished'] is False)
+        writer_observations=observations(value['value'])
         need(b'synthetic-application-record' not in actual.stdout and b'synthetic-01' not in actual.stdout)
         need(synthetic_before=={str(p.relative_to(source)):hashlib.sha256(p.read_bytes()).hexdigest()
                                 for p in source.rglob('*') if p.is_file()})
@@ -250,7 +265,7 @@ def main():
         schema_require(built,'marker-build',empty_stdout=True)
         marker_before={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in marker_root.iterdir()}
         marker_cases=[]
-        for mask in(0,1,2,4,8,16,31):
+        for mask in(0,1,2,4,8,15):
             need(run(['/usr/bin/umount','--',str(main_target)]).returncode==0);mounts.remove(main_target)
             bind(marker_root/(str(mask)+'.sqlite'),main_target)
             current=json.loads(json.dumps(profile));current['rows'][0]['files']={
@@ -268,45 +283,52 @@ def main():
                          full['value']['status']=='METADATA_CONSISTENT' and len(full['value']['rows'])==11)
                 else:
                     need(r.returncode==full['childExitCode']==1 and full['status']=='REFUSED'and full['value']is None and
-                         type(failure)is dict and set(failure)==({'ordinal','pathSha256','stage','code','sqliteVersion','writerStamp'}if mask&16 else {'ordinal','pathSha256','stage','code','sqliteVersion'})and
+                         type(failure)is dict and set(failure)=={'ordinal','pathSha256','stage','code','sqliteVersion'}and
                          type(failure['ordinal'])is int and failure['ordinal']==0 and failure['pathSha256']==profile['rows'][0]['pathSha256']and
                          type(failure['stage'])is int and failure['stage']==6 and type(failure['code'])is int and failure['code']==12900+mask and
                          type(failure['sqliteVersion'])is str and full['stdoutBytes']<=16384 and full['stderrBytes']<=4096)
             except BaseException:
                 if r.returncode in(0,1)and r.stderr==b'':schema_failure('marker-query',r.returncode,r.stdout,r.stderr)
                 raise
-            need((failure.get('writerStamp')=={'kind':'text','utf8Bytes':23,'sha256':hashlib.sha256(b'synthetic-other-release').hexdigest()})if mask&16 else failure is None or'writerStamp'not in failure)
             need(b'synthetic-foreign'not in r.stdout and b'synthetic-other-release'not in r.stdout)
             marker_cases.append({'mask':mask,'status':full['status'],'code':None if mask==0 else failure['code'],
-              'childClosedAndReaped':True,'deadlineReached':False,'writerStamp':failure.get('writerStamp')if failure is not None else None})
+              'childClosedAndReaped':True,'deadlineReached':False})
         need(marker_before=={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in marker_root.iterdir()})
         writer_root=work/'writer-cases'
         built=run([str(node),'--no-warnings',str(here/'linux_fixture.cjs'),'writer',str(writer_root)],diagnostic='writer-build');schema_require(built,'writer-build',empty_stdout=True)
         writer_before={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in writer_root.iterdir()};writer_cases=[]
         expected_writer={
-          'null':{'kind':'null','utf8Bytes':None,'sha256':None},'empty':{'kind':'text','utf8Bytes':0,'sha256':hashlib.sha256(b'').hexdigest()},
-          'synthetic':{'kind':'text','utf8Bytes':24,'sha256':hashlib.sha256(b'synthetic-previous-build').hexdigest()},
-          'nontext':{'kind':'nontext','utf8Bytes':None,'sha256':None},'blob':{'kind':'nontext','utf8Bytes':None,'sha256':None},
-          'ascii128':{'kind':'text','utf8Bytes':128,'sha256':hashlib.sha256(b'x'*128).hexdigest()},'ascii129':{'kind':'oversized','utf8Bytes':None,'sha256':None},
-          'utf8_128':{'kind':'text','utf8Bytes':128,'sha256':hashlib.sha256(('é'*64).encode()).hexdigest()},'utf8_129':{'kind':'oversized','utf8Bytes':None,'sha256':None}}
-        for name,expected in expected_writer.items():
+          'current':('2026.10.5',None),'null':(None,None),'empty':('',None),
+          'synthetic':('synthetic-previous-build',None),'unknown':('synthetic-unknown-build',None),
+          'nontext':(None,12932),'blob':(None,12932),'ascii128':('x'*128,None),'ascii129':(None,12933),
+          'utf8_128':('é'*64,None),'utf8_129':(None,12933)}
+        for name,(text,code)in expected_writer.items():
             need(run(['/usr/bin/umount','--',str(main_target)]).returncode==0);mounts.remove(main_target);bind(writer_root/(name+'.sqlite'),main_target)
             current=json.loads(json.dumps(profile));current['rows'][0]['files']={'main':ident(main_target),**{k:{'state':'absent','identity':None}for k in('wal','shm','journal')}}
             profile_source.chmod(0o644);profile_source.write_text(json.dumps(current,separators=(',',':')));profile_source.chmod(0o444)
             r=run([str(node),'--no-warnings','/run/metadata-supervisor.cjs',hashlib.sha256(profile_source.read_bytes()).hexdigest()],user=True,diagnostic='writer-query')
             try:
-                schema_require(r,'writer-query',codes=(1,));full=json.loads(r.stdout);failure=full['failure']
-                need(full['status']=='REFUSED'and full['value']is None and full['childCloseObserved']is True and full['ownedChildUncertain']is False and
-                  full['streamsEOF']is True and full['streamsClosed']is True and full['childExitCode']==1 and full['childSignal']is None and
+                schema_require(r,'writer-query',codes=(0,1));full=json.loads(r.stdout);failure=full['failure']
+                need(full['childCloseObserved']is True and full['ownedChildUncertain']is False and
+                  full['streamsEOF']is True and full['streamsClosed']is True and full['childSignal']is None and
                   full['deadlineReached']is False and full['killSubmitted']is False and full['errorClass']==0 and
-                  type(failure)is dict and set(failure)=={'ordinal','pathSha256','stage','code','sqliteVersion','writerStamp'}and
-                  failure['ordinal']==0 and failure['pathSha256']==profile['rows'][0]['pathSha256']and failure['stage']==6 and failure['code']==12916 and
-                  failure['writerStamp']==expected and full['stdoutBytes']<=14336 and full['stderrBytes']<=4096)
-                need(b'synthetic-previous-build'not in r.stdout and b'synthetic-blob'not in r.stdout and ('é'*64).encode()not in r.stdout)
+                  full['stdoutBytes']<=14336 and full['stderrBytes']<=4096)
+                if code is None:
+                    need(r.returncode==full['childExitCode']==0 and full['status']=='COMPLETED'and failure is None)
+                    observed=observations(full['value']);row=observed[0]
+                    expected={'kind':'null','utf8Bytes':None,'sha256':None}if text is None else {'kind':'text','utf8Bytes':len(text.encode()),'sha256':hashlib.sha256(text.encode()).hexdigest()}
+                    need(row['writerStamp']==expected and row['appVersionMatches']is(text=='2026.10.5'))
+                else:
+                    need(r.returncode==full['childExitCode']==1 and full['status']=='REFUSED'and full['value']is None and
+                      type(failure)is dict and set(failure)=={'ordinal','pathSha256','stage','code','sqliteVersion'}and
+                      type(failure['ordinal'])is int and failure['ordinal']==0 and failure['pathSha256']==profile['rows'][0]['pathSha256']and
+                      type(failure['stage'])is int and failure['stage']==6 and type(failure['code'])is int and failure['code']==code)
+                    row={'writerStamp':None,'appVersionMatches':None}
+                need(b'synthetic-previous-build'not in r.stdout and b'synthetic-unknown-build'not in r.stdout and b'synthetic-blob'not in r.stdout and ('é'*64).encode()not in r.stdout)
             except BaseException:
-                if r.returncode==1 and r.stderr==b'':schema_failure('writer-query',r.returncode,r.stdout,r.stderr)
+                if r.returncode in(0,1)and r.stderr==b'':schema_failure('writer-query',r.returncode,r.stdout,r.stderr)
                 raise
-            writer_cases.append({'name':name,'status':'REFUSED','code':12916,'writerStamp':expected,'childClosedAndReaped':True,'deadlineReached':False})
+            writer_cases.append({'name':name,'status':full['status'],'code':code,'writerStamp':row['writerStamp'],'appVersionMatches':row['appVersionMatches'],'childClosedAndReaped':True,'deadlineReached':False})
         need(writer_before=={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in writer_root.iterdir()})
         proof={'schema':'ocv.generic-retained-metadata-linux-proof.v1','status':'PASS',
             'nodeSha256':NODE_SHA,'sourceManifestSha256':args.source_manifest_sha256,
@@ -317,8 +339,9 @@ def main():
             'schemaInitPrimitiveAndAuthorizerDiagnosticsComplete':True,'schemaInitSyntheticFilesUnchanged':True,
             'schemaInitBoundedSqlLength8192AuthorizerUnchanged':True,'schemaInitWithinBoundAllCompleted':True,'schemaInitAbove8192Refused':True,'schemaInitialization':initialization,
             'schemaInitFullReaderPersistedCasesExercised':True,'fullReaderSchemaInitialization':full_cases,
-            'schemaMarkerAllFiveStrictPredicatesAndMasks':True,'schemaMarkerCases':marker_cases,
-            'writerStampFailureOnlyPrivacyAndByteBounds':True,'writerStampCases':writer_cases,
+            'schemaMarkerFourStrictPredicatesAndMasks':True,'schemaMarkerCases':marker_cases,
+            'writerStampOptionalMetadataAndByteBounds':True,'writerStampCases':writer_cases,'writerObservationRows':writer_observations,
+            'metadataCountsAsReleaseQualification':False,'productionQualified':False,
             'retainedDataAccessed':False,'privateAdmissionEstablished':False}
     finally:
         cleanup=[]

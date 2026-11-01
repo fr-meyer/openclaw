@@ -222,10 +222,10 @@ class MetadataHost(unittest.TestCase):
         with patch.object(proof.subprocess,'run',return_value=types.SimpleNamespace(returncode=0,stdout=b'x'*16385,stderr=b'')),patch('sys.stdout',capture),self.assertRaises(RuntimeError):proof.run(['synthetic'],diagnostic='schema-probe')
         self.assertEqual(json.loads(capture.getvalue())['stdout']['bytes'],16385)
 
-    def test_schema_marker_cases_are_closed_typed_complete_and_never_accept_mismatch(self):
-        good={'schemaMarkerAllFiveStrictPredicatesAndMasks':True,'schemaMarkerCases':[
+    def test_schema_marker_cases_preserve_four_strict_typed_guards(self):
+        good={'schemaMarkerFourStrictPredicatesAndMasks':True,'schemaMarkerCases':[
           {'mask':mask,'status':'REFUSED'if mask else'COMPLETED','code':12900+mask if mask else None,
-           'childClosedAndReaped':True,'deadlineReached':False,'writerStamp':{'kind':'text','utf8Bytes':23,'sha256':hashlib.sha256(b'synthetic-other-release').hexdigest()}if mask&16 else None}for mask in(0,1,2,4,8,16,31)]}
+           'childClosedAndReaped':True,'deadlineReached':False}for mask in(0,1,2,4,8,15)]}
         entry.require_schema_markers(good)
         for defect in('missing','boolmask','boolcode','extra','wrongbit','mismatchpass','baselinefail','unclosed','deadline','flag'):
             bad=copy.deepcopy(good);rows=bad['schemaMarkerCases']
@@ -238,31 +238,58 @@ class MetadataHost(unittest.TestCase):
             elif defect=='baselinefail':rows[0]['status']='REFUSED'
             elif defect=='unclosed':rows[1]['childClosedAndReaped']=False
             elif defect=='deadline':rows[1]['deadlineReached']=True
-            else:bad['schemaMarkerAllFiveStrictPredicatesAndMasks']=False
+            else:bad['schemaMarkerFourStrictPredicatesAndMasks']=False
             with self.subTest(defect=defect),self.assertRaises(RuntimeError):entry.require_schema_markers(bad)
 
-    def test_closed_failure_writer_stamp_diagnostic_types_hashes_and_exact_fixture_binding(self):
-        expected=[('null',{'kind':'null','utf8Bytes':None,'sha256':None}),('empty',{'kind':'text','utf8Bytes':0,'sha256':hashlib.sha256(b'').hexdigest()}),
-          ('synthetic',{'kind':'text','utf8Bytes':24,'sha256':hashlib.sha256(b'synthetic-previous-build').hexdigest()}),('nontext',{'kind':'nontext','utf8Bytes':None,'sha256':None}),('blob',{'kind':'nontext','utf8Bytes':None,'sha256':None}),
-          ('ascii128',{'kind':'text','utf8Bytes':128,'sha256':hashlib.sha256(b'x'*128).hexdigest()}),('ascii129',{'kind':'oversized','utf8Bytes':None,'sha256':None}),
-          ('utf8_128',{'kind':'text','utf8Bytes':128,'sha256':hashlib.sha256(('é'*64).encode()).hexdigest()}),('utf8_129',{'kind':'oversized','utf8Bytes':None,'sha256':None})]
-        good={'writerStampFailureOnlyPrivacyAndByteBounds':True,'writerStampCases':[{'name':name,'status':'REFUSED','code':12916,'writerStamp':stamp,'childClosedAndReaped':True,'deadlineReached':False}for name,stamp in expected]}
+    def writer_rows(self):
+        values=['2026.10.5','synthetic-previous-build','synthetic-unknown-build',None,'','x'*128,'é'*64,'2026.10.5',None,'','synthetic-other']
+        return [{'ordinal':n,'writerStamp':entry.synthetic_stamp(v),'appVersionMatches':v=='2026.10.5'}for n,v in enumerate(values)]
+
+    def test_optional_writer_observation_typed_bidirectional_consistency_and_all11(self):
+        rows=self.writer_rows();entry.require_observation_rows(rows)
+        proof=load('optional_writer_projection_test',SOURCE/'metadata/linux_proof.py')
+        self.assertEqual(proof.observations({'status':'METADATA_CONSISTENT','rows':rows}),rows)
+        for defect in('true-null','false-current','true-other','number','missing','extra','boolbytes','oversize','nontext','null-bytes','badsha','ordinal','omitted','current-wrong-length','empty-wrong-hash','empty-wrong-length'):
+            bad=copy.deepcopy(rows);row=bad[0];d=row['writerStamp']
+            if defect=='true-null':row['writerStamp']={'kind':'null','utf8Bytes':None,'sha256':None}
+            elif defect=='false-current':row['appVersionMatches']=False
+            elif defect=='true-other':d['sha256']='0'*64
+            elif defect=='current-wrong-length':d['utf8Bytes']=0;row['appVersionMatches']=False
+            elif defect=='empty-wrong-hash':d['utf8Bytes']=0;d['sha256']='0'*64;row['appVersionMatches']=False
+            elif defect=='empty-wrong-length':d['sha256']=hashlib.sha256(b'').hexdigest();row['appVersionMatches']=False
+            elif defect=='number':row['appVersionMatches']=1
+            elif defect=='missing':del row['writerStamp']
+            elif defect=='extra':d['raw']='not-permitted'
+            elif defect=='boolbytes':d['utf8Bytes']=True
+            elif defect=='oversize':d['utf8Bytes']=129
+            elif defect=='nontext':d['kind']='nontext'
+            elif defect=='null-bytes':row['writerStamp']={'kind':'null','utf8Bytes':0,'sha256':None}
+            elif defect=='badsha':d['sha256']='not-hash'
+            elif defect=='ordinal':row['ordinal']=True
+            else:bad.pop()
+            with self.subTest(defect=defect),self.assertRaises(RuntimeError):entry.require_observation_rows(bad)
+
+    def test_optional_writer_case_roster_and_refusal_binding(self):
+        expected={'current':('2026.10.5',None),'null':(None,None),'empty':('',None),'synthetic':('synthetic-previous-build',None),
+          'unknown':('synthetic-unknown-build',None),'nontext':(None,12932),'blob':(None,12932),'ascii128':('x'*128,None),'ascii129':(None,12933),
+          'utf8_128':('é'*64,None),'utf8_129':(None,12933)}
+        good={'writerStampOptionalMetadataAndByteBounds':True,'writerObservationRows':self.writer_rows(),'writerStampCases':[
+          {'name':name,'status':'REFUSED'if code else'COMPLETED','code':code,'writerStamp':None if code else entry.synthetic_stamp(v),
+           'appVersionMatches':None if code else v=='2026.10.5','childClosedAndReaped':True,'deadlineReached':False}for name,(v,code)in expected.items()]}
         entry.require_writer_stamp_cases(good)
-        for defect in('missing','absentdescriptor','extra','boolbytes','oversize','wronghash','nontexthash','nontextbytes','substitution','passed','unclosed','deadline','flag'):
-            bad=copy.deepcopy(good);row=bad['writerStampCases'][1];stamp=row['writerStamp']
-            if defect=='missing':del stamp['kind']
-            elif defect=='absentdescriptor':del row['writerStamp']
-            elif defect=='extra':stamp['raw']='not-permitted'
-            elif defect=='boolbytes':stamp['utf8Bytes']=True
-            elif defect=='oversize':stamp['utf8Bytes']=129
-            elif defect=='wronghash':stamp['sha256']='not-hash'
-            elif defect=='nontexthash':stamp['kind']='nontext'
-            elif defect=='nontextbytes':row['writerStamp']={'kind':'null','utf8Bytes':0,'sha256':None}
-            elif defect=='substitution':stamp['sha256']='0'*64
-            elif defect=='passed':row['status']='COMPLETED'
+        for defect in('missing','extra','substitution','false-current','unsafe-success','unsafe-hash','boolcode','unclosed','deadline','flag','all11-substitution'):
+            bad=copy.deepcopy(good);row=bad['writerStampCases'][0]
+            if defect=='missing':del row['writerStamp']
+            elif defect=='extra':row['raw']='not-permitted'
+            elif defect=='substitution':row['writerStamp']['sha256']='0'*64
+            elif defect=='false-current':row['appVersionMatches']=False
+            elif defect=='unsafe-success':bad['writerStampCases'][5]['status']='COMPLETED'
+            elif defect=='unsafe-hash':bad['writerStampCases'][5]['writerStamp']=entry.synthetic_stamp('')
+            elif defect=='boolcode':bad['writerStampCases'][5]['code']=True
             elif defect=='unclosed':row['childClosedAndReaped']=False
             elif defect=='deadline':row['deadlineReached']=True
-            else:bad['writerStampFailureOnlyPrivacyAndByteBounds']=False
+            elif defect=='all11-substitution':bad['writerObservationRows'][1]['writerStamp']=entry.synthetic_stamp('synthetic-different')
+            else:bad['writerStampOptionalMetadataAndByteBounds']=False
             with self.subTest(defect=defect),self.assertRaises(RuntimeError):entry.require_writer_stamp_cases(bad)
 
     def test_exact_four_source_copies_use_owned_readable_work_and_reject_substitution(self):

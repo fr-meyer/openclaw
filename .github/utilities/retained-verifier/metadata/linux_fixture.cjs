@@ -21,6 +21,8 @@ function build(root){
   const dir=path.join(root,String(n).padStart(2,'0'));fs.mkdirSync(dir,{mode:0o755});
   const name=path.join(dir,'main.sqlite'),db=new DatabaseSync(name);
   if(n<=1)db.exec('PRAGMA journal_mode=WAL');schema(db,n);
+  const stamps=['2026.10.5','synthetic-previous-build','synthetic-unknown-build',null,'','x'.repeat(128),'é'.repeat(64),'2026.10.5',null,'','synthetic-other'];
+  const writer=db.prepare("UPDATE schema_meta SET app_version=? WHERE meta_key='primary'");writer.run(stamps[n]);writer.close();
   if(n<=1){
    if(n===1){
     // A documented empty-WAL state, generated only in this synthetic fixture.
@@ -37,19 +39,18 @@ function build(root){
 }
 function marker(root){
  fs.mkdirSync(root,{mode:0o755});
- for(const mask of [0,1,2,4,8,16,31]){
+ for(const mask of [0,1,2,4,8,15]){
   const name=path.join(root,String(mask)+'.sqlite'),db=new DatabaseSync(name);schema(db,0);
   if(mask&1)db.exec("UPDATE schema_meta SET role='other' WHERE meta_key='primary'");
   if(mask&2)db.exec("UPDATE schema_meta SET schema_version=19 WHERE meta_key='primary'");
   if(mask&4)db.exec('PRAGMA user_version=19');
   if(mask&8)db.exec("UPDATE schema_meta SET agent_id='synthetic-foreign' WHERE meta_key='primary'");
-  if(mask&16)db.exec("UPDATE schema_meta SET app_version='synthetic-other-release' WHERE meta_key='primary'");
   db.close();fs.chownSync(name,1000,1000);fs.chmodSync(name,0o600);
  }
 }
 function writer(root){
  fs.mkdirSync(root,{mode:0o755});
- for(const [name,value]of [['null',null],['empty',''],['synthetic','synthetic-previous-build'],['nontext',17],['blob',Buffer.from('synthetic-blob')],['ascii128','x'.repeat(128)],['ascii129','x'.repeat(129)],['utf8_128','é'.repeat(64)],['utf8_129','é'.repeat(64)+'x']]){
+ for(const [name,value]of [['current','2026.10.5'],['null',null],['empty',''],['synthetic','synthetic-previous-build'],['unknown','synthetic-unknown-build'],['nontext',17],['blob',Buffer.from('synthetic-blob')],['ascii128','x'.repeat(128)],['ascii129','x'.repeat(129)],['utf8_128','é'.repeat(64)],['utf8_129','é'.repeat(64)+'x']]){
   const file=path.join(root,name+'.sqlite'),db=new DatabaseSync(file);schema(db,0,typeof value!=='string'&&value!==null);
   const s=db.prepare("UPDATE schema_meta SET app_version=? WHERE meta_key='primary'");s.run(value);s.close();db.close();fs.chownSync(file,1000,1000);fs.chmodSync(file,0o600);
  }

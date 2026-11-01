@@ -47,25 +47,28 @@ test('unknown/partial sidecar states refused before open',()=>{for(const kind of
 test('fixed authorizer denies applicationdata/write/attach/function/trigger routes',()=>{const a=r.authorizer(C,true),agent=r.authorizer(C,false);assert.equal(a(C.SQLITE_READ,'schema_meta','role','main',null),0);for(const args of [[C.SQLITE_INSERT,'schema_meta',null,'main',null],[C.SQLITE_UPDATE,'schema_meta','role','main',null],[C.SQLITE_ATTACH,null,null,null,null],[C.SQLITE_READ,'sessions','body','main',null],[C.SQLITE_READ,'schema_meta','role','temp',null],[C.SQLITE_READ,'schema_meta','role','main','view'],[C.SQLITE_FUNCTION,null,'load_extension',null,null],[C.SQLITE_PRAGMA,'writable_schema','ON',null,null],[C.SQLITE_PRAGMA,'query_only','OFF',null,null],[C.SQLITE_PRAGMA,'trusted_schema','ON',null,null]])assert.equal(a(...args),1);assert.equal(agent(C.SQLITE_READ,'agent_databases','path','main',null),1);});
 test('read-only mounts and namedidentity failures stopbeforeDBopen',()=>{for(const mode of ['rw','extraMount','symlink','owner']){const x=fixture({[mode]:true});if(mode==='symlink')x.files.get('/metadata/db-00/main.sqlite').isSymbolicLink=()=>true;if(mode==='owner')x.files.get('/metadata/db-00/main.sqlite').uid=0n;const v=r.collect(x.profile,x.io);assert.equal(v.status,'INCOMPLETE');assert.equal(x.counts().dbs,0);}});
 test('metadata views/virtualtables refused without rowqueries',()=>{for(const type of ['view','virtual']){const x=fixture({rows:(k,v)=>k==='tables'?v.map(t=>({...t,type})):v}),v=r.collect(x.profile,x.io);assert.equal(v.failure.code,127);assert.equal(v.failure.stage,5);}});
-test('allfive strict schema atoms diagnostic through actual collect without rawvalues',()=>{
- for(const mask of [0,1,2,4,8,16,31]){
-  const x=fixture({rows:(k,v,n)=>{if(n!==0)return v;if(k==='uv'&&(mask&4))return [{user_version:19}];if(k!=='schema')return v;return v.map(row=>({...row,...(mask&1?{role:'other'}:{}),...(mask&2?{schema_version:19}:{}),...(mask&8?{agent_id:'synthetic-private-value'}:{}),...(mask&16?{app_version:'synthetic-private-value'}:{})}));}}),v=r.collect(x.profile,x.io);
+test('four strict schema and owner atoms remain exact through actual collect',()=>{
+ for(const mask of [0,1,2,4,8,15]){
+  const x=fixture({rows:(k,v,n)=>{if(n!==0)return v;if(k==='uv'&&(mask&4))return [{user_version:19}];if(k!=='schema')return v;return v.map(row=>({...row,...(mask&1?{role:'other'}:{}),...(mask&2?{schema_version:19}:{}),...(mask&8?{agent_id:'synthetic-private-value'}:{})}));}}),v=r.collect(x.profile,x.io);
   assert.equal(v.status,mask?'INCOMPLETE':'METADATA_CONSISTENT');
-  if(mask){const expected={ordinal:0,pathSha256:x.profile.rows[0].pathSha256,stage:6,code:12900+mask,sqliteVersion:'3.50.4'};if(mask&16)expected.writerStamp={kind:'text',utf8Bytes:23,sha256:hash('synthetic-private-value')};assert.deepEqual(v.failure,expected);assert.equal(v.rows.length,0);assert.equal(x.counts().dbs,1);}
+  if(mask){assert.deepEqual(v.failure,{ordinal:0,pathSha256:x.profile.rows[0].pathSha256,stage:6,code:12900+mask,sqliteVersion:'3.50.4'});assert.equal(v.rows.length,0);assert.equal(x.counts().dbs,1);}
   assert.equal(x.counts().opened,x.counts().closed);assert.equal(x.counts().statements,x.counts().stmtClosed);assert.ok(!JSON.stringify(v).includes('synthetic-private-value'));
  }
 });
-test('writer stamp is failure-only bounded type bytes and hash without coercion',()=>{
- const cases=[[null,{kind:'null',utf8Bytes:null,sha256:null}],['',{kind:'text',utf8Bytes:0,sha256:hash('')}],['synthetic-previous-build',{kind:'text',utf8Bytes:24,sha256:hash('synthetic-previous-build')}],
-  [17,{kind:'nontext',utf8Bytes:null,sha256:null}],[undefined,{kind:'nontext',utf8Bytes:null,sha256:null}],[Buffer.from('synthetic-blob'),{kind:'nontext',utf8Bytes:null,sha256:null}],
-  [{toString(){throw Error('must-not-coerce');}},{kind:'nontext',utf8Bytes:null,sha256:null}],
-  ['x'.repeat(128),{kind:'text',utf8Bytes:128,sha256:hash('x'.repeat(128))}],['x'.repeat(129),{kind:'oversized',utf8Bytes:null,sha256:null}],
-  ['é'.repeat(64),{kind:'text',utf8Bytes:128,sha256:hash('é'.repeat(64))}],['é'.repeat(64)+'x',{kind:'oversized',utf8Bytes:null,sha256:null}]];
- for(const [stamp,expected]of cases){const x=fixture({rows:(k,v,n)=>k==='schema'&&n===0?v.map(row=>({...row,app_version:stamp})):v}),v=r.collect(x.profile,x.io);
-  assert.equal(v.status,'INCOMPLETE');assert.equal(v.failure.code,12916);assert.equal(v.failure.stage,6);assert.deepEqual(v.failure.writerStamp,expected);assert.equal(v.rows.length,0);assert.equal(x.counts().dbs,1);assert.equal(x.counts().opened,x.counts().closed);assert.ok(!JSON.stringify(v).includes('synthetic-previous-build')&&!JSON.stringify(v).includes('synthetic-blob'));}
- const x=fixture({dbClose:true,rows:(k,v,n)=>k==='schema'&&n===0?v.map(row=>({...row,app_version:null})):v}),v=r.collect(x.profile,x.io);assert.equal(v.failure.code,12916);assert.equal(v.cleanupFailureCode,5);assert.deepEqual(v.failure.writerStamp,{kind:'null',utf8Bytes:null,sha256:null});
- for(const change of [{queryError:'schema'},{rows:(k,v)=>k==='schema'?v.map(row=>({...row,role:'other'})):v},{rows:(k,v)=>k==='tables'?v.map(row=>({...row,type:'view'})):v}]){const x=fixture(change),v=r.collect(x.profile,x.io);assert.equal(v.status,'INCOMPLETE');assert.ok(!Object.hasOwn(v.failure,'writerStamp'));}
- const good=fixture(),passed=r.collect(good.profile,good.io);assert.equal(passed.status,'METADATA_CONSISTENT');assert.ok(!JSON.stringify(passed).includes('writerStamp'));
+test('all11 optional writer observations preserve exact type bytes hash and comparison',()=>{
+ const stamps=['2026.10.5','synthetic-previous-build','synthetic-unknown-build',null,'','x'.repeat(128),'é'.repeat(64),'2026.10.5',null,'','synthetic-other'];
+ const x=fixture({rows:(k,v,n)=>k==='schema'?v.map(row=>({...row,app_version:stamps[n]})):v}),v=r.collect(x.profile,x.io);
+ assert.equal(v.status,'METADATA_CONSISTENT');assert.equal(v.rows.length,11);
+ for(const [n,row]of v.rows.entries()){const stamp=stamps[n];assert.deepEqual(row.writerStamp,stamp===null?{kind:'null',utf8Bytes:null,sha256:null}:{kind:'text',utf8Bytes:Buffer.byteLength(stamp),sha256:hash(stamp)});assert.equal(row.appVersionMatches,stamp==='2026.10.5');}
+ assert.ok(!JSON.stringify(v).includes('synthetic-previous-build')&&!JSON.stringify(v).includes('synthetic-unknown-build'));
+});
+test('unsafe writer values refuse without coercion or hashing and cleanup remains required',()=>{
+ for(const [stamp,code]of [[17,12932],[undefined,12932],[Buffer.from('synthetic-blob'),12932],[{toString(){throw Error('must-not-coerce');}},12932],['x'.repeat(129),12933],['é'.repeat(64)+'x',12933]]){
+  const x=fixture({rows:(k,v,n)=>k==='schema'&&n===0?v.map(row=>({...row,app_version:stamp})):v});
+  const createHash=crypto.createHash;let v;try{crypto.createHash=(...args)=>{const h=createHash(...args),update=h.update.bind(h);h.update=(value,...rest)=>{assert.notEqual(value,stamp);return update(value,...rest);};return h;};v=r.collect(x.profile,x.io);}finally{crypto.createHash=createHash;}
+  assert.equal(v.status,'INCOMPLETE');assert.equal(v.failure.code,code);assert.equal(v.failure.stage,6);assert.ok(!Object.hasOwn(v.failure,'writerStamp'));assert.equal(v.rows.length,0);assert.equal(x.counts().opened,x.counts().closed);
+ }
+ const x=fixture({dbClose:true,rows:(k,v)=>k==='schema'?v.map(row=>({...row,app_version:null})):v}),v=r.collect(x.profile,x.io);assert.equal(v.status,'INCOMPLETE');assert.equal(v.cleanupFailureCode,5);
 });
 test('registry foreign/duplicate/missing scoped agents refused',()=>{for(const kind of ['foreign','duplicate','missing']){const x=fixture({rows:(k,v)=>k==='registry'?(kind==='foreign'?[{agent_id:'unapproved',path:'/private',schema_version:25}]:kind==='duplicate'?[v[0],v[0]]:v.slice(1)):v}),v=r.collect(x.profile,x.io);assert.equal(v.failure.code,130);assert.equal(v.failure.stage,7);}});
 test('deletion and heldmetadata never silentlypass',()=>{for(const kind of ['pending','retained','held','malformed']){const x=fixture({rows:(k,v)=>k==='deletion'&&['pending','retained'].includes(kind)?[{cleanup_completed:kind==='pending'?0:1,delete_files:kind==='retained'?0:1}]:k==='held'&&['held','malformed'].includes(kind)?[{report:kind==='held'?JSON.stringify({held:[{path:'/private-credential'}]}):'private-credential'}]:v}),v=r.collect(x.profile,x.io);assert.equal(v.status,'INCOMPLETE');assert.equal(v.failure.stage,8);assert.ok(!JSON.stringify(v).includes('private-credential'));}});
