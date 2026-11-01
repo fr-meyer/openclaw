@@ -222,6 +222,25 @@ class MetadataHost(unittest.TestCase):
         with patch.object(proof.subprocess,'run',return_value=types.SimpleNamespace(returncode=0,stdout=b'x'*16385,stderr=b'')),patch('sys.stdout',capture),self.assertRaises(RuntimeError):proof.run(['synthetic'],diagnostic='schema-probe')
         self.assertEqual(json.loads(capture.getvalue())['stdout']['bytes'],16385)
 
+    def test_schema_marker_cases_are_closed_typed_complete_and_never_accept_mismatch(self):
+        good={'schemaMarkerAllFiveStrictPredicatesAndMasks':True,'schemaMarkerCases':[
+          {'mask':mask,'status':'REFUSED'if mask else'COMPLETED','code':12900+mask if mask else None,
+           'childClosedAndReaped':True,'deadlineReached':False}for mask in(0,1,2,4,8,16,31)]}
+        entry.require_schema_markers(good)
+        for defect in('missing','boolmask','boolcode','extra','wrongbit','mismatchpass','baselinefail','unclosed','deadline','flag'):
+            bad=copy.deepcopy(good);rows=bad['schemaMarkerCases']
+            if defect=='missing':rows.pop()
+            elif defect=='boolmask':rows[1]['mask']=True
+            elif defect=='boolcode':rows[1]['code']=True
+            elif defect=='extra':rows[1]['raw']='must-not-pass'
+            elif defect=='wrongbit':rows[1]['code']=12902
+            elif defect=='mismatchpass':rows[1]['status']='COMPLETED'
+            elif defect=='baselinefail':rows[0]['status']='REFUSED'
+            elif defect=='unclosed':rows[1]['childClosedAndReaped']=False
+            elif defect=='deadline':rows[1]['deadlineReached']=True
+            else:bad['schemaMarkerAllFiveStrictPredicatesAndMasks']=False
+            with self.subTest(defect=defect),self.assertRaises(RuntimeError):entry.require_schema_markers(bad)
+
     def test_exact_four_source_copies_use_owned_readable_work_and_reject_substitution(self):
         proof=load('schema_copy_source_test',SOURCE/'metadata/linux_proof.py')
         rows=[{'path':n,'bytes':(SOURCE/'metadata'/n).stat().st_size,

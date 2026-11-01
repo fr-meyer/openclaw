@@ -107,6 +107,15 @@ def command_settled(value):
       all(value.get(k)is True for k in ('outerExited','ownedGroupGone','streamsEOF','streamsClosed')))
 
 
+def require_schema_markers(actual):
+    cases=actual.get('schemaMarkerCases')
+    need(actual.get('schemaMarkerAllFiveStrictPredicatesAndMasks')is True and type(cases)is list and len(cases)==7,'metadata.schema_markers')
+    for row,mask in zip(cases,(0,1,2,4,8,16,31)):
+        need(type(row)is dict and set(row)=={'mask','status','code','childClosedAndReaped','deadlineReached'}and
+          type(row['mask'])is int and row['mask']==mask and row['status']==('REFUSED'if mask else'COMPLETED')and
+          (row['code']is None if mask==0 else type(row['code'])is int and row['code']==12900+mask)and
+          row['childClosedAndReaped']is True and row['deadlineReached']is False,'metadata.schema_marker_case')
+
 def require_schema_initialization(actual,rows):
     init=actual.get('schemaInitialization')
     need(type(init)is dict and init.get('schema')=='ocv.synthetic-sqlite-schema-init-witness.v1' and
@@ -242,6 +251,7 @@ def main():
           and actual.get('retainedDataAccessed')is False and actual.get('privateAdmissionEstablished')is False,
           'metadata.proof_assertions')
         require_schema_initialization(actual,rows)
+        require_schema_markers(actual)
         result.update(status='passed',proof=actual)
     except BaseException as error:
         text=str(error)

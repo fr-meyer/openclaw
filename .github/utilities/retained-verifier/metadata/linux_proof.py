@@ -16,7 +16,7 @@ def need(value):
     if value is not True: raise RuntimeError('synthetic_metadata_proof_refused')
 
 SCHEMA_STAGES=('schema-build','schema-probe','schema-full-long','schema-full-public_table',
-               'schema-full-generated_function','schema-full-expression_index','schema-full-above_limit')
+               'schema-full-generated_function','schema-full-expression_index','schema-full-above_limit','marker-build','marker-query')
 
 def schema_failure(stage,code,stdout,stderr,*,timed_out=False):
     need(stage in SCHEMA_STAGES and type(code)is int)
@@ -245,6 +245,40 @@ def main():
             full_cases.append({'name':name,'status':full['status'],'failure':failure,
               'childClosedAndReaped':True,'deadlineReached':False})
         need(init_before=={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in init_root.iterdir()})
+        marker_root=work/'marker-cases'
+        built=run([str(node),'--no-warnings',str(here/'linux_fixture.cjs'),'marker',str(marker_root)],diagnostic='marker-build')
+        schema_require(built,'marker-build',empty_stdout=True)
+        marker_before={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in marker_root.iterdir()}
+        marker_cases=[]
+        for mask in(0,1,2,4,8,16,31):
+            need(run(['/usr/bin/umount','--',str(main_target)]).returncode==0);mounts.remove(main_target)
+            bind(marker_root/(str(mask)+'.sqlite'),main_target)
+            current=json.loads(json.dumps(profile));current['rows'][0]['files']={
+              'main':ident(main_target),**{k:{'state':'absent','identity':None}for k in('wal','shm','journal')}}
+            profile_source.chmod(0o644);profile_source.write_text(json.dumps(current,separators=(',',':')));profile_source.chmod(0o444)
+            r=run([str(node),'--no-warnings','/run/metadata-supervisor.cjs',hashlib.sha256(profile_source.read_bytes()).hexdigest()],user=True,diagnostic='marker-query')
+            try:
+                schema_require(r,'marker-query',codes=(0,1));full=json.loads(r.stdout)
+                need(full['childCloseObserved']is True and full['ownedChildUncertain']is False and
+                     full['streamsEOF']is True and full['streamsClosed']is True and full['childSignal']is None and
+                     full['deadlineReached']is False and full['killSubmitted']is False and full['errorClass']==0)
+                failure=full['failure']
+                if mask==0:
+                    need(r.returncode==full['childExitCode']==0 and full['status']=='COMPLETED' and failure is None and
+                         full['value']['status']=='METADATA_CONSISTENT' and len(full['value']['rows'])==11)
+                else:
+                    need(r.returncode==full['childExitCode']==1 and full['status']=='REFUSED'and full['value']is None and
+                         type(failure)is dict and set(failure)=={'ordinal','pathSha256','stage','code','sqliteVersion'}and
+                         type(failure['ordinal'])is int and failure['ordinal']==0 and failure['pathSha256']==profile['rows'][0]['pathSha256']and
+                         type(failure['stage'])is int and failure['stage']==6 and type(failure['code'])is int and failure['code']==12900+mask and
+                         type(failure['sqliteVersion'])is str and full['stdoutBytes']<=16384 and full['stderrBytes']<=4096)
+            except BaseException:
+                if r.returncode in(0,1)and r.stderr==b'':schema_failure('marker-query',r.returncode,r.stdout,r.stderr)
+                raise
+            need(b'synthetic-foreign'not in r.stdout and b'synthetic-other-release'not in r.stdout)
+            marker_cases.append({'mask':mask,'status':full['status'],'code':None if mask==0 else failure['code'],
+              'childClosedAndReaped':True,'deadlineReached':False})
+        need(marker_before=={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in marker_root.iterdir()})
         proof={'schema':'ocv.generic-retained-metadata-linux-proof.v1','status':'PASS',
             'nodeSha256':NODE_SHA,'sourceManifestSha256':args.source_manifest_sha256,
             'syntheticDatabases':11,'existingWalAndShmReadonlyPositive':True,'zeroWalWithExistingShmReadonlyPositive':True,
@@ -254,6 +288,7 @@ def main():
             'schemaInitPrimitiveAndAuthorizerDiagnosticsComplete':True,'schemaInitSyntheticFilesUnchanged':True,
             'schemaInitBoundedSqlLength8192AuthorizerUnchanged':True,'schemaInitWithinBoundAllCompleted':True,'schemaInitAbove8192Refused':True,'schemaInitialization':initialization,
             'schemaInitFullReaderPersistedCasesExercised':True,'fullReaderSchemaInitialization':full_cases,
+            'schemaMarkerAllFiveStrictPredicatesAndMasks':True,'schemaMarkerCases':marker_cases,
             'retainedDataAccessed':False,'privateAdmissionEstablished':False}
     finally:
         cleanup=[]

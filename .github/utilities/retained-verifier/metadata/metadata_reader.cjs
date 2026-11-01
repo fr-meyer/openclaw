@@ -1,7 +1,5 @@
 'use strict';
-// Fixed retained-clone metadata adapter of production_schema_inventory.py.
-// It issues no grant and cannot enforce a hard deadline inside synchronous
-// SQLite. The source-bound controller must own the60s capture/120s action.
+// Fixed metadata-only reader; controller owns60s query/120s action.
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const SQL = Object.freeze({
@@ -127,7 +125,7 @@ function collect(profile,io) {
         const tables=query(db,'tables',512);const required=r.role==='global'?['schema_meta','agent_databases','agent_deletion_journal','migration_sources']:['schema_meta'];
         for(const name of required){const t=tables.filter(t=>t.schema==='main'&&t.name===name);need(t.length===1&&t[0].type==='table'&&t[0].strict===1,127);}
         stage=6;const uv=scalar(db,'uv'), values=query(db,'schema',2);need(values.length===1,128);const s=values[0],expected=r.role==='global'?20:25;
-        need(s.role===r.role&&s.schema_version===expected&&uv===expected&&s.agent_id===r.agentId&&s.app_version==='2026.10.5',129);
+        const m=(s.role!==r.role)|((s.schema_version!==expected)<<1)|((uv!==expected)<<2)|((s.agent_id!==r.agentId)<<3)|((s.app_version!=='2026.10.5')<<4);need(m===0,12900+m);
         const hygiene={registryRows:0,deletionRows:0,heldRows:0};
         if(r.role==='global'){
           stage=7;const registry=query(db,'registry');hygiene.registryRows=registry.length;const registered=new Set();

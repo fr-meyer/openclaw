@@ -35,6 +35,18 @@ function build(root){
   for(const file of fs.readdirSync(dir)){const p=path.join(dir,file);fs.chownSync(p,1000,1000);fs.chmodSync(p,0o600);}
  }
 }
+function marker(root){
+ fs.mkdirSync(root,{mode:0o755});
+ for(const mask of [0,1,2,4,8,16,31]){
+  const name=path.join(root,String(mask)+'.sqlite'),db=new DatabaseSync(name);schema(db,0);
+  if(mask&1)db.exec("UPDATE schema_meta SET role='other' WHERE meta_key='primary'");
+  if(mask&2)db.exec("UPDATE schema_meta SET schema_version=19 WHERE meta_key='primary'");
+  if(mask&4)db.exec('PRAGMA user_version=19');
+  if(mask&8)db.exec("UPDATE schema_meta SET agent_id='synthetic-foreign' WHERE meta_key='primary'");
+  if(mask&16)db.exec("UPDATE schema_meta SET app_version='synthetic-other-release' WHERE meta_key='primary'");
+  db.close();fs.chownSync(name,1000,1000);fs.chmodSync(name,0o600);
+ }
+}
 function deny(){
  const db=new DatabaseSync(':memory:',{allowExtension:false,defensive:true});schema(db,0);
  db.setAuthorizer(reader.authorizer(constants,true));db.exec(reader.SQL.only);db.exec(reader.SQL.trusted);
@@ -44,7 +56,8 @@ function deny(){
 }
 module.exports={schema};
 if(require.main===module){
- if(process.argv.length===4&&process.argv[2]==='build')build(process.argv[3]);
+ if(process.argv.length===4&&process.argv[2]==='marker')marker(process.argv[3]);
+ else if(process.argv.length===4&&process.argv[2]==='build')build(process.argv[3]);
  else if(process.argv.length===3&&process.argv[2]==='deny')deny();
  else throw Error('synthetic_fixture_arguments');
 }
