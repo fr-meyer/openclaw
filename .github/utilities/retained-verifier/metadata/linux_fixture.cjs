@@ -42,6 +42,10 @@ function deny(){
  for(const sql of ['SELECT secret FROM app_records','UPDATE schema_meta SET schema_version=21','ATTACH DATABASE \'/tmp/not-permitted\' AS other','PRAGMA writable_schema=ON','PRAGMA query_only=OFF','PRAGMA trusted_schema=ON','SELECT load_extension(\'not-permitted\')'])assert.throws(()=>db.prepare(sql));
  db.close();process.stdout.write(JSON.stringify({sqliteVersion:require('node:sqlite').DatabaseSync?process.versions.sqlite:null,authorizerPositiveAndSevenRefusals:true,applicationRecordsReturned:false})+'\n');
 }
-if(process.argv.length===4&&process.argv[2]==='build')build(process.argv[3]);
-else if(process.argv.length===3&&process.argv[2]==='deny')deny();
-else throw Error('synthetic_fixture_arguments');
+module.exports={schema};
+if(require.main===module){
+ if(process.argv.length===4&&process.argv[2]==='build')build(process.argv[3]);
+ else if(process.argv.length===3&&process.argv[2]==='deny')deny();
+ else throw Error('synthetic_fixture_arguments');
+}
+

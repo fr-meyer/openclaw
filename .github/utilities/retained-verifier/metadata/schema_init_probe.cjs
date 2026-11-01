@@ -1,0 +1,77 @@
+'use strict';
+// Synthetic-only persisted schema initialization witness. Exact reader limits,
+// SQL and authorizer stay unchanged; no retained paths, profile or data appear.
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {DatabaseSync,constants}=require('node:sqlite');
+const reader=require('./metadata_reader.cjs');
+assert.equal(process.versions.node,'24.22.1');
+const LIMITS=Object.freeze({length:262144,sqlLength:4096,attach:0});
+const OPTIONS=Object.freeze({readOnly:true,allowExtension:false,enableForeignKeyConstraints:false,
+ enableDoubleQuotedStringLiterals:false,timeout:0,defensive:true,limits:LIMITS});
+const LONG='CREATE TABLE synthetic_long ('+Array.from({length:320},(_,i)=>'column_'+String(i).padStart(3,'0')+' TEXT').join(',')+') STRICT;';
+const CASES=Object.freeze([
+ ['small',''],
+ ['long',''+LONG],
+ ['public_table',null],
+ ['generated_function','CREATE TABLE synthetic_generated(source TEXT,derived TEXT GENERATED ALWAYS AS (lower(source)) VIRTUAL) STRICT;'],
+ ['expression_index','CREATE TABLE synthetic_expression(document TEXT) STRICT;CREATE INDEX synthetic_expression_idx ON synthetic_expression(json_extract(document,\'$.synthetic\'));']
+]);
+function build(root){
+ fs.mkdirSync(root,{mode:0o755});
+ const publicSql=fs.readFileSync(path.join(__dirname,'source_table.sql'),'utf8');
+ assert.ok(Buffer.byteLength(LONG)>4096&&Buffer.byteLength(publicSql)>4096);
+ for(const [name,sql]of CASES){
+  const file=path.join(root,name+'.sqlite'),db=new DatabaseSync(file,{allowExtension:false});
+  try{require('./linux_fixture.cjs').schema(db,0);if(sql===null)db.exec(publicSql);else if(sql)db.exec(sql);}finally{db.close();}
+  fs.chmodSync(file,0o600);fs.chownSync(file,1000,1000);
+ }
+}
+function number(error){return Number.isInteger(error.errcode)&&error.errcode>=0&&error.errcode<=65535?error.errcode:0;}
+function probe(file,name){
+ let db,primitive=0,failure=null,closed=false,callbacks=0;
+ const denied=[];
+ try{
+  primitive=1;db=new DatabaseSync(file,OPTIONS);
+  primitive=2;const check=reader.authorizer(constants,true);
+  db.setAuthorizer((...args)=>{
+   callbacks++;assert.ok(callbacks<=4096);
+   const value=check(...args);
+   if(value!==constants.SQLITE_OK&&denied.length<32)denied.push({action:args[0],functionCode:args[0]===constants.SQLITE_FUNCTION?(args[2]==='lower'?1:args[2]==='json_extract'?2:0):0});
+   return value;
+  });
+  primitive=3;db.enableLoadExtension(false);
+  // The same four primitives that comprise stage4 in the full reader.
+  primitive=4;db.exec(reader.SQL.only);
+  primitive=5;db.exec(reader.SQL.trusted);
+  function scalar(key){const s=db.prepare(reader.SQL[key]),rows=[];try{for(const row of s.iterate())rows.push(row);assert.equal(rows.length,1);return Object.values(rows[0])[0];}finally{s.close();}}
+  primitive=6;assert.equal(scalar('onlyRead'),1);
+  primitive=7;assert.equal(scalar('trustedRead'),0);
+ }catch(error){failure={primitive,code:number(error)};}
+ finally{if(db!==undefined){try{db.close();closed=true;}catch(error){failure=failure||{primitive:8,code:number(error)};}}}
+ return {name,initializationPassed:failure===null,failure,connectionClosed:closed,authorizerCallbacks:callbacks,denied};
+}
+function deny(file){
+ const db=new DatabaseSync(file,OPTIONS);let denials=0;
+ try{
+  db.setAuthorizer(reader.authorizer(constants,true));db.enableLoadExtension(false);db.exec(reader.SQL.only);db.exec(reader.SQL.trusted);
+  for(const sql of ['SELECT secret FROM app_records','UPDATE schema_meta SET schema_version=21','ATTACH DATABASE \'/tmp/not-permitted\' AS other','PRAGMA writable_schema=ON','PRAGMA query_only=OFF','PRAGMA trusted_schema=ON','SELECT load_extension(\'not-permitted\')']){
+   assert.throws(()=>db.prepare(sql));denials++;
+  }
+ }finally{db.close();}
+ return denials;
+}
+function run(root){
+ assert.equal(process.getuid(),1000);assert.equal(process.getgid(),1000);
+ const rows=CASES.map(([name])=>probe(path.join(root,name+'.sqlite'),name));
+ assert.equal(rows[0].initializationPassed,true);assert.ok(rows.every(r=>r.connectionClosed));
+ const denials=deny(path.join(root,'small.sqlite'));assert.equal(denials,7);
+ const result={schema:'ocv.synthetic-sqlite-schema-init-witness.v1',nodeVersion:process.versions.node,
+  sqliteVersion:process.versions.sqlite,limits:LIMITS,readonly:true,extensionsDisabled:true,
+  authorizerUnchanged:true,sourceReaderSha256:require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(__dirname,'metadata_reader.cjs'))).digest('hex'),
+  publicSourceCreateBytes:fs.statSync(path.join(__dirname,'source_table.sql')).size,
+  syntheticLongCreateBytes:Buffer.byteLength(LONG),fixedPrimitiveIds:[1,2,3,4,5,6,7,8],cases:rows,
+  exactReadonlyAuthorizerNegativeCases:denials,privateDataAccessed:false,applicationRowsReturned:false};
+ const raw=JSON.stringify(result);assert.ok(Buffer.byteLength(raw)<=16384);process.stdout.write(raw+'\n');
+}
+assert.equal(process.argv.length,4);
+if(process.argv[2]==='build')build(process.argv[3]);else{assert.equal(process.argv[2],'run');run(process.argv[3]);}

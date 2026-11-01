@@ -107,6 +107,58 @@ def command_settled(value):
       all(value.get(k)is True for k in ('outerExited','ownedGroupGone','streamsEOF','streamsClosed')))
 
 
+def require_schema_initialization(actual,rows):
+    init=actual.get('schemaInitialization')
+    need(type(init)is dict and init.get('schema')=='ocv.synthetic-sqlite-schema-init-witness.v1' and
+      init.get('nodeVersion')=='24.22.1' and type(init.get('sqliteVersion'))is str and
+      re.fullmatch(r'3\.[0-9]{1,3}\.[0-9]{1,3}',init['sqliteVersion']) is not None and
+      init.get('limits')=={'length':262144,'sqlLength':4096,'attach':0} and
+      all(init.get(k)is True for k in('readonly','extensionsDisabled','authorizerUnchanged')) and
+      init.get('sourceReaderSha256')==rows['metadata/metadata_reader.cjs']['sha256'] and
+      init.get('publicSourceCreateBytes')==rows['metadata/source_table.sql']['bytes']==4644 and
+      type(init.get('syntheticLongCreateBytes'))is int and 4096<init['syntheticLongCreateBytes']<=16384 and
+      init.get('fixedPrimitiveIds')==list(range(1,9)) and
+      init.get('exactReadonlyAuthorizerNegativeCases')==7 and
+      init.get('privateDataAccessed')is False and init.get('applicationRowsReturned')is False,
+      'metadata.schema_init_binding')
+    cases=init.get('cases')
+    need(type(cases)is list and [x.get('name')for x in cases]==
+      ['small','long','public_table','generated_function','expression_index'],'metadata.schema_init_roster')
+    for case in cases:
+        need(type(case)is dict and set(case)=={'name','initializationPassed','failure','connectionClosed','authorizerCallbacks','denied'} and
+          type(case['initializationPassed'])is bool and case['connectionClosed']is True and
+          type(case['authorizerCallbacks'])is int and 0<=case['authorizerCallbacks']<=4096 and
+          type(case['denied'])is list and len(case['denied'])<=32,'metadata.schema_init_case')
+        failure=case['failure']
+        need((case['initializationPassed']is True and failure is None)or
+          (case['initializationPassed']is False and type(failure)is dict and set(failure)=={'primitive','code'} and
+           type(failure['primitive'])is int and 1<=failure['primitive']<=8 and
+           type(failure['code'])is int and 0<=failure['code']<=65535),'metadata.schema_init_failure')
+        for denied in case['denied']:
+            need(type(denied)is dict and set(denied)=={'action','functionCode'} and
+              type(denied['action'])is int and 0<=denied['action']<=100 and
+              type(denied['functionCode'])is int and 0<=denied['functionCode']<=2,'metadata.schema_init_authorizer')
+    need(cases[0]['initializationPassed']is True,'metadata.schema_init_baseline')
+    full=actual.get('fullReaderSchemaInitialization')
+    need(type(full)is list and [x.get('name')for x in full]==
+      ['long','public_table','generated_function','expression_index'],'metadata.schema_init_full_roster')
+    for case in full:
+        need(type(case)is dict and set(case)=={'name','status','failure','childClosedAndReaped','deadlineReached'} and
+          case['status']in('COMPLETED','REFUSED') and case['childClosedAndReaped']is True and case['deadlineReached']is False,
+          'metadata.schema_init_full_case')
+        failure=case['failure']
+        if case['status']=='COMPLETED':
+            need(failure is None,'metadata.schema_init_full_positive');continue
+        need(type(failure)is dict and set(failure)=={'ordinal','pathSha256','stage','code','sqliteVersion'} and
+          failure['ordinal']==0 and type(failure['pathSha256'])is str and
+          re.fullmatch('[a-f0-9]{64}',failure['pathSha256'])is not None and
+          type(failure['stage'])is int and 3<=failure['stage']<=8 and
+          type(failure['code'])is int and 0<=failure['code']<=65535 and
+          (failure['sqliteVersion']is None or type(failure['sqliteVersion'])is str and
+           re.fullmatch(r'3\.[0-9]{1,3}\.[0-9]{1,3}',failure['sqliteVersion'])is not None),
+          'metadata.schema_init_full_failure')
+
+
 def main():
     source=Path(__file__).resolve().parents[1]
     # This is the existing admission owner, not a substitute caller-supplied
@@ -164,9 +216,13 @@ def main():
           and type(actual.get('syntheticDatabases'))is int and actual['syntheticDatabases']==11
           and all(actual.get(k)is True for k in ('existingWalAndShmReadonlyPositive','zeroWalWithExistingShmReadonlyPositive',
             'syntheticDatabaseFilesUnchanged','sourcePortSuitesExecuted','partialWalRefused',
-            'actualAuthorizerRefusals','actualChildKillAndReapVirtualDeadline','allOwnedMountsAndPathsRemoved'))
+            'actualAuthorizerRefusals','actualChildKillAndReapVirtualDeadline','allOwnedMountsAndPathsRemoved',
+            'schemaInitFullReaderOptionsExercised','schemaInitPublicSourceFixtureExercised',
+            'schemaInitPrimitiveAndAuthorizerDiagnosticsComplete','schemaInitSyntheticFilesUnchanged',
+            'schemaInitNoLimitOrAuthorizerRelaxation','schemaInitFullReaderPersistedCasesExercised'))
           and actual.get('retainedDataAccessed')is False and actual.get('privateAdmissionEstablished')is False,
           'metadata.proof_assertions')
+        require_schema_initialization(actual,rows)
         result.update(status='passed',proof=actual)
     except BaseException as error:
         text=str(error)

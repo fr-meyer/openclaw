@@ -9,7 +9,8 @@ import argparse, hashlib, json, os, pathlib, shutil, stat, subprocess, sys, temp
 NODE_SHA='e32e2d16081cf644f88392934288086e7662529d0d43277c34f7aad2207cfafb'
 NODE_BYTES=126879696
 LEAVES=('metadata_reader.cjs','metadata_supervisor.cjs','test_metadata_reader.cjs',
-        'test_metadata_supervisor.cjs','linux_fixture.cjs','test_supervisor_actual_child.cjs','linux_proof.py')
+        'test_metadata_supervisor.cjs','linux_fixture.cjs','test_supervisor_actual_child.cjs','linux_proof.py',
+        'schema_init_probe.cjs','source_table.sql')
 
 def need(value):
     if value is not True: raise RuntimeError('synthetic_metadata_proof_refused')
@@ -115,6 +116,25 @@ def main():
                      [str(node),'--no-warnings',str(here/'linux_fixture.cjs'),'deny'],
                      [str(node),'--no-warnings',str(here/'test_supervisor_actual_child.cjs')]):
             r=run(argv);need(r.returncode==0 and r.stderr==b'')
+        # Reopen valid persisted synthetic/public-source schemas using the
+        # full reader's exact constructor limits and authorizer, not CI78's
+        # earlier tiny persisted-schema inputs. No retained database is accessed.
+        init_root=work/'schema-init'
+        r=run([str(node),'--no-warnings',str(here/'schema_init_probe.cjs'),'build',str(init_root)])
+        need(r.returncode==0 and r.stdout==r.stderr==b'')
+        init_before={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in init_root.iterdir()}
+        r=run([str(node),'--no-warnings',str(here/'schema_init_probe.cjs'),'run',str(init_root)],user=True)
+        need(r.returncode==0 and r.stderr==b'');initialization=json.loads(r.stdout)
+        need(initialization['schema']=='ocv.synthetic-sqlite-schema-init-witness.v1' and
+             initialization['limits']=={'length':262144,'sqlLength':4096,'attach':0} and
+             initialization['readonly'] is True and initialization['extensionsDisabled'] is True and
+             initialization['authorizerUnchanged'] is True and initialization['privateDataAccessed'] is False and
+             initialization['applicationRowsReturned'] is False and
+             initialization['cases'][0]['initializationPassed'] is True and
+             [x['name']for x in initialization['cases']]==['small','long','public_table','generated_function','expression_index'] and
+             all(x['connectionClosed'] is True for x in initialization['cases']) and
+             initialization['exactReadonlyAuthorizerNegativeCases']==7)
+        need(init_before=={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in init_root.iterdir()})
         # Existing-mounted WAL works; removing that required SHM from the
         # profile refuses before any SQLite database can be opened.
         partial=json.loads(json.dumps(profile));partial['rows'][0]['files']['shm']={'state':'absent','identity':None}
@@ -123,11 +143,49 @@ def main():
         refused=run([str(node),'--no-warnings','/run/metadata-supervisor.cjs',badpin],user=True)
         refusal=json.loads(refused.stdout)
         need(refused.returncode==1 and refusal['status']=='REFUSED'and refusal['failure']['code']==103 and refusal['failure']['ordinal']==-1)
+        # The original tiny-schema positive and partial-WAL negative above
+        # remain intact. Now exercise the unchanged full reader on each new
+        # persisted row0 schema, not just a port or an initialization imitation.
+        for suffix in ('-shm','-wal',''):
+            target=metadata/'db-00'/('main.sqlite'+suffix)
+            need(run(['/usr/bin/umount','--',str(target)]).returncode==0);mounts.remove(target)
+            if suffix:target.unlink();owned.remove(target)
+        full_cases=[];main_target=metadata/'db-00/main.sqlite'
+        for name in ('long','public_table','generated_function','expression_index'):
+            if main_target in mounts:
+                need(run(['/usr/bin/umount','--',str(main_target)]).returncode==0);mounts.remove(main_target)
+            bind(init_root/(name+'.sqlite'),main_target)
+            current=json.loads(json.dumps(profile));current['rows'][0]['files']={
+              'main':ident(main_target),**{k:{'state':'absent','identity':None}for k in('wal','shm','journal')}}
+            profile_source.chmod(0o644);profile_source.write_text(json.dumps(current,separators=(',',':')));profile_source.chmod(0o444)
+            current_pin=hashlib.sha256(profile_source.read_bytes()).hexdigest()
+            r=run([str(node),'--no-warnings','/run/metadata-supervisor.cjs',current_pin],user=True)
+            full=json.loads(r.stdout)
+            need(r.stderr==b'' and full['childCloseObserved']is True and full['ownedChildUncertain']is False and
+                 full['streamsEOF']is True and full['streamsClosed']is True and full['childSignal']is None and
+                 full['deadlineReached']is False and full['killSubmitted']is False and full['errorClass']==0)
+            failure=full['failure']
+            if full['status']=='COMPLETED':
+                need(r.returncode==full['childExitCode']==0 and failure is None and
+                     full['value']['status']=='METADATA_CONSISTENT' and len(full['value']['rows'])==11)
+            else:
+                need(full['status']=='REFUSED' and r.returncode==full['childExitCode']==1 and full['value']is None and
+                     type(failure)is dict and failure['ordinal']==0 and
+                     set(failure)=={'ordinal','pathSha256','stage','code','sqliteVersion'} and
+                     type(failure['stage'])is int and 3<=failure['stage']<=8 and
+                     type(failure['code'])is int and 0<=failure['code']<=65535)
+            full_cases.append({'name':name,'status':full['status'],'failure':failure,
+              'childClosedAndReaped':True,'deadlineReached':False})
+        need(init_before=={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in init_root.iterdir()})
         proof={'schema':'ocv.generic-retained-metadata-linux-proof.v1','status':'PASS',
             'nodeSha256':NODE_SHA,'sourceManifestSha256':args.source_manifest_sha256,
             'syntheticDatabases':11,'existingWalAndShmReadonlyPositive':True,'zeroWalWithExistingShmReadonlyPositive':True,
             'syntheticDatabaseFilesUnchanged':True,'sourcePortSuitesExecuted':True,'partialWalRefused':True,
             'actualAuthorizerRefusals':True,'actualChildKillAndReapVirtualDeadline':True,
+            'schemaInitFullReaderOptionsExercised':True,'schemaInitPublicSourceFixtureExercised':True,
+            'schemaInitPrimitiveAndAuthorizerDiagnosticsComplete':True,'schemaInitSyntheticFilesUnchanged':True,
+            'schemaInitNoLimitOrAuthorizerRelaxation':True,'schemaInitialization':initialization,
+            'schemaInitFullReaderPersistedCasesExercised':True,'fullReaderSchemaInitialization':full_cases,
             'retainedDataAccessed':False,'privateAdmissionEstablished':False}
     finally:
         cleanup=[]

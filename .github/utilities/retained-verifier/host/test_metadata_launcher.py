@@ -1,5 +1,6 @@
 """Pure command, archive-authentication and uncertain-closeout regressions."""
 import hashlib
+import copy
 import importlib.util
 import io
 import os
@@ -152,6 +153,34 @@ class MetadataHost(unittest.TestCase):
             with self.subTest(key=key):self.assertFalse(entry.command_settled(changed))
         failed=dict(full,status='outer_exit_failed',returncode=1)
         self.assertFalse(entry.command_passed(failed));self.assertTrue(entry.command_settled(failed))
+
+    def test_closed_schema_init_witness_requires_all_cases_exact_limits_and_terminal_children(self):
+        rows={'metadata/metadata_reader.cjs':{'sha256':'e'*64},'metadata/source_table.sql':{'bytes':4644}}
+        names=['small','long','public_table','generated_function','expression_index']
+        init={'schema':'ocv.synthetic-sqlite-schema-init-witness.v1','nodeVersion':'24.22.1','sqliteVersion':'3.51.0',
+          'limits':{'length':262144,'sqlLength':4096,'attach':0},'readonly':True,'extensionsDisabled':True,
+          'authorizerUnchanged':True,'sourceReaderSha256':'e'*64,'publicSourceCreateBytes':4644,
+          'syntheticLongCreateBytes':5144,'fixedPrimitiveIds':list(range(1,9)),
+          'exactReadonlyAuthorizerNegativeCases':7,'privateDataAccessed':False,'applicationRowsReturned':False,
+          'cases':[{'name':n,'initializationPassed':n=='small','failure':None if n=='small'else{'primitive':6,'code':11},
+            'connectionClosed':True,'authorizerCallbacks':3,'denied':[]}for n in names]}
+        full=[{'name':n,'status':'REFUSED','failure':{'ordinal':0,'pathSha256':'a'*64,'stage':4,'code':11,'sqliteVersion':None},
+          'childClosedAndReaped':True,'deadlineReached':False}for n in names[1:]]
+        good={'schemaInitialization':init,'fullReaderSchemaInitialization':full}
+        entry.require_schema_initialization(good,rows)
+        positive=copy.deepcopy(good);positive['fullReaderSchemaInitialization'][0].update(status='COMPLETED',failure=None)
+        entry.require_schema_initialization(positive,rows)
+        for defect in('limit','baseline','missing','source','private','uncertain','deadline','boolcode'):
+            bad=copy.deepcopy(good)
+            if defect=='limit':bad['schemaInitialization']['limits']['sqlLength']=8192
+            elif defect=='baseline':bad['schemaInitialization']['cases'][0]['initializationPassed']=False
+            elif defect=='missing':bad['fullReaderSchemaInitialization'].pop()
+            elif defect=='source':bad['schemaInitialization']['sourceReaderSha256']='0'*64
+            elif defect=='private':bad['schemaInitialization']['privateDataAccessed']=True
+            elif defect=='uncertain':bad['fullReaderSchemaInitialization'][0]['childClosedAndReaped']=False
+            elif defect=='deadline':bad['fullReaderSchemaInitialization'][0]['deadlineReached']=True
+            else:bad['fullReaderSchemaInitialization'][0]['failure']['code']=True
+            with self.subTest(defect=defect),self.assertRaises(RuntimeError):entry.require_schema_initialization(bad,rows)
 
 
 if __name__=='__main__':unittest.main()
