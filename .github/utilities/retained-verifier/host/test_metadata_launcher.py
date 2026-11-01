@@ -159,7 +159,7 @@ class MetadataHost(unittest.TestCase):
         names=['small','long','public_table','generated_function','expression_index']
         init={'schema':'ocv.synthetic-sqlite-schema-init-witness.v1','nodeVersion':'24.22.1','sqliteVersion':'3.51.0',
           'limits':{'length':262144,'sqlLength':4096,'attach':0},'readonly':True,'extensionsDisabled':True,
-          'authorizerUnchanged':True,'sourceReaderSha256':'e'*64,'publicSourceCreateBytes':4644,
+          'authorizerUnchanged':True,'sourceCopiesReadableByReader':True,'sourceReaderSha256':'e'*64,'publicSourceCreateBytes':4644,
           'syntheticLongCreateBytes':5144,'fixedPrimitiveIds':list(range(1,10)),
           'exactReadonlyAuthorizerNegativeCases':7,'negativeCheckFailureCode':None,'privateDataAccessed':False,'applicationRowsReturned':False,
           'cases':[{'name':n,'initializationPassed':n=='small','failure':None if n=='small'else{'primitive':6,'code':11,'kind':1},
@@ -172,7 +172,7 @@ class MetadataHost(unittest.TestCase):
         entry.require_schema_initialization(positive,rows)
         unopened=copy.deepcopy(good);unopened['schemaInitialization']['cases'][1].update(connectionReturned=False,connectionClosed=False,failure={'primitive':1,'code':11,'kind':1})
         entry.require_schema_initialization(unopened,rows)
-        for defect in('limit','baseline','missing','source','private','uncertain','deadline','boolcode','unclosed','closefailure','unopenedpass','missingversion'):
+        for defect in('limit','baseline','missing','source','private','uncertain','deadline','boolcode','unclosed','closefailure','unopenedpass','missingversion','unreadable'):
             bad=copy.deepcopy(good)
             if defect=='limit':bad['schemaInitialization']['limits']['sqlLength']=8192
             elif defect=='baseline':bad['schemaInitialization']['cases'][0]['initializationPassed']=False
@@ -185,7 +185,8 @@ class MetadataHost(unittest.TestCase):
             elif defect=='unclosed':bad['schemaInitialization']['cases'][1]['connectionClosed']=False
             elif defect=='closefailure':bad['schemaInitialization']['cases'][1]['databaseCloseFailureCode']=5
             elif defect=='unopenedpass':bad['schemaInitialization']['cases'][0].update(connectionReturned=False,connectionClosed=False)
-            else:bad['schemaInitialization']['cases'][0]['versionValidated']=False
+            elif defect=='missingversion':bad['schemaInitialization']['cases'][0]['versionValidated']=False
+            else:bad['schemaInitialization']['sourceCopiesReadableByReader']=False
             with self.subTest(defect=defect),self.assertRaises(RuntimeError):entry.require_schema_initialization(bad,rows)
 
     def test_synthetic_nested_child_failure_retains_bounded_diagnostics_without_becoming_pass(self):
@@ -210,6 +211,28 @@ class MetadataHost(unittest.TestCase):
         capture=io.StringIO()
         with patch.object(proof.subprocess,'run',return_value=types.SimpleNamespace(returncode=0,stdout=b'x'*16385,stderr=b'')),patch('sys.stdout',capture),self.assertRaises(RuntimeError):proof.run(['synthetic'],diagnostic='schema-probe')
         self.assertEqual(json.loads(capture.getvalue())['stdout']['bytes'],16385)
+
+    def test_exact_four_source_copies_use_owned_readable_work_and_reject_substitution(self):
+        proof=load('schema_copy_source_test',SOURCE/'metadata/linux_proof.py')
+        rows=[{'path':n,'bytes':(SOURCE/'metadata'/n).stat().st_size,
+          'sha256':hashlib.sha256((SOURCE/'metadata'/n).read_bytes()).hexdigest()}for n in proof.SCHEMA_SOURCE_LEAVES]
+        with tempfile.TemporaryDirectory()as raw:
+            root=Path(raw).resolve();work=root/'work';work.mkdir(mode=0o755)
+            copied=proof.copy_schema_sources(SOURCE/'metadata',work,{'files':rows})
+            self.assertEqual(copied,work/'schema-programs');self.assertEqual(stat.S_IMODE(copied.stat().st_mode),0o755)
+            self.assertEqual(sorted(x.name for x in copied.iterdir()),sorted(proof.SCHEMA_SOURCE_LEAVES))
+            for row in rows:
+                target=copied/row['path'];self.assertEqual(stat.S_IMODE(target.stat().st_mode),0o444)
+                self.assertEqual(target.read_bytes(),(SOURCE/'metadata'/row['path']).read_bytes());self.assertEqual(target.stat().st_nlink,1)
+            with self.assertRaises(FileExistsError):proof.copy_schema_sources(SOURCE/'metadata',work,{'files':rows})
+            wrong=copy.deepcopy(rows);wrong[0]['sha256']='0'*64
+            another=root/'another';another.mkdir(mode=0o755)
+            with self.assertRaises(RuntimeError):proof.copy_schema_sources(SOURCE/'metadata',another,{'files':wrong})
+            self.assertFalse((another/'schema-programs'/rows[0]['path']).exists())
+            fake=root/'fake';fake.mkdir();third=root/'third';third.mkdir(mode=0o755)
+            for row in rows:(fake/row['path']).symlink_to(SOURCE/'metadata'/row['path'])
+            with self.assertRaises(RuntimeError):proof.copy_schema_sources(fake,third,{'files':rows})
+            self.assertFalse((third/'schema-programs'/rows[0]['path']).exists())
 
 
 if __name__=='__main__':unittest.main()

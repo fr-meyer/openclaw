@@ -65,13 +65,20 @@ function deny(file){
 }
 function run(root){
  assert.equal(process.getuid(),1000);assert.equal(process.getgid(),1000);
+ // The root-verified fixed closure is copied beneath owned /tmp work0755.
+ // Prove reader1000 can traverse/read it, without changing checkout ancestors.
+ for(const name of ['schema_init_probe.cjs','metadata_reader.cjs','linux_fixture.cjs','source_table.sql']){
+  const file=path.join(__dirname,name),st=fs.lstatSync(file);assert.ok(st.isFile()&&!st.isSymbolicLink());
+  assert.equal(st.uid,0);assert.equal(st.gid,0);assert.equal(st.nlink,1);assert.equal(st.mode&0o777,0o444);
+  fs.accessSync(file,fs.constants.R_OK);assert.equal(fs.realpathSync(file),file);assert.ok(fs.readFileSync(file).length>0);
+ }
  const versionState={value:null};
  const rows=CASES.map(([name])=>probe(path.join(root,name+'.sqlite'),name,versionState));
  let denials=0,negativeCheckFailureCode=null;
  try{denials=deny(path.join(root,'small.sqlite'));}catch(error){negativeCheckFailureCode=number(error);}
  const result={schema:'ocv.synthetic-sqlite-schema-init-witness.v1',nodeVersion:process.versions.node,
   sqliteVersion:process.versions.sqlite,limits:LIMITS,readonly:true,extensionsDisabled:true,
-  authorizerUnchanged:true,sourceReaderSha256:require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(__dirname,'metadata_reader.cjs'))).digest('hex'),
+  authorizerUnchanged:true,sourceCopiesReadableByReader:true,sourceReaderSha256:require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(__dirname,'metadata_reader.cjs'))).digest('hex'),
   publicSourceCreateBytes:fs.statSync(path.join(__dirname,'source_table.sql')).size,
   syntheticLongCreateBytes:Buffer.byteLength(LONG),fixedPrimitiveIds:[1,2,3,4,5,6,7,8,9],cases:rows,
   exactReadonlyAuthorizerNegativeCases:denials,negativeCheckFailureCode,privateDataAccessed:false,applicationRowsReturned:false};

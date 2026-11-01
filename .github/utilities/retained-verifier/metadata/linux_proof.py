@@ -50,6 +50,36 @@ def run(argv, *, user=False, seconds=70, diagnostic=None):
     need(len(result.stdout)<=16384 and len(result.stderr)<=4096)
     return result
 
+SCHEMA_SOURCE_LEAVES=('schema_init_probe.cjs','metadata_reader.cjs','linux_fixture.cjs','source_table.sql')
+
+def copy_schema_sources(here,work,manifest):
+    # Only the fixed four-leaf local require/read closure, never checkout parents.
+    need(work.resolve()==work and work.is_dir() and not work.is_symlink())
+    directory=work/'schema-programs';directory.mkdir(mode=0o755);directory.chmod(0o755)
+    expected={r['path']:r for r in manifest['files']}
+    for name in SCHEMA_SOURCE_LEAVES:
+        source=here/name;before=source.lstat();row=expected[name]
+        fields=lambda v:(v.st_dev,v.st_ino,v.st_uid,v.st_mode,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns)
+        need(source.resolve()==source and stat.S_ISREG(before.st_mode) and before.st_nlink==1 and
+             0<before.st_size==row['bytes']<=65536)
+        fd=os.open(source,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        with os.fdopen(fd,'rb')as stream:
+            need(fields(before)==fields(os.fstat(stream.fileno())))
+            raw=stream.read(row['bytes']+1)
+            need(fields(before)==fields(os.fstat(stream.fileno()))==fields(source.lstat()))
+        need(len(raw)==row['bytes'] and hashlib.sha256(raw).hexdigest()==row['sha256'])
+        target=directory/name;fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o444)
+        with os.fdopen(fd,'wb')as stream:
+            need(stream.write(raw)==len(raw));stream.flush();os.fchmod(stream.fileno(),0o444);os.fsync(stream.fileno())
+        fact=target.lstat()
+        need(target.resolve()==target and stat.S_ISREG(fact.st_mode) and fact.st_nlink==1 and
+             fact.st_uid==os.geteuid() and stat.S_IMODE(fact.st_mode)==0o444 and
+             fact.st_size==row['bytes'] and hashlib.sha256(target.read_bytes()).hexdigest()==row['sha256'])
+    need({p.name for p in directory.iterdir()}==set(SCHEMA_SOURCE_LEAVES) and
+         stat.S_IMODE(directory.stat().st_mode)==0o755)
+    return directory
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--node',required=True)
     parser.add_argument('--source-manifest-sha256',required=True);args=parser.parse_args()
@@ -147,16 +177,17 @@ def main():
         # full reader's exact constructor limits and authorizer, not CI78's
         # earlier tiny persisted-schema inputs. No retained database is accessed.
         init_root=work/'schema-init'
-        r=run([str(node),'--no-warnings',str(here/'schema_init_probe.cjs'),'build',str(init_root)],diagnostic='schema-build')
+        schema_source=copy_schema_sources(here,work,manifest)
+        r=run([str(node),'--no-warnings',str(schema_source/'schema_init_probe.cjs'),'build',str(init_root)],diagnostic='schema-build')
         schema_require(r,'schema-build',empty_stdout=True)
         init_before={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in init_root.iterdir()}
-        r=run([str(node),'--no-warnings',str(here/'schema_init_probe.cjs'),'run',str(init_root)],user=True,diagnostic='schema-probe')
+        r=run([str(node),'--no-warnings',str(schema_source/'schema_init_probe.cjs'),'run',str(init_root)],user=True,diagnostic='schema-probe')
         try:
             schema_require(r,'schema-probe');initialization=json.loads(r.stdout)
             need(initialization['schema']=='ocv.synthetic-sqlite-schema-init-witness.v1' and
                  initialization['limits']=={'length':262144,'sqlLength':4096,'attach':0} and
                  initialization['readonly'] is True and initialization['extensionsDisabled'] is True and
-                 initialization['authorizerUnchanged'] is True and initialization['privateDataAccessed'] is False and
+                 initialization['authorizerUnchanged'] is True and initialization['sourceCopiesReadableByReader']is True and initialization['privateDataAccessed'] is False and
                  initialization['applicationRowsReturned'] is False and
                  initialization['cases'][0]['initializationPassed'] is True and
                  [x['name']for x in initialization['cases']]==['small','long','public_table','generated_function','expression_index'] and

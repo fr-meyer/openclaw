@@ -113,7 +113,7 @@ def require_schema_initialization(actual,rows):
       init.get('nodeVersion')=='24.22.1' and type(init.get('sqliteVersion'))is str and
       re.fullmatch(r'3\.[0-9]{1,3}\.[0-9]{1,3}',init['sqliteVersion']) is not None and
       init.get('limits')=={'length':262144,'sqlLength':4096,'attach':0} and
-      all(init.get(k)is True for k in('readonly','extensionsDisabled','authorizerUnchanged')) and
+      all(init.get(k)is True for k in('readonly','extensionsDisabled','authorizerUnchanged','sourceCopiesReadableByReader')) and
       init.get('sourceReaderSha256')==rows['metadata/metadata_reader.cjs']['sha256'] and
       init.get('publicSourceCreateBytes')==rows['metadata/source_table.sql']['bytes']==4644 and
       type(init.get('syntheticLongCreateBytes'))is int and 4096<init['syntheticLongCreateBytes']<=16384 and
