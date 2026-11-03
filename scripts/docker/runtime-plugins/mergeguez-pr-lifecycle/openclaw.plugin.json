@@ -1,0 +1,293 @@
+{
+  "id": "mergeguez-pr-lifecycle",
+  "name": "Mergeguez PR Lifecycle",
+  "description": "Exact-head review and bounded remediation with worker-owned controller state and native subagents.",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "mergeguez_pr_lifecycle"
+    ]
+  },
+  "configContracts": {
+    "secretInputs": {
+      "paths": [
+        {
+          "path": "githubWebhookSecret",
+          "expected": "string",
+          "ownerKind": "route"
+        },
+        {
+          "path": "mergeguezEventSecret",
+          "expected": "string",
+          "ownerKind": "route"
+        }
+      ]
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "$defs": {
+      "secretRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "env",
+              "file",
+              "exec",
+              "store"
+            ]
+          },
+          "provider": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "provider",
+          "id"
+        ]
+      },
+      "secretInput": {
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "$ref": "#/$defs/secretRef"
+          }
+        ]
+      },
+      "repositoryPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "observe",
+              "dogfood",
+              "active"
+            ]
+          },
+          "workspace": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baseBranches": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "autoMergeBaseBranches": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "dev"
+              ]
+            },
+            "maxItems": 1,
+            "uniqueItems": true,
+            "description": "Exact base branches eligible for deterministic automatic merge after a complete zero-finding exact-head review. Only dev is permitted."
+          },
+          "autoMergeMethod": {
+            "type": "string",
+            "enum": [
+              "merge",
+              "squash",
+              "rebase"
+            ],
+            "description": "Merge method used only for an authorized dev automatic merge."
+          },
+          "reviewActor": {
+            "type": "string",
+            "enum": [
+              "mergeguez"
+            ]
+          },
+          "authorActor": {
+            "type": "string",
+            "enum": [
+              "le-commis"
+            ]
+          },
+          "reviewWorkerAgentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "authorWorkerAgentId": {
+            "type": "string",
+            "enum": [
+              "le-commis"
+            ]
+          },
+          "maxCycles": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "Maximum bounded fix passes for one PR lifecycle; the final exact-head re-review still runs."
+          },
+          "maxRetries": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "wallTimeMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 10080
+          },
+          "maxParallelPrs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16,
+            "description": "Max same-repo flows that may hold a running review or remediator. Extra ready PRs stay queued. Default 1."
+          },
+          "allowForks": {
+            "type": "boolean"
+          },
+          "ownerSessionKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fixerModel": {
+            "type": "string",
+            "enum": [
+              "cursor-grok-4.6-high"
+            ],
+            "description": "Pinned primary Cursor fixer selector; Auto and Fast are not permitted."
+          },
+          "fixerFallbackModel": {
+            "type": "string",
+            "enum": [
+              "composer-2.5"
+            ],
+            "description": "Single fallback selector, permitted only after a recorded retryable primary infrastructure failure."
+          },
+          "publisherBrokerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "description": "Non-secret identifier of the separately attested Le Commis publisher broker."
+          },
+          "publisherAttestationRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Non-secret proof reference for the reviewed Le Commis identity, forced-command boundary, installation scope, and guarded publication path."
+          }
+        },
+        "required": [
+          "workspace",
+          "baseBranches",
+          "reviewActor",
+          "authorActor",
+          "reviewWorkerAgentId",
+          "authorWorkerAgentId"
+        ]
+      }
+    },
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "ownerSessionKey": {
+        "type": "string",
+        "minLength": 1
+      },
+      "notificationSessionKey": {
+        "type": "string",
+        "minLength": 1
+      },
+      "githubWebhookPath": {
+        "type": "string",
+        "minLength": 1
+      },
+      "mergeguezEventPath": {
+        "type": "string",
+        "minLength": 1
+      },
+      "githubWebhookSecret": {
+        "$ref": "#/$defs/secretInput"
+      },
+      "mergeguezEventSecret": {
+        "$ref": "#/$defs/secretInput"
+      },
+      "recoveryDelayMinutes": {
+        "type": "integer",
+        "minimum": 5,
+        "maximum": 1440
+      },
+      "maxParallelPrs": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 16,
+        "description": "Default max parallel PRs for repositories that omit maxParallelPrs. Default 1."
+      },
+      "maxParallelPrsGlobal": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 32,
+        "description": "Optional ceiling across all repositories. Omit for no global cap."
+      },
+      "repositories": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/$defs/repositoryPolicy"
+        }
+      },
+      "legacyOwnerSessionKeys": {
+        "type": "array",
+        "maxItems": 32,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "description": "Prior controller session keys retained only for owner-key migration and flow discovery."
+      },
+      "statusAgentIds": {
+        "type": "array",
+        "maxItems": 32,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "description": "Agent ids allowed read-only lifecycle status visibility; admit, continue, and recover remain exact-owner-only."
+      },
+      "expectedRuntimePath": {
+        "type": "string",
+        "pattern": "^/",
+        "description": "Exact durable runtime.mjs load path attested at plugin startup."
+      },
+      "expectedRuntimeSha256": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$",
+        "description": "Expected SHA-256 of runtime.mjs; an enabled controller stays inert on absence or mismatch."
+      }
+    },
+    "required": [
+      "ownerSessionKey",
+      "repositories"
+    ]
+  }
+}

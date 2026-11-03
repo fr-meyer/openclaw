@@ -15,7 +15,7 @@ import { migrateMemoryIndexStorage } from "./memory-schema-storage-migration.js"
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
-function legacyDatabase(): DatabaseSync {
+function legacyDatabase(embeddingType: "TEXT" | "ANY" = "TEXT"): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   onTestFinished(() => db.close());
   db.exec(`
@@ -28,7 +28,7 @@ function legacyDatabase(): DatabaseSync {
     CREATE TABLE memory_index_chunks (
       id TEXT PRIMARY KEY, path TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'memory',
       start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, hash TEXT NOT NULL,
-      model TEXT NOT NULL, text TEXT NOT NULL, embedding TEXT NOT NULL, updated_at INTEGER NOT NULL
+      model TEXT NOT NULL, text TEXT NOT NULL, embedding ${embeddingType} NOT NULL, updated_at INTEGER NOT NULL
     ) STRICT;
     CREATE TABLE memory_index_chunk_provenance (
       chunk_id TEXT PRIMARY KEY REFERENCES memory_index_chunks(id) ON DELETE CASCADE,
@@ -37,7 +37,7 @@ function legacyDatabase(): DatabaseSync {
     ) STRICT;
     CREATE TABLE memory_embedding_cache (
       provider TEXT NOT NULL, model TEXT NOT NULL, provider_key TEXT NOT NULL,
-      hash TEXT NOT NULL, embedding TEXT NOT NULL, dims INTEGER, updated_at INTEGER NOT NULL,
+      hash TEXT NOT NULL, embedding ${embeddingType} NOT NULL, dims INTEGER, updated_at INTEGER NOT NULL,
       PRIMARY KEY (provider, model, provider_key, hash)
     ) STRICT;
     CREATE VIRTUAL TABLE memory_index_chunks_fts USING fts5(
@@ -53,6 +53,11 @@ function legacyDatabase(): DatabaseSync {
     INSERT INTO memory_index_chunks_fts(rowid, text, id, path, source, model, start_line, end_line)
       VALUES(99, 'saffronquasar', 'logical-id', 'memory/a.md', 'memory', 'model', 1, 2);
   `);
+  if (embeddingType === "ANY") {
+    db.exec(
+      "CREATE INDEX idx_memory_embedding_cache_model_hash ON memory_embedding_cache(model, hash)",
+    );
+  }
   return db;
 }
 
@@ -103,6 +108,53 @@ function countStorageCatalogReads(db: DatabaseSync) {
 }
 
 describe("memory storage migration", () => {
+  it("converts the deployed STRICT ANY JSON shape and retains its known cache index", () => {
+    const db = legacyDatabase("ANY");
+    migrateMemoryIndexStorage(db);
+    expect(
+      decodeMemoryEmbedding(
+        db.prepare("SELECT embedding FROM memory_index_chunks").get()!.embedding as Uint8Array,
+      ),
+    ).toEqual([1.0000000000000002, 0.1]);
+    expect(
+      decodeMemoryEmbedding(
+        db.prepare("SELECT embedding FROM memory_embedding_cache").get()!.embedding as Uint8Array,
+      ),
+    ).toEqual([1.0000000000000002, 0.1]);
+    expect(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE name = 'idx_memory_embedding_cache_model_hash'",
+        )
+        .get(),
+    ).toEqual({ name: "idx_memory_embedding_cache_model_hash" });
+    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("flags non-JSON STRICT ANY vectors for regeneration without interpreting unknown bytes", () => {
+    const db = legacyDatabase("ANY");
+    db.prepare("UPDATE memory_index_chunks SET embedding = ?").run(Uint8Array.of(1, 2, 3));
+    db.prepare("UPDATE memory_embedding_cache SET embedding = ?").run(Uint8Array.of(1, 2, 3));
+    const warnings: string[] = [];
+    migrateMemoryIndexStorage(db, { onWarning: (warning) => warnings.push(warning) });
+    expect(
+      decodeMemoryEmbedding(
+        db.prepare("SELECT embedding FROM memory_index_chunks").get()!.embedding as Uint8Array,
+      ),
+    ).toEqual([]);
+    expect(db.prepare("SELECT hash FROM memory_index_sources").get()).toEqual({ hash: "" });
+    expect(
+      db
+        .prepare("SELECT value FROM memory_index_meta WHERE key = 'memory_vector_rebuild_v1'")
+        .get(),
+    ).toEqual({ value: "1" });
+    expect(db.prepare("SELECT COUNT(*) AS count FROM memory_embedding_cache").get()).toEqual({
+      count: 0,
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/Skipped 1 memory_embedding_cache rows with invalid embeddings/);
+  });
+
   it.each([
     { label: "tracked transaction", tracked: true, transaction: true, reads: 1 },
     { label: "standalone", tracked: true, transaction: false, reads: 2 },
@@ -369,6 +421,35 @@ describe("memory storage migration", () => {
     ).toBeUndefined();
     expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("waits a full interval after a slow authority renewal without changing converted embeddings", () => {
+    const db = legacyDatabase();
+    db.exec(`INSERT INTO memory_embedding_cache
+      (provider, model, provider_key, hash, embedding, dims, updated_at) VALUES
+      ('provider', 'model', 'provider-key', 'second', '[2,3]', 2, 122),
+      ('provider', 'model', 'provider-key', 'third', '[4,5]', 2, 123)`);
+    let clock = 0;
+    const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const renewAuthority = vi.fn(() => {
+      clock += 1_100;
+    });
+    try {
+      migrateMemoryIndexStorage(db, { renewAuthority });
+      expect(renewAuthority).toHaveBeenCalledTimes(1);
+      expect(
+        db.prepare("SELECT hash, embedding FROM memory_embedding_cache ORDER BY hash").all(),
+      ).toEqual([
+        { hash: "h", embedding: encodeMemoryEmbedding([1 + Number.EPSILON, 0.1]) },
+        { hash: "second", embedding: encodeMemoryEmbedding([2, 3]) },
+        { hash: "third", embedding: encodeMemoryEmbedding([4, 5]) },
+      ]);
+      expect(db.prepare("SELECT embedding FROM memory_index_chunks").get()).toEqual({
+        embedding: encodeMemoryEmbedding([1 + Number.EPSILON, 0.1]),
+      });
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("retains malformed-vector text and provenance while recording regeneration debt", () => {

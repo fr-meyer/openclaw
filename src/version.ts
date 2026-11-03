@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { resolveLoadedCommitHash } from "./infra/git-commit.js";
+import { resolveLoadedCommitHash, resolveLoadedFullCommitHash } from "./infra/git-commit.js";
 
 const CORE_PACKAGE_NAME = "openclaw";
 
@@ -160,6 +160,7 @@ export function resolveRuntimeServiceVersion(
 // checkout update cannot change the identity reported by the running service.
 const RUNTIME_SERVICE_BUILD_ID = readBuildIdFromBuildInfoForModuleUrl(import.meta.url);
 const RUNTIME_SERVICE_COMMIT = resolveLoadedCommitHash({ moduleUrl: import.meta.url });
+const RUNTIME_SERVICE_FULL_COMMIT = resolveLoadedFullCommitHash({ moduleUrl: import.meta.url });
 
 export function resolveRuntimeServiceBuildId(): string | null {
   return RUNTIME_SERVICE_BUILD_ID;
@@ -167,6 +168,11 @@ export function resolveRuntimeServiceBuildId(): string | null {
 
 export function resolveRuntimeServiceCommit(): string | null {
   return RUNTIME_SERVICE_COMMIT;
+}
+
+/** Full loaded-artifact source identity for exact provenance checks. */
+export function resolveRuntimeServiceFullCommit(): string | null {
+  return RUNTIME_SERVICE_FULL_COMMIT;
 }
 
 export function resolveCompatibilityHostVersion(

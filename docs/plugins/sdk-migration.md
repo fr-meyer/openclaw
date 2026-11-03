@@ -304,7 +304,8 @@ The anchors from the single-page version still resolve here.
 
 <a id="runtime-tasks-flow" />
 
-For the removed Tasks and TaskFlow surfaces, see [Tasks and TaskFlow API removal](/plugins/sdk-migration/removed-surfaces#tasks-and-taskflow-apis-removed).
+For the removed general Tasks and TaskFlow surfaces and the narrow managed-flow
+controller compatibility capability, see [Tasks and TaskFlow API removal](/plugins/sdk-migration/removed-surfaces#tasks-and-taskflow-apis-removed).
 
 The `agent-runtime` snapshot publisher now provides
 `replaceRuntimeAuthProfileStoreSnapshotsAsync`. Await it when publishing a default

@@ -5272,7 +5272,7 @@ process.exit(73);
   });
 
   it.each([
-    ["Dockerfile", " AS dependency-inputs\n"],
+    ["Dockerfile", " AS dependency-acquisition\n"],
     [CLEANUP_SMOKE_DOCKERFILE_PATH, "WORKDIR /repo\n"],
   ])("runs root lifecycles from the dependency inputs copied by %s", (file, stageMarker) => {
     const dockerfile = readFileSync(file, "utf8");

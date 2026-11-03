@@ -5,10 +5,11 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
-const coreEntry = require.resolve("@a2ui/web_core");
+const coreEntry = require.resolve("@a2ui/web_core/v0_9");
 const coreRequire = createRequire(coreEntry);
-const zodEntry = coreRequire.resolve("zod");
-const esm = await import(pathToFileURL(resolve(dirname(zodEntry), "index.js")).href);
+const zodPackage = coreRequire.resolve("zod/package.json");
+assert.equal(coreRequire("zod/package.json").version, "4.6.6");
+const esm = await import(pathToFileURL(resolve(dirname(zodPackage), "index.js")).href);
 const cjs = coreRequire("zod");
 
 for (const [format, { z }] of [
@@ -86,34 +87,42 @@ for (const [format, { z }] of [
   }
 }
 
-test("A2UI public Catalog argument schema uses bounded parser without migration", async () => {
+test("A2UI 0.12 public v0_9 Catalog argument schema uses the selected native bounded parser", async () => {
   const { Catalog } = await import("@a2ui/web_core/v0_9");
-  const catalog = Catalog.fromSchema({
-    id: "urn:openclaw:bounds-test",
-    components: {},
-    functions: {
-      bounded: {
-        parameters: {
-          type: "object",
-          properties: { values: { type: "array", maxItems: 1, items: { type: "string" } } },
-          required: ["values"],
+  const catalog = Catalog.fromSchema(
+    {
+      catalogId: "urn:openclaw:bounds-test",
+      protocolVersion: "0.9",
+      components: {},
+      functions: {
+        bounded: {
+          parameters: {
+            type: "object",
+            properties: { values: { type: "array", maxItems: 1, items: { type: "string" } } },
+            required: ["values"],
+          },
+          returnType: "string",
         },
-        returnType: "string",
       },
     },
-  });
+    "0.9",
+  );
   const fn = catalog.functions.get("bounded");
   assert.ok(fn);
   const field = fn.schema.shape.values;
   // The schema is created by the shipped A2UI loader, not a replacement schema.
-  assert.equal(Reflect.get(field, "_def").maxLength.value, 1);
+  assert.equal(esm.toJSONSchema(field).maxItems, 1);
   let visited = 0;
-  const original = Reflect.get(field.element, "_parse");
-  Reflect.set(field.element, "_parse", function (input) {
-    visited++;
-    return original.call(this, input);
-  });
-  const invalid = fn.schema.safeParse({ values: ["a", "b"] });
+  const oversized = Array(2);
+  for (let index = 0; index < oversized.length; index++) {
+    Object.defineProperty(oversized, String(index), {
+      get() {
+        visited++;
+        return "a";
+      },
+    });
+  }
+  const invalid = fn.schema.safeParse({ values: oversized });
   assert.equal(invalid.success, false);
   assert.equal(visited, 0);
   assert.equal(invalid.error.issues[0].code, "too_big");

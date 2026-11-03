@@ -149,6 +149,9 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
         throw new WorkboardClaimRefusedError(`card already claimed by ${activeClaim.ownerId}.`);
       }
       const metadata = clearDiagnostics(guarded.metadata, ["stranded_ready"]);
+      const previousLaunchAt = guarded.metadata?.automation?.launch?.preparedAt;
+      // A replacement must be newer than the prior launch even in one clock tick.
+      const claimedAt = previousLaunchAt === undefined ? now : Math.max(now, previousLaunchAt + 1);
       const card = await this.updateCard(
         guarded,
         {
@@ -161,7 +164,7 @@ export class WorkboardWorkflowStore extends WorkboardPromoteStore {
             : {}),
           metadata: {
             ...metadata,
-            claim: { ownerId, token, claimedAt: now, lastHeartbeatAt: now, expiresAt },
+            claim: { ownerId, token, claimedAt, lastHeartbeatAt: now, expiresAt },
           },
         },
         {

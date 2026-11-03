@@ -121,6 +121,7 @@ export async function prepareGatewaySubagentRun(params: {
         task: params.request.message.trim(),
         requester: params.client?.internal?.pluginSubagentRequester,
         pluginId: normalizeOptionalString(params.client?.internal?.pluginRuntimeOwnerId),
+        managedFlowLaunch: params.client?.internal?.managedFlowLaunch,
         assertCurrent: params.assertResumeAdmissionCurrent,
         gatewayContextResolver: params.context.resolveGatewayContext,
       });

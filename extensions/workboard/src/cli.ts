@@ -29,17 +29,23 @@ type GatewayOptions = JsonOptions & {
 };
 
 type DispatchOptions = GatewayOptions & {
+  card?: string;
+  intentRunId?: string;
   maxStarts?: number;
 };
+
+function invalidCliArgument(message: string): Error {
+  return Object.assign(new Error(message), {
+    name: "InvalidArgumentError",
+    code: "commander.invalidArgument",
+    exitCode: 1,
+  });
+}
 
 function parseMaxStarts(value: string): number {
   const parsed = parseStrictPositiveInteger(value);
   if (parsed === undefined) {
-    throw Object.assign(new Error("--max-starts must be a positive integer."), {
-      name: "InvalidArgumentError",
-      code: "commander.invalidArgument",
-      exitCode: 1,
-    });
+    throw invalidCliArgument("--max-starts must be a positive integer.");
   }
   return parsed;
 }
@@ -240,6 +246,8 @@ export function registerWorkboardCli(params: {
       .command("dispatch")
       .description("Promote ready cards and start worker runs through the Gateway")
       .option("--board <id>", "Dispatch a single board")
+      .option("--card <id>", "Dispatch one exact card id without scanning other queued cards")
+      .option("--intent-run-id <id>", "Bind an exact-card launch to a dispatch intent receipt")
       .option(
         "--max-starts <count>",
         "Maximum new worker runs to start in this pass (default 3)",
@@ -248,18 +256,41 @@ export function registerWorkboardCli(params: {
       .option("--admin", "Request full-host workspace access", false)
       .option("--json", "Print JSON", false),
   ).action(async (options: DispatchOptions) => {
+    const cardId = options.card?.trim();
+    if (options.card !== undefined && !cardId) {
+      throw invalidCliArgument("--card must be a non-empty string.");
+    }
+    if (options.intentRunId !== undefined && !cardId) {
+      throw invalidCliArgument("--intent-run-id requires --card.");
+    }
+    if (
+      options.intentRunId !== undefined &&
+      (options.intentRunId.length !== 43 || !/^wb-[0-9a-f]{40}$/.test(options.intentRunId))
+    ) {
+      throw invalidCliArgument(
+        "--intent-run-id must be a wb-<40 lowercase hex> dispatch intent id.",
+      );
+    }
+    if (cardId && options.maxStarts !== undefined && options.maxStarts !== 1) {
+      throw invalidCliArgument("--max-starts must be 1 when --card is provided.");
+    }
     const method =
-      options.maxStarts === undefined
+      options.maxStarts === undefined && !cardId
         ? "workboard.cards.dispatch"
         : "workboard.cards.dispatchWithOptions";
     const input = {
       boardId: options.board,
+      ...(cardId ? { cardId } : {}),
+      ...(options.intentRunId ? { intentRunId: options.intentRunId } : {}),
       ...(options.maxStarts !== undefined ? { maxStarts: options.maxStarts } : {}),
     };
     const scopes: NonNullable<Parameters<typeof callGatewayFromCli>[3]>["scopes"] = options.admin
       ? ["operator.admin", "operator.write", "operator.read"]
       : ["operator.write", "operator.read"];
-    const result = await (!options.token?.trim() &&
+    // An exact-card request needs the Gateway launch receipt; offline promotion
+    // cannot substitute for a failed or unavailable launch.
+    const result = await (!cardId &&
+    !options.token?.trim() &&
     !options.password?.trim() &&
     (await isImplicitLocalGatewayTargetFromCli(options))
       ? local(

@@ -19,6 +19,7 @@ import type * as PortalSchema from "./schema/portals.js";
 import type { PresenceActivityParams, PresenceQueryParams } from "./schema/presence.js";
 import type * as GitHubSchema from "./schema/session-github-publication.js";
 import type { StorageLocationsListParams, StorageLocationsProbeParams } from "./schema/storage.js";
+import type { GatewayWorkerNamespaceGetParams } from "./schema/system-info.js";
 import type {
   ThemesListParams,
   ThemesGetParams,
@@ -31,6 +32,7 @@ import type * as UsersSchema from "./schema/users.js";
 
 /** Schema-derived payload ownership for statically validated core Gateway methods. */
 export type GatewayCoreRequestParams = {
+  "gateway.workerNamespace.get": GatewayWorkerNamespaceGetParams;
   "catalog.browse": CatalogBrowseParams;
   "catalog.searchKeywords": CatalogSearchKeywordsParams;
   "backup.status": BackupStatusParams;

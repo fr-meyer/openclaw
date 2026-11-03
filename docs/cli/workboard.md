@@ -23,10 +23,10 @@ openclaw workboard list [--board <id>] [--status <status>] [--include-archived] 
 openclaw workboard create <title...> [--notes <text>] [--status <status>] [--priority <priority>] [--agent <id>] [--board <id>] [--labels <items>] [--json]
 openclaw workboard show <id> [--json]
 openclaw workboard move <id> --status <status> [--json]
-openclaw workboard dispatch [--board <id>] [--max-starts <count>] [--admin] [--url <url>] [--token <token>] [--timeout <ms>] [--json]
+openclaw workboard dispatch [--board <id>] [--card <id>] [--intent-run-id <id>] [--max-starts <count>] [--admin] [--url <url>] [--token <token>] [--timeout <ms>] [--json]
 ```
 
-The command uses the same plugin-owned SQLite database as the dashboard and Workboard agent tools. When a local Gateway owns the state directory, commands route through that Gateway before opening the store. With the Gateway stopped, commands acquire exclusive offline ownership and close the store before releasing it. An unavailable, older, or rejecting live Gateway never triggers a local write fallback; fix its connection or stop it through its service owner and retry. Card ids are UUIDs. Commands that accept a card id also accept an unambiguous id prefix. The compact text output shows the first 8 characters.
+The command uses the same plugin-owned SQLite database as the dashboard and Workboard agent tools. When a local Gateway owns the state directory, commands route through that Gateway before opening the store. With the Gateway stopped, commands acquire exclusive offline ownership and close the store before releasing it. An unavailable, older, or rejecting live Gateway never triggers a local write fallback; fix its connection or stop it through its service owner and retry. Card ids are UUIDs. The `show` and `move` commands also accept an unambiguous id prefix; exact-card `dispatch` requires the full id. The compact text output shows the first 8 characters.
 
 Valid `status` values: `triage`, `backlog`, `todo`, `scheduled`, `ready`, `running`, `review`, `blocked`, `done`. Valid `priority` values: `low`, `normal`, `high`, `urgent`.
 
@@ -107,11 +107,16 @@ the Gateway is running and exclusive offline ownership when it is stopped.
 openclaw workboard dispatch
 openclaw workboard dispatch --json
 openclaw workboard dispatch --max-starts 10
+openclaw workboard dispatch --card <full-card-id>
 openclaw workboard dispatch --admin
 openclaw workboard dispatch --url http://127.0.0.1:18789 --token "$OPENCLAW_GATEWAY_TOKEN"
 ```
 
 `dispatch` selects the active Gateway before opening local Workboard state. Implicit local requests use the owner-bound `workboard.cards.dispatch.owner` RPC. That method uses the same subagent runtime as the dashboard dispatch action. Ready cards therefore become task-tracked worker runs with linked session keys. `--max-starts` uses `workboard.cards.dispatchWithOptions.owner` for the implicit local Gateway. Older Gateways or Workboard plugins without owner routing refuse before starting workers; explicit remote targets retain the existing `workboard.cards.dispatch` and `workboard.cards.dispatchWithOptions` contracts. Restart the Gateway after upgrading, before you use the flag. Cards with an assigned agent use agent-scoped subagent session keys. Unassigned cards keep an unscoped subagent key, so the Gateway's configured default agent is preserved.
+
+Pass `--card <full-card-id>` to dispatch only that ready card through `workboard.cards.dispatchWithOptions`. It does not scan or start other queued cards, and an optional `--board` must match the card. The same dependency, owner, claim, and workspace checks still apply. `--max-starts`, when provided with `--card`, must be `1`. Exact-card dispatch requires the Gateway and never falls back to local data-only dispatch.
+
+Automation can additionally pass `--intent-run-id wb-<40 lowercase hex>` with `--card` to bind the launch to its dispatch intent. Workboard derives a stable provisional run id from the card and intent; it does not store the raw intent. This supports retry association while claim-generation checks prevent a delayed completion from clearing a replacement claim.
 
 The dispatch loop:
 

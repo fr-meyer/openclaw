@@ -34,6 +34,12 @@ import {
 import { executeSessionStateCommand } from "../sessions/session-state-events.worker.js";
 import { listWatchedSessionUpstreamLinksInDatabase } from "../sessions/session-upstream-links.kernel.js";
 import { executeSessionUpstreamCommand } from "../sessions/session-upstream-links.worker.js";
+import {
+  executeManagedTaskFlowReadCommand,
+  executeManagedTaskFlowWriteCommand,
+  isManagedTaskFlowReadCommand,
+  isManagedTaskFlowWriteCommand,
+} from "../tasks/managed-task-flow.worker.js";
 import { executeTranscriptRead } from "../transcripts/store-worker-read.js";
 import { TUI_LAST_SESSION_STATE_KEY_PREFIX } from "../tui/tui-last-session.contract.js";
 import { clearRetiredTuiPointers } from "../tui/tui-last-session.kernel.js";
@@ -139,6 +145,9 @@ export function executeSharedStateCommand(
     return write(({ db }) => recordBackupRunInDatabase(db, command.input));
   }
   const database = open();
+  if (isManagedTaskFlowReadCommand(command)) {
+    return executeManagedTaskFlowReadCommand(database, command);
+  }
   if (command.type === "githubPublication.prepareSessionReceiptDeletion") {
     return readSessionReceiptDeletionIdentitiesInDatabase(database, command.input);
   }
@@ -182,6 +191,9 @@ export function executeSharedStateCommand(
     database,
     ...stateOptions(),
   };
+  if (isManagedTaskFlowWriteCommand(command)) {
+    return executeManagedTaskFlowWriteCommand(command, writeOptions);
+  }
   if (command.type === "tui.lastSession.write") {
     return writeConfigMachineState(
       `${TUI_LAST_SESSION_STATE_KEY_PREFIX}${command.input.scopeKey}`,

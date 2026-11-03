@@ -1,5 +1,10 @@
+import { IncomingMessage, ServerResponse, type IncomingHttpHeaders } from "node:http";
+import { Socket } from "node:net";
 import { expect, it } from "vitest";
-import { toForwardableResponseHeaders } from "./response-headers.js";
+import {
+  sanitizeSecretEgressResponseHeaders,
+  toForwardableResponseHeaders,
+} from "./response-headers.js";
 
 const CJK_NAME = "附件_2026-09-21.log";
 const CJK_DISPOSITION =
@@ -35,5 +40,40 @@ it("normalizes disposition variants while preserving opaque response headers", (
       ...headers,
       "content-disposition": expected,
     });
+  }
+});
+
+it("preserves native attachment encoding while omitting malformed upstream headers", () => {
+  const headers = sanitizeSecretEgressResponseHeaders(
+    toForwardableResponseHeaders({
+      "content-length": "1",
+      "content-disposition": `attachment; filename="${received(CJK_NAME)}"`,
+      "x-safe": ["one", "two"],
+      "x-unsafe": ["safe", "unsafe\rvalue"],
+      "bad name": "value",
+    }),
+  );
+
+  expect({ ...headers }).toEqual({
+    "content-length": "1",
+    "content-disposition": CJK_DISPOSITION,
+    "x-safe": ["one", "two"],
+  });
+
+  const prototypeHeader = sanitizeSecretEgressResponseHeaders(
+    toForwardableResponseHeaders(
+      Object.fromEntries([["__proto__", ["safe"]]]) as IncomingHttpHeaders,
+    ),
+  );
+  expect(Object.getPrototypeOf(prototypeHeader)).toBeNull();
+  expect(Object.hasOwn(prototypeHeader, "__proto__")).toBe(true);
+
+  const request = new IncomingMessage(new Socket());
+  const response = new ServerResponse(request);
+  try {
+    expect(() => response.writeHead(200, headers)).not.toThrow();
+  } finally {
+    request.destroy();
+    response.destroy();
   }
 });

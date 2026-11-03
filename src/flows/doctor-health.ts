@@ -1,6 +1,10 @@
 import { collectNestedErrorCandidates } from "@openclaw/normalization-core/error-coercion";
 import { measureGatewayBootstrapStep } from "../cli/startup-trace.js";
 import type { BackupSqliteSnapshotFact } from "../commands/backup-resource-inventory.js";
+import {
+  DOCTOR_BACKUP_REUSE_ENV,
+  parseReviewedDoctorBackupReuse,
+} from "../commands/doctor-migration-backup-reuse.js";
 import type { DoctorDatabasePreflight } from "../commands/doctor-database-preflight.js";
 import type { DoctorOptions } from "../commands/doctor-prompter.js";
 import {
@@ -47,6 +51,12 @@ export async function runDoctorHealthFlow(
   writeAuthority?: UpdateDoctorWriteAuthority,
   databasePreflight?: DoctorDatabasePreflight,
 ) {
+  // Refuse an incompatible build/proof before private SQLite inspection can
+  // allocate a large read-only copy. Native backup identities remain checked
+  // again under Doctor's maintenance owner before migration.
+  if (process.env[DOCTOR_BACKUP_REUSE_ENV] !== undefined) {
+    parseReviewedDoctorBackupReuse(process.env);
+  }
   using custody = await retainUpdateDoctorProcesses(
     writeAuthority?.assertCurrent,
     writeAuthority?.commandAuthority,

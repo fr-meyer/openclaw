@@ -1,0 +1,1471 @@
+{
+  "schema": "openclaw-v106-fork-patch-reconciliation-v1",
+  "method": "Complete exact-tree inventory of every changed path between upstream10.5 and fork10.5. Result blobs bind the source preparation tree; dispositions are source review, never runtime qualification. No retired paths or claimed semantic upstream equivalents without evidence.",
+  "upstream105": "1b58cb9a1b4f4353e1add63c8506db4d890962e8",
+  "fork105": "7f3ac1fbfd3691546c5b1fd247680a3d00851c76",
+  "upstream106": "fe06181dc5ecc01cf8904abbfc26925925efefbc",
+  "qualificationTransferred": false,
+  "summary": {
+    "paths": 142,
+    "upstreamOverlap": 13,
+    "textualConflictsResolved": 2,
+    "dispositions": {
+      "MERGED_SOURCE_REVIEWED": 13,
+      "ADAPTED_RELEASE_BINDING": 4,
+      "CARRIED_EXACT": 124,
+      "ADAPTED_COMPATIBILITY_TESTS": 1
+    },
+    "upstreamedExact": 0,
+    "retired": 0
+  },
+  "carryForwardCommits": [
+    "94f1ee3e18015055ab25d62f71ee090d43c32062",
+    "b97993184352e969a77f53b7d1b01519ac05465e",
+    "93db6739eb850f2a1d422074a8f04d74766af460",
+    "e0e821e26904fa0805f710226df44cfd50866654",
+    "211387d11a79966d97c320978e2b8cd5130bed29",
+    "2e4e00e91dccd4cfcc886419ad8b82c1b46d4d30",
+    "572b94750cbbd46b83b9f03e6f4d90356e97fd7c",
+    "e8796be056dc39a2cf39def8b08a71cd2286ad02",
+    "2743fe2853a90b7f52f298734c9f7ad5e1b4ca59",
+    "cb80407b3d01111996ec6abb803fd00417b535a0",
+    "ff8fba59b4fc6409db627f0199f8b037c2ee4817",
+    "ae85778296da373dfe7d80101931bafac1acc9dd",
+    "99b7f90bc8edf32c3d98e0bf6602d5e7120a8fc7",
+    "9f58864517820b291e482c9e7ace8129d06b44e2",
+    "4bcf8902e1eeb2fa5e84d0c4bf55572382ca61e4",
+    "5b052d44ad170818ee274f9c8fd43b69ebd7a291",
+    "cc69ab4e786706c0f835427ba5fe884528f302ff",
+    "1d5ab20bea4cccce0b80b60a9ba5d5020cf08038",
+    "84d65b446d66cd5db5b9c533bd158e9062968692",
+    "cfc8f12382e9c73d20be7fd5d06d19b325bdac25",
+    "4cf5cb7e256c67a5c98097774cad2d05cd781c01",
+    "7f3ac1fbfd3691546c5b1fd247680a3d00851c76"
+  ],
+  "conflictPaths": [
+    "src/commands/doctor-migration-backup.ts",
+    "src/cli/gateway-cli/register.option-collisions.test.ts"
+  ],
+  "paths": [
+    {
+      "path": "Dockerfile",
+      "upstream105Blob": "79c30caaf1963efe8e6eca18da2386c67b6f0455",
+      "fork105Blob": "989558332138e5d857364f843684c49747217f1b",
+      "upstream106Blob": "4ad85b5d75bb10361ea2b614c1417e64ea612feb",
+      "resultBlob": "9ede1b0d0300c663371fb27a8d80229489151177",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain offline candidate RUNs, pinned Matrix acquisition, native checks, inert publisher and serialized compilation; accept patched Node24.22.1 label."
+    },
+    {
+      "path": "custom-patches/manifest.json",
+      "upstream105Blob": null,
+      "fork105Blob": "753640480c7319625eb5c14d3eba44fc83b30af7",
+      "upstream106Blob": null,
+      "resultBlob": "ccb4facfd85b47913305089d97bd111c728ebbf4",
+      "upstreamChanged": false,
+      "disposition": "ADAPTED_RELEASE_BINDING",
+      "reason": "Bind next-release manifest, image planner and tests/docs to exact10.6 identity; all qualification remains pending."
+    },
+    {
+      "path": "custom-patches/reconciliation-2026.10.5.json",
+      "upstream105Blob": null,
+      "fork105Blob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d",
+      "upstream106Blob": null,
+      "resultBlob": "958e6feab2b4e92dc5d5bda58c84e5be0a65737d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "docs/cli/gateway/query.md",
+      "upstream105Blob": "4facce71043695558704c66f7b0606954352489e",
+      "fork105Blob": "5eee26341a91ae74f64ef3d75fe9a3167f655b99",
+      "upstream106Blob": "4facce71043695558704c66f7b0606954352489e",
+      "resultBlob": "5eee26341a91ae74f64ef3d75fe9a3167f655b99",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "docs/plugins/sdk-migration.md",
+      "upstream105Blob": "06df1775faed742ec504d13d62fd4e7d50f2d7ce",
+      "fork105Blob": "29019b5f0c5c960603087aacf9db4b71b01aedd0",
+      "upstream106Blob": "06df1775faed742ec504d13d62fd4e7d50f2d7ce",
+      "resultBlob": "29019b5f0c5c960603087aacf9db4b71b01aedd0",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "docs/plugins/sdk-migration/removed-surfaces.md",
+      "upstream105Blob": "71e9da5accda24b35859e0f0c7f4bb2671ceb953",
+      "fork105Blob": "b4c7c57477a0a59464ad183950338b954d2ce775",
+      "upstream106Blob": "71e9da5accda24b35859e0f0c7f4bb2671ceb953",
+      "resultBlob": "b4c7c57477a0a59464ad183950338b954d2ce775",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "docs/plugins/sdk-runtime.md",
+      "upstream105Blob": "61ba6b00e9c8250cfd760ffb710628e064826c50",
+      "fork105Blob": "194d538c65fdc69f52aeda8d7afbb9f40cf9bfd1",
+      "upstream106Blob": "61ba6b00e9c8250cfd760ffb710628e064826c50",
+      "resultBlob": "194d538c65fdc69f52aeda8d7afbb9f40cf9bfd1",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "docs/plugins/sdk-runtime/background-work.md",
+      "upstream105Blob": "c62d762588ad1bdd87926919a978cad5932de41d",
+      "fork105Blob": "25946eb07ce82add5d94faca2f5c6c984bae39e3",
+      "upstream106Blob": "c62d762588ad1bdd87926919a978cad5932de41d",
+      "resultBlob": "25946eb07ce82add5d94faca2f5c6c984bae39e3",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "docs/plugins/sdk-runtime/config-and-utilities.md",
+      "upstream105Blob": "33acc2d821a7a16e7fd4a6c931d1659a94a3756c",
+      "fork105Blob": "18559190bb222fcd87f1c3cd38d914e42ff6a0c2",
+      "upstream106Blob": "33acc2d821a7a16e7fd4a6c931d1659a94a3756c",
+      "resultBlob": "18559190bb222fcd87f1c3cd38d914e42ff6a0c2",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "extensions/memory-core/src/dreaming.test.ts",
+      "upstream105Blob": "a09eb12f5d42a462b174fb32a7584394cfbcc9ea",
+      "fork105Blob": "a2469409b3e497d11d807df0a821603acf74053d",
+      "upstream106Blob": "a09eb12f5d42a462b174fb32a7584394cfbcc9ea",
+      "resultBlob": "a2469409b3e497d11d807df0a821603acf74053d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "extensions/memory-core/src/dreaming.ts",
+      "upstream105Blob": "146b09810faa1a529672641714556f174f9abbb9",
+      "fork105Blob": "f08b16f1c48a8ddb597cda1cde01eaef184e4713",
+      "upstream106Blob": "2916c93ef932281c7ae310e79610046681bd7b09",
+      "resultBlob": "34dcc14663d8c1df16569dbe5a5a35a97e88630b",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain phase diagnostics; accept background ownership of historical gateway_start cleanup. Service startup still awaits cron reconciliation."
+    },
+    {
+      "path": "extensions/memory-core/src/memory-search-tool-query.test.ts",
+      "upstream105Blob": "a870eff5ccc9d30b17b60a503af07f55ffebdda0",
+      "fork105Blob": "33a694d5edab4c4d7644931f1ceb0cf56a8f52bb",
+      "upstream106Blob": "a870eff5ccc9d30b17b60a503af07f55ffebdda0",
+      "resultBlob": "33a694d5edab4c4d7644931f1ceb0cf56a8f52bb",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "extensions/memory-core/src/memory-search-tool-query.ts",
+      "upstream105Blob": "5950ca1a463dd2ec5f2f634c942201b743d0dce7",
+      "fork105Blob": "fec2401fc06a263993476f66965a33b08b5ac02d",
+      "upstream106Blob": "5950ca1a463dd2ec5f2f634c942201b743d0dce7",
+      "resultBlob": "fec2401fc06a263993476f66965a33b08b5ac02d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "extensions/memory-core/src/session-search-visibility.test.ts",
+      "upstream105Blob": "1e06f50ceed330341aa3cb77dcf288a9e92f30e2",
+      "fork105Blob": "f53146fe2ee9499241503d982d3f4c565f88b90d",
+      "upstream106Blob": "1e06f50ceed330341aa3cb77dcf288a9e92f30e2",
+      "resultBlob": "f53146fe2ee9499241503d982d3f4c565f88b90d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "extensions/memory-core/src/session-search-visibility.ts",
+      "upstream105Blob": "f0b00513849428971d76e3cdd7b14220e8f8e229",
+      "fork105Blob": "80d4c519be4d5461279d2bbc523d06a0be546a7a",
+      "upstream106Blob": "f0b00513849428971d76e3cdd7b14220e8f8e229",
+      "resultBlob": "80d4c519be4d5461279d2bbc523d06a0be546a7a",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "packages/gateway-protocol/src/core-request-params.ts",
+      "upstream105Blob": "6b81e88afda0459be8b5f6f2e96825fe56179935",
+      "fork105Blob": "a16edc62eec150c0f40ae6d52baad17a3f24a2e8",
+      "upstream106Blob": "6b81e88afda0459be8b5f6f2e96825fe56179935",
+      "resultBlob": "a16edc62eec150c0f40ae6d52baad17a3f24a2e8",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "packages/gateway-protocol/src/public-schema.ts",
+      "upstream105Blob": "4a4794887273b5d1bc838eaf91f94fa1496d9fe6",
+      "fork105Blob": "312d0be7c4a09875f5229a6bf7d6420cd110e2df",
+      "upstream106Blob": "4a4794887273b5d1bc838eaf91f94fa1496d9fe6",
+      "resultBlob": "312d0be7c4a09875f5229a6bf7d6420cd110e2df",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "packages/gateway-protocol/src/schema/system-info.ts",
+      "upstream105Blob": "a0f4a81f35a35dca2f7c2714790f362661bdb776",
+      "fork105Blob": "71976357ed5307a6c00577ff433ebe9de9f03a74",
+      "upstream106Blob": "a0f4a81f35a35dca2f7c2714790f362661bdb776",
+      "resultBlob": "71976357ed5307a6c00577ff433ebe9de9f03a74",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "packages/gateway-protocol/src/validator-registry.ts",
+      "upstream105Blob": "8857f8bcddbc320213b43fad5cc46c052a2af441",
+      "fork105Blob": "48843257decea86647fe3600df3bde81ff0d9c33",
+      "upstream106Blob": "8857f8bcddbc320213b43fad5cc46c052a2af441",
+      "resultBlob": "48843257decea86647fe3600df3bde81ff0d9c33",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/memory-schema-storage-migration.test.ts",
+      "upstream105Blob": "e99697b0e69f28cc95df512d0aa73a6002596321",
+      "fork105Blob": "66604f62406e42dccff0199ad1b649ab539d5a66",
+      "upstream106Blob": "e99697b0e69f28cc95df512d0aa73a6002596321",
+      "resultBlob": "66604f62406e42dccff0199ad1b649ab539d5a66",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/memory-schema-storage-migration.ts",
+      "upstream105Blob": "86e34a64bca00e1ff91bb40e41380a8ef0e30321",
+      "fork105Blob": "dcc06f58c2ddf6e1eabab557843fb7444a069e9a",
+      "upstream106Blob": "86e34a64bca00e1ff91bb40e41380a8ef0e30321",
+      "resultBlob": "dcc06f58c2ddf6e1eabab557843fb7444a069e9a",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
+      "upstream105Blob": null,
+      "fork105Blob": "a2bcc7e60cf37c2f2b82d7e2185fbb0d2fcb7679",
+      "upstream106Blob": null,
+      "resultBlob": "0e2835c8dd04e9d1d5049ca21b98d63f7a0a054f",
+      "upstreamChanged": false,
+      "disposition": "ADAPTED_RELEASE_BINDING",
+      "reason": "Bind next-release manifest, image planner and tests/docs to exact10.6 identity; all qualification remains pending."
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "a8a136ca1d451db238021674a4ec51e2fd998239",
+      "upstream106Blob": null,
+      "resultBlob": "7a4b5f2048e401cefd0cdb0edb45039fb004506c",
+      "upstreamChanged": false,
+      "disposition": "ADAPTED_RELEASE_BINDING",
+      "reason": "Bind next-release manifest, image planner and tests/docs to exact10.6 identity; all qualification remains pending."
+    },
+    {
+      "path": "scripts/docker/package-current-publisher.test.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "6d505402dfa74aa0d442c2c97974bd00c2e82f98",
+      "upstream106Blob": null,
+      "resultBlob": "af661b2424a7b3ad59647d6853a8fec28b752545",
+      "upstreamChanged": false,
+      "disposition": "ADAPTED_RELEASE_BINDING",
+      "reason": "Bind next-release manifest, image planner and tests/docs to exact10.6 identity; all qualification remains pending."
+    },
+    {
+      "path": "scripts/docker/run-with-matrix-crypto-cache.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "bde2de05c94d4c94d8fd97b2ea87b2a82b5eb91c",
+      "upstream106Blob": null,
+      "resultBlob": "bde2de05c94d4c94d8fd97b2ea87b2a82b5eb91c",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/run-with-matrix-crypto-cache.test.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "ec582b58e7801d9749704b9c0d8a97fc8fe60ca5",
+      "upstream106Blob": null,
+      "resultBlob": "ec582b58e7801d9749704b9c0d8a97fc8fe60ca5",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/README.md",
+      "upstream105Blob": null,
+      "fork105Blob": "439be669dd7d338282fbd61799054f5de42b2762",
+      "upstream106Blob": null,
+      "resultBlob": "439be669dd7d338282fbd61799054f5de42b2762",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/index.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "85c442b5855163f07a76ea75941c8169ce589deb",
+      "upstream106Blob": null,
+      "resultBlob": "85c442b5855163f07a76ea75941c8169ce589deb",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/openclaw.plugin.json",
+      "upstream105Blob": null,
+      "fork105Blob": "50fe1d9bb252488417f633510af5c15800b0cf78",
+      "upstream106Blob": null,
+      "resultBlob": "50fe1d9bb252488417f633510af5c15800b0cf78",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/package.json",
+      "upstream105Blob": null,
+      "fork105Blob": "e0ba34f234511cb574f4ac1c16ec4efadcd7c532",
+      "upstream106Blob": null,
+      "resultBlob": "e0ba34f234511cb574f4ac1c16ec4efadcd7c532",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/controller.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "dcbe84772cae3da3e7cd69028260f9fccddd538a",
+      "upstream106Blob": null,
+      "resultBlob": "dcbe84772cae3da3e7cd69028260f9fccddd538a",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/http.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "5ec7ad7ad16541cbbc87798996ae959ee0ef11d3",
+      "upstream106Blob": null,
+      "resultBlob": "5ec7ad7ad16541cbbc87798996ae959ee0ef11d3",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime-pin-transition.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "9e3901760df7eb6877fe95b5424a1e544178d65b",
+      "upstream106Blob": null,
+      "resultBlob": "9e3901760df7eb6877fe95b5424a1e544178d65b",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/src/runtime.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "ad6458ef883ac95693cb59f6782cf01df4809d3c",
+      "upstream106Blob": null,
+      "resultBlob": "ad6458ef883ac95693cb59f6782cf01df4809d3c",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/capture-integrity.test.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "527c9b98a3893235bd14dd37d765bfc96c2a86b3",
+      "upstream106Blob": null,
+      "resultBlob": "527c9b98a3893235bd14dd37d765bfc96c2a86b3",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "b949a416c9822009a82f47bc403353c82bd7df61",
+      "upstream106Blob": null,
+      "resultBlob": "b949a416c9822009a82f47bc403353c82bd7df61",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/fixtures/predecessor-pin-package.json",
+      "upstream105Blob": null,
+      "fork105Blob": "6113b7e6265617d28dc767e13af166ec33444dec",
+      "upstream106Blob": null,
+      "resultBlob": "6113b7e6265617d28dc767e13af166ec33444dec",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/inert-parity-host.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "26b2985dcc325487ea682f0b1c671ae02eddef7d",
+      "upstream106Blob": null,
+      "resultBlob": "26b2985dcc325487ea682f0b1c671ae02eddef7d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "e827634b3032ec387c22202ceca789baa5ad5874",
+      "upstream106Blob": null,
+      "resultBlob": "e827634b3032ec387c22202ceca789baa5ad5874",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/plugin-sdk-surface-report.mts",
+      "upstream105Blob": "458050d7a8fc43be88f07540a8e1fc7193620c8c",
+      "fork105Blob": "f9bb330b7e62423a073b64c974913a7718ae3200",
+      "upstream106Blob": "458050d7a8fc43be88f07540a8e1fc7193620c8c",
+      "resultBlob": "f9bb330b7e62423a073b64c974913a7718ae3200",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "scripts/tsdown-build.mts",
+      "upstream105Blob": "ac3b2cabc4ecd875d3974cc561687b5fa5a63be4",
+      "fork105Blob": "ca38bf17e7f74f1f20d63ced24b3489572a4db5d",
+      "upstream106Blob": "ac3b2cabc4ecd875d3974cc561687b5fa5a63be4",
+      "resultBlob": "ca38bf17e7f74f1f20d63ced24b3489572a4db5d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/mcp-http-tool-schema-compatibility.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "2b95c3d44b6f7e763f478f0f1ca3973ab6f941d0",
+      "upstream106Blob": null,
+      "resultBlob": "2b95c3d44b6f7e763f478f0f1ca3973ab6f941d0",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/mcp-http-transport.ts",
+      "upstream105Blob": "38bd95a7c96a67a261f17f1881034d2bacc7fd52",
+      "fork105Blob": "b92fc1eb916001fae0eae69c696143254a7f85c9",
+      "upstream106Blob": "38bd95a7c96a67a261f17f1881034d2bacc7fd52",
+      "resultBlob": "b92fc1eb916001fae0eae69c696143254a7f85c9",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-control-kill-runtime.ts",
+      "upstream105Blob": "b644a8d316bab6148d25837119615c9d35b6dd0f",
+      "fork105Blob": "775ed2f61f2ebc38f8fdae454a820a05f338b0bc",
+      "upstream106Blob": "fd65180d8ae8b6dd54cc7940f1c8193848613ddc",
+      "resultBlob": "0903887c5a59d0947605520229c99fb16f3ab9aa",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain exact managed-flow kill claims and terminal refusal; accept ordinary continuationRetired reporting."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-control-kill.ts",
+      "upstream105Blob": "6b2f5994489388c7837c3e0dab530341bfec8c03",
+      "fork105Blob": "f83f8658b9c6b17a58dfc8fb52d1cc36dab625fd",
+      "upstream106Blob": "d7f215f61794706641e2903d71dddffb06aa5047",
+      "resultBlob": "4e7ab713c485f0de2d6b552f5b7383efa108d46b",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain managed-flow no-descendant-cascade and authority boundary; accept upstream ordinary cancellation reporting."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-control.accepted-stop.test.ts",
+      "upstream105Blob": "568293e5b9ca0f7e9920f4307fc212ce6266504e",
+      "fork105Blob": "9a920b423a0106e5781773d5e113e22b1b05f669",
+      "upstream106Blob": "568293e5b9ca0f7e9920f4307fc212ce6266504e",
+      "resultBlob": "9a920b423a0106e5781773d5e113e22b1b05f669",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-persistence.ts",
+      "upstream105Blob": "85bfb49a8eb84da147a40c44485e22aec95e5109",
+      "fork105Blob": "c7db42623aa73ef6d07dfbcd317eed2a5a7b126c",
+      "upstream106Blob": "85bfb49a8eb84da147a40c44485e22aec95e5109",
+      "resultBlob": "c7db42623aa73ef6d07dfbcd317eed2a5a7b126c",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-persistence.types.ts",
+      "upstream105Blob": "d02ffa6096d1274e1a32a9ce9ca0c4fde2e9822e",
+      "fork105Blob": "7ee96bd12e5c327ecfd8620a4c6d28f737d6c231",
+      "upstream106Blob": "d02ffa6096d1274e1a32a9ce9ca0c4fde2e9822e",
+      "resultBlob": "7ee96bd12e5c327ecfd8620a4c6d28f737d6c231",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-run-launch.ts",
+      "upstream105Blob": "c6f21dbb3852c0beac43f5ceb4a0550e1c6d411c",
+      "fork105Blob": "019bf1592bbb6ae8edfaed5d98c469338ffe2e4e",
+      "upstream106Blob": "c6f21dbb3852c0beac43f5ceb4a0550e1c6d411c",
+      "resultBlob": "019bf1592bbb6ae8edfaed5d98c469338ffe2e4e",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry-run-manager.ts",
+      "upstream105Blob": "3ca41047975ea151d7b30c1ac6a2687bc3112961",
+      "fork105Blob": "2bbd917734129c1a22aa8b161980dbbfaa440335",
+      "upstream106Blob": "3ca41047975ea151d7b30c1ac6a2687bc3112961",
+      "resultBlob": "2bbd917734129c1a22aa8b161980dbbfaa440335",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry.store.kernel.ts",
+      "upstream105Blob": "9ff840ad2b24fa00207d0e1d2d819cfabb031def",
+      "fork105Blob": "0a0a90013be6761734f1161540e182a0688b8242",
+      "upstream106Blob": "9ff840ad2b24fa00207d0e1d2d819cfabb031def",
+      "resultBlob": "0a0a90013be6761734f1161540e182a0688b8242",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry.store.worker.ts",
+      "upstream105Blob": "0c4d9cb4a51c3df460fe9e9c4ecbcc66ab504e7e",
+      "fork105Blob": "965a293d73c261f44948093f785ebda40c87a6e7",
+      "upstream106Blob": "0c4d9cb4a51c3df460fe9e9c4ecbcc66ab504e7e",
+      "resultBlob": "965a293d73c261f44948093f785ebda40c87a6e7",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/subagents/registry/subagent-registry.types.ts",
+      "upstream105Blob": "4b7a1cadb5489ff95521cb837cad19c0bafa89dc",
+      "fork105Blob": "21c16da5a557e1b0cba06e148b7b1cc8855410c8",
+      "upstream106Blob": "4b7a1cadb5489ff95521cb837cad19c0bafa89dc",
+      "resultBlob": "21c16da5a557e1b0cba06e148b7b1cc8855410c8",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/worktrees/run-lease-store.kernel.ts",
+      "upstream105Blob": "2cddcb1bf3fc222d11b8b61654439025a19db32e",
+      "fork105Blob": "87b6ed412672be92354ee76017ed89bedeb207cf",
+      "upstream106Blob": "2cddcb1bf3fc222d11b8b61654439025a19db32e",
+      "resultBlob": "87b6ed412672be92354ee76017ed89bedeb207cf",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/agents/worktrees/run-lease.test.ts",
+      "upstream105Blob": "fa20807feb1cbdca65b14b234bbf86a20fad9382",
+      "fork105Blob": "3eb2ef9915a26ce723f064d1536585876a68f5f1",
+      "upstream106Blob": "fa20807feb1cbdca65b14b234bbf86a20fad9382",
+      "resultBlob": "3eb2ef9915a26ce723f064d1536585876a68f5f1",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/cli/gateway-cli/gateway-call.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "3717147894ee9d37a1042aa85d87377627e48846",
+      "upstream106Blob": null,
+      "resultBlob": "3717147894ee9d37a1042aa85d87377627e48846",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/cli/gateway-cli/register.option-collisions.test.ts",
+      "upstream105Blob": "a4ab75913653b4fe4ffdd82a97272c61fc41d396",
+      "fork105Blob": "17d2d0cfe2a9e2cb526019f4b08ec8dbfcb8dcd0",
+      "upstream106Blob": "c852138c3e137059dc0bfdd65e40c44e8d1c8aac",
+      "resultBlob": "90a94834d04e9ade7488d1ce11c2a8f6bbffc89e",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Resolve typed upstream Promise<unknown> mock together with fork verified-read fixture."
+    },
+    {
+      "path": "src/cli/gateway-cli/register.ts",
+      "upstream105Blob": "9cabdd5bda9f60e2512070427fd1d10fc7b1047c",
+      "fork105Blob": "2579d751c8b8098b808cf8ddccd0c028b2e46e53",
+      "upstream106Blob": "7a6349f04c57fcc64e6a68148543a68e4ce9f937",
+      "resultBlob": "0426c82cd9b35eb506be7ab96f580b8aa4e821be",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain verified namespace/boot/URL reads and setup timeout; accept upstream ExitError propagation."
+    },
+    {
+      "path": "src/cli/gateway-rpc.runtime.test.ts",
+      "upstream105Blob": "176e67fd9320a4960a9a0c37797176fec8c87358",
+      "fork105Blob": "48f28212677ec2273734612eef02a5f1c9d5e6ab",
+      "upstream106Blob": "176e67fd9320a4960a9a0c37797176fec8c87358",
+      "resultBlob": "48f28212677ec2273734612eef02a5f1c9d5e6ab",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/cli/gateway-rpc.runtime.ts",
+      "upstream105Blob": "7f0afbd625c9a6a62f11d92719978395f5c695c7",
+      "fork105Blob": "a1ab3a374abc71226dc61de41a7e55ad346cefac",
+      "upstream106Blob": "7f0afbd625c9a6a62f11d92719978395f5c695c7",
+      "resultBlob": "a1ab3a374abc71226dc61de41a7e55ad346cefac",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/cli/gateway-rpc.ts",
+      "upstream105Blob": "d146725a5ee2a8ec9992e6714302bd56ae2b34d9",
+      "fork105Blob": "995b90f4ca867833d2a84e230d75ea71a924dc51",
+      "upstream106Blob": "d146725a5ee2a8ec9992e6714302bd56ae2b34d9",
+      "resultBlob": "995b90f4ca867833d2a84e230d75ea71a924dc51",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/cli/run-main-doctor-startup.test.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "fa2b24b25ca7a69dae9f376d6ede420a7e121237",
+      "upstream106Blob": null,
+      "resultBlob": "fa2b24b25ca7a69dae9f376d6ede420a7e121237",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/cli/run-main-doctor-startup.ts",
+      "upstream105Blob": "bc8d4ca46432f1c17cb8180abaa4456b89c71431",
+      "fork105Blob": "058a2b32953753f672a6b2db242fb67b6f06bd34",
+      "upstream106Blob": "bc8d4ca46432f1c17cb8180abaa4456b89c71431",
+      "resultBlob": "058a2b32953753f672a6b2db242fb67b6f06bd34",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/commands/doctor-migration-backup-artifacts.ts",
+      "upstream105Blob": "487f1391a3b7340ced302e2d2faa2847dfcf5648",
+      "fork105Blob": "9d20abc4116498b9a6f1fadcf957a50576fb7375",
+      "upstream106Blob": "487f1391a3b7340ced302e2d2faa2847dfcf5648",
+      "resultBlob": "9d20abc4116498b9a6f1fadcf957a50576fb7375",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/commands/doctor-migration-backup-reuse.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "eae70df8e364b5a848071432c6114c9ecb5935ec",
+      "upstream106Blob": null,
+      "resultBlob": "eae70df8e364b5a848071432c6114c9ecb5935ec",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/commands/doctor-migration-backup.test.ts",
+      "upstream105Blob": "badeddd8cd3552dc5fde9c5b86a847a92c4f3da0",
+      "fork105Blob": "4d2bcf1375d2b86ec859cb55e24ea77878087971",
+      "upstream106Blob": "badeddd8cd3552dc5fde9c5b86a847a92c4f3da0",
+      "resultBlob": "2fc578563884f961b9ee088ff93ef7f977aa311e",
+      "upstreamChanged": false,
+      "disposition": "ADAPTED_COMPATIBILITY_TESTS",
+      "reason": "Retain explicit10.5 compatibility fixtures; add10.6 refusal and upstream required-snapshot/same-schema-repair boundaries. Dependency-backed execution pending."
+    },
+    {
+      "path": "src/commands/doctor-migration-backup.ts",
+      "upstream105Blob": "a04977494ac189e6ed55bbfd5b801d0054420fe6",
+      "fork105Blob": "693ed30d48113c97f31e75d625fe3496b3939a08",
+      "upstream106Blob": "002b291c2326b3252b5acd8c7aa18db1f6580d90",
+      "resultBlob": "2ed3f76b4c59897874a4d367fd083b83abe12009",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Resolve both guards: required recovery snapshots override disposable and verified-snapshot shortcuts; cross-build proof still cannot authorize same-schema repair."
+    },
+    {
+      "path": "src/config/backup-rotation.ts",
+      "upstream105Blob": "e2ad143a33c1610e5aff02839242711e5d990bc7",
+      "fork105Blob": "1661f9186998f53ce5948b52c4498e1b47a9c721",
+      "upstream106Blob": "e2ad143a33c1610e5aff02839242711e5d990bc7",
+      "resultBlob": "1661f9186998f53ce5948b52c4498e1b47a9c721",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/config/io.types.ts",
+      "upstream105Blob": "2c1cd7161cd4c32b7afecdded47f0bfae792a01c",
+      "fork105Blob": "a4555f792b4794bfb1db70c7cfa7e7c67f30f2a1",
+      "upstream106Blob": "2c1cd7161cd4c32b7afecdded47f0bfae792a01c",
+      "resultBlob": "a4555f792b4794bfb1db70c7cfa7e7c67f30f2a1",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/config/io.write.ts",
+      "upstream105Blob": "72828e07a305f670e8413466b2b653779374c05d",
+      "fork105Blob": "b137420035d80fa48acaf80f4e9e74c80e9ebf2e",
+      "upstream106Blob": "72828e07a305f670e8413466b2b653779374c05d",
+      "resultBlob": "b137420035d80fa48acaf80f4e9e74c80e9ebf2e",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/dockerfile.test.ts",
+      "upstream105Blob": "f7e2f77b07460e908ef5236b3379f25ddab1e2b2",
+      "fork105Blob": "8535cf588ba632e02d8047359c0abf1593114b4f",
+      "upstream106Blob": "c0f28f366d807b80bbc1ab8b36ca3251abc5871f",
+      "resultBlob": "1bdeedb045cc1a78232dab9563d6311bad7f2a80",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain native/offline/publisher contracts and upstream patched Node assertions."
+    },
+    {
+      "path": "src/flows/doctor-health.test.ts",
+      "upstream105Blob": "667dfc9f89a943df2bf23d51c47c47924478b58a",
+      "fork105Blob": "a0edbc4d75dc2af2fb2adbd935dc43591e6a692c",
+      "upstream106Blob": "667dfc9f89a943df2bf23d51c47c47924478b58a",
+      "resultBlob": "a0edbc4d75dc2af2fb2adbd935dc43591e6a692c",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/flows/doctor-health.ts",
+      "upstream105Blob": "d48424baf3b03a7e69687e37695f931a3e970ce2",
+      "fork105Blob": "0c1292f047ab3222b1ef2c28054a6155e0ce984c",
+      "upstream106Blob": "d48424baf3b03a7e69687e37695f931a3e970ce2",
+      "resultBlob": "0c1292f047ab3222b1ef2c28054a6155e0ce984c",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/agent-turn/agent-run-subagent.ts",
+      "upstream105Blob": "13be62094559a78b37c9e65b81e1a7c7e58b27c6",
+      "fork105Blob": "f4f3dc65f581245d4f99646f5584d86596788656",
+      "upstream106Blob": "13be62094559a78b37c9e65b81e1a7c7e58b27c6",
+      "resultBlob": "f4f3dc65f581245d4f99646f5584d86596788656",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/methods/core-descriptors.ts",
+      "upstream105Blob": "48387a41305c56de5aad947b8f84da7c71845dc8",
+      "fork105Blob": "2886f3b527f5757913b95456dddc6f2d43845382",
+      "upstream106Blob": "48387a41305c56de5aad947b8f84da7c71845dc8",
+      "resultBlob": "2886f3b527f5757913b95456dddc6f2d43845382",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.client-scope.test.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "5185ba9437e7879a4405028d1f15e64ec5a6bc40",
+      "upstream106Blob": null,
+      "resultBlob": "5185ba9437e7879a4405028d1f15e64ec5a6bc40",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.mergeguez-parity.test.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "770c3337d4e0c3078f3e92408aa2e2119ec80841",
+      "upstream106Blob": null,
+      "resultBlob": "770c3337d4e0c3078f3e92408aa2e2119ec80841",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.mergeguez-recovery.test.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "48222cc1cddfdea9c2b400ca89e68866239d0b83",
+      "upstream106Blob": null,
+      "resultBlob": "48222cc1cddfdea9c2b400ca89e68866239d0b83",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.owners.test.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "e1ed6650df2299c9c3eba4c2fcfaa565eef41e3e",
+      "upstream106Blob": null,
+      "resultBlob": "e1ed6650df2299c9c3eba4c2fcfaa565eef41e3e",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-managed-task-flow-runtime.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "a353da31e358e28933d1766339131f628faf9b2e",
+      "upstream106Blob": null,
+      "resultBlob": "a353da31e358e28933d1766339131f628faf9b2e",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-methods-list.test.ts",
+      "upstream105Blob": "ec09961e8e6635b467fe448168885780ef2e591c",
+      "fork105Blob": "70b10d25a315b9bd8cd7a33f62a47bf946a5f2f5",
+      "upstream106Blob": "ec09961e8e6635b467fe448168885780ef2e591c",
+      "resultBlob": "70b10d25a315b9bd8cd7a33f62a47bf946a5f2f5",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-methods/agent-subagent-registration.ts",
+      "upstream105Blob": "485a43c83d009735bcff4cbd380476bd7e410ce0",
+      "fork105Blob": "3a2a90a4ea51544ce39904bc3aa02810bf31439f",
+      "upstream106Blob": "485a43c83d009735bcff4cbd380476bd7e410ce0",
+      "resultBlob": "3a2a90a4ea51544ce39904bc3aa02810bf31439f",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-methods/client-types.ts",
+      "upstream105Blob": "786c47b8e2ed792a7ef829a4008062a9f62456b6",
+      "fork105Blob": "320e37b5c4c7e9d02b0fa082cec16e09e0a67752",
+      "upstream106Blob": "786c47b8e2ed792a7ef829a4008062a9f62456b6",
+      "resultBlob": "320e37b5c4c7e9d02b0fa082cec16e09e0a67752",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-methods/shared-types.ts",
+      "upstream105Blob": "175ba9ed3a7015e20a492b63fe6eae23859c4e70",
+      "fork105Blob": "473afd27dbbfe5ef6766c3bc48bc68d481fd0d9a",
+      "upstream106Blob": "175ba9ed3a7015e20a492b63fe6eae23859c4e70",
+      "resultBlob": "473afd27dbbfe5ef6766c3bc48bc68d481fd0d9a",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-methods/system.ts",
+      "upstream105Blob": "fc317d26b63c8ffd95eedaed685d7c9db46b5ada",
+      "fork105Blob": "c477dcdfdc635fad483f9f28455c6fc399841afe",
+      "upstream106Blob": "fc317d26b63c8ffd95eedaed685d7c9db46b5ada",
+      "resultBlob": "c477dcdfdc635fad483f9f28455c6fc399841afe",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-plugin-in-process-authority.ts",
+      "upstream105Blob": "f08620e89b2bb871fda9bd9d4ea969ebde5da5aa",
+      "fork105Blob": "529bbc056ebe7d3138b3dd98cdc0613fbdc0ba51",
+      "upstream106Blob": "f08620e89b2bb871fda9bd9d4ea969ebde5da5aa",
+      "resultBlob": "529bbc056ebe7d3138b3dd98cdc0613fbdc0ba51",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-plugin-in-process-dispatch.types.ts",
+      "upstream105Blob": "fd5ba625caca801ad95e1258a88e1c903048d335",
+      "fork105Blob": "052395ebe976ce1bca5aaf6c4bc088db758eecb2",
+      "upstream106Blob": "fd5ba625caca801ad95e1258a88e1c903048d335",
+      "resultBlob": "052395ebe976ce1bca5aaf6c4bc088db758eecb2",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-plugin-runtime-client.ts",
+      "upstream105Blob": "f419c5f7465accf00d54ab6014c7fd9d4be521f2",
+      "fork105Blob": "5b9782e73e374e7193af11389085a6d94d67b7b9",
+      "upstream106Blob": "f419c5f7465accf00d54ab6014c7fd9d4be521f2",
+      "resultBlob": "5b9782e73e374e7193af11389085a6d94d67b7b9",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-plugin-subagent-runtime.overrides.test.ts",
+      "upstream105Blob": "7455f74c8572e3cb6b99828b5f9d959b00fce5ac",
+      "fork105Blob": "954bdae5d209c9d75dbd43296638255126e1d084",
+      "upstream106Blob": "7455f74c8572e3cb6b99828b5f9d959b00fce5ac",
+      "resultBlob": "954bdae5d209c9d75dbd43296638255126e1d084",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-plugin-subagent-runtime.ts",
+      "upstream105Blob": "6e4921e24b2160511374c82fa92a8c16f1408627",
+      "fork105Blob": "3be052dcfac1747f635844de7e32e9bf01f0d366",
+      "upstream106Blob": "6e4921e24b2160511374c82fa92a8c16f1408627",
+      "resultBlob": "3be052dcfac1747f635844de7e32e9bf01f0d366",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-plugins.ts",
+      "upstream105Blob": "95f8aaf3587849602e3da10ceec008f51b3a0e3e",
+      "fork105Blob": "5b935d8336e266d4d3a501133bf4b2f4b01f6443",
+      "upstream106Blob": "95f8aaf3587849602e3da10ceec008f51b3a0e3e",
+      "resultBlob": "5b935d8336e266d4d3a501133bf4b2f4b01f6443",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-request-context.test.ts",
+      "upstream105Blob": "6fda76e03c0cb372a40d68eb17139f234f486884",
+      "fork105Blob": "deb762c180a73cd61688444c00f6f1f3599818c5",
+      "upstream106Blob": "6fda76e03c0cb372a40d68eb17139f234f486884",
+      "resultBlob": "deb762c180a73cd61688444c00f6f1f3599818c5",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-request-context.ts",
+      "upstream105Blob": "8cd086dbe59f03de7b50d42a17364a1fb8f10889",
+      "fork105Blob": "b26245a6f8a64bebc81bea273dbceaeb1ccb9ae4",
+      "upstream106Blob": "8cd086dbe59f03de7b50d42a17364a1fb8f10889",
+      "resultBlob": "b26245a6f8a64bebc81bea273dbceaeb1ccb9ae4",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server-runtime-state-prepare.ts",
+      "upstream105Blob": "7535f333e53cd85e27935d6abc06119dc3237851",
+      "fork105Blob": "ee775db35664f26b04a2542f1685909933947c68",
+      "upstream106Blob": "7535f333e53cd85e27935d6abc06119dc3237851",
+      "resultBlob": "ee775db35664f26b04a2542f1685909933947c68",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server.auth.compat-baseline.test.ts",
+      "upstream105Blob": "572e8352cfa9c18578b1c57242312ce0d499812b",
+      "fork105Blob": "5175f11df9a53556a1c49d79f854431143e9f514",
+      "upstream106Blob": "572e8352cfa9c18578b1c57242312ce0d499812b",
+      "resultBlob": "5175f11df9a53556a1c49d79f854431143e9f514",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server/ws-connection/connect-session.ts",
+      "upstream105Blob": "dcb33c5caf29b416a4ca74ad03b3d4c7658e105b",
+      "fork105Blob": "fd5f27d14a6ca1c978d8a613f02a5685fad806bf",
+      "upstream106Blob": "dcb33c5caf29b416a4ca74ad03b3d4c7658e105b",
+      "resultBlob": "fd5f27d14a6ca1c978d8a613f02a5685fad806bf",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/gateway/server/ws-types.ts",
+      "upstream105Blob": "db887564fae5c7986a592ab7b941cc8f986c97a5",
+      "fork105Blob": "8df2035864ca32aabff98113aed96abaf6595ddc",
+      "upstream106Blob": "db887564fae5c7986a592ab7b941cc8f986c97a5",
+      "resultBlob": "8df2035864ca32aabff98113aed96abaf6595ddc",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/infra/git-commit.test.ts",
+      "upstream105Blob": "12ed310f8811b3f010229b81e5b629c34b1dc3ad",
+      "fork105Blob": "04d288b19f9322dc90abd3cd29f16a14f5fbc550",
+      "upstream106Blob": "12ed310f8811b3f010229b81e5b629c34b1dc3ad",
+      "resultBlob": "04d288b19f9322dc90abd3cd29f16a14f5fbc550",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/infra/git-commit.ts",
+      "upstream105Blob": "dbd3cedbb1be43d087895c87c4e533428c59179c",
+      "fork105Blob": "4464e9fe1893ea129b6673abd5f87d504d4b79c6",
+      "upstream106Blob": "dbd3cedbb1be43d087895c87c4e533428c59179c",
+      "resultBlob": "4464e9fe1893ea129b6673abd5f87d504d4b79c6",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/plugin-sdk/config-mutation.ts",
+      "upstream105Blob": "3caf4de38f6ed6f55b9eab26beb0ce8a114fed34",
+      "fork105Blob": "b8ac3bd618cf6e6daeae98608155689f4b1d2e0d",
+      "upstream106Blob": "3caf4de38f6ed6f55b9eab26beb0ce8a114fed34",
+      "resultBlob": "b8ac3bd618cf6e6daeae98608155689f4b1d2e0d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/plugins/loader-load-context.ts",
+      "upstream105Blob": "e497a747b287d89576446041de3722da8369fede",
+      "fork105Blob": "5b0c4e883c30e4988bc6cb34e51dd1f774709126",
+      "upstream106Blob": "e497a747b287d89576446041de3722da8369fede",
+      "resultBlob": "5b0c4e883c30e4988bc6cb34e51dd1f774709126",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/plugins/loader-module-runtime.ts",
+      "upstream105Blob": "1c6692830856e313fcfb86fb424168fb7ddf30f6",
+      "fork105Blob": "f89d8671404c0b136445da43fd9960ee9067e63f",
+      "upstream106Blob": "1c6692830856e313fcfb86fb424168fb7ddf30f6",
+      "resultBlob": "f89d8671404c0b136445da43fd9960ee9067e63f",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/plugins/loader.gateway-bindings.test.ts",
+      "upstream105Blob": "986ec72bdddcf90c5ed627501f5e1dfc8db62f8c",
+      "fork105Blob": "6413454f4aa323a5d4cf69dad6816883e995450c",
+      "upstream106Blob": "986ec72bdddcf90c5ed627501f5e1dfc8db62f8c",
+      "resultBlob": "6413454f4aa323a5d4cf69dad6816883e995450c",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/plugins/registry-runtime-task-flow.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "ed27f5f112e8476a60b4cba81208e1af51873dbc",
+      "upstream106Blob": null,
+      "resultBlob": "ed27f5f112e8476a60b4cba81208e1af51873dbc",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/plugins/registry-runtime.ts",
+      "upstream105Blob": "f5bf7c083e464e24a392a7858d1ad31861a35174",
+      "fork105Blob": "4dc27a59dd70d41244e8a25fd934a9f2663f7d6c",
+      "upstream106Blob": "f5bf7c083e464e24a392a7858d1ad31861a35174",
+      "resultBlob": "4dc27a59dd70d41244e8a25fd934a9f2663f7d6c",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/plugins/runtime/index.ts",
+      "upstream105Blob": "02f217a7bf929c325d879479d6d0409a4f164d51",
+      "fork105Blob": "68149c26b0f92b1302e6d07c00a57fb0e6af937e",
+      "upstream106Blob": "02f217a7bf929c325d879479d6d0409a4f164d51",
+      "resultBlob": "68149c26b0f92b1302e6d07c00a57fb0e6af937e",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/plugins/runtime/types.ts",
+      "upstream105Blob": "1ba77516448680740207175aaea8a29e76ef2774",
+      "fork105Blob": "75b5604ac3ab9ef3f0a7b3752cf7a1d91bc6d7c2",
+      "upstream106Blob": "1ba77516448680740207175aaea8a29e76ef2774",
+      "resultBlob": "75b5604ac3ab9ef3f0a7b3752cf7a1d91bc6d7c2",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/process/supervisor/service-child-cleanup.test.ts",
+      "upstream105Blob": "d9c46d397e1a0f9ce2e4137d2bc04665f049b692",
+      "fork105Blob": "bf013b364e4f42e5f21ae838128b96c23652889f",
+      "upstream106Blob": "d9c46d397e1a0f9ce2e4137d2bc04665f049b692",
+      "resultBlob": "bf013b364e4f42e5f21ae838128b96c23652889f",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/process/supervisor/service-child-relay-host.test.ts",
+      "upstream105Blob": "9dbc493107463cbfd5781c876d625162de0f3ee1",
+      "fork105Blob": "9796f982643e8f30fd4774d8f588b6a93123a719",
+      "upstream106Blob": "92bc58b0ad641be25394eed2d46bf1c85c6456df",
+      "resultBlob": "2bf104cf879525a61ec172c3f04a5c4838e6fc3b",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain identity-loss/throwing-observer coverage with upstream bounded diagnostic coverage."
+    },
+    {
+      "path": "src/process/supervisor/service-child-relay-host.ts",
+      "upstream105Blob": "78916e7d113bc6df5a60d42e7189f3ad6cc7098f",
+      "fork105Blob": "9018397f9c7515264a4b89eb4bfb276513346673",
+      "upstream106Blob": "f3b78da2ef14216016ce69c50c20c8589074b307",
+      "resultBlob": "5ce86be97b50e9534d74183aa1a967a6ef766d15",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain authoritative identity-loss failure through observer exceptions; accept upstream bounded causes and cleanup."
+    },
+    {
+      "path": "src/secrets/egress-proxy/proxy-forward.test.ts",
+      "upstream105Blob": "becc0ec285ffd1b19a1d6d5d0d3d429a624e4030",
+      "fork105Blob": "f6fd912039fe03c212e3284572f8bb25dba51495",
+      "upstream106Blob": "becc0ec285ffd1b19a1d6d5d0d3d429a624e4030",
+      "resultBlob": "f6fd912039fe03c212e3284572f8bb25dba51495",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/secrets/egress-proxy/proxy-forward.ts",
+      "upstream105Blob": "45a596407fd2c53c23830db3fc7a71e36c5e95ac",
+      "fork105Blob": "f4c6576a4c629bf4f8603746c8e0d90ca4c3a5f2",
+      "upstream106Blob": "45a596407fd2c53c23830db3fc7a71e36c5e95ac",
+      "resultBlob": "f4c6576a4c629bf4f8603746c8e0d90ca4c3a5f2",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/secrets/egress-proxy/response-headers.test.ts",
+      "upstream105Blob": "81e2151ab26c2dc4081b35d1db00901bda550c9d",
+      "fork105Blob": "e3892282050e17737010bd6cccc764f2179144d2",
+      "upstream106Blob": "81e2151ab26c2dc4081b35d1db00901bda550c9d",
+      "resultBlob": "e3892282050e17737010bd6cccc764f2179144d2",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/secrets/egress-proxy/response-headers.ts",
+      "upstream105Blob": "11714002c31ebbb3400ce7effae8eab5be085785",
+      "fork105Blob": "57f397d09e5ce1defebda81332a2602e8a1d97d7",
+      "upstream106Blob": "11714002c31ebbb3400ce7effae8eab5be085785",
+      "resultBlob": "57f397d09e5ce1defebda81332a2602e8a1d97d7",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/state/openclaw-state-lease-heartbeat.test.ts",
+      "upstream105Blob": "0ddfa711df78973c3a3f9b9841ea8fb1ce49fc37",
+      "fork105Blob": "5426070ac983b4c6899d3d450d5a0205862667bd",
+      "upstream106Blob": "0ddfa711df78973c3a3f9b9841ea8fb1ce49fc37",
+      "resultBlob": "5426070ac983b4c6899d3d450d5a0205862667bd",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/state/openclaw-state-read.types.ts",
+      "upstream105Blob": "5e1a58fb581cab14ddc93c93c465fa3080ace20f",
+      "fork105Blob": "f4ce3356b74d7046472c6fbeb82b0d6c14d756ca",
+      "upstream106Blob": "5e1a58fb581cab14ddc93c93c465fa3080ace20f",
+      "resultBlob": "f4ce3356b74d7046472c6fbeb82b0d6c14d756ca",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/state/openclaw-state-read.validation.managed-task-flow.test.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "dfa65b40ecaff4ef3cb6ba93093e7a882978f037",
+      "upstream106Blob": null,
+      "resultBlob": "dfa65b40ecaff4ef3cb6ba93093e7a882978f037",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/state/openclaw-state-read.validation.ts",
+      "upstream105Blob": "73f04124d2aa3b34bf14cf7a89e94a6e0e6c3618",
+      "fork105Blob": "95f6e0afa8de0317b98b5e9961715db39023556d",
+      "upstream106Blob": "73f04124d2aa3b34bf14cf7a89e94a6e0e6c3618",
+      "resultBlob": "95f6e0afa8de0317b98b5e9961715db39023556d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/state/openclaw-state-read.worker.ts",
+      "upstream105Blob": "69ad71dd27cb930bdf4858d3eca5de74aa646120",
+      "fork105Blob": "c1ee5c5ab69e1245454f300b20c6641101b36b24",
+      "upstream106Blob": "69ad71dd27cb930bdf4858d3eca5de74aa646120",
+      "resultBlob": "c1ee5c5ab69e1245454f300b20c6641101b36b24",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/state/openclaw-state-worker-contract.ts",
+      "upstream105Blob": "88e07e9f47578982eaa2d91db095ae147771d7cc",
+      "fork105Blob": "c4ee647c0930ded18788a94ef9a1517a1bcddec7",
+      "upstream106Blob": "88e07e9f47578982eaa2d91db095ae147771d7cc",
+      "resultBlob": "c4ee647c0930ded18788a94ef9a1517a1bcddec7",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/state/openclaw-state-worker-runtime.ts",
+      "upstream105Blob": "dbe6c2883f0e4d22bd0fa87b35c2890da188ecf2",
+      "fork105Blob": "ebd27b5ec136378d94718549e3e68286f9232d61",
+      "upstream106Blob": "dbe6c2883f0e4d22bd0fa87b35c2890da188ecf2",
+      "resultBlob": "ebd27b5ec136378d94718549e3e68286f9232d61",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/tasks/managed-task-flow-contract.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "d41c9ed3b11ff30b7218bee9d35a2c1082b7a9f8",
+      "upstream106Blob": null,
+      "resultBlob": "d41c9ed3b11ff30b7218bee9d35a2c1082b7a9f8",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/tasks/managed-task-flow-host.test.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "69f2a7bd29f30a175889cfd6a3e59d47cd03198d",
+      "upstream106Blob": null,
+      "resultBlob": "69f2a7bd29f30a175889cfd6a3e59d47cd03198d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/tasks/managed-task-flow-host.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "78cc910e1683ce58666a19edc4531e97576635a5",
+      "upstream106Blob": null,
+      "resultBlob": "78cc910e1683ce58666a19edc4531e97576635a5",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/tasks/managed-task-flow-kill-claim.worker.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "8930d9fe4e1414490acb6e81c328ce58e24cd81b",
+      "upstream106Blob": null,
+      "resultBlob": "8930d9fe4e1414490acb6e81c328ce58e24cd81b",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/tasks/managed-task-flow.test-helpers.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "a95743e39f7de3ed2853d610e3ce058bbb3cc5dd",
+      "upstream106Blob": null,
+      "resultBlob": "a95743e39f7de3ed2853d610e3ce058bbb3cc5dd",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/tasks/managed-task-flow.worker.integration.test.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "93284419b1bde20cf7ac5d20151f94d651ba6c04",
+      "upstream106Blob": null,
+      "resultBlob": "93284419b1bde20cf7ac5d20151f94d651ba6c04",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/tasks/managed-task-flow.worker.ts",
+      "upstream105Blob": null,
+      "fork105Blob": "403e6380e83e8ef0a1a91bb76ec8b8aa605064af",
+      "upstream106Blob": null,
+      "resultBlob": "403e6380e83e8ef0a1a91bb76ec8b8aa605064af",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/version.test.ts",
+      "upstream105Blob": "c76a04f0c026d10d1c28a2098cc592c4a0b87315",
+      "fork105Blob": "b693d05c03c6e6e8c15ca4ce3f5653116c73e265",
+      "upstream106Blob": "c76a04f0c026d10d1c28a2098cc592c4a0b87315",
+      "resultBlob": "b693d05c03c6e6e8c15ca4ce3f5653116c73e265",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "src/version.ts",
+      "upstream105Blob": "403fc4ba793c985601ad4f76b00cca47b13c7b93",
+      "fork105Blob": "c90fcb2f2831337c77e1340978ff69d7ecfd7a2d",
+      "upstream106Blob": "403fc4ba793c985601ad4f76b00cca47b13c7b93",
+      "resultBlob": "c90fcb2f2831337c77e1340978ff69d7ecfd7a2d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "test/fixtures/nowistay-list-properties-output-schema.json",
+      "upstream105Blob": null,
+      "fork105Blob": "a9bf78496de8874325791d7f35585d666e8fa88d",
+      "upstream106Blob": null,
+      "resultBlob": "a9bf78496de8874325791d7f35585d666e8fa88d",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "test/mcp-nowistay-schema-compatibility.test.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "a219ddbd37df2b65e5b27b0f509793a61cc04132",
+      "upstream106Blob": null,
+      "resultBlob": "a219ddbd37df2b65e5b27b0f509793a61cc04132",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "test/mcp-nowistay-sdk-regression.test.mjs",
+      "upstream105Blob": null,
+      "fork105Blob": "6fcdfdc08e3a16aef4f29c1a02e7509bba5a077c",
+      "upstream106Blob": null,
+      "resultBlob": "6fcdfdc08e3a16aef4f29c1a02e7509bba5a077c",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "test/scripts/docker-build-helper.test.ts",
+      "upstream105Blob": "48f5f12ec32f96b70ff5f02f4d123ec3c4a9a253",
+      "fork105Blob": "c8d3038f411d98c300a64d335851d10ee39b7612",
+      "upstream106Blob": "48f5f12ec32f96b70ff5f02f4d123ec3c4a9a253",
+      "resultBlob": "c8d3038f411d98c300a64d335851d10ee39b7612",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "test/scripts/lint-suppressions.test.ts",
+      "upstream105Blob": "298ec1ed7976fda7fe61955e8c6c141a7a64b7fc",
+      "fork105Blob": "70f72425a2d91ea6ae4f25a17f494c652fe20ed8",
+      "upstream106Blob": "298ec1ed7976fda7fe61955e8c6c141a7a64b7fc",
+      "resultBlob": "70f72425a2d91ea6ae4f25a17f494c652fe20ed8",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "test/scripts/test-install-sh-docker.test.ts",
+      "upstream105Blob": "e293e8a756b3411c71fcd524d61e614ad424fbbe",
+      "fork105Blob": "355a3ac28f37792d9295089a78755b68026a99bd",
+      "upstream106Blob": "2eff75cfc82c06d3ff3bbaf1d7e6a7b9f2f327d5",
+      "resultBlob": "aed74ede72998c5a978426e5082051e1b43da941",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain fork Docker test adaptation and upstream runtime floors."
+    },
+    {
+      "path": "test/scripts/tsdown-build.test.ts",
+      "upstream105Blob": "2a061583c737f94f670a78fb5131fd8fe269750e",
+      "fork105Blob": "9f139ab85890994f1ab2e1143ae9562e760e795a",
+      "upstream106Blob": "2a061583c737f94f670a78fb5131fd8fe269750e",
+      "resultBlob": "9f139ab85890994f1ab2e1143ae9562e760e795a",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "test/scripts/verify-stable-main-closeout.test.ts",
+      "upstream105Blob": "14a0a0b5036f6c1bda391de04bf35ab71c2d9ac9",
+      "fork105Blob": "ccfb7f739801a3b370d084aea42c04cc3b1e5cf3",
+      "upstream106Blob": "14a0a0b5036f6c1bda391de04bf35ab71c2d9ac9",
+      "resultBlob": "ccfb7f739801a3b370d084aea42c04cc3b1e5cf3",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "test/vitest-projects-config.test-support.ts",
+      "upstream105Blob": "a469228f45d511e0f05f64c42e6b7aa395385f9b",
+      "fork105Blob": "952ba5ed017214b3aed33fbbe2fb6c3d88eeca2a",
+      "upstream106Blob": "a469228f45d511e0f05f64c42e6b7aa395385f9b",
+      "resultBlob": "952ba5ed017214b3aed33fbbe2fb6c3d88eeca2a",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "test/vitest-projects-config.test.ts",
+      "upstream105Blob": "14d37b8fdcbcdf6bf8c48c7d84f145f1e88668bb",
+      "fork105Blob": "3c4708f4801ecb4d2575c9e28b15ac511f12f2a8",
+      "upstream106Blob": "14d37b8fdcbcdf6bf8c48c7d84f145f1e88668bb",
+      "resultBlob": "3c4708f4801ecb4d2575c9e28b15ac511f12f2a8",
+      "upstreamChanged": false,
+      "disposition": "CARRIED_EXACT",
+      "reason": "Target upstream leaves this path unchanged or absent. Fork bytes carried exactly; changed-dependency/runtime qualification is not inferred."
+    },
+    {
+      "path": "test/vitest/vitest.database-worker-core-paths.mjs",
+      "upstream105Blob": "232c9ead1e2abcba079f14c89e63a0e318c71ac4",
+      "fork105Blob": "523aaf7309c2d4923dbf2d2740ea10b55fce03df",
+      "upstream106Blob": "cacccf148cbcdcdf855b5c57d42fa88acd1262d1",
+      "resultBlob": "d04c82cfb43e31e81abc07de22d6dc830cff7256",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain all managed-flow fork test routes and upstream new routes."
+    },
+    {
+      "path": "test/vitest/vitest.gateway-server-paths.mjs",
+      "upstream105Blob": "7bc122531082e94a6a1e6ae3e310ecd2f5cda8ee",
+      "fork105Blob": "decf0203af3f15efcfaa526ebdcb98e034fe6710",
+      "upstream106Blob": "2f77f36adfab06baf1ef8f324f21f6e12bd6a64e",
+      "resultBlob": "71a5d1e75e34a9359ef3f99ca08fdb0e0f365404",
+      "upstreamChanged": true,
+      "disposition": "MERGED_SOURCE_REVIEWED",
+      "reason": "Retain all managed-flow fork test routes and upstream new routes."
+    }
+  ]
+}

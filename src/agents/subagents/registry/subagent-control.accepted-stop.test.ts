@@ -30,6 +30,8 @@ import {
   getActiveSessionLifecycleMutationCount,
   getActiveSessionWorkAdmissionCount,
 } from "../../../sessions/session-lifecycle-admission.js";
+import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
+import { executeManagedTaskFlowFixtureWrite } from "../../../tasks/managed-task-flow.test-helpers.js";
 import { clearActiveEmbeddedRun, setActiveEmbeddedRun } from "../../embedded-agent-runner/runs.js";
 import { createEmbeddedRunHandle } from "../../embedded-agent-runner/runs.test-support.js";
 import { isSubagentRegistryWriteCommand } from "../../subagent-test-fixtures.test-helpers.js";
@@ -52,7 +54,12 @@ beforeEach(() => {
   setRuntimeConfigSnapshot({ agents: { defaults: { workspace: fixture.stateDir } } });
 });
 
-async function seedExecutionTarget(name: string, task: string, lifecycleRevision?: string) {
+async function seedExecutionTarget(
+  name: string,
+  task: string,
+  options: { lifecycleRevision?: string; label?: string; requesterSessionKey?: string } = {},
+) {
+  const { lifecycleRevision, label, requesterSessionKey = "agent:main:main" } = options;
   const sessionKey = `agent:main:subagent:${name}`;
   const sessionId = `${name}-session`;
   const runId = `${name}-run`;
@@ -73,12 +80,13 @@ async function seedExecutionTarget(name: string, task: string, lifecycleRevision
     childSessionKey: sessionKey,
     childAgentId: "main",
     sessionEntry,
-    requesterSessionKey: "agent:main:main",
+    requesterSessionKey,
     requesterAgentId: "main",
     requesterDisplayKey: "main",
     task,
     cleanup: "keep",
     expectsCompletionMessage: false,
+    ...(label ? { label } : {}),
   });
   const context = createDirectChatContext({ getRuntimeConfig });
   const resolveGatewayContext = () => context;
@@ -97,7 +105,7 @@ it.each([
     const { sessionKey, sessionId, runId, context } = await seedExecutionTarget(
       "cleanup-revision",
       "Keep exact execution cleanup custody",
-      original,
+      { lifecycleRevision: original },
     );
     const entry = subagentRuns.get(runId)!;
     expect(entry.childSessionIdentity).toEqual({ sessionId, lifecycleRevision: original });
@@ -139,7 +147,7 @@ it("session cleanup joins terminal controller disposal after its resolver is cle
   const target = await seedExecutionTarget(
     "terminal-disposal",
     "retain physical cleanup",
-    "original-revision",
+    { lifecycleRevision: "original-revision" },
   );
   const registration = registerChatAbortController({
     chatAbortControllers: target.context.chatAbortControllers,
@@ -239,6 +247,72 @@ it("captures terminal descendant topology without looping or following later rep
   expect(captureSubagentRetainedWork()(root)).toBe(false);
 });
 
+it("accepts only the claimed native root cancellation without traversing descendants", async () => {
+  const { sessionKey, sessionId, runId } = await seedExecutionTarget(
+    "managed-flow-root",
+    "cancel the admitted flow worker",
+    { label: "plugin:publisher", requesterSessionKey: "agent:main:publisher" },
+  );
+  const ownerKey = "agent:main:publisher";
+  const controllerId = "publisher/v1";
+  const entry = expectDefined(subagentRuns.get(runId), "registered managed flow worker");
+  const generation = expectDefined(entry.generation, "registered managed flow worker generation");
+  const flow = await executeManagedTaskFlowFixtureWrite(captureOpenClawStateWorkerContext(), {
+    type: "tasks.managedFlows.create",
+    input: {
+      ownerKey,
+      controllerId,
+      goal: "Cancel one exact native worker",
+      stateJson: {
+        activeWorker: {
+          sessionKey,
+          runId,
+          taskId: entry.taskRunId ?? runId,
+          nativeGeneration: generation,
+        },
+      },
+    },
+  });
+  const { runId: descendantId } = await seedExecutionTarget(
+    "managed-flow-descendant",
+    "Unrelated descendant retained by root-only Stop",
+    { requesterSessionKey: sessionKey },
+  );
+  const abort = vi.fn();
+  const handle = createEmbeddedRunHandle({ runId, abort });
+  setActiveEmbeddedRun(sessionId, handle, sessionKey);
+  try {
+    const result = await killSubagentRunAdmin(
+      {
+        cfg: getRuntimeConfig(),
+        sessionKey,
+        expectedRunId: runId,
+        expectedTaskRunId: entry.taskRunId ?? runId,
+        expectedGeneration: generation,
+      },
+      {
+        assertCurrent: () => {},
+        managedFlowKillClaim: {
+          ownerKey,
+          controllerId,
+          flowId: flow.flowId,
+          revision: flow.revision,
+          childSessionKey: sessionKey,
+          runId,
+          taskId: entry.taskRunId ?? runId,
+          generation,
+        },
+      },
+    );
+    expect(result).toMatchObject({ found: true, runId, cascadeKilled: 0 });
+    expect(abort).toHaveBeenCalled();
+    expect(subagentRuns.get(descendantId)?.killIntent).toBeUndefined();
+    expect(subagentRuns.get(descendantId)?.execution.endedAt).toBeUndefined();
+  } finally {
+    clearActiveEmbeddedRun(sessionId, handle, sessionKey);
+  }
+});
+
 function observeExecutionJoin(entry: ChatAbortControllerEntry, selected: () => void) {
   const settlement = entry.executionSettlement!;
   const completion = settlement.completion;
@@ -258,7 +332,7 @@ it.each(["abort", "interruption", "replacement", "already terminal"] as const)(
     const { sessionKey, sessionId, runId, storePath, context } = await seedExecutionTarget(
       "accepted-stop",
       "retain the selected cancellation outcome",
-      "accepted-stop-revision",
+      { lifecycleRevision: "accepted-stop-revision" },
     );
     const registration = registerChatAbortController({
       chatAbortControllers: context.chatAbortControllers,
@@ -367,7 +441,7 @@ it.each(["declined", "throws"] as const)(
     const { sessionKey, sessionId, runId, context } = await seedExecutionTarget(
       "callback-stop",
       "retain callback cancellation until raw disposal settles",
-      "callback-stop-revision",
+      { lifecycleRevision: "callback-stop-revision" },
     );
     const registration = registerChatAbortController({
       chatAbortControllers: context.chatAbortControllers,
@@ -433,7 +507,7 @@ it("joins an execution registered while its accepted Stop awaits kill-claim pers
     await seedExecutionTarget(
       "late-execution-stop",
       "join the exact execution that accepts cancellation",
-      "late-execution-stop-revision",
+      { lifecycleRevision: "late-execution-stop-revision" },
     );
   const lifecycleGeneration = getAgentEventLifecycleGeneration();
   const io = { emitAcceptance: vi.fn(), emitFinal: vi.fn() };

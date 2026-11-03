@@ -89,9 +89,11 @@ export async function executeMemorySearchToolQuery(params: {
     visibility,
     searchSources,
     startedAt,
+    signal,
   };
 
   const searchOnce = async () => {
+    signal.throwIfAborted();
     const searchesSessions = searchSources?.includes("sessions") === true;
     if (params.onRebuildNotice) {
       params.onRebuildNotice(
@@ -150,7 +152,13 @@ export async function executeMemorySearchToolQuery(params: {
     };
   };
 
-  const searched = await searchOnce();
+  let searched: Awaited<ReturnType<typeof searchOnce>>;
+  try {
+    searched = await searchOnce();
+  } catch (error) {
+    signal.throwIfAborted();
+    throw error;
+  }
 
   return await finalizeMemorySearchToolQuery({
     active,
@@ -170,11 +178,15 @@ async function finalizeMemorySearchToolQuery(params: {
   runtimeDebug: MemorySearchRuntimeDebug[];
   startedAt: number;
   effectiveMode?: string;
+  signal: AbortSignal;
 }) {
-  const { active, searched, query, visibility, searchSources, runtimeDebug, startedAt } = params;
+  const { active, searched, query, visibility, searchSources, runtimeDebug, startedAt, signal } =
+    params;
+  signal.throwIfAborted();
   const status =
     params.status ??
     (await readMemorySearchManagerStatus(active.manager, { includeCounts: false }));
+  signal.throwIfAborted();
   const pausedIndexIdentity = resolveMemoryIndexIdentityDiagnostic(status);
   // A pending format upgrade on an otherwise matching corpus degrades to
   // keyword-only results instead of pausing memory search; every other
@@ -206,7 +218,9 @@ async function finalizeMemorySearchToolQuery(params: {
     sandboxed: visibility.sandboxed,
     hits: searched.candidates,
     conversationRecall: query.conversationRecall,
+    signal,
   });
+  signal.throwIfAborted();
   if (searchSources) {
     const allowedSources = new Set(searchSources);
     filtered = filtered.filter((hit) => allowedSources.has(hit.source));

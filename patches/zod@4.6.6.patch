@@ -1,0 +1,90 @@
+diff --git a/v3/types.js b/v3/types.js
+index ea2be4dba5775eabf4d5b5fecdead5e1a0ca52ff..a04f9c5497e8ff961721871e0dd4eff7e009d1db 100644
+--- a/v3/types.js
++++ b/v3/types.js
+@@ -1772,6 +1772,7 @@
+                     message: def.exactLength.message,
+                 });
+                 status.dirty();
++                if (tooBig) return INVALID;
+             }
+         }
+         if (def.minLength !== null) {
+@@ -1797,7 +1798,7 @@
+                     exact: false,
+                     message: def.maxLength.message,
+                 });
+-                status.dirty();
++                return INVALID;
+             }
+         }
+         if (ctx.common.async) {
+@@ -2820,7 +2821,7 @@
+                     exact: false,
+                     message: def.maxSize.message,
+                 });
+-                status.dirty();
++                return INVALID;
+             }
+         }
+         const valueType = this._def.valueType;
+diff --git a/v3/types.cjs b/v3/types.cjs
+index 7c3fa90509fe0149fde8ad5e647b9657014c538f..3210047f5728551c2598d42b438f9c1ffd41aafc 100644
+--- a/v3/types.cjs
++++ b/v3/types.cjs
+@@ -1793,6 +1793,7 @@
+                     message: def.exactLength.message,
+                 });
+                 status.dirty();
++                if (tooBig) return parseUtil_js_1.INVALID;
+             }
+         }
+         if (def.minLength !== null) {
+@@ -1818,7 +1819,7 @@
+                     exact: false,
+                     message: def.maxLength.message,
+                 });
+-                status.dirty();
++                return parseUtil_js_1.INVALID;
+             }
+         }
+         if (ctx.common.async) {
+@@ -2849,7 +2850,7 @@
+                     exact: false,
+                     message: def.maxSize.message,
+                 });
+-                status.dirty();
++                return parseUtil_js_1.INVALID;
+             }
+         }
+         const valueType = this._def.valueType;
+diff --git a/src/v3/types.ts b/src/v3/types.ts
+index 17bef73f42205b301bc0de7f3f3eb6608791bda8..61771585bdc23e9d9651a7ea43f7c7207433b073 100644
+--- a/src/v3/types.ts
++++ b/src/v3/types.ts
+@@ -2266,6 +2266,7 @@
+           message: def.exactLength.message,
+         });
+         status.dirty();
++        if (tooBig) return INVALID;
+       }
+     }
+ 
+@@ -2293,7 +2294,7 @@
+           exact: false,
+           message: def.maxLength.message,
+         });
+-        status.dirty();
++        return INVALID;
+       }
+     }
+ 
+@@ -3727,7 +3728,7 @@
+           exact: false,
+           message: def.maxSize.message,
+         });
+-        status.dirty();
++        return INVALID;
+       }
+     }
+ 

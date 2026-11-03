@@ -14,6 +14,7 @@ import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { setUserProfileRole } from "../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { resolvePluginLoadCacheContext } from "./loader-load-context.js";
 import { createLazyPluginRuntime } from "./loader-module-runtime.js";
 import {
   loadAndActivateRootPluginRegistry,
@@ -49,6 +50,86 @@ afterEach(() => {
 });
 
 afterAll(cleanupPluginLoaderFixturesForTest);
+
+it("reads the bound controller state facet without loading broad plugin runtime", () => {
+  const tasks: NonNullable<PluginRuntime["tasks"]> = {
+    authorityVersion: 1,
+    availability: {
+      managedFlows: true,
+      taskRuns: true,
+      controllerParity: true,
+      canonicalTaskCreate: false,
+      workerLaunch: false,
+    },
+    managedFlows: {
+      bindSession: () => {
+        throw new Error("fixture does not bind a session");
+      },
+    },
+    runs: {
+      bindSession: () => {
+        throw new Error("fixture does not bind a session");
+      },
+    },
+  };
+  const resolveRuntimeModule = vi
+    .spyOn(sdkAlias, "resolvePluginRuntimeModulePathWithDiagnostics")
+    .mockImplementation(() => {
+      throw new Error("controller facet must not load broad runtime");
+    });
+  const runtime = createLazyPluginRuntime({ runtimeOptions: { tasks } });
+  expect(runtime.tasks).toBe(tasks);
+  expect(Object.getOwnPropertyDescriptor(runtime, "tasks")?.get?.()).toBe(tasks);
+  expect(resolveRuntimeModule).not.toHaveBeenCalled();
+});
+
+it("keys the injected controller state facet by its exact runtime owner", () => {
+  const first = {
+    authorityVersion: 1,
+    availability: {
+      managedFlows: false,
+      taskRuns: false,
+      controllerParity: false,
+      canonicalTaskCreate: false,
+      workerLaunch: false,
+    },
+    managedFlows: {
+      bindSession: () => {
+        throw new Error("unavailable");
+      },
+    },
+    runs: {
+      bindSession: () => {
+        throw new Error("unavailable");
+      },
+    },
+  } satisfies NonNullable<PluginRuntime["tasks"]>;
+  const second = {
+    ...first,
+    managedFlows: {
+      bindSession: () => {
+        throw new Error("another owner");
+      },
+    },
+  } satisfies NonNullable<PluginRuntime["tasks"]>;
+  const loadOptions = { config: {} };
+  const firstKey = resolvePluginLoadCacheContext({
+    ...loadOptions,
+    runtimeOptions: { tasks: first },
+  }).cacheKey;
+  expect(
+    resolvePluginLoadCacheContext({
+      ...loadOptions,
+      runtimeOptions: { tasks: first },
+    }).cacheKey,
+  ).toBe(firstKey);
+  expect(
+    resolvePluginLoadCacheContext({
+      ...loadOptions,
+      runtimeOptions: { tasks: second },
+    }).cacheKey,
+  ).not.toBe(firstKey);
+});
 
 it.each([
   { explicit: "nodes", nodes: true, subagent: false, activate: false },

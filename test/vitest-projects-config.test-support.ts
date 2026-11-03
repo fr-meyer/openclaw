@@ -3,7 +3,20 @@ import { globSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { globSync as nativeGlobSync } from "tinyglobby";
+import {
+  NATIVE_SECURITY_ADAPTER,
+  NATIVE_SECURITY_TEST_FILES,
+} from "../scripts/fork-release/native_tests.mjs";
 import { fullSuiteVitestShards } from "./vitest/vitest.test-shards.mjs";
+
+/** These node:test suites run directly rather than through Vitest discovery. */
+export const standaloneNodeTestFiles = [
+  "scripts/docker/package-current-publisher.test.mjs",
+  "scripts/docker/run-with-matrix-crypto-cache.test.mjs",
+  "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/capture-integrity.test.mjs",
+  "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/current-parity.test.mjs",
+  "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle/test/runtime-pin-transition.test.mjs",
+] as const;
 
 type VitestTestConfig = {
   dir?: string;
@@ -97,11 +110,20 @@ export async function listVitestConfigTestFiles(
   return listConfigTestFiles(await loadRawVitestConfig(configPath, includeFile), includeFile);
 }
 
+/** Native files are owned only when their actual Vitest adapter is discovered. */
+export function expandNativeSecurityTestOwnership(files: string[]): string[] {
+  return files.includes(NATIVE_SECURITY_ADAPTER)
+    ? [...files, ...NATIVE_SECURITY_TEST_FILES]
+    : files;
+}
+
 async function listFullSuiteTestFileMatches(): Promise<Map<string, string[]>> {
   const matches = new Map<string, string[]>();
   const configPaths = [...new Set(fullSuiteVitestShards.flatMap((shard) => shard.projects))];
   for (const configPath of configPaths) {
-    for (const repoPath of await listVitestConfigTestFiles(configPath)) {
+    for (const repoPath of expandNativeSecurityTestOwnership(
+      await listVitestConfigTestFiles(configPath),
+    )) {
       matches.set(repoPath, [...(matches.get(repoPath) ?? []), configPath]);
     }
   }
@@ -110,6 +132,7 @@ async function listFullSuiteTestFileMatches(): Promise<Map<string, string[]>> {
 
 function listNormalFullSuiteTestFiles(): string[] {
   const e2eNamedIntegrationTests = new Set(["src/gateway/gateway.test.ts"]);
+  const standaloneNodeTests = new Set<string>(standaloneNodeTestFiles);
   return globSync(["**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"], {
     cwd: process.cwd(),
     exclude: ["**/.*/**", "**/dist/**", "**/node_modules/**", "**/vendor/**"],
@@ -120,6 +143,7 @@ function listNormalFullSuiteTestFiles(): string[] {
         !file.includes(".live.test.") &&
         !file.includes(".e2e.test.") &&
         !file.startsWith("test/fixtures/") &&
+        !standaloneNodeTests.has(file) &&
         !e2eNamedIntegrationTests.has(file),
     )
     .toSorted((left, right) => left.localeCompare(right));
