@@ -1,0 +1,23 @@
+class API:
+    """Fixed GitHub read-only API, no credential forwarding across redirects."""
+    def __init__(self, token, deadline, opener=None):
+        policy.need(type(token) is str and 0 < len(token) <= 4096, "v9.api_token_required")
+        self.token, self.deadline = token, deadline
+        self.opener = opener or urllib.request.build_opener(NoRedirect)
+        self.cache = {}
+
+    def __call__(self, path):
+        policy.need(type(path) is str and path.startswith("/repos/" + policy.REPOSITORY + "/") and
+            len(path) <= 1024 and not any(c in path for c in "\r\n#") and ".." not in path,
+            "v9.fixed_api_route")
+        if path not in self.cache:
+            seconds = min(30, self.deadline - time.time())
+            policy.need(seconds > 0, "v9.api_deadline")
+            req = urllib.request.Request("https://api.github.com" + path, headers={
+                "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": policy.CAMPAIGN, "Authorization": "Bearer " + self.token})
+            with self.opener.open(req, timeout=seconds) as response:
+                policy.need(response.geturl() == "https://api.github.com" + path, "v9.api_redirect")
+                raw = response.read(4 * 1024 * 1024 + 1)
+            self.cache[path] = policy.parse(raw, 4 * 1024 * 1024)
+        return self.cache[path]

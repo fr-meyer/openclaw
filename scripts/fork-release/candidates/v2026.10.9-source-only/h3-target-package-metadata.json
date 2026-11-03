@@ -1,0 +1,89 @@
+{
+  "createdAt": "2026-10-31T06:39:40Z",
+  "eligibleAtIsConservativeWholeSecondCeiling": true,
+  "fullResolvedH3ClosureProven": false,
+  "metadataOnly": true,
+  "minimumReleaseAgeMinutes": 10080,
+  "newPinOrAgeExceptionBeyondApprovedFour": false,
+  "packageBodiesAuthenticated": false,
+  "schema": "openclaw.v109.target-package-metadata.v1",
+  "sourceRegistryIndexSha256": "8cb5b4adc934bcd016206adec8a4b018f092aa99d8f194190a887f8de696e2cc",
+  "tupleCount": 4,
+  "tuples": [
+    {
+      "dependencies": {},
+      "eligibleAt": "2026-11-01T21:32:26Z",
+      "engines": {
+        "node": ">=4.0"
+      },
+      "integrity": "sha512-/kVP2U8z596Ia0gwFrwyIeo74ta5aVmSeU1FfAUMAmcEP5EP7zydmag3SLiN64NaRKef3lxsq7i/g7ltJQDGow==",
+      "name": "follow-redirects",
+      "publishedAt": "2026-10-25T21:32:25.963Z",
+      "sourceProjectionSha256": "911c56b74e65a1d0fbf2a72a83e4a9d77937c1e94a091b9f638d7b19769a378c",
+      "sourceResponseSha256": "0e7e00a3f1a14c33aab0a01bb2edcb96b10a4705be7358a9f20dbe0aceb48f3a",
+      "sourceRoute": "https://registry.npmjs.org/follow-redirects",
+      "sourceSummarySha256": "74df7e0a33b6937f8abb70b70257828fcaf5b9a5cabc89169a710321d2c4b14f",
+      "version": "1.16.2"
+    },
+    {
+      "dependencies": {
+        "minimatch": "^11.0.0",
+        "minipass": "^7.1.3",
+        "path-scurry": "^3.0.0"
+      },
+      "eligibleAt": "2026-11-03T22:07:01Z",
+      "engines": {
+        "node": "18 || 20 || >=22"
+      },
+      "integrity": "sha512-vfMgTR2djMHPUchsJMLpZlYQvtjVL+mHpEr5wPpoCbQs2vr/FBNK+3Gnl9Ara1DSs4Aeg4eG9HiADb5/rkY/ZA==",
+      "name": "glob",
+      "publishedAt": "2026-10-27T22:07:00.325Z",
+      "sourceProjectionSha256": "8b93b3e7b9af44c9d86a09418de49004d86bab45761f3d0aefb2fd0232b41142",
+      "sourceResponseSha256": "90419b2d0c1049053362239360a7a411298f4a2d52ed0bd0e9aeb6a7acdca2f6",
+      "sourceRoute": "https://registry.npmjs.org/glob",
+      "sourceSummarySha256": "74df7e0a33b6937f8abb70b70257828fcaf5b9a5cabc89169a710321d2c4b14f",
+      "version": "14.0.2"
+    },
+    {
+      "dependencies": {
+        "@hapi/address": "^5.1.1",
+        "@hapi/formula": "^3.0.2",
+        "@hapi/hoek": "^11.0.7",
+        "@hapi/pinpoint": "^2.0.1",
+        "@hapi/tlds": "^1.1.1",
+        "@hapi/topo": "^6.0.2",
+        "@standard-schema/spec": "^1.1.0"
+      },
+      "eligibleAt": "2026-11-04T09:59:50Z",
+      "engines": {
+        "node": ">= 20"
+      },
+      "integrity": "sha512-mV9M4Llh4va3NT90p7KBtQhoZqjs8xLX7EWYE4y/GG3yLF6REbIBEHSUb0UX1JXRht2w5tiLSsvmpYc5akiqIw==",
+      "name": "joi",
+      "publishedAt": "2026-10-28T09:59:49.641Z",
+      "sourceProjectionSha256": "04244a253b519bcb8b71bc8b2beab3b5a04853c772b83dddbd5c829ca58b56b8",
+      "sourceResponseSha256": "3d2b2ea5700af691ca6e118d6a0a057121a6e34ec68951da370e9ad357d8fd50",
+      "sourceRoute": "https://registry.npmjs.org/joi",
+      "sourceSummarySha256": "74df7e0a33b6937f8abb70b70257828fcaf5b9a5cabc89169a710321d2c4b14f",
+      "version": "18.3.1"
+    },
+    {
+      "dependencies": {
+        "@isaacs/nonrecursive-glob-match": "^1.0.1",
+        "brace-expansion": "^5.0.12"
+      },
+      "eligibleAt": "2026-11-03T22:26:04Z",
+      "engines": {
+        "node": "18 || 20 || >=22"
+      },
+      "integrity": "sha512-t+Vn6DX4wPCxS23y03C0uhF7S1jpi1GfqPrnlEipCJaA2ykiNbMkVlDutZtmvLfRcUN6R8AYVlzTsQrT4RZoLQ==",
+      "name": "minimatch",
+      "publishedAt": "2026-10-27T22:26:03.755Z",
+      "sourceProjectionSha256": "27b23483e1e7e9c6559f0c0f817aaacac3c93cffe3460b0922e95409b4fdd91b",
+      "sourceResponseSha256": "f6e5a3443d78745372242d30c29f75939ee220aca8d3d838637ccef43d503618",
+      "sourceRoute": "https://registry.npmjs.org/minimatch",
+      "sourceSummarySha256": "74df7e0a33b6937f8abb70b70257828fcaf5b9a5cabc89169a710321d2c4b14f",
+      "version": "11.0.1"
+    }
+  ]
+}

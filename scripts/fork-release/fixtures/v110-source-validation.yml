@@ -1,0 +1,728 @@
+name: future-v110-grouped-validation-20261103
+run-name: future-v110-grouped-validation-20261103
+on:
+  pull_request:
+    branches: [release-pipeline/v105-image-only-20261024]
+    types: [opened, reopened, synchronize]
+    paths:
+      - .github/workflows/future-v110-source-validation.yml
+      - scripts/fork-release/source_validation_v110.py
+      - scripts/fork-release/source_contract_v110.py
+      - scripts/fork-release/source_validation_selection_v110.py
+      - scripts/fork-release/verified_imports_v110.py
+      - scripts/fork-release/lockfile_policy_v110.py
+      - scripts/fork-release/source_validation_v108.py
+      - scripts/fork-release/source_validation_v109.py
+      - scripts/fork-release/bounded_run_contract_v109.py
+      - scripts/fork-release/preflight.py
+      - scripts/fork-release/release.py
+      - scripts/fork-release/manifest_capture.py
+      - scripts/fork-release/native_tests.mjs
+      - scripts/fork-release/fixtures/v110-lock-preparation.yml
+      - scripts/fork-release/fixtures/v110-source-validation.yml
+      - scripts/fork-release/candidates/v2026.10.10-source-only/**
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: future-v110-source-validation
+  cancel-in-progress: false
+# This group serializes only 10.10. The source owner must separately release a
+# full bounded window under the shared three-job limit, preserving 10.9 priority.
+# DISARMED: root binds genuine PR/source/entry bytes before changing ARMED.
+# Request/review/head digests are checked by the pinned entry, not self-embedded.
+env:
+  V110_ARMED: 'false'
+  V110_BOUND_PR: '0'
+  V110_SOURCE_SHA: '0000000000000000000000000000000000000000'
+  V110_ENTRY_SHA256: '0000000000000000000000000000000000000000000000000000000000000000'
+  V110_CODE_MANIFEST_SHA256: '0000000000000000000000000000000000000000000000000000000000000000'
+  V110_EFFECTIVE_AT: 'DISARMED'
+  V110_EXPIRES_AT: '2026-11-06T03:14:21Z'
+  PYTHONDONTWRITEBYTECODE: '1'
+defaults:
+  run:
+    shell: bash
+jobs:
+  admission:
+    if: github.repository == 'fr-meyer/openclaw' && github.actor == 'fr-meyer' && github.event.repository.private == false && github.event.pull_request.number == 0 && github.event.pull_request.draft == true && github.event.pull_request.head.repo.full_name == 'fr-meyer/openclaw' && github.event.pull_request.head.ref == 'task/v110-source-validation'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      source_sha: ${{ steps.admission.outputs.source_sha }}
+      request_sha: ${{ steps.admission.outputs.request_sha }}
+      pipeline_head: ${{ steps.admission.outputs.pipeline_head }}
+      run_id: ${{ steps.admission.outputs.run_id }}
+      phase: ${{ steps.admission.outputs.phase }}
+    steps:
+      - name: Start shared deadline before checkout
+        env:
+          V110_JOB_MINUTES: 30
+        run: |
+          python3 -I - <<'PY'
+          from datetime import datetime, timezone
+          import os, re, time
+
+          def utc(value):
+              if not isinstance(value, str) or len(value) != 20 or not value.endswith('Z'):
+                  raise SystemExit('v110.disarmed_or_invalid_clock')
+              try:
+                  return int(datetime.strptime(value, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp())
+              except ValueError:
+                  raise SystemExit('v110.disarmed_or_invalid_clock')
+
+          pr = os.environ.get('V110_BOUND_PR', '')
+          source = os.environ.get('V110_SOURCE_SHA', '')
+          entry = os.environ.get('V110_ENTRY_SHA256', '')
+          code_manifest = os.environ.get('V110_CODE_MANIFEST_SHA256', '')
+          if (os.environ.get('V110_ARMED') != 'true' or
+                  re.fullmatch(r'[1-9][0-9]{0,9}', pr) is None or
+                  re.fullmatch(r'[0-9a-f]{40}', source) is None or source == '0' * 40 or
+                  re.fullmatch(r'[0-9a-f]{64}', entry) is None or entry == '0' * 64 or
+                  re.fullmatch(r'[0-9a-f]{64}', code_manifest) is None or code_manifest == '0' * 64):
+              raise SystemExit('v110.disarmed_binding')
+          if (os.environ.get('GITHUB_ACTIONS') != 'true' or
+                  os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted' or
+                  os.environ.get('RUNNER_OS') != 'Linux' or
+                  os.environ.get('GITHUB_REPOSITORY') != 'fr-meyer/openclaw' or
+                  os.environ.get('GITHUB_ACTOR') != 'fr-meyer' or
+                  os.environ.get('GITHUB_EVENT_NAME') != 'pull_request' or
+                  os.environ.get('GITHUB_RUN_ATTEMPT') != '1' or
+                  os.environ.get('GITHUB_REF') != 'refs/pull/' + pr + '/merge'):
+              raise SystemExit('v110.hosted_identity')
+          start, end = utc(os.environ.get('V110_EFFECTIVE_AT')), utc(os.environ.get('V110_EXPIRES_AT'))
+          minutes = os.environ.get('V110_JOB_MINUTES', '')
+          if re.fullmatch(r'[1-9][0-9]?', minutes) is None or not 1 <= int(minutes) <= 90:
+              raise SystemExit('v110.job_limit')
+          now = int(time.time())
+          if (start != utc('2026-11-03T09:12:23Z') or end != utc('2026-11-06T03:14:21Z') or
+                  not max(start, utc('2026-11-04T09:59:50Z')) <= now <= end - int(minutes) * 60 - 60):
+              raise SystemExit('v110.authorization_clock')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('V110_JOB_STARTED_EPOCH=' + str(now) + '\n')
+          PY
+      - name: Checkout exact pipeline bootstrap only
+        timeout-minutes: 5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+      - name: Exact public admission and cumulative accounting
+        id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -I - admit <<'PY'
+          # Fixed stdlib-only closure check: no pipeline import before all bytes match.
+          import hashlib, json, os, re, stat, sys
+          from pathlib import Path
+          sys.dont_write_bytecode = True
+          ROOT = Path.cwd() / 'pipeline'
+          MANIFEST = 'scripts/fork-release/candidates/v2026.10.10-source-only/code-manifest.json'
+          ENTRY = 'scripts/fork-release/source_validation_v110.py'
+          IMPORTS = 'scripts/fork-release/verified_imports_v110.py'
+          WORKFLOW = '.github/workflows/future-v110-source-validation.yml'
+          MAXIMUM = 64 * 1024 * 1024
+
+          def strict_object(pairs):
+              if type(pairs) is not list:
+                  raise SystemExit('v110.code_manifest_json_constant')
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise SystemExit('v110.code_manifest_duplicate_key')
+                  result[key] = value
+              return result
+
+          def read_regular(relative, maximum):
+              if (type(relative) is not str or
+                      re.fullmatch(r'scripts/fork-release/[A-Za-z0-9_./-]+', relative) is None or
+                      any(part in ('', '.', '..') or part.startswith('-') for part in relative.split('/'))):
+                  raise SystemExit('v110.code_manifest_path')
+              try:
+                  parent = ROOT
+                  if not stat.S_ISDIR(parent.lstat().st_mode):
+                      raise SystemExit('v110.code_manifest_directory')
+                  for part in relative.split('/')[:-1]:
+                      parent = parent / part
+                      if not stat.S_ISDIR(parent.lstat().st_mode):
+                          raise SystemExit('v110.code_manifest_directory')
+                  path = ROOT / relative
+                  before = path.lstat()
+                  if not stat.S_ISREG(before.st_mode) or before.st_size > maximum:
+                      raise SystemExit('v110.code_manifest_regular_file')
+                  with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as stream:
+                      opened = os.fstat(stream.fileno())
+                      raw = stream.read(maximum + 1)
+                      after = os.fstat(stream.fileno())
+                  identity = lambda value: (value.st_dev, value.st_ino, value.st_size,
+                      value.st_mtime_ns, value.st_ctime_ns)
+                  if (identity(before) != identity(opened) or identity(before) != identity(after) or
+                          identity(before) != identity(path.lstat()) or len(raw) > maximum):
+                      raise SystemExit('v110.code_manifest_file_changed')
+                  return raw
+              except OSError:
+                  raise SystemExit('v110.code_manifest_file_unavailable')
+
+          def verify_code_manifest():
+              expected = os.environ.get('V110_CODE_MANIFEST_SHA256', '')
+              entry_sha = os.environ.get('V110_ENTRY_SHA256', '')
+              if any(re.fullmatch(r'[0-9a-f]{64}', value) is None or value == '0' * 64
+                      for value in (expected, entry_sha)):
+                  raise SystemExit('v110.code_manifest_unbound')
+              raw = read_regular(MANIFEST, 256 * 1024)
+              if hashlib.sha256(raw).hexdigest() != expected:
+                  raise SystemExit('v110.code_manifest_digest')
+              try:
+                  manifest = json.loads(raw, object_pairs_hook=strict_object, parse_constant=strict_object)
+              except (ValueError, UnicodeError):
+                  raise SystemExit('v110.code_manifest_json')
+              if (type(manifest) is not dict or set(manifest) != {'schema', 'codeFiles'} or
+                      manifest['schema'] != 'openclaw.v110.code-manifest.v1' or
+                      type(manifest['codeFiles']) is not dict or not 1 <= len(manifest['codeFiles']) <= 256 or
+                      ENTRY not in manifest['codeFiles'] or IMPORTS not in manifest['codeFiles']):
+                  raise SystemExit('v110.code_manifest_schema')
+              captured, total = {}, 0
+              for relative, pin in manifest['codeFiles'].items():
+                  if relative in (MANIFEST, WORKFLOW):
+                      raise SystemExit('v110.code_manifest_self_or_workflow')
+                  if (type(pin) is not dict or set(pin) != {'sha256', 'bytes'} or
+                          type(pin['sha256']) is not str or re.fullmatch(r'[0-9a-f]{64}', pin['sha256']) is None or
+                          type(pin['bytes']) is not int or not 1 <= pin['bytes'] <= MAXIMUM):
+                      raise SystemExit('v110.code_manifest_pin')
+                  total += pin['bytes']
+                  if total > MAXIMUM:
+                      raise SystemExit('v110.code_manifest_total_size')
+                  content = read_regular(relative, pin['bytes'])
+                  if len(content) != pin['bytes'] or hashlib.sha256(content).hexdigest() != pin['sha256']:
+                      raise SystemExit('v110.code_manifest_content')
+                  if relative == ENTRY:
+                      if pin['sha256'] != entry_sha:
+                          raise SystemExit('v110.code_manifest_entry_digest')
+                  captured[relative] = content
+              return captured
+
+          captured = verify_code_manifest()
+          imports_path = ROOT / IMPORTS
+          imports_namespace = {'__name__': '_v110_verified_imports', '__file__': str(imports_path)}
+          exec(compile(captured[IMPORTS], str(imports_path), 'exec'), imports_namespace)
+          closed_builtins = imports_namespace['install_verified_imports'](str(ROOT), captured)
+          entry_path = ROOT / ENTRY
+          sys.argv = [str(entry_path), *sys.argv[1:]]
+          exec(compile(captured[ENTRY], str(entry_path), 'exec'),
+              {'__name__': '__main__', '__file__': str(entry_path), '__package__': None,
+                  '__builtins__': closed_builtins})
+          PY
+  source:
+    name: source (${{ matrix.profile }})
+    needs: admission
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.minutes }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - profile: dependency
+            minutes: 60
+          - profile: types-production
+            minutes: 90
+          - profile: types-tests
+            minutes: 90
+          - profile: types-scripts
+            minutes: 90
+          - profile: workboard-1
+            minutes: 60
+          - profile: workboard-2
+            minutes: 60
+          - profile: models-1
+            minutes: 60
+          - profile: models-2
+            minutes: 60
+          - profile: sqlite
+            minutes: 90
+          - profile: doctor-1
+            minutes: 90
+          - profile: doctor-2
+            minutes: 75
+          - profile: doctor-3
+            minutes: 75
+          - profile: memory
+            minutes: 60
+          - profile: pipeline-contracts
+            minutes: 45
+          - profile: compatibility
+            minutes: 60
+    env:
+      V110_ADMISSION_REQUEST_SHA256: ${{ needs.admission.outputs.request_sha }}
+      V110_ADMISSION_PIPELINE_HEAD: ${{ needs.admission.outputs.pipeline_head }}
+      V110_ADMISSION_SOURCE_SHA: ${{ needs.admission.outputs.source_sha }}
+      V110_ADMISSION_RUN_ID: ${{ needs.admission.outputs.run_id }}
+    steps:
+      - name: Start shared deadline before checkout
+        env:
+          V110_JOB_MINUTES: ${{ matrix.minutes }}
+        run: |
+          python3 -I - <<'PY'
+          from datetime import datetime, timezone
+          import os, re, time
+
+          def utc(value):
+              if not isinstance(value, str) or len(value) != 20 or not value.endswith('Z'):
+                  raise SystemExit('v110.disarmed_or_invalid_clock')
+              try:
+                  return int(datetime.strptime(value, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp())
+              except ValueError:
+                  raise SystemExit('v110.disarmed_or_invalid_clock')
+
+          pr = os.environ.get('V110_BOUND_PR', '')
+          source = os.environ.get('V110_SOURCE_SHA', '')
+          entry = os.environ.get('V110_ENTRY_SHA256', '')
+          code_manifest = os.environ.get('V110_CODE_MANIFEST_SHA256', '')
+          if (os.environ.get('V110_ARMED') != 'true' or
+                  re.fullmatch(r'[1-9][0-9]{0,9}', pr) is None or
+                  re.fullmatch(r'[0-9a-f]{40}', source) is None or source == '0' * 40 or
+                  re.fullmatch(r'[0-9a-f]{64}', entry) is None or entry == '0' * 64 or
+                  re.fullmatch(r'[0-9a-f]{64}', code_manifest) is None or code_manifest == '0' * 64):
+              raise SystemExit('v110.disarmed_binding')
+          if (os.environ.get('GITHUB_ACTIONS') != 'true' or
+                  os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted' or
+                  os.environ.get('RUNNER_OS') != 'Linux' or
+                  os.environ.get('GITHUB_REPOSITORY') != 'fr-meyer/openclaw' or
+                  os.environ.get('GITHUB_ACTOR') != 'fr-meyer' or
+                  os.environ.get('GITHUB_EVENT_NAME') != 'pull_request' or
+                  os.environ.get('GITHUB_RUN_ATTEMPT') != '1' or
+                  os.environ.get('GITHUB_REF') != 'refs/pull/' + pr + '/merge'):
+              raise SystemExit('v110.hosted_identity')
+          start, end = utc(os.environ.get('V110_EFFECTIVE_AT')), utc(os.environ.get('V110_EXPIRES_AT'))
+          minutes = os.environ.get('V110_JOB_MINUTES', '')
+          if re.fullmatch(r'[1-9][0-9]?', minutes) is None or not 1 <= int(minutes) <= 90:
+              raise SystemExit('v110.job_limit')
+          now = int(time.time())
+          if (start != utc('2026-11-03T09:12:23Z') or end != utc('2026-11-06T03:14:21Z') or
+                  not max(start, utc('2026-11-04T09:59:50Z')) <= now <= end - int(minutes) * 60 - 60):
+              raise SystemExit('v110.authorization_clock')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('V110_JOB_STARTED_EPOCH=' + str(now) + '\n')
+          PY
+      - name: Checkout exact pipeline bootstrap only
+        timeout-minutes: 5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+      - name: Checkout exact admitted source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ needs.admission.outputs.source_sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+      - name: Pinned public Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.22.1
+          check-latest: false
+      - name: Verify exact public closure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -I - fetch-closure --profile '${{ matrix.profile }}' <<'PY'
+          # Fixed stdlib-only closure check: no pipeline import before all bytes match.
+          import hashlib, json, os, re, stat, sys
+          from pathlib import Path
+          sys.dont_write_bytecode = True
+          ROOT = Path.cwd() / 'pipeline'
+          MANIFEST = 'scripts/fork-release/candidates/v2026.10.10-source-only/code-manifest.json'
+          ENTRY = 'scripts/fork-release/source_validation_v110.py'
+          IMPORTS = 'scripts/fork-release/verified_imports_v110.py'
+          WORKFLOW = '.github/workflows/future-v110-source-validation.yml'
+          MAXIMUM = 64 * 1024 * 1024
+
+          def strict_object(pairs):
+              if type(pairs) is not list:
+                  raise SystemExit('v110.code_manifest_json_constant')
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise SystemExit('v110.code_manifest_duplicate_key')
+                  result[key] = value
+              return result
+
+          def read_regular(relative, maximum):
+              if (type(relative) is not str or
+                      re.fullmatch(r'scripts/fork-release/[A-Za-z0-9_./-]+', relative) is None or
+                      any(part in ('', '.', '..') or part.startswith('-') for part in relative.split('/'))):
+                  raise SystemExit('v110.code_manifest_path')
+              try:
+                  parent = ROOT
+                  if not stat.S_ISDIR(parent.lstat().st_mode):
+                      raise SystemExit('v110.code_manifest_directory')
+                  for part in relative.split('/')[:-1]:
+                      parent = parent / part
+                      if not stat.S_ISDIR(parent.lstat().st_mode):
+                          raise SystemExit('v110.code_manifest_directory')
+                  path = ROOT / relative
+                  before = path.lstat()
+                  if not stat.S_ISREG(before.st_mode) or before.st_size > maximum:
+                      raise SystemExit('v110.code_manifest_regular_file')
+                  with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as stream:
+                      opened = os.fstat(stream.fileno())
+                      raw = stream.read(maximum + 1)
+                      after = os.fstat(stream.fileno())
+                  identity = lambda value: (value.st_dev, value.st_ino, value.st_size,
+                      value.st_mtime_ns, value.st_ctime_ns)
+                  if (identity(before) != identity(opened) or identity(before) != identity(after) or
+                          identity(before) != identity(path.lstat()) or len(raw) > maximum):
+                      raise SystemExit('v110.code_manifest_file_changed')
+                  return raw
+              except OSError:
+                  raise SystemExit('v110.code_manifest_file_unavailable')
+
+          def verify_code_manifest():
+              expected = os.environ.get('V110_CODE_MANIFEST_SHA256', '')
+              entry_sha = os.environ.get('V110_ENTRY_SHA256', '')
+              if any(re.fullmatch(r'[0-9a-f]{64}', value) is None or value == '0' * 64
+                      for value in (expected, entry_sha)):
+                  raise SystemExit('v110.code_manifest_unbound')
+              raw = read_regular(MANIFEST, 256 * 1024)
+              if hashlib.sha256(raw).hexdigest() != expected:
+                  raise SystemExit('v110.code_manifest_digest')
+              try:
+                  manifest = json.loads(raw, object_pairs_hook=strict_object, parse_constant=strict_object)
+              except (ValueError, UnicodeError):
+                  raise SystemExit('v110.code_manifest_json')
+              if (type(manifest) is not dict or set(manifest) != {'schema', 'codeFiles'} or
+                      manifest['schema'] != 'openclaw.v110.code-manifest.v1' or
+                      type(manifest['codeFiles']) is not dict or not 1 <= len(manifest['codeFiles']) <= 256 or
+                      ENTRY not in manifest['codeFiles'] or IMPORTS not in manifest['codeFiles']):
+                  raise SystemExit('v110.code_manifest_schema')
+              captured, total = {}, 0
+              for relative, pin in manifest['codeFiles'].items():
+                  if relative in (MANIFEST, WORKFLOW):
+                      raise SystemExit('v110.code_manifest_self_or_workflow')
+                  if (type(pin) is not dict or set(pin) != {'sha256', 'bytes'} or
+                          type(pin['sha256']) is not str or re.fullmatch(r'[0-9a-f]{64}', pin['sha256']) is None or
+                          type(pin['bytes']) is not int or not 1 <= pin['bytes'] <= MAXIMUM):
+                      raise SystemExit('v110.code_manifest_pin')
+                  total += pin['bytes']
+                  if total > MAXIMUM:
+                      raise SystemExit('v110.code_manifest_total_size')
+                  content = read_regular(relative, pin['bytes'])
+                  if len(content) != pin['bytes'] or hashlib.sha256(content).hexdigest() != pin['sha256']:
+                      raise SystemExit('v110.code_manifest_content')
+                  if relative == ENTRY:
+                      if pin['sha256'] != entry_sha:
+                          raise SystemExit('v110.code_manifest_entry_digest')
+                  captured[relative] = content
+              return captured
+
+          captured = verify_code_manifest()
+          imports_path = ROOT / IMPORTS
+          imports_namespace = {'__name__': '_v110_verified_imports', '__file__': str(imports_path)}
+          exec(compile(captured[IMPORTS], str(imports_path), 'exec'), imports_namespace)
+          closed_builtins = imports_namespace['install_verified_imports'](str(ROOT), captured)
+          entry_path = ROOT / ENTRY
+          sys.argv = [str(entry_path), *sys.argv[1:]]
+          exec(compile(captured[ENTRY], str(entry_path), 'exec'),
+              {'__name__': '__main__', '__file__': str(entry_path), '__package__': None,
+                  '__builtins__': closed_builtins})
+          PY
+      - name: Run fresh secretless source profile
+        run: |
+          python3 -I - run --profile '${{ matrix.profile }}' <<'PY'
+          # Fixed stdlib-only closure check: no pipeline import before all bytes match.
+          import hashlib, json, os, re, stat, sys
+          from pathlib import Path
+          sys.dont_write_bytecode = True
+          ROOT = Path.cwd() / 'pipeline'
+          MANIFEST = 'scripts/fork-release/candidates/v2026.10.10-source-only/code-manifest.json'
+          ENTRY = 'scripts/fork-release/source_validation_v110.py'
+          IMPORTS = 'scripts/fork-release/verified_imports_v110.py'
+          WORKFLOW = '.github/workflows/future-v110-source-validation.yml'
+          MAXIMUM = 64 * 1024 * 1024
+
+          def strict_object(pairs):
+              if type(pairs) is not list:
+                  raise SystemExit('v110.code_manifest_json_constant')
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise SystemExit('v110.code_manifest_duplicate_key')
+                  result[key] = value
+              return result
+
+          def read_regular(relative, maximum):
+              if (type(relative) is not str or
+                      re.fullmatch(r'scripts/fork-release/[A-Za-z0-9_./-]+', relative) is None or
+                      any(part in ('', '.', '..') or part.startswith('-') for part in relative.split('/'))):
+                  raise SystemExit('v110.code_manifest_path')
+              try:
+                  parent = ROOT
+                  if not stat.S_ISDIR(parent.lstat().st_mode):
+                      raise SystemExit('v110.code_manifest_directory')
+                  for part in relative.split('/')[:-1]:
+                      parent = parent / part
+                      if not stat.S_ISDIR(parent.lstat().st_mode):
+                          raise SystemExit('v110.code_manifest_directory')
+                  path = ROOT / relative
+                  before = path.lstat()
+                  if not stat.S_ISREG(before.st_mode) or before.st_size > maximum:
+                      raise SystemExit('v110.code_manifest_regular_file')
+                  with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as stream:
+                      opened = os.fstat(stream.fileno())
+                      raw = stream.read(maximum + 1)
+                      after = os.fstat(stream.fileno())
+                  identity = lambda value: (value.st_dev, value.st_ino, value.st_size,
+                      value.st_mtime_ns, value.st_ctime_ns)
+                  if (identity(before) != identity(opened) or identity(before) != identity(after) or
+                          identity(before) != identity(path.lstat()) or len(raw) > maximum):
+                      raise SystemExit('v110.code_manifest_file_changed')
+                  return raw
+              except OSError:
+                  raise SystemExit('v110.code_manifest_file_unavailable')
+
+          def verify_code_manifest():
+              expected = os.environ.get('V110_CODE_MANIFEST_SHA256', '')
+              entry_sha = os.environ.get('V110_ENTRY_SHA256', '')
+              if any(re.fullmatch(r'[0-9a-f]{64}', value) is None or value == '0' * 64
+                      for value in (expected, entry_sha)):
+                  raise SystemExit('v110.code_manifest_unbound')
+              raw = read_regular(MANIFEST, 256 * 1024)
+              if hashlib.sha256(raw).hexdigest() != expected:
+                  raise SystemExit('v110.code_manifest_digest')
+              try:
+                  manifest = json.loads(raw, object_pairs_hook=strict_object, parse_constant=strict_object)
+              except (ValueError, UnicodeError):
+                  raise SystemExit('v110.code_manifest_json')
+              if (type(manifest) is not dict or set(manifest) != {'schema', 'codeFiles'} or
+                      manifest['schema'] != 'openclaw.v110.code-manifest.v1' or
+                      type(manifest['codeFiles']) is not dict or not 1 <= len(manifest['codeFiles']) <= 256 or
+                      ENTRY not in manifest['codeFiles'] or IMPORTS not in manifest['codeFiles']):
+                  raise SystemExit('v110.code_manifest_schema')
+              captured, total = {}, 0
+              for relative, pin in manifest['codeFiles'].items():
+                  if relative in (MANIFEST, WORKFLOW):
+                      raise SystemExit('v110.code_manifest_self_or_workflow')
+                  if (type(pin) is not dict or set(pin) != {'sha256', 'bytes'} or
+                          type(pin['sha256']) is not str or re.fullmatch(r'[0-9a-f]{64}', pin['sha256']) is None or
+                          type(pin['bytes']) is not int or not 1 <= pin['bytes'] <= MAXIMUM):
+                      raise SystemExit('v110.code_manifest_pin')
+                  total += pin['bytes']
+                  if total > MAXIMUM:
+                      raise SystemExit('v110.code_manifest_total_size')
+                  content = read_regular(relative, pin['bytes'])
+                  if len(content) != pin['bytes'] or hashlib.sha256(content).hexdigest() != pin['sha256']:
+                      raise SystemExit('v110.code_manifest_content')
+                  if relative == ENTRY:
+                      if pin['sha256'] != entry_sha:
+                          raise SystemExit('v110.code_manifest_entry_digest')
+                  captured[relative] = content
+              return captured
+
+          captured = verify_code_manifest()
+          imports_path = ROOT / IMPORTS
+          imports_namespace = {'__name__': '_v110_verified_imports', '__file__': str(imports_path)}
+          exec(compile(captured[IMPORTS], str(imports_path), 'exec'), imports_namespace)
+          closed_builtins = imports_namespace['install_verified_imports'](str(ROOT), captured)
+          entry_path = ROOT / ENTRY
+          sys.argv = [str(entry_path), *sys.argv[1:]]
+          exec(compile(captured[ENTRY], str(entry_path), 'exec'),
+              {'__name__': '__main__', '__file__': str(entry_path), '__package__': None,
+                  '__builtins__': closed_builtins})
+          PY
+  final:
+    if: always()
+    needs: [admission, source]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      V110_ADMISSION_RESULT: ${{ needs.admission.result }}
+      V110_SOURCE_RESULT: ${{ needs.source.result }}
+      V110_ADMISSION_REQUEST_SHA256: ${{ needs.admission.outputs.request_sha }}
+      V110_ADMISSION_PIPELINE_HEAD: ${{ needs.admission.outputs.pipeline_head }}
+      V110_ADMISSION_SOURCE_SHA: ${{ needs.admission.outputs.source_sha }}
+      V110_ADMISSION_RUN_ID: ${{ needs.admission.outputs.run_id }}
+    steps:
+      - name: Start shared deadline before checkout
+        env:
+          V110_JOB_MINUTES: 10
+        run: |
+          python3 -I - <<'PY'
+          from datetime import datetime, timezone
+          import os, re, time
+
+          def utc(value):
+              if not isinstance(value, str) or len(value) != 20 or not value.endswith('Z'):
+                  raise SystemExit('v110.disarmed_or_invalid_clock')
+              try:
+                  return int(datetime.strptime(value, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp())
+              except ValueError:
+                  raise SystemExit('v110.disarmed_or_invalid_clock')
+
+          pr = os.environ.get('V110_BOUND_PR', '')
+          source = os.environ.get('V110_SOURCE_SHA', '')
+          entry = os.environ.get('V110_ENTRY_SHA256', '')
+          code_manifest = os.environ.get('V110_CODE_MANIFEST_SHA256', '')
+          if (os.environ.get('V110_ARMED') != 'true' or
+                  re.fullmatch(r'[1-9][0-9]{0,9}', pr) is None or
+                  re.fullmatch(r'[0-9a-f]{40}', source) is None or source == '0' * 40 or
+                  re.fullmatch(r'[0-9a-f]{64}', entry) is None or entry == '0' * 64 or
+                  re.fullmatch(r'[0-9a-f]{64}', code_manifest) is None or code_manifest == '0' * 64):
+              raise SystemExit('v110.disarmed_binding')
+          if (os.environ.get('GITHUB_ACTIONS') != 'true' or
+                  os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted' or
+                  os.environ.get('RUNNER_OS') != 'Linux' or
+                  os.environ.get('GITHUB_REPOSITORY') != 'fr-meyer/openclaw' or
+                  os.environ.get('GITHUB_ACTOR') != 'fr-meyer' or
+                  os.environ.get('GITHUB_EVENT_NAME') != 'pull_request' or
+                  os.environ.get('GITHUB_RUN_ATTEMPT') != '1' or
+                  os.environ.get('GITHUB_REF') != 'refs/pull/' + pr + '/merge'):
+              raise SystemExit('v110.hosted_identity')
+          start, end = utc(os.environ.get('V110_EFFECTIVE_AT')), utc(os.environ.get('V110_EXPIRES_AT'))
+          minutes = os.environ.get('V110_JOB_MINUTES', '')
+          if re.fullmatch(r'[1-9][0-9]?', minutes) is None or not 1 <= int(minutes) <= 90:
+              raise SystemExit('v110.job_limit')
+          now = int(time.time())
+          if (start != utc('2026-11-03T09:12:23Z') or end != utc('2026-11-06T03:14:21Z') or
+                  not max(start, utc('2026-11-04T09:59:50Z')) <= now <= end - int(minutes) * 60 - 60):
+              raise SystemExit('v110.authorization_clock')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('V110_JOB_STARTED_EPOCH=' + str(now) + '\n')
+          PY
+      - name: Checkout exact pipeline bootstrap only
+        timeout-minutes: 5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fr-meyer/openclaw
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pipeline
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+      - name: Retain truthful fresh-coverage result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -I - finalize <<'PY'
+          # Fixed stdlib-only closure check: no pipeline import before all bytes match.
+          import hashlib, json, os, re, stat, sys
+          from pathlib import Path
+          sys.dont_write_bytecode = True
+          ROOT = Path.cwd() / 'pipeline'
+          MANIFEST = 'scripts/fork-release/candidates/v2026.10.10-source-only/code-manifest.json'
+          ENTRY = 'scripts/fork-release/source_validation_v110.py'
+          IMPORTS = 'scripts/fork-release/verified_imports_v110.py'
+          WORKFLOW = '.github/workflows/future-v110-source-validation.yml'
+          MAXIMUM = 64 * 1024 * 1024
+
+          def strict_object(pairs):
+              if type(pairs) is not list:
+                  raise SystemExit('v110.code_manifest_json_constant')
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise SystemExit('v110.code_manifest_duplicate_key')
+                  result[key] = value
+              return result
+
+          def read_regular(relative, maximum):
+              if (type(relative) is not str or
+                      re.fullmatch(r'scripts/fork-release/[A-Za-z0-9_./-]+', relative) is None or
+                      any(part in ('', '.', '..') or part.startswith('-') for part in relative.split('/'))):
+                  raise SystemExit('v110.code_manifest_path')
+              try:
+                  parent = ROOT
+                  if not stat.S_ISDIR(parent.lstat().st_mode):
+                      raise SystemExit('v110.code_manifest_directory')
+                  for part in relative.split('/')[:-1]:
+                      parent = parent / part
+                      if not stat.S_ISDIR(parent.lstat().st_mode):
+                          raise SystemExit('v110.code_manifest_directory')
+                  path = ROOT / relative
+                  before = path.lstat()
+                  if not stat.S_ISREG(before.st_mode) or before.st_size > maximum:
+                      raise SystemExit('v110.code_manifest_regular_file')
+                  with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as stream:
+                      opened = os.fstat(stream.fileno())
+                      raw = stream.read(maximum + 1)
+                      after = os.fstat(stream.fileno())
+                  identity = lambda value: (value.st_dev, value.st_ino, value.st_size,
+                      value.st_mtime_ns, value.st_ctime_ns)
+                  if (identity(before) != identity(opened) or identity(before) != identity(after) or
+                          identity(before) != identity(path.lstat()) or len(raw) > maximum):
+                      raise SystemExit('v110.code_manifest_file_changed')
+                  return raw
+              except OSError:
+                  raise SystemExit('v110.code_manifest_file_unavailable')
+
+          def verify_code_manifest():
+              expected = os.environ.get('V110_CODE_MANIFEST_SHA256', '')
+              entry_sha = os.environ.get('V110_ENTRY_SHA256', '')
+              if any(re.fullmatch(r'[0-9a-f]{64}', value) is None or value == '0' * 64
+                      for value in (expected, entry_sha)):
+                  raise SystemExit('v110.code_manifest_unbound')
+              raw = read_regular(MANIFEST, 256 * 1024)
+              if hashlib.sha256(raw).hexdigest() != expected:
+                  raise SystemExit('v110.code_manifest_digest')
+              try:
+                  manifest = json.loads(raw, object_pairs_hook=strict_object, parse_constant=strict_object)
+              except (ValueError, UnicodeError):
+                  raise SystemExit('v110.code_manifest_json')
+              if (type(manifest) is not dict or set(manifest) != {'schema', 'codeFiles'} or
+                      manifest['schema'] != 'openclaw.v110.code-manifest.v1' or
+                      type(manifest['codeFiles']) is not dict or not 1 <= len(manifest['codeFiles']) <= 256 or
+                      ENTRY not in manifest['codeFiles'] or IMPORTS not in manifest['codeFiles']):
+                  raise SystemExit('v110.code_manifest_schema')
+              captured, total = {}, 0
+              for relative, pin in manifest['codeFiles'].items():
+                  if relative in (MANIFEST, WORKFLOW):
+                      raise SystemExit('v110.code_manifest_self_or_workflow')
+                  if (type(pin) is not dict or set(pin) != {'sha256', 'bytes'} or
+                          type(pin['sha256']) is not str or re.fullmatch(r'[0-9a-f]{64}', pin['sha256']) is None or
+                          type(pin['bytes']) is not int or not 1 <= pin['bytes'] <= MAXIMUM):
+                      raise SystemExit('v110.code_manifest_pin')
+                  total += pin['bytes']
+                  if total > MAXIMUM:
+                      raise SystemExit('v110.code_manifest_total_size')
+                  content = read_regular(relative, pin['bytes'])
+                  if len(content) != pin['bytes'] or hashlib.sha256(content).hexdigest() != pin['sha256']:
+                      raise SystemExit('v110.code_manifest_content')
+                  if relative == ENTRY:
+                      if pin['sha256'] != entry_sha:
+                          raise SystemExit('v110.code_manifest_entry_digest')
+                  captured[relative] = content
+              return captured
+
+          captured = verify_code_manifest()
+          imports_path = ROOT / IMPORTS
+          imports_namespace = {'__name__': '_v110_verified_imports', '__file__': str(imports_path)}
+          exec(compile(captured[IMPORTS], str(imports_path), 'exec'), imports_namespace)
+          closed_builtins = imports_namespace['install_verified_imports'](str(ROOT), captured)
+          entry_path = ROOT / ENTRY
+          sys.argv = [str(entry_path), *sys.argv[1:]]
+          exec(compile(captured[ENTRY], str(entry_path), 'exec'),
+              {'__name__': '__main__', '__file__': str(entry_path), '__package__': None,
+                  '__builtins__': closed_builtins})
+          PY
+      - name: Upload bounded safe source result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: v110-source-result-${{ github.run_id }}-attempt1
+          path: |
+            ${{ runner.temp }}/v110-source-result/source-validation.json
+          if-no-files-found: error
+          retention-days: 3
+          include-hidden-files: false

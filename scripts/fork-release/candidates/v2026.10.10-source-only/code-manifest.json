@@ -1,0 +1,297 @@
+{
+  "schema": "openclaw.v110.code-manifest.v1",
+  "codeFiles": {
+    "scripts/fork-release/bounded_run_contract_v109.py": {
+      "bytes": 28960,
+      "sha256": "668250588cf859b1b419757940cbf22296380818c50504ac29861e584e7ba23c"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/ci-bindings.json": {
+      "bytes": 37082,
+      "sha256": "e3b1d1a9e926a424e35f9ed1138d9aebfd7657283b8f3d6e5144a0399c0e8471"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/closed-15-provider-usage.json": {
+      "bytes": 183880,
+      "sha256": "47b8aabed22262aaf8f4cc3d1cc34f6567ac2b2406d905a4867668f264532791"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/closed-258-proof.json": {
+      "bytes": 1354,
+      "sha256": "dfc2cda1a2c7c5f3f4e1bc235e8a6e2aca615e62c5ce20a79102a794779770df"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/generation-receipt.json": {
+      "bytes": 2320,
+      "sha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/h3-selected-excluded-ages.json": {
+      "bytes": 11038,
+      "sha256": "373061e725f14fbe9df627f06f69023836f47621630dad006c700da7582e7a05"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/h3-source-amendment.json": {
+      "bytes": 3040,
+      "sha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/h3-stage-prefix.json": {
+      "bytes": 141194,
+      "sha256": "f06d0031f82f06b155ca9e1c93e60da1fb5bc3bd88dc9ca218a2ed9fea3b7153"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/h3-target-package-metadata.json": {
+      "bytes": 3787,
+      "sha256": "d2eef1b346c05bd69f133e47b28f2f8767f797e407a7210410e3c0f4df7930ed"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/historical-artifact-closeout-20261028.json": {
+      "bytes": 2980,
+      "sha256": "38962ed7beed7c875e2fbad72ae82668898f6776c92903675bc202d5b994665d"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/historical-artifact-snapshot-20261028.json": {
+      "bytes": 4667,
+      "sha256": "8c5b538f300b95ea0c447aa9821472e87deb5dac261faa20d170de0ea45a0a87"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/historical-unacquired-jobs-20261030.json": {
+      "bytes": 32356,
+      "sha256": "a3d1cdeddc6af9bd469c069cd52a4c80b3e8565d175944b8b1bef1d3a07bdc23"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/inventory.json": {
+      "bytes": 119193,
+      "sha256": "2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/manifest.json": {
+      "bytes": 4774,
+      "sha256": "1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/preparation-failure-40997868140.json": {
+      "bytes": 2763,
+      "sha256": "af64a6728b88d0e520f24722871ef760c5181e1492b9142b1f9af0944c060856"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/preparation-failure-41003661031.json": {
+      "bytes": 2581,
+      "sha256": "15efc4c98e7caccc8f532ec58f676ed642a9aa8670cf0d7a9a7d42f62a87897d"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/registry-metadata.json": {
+      "bytes": 10924,
+      "sha256": "05bcbaf5a7bf3fb19046534d239ac25db140f34054c7f2cc38c6c1f2d09f9b97"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/source-request.json": {
+      "bytes": 2402,
+      "sha256": "8ad6e9ebff2ae2e2ffe12182a04c7bf3dcb0fa2efc81c71496685af9791b35d8"
+    },
+    "scripts/fork-release/candidates/v2026.10.9-source-only/upstream-verification.json": {
+      "bytes": 1592,
+      "sha256": "8a4be083c2ebf0d6683c7e29f096d69c595881854c241951000d56329d2a8456"
+    },
+    "scripts/fork-release/composite_closed_usage.py": {
+      "bytes": 8274,
+      "sha256": "b5c923e0205a4d49ae81dced385398199725185249a81711ac371d07e624bdb4"
+    },
+    "scripts/fork-release/fixtures/v108-npm-intake-recovery.json": {
+      "bytes": 15200,
+      "sha256": "b6881a07d9aed97e5066c672ab4392281f6bed42c4618e517a228b4ee895a917"
+    },
+    "scripts/fork-release/fixtures/v108-settled-closed99.json": {
+      "bytes": 506343,
+      "sha256": "69a4ab1b30f00b95312ee217fd87dbf32249abd0686bcb941e704d34c9855047"
+    },
+    "scripts/fork-release/fixtures/v108-source-request-v3-0dd.json": {
+      "bytes": 1710,
+      "sha256": "f4328240f75c6a97471843fb4af8e3ee4ceeb93c2fcef98f3e0f9c59ee4fcd3c"
+    },
+    "scripts/fork-release/fixtures/v108-source-request-v4-2946.json": {
+      "bytes": 1880,
+      "sha256": "167466df439e6320f927681553ce7ad35f1b94afa5b2f81ab902a22b8a6a2d09"
+    },
+    "scripts/fork-release/fixtures/v109-api-before-admission-diagnostics.py.txt": {
+      "bytes": 1385,
+      "sha256": "a4a17794bbe6f490e3e2b339986dbed13885bdc8f7a02fd72fafbba35185e692"
+    },
+    "scripts/fork-release/fixtures/v109-first-preparation-source-request.json": {
+      "bytes": 1174,
+      "sha256": "cf52903c8a20e94684e3a6fcb5e947b8336eca62e66f0744efcda4d4d054a9ef"
+    },
+    "scripts/fork-release/fixtures/v109-h-diagnostic-source-request.json": {
+      "bytes": 2404,
+      "sha256": "139ef96602ea6920715a9802a829e60424e0ddc3187e1d6a8196e7e9d2470cb9"
+    },
+    "scripts/fork-release/fixtures/v109-h3-anchor-bindings.json": {
+      "bytes": 37082,
+      "sha256": "e3b1d1a9e926a424e35f9ed1138d9aebfd7657283b8f3d6e5144a0399c0e8471"
+    },
+    "scripts/fork-release/fixtures/v109-h3-anchor-generation.json": {
+      "bytes": 2320,
+      "sha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87"
+    },
+    "scripts/fork-release/fixtures/v109-h3-anchor-inventory.json": {
+      "bytes": 119193,
+      "sha256": "2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb"
+    },
+    "scripts/fork-release/fixtures/v109-h3-anchor-manifest.json": {
+      "bytes": 4774,
+      "sha256": "1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13"
+    },
+    "scripts/fork-release/fixtures/v109-h3-anchor-request.json": {
+      "bytes": 2402,
+      "sha256": "8ad6e9ebff2ae2e2ffe12182a04c7bf3dcb0fa2efc81c71496685af9791b35d8"
+    },
+    "scripts/fork-release/fixtures/v109-h3-lock-preparation.yml": {
+      "bytes": 6623,
+      "sha256": "82c0d3f62bca832fae7ef8ff21a47921b0697750005b433fd4597d02205ad911"
+    },
+    "scripts/fork-release/fixtures/v109-h3-source-validation.yml": {
+      "bytes": 10808,
+      "sha256": "5142f74514f09ea35ba8706be8f259284a2312c7d23326c95fd142b896993c09"
+    },
+    "scripts/fork-release/fixtures/v109-image-build.yml": {
+      "bytes": 9476,
+      "sha256": "9f784ca06340a9f94bc1f933ec6367ffc3256f06fe9c7debdda0275e6e42528d"
+    },
+    "scripts/fork-release/fixtures/v109-lease-type-import-after.ts.txt": {
+      "bytes": 5473,
+      "sha256": "5cbe5159cb2b7b4f38cf123b881f59a69ea4103ded371d06845ba5589703bffa"
+    },
+    "scripts/fork-release/fixtures/v109-lease-type-import-before.ts.txt": {
+      "bytes": 5425,
+      "sha256": "ebb1325d8c877db46fe005093bfa29bff7e27069bcd9a3915ccb7ed90e80ac72"
+    },
+    "scripts/fork-release/fixtures/v109-lock-preparation.yml": {
+      "bytes": 6062,
+      "sha256": "4f669cfc5fc25efbf4e55f62380aee7e9a44912374fb5691e21074adc4f9cb00"
+    },
+    "scripts/fork-release/fixtures/v109-model-diagnostic.yml": {
+      "bytes": 9829,
+      "sha256": "df300028082b34beb89db8199adb402d9af550cfd37f0264702e3dc3f95bc27b"
+    },
+    "scripts/fork-release/fixtures/v109-published-H-ci-bindings.json": {
+      "bytes": 19030,
+      "sha256": "4282645c2583d2714ed33b48d92c926883a633cfcda7b7073c0aa6bb460c56fc"
+    },
+    "scripts/fork-release/fixtures/v109-published-first-diagnostic-request.json": {
+      "bytes": 1349,
+      "sha256": "42900d52c9776de99fedaf704f50e8d824da981e9ece6e8e9d996289964db95e"
+    },
+    "scripts/fork-release/fixtures/v109-source-validation-held.yml": {
+      "bytes": 9608,
+      "sha256": "3f47abf66812703f36df874443865c0c54766fc0040f0517cefa0aeb22c7123c"
+    },
+    "scripts/fork-release/fixtures/v109-source-validation-restored.yml": {
+      "bytes": 10580,
+      "sha256": "aae03443e27475e1c6f55bac24215767384970342545a6422ad1148af44b5c59"
+    },
+    "scripts/fork-release/fixtures/v109-source-validation.yml": {
+      "bytes": 9580,
+      "sha256": "e0bfc488bae727c54d794a68cf38bc133acabd9b594ae3b850aaed8c651ba48e"
+    },
+    "scripts/fork-release/fixtures/v110-lock-preparation.yml": {
+      "bytes": 26643,
+      "sha256": "d1f1459fe736b0bcf7102ee7d9f0c1655b1b59ab1c612c78f965cba0be7ed3ef"
+    },
+    "scripts/fork-release/fixtures/v110-source-validation.yml": {
+      "bytes": 39592,
+      "sha256": "27fadbfcc4fd56ed8b116e26f0ffac7cbdf747e90ecd9bff3af41c90d5e8c2da"
+    },
+    "scripts/fork-release/fixtures/v2026.10.8.official.tag.raw": {
+      "bytes": 1028,
+      "sha256": "e675eff97e84b1a79c64a2e2b83d23bf03498ccdcf5bf41eede0af92ed1bad3c"
+    },
+    "scripts/fork-release/fixtures/v2026.10.9.official.tag.raw": {
+      "bytes": 1028,
+      "sha256": "3574aa376a8372d0305a4040e0ea027fead4fed15d5587654d0af755a1fb3f5e"
+    },
+    "scripts/fork-release/lockfile_policy_v109.py": {
+      "bytes": 24786,
+      "sha256": "2816df6b2fa8bd62453b6b4181f403e3e9343436af9a1614d0d92094c8421695"
+    },
+    "scripts/fork-release/lockfile_policy_v110.py": {
+      "bytes": 32631,
+      "sha256": "ec3527fadcf9ccae1663e4965e70fe5960f2c10c687209fd599a68041a7d256d"
+    },
+    "scripts/fork-release/manifest_capture.py": {
+      "bytes": 12750,
+      "sha256": "d5fd42317bf538720b48949a9503dc3c58df6a0035f200ac30a20400c1ed3eac"
+    },
+    "scripts/fork-release/model_diagnostic_v109.py": {
+      "bytes": 26515,
+      "sha256": "37f637bc24478174fbca396ad63d7b280db355bf0d003b02cc6387161f3bcd47"
+    },
+    "scripts/fork-release/native_tests.mjs": {
+      "bytes": 7591,
+      "sha256": "7d2029a6e50595e8323e42902b5918e766a564586afb9e59ee2fbc6eb4f3f043"
+    },
+    "scripts/fork-release/pr.py": {
+      "bytes": 26351,
+      "sha256": "9564c60cb4ed360c71a2c6a08b3818b4306c68dc123f3a1db180ba24c3256080"
+    },
+    "scripts/fork-release/preflight.py": {
+      "bytes": 21768,
+      "sha256": "89b6ba41fc89131f33754104fdd0d3ebc08c20f252288651bc7d95038639103a"
+    },
+    "scripts/fork-release/release.py": {
+      "bytes": 84199,
+      "sha256": "5026178bb85a9ff51a36f7512a899c8cd4beab2f5b3ed146e1e0d87c0dc3a639"
+    },
+    "scripts/fork-release/source_contract_v110.py": {
+      "bytes": 32437,
+      "sha256": "a79fbcbf95180fab20180666e8d4bf4d751bfcb283e6be4381986b56886df646"
+    },
+    "scripts/fork-release/source_profile_diagnostic_v109.py": {
+      "bytes": 15581,
+      "sha256": "db73b845f91abcb776307c8cb0958a9e1c35a3d6b86dc07669292a3d93724786"
+    },
+    "scripts/fork-release/source_reconciliation_v109.py": {
+      "bytes": 22103,
+      "sha256": "dce3b088c1a3c810407a2ff0339c903eef8e231b1a95f46c988d6aa91f69989a"
+    },
+    "scripts/fork-release/source_validation_contract_v109.py": {
+      "bytes": 81105,
+      "sha256": "2e8fd0741ad3e0830974c10ff50bd1a34f4cbf8f9a36e871854191e67d05c102"
+    },
+    "scripts/fork-release/source_validation_selection_v110.py": {
+      "bytes": 15824,
+      "sha256": "bc944a165a0e05a6dccaf64da249dca523685f3bb35308f80b2af6bb883014bc"
+    },
+    "scripts/fork-release/source_validation_v108.py": {
+      "bytes": 374292,
+      "sha256": "8782d3bb573739361bfe943b855a5c0c58a2904c38686690a1bf294265a2a8a4"
+    },
+    "scripts/fork-release/source_validation_v109.py": {
+      "bytes": 131791,
+      "sha256": "a74b9bb90955ac4e87c7c3c9cafe5a926d4ef3516b07aff076c17f187a350f00"
+    },
+    "scripts/fork-release/source_validation_v110.py": {
+      "bytes": 45124,
+      "sha256": "c5f068cced780d0154284739e14d5f430e39767e6fe42243528dd7f279fe90cf"
+    },
+    "scripts/fork-release/test_bounded_run_contract_v109.py": {
+      "bytes": 10126,
+      "sha256": "43a2a5f0b834b199e3c2eeeb886aef208dc7647d95e018b63fa71ef40a7dfc89"
+    },
+    "scripts/fork-release/test_lockfile_policy_v110.py": {
+      "bytes": 22958,
+      "sha256": "e9b01598839c5ad31bbb807a674000ce69b0946b6744ec949dbe43ce3e9b01e5"
+    },
+    "scripts/fork-release/test_source_contract_v110.py": {
+      "bytes": 23975,
+      "sha256": "a71b9f7ff61f551a698b3255a2dbb4ce78686a62097ef29ee4c0bc8d40695f39"
+    },
+    "scripts/fork-release/test_source_derivation_v109.py": {
+      "bytes": 8668,
+      "sha256": "3b43a2979d03ce5cfa9a63debf01c3d867a9017081ec112f1379dbc6ac500f99"
+    },
+    "scripts/fork-release/test_source_validation_contract_v109.py": {
+      "bytes": 25766,
+      "sha256": "a3d2f78cfe1e5cc6b49df3086ccbf8e14e020d6ea591432ce6344fa06e985b89"
+    },
+    "scripts/fork-release/test_source_validation_selection_v110.py": {
+      "bytes": 30733,
+      "sha256": "7399ba9e3a107d899a515025ac98d642cf120129164f49de129a9a7f0fbe3931"
+    },
+    "scripts/fork-release/test_source_validation_v110.py": {
+      "bytes": 29258,
+      "sha256": "8e1c47d4bc7502bf5b5092350b71aa767d8b64b65ceb9e8028a56008231449bf"
+    },
+    "scripts/fork-release/test_third_preparation_contract_v109.py": {
+      "bytes": 11869,
+      "sha256": "a9382fd9ba5db89bf614381dfabe055fcdd9deca417f01474ae2dfbc64924fc3"
+    },
+    "scripts/fork-release/verified_imports_v110.py": {
+      "bytes": 2981,
+      "sha256": "e8a86b49d5e53a2f0d4efe28955362809a420c9ac674efee91b154c2977a49dd"
+    }
+  }
+}

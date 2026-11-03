@@ -1,0 +1,636 @@
+{
+  "schema": "openclaw.v109.ci-bindings.v1",
+  "status": "APPROVED_CI",
+  "campaignId": "future-v109-grouped-validation-20261030",
+  "repository": "fr-meyer/openclaw",
+  "workflow": ".github/workflows/future-v109-source-validation.yml",
+  "pipelineBranch": "task/v107-source-binding",
+  "sourceBranch": "prep/v2026.10.9-remediation",
+  "baseBranch": "release-pipeline/v105-image-only-20261024",
+  "baseSha": "a65f70c5dad17b39bc3ee26ba92cde6d00bfb259",
+  "upstream": {
+    "tag": "v2026.10.9",
+    "tagObject": "88a19e0d8677804d8ec98e30a3a3a3a9308ebee0",
+    "commit": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
+    "tree": "3ccfb9632d8f30196d0f9d94f92f8cc7f07b2be7"
+  },
+  "baseline": {
+    "sourceSha": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
+    "pipelineHead": "37400d942839bee0b92852037d6f8bf99e60358c",
+    "sourceRunId": "40901336241",
+    "runCount": 258,
+    "runnerMinutes": 2944,
+    "publicProofSha256": "dfc2cda1a2c7c5f3f4e1bc235e8a6e2aca615e62c5ce20a79102a794779770df"
+  },
+  "preparation": {
+    "sourceSha": "ba04217f6642091b94f396669318d068e6007ed7",
+    "sourceTree": "ed8cc0d741194e7627b875ea256dfd7c5de43640",
+    "manifestSha256": "4ad3b13c2fb90650f618727f0508f4168c269820525d3629e801722c09287778",
+    "inventorySha256": "2f3eee5c7e4a145b64962560c85ff8718eb2fe4bd603e56c417bc9bcd245c497",
+    "fileSha256": {
+      "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+      "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
+      "pnpm-lock.yaml": "07cbdb13cc0fc5c6dd25b4acdfe927eabe4ec566e6cfab9fb63d224c25765002",
+      "custom-patches/reconciliation-2026.10.9.json": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591"
+    }
+  },
+  "preparationCorrection": {
+    "schema": "openclaw.v109.additional-pipeline-preparation-recovery.v1",
+    "source": {
+      "sourceSha": "ba04217f6642091b94f396669318d068e6007ed7",
+      "sourceTree": "ed8cc0d741194e7627b875ea256dfd7c5de43640",
+      "manifestSha256": "4ad3b13c2fb90650f618727f0508f4168c269820525d3629e801722c09287778",
+      "inventorySha256": "2f3eee5c7e4a145b64962560c85ff8718eb2fe4bd603e56c417bc9bcd245c497",
+      "fileSha256": {
+        "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+        "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
+        "pnpm-lock.yaml": "07cbdb13cc0fc5c6dd25b4acdfe927eabe4ec566e6cfab9fb63d224c25765002",
+        "custom-patches/reconciliation-2026.10.9.json": "4c3804e2e43a016511b1e9a2c809d4d20a5d67226b7a23a9f4bb44d53e1b9591"
+      }
+    },
+    "priorPhase": "lock-preparation",
+    "priorFailures": [
+      {
+        "runId": "40997868140",
+        "pipelineHead": "84b825aca15a58191e718a958a356dcc305d4e47",
+        "requestSha256": "cf52903c8a20e94684e3a6fcb5e947b8336eca62e66f0744efcda4d4d054a9ef"
+      },
+      {
+        "runId": "41003661031",
+        "pipelineHead": "409704dd078c83d2f41ed709660633c619b172be",
+        "requestSha256": "5c4f7d4a56d959ba21d77dd00ca6868a49eb18519ada393e639d002fe68ae5ff"
+      }
+    ],
+    "failedPreparationAttempts": [
+      1,
+      2
+    ],
+    "nextPreparationAttempt": 3,
+    "evidenceSha256": {
+      "1": "af64a6728b88d0e520f24722871ef760c5181e1492b9142b1f9af0944c060856",
+      "2": "15efc4c98e7caccc8f532ec58f676ed642a9aa8670cf0d7a9a7d42f62a87897d"
+    },
+    "approval": {
+      "schema": "openclaw.v109.additional-preparation-approval.v1",
+      "status": "DISARMED",
+      "approvalEvidenceSha256": null,
+      "approvedAt": null,
+      "expiresAt": "2026-11-03T03:14:21Z",
+      "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
+      "additionalPipelineCorrections": 1,
+      "additionalLockPreparations": 1,
+      "additionalSourceCampaigns": 0,
+      "optionalCorrectionsAllowed": false
+    }
+  },
+  "validation": {
+    "source": {
+      "sourceSha": "edd010829dcb622d7dc60dc90f7097048cb78819",
+      "sourceTree": "2e553992d3f93937dcb4b85683e4aae24a087074",
+      "manifestSha256": "9032a1666ee82ae7882d280c5bbb5a6e02e127c7c1526b61aef3667973621c58",
+      "inventorySha256": "07d0d8e96cb428ce8151e36d8c08eb4bc0cd055f4185186a1f40ac0a6f1add71",
+      "fileSha256": {
+        "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+        "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
+        "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+        "custom-patches/reconciliation-2026.10.9.json": "7f3ef17a22f8afaf709ae252f96068ae49e9037f52e0cd9cb29c479b74850303"
+      }
+    },
+    "generation": {
+      "runId": "41043479025",
+      "runAttempt": 1,
+      "pipelineHead": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+      "artifactId": 12972087389,
+      "artifactSha256": "4b5386aa4d4f37b378658309f6e58239a1ddc949550d416cc2f6b6ca9ab4cc7c",
+      "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87",
+      "generatedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+      "gitDiffSha256": "b3bc34958fd1c467d18a21ace7e9b1e9d64e3af577f043e9fa5553a5a91ef612"
+    },
+    "unchangedTreeSha256": "3981f4ab7a5e4736c11ce4356b65b706e04a6bad6e313f176791f4e93149e3f3",
+    "preparationAttempt": 6
+  },
+  "correction": null,
+  "authorization": {
+    "schema": "openclaw.v109.public-ci-authorization.v1",
+    "label": "future-v109-grouped-20261030T031421Z",
+    "approvedAt": "2026-10-30T03:14:21Z",
+    "expiresAt": "2026-11-03T03:14:21Z",
+    "maximumRunnerMinutes": 2500,
+    "maximumSourceCampaigns": 2,
+    "maximumParallelSourceJobs": 3,
+    "maximumLockPreparations": 2,
+    "diagnosticByteCeiling": 67108864,
+    "lockArtifactByteCeiling": 2097152,
+    "imageExecutionAllowedHere": false,
+    "cloudAccessAllowedHere": false,
+    "newSecretsAllowedHere": false
+  },
+  "newRecoveryTests": [
+    "extensions/codex/src/app-server/run-attempt.steering-media.test.ts",
+    "extensions/msteams/src/sdk.msal-compat.test.ts",
+    "src/agents/prepared-model-runtime.auth-recovery.test.ts",
+    "src/agents/prepared-model-runtime.generation-custody.test.ts",
+    "src/agents/tool-fs-policy.test.ts",
+    "src/agents/tool-search.live-diagnostics.test.ts",
+    "src/auto-reply/reply/commands-mcp.test.ts",
+    "src/cli/daemon-cli/update-executor-recovery.test.ts",
+    "src/cli/mcp-cli.test.ts",
+    "src/cli/update-cli/update-command-current-core-recovery.test.ts",
+    "src/cli/update-cli/update-command-current-core-restoration.test.ts",
+    "src/cli/update-cli/update-command-service-command-risk.test.ts",
+    "src/commands/doctor-session-sqlite.fts-recovery.test.ts",
+    "src/gateway/server-methods/nodes.test.ts",
+    "src/gateway/server.acp-session-cwd.test.ts",
+    "src/gateway/tool-resolution.test.ts",
+    "src/infra/npm-managed-root.overrides.test.ts",
+    "src/infra/sqlite-fts-integrity.test.ts",
+    "src/infra/sqlite-startup-integrity.test.ts",
+    "src/infra/state-migrations.media-persistence.canonical-archives.test.ts",
+    "src/infra/state-migrations.transcript-archive-stream.test.ts",
+    "src/infra/state-migrations.transcript-directives-archives.batching.test.ts",
+    "src/infra/state-migrations.transcript-directives-archives.progress.test.ts",
+    "src/infra/update-fts-snapshot.test.ts",
+    "src/infra/update-runner-git.test.ts",
+    "src/logging/log-tail-redaction.test.ts",
+    "src/logging/redact.test.ts",
+    "src/process/exec-buffered-cleanup.test.ts",
+    "src/state/agent-database-startup-fts.test.ts",
+    "src/state/openclaw-agent-execution.close-wedge.test.ts",
+    "src/state/openclaw-database-preflight.startup-fts.test.ts",
+    "src/state/openclaw-state-worker-lease.test.ts",
+    "test/scripts/a2ui-zod-bounds.test.ts",
+    "test/scripts/ci-hydrate-live-auth.test.ts",
+    "test/scripts/clawhub-cli-security-pin.test.ts",
+    "test/scripts/discord-sdk-zod.test.ts"
+  ],
+  "ciRunGrant": {
+    "approvedAt": "2026-10-30T06:12:01Z",
+    "authoritySha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
+    "bookedAdditionalAttempts": [
+      {
+        "runId": "41019222766",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019222867",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019222870",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019222915",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019222926",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019223073",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019227755",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019227757",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019227758",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019227867",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019227904",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019231323",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019231335",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019231411",
+        "nativeAttempt": 1,
+        "runnerMinutes": 18
+      },
+      {
+        "runId": "41019231423",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019231438",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019231465",
+        "nativeAttempt": 1,
+        "runnerMinutes": 2
+      },
+      {
+        "runId": "41019231486",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019231510",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41019231519",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41019231580",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41026683372",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41026683762",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41026683808",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41026683809",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41026683852",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41026683914",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41026690227",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41026690247",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41026690282",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41026690360",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41026690452",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41026693759",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41026693763",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41026693769",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41026693776",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41026693778",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41026693798",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41026693830",
+        "nativeAttempt": 1,
+        "runnerMinutes": 2
+      },
+      {
+        "runId": "41026693844",
+        "nativeAttempt": 1,
+        "runnerMinutes": 17
+      },
+      {
+        "runId": "41026693912",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41026693943",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41034927657",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41034928083",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41034928084",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41034928102",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41034928168",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41034928174",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41034935067",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41034935105",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41034935124",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41034935130",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41034935318",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41034937488",
+        "nativeAttempt": 1,
+        "runnerMinutes": 2
+      },
+      {
+        "runId": "41034937548",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41034937551",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41034937553",
+        "nativeAttempt": 1,
+        "runnerMinutes": 9
+      },
+      {
+        "runId": "41034937557",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41034937590",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41034937617",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41034937637",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41034937644",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41034937668",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043466837",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41043467094",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043467097",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043467117",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043467129",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043467136",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41043475484",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043475538",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41043475547",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41043475635",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41043475779",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043478952",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41043479025",
+        "nativeAttempt": 1,
+        "runnerMinutes": 18
+      },
+      {
+        "runId": "41043479202",
+        "nativeAttempt": 1,
+        "runnerMinutes": 3
+      },
+      {
+        "runId": "41043479251",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043479278",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41043479314",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043479336",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41043479355",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043479374",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41043479426",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      }
+    ],
+    "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
+    "diagnosticBytes": 67108864,
+    "expiresAt": "2026-11-03T03:14:21Z",
+    "maximumAdditionalAttempts": 1000,
+    "maximumNewRunnerMinutes": 2500,
+    "maximumSourceParallelJobs": 3,
+    "maximumStageAttempts": 1042,
+    "moneyCeilingUSD": "2.25",
+    "nextExecution": {
+      "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
+      "status": "REVIEWED",
+      "sequence": 5,
+      "phase": "validation",
+      "preparationAttempt": 6,
+      "source": {
+        "sourceSha": "edd010829dcb622d7dc60dc90f7097048cb78819",
+        "sourceTree": "2e553992d3f93937dcb4b85683e4aae24a087074",
+        "manifestSha256": "9032a1666ee82ae7882d280c5bbb5a6e02e127c7c1526b61aef3667973621c58",
+        "inventorySha256": "07d0d8e96cb428ce8151e36d8c08eb4bc0cd055f4185186a1f40ac0a6f1add71",
+        "fileSha256": {
+          "package.json": "557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0",
+          "pnpm-workspace.yaml": "d7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19",
+          "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+          "custom-patches/reconciliation-2026.10.9.json": "7f3ef17a22f8afaf709ae252f96068ae49e9037f52e0cd9cb29c479b74850303"
+        }
+      },
+      "priorSourceRun": {
+        "runId": "41043479025",
+        "pipelineHead": "b5462c264f3a7b2f55e3d5c5d4aa926ec25de2c6",
+        "requestSha256": "0d356fa2baaa312ee628faafcd374c051f8dbaf18cf844e759e8162b88505452"
+      },
+      "reasonCode": "generation_ready",
+      "reviewSha256": "db564a5f8e4e9cae880598af9b708917d8dee83dc73f7fb10849929a22ebf4d8",
+      "requestSha256": "139ef96602ea6920715a9802a829e60424e0ddc3187e1d6a8196e7e9d2470cb9",
+      "reservations": {
+        "current": 1075,
+        "pendingValidation": 0,
+        "conditionalImage": 180,
+        "incidental": 50
+      }
+    },
+    "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
+    "schema": "openclaw.v109.bounded-ci-run-grant.v1",
+    "status": "APPROVED"
+  }
+}
