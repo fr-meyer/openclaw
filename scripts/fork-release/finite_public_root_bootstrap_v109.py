@@ -19,7 +19,7 @@ import time
 
 ORIGIN = "https://github.com/fr-meyer/openclaw"
 GIT = "/usr/bin/git"
-HELPER_SECONDS = 600
+HELPER_SECONDS = 900
 CLEANUP_RESERVE_SECONDS = 20
 PREFIX_BYTES = 16384
 FETCH_OUTPUT_BYTES = 2097152

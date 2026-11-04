@@ -396,9 +396,9 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(text.count('Checkout exact pipeline bootstrap only'), 3)
         self.assertEqual(text.count('timeout-minutes: 5'), 3)
         self.assertNotIn('fetch-depth: 0', text)
-        self.assertEqual(workflow, (HERE / 'fixtures/v109-source-validation-restored.yml').read_bytes())
+        self.assertEqual(workflow, (HERE / 'fixtures/v109-h3-source-validation.yml').read_bytes())
         import model_diagnostic_v109 as route
-        self.assertEqual(route.SOURCE_WORKFLOW_RESTORED, hashlib.sha256(workflow).hexdigest())
+        self.assertEqual(route.H3_SOURCE_WORKFLOW_SHA256, hashlib.sha256(workflow).hexdigest())
         parsed = ast.parse((HERE / 'source_validation_selection_v109.py').read_bytes())
         entries = next(x.value for x in parsed.body if isinstance(x, ast.Assign)
             and any(isinstance(t, ast.Name) and t.id == 'PIPELINE_CONTRACT_TESTS' for t in x.targets))
@@ -406,12 +406,124 @@ class BootstrapTests(unittest.TestCase):
         import re
         actual = dict((name, int(value)) for name, value in re.findall(
             r'profile: ([a-z0-9-]+)\n\s+minutes: ([0-9]+)', text))
-        self.assertEqual(actual, self.runtime.policy.NEXT_PROFILE_MINUTES)
+        self.assertEqual(actual, self.runtime.policy.PROFILE_MINUTES)
 
     def test_only_fixed_refusal_codes_may_escape(self):
         self.assertEqual(b.safe_refusal_code(b.Refusal('bootstrap.fixed_origin')), 'bootstrap.fixed_origin')
         self.assertEqual(b.safe_refusal_code(ValueError('private arbitrary error')), 'bootstrap.runtime_refused')
         self.assertEqual(b.safe_refusal_code(subprocess.CalledProcessError(1, ['secret'])), 'bootstrap.runtime_refused')
+
+
+class SimulatedBudgetTests(unittest.TestCase):
+    """No Git, network, timer or application execution; exercise actual owners."""
+    def setUp(self):
+        for owner, name in ((subprocess, 'Popen'), (subprocess, 'run'),
+                            (socket, 'socket'), (urllib.request, 'urlopen'), (time, 'sleep')):
+            guard = patch.object(owner, name, side_effect=AssertionError('host action forbidden'))
+            guard.start(); self.addCleanup(guard.stop)
+
+    def main_deadline(self, job, job_deadline, clock=1000):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory(prefix='finite-budget-synthetic-') as tmp:
+            workspace = Path(tmp).resolve(); folder = workspace / 'pipeline/scripts/fork-release'
+            folder.mkdir(parents=True)
+            temp = workspace / 'runner-temp'; temp.mkdir()
+            env = {'PATH': '/usr/bin:/bin', 'GITHUB_WORKSPACE': str(workspace),
+                   'RUNNER_TEMP': str(temp), 'GITHUB_EVENT_PATH': str(workspace / 'unused.json'),
+                   'GITHUB_WORKFLOW_SHA': 'b' * 40, 'V109_APPROVED_AT': 'approved',
+                   'V109_EXPIRES_AT': 'expires', 'CLOCK': str(clock), 'GH_TOKEN': 'synthetic-' + 'x' * 32}
+            policy = SimpleNamespace(PROFILES=('types-tests',), parse=lambda raw: {},
+                                     source_authorization_window=lambda bindings: ('approved', 'expires'))
+            runtime = SimpleNamespace(policy=policy, CLOCK='CLOCK',
+                load_metadata=lambda *args, **kwargs: ({'authorization': {'approvedAt': 'approved'}}, {}, b'request'),
+                event_binding=lambda event, env: 'a' * 40,
+                check_admission_outputs=lambda *args: None,
+                job_deadline=lambda *args: job_deadline)
+            core = SimpleNamespace(profile_signals=contextlib.nullcontext)
+            observed = []
+            def acquire(owner, *args):
+                observed.append(owner.deadline)
+                return {'status': 'synthetic', 'sourceQualified': False}
+            args = ['--job', job] + (['--profile', 'types-tests'] if job == 'source' else [])
+            with patch.object(b, '__file__', str(folder / 'finite_public_root_bootstrap_v109.py')), \
+                 patch.object(b, 'owners', return_value=(runtime, core)), \
+                 patch.object(b, 'regular', return_value=b'{}'), \
+                 patch.object(b, 'acquire', side_effect=acquire) as call, \
+                 patch.object(b, 'save'), patch.object(time, 'time', return_value=1000), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                result = b.main(args, env)
+            self.assertEqual(result, 0)
+            call.assert_called_once()
+            return observed[0]
+
+    def test_actual_main_helper_cap_and_cleanup_reserve(self):
+        self.assertEqual(b.HELPER_SECONDS, 900)
+        self.assertEqual(b.CLEANUP_RESERVE_SECONDS, 20)
+        self.assertEqual(self.main_deadline('source', 6400), 1880)
+        self.assertEqual(self.main_deadline('admission', 2700), 1880)
+
+    def test_actual_main_shorter_job_deadline_still_wins(self):
+        self.assertEqual(self.main_deadline('source', 1450), 1430)
+
+    def test_actual_final_ten_minute_clamp_still_wins(self):
+        self.assertEqual(self.main_deadline('final', 6400), 1520)
+        self.assertEqual(self.main_deadline('final', 1450), 1430)
+
+    def test_actual_main_exhausted_cleanup_window_refuses_before_acquisition(self):
+        with self.assertRaisesRegex(b.Refusal, 'shared_deadline'):
+            self.main_deadline('source', 1020)
+
+    def child_case(self, *, deadline, fetch, timeout=False):
+        from types import SimpleNamespace
+        timeouts, files = [], {}
+        class Child:
+            returncode = 0
+            def communicate(self, timeout):
+                timeouts.append(timeout)
+                if timeout_case:
+                    raise subprocess.TimeoutExpired('synthetic', timeout, output=b'{}', stderr=b'synthetic')
+                return b'public synthetic', b''
+        timeout_case = timeout
+        def settle(child):
+            child.child.returncode = -15
+            return child.stdout, True, 'synthetic_settled'
+        core = SimpleNamespace(ProfileInterrupted=type('Interrupted', (Exception,), {}),
+                               settle_owned_timeout_group=unittest.mock.Mock(side_effect=settle))
+        owner = b.OwnedGit(Path('/synthetic'), {}, deadline, Path('/synthetic-output'), core)
+        with patch.object(time, 'time', return_value=1000), \
+             patch.object(subprocess, 'Popen', return_value=Child()) as popen, \
+             patch.object(b, 'save', side_effect=lambda path, raw: files.__setitem__(str(path), raw)), \
+             contextlib.redirect_stdout(io.StringIO()):
+            if timeout:
+                with self.assertRaisesRegex(b.Refusal, 'owned_child_incomplete'):
+                    owner.run([b.GIT], fetch=fetch)
+            else:
+                self.assertEqual(owner.run([b.GIT], fetch=fetch).returncode, 0)
+        popen.assert_called_once()
+        return timeouts, files, core
+
+    def test_actual_child_uses_shared_remaining_and_metadata_cap(self):
+        self.assertEqual(self.child_case(deadline=1880, fetch=True)[0], [880])
+        self.assertEqual(self.child_case(deadline=1430, fetch=True)[0], [430])
+        self.assertEqual(self.child_case(deadline=1880, fetch=False)[0], [60])
+
+    def test_timeout_keeps_evidence_and_calls_owned_cleanup_once(self):
+        timeouts, files, core = self.child_case(deadline=1880, fetch=True, timeout=True)
+        self.assertEqual(timeouts, [880])
+        core.settle_owned_timeout_group.assert_called_once()
+        status = json.loads(next(v for k, v in files.items() if k.endswith('.status.private.json')))
+        self.assertTrue(status['timedOut']); self.assertTrue(status['cleanupSettled'])
+        self.assertEqual(status['exitCode'], -15)
+        self.assertEqual(next(v for k, v in files.items() if k.endswith('.stdout.redacted.private')), b'{}')
+
+    def test_expired_actual_child_budget_refuses_without_launch_or_cleanup(self):
+        from types import SimpleNamespace
+        core = SimpleNamespace(settle_owned_timeout_group=unittest.mock.Mock())
+        owner = b.OwnedGit(Path('/synthetic'), {}, 1000, Path('/unused'), core)
+        with patch.object(time, 'time', return_value=1000), self.assertRaisesRegex(b.Refusal, 'shared_deadline'):
+            owner.run([b.GIT], fetch=True)
+        self.assertEqual(owner.ordinal, 0)
+        core.settle_owned_timeout_group.assert_not_called()
 
 
 if __name__ == '__main__': unittest.main()
