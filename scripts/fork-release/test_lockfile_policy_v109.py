@@ -196,8 +196,10 @@ class H3LockPolicyTests(unittest.TestCase):
         overrides="\noverrides:\n  follow-redirects: "+versions["follow-redirects"]+"\n  minimatch: "+versions["minimatch"]+"\n"
         if upgraded:overrides+="  'mailauth@7.1.0>joi': 18.3.1\n  'cacache@21.0.1>glob': 14.0.2\n"
         importers="\nimporters:\n\n  .:\n    dependencies:\n      minimatch:\n        specifier: "+versions["minimatch"]+"\n        version: "+versions["minimatch"]+"\n\n  extensions/file-transfer:\n    dependencies:\n      minimatch:\n        specifier: "+versions["minimatch"]+"\n        version: "+versions["minimatch"]+"\n"
+        overrides += "  undici@>=8.0.0 <8.12.2: 8.12.2\n  zod@>=4.0.0 <4.6.6: 4.6.6\n"
         head,body=base.rsplit("---\n",1)
         body=body.replace("\npackages:\n",overrides+importers+"\npackages:\n")
+        body=body.replace("\npackages:\n", "\npackageExtensionsChecksum: sha256-" + "A" * 43 + "=\n\npackages:\n")
         body=body.replace("\nsnapshots:\n",extra_packages+"\nsnapshots:\n")+extra_snapshots
         return (head+"---\n"+body).encode()
     def verify(self, raw=None, context=None):
@@ -212,6 +214,44 @@ class H3LockPolicyTests(unittest.TestCase):
     def test_h3_wrong_target_or_stale_h2_lock_refuses(self):
         for raw in (self.graph(False),self.graph(True).replace(b"joi@18.3.1",b"joi@18.3.0")):
             with self.subTest(raw=raw[-30:]),self.assertRaises(m.LockRefusal):self.verify(raw)
+    def test_h3_scalar_checksum_change_or_duplicate_refuses(self):
+        raw = self.graph(True)
+        checksum = b"packageExtensionsChecksum: sha256-" + b"A" * 43 + b"="
+        for bad in (raw.replace(checksum, checksum.replace(b"A", b"B")),
+                    raw.replace(checksum, checksum + b"\n" + checksum)):
+            with self.subTest(bad=bad[:80]), self.assertRaises(m.LockRefusal):
+                self.verify(bad)
+
+    def test_h3_scalar_checksum_continuation_or_nested_body_refuses(self):
+        raw = self.graph(True)
+        checksum = b"packageExtensionsChecksum: sha256-" + b"A" * 43 + b"="
+        for body in (b"  continuation", b"  arbitrary: nested"):
+            with self.subTest(body=body), self.assertRaises(m.LockRefusal):
+                self.verify(raw.replace(checksum, checksum + b"\n" + body))
+
+    def test_h3_scalar_checksum_removal_or_malformed_refuses(self):
+        raw = self.graph(True)
+        checksum = b"packageExtensionsChecksum: sha256-" + b"A" * 43 + b"="
+        for bad in (raw.replace(checksum + b"\n", b""),
+                    raw.replace(checksum, b"packageExtensionsChecksum: invalid")):
+            with self.subTest(bad=bad[:80]), self.assertRaises(m.LockRefusal):
+                self.verify(bad)
+
+    def test_h3_exact_existing_range_override_values_cannot_change(self):
+        raw = self.graph(True)
+        for bad in (raw.replace(b"undici@>=8.0.0 <8.12.2: 8.12.2", b"undici@>=8.0.0 <8.12.2: 8.12.1"),
+                    raw.replace(b"zod@>=4.0.0 <4.6.6: 4.6.6", b"zod@>=4.0.0 <4.6.6: 4.6.5")):
+            with self.subTest(bad=bad[:80]), self.assertRaises(m.LockRefusal):
+                self.verify(bad)
+
+    def test_h3_duplicate_or_unknown_unquoted_range_selector_refuses(self):
+        raw = self.graph(True)
+        line = b"  undici@>=8.0.0 <8.12.2: 8.12.2\n"
+        for bad in (raw.replace(line, line + line),
+                    raw.replace(line, b"  undici@>=8.0.0 <8.12.3: 8.12.2\n")):
+            with self.subTest(bad=bad[:80]), self.assertRaises(m.LockRefusal):
+                self.verify(bad)
+
     def test_h3_unrelated_integrity_and_graph_drift_refuse(self):
         raw=self.graph(True)
         for bad in (raw.replace(b"'mailauth@7.1.0':\n    resolution: {integrity: "+NODE_SRI.encode()+b"}",b"'mailauth@7.1.0':\n    resolution: {integrity: "+COMMON_SRI.encode()+b"}"),raw+b"\n  'unrelated@1.0.0': {}\n"):
@@ -240,6 +280,56 @@ class H3LockPolicyTests(unittest.TestCase):
         for key,value in (("amendmentSha256","0"*64),("sourceGeneration",4),("sourceGeneration",True)):
             h=self.context();h[key]=value
             with self.assertRaises(m.LockRefusal):self.verify(context=h)
+
+
+class H3RetainedDeprecationTests(unittest.TestCase):
+    context = H3LockPolicyTests.context
+    verify = H3LockPolicyTests.verify
+    CORE_INTEGRITY = "sha512-i4YPS4B6ts7bjn7UwLnGjiZdprOvHvgGobFZsYK3GIY3E5hIqtj0rReU69BcTpGp+fvtraSNXeG1l+jtJvF55w=="
+    WARNING = "Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393."
+
+    def graph(self, upgraded):
+        raw = H3LockPolicyTests.graph(self, upgraded)
+        package = ("\n  '@smithy/core@3.35.1':\n    resolution: {integrity: " + self.CORE_INTEGRITY + "}\n    engines: {node: '>=18.0.0'}\n")
+        return raw.replace(b"\nsnapshots:\n", package.encode() + b"\nsnapshots:\n") + b"\n  '@smithy/core@3.35.1': {}\n"
+
+    def warning_lock(self):
+        marker = b"    engines: {node: '>=18.0.0'}\n"
+        return self.graph(True).replace(marker, marker + ("    deprecated: " + self.WARNING + "\n").encode())
+
+    def test_authentic_warning_addition_is_preserved_without_version_change(self):
+        raw = self.warning_lock()
+        got = self.verify(raw)
+        self.assertIn(("    deprecated: " + self.WARNING).encode(), raw)
+        self.assertFalse(got["unrelatedGeneratedDiffAutomaticallyApproved"])
+        self.assertTrue(got["exactGeneratedDiffReviewRequiredBeforeCommit"])
+
+    def test_unknown_warning_or_other_package_cannot_use_exception(self):
+        raw = self.warning_lock()
+        for bad in (raw.replace(self.WARNING.encode(), b"different warning"),
+                    raw.replace(b"@smithy/core@3.35.1", b"@smithy/core@3.35.2"),
+                    raw.replace(b"@smithy/core@3.35.1", b"@different/core@3.35.1")):
+            with self.subTest(bad=bad[-100:]), self.assertRaises(m.LockRefusal):
+                self.verify(bad)
+
+    def test_warning_does_not_allow_integrity_engines_or_snapshot_drift(self):
+        raw = self.warning_lock()
+        for bad in (raw.replace(self.CORE_INTEGRITY.encode(), NODE_SRI.encode()),
+                    raw.replace(b"engines: {node: '>=18.0.0'}", b"engines: {node: '>=999'}"),
+                    raw.replace(b"  '@smithy/core@3.35.1': {}", b"  '@smithy/core@3.35.1':\n    dependencies:\n      unexpected: 1.0.0")):
+            with self.subTest(bad=bad[-100:]), self.assertRaises(m.LockRefusal):
+                self.verify(bad)
+
+    def test_duplicate_deprecation_field_refuses(self):
+        line = ("    deprecated: " + self.WARNING + "\n").encode()
+        with self.assertRaises(m.LockRefusal):
+            self.verify(self.warning_lock().replace(line, line + line))
+
+    def test_preexisting_warning_cannot_be_removed_or_changed(self):
+        old = self.warning_lock()
+        for bad in (self.graph(True), old.replace(self.WARNING.encode(), b"different warning")):
+            with self.subTest(bad=bad[-100:]), self.assertRaises(m.LockRefusal):
+                m.verify_lock_security(old, bad, NODE_SRI, COMMON_SRI, h3=self.context())
 
 
 if __name__=="__main__":unittest.main()

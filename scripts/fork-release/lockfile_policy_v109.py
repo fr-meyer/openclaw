@@ -278,6 +278,20 @@ def replace_h3_edges(chunk, parent):
     return "\n".join(lines)
 
 
+
+def retains_reviewed_h3_warning(key, before, generated):
+    # Registry metadata added this authentic warning without changing package bytes.
+    # Preserve it; this exception admits no dependency upgrade or security waiver.
+    # https://github.com/aws/aws-sdk-js-v3/issues/8393
+    if key != "@smithy/core@3.35.1" or "\n    deprecated:" in before:
+        return False
+    resolution = "    resolution: {integrity: sha512-i4YPS4B6ts7bjn7UwLnGjiZdprOvHvgGobFZsYK3GIY3E5hIqtj0rReU69BcTpGp+fvtraSNXeG1l+jtJvF55w==}\n"
+    warning = "    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393."
+    lines = generated.split("\n")
+    return (before.count(resolution) == 1 and lines.count(warning) == 1 and
+        [line for line in lines if line != warning] == before.split("\n"))
+
+
 def verify_h3_lock_delta(before, generated, old, new, h3):
     checked = validate_h3_source_inputs(h3)
     target_metadata = verify_h3_target_metadata(h3, checked)
@@ -296,7 +310,9 @@ def verify_h3_lock_delta(before, generated, old, new, h3):
         need(set(old[table]) - affected_old == set(new[table]) - affected_new, "v9.h3_no_unrelated_graph_add_remove")
         for key in set(old[table]) - affected_old:
             expected = replace_h3_edges(old[table][key], key) if table == "snapshots" else old[table][key]
-            need(new[table][key] == expected, "v9.h3_unrelated_package_unchanged")
+            need(new[table][key] == expected or
+                (table == "packages" and retains_reviewed_h3_warning(key, expected, new[table][key])),
+                "v9.h3_unrelated_package_unchanged")
     old_doc, new_doc = documents(before)[1], documents(generated)[1]
     old_importers, new_importers = entries(old_doc, "importers"), entries(new_doc, "importers")
     need(set(old_importers) == set(new_importers), "v9.h3_importer_roots_unchanged")
@@ -311,6 +327,12 @@ def verify_h3_lock_delta(before, generated, old, new, h3):
     need(old_names == new_names, "v9.h3_lock_section_set")
     for name in old_names:
         if name in ("lockfileVersion", "packages", "snapshots", "importers"): continue
+        if name == "packageExtensionsChecksum":
+            pattern = r"^packageExtensionsChecksum: sha256-[A-Za-z0-9+/]{43}=\n(?:\n)*(?=^[A-Za-z][A-Za-z0-9]*:|\Z)"
+            prior_scalar, actual_scalar = re.findall(pattern, old_doc, re.M), re.findall(pattern, new_doc, re.M)
+            need(len(prior_scalar) == 1 and actual_scalar == prior_scalar,
+                "v9.h3_package_extensions_checksum_unchanged")
+            continue
         prior, actual = section(old_doc, name), section(new_doc, name)
         if name == "overrides":
             for selector, version in H3_FIXED_SELECTORS.items():
@@ -324,7 +346,7 @@ def verify_h3_lock_delta(before, generated, old, new, h3):
                 result = {}
                 for line in value.splitlines():
                     if not line: continue
-                    m = re.fullmatch(r"  ('[^']+'|[^: ]+): (.+)", line)
+                    m = re.fullmatch(r"  ('[^']+'|undici@>=8\.0\.0 <8\.12\.2|zod@>=4\.0\.0 <4\.6\.6|[^: ]+): (.+)", line)
                     need(m is not None, "v9.h3_override_writer_dialect")
                     key, val = m.groups(); key = key.strip("'"); need(key not in result, "v9.h3_override_unique"); result[key] = val
                 return result
