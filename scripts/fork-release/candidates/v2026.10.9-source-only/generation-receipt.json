@@ -1,0 +1,57 @@
+{
+  "schema": "openclaw.v109.lock-derivation.v1",
+  "status": "derived_only",
+  "sourceSha": "83b022d934ea0908031bb4fa50c9ea7b4aada8a5",
+  "sourceTree": "4bc0d3ab657c289f09edc4e0e690b31646e31a2a",
+  "pipelineHead": "a81a3cc434628f9d221687976ade5b7622167d4e",
+  "runId": "41836686760",
+  "runAttempt": 1,
+  "packageSha256": "5d9675b78376ad0c573d38a1ab5a4b8971119b25ff38d0af03c9d313745f3710",
+  "workspaceSha256": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
+  "sourceLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+  "generatedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+  "ledgerSha256": "068cbe855f6835c4630c24d43b334beca43f920f8ad09ef318a2fa793dbc737f",
+  "nodeVersion": "24.22.1",
+  "pnpmVersion": "12.15.0",
+  "changedPaths": [
+    "pnpm-lock.yaml"
+  ],
+  "gitDiffSha256": "61b1a7af11b91ac2d7c61f1ea9d0c14401f91f5bdc8167a3dcf310e36de1f81b",
+  "allOtherTrackedEntriesUnchanged": true,
+  "startedAt": "2026-11-04T13:39:03Z",
+  "finishedAt": "2026-11-04T13:39:12Z",
+  "exitCode": 0,
+  "timedOut": false,
+  "cleanupSettled": null,
+  "imageBuilt": false,
+  "qualified": false,
+  "productionAuthorized": false,
+  "registryEvidence": {
+    "proofSha256": "05bcbaf5a7bf3fb19046534d239ac25db140f34054c7f2cc38c6c1f2d09f9b97",
+    "packages": [
+      {
+        "package": "@azure/msal-node",
+        "version": "7.1.1",
+        "publishedAt": "2026-10-21T19:21:33.186Z",
+        "distIntegrity": "sha512-zHXTJB38XVrsNaXrPBCMqEUjeyQysFfgmKtUHRDsEKTRjNIPckJ/w6fE5wBXrmJXBim1D3C7O7LOag0msPTrgw=="
+      },
+      {
+        "package": "@azure/msal-common",
+        "version": "16.14.3",
+        "publishedAt": "2026-10-21T19:12:59.113Z",
+        "distIntegrity": "sha512-tz3GvMrR9V/plb2lDdW8qaO8CPpfZevdExBKjltzzbAtyhK0eB2UIvji1aU+gkyHj3fxQ2ie+LNHyMXdmo8wOg=="
+      }
+    ],
+    "registry": "https://registry.npmjs.org/",
+    "checkedAt": "2026-11-04T13:39:03Z",
+    "minimumAgeMinutes": 10080,
+    "checkKind": "recheck_pinned_registry_metadata_age_and_integrity",
+    "parentDependency": {
+      "package": "@azure/msal-node",
+      "version": "7.1.1",
+      "dependency": "@azure/msal-common",
+      "dependencyVersion": "16.14.3"
+    }
+  },
+  "lockSecuritySha256": "c3bb2bddc41f14661a230431ed0415ac8132b0411052ac0fc28141b1a8956a8f"
+}

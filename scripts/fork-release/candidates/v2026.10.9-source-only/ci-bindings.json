@@ -1363,6 +1363,86 @@
         "runId": "41827600354",
         "nativeAttempt": 1,
         "runnerMinutes": 20
+      },
+      {
+        "runId": "41836686644",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41836686647",
+        "nativeAttempt": 1,
+        "runnerMinutes": 3
+      },
+      {
+        "runId": "41836686606",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41836686678",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41836686601",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41836686621",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41836686586",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41836686546",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41836686614",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41836686700",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41836686760",
+        "nativeAttempt": 1,
+        "runnerMinutes": 23
+      },
+      {
+        "runId": "41836683380",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41836683199",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41836683181",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41836683204",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41836683070",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
       }
     ],
     "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
@@ -1374,39 +1454,39 @@
     "maximumStageAttempts": 1042,
     "moneyCeilingUSD": "25.00",
     "nextExecution": {
-      "phase": "lock-preparation",
+      "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
+      "status": "REVIEWED",
+      "sequence": 14,
+      "phase": "validation",
       "preparationAttempt": 8,
-      "priorSourceRun": {
-        "runId": "41827600354",
-        "pipelineHead": "e090222040e88e3fc97801fe633ad5e5e9709d60",
-        "requestSha256": "cc1b4371f1862c533ed3bcbed1c41ab80317815580baaea19fb2c752f73dcacc"
+      "source": {
+        "sourceSha": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+        "sourceTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+        "manifestSha256": "f59726a0e8772e2925ede0221e87d78563dd8aba67fb4bf24923e3248e0f935d",
+        "inventorySha256": "869066d82cba697e2f448ac3377e84e640efd0cecb394d794d7d26da4068d94f",
+        "fileSha256": {
+          "package.json": "5d9675b78376ad0c573d38a1ab5a4b8971119b25ff38d0af03c9d313745f3710",
+          "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
+          "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+          "custom-patches/reconciliation-2026.10.9.json": "00b9948b5679eb7cc9d73ad8b672f7927326c0b47c91e4b1d263624472050b5e"
+        }
       },
-      "reasonCode": "reviewed_pipeline_correction",
-      "requestSha256": "6303b0f981005d4e641392e8492c1d3f2b9a7c139d6b9632889663ba5682239d",
+      "priorSourceRun": {
+        "runId": "41836686760",
+        "pipelineHead": "a81a3cc434628f9d221687976ade5b7622167d4e",
+        "requestSha256": "6303b0f981005d4e641392e8492c1d3f2b9a7c139d6b9632889663ba5682239d"
+      },
+      "reasonCode": "generation_ready",
+      "reviewSha256": "4689cf759103619f2dee9dd54273e622bd98d9d8b4814f6200cf7fd0cb2514ca",
+      "requestSha256": "f1cc46094582b3b2657c9051da77f303198dcdf09243054ea264c31e73fdf851",
       "reservations": {
-        "current": 45,
-        "pendingValidation": 1075,
+        "current": 1075,
+        "pendingValidation": 0,
         "conditionalImage": 180,
         "incidental": 160
       },
-      "reviewSha256": "70f00bc72c74a247d127abebf25a2b6c333a2a145b508fe4d8b033228635049d",
-      "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
-      "sequence": 13,
-      "source": {
-        "fileSha256": {
-          "custom-patches/reconciliation-2026.10.9.json": "068cbe855f6835c4630c24d43b334beca43f920f8ad09ef318a2fa793dbc737f",
-          "package.json": "5d9675b78376ad0c573d38a1ab5a4b8971119b25ff38d0af03c9d313745f3710",
-          "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-          "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d"
-        },
-        "inventorySha256": "6cdc6d9eb65ef477ba25fc2fd668b2eb1288bc93cf997bedd2194778242e6d0b",
-        "manifestSha256": "04ea7e12690f99ca4bc5f020c602fe1ba5f5e24ad5f54fde7f60c547c61db611",
-        "sourceSha": "83b022d934ea0908031bb4fa50c9ea7b4aada8a5",
-        "sourceTree": "4bc0d3ab657c289f09edc4e0e690b31646e31a2a"
-      },
-      "status": "REVIEWED",
       "sourceGeneration": 1,
-      "sourceFamilySha256": "4bfabaf246e0fd00824f6c8108ecb462cacbe9e7e302f0995a64f385ea873d15"
+      "sourceFamilySha256": "b5ee5e9dfcf7cc354c211b092bb9d7d04db7f0465b1ac57ba66332db357066bf"
     },
     "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
     "schema": "openclaw.v109.bounded-ci-run-grant.v1",
@@ -1429,7 +1509,7 @@
       "maximumStageRunnerMinutes": 3700,
       "maximumStageBookedMinutes": 5915,
       "maximumSourceGenerations": 3,
-      "sourceFamilySha256": "4bfabaf246e0fd00824f6c8108ecb462cacbe9e7e302f0995a64f385ea873d15",
+      "sourceFamilySha256": "b5ee5e9dfcf7cc354c211b092bb9d7d04db7f0465b1ac57ba66332db357066bf",
       "sourceGeneration": 1,
       "bookedArtifacts": [
         {
@@ -2511,6 +2591,46 @@
             "head_branch": true,
             "head_sha": true
           }
+        },
+        {
+          "producerRunId": "41836686760",
+          "producerHead": "a81a3cc434628f9d221687976ade5b7622167d4e",
+          "nativeResponseSha256": "3b6b2c12167f4f53168865dd8ad75128278c07f3faa36dab170cdfac111bda53",
+          "metadata": {
+            "id": 13327209634,
+            "name": "v109-lock-preparation-41836686760-attempt1",
+            "size_in_bytes": 189918,
+            "expired": false,
+            "digest": "sha256:2ee0b9d173257be939df1d2598c016374da7df25715aa1f530a86e8ebf54633c",
+            "created_at": "2026-11-04T13:39:13Z",
+            "expires_at": "2026-11-07T13:39:12Z",
+            "updated_at": "2026-11-04T13:39:13Z",
+            "workflow_run": {
+              "id": 41836686760,
+              "repository_id": 1309456040,
+              "head_repository_id": 1309456040,
+              "head_branch": "task/v107-source-binding",
+              "head_sha": "a81a3cc434628f9d221687976ade5b7622167d4e"
+            }
+          },
+          "fieldPresence": {
+            "id": true,
+            "name": true,
+            "size_in_bytes": true,
+            "expired": true,
+            "digest": true,
+            "created_at": true,
+            "expires_at": true,
+            "updated_at": true,
+            "workflow_run": true
+          },
+          "workflowRunFieldPresence": {
+            "id": true,
+            "repository_id": true,
+            "head_repository_id": true,
+            "head_branch": true,
+            "head_sha": true
+          }
         }
       ]
     }
@@ -2582,7 +2702,32 @@
     "tagObject": "88a19e0d8677804d8ec98e30a3a3a3a9308ebee0",
     "tree": "3ccfb9632d8f30196d0f9d94f92f8cc7f07b2be7"
   },
-  "validation": null,
+  "validation": {
+    "source": {
+      "sourceSha": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+      "sourceTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+      "manifestSha256": "f59726a0e8772e2925ede0221e87d78563dd8aba67fb4bf24923e3248e0f935d",
+      "inventorySha256": "869066d82cba697e2f448ac3377e84e640efd0cecb394d794d7d26da4068d94f",
+      "fileSha256": {
+        "package.json": "5d9675b78376ad0c573d38a1ab5a4b8971119b25ff38d0af03c9d313745f3710",
+        "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
+        "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+        "custom-patches/reconciliation-2026.10.9.json": "00b9948b5679eb7cc9d73ad8b672f7927326c0b47c91e4b1d263624472050b5e"
+      }
+    },
+    "generation": {
+      "runId": "41836686760",
+      "runAttempt": 1,
+      "pipelineHead": "a81a3cc434628f9d221687976ade5b7622167d4e",
+      "artifactId": 13327209634,
+      "artifactSha256": "2ee0b9d173257be939df1d2598c016374da7df25715aa1f530a86e8ebf54633c",
+      "receiptSha256": "4a78e49d9933bec7483fbca1e7a604ba72bebc2230e03cfbaf4f994852c7b7c0",
+      "generatedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+      "gitDiffSha256": "61b1a7af11b91ac2d7c61f1ea9d0c14401f91f5bdc8167a3dcf310e36de1f81b"
+    },
+    "preparationAttempt": 8,
+    "unchangedTreeSha256": "0d05c065903a9e908a07b68107bca3e633c80531dd1a70821a044ea73d6c9f24"
+  },
   "workflow": ".github/workflows/future-v109-source-validation.yml",
   "sourceSuccessor": {
     "schema": "openclaw.v109.material-source-family.v1",
@@ -2641,7 +2786,32 @@
           "test/v108-remediation-security.test.mjs": "04d24defeba9a71909b671c1f8a6ac4088131f0b04ed2348179d3cd01ae03567"
         },
         "unchangedTreeSha256": "c320c7beaa2b0a54c83a528c7deef2932df92df461254945256e89773a9fcbe7",
-        "validation": null
+        "validation": {
+          "source": {
+            "sourceSha": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+            "sourceTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+            "manifestSha256": "f59726a0e8772e2925ede0221e87d78563dd8aba67fb4bf24923e3248e0f935d",
+            "inventorySha256": "869066d82cba697e2f448ac3377e84e640efd0cecb394d794d7d26da4068d94f",
+            "fileSha256": {
+              "package.json": "5d9675b78376ad0c573d38a1ab5a4b8971119b25ff38d0af03c9d313745f3710",
+              "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
+              "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+              "custom-patches/reconciliation-2026.10.9.json": "00b9948b5679eb7cc9d73ad8b672f7927326c0b47c91e4b1d263624472050b5e"
+            }
+          },
+          "generation": {
+            "runId": "41836686760",
+            "runAttempt": 1,
+            "pipelineHead": "a81a3cc434628f9d221687976ade5b7622167d4e",
+            "artifactId": 13327209634,
+            "artifactSha256": "2ee0b9d173257be939df1d2598c016374da7df25715aa1f530a86e8ebf54633c",
+            "receiptSha256": "4a78e49d9933bec7483fbca1e7a604ba72bebc2230e03cfbaf4f994852c7b7c0",
+            "generatedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+            "gitDiffSha256": "61b1a7af11b91ac2d7c61f1ea9d0c14401f91f5bdc8167a3dcf310e36de1f81b"
+          },
+          "preparationAttempt": 8,
+          "unchangedTreeSha256": "0d05c065903a9e908a07b68107bca3e633c80531dd1a70821a044ea73d6c9f24"
+        }
       }
     ]
   }

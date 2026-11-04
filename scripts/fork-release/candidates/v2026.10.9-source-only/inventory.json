@@ -1,12 +1,12 @@
 {
   "candidate": "v2026.10.9-source-only",
-  "manifestSha256": "04ea7e12690f99ca4bc5f020c602fe1ba5f5e24ad5f54fde7f60c547c61db611",
+  "manifestSha256": "f59726a0e8772e2925ede0221e87d78563dd8aba67fb4bf24923e3248e0f935d",
   "patches": [
     {
-      "appliedCommit": "83b022d934ea0908031bb4fa50c9ea7b4aada8a5",
+      "appliedCommit": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
       "dependsOn": [],
       "disposition": "adapt",
-      "evidenceSha256": "068cbe855f6835c4630c24d43b334beca43f920f8ad09ef318a2fa793dbc737f",
+      "evidenceSha256": "00b9948b5679eb7cc9d73ad8b672f7927326c0b47c91e4b1d263624472050b5e",
       "id": "grouped-v109-preparation-ba04217f6642",
       "originCommit": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
       "paths": [
@@ -93,7 +93,7 @@
         },
         {
           "boundary": "tooling",
-          "candidateBlob": "a1862da3b510a176c0819f5cbdabe972e373c3d2",
+          "candidateBlob": "bf820e8ed3a6357e330061155b71d4fa85a27f9d",
           "path": "custom-patches/reconciliation-2026.10.9.json",
           "sourceBlob": "1c60a3a4d7f929c4e376654e2832a330a5e2e99b",
           "sourceCommit": "ba04217f6642091b94f396669318d068e6007ed7",
@@ -957,7 +957,7 @@
         },
         {
           "boundary": "container",
-          "candidateBlob": "8fa3ddcf5e9465095981bb0f11b24e2d00bb7862",
+          "candidateBlob": "7d8b8fb442bb3ddff565b870d86e3fbb9571367d",
           "path": "pnpm-lock.yaml",
           "sourceBlob": "58c57e5261208cc76d4df35a6d0d091b2b2a301b",
           "sourceCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
@@ -2315,7 +2315,7 @@
           "upstreamBlob": "25a98d9a07f6a9d74f79b82bd84a2b195ef416fa"
         }
       ],
-      "rationale": "Prepare the approved H3 four-dependency source successor with reviewed compatibility/security cases. The existing genuine H2 lock/receipt is only a historical seed; current lock derivation and complete fresh source validation are pending. Earlier H2 rationale, retained as historical context: Integrate exact stable 10.9 with preserved fork Workboard, claim fencing, task, security and provider behavior. Bind the complete 253-row reconciliation and reviewed security/API adaptations. Dependency lock derives from authenticated successful public CI run 41043479025 attempt 1, artifact 12972087389; only the lock and deterministic reconciliation receipt change from integration G. Fresh complete source validation is required; older source/runtime/image qualification does not transfer. One combined reviewed H2 correction fixes only the lease fixture type import and the Workboard controlUi manifest bytes authenticated from both fixed diagnostic jobs in run 41092698155. The new metadata path originates at H, not an invented historical fork commit. Existing package/workspace/lock, generation and all other source bytes remain unchanged. Diagnostic agreement does not authenticate UI assets or prove cross-head determinism; fresh all 15 source coverage is required.",
+      "rationale": "Bind the H3 lock derived by authenticated CI run 41836686760 attempt 1. Only the lock and deterministic reconciliation receipt change; fresh full source validation remains required. Earlier preparation rationale, retained as historical context: Prepare the approved H3 four-dependency source successor with reviewed compatibility/security cases. The existing genuine H2 lock/receipt is only a historical seed; current lock derivation and complete fresh source validation are pending. Earlier H2 rationale, retained as historical context: Integrate exact stable 10.9 with preserved fork Workboard, claim fencing, task, security and provider behavior. Bind the complete 253-row reconciliation and reviewed security/API adaptations. Dependency lock derives from authenticated successful public CI run 41043479025 attempt 1, artifact 12972087389; only the lock and deterministic reconciliation receipt change from integration G. Fresh complete source validation is required; older source/runtime/image qualification does not transfer. One combined reviewed H2 correction fixes only the lease fixture type import and the Workboard controlUi manifest bytes authenticated from both fixed diagnostic jobs in run 41092698155. The new metadata path originates at H, not an invented historical fork commit. Existing package/workspace/lock, generation and all other source bytes remain unchanged. Diagnostic agreement does not authenticate UI assets or prove cross-head determinism; fresh all 15 source coverage is required.",
       "regressionOwner": "fr-meyer",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",
