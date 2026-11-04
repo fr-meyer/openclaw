@@ -10,13 +10,14 @@ NODE_SHA='e32e2d16081cf644f88392934288086e7662529d0d43277c34f7aad2207cfafb'
 NODE_BYTES=126879696
 LEAVES=('metadata_reader.cjs','metadata_supervisor.cjs','test_metadata_reader.cjs',
         'test_metadata_supervisor.cjs','linux_fixture.cjs','test_supervisor_actual_child.cjs','linux_proof.py',
-        'schema_init_probe.cjs','source_table.sql')
+        'schema_init_probe.cjs','source_table.sql',
+        'native-copy-worker.mjs','native-copy-worker-before.mjs','test-held-fd-linux.mjs')
 
 def need(value):
     if value is not True: raise RuntimeError('synthetic_metadata_proof_refused')
 
 SCHEMA_STAGES=('schema-build','schema-probe','schema-full-long','schema-full-public_table',
-               'schema-full-generated_function','schema-full-expression_index','schema-full-above_limit','marker-build','marker-query','writer-build','writer-query')
+               'schema-full-generated_function','schema-full-expression_index','schema-full-above_limit','marker-build','marker-query','writer-build','writer-query','maintenance-fd')
 
 def schema_failure(stage,code,stdout,stderr,*,timed_out=False):
     need(stage in SCHEMA_STAGES and type(code)is int)
@@ -66,12 +67,16 @@ def observations(value):
 
 SCHEMA_SOURCE_LEAVES=('schema_init_probe.cjs','metadata_reader.cjs','linux_fixture.cjs','source_table.sql')
 
-def copy_schema_sources(here,work,manifest):
-    # Only the fixed four-leaf local require/read closure, never checkout parents.
+FD_SOURCE_LEAVES=('native-copy-worker.mjs','native-copy-worker-before.mjs','test-held-fd-linux.mjs')
+
+def copy_fixed_sources(here,work,manifest,*,kind):
+    # Two fixed proof closures only; caller-selected paths/programs are not supported.
+    need(kind in ('schema','fd'))
+    names=SCHEMA_SOURCE_LEAVES if kind=='schema' else FD_SOURCE_LEAVES
     need(work.resolve()==work and work.is_dir() and not work.is_symlink())
-    directory=work/'schema-programs';directory.mkdir(mode=0o755);directory.chmod(0o755)
+    directory=work/('schema-programs'if kind=='schema'else'fd-programs');directory.mkdir(mode=0o755);directory.chmod(0o755)
     expected={r['path']:r for r in manifest['files']}
-    for name in SCHEMA_SOURCE_LEAVES:
+    for name in names:
         source=here/name;before=source.lstat();row=expected[name]
         fields=lambda v:(v.st_dev,v.st_ino,v.st_uid,v.st_mode,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns)
         need(source.resolve()==source and stat.S_ISREG(before.st_mode) and before.st_nlink==1 and
@@ -89,9 +94,37 @@ def copy_schema_sources(here,work,manifest):
         need(target.resolve()==target and stat.S_ISREG(fact.st_mode) and fact.st_nlink==1 and
              fact.st_uid==os.geteuid() and stat.S_IMODE(fact.st_mode)==0o444 and
              fact.st_size==row['bytes'] and hashlib.sha256(target.read_bytes()).hexdigest()==row['sha256'])
-    need({p.name for p in directory.iterdir()}==set(SCHEMA_SOURCE_LEAVES) and
+    need({p.name for p in directory.iterdir()}==set(names) and
          stat.S_IMODE(directory.stat().st_mode)==0o755)
     return directory
+
+def copy_schema_sources(here,work,manifest):
+    return copy_fixed_sources(here,work,manifest,kind='schema')
+
+def copy_fd_sources(here,work,manifest):
+    return copy_fixed_sources(here,work,manifest,kind='fd')
+
+
+def run_fd_lifecycle(here,work,manifest,node):
+    programs=copy_fd_sources(here,work,manifest)
+    fixtures=work/'fd-fixtures';fixtures.mkdir(mode=0o700);fixtures.chmod(0o700);os.chown(fixtures,1000,1000)
+    fact=fixtures.lstat()
+    need(fixtures.resolve()==fixtures and stat.S_ISDIR(fact.st_mode) and
+         fact.st_uid==fact.st_gid==1000 and stat.S_IMODE(fact.st_mode)==0o700)
+    result=run([str(node),str(programs/'test-held-fd-linux.mjs'),str(fixtures)],
+               user=True,seconds=30,diagnostic='maintenance-fd')
+    schema_require(result,'maintenance-fd')
+    try:
+        value=json.loads(result.stdout)
+        need(type(value)is dict and value.get('schema')=='ocv.synthetic-worker-real-fd-proof.v1' and
+             value.get('status')=='PASS' and not any(fixtures.iterdir()))
+    except BaseException:
+        schema_failure('maintenance-fd',result.returncode,result.stdout,result.stderr)
+        raise
+    rows={r['path']:r for r in manifest['files']}
+    return {'workerSha256':rows['native-copy-worker.mjs']['sha256'],
+            'beforeWorkerSha256':rows['native-copy-worker-before.mjs']['sha256'],
+            'fixtureSha256':rows['test-held-fd-linux.mjs']['sha256'],'proof':value}
 
 
 def main():
@@ -330,6 +363,7 @@ def main():
                 raise
             writer_cases.append({'name':name,'status':full['status'],'code':code,'writerStamp':row['writerStamp'],'appVersionMatches':row['appVersionMatches'],'childClosedAndReaped':True,'deadlineReached':False})
         need(writer_before=={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in writer_root.iterdir()})
+        fd_lifecycle=run_fd_lifecycle(here,work,manifest,node)
         proof={'schema':'ocv.generic-retained-metadata-linux-proof.v1','status':'PASS',
             'nodeSha256':NODE_SHA,'sourceManifestSha256':args.source_manifest_sha256,
             'syntheticDatabases':11,'existingWalAndShmReadonlyPositive':True,'zeroWalWithExistingShmReadonlyPositive':True,
@@ -341,6 +375,7 @@ def main():
             'schemaInitFullReaderPersistedCasesExercised':True,'fullReaderSchemaInitialization':full_cases,
             'schemaMarkerFourStrictPredicatesAndMasks':True,'schemaMarkerCases':marker_cases,
             'writerStampOptionalMetadataAndByteBounds':True,'writerStampCases':writer_cases,'writerObservationRows':writer_observations,
+            'maintenanceFdLifecycle':fd_lifecycle,
             'metadataCountsAsReleaseQualification':False,'productionQualified':False,
             'retainedDataAccessed':False,'privateAdmissionEstablished':False}
     finally:

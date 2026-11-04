@@ -315,4 +315,85 @@ class MetadataHost(unittest.TestCase):
             self.assertFalse((third/'schema-programs'/rows[0]['path']).exists())
 
 
+    def fd_witness(self):
+        rows={'metadata/'+name:{'sha256':pin}for name,pin in(
+          ('native-copy-worker.mjs','a'*64),('native-copy-worker-before.mjs','b'*64),('test-held-fd-linux.mjs','c'*64))}
+        value={'schema':'ocv.synthetic-worker-real-fd-proof.v1','status':'PASS',
+          'interpreter':{'version':'24.22.1','platform':'linux','arch':'x64','uid':1000,'gid':1000},
+          'cases':[{'name':name,'passed':True}for name in entry.FD_CASES],'caseCount':len(entry.FD_CASES),
+          'realFd':{'readonlyNoFollowOpen':True,'heldIdentityCheckedBeforeSingleClose':True,'oldClosedFstatErrno':-9,
+            'oldClosedFstatCode':'EBADF','oldRunPhaseReproduced':True,'fixedRunPhasePassed':True,
+            'allOwnedDescriptorsClosed':True,'allOwnedFilesRemoved':True},
+          'scope':{'ordinarySyntheticFilesOnly':True,'actualRunPhase':True,'actualFilesystem':True,
+            'syntheticDatabasePorts':True,'syntheticPackagePorts':True,'candidatePackagesImported':False,
+            'sqliteImported':False,'databasesOpened':False,'privateDataAccessed':False,'nativeMaintenanceProved':False},
+          'deniedEffectAttempts':0}
+        return {'maintenanceFdLifecycle':{'workerSha256':'a'*64,'beforeWorkerSha256':'b'*64,
+          'fixtureSha256':'c'*64,'proof':value}},rows
+
+    def test_real_fd_witness_requires_exact_sources_runtime_closed_cases_and_limited_scope(self):
+        good,rows=self.fd_witness();entry.require_maintenance_fd_lifecycle(good,rows)
+        for defect in('missing','extra','worker','before','fixture','runtime','uid','gid','root','missingcase','duplicatecase',
+                      'caseextra','failedcase','boolcount','baderrno','unknowncode','unclosed','unremoved','falsefs',
+                      'fakepackageshidden','candidate','sqlite','database','private','maintenance','effect','booleffect'):
+            bad=copy.deepcopy(good);witness=bad['maintenanceFdLifecycle'];value=witness['proof']
+            if defect=='missing':del witness['fixtureSha256']
+            elif defect=='extra':witness['raw']='synthetic-not-permitted'
+            elif defect=='worker':witness['workerSha256']='0'*64
+            elif defect=='before':witness['beforeWorkerSha256']='0'*64
+            elif defect=='fixture':witness['fixtureSha256']='0'*64
+            elif defect=='runtime':value['interpreter']['version']='24.0.0'
+            elif defect=='uid':value['interpreter']['uid']=True
+            elif defect=='gid':value['interpreter']['gid']=False
+            elif defect=='root':value['interpreter']['uid']=0
+            elif defect=='missingcase':value['cases'].pop()
+            elif defect=='duplicatecase':value['cases'][1]['name']=value['cases'][0]['name']
+            elif defect=='caseextra':value['cases'][0]['raw']='not-permitted'
+            elif defect=='failedcase':value['cases'][0]['passed']=False
+            elif defect=='boolcount':value['caseCount']=True
+            elif defect=='baderrno':value['realFd']['oldClosedFstatErrno']=True
+            elif defect=='unknowncode':value['realFd']['oldClosedFstatCode']='UNKNOWN'
+            elif defect=='unclosed':value['realFd']['allOwnedDescriptorsClosed']=False
+            elif defect=='unremoved':value['realFd']['allOwnedFilesRemoved']=False
+            elif defect=='falsefs':value['scope']['actualFilesystem']=False
+            elif defect=='fakepackageshidden':value['scope']['syntheticPackagePorts']=False
+            elif defect=='candidate':value['scope']['candidatePackagesImported']=True
+            elif defect=='sqlite':value['scope']['sqliteImported']=True
+            elif defect=='database':value['scope']['databasesOpened']=True
+            elif defect=='private':value['scope']['privateDataAccessed']=True
+            elif defect=='maintenance':value['scope']['nativeMaintenanceProved']=True
+            elif defect=='effect':value['deniedEffectAttempts']=1
+            else:value['deniedEffectAttempts']=False
+            with self.subTest(defect=defect),self.assertRaises(RuntimeError):entry.require_maintenance_fd_lifecycle(bad,rows)
+        for container,keys in ((good['maintenanceFdLifecycle']['proof']['realFd'],('readonlyNoFollowOpen','heldIdentityCheckedBeforeSingleClose','oldRunPhaseReproduced','fixedRunPhasePassed')),
+                               (good['maintenanceFdLifecycle']['proof']['scope'],('ordinarySyntheticFilesOnly','actualRunPhase','syntheticDatabasePorts'))):
+            for key in keys:
+                old=container[key];container[key]=False
+                with self.subTest(guard=key),self.assertRaises(RuntimeError):entry.require_maintenance_fd_lifecycle(good,rows)
+                container[key]=old
+
+    def test_fd_source_closure_copies_only_three_exact_readable_files_and_rejects_substitution(self):
+        proof=load('fd_copy_source_test',SOURCE/'metadata/linux_proof.py')
+        self.assertEqual(proof.FD_SOURCE_LEAVES,('native-copy-worker.mjs','native-copy-worker-before.mjs','test-held-fd-linux.mjs'))
+        rows=[{'path':name,'bytes':(SOURCE/'metadata'/name).stat().st_size,
+          'sha256':hashlib.sha256((SOURCE/'metadata'/name).read_bytes()).hexdigest()}for name in proof.FD_SOURCE_LEAVES]
+        with tempfile.TemporaryDirectory()as raw:
+            root=Path(raw).resolve();work=root/'work';work.mkdir(mode=0o755)
+            copied=proof.copy_fd_sources(SOURCE/'metadata',work,{'files':rows})
+            self.assertEqual(copied,work/'fd-programs');self.assertEqual(stat.S_IMODE(copied.stat().st_mode),0o755)
+            self.assertEqual(sorted(x.name for x in copied.iterdir()),sorted(proof.FD_SOURCE_LEAVES))
+            for row in rows:
+                target=copied/row['path'];self.assertEqual(stat.S_IMODE(target.stat().st_mode),0o444)
+                self.assertEqual(target.read_bytes(),(SOURCE/'metadata'/row['path']).read_bytes());self.assertEqual(target.stat().st_nlink,1)
+            wrong=copy.deepcopy(rows);wrong[0]['sha256']='0'*64
+            another=root/'another';another.mkdir(mode=0o755)
+            with self.assertRaises(RuntimeError):proof.copy_fd_sources(SOURCE/'metadata',another,{'files':wrong})
+            self.assertFalse((another/'fd-programs'/rows[0]['path']).exists())
+            with self.assertRaises(RuntimeError):proof.copy_fixed_sources(SOURCE/'metadata',work,{'files':rows},kind='caller-selected')
+            fake=root/'fake';fake.mkdir();third=root/'third';third.mkdir(mode=0o755)
+            for row in rows:(fake/row['path']).symlink_to(SOURCE/'metadata'/row['path'])
+            with self.assertRaises(RuntimeError):proof.copy_fd_sources(fake,third,{'files':rows})
+            self.assertFalse((third/'fd-programs'/rows[0]['path']).exists())
+
+
 if __name__=='__main__':unittest.main()

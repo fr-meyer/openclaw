@@ -229,6 +229,50 @@ def require_schema_initialization(actual,rows):
           'metadata.schema_init_full_failure')
 
 
+
+FD_CASES=('old-order-real-fd-ebadf','fixed-before-after-reclaim-real-fd',
+          'final-held-identity-refusal-closes','actual-final-wal-refusal-closes',
+          'close-failure-refuses-with-owned-cleanup','unknown-close-failure-is-classified','first-failure-precedence-preserved',
+          'unopened-real-paths-stay-closed','output-guard-after-close-preserved',
+          'elapsed-guard-after-close-preserved')
+
+
+def require_maintenance_fd_lifecycle(actual,rows):
+    witness=actual.get('maintenanceFdLifecycle')
+    need(type(witness)is dict and set(witness)=={'workerSha256','beforeWorkerSha256','fixtureSha256','proof'},
+         'metadata.fd_witness')
+    for key,name in (('workerSha256','native-copy-worker.mjs'),('beforeWorkerSha256','native-copy-worker-before.mjs'),
+                     ('fixtureSha256','test-held-fd-linux.mjs')):
+        pin=witness[key]
+        need(type(pin)is str and re.fullmatch('[a-f0-9]{64}',pin)is not None and
+             pin==rows.get('metadata/'+name,{}).get('sha256'),'metadata.fd_source')
+    value=witness['proof']
+    need(type(value)is dict and set(value)=={'schema','status','interpreter','cases','caseCount','realFd','scope','deniedEffectAttempts'} and
+         value['schema']=='ocv.synthetic-worker-real-fd-proof.v1' and value['status']=='PASS','metadata.fd_proof')
+    identity=value['interpreter']
+    need(type(identity)is dict and set(identity)=={'version','platform','arch','uid','gid'} and
+         identity['version']=='24.22.1' and identity['platform']=='linux' and identity['arch']=='x64' and
+         type(identity['uid'])is int and identity['uid']==1000 and type(identity['gid'])is int and identity['gid']==1000,
+         'metadata.fd_runtime')
+    cases=value['cases']
+    need(type(value['caseCount'])is int and value['caseCount']==len(FD_CASES) and type(cases)is list and
+         len(cases)==len(FD_CASES),'metadata.fd_roster')
+    for case,name in zip(cases,FD_CASES):
+        need(type(case)is dict and set(case)=={'name','passed'} and case['name']==name and case['passed']is True,
+             'metadata.fd_case')
+    fd=value['realFd']
+    booleans=('readonlyNoFollowOpen','heldIdentityCheckedBeforeSingleClose','oldRunPhaseReproduced',
+              'fixedRunPhasePassed','allOwnedDescriptorsClosed','allOwnedFilesRemoved')
+    need(type(fd)is dict and set(fd)==set(booleans)|{'oldClosedFstatErrno','oldClosedFstatCode'} and
+         all(fd[k]is True for k in booleans) and type(fd['oldClosedFstatErrno'])is int and
+         fd['oldClosedFstatErrno']==-9 and fd['oldClosedFstatCode']=='EBADF','metadata.fd_lifecycle')
+    scope=value['scope'];positive=('ordinarySyntheticFilesOnly','actualRunPhase','actualFilesystem','syntheticDatabasePorts','syntheticPackagePorts')
+    negative=('candidatePackagesImported','sqliteImported','databasesOpened','privateDataAccessed','nativeMaintenanceProved')
+    need(type(scope)is dict and set(scope)==set(positive+negative) and
+         all(scope[k]is True for k in positive) and all(scope[k]is False for k in negative),'metadata.fd_scope')
+    need(type(value['deniedEffectAttempts'])is int and value['deniedEffectAttempts']==0,'metadata.fd_forbidden_effect')
+
+
 def main():
     source=Path(__file__).resolve().parents[1]
     # This is the existing admission owner, not a substitute caller-supplied
@@ -296,6 +340,7 @@ def main():
         require_schema_initialization(actual,rows)
         require_schema_markers(actual)
         require_writer_stamp_cases(actual)
+        require_maintenance_fd_lifecycle(actual,rows)
         result.update(status='passed',proof=actual)
     except BaseException as error:
         text=str(error)
