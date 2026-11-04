@@ -1283,6 +1283,86 @@
         "runId": "41154711378",
         "nativeAttempt": 1,
         "runnerMinutes": 471
+      },
+      {
+        "runId": "41827600524",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41827600408",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41827599962",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41827599983",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41827600339",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41827600336",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41827600397",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41827599958",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41827600315",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41827600269",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41827599985",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41827600193",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41827600325",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41827599960",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41827600373",
+        "nativeAttempt": 1,
+        "runnerMinutes": 2
+      },
+      {
+        "runId": "41827600354",
+        "nativeAttempt": 1,
+        "runnerMinutes": 20
       }
     ],
     "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
@@ -1295,23 +1375,23 @@
     "moneyCeilingUSD": "25.00",
     "nextExecution": {
       "phase": "lock-preparation",
-      "preparationAttempt": 7,
+      "preparationAttempt": 8,
       "priorSourceRun": {
-        "runId": "41154711378",
-        "pipelineHead": "9922a9505b772c407406b0275bbf74d6d2a31c54",
-        "requestSha256": "8ad6e9ebff2ae2e2ffe12182a04c7bf3dcb0fa2efc81c71496685af9791b35d8"
+        "runId": "41827600354",
+        "pipelineHead": "e090222040e88e3fc97801fe633ad5e5e9709d60",
+        "requestSha256": "cc1b4371f1862c533ed3bcbed1c41ab80317815580baaea19fb2c752f73dcacc"
       },
-      "reasonCode": "approved_source_successor",
-      "requestSha256": "cc1b4371f1862c533ed3bcbed1c41ab80317815580baaea19fb2c752f73dcacc",
+      "reasonCode": "reviewed_pipeline_correction",
+      "requestSha256": "6303b0f981005d4e641392e8492c1d3f2b9a7c139d6b9632889663ba5682239d",
       "reservations": {
         "current": 45,
         "pendingValidation": 1075,
         "conditionalImage": 180,
         "incidental": 160
       },
-      "reviewSha256": "c5c5c40f4fd541d3a1fafd3b3382a7883ef48eee84d7f34248976a698717828a",
+      "reviewSha256": "70f00bc72c74a247d127abebf25a2b6c333a2a145b508fe4d8b033228635049d",
       "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
-      "sequence": 12,
+      "sequence": 13,
       "source": {
         "fileSha256": {
           "custom-patches/reconciliation-2026.10.9.json": "068cbe855f6835c4630c24d43b334beca43f920f8ad09ef318a2fa793dbc737f",
@@ -2390,6 +2470,46 @@
             "head_sha": true,
             "id": true,
             "repository_id": true
+          }
+        },
+        {
+          "producerRunId": "41827600354",
+          "producerHead": "e090222040e88e3fc97801fe633ad5e5e9709d60",
+          "nativeResponseSha256": "1c9be5bcadcd35f7fddd9147a1385c4c34c40bffbe120cc8c4295974e5d42c0e",
+          "metadata": {
+            "id": 13321298272,
+            "name": "v109-lock-diagnostic-41827600354-attempt1",
+            "size_in_bytes": 189277,
+            "expired": false,
+            "digest": "sha256:4df3b7b6efe8938a87b5c1a6329cb65d8d83698f20db50039b8fc0c15034b436",
+            "created_at": "2026-11-04T12:33:57Z",
+            "expires_at": "2026-11-07T12:33:56Z",
+            "updated_at": "2026-11-04T12:33:57Z",
+            "workflow_run": {
+              "id": 41827600354,
+              "repository_id": 1309456040,
+              "head_repository_id": 1309456040,
+              "head_branch": "task/v107-source-binding",
+              "head_sha": "e090222040e88e3fc97801fe633ad5e5e9709d60"
+            }
+          },
+          "fieldPresence": {
+            "id": true,
+            "name": true,
+            "size_in_bytes": true,
+            "expired": true,
+            "digest": true,
+            "created_at": true,
+            "expires_at": true,
+            "updated_at": true,
+            "workflow_run": true
+          },
+          "workflowRunFieldPresence": {
+            "id": true,
+            "repository_id": true,
+            "head_repository_id": true,
+            "head_branch": true,
+            "head_sha": true
           }
         }
       ]
