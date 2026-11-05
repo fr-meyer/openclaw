@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { types } from "node:util";
+import { resolveNpmJsonEntries } from "./lib/npm-json-output.mts";
 
 const EXPORTS = [
   ["cjs-normal", "require", ".", "dist/commonjs/index.min.js"],
@@ -359,6 +360,17 @@ function cli(npm, args, scratch, config, checkpoint, timeoutMs = 15000) {
   return child.stdout;
 }
 
+export function resolveNpmVendorPackResult(stdout, expected) {
+  const entries = resolveNpmJsonEntries(JSON.parse(stdout));
+  assert.equal(entries.length, 1);
+  const result = entries[0];
+  assert.equal(result?.name, expected.name);
+  assert.equal(result?.version, expected.version);
+  assert.equal(result?.filename, expected.filename);
+  assert.equal(path.basename(result.filename), result.filename);
+  return result;
+}
+
 async function consumerCases(npm, scratch, config, checkpoint) {
   checkpoint("consumers.cli_version");
   assert.equal(cli(npm, ["--version"], scratch, config, checkpoint).trim(), "12.2.1");
@@ -405,12 +417,13 @@ async function consumerCases(npm, scratch, config, checkpoint) {
   const files = await npm.require("npm-packlist")(tree);
   assert.deepEqual(files.sort(), ["index.js", "package.json"]);
   checkpoint("consumers.cli_pack");
-  const packResult = JSON.parse(cli(npm, ["pack", packRoot, "--json", "--pack-destination", scratch], scratch, config, checkpoint));
-  assert.equal(packResult.length, 1);
-  assert.equal(packResult[0].filename, "vendor-fixture-1.0.0.tgz");
-  assert.deepEqual(packResult[0].files.map((entry) => entry.path).sort(), ["index.js", "package.json"]);
+  const packResult = resolveNpmVendorPackResult(
+    cli(npm, ["pack", packRoot, "--json", "--pack-destination", scratch], scratch, config, checkpoint),
+    { name: "vendor-fixture", version: "1.0.0", filename: "vendor-fixture-1.0.0.tgz" },
+  );
+  assert.deepEqual(packResult.files.map((entry) => entry.path).sort(), ["index.js", "package.json"]);
   checkpoint("consumers.cli_cache_add");
-  cli(npm, ["cache", "add", path.join(scratch, packResult[0].filename)], scratch, config, checkpoint);
+  cli(npm, ["cache", "add", path.join(scratch, packResult.filename)], scratch, config, checkpoint);
   checkpoint("consumers.cli_cache_verify");
   cli(npm, ["cache", "verify"], scratch, config, checkpoint);
 }
@@ -451,10 +464,11 @@ async function publicPackCase(repoRoot, npm, scratch, config, checkpoint) {
     const regular = await fs.promises.lstat(path.join(repoRoot, "node_modules/npm"));
     assert.equal(regular.isDirectory() && !regular.isSymbolicLink(), true);
     checkpoint("pack.root_cli");
-    const output = JSON.parse(cli(npm, ["pack", repoRoot, "--ignore-scripts", "--json", "--pack-destination", scratch], scratch, config, checkpoint, 60000));
-    assert.equal(output.length, 1);
-    assert.equal(path.basename(output[0].filename), output[0].filename);
-    const filename = path.join(scratch, output[0].filename);
+    const output = resolveNpmVendorPackResult(
+      cli(npm, ["pack", repoRoot, "--ignore-scripts", "--json", "--pack-destination", scratch], scratch, config, checkpoint, 60000),
+      { name: prepared.name, version: prepared.version, filename: `${prepared.name}-${prepared.version}.tgz` },
+    );
+    const filename = path.join(scratch, output.filename);
     checkpoint("pack.archive_inventory");
     const tar = createRequire(path.join(repoRoot, "package.json"))("tar");
     const rows = [];

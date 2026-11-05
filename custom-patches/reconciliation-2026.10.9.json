@@ -2066,6 +2066,17 @@
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
+      "path": "scripts/diagnose-npm-vendor-inventory.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "202a074fa9fa7f34fb083a4f858f0692cd2e9762"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "scripts/docker/CURRENT_PARITY_IMAGE.md",
       "base108": null,
       "fork108": {
@@ -2460,6 +2471,28 @@
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
+      "path": "scripts/lib/npm-vendor-fd-inventory-collector.py",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "417962afd37ceb5eec5e8beee46575573a0b44c8"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-vendor-fd-inventory-diagnostic.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "320e88881dbc3a32a5a6ea350949957adc356e47"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "scripts/package-manifest.mjs",
       "base108": {
         "mode": "100644",
@@ -2539,7 +2572,7 @@
       "upstream109": null,
       "result": {
         "mode": "100644",
-        "blob": "e42c7e3b9203282d3a6978caf5aba5f27fdc89f3"
+        "blob": "91a2fe04ba1dc729a36f0ecf55c8cfa65b1f4a1d"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -4899,9 +4932,9 @@
   "sourceSuccessor": {
     "schema": "openclaw.v109.successor-lock-seed.v1",
     "amendmentSha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520",
-    "generation": 3,
-    "parentSource": "957c3744bb85e3be23a264a2cd89e8202213f926",
-    "parentTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+    "generation": 4,
+    "parentSource": "8c2225b7087b4f6c011f1451d4d2d5e252dc3906",
+    "parentTree": "a00f61945709416a084d648dcb255ae7c4c47981",
     "seedSource": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
     "seedTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
     "seedLockBlob": "7d8b8fb442bb3ddff565b870d86e3fbb9571367d",
