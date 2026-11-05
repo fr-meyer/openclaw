@@ -11,7 +11,7 @@
   "forkDeltaPathCount": 250,
   "upstreamChangedPathCount": 441,
   "overlapPathCount": 55,
-  "lockState": "pending_ci_derivation",
+  "lockState": "ci_derived",
   "sourcePaths": [
     {
       "path": "Dockerfile",
@@ -1953,6 +1953,28 @@
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
+      "path": "patches/npm-12.2.1.glob-cancellation.proof.json",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "25ea11417ee8e1b519324ac690cfe2c186701eac"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "patches/npm@12.2.1.patch",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "568316ed08b0a2a4d5c0536ccdd20f50c7eda2e1"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "patches/vitest@5.0.1.patch",
       "base108": {
         "mode": "100644",
@@ -2010,7 +2032,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "7d8b8fb442bb3ddff565b870d86e3fbb9571367d"
+        "blob": "55529ecf59967008e592aa2d289b5809b27f6c48"
       },
       "disposition": "LOCK_CONTROLLED_DERIVATION"
     },
@@ -2030,7 +2052,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "8572393dc11e7617122cf0a9d4f715fca1721e71"
+        "blob": "2e74d7870cda4e19d022ecd9f497592914d1803b"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -4968,5 +4990,12 @@
       "generatedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
       "receiptSha256": "4a78e49d9933bec7483fbca1e7a604ba72bebc2230e03cfbaf4f994852c7b7c0"
     }
+  },
+  "lockDerivation": {
+    "runId": 42022429225,
+    "attempt": 1,
+    "artifactSha256": "5c23e71cbcbf8b1e06044d1a0a319e32492e7a282d6d0bdfc0631c34dfcb0396",
+    "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+    "receiptSha256": "5cd83f8acb10b0de9f871f178eeae5657927eb56731fc4ca0c13bb62b04258fd"
   }
 }
