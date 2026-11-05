@@ -228,8 +228,8 @@ def route_event(event, diagnostic):
     need(present is diagnostic, "mutual_workflow_hold")
 
 
-H3_SOURCE_WORKFLOW_SHA256 = "642ac49dead5e5be19e7c5b9c4c435debdb469ef59ce13219a40d61ee830028d"
-H3_PREPARATION_WORKFLOW_SHA256 = "f9644f16591d4fdbbca227479a3a39f2dbb75c6cd27d6dfca2747a14acfe4b98"
+H3_SOURCE_WORKFLOW_SHA256 = "87f1c2d6b4df712898b679f35d4cd3fc3b34f890b2c6b51cb0010c6b4ff05252"
+H3_PREPARATION_WORKFLOW_SHA256 = "0f847d0525b0303915580b3465c6a36f6bd2a496ac508c6ca9952a29500a8584"
 
 
 def workflow_routing(runtime, pipeline, diagnostic, *, source_request=None, source_bindings=None):

@@ -1224,8 +1224,14 @@ def h3_source_history(pipeline, bindings, request, source_rows, current_id, sour
     old_rows = [r for r in source_rows if "executionSequence" not in r[2] or r[2]["executionSequence"] <= 11]
     previous = bounded_source_history(old_bindings, old_request, old_rows, "41154711378")
     policy.need(previous["sourceExecutionSequence"] == 11, "v9.h3_anchor_sequence")
-    family = policy.validate_h3_family(policy.source_successor_family(bindings))
+    from bounded_run_contract_v109 import source_successor_amendment
     grant = policy.run_grant(bindings); plan = grant["nextExecution"]
+    current_scope = source_successor_amendment(grant)
+    policy.need(current_scope is not None,"v9.h3_current_scope_missing")
+    family = policy.validate_h3_family(policy.source_successor_family(bindings),
+        current_scope["maximumSourceGenerations"])
+    policy.need(len(family["generations"])==current_scope["sourceGeneration"] and
+        policy.digest(policy.canonical(family))==current_scope["sourceFamilySha256"], "v9.h3_current_family_scope_binding")
     rows = {}
     for rid, run, q, raw in source_rows:
         sequence = q.get("executionSequence")
@@ -1235,7 +1241,13 @@ def h3_source_history(pipeline, bindings, request, source_rows, current_id, sour
             q.get("sourceSuccessorAmendmentSha256") == family["publicAmendmentSha256"], "v9.h3_source_sequence")
         historical = source_bindings.get(rid)
         policy.need(type(historical) is dict, "v9.h3_historical_family_missing")
-        old_family = policy.validate_h3_family(policy.source_successor_family(historical))
+        historical_scope = source_successor_amendment(policy.run_grant(historical))
+        policy.need(historical_scope is not None,"v9.h3_historical_scope_missing")
+        old_family = policy.validate_h3_family(policy.source_successor_family(historical),
+            historical_scope["maximumSourceGenerations"])
+        policy.need(len(old_family["generations"])==historical_scope["sourceGeneration"] and
+            policy.digest(policy.canonical(old_family))==historical_scope["sourceFamilySha256"],
+            "v9.h3_historical_family_scope_binding")
         number = q.get("sourceGeneration")
         policy.need(type(number) is int and 1 <= number <= len(family["generations"]) and
             len(old_family["generations"]) == number and
@@ -1278,7 +1290,7 @@ def h3_source_history(pipeline, bindings, request, source_rows, current_id, sour
     return {"sourceExecutionSequence": plan["sequence"], "reviewedLogicalExecutions": plan["sequence"],
         "freshNativeFirstAttemptOnly": True, "unchangedPreparationSource": True,
         "sameGenerationFixtureCorrection": False, "materialSourceGenerations": len(family["generations"]),
-        "maximumMaterialSourceGenerations": 3, "legacyAnchorSequencePreserved": 11}
+        "maximumMaterialSourceGenerations": current_scope["maximumSourceGenerations"], "legacyAnchorSequencePreserved": 11}
 
 
 def bounded_source_history(bindings,request,source_rows,current_id,*,pipeline=None,source_bindings=None):

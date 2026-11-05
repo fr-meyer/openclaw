@@ -35,7 +35,7 @@ OWNER_PINS = {
     "release.py": "5026178bb85a9ff51a36f7512a899c8cd4beab2f5b3ed146e1e0d87c0dc3a639",
     "source_validation_contract_v109.py": "9181197491ffad48677aaf586f4edcf30cdd6b9868541421e3dcdb9d277cfb15",
     "source_validation_v108.py": "d2e014f20f5227b183ea217d9874ef7159c90a894debe5a6581bd4696145f965",
-    "source_validation_v109.py": "4144503353ef701cc4abb0fcd13fdd9cf21db1e2e1518bcf1036b444f61a74a0",
+    "source_validation_v109.py": "f25505311ffcfe203a5c1553bec65a794c3aaef901ce51a7f5261039dbb9aca8",
 }
 
 
