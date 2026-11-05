@@ -27,6 +27,9 @@ SUCCESSOR_SOURCE_PATHS = frozenset((
     'package.json',
     'pnpm-workspace.yaml',
     'scripts/build-npm-glob-vendor-backport.mjs',
+    'scripts/diagnose-npm-vendor-inventory.mjs',
+    'scripts/lib/npm-vendor-fd-inventory-diagnostic.mjs',
+    'scripts/lib/npm-vendor-fd-inventory-collector.py',
     'scripts/generate-npm-package-lock.mts',
     'scripts/lib/npm-glob-vendor-archive.mjs',
     'scripts/lib/npm-glob-vendor-backport.mjs',
@@ -139,7 +142,7 @@ def successor_seed(value, need):
         "seedLockSha256", "seedLockDerivation"} and value["schema"] == SUCCESSOR_SEED_SCHEMA,
         "invalid 10.9 successor lock seed fields")
     need(_matches(SHA256, value["amendmentSha256"]) and type(value["generation"]) is int and
-        1 <= value["generation"] <= 3 and
+        1 <= value["generation"] <= 5 and
         all(_matches(SHA, value[k]) for k in ("parentSource", "parentTree", "seedSource",
             "seedTree", "seedLockBlob")) and _matches(SHA256, value["seedLockSha256"]),
         "invalid 10.9 successor lock seed identity")
@@ -168,8 +171,11 @@ def pending_successor_ledger(before, changed_entries, parent_source, parent_tree
         type(changed_entries) is dict and bool(changed_entries) and
         set(changed_entries) <= SUCCESSOR_SOURCE_PATHS and
         _matches(SHA, parent_source) and _matches(SHA, parent_tree) and
-        _matches(SHA256, amendment_sha256) and type(generation) is int and 1 <= generation <= 3,
+        _matches(SHA256, amendment_sha256) and type(generation) is int and 1 <= generation <= 5,
         "invalid 10.9 pending successor input")
+    need(generation >= 4 or not (set(changed_entries) & {
+        "scripts/diagnose-npm-vendor-inventory.mjs", "scripts/lib/npm-vendor-fd-inventory-diagnostic.mjs",
+        "scripts/lib/npm-vendor-fd-inventory-collector.py"}), "continuation paths require material generation four or five")
     rows = {row.get("path"): row for row in value["sourcePaths"] if type(row) is dict}
     need(len(rows) == len(value["sourcePaths"]) and
         LOCK_PATH in rows and rows[LOCK_PATH].get("disposition") == "LOCK_CONTROLLED_DERIVATION" and

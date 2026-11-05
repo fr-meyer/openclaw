@@ -61,7 +61,7 @@ def strict_json(raw, need, maximum=2 * 1024 * 1024):
 def validate_record(value, need, *, generation=None):
     keys = {"schema", "sourceGeneration", "workspaceSha256", "patchSha256", "proofSha256", "producerRuntimeSha256"}
     need(type(value) is dict and set(value) == keys and value["schema"] == SCHEMA and
-        type(value["sourceGeneration"]) is int and 2 <= value["sourceGeneration"] <= 3 and
+        type(value["sourceGeneration"]) is int and 2 <= value["sourceGeneration"] <= 5 and
         (generation is None or value["sourceGeneration"] == generation) and
         all(pin(value[k]) for k in keys - {"schema", "sourceGeneration"}), "v9.vendor_record")
     return value
@@ -599,3 +599,140 @@ def failed_case_cause(value):
             raise ValueError("v9.vendor_case_cause_state")
         result[field] = dict(tag)
     return result
+
+
+INVENTORY_DIAGNOSTIC = "scripts/diagnose-npm-vendor-inventory.mjs"
+INVENTORY_DIAGNOSTIC_SCHEMA = "openclaw.npm-vendor-fd-inventory-diagnostic.v2"
+INVENTORY_DIAGNOSTIC_FILES = (INVENTORY_DIAGNOSTIC,
+    "scripts/lib/npm-vendor-fd-inventory-diagnostic.mjs",
+    "scripts/lib/npm-vendor-fd-inventory-collector.py",
+    "scripts/lib/npm-glob-vendor-proof.mjs")
+INVENTORY_PROOF_OWNER_SHA256 = "1069714acc6e83d30ff674e0505a5e021ff930ea097892975214d24955f19439"
+INVENTORY_DIAGNOSTIC_LIMITS = {"entries": 5000, "readBytes": 33554432, "fileBytes": 8388608,
+    "directories": 512, "depth": 64, "relativeNameBytes": 4096, "differences": 128,
+    "outputBytes": 65536, "elapsedMs": 30000}
+# Owned finite refusals only. The collector never grants package qualification.
+INVENTORY_DIAGNOSTIC_REASONS = frozenset((
+    'arguments',
+    'ci_only',
+    'client_envelope_refused',
+    'client_refused',
+    'declared_npm_type_refused',
+    'depth_cap',
+    'difference_cap',
+    'differences_observed',
+    'directory_type_refused',
+    'duplicate_json_key',
+    'elapsed_cap',
+    'entry_cap',
+    'facts_shape',
+    'fd_cap',
+    'file_cap',
+    'identity_binding_refused',
+    'input_binding_refused',
+    'input_cap',
+    'input_shape',
+    'io_or_nofollow_refused',
+    'json_constant',
+    'no_difference_observed',
+    'not_completed',
+    'output_cap',
+    'package_scope_refused',
+    'path_refused',
+    'proof_binding_refused',
+    'proof_file_refused',
+    'proof_reader_refused',
+    'proof_unstable',
+    'read_cap',
+    'receipt_write_refused',
+    'relative_name_cap',
+    'selector_eacces',
+    'selector_einval',
+    'selector_eloop',
+    'selector_enoent',
+    'selector_enotdir',
+    'selector_eperm',
+    'selector_fd_refused',
+    'selector_read_refused',
+    'selector_target_cap',
+    'selector_target_refused',
+    'selector_unstable',
+    'source_unstable',
+    'unstable_input',
+    'unsupported_client',
+    'unsupported_fd_api',
+    'unsupported_fd_budget',
+    'unsupported_platform',
+    'unsupported_readlinkat',
+    'untrusted_proof_or_binding',
+    'verification_entry_cap',
+))
+
+
+def inventory_diagnostic_projection(raw, proof_raw, need):
+    """Revalidate safe output; only authenticated public member names can appear."""
+    value = strict_json(raw, need, 65536)
+    base = {"schema", "status", "reason", "qualificationAccepted", "imageBuilt", "complete"}
+    optional = {"proofSha256", "expectedInventorySha256", "observed", "privacy", "limits", "deadlineKind",
+        "counts", "countsComplete", "differenceCount", "differences", "differencesTruncated"}
+    need(type(value) is dict and base <= set(value) <= base | optional and
+        value["schema"] == INVENTORY_DIAGNOSTIC_SCHEMA and value["status"] in ("refused", "observed") and
+        value["reason"] in INVENTORY_DIAGNOSTIC_REASONS and value["qualificationAccepted"] is False and
+        value["imageBuilt"] is False and type(value["complete"]) is bool, "v9.vendor_inventory_envelope")
+    proof = strict_json(proof_raw, need)
+    need(type(proof) is dict and type(proof.get("original")) is dict and type(proof["original"].get("files")) is list and
+        type(proof.get("derived")) is dict, "v9.vendor_inventory_proof")
+    known = {row["path"] for row in proof["original"]["files"]}
+    if "proofSha256" in value: need(value["proofSha256"] == digest(proof_raw), "v9.vendor_inventory_proof_binding")
+    if "expectedInventorySha256" in value:
+        need(value["expectedInventorySha256"] == proof["derived"]["inventorySha256"], "v9.vendor_inventory_binding")
+    integer = lambda x, limit=2**63-1: type(x) is int and 0 <= x <= limit
+    if "limits" in value: need(canonical(value["limits"]) == canonical(INVENTORY_DIAGNOSTIC_LIMITS), "v9.vendor_inventory_limits")
+    if "privacy" in value:
+        privacy=value["privacy"]
+        need(type(privacy) is dict and set(privacy)=={"unknownNamesHashed","unknownContentsRead","unknownLinkTargetsRead","declaredNpmSelectorTargetMetadataRead"} and
+            privacy["unknownNamesHashed"] is True and privacy["unknownContentsRead"] is False and
+            privacy["unknownLinkTargetsRead"] is False and type(privacy["declaredNpmSelectorTargetMetadataRead"]) is bool,
+            "v9.vendor_inventory_privacy")
+    if "deadlineKind" in value:
+        need(value["deadlineKind"] == "cooperative_30s_requires_outer_whole_call_deadline", "v9.vendor_inventory_deadline")
+    if "observed" in value:
+        x=value["observed"]
+        need(type(x) is dict and set(x)=={"entries", "expectedFilesRead", "bytes", "verificationEntries", "proofMetadataBytes", "selectorMetadataBytes"} and
+            all(integer(n,33554432 if k in ("bytes","proofMetadataBytes") else 4096 if k=="selectorMetadataBytes" else 5000) for k,n in x.items()), "v9.vendor_inventory_observed")
+    if "counts" in value:
+        need(type(value["counts"]) is dict and set(value["counts"])=={"missing", "extra", "type", "mode", "size", "content", "links"} and
+            all(integer(n,10000) for n in value["counts"].values()), "v9.vendor_inventory_counts")
+    for key in ("countsComplete", "differencesTruncated"):
+        if key in value: need(type(value[key]) is bool, "v9.vendor_inventory_boolean")
+    if "differenceCount" in value: need(integer(value["differenceCount"],10000), "v9.vendor_inventory_count")
+    if "differences" in value:
+        rows=value["differences"]
+        need(type(rows) is list and len(rows)<=128, "v9.vendor_inventory_rows")
+        def node(x, expected=False, extra=False):
+            need(type(x) is dict, "v9.vendor_inventory_node")
+            keys={"kind", "mode", "size"} | ({"sha256"} if expected or x.get("kind")=="file" and not extra else set()) | ({"contentRead"} if extra else set())
+            need(type(x) is dict and set(x)==keys and x["kind"] in (("file",) if expected else ("file","directory","link","other")) and
+                integer(x["mode"],4095) and integer(x["size"]), "v9.vendor_inventory_node")
+            if "sha256" in x: need(pin(x["sha256"]), "v9.vendor_inventory_hash")
+            if extra: need(x["contentRead"] is False, "v9.vendor_inventory_extra_content")
+        for row in rows:
+            need(type(row) is dict and row.get("kind") in ("missing","changed","extra"), "v9.vendor_inventory_row")
+            kind=row["kind"]
+            if kind=="extra":
+                need(set(row)=={"kind","pathSha256","actual"} and pin(row["pathSha256"]), "v9.vendor_inventory_extra")
+                node(row["actual"],extra=True)
+            else:
+                need(row.get("path") in known, "v9.vendor_inventory_public_path")
+                need(set(row)==({"kind","path","expected"} if kind=="missing" else {"kind","path","expected","actual","changes"}), "v9.vendor_inventory_row_fields")
+                node(row["expected"],expected=True)
+                if kind=="changed":
+                    node(row["actual"])
+                    need(type(row["changes"]) is list and bool(row["changes"]) and len(row["changes"])==len(set(row["changes"])) and
+                        set(row["changes"]) <= {"type","link","mode","size","content"}, "v9.vendor_inventory_changes")
+    if value["status"]=="observed":
+        need(set(value)==base | optional and value["complete"] is True and value["countsComplete"] is True and
+            value["differencesTruncated"] is False and value["reason"] in ("differences_observed","no_difference_observed"),
+            "v9.vendor_inventory_complete_observation")
+    else: need(value["complete"] is False and value["reason"] not in ("differences_observed","no_difference_observed"), "v9.vendor_inventory_refusal")
+    return value

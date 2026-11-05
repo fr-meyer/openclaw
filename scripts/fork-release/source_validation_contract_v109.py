@@ -125,6 +125,18 @@ H3_VENDOR_MATERIAL_PATHS = frozenset((
     'src/infra/npm-command.ts',
     'test/scripts/generate-npm-package-lock.test.ts',
 ))
+H3_VENDOR_CONTINUATION_PATHS = frozenset((
+    "scripts/diagnose-npm-vendor-inventory.mjs",
+    "scripts/lib/npm-vendor-fd-inventory-diagnostic.mjs",
+    "scripts/lib/npm-vendor-fd-inventory-collector.py",
+))
+
+
+def h3_material_paths(maximum_generations=3):
+    need(type(maximum_generations) is int and maximum_generations in (3,5), "v9.h3_material_ceiling")
+    return H3_MATERIAL_PATHS | (H3_VENDOR_CONTINUATION_PATHS if maximum_generations==5 else frozenset())
+
+
 H3_LEGACY_MATERIAL_PATHS = H3_MATERIAL_PATHS
 H3_MATERIAL_PATHS = H3_MATERIAL_PATHS | H3_VENDOR_MATERIAL_PATHS
 
@@ -443,15 +455,18 @@ def h3_stage_contract(bindings, selected):
     validate_request(selected, bindings)
     if source_successor_family(bindings) is None:
         return None
-    return run_allowance.h3_stage_descriptor()
+    return run_allowance.h3_stage_descriptor(continuation=
+        run_allowance.vendor_continuation_for(run_grant(bindings)) is not None)
 
 
-def validate_h3_family(value):
+def validate_h3_family(value, maximum_generations=3):
+    need(type(maximum_generations) is int and maximum_generations in (3, 5), "v9.h3_family_ceiling")
     fields(value, ("schema", "publicAmendmentSha256", "anchor", "generations"), "v9.h3_family_fields")
     need(value["schema"] == H3_FAMILY_SCHEMA and value["publicAmendmentSha256"] == run_allowance.H3_AMENDMENT_SHA256 and
         value["anchor"] == H3_ANCHOR and type(value["generations"]) is list and
-        1 <= len(value["generations"]) <= 3, "v9.h3_family_scope")
+        1 <= len(value["generations"]) <= maximum_generations, "v9.h3_family_scope")
     source_pin(value["anchor"])
+    allowed_material = h3_material_paths(maximum_generations)
     previous = value["anchor"]
     seen = {previous["sourceSha"]}
     vendor_active = False
@@ -462,13 +477,15 @@ def validate_h3_family(value):
         changed = item["changedPaths"]
         need(type(item["number"]) is int and item["number"] == number and item["parentSource"] == previous and
             type(changed) is list and changed == sorted(set(changed)) and LEDGER in changed and
-            bool(set(changed) & (H3_MATERIAL_PATHS | H3_VENDOR_MATERIAL_PATHS)) and
-            set(changed) <= H3_MATERIAL_PATHS | H3_VENDOR_MATERIAL_PATHS | {LEDGER} and
+            bool(set(changed) & allowed_material) and
+            set(changed) <= allowed_material | {LEDGER} and
             type(item["contentSha256"]) is dict and set(item["contentSha256"]) == set(changed) and
             all(pin(v) for v in item["contentSha256"].values()) and pin(item["unchangedTreeSha256"]) and
             item["preparation"]["sourceSha"] not in seen and
             item["preparation"]["fileSha256"]["pnpm-lock.yaml"] == previous["fileSha256"]["pnpm-lock.yaml"],
             "v9.h3_reviewed_material_step")
+        need(not (set(changed) & H3_VENDOR_CONTINUATION_PATHS) or
+            (maximum_generations == 5 and number >= 4), "v9.vendor_continuation_material_scope")
         import npm_vendor_derivation_v109 as vendor
         vendor_active = vendor_active or vendor.PRODUCER in changed
         need(not set(changed) & (H3_VENDOR_MATERIAL_PATHS - H3_LEGACY_MATERIAL_PATHS) or (number >= 2 and vendor_active),
@@ -507,7 +524,8 @@ def validate_h3_bindings(value, active=False, now=None):
         baseline["sourceRunId"] == BASELINE_RUN and type(baseline["runCount"]) is int and baseline["runCount"] == 258 and
         type(baseline["runnerMinutes"]) is int and baseline["runnerMinutes"] == 2944 and pin(baseline["publicProofSha256"]), "v9.baseline_binding")
     validate_authorization(value["authorization"])
-    family = validate_h3_family(value["sourceSuccessor"])
+    amendment_scope = run_allowance.source_successor_amendment(value["ciRunGrant"])
+    family = validate_h3_family(value["sourceSuccessor"], amendment_scope["maximumSourceGenerations"])
     last = family["generations"][-1]
     need(value["preparation"] == last["preparation"] and value["validation"] == last["validation"] and
         value["preparationCorrection"] is None and value["correction"] is None, "v9.h3_current_family_mirror")
@@ -812,6 +830,9 @@ def request_for(bindings, phase, preparation_attempt=1):
         if h3 is not None:
             result.update(sourceGeneration=plan["sourceGeneration"], sourceFamilySha256=plan["sourceFamilySha256"],
                 sourceSuccessorAmendmentSha256=run_allowance.H3_AMENDMENT_SHA256)
+            continuation = run_allowance.vendor_continuation_for(grant)
+            if continuation is not None:
+                result["vendorRepairContinuationSha256"] = run_allowance.digest(continuation)
         if run_allowance.has_budget_amendment(grant):
             result["budgetCeilingAmendmentSha256"] = run_allowance.BUDGET_AMENDMENT_SHA256
     return result
@@ -861,7 +882,10 @@ def maximum_new_minutes_for(request):
         need(request["sourceSuccessorAmendmentSha256"] == run_allowance.H3_AMENDMENT_SHA256 and
             request.get("budgetCeilingAmendmentSha256") == run_allowance.BUDGET_AMENDMENT_SHA256 and
             request.get("runAllowanceSha256") == run_allowance.AUTHORITY_SHA256 and
-            type(request.get("sourceGeneration")) is int and 1 <= request["sourceGeneration"] <= 3 and
+            type(request.get("sourceGeneration")) is int and 1 <= request["sourceGeneration"] <= (5 if
+                request.get("vendorRepairContinuationSha256") == run_allowance.digest(run_allowance.vendor_repair_continuation()) else 3) and
+            ("vendorRepairContinuationSha256" not in request or request["vendorRepairContinuationSha256"] ==
+                run_allowance.digest(run_allowance.vendor_repair_continuation())) and
             pin(request.get("sourceFamilySha256")) and request.get("phase") in ("lock-preparation", "validation") and
             type(request.get("executionSequence")) is int and 12 <= request["executionSequence"] <= 1000, "v9.h3_budget_request")
         return run_allowance.AMENDED_MAXIMUM_NEW_MINUTES
@@ -896,7 +920,9 @@ def budget(request):
             "maximumBookedMinutes": maximum,
             "maximumAdditionalWorkflowAttempts": 1000, "maximumStageWorkflowAttempts": 1042}
         if "sourceSuccessorAmendmentSha256" in request:
-            result.update(maximumMaterialSourceGenerations=3, stagePools=deepcopy(run_allowance.H3_STAGE_POOLS),
+            result.update(maximumMaterialSourceGenerations=(5 if "vendorRepairContinuationSha256" in request else 3),
+                stagePools=deepcopy(run_allowance.vendor_repair_continuation()["stagePools"] if
+                    "vendorRepairContinuationSha256" in request else run_allowance.H3_STAGE_POOLS),
                 stagePrefixBookedMinutes=run_allowance.H3_PREFIX_MINUTES,
                 maximumStageBookedMinutes=run_allowance.H3_MAXIMUM_BOOKED_MINUTES)
         return result
@@ -1089,7 +1115,9 @@ def tree_digest(entries, ignored=()):
 def verify_h3_preparations(read, bindings, *, read_tree):
     """Prove each reviewed material step and truthful pending seed from Git bytes."""
     import source_reconciliation_v109 as reconciliation
-    family = validate_h3_family(bindings["sourceSuccessor"])
+    amendment_scope = run_allowance.source_successor_amendment(run_grant(bindings))
+    continuation_scope = run_allowance.vendor_continuation_for(run_grant(bindings))
+    family = validate_h3_family(bindings["sourceSuccessor"], amendment_scope["maximumSourceGenerations"])
     for item in family["generations"]:
         parent, prep = item["parentSource"], item["preparation"]
         need(read("show", "-s", "--format=%P", prep["sourceSha"]).decode().strip().split() == [parent["sourceSha"]], "v9.h3_single_material_parent")
@@ -1099,7 +1127,8 @@ def verify_h3_preparations(read, bindings, *, read_tree):
                 need(digest(read("show", source["sourceSha"] + ":" + path)) == expected, "v9.h3_material_input")
         before, after = read_tree(parent["sourceSha"], parent["sourceTree"]), read_tree(prep["sourceSha"], prep["sourceTree"])
         _verify_reviewed_step(read, before, after, {**item, "source": prep},
-            allowed_additions=set(item["changedPaths"]) & H3_MATERIAL_PATHS)
+            allowed_additions=set(item["changedPaths"]) & h3_material_paths(amendment_scope["maximumSourceGenerations"]),
+            vendor_continuation=continuation_scope)
         old_raw = read("show", parent["sourceSha"] + ":" + LEDGER)
         old = parse(old_raw)
         existing = {row["path"] for row in old["sourcePaths"]}
@@ -1307,11 +1336,18 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
         "freshSourceCoverageRequired": True, "imageBuilt": False, "productionAuthorized": False}
 
 
-def _verify_reviewed_step(read, before, after, step, *, allowed_additions=frozenset()):
-    # Historical corrections retain equal path sets. Only the H3 material
-    # caller explicitly permits additions from its exact reviewed path list.
+def _verify_reviewed_step(read, before, after, step, *, allowed_additions=frozenset(), vendor_continuation=None):
+    # Historical corrections retain their exact legacy addition scope. Only the
+    # authenticated H3 caller can carry the closed G4/conditional-G5 authority.
+    material_scope = H3_MATERIAL_PATHS
+    if vendor_continuation is not None:
+        run_allowance.validate_vendor_repair_continuation(vendor_continuation)
+        material_scope = h3_material_paths(vendor_continuation["maximumMaterialSourceGenerations"])
     need(type(allowed_additions) in (set, frozenset) and
-        allowed_additions <= set(step["changedPaths"]) & H3_MATERIAL_PATHS, "v9.reviewed_addition_scope")
+        allowed_additions <= set(step["changedPaths"]) & material_scope, "v9.reviewed_addition_scope")
+    if allowed_additions & H3_VENDOR_CONTINUATION_PATHS:
+        need(vendor_continuation is not None and type(step.get("number")) is int and
+            4 <= step["number"] <= 5, "v9.reviewed_continuation_addition_generation")
     need(set(before) <= set(after) and set(after) - set(before) <= allowed_additions,
         "v9.corrected_source_path_set")
     changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))

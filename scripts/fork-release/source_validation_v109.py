@@ -1382,8 +1382,9 @@ def bounded_minute_booking(grant,run_minutes,current_id,current_minutes):
 
 def h3_minute_facts(facts, current_id, current_minutes):
     """Classify observed use once and retain every native-attempt booking floor."""
-    from bounded_run_contract_v109 import H3_STAGE_POOLS
+    from bounded_run_contract_v109 import h3_stage_pools
     grant,prefix=facts["grant"],facts["prefix"]
+    pools = h3_stage_pools(grant)
     policy.need(prefix is not None and (current_id,1) in facts["run_minutes"] and
         facts["run_minutes"][(current_id,1)]==current_minutes,"v9.h3_current_minute_identity")
     charges=dict(facts["run_minutes"])
@@ -1395,13 +1396,13 @@ def h3_minute_facts(facts, current_id, current_minutes):
         charges[key]=max(charges[key],row["runnerMinutes"])
     old={r["runId"]:r["runnerMinutes"] for r in prefix["records"]}
     policy.need(current_id not in old,"v9.h3_current_reuses_prefix")
-    used={k:0 for k in H3_STAGE_POOLS}
+    used={k:0 for k in pools}
     for (rid,attempt),minutes in charges.items():
         policy.need(attempt==1 and rid in facts["run_pools"],"v9.h3_component_native_identity")
         kind=facts["run_pools"][rid]
         policy.need(kind in used,"v9.h3_component_role")
         used[kind]+=minutes-old.get(rid,0)
-    policy.need(all(type(v)is int and 0<=v<=H3_STAGE_POOLS[k] for k,v in used.items()),
+    policy.need(all(type(v)is int and 0<=v<=pools[k] for k,v in used.items()),
         "v9.h3_stage_component_ceiling")
     total=sum(charges.values())
     policy.need(total==2215+sum(used.values()) and total<=5915 and total<=25000,
@@ -1691,7 +1692,9 @@ def image_cumulative_booking(pipeline, api_get, bindings, selected, current_id, 
     # The image owner separately reserves image/incidental remainders. Retain
     # the unspent source/preparation pools here rather than releasing them from
     # a missing observation or fewer material generations.
-    booked=total+(3225-components["sourceObservedMinutes"])+(135-components["preparationObservedMinutes"])
+    from bounded_run_contract_v109 import h3_stage_pools
+    pools = h3_stage_pools(facts["grant"])
+    booked=total+(pools["source"]-components["sourceObservedMinutes"])+(pools["preparation"]-components["preparationObservedMinutes"])
     return {"newObservedOrBookedMinutes":booked,"currentObservedMinutes":current,
         "nativeObservedOrBookedMinutes":total,"perAttemptBookedMinuteFloorsApplied":True,
         "H3stageIncidentalObservedMinutes":components["incidentalObservedMinutes"],
@@ -1927,9 +1930,16 @@ def retain_unvalidated_lock(generated,diff,request,env,started,changed_paths=Non
             vendorSourceFiles={name:{"bytes":len(raw),"sha256":policy.digest(raw)} for name,raw in sorted(vendor_files.items())})
     files={"pnpm-lock.yaml":generated,"lock.diff":diff,"lock-diagnostic.json":policy.encode(metadata),
         **(vendor_files if vendor_files is not None else {})}
-    # Leave the existing64KiB reserve for the later finite safe failure report.
+    # The continuation needs128KiB safe JSON plus64KiB packaging headroom.
+    # Preserve the historical64KiB reserve for requests without that amendment.
+    reserve = 65536
+    if "vendorRepairContinuationSha256" in request:
+        from bounded_run_contract_v109 import digest as continuation_digest, vendor_repair_continuation
+        policy.need(request["vendorRepairContinuationSha256"] == continuation_digest(vendor_repair_continuation()),
+            "v9.vendor_inventory_reserve_authority")
+        reserve = 196608
     # No tar, maps, TAP or raw test/exception stream enters this artifact.
-    policy.need(sum(map(len,files.values()))<=policy.ARTIFACT_BYTES-65536,"v9.lock_diagnostic_size")
+    policy.need(sum(map(len,files.values()))<=policy.ARTIFACT_BYTES-reserve,"v9.lock_diagnostic_size")
     out=Path(env["RUNNER_TEMP"])/"v109-lock-diagnostic"
     policy.need(not out.exists(),"v9.lock_diagnostic_output_fresh")
     for name,raw in files.items():private_write(out/name,raw)
@@ -2062,6 +2072,85 @@ def capture_vendor_report(path, capture_dir, name, maximum=65536):
     return raw
 
 
+def collect_vendor_inventory_diagnostic(source, vendor_record, env, core, context, child_env, home, qualifier_result):
+    """One fixed post-failure read, with existing owned timeout/cleanup semantics."""
+    import npm_vendor_derivation_v109 as vendor
+    report = home/"vendor-inventory.json"
+    captures = home/"vendor-captures"
+    evidence = {"schema":"openclaw.v109.npm-vendor-inventory-diagnostic-evidence.v1",
+        "state":"not_started", "qualificationAccepted":False, "imageBuilt":False,
+        "commandMaximumSeconds":40, "cleanupMaximumSeconds":20}
+    # A timed-out qualification cannot be inspected while its owned writes may
+    # still be live. Never substitute a read or diagnosis for the failed gate.
+    if getattr(qualifier_result, "timed_out", False) and getattr(qualifier_result, "cleanup_settled", None) is not True:
+        return {**evidence, "state":"unavailable", "reason":"qualification_cleanup_unsettled"}
+    result = None
+    try:
+        policy.need(not report.exists(), "v9.vendor_inventory_output_fresh")
+        now = time.time()
+        policy.need(type(context.get("deadlineEpoch")) in (int,float) and
+            math.isfinite(context["deadlineEpoch"]) and context["deadlineEpoch"]-now >= 60,
+            "v9.vendor_inventory_budget")
+        diagnostic_context = {**context, "deadlineEpoch": min(context["deadlineEpoch"]-20, now+40)}
+        source_sha=context.get("request",{}).get("source",{}).get("sourceSha")
+        policy.need(type(source_sha)is str and re.fullmatch(r"[0-9a-f]{40}",source_sha),
+            "v9.vendor_inventory_source_identity")
+        for path in vendor.INVENTORY_DIAGNOSTIC_FILES:
+            expected=git_read(source,"show",source_sha+":"+path,deadline=diagnostic_context["deadlineEpoch"])
+            policy.need(type(expected)is bytes and 0<len(expected)<=2*1024*1024 and
+                regular(source/path,2*1024*1024)==expected,"v9.vendor_inventory_code_changed")
+            if path=="scripts/lib/npm-glob-vendor-proof.mjs":
+                policy.need(policy.digest(expected)==vendor.INVENTORY_PROOF_OWNER_SHA256,
+                    "v9.vendor_inventory_proof_owner_changed")
+        policy.need(policy.digest(regular(source/vendor.PROOF,2*1024*1024))==vendor_record["proofSha256"],
+            "v9.vendor_inventory_source_proof")
+        result = core.phase_process(["node", vendor.INVENTORY_DIAGNOSTIC, "--repo-root", str(source),
+            "--proof", str(source/vendor.PROOF), "--receipt", str(report)],
+            source, {**child_env,"GITHUB_ACTIONS":"true"}, diagnostic_context, "vendor-inventory-diagnostic", 0)
+    except Exception as error:
+        reason={"v9.vendor_inventory_budget":"insufficient_parent_budget",
+            "v9.vendor_inventory_output_fresh":"output_not_fresh",
+            "v9.vendor_inventory_source_identity":"source_identity_unavailable",
+            "v9.vendor_inventory_code_changed":"diagnostic_code_changed",
+            "v9.vendor_inventory_proof_owner_changed":"proof_owner_changed",
+            "v9.vendor_inventory_source_proof":"source_proof_changed"}.get(str(error) if isinstance(error,policy.Refusal) else "", "command_unavailable")
+        evidence.update(state="unavailable",reason=reason)
+    # Capture a bounded prefix and metadata before parsing, status or shape
+    # adjudication. Only the strict safe projection below can enter an artifact.
+    try:
+        raw = capture_vendor_report(report,captures,"vendor-inventory",65536)
+        evidence["capture"]={"state":"complete","bytes":len(raw),"sha256":policy.digest(raw)}
+    except Exception:
+        evidence["state"]="unavailable"
+        evidence.setdefault("reason","report_unavailable")
+        meta = captures/"vendor-inventory.json"
+        if meta.exists():
+            try:
+                m=policy.parse(regular(meta,16384),16384)
+                evidence["capture"]={"state":"incomplete",**{k:m[k] for k in
+                    ("present","complete","capturedBytes","maximumBytes","prefixSha256")}}
+            except Exception: evidence["capture"]={"state":"unavailable"}
+        return evidence
+    if result is None:
+        return evidence
+    code=result.returncode
+    timed=getattr(result,"timed_out",None)
+    cleanup=getattr(result,"cleanup_settled",None)
+    evidence["process"]={"exitCode":code if type(code)is int and -255<=code<=255 else None,
+        "timedOut":timed if type(timed)is bool else None,
+        "cleanupSettled":cleanup if cleanup is None or type(cleanup)is bool else None}
+    if type(code)is not int or code not in (0,2) or timed is not False or not (cleanup is None or cleanup is True):
+        return {**evidence,"state":"unavailable","reason":"command_not_settled_successfully"}
+    try:
+        proof_raw=regular(source/vendor.PROOF,2*1024*1024)
+        policy.need(policy.digest(proof_raw)==vendor_record["proofSha256"],"v9.vendor_inventory_source_proof")
+        safe=vendor.inventory_diagnostic_projection(raw,proof_raw,policy.need)
+        policy.need((code==0)==(safe["status"]=="observed"),"v9.vendor_inventory_status")
+    except Exception:
+        return {**evidence,"state":"unavailable","reason":"report_invalid"}
+    return {**evidence,"state":"available","report":safe}
+
+
 def qualify_npm_vendor(source, vendor_record, archives, env, core, context, child_env, home):
     """Use the newly frozen patched install; never qualify the bootstrap tree."""
     import npm_vendor_derivation_v109 as vendor
@@ -2121,7 +2210,13 @@ def qualify_npm_vendor(source, vendor_record, archives, env, core, context, chil
                     "rawReceiptSha256": policy.digest(raw), "qualificationAccepted": False,
                     "imageBuilt": False, "productionAuthorized": False, "packageTests": {"state": "unavailable", "reason": "receipt_invalid"}}
             diagnostic["controlFooters"] = control_footers
-            private_write(captures/"vendor-qualification.safe.json", policy.encode(diagnostic))
+            from bounded_run_contract_v109 import digest as continuation_digest, vendor_repair_continuation
+            if context.get("request",{}).get("vendorRepairContinuationSha256") == continuation_digest(vendor_repair_continuation()):
+                diagnostic["inventoryDiagnostic"] = collect_vendor_inventory_diagnostic(
+                    source,vendor_record,env,core,context,child_env,home,result)
+            diagnostic_raw=policy.encode(diagnostic)
+            policy.need(len(diagnostic_raw)<=131072,"v9.vendor_inventory_combined_output")
+            private_write(captures/"vendor-qualification.safe.json", diagnostic_raw)
             emit(diagnostic)
             raise policy.Refusal("v9.vendor_actual_qualification_failed")
         receipt = policy.parse(raw, 65536)
@@ -2146,7 +2241,7 @@ def qualify_npm_vendor(source, vendor_record, archives, env, core, context, chil
                     private_write(Path(env["RUNNER_TEMP"])/"v109-lock-diagnostic"/(name + suffix), raw)
         projection = captures/"vendor-qualification.safe.json"
         if projection.exists():
-            private_write(Path(env["RUNNER_TEMP"])/"v109-lock-diagnostic"/projection.name, regular(projection, 65536))
+            private_write(Path(env["RUNNER_TEMP"])/"v109-lock-diagnostic"/projection.name, regular(projection, 131072))
         raise
 
 

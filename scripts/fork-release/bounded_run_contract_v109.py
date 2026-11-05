@@ -100,19 +100,56 @@ def validate_budget_amendment(value):
     return value
 
 
-def h3_stage_descriptor():
+def vendor_repair_continuation():
+    """Exact approved G4/conditional-G5 scope; no execution or mutable authority."""
+    return {"schema": "openclaw.v109.vendor-repair-continuation.v1",
+        "proposalSha256": "40468f07a09278c71d8998a80f3f40b3e46239bfff9475828df25a27f9da676f",
+        "authorizationSha256": "46b498143d1f8fc7bcb52d12bde43518ab1476811249cb5ec0b8165ce318cf5e",
+        "priorLedgerSha256": "1948b1b2f08eeab7f00f5160ceda4d1f105e142ffc3e63613bad9f5888bf7482",
+        "maximumMaterialSourceGenerations": 5, "maximumAdditionalSourceGenerations": 2,
+        "conditionalSecondRevisionEvidenceRequired": True, "maximumAdditionalPreparations": 2,
+        "maximumValidationWaves": 2, "maximumSameSourcePipelineCorrections": 1,
+        "maximumAdditionalRunnerMinutes": 2290, "vendorAggregateMaximumMinutes": 2360,
+        "vendorComponentMaximumMinutes": {"preparation": 180, "source": 2150, "incidental": 80},
+        "stagePools": {"preparation": 225, "source": 3135, "incidental": 160, "image": 180},
+        "latestWholePlanAdmission": "2026-11-05T07:14:21Z"}
+
+
+def validate_vendor_repair_continuation(value):
+    expected = vendor_repair_continuation()
+    fields(value, expected, "vendor_continuation_fields")
+    # Canonical JSON also distinguishes booleans from integer limits.
+    need(canonical(value) == canonical(expected), "vendor_continuation_scope")
+    return value
+
+
+def vendor_continuation_for(grant):
+    need(type(grant) is dict, "vendor_continuation_grant")
+    amendment = grant.get("sourceSuccessorAmendment")
+    if type(amendment) is not dict or "vendorRepairContinuation" not in amendment:
+        return None
+    return validate_vendor_repair_continuation(amendment["vendorRepairContinuation"])
+
+
+def h3_stage_pools(grant):
+    value = vendor_continuation_for(grant)
+    return dict(value["stagePools"] if value is not None else H3_STAGE_POOLS)
+
+
+def h3_stage_descriptor(continuation=False):
+    need(type(continuation) is bool, "vendor_continuation_selector")
     return {"publicAmendmentSha256": H3_AMENDMENT_SHA256,
         "privateAuthorizationSha256": H3_PRIVATE_AUTHORIZATION_SHA256,
         "expiresAt": H3_EXPIRES_AT, "minimumPackageUseAt": H3_NOT_BEFORE,
         "stagePrefixLedgerSha256": H3_PREFIX_LEDGER_SHA256,
         "stagePrefixNewMinutes": H3_PREFIX_MINUTES, "maximumStageRunnerMinutes": H3_STAGE_MINUTES,
         "maximumStageBookedMinutes": H3_MAXIMUM_BOOKED_MINUTES,
-        "maximumSourceGenerations": H3_MAXIMUM_SOURCE_GENERATIONS}
+        "maximumSourceGenerations": 5 if continuation else H3_MAXIMUM_SOURCE_GENERATIONS}
 
 
-def validate_h3_stage_descriptor(value):
+def validate_h3_stage_descriptor(value, continuation=False):
     fields(value, H3_DESCRIPTOR_FIELDS, "h3_stage_descriptor_fields")
-    expected = h3_stage_descriptor()
+    expected = h3_stage_descriptor(continuation=continuation)
     need(all(type(value[k]) is type(v) and value[k] == v for k, v in expected.items()),
         "h3_stage_descriptor_scope")
     return value
@@ -162,10 +199,13 @@ def source_successor_amendment(grant):
     if "sourceSuccessorAmendment" not in grant:
         return None
     value = fields(grant["sourceSuccessorAmendment"], (*H3_DESCRIPTOR_FIELDS,
-        "sourceFamilySha256", "sourceGeneration", "bookedArtifacts"), "h3_amendment_fields")
-    validate_h3_stage_descriptor({k: value[k] for k in H3_DESCRIPTOR_FIELDS})
+        "sourceFamilySha256", "sourceGeneration", "bookedArtifacts") +
+        (("vendorRepairContinuation",) if "vendorRepairContinuation" in grant["sourceSuccessorAmendment"] else ()),
+        "h3_amendment_fields")
+    continuation = vendor_continuation_for(grant)
+    validate_h3_stage_descriptor({k: value[k] for k in H3_DESCRIPTOR_FIELDS}, continuation=continuation is not None)
     need(pin(value["sourceFamilySha256"]) and type(value["sourceGeneration"]) is int and
-        1 <= value["sourceGeneration"] <= 3 and type(value["bookedArtifacts"]) is list and
+        (4 if continuation is not None else 1) <= value["sourceGeneration"] <= value["maximumSourceGenerations"] and type(value["bookedArtifacts"]) is list and
         26 <= len(value["bookedArtifacts"]) <= 4096, "h3_amendment_family")
     ids = set()
     for row in value["bookedArtifacts"]:
@@ -236,7 +276,7 @@ def validate_plan(plan, active=False):
         plan["reasonCode"] in ("initial_recovery", "prior_failure", "generation_ready", "reviewed_pipeline_correction", "approved_source_successor"),
         "plan_scope")
     if "sourceGeneration" in plan:
-        need(type(plan["sourceGeneration"]) is int and 1 <= plan["sourceGeneration"] <= 3 and
+        need(type(plan["sourceGeneration"]) is int and 1 <= plan["sourceGeneration"] <= 5 and
             pin(plan["sourceFamilySha256"]) and plan["sequence"] >= 12, "h3_plan_family")
     else:
         need(plan["reasonCode"] != "approved_source_successor", "h3_reason_requires_binding")
@@ -383,19 +423,20 @@ def validate_h3_budget(grant, plan, charged_total, current_minutes, components):
     need(type(charged_total) is int and charged_total >= H3_PREFIX_MINUTES and type(current_minutes) is int and
         0 <= current_minutes <= charged_total and all(type(v) is int and v >= 0 for v in components.values()),
         "h3_budget_positive_native_facts")
+    pools = h3_stage_pools(grant)
     observed = {"preparation": components["preparationObservedMinutes"], "source": components["sourceObservedMinutes"],
         "incidental": components["incidentalObservedMinutes"], "image": components["imageObservedMinutes"]}
-    need(all(observed[k] <= H3_STAGE_POOLS[k] for k in observed) and
+    need(all(observed[k] <= pools[k] for k in observed) and
         sum(observed.values()) <= charged_total - H3_PREFIX_MINUTES and
-        components["remainingImageFamilyReserveMinutes"] == H3_STAGE_POOLS["image"] - observed["image"] and
-        components["remainingIncidentalReserveMinutes"] == H3_STAGE_POOLS["incidental"] - observed["incidental"],
+        components["remainingImageFamilyReserveMinutes"] == pools["image"] - observed["image"] and
+        components["remainingIncidentalReserveMinutes"] == pools["incidental"] - observed["incidental"],
         "h3_budget_pool_bounds")
     pool = "preparation" if plan["phase"] == "lock-preparation" else "source"
     need(current_minutes <= plan["reservations"]["current"] and observed[pool] >= current_minutes and
-        observed[pool] - current_minutes + plan["reservations"]["current"] <= H3_STAGE_POOLS[pool] and
-        (plan["phase"] != "lock-preparation" or observed["source"] + plan["reservations"]["pendingValidation"] <= H3_STAGE_POOLS["source"]),
+        observed[pool] - current_minutes + plan["reservations"]["current"] <= pools[pool] and
+        (plan["phase"] != "lock-preparation" or observed["source"] + plan["reservations"]["pendingValidation"] <= pools["source"]),
         "h3_budget_next_operation_pool")
-    remaining = sum(H3_STAGE_POOLS[k] - observed[k] for k in observed)
+    remaining = sum(pools[k] - observed[k] for k in observed)
     booked = charged_total + remaining
     need(booked <= min(maximum_new_minutes(grant), H3_MAXIMUM_BOOKED_MINUTES), "h3_budget_cumulative_ceiling")
     return {"newObservedOrBookedMinutes": charged_total, "currentObservedMinutes": current_minutes,
