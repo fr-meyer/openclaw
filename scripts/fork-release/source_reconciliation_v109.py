@@ -39,6 +39,8 @@ SUCCESSOR_SOURCE_PATHS = frozenset((
     'scripts/lib/npm-glob-vendor-sources/fix-walker.ts.txt',
     'scripts/lib/npm-glob-vendor-sources/glob13-walker.ts.txt',
     'scripts/lib/npm-vendor-delivery.mjs',
+    'scripts/lib/npm-vendor-payload.mjs',
+    'scripts/test-npm-vendor-payload.mjs',
     'scripts/package-manifest.mjs',
     'scripts/qualify-npm-glob-vendor-backport.mjs',
     'scripts/test-npm-glob-vendor-controls.mjs',
@@ -176,6 +178,9 @@ def pending_successor_ledger(before, changed_entries, parent_source, parent_tree
     need(generation >= 4 or not (set(changed_entries) & {
         "scripts/diagnose-npm-vendor-inventory.mjs", "scripts/lib/npm-vendor-fd-inventory-diagnostic.mjs",
         "scripts/lib/npm-vendor-fd-inventory-collector.py"}), "continuation paths require material generation four or five")
+    need(generation == 5 or not (set(changed_entries) & {
+        "scripts/lib/npm-vendor-payload.mjs", "scripts/test-npm-vendor-payload.mjs"}),
+        "payload paths require material generation five")
     rows = {row.get("path"): row for row in value["sourcePaths"] if type(row) is dict}
     need(len(rows) == len(value["sourcePaths"]) and
         LOCK_PATH in rows and rows[LOCK_PATH].get("disposition") == "LOCK_CONTROLLED_DERIVATION" and

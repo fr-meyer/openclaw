@@ -2259,15 +2259,73 @@ def collect_vendor_inventory_diagnostic(source, vendor_record, env, core, contex
     return {**evidence,"state":"available","report":safe}
 
 
+
+VENDOR_PAYLOAD_FIXTURE = "scripts/test-npm-vendor-payload.mjs"
+VENDOR_PAYLOAD_FIXTURE_CASES = 16
+
+
+def vendor_payload_fixture_selected(vendor_record, context):
+    """Only the OWN reviewed G5 source step can select this auxiliary check."""
+    if vendor_record.get("sourceGeneration") != 5:
+        return False
+    policy.need(type(vendor_record.get("sourceGeneration")) is int and
+        type(context.get("bindings")) is dict and type(context.get("request")) is dict,
+        "v9.vendor_payload_owned_context")
+    bindings, request = context["bindings"], context["request"]
+    policy.validate_request(request, bindings)
+    from bounded_run_contract_v109 import source_successor_amendment, validate_vendor_continuation_request
+    grant = policy.run_grant(bindings)
+    scope = source_successor_amendment(grant)
+    continuation = validate_vendor_continuation_request(grant, request)
+    policy.need(scope is not None and continuation is not None and scope["sourceGeneration"] == 5 and
+        request["phase"] == "lock-preparation" and context.get("operationIdentity") == owned_identity(request),
+        "v9.vendor_payload_owned_selection")
+    family = policy.validate_h3_family(bindings["sourceSuccessor"], scope["maximumSourceGenerations"])
+    policy.need(len(family["generations"]) == 5 and policy.digest(policy.canonical(family)) == scope["sourceFamilySha256"] and
+        policy.H3_VENDOR_PAYLOAD_PATHS <= set(family["generations"][-1]["changedPaths"]),
+        "v9.vendor_payload_reviewed_paths")
+    return True
+
+
+def run_vendor_payload_fixture(source, env, core, context, child_env):
+    """One fixed G5 data-only fixture; not part of the unchanged 30/26/52 gates."""
+    step = context["bindings"]["sourceSuccessor"]["generations"][-1]
+    for name in policy.H3_VENDOR_PAYLOAD_PATHS:
+        policy.need(policy.digest(regular(source/name)) == step["contentSha256"][name],
+            "v9.vendor_payload_fixture_code_changed")
+    now = time.time()
+    policy.need(type(context.get("deadlineEpoch")) in (int,float) and math.isfinite(context["deadlineEpoch"]) and
+        context["deadlineEpoch"] - now >= 80, "v9.vendor_payload_fixture_budget")
+    fixture_context = {**context, "deadlineEpoch": min(context["deadlineEpoch"] - 20, now + 60)}
+    result = core.phase_process(["node", VENDOR_PAYLOAD_FIXTURE], source,
+        {**child_env, "GITHUB_ACTIONS":"true", "CI":"true", "RUNNER_TEMP":env["RUNNER_TEMP"]},
+        fixture_context, "vendor-payload-fixtures", 0)
+    code, timed, cleanup = result.returncode, getattr(result,"timed_out",None), getattr(result,"cleanup_settled",None)
+    passed = type(code) is int and code == 0 and timed is False and (cleanup is None or cleanup is True)
+    # The source fixture prints its own reviewed closed 16-case summary. These
+    # are process/expected-count facts only; stdout is not parsed into coverage.
+    emit({"schema":"openclaw.v109.npm-vendor-payload-fixture-process.v1",
+        "status":"passed" if passed else "refused", "script":VENDOR_PAYLOAD_FIXTURE,
+        "expectedCaseCount":VENDOR_PAYLOAD_FIXTURE_CASES, "observedCountersParsed":False,
+        "exitCode":code if type(code) is int and -255 <= code <= 255 else None,
+        "timedOut":timed if type(timed) is bool else None,
+        "cleanupSettled":cleanup if cleanup is None or type(cleanup) is bool else None,
+        "commandMaximumSeconds":60, "cleanupReserveSeconds":20, "qualificationAccepted":False,
+        "imageBuilt":False,"productionAuthorized":False})
+    policy.need(passed, "v9.vendor_payload_fixtures_failed")
+
 def qualify_npm_vendor(source, vendor_record, archives, env, core, context, child_env, home):
     """Use the newly frozen patched install; never qualify the bootstrap tree."""
     import npm_vendor_derivation_v109 as vendor
     captures = home/"vendor-captures"
     names = ["vendor-control-0", "vendor-control-1", "vendor-qualification"]
+    payload_fixture = vendor_payload_fixture_selected(vendor_record, context)
     try:
         result = core.phase_process(["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"],
             source, child_env, context, "vendor-patched-install", 0)
         policy.need(result.returncode == 0 and not getattr(result, "timed_out", False), "v9.vendor_patched_install_failed")
+        if payload_fixture:
+            run_vendor_payload_fixture(source, env, core, context, child_env)
         controls, control_footers = [], []
         for ordinal, (script, count) in enumerate(vendor.CONTROL_TESTS):
             report = home/(names[ordinal] + ".tap")

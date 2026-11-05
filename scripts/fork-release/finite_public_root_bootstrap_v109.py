@@ -33,9 +33,9 @@ OWNER_PINS = {
     "npm_vendor_derivation_v109.py": "76055bbf33928cb87b01b6a6eb14f4609a07d1e6be2986706307f5be5de17d27",
     "preflight.py": "89b6ba41fc89131f33754104fdd0d3ebc08c20f252288651bc7d95038639103a",
     "release.py": "5026178bb85a9ff51a36f7512a899c8cd4beab2f5b3ed146e1e0d87c0dc3a639",
-    "source_validation_contract_v109.py": "7ec9097b7bdf5a5d4ec34e230942414f814c6da5f3220fbedcdeccdac7197c7a",
+    "source_validation_contract_v109.py": "020af59db6a504db5561ebd41b81a683584e1718d125ee4fe18a63cef8541bc6",
     "source_validation_v108.py": "d2e014f20f5227b183ea217d9874ef7159c90a894debe5a6581bd4696145f965",
-    "source_validation_v109.py": "7386feb8d4a746abbfe21b187fc776d1d578c69e5b1449cc91d2c14a37810313",
+    "source_validation_v109.py": "b6d5777dac30c2a73c0fc8f7381b90c8294672fa9a4795b41800a526153c56bb",
 }
 
 

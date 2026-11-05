@@ -131,10 +131,15 @@ H3_VENDOR_CONTINUATION_PATHS = frozenset((
     "scripts/lib/npm-vendor-fd-inventory-collector.py",
 ))
 
+H3_VENDOR_PAYLOAD_PATHS = frozenset((
+    "scripts/lib/npm-vendor-payload.mjs",
+    "scripts/test-npm-vendor-payload.mjs",
+))
+
 
 def h3_material_paths(maximum_generations=3):
     need(type(maximum_generations) is int and maximum_generations in (3,5), "v9.h3_material_ceiling")
-    return H3_MATERIAL_PATHS | (H3_VENDOR_CONTINUATION_PATHS if maximum_generations==5 else frozenset())
+    return H3_MATERIAL_PATHS | ((H3_VENDOR_CONTINUATION_PATHS | H3_VENDOR_PAYLOAD_PATHS) if maximum_generations==5 else frozenset())
 
 
 H3_LEGACY_MATERIAL_PATHS = H3_MATERIAL_PATHS
@@ -486,6 +491,8 @@ def validate_h3_family(value, maximum_generations=3):
             "v9.h3_reviewed_material_step")
         need(not (set(changed) & H3_VENDOR_CONTINUATION_PATHS) or
             (maximum_generations == 5 and number >= 4), "v9.vendor_continuation_material_scope")
+        need(not (set(changed) & H3_VENDOR_PAYLOAD_PATHS) or
+            (maximum_generations == 5 and number == 5), "v9.vendor_payload_material_scope")
         import npm_vendor_derivation_v109 as vendor
         vendor_active = vendor_active or vendor.PRODUCER in changed
         need(not set(changed) & (H3_VENDOR_MATERIAL_PATHS - H3_LEGACY_MATERIAL_PATHS) or (number >= 2 and vendor_active),
@@ -1350,6 +1357,9 @@ def _verify_reviewed_step(read, before, after, step, *, allowed_additions=frozen
     if allowed_additions & H3_VENDOR_CONTINUATION_PATHS:
         need(vendor_continuation is not None and type(step.get("number")) is int and
             4 <= step["number"] <= 5, "v9.reviewed_continuation_addition_generation")
+    if set(step["changedPaths"]) & H3_VENDOR_PAYLOAD_PATHS:
+        need(vendor_continuation is not None and type(step.get("number")) is int and
+            step["number"] == 5, "v9.reviewed_payload_generation")
     need(set(before) <= set(after) and set(after) - set(before) <= allowed_additions,
         "v9.corrected_source_path_set")
     changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
