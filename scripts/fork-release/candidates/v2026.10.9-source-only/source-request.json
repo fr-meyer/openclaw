@@ -3,30 +3,30 @@
   "campaignId": "future-v109-grouped-validation-20261030",
   "phase": "lock-preparation",
   "source": {
-    "sourceSha": "957c3744bb85e3be23a264a2cd89e8202213f926",
-    "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
-    "manifestSha256": "0c0545e702cec2d3e973853526da1614241850fcbd1323e77bbe4b6c0fa07505",
-    "inventorySha256": "c5a8c6ca12a2bbf0a7a1e234811cdb2cad91b5cafca36490011b7bde332a6e93",
+    "sourceSha": "8c2225b7087b4f6c011f1451d4d2d5e252dc3906",
+    "sourceTree": "a00f61945709416a084d648dcb255ae7c4c47981",
+    "manifestSha256": "71aec3403cedf5ccada93e2190d087f0517036c971a5897e9a428a3350cbdf2d",
+    "inventorySha256": "ba6b780bc91e03892e6ab5d47f934fe0d46777688339ae0128565e5735a1038a",
     "fileSha256": {
       "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
       "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
       "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
-      "custom-patches/reconciliation-2026.10.9.json": "584ea3d7bec59b290097be22fcd90379dcef0dff2c400c87788352a60e307b31"
+      "custom-patches/reconciliation-2026.10.9.json": "4211a5f574635c71e6820857c56a4687e77ac7ae9bbb483e5fcc832e9c32ae15"
     }
   },
   "settledUsageSha256": "dfc2cda1a2c7c5f3f4e1bc235e8a6e2aca615e62c5ce20a79102a794779770df",
   "generation": null,
   "priorRunPins": [
     {
-      "runId": "41844888037",
-      "pipelineHead": "1b4183768c4744d7c4ec8f3746b92454d3cb11cc",
-      "requestSha256": "f1cc46094582b3b2657c9051da77f303198dcdf09243054ea264c31e73fdf851"
+      "runId": "41950994538",
+      "pipelineHead": "d0b8cd40ecc22c2aa6f09d36033de037371bdf36",
+      "requestSha256": "4bb1ee5688fc4da6dd5444023e1e48912b350cd0fd5bd98c2c0799db0263906e"
     }
   ],
-  "preparationAttempt": 9,
+  "preparationAttempt": 10,
   "profiles": [],
   "authorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
-  "executionSequence": 15,
+  "executionSequence": 16,
   "runAllowanceSha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
   "executionReservations": {
     "current": 45,
@@ -34,8 +34,8 @@
     "conditionalImage": 180,
     "incidental": 160
   },
-  "sourceGeneration": 2,
-  "sourceFamilySha256": "269297575a1b604664d9e3f6aeeccaf09af355406c0994a52b42219118d10613",
+  "sourceGeneration": 3,
+  "sourceFamilySha256": "fb4e37e6b81c2e281dd64007a77ac879420d7347a8933697f581a2fb85edbfec",
   "sourceSuccessorAmendmentSha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520",
   "budgetCeilingAmendmentSha256": "fabe093988e258a99b7cccc83e812d274200880cc300f78a73f795905e507f6e"
 }

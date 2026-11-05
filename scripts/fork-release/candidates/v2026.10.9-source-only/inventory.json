@@ -1,12 +1,12 @@
 {
   "candidate": "v2026.10.9-source-only",
-  "manifestSha256": "0c0545e702cec2d3e973853526da1614241850fcbd1323e77bbe4b6c0fa07505",
+  "manifestSha256": "71aec3403cedf5ccada93e2190d087f0517036c971a5897e9a428a3350cbdf2d",
   "patches": [
     {
-      "appliedCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+      "appliedCommit": "8c2225b7087b4f6c011f1451d4d2d5e252dc3906",
       "dependsOn": [],
       "disposition": "adapt",
-      "evidenceSha256": "584ea3d7bec59b290097be22fcd90379dcef0dff2c400c87788352a60e307b31",
+      "evidenceSha256": "4211a5f574635c71e6820857c56a4687e77ac7ae9bbb483e5fcc832e9c32ae15",
       "id": "grouped-v109-preparation-ba04217f6642",
       "originCommit": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
       "paths": [
@@ -93,7 +93,7 @@
         },
         {
           "boundary": "tooling",
-          "candidateBlob": "cb15bfe50e0ed43340eabccc6f19cd6c7496202f",
+          "candidateBlob": "0033609717a69f9458de92f631037db30fc08548",
           "path": "custom-patches/reconciliation-2026.10.9.json",
           "sourceBlob": "1c60a3a4d7f929c4e376654e2832a330a5e2e99b",
           "sourceCommit": "ba04217f6642091b94f396669318d068e6007ed7",
@@ -1277,7 +1277,7 @@
           "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
           "sourceBlob": "0879be075a97d252216f79f427292d88dd117dfd",
           "upstreamBlob": null,
-          "candidateBlob": "0879be075a97d252216f79f427292d88dd117dfd"
+          "candidateBlob": "39d00fdeb112b2702111311105e46c12e51e10ae"
         },
         {
           "path": "scripts/test-npm-glob-vendor-controls.mjs",
@@ -1295,7 +1295,7 @@
           "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
           "sourceBlob": "3f029a7d1858d2cf0c548287faab18cfa77bc862",
           "upstreamBlob": null,
-          "candidateBlob": "3f029a7d1858d2cf0c548287faab18cfa77bc862"
+          "candidateBlob": "b521dcb56dc5f92785bd07275dc733dd3fa58306"
         },
         {
           "path": "scripts/test-npm-vendor-package.mjs",
@@ -1304,7 +1304,7 @@
           "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
           "sourceBlob": "49d5803dd1383617c3e86f980b64dd106eb8b0e9",
           "upstreamBlob": null,
-          "candidateBlob": "49d5803dd1383617c3e86f980b64dd106eb8b0e9"
+          "candidateBlob": "e42c7e3b9203282d3a6978caf5aba5f27fdc89f3"
         },
         {
           "boundary": "tooling",
@@ -2468,7 +2468,7 @@
           "upstreamBlob": "25a98d9a07f6a9d74f79b82bd84a2b195ef416fa"
         }
       ],
-      "rationale": "Prepare the expressly approved npm12.2.1/Glob13 cancellation backport and complete patched-byte delivery plus the reviewed EnvironmentFile compatibility fix. The parent CI-derived lock is a seed; new compiler/archive/package proof, lock derivation and all15 source profiles remain required. Earlier rationale retained as history: Bind the H3 lock derived by authenticated CI run 41836686760 attempt 1. Only the lock and deterministic reconciliation receipt change; fresh full source validation remains required. Earlier preparation rationale, retained as historical context: Prepare the approved H3 four-dependency source successor with reviewed compatibility/security cases. The existing genuine H2 lock/receipt is only a historical seed; current lock derivation and complete fresh source validation are pending. Earlier H2 rationale, retained as historical context: Integrate exact stable 10.9 with preserved fork Workboard, claim fencing, task, security and provider behavior. Bind the complete 253-row reconciliation and reviewed security/API adaptations. Dependency lock derives from authenticated successful public CI run 41043479025 attempt 1, artifact 12972087389; only the lock and deterministic reconciliation receipt change from integration G. Fresh complete source validation is required; older source/runtime/image qualification does not transfer. One combined reviewed H2 correction fixes only the lease fixture type import and the Workboard controlUi manifest bytes authenticated from both fixed diagnostic jobs in run 41092698155. The new metadata path originates at H, not an invented historical fork commit. Existing package/workspace/lock, generation and all other source bytes remain unchanged. Diagnostic agreement does not authenticate UI assets or prove cross-head determinism; fresh all 15 source coverage is required.",
+      "rationale": "Prepare the expressly approved npm12.2.1/Glob13 cancellation backport and complete patched-byte delivery plus the reviewed EnvironmentFile compatibility fix. The parent CI-derived lock is a seed; new compiler/archive/package proof, lock derivation and all15 source profiles remain required. Earlier rationale retained as history: Prepare the expressly approved npm12.2.1/Glob13 cancellation backport and complete patched-byte delivery plus the reviewed EnvironmentFile compatibility fix. The parent CI-derived lock is a seed; new compiler/archive/package proof, lock derivation and all15 source profiles remain required. Earlier rationale retained as history: Bind the H3 lock derived by authenticated CI run 41836686760 attempt 1. Only the lock and deterministic reconciliation receipt change; fresh full source validation remains required. Earlier preparation rationale, retained as historical context: Prepare the approved H3 four-dependency source successor with reviewed compatibility/security cases. The existing genuine H2 lock/receipt is only a historical seed; current lock derivation and complete fresh source validation are pending. Earlier H2 rationale, retained as historical context: Integrate exact stable 10.9 with preserved fork Workboard, claim fencing, task, security and provider behavior. Bind the complete 253-row reconciliation and reviewed security/API adaptations. Dependency lock derives from authenticated successful public CI run 41043479025 attempt 1, artifact 12972087389; only the lock and deterministic reconciliation receipt change from integration G. Fresh complete source validation is required; older source/runtime/image qualification does not transfer. One combined reviewed H2 correction fixes only the lease fixture type import and the Workboard controlUi manifest bytes authenticated from both fixed diagnostic jobs in run 41092698155. The new metadata path originates at H, not an invented historical fork commit. Existing package/workspace/lock, generation and all other source bytes remain unchanged. Diagnostic agreement does not authenticate UI assets or prove cross-head determinism; fresh all 15 source coverage is required.",
       "regressionOwner": "fr-meyer",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",

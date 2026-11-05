@@ -18,7 +18,7 @@ GENERATED = (WORKSPACE, PATCH, PROOF)
 PRODUCER = "scripts/build-npm-glob-vendor-backport.mjs"
 QUALIFIER = "scripts/qualify-npm-glob-vendor-backport.mjs"
 CONTROL_TESTS = (("scripts/test-npm-glob-vendor-controls.mjs", 30),
-    ("scripts/test-npm-glob-vendor-qualification.mjs", 22))
+    ("scripts/test-npm-glob-vendor-qualification.mjs", 26))
 QUALIFICATION_CASE_COUNT = 52
 JS_MEMBERS = tuple("node_modules/glob/dist/" + kind + "/" + name
     for kind in ("commonjs", "esm") for name in ("index.min.js", "walker.js"))
@@ -351,8 +351,21 @@ def failed_package_test_details(receipt):
             if set(row) != {"name", "passed"}: return invalid("passed_case_shape", index)
             observed_passed += 1
             continue
-        if set(row) != {"name", "passed", "code", "assertion"}:
+        legacy_fields = {"name", "passed", "code", "assertion"}
+        if set(row) not in (legacy_fields, legacy_fields | {"operation", "cause"}):
             return invalid("failed_case_shape", index)
+        if "operation" in row:
+            if type(row["operation"]) is not str or row["operation"] not in CASE_OPERATIONS:
+                return invalid("case_operation", index)
+            try:
+                cause = failed_case_cause(row["cause"])
+            except ValueError:
+                return invalid("case_cause", index)
+            diagnostic = {"operation": row["operation"], "cause": cause}
+        else:
+            # Retained Gen2 receipts predate these fields; missing evidence is
+            # neither an absent exception property nor a new recognized cause.
+            diagnostic = {"operationState": "missing", "causeState": "missing"}
         assertion = row["assertion"]
         if type(assertion) is not dict or not {"operator"} <= set(assertion) <= {"operator", "actual", "expected"} or type(assertion.get("operator")) is not str or assertion["operator"] not in ASSERTION_OPERATORS:
             return invalid("assertion_shape", index)
@@ -365,8 +378,9 @@ def failed_package_test_details(receipt):
             if not finite: return invalid("assertion_number", index)
             safe_assertion[field] = number
         code = row["code"]
-        safe_code = ({"state": "recognized", "value": code} if type(code) is str and code in EXCEPTION_CODES | {"assertion_failed", "case_failed"} else {"state": "unrecognized"})
-        failures.append({"index": index, "name": name, "code": safe_code, "assertion": safe_assertion})
+        code_values = CASE_ERROR_CODES if "operation" in row else EXCEPTION_CODES
+        safe_code = ({"state": "recognized", "value": code} if type(code) is str and code in code_values | {"assertion_failed", "case_failed"} else {"state": "unrecognized"})
+        failures.append({"index": index, "name": name, "code": safe_code, "assertion": safe_assertion, **diagnostic})
     if observed_passed != passed or tests["passed"] is not (passed == count):
         return invalid("case_counter_mismatch")
     return {"state": "available", "counters": counters, "failedCases": failures}
@@ -403,3 +417,185 @@ def control_footer_projection(index, returncode, timed_out, raw=None, capture_st
     if len(indices) != len(set(indices)) or any(value > counts["tests"] for value in indices):
         return result("invalid", "case_indices")
     return result("available", counters=counts, notOkIndices=indices)
+
+CASE_OPERATIONS = frozenset((
+    'case.entry',
+    'consumers.cli_version',
+    'consumers.cache_put',
+    'consumers.cache_get',
+    'consumers.cache_verify',
+    'consumers.workspace_fixture',
+    'consumers.map_workspaces',
+    'consumers.package_json_load',
+    'consumers.pack_fixture',
+    'consumers.arborist_load',
+    'consumers.packlist',
+    'consumers.cli_pack',
+    'consumers.cli_cache_add',
+    'consumers.cli_cache_verify',
+    'pack.owner_import',
+    'pack.manifest_owner_import',
+    'pack.source_diff_before',
+    'pack.manifest_capture',
+    'pack.installed_entry_capture',
+    'pack.installed_verify',
+    'pack.manifest_prepare',
+    'pack.prepared_manifest_read',
+    'pack.bundle_assertions',
+    'pack.root_cli',
+    'pack.archive_inventory',
+    'pack.artifact_cleanup',
+    'pack.manifest_restore',
+    'pack.manifest_restoration_assertions',
+    'pack.source_diff_after',
+    'pack.installed_restoration_assertions',
+    'global.owner_import',
+    'global.fixture_setup',
+    'global.install',
+    'global.npm_entrypoint_spawn',
+    'global.npm_entrypoint_assertions',
+    'global.npx_entrypoint_spawn',
+    'global.npx_entrypoint_assertions',
+    'global.resolver_import',
+    'global.resolver_assertions',
+    'global.bundled_cli_spawn',
+    'global.bundled_cli_assertions',
+    'cli.version.spawn',
+    'cli.version.exit',
+    'cli.version.output',
+    'cli.pack.spawn',
+    'cli.pack.exit',
+    'cli.pack.output',
+    'cli.cache_add.spawn',
+    'cli.cache_add.exit',
+    'cli.cache_add.output',
+    'cli.cache_verify.spawn',
+    'cli.cache_verify.exit',
+    'cli.cache_verify.output',
+))
+
+CASE_ERROR_NAMES = frozenset((
+    'Error',
+    'TypeError',
+    'RangeError',
+    'SyntaxError',
+    'ReferenceError',
+    'URIError',
+    'EvalError',
+    'AggregateError',
+    'AssertionError',
+    'AbortError',
+    'TimeoutError',
+))
+
+CASE_ERROR_CODES = frozenset((
+    'ERR_ASSERTION',
+    'ENOENT',
+    'EACCES',
+    'EPERM',
+    'EEXIST',
+    'ENOTDIR',
+    'EISDIR',
+    'ENOTEMPTY',
+    'EINVAL',
+    'ENAMETOOLONG',
+    'ELOOP',
+    'EMFILE',
+    'ENFILE',
+    'ENOSPC',
+    'EROFS',
+    'ETIMEDOUT',
+    'ABORT_ERR',
+    'ERR_MODULE_NOT_FOUND',
+    'MODULE_NOT_FOUND',
+    'ERR_UNKNOWN_FILE_EXTENSION',
+    'ERR_PACKAGE_PATH_NOT_EXPORTED',
+    'ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX',
+    'ERR_INVALID_ARG_TYPE',
+    'ERR_INVALID_ARG_VALUE',
+    'ERR_OUT_OF_RANGE',
+    'ERR_STREAM_PREMATURE_CLOSE',
+    'ERR_STREAM_DESTROYED',
+    'ERR_CHILD_PROCESS_STDIO_MAXBUFFER',
+))
+
+CASE_OWNER_REASONS = frozenset((
+    'delivery.source_configuration_invalid',
+    'delivery.source_configuration_required',
+    'delivery.proof_input_not_regular',
+    'delivery.patch_binding',
+    'delivery.package_outside_source_root',
+    'delivery.root_artifact_only',
+    'delivery.original_archive',
+    'delivery.artifact_cleanup_changed',
+    'delivery.staging_path',
+    'delivery.pack_staging_owner',
+    'delivery.pack_staging_failed',
+    'delivery.restore_binding',
+    'delivery.restore_changed',
+    'delivery.global_prefix',
+    'delivery.global_directory',
+    'delivery.global_entrypoint',
+    'delivery.global_cli_root',
+    'npm-vendor.change_binding',
+    'npm-vendor.change_count',
+    'npm-vendor.change_shape',
+    'npm-vendor.compiler_binding',
+    'npm-vendor.compiler_shape',
+    'npm-vendor.derived_binding',
+    'npm-vendor.derived_shape',
+    'npm-vendor.installed_inventory',
+    'npm-vendor.installed_link',
+    'npm-vendor.installed_type',
+    'npm-vendor.inventory_count',
+    'npm-vendor.inventory_mode',
+    'npm-vendor.inventory_row',
+    'npm-vendor.inventory_shape',
+    'npm-vendor.map_binding',
+    'npm-vendor.map_count',
+    'npm-vendor.map_shape',
+    'npm-vendor.original_binding',
+    'npm-vendor.original_shape',
+    'npm-vendor.patch_binding',
+    'npm-vendor.patch_bytes',
+    'npm-vendor.patch_shape',
+    'npm-vendor.path',
+    'npm-vendor.proof_bytes',
+    'npm-vendor.proof_identity',
+    'npm-vendor.proof_json',
+    'npm-vendor.proof_noncanonical',
+    'npm-vendor.proof_shape',
+    'npm-vendor.repair_binding',
+    'npm-vendor.repair_shape',
+    'npm-vendor.root',
+    'npm-vendor.archive_bound',
+    'npm-vendor.archive_expansion',
+    'npm-vendor.archive_member',
+    'npm-vendor.archive_member_bound',
+    'npm-vendor.archive_member_size',
+    'npm-vendor.archive_unsettled',
+    'npm-vendor.derived_archive_identity',
+    'npm-vendor.derived_archive_inventory',
+    'npm-vendor.original_archive_identity',
+    'npm-vendor.original_archive_inventory',
+    'npm-vendor.pack_bound',
+    'npm-vendor.pack_bytes',
+))
+
+
+def failed_case_cause(value):
+    """Per-case source-owner tags use their own exact reviewed vocabularies."""
+    if type(value) is not dict or set(value) != {"name", "code", "ownerReason"}:
+        raise ValueError("v9.vendor_case_cause_shape")
+    result = {}
+    for field, allowed in (("name", CASE_ERROR_NAMES), ("code", CASE_ERROR_CODES), ("ownerReason", CASE_OWNER_REASONS)):
+        tag = value[field]
+        if type(tag) is not dict or type(tag.get("state")) is not str:
+            raise ValueError("v9.vendor_case_cause_tag")
+        if tag["state"] == "recognized":
+            if set(tag) != {"state", "value"} or type(tag["value"]) is not str or tag["value"] not in allowed:
+                raise ValueError("v9.vendor_case_cause_value")
+        elif set(tag) != {"state"} or tag["state"] not in ("absent", "unrecognized"):
+            raise ValueError("v9.vendor_case_cause_state")
+        result[field] = dict(tag)
+    return result

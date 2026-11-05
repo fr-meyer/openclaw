@@ -30,7 +30,7 @@ OWNER_PINS = {
     "bounded_run_contract_v109.py": "381781d940f04af764a68e8967f0794e3ecb2cc12c17128a5310fb6af921bfe2",
     "composite_closed_usage.py": "b5c923e0205a4d49ae81dced385398199725185249a81711ac371d07e624bdb4",
     "manifest_capture.py": "d5fd42317bf538720b48949a9503dc3c58df6a0035f200ac30a20400c1ed3eac",
-    "npm_vendor_derivation_v109.py": "a1e502b896937c345b4766e34d19670115b267e4b22748cf177cef64487ac974",
+    "npm_vendor_derivation_v109.py": "9fb37fa7606c48770bd5e72539b82927aa07940d2411036e179a4369d216abb2",
     "preflight.py": "89b6ba41fc89131f33754104fdd0d3ebc08c20f252288651bc7d95038639103a",
     "release.py": "5026178bb85a9ff51a36f7512a899c8cd4beab2f5b3ed146e1e0d87c0dc3a639",
     "source_validation_contract_v109.py": "04cf17a5fc0c20d2014a4ac95249cf723b9e9fc607c10390c6b108d8456a24d7",

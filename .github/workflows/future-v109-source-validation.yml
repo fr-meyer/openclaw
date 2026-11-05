@@ -73,7 +73,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          printf '%s\n' '85543c2571e8f0901fb70c9072cab860f1de89939acacaecb5fbe86a7325cc2e  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
+          printf '%s\n' '2257c01182b02f45524cf97e8259905a0d0b5e99cc9688e44d8a2c0a89e943cb  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
           python3 pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py --job admission
       - name: Exact public admission and cumulative accounting
         id: admission
