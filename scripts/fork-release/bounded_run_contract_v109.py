@@ -125,9 +125,23 @@ def vendor_repair_resource_allocation():
     return value
 
 
+def vendor_repair_derivation_recovery_allocation():
+    """Closed funded preparation recovery; all human authority is unchanged."""
+    value = vendor_repair_resource_allocation()
+    value["vendorComponentMaximumMinutes"]["preparation"] = 225
+    value["stagePools"].update(preparation=270, source=3090)
+    value["resourceAllocationRecord"] = {
+        "decisionSha256": "ec861a2d06b6c0b11d5f4b44138dff44817503ab8d8d55d7d5b896c68e388f82",
+        "kind": "internal-resource-allocation", "newHumanApproval": False}
+    return value
+
+
 def validate_vendor_repair_continuation(value):
-    expected = (vendor_repair_resource_allocation() if type(value)is dict and
-        "resourceAllocationRecord" in value else vendor_repair_continuation())
+    record = value.get("resourceAllocationRecord") if type(value)is dict else None
+    expected = (vendor_repair_derivation_recovery_allocation() if type(record)is dict and
+        record.get("decisionSha256") == "ec861a2d06b6c0b11d5f4b44138dff44817503ab8d8d55d7d5b896c68e388f82" else
+        vendor_repair_resource_allocation() if type(value)is dict and "resourceAllocationRecord" in value else
+        vendor_repair_continuation())
     fields(value, expected, "vendor_continuation_fields")
     # Canonical JSON also distinguishes booleans from integer limits.
     need(canonical(value) == canonical(expected), "vendor_continuation_scope")
@@ -136,7 +150,8 @@ def validate_vendor_repair_continuation(value):
 
 def vendor_continuation_from_digest(value):
     need(pin(value), "vendor_continuation_digest")
-    for projection in (vendor_repair_continuation(), vendor_repair_resource_allocation()):
+    for projection in (vendor_repair_continuation(), vendor_repair_resource_allocation(),
+            vendor_repair_derivation_recovery_allocation()):
         if value == digest(projection):
             return projection
     need(False, "vendor_continuation_digest")

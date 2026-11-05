@@ -2071,8 +2071,22 @@ def prepare_npm_vendor(source, bindings, request, env, core, context, child_env,
     """Compile only in admitted secretless CI; generate the three closed sources."""
     import npm_vendor_derivation_v109 as vendor
     policy.need(env.get("GITHUB_ACTIONS") == "true", "v9.vendor_native_ci_only")
-    item = bindings["sourceSuccessor"]["generations"][-1]
-    policy.need(item["number"] in (2, 3), "v9.vendor_material_generation")
+    # Revalidate this entrypoint's OWN closed selection before any file, Git,
+    # registry or subprocess access. A known continuation digest is not authority.
+    policy.validate_request(request, bindings)
+    from bounded_run_contract_v109 import source_successor_amendment, validate_vendor_continuation_request
+    grant = policy.run_grant(bindings)
+    scope = source_successor_amendment(grant)
+    policy.need(scope is not None and request["phase"] == "lock-preparation", "v9.vendor_material_scope")
+    family = policy.validate_h3_family(bindings["sourceSuccessor"], scope["maximumSourceGenerations"])
+    policy.need(len(family["generations"]) == scope["sourceGeneration"] and
+        policy.digest(policy.canonical(family)) == scope["sourceFamilySha256"], "v9.vendor_material_family")
+    continuation = validate_vendor_continuation_request(grant, request)
+    item = family["generations"][-1]
+    policy.need(type(item["number"]) is int and
+        ((continuation is None and item["number"] in (2, 3)) or
+         (continuation is not None and 4 <= item["number"] <= continuation["maximumMaterialSourceGenerations"])),
+        "v9.vendor_material_generation")
     read = lambda *args: git_read(source, *args, deadline=context["deadlineEpoch"])
     parent = item["parentSource"]["sourceSha"]
     before_package = policy.parse(read("show", parent + ":package.json"))
