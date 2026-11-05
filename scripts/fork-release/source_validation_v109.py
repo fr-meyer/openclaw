@@ -1852,8 +1852,14 @@ def fetch_closure(pipeline, source, bindings, request, event, env, core, context
 
 
 def h3_lock_context(pipeline, bindings, read, checked_at):
-    from bounded_run_contract_v109 import H3_AMENDMENT_SHA256
+    from bounded_run_contract_v109 import H3_AMENDMENT_SHA256, source_successor_amendment, vendor_continuation_for
     from lockfile_policy_v109 import H3_EXCLUDED_AGE_PROOF_SHA256, H3_TARGET_METADATA_PROOF_SHA256
+    owned_scope = source_successor_amendment(policy.run_grant(bindings))
+    policy.need(owned_scope is not None,"v9.h3_lock_scope_missing")
+    family = policy.validate_h3_family(bindings["sourceSuccessor"],owned_scope["maximumSourceGenerations"])
+    policy.need(len(family["generations"])==owned_scope["sourceGeneration"] and
+        policy.digest(policy.canonical(family))==owned_scope["sourceFamilySha256"],"v9.h3_lock_scope_binding")
+    continuation = vendor_continuation_for(policy.run_grant(bindings))
     amendment = regular(pipeline/CANDIDATE/"h3-source-amendment.json", 65536)
     policy.need(policy.digest(amendment) == H3_AMENDMENT_SHA256, "v9.h3_public_amendment_bytes")
     last = bindings["sourceSuccessor"]["generations"][-1]
@@ -1862,6 +1868,8 @@ def h3_lock_context(pipeline, bindings, read, checked_at):
     workspace_source = selected["source"] if vendor_record is not None else bindings["preparation"]
     return {"amendmentSha256": H3_AMENDMENT_SHA256,
         "sourceGeneration": last["number"],
+        **({"sourceContinuationScope":{"authority":continuation,"sourceGeneration":owned_scope["sourceGeneration"],
+            "sourceFamilySha256":owned_scope["sourceFamilySha256"]}} if continuation is not None else {}),
         "checkedAt": checked_at, "packageBytes": read("show", bindings["preparation"]["sourceSha"] + ":package.json"),
         "workspaceBytes": read("show", workspace_source["sourceSha"] + ":pnpm-workspace.yaml"),
         **({"vendorDerivation": vendor_record} if vendor_record is not None else {}),

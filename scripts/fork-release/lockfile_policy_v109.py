@@ -200,13 +200,26 @@ def strict_json(raw):
 def validate_h3_source_inputs(h3):
     base_fields = {"amendmentSha256", "sourceGeneration", "checkedAt",
         "packageBytes", "workspaceBytes", "fileTransferPackageBytes", "excludedAgeProofBytes", "excludedAgeProofSha256", "targetMetadataProofBytes", "targetMetadataProofSha256"}
+    continuation_present = type(h3) is dict and "sourceContinuationScope" in h3
+    maximum = 3
+    if continuation_present:
+        scope = h3["sourceContinuationScope"]
+        need(type(scope) is dict and set(scope)=={"authority","sourceGeneration","sourceFamilySha256"},
+            "v9.h3_lock_continuation_fields")
+        authority.validate_vendor_repair_continuation(scope["authority"])
+        need(type(scope["sourceGeneration"]) is int and scope["sourceGeneration"] in (4,5) and
+            h3.get("sourceGeneration")==scope["sourceGeneration"] and
+            type(scope["sourceFamilySha256"]) is str and re.fullmatch(r"[0-9a-f]{64}",scope["sourceFamilySha256"]),
+            "v9.h3_lock_continuation_binding")
+        maximum = scope["authority"]["maximumMaterialSourceGenerations"]
     vendor = h3.get("vendorDerivation") if type(h3) is dict else None
     if vendor is not None:
         from npm_vendor_derivation_v109 import validate_record
         validate_record(vendor, need, generation=h3.get("sourceGeneration"))
-    need(type(h3) is dict and set(h3) == base_fields | ({"vendorDerivation"} if vendor is not None else set()) and
+    need(type(h3) is dict and set(h3) == base_fields | ({"vendorDerivation"} if vendor is not None else set()) |
+        ({"sourceContinuationScope"} if continuation_present else set()) and
         h3["amendmentSha256"] == authority.H3_AMENDMENT_SHA256 and type(h3["sourceGeneration"]) is int and
-        1 <= h3["sourceGeneration"] <= 3 and type(h3["checkedAt"]) is str, "v9.h3_lock_authority")
+        1 <= h3["sourceGeneration"] <= maximum and type(h3["checkedAt"]) is str, "v9.h3_lock_authority")
     try:
         checked = datetime.strptime(h3["checkedAt"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     except ValueError:
