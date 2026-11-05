@@ -21,8 +21,32 @@ LOCK_PATH = "pnpm-lock.yaml"
 SUCCESSOR_SEED_SCHEMA = "openclaw.v109.successor-lock-seed.v1"
 SUCCESSOR_ANCHOR = {"commit": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
     "tree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f"}
-SUCCESSOR_SOURCE_PATHS = frozenset(("package.json", "pnpm-workspace.yaml",
-    "extensions/file-transfer/package.json", "test/v108-remediation-security.test.mjs"))
+SUCCESSOR_SOURCE_PATHS = frozenset((
+    'Dockerfile',
+    'extensions/file-transfer/package.json',
+    'package.json',
+    'pnpm-workspace.yaml',
+    'scripts/build-npm-glob-vendor-backport.mjs',
+    'scripts/generate-npm-package-lock.mts',
+    'scripts/lib/npm-glob-vendor-archive.mjs',
+    'scripts/lib/npm-glob-vendor-backport.mjs',
+    'scripts/lib/npm-glob-vendor-proof.mjs',
+    'scripts/lib/npm-glob-vendor-sources/LICENSE.md',
+    'scripts/lib/npm-glob-vendor-sources/fix-parent-walker.ts.txt',
+    'scripts/lib/npm-glob-vendor-sources/fix-walker.ts.txt',
+    'scripts/lib/npm-glob-vendor-sources/glob13-walker.ts.txt',
+    'scripts/lib/npm-vendor-delivery.mjs',
+    'scripts/package-manifest.mjs',
+    'scripts/qualify-npm-glob-vendor-backport.mjs',
+    'scripts/test-npm-glob-vendor-controls.mjs',
+    'scripts/test-npm-glob-vendor-qualification.mjs',
+    'scripts/test-npm-vendor-package.mjs',
+    'src/daemon/systemd-environment-file-pattern.ts',
+    'src/infra/npm-command.test.ts',
+    'src/infra/npm-command.ts',
+    'test/scripts/generate-npm-package-lock.test.ts',
+    'test/v108-remediation-security.test.mjs',
+))
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 PATH = re.compile(r"[A-Za-z0-9_./@+-]+\Z")

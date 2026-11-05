@@ -1,8 +1,10 @@
 """One finite public Git fetch before unchanged source qualification gates.
 
 No alternate origin, lazy/deepening loop, cache, SDK or application command.
-The exact shallow P checkout is bootstrap only. Qualification requires full
-M/S connectivity, unchanged HEAD=P and the maintained physical merge proof.
+The exact shallow P checkout is bootstrap only. Admission/source qualification
+requires full M/S connectivity. The fixed final job needs only full pipeline/M
+metadata, never candidate-body authentication. All roles retain unchanged
+HEAD=P and the maintained physical merge proof.
 """
 import argparse
 import base64
@@ -28,11 +30,12 @@ OWNER_PINS = {
     "bounded_run_contract_v109.py": "381781d940f04af764a68e8967f0794e3ecb2cc12c17128a5310fb6af921bfe2",
     "composite_closed_usage.py": "b5c923e0205a4d49ae81dced385398199725185249a81711ac371d07e624bdb4",
     "manifest_capture.py": "d5fd42317bf538720b48949a9503dc3c58df6a0035f200ac30a20400c1ed3eac",
+    "npm_vendor_derivation_v109.py": "a1e502b896937c345b4766e34d19670115b267e4b22748cf177cef64487ac974",
     "preflight.py": "89b6ba41fc89131f33754104fdd0d3ebc08c20f252288651bc7d95038639103a",
     "release.py": "5026178bb85a9ff51a36f7512a899c8cd4beab2f5b3ed146e1e0d87c0dc3a639",
-    "source_validation_contract_v109.py": "2e8fd0741ad3e0830974c10ff50bd1a34f4cbf8f9a36e871854191e67d05c102",
+    "source_validation_contract_v109.py": "04cf17a5fc0c20d2014a4ac95249cf723b9e9fc607c10390c6b108d8456a24d7",
     "source_validation_v108.py": "d2e014f20f5227b183ea217d9874ef7159c90a894debe5a6581bd4696145f965",
-    "source_validation_v109.py": "a74b9bb90955ac4e87c7c3c9cafe5a926d4ef3516b07aff076c17f187a350f00",
+    "source_validation_v109.py": "f521fc6062804ca1a1c6c6b41bb098b39c040bf5cd2df23b9652472f837bc31d",
 }
 
 
@@ -276,23 +279,30 @@ def repository_state(owner, head, allow_shallow):
 
 def fetch_argv(root, merge, source, shallow):
     return [GIT, "--no-replace-objects", "-C", str(root), "fetch", "--no-tags",
-        "--no-recurse-submodules", *(["--unshallow"] if shallow else []), ORIGIN, merge, source]
+        "--no-recurse-submodules", *(["--unshallow"] if shallow else []), ORIGIN, merge,
+        *([source] if source is not None else [])]
 
 
-def acquire(owner, runtime, core, head, merge, selected, fetch_env):
+def acquire(owner, runtime, core, head, merge, selected, fetch_env, *, job="source"):
+    need(job in ("admission", "source", "final"), "fixed_job_role")
     need(all(type(x) is str and re.fullmatch(r"[0-9a-f]{40}", x) for x in
              (head, merge, selected["source"]["sourceSha"], selected["source"]["sourceTree"])) and
          merge != head, "exact_roots")
+    # Only main's positive --job/GITHUB_JOB binding selects this metadata role.
+    # It is not a caller-provided skip-source option or source-body proof.
+    source = None if job == "final" else selected["source"]["sourceSha"]
+    roots = [merge] if source is None else [merge, source]
     shallow = repository_state(owner, head, True)
-    result = owner.run(fetch_argv(owner.root, merge, selected["source"]["sourceSha"], shallow),
+    result = owner.run(fetch_argv(owner.root, merge, source, shallow),
                        env=fetch_env, fetch=True)
     need(result.returncode == 0, "one_finite_fetch_refused")
     repository_state(owner, head, False)
     owner.read("fsck", "--connectivity-only", "--strict", "--no-reflogs", "--no-dangling",
-               merge, selected["source"]["sourceSha"])
-    need(owner.read("cat-file", "-t", selected["source"]["sourceSha"]).strip() == b"commit" and
-         owner.read("rev-parse", selected["source"]["sourceSha"] + "^{tree}").strip() ==
-         selected["source"]["sourceTree"].encode(), "source_object_tree")
+               *roots)
+    if source is not None:
+        need(owner.read("cat-file", "-t", source).strip() == b"commit" and
+             owner.read("rev-parse", source + "^{tree}").strip() ==
+             selected["source"]["sourceTree"].encode(), "source_object_tree")
     observed = {}
     def graph_read(*args):
         raw = owner.read(*args)
@@ -303,12 +313,18 @@ def acquire(owner, runtime, core, head, merge, selected, fetch_env):
     proof = runtime.workflow_merge_binding(graph_read, core, head, merge)
     need(observed.get("parents") == [runtime.WORKFLOW_TARGET.encode(), head.encode()], "actual_parent_evidence")
     need(owner.read_identity("head", head).strip() == head.encode(), "head_changed")
-    return {"schema": "openclaw.v109.finite-root-bootstrap.v1", "status": "full_closure_only",
-        "pipelineHead": head, "workflowMerge": merge, "sourceSha": selected["source"]["sourceSha"],
-        "sourceTree": selected["source"]["sourceTree"], "mergeProof": proof,
+    value = {"schema": "openclaw.v109.finite-root-bootstrap.v1",
+        "status": "pipeline_metadata_closure_only" if job == "final" else "full_closure_only",
+        "pipelineHead": head, "workflowMerge": merge, "mergeProof": proof,
         "actualWorkflowParents": [value.decode("ascii") for value in observed["parents"]],
         "workflowParentsRawSha256": observed["sha256"], "declaredPRBase": runtime.policy.BASE,
         "fetchAttempts": 1, "sourceQualified": False, "applicationExecuted": False}
+    if job == "final":
+        value.update(purpose="final_result_metadata", selectedSourceRootRequested=False,
+                     selectedSourceBodyVerified=False)
+    else:
+        value.update(sourceSha=source, sourceTree=selected["source"]["sourceTree"])
+    return value
 
 
 def main(argv=None, environment=None):
@@ -321,12 +337,19 @@ def main(argv=None, environment=None):
     parser.add_argument("--profile")
     args = parser.parse_args(argv)
     env = dict(os.environ if environment is None else environment)
+    native_job = env.get("GITHUB_JOB")
+    need(native_job == args.job or
+         (args.job == "admission" and native_job == "lock-preparation"), "fixed_job_role")
     workspace = Path(env["GITHUB_WORKSPACE"]).absolute()
     pipeline = workspace / "pipeline"
     folder = pipeline / "scripts/fork-release"
     need(Path(__file__).resolve().parent == folder and workspace.resolve() == workspace, "fixed_workspace")
     runtime, core = owners(folder)
     bindings, selected, request_raw = runtime.load_metadata(pipeline, active=True, now=time.time())
+    need((selected["phase"] == "lock-preparation" and args.job == "admission" and
+          native_job == "lock-preparation") or
+         (selected["phase"] in ("validation", "correction") and native_job == args.job),
+         "fixed_job_phase_role")
     need(env.get("V109_APPROVED_AT") == bindings["authorization"]["approvedAt"] and
          env.get("V109_EXPIRES_AT") == runtime.policy.source_authorization_window(bindings)[1], "workflow_clock_binding")
     need((args.job == "source") == (args.profile in runtime.policy.PROFILES) and
@@ -350,7 +373,7 @@ def main(argv=None, environment=None):
     authenticated, secrets = fetch_environment(base_env, env.get("GH_TOKEN"))
     owner = OwnedGit(pipeline, base_env, deadline, out, core, secrets)
     with core.profile_signals():
-        proof = acquire(owner, runtime, core, head, merge, selected, authenticated)
+        proof = acquire(owner, runtime, core, head, merge, selected, authenticated, job=args.job)
     save(out / "RESULT.private.json", (json.dumps(proof, sort_keys=True) + "\n").encode())
     print(json.dumps(proof, sort_keys=True), flush=True)
     return 0

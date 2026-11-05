@@ -1,18 +1,18 @@
 {
   "candidate": "v2026.10.9-source-only",
-  "manifestSha256": "f59726a0e8772e2925ede0221e87d78563dd8aba67fb4bf24923e3248e0f935d",
+  "manifestSha256": "0c0545e702cec2d3e973853526da1614241850fcbd1323e77bbe4b6c0fa07505",
   "patches": [
     {
-      "appliedCommit": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+      "appliedCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
       "dependsOn": [],
       "disposition": "adapt",
-      "evidenceSha256": "00b9948b5679eb7cc9d73ad8b672f7927326c0b47c91e4b1d263624472050b5e",
+      "evidenceSha256": "584ea3d7bec59b290097be22fcd90379dcef0dff2c400c87788352a60e307b31",
       "id": "grouped-v109-preparation-ba04217f6642",
       "originCommit": "e6c4786dafbc8308661ea8fa14a81e06873d1630",
       "paths": [
         {
           "boundary": "container",
-          "candidateBlob": "9ede1b0d0300c663371fb27a8d80229489151177",
+          "candidateBlob": "2e1d7c56ecefb795323cc30a2353a54b389b8b0a",
           "path": "Dockerfile",
           "sourceBlob": "9ede1b0d0300c663371fb27a8d80229489151177",
           "sourceCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
@@ -93,7 +93,7 @@
         },
         {
           "boundary": "tooling",
-          "candidateBlob": "bf820e8ed3a6357e330061155b71d4fa85a27f9d",
+          "candidateBlob": "cb15bfe50e0ed43340eabccc6f19cd6c7496202f",
           "path": "custom-patches/reconciliation-2026.10.9.json",
           "sourceBlob": "1c60a3a4d7f929c4e376654e2832a330a5e2e99b",
           "sourceCommit": "ba04217f6642091b94f396669318d068e6007ed7",
@@ -795,7 +795,7 @@
         },
         {
           "boundary": "container",
-          "candidateBlob": "a89268b9a6b50740b9c51d16b8186523620fa961",
+          "candidateBlob": "77346788601b0b3b356eb61849240e4e8cd54735",
           "path": "package.json",
           "sourceBlob": "94d515001629ab574eeb79591e7d86ecc2bd3ef4",
           "sourceCommit": "61f924bdb7ed4f837096c87120087919ff0a6bdf",
@@ -972,6 +972,15 @@
           "sourceCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "upstreamBlob": "e0da4a83cb8e4b89c7e9ddba1b6ed2411d842bae"
+        },
+        {
+          "path": "scripts/build-npm-glob-vendor-backport.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "6834a0915f8752924581baa6c0a75bdc84145217",
+          "upstreamBlob": null,
+          "candidateBlob": "6834a0915f8752924581baa6c0a75bdc84145217"
         },
         {
           "boundary": "tooling",
@@ -1155,7 +1164,7 @@
         },
         {
           "boundary": "tooling",
-          "candidateBlob": "37a35e8a50cbb9698686b7a14e9bd8eada30ce10",
+          "candidateBlob": "e500cb4248a984a0519b5e68adb6ed11f0f92a07",
           "path": "scripts/generate-npm-package-lock.mts",
           "sourceBlob": "7238f62c06835eea41cdc9ad4a2e823a456c1762",
           "sourceCommit": "f5c198efedd78625e5a1b4a133d58ebfb3dae1c5",
@@ -1172,6 +1181,87 @@
           "upstreamBlob": "f13d49c1679a02dc1bf34f225ba61e9d38394758"
         },
         {
+          "path": "scripts/lib/npm-glob-vendor-archive.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "80b8d7610356e5ac54a1cffb5fc1f2732e3b7acc",
+          "upstreamBlob": null,
+          "candidateBlob": "80b8d7610356e5ac54a1cffb5fc1f2732e3b7acc"
+        },
+        {
+          "path": "scripts/lib/npm-glob-vendor-backport.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "19e164ec392112c5d506d3903075a2b341bb6030",
+          "upstreamBlob": null,
+          "candidateBlob": "19e164ec392112c5d506d3903075a2b341bb6030"
+        },
+        {
+          "path": "scripts/lib/npm-glob-vendor-proof.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "53f00b69bab16c3d0e88d73e1e8afe9bf3fbdca1",
+          "upstreamBlob": null,
+          "candidateBlob": "53f00b69bab16c3d0e88d73e1e8afe9bf3fbdca1"
+        },
+        {
+          "path": "scripts/lib/npm-glob-vendor-sources/LICENSE.md",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "881248b6d7f0ca2c4f65c41c0af5e02bb0680601",
+          "upstreamBlob": null,
+          "candidateBlob": "881248b6d7f0ca2c4f65c41c0af5e02bb0680601"
+        },
+        {
+          "path": "scripts/lib/npm-glob-vendor-sources/fix-parent-walker.ts.txt",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "a675fee2f5f964ee13c5efde2942094267417590",
+          "upstreamBlob": null,
+          "candidateBlob": "a675fee2f5f964ee13c5efde2942094267417590"
+        },
+        {
+          "path": "scripts/lib/npm-glob-vendor-sources/fix-walker.ts.txt",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "34f076653684c3c2bc64c2ddc9ceeb8ca340a7a9",
+          "upstreamBlob": null,
+          "candidateBlob": "34f076653684c3c2bc64c2ddc9ceeb8ca340a7a9"
+        },
+        {
+          "path": "scripts/lib/npm-glob-vendor-sources/glob13-walker.ts.txt",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "495e0a700e3c8a603ab2ba58a23b7c7be16015ee",
+          "upstreamBlob": null,
+          "candidateBlob": "495e0a700e3c8a603ab2ba58a23b7c7be16015ee"
+        },
+        {
+          "path": "scripts/lib/npm-vendor-delivery.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "8c584633d0174abce6640415b2d64bac7dd773d1",
+          "upstreamBlob": null,
+          "candidateBlob": "8c584633d0174abce6640415b2d64bac7dd773d1"
+        },
+        {
+          "path": "scripts/package-manifest.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+          "sourceTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+          "sourceBlob": "109ab733d4ca54dc2dd7a68b3866b47af76f6428",
+          "upstreamBlob": "109ab733d4ca54dc2dd7a68b3866b47af76f6428",
+          "candidateBlob": "52e523aa4108f1f287f7ca5dab12283f59c4fa7c"
+        },
+        {
           "boundary": "tooling",
           "candidateBlob": "f9bb330b7e62423a073b64c974913a7718ae3200",
           "path": "scripts/plugin-sdk-surface-report.mts",
@@ -1179,6 +1269,42 @@
           "sourceCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "upstreamBlob": "458050d7a8fc43be88f07540a8e1fc7193620c8c"
+        },
+        {
+          "path": "scripts/qualify-npm-glob-vendor-backport.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "0879be075a97d252216f79f427292d88dd117dfd",
+          "upstreamBlob": null,
+          "candidateBlob": "0879be075a97d252216f79f427292d88dd117dfd"
+        },
+        {
+          "path": "scripts/test-npm-glob-vendor-controls.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "0696a890697f7b79f974cc76993ff6f649c9a14f",
+          "upstreamBlob": null,
+          "candidateBlob": "0696a890697f7b79f974cc76993ff6f649c9a14f"
+        },
+        {
+          "path": "scripts/test-npm-glob-vendor-qualification.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "3f029a7d1858d2cf0c548287faab18cfa77bc862",
+          "upstreamBlob": null,
+          "candidateBlob": "3f029a7d1858d2cf0c548287faab18cfa77bc862"
+        },
+        {
+          "path": "scripts/test-npm-vendor-package.mjs",
+          "boundary": "tooling",
+          "sourceCommit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "sourceBlob": "49d5803dd1383617c3e86f980b64dd106eb8b0e9",
+          "upstreamBlob": null,
+          "candidateBlob": "49d5803dd1383617c3e86f980b64dd106eb8b0e9"
         },
         {
           "boundary": "tooling",
@@ -1478,6 +1604,15 @@
           "upstreamBlob": "72828e07a305f670e8413466b2b653779374c05d"
         },
         {
+          "path": "src/daemon/systemd-environment-file-pattern.ts",
+          "boundary": "tooling",
+          "sourceCommit": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+          "sourceTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+          "sourceBlob": "af6086d534be093fe6744b1dabc52e4aaa0646ca",
+          "upstreamBlob": "af6086d534be093fe6744b1dabc52e4aaa0646ca",
+          "candidateBlob": "87068aa56adca0a4bcfbaeeca7942530fe4734a4"
+        },
+        {
           "boundary": "container",
           "candidateBlob": "1bdeedb045cc1a78232dab9563d6311bad7f2a80",
           "path": "src/dockerfile.test.ts",
@@ -1737,6 +1872,24 @@
           "sourceCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
           "sourceTree": "31a3983c6c67f3332568c676799fa339adfe9e37",
           "upstreamBlob": "dbd3cedbb1be43d087895c87c4e533428c59179c"
+        },
+        {
+          "path": "src/infra/npm-command.test.ts",
+          "boundary": "tooling",
+          "sourceCommit": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+          "sourceTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+          "sourceBlob": "cf40640fe0395cf04b9482cb0d16168c22779fa6",
+          "upstreamBlob": "cf40640fe0395cf04b9482cb0d16168c22779fa6",
+          "candidateBlob": "53069410819584d9584161b27c617001f6ac09fb"
+        },
+        {
+          "path": "src/infra/npm-command.ts",
+          "boundary": "tooling",
+          "sourceCommit": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+          "sourceTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+          "sourceBlob": "ab52c6934ec6a59f773efd14efb90cee9f6a5dd5",
+          "upstreamBlob": "ab52c6934ec6a59f773efd14efb90cee9f6a5dd5",
+          "candidateBlob": "e5c97158c8041846a289324f7fca27d42479c3ba"
         },
         {
           "boundary": "container",
@@ -2145,7 +2298,7 @@
         },
         {
           "boundary": "tooling",
-          "candidateBlob": "44b3192d33589c3fa88eee00a43778257b664c73",
+          "candidateBlob": "e45cda38c024b2bf7ab02d94d889dfdc81ee85d7",
           "path": "test/scripts/generate-npm-package-lock.test.ts",
           "sourceBlob": "989b5bf8a497427a081b441afdb4e27d13114d7e",
           "sourceCommit": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
@@ -2315,7 +2468,7 @@
           "upstreamBlob": "25a98d9a07f6a9d74f79b82bd84a2b195ef416fa"
         }
       ],
-      "rationale": "Bind the H3 lock derived by authenticated CI run 41836686760 attempt 1. Only the lock and deterministic reconciliation receipt change; fresh full source validation remains required. Earlier preparation rationale, retained as historical context: Prepare the approved H3 four-dependency source successor with reviewed compatibility/security cases. The existing genuine H2 lock/receipt is only a historical seed; current lock derivation and complete fresh source validation are pending. Earlier H2 rationale, retained as historical context: Integrate exact stable 10.9 with preserved fork Workboard, claim fencing, task, security and provider behavior. Bind the complete 253-row reconciliation and reviewed security/API adaptations. Dependency lock derives from authenticated successful public CI run 41043479025 attempt 1, artifact 12972087389; only the lock and deterministic reconciliation receipt change from integration G. Fresh complete source validation is required; older source/runtime/image qualification does not transfer. One combined reviewed H2 correction fixes only the lease fixture type import and the Workboard controlUi manifest bytes authenticated from both fixed diagnostic jobs in run 41092698155. The new metadata path originates at H, not an invented historical fork commit. Existing package/workspace/lock, generation and all other source bytes remain unchanged. Diagnostic agreement does not authenticate UI assets or prove cross-head determinism; fresh all 15 source coverage is required.",
+      "rationale": "Prepare the expressly approved npm12.2.1/Glob13 cancellation backport and complete patched-byte delivery plus the reviewed EnvironmentFile compatibility fix. The parent CI-derived lock is a seed; new compiler/archive/package proof, lock derivation and all15 source profiles remain required. Earlier rationale retained as history: Bind the H3 lock derived by authenticated CI run 41836686760 attempt 1. Only the lock and deterministic reconciliation receipt change; fresh full source validation remains required. Earlier preparation rationale, retained as historical context: Prepare the approved H3 four-dependency source successor with reviewed compatibility/security cases. The existing genuine H2 lock/receipt is only a historical seed; current lock derivation and complete fresh source validation are pending. Earlier H2 rationale, retained as historical context: Integrate exact stable 10.9 with preserved fork Workboard, claim fencing, task, security and provider behavior. Bind the complete 253-row reconciliation and reviewed security/API adaptations. Dependency lock derives from authenticated successful public CI run 41043479025 attempt 1, artifact 12972087389; only the lock and deterministic reconciliation receipt change from integration G. Fresh complete source validation is required; older source/runtime/image qualification does not transfer. One combined reviewed H2 correction fixes only the lease fixture type import and the Workboard controlUi manifest bytes authenticated from both fixed diagnostic jobs in run 41092698155. The new metadata path originates at H, not an invented historical fork commit. Existing package/workspace/lock, generation and all other source bytes remain unchanged. Diagnostic agreement does not authenticate UI assets or prove cross-head determinism; fresh all 15 source coverage is required.",
       "regressionOwner": "fr-meyer",
       "regressionTests": [
         "extensions/workboard/src/cli.test.ts",

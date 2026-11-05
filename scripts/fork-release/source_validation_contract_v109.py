@@ -100,6 +100,34 @@ REGISTRY_PINS = (
 H3_FAMILY_SCHEMA = "openclaw.v109.material-source-family.v1"
 H3_ANCHOR = {'fileSha256': {'custom-patches/reconciliation-2026.10.9.json': '9f39a85ef1afca7711bcf55e416dae348f8673619b4fd2d9878a58888b9c3a77', 'package.json': '557f352a2e5e8ecd40944311ec3470f1d2679a8207ea12cd7ea7317b64770de0', 'pnpm-lock.yaml': '32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068', 'pnpm-workspace.yaml': 'd7d436368006b9e298c2754a8ab7f6574c260aa3fb011228fef1a9adf20fee19'}, 'inventorySha256': '2ed639145a5997522311cf824669966c3e20300ba6cd410eb03dc33bf66611cb', 'manifestSha256': '1bf138ed166151d1c0473433a1d2d93d55038bbaaf28412128964ee59c107e13', 'sourceSha': '0d0b3dbcbb571509df403e98d7e9be69a8f46f4f', 'sourceTree': '30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f'}
 H3_MATERIAL_PATHS = frozenset(("package.json", "pnpm-workspace.yaml", "extensions/file-transfer/package.json", "test/v108-remediation-security.test.mjs"))
+# Fixed files for the separately approved npm delivery backport; final source
+# preparation still pins every actual changed path and blob, never a wildcard.
+H3_VENDOR_MATERIAL_PATHS = frozenset((
+    'Dockerfile',
+    'package.json',
+    'scripts/build-npm-glob-vendor-backport.mjs',
+    'scripts/generate-npm-package-lock.mts',
+    'scripts/lib/npm-glob-vendor-archive.mjs',
+    'scripts/lib/npm-glob-vendor-backport.mjs',
+    'scripts/lib/npm-glob-vendor-proof.mjs',
+    'scripts/lib/npm-glob-vendor-sources/LICENSE.md',
+    'scripts/lib/npm-glob-vendor-sources/fix-parent-walker.ts.txt',
+    'scripts/lib/npm-glob-vendor-sources/fix-walker.ts.txt',
+    'scripts/lib/npm-glob-vendor-sources/glob13-walker.ts.txt',
+    'scripts/lib/npm-vendor-delivery.mjs',
+    'scripts/package-manifest.mjs',
+    'scripts/qualify-npm-glob-vendor-backport.mjs',
+    'scripts/test-npm-glob-vendor-controls.mjs',
+    'scripts/test-npm-glob-vendor-qualification.mjs',
+    'scripts/test-npm-vendor-package.mjs',
+    'src/daemon/systemd-environment-file-pattern.ts',
+    'src/infra/npm-command.test.ts',
+    'src/infra/npm-command.ts',
+    'test/scripts/generate-npm-package-lock.test.ts',
+))
+H3_LEGACY_MATERIAL_PATHS = H3_MATERIAL_PATHS
+H3_MATERIAL_PATHS = H3_MATERIAL_PATHS | H3_VENDOR_MATERIAL_PATHS
+
 PHASES = ("lock-preparation", "validation", "correction")
 SYNTHETIC_LIVE_UNIT_PATHS = frozenset((
     "src/agents/tool-search.live-diagnostics.test.ts",
@@ -426,6 +454,7 @@ def validate_h3_family(value):
     source_pin(value["anchor"])
     previous = value["anchor"]
     seen = {previous["sourceSha"]}
+    vendor_active = False
     for number, item in enumerate(value["generations"], 1):
         fields(item, ("number", "parentSource", "preparation", "changedPaths", "contentSha256",
             "unchangedTreeSha256", "validation"), "v9.h3_generation_fields")
@@ -433,21 +462,31 @@ def validate_h3_family(value):
         changed = item["changedPaths"]
         need(type(item["number"]) is int and item["number"] == number and item["parentSource"] == previous and
             type(changed) is list and changed == sorted(set(changed)) and LEDGER in changed and
-            bool(set(changed) & H3_MATERIAL_PATHS) and set(changed) <= H3_MATERIAL_PATHS | {LEDGER} and
+            bool(set(changed) & (H3_MATERIAL_PATHS | H3_VENDOR_MATERIAL_PATHS)) and
+            set(changed) <= H3_MATERIAL_PATHS | H3_VENDOR_MATERIAL_PATHS | {LEDGER} and
             type(item["contentSha256"]) is dict and set(item["contentSha256"]) == set(changed) and
             all(pin(v) for v in item["contentSha256"].values()) and pin(item["unchangedTreeSha256"]) and
             item["preparation"]["sourceSha"] not in seen and
             item["preparation"]["fileSha256"]["pnpm-lock.yaml"] == previous["fileSha256"]["pnpm-lock.yaml"],
             "v9.h3_reviewed_material_step")
+        import npm_vendor_derivation_v109 as vendor
+        vendor_active = vendor_active or vendor.PRODUCER in changed
+        need(not set(changed) & (H3_VENDOR_MATERIAL_PATHS - H3_LEGACY_MATERIAL_PATHS) or (number >= 2 and vendor_active),
+            "v9.vendor_material_scope")
         seen.add(item["preparation"]["sourceSha"])
         previous = item["preparation"]
         v = item["validation"]
         if v is not None:
-            fields(v, ("source", "generation", "unchangedTreeSha256", "preparationAttempt"), "v9.validation_binding_fields")
+            fields(v, ("source", "generation", "unchangedTreeSha256", "preparationAttempt") +
+                (("vendorDerivation",) if vendor_active else ()), "v9.validation_binding_fields")
             source_pin(v["source"]); generation_pin(v["generation"])
+            if vendor_active:
+                vendor.validate_record(v["vendorDerivation"], need, generation=number)
             need(pin(v["unchangedTreeSha256"]) and type(v["preparationAttempt"]) is int and
                 3 <= v["preparationAttempt"] <= 1002 and v["source"]["sourceSha"] not in seen and
-                all(v["source"]["fileSha256"][p] == previous["fileSha256"][p] for p in ("package.json", "pnpm-workspace.yaml")) and
+                v["source"]["fileSha256"]["package.json"] == previous["fileSha256"]["package.json"] and
+                v["source"]["fileSha256"]["pnpm-workspace.yaml"] == (v["vendorDerivation"]["workspaceSha256"]
+                    if vendor_active else previous["fileSha256"]["pnpm-workspace.yaml"]) and
                 v["source"]["fileSha256"]["pnpm-lock.yaml"] == v["generation"]["generatedLockSha256"],
                 "v9.h3_actual_lock_derivation")
             previous = v["source"]; seen.add(previous["sourceSha"])
@@ -900,7 +939,15 @@ def validate_generation(raw, bindings, phase="validation"):
         "nodeVersion", "pnpmVersion", "changedPaths", "gitDiffSha256", "allOtherTrackedEntriesUnchanged",
         "startedAt", "finishedAt", "exitCode", "timedOut", "cleanupSettled", "imageBuilt", "qualified",
         "productionAuthorized", "registryEvidence", "lockSecuritySha256"}
+    vendor_record = bindings[phase].get("vendorDerivation")
+    if vendor_record is not None:
+        import npm_vendor_derivation_v109 as vendor
+        vendor.validate_record(vendor_record, need)
+        expected.update(("vendorDerivation", "vendorQualification"))
     fields(value, expected, "v9.generation_receipt_fields")
+    need(value.get("vendorDerivation") == vendor_record, "v9.vendor_generation_record_binding")
+    if vendor_record is not None:
+        vendor.validate_qualification(value["vendorQualification"], vendor_record, need)
     p = preparation_for(bindings, bindings[phase]["preparationAttempt"])
     need(value["schema"] == GENERATION_SCHEMA and value["status"] == "derived_only" and
         value["sourceSha"] == p["sourceSha"] and value["sourceTree"] == p["sourceTree"] and
@@ -913,8 +960,10 @@ def validate_generation(raw, bindings, phase="validation"):
         value["generatedLockSha256"] == pinset["generatedLockSha256"] and
         value["gitDiffSha256"] == pinset["gitDiffSha256"] and
         value["nodeVersion"] == "24.22.1" and value["pnpmVersion"] == "12.15.0" and
+        ((type(value["changedPaths"]) is list and value["changedPaths"] == sorted(set(value["changedPaths"])) and
+            set(value["changedPaths"]) <= set(vendor.GENERATED) | {"pnpm-lock.yaml"}) if vendor_record is not None else
         value["changedPaths"] == ([] if source_successor_family(bindings) is not None and
-            value["sourceLockSha256"] == value["generatedLockSha256"] else ["pnpm-lock.yaml"]) and value["allOtherTrackedEntriesUnchanged"] is True and
+            value["sourceLockSha256"] == value["generatedLockSha256"] else ["pnpm-lock.yaml"])) and value["allOtherTrackedEntriesUnchanged"] is True and
         type(value["exitCode"]) is int and value["exitCode"] == 0 and value["timedOut"] is False and
         (value["cleanupSettled"] is None or value["cleanupSettled"] is True) and value["imageBuilt"] is False and
         value["qualified"] is False and value["productionAuthorized"] is False and
@@ -980,7 +1029,7 @@ def recheck_registry_proof(raw, checked_at):
     return validate_registry_evidence(value, utc(checked_at).timestamp())
 
 
-def expected_derived_ledger(before, generated_lock_blob, generation):
+def expected_derived_ledger(before, generated_lock_blob, generation, generated_entries=None):
     ledger = parse(before)
     need(type(ledger) is dict and ledger.get("schema") == "openclaw.v109.fork-carry-reconciliation.v1" and
         ledger.get("lockState") == "pending_ci_derivation" and "lockDerivation" not in ledger and
@@ -995,17 +1044,39 @@ def expected_derived_ledger(before, generated_lock_blob, generation):
     result["lockDerivation"] = {"runId": int(generation["runId"]), "attempt": 1,
         "artifactSha256": generation["artifactSha256"], "generatedLockSha256": generation["generatedLockSha256"],
         "receiptSha256": generation["receiptSha256"]}
+    if generated_entries is not None:
+        import npm_vendor_derivation_v109 as vendor
+        need(type(generated_entries) is dict and set(generated_entries) == set(vendor.GENERATED),
+            "v9.vendor_ledger_fixed_outputs")
+        by_name = {row["path"]: row for row in result["sourcePaths"]}
+        for name, entry in generated_entries.items():
+            need(type(entry) is dict and set(entry) == {"mode", "blob"} and entry["mode"] == "100644" and
+                pin(entry["blob"], 160), "v9.vendor_ledger_regular_output")
+            if name not in by_name:
+                need(name in (vendor.PATCH, vendor.PROOF), "v9.vendor_new_ledger_path")
+                by_name[name] = {"path": name, "base108": None, "fork108": None, "upstream109": None,
+                    "result": None, "disposition": "MERGED_SOURCE_REVIEWED"}
+            by_name[name]["result"] = deepcopy(entry)
+        result["sourcePaths"] = [by_name[name] for name in sorted(by_name)]
     return encode(result)
 
 
 def verify_generated_artifact(files, bindings, phase="validation"):
     """The caller first authenticates provider artifact/run/head before these bytes."""
-    fields(files, ("pnpm-lock.yaml", "lock.diff", "generation.json"), "v9.artifact_exact_members")
+    import npm_vendor_derivation_v109 as vendor
+    selected = bindings[phase].get("vendorDerivation")
+    expected = ("pnpm-lock.yaml", "lock.diff", "generation.json") + (vendor.GENERATED if selected is not None else ())
+    fields(files, expected, "v9.artifact_exact_members")
     need(all(type(v) is bytes for v in files.values()) and sum(map(len, files.values())) <= ARTIFACT_BYTES - 65536,
          "v9.artifact_total_cap")
     receipt = validate_generation(files["generation.json"], bindings, phase)
     need(digest(files["pnpm-lock.yaml"]) == receipt["generatedLockSha256"] and
         digest(files["lock.diff"]) == receipt["gitDiffSha256"], "v9.generated_artifact_hashes")
+    if selected is not None:
+        vendor.validate_proof(files[vendor.PROOF], files[vendor.PATCH], need)
+        need(all(digest(files[name]) == selected[key] for name, key in
+            ((vendor.WORKSPACE, "workspaceSha256"), (vendor.PATCH, "patchSha256"), (vendor.PROOF, "proofSha256"))),
+            "v9.vendor_artifact_hashes")
     return receipt
 
 
@@ -1027,7 +1098,8 @@ def verify_h3_preparations(read, bindings, *, read_tree):
             for path, expected in source["fileSha256"].items():
                 need(digest(read("show", source["sourceSha"] + ":" + path)) == expected, "v9.h3_material_input")
         before, after = read_tree(parent["sourceSha"], parent["sourceTree"]), read_tree(prep["sourceSha"], prep["sourceTree"])
-        _verify_reviewed_step(read, before, after, {**item, "source": prep})
+        _verify_reviewed_step(read, before, after, {**item, "source": prep},
+            allowed_additions=set(item["changedPaths"]) & H3_MATERIAL_PATHS)
         old_raw = read("show", parent["sourceSha"] + ":" + LEDGER)
         old = parse(old_raw)
         existing = {row["path"] for row in old["sourcePaths"]}
@@ -1050,12 +1122,27 @@ def verify_h3_preparations(read, bindings, *, read_tree):
             v = item["validation"]; target = v["source"]
             need(read("show", "-s", "--format=%P", target["sourceSha"]).decode().strip().split() == [prep["sourceSha"]], "v9.single_generated_source_parent")
             final = read_tree(target["sourceSha"], target["sourceTree"])
-            changed = sorted(name for name in after if after[name] != final.get(name))
-            need(set(final) == set(after) and changed == sorted((LEDGER,) if v["source"]["fileSha256"]["pnpm-lock.yaml"] == prep["fileSha256"]["pnpm-lock.yaml"] else ("pnpm-lock.yaml", LEDGER)) and
-                tree_digest(after, changed) == tree_digest(final, changed) == v["unchangedTreeSha256"], "v9.h3_generated_exact_delta")
+            changed = sorted(name for name in set(after) | set(final) if after.get(name) != final.get(name))
+            generated_entries = None
+            if "vendorDerivation" in v:
+                import npm_vendor_derivation_v109 as vendor
+                allowed = {LEDGER, "pnpm-lock.yaml", *vendor.GENERATED}
+                need(set(after) <= set(final) and set(final) - set(after) <= {vendor.PATCH, vendor.PROOF} and
+                    set(changed) <= allowed and LEDGER in changed and
+                    tree_digest(after, allowed) == tree_digest(final, allowed) == v["unchangedTreeSha256"],
+                    "v9.vendor_generated_exact_delta")
+                need(all(final.get(name, (None,))[0] == "100644" for name in vendor.GENERATED),
+                    "v9.vendor_generated_regular_files")
+                vendor.verify_files(v["vendorDerivation"], read("show", prep["sourceSha"] + ":" + vendor.WORKSPACE),
+                    *(read("show", target["sourceSha"] + ":" + name) for name in vendor.GENERATED),
+                    read("show", prep["sourceSha"] + ":" + vendor.PRODUCER), need)
+                generated_entries = {name: {"mode": final[name][0], "blob": final[name][2]} for name in vendor.GENERATED}
+            else:
+                need(set(final) == set(after) and changed == sorted((LEDGER,) if v["source"]["fileSha256"]["pnpm-lock.yaml"] == prep["fileSha256"]["pnpm-lock.yaml"] else ("pnpm-lock.yaml", LEDGER)) and
+                    tree_digest(after, changed) == tree_digest(final, changed) == v["unchangedTreeSha256"], "v9.h3_generated_exact_delta")
             lock = read("show", target["sourceSha"] + ":pnpm-lock.yaml")
             need(digest(lock) == v["generation"]["generatedLockSha256"] and
-                read("show", target["sourceSha"] + ":" + LEDGER) == expected_derived_ledger(expected, final["pnpm-lock.yaml"][2], v["generation"]),
+                read("show", target["sourceSha"] + ":" + LEDGER) == expected_derived_ledger(expected, final["pnpm-lock.yaml"][2], v["generation"], generated_entries),
                 "v9.h3_derived_receipt_ledger")
     return family
 
@@ -1098,6 +1185,16 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
         family = verify_h3_preparations(read, bindings, read_tree=read_tree)
         item = family["generations"][-1]; prep = item["preparation"]; step = item["validation"]
         generation = validate_generation(generation_raw, bindings, phase)
+        if "vendorDerivation" in step:
+            import npm_vendor_derivation_v109 as vendor
+            qualification = generation["vendorQualification"]
+            need(digest(read("show", prep["sourceSha"] + ":" + vendor.QUALIFIER)) == qualification["qualifierRuntimeSha256"] and
+                all(digest(read("show", prep["sourceSha"] + ":" + row["path"])) == row["runtimeSha256"]
+                    for row in qualification["controls"]), "v9.vendor_qualification_runtime_binding")
+            proof = vendor.validate_proof(read("show", step["source"]["sourceSha"] + ":" + vendor.PROOF),
+                read("show", step["source"]["sourceSha"] + ":" + vendor.PATCH), need)
+            need(qualification["receipt"]["derivedSha256"] == proof["derived"]["sha256"],
+                "v9.vendor_qualified_archive_identity")
         before = tree(prep); target = step["source"]; after = tree(target); inputs(target)
         lock = read("show", target["sourceSha"] + ":pnpm-lock.yaml")
         before_lock = read("show", prep["sourceSha"] + ":pnpm-lock.yaml")
@@ -1106,7 +1203,7 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
         need(digest(canonical(security)) == generation["lockSecuritySha256"], "v9.generated_lock_security_binding")
         return {"schema": "openclaw.v109.verified-generated-source.v1", "sourceSha": target["sourceSha"],
             "sourceTree": target["sourceTree"], "preparationSource": prep["sourceSha"], "preparationAttempt": step["preparationAttempt"],
-            "generationReceiptSha256": digest(generation_raw), "changedPaths": sorted(name for name in before if before[name] != after[name]),
+            "generationReceiptSha256": digest(generation_raw), "changedPaths": sorted(name for name in set(before) | set(after) if before.get(name) != after.get(name)),
             "lockSecuritySha256": generation["lockSecuritySha256"], "allOtherTrackedBytesUnchanged": True,
             "sourceCorrectionVerified": True, "materialSourceGeneration": item["number"],
             "freshSourceCoverageRequired": True, "imageBuilt": False, "productionAuthorized": False}
@@ -1210,11 +1307,17 @@ def verify_derived_source(read_git, bindings, phase, generation_raw, *, read_tre
         "freshSourceCoverageRequired": True, "imageBuilt": False, "productionAuthorized": False}
 
 
-def _verify_reviewed_step(read, before, after, step):
-    need(set(before) == set(after), "v9.corrected_source_path_set")
-    changed = sorted(p for p in before if before[p] != after[p])
-    need(changed == step["changedPaths"] and all(before[p][:2] == after[p][:2] == ("100644", "blob")
-        for p in changed), "v9.exact_reviewed_correction_paths")
+def _verify_reviewed_step(read, before, after, step, *, allowed_additions=frozenset()):
+    # Historical corrections retain equal path sets. Only the H3 material
+    # caller explicitly permits additions from its exact reviewed path list.
+    need(type(allowed_additions) in (set, frozenset) and
+        allowed_additions <= set(step["changedPaths"]) & H3_MATERIAL_PATHS, "v9.reviewed_addition_scope")
+    need(set(before) <= set(after) and set(after) - set(before) <= allowed_additions,
+        "v9.corrected_source_path_set")
+    changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
+    need(changed == step["changedPaths"] and all(after[p][:2] == ("100644", "blob") and
+        (p not in before or before[p][:2] == ("100644", "blob")) for p in changed),
+        "v9.exact_reviewed_correction_paths")
     need(tree_digest(before, changed) == tree_digest(after, changed) == step["unchangedTreeSha256"],
          "v9.corrected_unchanged_tree_witness")
     for path, expected in step["contentSha256"].items():

@@ -1443,6 +1443,86 @@
         "runId": "41836683070",
         "nativeAttempt": 1,
         "runnerMinutes": 0
+      },
+      {
+        "runId": "41844888674",
+        "nativeAttempt": 1,
+        "runnerMinutes": 3
+      },
+      {
+        "runId": "41844888160",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41844888198",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41844888241",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41844888062",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41844888016",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41844888110",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41844888153",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41844888015",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41844888360",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41844888037",
+        "nativeAttempt": 1,
+        "runnerMinutes": 429
+      },
+      {
+        "runId": "41844882385",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41844882266",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41844882151",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41844882814",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41844882146",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
       }
     ],
     "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
@@ -1455,42 +1535,42 @@
     "moneyCeilingUSD": "25.00",
     "nextExecution": {
       "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
-      "status": "REVIEWED",
-      "sequence": 14,
-      "phase": "validation",
-      "preparationAttempt": 8,
+      "status": "DISARMED",
+      "sequence": 15,
+      "phase": "lock-preparation",
+      "preparationAttempt": 9,
       "source": {
-        "sourceSha": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
-        "sourceTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
-        "manifestSha256": "f59726a0e8772e2925ede0221e87d78563dd8aba67fb4bf24923e3248e0f935d",
-        "inventorySha256": "869066d82cba697e2f448ac3377e84e640efd0cecb394d794d7d26da4068d94f",
+        "sourceSha": "957c3744bb85e3be23a264a2cd89e8202213f926",
+        "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+        "manifestSha256": "0c0545e702cec2d3e973853526da1614241850fcbd1323e77bbe4b6c0fa07505",
+        "inventorySha256": "c5a8c6ca12a2bbf0a7a1e234811cdb2cad91b5cafca36490011b7bde332a6e93",
         "fileSha256": {
-          "package.json": "5d9675b78376ad0c573d38a1ab5a4b8971119b25ff38d0af03c9d313745f3710",
+          "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
           "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
           "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
-          "custom-patches/reconciliation-2026.10.9.json": "00b9948b5679eb7cc9d73ad8b672f7927326c0b47c91e4b1d263624472050b5e"
+          "custom-patches/reconciliation-2026.10.9.json": "584ea3d7bec59b290097be22fcd90379dcef0dff2c400c87788352a60e307b31"
         }
       },
       "priorSourceRun": {
-        "runId": "41836686760",
-        "pipelineHead": "a81a3cc434628f9d221687976ade5b7622167d4e",
-        "requestSha256": "6303b0f981005d4e641392e8492c1d3f2b9a7c139d6b9632889663ba5682239d"
+        "runId": "41844888037",
+        "pipelineHead": "1b4183768c4744d7c4ec8f3746b92454d3cb11cc",
+        "requestSha256": "f1cc46094582b3b2657c9051da77f303198dcdf09243054ea264c31e73fdf851"
       },
-      "reasonCode": "generation_ready",
-      "reviewSha256": "4689cf759103619f2dee9dd54273e622bd98d9d8b4814f6200cf7fd0cb2514ca",
-      "requestSha256": "f1cc46094582b3b2657c9051da77f303198dcdf09243054ea264c31e73fdf851",
+      "reasonCode": "approved_source_successor",
+      "reviewSha256": null,
+      "requestSha256": null,
       "reservations": {
-        "current": 1075,
-        "pendingValidation": 0,
+        "current": 45,
+        "pendingValidation": 1075,
         "conditionalImage": 180,
         "incidental": 160
       },
-      "sourceGeneration": 1,
-      "sourceFamilySha256": "b5ee5e9dfcf7cc354c211b092bb9d7d04db7f0465b1ac57ba66332db357066bf"
+      "sourceGeneration": 2,
+      "sourceFamilySha256": "269297575a1b604664d9e3f6aeeccaf09af355406c0994a52b42219118d10613"
     },
     "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
     "schema": "openclaw.v109.bounded-ci-run-grant.v1",
-    "status": "APPROVED",
+    "status": "DISARMED",
     "budgetCeilingAmendment": {
       "schema": "openclaw.v109.budget-ceiling-amendment-binding.v1",
       "scope": "minute-and-spending-ceilings-only",
@@ -1509,8 +1589,8 @@
       "maximumStageRunnerMinutes": 3700,
       "maximumStageBookedMinutes": 5915,
       "maximumSourceGenerations": 3,
-      "sourceFamilySha256": "b5ee5e9dfcf7cc354c211b092bb9d7d04db7f0465b1ac57ba66332db357066bf",
-      "sourceGeneration": 1,
+      "sourceFamilySha256": "269297575a1b604664d9e3f6aeeccaf09af355406c0994a52b42219118d10613",
+      "sourceGeneration": 2,
       "bookedArtifacts": [
         {
           "fieldPresence": {
@@ -2680,54 +2760,29 @@
   ],
   "pipelineBranch": "task/v107-source-binding",
   "preparation": {
+    "sourceSha": "957c3744bb85e3be23a264a2cd89e8202213f926",
+    "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+    "manifestSha256": "0c0545e702cec2d3e973853526da1614241850fcbd1323e77bbe4b6c0fa07505",
+    "inventorySha256": "c5a8c6ca12a2bbf0a7a1e234811cdb2cad91b5cafca36490011b7bde332a6e93",
     "fileSha256": {
-      "custom-patches/reconciliation-2026.10.9.json": "068cbe855f6835c4630c24d43b334beca43f920f8ad09ef318a2fa793dbc737f",
-      "package.json": "5d9675b78376ad0c573d38a1ab5a4b8971119b25ff38d0af03c9d313745f3710",
-      "pnpm-lock.yaml": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-      "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d"
-    },
-    "inventorySha256": "6cdc6d9eb65ef477ba25fc2fd668b2eb1288bc93cf997bedd2194778242e6d0b",
-    "manifestSha256": "04ea7e12690f99ca4bc5f020c602fe1ba5f5e24ad5f54fde7f60c547c61db611",
-    "sourceSha": "83b022d934ea0908031bb4fa50c9ea7b4aada8a5",
-    "sourceTree": "4bc0d3ab657c289f09edc4e0e690b31646e31a2a"
+      "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
+      "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
+      "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+      "custom-patches/reconciliation-2026.10.9.json": "584ea3d7bec59b290097be22fcd90379dcef0dff2c400c87788352a60e307b31"
+    }
   },
   "preparationCorrection": null,
   "repository": "fr-meyer/openclaw",
   "schema": "openclaw.v109.ci-bindings.v1",
   "sourceBranch": "prep/v2026.10.9-remediation",
-  "status": "APPROVED_CI",
+  "status": "DISARMED",
   "upstream": {
     "commit": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
     "tag": "v2026.10.9",
     "tagObject": "88a19e0d8677804d8ec98e30a3a3a3a9308ebee0",
     "tree": "3ccfb9632d8f30196d0f9d94f92f8cc7f07b2be7"
   },
-  "validation": {
-    "source": {
-      "sourceSha": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
-      "sourceTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
-      "manifestSha256": "f59726a0e8772e2925ede0221e87d78563dd8aba67fb4bf24923e3248e0f935d",
-      "inventorySha256": "869066d82cba697e2f448ac3377e84e640efd0cecb394d794d7d26da4068d94f",
-      "fileSha256": {
-        "package.json": "5d9675b78376ad0c573d38a1ab5a4b8971119b25ff38d0af03c9d313745f3710",
-        "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
-        "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
-        "custom-patches/reconciliation-2026.10.9.json": "00b9948b5679eb7cc9d73ad8b672f7927326c0b47c91e4b1d263624472050b5e"
-      }
-    },
-    "generation": {
-      "runId": "41836686760",
-      "runAttempt": 1,
-      "pipelineHead": "a81a3cc434628f9d221687976ade5b7622167d4e",
-      "artifactId": 13327209634,
-      "artifactSha256": "2ee0b9d173257be939df1d2598c016374da7df25715aa1f530a86e8ebf54633c",
-      "receiptSha256": "4a78e49d9933bec7483fbca1e7a604ba72bebc2230e03cfbaf4f994852c7b7c0",
-      "generatedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
-      "gitDiffSha256": "61b1a7af11b91ac2d7c61f1ea9d0c14401f91f5bdc8167a3dcf310e36de1f81b"
-    },
-    "preparationAttempt": 8,
-    "unchangedTreeSha256": "0d05c065903a9e908a07b68107bca3e633c80531dd1a70821a044ea73d6c9f24"
-  },
+  "validation": null,
   "workflow": ".github/workflows/future-v109-source-validation.yml",
   "sourceSuccessor": {
     "schema": "openclaw.v109.material-source-family.v1",
@@ -2812,6 +2867,83 @@
           "preparationAttempt": 8,
           "unchangedTreeSha256": "0d05c065903a9e908a07b68107bca3e633c80531dd1a70821a044ea73d6c9f24"
         }
+      },
+      {
+        "number": 2,
+        "parentSource": {
+          "sourceSha": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+          "sourceTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+          "manifestSha256": "f59726a0e8772e2925ede0221e87d78563dd8aba67fb4bf24923e3248e0f935d",
+          "inventorySha256": "869066d82cba697e2f448ac3377e84e640efd0cecb394d794d7d26da4068d94f",
+          "fileSha256": {
+            "package.json": "5d9675b78376ad0c573d38a1ab5a4b8971119b25ff38d0af03c9d313745f3710",
+            "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
+            "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+            "custom-patches/reconciliation-2026.10.9.json": "00b9948b5679eb7cc9d73ad8b672f7927326c0b47c91e4b1d263624472050b5e"
+          }
+        },
+        "preparation": {
+          "sourceSha": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "sourceTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
+          "manifestSha256": "0c0545e702cec2d3e973853526da1614241850fcbd1323e77bbe4b6c0fa07505",
+          "inventorySha256": "c5a8c6ca12a2bbf0a7a1e234811cdb2cad91b5cafca36490011b7bde332a6e93",
+          "fileSha256": {
+            "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
+            "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
+            "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+            "custom-patches/reconciliation-2026.10.9.json": "584ea3d7bec59b290097be22fcd90379dcef0dff2c400c87788352a60e307b31"
+          }
+        },
+        "changedPaths": [
+          "Dockerfile",
+          "custom-patches/reconciliation-2026.10.9.json",
+          "package.json",
+          "scripts/build-npm-glob-vendor-backport.mjs",
+          "scripts/generate-npm-package-lock.mts",
+          "scripts/lib/npm-glob-vendor-archive.mjs",
+          "scripts/lib/npm-glob-vendor-backport.mjs",
+          "scripts/lib/npm-glob-vendor-proof.mjs",
+          "scripts/lib/npm-glob-vendor-sources/LICENSE.md",
+          "scripts/lib/npm-glob-vendor-sources/fix-parent-walker.ts.txt",
+          "scripts/lib/npm-glob-vendor-sources/fix-walker.ts.txt",
+          "scripts/lib/npm-glob-vendor-sources/glob13-walker.ts.txt",
+          "scripts/lib/npm-vendor-delivery.mjs",
+          "scripts/package-manifest.mjs",
+          "scripts/qualify-npm-glob-vendor-backport.mjs",
+          "scripts/test-npm-glob-vendor-controls.mjs",
+          "scripts/test-npm-glob-vendor-qualification.mjs",
+          "scripts/test-npm-vendor-package.mjs",
+          "src/daemon/systemd-environment-file-pattern.ts",
+          "src/infra/npm-command.test.ts",
+          "src/infra/npm-command.ts",
+          "test/scripts/generate-npm-package-lock.test.ts"
+        ],
+        "contentSha256": {
+          "Dockerfile": "1e3323622984e6c611bcfc86bab3ae5ca01ca6192dd916ac876cc23a5a00f95c",
+          "custom-patches/reconciliation-2026.10.9.json": "584ea3d7bec59b290097be22fcd90379dcef0dff2c400c87788352a60e307b31",
+          "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
+          "scripts/build-npm-glob-vendor-backport.mjs": "4f7927a4f4c27911e82c1ce21347b47d4c7f3f7e72f66f31c0616b5e4ee29a6c",
+          "scripts/generate-npm-package-lock.mts": "1f897bcc2630c52f1910293316feb1f53e8608637f3bb8644a0d1c8b78670bac",
+          "scripts/lib/npm-glob-vendor-archive.mjs": "6334a280d9937f34dd3734a9358f97d286cf0827aedb249d003cc3baaff1fc12",
+          "scripts/lib/npm-glob-vendor-backport.mjs": "01ba665ef8b0c7546785c1943870e82fe8b341caedda3583555a6309ca18a7b2",
+          "scripts/lib/npm-glob-vendor-proof.mjs": "1069714acc6e83d30ff674e0505a5e021ff930ea097892975214d24955f19439",
+          "scripts/lib/npm-glob-vendor-sources/LICENSE.md": "a49c9ba464796f65b59fca3f1e6ca40912df1e859f575383223f7ec6c5baae09",
+          "scripts/lib/npm-glob-vendor-sources/fix-parent-walker.ts.txt": "d0bee3a7741067f0720ed89d0a86b86b194164c4f2c663b54ec089953ac488ae",
+          "scripts/lib/npm-glob-vendor-sources/fix-walker.ts.txt": "22adee340137e4f0636701c99bb5f75fb572d38c91ff5de0b77b80f453c18e4a",
+          "scripts/lib/npm-glob-vendor-sources/glob13-walker.ts.txt": "ae534f35edd3837a2969ecdd4ea90853cc1b9a9c8e4d10108e5e0994fb5e001e",
+          "scripts/lib/npm-vendor-delivery.mjs": "38c42051e33801716dbb6712b44f736d165115d63819f35478f2d44fb6912473",
+          "scripts/package-manifest.mjs": "120e96517d2f9c065e53272fbcbc847f5fd08094f67f781361d521586917177c",
+          "scripts/qualify-npm-glob-vendor-backport.mjs": "fa232048aba7d5a6b120e76bfa85e7c78a0a898813b59ec187d57ababba1cab1",
+          "scripts/test-npm-glob-vendor-controls.mjs": "82bde211d75548a431d7c9746e17800236ee48be9222e9fccc2f6083825ff798",
+          "scripts/test-npm-glob-vendor-qualification.mjs": "809e61c527566db550ae7a3c9a73d80cbae5988bbcbec548b513de9bcd938e69",
+          "scripts/test-npm-vendor-package.mjs": "573c9b9e46af334356d9238de15b6a4ead45d784f512a5519c2584b5d923a688",
+          "src/daemon/systemd-environment-file-pattern.ts": "834c6a419dc1b5e52ff27a9347b83d95d860e752ac020639814248f549fdc9f2",
+          "src/infra/npm-command.test.ts": "032a7272bed3f15a1edbc6209efe298599ddcae6f33785c8658e9850ccf14843",
+          "src/infra/npm-command.ts": "a07f22c0ee0b208518f77dd95e7d48f9ff569d1c1a0149a9bfd615005e977879",
+          "test/scripts/generate-npm-package-lock.test.ts": "01ab75e0e3d308989d931ff1032f92eaad42682b98670b44238c6a7e5ea84aca"
+        },
+        "unchangedTreeSha256": "c3c98f91ad33a45d7da322a67b2338f63d43cabdc0c6171ceec677bb45005050",
+        "validation": null
       }
     ]
   }

@@ -64,7 +64,7 @@
   "source": {
     "baseCommit": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
     "baseTree": "3ccfb9632d8f30196d0f9d94f92f8cc7f07b2be7",
-    "commit": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+    "commit": "957c3744bb85e3be23a264a2cd89e8202213f926",
     "merge": {
       "commonCommit": "dc2523e5a5c7a309517fd7fa834add938231d526",
       "commonTree": "8e87ea041d88f72b77d83806b9ad05aa4f176d59",
@@ -75,9 +75,9 @@
         "tree": "ed8cc0d741194e7627b875ea256dfd7c5de43640"
       },
       "reconciliation": {
-        "blob": "bf820e8ed3a6357e330061155b71d4fa85a27f9d",
+        "blob": "cb15bfe50e0ed43340eabccc6f19cd6c7496202f",
         "path": "custom-patches/reconciliation-2026.10.9.json",
-        "sha256": "00b9948b5679eb7cc9d73ad8b672f7927326c0b47c91e4b1d263624472050b5e"
+        "sha256": "584ea3d7bec59b290097be22fcd90379dcef0dff2c400c87788352a60e307b31"
       },
       "schema": "openclaw.fork-source-merge.v4",
       "securitySource": {
@@ -100,15 +100,19 @@
         {
           "commit": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
           "tree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f"
+        },
+        {
+          "commit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+          "tree": "357d79028afdace8a81672922fa57ab3c9d9c9d8"
         }
       ]
     },
     "patches": [
       {
-        "commit": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
-        "tree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f"
+        "commit": "957c3744bb85e3be23a264a2cd89e8202213f926",
+        "tree": "357d79028afdace8a81672922fa57ab3c9d9c9d8"
       }
     ],
-    "tree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f"
+    "tree": "357d79028afdace8a81672922fa57ab3c9d9c9d8"
   }
 }

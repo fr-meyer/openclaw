@@ -198,8 +198,13 @@ def strict_json(raw):
 
 
 def validate_h3_source_inputs(h3):
-    need(type(h3) is dict and set(h3) == {"amendmentSha256", "sourceGeneration", "checkedAt",
-        "packageBytes", "workspaceBytes", "fileTransferPackageBytes", "excludedAgeProofBytes", "excludedAgeProofSha256", "targetMetadataProofBytes", "targetMetadataProofSha256"} and
+    base_fields = {"amendmentSha256", "sourceGeneration", "checkedAt",
+        "packageBytes", "workspaceBytes", "fileTransferPackageBytes", "excludedAgeProofBytes", "excludedAgeProofSha256", "targetMetadataProofBytes", "targetMetadataProofSha256"}
+    vendor = h3.get("vendorDerivation") if type(h3) is dict else None
+    if vendor is not None:
+        from npm_vendor_derivation_v109 import validate_record
+        validate_record(vendor, need, generation=h3.get("sourceGeneration"))
+    need(type(h3) is dict and set(h3) == base_fields | ({"vendorDerivation"} if vendor is not None else set()) and
         h3["amendmentSha256"] == authority.H3_AMENDMENT_SHA256 and type(h3["sourceGeneration"]) is int and
         1 <= h3["sourceGeneration"] <= 3 and type(h3["checkedAt"]) is str, "v9.h3_lock_authority")
     try:
@@ -210,6 +215,11 @@ def validate_h3_source_inputs(h3):
         authority.utc(authority.H3_NOT_BEFORE) <= checked < authority.utc(authority.H3_EXPIRES_AT), "v9.h3_lock_package_use_floor")
     for key in ("packageBytes", "workspaceBytes", "fileTransferPackageBytes"):
         need(type(h3[key]) is bytes and 0 < len(h3[key]) <= CAP, "v9.h3_positive_source_bytes")
+    if vendor is not None:
+        from npm_vendor_derivation_v109 import expected_workspace
+        need(digest(h3["workspaceBytes"]) == vendor["workspaceSha256"] and
+            expected_workspace(h3["workspaceBytes"], need) == h3["workspaceBytes"],
+            "v9.vendor_lock_workspace_binding")
     root, transfer = strict_json(h3["packageBytes"]), strict_json(h3["fileTransferPackageBytes"])
     need(root.get("dependencies", {}).get("minimatch") == transfer.get("dependencies", {}).get("minimatch") == "11.0.1", "v9.h3_direct_minimatch_pins")
     workspace = h3["workspaceBytes"].decode("utf-8")
@@ -294,6 +304,15 @@ def retains_reviewed_h3_warning(key, before, generated):
 
 def verify_h3_lock_delta(before, generated, old, new, h3):
     checked = validate_h3_source_inputs(h3)
+    vendor = h3.get("vendorDerivation")
+    if vendor is not None:
+        from npm_vendor_derivation_v109 import unpatched_lock
+        # Validate only the fixed npm patch registration/reference transform; all
+        # graph, integrity, override, and age checks below still run unchanged.
+        generated = unpatched_lock(before, generated, vendor["patchSha256"], need)
+        old_doc, new_doc = documents(before)[1], documents(generated)[1]
+        old = {name: entries(old_doc, name) for name in ("packages", "snapshots")}
+        new = {name: entries(new_doc, name) for name in ("packages", "snapshots")}
     target_metadata = verify_h3_target_metadata(h3, checked)
     for name, (old_version, new_version) in H3_TARGETS.items():
         for table in ("packages", "snapshots"):
@@ -357,7 +376,9 @@ def verify_h3_lock_delta(before, generated, old, new, h3):
         "materialSourceGeneration": h3["sourceGeneration"], "exactSelectedVersions": {k: v[1] for k,v in H3_TARGETS.items()},
         "parentSelectors": H3_FIXED_SELECTORS, "unrelatedSelectedGraphPreserved": True,
         "excludedAgeProofSha256": h3["excludedAgeProofSha256"], "excludedSelectedTupleCount": excluded,
-        "nativeMinimumReleaseAgeStillRequiredForRemainingClosure": True}
+        "nativeMinimumReleaseAgeStillRequiredForRemainingClosure": True,
+        **({"npmVendorDerivation": vendor, "npmOriginalVersionPreserved": "12.2.1",
+            "npmBundledGlobOriginalVersionPreserved": "13.0.6"} if vendor is not None else {})}
 
 
 H3_EXCLUDED_AGE_PROOF_SHA256 = "373061e725f14fbe9df627f06f69023836f47621630dad006c700da7582e7a05"

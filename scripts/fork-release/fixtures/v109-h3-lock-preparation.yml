@@ -73,7 +73,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          printf '%s\n' 'f54e977fa80583abe9765794b9815ca3895c2a23bf9fd06d8193f639965e4b0b  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
+          printf '%s\n' '85543c2571e8f0901fb70c9072cab860f1de89939acacaecb5fbe86a7325cc2e  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
           python3 pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py --job admission
       - name: Exact public admission and cumulative accounting
         id: admission
@@ -118,6 +118,10 @@ jobs:
             ${{ runner.temp }}/v109-lock-diagnostic/pnpm-lock.yaml
             ${{ runner.temp }}/v109-lock-diagnostic/lock.diff
             ${{ runner.temp }}/v109-lock-diagnostic/lock-diagnostic.json
+            ${{ runner.temp }}/v109-lock-diagnostic/pnpm-workspace.yaml
+            ${{ runner.temp }}/v109-lock-diagnostic/patches/npm@12.2.1.patch
+            ${{ runner.temp }}/v109-lock-diagnostic/patches/npm-12.2.1.glob-cancellation.proof.json
+            ${{ runner.temp }}/v109-lock-diagnostic/vendor-qualification.safe.json
           if-no-files-found: ignore
           retention-days: 3
           include-hidden-files: false
@@ -129,6 +133,9 @@ jobs:
             ${{ runner.temp }}/v109-lock-artifact/pnpm-lock.yaml
             ${{ runner.temp }}/v109-lock-artifact/lock.diff
             ${{ runner.temp }}/v109-lock-artifact/generation.json
+            ${{ runner.temp }}/v109-lock-artifact/pnpm-workspace.yaml
+            ${{ runner.temp }}/v109-lock-artifact/patches/npm@12.2.1.patch
+            ${{ runner.temp }}/v109-lock-artifact/patches/npm-12.2.1.glob-cancellation.proof.json
           if-no-files-found: error
           retention-days: 3
           include-hidden-files: false

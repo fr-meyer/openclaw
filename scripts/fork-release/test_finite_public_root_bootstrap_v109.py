@@ -115,16 +115,17 @@ class BootstrapTests(unittest.TestCase):
         return patch.multiple(self.runtime, WORKFLOW_TARGET=f.target, WORKFLOW_TARGET_TREE=f.target_tree,
             WORKFLOW_MERGE_BASE=f.common, WORKFLOW_MERGE_BASE_TREE=f.common_tree)
 
-    def acquire(self, merge=None, selected=None, unshallow=True):
+    def acquire(self, merge=None, selected=None, unshallow=True, job="source"):
         f = self.fixture; original = b.fetch_argv
         def local(root, m, s, shallow):
             argv = original(root, m, s, shallow and unshallow)
             argv[argv.index(b.ORIGIN)] = f.remote.as_uri()
             argv[argv.index('fetch'):argv.index('fetch')] = ['-c', 'protocol.file.allow=always']
+            self.last_fetch_argv = list(argv)
             return argv
         with patch.object(b, 'fetch_argv', local), self.graph_pins():
             return b.acquire(self.owner, self.runtime, self.core, f.head,
-                merge or f.merge, selected or self.selected, self.owner.env)
+                merge or f.merge, selected or self.selected, self.owner.env, job=job)
 
     def test_full_unshallow_two_roots_keeps_headP_and_unrelated_ref_absent(self):
         value = self.acquire()
@@ -144,6 +145,54 @@ class BootstrapTests(unittest.TestCase):
         self.acquire()
         other = self.case / 'second-custody'; other.mkdir(); self.owner.output = other
         self.assertEqual(self.acquire()['status'], 'full_closure_only')
+
+    def test_final_fetches_only_merge_with_complete_pipeline_graph_and_no_source_claim(self):
+        value = self.acquire(job='final')
+        f = self.fixture
+        at = self.last_fetch_argv.index(f.remote.as_uri())
+        self.assertEqual(self.last_fetch_argv[at + 1:], [f.merge])
+        self.assertEqual(value['status'], 'pipeline_metadata_closure_only')
+        self.assertEqual(value['purpose'], 'final_result_metadata')
+        self.assertIs(value['selectedSourceRootRequested'], False)
+        self.assertIs(value['selectedSourceBodyVerified'], False)
+        self.assertIs(value['sourceQualified'], False)
+        self.assertIs(value['applicationExecuted'], False)
+        self.assertNotIn('sourceSha', value)
+        self.assertNotIn('sourceTree', value)
+        self.assertEqual(value['fetchAttempts'], 1)
+        self.assertEqual(value['actualWorkflowParents'], [f.target, f.head])
+        self.assertTrue(value['mergeProof']['completeTreeCompared'])
+        self.assertEqual(self.owner.read('rev-parse', 'HEAD').strip().decode(), f.head)
+        self.assertEqual(self.owner.read('rev-parse', '--is-shallow-repository').strip(), b'false')
+        for oid in (f.common, f.target, f.head, f.merge):
+            self.assertEqual(self.owner.read('cat-file', '-t', oid).strip(), b'commit')
+        for oid in (f.source, f.unrelated):
+            self.assertNotEqual(git(self.root, 'cat-file', '-e', oid, check=False).returncode, 0)
+
+    def test_final_still_refuses_shallow_graph(self):
+        with self.assertRaisesRegex(b.Refusal, 'full_nonshallow'):
+            self.acquire(job='final', unshallow=False)
+
+    def test_final_still_refuses_wrong_physical_merge_parents(self):
+        with self.assertRaisesRegex(ValueError, 'workflow_merge_parents'):
+            self.acquire(job='final', merge=self.fixture.bad_parent)
+
+    def test_final_still_refuses_incomplete_merge_tree(self):
+        with self.assertRaisesRegex(ValueError, 'workflow_full_merge_tree_changed'):
+            self.acquire(job='final', merge=self.fixture.bad_tree)
+
+    def test_admission_still_fetches_and_verifies_selected_source_root(self):
+        value = self.acquire(job='admission')
+        at = self.last_fetch_argv.index(self.fixture.remote.as_uri())
+        self.assertEqual(self.last_fetch_argv[at + 1:], [self.fixture.merge, self.fixture.source])
+        self.assertEqual(value['status'], 'full_closure_only')
+        self.assertEqual(value['sourceSha'], self.fixture.source)
+        self.assertEqual(value['sourceTree'], self.fixture.source_tree)
+
+    def test_unknown_internal_role_refuses_before_repository_queries(self):
+        with self.assertRaisesRegex(b.Refusal, 'fixed_job_role'):
+            self.acquire(job='other')
+        self.assertEqual(self.owner.ordinal, 0)
 
     def test_unchanged_local_donor_consumes_independent_S_from_narrow_store(self):
         self.acquire()
@@ -422,26 +471,29 @@ class SimulatedBudgetTests(unittest.TestCase):
             guard = patch.object(owner, name, side_effect=AssertionError('host action forbidden'))
             guard.start(); self.addCleanup(guard.stop)
 
-    def main_deadline(self, job, job_deadline, clock=1000):
+    def main_deadline(self, job, job_deadline, clock=1000, *, native_job=None,
+                      phase='validation', refusal=None):
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory(prefix='finite-budget-synthetic-') as tmp:
             workspace = Path(tmp).resolve(); folder = workspace / 'pipeline/scripts/fork-release'
             folder.mkdir(parents=True)
             temp = workspace / 'runner-temp'; temp.mkdir()
             env = {'PATH': '/usr/bin:/bin', 'GITHUB_WORKSPACE': str(workspace),
+                   'GITHUB_JOB': job if native_job is None else native_job,
                    'RUNNER_TEMP': str(temp), 'GITHUB_EVENT_PATH': str(workspace / 'unused.json'),
                    'GITHUB_WORKFLOW_SHA': 'b' * 40, 'V109_APPROVED_AT': 'approved',
                    'V109_EXPIRES_AT': 'expires', 'CLOCK': str(clock), 'GH_TOKEN': 'synthetic-' + 'x' * 32}
             policy = SimpleNamespace(PROFILES=('types-tests',), parse=lambda raw: {},
                                      source_authorization_window=lambda bindings: ('approved', 'expires'))
             runtime = SimpleNamespace(policy=policy, CLOCK='CLOCK',
-                load_metadata=lambda *args, **kwargs: ({'authorization': {'approvedAt': 'approved'}}, {}, b'request'),
+                load_metadata=lambda *args, **kwargs: ({'authorization': {'approvedAt': 'approved'}}, {'phase': phase}, b'request'),
                 event_binding=lambda event, env: 'a' * 40,
                 check_admission_outputs=lambda *args: None,
                 job_deadline=lambda *args: job_deadline)
             core = SimpleNamespace(profile_signals=contextlib.nullcontext)
             observed = []
-            def acquire(owner, *args):
+            def acquire(owner, *args, **kwargs):
+                self.assertEqual(kwargs, {'job': job})
                 observed.append(owner.deadline)
                 return {'status': 'synthetic', 'sourceQualified': False}
             args = ['--job', job] + (['--profile', 'types-tests'] if job == 'source' else [])
@@ -449,8 +501,14 @@ class SimulatedBudgetTests(unittest.TestCase):
                  patch.object(b, 'owners', return_value=(runtime, core)), \
                  patch.object(b, 'regular', return_value=b'{}'), \
                  patch.object(b, 'acquire', side_effect=acquire) as call, \
-                 patch.object(b, 'save'), patch.object(time, 'time', return_value=1000), \
+                 patch.object(b, 'save') as save, patch.object(time, 'time', return_value=1000), \
                  contextlib.redirect_stdout(io.StringIO()):
+                if refusal is not None:
+                    with self.assertRaisesRegex(b.Refusal, refusal):
+                        b.main(args, env)
+                    call.assert_not_called(); save.assert_not_called()
+                    self.assertEqual(list(temp.iterdir()), [])
+                    return None
                 result = b.main(args, env)
             self.assertEqual(result, 0)
             call.assert_called_once()
@@ -468,6 +526,45 @@ class SimulatedBudgetTests(unittest.TestCase):
     def test_actual_final_ten_minute_clamp_still_wins(self):
         self.assertEqual(self.main_deadline('final', 6400), 1520)
         self.assertEqual(self.main_deadline('final', 1450), 1430)
+
+    def test_requested_role_must_equal_actual_job_before_any_owner_or_git_action(self):
+        for requested, actual in [('final', 'source'), ('source', 'final'),
+                                  ('admission', 'final'), ('final', None),
+                                  ('final', 'final-other')]:
+            argv = ['--job', requested]
+            if requested == 'source': argv.extend(['--profile', 'types-tests'])
+            env = {} if actual is None else {'GITHUB_JOB': actual}
+            with self.subTest(requested=requested, actual=actual), \
+                 patch.object(b, 'owners') as owners, patch.object(b, 'OwnedGit') as owner, \
+                 patch.object(b, 'save') as save, \
+                 self.assertRaisesRegex(b.Refusal, 'fixed_job_role'):
+                b.main(argv, env)
+            owners.assert_not_called(); owner.assert_not_called(); save.assert_not_called()
+
+    def test_no_user_skip_source_option_exists(self):
+        with patch.object(b, 'owners') as owners, contextlib.redirect_stderr(io.StringIO()), \
+             self.assertRaises(SystemExit):
+            b.main(['--job', 'final', '--skip-source'], {'GITHUB_JOB': 'final'})
+        owners.assert_not_called()
+
+    def test_exact_preparation_native_alias_preserves_full_admission_role(self):
+        self.assertEqual(self.main_deadline('admission', 3700,
+            native_job='lock-preparation', phase='lock-preparation'), 1880)
+
+    def test_preparation_alias_refuses_validation_and_correction_before_git_or_output(self):
+        for phase in ('validation', 'correction'):
+            with self.subTest(phase=phase):
+                self.main_deadline('admission', 3700, native_job='lock-preparation',
+                    phase=phase, refusal='fixed_job_phase_role')
+
+    def test_lock_preparation_requires_exact_admission_flag_and_native_alias(self):
+        for role in ('admission', 'source', 'final'):
+            with self.subTest(role=role):
+                self.main_deadline(role, 3700, native_job=role,
+                    phase='lock-preparation', refusal='fixed_job_phase_role')
+
+    def test_correction_final_keeps_exact_positive_native_binding_and_ten_minute_cap(self):
+        self.assertEqual(self.main_deadline('final', 6400, phase='correction'), 1520)
 
     def test_actual_main_exhausted_cleanup_window_refuses_before_acquisition(self):
         with self.assertRaisesRegex(b.Refusal, 'shared_deadline'):

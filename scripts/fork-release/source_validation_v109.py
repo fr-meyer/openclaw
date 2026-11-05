@@ -1841,10 +1841,15 @@ def h3_lock_context(pipeline, bindings, read, checked_at):
     from lockfile_policy_v109 import H3_EXCLUDED_AGE_PROOF_SHA256, H3_TARGET_METADATA_PROOF_SHA256
     amendment = regular(pipeline/CANDIDATE/"h3-source-amendment.json", 65536)
     policy.need(policy.digest(amendment) == H3_AMENDMENT_SHA256, "v9.h3_public_amendment_bytes")
+    last = bindings["sourceSuccessor"]["generations"][-1]
+    selected = last["validation"]
+    vendor_record = selected.get("vendorDerivation") if selected is not None else None
+    workspace_source = selected["source"] if vendor_record is not None else bindings["preparation"]
     return {"amendmentSha256": H3_AMENDMENT_SHA256,
-        "sourceGeneration": bindings["sourceSuccessor"]["generations"][-1]["number"],
+        "sourceGeneration": last["number"],
         "checkedAt": checked_at, "packageBytes": read("show", bindings["preparation"]["sourceSha"] + ":package.json"),
-        "workspaceBytes": read("show", bindings["preparation"]["sourceSha"] + ":pnpm-workspace.yaml"),
+        "workspaceBytes": read("show", workspace_source["sourceSha"] + ":pnpm-workspace.yaml"),
+        **({"vendorDerivation": vendor_record} if vendor_record is not None else {}),
         "fileTransferPackageBytes": read("show", bindings["preparation"]["sourceSha"] + ":extensions/file-transfer/package.json"),
         "excludedAgeProofBytes": regular(pipeline/CANDIDATE/"h3-selected-excluded-ages.json", 65536),
         "excludedAgeProofSha256": H3_EXCLUDED_AGE_PROOF_SHA256,
@@ -1900,7 +1905,7 @@ def internal_bootstrap(core, home, env, request, context):
     return core.bootstrap_pnpm(home,env,operation_identity=owned_identity(request))
 
 
-def retain_unvalidated_lock(generated,diff,request,env,started,changed_paths=None):
+def retain_unvalidated_lock(generated,diff,request,env,started,changed_paths=None,vendor_files=None):
     """Retain public generated data before validation; this is never generation proof."""
     metadata={"schema":"openclaw.v109.unvalidated-lock-diagnostic.v1",
         "status":"unvalidated","acceptedAsGeneration":False,
@@ -1913,11 +1918,236 @@ def retain_unvalidated_lock(generated,diff,request,env,started,changed_paths=Non
         "allOtherTrackedEntriesUnchanged":True,"startedAt":started,"capturedAt":now_utc(),
         "securityCheckCompleted":False,"exactGeneratedDiffReviewRequiredBeforeCommit":True,
         "imageBuilt":False,"qualified":False,"productionAuthorized":False}
-    files={"pnpm-lock.yaml":generated,"lock.diff":diff,"lock-diagnostic.json":policy.encode(metadata)}
+    if vendor_files is not None:
+        import npm_vendor_derivation_v109 as vendor
+        policy.need(type(vendor_files) is dict and set(vendor_files) == set(vendor.GENERATED) and
+            all(type(raw) is bytes and 0 < len(raw) <= 2*1024*1024 for raw in vendor_files.values()),
+            "v9.vendor_diagnostic_exact_public_sources")
+        metadata.update(sourceQualified=False,qualificationState="qualification_not_completed",
+            vendorSourceFiles={name:{"bytes":len(raw),"sha256":policy.digest(raw)} for name,raw in sorted(vendor_files.items())})
+    files={"pnpm-lock.yaml":generated,"lock.diff":diff,"lock-diagnostic.json":policy.encode(metadata),
+        **(vendor_files if vendor_files is not None else {})}
+    # Leave the existing64KiB reserve for the later finite safe failure report.
+    # No tar, maps, TAP or raw test/exception stream enters this artifact.
     policy.need(sum(map(len,files.values()))<=policy.ARTIFACT_BYTES-65536,"v9.lock_diagnostic_size")
     out=Path(env["RUNNER_TEMP"])/"v109-lock-diagnostic"
     policy.need(not out.exists(),"v9.lock_diagnostic_output_fresh")
     for name,raw in files.items():private_write(out/name,raw)
+
+
+def vendor_material_selected(bindings):
+    """Only the reviewed H3 family can select the CI-only vendor producer."""
+    family = bindings.get("sourceSuccessor")
+    if family is None:
+        return False
+    import npm_vendor_derivation_v109 as vendor
+    return any(vendor.PRODUCER in item["changedPaths"] for item in family["generations"])
+
+
+def vendor_archive(url, sha256, sri, output, context):
+    """Two fixed public, credential-free registry reads; redirects refuse."""
+    allowed = {
+        "https://registry.npmjs.org/npm/-/npm-12.2.1.tgz",
+        "https://registry.npmjs.org/glob/-/glob-13.0.6.tgz"}
+    policy.need(url in allowed and not output.exists(), "v9.vendor_archive_fixed_fresh")
+    remaining = context["deadlineEpoch"] - time.time()
+    policy.need(remaining > 0, "v9.vendor_archive_deadline")
+    request = urllib.request.Request(url, headers={"User-Agent": "openclaw-v109-source-validation"})
+    opener = urllib.request.build_opener(core_no_redirect())
+    with opener.open(request, timeout=min(30, remaining)) as response:
+        policy.need(response.status == 200 and response.geturl() == url, "v9.vendor_archive_http")
+        chunks, size = [], 0
+        while True:
+            policy.need(time.time() < context["deadlineEpoch"], "v9.vendor_archive_deadline")
+            block = response.read(min(65536, 8 * 1024 * 1024 + 1 - size))
+            if not block:
+                break
+            chunks.append(block); size += len(block)
+            policy.need(size <= 8 * 1024 * 1024, "v9.vendor_archive_cap")
+    raw = b"".join(chunks)
+    actual_sri = "sha512-" + base64.b64encode(hashlib.sha512(raw).digest()).decode()
+    policy.need(bool(raw) and policy.digest(raw) == sha256 and actual_sri == sri,
+        "v9.vendor_archive_integrity")
+    private_write(output, raw)
+
+
+def core_no_redirect():
+    class FixedRegistryNoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise policy.Refusal("v9.vendor_archive_redirect")
+    return FixedRegistryNoRedirect()
+
+
+def prepare_npm_vendor(source, bindings, request, env, core, context, child_env, home):
+    """Compile only in admitted secretless CI; generate the three closed sources."""
+    import npm_vendor_derivation_v109 as vendor
+    policy.need(env.get("GITHUB_ACTIONS") == "true", "v9.vendor_native_ci_only")
+    item = bindings["sourceSuccessor"]["generations"][-1]
+    policy.need(item["number"] in (2, 3), "v9.vendor_material_generation")
+    read = lambda *args: git_read(source, *args, deadline=context["deadlineEpoch"])
+    parent = item["parentSource"]["sourceSha"]
+    before_package = policy.parse(read("show", parent + ":package.json"))
+    current_package = policy.parse(regular(source/"package.json"))
+    dependency_fields = ("dependencies", "optionalDependencies", "peerDependencies", "devDependencies", "packageManager")
+    policy.need(all(before_package.get(key) == current_package.get(key) for key in dependency_fields),
+        "v9.vendor_bootstrap_same_dependency_graph")
+    before_workspace = regular(source/vendor.WORKSPACE)
+    policy.need(before_workspace == read("show", parent + ":" + vendor.WORKSPACE) and
+        regular(source/"pnpm-lock.yaml", 16*1024*1024) == read("show", parent + ":pnpm-lock.yaml"),
+        "v9.vendor_bootstrap_same_workspace_lock")
+    result = core.phase_process(["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"],
+        source, child_env, context, "vendor-tool-bootstrap", 0)
+    policy.need(result.returncode == 0 and not getattr(result, "timed_out", False), "v9.vendor_tool_bootstrap_failed")
+    policy.need(read("diff", "--name-only").strip() == b"" and
+        read("ls-files", "--others", "--exclude-standard").strip() == b"", "v9.vendor_bootstrap_source_unchanged")
+    archives = home/"vendor-archives"; archives.mkdir(mode=0o700)
+    npm_path, glob_path = archives/"npm-12.2.1.tgz", archives/"glob-13.0.6.tgz"
+    vendor_archive("https://registry.npmjs.org/npm/-/npm-12.2.1.tgz", vendor.ORIGINAL_SHA256,
+        vendor.ORIGINAL_SRI, npm_path, context)
+    vendor_archive("https://registry.npmjs.org/glob/-/glob-13.0.6.tgz",
+        "020f184fa9c4e2905cf33c3d1dbba4b25a58e05f6f785f81cc931394e07b8970",
+        "sha512-Wjlyrolmm8uDpm/ogGyXZXb1Z+Ca2B8NbJwqBVg0axK9GbBeoS7yGV6vjXnYdGm6X53iehEuxxbyiKp8QmN4Vw==",
+        glob_path, context)
+    output = home/"vendor-output"
+    result = core.phase_process(["node", vendor.PRODUCER, "--original-npm", str(npm_path),
+        "--original-glob", str(glob_path), "--output-dir", str(output)], source,
+        {**child_env, "GITHUB_ACTIONS": "true"}, context, "vendor-derivation", 0)
+    policy.need(result.returncode == 0 and not getattr(result, "timed_out", False), "v9.vendor_derivation_failed")
+    patch = regular(output/Path(vendor.PATCH).name, 2*1024*1024)
+    proof = regular(output/Path(vendor.PROOF).name, 2*1024*1024)
+    workspace = vendor.expected_workspace(before_workspace, policy.need)
+    producer = regular(source/vendor.PRODUCER)
+    record = vendor.make_record(item["number"], workspace, patch, proof, producer, policy.need)
+    generated = {vendor.WORKSPACE: workspace, vendor.PATCH: patch, vendor.PROOF: proof}
+    for name, raw in generated.items():
+        target = source/name
+        if target.exists():
+            # Existing G3 outputs are immutable seed inputs until this admitted
+            # producer replaces only the fixed generated paths. Preserve an
+            # identical regeneration rather than fabricating a changed output.
+            policy.need(regular(target, 2*1024*1024) == read("show", request["source"]["sourceSha"] + ":" + name),
+                "v9.vendor_existing_generated_source")
+            if regular(target, 2*1024*1024) != raw:
+                target.write_bytes(raw)
+        else:
+            private_write(target, raw)
+    return record, generated, {"original": npm_path, "derived": output/"npm-12.2.1-openclaw-glob-backport.tgz"}
+
+
+def capture_vendor_report(path, capture_dir, name, maximum=65536):
+    """Capture the bounded private prefix before parsing or accepting evidence."""
+    path = Path(path); raw = b""; complete = False
+    metadata = {"present": False, "complete": False, "capturedBytes": 0, "maximumBytes": maximum}
+    try:
+        info = path.lstat()
+        metadata["present"] = True
+        metadata["reportedBytes"] = info.st_size
+        if stat.S_ISREG(info.st_mode) and not path.is_symlink() and path.resolve(strict=True) == path.absolute():
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            with os.fdopen(fd, "rb") as stream:
+                observed = os.fstat(stream.fileno())
+                raw = stream.read(maximum + 1)
+                after = os.fstat(stream.fileno())
+            complete = (len(raw) == info.st_size <= maximum and
+                (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns) ==
+                (observed.st_dev, observed.st_ino, observed.st_size, observed.st_mtime_ns, observed.st_ctime_ns) ==
+                (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns))
+    except OSError:
+        metadata["readFailed"] = True
+    prefix = raw[:maximum]
+    metadata.update(complete=complete, capturedBytes=len(prefix), prefixSha256=policy.digest(prefix))
+    private_write(capture_dir/(name + ".raw"), prefix)
+    private_write(capture_dir/(name + ".json"), policy.encode(metadata))
+    policy.need(complete, "v9.vendor_evidence_incomplete")
+    return raw
+
+
+def qualify_npm_vendor(source, vendor_record, archives, env, core, context, child_env, home):
+    """Use the newly frozen patched install; never qualify the bootstrap tree."""
+    import npm_vendor_derivation_v109 as vendor
+    captures = home/"vendor-captures"
+    names = ["vendor-control-0", "vendor-control-1", "vendor-qualification"]
+    try:
+        result = core.phase_process(["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"],
+            source, child_env, context, "vendor-patched-install", 0)
+        policy.need(result.returncode == 0 and not getattr(result, "timed_out", False), "v9.vendor_patched_install_failed")
+        controls, control_footers = [], []
+        for ordinal, (script, count) in enumerate(vendor.CONTROL_TESTS):
+            report = home/(names[ordinal] + ".tap")
+            policy.need(not report.exists(), "v9.vendor_control_output_fresh")
+            result = core.phase_process(["node", "--test", "--test-reporter=tap", "--test-reporter-destination=" + str(report), script],
+                source, {**child_env, "GITHUB_ACTIONS": "true"}, context, "vendor-controls", ordinal)
+            capture_error = None
+            try:
+                raw = capture_vendor_report(report, captures, names[ordinal])
+                capture_state = "available"
+            except (policy.Refusal, OSError) as error:
+                capture_error, raw, capture_state = error, None, "unavailable"
+                metadata = captures/(names[ordinal] + ".json")
+                if metadata.exists():
+                    captured = policy.parse(regular(metadata, 16384), 16384)
+                    capture_state = "incomplete" if captured.get("present") is True else "missing"
+            summary = vendor.control_footer_projection(ordinal, result.returncode, getattr(result, "timed_out", None), raw, capture_state)
+            control_footers.append(summary); emit(summary)
+            footer = summary["footer"]
+            valid = (capture_error is None and result.returncode == 0 and not getattr(result, "timed_out", False) and
+                footer["state"] == "available" and footer["counters"] ==
+                {"tests": count, "pass": count, "fail": 0, "cancelled": 0, "skipped": 0, "todo": 0} and not footer["notOkIndices"])
+            if not valid:
+                diagnostic = {"schema": "openclaw.v109.npm-vendor-failure-diagnostic.v1", "status": "refused",
+                    "diagnosticState": "control_failure", "controlFooters": control_footers,
+                    "qualificationAccepted": False, "imageBuilt": False, "productionAuthorized": False}
+                private_write(captures/"vendor-qualification.safe.json", policy.encode(diagnostic)); emit(diagnostic)
+                if capture_error is not None: raise capture_error
+                policy.need(result.returncode == 0 and not getattr(result, "timed_out", False), "v9.vendor_controls_failed")
+                policy.need(footer.get("reason") != "tap_utf8", "v9.vendor_control_tap_utf8")
+                raise policy.Refusal("v9.vendor_control_tap_summary")
+            totals = footer["counters"]
+            controls.append({"path": script, "runtimeSha256": policy.digest(regular(source/script)),
+                "receiptSha256": policy.digest(raw), "caseCount": totals["tests"], "passedCount": totals["pass"],
+                "exitCode": result.returncode, "timedOut": False, "cleanupSettled": getattr(result, "cleanup_settled", None)})
+        report = home/"vendor-qualification.json"
+        policy.need(not report.exists(), "v9.vendor_qualification_output_fresh")
+        result = core.phase_process(["node", vendor.QUALIFIER, "--original-npm", str(archives["original"]),
+            "--derived-npm", str(archives["derived"]), "--repo-root", str(source), "--receipt", str(report)],
+            source, {**child_env, "GITHUB_ACTIONS": "true"}, context, "vendor-actual-qualification", 0)
+        raw = capture_vendor_report(report, captures, names[2])
+        if result.returncode != 0 or getattr(result, "timed_out", False):
+            try:
+                diagnostic = vendor.failed_qualification_projection(raw, policy.need)
+            except (policy.Refusal, ValueError, TypeError, KeyError):
+                diagnostic = {"schema": "openclaw.v109.npm-vendor-failure-diagnostic.v1", "status": "refused",
+                    "diagnosticState": "unrecognized", "rawReceiptBytes": len(raw),
+                    "rawReceiptSha256": policy.digest(raw), "qualificationAccepted": False,
+                    "imageBuilt": False, "productionAuthorized": False, "packageTests": {"state": "unavailable", "reason": "receipt_invalid"}}
+            diagnostic["controlFooters"] = control_footers
+            private_write(captures/"vendor-qualification.safe.json", policy.encode(diagnostic))
+            emit(diagnostic)
+            raise policy.Refusal("v9.vendor_actual_qualification_failed")
+        receipt = policy.parse(raw, 65536)
+        evidence = {"schema": "openclaw.v109.npm-vendor-qualification-evidence.v1",
+            "qualifierRuntimeSha256": policy.digest(regular(source/vendor.QUALIFIER)),
+            "receiptSha256": policy.digest(raw), "receipt": receipt, "controls": controls}
+        vendor.validate_qualification(evidence, vendor_record, policy.need)
+        return evidence
+    except Exception:
+        # Only these six prebound snapshots are copied; no directory scan or raw
+        # stream reaches stdout. Existing lock diagnostics retain their identity.
+        for name in names:
+            for suffix in (".raw", ".json"):
+                path = captures/(name + suffix)
+                if path.exists():
+                    info = path.lstat()
+                    policy.need(stat.S_ISREG(info.st_mode) and not path.is_symlink() and
+                        path.resolve(strict=True) == path.absolute() and 0 <= info.st_size <= 131072,
+                        "v9.vendor_capture_regular")
+                    raw = path.read_bytes()
+                    policy.need(len(raw) == info.st_size, "v9.vendor_capture_size")
+                    private_write(Path(env["RUNNER_TEMP"])/"v109-lock-diagnostic"/(name + suffix), raw)
+        projection = captures/"vendor-qualification.safe.json"
+        if projection.exists():
+            private_write(Path(env["RUNNER_TEMP"])/"v109-lock-diagnostic"/projection.name, regular(projection, 65536))
+        raise
 
 
 def derive(pipeline,source,bindings,request,env,core,context):
@@ -1932,17 +2162,42 @@ def derive(pipeline,source,bindings,request,env,core,context):
         home=Path(temporary); child_env=core.clean_env(home,env)
         internal_bootstrap(core,home,child_env,request,context)
         core.resource_check(source)
+        vendor_record, vendor_files, vendor_archives = None, {}, {}
+        if vendor_material_selected(bindings):
+            vendor_record, vendor_files, vendor_archives = prepare_npm_vendor(source, bindings, request, env, core, context, child_env, home)
+            h3 = {**h3, "workspaceBytes": vendor_files["pnpm-workspace.yaml"], "vendorDerivation": vendor_record}
         result=core.phase_process(["pnpm","install","--lockfile-only","--ignore-scripts","--no-frozen-lockfile"],
             source,child_env,context,"lock-derivation",0)
         policy.need(result.returncode==0 and not getattr(result,"timed_out",False),"v9.lock_derivation_failed")
         read=lambda *a:git_read(source,*a,deadline=context["deadlineEpoch"])
-        changed_paths = read("diff","--name-only").decode().splitlines()
-        policy.need(changed_paths in ([[],["pnpm-lock.yaml"]] if h3 is not None else [["pnpm-lock.yaml"]]) and
-            read("ls-files","--others","--exclude-standard").strip()==b"","v9.lock_only_worktree_delta")
+        tracked_changes = read("diff","--name-only").decode().splitlines()
+        untracked = read("ls-files","--others","--exclude-standard").decode().splitlines()
+        changed_paths = sorted(tracked_changes + untracked)
+        if vendor_record is not None:
+            import npm_vendor_derivation_v109 as vendor
+            policy.need(len(changed_paths) == len(set(changed_paths)) and
+                set(changed_paths) <= set(vendor.GENERATED) | {"pnpm-lock.yaml"} and
+                set(untracked) <= {vendor.PATCH, vendor.PROOF}, "v9.vendor_only_worktree_delta")
+            policy.need(all(regular(source/name, 2*1024*1024) == raw for name, raw in vendor_files.items()),
+                "v9.vendor_generated_sources_unchanged")
+        else:
+            policy.need(changed_paths in ([[],["pnpm-lock.yaml"]] if h3 is not None else [["pnpm-lock.yaml"]]) and
+                not untracked, "v9.lock_only_worktree_delta")
         generated=regular(source/"pnpm-lock.yaml",16*1024*1024)
         diff=read("diff","--no-ext-diff","--no-textconv","--binary","--","pnpm-lock.yaml")
-        retain_unvalidated_lock(generated,diff,request,env,started,**({"changed_paths":changed_paths} if h3 is not None else {}))
+        retain_unvalidated_lock(generated,diff,request,env,started,**({"changed_paths":changed_paths} if h3 is not None else {}),
+            **({"vendor_files":vendor_files} if vendor_record is not None else {}))
         security=verify_lock_security(before,generated,policy.REGISTRY_PINS[0]["distIntegrity"],policy.REGISTRY_PINS[1]["distIntegrity"],**({"h3":h3} if h3 is not None else {}))
+        vendor_qualification = None
+        if vendor_record is not None:
+            vendor_qualification = qualify_npm_vendor(source, vendor_record, vendor_archives, env, core, context, child_env, home)
+            policy.need(read("rev-parse", "HEAD").strip() == request["source"]["sourceSha"].encode() and
+                read("rev-parse", "HEAD^{tree}").strip() == request["source"]["sourceTree"].encode() and
+                all(regular(source/name, 2*1024*1024) == raw for name, raw in vendor_files.items()) and
+                regular(source/"pnpm-lock.yaml", 16*1024*1024) == generated and
+                sorted(read("diff","--name-only").decode().splitlines() +
+                    read("ls-files","--others","--exclude-standard").decode().splitlines()) == changed_paths,
+                "v9.vendor_qualification_source_unchanged")
         receipt={"schema":policy.GENERATION_SCHEMA,"status":"derived_only",**{
             k:request["source"][k] for k in ("sourceSha","sourceTree")},"pipelineHead":event_binding(policy.parse(
             regular(Path(env["GITHUB_EVENT_PATH"]),1024*1024)),env),"runId":env["GITHUB_RUN_ID"],"runAttempt":1,
@@ -1954,8 +2209,9 @@ def derive(pipeline,source,bindings,request,env,core,context):
             "gitDiffSha256":policy.digest(diff),"allOtherTrackedEntriesUnchanged":True,"startedAt":started,
             "finishedAt":now_utc(),"exitCode":0,"timedOut":False,"cleanupSettled":getattr(result,"cleanup_settled",None),
             "imageBuilt":False,"qualified":False,"productionAuthorized":False,"registryEvidence":registry,
-            "lockSecuritySha256":policy.digest(policy.canonical(security))}
-        files={"pnpm-lock.yaml":generated,"lock.diff":diff,"generation.json":policy.encode(receipt)}
+            "lockSecuritySha256":policy.digest(policy.canonical(security)),
+            **({"vendorDerivation": vendor_record, "vendorQualification": vendor_qualification} if vendor_record is not None else {})}
+        files={"pnpm-lock.yaml":generated,"lock.diff":diff,"generation.json":policy.encode(receipt), **vendor_files}
         policy.need(sum(map(len,files.values()))<=policy.ARTIFACT_BYTES-65536,"v9.lock_artifact_size")
         out=Path(env["RUNNER_TEMP"])/"v109-lock-artifact"
         policy.need(not out.exists(),"v9.artifact_output_fresh")
