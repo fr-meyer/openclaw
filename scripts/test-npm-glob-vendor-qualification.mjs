@@ -16,7 +16,7 @@ for(const [name,change] of [
  ['image-claim',r=>r.imageTested=true],['missing-public-pack',r=>r.publicPackTested=false],['false-success',r=>r.cases[0].passed=false],
 ])test(`rejects ${name}`,()=>{const r=result();change(r);assert.throws(()=>projectPackageTestResult(r));});
 test('failure projection removes raw assertion message/observed arbitrary data',()=>{
- const r=result();r.passed=false;r.cases[0]={name:'case-0',passed:false,code:'ERR_ASSERTION',assertion:{operator:'strictEqual',actual:0,expected:1},message:'DO_NOT_COPY_PRIVATE_MESSAGE',observed:{unexpected:'DO_NOT_COPY'}};
+ const r=result();r.passed=false;r.cases[0]={name:'case-0',passed:false,code:'ERR_ASSERTION',assertion:{operator:'strictEqual',actual:0,expected:1},operation:'case.entry',cause:{name:{state:'recognized',value:'AssertionError'},code:{state:'recognized',value:'ERR_ASSERTION'},ownerReason:{state:'absent'}},message:'DO_NOT_COPY_PRIVATE_MESSAGE',observed:{unexpected:'DO_NOT_COPY'}};
  const s=projectPackageTestResult(r);assert.equal(s.passed,false);assert.equal(s.publicPackTested,false);assert.ok(!JSON.stringify(s).includes('DO_NOT_COPY'));assert.deepEqual(s.cases[0].assertion,{operator:'strictEqual',actual:0,expected:1});
  r.cases[0].assertion.actual='DO_NOT_COPY';assert.throws(()=>projectPackageTestResult(r),/package_assertion_shape/);
 });
@@ -71,4 +71,21 @@ test('safe exception projection never invokes getters and recognizes native prot
  let reads=0;const error={get name(){reads++;return 'Error';},get code(){reads++;return 'ENOENT';}};
  assert.deepEqual(projectQualificationExceptionCause(error),{name:{state:'unrecognized'},code:{state:'unrecognized'}});assert.equal(reads,0);
  assert.deepEqual(projectQualificationExceptionCause(new TypeError('hidden')),{name:{state:'recognized',value:'TypeError'},code:{state:'absent'}});
+});
+
+function failedDiagnosticResult(){const r=result();r.passed=false;r.cases[0]={name:'case-0',passed:false,code:'ERR_ASSERTION',assertion:{operator:'strictEqual',actual:1,expected:0},operation:'pack.installed_verify',cause:{name:{state:'recognized',value:'Error'},code:{state:'absent'},ownerReason:{state:'recognized',value:'npm-vendor.installed_inventory'}}};return r;}
+test('failed operation and literal owner reason survive strict safe projection',()=>{
+ const row=projectPackageTestResult(failedDiagnosticResult()).cases[0];assert.equal(row.operation,'pack.installed_verify');assert.deepEqual(row.cause.ownerReason,{state:'recognized',value:'npm-vendor.installed_inventory'});assert.equal(row.assertion.actual,1);
+});
+test('unknown or missing failed-case operation refuses',()=>{
+ const r=failedDiagnosticResult();r.cases[0].operation='PRIVATE_UNKNOWN_OPERATION';assert.throws(()=>projectPackageTestResult(r),/package_case_operation/);delete r.cases[0].operation;assert.throws(()=>projectPackageTestResult(r),/package_case_operation/);
+});
+test('unknown cause values and extra raw fields refuse rather than leak',()=>{
+ const r=failedDiagnosticResult();r.cases[0].cause.ownerReason.value='PRIVATE_UNKNOWN_REASON';assert.throws(()=>projectPackageTestResult(r),/package_case_cause_shape/);
+ r.cases[0].cause.ownerReason={state:'unrecognized',message:'PRIVATE_MESSAGE'};assert.throws(()=>projectPackageTestResult(r),/package_case_cause_shape/);
+ r.cases[0].cause.ownerReason={state:'recognized',value:'npm-vendor.installed_inventory'};r.cases[0].cause.code={state:'recognized',value:'PRIVATE_CODE'};assert.throws(()=>projectPackageTestResult(r),/package_case_cause_shape/);
+});
+test('absent/unrecognized per-case cause states remain explicit without raw data',()=>{
+ const r=failedDiagnosticResult();r.cases[0].cause={name:{state:'unrecognized'},code:{state:'absent'},ownerReason:{state:'unrecognized'}};r.cases[0].code='PRIVATE_RAW_CODE';
+ const safe=projectPackageTestResult(r).cases[0];assert.deepEqual(safe.cause,r.cases[0].cause);assert.equal(safe.code,'case_failed');assert.ok(!JSON.stringify(safe).includes('PRIVATE'));
 });

@@ -2506,7 +2506,7 @@
       "upstream109": null,
       "result": {
         "mode": "100644",
-        "blob": "0879be075a97d252216f79f427292d88dd117dfd"
+        "blob": "39d00fdeb112b2702111311105e46c12e51e10ae"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -2528,7 +2528,7 @@
       "upstream109": null,
       "result": {
         "mode": "100644",
-        "blob": "3f029a7d1858d2cf0c548287faab18cfa77bc862"
+        "blob": "b521dcb56dc5f92785bd07275dc733dd3fa58306"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -2539,7 +2539,7 @@
       "upstream109": null,
       "result": {
         "mode": "100644",
-        "blob": "49d5803dd1383617c3e86f980b64dd106eb8b0e9"
+        "blob": "e42c7e3b9203282d3a6978caf5aba5f27fdc89f3"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -4899,9 +4899,9 @@
   "sourceSuccessor": {
     "schema": "openclaw.v109.successor-lock-seed.v1",
     "amendmentSha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520",
-    "generation": 2,
-    "parentSource": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
-    "parentTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+    "generation": 3,
+    "parentSource": "957c3744bb85e3be23a264a2cd89e8202213f926",
+    "parentTree": "357d79028afdace8a81672922fa57ab3c9d9c9d8",
     "seedSource": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
     "seedTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
     "seedLockBlob": "7d8b8fb442bb3ddff565b870d86e3fbb9571367d",
