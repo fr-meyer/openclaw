@@ -2255,7 +2255,7 @@
     "moneyCeilingUSD": "25.00",
     "nextExecution": {
       "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
-      "status": "DISARMED",
+      "status": "REVIEWED",
       "sequence": 24,
       "phase": "validation",
       "preparationAttempt": 16,
@@ -2277,8 +2277,8 @@
         "requestSha256": "86f44b0f2a63ca062d35285c2feab37d9d7cd382d34bc5c509cfbdddee09b18a"
       },
       "reasonCode": "reviewed_pipeline_correction",
-      "reviewSha256": null,
-      "requestSha256": null,
+      "reviewSha256": "ed640af20ef8270c466a479b996afa11b9488890060434d64ad37351dc406256",
+      "requestSha256": "31867417827c665974f8fec88a20b10d399eef47ab36f5e0e941bc96e33a494f",
       "reservations": {
         "current": 1075,
         "pendingValidation": 0,
@@ -2290,7 +2290,7 @@
     },
     "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
     "schema": "openclaw.v109.bounded-ci-run-grant.v1",
-    "status": "DISARMED",
+    "status": "APPROVED",
     "budgetCeilingAmendment": {
       "schema": "openclaw.v109.budget-ceiling-amendment-binding.v1",
       "scope": "minute-and-spending-ceilings-only",
@@ -3726,7 +3726,7 @@
   "repository": "fr-meyer/openclaw",
   "schema": "openclaw.v109.ci-bindings.v1",
   "sourceBranch": "prep/v2026.10.9-remediation",
-  "status": "DISARMED",
+  "status": "APPROVED_CI",
   "upstream": {
     "commit": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
     "tag": "v2026.10.9",
