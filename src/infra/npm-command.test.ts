@@ -18,19 +18,17 @@ afterEach(() => {
 
 describe("npm invocation", () => {
   it.each([
-    { bun: undefined, args: ["view", "@openclaw/irc", "version"], command: ["npm"] },
+    { bun: undefined, args: ["view", "@openclaw/irc", "version"], command: [process.execPath, cliPath] },
     { bun: "1.4.2", args: ["install", "--ignore-scripts"], command: [process.execPath, cliPath] },
   ])("preserves npm arguments with Bun version $bun", ({ bun, args, command }) => {
     Object.defineProperty(process, "versions", { value: { ...originalVersions, bun } });
     const stat = vi.spyOn(fs, "statSync");
     expect(resolveNpmCommand(args)).toEqual([...command, ...args]);
-    if (!bun) {
-      expect(stat).not.toHaveBeenCalled();
-    }
+    expect(stat).toHaveBeenCalledWith(cliPath);
   });
 
-  it("fails with a typed missing-file error instead of falling back to PATH npm", () => {
-    Object.defineProperty(process, "versions", { value: { ...originalVersions, bun: "1.4.2" } });
+  it.each([undefined, "1.4.2"])("fails closed on missing bundled npm under Bun version %s", (bun) => {
+    Object.defineProperty(process, "versions", { value: { ...originalVersions, bun } });
     vi.spyOn(fs, "statSync").mockImplementation(() => {
       throw Object.assign(new Error("missing"), { code: "ENOENT" });
     });

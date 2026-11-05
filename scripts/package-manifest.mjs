@@ -5,6 +5,11 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  isNpmVendorBackportConfigured,
+  prepareNpmVendorForPack,
+  restoreNpmVendorForPack,
+} from "./lib/npm-vendor-delivery.mjs";
 
 const PACKAGE_JSON_PATH = "package.json";
 const BACKUP_PATH = path.join(".artifacts", "package-manifest", "package.json.prepack-backup");
@@ -16,6 +21,15 @@ const CRABBOX_PUBLISHED_LAUNCHER = "node dist/crabbox-wrapper.js";
 function preparedPackageManifest(content, platformOptionals = {}) {
   const packageJson = JSON.parse(content);
   let changed = false;
+  if (isNpmVendorBackportConfigured(packageJson)) {
+    const bundles = packageJson.bundleDependencies ?? packageJson.bundledDependencies ?? [];
+    if (!Array.isArray(bundles)) throw new Error("npm vendor delivery requires explicit bundle names");
+    if (!bundles.includes("npm")) {
+      packageJson.bundleDependencies = [...bundles, "npm"];
+      delete packageJson.bundledDependencies;
+      changed = true;
+    }
+  }
 
   // npm 10's global bundle loader promotes hoisted optional children to prod
   // dependencies. Explicit optional edges retain platform filtering even then.
@@ -61,7 +75,7 @@ function preparedPackageManifest(content, platformOptionals = {}) {
 export async function restorePackageManifest(cwd = process.cwd()) {
   const backupPath = path.join(cwd, BACKUP_PATH);
   if (!existsSync(backupPath)) {
-    return false;
+    return restoreNpmVendorForPack(cwd);
   }
   const packageJsonPath = path.join(cwd, PACKAGE_JSON_PATH);
   const [receipt, current] = await Promise.all([
@@ -84,11 +98,26 @@ export async function restorePackageManifest(cwd = process.cwd()) {
   }
   await writeFile(packageJsonPath, original, "utf8");
   await rm(backupPath, { force: true });
+  restoreNpmVendorForPack(cwd);
   return true;
 }
 
 /** Prepare published package metadata while recording restorable source bytes. */
 export async function preparePackageManifest(cwd = process.cwd()) {
+  prepareNpmVendorForPack(cwd);
+  try {
+    return await preparePackageManifestInner(cwd);
+  } catch (error) {
+    try {
+      restoreNpmVendorForPack(cwd);
+    } catch (restoreError) {
+      throw new AggregateError([error, restoreError], "npm vendor package preparation failed and recovery is incomplete", { cause: error });
+    }
+    throw error;
+  }
+}
+
+async function preparePackageManifestInner(cwd) {
   const packageJsonPath = path.join(cwd, PACKAGE_JSON_PATH);
   const backupPath = path.join(cwd, BACKUP_PATH);
   const original = await readFile(packageJsonPath, "utf8");

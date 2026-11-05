@@ -322,17 +322,6 @@ RUN --network=default --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/
       ca-certificates curl git hostname libgomp1 lsof openssh-client openssl procps python3 tini && \
     update-ca-certificates
 
-# Keep npm as an operator-facing capability while replacing the base image's
-# bundled CLI dependency tree with the current release. The published package
-# omits its dev tools, so hide their metadata during the script-free refresh.
-RUN --network=default npm install --global npm@latest --ignore-scripts && \
-    npm_dir="$(npm root --global)/npm" && \
-    cp "$npm_dir/package.json" /tmp/npm-package.json && \
-    node -e 'const fs = require("node:fs"); const file = process.argv[1]; const packageJson = JSON.parse(fs.readFileSync(file, "utf8")); delete packageJson.devDependencies; fs.writeFileSync(file, `${JSON.stringify(packageJson, null, 2)}\n`);' "$npm_dir/package.json" && \
-    npm update --prefix "$npm_dir" --omit=dev --ignore-scripts --no-audit --no-fund && \
-    mv /tmp/npm-package.json "$npm_dir/package.json" && \
-    npm cache clean --force
-
 RUN --network=none chown node:node /app
 
 # Reuse the integrity-pinned pnpm distribution before copying candidate payload.
@@ -359,6 +348,10 @@ COPY --from=runtime-assets --chown=node:node /app/docker-entrypoint.mjs .
 COPY --from=runtime-assets --chown=node:node /app/openclaw.mjs .
 COPY --from=runtime-assets --chown=node:node /app/.runtime-bootstrap/scripts ./scripts
 COPY --from=runtime-assets --chown=node:node /app/scripts/lib/guard-inventory-utils.mjs ./scripts/lib/
+COPY --from=runtime-assets --chown=node:node /app/scripts/lib/npm-vendor-delivery.mjs /app/scripts/lib/npm-glob-vendor-proof.mjs /app/scripts/lib/npm-glob-vendor-archive.mjs ./scripts/lib/
+# Node PATH npm and Bun's package-local npm consume the same authenticated vendor
+# inventory. No registry latest/update operation may replace the reviewed bytes.
+RUN --network=none node ./scripts/lib/npm-vendor-delivery.mjs install-global --repo-root /app --prefix /usr/local
 COPY --from=runtime-assets --chown=node:node /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} ./${OPENCLAW_BUNDLED_PLUGIN_DIR}
 COPY --from=runtime-assets --chown=node:node /app/skills ./skills
 COPY --from=runtime-assets --chown=node:node /app/docs ./docs

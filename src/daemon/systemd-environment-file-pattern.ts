@@ -1,6 +1,6 @@
 /** Expand systemd POSIX EnvironmentFile patterns without normalizing literal path bytes. */
 import fs from "node:fs/promises";
-import { Minimatch } from "minimatch";
+import { GLOBSTAR, Minimatch } from "minimatch";
 import { hasErrnoCode } from "../infra/errno.js";
 
 export async function expandSystemdEnvironmentFilePattern(pattern: string): Promise<string[]> {
@@ -30,7 +30,7 @@ export async function expandSystemdEnvironmentFilePattern(pattern: string): Prom
       }
       try {
         for (const entry of await fs.readdir(parent)) {
-          if (part instanceof RegExp && part.test(entry)) {
+          if (part !== GLOBSTAR && part.test(entry)) {
             matches.push(`${prefix}${entry}`);
           }
         }

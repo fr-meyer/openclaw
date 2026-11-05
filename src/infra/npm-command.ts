@@ -30,7 +30,7 @@ export function resolveBundledNpmCommand(args: readonly string[]): [string, stri
   return [process.execPath, cliPath, ...args];
 }
 
-/** Bun must run the packaged CLI directly; npm's executable requires Node. */
+/** Both runtimes use the dependency shipped and verified with this release. */
 export function resolveNpmCommand(args: readonly string[]): [string, ...string[]] {
-  return process.versions.bun ? resolveBundledNpmCommand(args) : ["npm", ...args];
+  return resolveBundledNpmCommand(args);
 }

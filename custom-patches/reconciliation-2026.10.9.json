@@ -11,7 +11,7 @@
   "forkDeltaPathCount": 250,
   "upstreamChangedPathCount": 441,
   "overlapPathCount": 55,
-  "lockState": "ci_derived",
+  "lockState": "pending_ci_derivation",
   "sourcePaths": [
     {
       "path": "Dockerfile",
@@ -29,9 +29,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "9ede1b0d0300c663371fb27a8d80229489151177"
+        "blob": "2e1d7c56ecefb795323cc30a2353a54b389b8b0a"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "custom-patches/NEXT-RELEASE-2026.10.6.md",
@@ -1683,7 +1683,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "a89268b9a6b50740b9c51d16b8186523620fa961"
+        "blob": "77346788601b0b3b356eb61849240e4e8cd54735"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -2035,6 +2035,17 @@
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
+      "path": "scripts/build-npm-glob-vendor-backport.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "6834a0915f8752924581baa6c0a75bdc84145217"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "scripts/check-package-patches.mts",
       "base108": {
         "mode": "100644",
@@ -2336,9 +2347,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "37a35e8a50cbb9698686b7a14e9bd8eada30ce10"
+        "blob": "e500cb4248a984a0519b5e68adb6ed11f0f92a07"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "scripts/lib/ci-changed-node-test-plan.mts",
@@ -2361,6 +2372,114 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "scripts/lib/npm-glob-vendor-archive.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "80b8d7610356e5ac54a1cffb5fc1f2732e3b7acc"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-backport.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "19e164ec392112c5d506d3903075a2b341bb6030"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-proof.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "53f00b69bab16c3d0e88d73e1e8afe9bf3fbdca1"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-sources/LICENSE.md",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "881248b6d7f0ca2c4f65c41c0af5e02bb0680601"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-sources/fix-parent-walker.ts.txt",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "a675fee2f5f964ee13c5efde2942094267417590"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-sources/fix-walker.ts.txt",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "34f076653684c3c2bc64c2ddc9ceeb8ca340a7a9"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-sources/glob13-walker.ts.txt",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "495e0a700e3c8a603ab2ba58a23b7c7be16015ee"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-vendor-delivery.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "8c584633d0174abce6640415b2d64bac7dd773d1"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/package-manifest.mjs",
+      "base108": {
+        "mode": "100644",
+        "blob": "109ab733d4ca54dc2dd7a68b3866b47af76f6428"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "109ab733d4ca54dc2dd7a68b3866b47af76f6428"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "109ab733d4ca54dc2dd7a68b3866b47af76f6428"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "52e523aa4108f1f287f7ca5dab12283f59c4fa7c"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "scripts/plugin-sdk-surface-report.mts",
       "base108": {
         "mode": "100644",
@@ -2379,6 +2498,50 @@
         "blob": "f9bb330b7e62423a073b64c974913a7718ae3200"
       },
       "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/qualify-npm-glob-vendor-backport.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "0879be075a97d252216f79f427292d88dd117dfd"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/test-npm-glob-vendor-controls.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "0696a890697f7b79f974cc76993ff6f649c9a14f"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/test-npm-glob-vendor-qualification.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "3f029a7d1858d2cf0c548287faab18cfa77bc862"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/test-npm-vendor-package.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "49d5803dd1383617c3e86f980b64dd106eb8b0e9"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "scripts/test-projects.test-support.mts",
@@ -3011,6 +3174,26 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "src/daemon/systemd-environment-file-pattern.ts",
+      "base108": {
+        "mode": "100644",
+        "blob": "af6086d534be093fe6744b1dabc52e4aaa0646ca"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "af6086d534be093fe6744b1dabc52e4aaa0646ca"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "af6086d534be093fe6744b1dabc52e4aaa0646ca"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "87068aa56adca0a4bcfbaeeca7942530fe4734a4"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "src/dockerfile.test.ts",
       "base108": {
         "mode": "100644",
@@ -3559,6 +3742,46 @@
         "blob": "4464e9fe1893ea129b6673abd5f87d504d4b79c6"
       },
       "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "src/infra/npm-command.test.ts",
+      "base108": {
+        "mode": "100644",
+        "blob": "cf40640fe0395cf04b9482cb0d16168c22779fa6"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "cf40640fe0395cf04b9482cb0d16168c22779fa6"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "cf40640fe0395cf04b9482cb0d16168c22779fa6"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "53069410819584d9584161b27c617001f6ac09fb"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "src/infra/npm-command.ts",
+      "base108": {
+        "mode": "100644",
+        "blob": "ab52c6934ec6a59f773efd14efb90cee9f6a5dd5"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "ab52c6934ec6a59f773efd14efb90cee9f6a5dd5"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "ab52c6934ec6a59f773efd14efb90cee9f6a5dd5"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "e5c97158c8041846a289324f7fca27d42479c3ba"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "src/plugin-sdk/config-mutation.ts",
@@ -4350,9 +4573,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "44b3192d33589c3fa88eee00a43778257b664c73"
+        "blob": "e45cda38c024b2bf7ab02d94d889dfdc81ee85d7"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "test/scripts/lint-suppressions.test.ts",
@@ -4676,26 +4899,19 @@
   "sourceSuccessor": {
     "schema": "openclaw.v109.successor-lock-seed.v1",
     "amendmentSha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520",
-    "generation": 1,
-    "parentSource": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
-    "parentTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f",
-    "seedSource": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
-    "seedTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f",
-    "seedLockBlob": "8fa3ddcf5e9465095981bb0f11b24e2d00bb7862",
-    "seedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+    "generation": 2,
+    "parentSource": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+    "parentTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+    "seedSource": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
+    "seedTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
+    "seedLockBlob": "7d8b8fb442bb3ddff565b870d86e3fbb9571367d",
+    "seedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
     "seedLockDerivation": {
-      "runId": 41043479025,
+      "runId": 41836686760,
       "attempt": 1,
-      "artifactSha256": "4b5386aa4d4f37b378658309f6e58239a1ddc949550d416cc2f6b6ca9ab4cc7c",
-      "generatedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-      "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87"
+      "artifactSha256": "2ee0b9d173257be939df1d2598c016374da7df25715aa1f530a86e8ebf54633c",
+      "generatedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+      "receiptSha256": "4a78e49d9933bec7483fbca1e7a604ba72bebc2230e03cfbaf4f994852c7b7c0"
     }
-  },
-  "lockDerivation": {
-    "runId": 41836686760,
-    "attempt": 1,
-    "artifactSha256": "2ee0b9d173257be939df1d2598c016374da7df25715aa1f530a86e8ebf54633c",
-    "generatedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
-    "receiptSha256": "4a78e49d9933bec7483fbca1e7a604ba72bebc2230e03cfbaf4f994852c7b7c0"
   }
 }

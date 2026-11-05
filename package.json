@@ -6,6 +6,10 @@
     "schemaVersions": {
       "state": 20,
       "agent": 25
+    },
+    "npmVendorBackport": {
+      "proof": "patches/npm-12.2.1.glob-cancellation.proof.json",
+      "patch": "patches/npm@12.2.1.patch"
     }
   },
   "description": "Multi-channel AI gateway with extensible messaging integrations",
@@ -2248,7 +2252,8 @@
     "verify": "node --import ./scripts/tsx.mjs scripts/verify.mts"
   },
   "bundleDependencies": [
-    "chrome-devtools-mcp"
+    "chrome-devtools-mcp",
+    "npm"
   ],
   "dependencies": {
     "@agentclientprotocol/sdk": "1.7.0",
