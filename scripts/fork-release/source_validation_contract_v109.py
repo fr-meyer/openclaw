@@ -878,17 +878,18 @@ def source_minutes_for(request):
 
 def maximum_new_minutes_for(request):
     need(type(request) is dict, "v9.budget_ceiling_request")
+    continuation = (run_allowance.vendor_continuation_from_digest(request["vendorRepairContinuationSha256"])
+        if "vendorRepairContinuationSha256" in request else None)
     if "sourceSuccessorAmendmentSha256" in request:
         need(request["sourceSuccessorAmendmentSha256"] == run_allowance.H3_AMENDMENT_SHA256 and
             request.get("budgetCeilingAmendmentSha256") == run_allowance.BUDGET_AMENDMENT_SHA256 and
             request.get("runAllowanceSha256") == run_allowance.AUTHORITY_SHA256 and
-            type(request.get("sourceGeneration")) is int and 1 <= request["sourceGeneration"] <= (5 if
-                request.get("vendorRepairContinuationSha256") == run_allowance.digest(run_allowance.vendor_repair_continuation()) else 3) and
-            ("vendorRepairContinuationSha256" not in request or request["vendorRepairContinuationSha256"] ==
-                run_allowance.digest(run_allowance.vendor_repair_continuation())) and
+            type(request.get("sourceGeneration")) is int and 1 <= request["sourceGeneration"] <=
+                (continuation["maximumMaterialSourceGenerations"] if continuation is not None else 3) and
             pin(request.get("sourceFamilySha256")) and request.get("phase") in ("lock-preparation", "validation") and
             type(request.get("executionSequence")) is int and 12 <= request["executionSequence"] <= 1000, "v9.h3_budget_request")
         return run_allowance.AMENDED_MAXIMUM_NEW_MINUTES
+    need(continuation is None, "v9.continuation_requires_source_amendment")
     if "budgetCeilingAmendmentSha256" not in request:
         return MAXIMUM_NEW_MINUTES
     need(request["budgetCeilingAmendmentSha256"] == run_allowance.BUDGET_AMENDMENT_SHA256 and
@@ -920,9 +921,10 @@ def budget(request):
             "maximumBookedMinutes": maximum,
             "maximumAdditionalWorkflowAttempts": 1000, "maximumStageWorkflowAttempts": 1042}
         if "sourceSuccessorAmendmentSha256" in request:
-            result.update(maximumMaterialSourceGenerations=(5 if "vendorRepairContinuationSha256" in request else 3),
-                stagePools=deepcopy(run_allowance.vendor_repair_continuation()["stagePools"] if
-                    "vendorRepairContinuationSha256" in request else run_allowance.H3_STAGE_POOLS),
+            continuation = (run_allowance.vendor_continuation_from_digest(request["vendorRepairContinuationSha256"])
+                if "vendorRepairContinuationSha256" in request else None)
+            result.update(maximumMaterialSourceGenerations=(continuation["maximumMaterialSourceGenerations"] if continuation is not None else 3),
+                stagePools=deepcopy(continuation["stagePools"] if continuation is not None else run_allowance.H3_STAGE_POOLS),
                 stagePrefixBookedMinutes=run_allowance.H3_PREFIX_MINUTES,
                 maximumStageBookedMinutes=run_allowance.H3_MAXIMUM_BOOKED_MINUTES)
         return result

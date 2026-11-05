@@ -1843,6 +1843,86 @@
         "runId": "41978940304",
         "nativeAttempt": 1,
         "runnerMinutes": 1
+      },
+      {
+        "runId": "41984873437",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41984873517",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41984873613",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41984873723",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41984873526",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41984873780",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41984873496",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41984873481",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41984873626",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41984873576",
+        "nativeAttempt": 1,
+        "runnerMinutes": 3
+      },
+      {
+        "runId": "41984873555",
+        "nativeAttempt": 1,
+        "runnerMinutes": 17
+      },
+      {
+        "runId": "41984869798",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "41984869956",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41984869744",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41984870036",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "41984869743",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
       }
     ],
     "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
@@ -1855,10 +1935,10 @@
     "moneyCeilingUSD": "25.00",
     "nextExecution": {
       "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
-      "status": "REVIEWED",
-      "sequence": 19,
+      "status": "DISARMED",
+      "sequence": 20,
       "phase": "lock-preparation",
-      "preparationAttempt": 13,
+      "preparationAttempt": 14,
       "source": {
         "sourceSha": "975d2e46e075c3c960b27e233b39ef5e35452aca",
         "sourceTree": "bd54438e6b7f4d5ea97cb279a50594afefd8dfc7",
@@ -1872,13 +1952,13 @@
         }
       },
       "priorSourceRun": {
-        "runId": "41978942956",
-        "pipelineHead": "56ba3c578ace862439641e4340867c72c7ee67a0",
-        "requestSha256": "6aadf3d07d8319d244eea142aa40c24922d78048d4231f04436b6d0cdb7824f5"
+        "runId": "41984873555",
+        "pipelineHead": "cf48231acc66fd0adfd2c11aa7634f5c2d2aafaf",
+        "requestSha256": "bd199d5a30b1fd965cbb0fc7b55e09d864c0ef62465cb6f4f8bf2d0a863174bd"
       },
       "reasonCode": "reviewed_pipeline_correction",
-      "reviewSha256": "cbfe8c69c586892d3663c984ec82e452faad3a75a1311cc23ccf0500808c0685",
-      "requestSha256": "bd199d5a30b1fd965cbb0fc7b55e09d864c0ef62465cb6f4f8bf2d0a863174bd",
+      "reviewSha256": null,
+      "requestSha256": null,
       "reservations": {
         "current": 45,
         "pendingValidation": 1075,
@@ -1890,7 +1970,7 @@
     },
     "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
     "schema": "openclaw.v109.bounded-ci-run-grant.v1",
-    "status": "APPROVED",
+    "status": "DISARMED",
     "budgetCeilingAmendment": {
       "schema": "openclaw.v109.budget-ceiling-amendment-binding.v1",
       "scope": "minute-and-spending-ceilings-only",
@@ -3129,7 +3209,7 @@
         "vendorComponentMaximumMinutes": {
           "preparation": 180,
           "source": 2150,
-          "incidental": 80
+          "incidental": 110
         },
         "stagePools": {
           "preparation": 225,
@@ -3137,7 +3217,12 @@
           "incidental": 160,
           "image": 180
         },
-        "latestWholePlanAdmission": "2026-11-05T07:14:21Z"
+        "latestWholePlanAdmission": "2026-11-05T07:14:21Z",
+        "resourceAllocationRecord": {
+          "decisionSha256": "4edb729e1c99e689fcd2436f13dc766d97d5e949a0b1b3dd4392b67d37ec1071",
+          "kind": "internal-resource-allocation",
+          "newHumanApproval": false
+        }
       }
     }
   },
@@ -3201,7 +3286,7 @@
   "repository": "fr-meyer/openclaw",
   "schema": "openclaw.v109.ci-bindings.v1",
   "sourceBranch": "prep/v2026.10.9-remediation",
-  "status": "APPROVED_CI",
+  "status": "DISARMED",
   "upstream": {
     "commit": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
     "tag": "v2026.10.9",

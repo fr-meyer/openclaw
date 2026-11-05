@@ -115,11 +115,41 @@ def vendor_repair_continuation():
         "latestWholePlanAdmission": "2026-11-05T07:14:21Z"}
 
 
+def vendor_repair_resource_allocation():
+    """Closed internal allocation record; never new human/source authority."""
+    value = vendor_repair_continuation()
+    value["vendorComponentMaximumMinutes"]["incidental"] = 110
+    value["resourceAllocationRecord"] = {
+        "decisionSha256": "4edb729e1c99e689fcd2436f13dc766d97d5e949a0b1b3dd4392b67d37ec1071",
+        "kind": "internal-resource-allocation", "newHumanApproval": False}
+    return value
+
+
 def validate_vendor_repair_continuation(value):
-    expected = vendor_repair_continuation()
+    expected = (vendor_repair_resource_allocation() if type(value)is dict and
+        "resourceAllocationRecord" in value else vendor_repair_continuation())
     fields(value, expected, "vendor_continuation_fields")
     # Canonical JSON also distinguishes booleans from integer limits.
     need(canonical(value) == canonical(expected), "vendor_continuation_scope")
+    return value
+
+
+def vendor_continuation_from_digest(value):
+    need(pin(value), "vendor_continuation_digest")
+    for projection in (vendor_repair_continuation(), vendor_repair_resource_allocation()):
+        if value == digest(projection):
+            return projection
+    need(False, "vendor_continuation_digest")
+
+
+def validate_vendor_continuation_request(grant, request):
+    """Match this request to its OWN closed grant; known digest is not authority."""
+    need(type(request)is dict, "vendor_continuation_request")
+    value = vendor_continuation_for(grant) if grant is not None else None
+    if value is None:
+        need("vendorRepairContinuationSha256" not in request, "vendor_continuation_request_without_grant")
+    else:
+        need(request.get("vendorRepairContinuationSha256") == digest(value), "vendor_continuation_request_binding")
     return value
 
 

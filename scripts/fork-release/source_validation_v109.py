@@ -9,12 +9,15 @@ import argparse
 import base64
 from datetime import datetime, timezone
 import hashlib
+import http.client
 import importlib.util
 import json
 import math
 import os
 from pathlib import Path
 import re
+import socket
+import ssl
 import stat
 import subprocess
 import sys
@@ -170,7 +173,54 @@ def failure_category(error):
     return "unclassified"
 
 
-def emit_failure_diagnostic(error, *, family=None, ordinal=None, operation=None, get_attempt=None, retry_delay=None):
+def os_error_details(error):
+    """Native slot and exact finite classes only; never arbitrary error text."""
+    if not issubclass(type(error),OSError):
+        return None
+    classes = ((OSError,"OSError"),(PermissionError,"PermissionError"),(FileNotFoundError,"FileNotFoundError"),
+        (FileExistsError,"FileExistsError"),(IsADirectoryError,"IsADirectoryError"),(NotADirectoryError,"NotADirectoryError"),
+        (InterruptedError,"InterruptedError"),(ProcessLookupError,"ProcessLookupError"),(BlockingIOError,"BlockingIOError"),
+        (ChildProcessError,"ChildProcessError"),(ConnectionError,"ConnectionError"),(BrokenPipeError,"BrokenPipeError"),
+        (ConnectionAbortedError,"ConnectionAbortedError"),(ConnectionRefusedError,"ConnectionRefusedError"),
+        (ConnectionResetError,"ConnectionResetError"),(TimeoutError,"TimeoutError"),
+        (socket.gaierror,"gaierror"),(socket.herror,"herror"),(ssl.SSLError,"SSLError"),(ssl.SSLEOFError,"SSLEOFError"),
+        (ssl.SSLCertVerificationError,"SSLCertVerificationError"),(http.client.RemoteDisconnected,"RemoteDisconnected"))
+    subtype = {"state":"unrecognized"}
+    for kind,name in classes:
+        if type(error) is kind:
+            subtype = {"state":"recognized","value":name}
+            break
+    try:
+        # Bypass subclass __getattribute__/property hooks; this is the native
+        # OSError slot, not reason/args/filename or an exception representation.
+        number = OSError.errno.__get__(error,OSError)
+        observed = ({"state":"absent"} if number is None else
+            {"state":"present","value":number} if type(number)is int and -65535<=number<=65535 else
+            {"state":"unrecognized"})
+    except Exception:
+        observed = {"state":"unavailable"}
+    return {"subtype":subtype,"errno":observed}
+
+
+def provider_resource_identity(path, family):
+    """Only bounded public IDs from the exact maintained fixed-repo routes."""
+    if type(path)is not str or len(path)>1024 or type(family)is not str:
+        return None
+    prefix = re.escape("/repos/"+policy.REPOSITORY+"/actions/runs/")
+    if family=="run_header":
+        match=re.fullmatch(prefix+r"([1-9][0-9]{0,19})",path)
+        return {"runId":match.group(1)} if match else None
+    suffix = {"run_jobs":r"/jobs\?filter=all&per_page=100&page=",
+        "run_artifacts":r"/artifacts\?per_page=100&page="}.get(family)
+    if suffix is None:
+        return None
+    match=re.fullmatch(prefix+r"([1-9][0-9]{0,19})"+suffix+r"([1-9][0-9]{0,2})",path)
+    if match and int(match.group(2))<=100:
+        return {"runId":match.group(1),"page":int(match.group(2))}
+    return None
+
+
+def emit_failure_diagnostic(error, *, family=None, ordinal=None, operation=None, get_attempt=None, retry_delay=None, resource_path=None):
     # Best-effort fixed synthetic-safe fields, separate from the unchanged
     # fail-closed runtime-refusal envelope. Never output body, stderr, endpoint,
     # token, error string, traceback, header or URL (including redirect URLs).
@@ -178,6 +228,13 @@ def emit_failure_diagnostic(error, *, family=None, ordinal=None, operation=None,
         "status": "refused", "phase": _FAILURE_PHASE if _FAILURE_PHASE in _FAILURE_PHASES else "unclassified",
         "exceptionCategory": failure_category(error), "imageBuilt": False,
         "productionAuthorized": False}
+    if value["exceptionCategory"] in ("os_error","timeout"):
+        details=os_error_details(error)
+        if details is not None:
+            value["osError"]=details
+        identity=provider_resource_identity(resource_path,family)
+        if identity is not None:
+            value["publicResource"]=identity
     if family in ("history", "run_header", "run_jobs", "run_artifacts", "pull_request", "branch_ref", "public_content", "fixed_repository_other"):
         value["callFamily"] = family
     if type(ordinal) is int and ordinal > 0:
@@ -533,7 +590,7 @@ class API:
                         error.code == 502 and get_attempt < 3 and self.deadline - time.time() > delay)
                     recorded = emit_failure_diagnostic(error, family=provider_call_family(path),
                         ordinal=self.read_ordinal, operation=operation, get_attempt=get_attempt,
-                        retry_delay=delay if retry else None)
+                        retry_delay=delay if retry else None, resource_path=path)
                     if not retry or recorded is not True:
                         raise
                     # Do not read an error body or leave its owned stream open.
@@ -1224,8 +1281,9 @@ def h3_source_history(pipeline, bindings, request, source_rows, current_id, sour
     old_rows = [r for r in source_rows if "executionSequence" not in r[2] or r[2]["executionSequence"] <= 11]
     previous = bounded_source_history(old_bindings, old_request, old_rows, "41154711378")
     policy.need(previous["sourceExecutionSequence"] == 11, "v9.h3_anchor_sequence")
-    from bounded_run_contract_v109 import source_successor_amendment
+    from bounded_run_contract_v109 import source_successor_amendment, validate_vendor_continuation_request
     grant = policy.run_grant(bindings); plan = grant["nextExecution"]
+    validate_vendor_continuation_request(grant,request)
     current_scope = source_successor_amendment(grant)
     policy.need(current_scope is not None,"v9.h3_current_scope_missing")
     family = policy.validate_h3_family(policy.source_successor_family(bindings),
@@ -1242,6 +1300,7 @@ def h3_source_history(pipeline, bindings, request, source_rows, current_id, sour
         historical = source_bindings.get(rid)
         policy.need(type(historical) is dict, "v9.h3_historical_family_missing")
         historical_scope = source_successor_amendment(policy.run_grant(historical))
+        validate_vendor_continuation_request(policy.run_grant(historical),q)
         policy.need(historical_scope is not None,"v9.h3_historical_scope_missing")
         old_family = policy.validate_h3_family(policy.source_successor_family(historical),
             historical_scope["maximumSourceGenerations"])
@@ -1742,8 +1801,9 @@ def write_outputs(env, value):
 
 
 def prepare_context(pipeline, request, bindings, env, profile=None):
+    policy.validate_request(request,bindings)
     deadline = job_deadline(bindings,request,env,profile)
-    return {"deadlineEpoch":deadline,"profile":profile or request["phase"],"bindings":bindings,
+    return {"deadlineEpoch":deadline,"profile":profile or request["phase"],"bindings":bindings,"request":request,
         "operationIdentity":owned_identity(request),"gitEnv":{"PATH":env["PATH"],"GIT_TERMINAL_PROMPT":"0",
             "GIT_CONFIG_NOSYSTEM":"1","GIT_CONFIG_GLOBAL":"/dev/null","GIT_NO_LAZY_FETCH":"1",
             "GIT_NO_REPLACE_OBJECTS":"1","GIT_GRAFT_FILE":"/dev/null",
@@ -1954,9 +2014,8 @@ def retain_unvalidated_lock(generated,diff,request,env,started,changed_paths=Non
     # Preserve the historical64KiB reserve for requests without that amendment.
     reserve = 65536
     if "vendorRepairContinuationSha256" in request:
-        from bounded_run_contract_v109 import digest as continuation_digest, vendor_repair_continuation
-        policy.need(request["vendorRepairContinuationSha256"] == continuation_digest(vendor_repair_continuation()),
-            "v9.vendor_inventory_reserve_authority")
+        from bounded_run_contract_v109 import vendor_continuation_from_digest
+        vendor_continuation_from_digest(request["vendorRepairContinuationSha256"])
         reserve = 196608
     # No tar, maps, TAP or raw test/exception stream enters this artifact.
     policy.need(sum(map(len,files.values()))<=policy.ARTIFACT_BYTES-reserve,"v9.lock_diagnostic_size")
@@ -2092,6 +2151,20 @@ def capture_vendor_report(path, capture_dir, name, maximum=65536):
     return raw
 
 
+def vendor_diagnostic_context_scope(context):
+    """The real owned context, never a known digest standing alone."""
+    if "bindings" not in context and "request" not in context:
+        return None  # No diagnostic eligibility for an older context.
+    policy.need(type(context.get("bindings"))is dict and type(context.get("request"))is dict,
+        "v9.vendor_inventory_owned_context")
+    from bounded_run_contract_v109 import validate_vendor_continuation_request
+    value=validate_vendor_continuation_request(policy.run_grant(context["bindings"]),context["request"])
+    if value is not None:
+        policy.need(context.get("operationIdentity")==owned_identity(context["request"]),
+            "v9.vendor_inventory_owned_identity")
+    return value
+
+
 def collect_vendor_inventory_diagnostic(source, vendor_record, env, core, context, child_env, home, qualifier_result):
     """One fixed post-failure read, with existing owned timeout/cleanup semantics."""
     import npm_vendor_derivation_v109 as vendor
@@ -2106,6 +2179,7 @@ def collect_vendor_inventory_diagnostic(source, vendor_record, env, core, contex
         return {**evidence, "state":"unavailable", "reason":"qualification_cleanup_unsettled"}
     result = None
     try:
+        policy.need(vendor_diagnostic_context_scope(context) is not None,"v9.vendor_inventory_owned_context")
         policy.need(not report.exists(), "v9.vendor_inventory_output_fresh")
         now = time.time()
         policy.need(type(context.get("deadlineEpoch")) in (int,float) and
@@ -2230,8 +2304,7 @@ def qualify_npm_vendor(source, vendor_record, archives, env, core, context, chil
                     "rawReceiptSha256": policy.digest(raw), "qualificationAccepted": False,
                     "imageBuilt": False, "productionAuthorized": False, "packageTests": {"state": "unavailable", "reason": "receipt_invalid"}}
             diagnostic["controlFooters"] = control_footers
-            from bounded_run_contract_v109 import digest as continuation_digest, vendor_repair_continuation
-            if context.get("request",{}).get("vendorRepairContinuationSha256") == continuation_digest(vendor_repair_continuation()):
+            if vendor_diagnostic_context_scope(context) is not None:
                 diagnostic["inventoryDiagnostic"] = collect_vendor_inventory_diagnostic(
                     source,vendor_record,env,core,context,child_env,home,result)
             diagnostic_raw=policy.encode(diagnostic)

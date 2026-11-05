@@ -49,7 +49,10 @@ class InventoryCallerTests(unittest.TestCase):
             self.assertTrue(args[1].startswith(expected_prefix))
             return self.authenticated[args[1][len(expected_prefix):]]
         guard=patch.object(controller,'git_read',side_effect=local_blob);guard.start();self.addCleanup(guard.stop)
-        self.context={'deadlineEpoch':time.time()+1000,'request':{'source':{'sourceSha':'a'*40},'vendorRepairContinuationSha256':run.digest(run.vendor_repair_continuation())}}
+        request={'source':{'sourceSha':'a'*40,'sourceTree':'b'*40},'vendorRepairContinuationSha256':run.digest(run.vendor_repair_continuation())}
+        self.context={'deadlineEpoch':time.time()+1000,'request':request,
+            'bindings':{'ciRunGrant':{'sourceSuccessorAmendment':{'vendorRepairContinuation':run.vendor_repair_continuation()}}},
+            'operationIdentity':controller.owned_identity(request)}
         self.original=SimpleNamespace(returncode=2,timed_out=False,cleanup_settled=None)
 
     def collect(self,raw=None,result=None,context=None,original=None):
