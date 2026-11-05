@@ -1,25 +1,28 @@
 {
   "schema": "openclaw.v109.lock-derivation.v1",
   "status": "derived_only",
-  "sourceSha": "83b022d934ea0908031bb4fa50c9ea7b4aada8a5",
-  "sourceTree": "4bc0d3ab657c289f09edc4e0e690b31646e31a2a",
-  "pipelineHead": "a81a3cc434628f9d221687976ade5b7622167d4e",
-  "runId": "41836686760",
+  "sourceSha": "e0e6f07518662748b616dd8f9785e6b5182f3e1f",
+  "sourceTree": "f5c49244b6eed4a2fd4a6d04c769d2ef8e437593",
+  "pipelineHead": "7901f054959be2ce8bd70755b2afb32387d20898",
+  "runId": "42022429225",
   "runAttempt": 1,
-  "packageSha256": "5d9675b78376ad0c573d38a1ab5a4b8971119b25ff38d0af03c9d313745f3710",
+  "packageSha256": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
   "workspaceSha256": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
-  "sourceLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-  "generatedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
-  "ledgerSha256": "068cbe855f6835c4630c24d43b334beca43f920f8ad09ef318a2fa793dbc737f",
+  "sourceLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+  "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+  "ledgerSha256": "994a638577041121c1434dd20b86311a5877956de19a8b763f95e32924228c16",
   "nodeVersion": "24.22.1",
   "pnpmVersion": "12.15.0",
   "changedPaths": [
-    "pnpm-lock.yaml"
+    "patches/npm-12.2.1.glob-cancellation.proof.json",
+    "patches/npm@12.2.1.patch",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml"
   ],
-  "gitDiffSha256": "61b1a7af11b91ac2d7c61f1ea9d0c14401f91f5bdc8167a3dcf310e36de1f81b",
+  "gitDiffSha256": "ab6724bbbe446c090933a4cb28c189963aba91d80b22c7344d87c20c4bf193df",
   "allOtherTrackedEntriesUnchanged": true,
-  "startedAt": "2026-11-04T13:39:03Z",
-  "finishedAt": "2026-11-04T13:39:12Z",
+  "startedAt": "2026-11-05T12:17:33Z",
+  "finishedAt": "2026-11-05T12:19:33Z",
   "exitCode": 0,
   "timedOut": false,
   "cleanupSettled": null,
@@ -43,7 +46,7 @@
       }
     ],
     "registry": "https://registry.npmjs.org/",
-    "checkedAt": "2026-11-04T13:39:03Z",
+    "checkedAt": "2026-11-05T12:17:33Z",
     "minimumAgeMinutes": 10080,
     "checkKind": "recheck_pinned_registry_metadata_age_and_integrity",
     "parentDependency": {
@@ -53,5 +56,283 @@
       "dependencyVersion": "16.14.3"
     }
   },
-  "lockSecuritySha256": "c3bb2bddc41f14661a230431ed0415ac8132b0411052ac0fc28141b1a8956a8f"
+  "lockSecuritySha256": "c54551fac0c6b8b2b78cb705dc3538490f34775756205fa24ea15ac6e905b815",
+  "vendorDerivation": {
+    "schema": "openclaw.v109.npm-vendor-derivation.v1",
+    "sourceGeneration": 5,
+    "workspaceSha256": "1f91fb66e6715c2e030b5d7a720de66d660d7a3d12dc207e00744c568454d419",
+    "patchSha256": "1f6eb7e7efe61639b838d0f931318b16e2309a71afd6a568017908d69763e866",
+    "proofSha256": "b757ba0b91df785d71f7816350066e8a3f0b5828aa3d58988da129f203d71e2d",
+    "producerRuntimeSha256": "4f7927a4f4c27911e82c1ce21347b47d4c7f3f7e72f66f31c0616b5e4ee29a6c"
+  },
+  "vendorQualification": {
+    "schema": "openclaw.v109.npm-vendor-qualification-evidence.v1",
+    "qualifierRuntimeSha256": "59de709cf4c4af0867f571f984de9402443848ec1bc8137a7d4ac0681ef17980",
+    "receiptSha256": "5094bc53475f0962f5ea3a293387b27c85f428799c2d5b60498c8e43aea290d0",
+    "receipt": {
+      "schema": "openclaw.npm-glob-vendor-qualification.v1",
+      "status": "passed",
+      "phase": "complete",
+      "reason": "all_52_cases_passed",
+      "packageExecuted": true,
+      "imageTested": false,
+      "actualBunRuntimeTested": false,
+      "proofSha256": "b757ba0b91df785d71f7816350066e8a3f0b5828aa3d58988da129f203d71e2d",
+      "patchSha256": "1f6eb7e7efe61639b838d0f931318b16e2309a71afd6a568017908d69763e866",
+      "originalSha256": "228bd64aaef23270dbdbd2cf3d5ef5c467602ef38c4066246cef1984adab9a67",
+      "derivedSha256": "63507a3c06ebcad7a173bdb3b3ba3476dff39c907230843629975a13f7967a5b",
+      "packageExecutionAttempted": true,
+      "testResultEvidence": {
+        "file": "npm-vendor-actual-test-result.private.json",
+        "bytes": 7954,
+        "sha256": "9327663cba175c5236b6fec98b25a75daa6aa9b4573f3140f0e31e00abdc3627",
+        "storedBytes": 7954,
+        "storedSha256": "9327663cba175c5236b6fec98b25a75daa6aa9b4573f3140f0e31e00abdc3627",
+        "truncated": false,
+        "limitBytes": 131072
+      },
+      "tests": {
+        "schema": "openclaw.npm-vendor-actual-package-tests.v1",
+        "passed": true,
+        "caseCount": 52,
+        "passedCount": 52,
+        "cases": [
+          {
+            "name": "cjs-normal.positive",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.original-positive-parity",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.async.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.async.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.stream.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.stream.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.stream-sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.stream-sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.pause.async",
+            "passed": true
+          },
+          {
+            "name": "cjs-normal.pause.sync",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.positive",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.original-positive-parity",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.async.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.async.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.stream.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.stream.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.stream-sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.stream-sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.pause.async",
+            "passed": true
+          },
+          {
+            "name": "cjs-raw.pause.sync",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.positive",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.original-positive-parity",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.async.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.async.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.stream.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.stream.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.stream-sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.stream-sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.pause.async",
+            "passed": true
+          },
+          {
+            "name": "esm-normal.pause.sync",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.positive",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.original-positive-parity",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.async.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.async.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.stream.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.stream.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.stream-sync.pre-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.stream-sync.mid-abort",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.pause.async",
+            "passed": true
+          },
+          {
+            "name": "esm-raw.pause.sync",
+            "passed": true
+          },
+          {
+            "name": "original-regression-positive-control",
+            "passed": true
+          },
+          {
+            "name": "actual-npm-consumers",
+            "passed": true
+          },
+          {
+            "name": "actual-public-pack-delivery",
+            "passed": true
+          },
+          {
+            "name": "actual-offline-global-delivery",
+            "passed": true
+          }
+        ],
+        "packageExecutionHost": "ci-only",
+        "imageTested": false,
+        "publicPackTested": true,
+        "actualBunRuntimeTested": false
+      }
+    },
+    "controls": [
+      {
+        "path": "scripts/test-npm-glob-vendor-controls.mjs",
+        "runtimeSha256": "82bde211d75548a431d7c9746e17800236ee48be9222e9fccc2f6083825ff798",
+        "receiptSha256": "8849a744c1eb75af95d5e8bbd9d48e77d7f8867b13f39c1535662e4765591cb9",
+        "caseCount": 30,
+        "passedCount": 30,
+        "exitCode": 0,
+        "timedOut": false,
+        "cleanupSettled": null
+      },
+      {
+        "path": "scripts/test-npm-glob-vendor-qualification.mjs",
+        "runtimeSha256": "78d9faedcd9f96dfafbbebe4ab8051de1451767160b98df809b37d72e6a503d1",
+        "receiptSha256": "2ca1a356aec4b242db0f49bec2155429e3ba5649b95595636de57630e4c75163",
+        "caseCount": 26,
+        "passedCount": 26,
+        "exitCode": 0,
+        "timedOut": false,
+        "cleanupSettled": null
+      }
+    ]
+  }
 }

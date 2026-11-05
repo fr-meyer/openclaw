@@ -1,41 +1,66 @@
 {
   "schema": "openclaw.fork-source-validation-request.v9",
   "campaignId": "future-v109-grouped-validation-20261030",
-  "phase": "lock-preparation",
+  "phase": "validation",
   "source": {
-    "sourceSha": "e0e6f07518662748b616dd8f9785e6b5182f3e1f",
-    "sourceTree": "f5c49244b6eed4a2fd4a6d04c769d2ef8e437593",
-    "manifestSha256": "434d71c806e57be32bd10a30ecdff14821c14965b6f6425aa59fee6235401db3",
-    "inventorySha256": "d84142e9cee43ac4339f3d79a8ec671a06cd146057dc11d5708b207f7c1be07f",
+    "sourceSha": "91949951f8ca0c74eead0e6f73e9495401e6bd3b",
+    "sourceTree": "b2819f1628ed53d40ae925c64382444851e265b3",
+    "manifestSha256": "ef24f1613a782362f5003f770ded667e3097a4a6a92142d59be73d86d7ae8ec5",
+    "inventorySha256": "dd6afd5ddbd6f025828f9c04b198ae5e7b70af59952eda71eda33af05af28581",
     "fileSha256": {
       "package.json": "c22c6fa1cd1a4d4b5ba478847dcbb050f4a99508647471957ba8e0472e2589dd",
-      "pnpm-workspace.yaml": "89a3b094b425ad6a14ab74f24cf44f5ba03a735981ca9b851a11385eceaa337d",
-      "pnpm-lock.yaml": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
-      "custom-patches/reconciliation-2026.10.9.json": "994a638577041121c1434dd20b86311a5877956de19a8b763f95e32924228c16"
+      "pnpm-workspace.yaml": "1f91fb66e6715c2e030b5d7a720de66d660d7a3d12dc207e00744c568454d419",
+      "pnpm-lock.yaml": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+      "custom-patches/reconciliation-2026.10.9.json": "01e64a4bad19a8a1baaedcee3e31f5a235c17f876a4da6486ba734c9bcb8f266"
     }
   },
   "settledUsageSha256": "dfc2cda1a2c7c5f3f4e1bc235e8a6e2aca615e62c5ce20a79102a794779770df",
-  "generation": null,
+  "generation": {
+    "runId": "42022429225",
+    "runAttempt": 1,
+    "pipelineHead": "7901f054959be2ce8bd70755b2afb32387d20898",
+    "artifactId": 13414031761,
+    "artifactSha256": "5c23e71cbcbf8b1e06044d1a0a319e32492e7a282d6d0bdfc0631c34dfcb0396",
+    "receiptSha256": "5cd83f8acb10b0de9f871f178eeae5657927eb56731fc4ca0c13bb62b04258fd",
+    "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+    "gitDiffSha256": "ab6724bbbe446c090933a4cb28c189963aba91d80b22c7344d87c20c4bf193df"
+  },
   "priorRunPins": [
     {
-      "runId": "42007793526",
-      "pipelineHead": "66a94c51f557c6b9d2300190001bef24b11253af",
-      "requestSha256": "e9a5bd63fb9c37f547c932aaa9625b1cb6795972390e07e31e4fb18314de37e7"
+      "runId": "42022429225",
+      "pipelineHead": "7901f054959be2ce8bd70755b2afb32387d20898",
+      "requestSha256": "819bff40fc210800fc4fa709b53c8a5d7b6453f755851061054a1c7b2534cd21"
     }
   ],
   "preparationAttempt": 16,
-  "profiles": [],
+  "profiles": [
+    "dependency",
+    "types-production",
+    "types-tests",
+    "types-scripts",
+    "workboard-1",
+    "workboard-2",
+    "models-1",
+    "models-2",
+    "sqlite",
+    "doctor-1",
+    "doctor-2",
+    "doctor-3",
+    "memory",
+    "pipeline-contracts",
+    "compatibility"
+  ],
   "authorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
-  "executionSequence": 22,
+  "executionSequence": 23,
   "runAllowanceSha256": "801209d1bbbd51b5dd315f7c9367aacc4f12cf15430c23a0f46775d568ccf532",
   "executionReservations": {
-    "current": 45,
-    "pendingValidation": 1075,
+    "current": 1075,
+    "pendingValidation": 0,
     "conditionalImage": 180,
     "incidental": 160
   },
   "sourceGeneration": 5,
-  "sourceFamilySha256": "e76a12abf2041af650998e8ebb60ee9165674548ad18d3ec7efd1140a9611fd7",
+  "sourceFamilySha256": "3f73c30492a9f91622a1aa5c7b438e25c6b747e2a2383a99eca10cb1d2b9909e",
   "sourceSuccessorAmendmentSha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520",
   "vendorRepairContinuationSha256": "c289f9f22ac2b9e9ee55281c9ab4ff3535456adf81f215c565fa154d3e6f1a75",
   "budgetCeilingAmendmentSha256": "fabe093988e258a99b7cccc83e812d274200880cc300f78a73f795905e507f6e"
