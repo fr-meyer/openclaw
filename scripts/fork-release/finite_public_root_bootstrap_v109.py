@@ -32,7 +32,7 @@ OWNER_PINS = {
     "manifest_capture.py": "d5fd42317bf538720b48949a9503dc3c58df6a0035f200ac30a20400c1ed3eac",
     "npm_vendor_derivation_v109.py": "76055bbf33928cb87b01b6a6eb14f4609a07d1e6be2986706307f5be5de17d27",
     "preflight.py": "89b6ba41fc89131f33754104fdd0d3ebc08c20f252288651bc7d95038639103a",
-    "release.py": "5026178bb85a9ff51a36f7512a899c8cd4beab2f5b3ed146e1e0d87c0dc3a639",
+    "release.py": "b09926c9cb5a579cc95138f94515d0e2fdf8fa910cf04699d8da32e87278f3a0",
     "source_validation_contract_v109.py": "020af59db6a504db5561ebd41b81a683584e1718d125ee4fe18a63cef8541bc6",
     "source_validation_v108.py": "d2e014f20f5227b183ea217d9874ef7159c90a894debe5a6581bd4696145f965",
     "source_validation_v109.py": "b6d5777dac30c2a73c0fc8f7381b90c8294672fa9a4795b41800a526153c56bb",

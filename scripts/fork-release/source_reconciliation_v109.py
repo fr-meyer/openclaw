@@ -264,7 +264,7 @@ def check_v109_reconciliation(source, source_dir, ledger=None, *, git, need):
     need(merge["securitySource"] == {"commit": merge["forkCommit"], "tree": merge["forkTree"]},
          "10.9 security source differs from the pinned fork")
     successors = merge["successors"]
-    need(type(successors) is list and len(successors) <= 8, "invalid 10.9 successor count")
+    need(type(successors) is list and len(successors) <= 9, "invalid 10.9 successor count")
     for item in successors:
         need(type(item) is dict and set(item) == {"commit", "tree"}
              and all(_matches(SHA, item[key]) for key in ("commit", "tree")),

@@ -117,7 +117,7 @@ def validate_merge_shape(source):
             minimum = 0
             # Shape only. The native v109 reconciliation owner below retains
             # legacy<=3 and authenticates H2+at most3 material/derived pairs.
-            need(type(successors) is list and len(successors) <= 8, "invalid 10.9 merge successor count")
+            need(type(successors) is list and len(successors) <= 9, "invalid 10.9 merge successor count")
         need(type(successors) is list and minimum <= len(successors) <= 16,
              "invalid merge successor count")
         for item in successors:

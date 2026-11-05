@@ -2163,6 +2163,86 @@
         "runId": "42022421720",
         "nativeAttempt": 1,
         "runnerMinutes": 1
+      },
+      {
+        "runId": "42034430372",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42034430358",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42034430388",
+        "nativeAttempt": 1,
+        "runnerMinutes": 2
+      },
+      {
+        "runId": "42034430351",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42034430263",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42034430389",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42034430403",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42034430402",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42034430404",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42034430298",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42034430423",
+        "nativeAttempt": 1,
+        "runnerMinutes": 93
+      },
+      {
+        "runId": "42034422908",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42034422851",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
+      },
+      {
+        "runId": "42034422840",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42034422846",
+        "nativeAttempt": 1,
+        "runnerMinutes": 0
+      },
+      {
+        "runId": "42034422874",
+        "nativeAttempt": 1,
+        "runnerMinutes": 1
       }
     ],
     "closedPrefixProducerSha256": "d39edc5b60bee4ea822b32c1dec885ce67316fbfea193a26321f6cc297961327",
@@ -2175,8 +2255,8 @@
     "moneyCeilingUSD": "25.00",
     "nextExecution": {
       "schema": "openclaw.v109.reviewed-next-ci-execution.v1",
-      "status": "REVIEWED",
-      "sequence": 23,
+      "status": "DISARMED",
+      "sequence": 24,
       "phase": "validation",
       "preparationAttempt": 16,
       "source": {
@@ -2192,13 +2272,13 @@
         }
       },
       "priorSourceRun": {
-        "runId": "42022429225",
-        "pipelineHead": "7901f054959be2ce8bd70755b2afb32387d20898",
-        "requestSha256": "819bff40fc210800fc4fa709b53c8a5d7b6453f755851061054a1c7b2534cd21"
+        "runId": "42034430423",
+        "pipelineHead": "eebce42013d3dd7e63d734353eaef14268e2e4a0",
+        "requestSha256": "86f44b0f2a63ca062d35285c2feab37d9d7cd382d34bc5c509cfbdddee09b18a"
       },
-      "reasonCode": "generation_ready",
-      "reviewSha256": "0b857c6a8e41e1c82e2e01c08c85271058470eca067558d83a7fe7c88db27792",
-      "requestSha256": "86f44b0f2a63ca062d35285c2feab37d9d7cd382d34bc5c509cfbdddee09b18a",
+      "reasonCode": "reviewed_pipeline_correction",
+      "reviewSha256": null,
+      "requestSha256": null,
       "reservations": {
         "current": 1075,
         "pendingValidation": 0,
@@ -2210,7 +2290,7 @@
     },
     "originalAuthorizationSha256": "af503856db977750026d77e0e53d63ad2ec0f617254c346ca55ef2a8e110f3d8",
     "schema": "openclaw.v109.bounded-ci-run-grant.v1",
-    "status": "APPROVED",
+    "status": "DISARMED",
     "budgetCeilingAmendment": {
       "schema": "openclaw.v109.budget-ceiling-amendment-binding.v1",
       "scope": "minute-and-spending-ceilings-only",
@@ -3511,6 +3591,46 @@
             "head_branch": true,
             "head_sha": true
           }
+        },
+        {
+          "producerRunId": "42034430423",
+          "producerHead": "eebce42013d3dd7e63d734353eaef14268e2e4a0",
+          "nativeResponseSha256": "815413ef1da73ff528eaa76b05da4010e55621a118cdc471691353f585dcc0ec",
+          "metadata": {
+            "id": 13419939721,
+            "name": "v109-source-validation-42034430423-attempt1",
+            "size_in_bytes": 867,
+            "expired": false,
+            "digest": "sha256:9d3109d98261f20899610e3d646c82142cae114a18bf3b0fab1dde2458b50254",
+            "created_at": "2026-11-05T14:02:06Z",
+            "expires_at": "2026-11-08T14:02:05Z",
+            "updated_at": "2026-11-05T14:02:06Z",
+            "workflow_run": {
+              "id": 42034430423,
+              "repository_id": 1309456040,
+              "head_repository_id": 1309456040,
+              "head_branch": "task/v107-source-binding",
+              "head_sha": "eebce42013d3dd7e63d734353eaef14268e2e4a0"
+            }
+          },
+          "fieldPresence": {
+            "id": true,
+            "name": true,
+            "size_in_bytes": true,
+            "expired": true,
+            "digest": true,
+            "created_at": true,
+            "expires_at": true,
+            "updated_at": true,
+            "workflow_run": true
+          },
+          "workflowRunFieldPresence": {
+            "id": true,
+            "repository_id": true,
+            "head_repository_id": true,
+            "head_branch": true,
+            "head_sha": true
+          }
         }
       ],
       "vendorRepairContinuation": {
@@ -3606,7 +3726,7 @@
   "repository": "fr-meyer/openclaw",
   "schema": "openclaw.v109.ci-bindings.v1",
   "sourceBranch": "prep/v2026.10.9-remediation",
-  "status": "APPROVED_CI",
+  "status": "DISARMED",
   "upstream": {
     "commit": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
     "tag": "v2026.10.9",
