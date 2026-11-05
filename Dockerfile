@@ -278,6 +278,7 @@ RUN --network=none node scripts/postinstall-bundled-plugins.mjs && \
       find /app/node_modules/@anthropic-ai -maxdepth 1 -type d \
         -name 'claude-agent-sdk-linux-*' -exec rm -rf {} +; \
     fi && \
+    node scripts/lib/npm-vendor-delivery.mjs prepare-runtime --repo-root /app && \
     node --input-type=module -e 'await import("grammy")' && \
     node scripts/check-package-dist-imports.mjs /app && \
     node scripts/docker/copy-bootstrap-scripts.mjs /app/.runtime-bootstrap
@@ -348,7 +349,7 @@ COPY --from=runtime-assets --chown=node:node /app/docker-entrypoint.mjs .
 COPY --from=runtime-assets --chown=node:node /app/openclaw.mjs .
 COPY --from=runtime-assets --chown=node:node /app/.runtime-bootstrap/scripts ./scripts
 COPY --from=runtime-assets --chown=node:node /app/scripts/lib/guard-inventory-utils.mjs ./scripts/lib/
-COPY --from=runtime-assets --chown=node:node /app/scripts/lib/npm-vendor-delivery.mjs /app/scripts/lib/npm-glob-vendor-proof.mjs /app/scripts/lib/npm-glob-vendor-archive.mjs ./scripts/lib/
+COPY --from=runtime-assets --chown=node:node /app/scripts/lib/npm-vendor-delivery.mjs /app/scripts/lib/npm-vendor-payload.mjs /app/scripts/lib/npm-glob-vendor-proof.mjs /app/scripts/lib/npm-glob-vendor-archive.mjs ./scripts/lib/
 # Node PATH npm and Bun's package-local npm consume the same authenticated vendor
 # inventory. No registry latest/update operation may replace the reviewed bytes.
 RUN --network=none node ./scripts/lib/npm-vendor-delivery.mjs install-global --repo-root /app --prefix /usr/local

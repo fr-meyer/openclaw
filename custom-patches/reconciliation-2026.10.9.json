@@ -29,7 +29,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "2e1d7c56ecefb795323cc30a2353a54b389b8b0a"
+        "blob": "af2d0428ac86a97d4c97f00e82bb0f9da33f4128"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -2466,7 +2466,7 @@
       "upstream109": null,
       "result": {
         "mode": "100644",
-        "blob": "8c584633d0174abce6640415b2d64bac7dd773d1"
+        "blob": "81655d2597ebace2133137fd0e4cb35934084d77"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -2489,6 +2489,17 @@
       "result": {
         "mode": "100644",
         "blob": "320e88881dbc3a32a5a6ea350949957adc356e47"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-vendor-payload.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "4cc6d8725d378c233e2d9bfff9821257b50a1c3e"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -2572,7 +2583,18 @@
       "upstream109": null,
       "result": {
         "mode": "100644",
-        "blob": "91a2fe04ba1dc729a36f0ecf55c8cfa65b1f4a1d"
+        "blob": "d3a127f6733100fbb99a765870b8acd9944835d4"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/test-npm-vendor-payload.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "09576053b3e5d379d7f2f1e622987ce2a727e7f0"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -4932,9 +4954,9 @@
   "sourceSuccessor": {
     "schema": "openclaw.v109.successor-lock-seed.v1",
     "amendmentSha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520",
-    "generation": 4,
-    "parentSource": "8c2225b7087b4f6c011f1451d4d2d5e252dc3906",
-    "parentTree": "a00f61945709416a084d648dcb255ae7c4c47981",
+    "generation": 5,
+    "parentSource": "975d2e46e075c3c960b27e233b39ef5e35452aca",
+    "parentTree": "bd54438e6b7f4d5ea97cb279a50594afefd8dfc7",
     "seedSource": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
     "seedTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
     "seedLockBlob": "7d8b8fb442bb3ddff565b870d86e3fbb9571367d",

@@ -450,12 +450,12 @@ async function publicPackCase(repoRoot, npm, scratch, config, checkpoint) {
   checkpoint("pack.installed_entry_capture");
   const npmEntry = await fs.promises.lstat(path.join(repoRoot, "node_modules/npm"));
   const oldLink = npmEntry.isSymbolicLink() ? await fs.promises.readlink(path.join(repoRoot, "node_modules/npm")) : null;
-  checkpoint("pack.installed_verify");
-  const verified = owner.verifyInstalledNpmVendor(repoRoot);
   let failedOperation;
   try {
     checkpoint("pack.manifest_prepare");
     await lifecycle.preparePackageManifest(repoRoot);
+    checkpoint("pack.installed_verify");
+    const verified = owner.verifyInstalledNpmVendor(repoRoot);
     checkpoint("pack.prepared_manifest_read");
     const prepared = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
     checkpoint("pack.bundle_assertions");
@@ -527,35 +527,73 @@ async function globalDeliveryCase(repoRoot, original, scratch, config, checkpoin
   await fs.promises.cp(original.root, path.join(prefix, "lib/node_modules/npm"), { recursive: true, dereference: false });
   await fs.promises.symlink("../lib/node_modules/npm/bin/npm-cli.js", path.join(prefix, "bin/npm"));
   await fs.promises.symlink("../lib/node_modules/npm/bin/npx-cli.js", path.join(prefix, "bin/npx"));
-  checkpoint("global.install");
-  owner.installGlobalNpmVendor(repoRoot, prefix);
-  const env = { PATH: `${path.join(prefix, "bin")}${path.delimiter}${path.dirname(process.execPath)}`,
-    HOME: scratch, npm_config_userconfig: config.user, npm_config_globalconfig: config.global,
-    npm_config_cache: path.join(scratch, "global-cli-cache"), npm_config_offline: "true",
-    npm_config_update_notifier: "false", npm_config_ignore_scripts: "true" };
-  for (const name of ["npm", "npx"]) {
-    checkpoint(name === "npm" ? "global.npm_entrypoint_spawn" : "global.npx_entrypoint_spawn");
-    const child = spawnSync(name, ["--version"], { cwd: scratch, env, encoding: "utf8", timeout: 10000, maxBuffer: 1024 * 1024 });
-    checkpoint(name === "npm" ? "global.npm_entrypoint_assertions" : "global.npx_entrypoint_assertions");
-    assert.equal(child.error, undefined);
-    assert.equal(child.signal, null);
+  const originalEntry = await fs.promises.lstat(path.join(repoRoot, "node_modules/npm"), { bigint: true });
+  const originalLink = originalEntry.isSymbolicLink() ? await fs.promises.readlink(path.join(repoRoot, "node_modules/npm")) : null;
+  let packageLocal;
+  let failedOperation;
+  try {
+    checkpoint("global.install");
+    packageLocal = owner.prepareNpmVendorForRuntime(repoRoot);
+    const local = owner.verifyInstalledNpmVendor(repoRoot);
+    assert.equal(packageLocal.originalSourceVerified, false);
+    assert.equal(packageLocal.payloadVerified, true);
+    assert.equal(local.packageRoot, packageLocal.sourceRoot);
+    const delivered = owner.installGlobalNpmVendor(repoRoot, prefix);
+    assert.equal(delivered.sourceInventoryVerified, true);
+    assert.equal(delivered.sourceInventorySha256, local.inventorySha256);
+    assert.deepEqual(delivered.files, local.files, "both delivered npm trees must match the complete proof");
+    const env = { PATH: `${path.join(prefix, "bin")}${path.delimiter}${path.dirname(process.execPath)}`,
+      HOME: scratch, npm_config_userconfig: config.user, npm_config_globalconfig: config.global,
+      npm_config_cache: path.join(scratch, "global-cli-cache"), npm_config_offline: "true",
+      npm_config_update_notifier: "false", npm_config_ignore_scripts: "true" };
+    for (const name of ["npm", "npx"]) {
+      checkpoint(name === "npm" ? "global.npm_entrypoint_spawn" : "global.npx_entrypoint_spawn");
+      const child = spawnSync(name, ["--version"], { cwd: scratch, env, encoding: "utf8", timeout: 10000, maxBuffer: 1024 * 1024 });
+      checkpoint(name === "npm" ? "global.npm_entrypoint_assertions" : "global.npx_entrypoint_assertions");
+      assert.equal(child.error, undefined);
+      assert.equal(child.signal, null);
+      assert.equal(child.status, 0);
+      assert.equal(child.stdout.trim(), "12.2.1");
+    }
+    checkpoint("global.resolver_import");
+    const npmCommand = await import(pathToFileURL(path.join(repoRoot, "src/infra/npm-command.ts")).href);
+    checkpoint("global.resolver_assertions");
+    const command = npmCommand.resolveBundledNpmCommand(["--version"]);
+    const versions = Object.getOwnPropertyDescriptor(process, "versions");
+    try {
+      // Both runtime-selection branches must choose the strictly verified local
+      // payload. This is selection parity, not execution of an actual Bun VM.
+      for (const bun of [undefined, "1.4.2"]) {
+        Object.defineProperty(process, "versions", { ...versions, value: { ...versions.value, bun } });
+        assert.deepEqual(npmCommand.resolveNpmCommand(["--version"]), command);
+      }
+    } finally {
+      Object.defineProperty(process, "versions", versions);
+    }
+    assert.equal(command[0], process.execPath);
+    assert.equal(await realpath(path.resolve(command[1], "../..")), local.packageRoot);
+    assert.equal(delivered.sourceRoot, local.packageRoot);
+    checkpoint("global.bundled_cli_spawn");
+    const child = spawnSync(command[0], command.slice(1), { cwd: scratch, env, encoding: "utf8", timeout: 10000, maxBuffer: 1024 * 1024 });
+    checkpoint("global.bundled_cli_assertions");
     assert.equal(child.status, 0);
     assert.equal(child.stdout.trim(), "12.2.1");
+    // Actual Docker and Bun runtimes remain separate qualification gates. This
+    // verifies the maintained delivery owner and its real packaged CLI route.
+  } catch (error) {
+    failedOperation = checkpoint.current();
+    throw error;
+  } finally {
+    checkpoint("global.install");
+    if (packageLocal !== undefined) {
+      packageLocal.restore();
+      const restored = await fs.promises.lstat(path.join(repoRoot, "node_modules/npm"), { bigint: true });
+      assert.equal(restored.dev, originalEntry.dev);
+      assert.equal(restored.ino, originalEntry.ino);
+      if (originalLink !== null) assert.equal(await fs.promises.readlink(path.join(repoRoot, "node_modules/npm")), originalLink);
+    }
+    if (failedOperation !== undefined) checkpoint(failedOperation);
   }
-  checkpoint("global.resolver_import");
-  const npmCommand = await import(pathToFileURL(path.join(repoRoot, "src/infra/npm-command.ts")).href);
-  checkpoint("global.resolver_assertions");
-  assert.deepEqual(npmCommand.resolveNpmCommand(["--version"]), npmCommand.resolveBundledNpmCommand(["--version"]));
-  const command = npmCommand.resolveBundledNpmCommand(["--version"]);
-  assert.equal(command[0], process.execPath);
-  assert.equal(await realpath(path.resolve(command[1], "../..")), owner.verifyInstalledNpmVendor(repoRoot).packageRoot);
-  checkpoint("global.bundled_cli_spawn");
-  const child = spawnSync(command[0], command.slice(1), { cwd: scratch, env, encoding: "utf8", timeout: 10000, maxBuffer: 1024 * 1024 });
-  checkpoint("global.bundled_cli_assertions");
-  assert.equal(child.status, 0);
-  assert.equal(child.stdout.trim(), "12.2.1");
-  // Actual Docker and Bun runtimes remain separate qualification gates. This
-  // proves their maintained byte-delivery owner and bundled CLI resolution.
 }
 
 /** Invoke only after the authoritative original/derived inventory verifier passes. */
