@@ -1756,6 +1756,86 @@ def history_checks(pipeline, bindings, request, rraw, head, event, env, api, res
         **({"historicalH3PayloadAbsences":facts["artifact_absences"]} if facts["stage"] is not None else {})}
 
 
+# Image-only consumer of the unchanged, qualified validation28 source proof.
+# Public run identities retain unresolved ownership; they do not attribute it.
+IMAGE_ALLOCATION_LEDGER_SHA256 = "4bbcbdfd04048d6026c8fc59587ed79bc1bed00a6a68f4b46f05233444e7a89d"
+IMAGE_ALLOCATION_DECISION_SHA256 = "1d2a5a1851568fddf9b39cbd16ee63dfbda9c25c755b12bea9a884100bdde6e7"
+IMAGE_SOURCE_BINDINGS_SHA256 = "5726aac943f27f1bea3c804fc91d89e7bd4fe8ecec50ecaf13f2d677bd9c2190"
+IMAGE_SOURCE_REQUEST_SHA256 = "b25f0027a5fad04f8a28b824de23b1d73788cbf445d4f9d43a96580bafeba9b9"
+IMAGE_UNKNOWN_RUN_IDS = ('41951003346', '41951003359', '41951013206', '41951014161', '41959745699', '41959745748', '41959755184', '41959755321', '41973803168', '41973803175', '41973812464', '41973821194', '41978951015', '41978951107', '41978960074', '41978962442', '41984882074', '41984882082', '41984890987', '41984897439', '41997331659', '41997331796', '41997342179', '41997342272', '42007804734', '42007805142', '42007821574', '42007823268', '42022441217', '42022441229', '42022451281', '42022453352', '42034443898', '42034443919', '42034459328', '42034460160', '42044753476', '42044753908', '42044768222', '42044773380', '42150531944', '42150531991', '42150541964', '42150542713', '42157190380', '42157190419', '42157199759', '42157202222', '42166042574', '42166042726', '42166054486', '42166054635', '42168828507', '42168854781', '42170282542', '42170282649', '42172551178', '42172562781', '42174003663', '42174003797', '42180561696', '42180582139', '42180801783', '42180801873', '42189830085', '42189899682', '42189940912', '42189965214', '42190005375', '42190094421', '42190259001', '42190283060', '42193180261', '42193180279', '42198085012', '42198150508', '42198191477', '42198191571', '42198195000', '42198195043', '42198267656', '42198267676', '42199535935', '42199536020')
+IMAGE_UNKNOWN_HELD_MINUTES = 28
+
+
+def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, current_minutes):
+    """Apply the reviewed18-minute internal transfer only to this image lane.
+
+    Qualified source inputs keep their original194 incidental cap. This image
+    consumer uses212 and reduces preparation310 to292, retaining all source,
+    artifact and native-attempt checks of the unchanged history collector.
+    """
+    from bounded_run_contract_v109 import h3_stage_pools, source_successor_amendment
+    braw=regular(pipeline/BINDINGS,131072);qraw=regular(pipeline/REQUEST,65536)
+    policy.need(policy.digest(braw)==IMAGE_SOURCE_BINDINGS_SHA256 and
+        policy.digest(qraw)==IMAGE_SOURCE_REQUEST_SHA256 and
+        policy.parse(braw)==bindings and policy.parse(qraw)==selected,
+        "v9.image_allocation_exact_qualified_source_inputs")
+    grant,prefix=facts["grant"],facts["prefix"]
+    policy.need(grant==policy.run_grant(bindings) and
+        h3_stage_pools(grant)=={"preparation":310,"source":3189,"incidental":194,"image":180},
+        "v9.image_allocation_original_pools")
+    pools={"preparation":292,"source":3189,"incidental":212,"image":180}
+    stage=source_successor_amendment(grant)
+    policy.need(stage is not None and stage["stagePrefixNewMinutes"]==2215 and
+        stage["maximumStageRunnerMinutes"]==3873 and stage["maximumStageBookedMinutes"]==6088 and
+        stage["expiresAt"]=="2026-11-09T03:14:21Z", "v9.image_allocation_unchanged_stage")
+    policy.need(prefix is not None and (current_id,1) in facts["run_minutes"] and
+        facts["run_minutes"][(current_id,1)]==current_minutes,
+        "v9.image_allocation_current_minute_identity")
+    # These fixed main-branch observations are absent from the three owned
+    # branch queries. Any overlap requires new reconciliation, never a refund
+    # or an inferred ownership change. Their28-minute debit remains booked.
+    policy.need(not set(IMAGE_UNKNOWN_RUN_IDS).intersection(facts["history"]),
+        "v9.image_allocation_unknown_overlap_requires_reconciliation")
+    attempts=facts["attempt_facts"]
+    policy.need(type(attempts)is dict and type(attempts.get("additionalAttemptCount"))is int and
+        attempts["additionalAttemptCount"]+len(IMAGE_UNKNOWN_RUN_IDS)<=1000,
+        "v9.image_allocation_unknown_attempts_retained")
+    charges=dict(facts["run_minutes"])
+    for row in grant["bookedAdditionalAttempts"]:
+        key=(row["runId"],row["nativeAttempt"])
+        policy.need(key in charges,"v9.h3_booked_attempt_missing")
+        if key==(current_id,1):
+            policy.need(row["runnerMinutes"]<=current_minutes,"v9.h3_current_previously_booked")
+        charges[key]=max(charges[key],row["runnerMinutes"])
+    old={r["runId"]:r["runnerMinutes"] for r in prefix["records"]}
+    policy.need(current_id not in old,"v9.h3_current_reuses_prefix")
+    used={k:0 for k in pools}
+    for (rid,attempt),minutes in charges.items():
+        policy.need(attempt==1 and rid in facts["run_pools"],"v9.h3_component_native_identity")
+        kind=facts["run_pools"][rid]
+        policy.need(kind in used,"v9.h3_component_role")
+        used[kind]+=minutes-old.get(rid,0)
+    policy.need(used["preparation"]==246 and used["source"]==2028 and
+        used["incidental"]>=162 and used["image"]==current_minutes and
+        facts["run_pools"].get(current_id)=="image", "v9.image_allocation_no_source_refund_or_new_source")
+    used["incidental"]+=IMAGE_UNKNOWN_HELD_MINUTES
+    policy.need(all(type(v)is int and 0<=v<=pools[k] for k,v in used.items()),
+        "v9.image_allocation_component_ceiling")
+    total=sum(charges.values())+IMAGE_UNKNOWN_HELD_MINUTES
+    policy.need(total==stage["stagePrefixNewMinutes"]+sum(used.values()) and
+        total<=stage["maximumStageBookedMinutes"] and total<=25000,
+        "v9.h3_stage_total_floor")
+    components={"preparationObservedMinutes":used["preparation"],"sourceObservedMinutes":used["source"],
+        "incidentalObservedMinutes":used["incidental"],"imageObservedMinutes":used["image"],
+        "remainingImageFamilyReserveMinutes":pools["image"]-used["image"],
+        "remainingIncidentalReserveMinutes":pools["incidental"]-used["incidental"],
+        "unresolvedOwnershipHeldMinutes":IMAGE_UNKNOWN_HELD_MINUTES,
+        "unresolvedOwnershipAttemptCount":len(IMAGE_UNKNOWN_RUN_IDS),
+        "imageOnlyAllocationLedgerSha256":IMAGE_ALLOCATION_LEDGER_SHA256,
+        "imageOnlyAllocationDecisionSha256":IMAGE_ALLOCATION_DECISION_SHA256}
+    return total,components,pools
+
+
 def image_cumulative_booking(pipeline, api_get, bindings, selected, current_id, clock):
     """Read the same closed history for image admission; never start a job."""
     policy.need(type(current_id)is str and policy.RUN_ID.fullmatch(current_id) and
@@ -1783,12 +1863,10 @@ def image_cumulative_booking(pipeline, api_get, bindings, selected, current_id, 
             policy.need(job.get("name")=="image-admission" and job.get("status")=="completed" and
                 job.get("conclusion")=="success","v9.image_admission_success_required")
     current=observed_jobs(jobs,clock,False,{"image-admission":15,"build-private-image":90})[0]
-    total,components=h3_minute_facts(facts,current_id,current)
+    total,components,pools=image_stage_minute_facts(pipeline,bindings,selected,facts,current_id,current)
     # The image owner separately reserves image/incidental remainders. Retain
     # the unspent source/preparation pools here rather than releasing them from
     # a missing observation or fewer material generations.
-    from bounded_run_contract_v109 import h3_stage_pools
-    pools = h3_stage_pools(facts["grant"])
     booked=total+(pools["source"]-components["sourceObservedMinutes"])+(pools["preparation"]-components["preparationObservedMinutes"])
     return {"newObservedOrBookedMinutes":booked,"currentObservedMinutes":current,
         "nativeObservedOrBookedMinutes":total,"perAttemptBookedMinuteFloorsApplied":True,

@@ -104,13 +104,16 @@ def utc(value):
 
 
 def source_stage(value):
-    """Consume the source owner's closed stage, never an image-specific grant."""
+    """Consume only the original or exact time-extended combined source stage."""
     from bounded_run_contract_v109 import validate_h3_stage_descriptor
-    try:
-        validate_h3_stage_descriptor(value)
-    except (ValueError, KeyError, TypeError):
-        raise Refusal("image.source_stage_descriptor") from None
-    return value
+    for current in (False, True):
+        try:
+            validate_h3_stage_descriptor(value, continuation=current,
+                combined_source_repair=current, deadline_extension=current)
+        except (ValueError, KeyError, TypeError):
+            continue
+        return value
+    raise Refusal("image.source_stage_descriptor") from None
 
 
 def source_stage_digest(value):
