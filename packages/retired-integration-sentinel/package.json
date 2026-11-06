@@ -1,0 +1,13 @@
+{
+  "name": "@openclaw/retired-integration-sentinel",
+  "version": "0.0.0-private",
+  "private": true,
+  "description": "Deterministic fail-closed sentinel for retired integration entrypoints",
+  "bin": {
+    "retired-integration-sentinel": "./bin/retired-integration-sentinel.mjs"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

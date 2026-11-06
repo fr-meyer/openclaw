@@ -2750,6 +2750,8 @@ importers:
 
   packages/plugin-sdk: {}
 
+  packages/retired-integration-sentinel: {}
+
   packages/retry: {}
 
   packages/sdk:
