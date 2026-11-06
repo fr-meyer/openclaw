@@ -1009,9 +1009,9 @@
       "source1010Blob": "c6efb20dd50e1ed951127cd39e18472e39a83757",
       "upstream1010Blob": "e92a7bd95808d6cfb31a8e259b1a0057e3f22332",
       "upstream111Blob": "e92a7bd95808d6cfb31a8e259b1a0057e3f22332",
-      "resultBlob": "f0f326ed06b3597576c7cbfc21b62b943a9d3fcf",
+      "resultBlob": "91ac3d364b4ac945d2f61c3209ac823b68564c84",
       "disposition": "APPROVED_SMITHY_AND_PEER_OVERRIDES_PENDING_LOCK",
-      "resultSha256": "a80360f3538d2edb101406aedff8f29fd3dcacd2da7af50a552d48ca3a51e103"
+      "resultSha256": "960f973eaa08a40996672dc144cb77b2d757c72e4d271c72a138e2adf0397e44"
     },
     {
       "path": "scripts/build-npm-glob-vendor-backport.mjs",

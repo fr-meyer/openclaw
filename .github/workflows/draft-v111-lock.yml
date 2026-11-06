@@ -29,14 +29,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = b828cf984627e27d8e9a96e55d7d2337366b395b
-          test "$(git rev-parse HEAD^^)" = cd6dfcd935b3f2ae9ac0f0c578972ef8c08d3666
+          test "$(git rev-parse HEAD^)" = e69c7be7c7512172dc31f5f962b8ba1b5ef178c3
+          test "$(git rev-parse HEAD^^)" = b828cf984627e27d8e9a96e55d7d2337366b395b
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = ef8b311c13ee265ba09567df44e379e3f6f5be9d
-          test "$(git rev-parse HEAD:pnpm-workspace.yaml)" = f0f326ed06b3597576c7cbfc21b62b943a9d3fcf
+          test "$(git rev-parse HEAD:pnpm-workspace.yaml)" = 91ac3d364b4ac945d2f61c3209ac823b68564c84
           test "$(git rev-parse HEAD:package.json)" = 9fbf5eb73aa60cd83cb416041388f6f44b9058b5
           test "$(git rev-parse HEAD:extensions/memory-lancedb/package.json)" = 20b4bf7adff1876b19d7f480fd7d7c0c3e68fb68
           test "$(git rev-parse HEAD:custom-patches/manifest.json)" = 7ad63e1a7272123c39ded7d80410f6dbd58c5a15
-          test "$(git rev-parse HEAD:custom-patches/reconciliation-2026.11.1.json)" = 8d6f453e990186505e9bd9563bbef1ca71c498f6
+          test "$(git rev-parse HEAD:custom-patches/reconciliation-2026.11.1.json)" = ab899153fab196aa9ae2e94a6ab3840159b66f32
           test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101
           node - <<'NODE'
           const fs = require('node:fs');
