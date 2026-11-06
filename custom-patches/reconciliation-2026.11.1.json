@@ -16,7 +16,7 @@
   },
   "provedGitAncestryMerge": false,
   "qualificationTransferred": false,
-  "lockState": "PENDING_SECRETLESS_CI_REGENERATION_AND_FULL_CLOSURE_AGE_CHECK",
+  "lockState": "DERIVED_SECRETLESS_CI_PENDING_FROZEN_INSTALL_AND_FULL_CLOSURE_AGE_CHECK",
   "applicationTests": "UNRUN",
   "nativeImageExecuted": false,
   "productionAuthorized": false,
@@ -25,16 +25,16 @@
     "reason": "result-blob self reference excluded"
   },
   "resultPathCount": 286,
-  "changedResultPathCount": 277,
+  "changedResultPathCount": 278,
   "sourcePaths": [
     {
       "path": "custom-patches/manifest.json",
       "source1010Blob": "93357277e8881eaf4bb5ea11518589775d32d2ce",
       "upstream1010Blob": null,
       "upstream111Blob": null,
-      "resultBlob": "2e94de3774a84d68ef67251011533ebb54e7792b",
+      "resultBlob": "af60309b7cb8ed0b6d7159734bfdc2382e84a93b",
       "disposition": "ADAPTED_LOCAL_SOURCE_UNEXECUTED",
-      "resultSha256": "455a78727f4bdd39fb696132fb93b209c44586473f6fe16d32875d98e2c9f0bf"
+      "resultSha256": "46de7f75f14e89eacc01db8183bac6a3fd6fbdb41eb6bfe827649d13c1088e0d"
     },
     {
       "path": "custom-patches/NEXT-RELEASE-2026.10.6.md",
@@ -991,8 +991,9 @@
       "source1010Blob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
       "upstream1010Blob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
       "upstream111Blob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
-      "resultBlob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
-      "disposition": "TARGET_BYTES_RETAINED_OR_NOOP"
+      "resultBlob": "ef8b311c13ee265ba09567df44e379e3f6f5be9d",
+      "disposition": "DERIVED_COMBINED_LOCK_UNQUALIFIED",
+      "resultSha256": "e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101"
     },
     {
       "path": "pnpm-workspace.yaml",

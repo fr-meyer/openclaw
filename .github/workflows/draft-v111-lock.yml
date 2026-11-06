@@ -1,4 +1,4 @@
-name: Draft 11.1 combined lock
+name: Qualify 11.1 combined source
 
 on:
   push:
@@ -9,14 +9,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: draft-v111-lock-${{ github.ref }}
+  group: qualify-v111-source-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  derive:
+  dependency-admission:
     if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/prep/v2026.11.1-source-qualification'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,9 +29,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = af3066611cef72dd4f521185837cd04d3ce7a11f
-          test "$(git rev-parse HEAD^^)" = 4ffdd2047d192dd65554de3c8c46c0e0197c6e2a
-          test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 6e7deef33e9fcd5188501d2ee905946955577ce2
+          test "$(git rev-parse HEAD^)" = 60598c266f57faff7f0b96e761d1903b8ec1fbbd
+          test "$(git rev-parse HEAD^^)" = af3066611cef72dd4f521185837cd04d3ce7a11f
+          test "$(git rev-parse HEAD:pnpm-lock.yaml)" = ef8b311c13ee265ba09567df44e379e3f6f5be9d
+          test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101
           node - <<'NODE'
           const fs = require('node:fs');
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
@@ -51,17 +52,16 @@ jobs:
           install-deps: 'false'
           cache-mode: off
 
-      - name: Derive combined lock without install scripts
+      - name: Frozen dependency admission without install scripts
         shell: bash
         env:
           CI: 'true'
         run: |
           set -euo pipefail
           test "$(pnpm -v)" = '12.15.0'
-          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
-          git diff --check -- pnpm-lock.yaml
-          sha256sum pnpm-lock.yaml
-          git diff --numstat -- pnpm-lock.yaml
-          echo 'BEGIN_DRAFT_V111_LOCK_GZIP_BASE64'
-          gzip -n -c pnpm-lock.yaml | base64 -w 76
-          echo 'END_DRAFT_V111_LOCK_GZIP_BASE64'
+          pnpm install --frozen-lockfile --ignore-scripts
+          test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101
+          pnpm peers check
+          pnpm deps:patches:check
+          pnpm deps:pins:check
+          pnpm deps:npm-lock:check
