@@ -1,0 +1,36 @@
+{
+  "id": "subagent-model-override-guard",
+  "categories": ["security", "agent-orchestration"],
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "trustedToolPolicies": ["deny-sessions-spawn-model-override"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "agentIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": ["*"]
+      },
+      "blockThinkingOverride": {
+        "type": "boolean",
+        "default": false
+      },
+      "message": {
+        "type": "string",
+        "default": "sessions_spawn model overrides are disabled by policy; omit model so the configured subagent default chain is used."
+      }
+    }
+  }
+}
