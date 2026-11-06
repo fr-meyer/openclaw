@@ -11,7 +11,7 @@
   "forkDeltaPathCount": 250,
   "upstreamChangedPathCount": 441,
   "overlapPathCount": 55,
-  "lockState": "pending_ci_derivation",
+  "lockState": "ci_derived",
   "sourcePaths": [
     {
       "path": "Dockerfile",
@@ -5010,5 +5010,12 @@
       "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
       "receiptSha256": "5cd83f8acb10b0de9f871f178eeae5657927eb56731fc4ca0c13bb62b04258fd"
     }
+  },
+  "lockDerivation": {
+    "runId": 42157183076,
+    "attempt": 1,
+    "artifactSha256": "4d6a7452f31b67d6b9b6f401bfe9e2251e8e9bed4080c3ab9d82f16a56eef180",
+    "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+    "receiptSha256": "f79e04e2c158658bab0b05c04595eb79f34e62dd513557951ddbdd033f522e41"
   }
 }
