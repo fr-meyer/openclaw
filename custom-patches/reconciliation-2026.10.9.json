@@ -11,7 +11,7 @@
   "forkDeltaPathCount": 250,
   "upstreamChangedPathCount": 441,
   "overlapPathCount": 55,
-  "lockState": "ci_derived",
+  "lockState": "pending_ci_derivation",
   "sourcePaths": [
     {
       "path": "Dockerfile",
@@ -2083,7 +2083,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "d3ede2ae37c183755cb3a5f17c9a518f7cbb13c3"
+        "blob": "bd578929dc4c26f8f7e14bcc590471220eba00b1"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -3836,7 +3836,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "53069410819584d9584161b27c617001f6ac09fb"
+        "blob": "8623e51f603bf84d05e85b64a6693c8d9f7cab29"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -4401,6 +4401,26 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "src/test-utils/npm-command.ts",
+      "base108": {
+        "mode": "100644",
+        "blob": "fa2981a1ccd90cfd3e947ff109314f89ce7b2bd4"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "fa2981a1ccd90cfd3e947ff109314f89ce7b2bd4"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "fa2981a1ccd90cfd3e947ff109314f89ce7b2bd4"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "53ca6a68faf5306fab5a22b60b041d5080397775"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "src/version.test.ts",
       "base108": {
         "mode": "100644",
@@ -4596,9 +4616,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "1c7c77273539cb9fe455548d0c3b176d22ba5543"
+        "blob": "e867a71d00d6bfb4666935c48ad2cf1fce9718a4"
       },
-      "disposition": "ADAPTED_SECURITY_TEST"
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "test/scripts/discord-sdk-zod.test.ts",
@@ -4976,26 +4996,19 @@
   "sourceSuccessor": {
     "schema": "openclaw.v109.successor-lock-seed.v1",
     "amendmentSha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520",
-    "generation": 5,
-    "parentSource": "975d2e46e075c3c960b27e233b39ef5e35452aca",
-    "parentTree": "bd54438e6b7f4d5ea97cb279a50594afefd8dfc7",
-    "seedSource": "202909f1c86d91ea87128a0fef05e4bc5ba6da4c",
-    "seedTree": "9bbd25fb828a4c72a6db76ca5c99dd68c837911f",
-    "seedLockBlob": "7d8b8fb442bb3ddff565b870d86e3fbb9571367d",
-    "seedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
+    "generation": 6,
+    "parentSource": "91949951f8ca0c74eead0e6f73e9495401e6bd3b",
+    "parentTree": "b2819f1628ed53d40ae925c64382444851e265b3",
+    "seedSource": "91949951f8ca0c74eead0e6f73e9495401e6bd3b",
+    "seedTree": "b2819f1628ed53d40ae925c64382444851e265b3",
+    "seedLockBlob": "55529ecf59967008e592aa2d289b5809b27f6c48",
+    "seedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
     "seedLockDerivation": {
-      "runId": 41836686760,
+      "runId": 42022429225,
       "attempt": 1,
-      "artifactSha256": "2ee0b9d173257be939df1d2598c016374da7df25715aa1f530a86e8ebf54633c",
-      "generatedLockSha256": "76e0f7afcf4d142e2d097c9f63df31d18d4cfeb758aac7bd3f93b906e0828d50",
-      "receiptSha256": "4a78e49d9933bec7483fbca1e7a604ba72bebc2230e03cfbaf4f994852c7b7c0"
+      "artifactSha256": "5c23e71cbcbf8b1e06044d1a0a319e32492e7a282d6d0bdfc0631c34dfcb0396",
+      "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+      "receiptSha256": "5cd83f8acb10b0de9f871f178eeae5657927eb56731fc4ca0c13bb62b04258fd"
     }
-  },
-  "lockDerivation": {
-    "runId": 42022429225,
-    "attempt": 1,
-    "artifactSha256": "5c23e71cbcbf8b1e06044d1a0a319e32492e7a282d6d0bdfc0631c34dfcb0396",
-    "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
-    "receiptSha256": "5cd83f8acb10b0de9f871f178eeae5657927eb56731fc4ca0c13bb62b04258fd"
   }
 }

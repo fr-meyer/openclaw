@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectedNpmCommand, npmCommandArgs } from "../test-utils/npm-command.js";
 import { resolveNpmCommand } from "./npm-command.js";
 
 const cliPath = path.join(
@@ -25,6 +26,22 @@ describe("npm invocation", () => {
     const stat = vi.spyOn(fs, "statSync");
     expect(resolveNpmCommand(args)).toEqual([...command, ...args]);
     expect(stat).toHaveBeenCalledWith(cliPath);
+  });
+
+  it.each([undefined, "1.4.2"])("matches test interception to bundled npm under Bun version %s", (bun) => {
+    Object.defineProperty(process, "versions", { value: { ...originalVersions, bun } });
+    const args = ["install", "--ignore-scripts"];
+    const command = resolveNpmCommand(args);
+    expect(expectedNpmCommand(args)).toEqual(command);
+    expect(npmCommandArgs(command)).toEqual(args);
+    expect(npmCommandArgs(["npm", ...args])).toBeUndefined();
+    expect(
+      npmCommandArgs([
+        process.execPath,
+        path.join(path.dirname(cliPath), "other-npm-cli.js"),
+        ...args,
+      ]),
+    ).toBeUndefined();
   });
 
   it.each([undefined, "1.4.2"])("fails closed on missing bundled npm under Bun version %s", (bun) => {
