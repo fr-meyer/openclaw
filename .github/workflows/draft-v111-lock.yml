@@ -1,0 +1,67 @@
+name: Draft 11.1 combined lock
+
+on:
+  push:
+    branches:
+      - prep/v2026.11.1-source-qualification
+
+permissions:
+  contents: read
+
+concurrency:
+  group: draft-v111-lock-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  derive:
+    if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/prep/v2026.11.1-source-qualification'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 3
+
+      - name: Verify draft source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = af3066611cef72dd4f521185837cd04d3ce7a11f
+          test "$(git rev-parse HEAD^^)" = 4ffdd2047d192dd65554de3c8c46c0e0197c6e2a
+          test "$(git rev-parse HEAD:pnpm-lock.yaml)" = 6e7deef33e9fcd5188501d2ee905946955577ce2
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync('custom-patches/manifest.json', 'utf8'));
+          if (pkg.version !== '2026.11.1' ||
+              manifest.status !== 'LOCAL_INTEGRATION_DRAFT_UNQUALIFIED' ||
+              manifest.productionEligible !== false) {
+            throw new Error('Expected unqualified 11.1 source candidate');
+          }
+          NODE
+
+      - name: Setup pinned Node and pnpm without install or cache
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: '24.22.1'
+          install-bun: 'false'
+          install-deps: 'false'
+          cache-mode: off
+
+      - name: Derive combined lock without install scripts
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          test "$(pnpm -v)" = '12.15.0'
+          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+          git diff --check -- pnpm-lock.yaml
+          sha256sum pnpm-lock.yaml
+          git diff --numstat -- pnpm-lock.yaml
+          echo 'BEGIN_DRAFT_V111_LOCK_GZIP_BASE64'
+          gzip -n -c pnpm-lock.yaml | base64 -w 76
+          echo 'END_DRAFT_V111_LOCK_GZIP_BASE64'
