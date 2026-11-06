@@ -21,7 +21,7 @@
     "v107ForkSource": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
     "workboardRepairSource": "1cf0627b9df7d81f101c39d94e87c0a68ba90884",
     "v109UpstreamBase": "8b18b5578f66eab1501cba4cef2310d88bfb9a41",
-    "v109FrozenFork": "83b022d934ea0908031bb4fa50c9ea7b4aada8a5"
+    "v109FrozenFork": "5271dcd47cdd374ea12effb39bd29ba7e219f12f"
   },
   "publisher": {
     "path": "scripts/docker/runtime-plugins/mergeguez-pr-lifecycle",

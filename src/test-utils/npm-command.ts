@@ -8,7 +8,7 @@ const npmCliPath = path.join(
 );
 
 export function expectedNpmCommand(args: readonly string[]): string[] {
-  return process.versions.bun ? [process.execPath, npmCliPath, ...args] : ["npm", ...args];
+  return [process.execPath, npmCliPath, ...args];
 }
 
 export function npmCommandArgs(argv: readonly string[]): string[] | undefined {

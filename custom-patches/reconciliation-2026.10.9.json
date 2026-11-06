@@ -11,7 +11,7 @@
   "forkDeltaPathCount": 250,
   "upstreamChangedPathCount": 441,
   "overlapPathCount": 55,
-  "lockState": "pending_ci_derivation",
+  "lockState": "ci_derived",
   "sourcePaths": [
     {
       "path": "Dockerfile",
@@ -29,9 +29,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "9ede1b0d0300c663371fb27a8d80229489151177"
+        "blob": "af2d0428ac86a97d4c97f00e82bb0f9da33f4128"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "custom-patches/NEXT-RELEASE-2026.10.6.md",
@@ -1683,7 +1683,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "a89268b9a6b50740b9c51d16b8186523620fa961"
+        "blob": "77346788601b0b3b356eb61849240e4e8cd54735"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -1953,6 +1953,28 @@
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
+      "path": "patches/npm-12.2.1.glob-cancellation.proof.json",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "25ea11417ee8e1b519324ac690cfe2c186701eac"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "patches/npm@12.2.1.patch",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "568316ed08b0a2a4d5c0536ccdd20f50c7eda2e1"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "patches/vitest@5.0.1.patch",
       "base108": {
         "mode": "100644",
@@ -2010,7 +2032,7 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "8fa3ddcf5e9465095981bb0f11b24e2d00bb7862"
+        "blob": "55529ecf59967008e592aa2d289b5809b27f6c48"
       },
       "disposition": "LOCK_CONTROLLED_DERIVATION"
     },
@@ -2030,7 +2052,18 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "8572393dc11e7617122cf0a9d4f715fca1721e71"
+        "blob": "2e74d7870cda4e19d022ecd9f497592914d1803b"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/build-npm-glob-vendor-backport.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "6834a0915f8752924581baa6c0a75bdc84145217"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -2050,7 +2083,18 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "d3ede2ae37c183755cb3a5f17c9a518f7cbb13c3"
+        "blob": "bd578929dc4c26f8f7e14bcc590471220eba00b1"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/diagnose-npm-vendor-inventory.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "202a074fa9fa7f34fb083a4f858f0692cd2e9762"
       },
       "disposition": "MERGED_SOURCE_REVIEWED"
     },
@@ -2336,9 +2380,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "37a35e8a50cbb9698686b7a14e9bd8eada30ce10"
+        "blob": "e500cb4248a984a0519b5e68adb6ed11f0f92a07"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "scripts/lib/ci-changed-node-test-plan.mts",
@@ -2361,6 +2405,147 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "scripts/lib/npm-glob-vendor-archive.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "80b8d7610356e5ac54a1cffb5fc1f2732e3b7acc"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-backport.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "19e164ec392112c5d506d3903075a2b341bb6030"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-proof.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "53f00b69bab16c3d0e88d73e1e8afe9bf3fbdca1"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-sources/LICENSE.md",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "881248b6d7f0ca2c4f65c41c0af5e02bb0680601"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-sources/fix-parent-walker.ts.txt",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "a675fee2f5f964ee13c5efde2942094267417590"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-sources/fix-walker.ts.txt",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "34f076653684c3c2bc64c2ddc9ceeb8ca340a7a9"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-glob-vendor-sources/glob13-walker.ts.txt",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "495e0a700e3c8a603ab2ba58a23b7c7be16015ee"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-vendor-delivery.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "81655d2597ebace2133137fd0e4cb35934084d77"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-vendor-fd-inventory-collector.py",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "417962afd37ceb5eec5e8beee46575573a0b44c8"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-vendor-fd-inventory-diagnostic.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "320e88881dbc3a32a5a6ea350949957adc356e47"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/lib/npm-vendor-payload.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "4cc6d8725d378c233e2d9bfff9821257b50a1c3e"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/package-manifest.mjs",
+      "base108": {
+        "mode": "100644",
+        "blob": "109ab733d4ca54dc2dd7a68b3866b47af76f6428"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "109ab733d4ca54dc2dd7a68b3866b47af76f6428"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "109ab733d4ca54dc2dd7a68b3866b47af76f6428"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "52e523aa4108f1f287f7ca5dab12283f59c4fa7c"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "scripts/plugin-sdk-surface-report.mts",
       "base108": {
         "mode": "100644",
@@ -2379,6 +2564,61 @@
         "blob": "f9bb330b7e62423a073b64c974913a7718ae3200"
       },
       "disposition": "CARRIED_EXACT"
+    },
+    {
+      "path": "scripts/qualify-npm-glob-vendor-backport.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "39d00fdeb112b2702111311105e46c12e51e10ae"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/test-npm-glob-vendor-controls.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "0696a890697f7b79f974cc76993ff6f649c9a14f"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/test-npm-glob-vendor-qualification.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "b521dcb56dc5f92785bd07275dc733dd3fa58306"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/test-npm-vendor-package.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "d3a127f6733100fbb99a765870b8acd9944835d4"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "scripts/test-npm-vendor-payload.mjs",
+      "base108": null,
+      "fork108": null,
+      "upstream109": null,
+      "result": {
+        "mode": "100644",
+        "blob": "09576053b3e5d379d7f2f1e622987ce2a727e7f0"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "scripts/test-projects.test-support.mts",
@@ -3011,6 +3251,26 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "src/daemon/systemd-environment-file-pattern.ts",
+      "base108": {
+        "mode": "100644",
+        "blob": "af6086d534be093fe6744b1dabc52e4aaa0646ca"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "af6086d534be093fe6744b1dabc52e4aaa0646ca"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "af6086d534be093fe6744b1dabc52e4aaa0646ca"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "87068aa56adca0a4bcfbaeeca7942530fe4734a4"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "src/dockerfile.test.ts",
       "base108": {
         "mode": "100644",
@@ -3561,6 +3821,46 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "src/infra/npm-command.test.ts",
+      "base108": {
+        "mode": "100644",
+        "blob": "cf40640fe0395cf04b9482cb0d16168c22779fa6"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "cf40640fe0395cf04b9482cb0d16168c22779fa6"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "cf40640fe0395cf04b9482cb0d16168c22779fa6"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "8623e51f603bf84d05e85b64a6693c8d9f7cab29"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
+      "path": "src/infra/npm-command.ts",
+      "base108": {
+        "mode": "100644",
+        "blob": "ab52c6934ec6a59f773efd14efb90cee9f6a5dd5"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "ab52c6934ec6a59f773efd14efb90cee9f6a5dd5"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "ab52c6934ec6a59f773efd14efb90cee9f6a5dd5"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "e5c97158c8041846a289324f7fca27d42479c3ba"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "src/plugin-sdk/config-mutation.ts",
       "base108": {
         "mode": "100644",
@@ -4101,6 +4401,26 @@
       "disposition": "CARRIED_EXACT"
     },
     {
+      "path": "src/test-utils/npm-command.ts",
+      "base108": {
+        "mode": "100644",
+        "blob": "fa2981a1ccd90cfd3e947ff109314f89ce7b2bd4"
+      },
+      "fork108": {
+        "mode": "100644",
+        "blob": "fa2981a1ccd90cfd3e947ff109314f89ce7b2bd4"
+      },
+      "upstream109": {
+        "mode": "100644",
+        "blob": "fa2981a1ccd90cfd3e947ff109314f89ce7b2bd4"
+      },
+      "result": {
+        "mode": "100644",
+        "blob": "53ca6a68faf5306fab5a22b60b041d5080397775"
+      },
+      "disposition": "MERGED_SOURCE_REVIEWED"
+    },
+    {
       "path": "src/version.test.ts",
       "base108": {
         "mode": "100644",
@@ -4296,9 +4616,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "1c7c77273539cb9fe455548d0c3b176d22ba5543"
+        "blob": "e867a71d00d6bfb4666935c48ad2cf1fce9718a4"
       },
-      "disposition": "ADAPTED_SECURITY_TEST"
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "test/scripts/discord-sdk-zod.test.ts",
@@ -4350,9 +4670,9 @@
       },
       "result": {
         "mode": "100644",
-        "blob": "44b3192d33589c3fa88eee00a43778257b664c73"
+        "blob": "e45cda38c024b2bf7ab02d94d889dfdc81ee85d7"
       },
-      "disposition": "CARRIED_EXACT"
+      "disposition": "MERGED_SOURCE_REVIEWED"
     },
     {
       "path": "test/scripts/lint-suppressions.test.ts",
@@ -4676,19 +4996,26 @@
   "sourceSuccessor": {
     "schema": "openclaw.v109.successor-lock-seed.v1",
     "amendmentSha256": "6fa3c7efad07c76ddb4c6a3a8b53ec143a4c177a0260d7707a11957678060520",
-    "generation": 1,
-    "parentSource": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
-    "parentTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f",
-    "seedSource": "0d0b3dbcbb571509df403e98d7e9be69a8f46f4f",
-    "seedTree": "30f2e6f97ed0d3db6239b00c3550a6ab4e18a63f",
-    "seedLockBlob": "8fa3ddcf5e9465095981bb0f11b24e2d00bb7862",
-    "seedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
+    "generation": 6,
+    "parentSource": "91949951f8ca0c74eead0e6f73e9495401e6bd3b",
+    "parentTree": "b2819f1628ed53d40ae925c64382444851e265b3",
+    "seedSource": "91949951f8ca0c74eead0e6f73e9495401e6bd3b",
+    "seedTree": "b2819f1628ed53d40ae925c64382444851e265b3",
+    "seedLockBlob": "55529ecf59967008e592aa2d289b5809b27f6c48",
+    "seedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
     "seedLockDerivation": {
-      "runId": 41043479025,
+      "runId": 42022429225,
       "attempt": 1,
-      "artifactSha256": "4b5386aa4d4f37b378658309f6e58239a1ddc949550d416cc2f6b6ca9ab4cc7c",
-      "generatedLockSha256": "32b1cecff004966696f50bce80de7c7b8d37f33305e3417f81e020c6a887b068",
-      "receiptSha256": "a5f490eff76fa1b9c62fc2e3ed038234397e65e8e9c9adfa526c070db94d4e87"
+      "artifactSha256": "5c23e71cbcbf8b1e06044d1a0a319e32492e7a282d6d0bdfc0631c34dfcb0396",
+      "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+      "receiptSha256": "5cd83f8acb10b0de9f871f178eeae5657927eb56731fc4ca0c13bb62b04258fd"
     }
+  },
+  "lockDerivation": {
+    "runId": 42157183076,
+    "attempt": 1,
+    "artifactSha256": "4d6a7452f31b67d6b9b6f401bfe9e2251e8e9bed4080c3ab9d82f16a56eef180",
+    "generatedLockSha256": "48fde049bbe93f772a0b5e96ddb35e3d5322a45cc572e5cdd1b40c19a4a88ca9",
+    "receiptSha256": "f79e04e2c158658bab0b05c04595eb79f34e62dd513557951ddbdd033f522e41"
   }
 }

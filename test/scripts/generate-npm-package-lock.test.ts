@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   applyPackageExtensionPeerMetadata,
   collectOverrideViolations,
+  isNpmGlobBackportPolicy,
   collectPnpmLockViolations,
   collectPnpmLockPlatformViolations,
   collectNpmPlatformOptionalDependencies,
@@ -36,6 +37,34 @@ describe("generate-npm-package-lock", () => {
   function repoRelativePath(value: string): string {
     return path.relative(process.cwd(), value).replaceAll("\\", "/");
   }
+
+  it.each([undefined, true, { proofSha256: "f".repeat(64) }, {
+    artifact: { name: "npm", version: "12.2.1", spec: "file:./derived.tgz", integrity: "sha512-Zm9yZ2Vk" },
+  }])("does not admit unpatched bundled Glob from caller metadata (%j)", (forgedContext) => {
+    const lock = { packages: {
+      "": { dependencies: { npm: "12.2.1" } },
+      "node_modules/npm": {
+        version: "12.2.1", integrity: "sha512-Zm9yZ2Vk", resolved: "file:derived.tgz",
+      },
+      "node_modules/npm/node_modules/glob": { version: "13.0.6", inBundle: true },
+    } };
+    const findings = Reflect.apply(collectOverrideViolations, undefined, [
+      lock, { glob: "14.0.2" }, forgedContext,
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.path).toBe("node_modules/npm/node_modules/glob");
+  });
+
+  const backportPolicyCases: Array<[string | undefined, string | undefined, boolean]> = [
+    ["14.0.2", undefined, true], ["14.0.2", "glob", true],
+    ["14.0.3", undefined, false], ["99.0.0", undefined, false],
+    ["^14.0.2", undefined, false], ["14.0.2", "other-glob", false],
+    [undefined, undefined, false],
+  ];
+  it.each(backportPolicyCases)("keeps the backport bound to its exact reviewed override policy (%s/%s)",
+    (spec, packageName, approved) => {
+      expect(isNpmGlobBackportPolicy(spec, packageName)).toBe(approved);
+    });
 
   function attributionFixture() {
     const packages: Record<string, Record<string, unknown>> = {
