@@ -1,9 +1,5 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import {
-  evaluateSessionsSpawnOverride,
-  resolvePluginConfig,
-  toolNameOf,
-} from "./policy.js";
+import { evaluateSessionsSpawnOverride, resolvePluginConfig, toolNameOf } from "./policy.js";
 
 const PLUGIN_ID = "subagent-model-override-guard";
 const POLICY_ID = "deny-sessions-spawn-model-override";

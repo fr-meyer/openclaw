@@ -73,7 +73,9 @@ function paramsOf(event: unknown): Record<string, unknown> {
 }
 
 function hasPresentOverride(value: unknown): boolean {
-  return typeof value === "string" ? value.trim().length > 0 : value !== undefined && value !== null;
+  return typeof value === "string"
+    ? value.trim().length > 0
+    : value !== undefined && value !== null;
 }
 
 export function evaluateSessionsSpawnOverride(
