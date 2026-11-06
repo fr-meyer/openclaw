@@ -1,4 +1,4 @@
-name: Derive 11.1 Smithy security lock
+name: Derive 11.1 Smithy and peer lock
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: derive-v111-smithy-lock-${{ github.ref }}
+  group: derive-v111-smithy-peer-lock-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -29,20 +29,32 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = cd6dfcd935b3f2ae9ac0f0c578972ef8c08d3666
-          test "$(git rev-parse HEAD^^)" = 60598c266f57faff7f0b96e761d1903b8ec1fbbd
+          test "$(git rev-parse HEAD^)" = b828cf984627e27d8e9a96e55d7d2337366b395b
+          test "$(git rev-parse HEAD^^)" = cd6dfcd935b3f2ae9ac0f0c578972ef8c08d3666
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = ef8b311c13ee265ba09567df44e379e3f6f5be9d
-          test "$(git rev-parse HEAD:pnpm-workspace.yaml)" = 2af5eb32e5f9174ab7ed6e31952cfb4912f88987
+          test "$(git rev-parse HEAD:pnpm-workspace.yaml)" = f0f326ed06b3597576c7cbfc21b62b943a9d3fcf
+          test "$(git rev-parse HEAD:package.json)" = 9fbf5eb73aa60cd83cb416041388f6f44b9058b5
+          test "$(git rev-parse HEAD:extensions/memory-lancedb/package.json)" = 20b4bf7adff1876b19d7f480fd7d7c0c3e68fb68
+          test "$(git rev-parse HEAD:custom-patches/manifest.json)" = 7ad63e1a7272123c39ded7d80410f6dbd58c5a15
+          test "$(git rev-parse HEAD:custom-patches/reconciliation-2026.11.1.json)" = 8d6f453e990186505e9bd9563bbef1ca71c498f6
           test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101
           node - <<'NODE'
           const fs = require('node:fs');
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const memory = JSON.parse(fs.readFileSync('extensions/memory-lancedb/package.json', 'utf8'));
           const manifest = JSON.parse(fs.readFileSync('custom-patches/manifest.json', 'utf8'));
           if (pkg.version !== '2026.11.1' ||
+              pkg.devDependencies.tsdown !== '0.23.2' ||
+              memory.devDependencies['@lancedb/lancedb'] !== '0.41.0' ||
+              Object.entries(memory.optionalDependencies)
+                .filter(([name]) => name.startsWith('@lancedb/lancedb-')).length !== 7 ||
+              Object.entries(memory.optionalDependencies)
+                .filter(([name]) => name.startsWith('@lancedb/lancedb-'))
+                .some(([, version]) => version !== '0.41.0') ||
               manifest.status !== 'LOCAL_INTEGRATION_DRAFT_UNQUALIFIED' ||
               manifest.productionEligible !== false ||
               manifest.integrationBasis?.combinedLock !==
-                'PENDING_APPROVED_SMITHY_3_38_1_SECRETLESS_CI_REDERIVATION') {
+                'PENDING_APPROVED_SMITHY_AND_PEER_SECRETLESS_CI_REDERIVATION') {
             throw new Error('Expected unqualified 11.1 source candidate');
           }
           NODE
@@ -55,7 +67,7 @@ jobs:
           install-deps: 'false'
           cache-mode: off
 
-      - name: Derive approved Smithy lock without install scripts
+      - name: Derive approved Smithy and peer lock without install scripts
         shell: bash
         env:
           CI: 'true'
@@ -65,9 +77,12 @@ jobs:
           pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
           grep -q "^  '@smithy/core@3.38.1':" pnpm-lock.yaml
           ! grep -q "^  '@smithy/core@3.35.1':" pnpm-lock.yaml
+          grep -q '^  rolldown-plugin-dts@0.29.0:' pnpm-lock.yaml
+          grep -q '^  tsdown@0.23.2:' pnpm-lock.yaml
+          grep -q "^  '@lancedb/lancedb@0.41.0':" pnpm-lock.yaml
           git diff --check -- pnpm-lock.yaml
           sha256sum pnpm-lock.yaml
           git diff --numstat -- pnpm-lock.yaml
-          echo 'BEGIN_DRAFT_V111_SMITHY_LOCK_GZIP_BASE64'
+          echo 'BEGIN_DRAFT_V111_SMITHY_PEER_LOCK_GZIP_BASE64'
           gzip -n -c pnpm-lock.yaml | base64 -w 76
-          echo 'END_DRAFT_V111_SMITHY_LOCK_GZIP_BASE64'
+          echo 'END_DRAFT_V111_SMITHY_PEER_LOCK_GZIP_BASE64'

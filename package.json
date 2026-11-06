@@ -2421,7 +2421,7 @@
     "stylelint-config-recommended": "18.0.0",
     "tinyglobby": "0.2.17",
     "tree-sitter-bash": "0.25.1",
-    "tsdown": "0.23.0",
+    "tsdown": "0.23.2",
     "tsx": "4.23.15",
     "typescript": "7.1.0-dev.20260922.1",
     "unrun": "0.3.1",

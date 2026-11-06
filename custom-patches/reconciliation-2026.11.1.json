@@ -16,7 +16,7 @@
   },
   "provedGitAncestryMerge": false,
   "qualificationTransferred": false,
-  "lockState": "PENDING_APPROVED_SMITHY_3_38_1_SECRETLESS_CI_REDERIVATION",
+  "lockState": "PENDING_APPROVED_SMITHY_AND_PEER_SECRETLESS_CI_REDERIVATION",
   "applicationTests": "UNRUN",
   "nativeImageExecuted": false,
   "productionAuthorized": false,
@@ -24,17 +24,17 @@
     "path": "custom-patches/reconciliation-2026.11.1.json",
     "reason": "result-blob self reference excluded"
   },
-  "resultPathCount": 286,
-  "changedResultPathCount": 278,
+  "resultPathCount": 287,
+  "changedResultPathCount": 279,
   "sourcePaths": [
     {
       "path": "custom-patches/manifest.json",
       "source1010Blob": "93357277e8881eaf4bb5ea11518589775d32d2ce",
       "upstream1010Blob": null,
       "upstream111Blob": null,
-      "resultBlob": "7c4a3661ec0896456ae1776d0de6bc80be959a93",
-      "disposition": "ADAPTED_LOCAL_SOURCE_UNEXECUTED",
-      "resultSha256": "d3e25e74c5dd14ceb8b4b9a5ec6890c517fe21e8a7dea387ac2ecbfa3bac9986"
+      "resultBlob": "7ad63e1a7272123c39ded7d80410f6dbd58c5a15",
+      "disposition": "APPROVED_SMITHY_AND_PEER_SOURCE_UNQUALIFIED",
+      "resultSha256": "871e82fdc486c8a725056bd983317f27d0013a1ca6f063de08914ffbd1f107db"
     },
     {
       "path": "custom-patches/NEXT-RELEASE-2026.10.6.md",
@@ -421,6 +421,15 @@
       "resultBlob": "3c2bb0688eb9f5a223d0c27484da2c8c336c0738",
       "disposition": "CARRIED_EXACT_UNQUALIFIED",
       "resultSha256": "8c5c78d269ce34e88034d80d2ec0cac86b3e7655d214b494928f4afddb12c830"
+    },
+    {
+      "path": "extensions/memory-lancedb/package.json",
+      "source1010Blob": "ca1f3129a5b510230d9fd92d157fa9b204f8484e",
+      "upstream1010Blob": "ca1f3129a5b510230d9fd92d157fa9b204f8484e",
+      "upstream111Blob": "98f85df2d9156d103a579a59b12223c6c7f42d63",
+      "resultBlob": "20b4bf7adff1876b19d7f480fd7d7c0c3e68fb68",
+      "disposition": "APPROVED_PEER_NATIVE_VERSION_SOURCE_UNQUALIFIED",
+      "resultSha256": "b4a7717253d09f0684d3666b0177e3d4d70bde809a8de57d647efe9d801b90e5"
     },
     {
       "path": "extensions/memory-wiki/package.json",
@@ -813,9 +822,9 @@
       "source1010Blob": "cbac46a60ac75e4754b925fd935ad44093b71043",
       "upstream1010Blob": "406e3887e5a458c913148429e93f6a21d24d166a",
       "upstream111Blob": "e69b61b94b6467025d019a319274cfdb6a70fd28",
-      "resultBlob": "d12755196dd369e234acfe0c4a47c322a069a386",
-      "disposition": "ADAPTED_LOCAL_SOURCE_UNEXECUTED",
-      "resultSha256": "31cf27115e94f600cc16fa0cf27ae4372472a312bd5eab23fba44eefdd1fc285"
+      "resultBlob": "9fbf5eb73aa60cd83cb416041388f6f44b9058b5",
+      "disposition": "APPROVED_PEER_BUILD_TOOL_SOURCE_UNQUALIFIED",
+      "resultSha256": "746ffce3ea9d85538aa080ebf6532b0729571c752717a8dd54a844ebcc9a180b"
     },
     {
       "path": "packages/gateway-protocol/src/core-request-params.ts",
@@ -992,7 +1001,7 @@
       "upstream1010Blob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
       "upstream111Blob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
       "resultBlob": "ef8b311c13ee265ba09567df44e379e3f6f5be9d",
-      "disposition": "PRE_SMITHY_LOCK_PENDING_REDERIVATION_UNQUALIFIED",
+      "disposition": "PRE_SMITHY_AND_PEER_LOCK_PENDING_REDERIVATION_UNQUALIFIED",
       "resultSha256": "e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101"
     },
     {
@@ -1000,9 +1009,9 @@
       "source1010Blob": "c6efb20dd50e1ed951127cd39e18472e39a83757",
       "upstream1010Blob": "e92a7bd95808d6cfb31a8e259b1a0057e3f22332",
       "upstream111Blob": "e92a7bd95808d6cfb31a8e259b1a0057e3f22332",
-      "resultBlob": "2af5eb32e5f9174ab7ed6e31952cfb4912f88987",
-      "disposition": "APPROVED_SECURITY_OVERRIDE_PENDING_LOCK_REDERIVATION",
-      "resultSha256": "0c52669c9195bec57d6c2327151e12a29255ab944d371f539409bebe95b3fa19"
+      "resultBlob": "f0f326ed06b3597576c7cbfc21b62b943a9d3fcf",
+      "disposition": "APPROVED_SMITHY_AND_PEER_OVERRIDES_PENDING_LOCK",
+      "resultSha256": "a80360f3538d2edb101406aedff8f29fd3dcacd2da7af50a552d48ca3a51e103"
     },
     {
       "path": "scripts/build-npm-glob-vendor-backport.mjs",
