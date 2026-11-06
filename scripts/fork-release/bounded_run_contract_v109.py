@@ -163,13 +163,30 @@ def vendor_repair_combined_source_allocation():
             "kind": "human-approved-source-repair-scope-extension", "newHumanApproval": True}}
 
 
+def vendor_repair_combined_source_deadline_extension():
+    """Exact time-only successor; original allocation and history stay immutable."""
+    value = vendor_repair_combined_source_allocation()
+    value.update(expiresAt="2026-11-09T03:14:21Z", latestWholePlanAdmission="2026-11-08T07:04:21Z")
+    value["deadlineExtension"] = {"schema": "openclaw.v109.time-only-deadline-extension.v1",
+        "authorizationSha256": "8350ab78bfeaaef2779c94f725e0fbb030f454261903192c5c180585c8d73337",
+        "previousExpiresAt": "2026-11-07T03:14:21Z", "expiresAt": "2026-11-09T03:14:21Z",
+        "resourceScopeChanged": False}
+    return value
+
+
+def is_combined_source_deadline_extension(value):
+    return type(value) is dict and canonical(value) == canonical(vendor_repair_combined_source_deadline_extension())
+
+
 def is_combined_source_repair(value):
-    return type(value) is dict and canonical(value) == canonical(vendor_repair_combined_source_allocation())
+    return type(value) is dict and (canonical(value) == canonical(vendor_repair_combined_source_allocation()) or
+        is_combined_source_deadline_extension(value))
 
 
 def validate_vendor_repair_continuation(value):
     record = value.get("resourceAllocationRecord") if type(value)is dict else None
-    expected = (vendor_repair_combined_source_allocation() if type(record)is dict and
+    expected = (vendor_repair_combined_source_deadline_extension() if type(value)is dict and "deadlineExtension" in value else
+        vendor_repair_combined_source_allocation() if type(record)is dict and
         record.get("decisionSha256") == "dc24e48bfe15dcb343affc4e04573fca260fdb119560d2a4e47332a02e0cd423" else
         vendor_repair_derivation_recovery_allocation() if type(record)is dict and
         record.get("decisionSha256") == "ec861a2d06b6c0b11d5f4b44138dff44817503ab8d8d55d7d5b896c68e388f82" else
@@ -184,7 +201,8 @@ def validate_vendor_repair_continuation(value):
 def vendor_continuation_from_digest(value):
     need(pin(value), "vendor_continuation_digest")
     for projection in (vendor_repair_continuation(), vendor_repair_resource_allocation(),
-            vendor_repair_derivation_recovery_allocation(), vendor_repair_combined_source_allocation()):
+            vendor_repair_derivation_recovery_allocation(), vendor_repair_combined_source_allocation(),
+            vendor_repair_combined_source_deadline_extension()):
         if value == digest(projection):
             return projection
     need(False, "vendor_continuation_digest")
@@ -214,10 +232,12 @@ def h3_stage_pools(grant):
     return dict(value["stagePools"] if value is not None else H3_STAGE_POOLS)
 
 
-def h3_stage_descriptor(continuation=False, combined_source_repair=False):
-    need(type(continuation) is bool and type(combined_source_repair) is bool and
-        (not combined_source_repair or continuation), "vendor_continuation_selector")
-    combined = vendor_repair_combined_source_allocation() if combined_source_repair else None
+def h3_stage_descriptor(continuation=False, combined_source_repair=False, deadline_extension=False):
+    need(type(continuation) is bool and type(combined_source_repair) is bool and type(deadline_extension) is bool and
+        (not combined_source_repair or continuation) and (not deadline_extension or combined_source_repair),
+        "vendor_continuation_selector")
+    combined = (vendor_repair_combined_source_deadline_extension() if deadline_extension else
+        vendor_repair_combined_source_allocation()) if combined_source_repair else None
     stage_minutes = sum(combined["stagePools"].values()) if combined is not None else H3_STAGE_MINUTES
     return {"publicAmendmentSha256": H3_AMENDMENT_SHA256,
         "privateAuthorizationSha256": H3_PRIVATE_AUTHORIZATION_SHA256,
@@ -228,9 +248,10 @@ def h3_stage_descriptor(continuation=False, combined_source_repair=False):
         "maximumSourceGenerations": 7 if combined is not None else (5 if continuation else H3_MAXIMUM_SOURCE_GENERATIONS)}
 
 
-def validate_h3_stage_descriptor(value, continuation=False, combined_source_repair=False):
+def validate_h3_stage_descriptor(value, continuation=False, combined_source_repair=False, deadline_extension=False):
     fields(value, H3_DESCRIPTOR_FIELDS, "h3_stage_descriptor_fields")
-    expected = h3_stage_descriptor(continuation=continuation, combined_source_repair=combined_source_repair)
+    expected = h3_stage_descriptor(continuation=continuation, combined_source_repair=combined_source_repair,
+        deadline_extension=deadline_extension)
     need(all(type(value[k]) is type(v) and value[k] == v for k, v in expected.items()),
         "h3_stage_descriptor_scope")
     return value
@@ -285,7 +306,8 @@ def source_successor_amendment(grant):
         "h3_amendment_fields")
     continuation = vendor_continuation_for(grant)
     validate_h3_stage_descriptor({k: value[k] for k in H3_DESCRIPTOR_FIELDS}, continuation=continuation is not None,
-        combined_source_repair=is_combined_source_repair(continuation))
+        combined_source_repair=is_combined_source_repair(continuation),
+        deadline_extension=is_combined_source_deadline_extension(continuation))
     need(pin(value["sourceFamilySha256"]) and type(value["sourceGeneration"]) is int and
         (6 if is_combined_source_repair(continuation) else (4 if continuation is not None else 1)) <= value["sourceGeneration"] <= value["maximumSourceGenerations"] and type(value["bookedArtifacts"]) is list and
         26 <= len(value["bookedArtifacts"]) <= 4096, "h3_amendment_family")

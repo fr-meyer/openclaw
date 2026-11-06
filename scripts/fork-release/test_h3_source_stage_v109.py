@@ -189,7 +189,10 @@ class H3SourceStageTests(unittest.TestCase):
         self.assertNotIn(b'fetch-depth: 0',prep);self.assertNotIn(b'fetch-depth: 0',full)
         caps=dict((name,int(value)) for name,value in re.findall(r'profile: ([a-z0-9-]+)\n\s+minutes: ([0-9]+)',full.decode()))
         self.assertEqual(caps,p.PROFILE_MINUTES);self.assertIn(b'max-parallel: 3',full)
-        self.assertIn(b"V109_EXPIRES_AT: '2026-11-07T03:14:21Z'",prep)
+        self.assertIn(b"V109_EXPIRES_AT: '2026-11-09T03:14:21Z'",prep)
+        old_combined = (HERE/'fixtures/v109-gen6-prep17-lock-preparation.yml').read_bytes()
+        self.assertEqual(hashlib.sha256(old_combined).hexdigest(),'fe1a5b57c0aaa892248ae9a9ba49bcb11b450b55772505daeea2504c08c3bd1a')
+        self.assertIn(b"V109_EXPIRES_AT: '2026-11-07T03:14:21Z'",old_combined)
         self.assertIn(b"V109_EXPIRES_AT: '2026-11-06T03:14:21Z'",historical_h3_workflow('v109-h3-lock-preparation.yml'))
         self.assertIn(b'timeout-minutes: 45',prep)
 

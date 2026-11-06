@@ -473,7 +473,8 @@ def h3_stage_contract(bindings, selected):
         return None
     continuation = run_allowance.vendor_continuation_for(run_grant(bindings))
     return run_allowance.h3_stage_descriptor(continuation=continuation is not None,
-        combined_source_repair=run_allowance.is_combined_source_repair(continuation))
+        combined_source_repair=run_allowance.is_combined_source_repair(continuation),
+        deadline_extension=run_allowance.is_combined_source_deadline_extension(continuation))
 
 
 def validate_h3_family(value, maximum_generations=3):
@@ -951,7 +952,8 @@ def budget(request):
                 stagePools=deepcopy(continuation["stagePools"] if continuation is not None else run_allowance.H3_STAGE_POOLS),
                 stagePrefixBookedMinutes=run_allowance.H3_PREFIX_MINUTES,
                 maximumStageBookedMinutes=run_allowance.h3_stage_descriptor(continuation=continuation is not None,
-                    combined_source_repair=run_allowance.is_combined_source_repair(continuation))["maximumStageBookedMinutes"])
+                    combined_source_repair=run_allowance.is_combined_source_repair(continuation),
+        deadline_extension=run_allowance.is_combined_source_deadline_extension(continuation))["maximumStageBookedMinutes"])
         return result
     additional = "additionalApprovalSha256" in request
     if additional:

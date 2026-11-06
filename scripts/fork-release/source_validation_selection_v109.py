@@ -88,6 +88,7 @@ PIPELINE_CONTRACT_TESTS = (
     "test_h3_image_stage_v109.py",
     "test_h3_source_stage_v109.py",
     "test_combined_source_repair_v109.py",
+    "test_compact_binding_history_v109.py",
     "test_h3_history_accounting_v109.py",
     "test_image_budget_ceiling_amendment_v109.py",
     "test_release.py", "test_preflight.py", "test_source_tests.py",

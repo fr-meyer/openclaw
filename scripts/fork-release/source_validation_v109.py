@@ -1047,6 +1047,27 @@ def content(api, path, commit, maximum=131072):
     return raw
 
 
+HISTORICAL_OVERSIZE_BINDINGS_HEAD = "3ee51f984a005af08e16e510724b579a96a86774"
+HISTORICAL_OVERSIZE_BINDINGS_BYTES = 133856
+HISTORICAL_OVERSIZE_BINDINGS_SHA256 = "24815ef47fad29f0580bc7fd400f35f61f16c4ef146224056a7ac1485a910a52"
+
+
+def source_history_binding_content(api, head):
+    """Authenticate one immutable published body above the current delivery cap.
+
+    Only historical replay calls this selector. Current/local metadata and every
+    other head retain the 131072-byte limit; request/native/authority checks in
+    collect_history_accounting remain mandatory after this byte authentication.
+    """
+    if head != HISTORICAL_OVERSIZE_BINDINGS_HEAD:
+        return content(api, BINDINGS, head)
+    raw = content(api, BINDINGS, head, HISTORICAL_OVERSIZE_BINDINGS_BYTES)
+    policy.need(len(raw) == HISTORICAL_OVERSIZE_BINDINGS_BYTES and
+        policy.digest(raw) == HISTORICAL_OVERSIZE_BINDINGS_SHA256,
+        "v9.exact_historical_oversize_binding")
+    return raw
+
+
 def live_identity(api, head, request, event):
     pr = api("/repos/" + policy.REPOSITORY + "/pulls/28")
     policy.need(pr.get("number") == 28 and pr.get("state") == "open" and pr.get("draft") is True and
@@ -1561,7 +1582,7 @@ def collect_history_accounting(pipeline, bindings, request, head, env, api, reso
             held_source = is_source and diagnostic_value["routingMode"] == "DIAGNOSTIC"
         is_source = is_source and not held_source and not image_hold
         if is_source:
-            b = policy.validate_bindings(policy.parse(content(api, BINDINGS, run["head_sha"])))
+            b = policy.validate_bindings(policy.parse(source_history_binding_content(api, run["head_sha"])))
             rr = content(api, REQUEST, run["head_sha"], 65536)
             q = policy.validate_request(policy.parse(rr), b)
             policy.need(b["authorization"] == bindings["authorization"], "v9.source_campaign_clock_changed")

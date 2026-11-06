@@ -237,11 +237,16 @@ class CombinedSourceRepairTests(unittest.TestCase):
             context["operationIdentity"] = "wrong"
             with self.assertRaises(ValueError): controller.vendor_payload_fixture_selected({"sourceGeneration": number}, context)
 
-    def test_current_four_inline_clock_guards_use_exact_new_end(self):
+    def test_original_combined_four_inline_clock_guards_remain_pinned(self):
         from unittest.mock import mock_open
         blocks = []
         for name in ("v109-h3-lock-preparation.yml", "v109-h3-source-validation.yml"):
-            text = (HERE / "fixtures" / name).read_text()
+            pins = {"v109-h3-lock-preparation.yml": "fe1a5b57c0aaa892248ae9a9ba49bcb11b450b55772505daeea2504c08c3bd1a",
+                "v109-h3-source-validation.yml": "67caba4781ec125e1d8ce70363dba50b2e8d70f83e505f9bf4ca4f88dafd749f"}
+            target = name.replace("v109-h3-", "v109-gen6-prep17-")
+            raw = (HERE / "fixtures" / target).read_bytes()
+            self.assertEqual(policy.digest(raw), pins[name])
+            text = raw.decode("utf8")
             blocks.extend(textwrap.dedent(body) for body in re.findall(r"python3 - <<'PY'\n(.*?)          PY", text, re.S) if "def utc(v):" in body)
         self.assertEqual(len(blocks), 4)
         now = policy.utc("2026-11-06T04:00:00Z").timestamp()

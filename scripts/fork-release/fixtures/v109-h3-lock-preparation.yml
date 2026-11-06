@@ -32,7 +32,7 @@ concurrency:
 # approved bindings; their exact equality is independently checked by the owner.
 env:
   V109_APPROVED_AT: '2026-10-30T03:14:21Z'
-  V109_EXPIRES_AT: '2026-11-07T03:14:21Z'
+  V109_EXPIRES_AT: '2026-11-09T03:14:21Z'
   PYTHONDONTWRITEBYTECODE: '1'
 defaults:
   run:
@@ -54,7 +54,7 @@ jobs:
               return datetime.strptime(v, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
           start, end = utc(os.environ['V109_APPROVED_AT']), utc(os.environ['V109_EXPIRES_AT'])
           now = int(time.time())
-          if (start, end) != (utc('2026-10-30T03:14:21Z'), utc('2026-11-07T03:14:21Z')) or not utc('2026-11-04T09:59:50Z') <= now < end-60:
+          if (start, end) != (utc('2026-10-30T03:14:21Z'), utc('2026-11-09T03:14:21Z')) or not utc('2026-11-04T09:59:50Z') <= now < end-60:
               raise SystemExit('v9.authorization_clock')
           with open(os.environ['GITHUB_ENV'], 'a') as stream:
               stream.write('V109_JOB_STARTED_EPOCH=' + str(now) + '\n')
@@ -73,7 +73,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          printf '%s\n' '6a6a90e6735ceb3671a768c3a31638163b764b1241bffbb76ed16f15a76deae8  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
+          printf '%s\n' '2089e9b97ec447529b14d5cefd58737a209ea974fbd7940136e994db17cf3591  pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py' | sha256sum --check --status
           python3 pipeline/scripts/fork-release/finite_public_root_bootstrap_v109.py --job admission
       - name: Exact public admission and cumulative accounting
         id: admission
