@@ -254,17 +254,19 @@ class LowerCeilingTests(unittest.TestCase):
         request = policy.parse((candidate / 'source-request.json').read_bytes())
         policy.validate_request(request, bindings)
         self.assertIn('sourceSuccessor', bindings)
-        # The retained controls describe the closed Gen5 validation. The new
-        # caller prepares Gen6; no fabricated active Gen6 controls are needed.
-        fixture = 'v109-h3-lock-preparation.yml' if request['phase'] == 'lock-preparation' else 'v109-h3-source-validation.yml'
+        phase = request['phase']
+        self.assertIn(phase, ('lock-preparation', 'validation'))
+        fixture, expected = {
+            'lock-preparation': ('v109-h3-lock-preparation.yml', diagnostic.H3_PREPARATION_WORKFLOW_SHA256),
+            'validation': ('v109-h3-source-validation.yml', diagnostic.H3_SOURCE_WORKFLOW_SHA256),
+        }[phase]
         retained_route = (HERE / 'fixtures' / fixture).read_bytes()
-        expected = diagnostic.H3_PREPARATION_WORKFLOW_SHA256 if request['phase'] == 'lock-preparation' else diagnostic.H3_SOURCE_WORKFLOW_SHA256
         self.assertEqual(policy.digest(retained_route), expected)
         diagnostic.workflow_routing(type('R', (), {'regular': staticmethod(lambda p, cap: retained_route if p == ROOT / policy.WORKFLOW else p.read_bytes())}),
             ROOT, False, source_request=request, source_bindings=bindings)
         raw = (ROOT / policy.WORKFLOW).read_bytes()
-        self.assertEqual(raw, (HERE / 'fixtures/v109-h3-lock-preparation.yml').read_bytes())
-        self.assertEqual(policy.digest(raw), diagnostic.H3_PREPARATION_WORKFLOW_SHA256)
+        self.assertEqual(raw, retained_route)
+        self.assertEqual(policy.digest(raw), expected)
 
     def test_tampered_workflow_map_refuses_at_same_route_guard(self):
         target = ROOT / policy.WORKFLOW

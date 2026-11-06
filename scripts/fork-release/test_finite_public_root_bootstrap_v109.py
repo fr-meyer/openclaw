@@ -443,7 +443,12 @@ class BootstrapTests(unittest.TestCase):
         import model_diagnostic_v109 as route
         prep = (HERE / 'fixtures/v109-h3-lock-preparation.yml').read_bytes()
         full = (HERE / 'fixtures/v109-h3-source-validation.yml').read_bytes()
-        self.assertEqual(workflow, prep)
+        bindings = self.runtime.policy.parse((root / self.runtime.BINDINGS).read_bytes())
+        request = self.runtime.policy.parse((root / self.runtime.REQUEST).read_bytes())
+        self.runtime.policy.validate_request(request, bindings)
+        phase = request['phase']
+        self.assertIn(phase, ('lock-preparation', 'validation'))
+        self.assertEqual(workflow, {'lock-preparation': prep, 'validation': full}[phase])
         for raw, count, expected in ((prep, 1, route.H3_PREPARATION_WORKFLOW_SHA256),
                 (full, 3, route.H3_SOURCE_WORKFLOW_SHA256)):
             with self.subTest(bootstrapCount=count):
@@ -454,6 +459,7 @@ class BootstrapTests(unittest.TestCase):
                 self.assertNotIn('fetch-depth: 0', text)
                 self.assertEqual(expected, hashlib.sha256(raw).hexdigest())
         text = full.decode()
+        self.assertIn('max-parallel: 3', text)
         parsed = ast.parse((HERE / 'source_validation_selection_v109.py').read_bytes())
         entries = next(x.value for x in parsed.body if isinstance(x, ast.Assign)
             and any(isinstance(t, ast.Name) and t.id == 'PIPELINE_CONTRACT_TESTS' for t in x.targets))
