@@ -159,7 +159,7 @@ def history(api,request,ctx,bindings=None,selected=None):
         def owned_api(path):
             contract.need(type(path)is str and path.startswith(prefix),"image.source_stage_api_scope")
             return api.get(path[len(prefix):])
-        booking=source_owner.image_cumulative_booking(root(),owned_api,bindings,selected,ctx['runId'],time.time())
+        booking=source_booking(source_owner,root(),owned_api,bindings,selected,ctx['runId'],time.time())
         contract.need(type(booking)is dict and {'newObservedOrBookedMinutes','currentObservedMinutes',
             'perAttemptBookedMinuteFloorsApplied','remainingIncidentalReserveMinutes'}<=set(booking) and
             booking['perAttemptBookedMinuteFloorsApplied']is True,
@@ -168,6 +168,18 @@ def history(api,request,ctx,bindings=None,selected=None):
             booking['newObservedOrBookedMinutes'],booking['currentObservedMinutes'],
             family['priorRunnerMinutes'],booking['remainingIncidentalReserveMinutes'])
     return family
+
+
+def source_booking(owner,*args):
+    """Retain only the source owner's fixed safe failure evidence on refusal."""
+    try:
+        return owner.image_cumulative_booking(*args)
+    except Exception as error:
+        owner.emit_failure_diagnostic(error)
+        code=owner.safe_refusal_code(error)
+        if code!='v9.runtime_refused' and re.fullmatch(r'v9\.[a-z0-9_]{1,96}',code):
+            raise contract.Refusal(code) from None
+        raise
 
 
 def source_snapshot(api,request,source_contract,bindings,selected,data):

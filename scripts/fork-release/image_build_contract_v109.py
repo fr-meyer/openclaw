@@ -142,8 +142,9 @@ def validate_request(value, active=False, now=None):
     template = disarmed_request()
     amended = type(value) is dict and "sourceBudgetCeilingAmendmentSha256" in value
     successor = type(value) is dict and "sourceStage" in value
+    retry = type(value) is dict and "retryAfterFailedAdmission" in value
     fields(value, (*template, *(("sourceBudgetCeilingAmendmentSha256",) if amended else ()),
-        *(("sourceStage",) if successor else ())), "image.request_fields")
+        *(("sourceStage",) if successor else ()), *(("retryAfterFailedAdmission",) if retry else ())), "image.request_fields")
     for key in ("schema", "campaignId", "repository", "workflow", "workflowBranch", "operationId"):
         need(value[key] == template[key], "image.fixed_scope")
     need(value["state"] in ("DISARMED", "PREPARED_BUILD", "APPROVED_BUILD"), "image.state")
@@ -153,6 +154,12 @@ def validate_request(value, active=False, now=None):
     if value["state"] == "DISARMED":
         need(value == template and not active, "image.disarmed")
         return value
+    if retry:
+        need(value["state"] == "APPROVED_BUILD" and value["retryAfterFailedAdmission"] == {
+            "runId": "42239007307", "head": "ccca07e2156a06ab5cd90badbf289442376d0ddf",
+            "admissionConclusion": "failure", "buildConclusion": "skipped",
+            "approvalSha256": "1da670194d8e018882e90c4daaf45132340c8a4b3c85311af8eca8cdadab218d"},
+            "image.exact_failed_admission_retry")
     stage = source_stage(value["sourceStage"]) if successor else None
     need(not successor or amended, "image.source_stage_budget_link")
     need(all(pin(value[k], True) for k in ("preparationSourceSha", "previousPipelineHead", "sourceSha", "sourceTree")),
@@ -222,7 +229,8 @@ def validate_context(context, request, now):
         "before", "after", "created", "deleted", "forced"), "image.context_fields")
     need(context["repository"] == REPOSITORY and context["actor"] == ACTOR and context["event"] == "push" and
         context["ref"] == REF and pin(context["sha"], True) and context["sha"] == context["workflowSha"] == context["after"] and
-        context["before"] == request["previousPipelineHead"] and type(context["runId"]) is str and RUN.fullmatch(context["runId"]) and
+        context["before"] == (request["retryAfterFailedAdmission"]["head"] if "retryAfterFailedAdmission" in request
+            else request["previousPipelineHead"]) and type(context["runId"]) is str and RUN.fullmatch(context["runId"]) and
         type(context["attempt"]) is int and context["attempt"] == 1 and context["created"] is False and
         context["deleted"] is False and context["forced"] is False, "image.exact_push_context")
     return context
@@ -297,7 +305,9 @@ def validate_image_history(request, context, runs, jobs_by_run):
         "image.complete_history")
     rows=runs["workflow_runs"]
     need(len({r.get("id") for r in rows})==len(rows), "image.duplicate_run")
-    found=False
+    retry=request.get("retryAfterFailedAdmission")
+    need(retry is None or len(rows)==2,"image.exact_retry_history_count")
+    found=False;prior_found=False
     for run in rows:
         rid=str(run.get("id"))
         need(run.get("path")==WORKFLOW and run.get("event")=="push" and run.get("head_branch")==BRANCH and
@@ -310,6 +320,10 @@ def validate_image_history(request, context, runs, jobs_by_run):
             found=True
             continue
         need(run.get("status")=="completed" and rid in jobs_by_run, "image.prior_outcome_unsettled")
+        if retry is not None:
+            need(not prior_found and rid==retry["runId"] and run.get("head_sha")==retry["head"] and
+                run.get("conclusion")==retry["admissionConclusion"],"image.exact_prior_failed_run")
+            prior_found=True
         page=jobs_by_run[rid]
         need(type(page) is dict and page.get("total_count")==len(page.get("jobs",[]))==2 and
             {j.get("name") for j in page["jobs"]}=={"image-admission","build-private-image"} and
@@ -317,10 +331,10 @@ def validate_image_history(request, context, runs, jobs_by_run):
         for job in page["jobs"]:
             need(job.get("status")=="completed" and str(job.get("run_id"))==rid, "image.prior_job_unsettled")
             if job.get("name")=="image-admission":
-                need(job.get("conclusion")=="success", "image.prior_admission_refusal")
+                need(job.get("conclusion")==("failure" if retry is not None else "success"), "image.prior_admission_refusal")
             if job.get("name")=="build-private-image":
                 need(job.get("conclusion")=="skipped" and not job.get("steps"), "image.physical_attempt_already_consumed")
-    need(found, "image.current_run_missing")
+    need(found and (retry is None or prior_found), "image.current_run_missing")
     return True
 
 

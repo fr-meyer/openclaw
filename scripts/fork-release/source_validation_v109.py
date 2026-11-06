@@ -1764,6 +1764,8 @@ IMAGE_SOURCE_BINDINGS_SHA256 = "5726aac943f27f1bea3c804fc91d89e7bd4fe8ecec50ecaf
 IMAGE_SOURCE_REQUEST_SHA256 = "b25f0027a5fad04f8a28b824de23b1d73788cbf445d4f9d43a96580bafeba9b9"
 IMAGE_UNKNOWN_RUN_IDS = ('41951003346', '41951003359', '41951013206', '41951014161', '41959745699', '41959745748', '41959755184', '41959755321', '41973803168', '41973803175', '41973812464', '41973821194', '41978951015', '41978951107', '41978960074', '41978962442', '41984882074', '41984882082', '41984890987', '41984897439', '41997331659', '41997331796', '41997342179', '41997342272', '42007804734', '42007805142', '42007821574', '42007823268', '42022441217', '42022441229', '42022451281', '42022453352', '42034443898', '42034443919', '42034459328', '42034460160', '42044753476', '42044753908', '42044768222', '42044773380', '42150531944', '42150531991', '42150541964', '42150542713', '42157190380', '42157190419', '42157199759', '42157202222', '42166042574', '42166042726', '42166054486', '42166054635', '42168828507', '42168854781', '42170282542', '42170282649', '42172551178', '42172562781', '42174003663', '42174003797', '42180561696', '42180582139', '42180801783', '42180801873', '42189830085', '42189899682', '42189940912', '42189965214', '42190005375', '42190094421', '42190259001', '42190283060', '42193180261', '42193180279', '42198085012', '42198150508', '42198191477', '42198191571', '42198195000', '42198195043', '42198267656', '42198267676', '42199535935', '42199536020')
 IMAGE_UNKNOWN_HELD_MINUTES = 28
+IMAGE_RETRY_PRIOR_RUN_ID = "42239007307"
+IMAGE_RETRY_PRIOR_HEAD = "ccca07e2156a06ab5cd90badbf289442376d0ddf"
 
 
 def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, current_minutes):
@@ -1809,6 +1811,13 @@ def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, cu
         charges[key]=max(charges[key],row["runnerMinutes"])
     old={r["runId"]:r["runnerMinutes"] for r in prefix["records"]}
     policy.need(current_id not in old,"v9.h3_current_reuses_prefix")
+    prior=facts["history"].get(IMAGE_RETRY_PRIOR_RUN_ID)
+    prior_minutes=charges.get((IMAGE_RETRY_PRIOR_RUN_ID,1))
+    policy.need(type(prior)is dict and prior.get("head_sha")==IMAGE_RETRY_PRIOR_HEAD and
+        prior.get("status")=="completed" and prior.get("conclusion")=="failure" and
+        facts["run_pools"].get(IMAGE_RETRY_PRIOR_RUN_ID)=="image" and
+        type(prior_minutes)is int and 5<=prior_minutes<=15,
+        "v9.image_exact_failed_admission_debit")
     used={k:0 for k in pools}
     for (rid,attempt),minutes in charges.items():
         policy.need(attempt==1 and rid in facts["run_pools"],"v9.h3_component_native_identity")
@@ -1816,7 +1825,7 @@ def image_stage_minute_facts(pipeline, bindings, selected, facts, current_id, cu
         policy.need(kind in used,"v9.h3_component_role")
         used[kind]+=minutes-old.get(rid,0)
     policy.need(used["preparation"]==246 and used["source"]==2028 and
-        used["incidental"]>=162 and used["image"]==current_minutes and
+        used["incidental"]>=162 and used["image"]==prior_minutes+current_minutes and
         facts["run_pools"].get(current_id)=="image", "v9.image_allocation_no_source_refund_or_new_source")
     used["incidental"]+=IMAGE_UNKNOWN_HELD_MINUTES
     policy.need(all(type(v)is int and 0<=v<=pools[k] for k,v in used.items()),
