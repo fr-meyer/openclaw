@@ -42,7 +42,7 @@
   "integrationBasis": {
     "kind": "explicit_fork_delta_transplant",
     "provedGitAncestryMerge": false,
-    "combinedLock": "DERIVED_SECRETLESS_CI_PENDING_FROZEN_INSTALL_AND_FULL_CLOSURE_AGE_CHECK",
+    "combinedLock": "PENDING_APPROVED_SMITHY_3_38_1_SECRETLESS_CI_REDERIVATION",
     "applicationValidation": "UNRUN"
   }
 }

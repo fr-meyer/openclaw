@@ -1,4 +1,4 @@
-name: Qualify 11.1 combined source
+name: Derive 11.1 Smithy security lock
 
 on:
   push:
@@ -9,14 +9,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: qualify-v111-source-${{ github.ref }}
+  group: derive-v111-smithy-lock-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  dependency-admission:
+  derive:
     if: github.repository == 'fr-meyer/openclaw' && github.ref == 'refs/heads/prep/v2026.11.1-source-qualification'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,9 +29,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 60598c266f57faff7f0b96e761d1903b8ec1fbbd
-          test "$(git rev-parse HEAD^^)" = af3066611cef72dd4f521185837cd04d3ce7a11f
+          test "$(git rev-parse HEAD^)" = cd6dfcd935b3f2ae9ac0f0c578972ef8c08d3666
+          test "$(git rev-parse HEAD^^)" = 60598c266f57faff7f0b96e761d1903b8ec1fbbd
           test "$(git rev-parse HEAD:pnpm-lock.yaml)" = ef8b311c13ee265ba09567df44e379e3f6f5be9d
+          test "$(git rev-parse HEAD:pnpm-workspace.yaml)" = 2af5eb32e5f9174ab7ed6e31952cfb4912f88987
           test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101
           node - <<'NODE'
           const fs = require('node:fs');
@@ -39,7 +40,9 @@ jobs:
           const manifest = JSON.parse(fs.readFileSync('custom-patches/manifest.json', 'utf8'));
           if (pkg.version !== '2026.11.1' ||
               manifest.status !== 'LOCAL_INTEGRATION_DRAFT_UNQUALIFIED' ||
-              manifest.productionEligible !== false) {
+              manifest.productionEligible !== false ||
+              manifest.integrationBasis?.combinedLock !==
+                'PENDING_APPROVED_SMITHY_3_38_1_SECRETLESS_CI_REDERIVATION') {
             throw new Error('Expected unqualified 11.1 source candidate');
           }
           NODE
@@ -52,16 +55,19 @@ jobs:
           install-deps: 'false'
           cache-mode: off
 
-      - name: Frozen dependency admission without install scripts
+      - name: Derive approved Smithy lock without install scripts
         shell: bash
         env:
           CI: 'true'
         run: |
           set -euo pipefail
           test "$(pnpm -v)" = '12.15.0'
-          pnpm install --frozen-lockfile --ignore-scripts
-          test "$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)" = e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101
-          pnpm peers check
-          pnpm deps:patches:check
-          pnpm deps:pins:check
-          pnpm deps:npm-lock:check
+          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+          grep -q "^  '@smithy/core@3.38.1':" pnpm-lock.yaml
+          ! grep -q "^  '@smithy/core@3.35.1':" pnpm-lock.yaml
+          git diff --check -- pnpm-lock.yaml
+          sha256sum pnpm-lock.yaml
+          git diff --numstat -- pnpm-lock.yaml
+          echo 'BEGIN_DRAFT_V111_SMITHY_LOCK_GZIP_BASE64'
+          gzip -n -c pnpm-lock.yaml | base64 -w 76
+          echo 'END_DRAFT_V111_SMITHY_LOCK_GZIP_BASE64'

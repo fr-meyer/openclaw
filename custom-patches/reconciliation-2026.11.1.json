@@ -16,7 +16,7 @@
   },
   "provedGitAncestryMerge": false,
   "qualificationTransferred": false,
-  "lockState": "DERIVED_SECRETLESS_CI_PENDING_FROZEN_INSTALL_AND_FULL_CLOSURE_AGE_CHECK",
+  "lockState": "PENDING_APPROVED_SMITHY_3_38_1_SECRETLESS_CI_REDERIVATION",
   "applicationTests": "UNRUN",
   "nativeImageExecuted": false,
   "productionAuthorized": false,
@@ -32,9 +32,9 @@
       "source1010Blob": "93357277e8881eaf4bb5ea11518589775d32d2ce",
       "upstream1010Blob": null,
       "upstream111Blob": null,
-      "resultBlob": "af60309b7cb8ed0b6d7159734bfdc2382e84a93b",
+      "resultBlob": "7c4a3661ec0896456ae1776d0de6bc80be959a93",
       "disposition": "ADAPTED_LOCAL_SOURCE_UNEXECUTED",
-      "resultSha256": "46de7f75f14e89eacc01db8183bac6a3fd6fbdb41eb6bfe827649d13c1088e0d"
+      "resultSha256": "d3e25e74c5dd14ceb8b4b9a5ec6890c517fe21e8a7dea387ac2ecbfa3bac9986"
     },
     {
       "path": "custom-patches/NEXT-RELEASE-2026.10.6.md",
@@ -992,7 +992,7 @@
       "upstream1010Blob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
       "upstream111Blob": "6e7deef33e9fcd5188501d2ee905946955577ce2",
       "resultBlob": "ef8b311c13ee265ba09567df44e379e3f6f5be9d",
-      "disposition": "DERIVED_COMBINED_LOCK_UNQUALIFIED",
+      "disposition": "PRE_SMITHY_LOCK_PENDING_REDERIVATION_UNQUALIFIED",
       "resultSha256": "e634f2c3e39ef4ffebbcbe29874c460f810398750d60cde7987c51a2e600a101"
     },
     {
@@ -1000,9 +1000,9 @@
       "source1010Blob": "c6efb20dd50e1ed951127cd39e18472e39a83757",
       "upstream1010Blob": "e92a7bd95808d6cfb31a8e259b1a0057e3f22332",
       "upstream111Blob": "e92a7bd95808d6cfb31a8e259b1a0057e3f22332",
-      "resultBlob": "c6efb20dd50e1ed951127cd39e18472e39a83757",
-      "disposition": "CARRIED_EXACT_UNQUALIFIED",
-      "resultSha256": "d321663a4769c049a5f780c6117602c0f0e2e988b3edd74f1c6c5831bff92318"
+      "resultBlob": "2af5eb32e5f9174ab7ed6e31952cfb4912f88987",
+      "disposition": "APPROVED_SECURITY_OVERRIDE_PENDING_LOCK_REDERIVATION",
+      "resultSha256": "0c52669c9195bec57d6c2327151e12a29255ab944d371f539409bebe95b3fa19"
     },
     {
       "path": "scripts/build-npm-glob-vendor-backport.mjs",
