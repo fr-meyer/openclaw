@@ -2752,6 +2752,8 @@ importers:
 
   packages/retry: {}
 
+  packages/secret-command-launcher: {}
+
   packages/sdk:
     dependencies:
       '@openclaw/gateway-client':
